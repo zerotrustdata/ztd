@@ -1091,36 +1091,6 @@ func operatorCommandResultPayload(env *commonv1.GovernanceEnvelope) []byte {
 	return out
 }
 
-// OperatorCommandRequest is the typed JSON request for POST /api/v1/operators/commands.
-type OperatorCommandRequest struct {
-	TargetOperatorSessionID string `json:"target_operator_session_id"`
-	EventType               string `json:"event_type"`
-	Payload                 []byte `json:"payload"`
-	TargetResource          string `json:"target_resource,omitempty"`
-	CaseID                  string `json:"case_id,omitempty"`
-	InvestigationID         string `json:"investigation_id,omitempty"`
-	TaskID                  string `json:"task_id,omitempty"`
-	WebSessionID            string `json:"web_session_id,omitempty"`
-	CliSessionID            string `json:"cli_session_id,omitempty"`
-}
-
-// Validate returns an error if the request is missing required fields.
-func (r *OperatorCommandRequest) Validate() error {
-	if r.TargetOperatorSessionID == "" {
-		return constants.ErrGatewayOperatorSessionIDRequired
-	}
-	if r.EventType == "" {
-		return constants.ErrTxUnknownEventType
-	}
-	if len(r.Payload) == 0 {
-		return fmt.Errorf("%w: %w", constants.ErrMissingRequiredField, constants.ErrTxPayloadMissing)
-	}
-	if _, err := constants.ValidateGovernedRequest(constants.EventType(r.EventType)); err != nil {
-		return err
-	}
-	return nil
-}
-
 // DispatchControllerDeps groups all dependencies for DispatchController.
 type DispatchControllerDeps struct {
 	DispatchSvc *DispatchService
@@ -1161,7 +1131,7 @@ func newDispatchController(d DispatchControllerDeps) *DispatchController {
 // @Tags			operators
 // @Accept			json
 // @Produce		json
-// @Param			request	body		OperatorCommandRequest	true	"Dispatch request (JSON)"
+// @Param			request	body		models.OperatorCommandRequest	true	"Dispatch request (JSON)"
 // @Success		200		{object}	operatorv1.GovernedDispatchResult	"Terminal result with the verified final ActionReceipt"
 // @Failure		400		{object}	operatorv1.IngressRefusal	"Bad Request — malformed request or unknown event type"
 // @Failure		403		{object}	operatorv1.GovernanceRejection	"Forbidden — GovernanceRejection carrying the signed L4 receipt; IngressRefusal when refused before L4"
@@ -1177,7 +1147,7 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var req OperatorCommandRequest
+	var req models.OperatorCommandRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		err = fmt.Errorf("dispatch: decode request: %w: %w", constants.ErrInvalidJSONBody, err)
 		c.responder.ProtoJSONCanonical(w, http.StatusBadRequest, governance.NewIngressRefusal(err))
@@ -1207,7 +1177,7 @@ func (c *DispatchController) HandleDispatch(w http.ResponseWriter, r *http.Reque
 		InvestigationID:         req.InvestigationID,
 		TaskID:                  req.TaskID,
 		WebSessionID:            req.WebSessionID,
-		CliSessionID:            req.CliSessionID,
+		CliSessionID:            req.CLISessionID,
 	})
 	if err != nil {
 		// Dispatch errors can embed command lines, paths and doctrine violations. The

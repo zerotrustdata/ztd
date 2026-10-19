@@ -93,21 +93,20 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 }
 
 // FollowOwnerCLISession moves the owner's console, and under an L3 posture the
-// CLI transaction approver, onto cliSessionID. Binding a CLI session replaces
-// it and deactivates the old one, and the Gateway delivers approval changes only
-// to active CLI sessions with an open stream, so a listener left on the old
-// session never hears of later suspensions.
-func (s *EvalStack) FollowOwnerCLISession(t *testing.T, cliSessionID string) {
+// CLI transaction approver, onto identity's CLI session and certificate. A CLI
+// session replaced by a bind is deactivated, and the Gateway delivers approval
+// changes only to active CLI sessions with an open stream, so a listener left
+// on the replaced session never hears of later suspensions.
+func (s *EvalStack) FollowOwnerCLISession(t *testing.T, identity *ClientIdentity) {
 	t.Helper()
-	require.NotEmpty(t, cliSessionID)
-	if cliSessionID == s.Owner.CLISessionID {
+	require.NotNil(t, identity)
+	require.NotEmpty(t, identity.CLISessionID)
+	if identity.CLISessionID == s.Owner.CLISessionID {
 		return
 	}
-	identity := *s.Identity
-	identity.CLISessionID = cliSessionID
-	owner := AttachOwnerConsole(t, s.Gateway, identity.UserID, cliSessionID, OwnerApprovesEach)
+	owner := AttachOwnerConsole(t, s.Gateway, identity.UserID, identity.CLISessionID, OwnerApprovesEach)
 	if s.posture.RequiresL3() {
-		owner.ApproveTransactionsWithCLI(t, &identity)
+		owner.ApproveTransactionsWithCLI(t, identity)
 	}
 	s.Owner = owner
 }

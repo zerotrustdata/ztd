@@ -69,7 +69,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
+| INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`, `POST /api/v1/observe/producer/stop`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
 
 ### Consumer authentication (`INV-SSE-CONS`)
 
@@ -162,8 +162,9 @@ App workloads enrolled through platform enrollment publish telemetry over mTLS t
 
 - `POST /api/v1/observe/producer/agent-state`
 - `POST /api/v1/observe/producer/run-state`
+- `POST /api/v1/observe/producer/stop`
 
-The Gateway accepts these typed updates only from app-workload mTLS identities, derives `user_id` from the authenticated certificate, and validates strict request JSON. Each request names exactly one web or CLI session as its SSE target; after persisting the associated projection, the Gateway stores the event for that session and delivers it live when that session has an open stream.
+The Gateway accepts these typed updates only from app-workload mTLS identities, derives `user_id` from the authenticated certificate, and validates strict request JSON. Each request names exactly one web or CLI session as its SSE target; after persisting the associated projection, the Gateway stores the event for that session and delivers it live when that session has an open stream. A stop request names one campaign run (`campaign_id` and `run_id`), and the `ai.eval.stop.requested` event it produces carries the same `run_id`.
 
 ## Consumer Replay and Reconnection
 

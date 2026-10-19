@@ -16,6 +16,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -69,9 +70,13 @@ func (d *harnessOllamaModelCommandDispatcher) DispatchOllamaModelCommand(ctx con
 	if len(payload) == 0 {
 		return nil, fmt.Errorf("evaluation: Ollama model command dispatch: %w", constants.ErrMissingRequiredField)
 	}
-	outcome, err := d.client.DispatchCommand(ctx, d.persona, harnessclient.DispatchCommandRequest{
+	eventType, err := constants.RequestEventForAction(actionType)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: Ollama model command dispatch: %w", err)
+	}
+	outcome, err := d.client.DispatchCommand(ctx, d.persona, models.OperatorCommandRequest{
 		TargetOperatorSessionID: request.TargetOperatorSessionID,
-		ActionType:              string(actionType),
+		EventType:               string(eventType),
 		Payload:                 payload,
 		TargetResource:          "ollama-model",
 		CaseID:                  request.CaseID,

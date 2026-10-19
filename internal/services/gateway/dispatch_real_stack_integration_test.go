@@ -26,7 +26,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
-	gatewayservice "github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/network"
@@ -64,7 +63,7 @@ func TestDispatchRealStack(t *testing.T) {
 				Intent:        "Print a fixed verification marker",
 			})
 			require.NoError(t, err)
-			body, err := json.Marshal(gatewayservice.OperatorCommandRequest{
+			body, err := json.Marshal(models.OperatorCommandRequest{
 				TargetOperatorSessionID: workload.OperatorSessionID,
 				EventType:               string(constants.Event.Operator.Command.Requested),
 				Payload:                 payload,

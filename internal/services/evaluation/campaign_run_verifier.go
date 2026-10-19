@@ -457,7 +457,7 @@ func verifyCampaignRunReadOnly(ctx context.Context, store *Store, runID string, 
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: verify campaign frozen scenario inputs: %w", err)
 	}
-	observationReader, err := NewCampaignProviderObservationReader(store.files)
+	observationReader, err := NewCampaignProviderObservationReader(store)
 	if err != nil {
 		return nil, err
 	}

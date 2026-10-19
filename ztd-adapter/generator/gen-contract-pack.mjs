@@ -190,6 +190,7 @@ const EVENT_PAYLOAD_MODELS = [
 const EXCLUDED_MODELS = new Set([
   'observe_producer_agent_state_request',
   'observe_producer_run_state_request',
+  'observe_producer_stop_request',
   'observe_producer_response',
   // Public feed owner-only and server-to-server models. These never appear
   // in the builder contract pack: ingest requests are Gateway-to-mirror,

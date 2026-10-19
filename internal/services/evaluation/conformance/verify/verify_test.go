@@ -23,7 +23,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/governance/doctrinecorpus"
-	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -133,7 +132,7 @@ func canaryEntry(path, content string) *evalv1.CanaryEntry {
 // skill payload, JSON-encoded, so a newline in the marker is the escape \n.
 func markerPayloadJSON(t *testing.T, marker string) string {
 	t.Helper()
-	raw, err := json.Marshal(client.MarkerSkillPayload{Marker: marker})
+	raw, err := json.Marshal(cases.MarkerSkillPayload{Marker: marker})
 	require.NoError(t, err)
 	return string(raw)
 }

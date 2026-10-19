@@ -26,7 +26,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -225,11 +224,11 @@ func (c *E2EClient) GetOperatorBySession(ctx context.Context, sessionID string) 
 }
 
 // DispatchCommand sends a command dispatch request to the gateway via the
-// owner-authenticated commands endpoint. The OperatorCommandRequest body carries
-// the target operator session ID, action type, and protobuf payload. The 200
+// owner-authenticated commands endpoint. The models.OperatorCommandRequest body carries
+// the target operator session ID, event type, and protobuf payload. The 200
 // body is a GovernedDispatchResult carrying the signed final receipt. The timeout parameter overrides the default client timeout for
 // long-running dispatch operations.
-func (c *E2EClient) DispatchCommand(ctx context.Context, body gateway.OperatorCommandRequest, timeout time.Duration) (*operatorv1.GovernedDispatchResult, error) {
+func (c *E2EClient) DispatchCommand(ctx context.Context, body models.OperatorCommandRequest, timeout time.Duration) (*operatorv1.GovernedDispatchResult, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal dispatch body: %w", err)
@@ -385,7 +384,7 @@ func (c *E2EClient) IngestAuditRecord(ctx context.Context, req models.AuditRecor
 
 // DispatchCommandExpectStatus posts a dispatch request and returns the HTTP status
 // and raw body without requiring success.
-func (c *E2EClient) DispatchCommandExpectStatus(ctx context.Context, body gateway.OperatorCommandRequest, expectedStatus int) (int, []byte, error) {
+func (c *E2EClient) DispatchCommandExpectStatus(ctx context.Context, body models.OperatorCommandRequest, expectedStatus int) (int, []byte, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return 0, nil, fmt.Errorf("marshal dispatch body: %w", err)
@@ -450,7 +449,7 @@ func (c *E2EClient) dispatchFsReadToSession(t *testing.T, ctx context.Context, o
 
 	dispatchCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	resp, err := c.DispatchCommand(dispatchCtx, gateway.OperatorCommandRequest{
+	resp, err := c.DispatchCommand(dispatchCtx, models.OperatorCommandRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.EventOperatorFilesystemReadRequested),
 		Payload:                 payload,

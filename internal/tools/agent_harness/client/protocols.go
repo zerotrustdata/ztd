@@ -20,19 +20,6 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-type DispatchCommandRequest struct {
-	TargetOperatorSessionID string `json:"target_operator_session_id"`
-	ActionType              string `json:"action_type,omitempty"`
-	EventType               string `json:"event_type,omitempty"`
-	Payload                 []byte `json:"payload"`
-	TargetResource          string `json:"target_resource,omitempty"`
-	CaseID                  string `json:"case_id,omitempty"`
-	InvestigationID         string `json:"investigation_id,omitempty"`
-	TaskID                  string `json:"task_id,omitempty"`
-	WebSessionID            string `json:"web_session_id,omitempty"`
-	CLISessionID            string `json:"cli_session_id,omitempty"`
-}
-
 func (c *Client) Health(ctx context.Context) (*models.HealthResponse, []byte, error) {
 	status, raw, err := c.do(ctx, c.auditorPersona(), http.MethodGet, c.cfg.MTLSBaseURL+constants.APIPaths.Health, nil)
 	if err != nil {
@@ -54,25 +41,15 @@ func (c *Client) Health(ctx context.Context) (*models.HealthResponse, []byte, er
 // DispatchCommand submits one governed operator command through the CLI-cert
 // client and returns the typed outcome of the Gateway's answer. A transport
 // failure is returned as an error, never as an outcome.
-func (c *Client) DispatchCommand(ctx context.Context, persona Persona, request DispatchCommandRequest) (*GovernedOutcome, error) {
-	if request.TargetOperatorSessionID == "" || (request.ActionType == "" && request.EventType == "") || len(request.Payload) == 0 {
+func (c *Client) DispatchCommand(ctx context.Context, persona Persona, request models.OperatorCommandRequest) (*GovernedOutcome, error) {
+	if request.TargetOperatorSessionID == "" || request.EventType == "" || len(request.Payload) == 0 {
 		return nil, constants.ErrMissingRequiredField
 	}
-	if request.EventType == "" && request.ActionType != "" {
-		eventType, err := constants.RequestEventForAction(constants.ActionType(request.ActionType))
-		if err != nil {
-			return nil, fmt.Errorf("agent harness: resolve request event: %w", err)
-		}
-		request.EventType = string(eventType)
+	actionType, err := constants.ValidateGovernedRequest(constants.EventType(request.EventType))
+	if err != nil {
+		return nil, fmt.Errorf("agent harness: resolve action type: %w", err)
 	}
-	if request.ActionType == "" && request.EventType != "" {
-		actionType, err := constants.ValidateGovernedRequest(constants.EventType(request.EventType))
-		if err != nil {
-			return nil, fmt.Errorf("agent harness: resolve action type: %w", err)
-		}
-		request.ActionType = string(actionType)
-	}
-	if err := constants.ValidateGovernedEnvelopeFields(constants.EventType(request.EventType), constants.ActionType(request.ActionType)); err != nil {
+	if err := constants.ValidateGovernedEnvelopeFields(constants.EventType(request.EventType), actionType); err != nil {
 		return nil, fmt.Errorf("agent harness: validate request fields: %w", err)
 	}
 	body, err := json.Marshal(request)
@@ -196,17 +173,6 @@ func (c *Client) MCPPromptsGet(ctx context.Context, p Persona, request mcp.GetPr
 }
 
 // ---- A2A --------------------------------------------------------------------
-
-// CommandSkillPayload is the payload for a skill that carries a shell command.
-type CommandSkillPayload struct {
-	Cmd string `json:"cmd"`
-}
-
-// MarkerSkillPayload is the conformance skill payload that names the marker the
-// A2A downstream records.
-type MarkerSkillPayload struct {
-	Marker string `json:"marker"`
-}
 
 // A2ACall invokes an A2A skill. request is the a2a/call params; a nil Payload is
 // forwarded as JSON null.

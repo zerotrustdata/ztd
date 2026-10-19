@@ -189,6 +189,17 @@ type Sentinel interface {
 	Read(ctx context.Context, ex Executor, readAbs string) (*operatorv1.ActionReceipt, error)
 }
 
+// CommandSkillPayload is the payload for a skill that carries a shell command.
+type CommandSkillPayload struct {
+	Cmd string `json:"cmd"`
+}
+
+// MarkerSkillPayload is the conformance skill payload that names the marker the
+// A2A downstream records.
+type MarkerSkillPayload struct {
+	Marker string `json:"marker"`
+}
+
 // Marker returns the exact bytes a mutation attempt writes.
 func Marker(runID, attemptID string) string {
 	return fmt.Sprintf("ztd-conformance %s %s\n", runID, attemptID)

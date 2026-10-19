@@ -25,6 +25,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
@@ -97,9 +98,9 @@ func dispatchResultBody(t *testing.T) []byte {
 }
 
 // decodeDispatchRequest decodes a well-formed dispatch request body.
-func decodeDispatchRequest(t *testing.T, body []byte) client.DispatchCommandRequest {
+func decodeDispatchRequest(t *testing.T, body []byte) models.OperatorCommandRequest {
 	t.Helper()
-	var req client.DispatchCommandRequest
+	var req models.OperatorCommandRequest
 	require.NoError(t, json.Unmarshal(body, &req))
 	return req
 }
@@ -112,7 +113,7 @@ func newTestDispatch(t *testing.T, c *client.Client) *Dispatch {
 }
 
 // TestDispatchDriveSendsRequestPerFault decodes the request each fault sends and
-// asserts the session id, event type, action type and payload.
+// asserts the session id, event type and payload.
 func TestDispatchDriveSendsRequestPerFault(t *testing.T) {
 	t.Run("file edit baseline to embedded session", func(t *testing.T) {
 		fake, c := newFakeDispatch(t, http.StatusOK, dispatchResultBody(t))
@@ -125,7 +126,6 @@ func TestDispatchDriveSendsRequestPerFault(t *testing.T) {
 
 		req := decodeDispatchRequest(t, fake.recorded(t, 0))
 		assert.Equal(t, "embedded-session", req.TargetOperatorSessionID)
-		assert.Equal(t, string(constants.ActionTypeFileEdit), req.ActionType)
 		assert.Equal(t, string(constants.EventOperatorFileEditRequested), req.EventType)
 		assert.Equal(t, "cli-session-1", req.CLISessionID)
 		edit := &operatorv1.FileEditRequested{}
@@ -171,7 +171,6 @@ func TestDispatchDriveSendsRequestPerFault(t *testing.T) {
 		require.NoError(t, err)
 
 		req := decodeDispatchRequest(t, fake.recorded(t, 0))
-		assert.Equal(t, string(constants.ActionTypeFsRead), req.ActionType)
 		assert.Equal(t, string(constants.EventOperatorFilesystemReadRequested), req.EventType)
 		read := &operatorv1.FsReadRequested{}
 		require.NoError(t, proto.Unmarshal(req.Payload, read))

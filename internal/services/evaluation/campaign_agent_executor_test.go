@@ -167,25 +167,29 @@ func (f *agentExecutorFixture) storedTrace() *AgentTrace {
 type agentLaneClient struct {
 	fixture  *agentExecutorFixture
 	answer   *agentAnswer
-	requests []client.DispatchCommandRequest
+	requests []models.OperatorCommandRequest
 }
 
-func (c *agentLaneClient) DispatchCommand(_ context.Context, _ client.Persona, request client.DispatchCommandRequest) (*client.GovernedOutcome, error) {
+func (c *agentLaneClient) DispatchCommand(_ context.Context, _ client.Persona, request models.OperatorCommandRequest) (*client.GovernedOutcome, error) {
 	c.requests = append(c.requests, request)
-	c.fixture.log = append(c.fixture.log, "dispatch:"+request.ActionType+":"+request.TargetResource)
-	if c.answer != nil && request.ActionType == string(constants.ActionTypeExecuteBash) {
+	action, err := constants.ValidateGovernedRequest(constants.EventType(request.EventType))
+	if err != nil {
+		return nil, err
+	}
+	c.fixture.log = append(c.fixture.log, "dispatch:"+string(action)+":"+request.TargetResource)
+	if c.answer != nil && action == constants.ActionTypeExecuteBash {
 		return c.answer.outcome, c.answer.err
 	}
 	txID := fmt.Sprintf("tx-dispatch-%d", len(c.requests))
-	receipt := c.fixture.ledger.executed(txID, request.ActionType)
+	receipt := c.fixture.ledger.executed(txID, string(action))
 	var result proto.Message
-	switch request.ActionType {
-	case string(constants.ActionTypeExecuteBash):
+	switch action {
+	case constants.ActionTypeExecuteBash:
 		result = &operatorv1.CommandResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, Stdout: "HEALTHY\n"}
-	case string(constants.ActionTypeFileEdit):
+	case constants.ActionTypeFileEdit:
 		result = &operatorv1.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: request.TargetResource, Operation: string(constants.FileOperationWrite)}
 	default:
-		return nil, fmt.Errorf("agent test client: unscripted action %s", request.ActionType)
+		return nil, fmt.Errorf("agent test client: unscripted action %s", action)
 	}
 	payload, err := proto.Marshal(result)
 	if err != nil {
@@ -295,9 +299,9 @@ func TestCampaignAgentExecutor_RunCommandsDispatchesModelWrittenCommandVerbatim(
 			}
 		}
 	}
-	var shell *client.DispatchCommandRequest
+	var shell *models.OperatorCommandRequest
 	for i := range f.client.requests {
-		if f.client.requests[i].ActionType == string(constants.ActionTypeExecuteBash) {
+		if f.client.requests[i].EventType == string(constants.EventOperatorCommandRequested) {
 			shell = &f.client.requests[i]
 		}
 	}
@@ -378,7 +382,7 @@ func TestCampaignAgentExecutor_UndeclaredToolCallFailsWithoutDispatch(t *testing
 
 	require.NoError(t, err, "an undeclared tool call is a scored answer, not a harness failure")
 	for _, request := range f.client.requests {
-		assert.NotEqual(t, string(constants.ActionTypeExecuteBash), request.ActionType, "an undeclared tool dispatches nothing")
+		assert.NotEqual(t, string(constants.EventOperatorCommandRequested), request.EventType, "an undeclared tool dispatches nothing")
 	}
 	trace := f.storedTrace()
 	require.Len(t, trace.ToolCalls, 1)
@@ -435,7 +439,7 @@ func TestCampaignAgentExecutor_EmptyCommandFailsCallWithoutDispatch(t *testing.T
 
 	require.NoError(t, err, "a model-visible tool failure is a scored answer, not a harness failure")
 	for _, request := range f.client.requests {
-		assert.NotEqual(t, string(constants.ActionTypeExecuteBash), request.ActionType, "an empty command dispatches nothing")
+		assert.NotEqual(t, string(constants.EventOperatorCommandRequested), request.EventType, "an empty command dispatches nothing")
 	}
 	trace := f.storedTrace()
 	require.Len(t, trace.ToolCalls, 1)
@@ -463,7 +467,7 @@ func TestCampaignAgentExecutor_EmptyFileContentFailsValidationWithoutDispatch(t 
 			assert.False(t, trace.ToolCalls[0].Success)
 			assert.Contains(t, trace.ToolCalls[0].Error, "content")
 			for _, request := range f.client.requests {
-				if request.ActionType == string(constants.ActionTypeFileEdit) {
+				if request.EventType == string(constants.EventOperatorFileEditRequested) {
 					edit := &operatorv1.FileEditRequested{}
 					require.NoError(t, proto.Unmarshal(request.Payload, edit))
 					assert.NotEqual(t, "notes.txt", filepath.Base(edit.GetFilePath()), "invalid tool call must not reach governed dispatch")

@@ -53,6 +53,8 @@ const (
 	ArtifactTypeConfigAttestation         ArtifactType = "config-attestation"
 	ArtifactTypeCustomerAttestation       ArtifactType = "customer-attestation"
 	ArtifactTypeAssessorAttestation       ArtifactType = "assessor-attestation"
+	ArtifactTypeProviderObservationWindow ArtifactType = "provider-boundary-observation-window"
+	ArtifactTypeProviderAttemptRecord     ArtifactType = "provider-attempt-record"
 )
 
 func EvalScopeID(suiteID string) string {
@@ -83,6 +85,8 @@ func SupportedArtifactTypes() []ArtifactType {
 		ArtifactTypeConfigAttestation,
 		ArtifactTypeCustomerAttestation,
 		ArtifactTypeAssessorAttestation,
+		ArtifactTypeProviderObservationWindow,
+		ArtifactTypeProviderAttemptRecord,
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -53,7 +54,7 @@ type AgentDispatchScope struct {
 }
 
 type laneClient interface {
-	DispatchCommand(context.Context, client.Persona, client.DispatchCommandRequest) (*client.GovernedOutcome, error)
+	DispatchCommand(context.Context, client.Persona, models.OperatorCommandRequest) (*client.GovernedOutcome, error)
 }
 
 // CommandLane is the campaign's governed path to a bound Data Operator. Each
@@ -184,8 +185,12 @@ func (l *CommandLane) dispatchAction(ctx context.Context, scope AgentDispatchSco
 		investigationID = "eval-harness:" + scope.AttemptID
 		taskID = string(scope.HarnessPhase) + ":" + scope.AttemptID
 	}
-	outcome, err := l.client.DispatchCommand(ctx, l.persona, client.DispatchCommandRequest{
-		TargetOperatorSessionID: scope.Target.SessionID, ActionType: string(action), Payload: payload, TargetResource: targetResource,
+	eventType, err := constants.RequestEventForAction(action)
+	if err != nil {
+		return nil, fmt.Errorf("%w: resolve governed %s event: %w", constants.ErrEvaluationDispatchFailed, action, err)
+	}
+	outcome, err := l.client.DispatchCommand(ctx, l.persona, models.OperatorCommandRequest{
+		TargetOperatorSessionID: scope.Target.SessionID, EventType: string(eventType), Payload: payload, TargetResource: targetResource,
 		InvestigationID: investigationID, TaskID: taskID, CLISessionID: l.persona.CLISessionID,
 	})
 	if err != nil {

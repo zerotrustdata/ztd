@@ -337,7 +337,7 @@ func (e *CampaignExporter) ExportRun(
 	if err != nil {
 		return nil, err
 	}
-	observationReader, err := NewCampaignProviderObservationReader(fileSvc)
+	observationReader, err := NewCampaignProviderObservationReader(store)
 	if err != nil {
 		return nil, err
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -160,7 +161,7 @@ func TestNewCampaignProviderObservationReader_WiresRemoteWhenHealthy(t *testing.
 	WithGatewayHealthCheck(t, true)
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
-	reader, err := NewCampaignProviderObservationReader(fileSvc, cfg)
+	reader, err := NewCampaignProviderObservationReader(fileSvc, evaluation.NewStore(fileSvc), cfg)
 	require.NoError(t, err)
 	require.NotNil(t, reader)
 }

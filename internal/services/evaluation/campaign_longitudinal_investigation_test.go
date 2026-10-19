@@ -30,7 +30,7 @@ import (
 type longitudinalInvestigationLaneClient struct {
 	base       *agentLaneClient
 	records    []*models.ActionReceiptRecord
-	queries    []client.DispatchCommandRequest
+	queries    []models.OperatorCommandRequest
 	fsReads    map[string]string
 	commands   map[string]string
 	dispatches int
@@ -44,8 +44,12 @@ func newLongitudinalInvestigationLaneClient(base *agentLaneClient) *longitudinal
 	}
 }
 
-func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Context, persona client.Persona, req client.DispatchCommandRequest) (*client.GovernedOutcome, error) {
-	if req.ActionType == string(constants.ActionTypeMcpCall) {
+func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Context, persona client.Persona, req models.OperatorCommandRequest) (*client.GovernedOutcome, error) {
+	action, err := constants.ValidateGovernedRequest(constants.EventType(req.EventType))
+	if err != nil {
+		return nil, err
+	}
+	if action == constants.ActionTypeMcpCall {
 		c.queries = append(c.queries, req)
 		call := &operatorv1.McpCallRequested{}
 		if err := proto.Unmarshal(req.Payload, call); err != nil {
@@ -86,11 +90,11 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 
 	c.dispatches++
 	txID := fmt.Sprintf("tx-dispatch-%d", c.dispatches)
-	receipt := c.base.fixture.ledger.executed(txID, req.ActionType)
+	receipt := c.base.fixture.ledger.executed(txID, string(action))
 
 	var result proto.Message
-	switch req.ActionType {
-	case string(constants.ActionTypeExecuteBash):
+	switch action {
+	case constants.ActionTypeExecuteBash:
 		cmdReq := &operatorv1.CommandRequested{}
 		cmdStr := req.TargetResource
 		if err := proto.Unmarshal(req.Payload, cmdReq); err == nil && cmdReq.GetCommand() != "" {
@@ -106,7 +110,7 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 		result = &operatorv1.CommandResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, Stdout: stdout}
 		receipt.ResultSummary = fmt.Sprintf("%s: %s", cmdStr, stdout)
 		c.base.fixture.ledger.signer.Resign(c.base.fixture.t, receipt)
-	case string(constants.ActionTypeFsRead):
+	case constants.ActionTypeFsRead:
 		content := ""
 		for pathSub, data := range c.fsReads {
 			if strings.Contains(req.TargetResource, pathSub) {
@@ -117,10 +121,10 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 		result = &operatorv1.FsReadResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, Path: req.TargetResource, Content: content}
 		receipt.ResultSummary = content
 		c.base.fixture.ledger.signer.Resign(c.base.fixture.t, receipt)
-	case string(constants.ActionTypeFileEdit):
+	case constants.ActionTypeFileEdit:
 		result = &operatorv1.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: req.TargetResource, Operation: string(constants.FileOperationWrite)}
 	default:
-		return nil, fmt.Errorf("longitudinal test client: unscripted action %s", req.ActionType)
+		return nil, fmt.Errorf("longitudinal test client: unscripted action %s", action)
 	}
 
 	payload, err := proto.Marshal(result)
@@ -134,7 +138,7 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 		OperatorID:        c.base.fixture.ledger.operatorID,
 		OperatorSessionID: c.base.fixture.ledger.sessionID,
 		InvestigationID:   req.InvestigationID,
-		ActionType:        constants.ActionType(req.ActionType),
+		ActionType:        action,
 		ResultSummary:     receipt.GetResultSummary(),
 		Status:            receipt.GetStatus(),
 		ActionReceipt:     receipt,

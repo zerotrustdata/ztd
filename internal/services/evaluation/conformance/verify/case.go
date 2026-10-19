@@ -20,7 +20,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/canary"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
-	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -286,7 +285,7 @@ func (r *recordCheck) checkEffect(caseID string, effect cases.Effect, ev *evalv1
 func a2aCarriesMarker(payloadJSON, marker string) bool {
 	dec := json.NewDecoder(strings.NewReader(payloadJSON))
 	dec.DisallowUnknownFields()
-	var payload client.MarkerSkillPayload
+	var payload cases.MarkerSkillPayload
 	if err := dec.Decode(&payload); err != nil {
 		return false
 	}

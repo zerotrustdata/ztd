@@ -223,11 +223,11 @@ type scriptedLaneClient struct {
 	ledger *scriptedOperatorLedger
 }
 
-func (c *scriptedLaneClient) DispatchCommand(_ context.Context, _ harnessclient.Persona, request harnessclient.DispatchCommandRequest) (*harnessclient.GovernedOutcome, error) {
-	if request.ActionType != string(constants.ActionTypeFileEdit) {
-		return nil, fmt.Errorf("scripted lane client: unscripted action %s", request.ActionType)
+func (c *scriptedLaneClient) DispatchCommand(_ context.Context, _ harnessclient.Persona, request models.OperatorCommandRequest) (*harnessclient.GovernedOutcome, error) {
+	if request.EventType != string(constants.EventOperatorFileEditRequested) {
+		return nil, fmt.Errorf("scripted lane client: unscripted event %s", request.EventType)
 	}
-	txID, receipt := c.ledger.executed(request.ActionType)
+	txID, receipt := c.ledger.executed(string(constants.ActionTypeFileEdit))
 	payload, err := proto.Marshal(&operatorv1.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: request.TargetResource, Operation: string(constants.FileOperationWrite)})
 	if err != nil {
 		return nil, err

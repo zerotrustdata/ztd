@@ -646,6 +646,7 @@ export interface EvalStopRequestedPayload {
   source_sequence: number;
   event_id: string;
   campaign_id: string;
+  run_id: string;
   stop_reason: StopReason;
   stop_scope: StopScope;
   requested_at: string;
@@ -1267,6 +1268,7 @@ export function isEvalStopRequestedPayload(value: unknown): value is EvalStopReq
   if (!(typeof v.source_sequence === 'number' && Number.isInteger(v.source_sequence))) return false; /* source_sequence */
   if (!(typeof v.event_id === 'string')) return false; /* event_id */
   if (!(typeof v.campaign_id === 'string')) return false; /* campaign_id */
+  if (!(typeof v.run_id === 'string')) return false; /* run_id */
   if (!(typeof v.stop_reason === 'string' && (STOP_REASONS as readonly string[]).includes(v.stop_reason))) return false; /* stop_reason */
   if (!(typeof v.stop_scope === 'string' && (STOP_SCOPES as readonly string[]).includes(v.stop_scope))) return false; /* stop_scope */
   if (!(typeof v.requested_at === 'string')) return false; /* requested_at */

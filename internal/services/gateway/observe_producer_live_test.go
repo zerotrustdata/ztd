@@ -508,7 +508,7 @@ func TestRequestStop_PersistsProjectionAndEmitsSSE(t *testing.T) {
 	userID := "user-live-stop"
 	route := SSERoute{UserID: userID, WebSessionID: "web-stop"}
 
-	err := producer.RequestStop(context.Background(), userID, route, "sup-1", "campaign-i", models.StopReasonGraceful, models.StopScopeSupervisor)
+	err := producer.RequestStop(context.Background(), userID, route, "sup-1", "campaign-i", "run-i", models.StopReasonGraceful, models.StopScopeSupervisor)
 	require.NoError(t, err)
 
 	// Supervisor state projection is persisted.
@@ -538,8 +538,66 @@ func TestRequestStop_PersistsProjectionAndEmitsSSE(t *testing.T) {
 	require.NoError(t, json.Unmarshal(pushPayload.Event, &env))
 	var payload models.EvalStopRequestedPayload
 	require.NoError(t, json.Unmarshal(env.Data, &payload))
+	assert.Equal(t, "campaign-i", payload.CampaignID)
+	assert.Equal(t, "run-i", payload.RunID)
 	assert.Equal(t, models.StopReasonGraceful, payload.StopReason)
 	assert.Equal(t, models.StopScopeSupervisor, payload.StopScope)
+}
+
+// TestRequestStop_RequiresRunID verifies that a stop without a run identity is
+// rejected before any projection is persisted or event emitted, so the event
+// can never reach a session without naming the run it stops.
+func TestRequestStop_RequiresRunID(t *testing.T) {
+	producer, docStore, sseStore := newObserveProducerLiveTestEnv(t)
+
+	userID := "user-live-stop-no-run"
+	route := SSERoute{UserID: userID, CLISessionID: "cli-stop-no-run"}
+
+	err := producer.RequestStop(context.Background(), userID, route, "sup-norun", "campaign-norun", "", models.StopReasonGraceful, models.StopScopeSupervisor)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrObserveRunIDRequired)
+
+	collection := marshaler.CollectionName(constants.CollectionObserveSupervisorStates)
+	doc, err := docStore.DocGet(context.Background(), collection, "sup-norun")
+	require.NoError(t, err)
+	assert.Nil(t, doc)
+
+	rows, err := sseStore.SSEEventsListSince(route, 0, 100)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+}
+
+// TestRequestStop_CLIRouteCarriesRunID verifies that a stop routed to a CLI
+// session is delivered on that session's route only, and that the delivered
+// event names the run it stops.
+func TestRequestStop_CLIRouteCarriesRunID(t *testing.T) {
+	producer, _, sseStore := newObserveProducerLiveTestEnv(t)
+
+	userID := "user-live-stop-cli"
+	cliRoute := SSERoute{UserID: userID, CLISessionID: "cli-stop-route"}
+
+	require.NoError(t, producer.RequestStop(context.Background(), userID, cliRoute, "sup-cli", "campaign-cli", "run-cli", models.StopReasonSafetyDisk, models.StopScopeCycle))
+
+	rows, err := sseStore.SSEEventsListSince(cliRoute, 0, 100)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, string(constants.EventAiEvalStopRequested), rows[0].EventType)
+	assert.Equal(t, "cli-stop-route", rows[0].CLISessionID)
+
+	var pushPayload models.SSEPushPayload
+	require.NoError(t, json.Unmarshal([]byte(rows[0].Payload), &pushPayload))
+	var env sseEventEnvelope
+	require.NoError(t, json.Unmarshal(pushPayload.Event, &env))
+	var payload models.EvalStopRequestedPayload
+	require.NoError(t, json.Unmarshal(env.Data, &payload))
+	assert.Equal(t, "run-cli", payload.RunID)
+	assert.Equal(t, "campaign-cli", payload.CampaignID)
+	assert.Equal(t, models.StopReasonSafetyDisk, payload.StopReason)
+	assert.Equal(t, models.StopScopeCycle, payload.StopScope)
+
+	webRows, err := sseStore.SSEEventsListSince(SSERoute{UserID: userID, WebSessionID: "web-none"}, 0, 100)
+	require.NoError(t, err)
+	assert.Empty(t, webRows)
 }
 
 // TestRequestStop_SafetyStopSetsSafetyStoppedFreshness verifies that a
@@ -551,7 +609,7 @@ func TestRequestStop_SafetyStopSetsSafetyStoppedFreshness(t *testing.T) {
 	userID := "user-live-safety-stop"
 	route := SSERoute{UserID: userID, WebSessionID: "web-safety-stop"}
 
-	err := producer.RequestStop(context.Background(), userID, route, "sup-2", "campaign-j", models.StopReasonSafetyBudget, models.StopScopeSupervisor)
+	err := producer.RequestStop(context.Background(), userID, route, "sup-2", "campaign-j", "run-j", models.StopReasonSafetyBudget, models.StopScopeSupervisor)
 	require.NoError(t, err)
 
 	collection := marshaler.CollectionName(constants.CollectionObserveSupervisorStates)
@@ -764,6 +822,7 @@ func TestLiveEventPayloads_RoundTripSerialization(t *testing.T) {
 		SourceSequence: 99,
 		EventID:        "evt-stop",
 		CampaignID:     "campaign-stop",
+		RunID:          "run-stop",
 		StopReason:     models.StopReasonSafetyDisk,
 		StopScope:      models.StopScopeCycle,
 	}
@@ -939,7 +998,7 @@ func TestStaleAndStopTransitions(t *testing.T) {
 	producer2, _, sseStore2 := newObserveProducerLiveTestEnv(t)
 	userID := "user-live-stale"
 	route := SSERoute{UserID: userID, WebSessionID: "web-stale"}
-	require.NoError(t, producer2.RequestStop(context.Background(), userID, route, "sup-graceful", "campaign-graceful", models.StopReasonGraceful, models.StopScopeSupervisor))
+	require.NoError(t, producer2.RequestStop(context.Background(), userID, route, "sup-graceful", "campaign-graceful", "run-graceful", models.StopReasonGraceful, models.StopScopeSupervisor))
 
 	rows, err := sseStore2.SSEEventsListSince(route, 0, 100)
 	require.NoError(t, err)
@@ -956,7 +1015,7 @@ func TestStaleAndStopTransitions(t *testing.T) {
 	// Safety stop -> safety_stopped.
 	producer3, _, sseStore3 := newObserveProducerLiveTestEnv(t)
 	route3 := SSERoute{UserID: userID, WebSessionID: "web-safety"}
-	require.NoError(t, producer3.RequestStop(context.Background(), userID, route3, "sup-safety", "campaign-safety", models.StopReasonSafetyVerifier, models.StopScopeCycle))
+	require.NoError(t, producer3.RequestStop(context.Background(), userID, route3, "sup-safety", "campaign-safety", "run-safety", models.StopReasonSafetyVerifier, models.StopScopeCycle))
 
 	rows3, err := sseStore3.SSEEventsListSince(route3, 0, 100)
 	require.NoError(t, err)

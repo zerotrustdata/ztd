@@ -21,7 +21,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -55,7 +54,7 @@ func TestDispatch_UnknownEventRejected(t *testing.T) {
 	payload, err := proto.Marshal(fsReadReq)
 	require.NoError(t, err)
 
-	reqBody := gateway.OperatorCommandRequest{
+	reqBody := models.OperatorCommandRequest{
 		TargetOperatorSessionID: target.OperatorSessionId,
 		EventType:               "ztd.v1.not.registered.event",
 		Payload:                 payload,

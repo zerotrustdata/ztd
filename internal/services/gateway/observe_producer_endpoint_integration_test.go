@@ -37,6 +37,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/protocol"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // observeProducerEndpointEnv holds the wired HTTP handler and infrastructure
@@ -809,6 +810,197 @@ func TestObserveProducerEndpoint_RunStateCLISessionRejected(t *testing.T) {
 
 	rr := postRunStateWithHeader(t, env.handler, cert, constants.HeaderCLISessionID, cliSessionID, patched)
 	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+// postStop posts a stop request through the real HTTP router with the given
+// mTLS cert.
+func postStop(t *testing.T, h http.Handler, cert *x509.Certificate, body []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if cert != nil {
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+	}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	return rr
+}
+
+// postStopWithHeader posts a stop request with an additional header alongside
+// the mTLS cert.
+func postStopWithHeader(t *testing.T, h http.Handler, cert *x509.Certificate, headerName, headerValue string, body []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerName, headerValue)
+	if cert != nil {
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+	}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	return rr
+}
+
+// operatorMTLSCert creates a self-signed x509 certificate carrying an Operator
+// SPIFFE URI SAN for the given Operator session. The auth middleware admits it
+// through handleOperatorAuth only when an Operator document owns the session.
+func operatorMTLSCert(t *testing.T, organizationID, operatorID, sessionID string) *x509.Certificate {
+	t.Helper()
+	wid := protocol.NewWorkloadIdentity()
+	opURI, err := wid.OperatorSPIFFEURL(organizationID, operatorID, sessionID)
+	require.NoError(t, err)
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := x509.Certificate{
+		SerialNumber: big.NewInt(45),
+		Subject:      pkix.Name{CommonName: "test-operator-observe"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		URIs:         []*url.URL{opURI},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(certDER)
+	require.NoError(t, err)
+	return cert
+}
+
+// seedOperatorForProducer creates an active Operator document that owns the
+// given Operator session, so the auth middleware admits its mTLS certificate.
+func seedOperatorForProducer(t *testing.T, infra *TestInfrastructure, userID, organizationID, operatorID, sessionID string) {
+	t.Helper()
+	opBytes, err := models.MarshalOperatorDocument(&operatorv1.OperatorDocument{
+		Id:                operatorID,
+		OrganizationId:    organizationID,
+		UserId:            userID,
+		OperatorSessionId: sessionID,
+		Status:            string(constants.OperatorStatusActive),
+	})
+	require.NoError(t, err)
+	require.NoError(t, infra.DocStore.DocSet(t.Context(),
+		marshaler.CollectionName(constants.CollectionOperators), operatorID, opBytes))
+}
+
+// TestObserveProducerEndpoint_StopCLIRouteEmitsRunID verifies that an app
+// workload stop request routed via cli_session_id persists the supervisor
+// projection and delivers ai.eval.stop.requested on that CLI session's route
+// only, with the run it stops named in the payload.
+func TestObserveProducerEndpoint_StopCLIRouteEmitsRunID(t *testing.T) {
+	env := setupObserveProducerEndpointEnv(t)
+
+	userID := "user-stop-cli-ep"
+	seedActiveUser(t, env.infra, userID)
+	seedAppPolicy(t, env.infra)
+	cert := appUserMTLSCert(t, userID)
+
+	cliSessionID := "cli-session-stop-ep"
+	body, err := json.Marshal(models.ObserveProducerStopRequest{
+		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
+		CampaignID:    "campaign-stop-ep",
+		RunID:         "run-stop-ep",
+		StopReason:    models.StopReasonGraceful,
+		StopScope:     models.StopScopeSupervisor,
+		CLISessionID:  cliSessionID,
+	})
+	require.NoError(t, err)
+
+	rr := postStop(t, env.handler, cert, body)
+	require.Equal(t, http.StatusOK, rr.Code, "body: %s", rr.Body.String())
+
+	cliRoute := SSERoute{UserID: userID, CLISessionID: cliSessionID}
+	rows, err := env.infra.SSEStore.SSEEventsListSince(cliRoute, 0, 100)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, string(constants.EventAiEvalStopRequested), rows[0].EventType)
+	assert.Equal(t, cliSessionID, rows[0].CLISessionID)
+
+	var pushPayload models.SSEPushPayload
+	require.NoError(t, json.Unmarshal([]byte(rows[0].Payload), &pushPayload))
+	assert.Equal(t, userID, pushPayload.UserID)
+	assert.Equal(t, cliSessionID, pushPayload.CliSessionID)
+	var stopEnv sseEventEnvelope
+	require.NoError(t, json.Unmarshal(pushPayload.Event, &stopEnv))
+	assert.Equal(t, string(constants.EventAiEvalStopRequested), stopEnv.Type)
+	var stopPayload models.EvalStopRequestedPayload
+	require.NoError(t, json.Unmarshal(stopEnv.Data, &stopPayload))
+	assert.Equal(t, "campaign-stop-ep", stopPayload.CampaignID)
+	assert.Equal(t, "run-stop-ep", stopPayload.RunID)
+	assert.Equal(t, models.StopReasonGraceful, stopPayload.StopReason)
+	assert.Equal(t, models.StopScopeSupervisor, stopPayload.StopScope)
+
+	// No copy lands on a web route for the same user.
+	webRows, err := env.infra.SSEStore.SSEEventsListSince(SSERoute{UserID: userID, WebSessionID: "nonexistent-web-stop"}, 0, 100)
+	require.NoError(t, err)
+	assert.Empty(t, webRows)
+}
+
+// TestObserveProducerEndpoint_StopCLISessionCertRejected verifies that a valid
+// CLI session mTLS cert is rejected with 403 by the stop producer endpoint,
+// which admits app workloads only, and that no stop event is emitted.
+func TestObserveProducerEndpoint_StopCLISessionCertRejected(t *testing.T) {
+	env := setupObserveProducerEndpointEnv(t)
+
+	userID := "user-stop-cli-reject"
+	seedActiveUser(t, env.infra, userID)
+	cliSessionID, cert := seedCLISessionForProducer(t, env.infra, userID)
+
+	body, err := json.Marshal(models.ObserveProducerStopRequest{
+		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
+		CampaignID:    "campaign-stop-cli-reject",
+		RunID:         "run-stop-cli-reject",
+		StopReason:    models.StopReasonGraceful,
+		StopScope:     models.StopScopeSupervisor,
+		CLISessionID:  cliSessionID,
+	})
+	require.NoError(t, err)
+
+	rr := postStopWithHeader(t, env.handler, cert, constants.HeaderCLISessionID, cliSessionID, body)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+
+	rows, err := env.infra.SSEStore.SSEEventsListSince(SSERoute{UserID: userID, CLISessionID: cliSessionID}, 0, 100)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+}
+
+// TestObserveProducerEndpoint_StopOperatorCertRejected verifies that an
+// Operator mTLS cert, which the auth middleware admits as an Operator identity,
+// is rejected with 403 by the app-only stop producer endpoint and emits no
+// stop event.
+func TestObserveProducerEndpoint_StopOperatorCertRejected(t *testing.T) {
+	env := setupObserveProducerEndpointEnv(t)
+
+	userID := "user-stop-op-reject"
+	seedActiveUser(t, env.infra, userID)
+	const (
+		organizationID    = "org-stop-reject"
+		operatorID        = "op-stop-reject"
+		operatorSessionID = "op-session-stop-reject"
+		cliSessionID      = "cli-session-stop-op"
+	)
+	seedOperatorForProducer(t, env.infra, userID, organizationID, operatorID, operatorSessionID)
+	cert := operatorMTLSCert(t, organizationID, operatorID, operatorSessionID)
+
+	body, err := json.Marshal(models.ObserveProducerStopRequest{
+		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
+		CampaignID:    "campaign-stop-op-reject",
+		RunID:         "run-stop-op-reject",
+		StopReason:    models.StopReasonGraceful,
+		StopScope:     models.StopScopeSupervisor,
+		CLISessionID:  cliSessionID,
+	})
+	require.NoError(t, err)
+
+	rr := postStop(t, env.handler, cert, body)
+	assert.Equal(t, http.StatusForbidden, rr.Code, "body: %s", rr.Body.String())
+
+	rows, err := env.infra.SSEStore.SSEEventsListSince(SSERoute{UserID: userID, CLISessionID: cliSessionID}, 0, 100)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
 }
 
 // TestObserveProducerEndpoint_UnauthenticatedCallerRejected verifies that a

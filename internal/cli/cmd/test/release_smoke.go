@@ -35,6 +35,7 @@ import (
 	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
 	operatorcli "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/security"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -464,7 +465,7 @@ func (r *releaseSmokeRun) scenarioFileCreate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	outcome, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: r.workerSession, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: r.fileName})
+	outcome, err := r.client.DispatchCommand(ctx, r.persona, models.OperatorCommandRequest{TargetOperatorSessionID: r.workerSession, EventType: string(constants.EventOperatorFileEditRequested), Payload: payload, TargetResource: r.fileName})
 	if err != nil {
 		return err
 	}
@@ -618,7 +619,7 @@ func (r *releaseSmokeRun) scenarioEmbeddedFile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	outcome, err := r.client.DispatchCommand(ctx, r.persona, harness.DispatchCommandRequest{TargetOperatorSessionID: session, ActionType: releaseSmokeFileActionType, Payload: payload, TargetResource: name})
+	outcome, err := r.client.DispatchCommand(ctx, r.persona, models.OperatorCommandRequest{TargetOperatorSessionID: session, EventType: string(constants.EventOperatorFileEditRequested), Payload: payload, TargetResource: name})
 	if err != nil {
 		return err
 	}

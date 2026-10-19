@@ -122,7 +122,7 @@ func TestMCPA2A(t *testing.T) {
 			}
 			require.Len(t, driven.A2ACalls, 1, "exactly one stub call must carry the marker")
 			assert.Equal(t, ConformanceA2ASkill, driven.A2ACalls[0].GetSkillName())
-			want, err := json.Marshal(client.MarkerSkillPayload{Marker: a.Marker})
+			want, err := json.Marshal(cases.MarkerSkillPayload{Marker: a.Marker})
 			require.NoError(t, err)
 			assert.JSONEq(t, string(want), driven.A2ACalls[0].GetPayloadJson())
 		})

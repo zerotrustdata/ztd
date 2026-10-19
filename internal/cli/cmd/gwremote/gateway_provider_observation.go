@@ -98,12 +98,12 @@ func NewProviderObservationRemote(fileSvc fs.RuntimeFileService, cfg *config.Con
 	return &remoteProviderObservationClient{client: client, stream: client.NewSSEClient}, nil
 }
 
-func NewCampaignProviderObservationReader(fileSvc fs.RuntimeFileService, cfg *config.Config) (*evaluation.CampaignProviderObservationReader, error) {
+func NewCampaignProviderObservationReader(fileSvc fs.RuntimeFileService, store *evaluation.Store, cfg *config.Config) (*evaluation.CampaignProviderObservationReader, error) {
 	remote, err := NewProviderObservationRemote(fileSvc, cfg)
 	if err != nil {
 		return nil, err
 	}
-	return evaluation.NewCampaignProviderObservationReaderWithRemote(fileSvc, remote)
+	return evaluation.NewCampaignProviderObservationReaderWithRemote(store, remote)
 }
 
 func PreflightProviderObservationDelivery(fileSvc fs.RuntimeFileService, cfg *config.Config) error {

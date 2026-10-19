@@ -33,6 +33,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/compliance"
 	"github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	compliancereport "github.com/zerotrustdata/ztd/internal/services/compliance/report"
@@ -755,11 +756,11 @@ type complianceScriptedLaneClient struct {
 	ledger *complianceOperatorLedger
 }
 
-func (c *complianceScriptedLaneClient) DispatchCommand(_ context.Context, _ harnessclient.Persona, request harnessclient.DispatchCommandRequest) (*harnessclient.GovernedOutcome, error) {
-	if request.ActionType != string(constants.ActionTypeFileEdit) {
-		return nil, fmt.Errorf("compliance scripted lane client: unscripted action %s", request.ActionType)
+func (c *complianceScriptedLaneClient) DispatchCommand(_ context.Context, _ harnessclient.Persona, request models.OperatorCommandRequest) (*harnessclient.GovernedOutcome, error) {
+	if request.EventType != string(constants.EventOperatorFileEditRequested) {
+		return nil, fmt.Errorf("compliance scripted lane client: unscripted event %s", request.EventType)
 	}
-	txID, receipt := c.ledger.executed(request.ActionType)
+	txID, receipt := c.ledger.executed(string(constants.ActionTypeFileEdit))
 	payload, err := proto.Marshal(&operatorv1.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: request.TargetResource, Operation: string(constants.FileOperationWrite)})
 	if err != nil {
 		return nil, err

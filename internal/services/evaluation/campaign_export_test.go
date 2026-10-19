@@ -159,7 +159,7 @@ func TestCampaignExporter_JSONLUsesCanonicalProtoJSONAndRichExtensions(t *testin
 
 func TestCampaignExporter_BuildAssignmentExportRecordIncludesGradeOnlyObservations(t *testing.T) {
 	files := newCampaignMemoryFileService()
-	reader, err := NewCampaignProviderObservationReader(files)
+	reader, err := NewCampaignProviderObservationReader(NewStore(files))
 	require.NoError(t, err)
 
 	result := &evalv1.EvaluationAssignmentResult{

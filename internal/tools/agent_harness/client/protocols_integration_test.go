@@ -35,7 +35,7 @@ func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *test
 		Receipt:       outcomeReceipt("tx-1"),
 	}
 	responseBody := canonicalBody(t, dispatched)
-	var received DispatchCommandRequest
+	var received models.OperatorCommandRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, constants.APIPaths.OperatorsCommands, r.URL.Path)
@@ -51,9 +51,9 @@ func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *test
 	require.NoError(t, err)
 	exchanges := []Exchange{}
 	client.Record(&exchanges)
-	request := DispatchCommandRequest{
+	request := models.OperatorCommandRequest{
 		TargetOperatorSessionID: "session-1",
-		ActionType:              "FILE_EDIT",
+		EventType:               string(constants.EventOperatorFileEditRequested),
 		Payload:                 []byte("payload"),
 		CaseID:                  "run-1",
 		InvestigationID:         "scenario-1",
@@ -66,7 +66,6 @@ func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *test
 	require.NoError(t, outcome.Typed())
 	assert.Equal(t, int32(http.StatusOK), outcome.Observation.GetHttpStatus())
 	assert.Equal(t, "session-1", received.TargetOperatorSessionID)
-	assert.Equal(t, "FILE_EDIT", received.ActionType)
 	assert.Equal(t, string(constants.EventOperatorFileEditRequested), received.EventType)
 	require.NotNil(t, outcome.Dispatch)
 	assert.Equal(t, "tx-1", outcome.Dispatch.GetTransactionId())
@@ -76,70 +75,25 @@ func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *test
 	assert.Equal(t, constants.APIPaths.OperatorsCommands, exchanges[0].URL[len(server.URL):])
 }
 
-func TestDispatchCommand_ResolvesEventTypeForGovernedActions(t *testing.T) {
-	tests := []struct {
-		name          string
-		actionType    string
-		eventType     string
-		wantEventType string
-		wantAction    string
-	}{
-		{
-			name:          "residency action derives event type",
-			actionType:    string(constants.ActionTypeOllamaModelResidency),
-			wantEventType: string(constants.EventOperatorOllamaModelResidencyRequested),
-			wantAction:    string(constants.ActionTypeOllamaModelResidency),
-		},
-		{
-			name:          "inventory action derives event type",
-			actionType:    string(constants.ActionTypeOllamaModelInventory),
-			wantEventType: string(constants.EventOperatorOllamaModelInventoryRequested),
-			wantAction:    string(constants.ActionTypeOllamaModelInventory),
-		},
-		{
-			name:          "execute bash action derives event type",
-			actionType:    string(constants.ActionTypeExecuteBash),
-			wantEventType: string(constants.EventOperatorCommandRequested),
-			wantAction:    string(constants.ActionTypeExecuteBash),
-		},
-		{
-			name:          "event type derives action type",
-			eventType:     string(constants.EventOperatorOllamaModelResidencyRequested),
-			wantEventType: string(constants.EventOperatorOllamaModelResidencyRequested),
-			wantAction:    string(constants.ActionTypeOllamaModelResidency),
-		},
+func TestDispatchCommand_RequiresEventType(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := New(config.Config{MTLSBaseURL: server.URL})
+	require.NoError(t, err)
+
+	request := models.OperatorCommandRequest{
+		TargetOperatorSessionID: "session-1",
+		Payload:                 []byte("payload"),
+		CLISessionID:            "cli-1",
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			responseBody := canonicalBody(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: outcomeReceipt("tx-1")})
-			var received DispatchCommandRequest
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
-				w.Header().Set("Content-Type", "application/json")
-				_, err := w.Write(responseBody)
-				require.NoError(t, err)
-			}))
-			t.Cleanup(server.Close)
-
-			client, err := New(config.Config{MTLSBaseURL: server.URL})
-			require.NoError(t, err)
-
-			request := DispatchCommandRequest{
-				TargetOperatorSessionID: "session-1",
-				ActionType:              tt.actionType,
-				EventType:               tt.eventType,
-				Payload:                 []byte("payload"),
-				CLISessionID:            "cli-1",
-			}
-			outcome, err := client.DispatchCommand(context.Background(), Persona{ID: "evaluation", CLISessionID: "cli-1"}, request)
-			require.NoError(t, err)
-			require.NoError(t, outcome.Typed())
-			assert.Equal(t, int32(http.StatusOK), outcome.Observation.GetHttpStatus())
-			assert.Equal(t, tt.wantEventType, received.EventType)
-			assert.Equal(t, tt.wantAction, received.ActionType)
-		})
-	}
+	_, err = client.DispatchCommand(context.Background(), Persona{ID: "evaluation", CLISessionID: "cli-1"}, request)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Zero(t, requests, "a request without an event type must not reach the Gateway")
 }
 
 func TestHealth_ReturnsTypedPostureAndRecordsExchange(t *testing.T) {

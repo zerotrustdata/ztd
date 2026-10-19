@@ -28,6 +28,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
@@ -57,17 +58,17 @@ func (s *stubOperatorSessionValidator) ValidateOperatorSession(_ context.Context
 	return s.op, s.err
 }
 
-// --- OperatorCommandRequest.Validate tests ---
+// --- models.OperatorCommandRequest.Validate tests ---
 
 func TestOperatorCommandRequest_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		req     OperatorCommandRequest
+		req     models.OperatorCommandRequest
 		wantErr error
 	}{
 		{
 			name: "valid request",
-			req: OperatorCommandRequest{
+			req: models.OperatorCommandRequest{
 				TargetOperatorSessionID: "session-123",
 				EventType:               string(constants.Event.Operator.FsRead.Requested),
 				Payload:                 []byte("payload"),
@@ -76,7 +77,7 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "missing operator session id",
-			req: OperatorCommandRequest{
+			req: models.OperatorCommandRequest{
 				EventType: string(constants.Event.Operator.FsRead.Requested),
 				Payload:   []byte("payload"),
 			},
@@ -84,7 +85,7 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "missing action type",
-			req: OperatorCommandRequest{
+			req: models.OperatorCommandRequest{
 				TargetOperatorSessionID: "session-123",
 				Payload:                 []byte("payload"),
 			},
@@ -92,7 +93,7 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "missing payload",
-			req: OperatorCommandRequest{
+			req: models.OperatorCommandRequest{
 				TargetOperatorSessionID: "session-123",
 				EventType:               string(constants.Event.Operator.FsRead.Requested),
 			},
@@ -826,7 +827,7 @@ func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(
 		Responder:   response.NewWriter(logger),
 		Logger:      logger,
 	})
-	body, err := json.Marshal(OperatorCommandRequest{
+	body, err := json.Marshal(models.OperatorCommandRequest{
 		TargetOperatorSessionID: "sess-001",
 		EventType:               string(constants.Event.Operator.FsRead.Requested),
 		Payload:                 fsReadPayloadBytes(t),
@@ -925,7 +926,7 @@ func TestDispatchController_HandleDispatch_WitnessCommandRejectedAsUnprocessable
 		ExecutionId: "exec-1",
 	})
 	require.NoError(t, err)
-	body, err := json.Marshal(OperatorCommandRequest{
+	body, err := json.Marshal(models.OperatorCommandRequest{
 		TargetOperatorSessionID: observer.OperatorSessionId,
 		EventType:               string(constants.Event.Operator.Command.Requested),
 		Payload:                 payload,

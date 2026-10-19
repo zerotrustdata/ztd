@@ -23,6 +23,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
@@ -50,10 +51,10 @@ func outcomeEnvelope() *commonv1.GovernanceEnvelope {
 	}
 }
 
-func outcomeDispatchRequest() DispatchCommandRequest {
-	return DispatchCommandRequest{
+func outcomeDispatchRequest() models.OperatorCommandRequest {
+	return models.OperatorCommandRequest{
 		TargetOperatorSessionID: "session-1",
-		ActionType:              string(constants.ActionTypeFileEdit),
+		EventType:               string(constants.EventOperatorFileEditRequested),
 		Payload:                 []byte("payload"),
 		CLISessionID:            "cli-1",
 	}

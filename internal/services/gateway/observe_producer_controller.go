@@ -236,6 +236,59 @@ func (c *ObserveProducerController) handleRunState(w http.ResponseWriter, r *htt
 	c.responder.JSON(w, http.StatusOK, models.ObserveProducerResponse{Accepted: true})
 }
 
+// handleStop accepts a typed stop request for one campaign run from an app
+// workload, derives user_id from the mTLS peer certificate, and delegates to
+// the observe producer service which persists the supervisor state projection
+// and emits the run-scoped ai.eval.stop.requested SSE event
+// (persist-before-publish).
+//
+// @Summary		Request observe campaign run stop
+// @Description	Accepts a typed stop request for one campaign run from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the supervisor state projection, and emits an ai.eval.stop.requested SSE event carrying run_id to the routed session after successful persistence.
+// @Tags			observe
+// @Accept			json
+// @Produce		json
+// @Param			payload	body		models.ObserveProducerStopRequest	true	"Stop request"
+// @Success		200		{string}	string								"accepted"
+// @Failure		400		{string}	string								"Invalid stop reason or scope, or missing campaign_id or run_id"
+// @Failure		401		{string}	string								"Unauthorized — mTLS user identity required"
+// @Failure		403		{string}	string								"Forbidden — not an app workload or cross-user"
+// @Failure		500		{string}	string								"Persistence failure"
+// @Router			/api/v1/observe/producer/stop [post]
+func (c *ObserveProducerController) handleStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	userID, ok := c.requireAppUserID(w, r)
+	if !ok {
+		return
+	}
+	body, err := readRequestBody(r, c.maxBodyBytes)
+	if err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	var req models.ObserveProducerStopRequest
+	if err := decodeProducerRequest(body, &req); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	if err := validateStopProducerRequest(req); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	if err := validateProducerRouting(req.WebSessionID, req.CLISessionID); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	route := buildProducerRoute(userID, req.WebSessionID, req.CLISessionID)
+	if err := c.producerSvc.RequestStop(r.Context(), userID, route, "", req.CampaignID, req.RunID, req.StopReason, req.StopScope); err != nil {
+		c.mapProducerError(w, err, "stop request")
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, models.ObserveProducerResponse{Accepted: true})
+}
+
 // mapProducerError maps a typed observe producer error to the correct HTTP
 // status code. Invalid transitions, stale updates, missing required fields,
 // and payload validation failures are 400. Cross-user ownership violations

@@ -200,7 +200,7 @@ func verifyRun(
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
 	}
 	verifier := evaluation.NewCampaignRunVerifier(deps.now)
-	observationReader, err := gwremote.NewCampaignProviderObservationReader(fileSvc, cfg)
+	observationReader, err := gwremote.NewCampaignProviderObservationReader(fileSvc, store, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
 	}

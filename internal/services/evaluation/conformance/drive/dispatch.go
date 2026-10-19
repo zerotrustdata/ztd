@@ -16,6 +16,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	"github.com/zerotrustdata/ztd/internal/uuid"
@@ -94,7 +95,7 @@ func (d *Dispatch) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 
 // submitRaw posts req unvalidated. The request is the fault itself, so the
 // client-side checks in DispatchCommand must not run.
-func (d *Dispatch) submitRaw(ctx context.Context, a cases.Attempt, req client.DispatchCommandRequest) (cases.Driven, error) {
+func (d *Dispatch) submitRaw(ctx context.Context, a cases.Attempt, req models.OperatorCommandRequest) (cases.Driven, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return cases.Driven{}, fmt.Errorf("dispatch %s: marshal request: %w", a.Case.Fault, err)
@@ -105,18 +106,17 @@ func (d *Dispatch) submitRaw(ctx context.Context, a cases.Attempt, req client.Di
 
 // dispatchRequest builds the governed dispatch request for one attempt. Payload
 // is the one owner of the action, event and payload for each case.
-func dispatchRequest(a cases.Attempt, target operator.Target, p client.Persona) (client.DispatchCommandRequest, error) {
-	action, event, msg, err := Payload(a)
+func dispatchRequest(a cases.Attempt, target operator.Target, p client.Persona) (models.OperatorCommandRequest, error) {
+	_, event, msg, err := Payload(a)
 	if err != nil {
-		return client.DispatchCommandRequest{}, fmt.Errorf("dispatch %s: %w", a.Case.Fault, err)
+		return models.OperatorCommandRequest{}, fmt.Errorf("dispatch %s: %w", a.Case.Fault, err)
 	}
 	payload, err := proto.Marshal(msg)
 	if err != nil {
-		return client.DispatchCommandRequest{}, fmt.Errorf("dispatch %s: marshal payload: %w", a.Case.Fault, err)
+		return models.OperatorCommandRequest{}, fmt.Errorf("dispatch %s: marshal payload: %w", a.Case.Fault, err)
 	}
-	return client.DispatchCommandRequest{
+	return models.OperatorCommandRequest{
 		TargetOperatorSessionID: target.OperatorSessionID,
-		ActionType:              string(action),
 		EventType:               string(event),
 		Payload:                 payload,
 		CLISessionID:            p.CLISessionID,

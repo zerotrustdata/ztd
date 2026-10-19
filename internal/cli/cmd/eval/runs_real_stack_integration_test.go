@@ -190,11 +190,12 @@ func TestRunsExecute_RealStack(t *testing.T) {
 
 // bindOwnerCLISessionToData binds the owner's CLI session to the Data Operator
 // before the run, through the same bind `runs start` performs when the Data
-// Operator is unbound, and moves the owner's CLI approver onto the replacement
-// session. Under an L3 posture every suspension is approved over the owner's
-// CLI session, and binding replaces that session, so a bind during the run
-// would leave the approver listening on a retired session. Binding first makes
-// the run's own bind a no-op, so the session stays put for the whole run.
+// Operator is unbound. Under an L3 posture every suspension is approved over the
+// owner's CLI session, and a bind replaces that session: the bound session is
+// one the owner's certificate does not name, so approvals cannot arrive over it.
+// The owner's certificate is therefore rotated onto the bound session, the
+// rotated runtime is installed, and the owner's CLI approver follows it. The run's
+// own bind is then a no-op, so the session stays put for the whole run.
 func bindOwnerCLISessionToData(ctx context.Context, t *testing.T, deps nativeEvalDeps, cfg *config.Config, fileSvc fs.RuntimeFileService, stack *fixtures.EvalStack, dataSessionID string) {
 	t.Helper()
 	cmd := &cobra.Command{}
@@ -208,5 +209,10 @@ func bindOwnerCLISessionToData(ctx context.Context, t *testing.T, deps nativeEva
 	require.NoError(t, err)
 	bound, err := evalBindDataOperator(cmd, gatewayDeps, cfg, fileSvc, authContext, operators, dataSessionID, true)
 	require.NoError(t, err)
-	stack.FollowOwnerCLISession(t, bound.CLISessionID)
+
+	rotated := *stack.Identity
+	rotated.CLISessionID = bound.CLISessionID
+	rotated.RotateCLICertificate(t, stack.Gateway)
+	rotated.InstallRotatedCLICertificate(t, fileSvc, cfg)
+	stack.FollowOwnerCLISession(t, &rotated)
 }

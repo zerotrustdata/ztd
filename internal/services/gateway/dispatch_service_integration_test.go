@@ -194,7 +194,7 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 	payload, err := proto.Marshal(fsReadReq)
 	require.NoError(t, err)
 
-	reqBody := OperatorCommandRequest{
+	reqBody := models.OperatorCommandRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.FsRead.Requested),
 		Payload:                 payload,
@@ -353,7 +353,7 @@ func TestDispatch_UnknownSession_ReturnsIngressRefusal(t *testing.T) {
 	payload, err := proto.Marshal(fsReadReq)
 	require.NoError(t, err)
 
-	reqBody := OperatorCommandRequest{
+	reqBody := models.OperatorCommandRequest{
 		TargetOperatorSessionID: "nonexistent-session-int",
 		EventType:               string(constants.Event.Operator.FsRead.Requested),
 		Payload:                 payload,
@@ -403,7 +403,7 @@ func TestDispatch_DoctrineViolation_ReturnsIngressRefusal(t *testing.T) {
 		ExecutionId: "exec-doctrine-bash",
 	})
 	require.NoError(t, err)
-	body, err := json.Marshal(OperatorCommandRequest{
+	body, err := json.Marshal(models.OperatorCommandRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.Command.Requested),
 		Payload:                 payload,
@@ -1101,7 +1101,7 @@ func TestDispatchController_HandleDispatch_DoctrineProhibitedRequestRejectedBefo
 		Content:     "rm -rf /",
 	})
 	require.NoError(t, err)
-	body, err := json.Marshal(OperatorCommandRequest{
+	body, err := json.Marshal(models.OperatorCommandRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.FileEdit.Requested),
 		Payload:                 payload,

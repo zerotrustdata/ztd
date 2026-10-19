@@ -551,29 +551,6 @@ definitions:
     x-enum-varnames:
     - UserStatusActive
     - UserStatusDisabled
-  gateway.OperatorCommandRequest:
-    properties:
-      case_id:
-        type: string
-      cli_session_id:
-        type: string
-      event_type:
-        type: string
-      investigation_id:
-        type: string
-      payload:
-        items:
-          type: integer
-        type: array
-      target_operator_session_id:
-        type: string
-      target_resource:
-        type: string
-      task_id:
-        type: string
-      web_session_id:
-        type: string
-    type: object
   models.ActionReceiptRecord:
     properties:
       acting_app_id:
@@ -1049,6 +1026,23 @@ definitions:
       web_session_id:
         type: string
     type: object
+  models.ObserveProducerStopRequest:
+    properties:
+      campaign_id:
+        type: string
+      cli_session_id:
+        type: string
+      run_id:
+        type: string
+      schema_version:
+        type: string
+      stop_reason:
+        $ref: '#/definitions/models.StopReason'
+      stop_scope:
+        $ref: '#/definitions/models.StopScope'
+      web_session_id:
+        type: string
+    type: object
   models.ObservedMeasurement:
     properties:
       collector_version:
@@ -1073,6 +1067,29 @@ definitions:
         type: number
       window_seconds:
         type: number
+    type: object
+  models.OperatorCommandRequest:
+    properties:
+      case_id:
+        type: string
+      cli_session_id:
+        type: string
+      event_type:
+        type: string
+      investigation_id:
+        type: string
+      payload:
+        items:
+          type: integer
+        type: array
+      target_operator_session_id:
+        type: string
+      target_resource:
+        type: string
+      task_id:
+        type: string
+      web_session_id:
+        type: string
     type: object
   models.OperatorSessionValidationRequest:
     properties:
@@ -1616,6 +1633,34 @@ definitions:
       status:
         $ref: '#/definitions/constants.GatewayMode'
     type: object
+  models.StopReason:
+    enum:
+    - graceful
+    - safety_budget
+    - safety_disk
+    - safety_hardware_drift
+    - safety_credential
+    - safety_verifier
+    - safety_disclosure
+    - safety_publication
+    type: string
+    x-enum-varnames:
+    - StopReasonGraceful
+    - StopReasonSafetyBudget
+    - StopReasonSafetyDisk
+    - StopReasonSafetyHardwareDrift
+    - StopReasonSafetyCredential
+    - StopReasonSafetyVerifier
+    - StopReasonSafetyDisclosure
+    - StopReasonSafetyPublication
+  models.StopScope:
+    enum:
+    - cycle
+    - supervisor
+    type: string
+    x-enum-varnames:
+    - StopScopeCycle
+    - StopScopeSupervisor
   models.SuccessRateMeasurement:
     properties:
       denominator:
@@ -4003,6 +4048,47 @@ paths:
       summary: Push observe run state
       tags:
       - observe
+  /api/v1/observe/producer/stop:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a typed stop request for one campaign run from an mTLS-authenticated
+        app workload. The gateway derives user_id from the peer certificate, persists
+        the supervisor state projection, and emits an ai.eval.stop.requested SSE event
+        carrying run_id to the routed session after successful persistence.
+      parameters:
+      - description: Stop request
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ObserveProducerStopRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: accepted
+          schema:
+            type: string
+        "400":
+          description: Invalid stop reason or scope, or missing campaign_id or run_id
+          schema:
+            type: string
+        "401":
+          description: Unauthorized — mTLS user identity required
+          schema:
+            type: string
+        "403":
+          description: Forbidden — not an app workload or cross-user
+          schema:
+            type: string
+        "500":
+          description: Persistence failure
+          schema:
+            type: string
+      summary: Request observe campaign run stop
+      tags:
+      - observe
   /api/v1/observe/runs:
     get:
       description: Returns paginated read-only run summaries owned by the authenticated
@@ -4078,7 +4164,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/gateway.OperatorCommandRequest'
+          $ref: '#/definitions/models.OperatorCommandRequest'
       produces:
       - application/json
       responses:

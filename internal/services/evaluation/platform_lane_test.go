@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -27,10 +28,10 @@ import (
 type laneTestClient struct {
 	dispatchOutcome  *client.GovernedOutcome
 	dispatchErr      error
-	dispatchRequests []client.DispatchCommandRequest
+	dispatchRequests []models.OperatorCommandRequest
 }
 
-func (c *laneTestClient) DispatchCommand(_ context.Context, _ client.Persona, request client.DispatchCommandRequest) (*client.GovernedOutcome, error) {
+func (c *laneTestClient) DispatchCommand(_ context.Context, _ client.Persona, request models.OperatorCommandRequest) (*client.GovernedOutcome, error) {
 	c.dispatchRequests = append(c.dispatchRequests, request)
 	return c.dispatchOutcome, c.dispatchErr
 }
@@ -123,7 +124,7 @@ func TestCommandLane_ReadWorkspaceFile_DispatchesGovernedFsReadAndReturnsContent
 	assert.Equal(t, "canary-1", content)
 	require.Len(t, fakeClient.dispatchRequests, 1)
 	dispatch := fakeClient.dispatchRequests[0]
-	assert.Equal(t, string(constants.ActionTypeFsRead), dispatch.ActionType)
+	assert.Equal(t, string(constants.EventOperatorFilesystemReadRequested), dispatch.EventType)
 	assert.Equal(t, target.SessionID, dispatch.TargetOperatorSessionID)
 	assert.Equal(t, absPath, dispatch.TargetResource)
 	fsRead := &operatorv1.FsReadRequested{}

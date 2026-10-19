@@ -308,7 +308,7 @@ func (c *CampaignPublicationCoordinator) buildAssignmentBenchmarkObservations(ct
 	if c == nil || c.files == nil || result == nil {
 		return nil, fmt.Errorf("evaluation: build assignment benchmark observations: %w", constants.ErrMissingRequiredField)
 	}
-	reader, err := NewCampaignProviderObservationReaderWithRemote(c.files, c.observationRemote)
+	reader, err := NewCampaignProviderObservationReaderWithRemote(NewStore(c.files), c.observationRemote)
 	if err != nil {
 		return nil, err
 	}
@@ -937,7 +937,7 @@ func (c *CampaignPublicationCoordinator) loadRunAggregateState(ctx context.Conte
 	if RunAggregateComplete(assignments, results, state) {
 		// Only a finished run claims an environment: a live dataset is
 		// provisional and must not be matched against another run's.
-		reader, err := NewCampaignProviderObservationReaderWithRemote(c.files, c.observationRemote)
+		reader, err := NewCampaignProviderObservationReaderWithRemote(NewStore(c.files), c.observationRemote)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}

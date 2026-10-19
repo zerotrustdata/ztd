@@ -834,3 +834,199 @@ func TestObserveProducerController_HandleRunState_ResponseHasNoOwnershipField(t 
 	assert.NotContains(t, body, "run_id")
 	assert.Contains(t, body, "accepted")
 }
+
+// validStopBody returns a JSON body for a valid stop producer request for one
+// campaign run, routed via a web session unless the caller patches it.
+func validStopBody(t *testing.T, campaignID, runID string) string {
+	t.Helper()
+	body, err := json.Marshal(models.ObserveProducerStopRequest{
+		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
+		CampaignID:    campaignID,
+		RunID:         runID,
+		StopReason:    models.StopReasonGraceful,
+		StopScope:     models.StopScopeSupervisor,
+		WebSessionID:  "web-session-unit",
+	})
+	require.NoError(t, err)
+	return string(body)
+}
+
+func TestObserveProducerController_HandleStop_PostSuccess(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "campaign-stop-ok", "run-stop-ok")))
+	req = withAppAuthCtx(req, "app-workload", "user-1")
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	resp := decodeAcceptedResponse(t, w)
+	assert.True(t, resp.Accepted)
+}
+
+func TestObserveProducerController_HandleStop_CLIRouteAccepted(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	body, err := json.Marshal(models.ObserveProducerStopRequest{
+		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
+		CampaignID:    "campaign-stop-cli",
+		RunID:         "run-stop-cli",
+		StopReason:    models.StopReasonSafetyBudget,
+		StopScope:     models.StopScopeCycle,
+		CLISessionID:  "cli-session-unit",
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(string(body)))
+	req = withAppAuthCtx(req, "app-workload", "user-1")
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, decodeAcceptedResponse(t, w).Accepted)
+}
+
+func TestObserveProducerController_HandleStop_MethodRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.ObserveProducerStop, nil)
+	req = withAppAuthCtx(req, "app-workload", "user-1")
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+}
+
+// TestObserveProducerController_HandleStop_NonAppIdentityRejected covers a CLI
+// or Operator caller: the auth middleware stamps a user identity but no app
+// identity, so the controller answers 403 before reading the body.
+func TestObserveProducerController_HandleStop_NonAppIdentityRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "campaign-noapp", "run-noapp")))
+	ctx := context.WithValue(req.Context(), constants.ContextKeyUserID, "user-1")
+	ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, "cli-session-unit")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, decodeErrorResponse(t, w), constants.ErrForbidden.Error())
+}
+
+func TestObserveProducerController_HandleStop_MissingUserIDRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "campaign-nouser", "run-nouser")))
+	ctx := context.WithValue(req.Context(), constants.ContextKeyAppID, "app-workload")
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestObserveProducerController_HandleStop_MalformedJSONRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader("{not json"))
+	req = withAppAuthCtx(req, "app-workload", "user-1")
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestObserveProducerController_HandleStop_UnknownFieldRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	body := validStopBody(t, "campaign-unknown", "run-unknown")
+	body = strings.Replace(body, `}`, `,"user_id":"attacker"}`, 1)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(body))
+	req = withAppAuthCtx(req, "app-workload", "user-real")
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestObserveProducerController_HandleStop_MissingRunIDRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "campaign-norun", "")))
+	req = withAppAuthCtx(req, "app-workload", "user-1")
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, decodeErrorResponse(t, w), constants.ErrObserveRunIDRequired.Error())
+}
+
+func TestObserveProducerController_HandleStop_MissingCampaignIDRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(validStopBody(t, "", "run-nocampaign")))
+	req = withAppAuthCtx(req, "app-workload", "user-1")
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, decodeErrorResponse(t, w), constants.ErrObserveCampaignIDRequired.Error())
+}
+
+func TestObserveProducerController_HandleStop_UnknownStopReasonRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	body := strings.Replace(validStopBody(t, "campaign-reason", "run-reason"), `"stop_reason":"graceful"`, `"stop_reason":"because"`, 1)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(body))
+	req = withAppAuthCtx(req, "app-workload", "user-1")
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, decodeErrorResponse(t, w), constants.ErrObserveStopReasonInvalid.Error())
+}
+
+func TestObserveProducerController_HandleStop_UnknownStopScopeRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	body := strings.Replace(validStopBody(t, "campaign-scope", "run-scope"), `"stop_scope":"supervisor"`, `"stop_scope":"fleet"`, 1)
+
+	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(body))
+	req = withAppAuthCtx(req, "app-workload", "user-1")
+	w := httptest.NewRecorder()
+
+	controller.handleStop(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, decodeErrorResponse(t, w), constants.ErrObserveStopScopeInvalid.Error())
+}
+
+func TestObserveProducerController_HandleStop_RoutingRejected(t *testing.T) {
+	controller := newProducerControllerTestEnv(t)
+
+	neither := strings.Replace(validStopBody(t, "campaign-route", "run-route"), `,"web_session_id":"web-session-unit"`, "", 1)
+	both := strings.Replace(validStopBody(t, "campaign-route", "run-route"), `"web_session_id":"web-session-unit"`, `"web_session_id":"web-session-unit","cli_session_id":"cli-session-unit"`, 1)
+
+	for name, body := range map[string]string{"neither": neither, "both": both} {
+		req := httptest.NewRequest(http.MethodPost, constants.APIPaths.ObserveProducerStop, strings.NewReader(body))
+		req = withAppAuthCtx(req, "app-workload", "user-1")
+		w := httptest.NewRecorder()
+
+		controller.handleStop(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code, "routing case %s", name)
+	}
+}

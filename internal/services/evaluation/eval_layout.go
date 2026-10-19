@@ -72,6 +72,24 @@ func (l evalLayout) runDir(runID string) string {
 	return filepath.Join(l.runsRootDir(), runID)
 }
 
+// evidenceDir is the run's sealed evidence directory. It follows the layout so
+// an archived run's evidence is read and written beside its archived records.
+func (l evalLayout) evidenceDir(runID string) string {
+	return filepath.Join(l.runDir(runID), constants.EvaluationEvidenceDirname)
+}
+
+// providerWindowRefPath and providerAttemptRefPath address the keyed records
+// that name the sealed provider-boundary window and attempt record of one
+// provider attempt. Content-addressed bodies cannot be found by attempt ID, so
+// these records are the attempt-keyed lookup into the evidence directory.
+func (l evalLayout) providerWindowRefPath(runID, providerAttemptID string) string {
+	return filepath.Join(l.evidenceDir(runID), constants.EvaluationProviderObservationsDirname, providerAttemptID, constants.EvaluationProviderWindowRefFilename)
+}
+
+func (l evalLayout) providerAttemptRefPath(runID, providerAttemptID string) string {
+	return filepath.Join(l.evidenceDir(runID), constants.EvaluationProviderObservationsDirname, providerAttemptID, constants.EvaluationProviderAttemptRefFilename)
+}
+
 func (l evalLayout) campaignSpecPath(campaignID string) string {
 	return filepath.Join(l.campaignDir(campaignID), constants.EvaluationCampaignSpecFilename)
 }

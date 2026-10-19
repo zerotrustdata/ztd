@@ -365,7 +365,7 @@ func TestCaptureCampaignRunEvidence_DecoupledObservationAndProvenance(t *testing
 	assert.NoError(t, CaptureCampaignRunModelProvenanceEvidence(ctx, store, req.RunID, nil))
 
 	// 2. With real local-only readers, evidence capture succeeds without error.
-	obsReader, err := NewCampaignProviderObservationReader(files)
+	obsReader, err := NewCampaignProviderObservationReader(NewStore(files))
 	require.NoError(t, err)
 	provReader, err := NewCampaignModelProvenanceReader(files)
 	require.NoError(t, err)

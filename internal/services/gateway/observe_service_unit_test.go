@@ -343,6 +343,7 @@ func TestRouteAuthRegistry_ObserveProducerRoutesClassifiedMTLS(t *testing.T) {
 	producerPaths := []string{
 		constants.APIPaths.ObserveProducerAgentState,
 		constants.APIPaths.ObserveProducerRunState,
+		constants.APIPaths.ObserveProducerStop,
 	}
 	for _, path := range producerPaths {
 		assert.Equal(t, RouteAuthMTLS, registry.AuthMode(path),
@@ -371,6 +372,7 @@ func TestRouteAuthRegistry_ObserveProducerRoutesDoNotLeakWebSession(t *testing.T
 	producerPaths := []string{
 		constants.APIPaths.ObserveProducerAgentState,
 		constants.APIPaths.ObserveProducerRunState,
+		constants.APIPaths.ObserveProducerStop,
 		constants.APIPaths.ObserveProducerPrefix + "other",
 	}
 	for _, path := range producerPaths {

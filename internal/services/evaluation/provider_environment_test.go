@@ -18,7 +18,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -87,7 +86,10 @@ func capacitySample(offsetSeconds int64, vram uint64, availability evalv1.Provid
 	}
 }
 
-func saveObservationWindow(t *testing.T, fileSvc fs.RuntimeFileService, attemptID string, samples ...*evalv1.ProviderBoundaryHardwareSample) {
+// testEnvironmentRunID is the run the environment tests persist windows under.
+const testEnvironmentRunID = "run-environment"
+
+func saveObservationWindow(t *testing.T, store *Store, runID, attemptID string, samples ...*evalv1.ProviderBoundaryHardwareSample) {
 	t.Helper()
 	window := &evalv1.ProviderBoundaryObservationWindow{
 		SchemaVersion:              provider_observer.SchemaVersion,
@@ -103,13 +105,11 @@ func saveObservationWindow(t *testing.T, fileSvc fs.RuntimeFileService, attemptI
 	digest, err := provider_observer.ComputeObservationDigest(window)
 	require.NoError(t, err)
 	window.ObservationDigest = digest
-	windowStore, err := provider_observer.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	require.NoError(t, windowStore.Save(context.Background(), window))
+	require.NoError(t, store.saveProviderObservationWindow(context.Background(), runID, window))
 }
 
 func resultWithAttempts(attemptIDs ...string) *evalv1.EvaluationAssignmentResult {
-	result := &evalv1.EvaluationAssignmentResult{}
+	result := &evalv1.EvaluationAssignmentResult{RunId: testEnvironmentRunID}
 	for _, attemptID := range attemptIDs {
 		result.ModelInferences = append(result.ModelInferences, &evalv1.ModelInferenceRecord{
 			InferenceRecordId: "inference-" + attemptID,
@@ -123,17 +123,17 @@ const reported = evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_MET
 
 func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	ctx := context.Background()
-	newReader := func(t *testing.T) (*CampaignProviderObservationReader, fs.RuntimeFileService) {
-		fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-		reader, err := NewCampaignProviderObservationReader(fileSvc)
+	newReader := func(t *testing.T) (*CampaignProviderObservationReader, *Store) {
+		store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+		reader, err := NewCampaignProviderObservationReader(store)
 		require.NoError(t, err)
-		return reader, fileSvc
+		return reader, store
 	}
 
 	t.Run("derives the environment from windows across assignments", func(t *testing.T) {
-		reader, fileSvc := newReader(t)
-		saveObservationWindow(t, fileSvc, "attempt-1", capacitySample(1, testVRAMBytes, reported), capacitySample(2, testVRAMBytes, reported))
-		saveObservationWindow(t, fileSvc, "attempt-2", capacitySample(1, testVRAMBytes, reported))
+		reader, store := newReader(t)
+		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-1", capacitySample(1, testVRAMBytes, reported), capacitySample(2, testVRAMBytes, reported))
+		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-2", capacitySample(1, testVRAMBytes, reported))
 
 		environment, err := reader.ObservedProviderEnvironment(ctx, map[string]*evalv1.EvaluationAssignmentResult{
 			"assignment-1": resultWithAttempts("attempt-1"),
@@ -144,8 +144,8 @@ func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	})
 
 	t.Run("skips an attempt whose window was never captured", func(t *testing.T) {
-		reader, fileSvc := newReader(t)
-		saveObservationWindow(t, fileSvc, "attempt-1", capacitySample(1, testVRAMBytes, reported))
+		reader, store := newReader(t)
+		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-1", capacitySample(1, testVRAMBytes, reported))
 
 		environment, err := reader.ObservedProviderEnvironment(ctx, map[string]*evalv1.EvaluationAssignmentResult{
 			"assignment-1": resultWithAttempts("attempt-1", "attempt-missing"),
@@ -165,9 +165,9 @@ func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	})
 
 	t.Run("ignores capacities the observer marked unavailable", func(t *testing.T) {
-		reader, fileSvc := newReader(t)
+		reader, store := newReader(t)
 		unavailable := evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_UNAVAILABLE
-		saveObservationWindow(t, fileSvc, "attempt-1", capacitySample(1, testVRAMBytes, unavailable))
+		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-1", capacitySample(1, testVRAMBytes, unavailable))
 
 		environment, err := reader.ObservedProviderEnvironment(ctx, map[string]*evalv1.EvaluationAssignmentResult{
 			"assignment-1": resultWithAttempts("attempt-1"),
@@ -177,9 +177,9 @@ func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	})
 
 	t.Run("makes no claim when windows disagree about the hardware", func(t *testing.T) {
-		reader, fileSvc := newReader(t)
-		saveObservationWindow(t, fileSvc, "attempt-1", capacitySample(1, testVRAMBytes, reported))
-		saveObservationWindow(t, fileSvc, "attempt-2", capacitySample(1, testVRAMBytes/2, reported))
+		reader, store := newReader(t)
+		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-1", capacitySample(1, testVRAMBytes, reported))
+		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-2", capacitySample(1, testVRAMBytes/2, reported))
 
 		environment, err := reader.ObservedProviderEnvironment(ctx, map[string]*evalv1.EvaluationAssignmentResult{
 			"assignment-1": resultWithAttempts("attempt-1"),
@@ -269,7 +269,7 @@ func TestPublishedCatalogCarriesTheObservedEnvironmentOnlyOnceTheRunIsComplete(t
 	assignments, err := store.ListAssignments(ctx, run.GetRunId())
 	require.NoError(t, err)
 	for _, assignment := range assignments {
-		saveObservationWindow(t, files, "attempt-"+assignment.GetAssignmentId(), capacitySample(1, testVRAMBytes, reported))
+		saveObservationWindow(t, store, run.GetRunId(), "attempt-"+assignment.GetAssignmentId(), capacitySample(1, testVRAMBytes, reported))
 	}
 	binding := CampaignExecutionBinding{
 		Topology:            testOperatorTopology("inf-session", "data-session"),

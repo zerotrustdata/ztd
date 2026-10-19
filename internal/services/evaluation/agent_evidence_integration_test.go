@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -31,21 +32,25 @@ import (
 
 type testEvidenceLaneClient struct {
 	ledger   *evidenceLedger
-	requests []client.DispatchCommandRequest
+	requests []models.OperatorCommandRequest
 }
 
-func (c *testEvidenceLaneClient) DispatchCommand(_ context.Context, _ client.Persona, request client.DispatchCommandRequest) (*client.GovernedOutcome, error) {
+func (c *testEvidenceLaneClient) DispatchCommand(_ context.Context, _ client.Persona, request models.OperatorCommandRequest) (*client.GovernedOutcome, error) {
 	c.requests = append(c.requests, request)
+	action, err := constants.ValidateGovernedRequest(constants.EventType(request.EventType))
+	if err != nil {
+		return nil, err
+	}
 	txID := fmt.Sprintf("tx-dispatch-%d", len(c.requests))
-	receipt := c.ledger.executed(txID, request.ActionType)
+	receipt := c.ledger.executed(txID, string(action))
 	var result proto.Message
-	switch request.ActionType {
-	case string(constants.ActionTypeExecuteBash):
+	switch action {
+	case constants.ActionTypeExecuteBash:
 		result = &operatorv1.CommandResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, Stdout: "HEALTHY\n"}
-	case string(constants.ActionTypeFileEdit):
+	case constants.ActionTypeFileEdit:
 		result = &operatorv1.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: request.TargetResource, Operation: string(constants.FileOperationWrite)}
 	default:
-		return nil, fmt.Errorf("test evidence client: unscripted action %s", request.ActionType)
+		return nil, fmt.Errorf("test evidence client: unscripted action %s", action)
 	}
 	payload, err := proto.Marshal(result)
 	if err != nil {

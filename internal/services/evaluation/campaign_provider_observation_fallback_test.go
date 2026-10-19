@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -44,54 +43,10 @@ func (s *recordingProviderObservationRemote) WatchRecorded(ctx context.Context, 
 	return nil
 }
 
-func TestFallbackProviderObservationStores_DelegateLocalWrites(t *testing.T) {
+func TestCampaignProviderObservationReader_ReadsGatewayOnLocalMissWithoutPersisting(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	localWindows, err := provider_observer.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	localAttempts, err := inference.NewAttemptStore(fileSvc)
-	require.NoError(t, err)
-	remote := &recordingProviderObservationRemote{}
-	windows := &fallbackProviderObservationWindows{local: localWindows, remote: remote}
-	attempts := &fallbackProviderObservationAttempts{local: localAttempts, remote: remote}
-
-	attempt := &operatorv1.InferenceProviderAttemptRecord{
-		ProviderAttemptId: "attempt-1",
-		TransactionId:     "tx-1",
-		Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_IN_PROGRESS,
-		StartedAtUnixMs:   time.Unix(1_700_000_000, 0).UnixMilli(),
-	}
-	require.NoError(t, attempts.Begin(ctx, attempt))
-	require.NoError(t, attempts.Complete(ctx, "attempt-1", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"))
-
-	window := &evalv1.ProviderBoundaryObservationWindow{
-		SchemaVersion:       provider_observer.SchemaVersion,
-		ProviderAttemptId:   "attempt-1",
-		ObserverId:          "observer-test",
-		ObserverClockSource: provider_observer.DefaultObserverClockSource,
-	}
-	digest, err := provider_observer.ComputeObservationDigest(window)
-	require.NoError(t, err)
-	window.ObservationDigest = digest
-	require.NoError(t, windows.Save(ctx, window))
-
-	loadedAttempt, err := attempts.Get(ctx, "attempt-1")
-	require.NoError(t, err)
-	assert.Equal(t, "attempt-1", loadedAttempt.GetProviderAttemptId())
-	loadedWindow, err := windows.Load(ctx, "attempt-1")
-	require.NoError(t, err)
-	assert.Equal(t, "attempt-1", loadedWindow.GetProviderAttemptId())
-}
-
-func TestFallbackProviderObservationStores_LoadRemoteOnLocalMiss(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	localWindows, err := provider_observer.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	localAttempts, err := inference.NewAttemptStore(fileSvc)
-	require.NoError(t, err)
 	remote := &recordingProviderObservationRemote{
 		window: &evalv1.ProviderBoundaryObservationWindow{
 			SchemaVersion:       provider_observer.SchemaVersion,
@@ -108,24 +63,29 @@ func TestFallbackProviderObservationStores_LoadRemoteOnLocalMiss(t *testing.T) {
 	require.NoError(t, err)
 	remote.window.ObservationDigest = digest
 
-	windows := &fallbackProviderObservationWindows{local: localWindows, remote: remote}
-	attempts := &fallbackProviderObservationAttempts{local: localAttempts, remote: remote}
+	store := NewStore(fileSvc)
+	reader, err := NewCampaignProviderObservationReaderWithRemote(store, remote)
+	require.NoError(t, err)
 
-	loadedWindow, err := windows.Load(ctx, "attempt-remote")
+	loadedWindow, err := reader.loadWindow(ctx, "run-remote", "attempt-remote")
 	require.NoError(t, err)
 	assert.Equal(t, "attempt-remote", loadedWindow.GetProviderAttemptId())
-	loadedAttempt, err := attempts.Get(ctx, "attempt-remote")
+	loadedAttempt, err := reader.loadAttempt(ctx, "run-remote", "attempt-remote")
 	require.NoError(t, err)
 	assert.Equal(t, "attempt-remote", loadedAttempt.GetProviderAttemptId())
 	assert.Equal(t, []string{"attempt-remote", "attempt-remote"}, remote.loadCalls)
+
+	// The gateway read-through is never persisted: the run's sealed copy stays absent.
+	_, err = store.loadProviderObservationWindow(ctx, "run-remote", "attempt-remote")
+	assert.ErrorIs(t, err, constants.ErrNotFound)
+	_, err = store.loadProviderAttemptRecord(ctx, "run-remote", "attempt-remote")
+	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
 func TestBindProviderBoundaryObservationRefs_AttachesComplianceRef(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	windowStore, err := provider_observer.NewWindowStore(fileSvc)
-	require.NoError(t, err)
 	window := &evalv1.ProviderBoundaryObservationWindow{
 		SchemaVersion:              provider_observer.SchemaVersion,
 		ProviderAttemptId:          "attempt-1",
@@ -137,11 +97,13 @@ func TestBindProviderBoundaryObservationRefs_AttachesComplianceRef(t *testing.T)
 	digest, err := provider_observer.ComputeObservationDigest(window)
 	require.NoError(t, err)
 	window.ObservationDigest = digest
-	require.NoError(t, windowStore.Save(ctx, window))
+	store := NewStore(fileSvc)
+	require.NoError(t, store.saveProviderObservationWindow(ctx, "run-bind", window))
 
-	reader, err := NewCampaignProviderObservationReader(fileSvc)
+	reader, err := NewCampaignProviderObservationReader(store)
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-bind",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			InferenceRecordId: "inference-1",
 			ProviderAttemptId: "attempt-1",

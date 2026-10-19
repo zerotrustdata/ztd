@@ -160,12 +160,13 @@ func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
 	// never browser-accessible. The producer prefix is longer than
 	// ObservePrefix so it takes precedence in the longest-prefix match,
 	// ensuring producer paths fail closed to mTLS instead of inheriting
-	// the observe prefix's web-session classification. The two exact
-	// producer paths are also classified explicitly so they are matched at
-	// the highest priority (exact match before prefix match).
+	// the observe prefix's web-session classification. The exact producer
+	// paths are also classified explicitly so they are matched at the
+	// highest priority (exact match before prefix match).
 	r.addPrefix(constants.APIPaths.ObserveProducerPrefix, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.ObserveProducerAgentState, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.ObserveProducerRunState, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.ObserveProducerStop, RouteAuthMTLS)
 
 	// mTLS-only operator sub-paths (must precede the browser-capable prefix).
 	r.addExact(constants.APIPaths.OperatorsValidate, RouteAuthMTLS)

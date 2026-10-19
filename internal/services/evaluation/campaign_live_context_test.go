@@ -37,22 +37,26 @@ func TestCampaignLiveContext_V6StillRequiresCompletedQueryEvidence(t *testing.T)
 type liveContextClient struct {
 	base           *agentLaneClient
 	records        []*models.ActionReceiptRecord
-	queries        []client.DispatchCommandRequest
+	queries        []models.OperatorCommandRequest
 	wrongAuthority bool
 }
 
-func (c *liveContextClient) DispatchCommand(ctx context.Context, persona client.Persona, req client.DispatchCommandRequest) (*client.GovernedOutcome, error) {
-	if req.ActionType != string(constants.ActionTypeMcpCall) {
+func (c *liveContextClient) DispatchCommand(ctx context.Context, persona client.Persona, req models.OperatorCommandRequest) (*client.GovernedOutcome, error) {
+	action, err := constants.ValidateGovernedRequest(constants.EventType(req.EventType))
+	if err != nil {
+		return nil, err
+	}
+	if action != constants.ActionTypeMcpCall {
 		out, err := c.base.DispatchCommand(ctx, persona, req)
 		if err != nil {
 			return nil, err
 		}
 		r := out.Observation.GetReceipt()
-		if req.ActionType == string(constants.ActionTypeExecuteBash) {
+		if action == constants.ActionTypeExecuteBash {
 			r.ResultSummary = "HEALTHY"
 			c.base.fixture.ledger.signer.Resign(c.base.fixture.t, r)
 		}
-		c.records = append(c.records, &models.ActionReceiptRecord{TransactionID: r.GetTransactionId(), OperatorID: c.base.fixture.ledger.operatorID, OperatorSessionID: c.base.fixture.ledger.sessionID, InvestigationID: req.InvestigationID, ActionType: constants.ActionType(req.ActionType), ResultSummary: r.GetResultSummary(), Status: r.GetStatus(), ActionReceipt: r})
+		c.records = append(c.records, &models.ActionReceiptRecord{TransactionID: r.GetTransactionId(), OperatorID: c.base.fixture.ledger.operatorID, OperatorSessionID: c.base.fixture.ledger.sessionID, InvestigationID: req.InvestigationID, ActionType: action, ResultSummary: r.GetResultSummary(), Status: r.GetStatus(), ActionReceipt: r})
 		return out, nil
 	}
 	c.queries = append(c.queries, req)

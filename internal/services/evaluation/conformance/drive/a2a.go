@@ -62,9 +62,9 @@ func a2aPayload(a cases.Attempt) (json.RawMessage, error) {
 	var payload any
 	switch a.Case.Fault {
 	case cases.FaultNone, cases.FaultUnattendedMutation, cases.FaultAttendedApprove, cases.FaultAttendedDeny:
-		payload = client.MarkerSkillPayload{Marker: a.Marker}
+		payload = cases.MarkerSkillPayload{Marker: a.Marker}
 	case cases.FaultDoctrine:
-		payload = client.CommandSkillPayload{Cmd: a.Case.Command}
+		payload = cases.CommandSkillPayload{Cmd: a.Case.Command}
 	default:
 		return nil, constants.ErrConformanceIngressUnsupported
 	}

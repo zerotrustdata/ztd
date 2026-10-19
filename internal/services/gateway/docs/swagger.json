@@ -1423,6 +1423,64 @@
                 }
             }
         },
+        "/api/v1/observe/producer/stop": {
+            "post": {
+                "description": "Accepts a typed stop request for one campaign run from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the supervisor state projection, and emits an ai.eval.stop.requested SSE event carrying run_id to the routed session after successful persistence.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "observe"
+                ],
+                "summary": "Request observe campaign run stop",
+                "parameters": [
+                    {
+                        "description": "Stop request",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ObserveProducerStopRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "accepted",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid stop reason or scope, or missing campaign_id or run_id",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized — mTLS user identity required",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden — not an app workload or cross-user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Persistence failure",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/observe/runs": {
             "get": {
                 "description": "Returns paginated read-only run summaries owned by the authenticated user.",
@@ -1530,7 +1588,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/gateway.OperatorCommandRequest"
+                            "$ref": "#/definitions/models.OperatorCommandRequest"
                         }
                     }
                 ],
@@ -2924,41 +2982,6 @@
                 "UserStatusDisabled"
             ]
         },
-        "gateway.OperatorCommandRequest": {
-            "type": "object",
-            "properties": {
-                "case_id": {
-                    "type": "string"
-                },
-                "cli_session_id": {
-                    "type": "string"
-                },
-                "event_type": {
-                    "type": "string"
-                },
-                "investigation_id": {
-                    "type": "string"
-                },
-                "payload": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "target_operator_session_id": {
-                    "type": "string"
-                },
-                "target_resource": {
-                    "type": "string"
-                },
-                "task_id": {
-                    "type": "string"
-                },
-                "web_session_id": {
-                    "type": "string"
-                }
-            }
-        },
         "models.ActionReceiptRecord": {
             "type": "object",
             "properties": {
@@ -3661,6 +3684,32 @@
                 }
             }
         },
+        "models.ObserveProducerStopRequest": {
+            "type": "object",
+            "properties": {
+                "campaign_id": {
+                    "type": "string"
+                },
+                "cli_session_id": {
+                    "type": "string"
+                },
+                "run_id": {
+                    "type": "string"
+                },
+                "schema_version": {
+                    "type": "string"
+                },
+                "stop_reason": {
+                    "$ref": "#/definitions/models.StopReason"
+                },
+                "stop_scope": {
+                    "$ref": "#/definitions/models.StopScope"
+                },
+                "web_session_id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.ObservedMeasurement": {
             "type": "object",
             "properties": {
@@ -3696,6 +3745,41 @@
                 },
                 "window_seconds": {
                     "type": "number"
+                }
+            }
+        },
+        "models.OperatorCommandRequest": {
+            "type": "object",
+            "properties": {
+                "case_id": {
+                    "type": "string"
+                },
+                "cli_session_id": {
+                    "type": "string"
+                },
+                "event_type": {
+                    "type": "string"
+                },
+                "investigation_id": {
+                    "type": "string"
+                },
+                "payload": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "target_operator_session_id": {
+                    "type": "string"
+                },
+                "target_resource": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "web_session_id": {
+                    "type": "string"
                 }
             }
         },
@@ -4499,6 +4583,40 @@
                     "$ref": "#/definitions/constants.GatewayMode"
                 }
             }
+        },
+        "models.StopReason": {
+            "type": "string",
+            "enum": [
+                "graceful",
+                "safety_budget",
+                "safety_disk",
+                "safety_hardware_drift",
+                "safety_credential",
+                "safety_verifier",
+                "safety_disclosure",
+                "safety_publication"
+            ],
+            "x-enum-varnames": [
+                "StopReasonGraceful",
+                "StopReasonSafetyBudget",
+                "StopReasonSafetyDisk",
+                "StopReasonSafetyHardwareDrift",
+                "StopReasonSafetyCredential",
+                "StopReasonSafetyVerifier",
+                "StopReasonSafetyDisclosure",
+                "StopReasonSafetyPublication"
+            ]
+        },
+        "models.StopScope": {
+            "type": "string",
+            "enum": [
+                "cycle",
+                "supervisor"
+            ],
+            "x-enum-varnames": [
+                "StopScopeCycle",
+                "StopScopeSupervisor"
+            ]
         },
         "models.SuccessRateMeasurement": {
             "type": "object",

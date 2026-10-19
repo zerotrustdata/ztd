@@ -16,10 +16,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -37,7 +35,6 @@ func TestCampaignProviderObservationReader_BuildPublicBenchmarkObservations(t *t
 		StartedAtUnixMs:   time.Unix(1_700_000_000, 0).UnixMilli(),
 		CompletedAtUnixMs: time.Unix(1_700_000_010, 0).UnixMilli(),
 	}
-	require.NoError(t, writeProviderAttemptRecord(ctx, fileSvc, attempt))
 	window := &evalv1.ProviderBoundaryObservationWindow{
 		SchemaVersion:              provider_observer.SchemaVersion,
 		ProviderAttemptId:          "attempt-1",
@@ -69,13 +66,13 @@ func TestCampaignProviderObservationReader_BuildPublicBenchmarkObservations(t *t
 	digest, err := provider_observer.ComputeObservationDigest(window)
 	require.NoError(t, err)
 	window.ObservationDigest = digest
-	windowStore, err := provider_observer.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	require.NoError(t, windowStore.Save(ctx, window))
+	store := NewStore(fileSvc)
+	require.NoError(t, store.saveProviderObservationWindow(ctx, "run-1", window))
 
-	reader, err := NewCampaignProviderObservationReader(fileSvc)
+	reader, err := NewCampaignProviderObservationReader(store)
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-1",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			InferenceRecordId:       "inference-1",
 			ProviderAttemptId:       "attempt-1",
@@ -136,7 +133,6 @@ func TestBuildPublicBenchmarkObservations_AllUnavailableGPUMetrics(t *testing.T)
 		StartedAtUnixMs:   time.Unix(1_700_000_000, 0).UnixMilli(),
 		CompletedAtUnixMs: time.Unix(1_700_000_010, 0).UnixMilli(),
 	}
-	require.NoError(t, writeProviderAttemptRecord(ctx, fileSvc, attempt))
 	window := &evalv1.ProviderBoundaryObservationWindow{
 		SchemaVersion:              provider_observer.SchemaVersion,
 		ProviderAttemptId:          "attempt-unavail",
@@ -159,13 +155,13 @@ func TestBuildPublicBenchmarkObservations_AllUnavailableGPUMetrics(t *testing.T)
 	digest, err := provider_observer.ComputeObservationDigest(window)
 	require.NoError(t, err)
 	window.ObservationDigest = digest
-	windowStore, err := provider_observer.NewWindowStore(fileSvc)
-	require.NoError(t, err)
-	require.NoError(t, windowStore.Save(ctx, window))
+	store := NewStore(fileSvc)
+	require.NoError(t, store.saveProviderObservationWindow(ctx, "run-unavail", window))
 
-	reader, err := NewCampaignProviderObservationReader(fileSvc)
+	reader, err := NewCampaignProviderObservationReader(store)
 	require.NoError(t, err)
 	benchmark, err := reader.BuildPublicBenchmarkObservations(ctx, &evalv1.EvaluationAssignmentResult{
+		RunId: "run-unavail",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			InferenceRecordId: "inference-1",
 			ProviderAttemptId: "attempt-unavail",
@@ -216,9 +212,10 @@ func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_
 	t.Parallel()
 	ctx := context.Background()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	reader, err := NewCampaignProviderObservationReader(fileSvc)
+	reader, err := NewCampaignProviderObservationReader(NewStore(fileSvc))
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-missing",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			InferenceRecordId: "inference-1",
 			ProviderAttemptId: "attempt-missing",
@@ -282,12 +279,13 @@ func TestCampaignProviderObservationReaderWithRemote_LoadsGatewayEvidenceOnLocal
 	require.NoError(t, err)
 	window.ObservationDigest = digest
 
-	reader, err := NewCampaignProviderObservationReaderWithRemote(fileSvc, &stubProviderObservationRemote{
+	reader, err := NewCampaignProviderObservationReaderWithRemote(NewStore(fileSvc), &stubProviderObservationRemote{
 		window:  window,
 		attempt: attempt,
 	})
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-remote",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			InferenceRecordId: "inference-1",
 			ProviderAttemptId: "attempt-remote",
@@ -327,12 +325,24 @@ func TestCampaignProviderObservationReader_CaptureAssignmentEvidencePersistsGate
 	digest, err := provider_observer.ComputeObservationDigest(window)
 	require.NoError(t, err)
 	window.ObservationDigest = digest
-	reader, err := NewCampaignProviderObservationReaderWithRemote(fileSvc, &stubProviderObservationRemote{window: window, attempt: attempt})
+	store := NewStore(fileSvc)
+	reader, err := NewCampaignProviderObservationReaderWithRemote(store, &stubProviderObservationRemote{window: window, attempt: attempt})
 	require.NoError(t, err)
-	result := &evalv1.EvaluationAssignmentResult{ModelInferences: []*evalv1.ModelInferenceRecord{{ProviderAttemptId: attempt.GetProviderAttemptId()}}}
+	result := &evalv1.EvaluationAssignmentResult{
+		RunId:           "run-captured",
+		ModelInferences: []*evalv1.ModelInferenceRecord{{ProviderAttemptId: attempt.GetProviderAttemptId()}},
+	}
 
 	require.NoError(t, reader.CaptureAssignmentEvidence(ctx, result))
-	localReader, err := NewCampaignProviderObservationReader(fileSvc)
+
+	// Capture seals the fetched evidence into the run's evaluation evidence and
+	// never writes the production inference stores.
+	inferenceExists, err := fileSvc.FileExists(ctx, filepath.Join(constants.DataDirname, constants.InferenceDirname))
+	require.NoError(t, err)
+	assert.False(t, inferenceExists, "capture must not write under data/inference")
+
+	// A reader without a gateway remote can only verify from the sealed copy.
+	localReader, err := NewCampaignProviderObservationReader(store)
 	require.NoError(t, err)
 	failures, unavailable := localReader.VerifyAssignmentProviderObservations(ctx, result, ProviderObservationPolicyStrict)
 	assert.Empty(t, failures)
@@ -343,9 +353,10 @@ func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_
 	t.Parallel()
 	ctx := context.Background()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
-	reader, err := NewCampaignProviderObservationReader(fileSvc)
+	reader, err := NewCampaignProviderObservationReader(NewStore(fileSvc))
 	require.NoError(t, err)
 	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-missing",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			InferenceRecordId: "inference-1",
 			ProviderAttemptId: "attempt-missing",
@@ -383,7 +394,7 @@ func TestMarshalAssignmentResultProjectionEnvelope_IncludesBenchmarkObservations
 
 func TestCampaignRunVerifier_WithReaders(t *testing.T) {
 	files := newCampaignMemoryFileService()
-	reader, err := NewCampaignProviderObservationReader(files)
+	reader, err := NewCampaignProviderObservationReader(NewStore(files))
 	require.NoError(t, err)
 	provenanceReader, err := NewCampaignModelProvenanceReader(files)
 	require.NoError(t, err)
@@ -404,16 +415,4 @@ func TestBuildPublicBenchmarkObservations_UnconfiguredObserverKeepsResultTelemet
 	require.NotNil(t, benchmark.Timing)
 	assert.Equal(t, 1.0, *benchmark.Timing.ModelLoadMS.Value)
 	assert.Contains(t, benchmark.UnavailableReasons, "source_not_captured")
-}
-
-func writeProviderAttemptRecord(ctx context.Context, fileSvc fs.RuntimeFileService, record *operatorv1.InferenceProviderAttemptRecord) error {
-	dir := filepath.Join(constants.DataDirname, constants.InferenceDirname, constants.InferenceAttemptsDirname)
-	if err := fileSvc.MkdirAll(ctx, dir, constants.PermDirStandard); err != nil {
-		return err
-	}
-	body, err := protojson.MarshalOptions{EmitUnpopulated: true}.Marshal(record)
-	if err != nil {
-		return err
-	}
-	return fileSvc.WriteFile(ctx, filepath.Join(dir, record.GetProviderAttemptId()+constants.FileExtJSON), body, constants.PermFilePrivate)
 }
