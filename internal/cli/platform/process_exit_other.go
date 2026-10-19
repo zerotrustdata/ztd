@@ -11,30 +11,28 @@ package platform
 
 import (
 	"context"
-	"os"
-	"syscall"
-	"time"
+	"fmt"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-// WaitForProcessExit blocks until the process with pid has exited and returns
-// nil, or until ctx ends and returns ctx.Err(). This platform has no exit
-// notification the stop code uses, so the process is checked at a fixed
-// interval.
-func WaitForProcessExit(ctx context.Context, pid int) error {
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		return nil
-	}
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if err := p.Signal(syscall.Signal(0)); err != nil {
-				return nil
-			}
-		}
-	}
+// ProcessExitWatch exists so the shared code compiles here. This platform has
+// no exit notification, so WatchProcessExit never returns a watch and the
+// methods are never reached; they fail closed anyway.
+type ProcessExitWatch struct{}
+
+// WatchProcessExit fails closed: no exit notification is available on this
+// platform, and polling would be a defect.
+func WatchProcessExit(pid int) (*ProcessExitWatch, error) {
+	return nil, fmt.Errorf("platform: watch PID %d exit: %w", pid, constants.ErrUnsupportedPlatform)
+}
+
+// Wait fails closed with constants.ErrUnsupportedPlatform.
+func (*ProcessExitWatch) Wait(context.Context) error {
+	return constants.ErrUnsupportedPlatform
+}
+
+// Close has nothing to release.
+func (*ProcessExitWatch) Close() error {
+	return nil
 }

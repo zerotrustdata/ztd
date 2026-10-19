@@ -568,6 +568,15 @@ func (s *CLISessionService) updateCLISessionBinding(ctx context.Context, cliSess
 	return existing, nil
 }
 
+// cliSessionExpired reports whether any of the session's three expiry bounds
+// has passed at now. A zero bound is not a bound. This is the rule the auth
+// middleware applies to a CLI session.
+func cliSessionExpired(session *models.CLISession, now time.Time) bool {
+	return (!session.ExpiresAt.IsZero() && session.ExpiresAt.Before(now)) ||
+		(!session.AbsoluteExpiresAt.IsZero() && session.AbsoluteExpiresAt.Before(now)) ||
+		(!session.IdleExpiresAt.IsZero() && session.IdleExpiresAt.Before(now))
+}
+
 // decodeCLISession deserializes a Document into a CLISession.
 func decodeCLISession(doc *models.Document) (*models.CLISession, error) {
 	dataBytes, err := json.Marshal(doc.Data)

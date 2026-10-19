@@ -11,8 +11,10 @@ package operatorcmd
 
 import (
 	"fmt"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func discoverLocalOperators() ([]localOperatorProcess, error) {
-	return nil, fmt.Errorf("operator stop: local worker discovery is currently supported on Linux only")
+	return nil, fmt.Errorf("operator stop: discover local workers: %w", constants.ErrUnsupportedPlatform)
 }

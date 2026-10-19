@@ -589,6 +589,10 @@ var (
 	ErrSystemTrustStaleRemovalDenied = errors.New("user declined removal of stale trust anchors")
 	ErrBrowserRestartDeclined        = errors.New("user declined to restart browser before passkey ceremony")
 
+	// Process and platform support errors
+	ErrProcessNotFound     = errors.New("process not found")
+	ErrUnsupportedPlatform = errors.New("unsupported on this platform")
+
 	// Frontend connection trust and verification errors. These cover the
 	// distinct failure modes of the gw connect trust and verification flow.
 	ErrHTTPSCertificateVerification = errors.New("HTTPS certificate verification failed")
@@ -692,6 +696,7 @@ var (
 	ErrURISANMismatch               = errors.New("certificate URI SAN does not match envelope identity claims")
 	ErrEnvelopeProcessorNotInit     = errors.New("envelope processor not initialized")
 	ErrNilReceipt                   = errors.New("envelope processor returned nil receipt without error")
+	ErrGovernanceCLISessionRequired = errors.New("CLI session service is required: it must be wired at construction, not defaulted")
 	ErrOperatorIDMissing            = errors.New("operator_id required")
 	ErrBootstrapInitialSetupOnly    = errors.New("bootstrap only available for initial setup")
 	ErrCLICSRRequired               = errors.New("cli_csr_pem is required")

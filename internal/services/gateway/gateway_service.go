@@ -925,10 +925,11 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			IsGovernanceReady: ls.IsGovernanceReady,
 		},
 		GovernanceControllerDeps: GovernanceControllerDeps{
-			Cfg:       cfg,
-			Logger:    logger,
-			Responder: ls.responder,
-			EnvProc:   envProc,
+			Cfg:         cfg,
+			Logger:      logger,
+			Responder:   ls.responder,
+			EnvProc:     envProc,
+			CLISessions: cliSessionSvc,
 		},
 		MCPControllerDeps: MCPControllerDeps{
 			MCPGateway: ls.mcpGateway,

@@ -29,7 +29,7 @@ func (c *Client) GetActionReceipt(ctx context.Context, transactionID string, per
 		p = persona[0]
 	}
 	u := c.cfg.MTLSBaseURL + constants.APIPaths.AuditReceipts + "?tx_id=" + url.QueryEscape(transactionID)
-	status, body, err := c.doWithCLI(ctx, p, http.MethodGet, u, nil)
+	status, body, err := c.do(ctx, p, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, body, err
 	}
@@ -87,9 +87,8 @@ func (c *Client) GetTrustedSignerPublicKey(ctx context.Context, keyID string) (e
 }
 
 // auditorPersona builds a persona carrying the config's CLI session and user
-// identity so authenticated audit endpoints accept the request. The harness
-// dials these endpoints with the owner CLI cert, so the gateway requires the
-// X-CLI-Session-ID header to bind the mTLS cert to an active session.
+// identity. The CLI session reaches the Gateway only when the Operator identity is
+// the CLI identity (see do); on an Operator certificate it is never sent.
 func (c *Client) auditorPersona() Persona {
 	return Persona{
 		ID:           "agent-harness-auditor",

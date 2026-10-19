@@ -39,7 +39,7 @@ func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *test
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, constants.APIPaths.OperatorsCommands, r.URL.Path)
-		assert.Equal(t, "cli-1", r.Header.Get(constants.HeaderCLISessionID))
+		assert.Empty(t, r.Header.Get(constants.HeaderCLISessionID), "dispatch without a CLI certificate runs on the Operator identity, which never carries the CLI session")
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
 		w.Header().Set("Content-Type", "application/json")
 		_, err := w.Write(responseBody)

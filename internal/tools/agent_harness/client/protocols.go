@@ -38,9 +38,10 @@ func (c *Client) Health(ctx context.Context) (*models.HealthResponse, []byte, er
 	return health, raw, nil
 }
 
-// DispatchCommand submits one governed operator command through the CLI-cert
-// client and returns the typed outcome of the Gateway's answer. A transport
-// failure is returned as an error, never as an outcome.
+// DispatchCommand submits one governed operator command and returns the typed
+// outcome of the Gateway's answer. It uses the CLI identity when one is configured,
+// and the Operator identity otherwise. A transport failure is returned as an error,
+// never as an outcome.
 func (c *Client) DispatchCommand(ctx context.Context, persona Persona, request models.OperatorCommandRequest) (*GovernedOutcome, error) {
 	if err := request.Validate(); err != nil {
 		return nil, fmt.Errorf("agent harness: validate dispatch command: %w", err)
@@ -56,12 +57,14 @@ func (c *Client) DispatchCommand(ctx context.Context, persona Persona, request m
 // classifies the answer. It performs no validation: conformance cases use it to
 // send malformed requests.
 func (c *Client) DispatchCommandBody(ctx context.Context, p Persona, body []byte) (*GovernedOutcome, error) {
-	httpClient := *c.http
-	if c.cliHTTP != nil {
-		httpClient = *c.cliHTTP
+	cliIdentity := c.cliHTTP != nil
+	hc := c.http
+	if cliIdentity {
+		hc = c.cliHTTP
 	}
+	httpClient := *hc
 	httpClient.Timeout = mcp.ApprovalRequestTTL + dispatch.RequestDeadline
-	status, raw, err := c.doWithClient(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsCommands, body, &httpClient, constants.HeaderValueApplicationJSON)
+	status, raw, err := c.doWithClient(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsCommands, body, &httpClient, constants.HeaderValueApplicationJSON, cliIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("agent harness: submit dispatch command: %w", err)
 	}

@@ -179,9 +179,10 @@ func setupObserveProducerEndpointEnv(t *testing.T) *observeProducerEndpointEnv {
 			IsGovernanceReady: func(context.Context) bool { return true },
 		},
 		GovernanceControllerDeps: GovernanceControllerDeps{
-			Cfg:       infra.Cfg,
-			Logger:    infra.Logger,
-			Responder: infra.Responder,
+			Cfg:         infra.Cfg,
+			Logger:      infra.Logger,
+			Responder:   infra.Responder,
+			CLISessions: infra.CLISessionSvc,
 		},
 		MCPControllerDeps:     MCPControllerDeps{MCPGateway: mcpGateway},
 		PubSubControllerDeps:  PubSubControllerDeps{Handler: infra.Pubsub},

@@ -420,9 +420,7 @@ func releaseProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExec
 	if err := evaluation.ReleaseOllamaModels(cmd.Context(), dispatcher, inferenceSessionID, opts.RunID, residentTags, maintenance.Environment, maintenance.NewID); err != nil {
 		return err
 	}
-	waitCtx, cancel := context.WithTimeout(cmd.Context(), 2*time.Minute)
-	defer cancel()
-	if err := evaluation.WaitForOllamaModelsAbsent(waitCtx, dispatcher, maintenance, residentTags); err != nil {
+	if err := evaluation.VerifyOllamaModelsAbsent(cmd.Context(), dispatcher, maintenance, residentTags); err != nil {
 		return err
 	}
 	if !opts.JSONOutput {

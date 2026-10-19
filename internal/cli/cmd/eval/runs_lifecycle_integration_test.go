@@ -27,6 +27,7 @@ import (
 
 func TestRunsCancel_StopsEveryAssignmentOfAnIdleRun(t *testing.T) {
 	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
@@ -41,6 +42,7 @@ func TestRunsCancel_StopsEveryAssignmentOfAnIdleRun(t *testing.T) {
 
 func TestRunsCancel_JSONReportsWhatItStopped(t *testing.T) {
 	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 
 	var payload runCancelJSON
@@ -53,6 +55,7 @@ func TestRunsCancel_JSONReportsWhatItStopped(t *testing.T) {
 
 func TestRunsCancel_ClearsAStaleLeaseAndReportsIt(t *testing.T) {
 	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	env.holdRun(t, "run-a-1")
 	env.control.setAlive(otherHostPID, false)
@@ -62,6 +65,51 @@ func TestRunsCancel_ClearsAStaleLeaseAndReportsIt(t *testing.T) {
 
 	_, err := env.store(t).LoadRunLease(context.Background(), "run-a-1")
 	assert.True(t, isMissingRecord(err))
+}
+
+// An idle run has no process to report its release, so cancel reports the
+// cancelled status itself, under the CLI session, for a watcher to see.
+func TestRunsCancel_PostsCancelledForAnIdleRun(t *testing.T) {
+	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
+	env.prepareRun(t, "eval-a", "run-a-1")
+
+	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
+	posted := env.stream.awaitRunState(t)
+	assert.Equal(t, models.RunLifecycleStatusCancelled, posted.Status)
+	assert.Equal(t, "run-a-1", posted.RunID)
+	assert.Equal(t, "cli-1", posted.CLISessionID)
+}
+
+// A settled run has nothing queued or running, so cancel stops nothing and has
+// no transition to report: it posts no run state.
+func TestRunsCancel_OfASettledRunPostsNothing(t *testing.T) {
+	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
+	env.prepareRun(t, "eval-a", "run-a-1")
+	assignments, err := env.store(t).ListAssignments(context.Background(), "run-a-1")
+	require.NoError(t, err)
+	for _, assignment := range assignments {
+		env.saveGradedResult(t, assignment, nil)
+	}
+
+	var payload runCancelJSON
+	require.NoError(t, env.runJSON(t, &payload, "runs", "cancel", "run-a-1", "--publish=false"))
+	assert.Zero(t, payload.Stopped)
+	assert.False(t, payload.WasRunning)
+	assert.False(t, payload.ClearedStale)
+	assert.Zero(t, len(env.stream.states), "a settled run posted a run state")
+}
+
+func TestRunsCancel_FailsClosedWhenTheGatewayRefusesCancelled(t *testing.T) {
+	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
+	env.prepareRun(t, "eval-a", "run-a-1")
+	env.stream.rejectRunStates(http.StatusConflict)
+
+	_, err := env.run(t, "runs", "cancel", "run-a-1", "--publish=false")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 }
 
 func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
@@ -139,6 +187,41 @@ func TestRunsCancel_ReturnsWhenTheHolderExitsWithoutReleasing(t *testing.T) {
 	assert.True(t, isMissingRecord(err))
 }
 
+// The holder exits without releasing. Cancel stopped the run's work and no live
+// process will report it, so cancel posts cancelled itself, exactly once.
+func TestRunsCancel_PostsCancelledWhenTheHolderExited(t *testing.T) {
+	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
+	env.prepareRun(t, "eval-a", "run-a-1")
+	env.holdRun(t, "run-a-1")
+
+	type outcome struct {
+		out string
+		err error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		out, err := env.run(t, "runs", "cancel", "run-a-1", "--publish=false")
+		done <- outcome{out, err}
+	}()
+
+	env.stream.awaitStop(t)
+	env.control.exit(otherHostPID)
+
+	select {
+	case result := <-done:
+		require.NoError(t, result.err, result.out)
+		assert.Contains(t, result.out, fmt.Sprintf("stopped %d assignment(s)", testModelRoleCells(t)))
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancel did not return after the holder exited")
+	}
+	posted := env.stream.awaitRunState(t)
+	assert.Equal(t, models.RunLifecycleStatusCancelled, posted.Status)
+	assert.Equal(t, "run-a-1", posted.RunID)
+	assert.Equal(t, "cli-1", posted.CLISessionID)
+	assert.Zero(t, len(env.stream.states), "cancel posted more than one run state")
+}
+
 func TestRunsCancel_RejectsMissingAndArchivedRuns(t *testing.T) {
 	env := setupRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
@@ -155,6 +238,7 @@ func TestRunsCancel_RejectsMissingAndArchivedRuns(t *testing.T) {
 
 func TestRunsResume_DoesNotResumeAStoppedRun(t *testing.T) {
 	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 
@@ -208,6 +292,7 @@ func TestRunsResume_OfAStoppedRunPostsNothingToTheGateway(t *testing.T) {
 	env.enableWitnessGateway(t)
 	runID := env.prepareRun(t, "eval-a", "run-a-1")
 	env.mustRun(t, "runs", "cancel", runID, "--publish=false")
+	assert.Equal(t, models.RunLifecycleStatusCancelled, env.stream.awaitRunState(t).Status, "cancel reports the cancelled status")
 
 	// Nothing is queued, so the resume executes nothing and posts nothing: no
 	// running, and no released status, which the Gateway would refuse from cancelled
@@ -243,6 +328,7 @@ func TestRunsResume_FailsClosedWhenTheGatewayRefusesRunning(t *testing.T) {
 
 func TestRunsShow_WatchReturnsForASettledRun(t *testing.T) {
 	env := setupRunEnv(t)
+	env.enableWitnessGateway(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 

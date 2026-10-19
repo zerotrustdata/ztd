@@ -485,12 +485,12 @@ public mirror, so the explorer stops reporting the run as running.`,
 			switch {
 			case err == nil && live(*lease):
 				result.WasRunning = true
-				holderExited, err := awaitRunStop(cmd, deps, cfg, fileSvc, store, control, live, lease, jsonOutput)
+				cleared, err := awaitRunStop(cmd, deps, cfg, fileSvc, store, control, live, lease, jsonOutput)
 				if err != nil {
 					return fmt.Errorf("evaluation: runs cancel: %w", err)
 				}
-				// A holder that exited left its lease stale, and cancel cleared it.
-				result.ClearedStale = holderExited
+				// A holder that exited without releasing left its lease stale, and cancel cleared it.
+				result.ClearedStale = cleared
 			case err == nil:
 				result.ClearedStale = true
 				if err := store.ClearRunLease(cmd.Context(), runID); err != nil {
@@ -505,6 +505,36 @@ public mirror, so the explorer stops reporting the run as running.`,
 			controller := evaluation.NewCampaignController(store, nil, deps.now, adaptNewID(deps.newID))
 			if result.Stopped, err = controller.CancelRun(cmd.Context(), runID); err != nil {
 				return fmt.Errorf("evaluation: runs cancel: %w", err)
+			}
+			if result.Stopped > 0 && (!result.WasRunning || result.ClearedStale) {
+				// Cancel stopped work that no live process will report: the run was
+				// idle, or its holder exited without releasing. Cancel reports the
+				// cancelled status, as a holder would. A settled run stops nothing
+				// and posts nothing.
+				authContext, err := deps.authLoader(fileSvc, cfg)
+				if err != nil {
+					return fmt.Errorf("evaluation: runs cancel: load CLI identity: %w", err)
+				}
+				appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
+				if err != nil {
+					return fmt.Errorf("evaluation: runs cancel: %w", err)
+				}
+				run, err := store.LoadRun(cmd.Context(), runID)
+				if err != nil {
+					return fmt.Errorf("evaluation: runs cancel: %w", err)
+				}
+				reporter := &runLifecycle{
+					client:       appClient,
+					live:         live,
+					deps:         deps,
+					store:        store,
+					cliSessionID: authContext.CLISessionID,
+					runID:        runID,
+					startedAt:    run.GetStartedAt().AsTime().UTC(),
+				}
+				if err := reporter.reportTerminal(cmd.Context(), true); err != nil {
+					return fmt.Errorf("evaluation: runs cancel: %w", err)
+				}
 			}
 			if publish {
 				publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
@@ -540,7 +570,7 @@ public mirror, so the explorer stops reporting the run as running.`,
 //
 // The holder's exit is watched on the operating system. A process that dies
 // without releasing the run does not leave cancel waiting for an event that never
-// comes: its lease is settled locally, and holderExited reports that.
+// comes: its lease is settled locally, and cleared reports that cancel cleared it.
 func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, fileSvc fs.RuntimeFileService, store *evaluation.Store, control processControl, live evaluation.LeaseLiveness, lease *evaluation.RunLease, jsonOutput bool) (bool, error) {
 	ctx := cmd.Context()
 	runID := lease.RunID
@@ -568,7 +598,7 @@ func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, f
 	var releaseOnce sync.Once
 	release := func(err error) { releaseOnce.Do(func() { released <- err }) }
 	stream, err := subscribeRunEvents(ctx, httpClient, cfg.OperatorPublicURL(), authContext.CLISessionID, runID, events, func() {
-		done, err := settleRunLease(ctx, store, live, runID)
+		done, _, err := settleRunLease(ctx, store, live, runID)
 		switch {
 		case err != nil:
 			release(err)
@@ -612,24 +642,25 @@ func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, f
 	if !jsonOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Waiting for process %d to finish its current assignment\n", lease.PID)
 	}
-	holderExited, err := awaitRunRelease(ctx, released, events, stream, holderExit, func() (bool, error) {
+	cleared, err := awaitRunRelease(ctx, released, events, stream, holderExit, func() (bool, bool, error) {
 		return settleRunLease(ctx, store, live, runID)
 	})
 	if err != nil {
 		return false, err
 	}
-	if holderExited && !jsonOutput {
+	if cleared && !jsonOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Process %d exited; cleared its lease on run %s\n", lease.PID, runID)
 	}
-	return holderExited, nil
+	return cleared, nil
 }
 
 // awaitRunRelease waits for the holder of a run to release it. It returns when
 // the stream reports a settled status, when released delivers the connect
 // reconcile's outcome, or when the holder's process exits and settle finds its
-// lease gone or stale. The exit case reports holderExited. The wait also ends
-// when the stream stops on its own, with the stream's error, or when ctx ends.
-func awaitRunRelease(ctx context.Context, released <-chan error, events <-chan runEvent, stream *runEventStream, holderExit <-chan error, settle func() (bool, error)) (bool, error) {
+// lease gone or stale. The exit case reports whether settle cleared the lease. The
+// wait also ends when the stream stops on its own, with the stream's error, or
+// when ctx ends.
+func awaitRunRelease(ctx context.Context, released <-chan error, events <-chan runEvent, stream *runEventStream, holderExit <-chan error, settle func() (bool, bool, error)) (bool, error) {
 	for {
 		select {
 		case err := <-released:
@@ -642,12 +673,12 @@ func awaitRunRelease(ctx context.Context, released <-chan error, events <-chan r
 			if err != nil {
 				return false, fmt.Errorf("wait for run holder: %w", err)
 			}
-			done, err := settle()
+			done, cleared, err := settle()
 			if err != nil {
 				return false, err
 			}
 			if done {
-				return true, nil
+				return cleared, nil
 			}
 			// The PID now names another live process, so the lease still looks held.
 			// The stream remains the release signal, and the exit is not awaited again.
@@ -662,22 +693,27 @@ func awaitRunRelease(ctx context.Context, released <-chan error, events <-chan r
 
 // settleRunLease reports whether a run's process has released the run: its lease
 // is missing, or it names a process that is no longer alive. A stale lease is
-// cleared, as cancel always has. A lease that a concurrent settle already cleared
-// counts as released.
-func settleRunLease(ctx context.Context, store *evaluation.Store, live evaluation.LeaseLiveness, runID string) (bool, error) {
+// cleared, as cancel always has, and cleared reports that this call cleared it. A
+// lease the process released itself, or that a concurrent settle already cleared,
+// counts as released and is not reported as cleared.
+func settleRunLease(ctx context.Context, store *evaluation.Store, live evaluation.LeaseLiveness, runID string) (released, cleared bool, err error) {
 	lease, err := store.LoadRunLease(ctx, runID)
 	switch {
 	case isMissingRecord(err):
-		return true, nil
+		return true, false, nil
 	case err != nil:
-		return false, err
+		return false, false, err
 	case live(*lease):
-		return false, nil
+		return false, false, nil
 	}
-	if err := store.ClearRunLease(ctx, runID); err != nil && !isMissingRecord(err) {
-		return false, err
+	err = store.ClearRunLease(ctx, runID)
+	switch {
+	case isMissingRecord(err):
+		return true, false, nil
+	case err != nil:
+		return false, false, err
 	}
-	return true, nil
+	return true, true, nil
 }
 
 // runStatusSettled reports whether a run status means its process has finished

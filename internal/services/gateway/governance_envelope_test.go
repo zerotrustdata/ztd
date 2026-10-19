@@ -403,7 +403,7 @@ func TestGovernanceEnvelope_NilReceiptNilError_Returns500(t *testing.T) {
 
 func TestVerifyEnvelopeIdentityBinding_NoMTLS_ReturnsError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader([]byte(`{}`)))
-	err := verifyEnvelopeIdentityBinding(req, identityEnvelope(t, "op-1", "sess-1"))
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, identityEnvelope(t, "op-1", "sess-1"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mTLS client certificate required")
 }
@@ -413,7 +413,7 @@ func TestVerifyEnvelopeIdentityBinding_NoURISAN_ReturnsError(t *testing.T) {
 	req.TLS = &tls.ConnectionState{
 		PeerCertificates: []*x509.Certificate{{}},
 	}
-	err := verifyEnvelopeIdentityBinding(req, identityEnvelope(t, "op-1", "sess-1"))
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, identityEnvelope(t, "op-1", "sess-1"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "client certificate missing URI SAN")
 }
@@ -428,7 +428,7 @@ func TestVerifyEnvelopeIdentityBinding_MatchingOperatorSPIFFEID_ReturnsNil(t *te
 		}},
 	}
 	envelope := identityEnvelope(t, "op-1", "sess-1")
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.NoError(t, err)
 }
 
@@ -448,7 +448,7 @@ func TestVerifyEnvelopeIdentityBinding_MatchingCLISessionWithOperatorClaims_Retu
 		CliSessionId:      "cli-sess-1",
 		SourceComponent:   commonv1.Component_COMPONENT_AGENT,
 	})
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.NoError(t, err)
 }
 
@@ -468,7 +468,7 @@ func TestVerifyEnvelopeIdentityBinding_MismatchedCLISessionWithOperatorClaims_Re
 		CliSessionId:      "cli-sess-1",
 		SourceComponent:   commonv1.Component_COMPONENT_AGENT,
 	})
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.Error(t, err)
 	require.ErrorIs(t, err, constants.ErrURISANMismatch)
 }
@@ -483,7 +483,7 @@ func TestVerifyEnvelopeIdentityBinding_MismatchedOperatorID_ReturnsError(t *test
 		}},
 	}
 	envelope := identityEnvelope(t, "op-1", "sess-1")
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "certificate URI SAN does not match envelope identity claims")
 }
@@ -498,7 +498,7 @@ func TestVerifyEnvelopeIdentityBinding_MatchingAppSPIFFEID_ReturnsNil(t *testing
 		}},
 	}
 	envelope := appEnvelope(t, "op-1", commonv1.Component_COMPONENT_AGENT)
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.NoError(t, err)
 }
 
@@ -518,7 +518,7 @@ func TestVerifyEnvelopeIdentityBinding_AppCertificateAllowsDelegatedEmbeddedOper
 		ActingAppId:       "test-app",
 		SourceComponent:   commonv1.Component_COMPONENT_AGENT,
 	})
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.NoError(t, err)
 }
 
@@ -538,7 +538,7 @@ func TestVerifyEnvelopeIdentityBinding_AppCertificateRejectsMismatchedActingApp(
 		ActingAppId:       "different-app",
 		SourceComponent:   commonv1.Component_COMPONENT_AGENT,
 	})
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed)
 }
 
@@ -552,7 +552,7 @@ func TestVerifyEnvelopeIdentityBinding_InvalidJSON_ReturnsError(t *testing.T) {
 		}},
 	}
 	envelope := []byte(`not-json`)
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.ErrorIs(t, err, constants.ErrTxInvalidEnvelope, "an unparseable envelope must be refused, not passed downstream")
 }
 
@@ -590,7 +590,7 @@ func TestVerifyEnvelopeIdentityBinding_RequestorBinding(t *testing.T) {
 				CliSessionId:      "cli-sess-1",
 				RequestorUserId:   tc.requestor,
 			})
-			err := verifyEnvelopeIdentityBinding(req, envelope)
+			err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 			if tc.wantErr {
 				require.ErrorIs(t, err, constants.ErrIdentityBindingFailed)
 				return
@@ -613,7 +613,7 @@ func TestVerifyEnvelopeIdentityBinding_ActingAppNotInCertificate_Refused(t *test
 		OperatorSessionId: "sess-1",
 		ActingAppId:       "other-app",
 	})
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed)
 }
 
@@ -628,7 +628,7 @@ func TestVerifyEnvelopeIdentityBinding_NoIdentityFields_FailsClosed(t *testing.T
 	}
 	envelope, marshalErr := protojson.Marshal(&commonv1.GovernanceEnvelope{EventType: "test"})
 	require.NoError(t, marshalErr)
-	err := verifyEnvelopeIdentityBinding(req, envelope)
+	err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 	require.ErrorIs(t, err, constants.ErrIdentityBindingFailed, "an unbound envelope must fail closed")
 }
 

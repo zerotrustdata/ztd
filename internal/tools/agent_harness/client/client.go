@@ -40,7 +40,8 @@ type Persona struct {
 	UserAgent string
 	// OperatorSessionID is the Operator session ID for Bearer token authentication.
 	OperatorSessionID string
-	// CLISessionID is the CLI session ID for CLI mTLS certificate binding.
+	// CLISessionID is the CLI session ID. It is sent as X-ZTD-CLI-Session-ID only on requests
+	// made with the CLI certificate; requests made with an Operator certificate never carry it.
 	CLISessionID string
 	// UserID is the user ID for session binding.
 	UserID string
@@ -66,12 +67,17 @@ type Exchange struct {
 
 // Client wraps an mTLS-capable http.Client plus the recorder.
 type Client struct {
-	cfg     config.Config
-	http    *http.Client
-	cliHTTP *http.Client // second client using CLI cert for notary submits; nil falls back to http
-	tlsCfg  *tls.Config  // shared TLS config for building SSE streaming clients
-	cliTLS  *tls.Config  // TLS config for CLI cert; nil falls back to tlsCfg
-	rec     *[]Exchange  // optional sink for the current scenario
+	cfg  config.Config
+	http *http.Client // Operator identity (Auth)
+	// cliHTTP presents the CLI identity (CLIAuth). It is the Operator client itself when both name
+	// the same certificate, and nil when no CLI certificate is configured.
+	cliHTTP *http.Client
+	// cliTLS is the TLS config of the CLI identity; nil when no CLI certificate is configured.
+	cliTLS *tls.Config
+	// operatorIsCLI is set when CLIAuth names the Operator certificate, so requests made with the
+	// Operator client present the CLI identity and carry the persona's CLI session.
+	operatorIsCLI bool
+	rec           *[]Exchange // optional sink for the current scenario
 }
 
 // New builds a Client with mTLS material loaded per config. The MCP/A2A surface
@@ -102,45 +108,50 @@ func New(cfg config.Config) (*Client, error) {
 	}
 
 	c := &Client{
-		cfg:    cfg,
-		tlsCfg: tlsCfg,
+		cfg: cfg,
 		http: &http.Client{
 			Timeout:   30 * time.Second,
 			Transport: &http.Transport{TLSClientConfig: tlsCfg},
 		},
 	}
 
-	// Build a second TLS client using the CLI cert when it differs from
-	// the operator cert. This lets notary-scenario submits use the host
-	// CLI identity so handleCLIAuth stamps the host user onto the
-	// suspended transaction.
-	if (cfg.CLIAuth.Certificate != nil || (cfg.CLIAuth.ClientCert != "" && cfg.CLIAuth.ClientKey != "")) &&
-		(cfg.CLIAuth.Certificate != cfg.Auth.Certificate || cfg.CLIAuth.ClientCert != cfg.Auth.ClientCert || cfg.CLIAuth.ClientKey != cfg.Auth.ClientKey) {
-		cliTLS := &tls.Config{MinVersion: tls.VersionTLS13}
-		if cfg.CLIAuth.CABundle != "" {
-			if pem, err := os.ReadFile(cfg.CLIAuth.CABundle); err == nil {
-				pool := x509.NewCertPool()
-				if pool.AppendCertsFromPEM(pem) {
-					cliTLS.RootCAs = pool
-				}
+	// The CLI identity carries notary-scenario submits and approval streams, so
+	// handleCLIAuth can stamp the host user onto the suspended transaction. When
+	// CLIAuth names the Operator certificate, the Operator client already presents
+	// the CLI identity and serves both. Otherwise CLIAuth gets its own client.
+	if cfg.CLIAuth.Certificate == nil && (cfg.CLIAuth.ClientCert == "" || cfg.CLIAuth.ClientKey == "") {
+		return c, nil
+	}
+	if cfg.CLIAuth.Certificate == cfg.Auth.Certificate && cfg.CLIAuth.ClientCert == cfg.Auth.ClientCert && cfg.CLIAuth.ClientKey == cfg.Auth.ClientKey {
+		c.operatorIsCLI = true
+		c.cliHTTP = c.http
+		c.cliTLS = tlsCfg
+		return c, nil
+	}
+	cliTLS := &tls.Config{MinVersion: tls.VersionTLS13}
+	if cfg.CLIAuth.CABundle != "" {
+		if pem, err := os.ReadFile(cfg.CLIAuth.CABundle); err == nil {
+			pool := x509.NewCertPool()
+			if pool.AppendCertsFromPEM(pem) {
+				cliTLS.RootCAs = pool
 			}
 		}
-		if cfg.CLIAuth.Certificate != nil {
-			cliTLS.Certificates = []tls.Certificate{*cfg.CLIAuth.Certificate}
-		} else if _, err := os.Stat(cfg.CLIAuth.ClientCert); err == nil {
-			if _, err := os.Stat(cfg.CLIAuth.ClientKey); err == nil {
-				crt, err := tls.LoadX509KeyPair(cfg.CLIAuth.ClientCert, cfg.CLIAuth.ClientKey)
-				if err != nil {
-					return nil, fmt.Errorf("load CLI client cert: %w", err)
-				}
-				cliTLS.Certificates = []tls.Certificate{crt}
+	}
+	if cfg.CLIAuth.Certificate != nil {
+		cliTLS.Certificates = []tls.Certificate{*cfg.CLIAuth.Certificate}
+	} else if _, err := os.Stat(cfg.CLIAuth.ClientCert); err == nil {
+		if _, err := os.Stat(cfg.CLIAuth.ClientKey); err == nil {
+			crt, err := tls.LoadX509KeyPair(cfg.CLIAuth.ClientCert, cfg.CLIAuth.ClientKey)
+			if err != nil {
+				return nil, fmt.Errorf("load CLI client cert: %w", err)
 			}
+			cliTLS.Certificates = []tls.Certificate{crt}
 		}
-		c.cliTLS = cliTLS
-		c.cliHTTP = &http.Client{
-			Timeout:   30 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: cliTLS},
-		}
+	}
+	c.cliTLS = cliTLS
+	c.cliHTTP = &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: cliTLS},
 	}
 
 	return c, nil
@@ -152,24 +163,30 @@ func (c *Client) Config() config.Config { return c.cfg }
 // Record points the client at a sink; every subsequent call appends an Exchange.
 func (c *Client) Record(sink *[]Exchange) { c.rec = sink }
 
-// doWithCLI is like do but uses the CLI-cert TLS client when available.
-// It is used for notary-scenario transaction submits so handleCLIAuth
-// stamps the host user's identity onto the suspended transaction.
+// doWithCLI sends a request with the CLI identity and its CLI session. It is used for
+// notary-scenario transaction submits so handleCLIAuth stamps the host user's identity
+// onto the suspended transaction. It fails closed without a CLI certificate: only a CLI
+// certificate establishes a CLI session, so the request must not fall back to the
+// Operator identity.
 func (c *Client) doWithCLI(ctx context.Context, p Persona, method, url string, body []byte) (int, []byte, error) {
-	if c.cliHTTP != nil {
-		return c.doWithClient(ctx, p, method, url, body, c.cliHTTP, "application/json")
+	if c.cliHTTP == nil {
+		return 0, nil, fmt.Errorf("agent harness: %s %s needs the CLI certificate: %w", method, url, constants.ErrMissingCertificate)
 	}
-	return c.do(ctx, p, method, url, body)
+	return c.doWithClient(ctx, p, method, url, body, c.cliHTTP, "application/json", true)
 }
 
-// do executes a JSON request against the mTLS surface and records it.
+// do executes a JSON request against the mTLS surface with the Operator identity and
+// records it. The persona's CLI session is sent only when the Operator identity is the
+// CLI identity.
 func (c *Client) do(ctx context.Context, p Persona, method, url string, body []byte) (int, []byte, error) {
-	return c.doWithClient(ctx, p, method, url, body, c.http, "application/json")
+	return c.doWithClient(ctx, p, method, url, body, c.http, "application/json", c.operatorIsCLI)
 }
 
-// doWithClient is the core request executor. It is shared by do (operator cert)
-// and doWithCLI (CLI cert) so both paths get identical header/recording logic.
-func (c *Client) doWithClient(ctx context.Context, p Persona, method, url string, body []byte, hc *http.Client, contentType string) (int, []byte, error) {
+// doWithClient is the core request executor. It is shared by do (Operator identity),
+// doWithCLI (CLI identity), and the application client in Deliberate, so every path gets
+// identical header/recording logic. cliIdentity reports whether hc presents the CLI
+// certificate; only then is the persona's CLI session sent.
+func (c *Client) doWithClient(ctx context.Context, p Persona, method, url string, body []byte, hc *http.Client, contentType string, cliIdentity bool) (int, []byte, error) {
 	start := time.Now()
 	var rdr io.Reader
 	if body != nil {
@@ -190,7 +207,7 @@ func (c *Client) doWithClient(ctx context.Context, p Persona, method, url string
 	if p.OperatorSessionID != "" {
 		req.Header.Set("Authorization", "Bearer "+p.OperatorSessionID)
 	}
-	if p.CLISessionID != "" {
+	if cliIdentity && p.CLISessionID != "" {
 		req.Header.Set(constants.HeaderCLISessionID, p.CLISessionID)
 	}
 	if p.UserID != "" {
@@ -300,19 +317,22 @@ func (c *Client) RegisterSigner(ctx context.Context, keyID, pubHex string) error
 	return nil
 }
 
-// SubscribeApprovals opens the approval subscription for the persona's CLI session. It
-// prefers the CLI-cert TLS config, so the SSE subscription is authenticated with the same
-// identity as the notary submit, and falls back to the operator cert when no CLI cert is
-// configured. It returns once the gateway has registered the listener, so it must run
-// before the attended call is submitted.
+// SubscribeApprovals opens the approval subscription for the persona's CLI session over
+// the CLI identity, so the stream is authenticated with the same identity as the notary
+// submit. It fails closed when no CLI certificate is configured or the persona has no CLI
+// session: the Operator identity cannot receive a CLI session's approvals. It returns once
+// the gateway has registered the listener, so it must run before the attended call is
+// submitted.
 func (c *Client) SubscribeApprovals(ctx context.Context, p Persona) (*auth.ApprovalSubscription, error) {
-	sseTLS := c.cliTLS
-	if sseTLS == nil {
-		sseTLS = c.tlsCfg
+	if c.cliTLS == nil {
+		return nil, fmt.Errorf("agent harness: subscribe approvals needs the CLI certificate: %w", constants.ErrMissingCertificate)
+	}
+	if p.CLISessionID == "" {
+		return nil, fmt.Errorf("agent harness: subscribe approvals needs a CLI session: %w", constants.ErrMissingRequiredField)
 	}
 	sseHTTPClient := &http.Client{
 		Timeout:   0,
-		Transport: &http.Transport{TLSClientConfig: sseTLS.Clone()},
+		Transport: &http.Transport{TLSClientConfig: c.cliTLS.Clone()},
 	}
 	return auth.SubscribeApprovals(ctx, sseHTTPClient, c.cfg.PublicBaseURL, p.CLISessionID)
 }

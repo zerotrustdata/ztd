@@ -41,7 +41,7 @@ func TestDiscoverRemoteOperator_SelectsTheActiveDataOperator(t *testing.T) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, constants.APIPaths.Operators, r.URL.Path)
 		assert.Equal(t, "user-1", r.URL.Query().Get("user_id"))
-		assert.Equal(t, "cli-1", r.Header.Get(constants.HeaderCLISessionID))
+		assert.Empty(t, r.Header.Get(constants.HeaderCLISessionID), "discovery runs on the Operator identity, which never carries the CLI session")
 		w.Header().Set("Content-Type", "application/json")
 		_, writeErr := w.Write(body)
 		require.NoError(t, writeErr)

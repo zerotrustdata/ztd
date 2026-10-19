@@ -51,6 +51,7 @@ func deliberateClient(t *testing.T, handler http.HandlerFunc) *Client {
 	var endpoint string
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == constants.APIPaths.AuthPlatformEnrollmentConsensus {
+			assert.Empty(t, r.Header.Get(constants.HeaderCLISessionID), "binding discovery runs on the Operator identity, which never carries the CLI session")
 			_ = json.NewEncoder(w).Encode(models.ConsensusPolicy{Enabled: true, EndpointURL: endpoint})
 			return
 		}

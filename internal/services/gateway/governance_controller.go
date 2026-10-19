@@ -8,12 +8,14 @@
 package gateway
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -28,12 +30,13 @@ import (
 
 // GovernanceController handles governance envelope submission endpoints.
 // EnvProc is injected at construction time; a nil value means envelope
-// submission is not enabled.
+// submission is not enabled. CLISessions is required.
 type GovernanceController struct {
-	cfg       *config.Config
-	logger    *slog.Logger
-	responder *response.Writer
-	envProc   governance.EnvelopeProcessor
+	cfg         *config.Config
+	logger      *slog.Logger
+	responder   *response.Writer
+	envProc     governance.EnvelopeProcessor
+	cliSessions *CLISessionService
 }
 
 // GovernanceControllerDeps groups all dependencies for GovernanceController.
@@ -43,22 +46,32 @@ type GovernanceControllerDeps struct {
 	Logger    *slog.Logger
 	Responder *response.Writer
 	EnvProc   governance.EnvelopeProcessor
+	// CLISessions resolves the cli_session_id an envelope claims when it is
+	// admitted on an Operator or app certificate. Required: a nil service fails
+	// construction with constants.ErrGovernanceCLISessionRequired.
+	CLISessions *CLISessionService
 }
 
-func newGovernanceController(d GovernanceControllerDeps) *GovernanceController {
-	return &GovernanceController{
-		cfg:       d.Cfg,
-		logger:    d.Logger,
-		responder: d.Responder,
-		envProc:   d.EnvProc,
+func newGovernanceController(d GovernanceControllerDeps) (*GovernanceController, error) {
+	if d.CLISessions == nil {
+		return nil, fmt.Errorf("governance controller: %w", constants.ErrGovernanceCLISessionRequired)
 	}
+	return &GovernanceController{
+		cfg:         d.Cfg,
+		logger:      d.Logger,
+		responder:   d.Responder,
+		envProc:     d.EnvProc,
+		cliSessions: d.CLISessions,
+	}, nil
 }
 
 // verifyEnvelopeIdentityBinding enforces transport-to-envelope identity binding
 // (Plan §2). It extracts the mTLS certificate's URI SANs and verifies they match
 // the envelope's internal identity claims (cli_session_id, operator_session_id, operator_id, source_component).
 // This prevents an Agent cert from impersonating another workload's envelope.
-func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
+// A cli_session_id claim that is admitted on an Operator or app certificate
+// (rather than on its own CLI session certificate) is checked by verifyCLISessionClaim.
+func (c *GovernanceController) verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 	// Ensure mTLS is present
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
 		return constants.ErrMTLSRequired
@@ -112,7 +125,7 @@ func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 	// not an Operator binding.
 	if operatorSessionID == "" && operatorID == "" {
 		if isAppRecordWrite(actionType) && actingAppID != "" && isAppComponent(sourceComponent) && certBindsApp(wid, cert.URIs, actingAppID) {
-			return nil
+			return c.verifyCLISessionClaim(r.Context(), authenticatedUserID, cliSessionID, operatorSessionID)
 		}
 		return fmt.Errorf("%w: action %q requires operator_id or operator_session_id binding, or a document write with an acting_app_id matching the app certificate",
 			constants.ErrIdentityBindingFailed, actionType)
@@ -139,7 +152,9 @@ func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 		}
 	}
 
-	// Check if any certificate URI SAN matches the envelope's identity
+	// A certificate that names the claimed CLI session admits the claim by itself.
+	// That pass runs over every URI before any Operator or app match, so an
+	// Operator or app admission below is never mistaken for a CLI-session match.
 	for _, uri := range cert.URIs {
 		spiffeID := uri.String()
 
@@ -155,6 +170,12 @@ func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 				return nil
 			}
 		}
+	}
+
+	// An Operator or app certificate admits the envelope, so the claimed CLI
+	// session must also pass verifyCLISessionClaim before the admission stands.
+	for _, uri := range cert.URIs {
+		spiffeID := uri.String()
 
 		// Operator cert match — requires both fields
 		if operatorSessionID != "" && operatorID != "" {
@@ -163,7 +184,7 @@ func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 			if strings.HasSuffix(spiffeID, "/"+operatorID+"/"+operatorSessionID) {
 				// Verify it's an Operator SPIFFE ID (starts with spiffe://ztd.local/operator/)
 				if strings.HasPrefix(spiffeID, "spiffe://"+protocol.TrustDomain+"/operator/") {
-					return nil
+					return c.verifyCLISessionClaim(r.Context(), authenticatedUserID, cliSessionID, operatorSessionID)
 				}
 			}
 		}
@@ -173,7 +194,7 @@ func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 		// the app identity. CLI/operator sessions are matched above.
 		if actingAppID != "" && isAppComponent(sourceComponent) {
 			if wid.MatchesApp(spiffeID, actingAppID) {
-				return nil
+				return c.verifyCLISessionClaim(r.Context(), authenticatedUserID, cliSessionID, operatorSessionID)
 			}
 		}
 	}
@@ -181,6 +202,39 @@ func verifyEnvelopeIdentityBinding(r *http.Request, envelopeBody []byte) error {
 	// No matching URI SAN found
 	return fmt.Errorf("%w (operator_id=%s, operator_session_id=%s, source_component=%s)",
 		constants.ErrURISANMismatch, operatorID, operatorSessionID, sourceComponent)
+}
+
+// verifyCLISessionClaim checks the cli_session_id an envelope claims when its
+// admission rests on an Operator or app certificate instead of on that
+// session's own certificate. The claim must name a CLI session that is active
+// and unexpired, owned by the authenticated user, and, when the session records
+// operator bindings, bound to the envelope's operator_session_id. A refusal
+// wraps constants.ErrIdentityBindingFailed with the specific reason, which the
+// HTTP layer renders as a 403. An empty claim is not checked.
+func (c *GovernanceController) verifyCLISessionClaim(ctx context.Context, authenticatedUserID, cliSessionID, operatorSessionID string) error {
+	if cliSessionID == "" {
+		return nil
+	}
+	session, err := c.cliSessions.loadCLISession(ctx, cliSessionID)
+	if errors.Is(err, constants.ErrCLISessionNotFound) {
+		return fmt.Errorf("%w: cli_session_id claim names no CLI session: %w", constants.ErrIdentityBindingFailed, err)
+	}
+	if err != nil {
+		return fmt.Errorf("identity binding: load cli_session_id claim: %w", err)
+	}
+	if !session.IsActive {
+		return fmt.Errorf("%w: cli_session_id claim is not active: %w", constants.ErrIdentityBindingFailed, constants.ErrCLISessionInvalid)
+	}
+	if cliSessionExpired(session, time.Now()) {
+		return fmt.Errorf("%w: cli_session_id claim is expired: %w", constants.ErrIdentityBindingFailed, constants.ErrCLISessionExpired)
+	}
+	if authenticatedUserID == "" || session.UserID != authenticatedUserID {
+		return fmt.Errorf("%w: cli_session_id claim is not owned by the authenticated principal: %w", constants.ErrIdentityBindingFailed, constants.ErrCLISessionNotFound)
+	}
+	if len(boundSessionIDsOf(session)) > 0 && !cliSessionBindsOperator(session, operatorSessionID) {
+		return fmt.Errorf("%w: cli_session_id claim is not bound to operator_session_id: %w", constants.ErrIdentityBindingFailed, constants.ErrGatewayCLISessionBindingMismatch)
+	}
+	return nil
 }
 
 // isAppComponent reports whether the envelope's source component is an app
@@ -290,7 +344,7 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 	// Extract mTLS certificate URI SANs and verify they match the envelope's
 	// internal identity claims. This prevents an Agent cert from impersonating
 	// another workload's envelope.
-	if err := verifyEnvelopeIdentityBinding(r, body); err != nil {
+	if err := c.verifyEnvelopeIdentityBinding(r, body); err != nil {
 		c.renderEnvelopeError(w, err)
 		return
 	}

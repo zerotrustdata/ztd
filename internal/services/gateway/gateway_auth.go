@@ -566,7 +566,7 @@ func (s *AuthService) ValidateOperatorCLISessionBinding(ctx context.Context, ope
 		return nil, fmt.Errorf("gateway: auth: unmarshal CLI session binding: %w: %w", err, constants.ErrResponseParseFailed)
 	}
 	checkTime := time.Now()
-	if !cliSession.IsActive || (!cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(checkTime)) || (!cliSession.AbsoluteExpiresAt.IsZero() && cliSession.AbsoluteExpiresAt.Before(checkTime)) || (!cliSession.IdleExpiresAt.IsZero() && cliSession.IdleExpiresAt.Before(checkTime)) {
+	if !cliSession.IsActive || cliSessionExpired(&cliSession, checkTime) {
 		return nil, &AuthError{Message: constants.ErrCLISessionExpired.Error(), Status: http.StatusUnauthorized}
 	}
 	if cliSession.UserID != userID || !cliSessionBindsOperator(&cliSession, operatorSessionID) {
@@ -802,9 +802,7 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 		}
 
 		checkTime := time.Now()
-		if (!cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(checkTime)) ||
-			(!cliSession.AbsoluteExpiresAt.IsZero() && cliSession.AbsoluteExpiresAt.Before(checkTime)) ||
-			(!cliSession.IdleExpiresAt.IsZero() && cliSession.IdleExpiresAt.Before(checkTime)) {
+		if cliSessionExpired(&cliSession, checkTime) {
 			// Session expired. The only paths that may proceed with an
 			// expired session are the refresh and logout endpoints, where
 			// the cert is the proof of identity and the session expiry is
@@ -1144,10 +1142,7 @@ func (s *AuthService) cliCertBoundToOperator(ctx context.Context, certURIs []*ur
 		return false, fmt.Errorf("gateway: auth: unmarshal CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed)
 	}
 	checkTime := time.Now()
-	if !cliSession.IsActive ||
-		(!cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(checkTime)) ||
-		(!cliSession.AbsoluteExpiresAt.IsZero() && cliSession.AbsoluteExpiresAt.Before(checkTime)) ||
-		(!cliSession.IdleExpiresAt.IsZero() && cliSession.IdleExpiresAt.Before(checkTime)) {
+	if !cliSession.IsActive || cliSessionExpired(&cliSession, checkTime) {
 		return false, nil
 	}
 	return cliSessionBindsOperator(&cliSession, operatorSessionID), nil

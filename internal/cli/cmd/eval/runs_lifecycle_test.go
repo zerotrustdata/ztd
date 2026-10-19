@@ -107,11 +107,11 @@ func TestRunsCancel_ReturnsWhenTheHolderExitsBeforeAnyReleasedEvent(t *testing.T
 	// Nothing is delivered on the released or events channels, and the stream stays
 	// open, so only the holder's exit can end the wait.
 	stream := &runEventStream{done: make(chan struct{})}
-	holderExited, err := awaitRunRelease(ctx, nil, nil, stream, holderExit, func() (bool, error) {
+	cleared, err := awaitRunRelease(ctx, nil, nil, stream, holderExit, func() (bool, bool, error) {
 		return settleRunLease(ctx, store, live, "run-a-1")
 	})
 	require.NoError(t, err)
-	assert.True(t, holderExited)
+	assert.True(t, cleared)
 	_, err = store.LoadRunLease(ctx, "run-a-1")
 	assert.True(t, isMissingRecord(err))
 }

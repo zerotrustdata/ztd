@@ -222,6 +222,11 @@ func newHTTPHandler(deps HTTPHandlerDependencies) (*HTTPHandler, error) {
 		return nil, fmt.Errorf("gateway: failed to initialize audit controller: %w", err)
 	}
 
+	governanceController, err := newGovernanceController(deps.GovernanceControllerDeps)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: failed to initialize governance controller: %w", err)
+	}
+
 	h := &HTTPHandler{
 		cfg:                               deps.Cfg,
 		logger:                            deps.Logger,
@@ -245,7 +250,7 @@ func newHTTPHandler(deps HTTPHandlerDependencies) (*HTTPHandler, error) {
 		inferenceDispatchController:       newInferenceDispatchController(deps.InferenceDispatchControllerDeps),
 		sseController:                     newSSEController(deps.SSEControllerDeps),
 		healthController:                  newHealthController(deps.HealthControllerDeps),
-		governanceController:              newGovernanceController(deps.GovernanceControllerDeps),
+		governanceController:              governanceController,
 		observeController:                 newObserveController(deps.ObserveControllerDeps),
 		observeProducerController:         newObserveProducerController(deps.ObserveProducerControllerDeps),
 		publicFeedController:              newPublicFeedController(deps.PublicFeedControllerDeps),

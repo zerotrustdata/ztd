@@ -1370,6 +1370,7 @@ func TestAuthService_CliCertBoundToOperator_SessionMismatch(t *testing.T) {
 		ID:                cliSessionID,
 		UserID:            userID,
 		OperatorSessionID: "op-session-2", // Different Operator session
+		IsActive:          true,
 		ExpiresAt:         time.Now().Add(1 * time.Hour),
 		CreatedAt:         time.Now().UTC(),
 		AbsoluteExpiresAt: time.Now().Add(1 * time.Hour),
@@ -1378,7 +1379,13 @@ func TestAuthService_CliCertBoundToOperator_SessionMismatch(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.GetDocStore().DocSet(t.Context(), "cli_sessions", cliSessionID, cliBytes))
 
-	bound, err := auth.cliCertBoundToOperator(t.Context(), nil, cliSessionID, userID, operatorSessionID)
+	// The certificate names the active session, so only the Operator session
+	// mismatch can refuse the bind.
+	wid := protocol.NewWorkloadIdentity()
+	cliURI, err := wid.CLISPIFFEURL(userID, cliSessionID)
+	require.NoError(t, err)
+
+	bound, err := auth.cliCertBoundToOperator(t.Context(), []*url.URL{cliURI}, cliSessionID, userID, operatorSessionID)
 	require.NoError(t, err)
 	assert.False(t, bound)
 }

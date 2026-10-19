@@ -294,7 +294,7 @@ func TestClient_do(t *testing.T) {
 			},
 		},
 		{
-			name:         "request with CLI session ID",
+			name:         "CLI session ID is not sent on the Operator identity",
 			persona:      Persona{ID: "test-client", CLISessionID: "cli-session-123"},
 			method:       http.MethodGet,
 			body:         nil,
@@ -302,7 +302,7 @@ func TestClient_do(t *testing.T) {
 			responseBody: `{"result": "ok"}`,
 			wantErr:      false,
 			verifyHeaders: map[string]string{
-				constants.HeaderCLISessionID: "cli-session-123",
+				constants.HeaderCLISessionID: "",
 			},
 		},
 		{
@@ -556,13 +556,18 @@ func TestClient_ApprovalSubscription_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
+	client, err := New(config.Config{
+		PublicBaseURL: srv.URL,
+		MTLSBaseURL:   srv.URL,
+		Auth:          config.Auth{},
+		CLIAuth:       config.Auth{ClientCert: "/cli/cert", ClientKey: "/cli/key"},
+	})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	sub, err := client.SubscribeApprovals(ctx, Persona{ID: "test"})
+	sub, err := client.SubscribeApprovals(ctx, Persona{ID: "test", CLISessionID: "cli-approval-session"})
 	require.NoError(t, err)
 	defer sub.Close()
 
@@ -594,7 +599,12 @@ func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
+	client, err := New(config.Config{
+		PublicBaseURL: srv.URL,
+		MTLSBaseURL:   srv.URL,
+		Auth:          config.Auth{},
+		CLIAuth:       config.Auth{ClientCert: "/cli/cert", ClientKey: "/cli/key"},
+	})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -622,8 +632,10 @@ func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
 
 func TestMCPToolsCallWithCLI_RoutesThroughCLI(t *testing.T) {
 	var sawRequest bool
+	var cliSession string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sawRequest = true
+		cliSession = r.Header.Get(constants.HeaderCLISessionID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
@@ -644,34 +656,10 @@ func TestMCPToolsCallWithCLI_RoutesThroughCLI(t *testing.T) {
 	assert.NotNil(t, c.cliHTTP, "cliHTTP must be non-nil for MCPToolsCallWithCLI to route through it")
 
 	ctx := context.Background()
-	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, mcp.CallToolRequest{Name: (&mcp.FileReadTool{}).Name(), Arguments: mustJSON(t, mcp.FileReadRequest{Path: "."})})
+	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test", CLISessionID: "cli-1"}, mcp.CallToolRequest{Name: (&mcp.FileReadTool{}).Name(), Arguments: mustJSON(t, mcp.FileReadRequest{Path: "."})})
 	require.NoError(t, err)
 	assert.True(t, sawRequest, "server should have received the request")
-}
-
-func TestMCPToolsCallWithCLI_FallsBackToDoWhenNoCLIHTTP(t *testing.T) {
-	var sawRequest bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sawRequest = true
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
-	}))
-	defer srv.Close()
-
-	cfg := config.Config{
-		MTLSBaseURL: srv.URL,
-		Auth:        config.Auth{},
-	}
-
-	c, err := New(cfg)
-	require.NoError(t, err)
-	assert.Nil(t, c.cliHTTP, "cliHTTP should be nil — fallback to do() expected")
-
-	ctx := context.Background()
-	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, mcp.CallToolRequest{Name: (&mcp.FileReadTool{}).Name(), Arguments: mustJSON(t, mcp.FileReadRequest{Path: "."})})
-	require.NoError(t, err)
-	assert.True(t, sawRequest, "server should have received the fallback request")
+	assert.Equal(t, "cli-1", cliSession, "the CLI identity carries the persona's CLI session")
 }
 
 func TestStateRoot_DecodesGatewayField(t *testing.T) {

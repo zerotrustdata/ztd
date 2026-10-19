@@ -46,7 +46,7 @@ func (c *Client) Deliberate(ctx context.Context, p Persona, env *commonv1.Govern
 	// A redirect must not send it to a different endpoint or downgrade TLS.
 	appClient := *c.http
 	appClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	status, raw, err = c.doWithClient(ctx, Persona{ID: p.ID, UserAgent: p.UserAgent}, http.MethodPost, binding.EndpointURL, wire, &appClient, "application/x-protobuf")
+	status, raw, err = c.doWithClient(ctx, Persona{ID: p.ID, UserAgent: p.UserAgent}, http.MethodPost, binding.EndpointURL, wire, &appClient, "application/x-protobuf", false)
 	if err != nil {
 		return nil, fmt.Errorf("deliberate: post envelope: %w: %w", constants.ErrIngressL2DeliberationFailed, err)
 	}

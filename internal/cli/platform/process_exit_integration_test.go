@@ -59,3 +59,22 @@ func TestWaitForProcessExit_ReturnsAtOnceForAGoneProcess(t *testing.T) {
 	defer cancel()
 	require.NoError(t, WaitForProcessExit(ctx, pid))
 }
+
+// A watch outlives its first wait: it times out while the child lives, and it
+// keeps reporting the exit on every later wait once the child is killed.
+func TestWaitForProcessExit_WatchReportsTheExitOnEveryWait(t *testing.T) {
+	cmd := startReexecChild(t, "hold")
+	watch, err := WatchProcessExit(cmd.Process.Pid)
+	require.NoError(t, err)
+	defer func() { _ = watch.Close() }()
+
+	expired, cancelExpired := context.WithTimeout(context.Background(), 0)
+	defer cancelExpired()
+	require.ErrorIs(t, watch.Wait(expired), context.DeadlineExceeded)
+
+	require.NoError(t, cmd.Process.Kill())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	require.NoError(t, watch.Wait(ctx))
+	require.NoError(t, watch.Wait(expired))
+}

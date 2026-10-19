@@ -16,26 +16,36 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"golang.org/x/sys/unix"
 )
 
-// WaitForProcessExit blocks until the process with pid has exited and returns
-// nil. It returns ctx.Err() when ctx ends first, and an error when the exit
-// cannot be observed. A process that is already gone returns nil at once.
-//
-// The kernel reports the exit on a pidfd, which refers to the process that held
-// pid when the wait began, so a PID reused later does not end the wait. The wait
-// is one blocking poll(2) on the pidfd and an eventfd that ctx ends by writing
-// to. No timer or sleep runs.
-func WaitForProcessExit(ctx context.Context, pid int) error {
+// ProcessExitWatch observes one process through a pidfd. The pidfd refers to the
+// process that held the PID when the watch opened, so a PID reused later does
+// not redirect the wait.
+type ProcessExitWatch struct {
+	pid   int
+	pidfd int
+}
+
+// WatchProcessExit opens an exit watch on pid. It returns an error wrapping
+// constants.ErrProcessNotFound when no process has that PID.
+func WatchProcessExit(pid int) (*ProcessExitWatch, error) {
 	pidfd, err := unix.PidfdOpen(pid, 0)
 	if errors.Is(err, unix.ESRCH) {
-		return nil
+		return nil, fmt.Errorf("platform: watch PID %d exit: %w", pid, constants.ErrProcessNotFound)
 	}
 	if err != nil {
-		return fmt.Errorf("platform: open pidfd for PID %d: %w", pid, err)
+		return nil, fmt.Errorf("platform: open pidfd for PID %d: %w", pid, err)
 	}
-	defer func() { _ = unix.Close(pidfd) }()
+	return &ProcessExitWatch{pid: pid, pidfd: pidfd}, nil
+}
+
+// Wait blocks until the watched process has exited and returns nil. It returns
+// ctx.Err() when ctx ends first, and an error when the exit cannot be observed.
+// The wait is one blocking poll(2) on the pidfd and an eventfd that ctx ends by
+// writing to. No timer or sleep runs.
+func (w *ProcessExitWatch) Wait(ctx context.Context) error {
 	wake, err := unix.Eventfd(0, unix.EFD_CLOEXEC)
 	if err != nil {
 		return fmt.Errorf("platform: create wake fd: %w", err)
@@ -43,7 +53,7 @@ func WaitForProcessExit(ctx context.Context, pid int) error {
 	defer func() { _ = unix.Close(wake) }()
 
 	// The waker writes to the eventfd only while this call waits. The waker ends
-	// before the fds close, so a write can never reach a reused descriptor.
+	// before the eventfd closes, so a write can never reach a reused descriptor.
 	done := make(chan struct{})
 	var waker sync.WaitGroup
 	waker.Add(1)
@@ -58,7 +68,7 @@ func WaitForProcessExit(ctx context.Context, pid int) error {
 		}
 	}()
 
-	fds := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}, {Fd: int32(wake), Events: unix.POLLIN}}
+	fds := []unix.PollFd{{Fd: int32(w.pidfd), Events: unix.POLLIN}, {Fd: int32(wake), Events: unix.POLLIN}}
 	for {
 		_, err = unix.Poll(fds, -1)
 		if errors.Is(err, unix.EINTR) {
@@ -69,10 +79,15 @@ func WaitForProcessExit(ctx context.Context, pid int) error {
 	close(done)
 	waker.Wait()
 	if err != nil {
-		return fmt.Errorf("platform: wait for PID %d: %w", pid, err)
+		return fmt.Errorf("platform: wait for PID %d: %w", w.pid, err)
 	}
 	if fds[0].Revents != 0 {
 		return nil
 	}
 	return ctx.Err()
+}
+
+// Close releases the pidfd. The watch must not be waited on afterwards.
+func (w *ProcessExitWatch) Close() error {
+	return unix.Close(w.pidfd)
 }

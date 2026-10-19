@@ -15,14 +15,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 	"unsafe"
 
+	"github.com/zerotrustdata/ztd/internal/cli/platform"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"golang.org/x/sys/windows"
 )
 
+// localOperatorProcessAccess is the handle the stop path inspects identity
+// through and terminates with. Exit waits go through the platform watch.
 const localOperatorProcessAccess = windows.PROCESS_QUERY_LIMITED_INFORMATION | windows.PROCESS_VM_READ |
-	windows.SYNCHRONIZE | windows.PROCESS_TERMINATE
+	windows.PROCESS_TERMINATE
 
 // Hold a process handle before inspecting identity so PID reuse cannot
 // redirect termination. Inspect argv tokens, never a substring of a shell
@@ -51,9 +54,22 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 		if openErr != nil {
 			continue
 		}
-		p, ok := inspectLocalOperator(handle, pid, self.User.Sid)
+		watch, watchErr := platform.WatchProcessExit(pid)
+		if errors.Is(watchErr, constants.ErrProcessNotFound) {
+			_ = windows.CloseHandle(handle)
+			continue
+		}
+		if watchErr != nil {
+			_ = windows.CloseHandle(handle)
+			for _, p := range processes {
+				p.close()
+			}
+			return nil, fmt.Errorf("operator stop: watch PID %d: %w", pid, watchErr)
+		}
+		p, ok := inspectLocalOperator(handle, watch, pid, self.User.Sid)
 		if !ok {
 			_ = windows.CloseHandle(handle)
+			_ = watch.Close()
 			continue
 		}
 		processes = append(processes, p)
@@ -67,7 +83,7 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 	return processes, nil
 }
 
-func inspectLocalOperator(handle windows.Handle, pid int, owner *windows.SID) (localOperatorProcess, bool) {
+func inspectLocalOperator(handle windows.Handle, watch *platform.ProcessExitWatch, pid int, owner *windows.SID) (localOperatorProcess, bool) {
 	if !processOwnedBy(handle, owner) {
 		return localOperatorProcess{}, false
 	}
@@ -86,24 +102,13 @@ func inspectLocalOperator(handle windows.Handle, pid int, owner *windows.SID) (l
 		return localOperatorProcess{}, false
 	}
 	dir := localOperatorDir(args, cwd)
-	wait := func(timeout time.Duration) (bool, error) {
-		ms := uint32(min(timeout.Milliseconds(), int64(windows.INFINITE-1)))
-		if timeout > 0 && ms == 0 {
-			ms = 1
-		}
-		event, err := windows.WaitForSingleObject(handle, ms)
-		switch {
-		case err != nil:
-			return false, err
-		case event == windows.WAIT_OBJECT_0:
-			return true, nil
-		default:
-			return false, nil
-		}
-	}
+	wait := exitWait(watch)
 	return localOperatorProcess{
 		pid: pid, dir: dir, sessionID: localOperatorSessionID(dir),
-		close: func() { _ = windows.CloseHandle(handle) },
+		close: func() {
+			_ = windows.CloseHandle(handle)
+			_ = watch.Close()
+		},
 		// Windows has no catchable TERM for a process outside this console. The
 		// governed shutdown request is the graceful path, so both escalation
 		// steps terminate the process through the held handle.

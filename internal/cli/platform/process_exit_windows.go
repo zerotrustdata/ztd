@@ -15,24 +15,35 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"golang.org/x/sys/windows"
 )
 
-// WaitForProcessExit blocks until the process with pid has exited and returns
-// nil. It returns ctx.Err() when ctx ends first, and an error when the exit
-// cannot be observed. A process that is already gone returns nil at once.
-//
-// The wait is WaitForMultipleObjects on the process handle and a manual-reset
-// event that ctx sets. No timer runs.
-func WaitForProcessExit(ctx context.Context, pid int) error {
+// ProcessExitWatch observes one process through a SYNCHRONIZE handle. The handle
+// pins the process object, so the PID cannot be reused while the watch is open.
+type ProcessExitWatch struct {
+	pid    int
+	handle windows.Handle
+}
+
+// WatchProcessExit opens an exit watch on pid. It returns an error wrapping
+// constants.ErrProcessNotFound when no process has that PID.
+func WatchProcessExit(pid int) (*ProcessExitWatch, error) {
 	handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
 	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
-		return nil
+		return nil, fmt.Errorf("platform: watch PID %d exit: %w", pid, constants.ErrProcessNotFound)
 	}
 	if err != nil {
-		return fmt.Errorf("platform: open PID %d: %w", pid, err)
+		return nil, fmt.Errorf("platform: open PID %d: %w", pid, err)
 	}
-	defer func() { _ = windows.CloseHandle(handle) }()
+	return &ProcessExitWatch{pid: pid, handle: handle}, nil
+}
+
+// Wait blocks until the watched process has exited and returns nil. It returns
+// ctx.Err() when ctx ends first, and an error when the exit cannot be observed.
+// The wait is WaitForMultipleObjects on the process handle and a manual-reset
+// event that ctx sets. No timer runs.
+func (w *ProcessExitWatch) Wait(ctx context.Context) error {
 	wake, err := windows.CreateEvent(nil, 1, 0, nil)
 	if err != nil {
 		return fmt.Errorf("platform: create wake event: %w", err)
@@ -40,7 +51,7 @@ func WaitForProcessExit(ctx context.Context, pid int) error {
 	defer func() { _ = windows.CloseHandle(wake) }()
 
 	// The waker sets the event only while this call waits. The waker ends before
-	// the handles close.
+	// the event closes.
 	done := make(chan struct{})
 	var waker sync.WaitGroup
 	waker.Add(1)
@@ -53,11 +64,11 @@ func WaitForProcessExit(ctx context.Context, pid int) error {
 		}
 	}()
 
-	event, err := windows.WaitForMultipleObjects([]windows.Handle{handle, wake}, false, windows.INFINITE)
+	event, err := windows.WaitForMultipleObjects([]windows.Handle{w.handle, wake}, false, windows.INFINITE)
 	close(done)
 	waker.Wait()
 	if err != nil {
-		return fmt.Errorf("platform: wait for PID %d: %w", pid, err)
+		return fmt.Errorf("platform: wait for PID %d: %w", w.pid, err)
 	}
 	switch event {
 	case windows.WAIT_OBJECT_0:
@@ -65,6 +76,11 @@ func WaitForProcessExit(ctx context.Context, pid int) error {
 	case windows.WAIT_OBJECT_0 + 1:
 		return ctx.Err()
 	default:
-		return fmt.Errorf("platform: wait for PID %d: unexpected wait result %d", pid, event)
+		return fmt.Errorf("platform: wait for PID %d: unexpected wait result %d", w.pid, event)
 	}
+}
+
+// Close releases the process handle. The watch must not be waited on afterwards.
+func (w *ProcessExitWatch) Close() error {
+	return windows.CloseHandle(w.handle)
 }

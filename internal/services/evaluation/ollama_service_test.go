@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -76,4 +77,37 @@ func TestValidateOllamaModelCommandResult_RejectsNonzeroExit(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
+}
+
+// residencyOllamaModelCommandDispatcher answers every typed residency query with
+// the same resident set and counts the queries it received.
+type residencyOllamaModelCommandDispatcher struct {
+	residentTags []string
+	reads        int
+}
+
+func (d *residencyOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ context.Context, request OllamaModelCommandDispatchRequest) (*OllamaModelCommandDispatchResult, error) {
+	d.reads++
+	residency := &operatorv1.OllamaModelResidencyResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	for _, tag := range d.residentTags {
+		residency.Models = append(residency.Models, &operatorv1.OllamaModelResidencyModel{Name: tag})
+	}
+	return &OllamaModelCommandDispatchResult{Status: 200, Success: true, ActionType: request.ActionType, ResidencyResult: residency}, nil
+}
+
+func TestVerifyOllamaModelsAbsent_PassesAfterSingleResidencyRead(t *testing.T) {
+	t.Parallel()
+	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "inference-session", NewID: func(prefix string) string { return prefix + "-id" }}
+	dispatcher := &residencyOllamaModelCommandDispatcher{residentTags: []string{"other:1b"}}
+	require.NoError(t, VerifyOllamaModelsAbsent(context.Background(), dispatcher, maintenance, []string{"qwen3:0.6b"}))
+	assert.Equal(t, 1, dispatcher.reads)
+}
+
+func TestVerifyOllamaModelsAbsent_FailsClosedWhileModelResident(t *testing.T) {
+	t.Parallel()
+	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "inference-session", NewID: func(prefix string) string { return prefix + "-id" }}
+	dispatcher := &residencyOllamaModelCommandDispatcher{residentTags: []string{"qwen3:0.6b"}}
+	err := VerifyOllamaModelsAbsent(context.Background(), dispatcher, maintenance, []string{"qwen3:0.6b"})
+	require.ErrorIs(t, err, constants.ErrInferenceModelReleaseFailed)
+	assert.Equal(t, 1, dispatcher.reads)
 }
