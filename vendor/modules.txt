@@ -212,7 +212,7 @@ github.com/go-webauthn/x/crypto/secp256k1
 github.com/go-webauthn/x/crypto/secp256k1/ecdsa
 github.com/go-webauthn/x/encoding/asn1
 github.com/go-webauthn/x/revoke
-# github.com/godbus/dbus/v5 v5.2.3
+# github.com/godbus/dbus/v5 v5.2.4
 ## explicit; go 1.20
 github.com/godbus/dbus/v5
 # github.com/golang-jwt/jwt/v5 v5.3.1
