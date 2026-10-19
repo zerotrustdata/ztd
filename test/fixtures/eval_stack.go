@@ -11,12 +11,18 @@ package fixtures
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/api"
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // EvalStackOptions configures the production-shaped eval fixture.
@@ -93,6 +99,25 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 		Data: data, Inference: inference, DataHost: dataHost,
 		InferenceHost: inferenceHost, Provider: provider,
 	}
+}
+
+// EnrollEvalAppIdentity enrolls the ztd-eval application identity through the
+// production app enrollment client. The authenticated owner's CLI identity
+// approves the request, the same way the eval runner's own enrollment does.
+// The CLI runtime must already be installed in fileSvc/cfg
+// (ClientIdentity.InstallCLIRuntime).
+func (s *EvalStack) EnrollEvalAppIdentity(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.Config) {
+	t.Helper()
+	ownerClient, err := api.NewClient(fileSvc, cfg)
+	require.NoError(t, err)
+	enroller, err := auth.NewAppPlatformEnrollmentClient(constants.EvaluationAppName, fileSvc, cfg, slog.Default(), auth.AppEnrollmentOptions{
+		Approver: auth.OwnerAppEnrollmentApprover(ownerClient, "ztd eval: enrolled by the authenticated owner"),
+	})
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	t.Cleanup(cancel)
+	_, err = enroller.Enroll(ctx, io.Discard)
+	require.NoError(t, err)
 }
 
 // RequireOutboundMTLS verifies that the witness observed this Operator's

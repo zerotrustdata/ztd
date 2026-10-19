@@ -8,13 +8,88 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"time"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 )
+
+// PlatformEnrollmentDecisionClient is the authenticated owner CLI client a
+// platform enrollment decision is read and posted through.
+type PlatformEnrollmentDecisionClient interface {
+	Get(path string) ([]byte, error)
+	Post(path string, body interface{}) ([]byte, error)
+}
+
+// PostPlatformEnrollmentBatchDecision sends one atomic, governed decision.
+func PostPlatformEnrollmentBatchDecision(client PlatformEnrollmentDecisionClient, req models.PlatformEnrollmentBatchDecisionRequest) (*models.PlatformEnrollmentBatchDecisionResponse, error) {
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("validate batch decision: %w", err)
+	}
+	body, err := client.Post(constants.APIPaths.AuthPlatformEnrollmentBatchDecision, req)
+	if err != nil {
+		return nil, fmt.Errorf("post batch decision: %w", err)
+	}
+	var suspension models.PlatformEnrollmentL3SuspensionResponse
+	if err := json.Unmarshal(body, &suspension); err == nil && suspension.Status == models.PlatformEnrollmentStatusL3Required {
+		return nil, &models.PlatformEnrollmentL3RequiredError{Suspension: suspension}
+	}
+	var resp models.PlatformEnrollmentBatchDecisionResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("decode batch decision: %w", err)
+	}
+	if len(resp.Requests) != len(req.Requests) || resp.ReceiptID == "" {
+		return nil, constants.ErrPlatformEnrollmentInvalidDecision
+	}
+	for i, result := range resp.Requests {
+		expected := models.PlatformEnrollmentStateApproved
+		if req.Decision == models.PlatformEnrollmentDecisionDeny {
+			expected = models.PlatformEnrollmentStateDenied
+		}
+		if result.RequestID != req.Requests[i].RequestID || result.State != expected {
+			return nil, constants.ErrPlatformEnrollmentInvalidDecision
+		}
+	}
+	return &resp, nil
+}
+
+// OwnerAppEnrollmentApprover approves an application's own pending platform
+// enrollment request with the authenticated owner CLI identity behind client.
+// It decides only the named request, and only when the pending snapshot is an
+// application request whose app CSR fingerprint matches the key the requester
+// generated. A request that is no longer pending is left alone; the
+// requester's status check reports its outcome.
+func OwnerAppEnrollmentApprover(client PlatformEnrollmentDecisionClient, reason string) AppEnrollmentApprover {
+	return func(_ context.Context, target models.PlatformEnrollmentDecisionTarget) error {
+		body, err := client.Get(constants.APIPaths.AuthPlatformEnrollmentPending)
+		if err != nil {
+			return fmt.Errorf("fetch pending list: %w", err)
+		}
+		var pending models.PlatformEnrollmentPendingResponse
+		if err := json.Unmarshal(body, &pending); err != nil {
+			return fmt.Errorf("parse pending list: %w", err)
+		}
+		for _, req := range pending.Requests {
+			if req.RequestID != target.RequestID {
+				continue
+			}
+			if req.ComponentKind != models.PlatformComponentApplication || req.Fingerprints != target.Fingerprints {
+				return fmt.Errorf("%w: request %s", constants.ErrPlatformEnrollmentCSRMismatch, req.RequestID)
+			}
+			_, err := PostPlatformEnrollmentBatchDecision(client, models.PlatformEnrollmentBatchDecisionRequest{
+				Requests: []models.PlatformEnrollmentDecisionTarget{target},
+				Decision: models.PlatformEnrollmentDecisionApprove,
+				Reason:   reason,
+			})
+			return err
+		}
+		return nil
+	}
+}
 
 // WritePlatformEnrollmentSuspension describes a pending L3 decision without
 // claiming the governed mutation has completed.

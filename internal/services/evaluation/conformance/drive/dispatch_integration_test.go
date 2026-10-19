@@ -11,12 +11,7 @@ package drive
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,13 +19,9 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
-	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func newTestDispatch(t *testing.T, c *client.Client) *Dispatch {

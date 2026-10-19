@@ -21,9 +21,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
@@ -87,6 +91,38 @@ func TestEvalStackUsesDistinctOutboundOperatorRoots(t *testing.T) {
 	})
 	stack.RequireOutboundMTLS(t, stack.Data)
 	stack.RequireOutboundMTLS(t, stack.Inference)
+}
+
+// TestEvalStackEnrollsEvalAppIdentity verifies the ztd-eval application
+// identity enrolls through production app enrollment under every posture the
+// rig supports, with the authenticated owner's CLI approving the request.
+func TestEvalStackEnrollsEvalAppIdentity(t *testing.T) {
+	for _, posture := range []constants.Posture{constants.PostureDoctrine, constants.PostureRatify, constants.PostureNotary} {
+		t.Run(string(posture), func(t *testing.T) {
+			stack := NewEvalStack(t, EvalStackOptions{Posture: posture})
+			logger := testutil.NewTestLogger()
+			root := testutil.TempDir(t)
+			keyring := keystoretest.NewMemoryKeyring()
+			cfg, err := config.Load(root)
+			require.NoError(t, err)
+			cfg.Keyring = keyring
+			fileSvc, err := fs.NewRuntimeFileService(root, logger)
+			require.NoError(t, err)
+			require.NoError(t, fileSvc.CreateRuntimeTree(t.Context()))
+			keyStore, err := keystore.NewWithKeyringAndFS(logger, keyring, fileSvc)
+			require.NoError(t, err)
+			require.NoError(t, keyStore.Initialize())
+			require.NoError(t, keyStore.InitVault())
+			stack.Identity.InstallCLIRuntime(t, stack.Gateway, fileSvc, cfg)
+
+			_, err = auth.LoadAppIdentity(fileSvc, cfg, constants.EvaluationAppName)
+			require.Error(t, err, "the app identity must not exist before enrollment")
+			stack.EnrollEvalAppIdentity(t, fileSvc, cfg)
+			cert, err := auth.LoadAppIdentity(fileSvc, cfg, constants.EvaluationAppName)
+			require.NoError(t, err)
+			require.NotEmpty(t, cert.Certificate)
+		})
+	}
 }
 
 // TestEvalStackPublishesGatewayFeedToAnonymousMirror verifies the optional

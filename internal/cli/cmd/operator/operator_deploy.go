@@ -800,7 +800,7 @@ func enrollDeployedOperators(ctx context.Context, client authcmd.APIClient, ops 
 			for _, i := range wave {
 				req.Requests = append(req.Requests, targets[ops[i].RequestID])
 			}
-			if _, err := authcmd.PostPlatformEnrollmentBatchDecision(client, req); err != nil {
+			if _, err := auth.PostPlatformEnrollmentBatchDecision(client, req); err != nil {
 				var l3Err *models.PlatformEnrollmentL3RequiredError
 				if !errors.As(err, &l3Err) {
 					return fmt.Errorf("operator deploy: approve staged cohort (%d of %d approved): %w", approved, len(targets), err)

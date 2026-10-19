@@ -5,7 +5,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-package authcmd
+package auth_test
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -50,7 +51,7 @@ func TestOwnerAppEnrollmentApprover_ApprovesMatchingRequest(t *testing.T) {
 		PostResp: decision,
 	}
 
-	require.NoError(t, OwnerAppEnrollmentApprover(client, "note")(context.Background(), target))
+	require.NoError(t, auth.OwnerAppEnrollmentApprover(client, "note")(context.Background(), target))
 
 	require.Len(t, client.PostCalls, 1)
 	assert.Equal(t, constants.APIPaths.AuthPlatformEnrollmentBatchDecision, client.PostCalls[0].Path)
@@ -69,7 +70,7 @@ func TestOwnerAppEnrollmentApprover_RejectsFingerprintMismatch(t *testing.T) {
 		Fingerprints:  models.PlatformEnrollmentCSRFingerprints{App: "sha256:other"},
 	})}
 
-	err := OwnerAppEnrollmentApprover(client, "")(context.Background(), target)
+	err := auth.OwnerAppEnrollmentApprover(client, "")(context.Background(), target)
 
 	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentCSRMismatch)
 	assert.Empty(t, client.PostCalls)
@@ -82,7 +83,7 @@ func TestOwnerAppEnrollmentApprover_RejectsSigningFingerprintMismatch(t *testing
 		RequestID: target.RequestID, ComponentKind: models.PlatformComponentApplication,
 		Fingerprints: models.PlatformEnrollmentCSRFingerprints{App: target.Fingerprints.App, SigningKey: "substituted-signing-key"},
 	})}
-	require.ErrorIs(t, OwnerAppEnrollmentApprover(client, "")(t.Context(), target), constants.ErrPlatformEnrollmentCSRMismatch)
+	require.ErrorIs(t, auth.OwnerAppEnrollmentApprover(client, "")(t.Context(), target), constants.ErrPlatformEnrollmentCSRMismatch)
 	require.Empty(t, client.PostCalls)
 }
 
@@ -94,7 +95,7 @@ func TestOwnerAppEnrollmentApprover_RejectsNonApplicationRequest(t *testing.T) {
 		Fingerprints:  target.Fingerprints,
 	})}
 
-	err := OwnerAppEnrollmentApprover(client, "")(context.Background(), target)
+	err := auth.OwnerAppEnrollmentApprover(client, "")(context.Background(), target)
 
 	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentCSRMismatch)
 	assert.Empty(t, client.PostCalls)
@@ -103,6 +104,6 @@ func TestOwnerAppEnrollmentApprover_RejectsNonApplicationRequest(t *testing.T) {
 func TestOwnerAppEnrollmentApprover_LeavesDecidedRequestAlone(t *testing.T) {
 	client := &cmdtest.MockAPIClient{GetResp: ownerApproverPending(t)}
 
-	require.NoError(t, OwnerAppEnrollmentApprover(client, "")(context.Background(), ownerApproverTarget()))
+	require.NoError(t, auth.OwnerAppEnrollmentApprover(client, "")(context.Background(), ownerApproverTarget()))
 	assert.Empty(t, client.PostCalls)
 }

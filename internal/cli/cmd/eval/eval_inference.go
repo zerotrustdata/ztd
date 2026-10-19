@@ -22,7 +22,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
-	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -319,7 +318,7 @@ func enrollEvalAppIdentity(ctx context.Context, out io.Writer, fileSvc fs.Runtim
 		return fmt.Errorf("owner API client: %w", err)
 	}
 	enroller, err := auth.NewAppPlatformEnrollmentClient(constants.EvaluationAppName, fileSvc, cfg, slog.Default(), auth.AppEnrollmentOptions{
-		Approver: authcmd.OwnerAppEnrollmentApprover(ownerClient, "ztd eval: enrolled by the authenticated owner"),
+		Approver: auth.OwnerAppEnrollmentApprover(ownerClient, "ztd eval: enrolled by the authenticated owner"),
 	})
 	if err != nil {
 		return err

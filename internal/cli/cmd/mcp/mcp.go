@@ -1053,7 +1053,7 @@ func agentAppEnrollmentOptions(fileSvc fs.RuntimeFileService, cfg *config.Config
 		return auth.AppEnrollmentOptions{}, fmt.Errorf("owner API client: %w", err)
 	}
 	return auth.AppEnrollmentOptions{
-		Approver: authcmd.OwnerAppEnrollmentApprover(ownerClient, "ztd mcp agent run: enrolled by the authenticated owner"),
+		Approver: auth.OwnerAppEnrollmentApprover(ownerClient, "ztd mcp agent run: enrolled by the authenticated owner"),
 	}, nil
 }
 
