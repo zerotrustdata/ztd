@@ -60,7 +60,8 @@ type Config struct {
 	// host user's identity onto the suspended transaction. When it differs from
 	// Auth, the harness client builds a second http.Client with this cert pair.
 	// When it names the same certificate as Auth, one client serves both. Requests
-	// made with Auth alone never carry the CLI session.
+	// made with Auth alone never carry the CLI session. Any material named here must
+	// load, or building the harness client fails.
 	CLIAuth Auth `json:"cli_auth"`
 
 	// OperatorSessionID scopes audit receipt queries to the real Operator that

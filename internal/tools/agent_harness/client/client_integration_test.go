@@ -560,7 +560,7 @@ func TestClient_ApprovalSubscription_Success(t *testing.T) {
 		PublicBaseURL: srv.URL,
 		MTLSBaseURL:   srv.URL,
 		Auth:          config.Auth{},
-		CLIAuth:       config.Auth{ClientCert: "/cli/cert", ClientKey: "/cli/key"},
+		CLIAuth:       writeIdentity(t, "cli"),
 	})
 	require.NoError(t, err)
 
@@ -603,7 +603,7 @@ func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
 		PublicBaseURL: srv.URL,
 		MTLSBaseURL:   srv.URL,
 		Auth:          config.Auth{},
-		CLIAuth:       config.Auth{ClientCert: "/cli/cert", ClientKey: "/cli/key"},
+		CLIAuth:       writeIdentity(t, "cli"),
 	})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -645,10 +645,7 @@ func TestMCPToolsCallWithCLI_RoutesThroughCLI(t *testing.T) {
 	cfg := config.Config{
 		MTLSBaseURL: srv.URL,
 		Auth:        config.Auth{},
-		CLIAuth: config.Auth{
-			ClientCert: "/cli/cert",
-			ClientKey:  "/cli/key",
-		},
+		CLIAuth:     writeIdentity(t, "cli"),
 	}
 
 	c, err := New(cfg)

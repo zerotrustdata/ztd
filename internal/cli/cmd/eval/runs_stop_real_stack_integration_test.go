@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,21 +21,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/cli/auth"
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
-	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
-	"github.com/zerotrustdata/ztd/internal/services/keystore"
-	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
-	"github.com/zerotrustdata/ztd/internal/testutil"
-	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
-	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
-	"github.com/zerotrustdata/ztd/internal/uuid"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	"github.com/zerotrustdata/ztd/test/fixtures"
 )
 
 const (
@@ -44,107 +32,25 @@ const (
 	stopRealStackRunID      = "real-stop-run"
 )
 
-// stopRealStackRun is a two-assignment run on the real stack, prepared and not
-// yet executing. Its process boundary is a fake, so a cancel signals no real
+// newStopRealStackRun prepares a two-assignment doctrine run on the real stack,
+// not yet executing. Its process boundary is a fake, so a cancel signals no real
 // process: the executing run and the cancel share this test's process.
-type stopRealStackRun struct {
-	ctx     context.Context
-	root    string
-	stack   *fixtures.EvalStack
-	deps    nativeEvalDeps
-	cfg     *config.Config
-	fileSvc fs.RuntimeFileService
-}
-
-func newStopRealStackRun(t *testing.T) *stopRealStackRun {
+func newStopRealStackRun(t *testing.T) *realStackRun {
 	t.Helper()
-	// The version context is what the root command attaches; run start reads the
-	// platform release from it.
-	ctx, cancel := context.WithTimeout(testVersionContext(), 3*time.Minute)
-	t.Cleanup(cancel)
-	root := testutil.TempDir(t)
-	keyring := keystoretest.NewMemoryKeyring()
-	cfgLoader := func(projectRoot string) (*config.Config, error) {
-		cfg, err := config.Load(projectRoot)
-		if err != nil {
-			return nil, err
-		}
-		cfg.Keyring = keyring
-		return cfg, nil
-	}
-	deps := nativeEvalDeps{
-		configLoader:         cfgLoader,
-		fileSvcFactory:       shared.EvidenceFileSvcFactory(keystore.Options{Keyring: keyring}),
-		createRuntimeTree:    func(ctx context.Context, fileSvc fs.RuntimeFileService) error { return fileSvc.CreateRuntimeTree(ctx) },
-		clientFactory:        func(cfg harnessconfig.Config) (*harnessclient.Client, error) { return harnessclient.New(cfg) },
-		authLoader:           auth.LoadClientAuthContext,
-		bindClientFactory:    defaultEvalBindClient,
-		agentExecutorFactory: newProductionCampaignAgentExecutor,
-		appEnroller:          enrollEvalAppIdentity,
-		runControl:           testRunControl(newFakeProcessControl()),
-		now:                  time.Now,
-		newID:                uuid.NewString,
-	}
-
-	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{
-		Replies: []fixtures.OllamaReply{{Content: "READY"}, {Content: "READY"}},
-	})
-	fileSvc, err := fs.NewRuntimeFileService(root, slog.Default())
-	require.NoError(t, err)
-	require.NoError(t, fileSvc.CreateRuntimeTree(ctx))
-	keyStore, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
-	require.NoError(t, err)
-	require.NoError(t, keyStore.Initialize())
-	require.NoError(t, keyStore.InitVault())
-	cfg, err := cfgLoader(root)
-	require.NoError(t, err)
-	stack.Identity.InstallCLIRuntime(t, stack.Gateway, fileSvc, cfg)
-	writeTestFrozenInventory(t, root, testQwenVariant())
-	dataWorkload, err := stack.Data.Workload()
-	require.NoError(t, err)
-
-	// One scenario repeated twice: two model-role assignments, each one model turn.
-	suite := evaluation.DefaultScenarioSuite()
-	suite.ID = "real-stop-suite"
-	suite.Version = evaluation.SuiteSchemaVersion
-	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
-		if scenario.ScenarioID == "instruction-exact-format" {
-			suite.Scenarios = []evaluation.SuiteScenario{scenario}
-			break
-		}
-	}
-	require.Len(t, suite.Scenarios, 1)
-	evidence, err := deps.fileSvcFactory(root, slog.Default())
-	require.NoError(t, err)
-	require.NoError(t, evaluation.NewStore(evidence).CreateSuite(ctx, suite))
-	_, err = createCampaign(ctx, deps, evidence, campaignCreateSpec{
-		Platform:    testPlatform,
-		CampaignID:  stopRealStackCampaignID,
-		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
-		Repetitions: 2,
-		SuiteID:     suite.ID,
-		Investigation: &evalv1.EvaluationInvestigation{
-			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
-			InvestigationId: "real-stop-investigation",
-			DataOperatorId:  dataWorkload.OperatorID,
-		},
-	})
-	require.NoError(t, err)
-
-	run := &stopRealStackRun{ctx: ctx, root: root, stack: stack, deps: deps, cfg: cfg, fileSvc: evidence}
-	result, err := runStartFlow(run.command(), deps, runStartFlowOptions{CampaignID: stopRealStackCampaignID, RunID: stopRealStackRunID, PrepareOnly: true})
+	run := newRealStackRun(t, constants.PostureDoctrine, stopRealStackCampaignID, 2, testRunControl(newFakeProcessControl()))
+	result, err := runStartFlow(run.command(), run.deps, runStartFlowOptions{CampaignID: stopRealStackCampaignID, RunID: stopRealStackRunID, PrepareOnly: true})
 	require.NoError(t, err)
 	require.True(t, result.Prepared)
-	assignments, err := run.store().ListAssignments(ctx, stopRealStackRunID)
+	assignments, err := run.store().ListAssignments(run.ctx, stopRealStackRunID)
 	require.NoError(t, err)
 	require.Len(t, assignments, 2)
 	return run
 }
 
-func (r *stopRealStackRun) store() *evaluation.Store { return evaluation.NewStore(r.fileSvc) }
+func (r *realStackRun) store() *evaluation.Store { return evaluation.NewStore(r.fileSvc) }
 
 // command is a fresh command for one in-process call, rooted at the run's project.
-func (r *stopRealStackRun) command() *cobra.Command {
+func (r *realStackRun) command() *cobra.Command {
 	cmd := &cobra.Command{}
 	cmd.SetContext(r.ctx)
 	cmd.SetOut(io.Discard)
@@ -177,7 +83,7 @@ func (h *heldAssignment) ExecuteAssignment(ctx context.Context, req evaluation.A
 
 // holdFirstAssignment routes the run's executor through a heldAssignment. It must
 // be called before the run executes.
-func (r *stopRealStackRun) holdFirstAssignment() *heldAssignment {
+func (r *realStackRun) holdFirstAssignment() *heldAssignment {
 	held := &heldAssignment{started: make(chan struct{}), release: make(chan struct{})}
 	r.deps.agentExecutorFactory = func(in campaignAgentExecutorInputs) (evaluation.CampaignAssignmentExecutor, error) {
 		inner, err := newProductionCampaignAgentExecutor(in)
@@ -197,7 +103,7 @@ type executeOutcome struct {
 
 // executeAsync runs executeRun in a goroutine, the way `runs resume --daemon`
 // runs in its own process.
-func (r *stopRealStackRun) executeAsync() <-chan executeOutcome {
+func (r *realStackRun) executeAsync() <-chan executeOutcome {
 	done := make(chan executeOutcome, 1)
 	deps := r.deps
 	cmd := r.command()
@@ -215,7 +121,7 @@ type cancelOutcome struct {
 
 // cancelAsync runs `runs cancel` in a goroutine, the way an operator runs it from
 // another process.
-func (r *stopRealStackRun) cancelAsync() <-chan cancelOutcome {
+func (r *realStackRun) cancelAsync() <-chan cancelOutcome {
 	done := make(chan cancelOutcome, 1)
 	deps := r.deps
 	root := r.root

@@ -40,7 +40,7 @@ const (
 	HealthCheckInterval = 500 * time.Millisecond
 	MaxHealthChecks     = 20
 	MaxPortAttempts     = 100
-	SigKillPollInterval = 100 * time.Millisecond
+	SigKillExitTimeout  = 2 * time.Second
 )
 
 // CommandExecutor defines an interface for executing external commands.

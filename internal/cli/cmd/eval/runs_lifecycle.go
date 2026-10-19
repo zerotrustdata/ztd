@@ -240,6 +240,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		Publish:                  opts.Publish,
 		Daemon:                   opts.Daemon,
 		EnforceProviderResidency: opts.RequireObservation,
+		RequireProvenance:        opts.RequireProvenance,
 		NoAutoBind:               opts.NoAutoBind,
 		JSONOutput:               opts.JSONOutput,
 	})

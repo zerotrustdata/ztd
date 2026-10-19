@@ -9,13 +9,11 @@ package eval
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -167,38 +165,6 @@ func verifyRunCoverage(cmd *cobra.Command, deps nativeEvalDeps, store *evaluatio
 	return nil
 }
 
-// sealWitnessEvidence seals the Gateway's provider-boundary and model provenance
-// windows for the run before it is verified. With the Gateway unreachable nothing
-// can be fetched, so nothing is sealed and verification decides from the windows
-// the run already holds.
-func sealWitnessEvidence(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config, store *evaluation.Store, runID string, requireProvenance, jsonOutput bool) error {
-	witness, err := gwremote.NewCampaignWitnessCapture(fileSvc, store, cfg)
-	if errors.Is(err, constants.ErrGatewayNotReachable) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("evaluation: runs verify: %w", err)
-	}
-	if err := witness.CaptureRunProviderObservationEvidence(cmd.Context(), runID); err != nil {
-		return fmt.Errorf("evaluation: runs verify: provider observation: %w", err)
-	}
-	if !requireProvenance {
-		if err := witness.CaptureRunModelProvenanceEvidence(cmd.Context(), runID); err != nil {
-			return fmt.Errorf("evaluation: runs verify: model provenance: %w", err)
-		}
-		return nil
-	}
-	if !jsonOutput {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Waiting for model provenance completion (up to %s)\n", constants.ModelProvenanceCompletionTimeout)
-	}
-	waitCtx, cancel := context.WithTimeout(cmd.Context(), constants.ModelProvenanceCompletionTimeout)
-	defer cancel()
-	if err := witness.WaitForRunModelProvenanceEvidence(waitCtx, runID); err != nil {
-		return fmt.Errorf("evaluation: runs verify: model provenance: %w", err)
-	}
-	return nil
-}
-
 // verifyRun verifies one run's persisted results, saves the verification
 // report, and, when publish is set, publishes the completion and passing
 // verification projections. A publication failure is reported as a warning: it
@@ -247,9 +213,6 @@ func verifyRun(
 	provenancePolicy := evaluation.ModelProvenancePolicyInterim
 	if requireProvenance {
 		provenancePolicy = evaluation.ModelProvenancePolicyStrict
-	}
-	if err := sealWitnessEvidence(cmd, fileSvc, cfg, store, runID, requireProvenance, jsonOutput); err != nil {
-		return nil, err
 	}
 	verifier := evaluation.NewCampaignRunVerifier(deps.now).
 		WithProviderObservationReader(observationReader, providerPolicy).

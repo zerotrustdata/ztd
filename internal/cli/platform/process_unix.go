@@ -11,6 +11,8 @@
 package platform
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -67,43 +69,27 @@ func (c realCommandExecutor) Run(cmd *exec.Cmd) error {
 	return cmd.Run()
 }
 
-// sleeper is an interface for sleep operations (for testing)
-type sleeper interface {
-	Sleep(d time.Duration)
+// exitWatcher is the exit observation stopProcessWithDeps waits on.
+// *ProcessExitWatch satisfies it; tests inject a fake.
+type exitWatcher interface {
+	Wait(ctx context.Context) error
+	Close() error
 }
 
-// timeSleeper wraps time.Sleep to implement sleeper
-type timeSleeper struct{}
-
-func (s timeSleeper) Sleep(d time.Duration) {
-	time.Sleep(d)
+// exitWatchOpener opens an exit watch on a PID (for testing)
+type exitWatchOpener interface {
+	Open(pid int) (exitWatcher, error)
 }
 
-// ticker is an interface for ticker operations (for testing)
-type ticker interface {
-	C() <-chan time.Time
-	Stop()
-}
+// osExitWatchOpener wraps WatchProcessExit to implement exitWatchOpener
+type osExitWatchOpener struct{}
 
-// timeTicker wraps time.Ticker to implement ticker
-type timeTicker struct {
-	*time.Ticker
-}
-
-func (t *timeTicker) C() <-chan time.Time {
-	return t.Ticker.C
-}
-
-// tickerFactory is an interface for creating tickers
-type tickerFactory interface {
-	NewTicker(d time.Duration) ticker
-}
-
-// timeTickerFactory wraps time.NewTicker to implement tickerFactory
-type timeTickerFactory struct{}
-
-func (f timeTickerFactory) NewTicker(d time.Duration) ticker {
-	return &timeTicker{time.NewTicker(d)}
+func (osExitWatchOpener) Open(pid int) (exitWatcher, error) {
+	watch, err := WatchProcessExit(pid)
+	if err != nil {
+		return nil, err
+	}
+	return watch, nil
 }
 
 // setProcessGroup sets the process group for Unix systems
@@ -191,18 +177,25 @@ func (pm *ProcessManager) findOperatorProcessWithExecutor(executor CommandExecut
 // It sends SIGTERM first, then SIGKILL if the process doesn't exit within the timeout.
 func (pm *ProcessManager) stopProcess(pid int, name string) error {
 	_ = name
-	return pm.stopProcessWithDeps(pid, osProcessFinder{}, timeSleeper{}, timeTickerFactory{}, ShutdownTimeout)
+	return pm.stopProcessWithDeps(pid, osProcessFinder{}, osExitWatchOpener{}, ShutdownTimeout)
 }
 
-// stopProcessWithDeps stops a process using injected dependencies (for testing)
-func (pm *ProcessManager) stopProcessWithDeps(pid int, finder processFinder, sleep sleeper, tickerFactory tickerFactory, timeoutDur time.Duration) error {
+// stopProcessWithDeps stops a process using injected dependencies (for testing).
+// The exit watch opens before SIGTERM, so an exit between the signal and the
+// wait is still observed. A PID with no process has no watch and is already gone.
+func (pm *ProcessManager) stopProcessWithDeps(pid int, finder processFinder, exits exitWatchOpener, timeoutDur time.Duration) error {
 	if pid == 0 {
 		return nil
 	}
 
-	if !pm.isProcessRunningWithFinder(pid, finder) {
+	watch, err := exits.Open(pid)
+	if errors.Is(err, constants.ErrProcessNotFound) {
 		return nil
 	}
+	if err != nil {
+		return fmt.Errorf("process_manager: watch process exit: %w", err)
+	}
+	defer func() { _ = watch.Close() }()
 
 	proc, err := finder.FindProcess(pid)
 	if err != nil {
@@ -213,27 +206,40 @@ func (pm *ProcessManager) stopProcessWithDeps(pid int, finder processFinder, sle
 		return fmt.Errorf("process_manager: send SIGTERM: %w", err)
 	}
 
-	timeout := time.After(timeoutDur)
-	ticker := tickerFactory.NewTicker(HealthCheckInterval)
-	defer ticker.Stop()
+	exited, err := waitExit(watch, timeoutDur)
+	if err != nil {
+		return fmt.Errorf("process_manager: wait for process exit: %w", err)
+	}
+	if exited {
+		return nil
+	}
 
-	for {
-		select {
-		case <-timeout:
-			if err := proc.Signal(syscall.SIGKILL); err != nil {
-				return fmt.Errorf("process_manager: send SIGKILL: %w", err)
-			}
-			for i := 0; i < MaxHealthChecks; i++ {
-				sleep.Sleep(SigKillPollInterval)
-				if !pm.isProcessRunningWithFinder(pid, finder) {
-					return nil
-				}
-			}
-			return fmt.Errorf("process_manager: %w (pid %d)", constants.ErrProcessSigKillTimeout, pid)
-		case <-ticker.C():
-			if !pm.isProcessRunningWithFinder(pid, finder) {
-				return nil
-			}
-		}
+	if err := proc.Signal(syscall.SIGKILL); err != nil {
+		return fmt.Errorf("process_manager: send SIGKILL: %w", err)
+	}
+	exited, err = waitExit(watch, SigKillExitTimeout)
+	if err != nil {
+		return fmt.Errorf("process_manager: wait for process exit: %w", err)
+	}
+	if !exited {
+		return fmt.Errorf("process_manager: %w (pid %d)", constants.ErrProcessSigKillTimeout, pid)
+	}
+	return nil
+}
+
+// waitExit waits up to d for watch to report the process exit. It returns
+// exited false when d passes first, and an error only when the exit cannot be
+// observed.
+func waitExit(watch exitWatcher, d time.Duration) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+	err := watch.Wait(ctx)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, context.DeadlineExceeded):
+		return false, nil
+	default:
+		return false, err
 	}
 }

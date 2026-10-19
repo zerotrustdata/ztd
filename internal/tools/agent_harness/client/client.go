@@ -74,37 +74,17 @@ type Client struct {
 	cliHTTP *http.Client
 	// cliTLS is the TLS config of the CLI identity; nil when no CLI certificate is configured.
 	cliTLS *tls.Config
-	// operatorIsCLI is set when CLIAuth names the Operator certificate, so requests made with the
-	// Operator client present the CLI identity and carry the persona's CLI session.
-	operatorIsCLI bool
-	rec           *[]Exchange // optional sink for the current scenario
+	rec    *[]Exchange // optional sink for the current scenario
 }
 
 // New builds a Client with mTLS material loaded per config. The MCP/A2A surface
-// also accepts an API key; both are attached automatically when present.
+// also accepts an API key; both are attached automatically when present. Material
+// the config names must load: New fails rather than run with a silently missing
+// identity or trust anchor.
 func New(cfg config.Config) (*Client, error) {
-	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
-
-	if cfg.Auth.CABundle != "" {
-		if pem, err := os.ReadFile(cfg.Auth.CABundle); err == nil {
-			pool := x509.NewCertPool()
-			if pool.AppendCertsFromPEM(pem) {
-				tlsCfg.RootCAs = pool
-			}
-		}
-	}
-	if cfg.Auth.Certificate != nil {
-		tlsCfg.Certificates = []tls.Certificate{*cfg.Auth.Certificate}
-	} else if cfg.Auth.ClientCert != "" && cfg.Auth.ClientKey != "" {
-		if _, err := os.Stat(cfg.Auth.ClientCert); err == nil {
-			if _, err := os.Stat(cfg.Auth.ClientKey); err == nil {
-				crt, err := tls.LoadX509KeyPair(cfg.Auth.ClientCert, cfg.Auth.ClientKey)
-				if err != nil {
-					return nil, fmt.Errorf("load client cert: %w", err)
-				}
-				tlsCfg.Certificates = []tls.Certificate{crt}
-			}
-		}
+	tlsCfg, err := loadTLS(cfg.Auth)
+	if err != nil {
+		return nil, fmt.Errorf("agent harness: operator identity: %w", err)
 	}
 
 	c := &Client{
@@ -116,45 +96,64 @@ func New(cfg config.Config) (*Client, error) {
 	}
 
 	// The CLI identity carries notary-scenario submits and approval streams, so
-	// handleCLIAuth can stamp the host user onto the suspended transaction. When
-	// CLIAuth names the Operator certificate, the Operator client already presents
-	// the CLI identity and serves both. Otherwise CLIAuth gets its own client.
-	if cfg.CLIAuth.Certificate == nil && (cfg.CLIAuth.ClientCert == "" || cfg.CLIAuth.ClientKey == "") {
+	// handleCLIAuth can stamp the host user onto the suspended transaction. Its
+	// material is loaded even when it names no certificate, so a broken CA bundle
+	// fails New either way. When CLIAuth names the Operator certificate, the
+	// Operator client already presents the CLI identity and serves both. Otherwise
+	// CLIAuth gets its own client, and only when it names a certificate.
+	cliTLS, err := loadTLS(cfg.CLIAuth)
+	if err != nil {
+		return nil, fmt.Errorf("agent harness: CLI identity: %w", err)
+	}
+	if cfg.CLIAuth.Certificate == nil && cfg.CLIAuth.ClientCert == "" && cfg.CLIAuth.ClientKey == "" {
 		return c, nil
 	}
 	if cfg.CLIAuth.Certificate == cfg.Auth.Certificate && cfg.CLIAuth.ClientCert == cfg.Auth.ClientCert && cfg.CLIAuth.ClientKey == cfg.Auth.ClientKey {
-		c.operatorIsCLI = true
 		c.cliHTTP = c.http
 		c.cliTLS = tlsCfg
 		return c, nil
-	}
-	cliTLS := &tls.Config{MinVersion: tls.VersionTLS13}
-	if cfg.CLIAuth.CABundle != "" {
-		if pem, err := os.ReadFile(cfg.CLIAuth.CABundle); err == nil {
-			pool := x509.NewCertPool()
-			if pool.AppendCertsFromPEM(pem) {
-				cliTLS.RootCAs = pool
-			}
-		}
-	}
-	if cfg.CLIAuth.Certificate != nil {
-		cliTLS.Certificates = []tls.Certificate{*cfg.CLIAuth.Certificate}
-	} else if _, err := os.Stat(cfg.CLIAuth.ClientCert); err == nil {
-		if _, err := os.Stat(cfg.CLIAuth.ClientKey); err == nil {
-			crt, err := tls.LoadX509KeyPair(cfg.CLIAuth.ClientCert, cfg.CLIAuth.ClientKey)
-			if err != nil {
-				return nil, fmt.Errorf("load CLI client cert: %w", err)
-			}
-			cliTLS.Certificates = []tls.Certificate{crt}
-		}
 	}
 	c.cliTLS = cliTLS
 	c.cliHTTP = &http.Client{
 		Timeout:   30 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: cliTLS},
 	}
-
 	return c, nil
+}
+
+// loadTLS builds the TLS config for one mTLS identity: the trust anchors from its CA
+// bundle and its client certificate. Nothing configured yields a config with no client
+// certificate. Anything configured must load. An unreadable CA bundle, a bundle with no
+// PEM certificates, a half-named certificate pair, and a pair that fails to load are all
+// errors, never dropped.
+func loadTLS(auth config.Auth) (*tls.Config, error) {
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
+
+	if auth.CABundle != "" {
+		pem, err := os.ReadFile(auth.CABundle)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrFailedToReadTrustBundle, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("%w: no certificates in %s", constants.ErrFailedToParseTrustBundle, auth.CABundle)
+		}
+		tlsCfg.RootCAs = pool
+	}
+
+	switch {
+	case auth.Certificate != nil:
+		tlsCfg.Certificates = []tls.Certificate{*auth.Certificate}
+	case auth.ClientCert != "" && auth.ClientKey != "":
+		crt, err := tls.LoadX509KeyPair(auth.ClientCert, auth.ClientKey)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrFailedToLoadClientCertificate, err)
+		}
+		tlsCfg.Certificates = []tls.Certificate{crt}
+	case auth.ClientCert != "" || auth.ClientKey != "":
+		return nil, fmt.Errorf("%w: client certificate and key", constants.ErrIncompleteCredentialPair)
+	}
+	return tlsCfg, nil
 }
 
 // Config exposes the live config (scenarios need TTLs, key ids, etc.).
@@ -179,7 +178,7 @@ func (c *Client) doWithCLI(ctx context.Context, p Persona, method, url string, b
 // records it. The persona's CLI session is sent only when the Operator identity is the
 // CLI identity.
 func (c *Client) do(ctx context.Context, p Persona, method, url string, body []byte) (int, []byte, error) {
-	return c.doWithClient(ctx, p, method, url, body, c.http, "application/json", c.operatorIsCLI)
+	return c.doWithClient(ctx, p, method, url, body, c.http, "application/json", c.cliHTTP == c.http)
 }
 
 // doWithClient is the core request executor. It is shared by do (Operator identity),

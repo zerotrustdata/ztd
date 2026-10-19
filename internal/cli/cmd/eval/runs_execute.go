@@ -44,6 +44,7 @@ type runExecuteOptions struct {
 	Daemon                   bool
 	Limit                    uint32
 	EnforceProviderResidency bool
+	RequireProvenance        bool
 	NoAutoBind               bool
 	JSONOutput               bool
 	ResultOutput             func(*evalv1.EvaluationAssignmentResult)
@@ -289,6 +290,10 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)
 	}
+	witness, err := gwremote.NewCampaignWitnessCapture(fileSvc, store, cfg)
+	if err != nil {
+		return executed, fmt.Errorf("evaluation: run execute: witness capture: %w", err)
+	}
 	if opts.EnforceProviderResidency {
 		defer func() {
 			if runErr == nil {
@@ -325,6 +330,9 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 			break
 		}
 		executed++
+		if err := witness.CaptureAssignmentEvidence(cmd.Context(), result); err != nil {
+			return executed, fmt.Errorf("evaluation: run execute: capture witness evidence: %w", err)
+		}
 		if opts.ResultOutput != nil {
 			opts.ResultOutput(result)
 		}
@@ -347,6 +355,29 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		return executed, fmt.Errorf("evaluation: run execute: run %s stopped after %d assignment(s) with %d queued: %w", opts.RunID, executed, summary.QueuedCount, constants.ErrEvaluationRunStopped)
 	}
 	if summary.QueuedCount == 0 && summary.RunningCount == 0 {
+		// Windows recorded after their assignment completed are sealed here, while
+		// the run's models are still loaded. A strict run then waits, once, for the
+		// windows its scored attempts have not delivered yet.
+		if err := witness.CaptureRunProviderObservationEvidence(cmd.Context(), opts.RunID); err != nil {
+			return executed, fmt.Errorf("evaluation: run execute: %w", err)
+		}
+		if err := witness.CaptureRunModelProvenanceEvidence(cmd.Context(), opts.RunID); err != nil {
+			return executed, fmt.Errorf("evaluation: run execute: %w", err)
+		}
+		if opts.RequireProvenance {
+			if err := waitForRunEvidence(cmd, opts.RunID, "model provenance", constants.ModelProvenanceCompletionTimeout, opts.JSONOutput, func(ctx context.Context) error {
+				return witness.WaitForRunModelProvenanceEvidence(ctx, opts.RunID)
+			}); err != nil {
+				return executed, fmt.Errorf("evaluation: run execute: %w", err)
+			}
+		}
+		if opts.EnforceProviderResidency {
+			if err := waitForRunEvidence(cmd, opts.RunID, "provider observation", constants.ProviderObservationCompletionTimeout, opts.JSONOutput, func(ctx context.Context) error {
+				return witness.WaitForRunProviderObservationEvidence(ctx, opts.RunID)
+			}); err != nil {
+				return executed, fmt.Errorf("evaluation: run execute: %w", err)
+			}
+		}
 		if err := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, topology.Inference.OperatorSessionID, spec); err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
@@ -361,6 +392,27 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		}
 	}
 	return executed, nil
+}
+
+// waitForRunEvidence holds a strict run's completion until the Gateway records the
+// run's windows of one kind, event-driven through the capture. A window that does
+// not arrive by the deadline is a warning, not a failure: the run completes, and
+// verification fails closed on the missing window.
+func waitForRunEvidence(cmd *cobra.Command, runID, kind string, timeout time.Duration, jsonOutput bool, wait func(context.Context) error) error {
+	if !jsonOutput {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Waiting for %s completion (up to %s)\n", kind, timeout)
+	}
+	waitCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	defer cancel()
+	err := wait(waitCtx)
+	if err == nil {
+		return nil
+	}
+	if cmd.Context().Err() == nil && errors.Is(err, constants.ErrEvaluationObservationUnavailable) {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: run %s: %v\n", runID, err)
+		return nil
+	}
+	return err
 }
 
 // releaseResidentProviderModels unloads every model resident on the provider

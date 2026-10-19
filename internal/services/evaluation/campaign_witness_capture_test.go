@@ -16,7 +16,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
@@ -182,21 +181,6 @@ func newWitnessCaptureForTest(t *testing.T, store *Store, providers ProviderObse
 	return capture
 }
 
-// withScoredAttempts persists the fixture's completed result with one scored
-// inference per attempt ID, so the run names those attempts as witnessed.
-func (f completedRunFixture) withScoredAttempts(t *testing.T, attemptIDs ...string) {
-	t.Helper()
-	result := proto.Clone(f.imported).(*evalv1.EvaluationAssignmentResult)
-	result.ModelInferences = make([]*evalv1.ModelInferenceRecord, 0, len(attemptIDs))
-	for _, id := range attemptIDs {
-		result.ModelInferences = append(result.ModelInferences, &evalv1.ModelInferenceRecord{ProviderAttemptId: id})
-	}
-	digest, err := ComputeAssignmentResultDigest(result)
-	require.NoError(t, err)
-	result.ResultDigest = digest
-	require.NoError(t, f.store.SaveAssignmentResult(context.Background(), result))
-}
-
 func TestCampaignWitnessCapture_RequiresStoreAndBothRemotes(t *testing.T) {
 	t.Parallel()
 	store := NewStore(newCampaignMemoryFileService())
@@ -239,8 +223,7 @@ func TestCampaignWitnessCapture_SealsBothArtifacts(t *testing.T) {
 		}},
 	}
 
-	require.NoError(t, capture.captureAssignmentProviderEvidence(ctx, result))
-	require.NoError(t, capture.captureAssignmentModelProvenance(ctx, result))
+	require.NoError(t, capture.CaptureAssignmentEvidence(ctx, result))
 
 	// Capture seals the fetched evidence into the run's evaluation evidence and
 	// never writes the production inference stores.
@@ -291,8 +274,7 @@ func TestCampaignWitnessCapture_SkipsAttemptsAlreadySealed(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, capture.captureAssignmentProviderEvidence(ctx, result))
-	require.NoError(t, capture.captureAssignmentModelProvenance(ctx, result))
+	require.NoError(t, capture.CaptureAssignmentEvidence(ctx, result))
 
 	// The Gateway is asked only for the attempt the run does not hold yet.
 	assert.Equal(t, []string{"attempt-new"}, providers.loadCalls)
@@ -310,22 +292,171 @@ func TestCampaignWitnessCapture_RunMethodsRejectEmptyRunID(t *testing.T) {
 
 	require.ErrorIs(t, capture.CaptureRunProviderObservationEvidence(ctx, ""), constants.ErrMissingRequiredField)
 	require.ErrorIs(t, capture.CaptureRunModelProvenanceEvidence(ctx, ""), constants.ErrMissingRequiredField)
+	require.ErrorIs(t, capture.CaptureAssignmentEvidence(ctx, nil), constants.ErrMissingRequiredField)
 	require.ErrorIs(t, capture.WaitForRunModelProvenanceEvidence(ctx, ""), constants.ErrMissingRequiredField)
+	require.ErrorIs(t, capture.WaitForRunProviderObservationEvidence(ctx, ""), constants.ErrMissingRequiredField)
 }
 
-func TestCampaignWitnessCapture_WaitForRunProvenanceCoversScoredAttemptsOnly(t *testing.T) {
-	fixture := newCompletedRunFixture(t, nil)
-	fixture.withScoredAttempts(t, "attempt-scored")
-	capture := newWitnessCaptureForTest(t, fixture.store, &stubProviderObservationRemote{},
-		&stubModelProvenanceRemote{window: testModelProvenanceWindow(t, "attempt-scored")})
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+// recordingProviderObservationRemote models the Gateway's observation windows as
+// recordingProvenanceRemote models attestation windows: a window is readable only
+// once recorded, and each recording is announced on the stream.
+type recordingProviderObservationRemote struct {
+	window  *evalv1.ProviderBoundaryObservationWindow
+	attempt *operatorv1.InferenceProviderAttemptRecord
+	events  chan string
+	missed  chan struct{}
+
+	mu         sync.Mutex
+	isRecorded bool
+	missOnce   sync.Once
+}
+
+func newRecordingProviderObservationRemote(window *evalv1.ProviderBoundaryObservationWindow, attempt *operatorv1.InferenceProviderAttemptRecord) *recordingProviderObservationRemote {
+	return &recordingProviderObservationRemote{window: window, attempt: attempt, events: make(chan string), missed: make(chan struct{})}
+}
+
+func (r *recordingProviderObservationRemote) Load(ctx context.Context, id string) (*evalv1.ProviderBoundaryObservationWindow, *operatorv1.InferenceProviderAttemptRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	if !r.isRecorded || id != r.window.GetProviderAttemptId() {
+		r.missOnce.Do(func() { close(r.missed) })
+		return nil, nil, constants.ErrNotFound
+	}
+	return r.window, r.attempt, nil
+}
+
+func (r *recordingProviderObservationRemote) WatchRecorded(ctx context.Context, connected func(), recorded func(string)) error {
+	connected()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case id := <-r.events:
+			recorded(id)
+		}
+	}
+}
+
+// record persists the window Gateway-side, then announces it.
+func (r *recordingProviderObservationRemote) record(t *testing.T, id string) {
+	t.Helper()
+	r.mu.Lock()
+	r.isRecorded = id == r.window.GetProviderAttemptId()
+	r.mu.Unlock()
+	select {
+	case r.events <- id:
+	case <-t.Context().Done():
+	}
+}
+
+// saveWitnessRunAssignment persists one completed assignment whose scored
+// inferences name the given provider attempts, so the run-level waits find them
+// through the store exactly as they do for a real run.
+func saveWitnessRunAssignment(t *testing.T, store *Store, runID, assignmentID string, attemptIDs ...string) {
+	t.Helper()
+	ctx := t.Context()
+	require.NoError(t, store.SaveAssignment(ctx, &evalv1.EvaluationAssignment{
+		SchemaVersion:   CampaignSchemaVersion,
+		AssignmentId:    assignmentID,
+		RunId:           runID,
+		CampaignId:      "campaign-1",
+		ScenarioId:      "scenario-1",
+		Repetition:      1,
+		Lane:            evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE,
+		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
+		Target: &evalv1.EvaluationAssignment_Homogeneous{
+			Homogeneous: &evalv1.HomogeneousAssignmentTarget{
+				DesignatedRole:   evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
+				CandidateVariant: &evalv1.ModelVariant{VariantId: "qwen3-4b"},
+			},
+		},
+	}))
+	result := &evalv1.EvaluationAssignmentResult{
+		SchemaVersion: CampaignSchemaVersion,
+		AssignmentId:  assignmentID,
+		RunId:         runID,
+		CampaignId:    "campaign-1",
+		Lane:          evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE,
+	}
+	for _, id := range attemptIDs {
+		result.ModelInferences = append(result.ModelInferences, &evalv1.ModelInferenceRecord{ProviderAttemptId: id})
+	}
+	digest, err := ComputeAssignmentResultDigest(result)
+	require.NoError(t, err)
+	result.ResultDigest = digest
+	require.NoError(t, store.SaveAssignmentResult(ctx, result))
+}
+
+func TestCampaignWitnessCapture_WaitForRunProvenanceSealsOnRecordingEvent(t *testing.T) {
+	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-own"))
+	store := NewStore(newCampaignMemoryFileService())
+	saveWitnessRunAssignment(t, store, "run-1", "assignment-1", "attempt-own")
+	capture := newWitnessCaptureForTest(t, store, &stubProviderObservationRemote{}, remote)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	go func() {
+		// The connect reconciliation finds nothing; only the event can deliver it.
+		<-remote.missed
+		remote.record(t, "attempt-own")
+	}()
+
+	require.NoError(t, capture.WaitForRunModelProvenanceEvidence(ctx, "run-1"))
+	_, err := store.LoadModelProvenanceWindow(ctx, "run-1", "attempt-own")
+	require.NoError(t, err)
+}
+
+func TestCampaignWitnessCapture_WaitForRunProviderObservationSealsOnRecordingEvent(t *testing.T) {
+	window, attempt := testProviderObservationWindow(t, "attempt-own")
+	remote := newRecordingProviderObservationRemote(window, attempt)
+	store := NewStore(newCampaignMemoryFileService())
+	saveWitnessRunAssignment(t, store, "run-1", "assignment-1", "attempt-own")
+	capture := newWitnessCaptureForTest(t, store, remote, &stubModelProvenanceRemote{})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	go func() {
+		// The connect reconciliation finds nothing; only the event can deliver it.
+		<-remote.missed
+		remote.record(t, "attempt-own")
+	}()
+
+	require.NoError(t, capture.WaitForRunProviderObservationEvidence(ctx, "run-1"))
+	_, err := store.LoadProviderObservationWindow(ctx, "run-1", "attempt-own")
+	require.NoError(t, err)
+	_, err = store.LoadProviderAttemptRecord(ctx, "run-1", "attempt-own")
+	require.NoError(t, err)
+}
+
+func TestCampaignWitnessCapture_WaitForRunModelProvenanceReportsMissingOnDeadline(t *testing.T) {
+	store := NewStore(newCampaignMemoryFileService())
+	saveWitnessRunAssignment(t, store, "run-1", "assignment-1", "attempt-never")
+	remote := newRecordingProvenanceRemote(testModelProvenanceWindow(t, "attempt-never"))
+	capture := newWitnessCaptureForTest(t, store, &stubProviderObservationRemote{}, remote)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
 	defer cancel()
 
-	require.NoError(t, capture.WaitForRunModelProvenanceEvidence(ctx, fixture.req.RunID))
-	// Other scheduled assignments have no result and require no windows.
-	window, err := fixture.store.LoadModelProvenanceWindow(ctx, fixture.req.RunID, "attempt-scored")
-	require.NoError(t, err)
-	assert.Equal(t, "attempt-scored", window.GetProviderAttemptId())
+	err := capture.WaitForRunModelProvenanceEvidence(ctx, "run-1")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+	assert.Contains(t, err.Error(), "1 missing")
+	assert.Contains(t, err.Error(), "attempt-never")
+}
+
+func TestCampaignWitnessCapture_WaitForRunProviderObservationReportsMissingOnDeadline(t *testing.T) {
+	store := NewStore(newCampaignMemoryFileService())
+	saveWitnessRunAssignment(t, store, "run-1", "assignment-1", "attempt-never")
+	window, attempt := testProviderObservationWindow(t, "attempt-never")
+	capture := newWitnessCaptureForTest(t, store, newRecordingProviderObservationRemote(window, attempt), &stubModelProvenanceRemote{})
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+	defer cancel()
+
+	err := capture.WaitForRunProviderObservationEvidence(ctx, "run-1")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+	assert.Contains(t, err.Error(), "provider observation")
+	assert.Contains(t, err.Error(), "attempt-never")
 }
 
 func TestCampaignWitnessCapture_WaitForProvenanceCapturesOnRecordingEvent(t *testing.T) {

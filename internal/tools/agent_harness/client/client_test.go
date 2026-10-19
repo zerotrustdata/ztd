@@ -10,6 +10,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -40,23 +41,23 @@ func TestNew(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "config with CA bundle",
+			name: "missing CA bundle fails closed",
 			cfg: config.Config{
 				Auth: config.Auth{
 					CABundle: "nonexistent.pem",
 				},
 			},
-			wantErr: false, // missing CA bundle is tolerated
+			wantErr: true,
 		},
 		{
-			name: "config with client cert/key",
+			name: "missing client cert/key fails closed",
 			cfg: config.Config{
 				Auth: config.Auth{
 					ClientCert: "nonexistent.crt",
 					ClientKey:  "nonexistent.key",
 				},
 			},
-			wantErr: false, // missing cert/key is tolerated
+			wantErr: true,
 		},
 	}
 
@@ -75,26 +76,18 @@ func TestNew(t *testing.T) {
 }
 
 func TestNew_WithValidCerts(t *testing.T) {
-	tempDir := testutil.TempDir(t)
-	caPath := filepath.Join(tempDir, "ca.pem")
-	certPath := filepath.Join(tempDir, "client.crt")
-	keyPath := filepath.Join(tempDir, "client.key")
-
-	// Write a minimal valid CA bundle
-	caCert := `-----BEGIN CERTIFICATE-----
-MIIBkTCB+wIJAK3QW7B4Ls7ZMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
-c3RjYTAeFw0yNDAxMDEwMDAwMDBaFw0yNTAxMDEwMDAwMDBaMBExDzANBgNVBAMM
-BnRlc3RjYTCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAwT8kQCE6x5V8U2v7
------END CERTIFICATE-----`
-	if err := os.WriteFile(caPath, []byte(caCert), 0600); err != nil {
+	caPEM, _ := testutil.GenerateTestCertificate(t, "test-ca")
+	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
+	if err := os.WriteFile(caPath, []byte(caPEM), 0600); err != nil {
 		t.Fatalf("failed to write CA: %v", err)
 	}
+	identity := writeIdentity(t, "client")
 
 	cfg := config.Config{
 		Auth: config.Auth{
 			CABundle:   caPath,
-			ClientCert: certPath, // doesn't exist, should be tolerated
-			ClientKey:  keyPath,  // doesn't exist, should be tolerated
+			ClientCert: identity.ClientCert,
+			ClientKey:  identity.ClientKey,
 		},
 	}
 
@@ -105,6 +98,66 @@ BnRlc3RjYTCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAwT8kQCE6x5V8U2v7
 	if client == nil {
 		t.Fatal("New() returned nil client")
 	}
+}
+
+// writeIdentity writes a generated client certificate and key as PEM files in a fresh
+// test directory and returns the Auth that names them. Tests use real files because New
+// fails closed on a configured path it cannot load.
+func writeIdentity(t *testing.T, name string) config.Auth {
+	t.Helper()
+	dir := testutil.TempDir(t)
+	certPEM, keyPEM := testutil.GenerateTestCertificate(t, name)
+	auth := config.Auth{
+		ClientCert: filepath.Join(dir, name+".crt"),
+		ClientKey:  filepath.Join(dir, name+".key"),
+	}
+	require.NoError(t, os.WriteFile(auth.ClientCert, []byte(certPEM), 0600))
+	require.NoError(t, os.WriteFile(auth.ClientKey, []byte(keyPEM), 0600))
+	return auth
+}
+
+// TestNew_FailsClosedOnConfiguredMaterial pins the rule that material the config names but
+// cannot be loaded is an error, never a client that silently runs without its identity or
+// trust anchor.
+func TestNew_FailsClosedOnConfiguredMaterial(t *testing.T) {
+	dir := testutil.TempDir(t)
+	identity := writeIdentity(t, "valid")
+	noPEM := filepath.Join(dir, "no-certs.pem")
+	require.NoError(t, os.WriteFile(noPEM, []byte("not a certificate"), 0600))
+
+	t.Run("missing client certificate file", func(t *testing.T) {
+		_, err := New(config.Config{Auth: config.Auth{
+			ClientCert: filepath.Join(dir, "missing.crt"),
+			ClientKey:  identity.ClientKey,
+		}})
+		require.ErrorIs(t, err, constants.ErrFailedToLoadClientCertificate)
+		require.ErrorIs(t, err, fs.ErrNotExist)
+	})
+
+	t.Run("missing CLI client certificate file", func(t *testing.T) {
+		_, err := New(config.Config{CLIAuth: config.Auth{
+			ClientCert: filepath.Join(dir, "missing-cli.crt"),
+			ClientKey:  identity.ClientKey,
+		}})
+		require.ErrorIs(t, err, constants.ErrFailedToLoadClientCertificate)
+		require.ErrorIs(t, err, fs.ErrNotExist)
+	})
+
+	t.Run("unreadable CA bundle", func(t *testing.T) {
+		_, err := New(config.Config{Auth: config.Auth{CABundle: filepath.Join(dir, "missing-ca.pem")}})
+		require.ErrorIs(t, err, constants.ErrFailedToReadTrustBundle)
+		require.ErrorIs(t, err, fs.ErrNotExist)
+	})
+
+	t.Run("CA bundle with no PEM certificates", func(t *testing.T) {
+		_, err := New(config.Config{Auth: config.Auth{CABundle: noPEM}})
+		require.ErrorIs(t, err, constants.ErrFailedToParseTrustBundle)
+	})
+
+	t.Run("certificate named without its key", func(t *testing.T) {
+		_, err := New(config.Config{Auth: config.Auth{ClientCert: identity.ClientCert}})
+		require.ErrorIs(t, err, constants.ErrIncompleteCredentialPair)
+	})
 }
 
 func TestNew_InvalidKeyPair(t *testing.T) {
@@ -306,39 +359,19 @@ func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
 	})
 
 	t.Run("the CLI identity is the Operator client when CLIAuth matches Auth", func(t *testing.T) {
-		cfg := config.Config{
-			Auth: config.Auth{
-				ClientCert: "/same/cert",
-				ClientKey:  "/same/key",
-			},
-			CLIAuth: config.Auth{
-				ClientCert: "/same/cert",
-				ClientKey:  "/same/key",
-			},
-		}
-		c, err := New(cfg)
+		same := writeIdentity(t, "same")
+		c, err := New(config.Config{Auth: same, CLIAuth: same})
 		require.NoError(t, err)
-		assert.True(t, c.operatorIsCLI, "one client serves both identities when CLIAuth matches Auth")
 		assert.Same(t, c.http, c.cliHTTP, "the CLI identity is the Operator client")
 		assert.Same(t, c.http.Transport.(*http.Transport).TLSClientConfig, c.cliTLS, "the CLI identity shares the Operator TLS config")
 	})
 
-	t.Run("cliHTTP is non-nil when CLIAuth differs from Auth (paths missing, tolerated)", func(t *testing.T) {
-		cfg := config.Config{
-			Auth: config.Auth{
-				ClientCert: "/operator/cert",
-				ClientKey:  "/operator/key",
-			},
-			CLIAuth: config.Auth{
-				ClientCert: "/cli/cert",
-				ClientKey:  "/cli/key",
-			},
-		}
-		c, err := New(cfg)
+	t.Run("cliHTTP is a separate client when CLIAuth differs from Auth", func(t *testing.T) {
+		c, err := New(config.Config{Auth: writeIdentity(t, "operator"), CLIAuth: writeIdentity(t, "cli")})
 		require.NoError(t, err)
 		assert.NotNil(t, c.cliHTTP, "cliHTTP should be built when CLIAuth differs from Auth")
 		assert.NotNil(t, c.cliTLS, "cliTLS should be built when CLIAuth differs from Auth")
-		assert.False(t, c.operatorIsCLI, "the Operator identity is not the CLI identity when they differ")
+		assert.NotSame(t, c.http, c.cliHTTP, "the Operator identity is not the CLI identity when they differ")
 	})
 }
 
@@ -356,8 +389,8 @@ func recordCLISessionHeader(t *testing.T) (*httptest.Server, chan string) {
 }
 
 func TestClient_CLISessionHeaderFollowsTheCertificateIdentity(t *testing.T) {
-	operator := config.Auth{ClientCert: "/operator/cert", ClientKey: "/operator/key"}
-	cli := config.Auth{ClientCert: "/cli/cert", ClientKey: "/cli/key"}
+	operator := writeIdentity(t, "operator")
+	cli := writeIdentity(t, "cli")
 	persona := Persona{ID: "test", CLISessionID: "cli-1"}
 	ctx := context.Background()
 
@@ -417,7 +450,7 @@ func TestClient_CLIOnlyCallsFailClosedWithoutCLICertificate(t *testing.T) {
 	c, err := New(config.Config{
 		MTLSBaseURL:   srv.URL,
 		PublicBaseURL: srv.URL,
-		Auth:          config.Auth{ClientCert: "/operator/cert", ClientKey: "/operator/key"},
+		Auth:          writeIdentity(t, "operator"),
 	})
 	require.NoError(t, err)
 	ctx := context.Background()
@@ -435,8 +468,8 @@ func TestClient_CLIOnlyCallsFailClosedWithoutCLICertificate(t *testing.T) {
 func TestClient_SubscribeApprovalsRequiresCLISession(t *testing.T) {
 	c, err := New(config.Config{
 		PublicBaseURL: "https://127.0.0.1:1",
-		Auth:          config.Auth{ClientCert: "/operator/cert", ClientKey: "/operator/key"},
-		CLIAuth:       config.Auth{ClientCert: "/cli/cert", ClientKey: "/cli/key"},
+		Auth:          writeIdentity(t, "operator"),
+		CLIAuth:       writeIdentity(t, "cli"),
 	})
 	require.NoError(t, err)
 

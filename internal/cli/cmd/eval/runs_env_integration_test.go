@@ -11,7 +11,9 @@ package eval
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -82,6 +84,12 @@ func setupRunEnvWithGateway(t *testing.T, operatorSource func() []*operatorv1.Op
 	keyring := keystoretest.NewMemoryKeyring()
 	cfg := &config.Config{ProjectRoot: root, RuntimeDir: fileSvc.Resolve(""), Paths: &paths, Keyring: keyring}
 	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
+	// An enrolled CLI always has a trust bundle, and the Gateway client refuses
+	// to start without the one its config names.
+	_, bundleKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	bundlePEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cmdtest.GenerateApproveTestCertDER(t, bundleKey)})
+	require.NoError(t, fileSvc.WriteFile(context.Background(), cfg.DefaultTrustBundleRelPath(), bundlePEM, constants.PermFilePrivate))
 	ks, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
 	require.NoError(t, err)
 	require.NoError(t, ks.Initialize())
