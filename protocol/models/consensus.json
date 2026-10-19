@@ -37,6 +37,11 @@
     },
 
     "endpoint": {
+      "app_id": {
+        "type": "string",
+        "required": false,
+        "description": "Primary application ID hosting the deliberation endpoint."
+      },
       "endpoint_url": {
         "type": "string",
         "required": false,

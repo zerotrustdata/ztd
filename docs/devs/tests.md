@@ -113,6 +113,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | File service test isolation | `internal/testutil/paths.go`, `internal/services/fs/file_service.go` | `testutil.TempDir` |
 | Socket test tags and serial boundary tests | `internal/testutil/test_tiers_test.go` | `TestTestTiers_ListenersRequireIntegrationAndBoundaryTestsStaySerial` |
 | Cross-platform port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go`, `internal/netutil/port_probe_other_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort`, `TestTCPPortProbe_RejectsWildcardAndLoopbackConflictsAndReleasesPort` |
+| Cross-process evaluation loop qualification | `internal/cli/cmd/test/eval_loop_e2e_test.go` | `./ztd test eval-loop --help` |
 | Live E2E suite | `test/e2e/` | `./ztd test e2e` |
 | Completion transcript wire contract | `internal/services/gateway/platform_enrollment_validation_test.go` | `TestPlatformEnrollmentCompletionTranscriptGoldenVector` |
 
@@ -179,6 +180,11 @@ Unfiltered unit and integration commands delegate to `make test-unit` and `make 
 # Run provider-free public feed qualification loop
 ./ztd test public-loop --candidate candidate.json --output evidence.json
 
+# Run cross-process evaluation loop qualification (real Gateway, Data and Inference processes under ratify and notary)
+./ztd test eval-loop
+./ztd test eval-loop --posture ratify
+./ztd test eval-loop --posture notary
+
 # Verify air-gapped vendored compilation without network access
 make test-airgap
 
@@ -186,6 +192,8 @@ make test-airgap
 ./ztd test scale --count 100
 make test-scale SCALE_COUNT=1000 SCALE_ARGS='--soak 10m --fan-out-concurrency 64,all --root .local.dev/scale/run-1'
 ```
+
+`./ztd test eval-loop` qualifies the full cross-process evaluation pipeline against live OS processes under both `ratify` and `notary` governance postures. The runner starts isolated Gateway, Data Operator, and Inference Operator processes under distinct `.ztd/` roots via `RuntimeFileService`, deploys them via `ztd operator deploy --approve`, handles L3 human authorizations through an event-driven `ztd auth approve --cli` responder driven entirely by the Gateway's SSE stream (`ztd.v1.platform.approvals.changed`), exercises real Ed25519 K-of-N consensus deliberation under `notary`, and verifies authoritative local execution receipts directly from each Operator's own SQLite store (LFAA).
 
 `./ztd test chaos` generates synthetic governance events (70% valid intent, 20% L1 forbidden command injection, 10% corrupted transaction hash MitM) directly in-process through `TransactionVerifier` and `Actuator`, bypassing network and TLS layers. Results persist to SQLite databases under `.ztd/test-vault/<timestamp>-chaos-test/`. `./ztd test summary` aggregates outcomes across runs in the test vault directory.
 

@@ -121,6 +121,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Explorer embed | `internal/services/gateway/explorer/static/` | `make explorer-embed`; `grep -l "$(cat VERSION)" internal/services/gateway/explorer/static/assets/*.js` lists the current bundle |
 | Console embed | `internal/services/gateway/console/static/` | `make console-embed-check` |
 | Core-platform smoke runbook | `docs/guides/ux_smoke_test.md` | `./ztd test release-smoke --root .ztd/operators/release-smoke-<unique-name>` |
+| Cross-process evaluation loop qualification | `internal/cli/cmd/test/eval_loop_e2e_test.go` | `./ztd test eval-loop` |
 | Smoke evidence artifacts | `<root>/` | `evidence/smoke-summary.json`, `reports/{gateway,worker}/`, and logs under `logs/` |
 | Compliance projection | `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md`, `.csv` | `ztd compliance release-evidence` |
 | Tag and push target | `Makefile` (`make release`) | Release owner only on merged `main` |

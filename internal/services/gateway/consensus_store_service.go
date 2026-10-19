@@ -85,7 +85,7 @@ func (s *ConsensusStoreService) ClearConsensusBinding(ctx context.Context, appID
 	if err != nil || bound == nil {
 		return err
 	}
-	if appID == "" || len(bound.MemberAppIDs) == 0 || bound.MemberAppIDs[0] == appID {
+	if appID == "" || bound.PrimaryAppID() == appID {
 		_, err := s.DeleteConsensus(ctx, string(constants.DocIDConsensusBinding))
 		return err
 	}
@@ -209,10 +209,11 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 
 	httpClient := d.httpClient
 	if d.httpClientFactory != nil {
-		if len(bound.MemberAppIDs) == 0 {
+		primaryAppID := bound.PrimaryAppID()
+		if primaryAppID == "" {
 			return nil, constants.ErrConsensusAppNotEnrolled
 		}
-		httpClient, err = d.httpClientFactory(bound.MemberAppIDs[0])
+		httpClient, err = d.httpClientFactory(primaryAppID)
 		if err != nil {
 			return nil, fmt.Errorf("create consensus application HTTPS client: %w", err)
 		}

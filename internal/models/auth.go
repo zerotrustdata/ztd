@@ -587,6 +587,7 @@ type Persona struct {
 // requires K affirmative distinct signatures to reach quorum.
 type ConsensusPolicy struct {
 	ID              string    `json:"id"`                     // consensus name/id
+	AppID           string    `json:"app_id,omitempty"`       // primary bound consensus application identity
 	MemberAppIDs    []string  `json:"member_app_ids"`         // == TrustedSigner.ID per member
 	Quorum          int       `json:"quorum"`                 // K affirmative distinct signers required
 	RequireDistinct bool      `json:"require_distinct"`       // reject duplicate signer keys
@@ -594,6 +595,21 @@ type ConsensusPolicy struct {
 	Enabled         bool      `json:"enabled"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// PrimaryAppID returns the primary application ID hosting the deliberation endpoint.
+// It prefers the explicit AppID, falling back to MemberAppIDs[0] when unset.
+func (p *ConsensusPolicy) PrimaryAppID() string {
+	if p == nil {
+		return ""
+	}
+	if p.AppID != "" {
+		return p.AppID
+	}
+	if len(p.MemberAppIDs) > 0 {
+		return p.MemberAppIDs[0]
+	}
+	return ""
 }
 
 // PlatformEnrollmentBindConsensusRequest binds an enrolled application as the Gateway consensus application.

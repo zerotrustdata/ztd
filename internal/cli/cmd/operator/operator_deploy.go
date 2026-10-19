@@ -40,6 +40,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	sshpkg "github.com/zerotrustdata/ztd/internal/pkg/ssh"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 )
 
@@ -772,7 +773,8 @@ func enrollDeployedOperators(ctx context.Context, client authcmd.APIClient, ops 
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, operatorDeployOnlineBaseTimeout+time.Duration(len(ops))*operatorDeployOnlinePerOperator)
+	onlineTimeout := operatorDeployOnlineBaseTimeout + time.Duration(len(ops))*operatorDeployOnlinePerOperator + mcp.ApprovalRequestTTL
+	ctx, cancel := context.WithTimeout(ctx, onlineTimeout)
 	defer cancel()
 
 	// Buffered for every worker, so no watcher blocks once this returns early.
@@ -799,7 +801,10 @@ func enrollDeployedOperators(ctx context.Context, client authcmd.APIClient, ops 
 				req.Requests = append(req.Requests, targets[ops[i].RequestID])
 			}
 			if _, err := authcmd.PostPlatformEnrollmentBatchDecision(client, req); err != nil {
-				return fmt.Errorf("operator deploy: approve staged cohort (%d of %d approved): %w", approved, len(targets), err)
+				var l3Err *models.PlatformEnrollmentL3RequiredError
+				if !errors.As(err, &l3Err) {
+					return fmt.Errorf("operator deploy: approve staged cohort (%d of %d approved): %w", approved, len(targets), err)
+				}
 			}
 			approved += len(wave)
 			inFlight += len(wave)

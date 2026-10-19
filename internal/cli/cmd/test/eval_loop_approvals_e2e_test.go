@@ -48,9 +48,27 @@ type releaseSmokeApprovalResult struct {
 // releaseSmokeCLIApprovalResponder follows the owner CLI's live approval
 // stream and runs the real `ztd auth approve --cli` command for pending work.
 type releaseSmokeCLIApprovalResponder struct {
-	mu      sync.Mutex
-	results []releaseSmokeApprovalResult
-	seen    map[string]struct{}
+	mu       sync.Mutex
+	results  []releaseSmokeApprovalResult
+	seen     map[string]struct{}
+	cancel   context.CancelFunc
+	client   *http.Client
+	workers  *sync.WaitGroup
+	stopOnce sync.Once
+}
+
+func (a *releaseSmokeCLIApprovalResponder) Stop() {
+	a.stopOnce.Do(func() {
+		if a.cancel != nil {
+			a.cancel()
+		}
+		if a.client != nil {
+			a.client.CloseIdleConnections()
+		}
+		if a.workers != nil {
+			a.workers.Wait()
+		}
+	})
 }
 
 func (a *releaseSmokeCLIApprovalResponder) Count() int {
@@ -113,8 +131,13 @@ func startReleaseSmokeCLIApprovalResponder(t *testing.T, r *releaseSmokeRun) *re
 	ready := make(chan struct{})
 	var readyOnce sync.Once
 	wake := make(chan struct{}, 1)
-	responder := &releaseSmokeCLIApprovalResponder{seen: make(map[string]struct{})}
 	var workers sync.WaitGroup
+	responder := &releaseSmokeCLIApprovalResponder{
+		seen:    make(map[string]struct{}),
+		cancel:  cancel,
+		client:  httpClient,
+		workers: &workers,
+	}
 	workers.Add(2)
 	go func() {
 		defer workers.Done()
@@ -130,7 +153,11 @@ func startReleaseSmokeCLIApprovalResponder(t *testing.T, r *releaseSmokeRun) *re
 				return
 			}
 			var payload models.ApprovalsChangedPayload
-			if json.Unmarshal(event.Data, &payload) != nil || payload.Subject != models.ApprovalsChangedTransactions {
+			if err := json.Unmarshal(event.Data, &payload); err != nil {
+				slog.Warn("approvals responder failed to unmarshal payload", "error", err, "data", string(event.Data))
+				return
+			}
+			if payload.Subject != models.ApprovalsChangedTransactions && payload.Subject != models.ApprovalsChangedEnrollments {
 				return
 			}
 			select {
@@ -158,17 +185,13 @@ func startReleaseSmokeCLIApprovalResponder(t *testing.T, r *releaseSmokeRun) *re
 	}()
 
 	t.Cleanup(func() {
-		cancel()
-		httpClient.CloseIdleConnections()
-		workers.Wait()
+		responder.Stop()
 	})
 	select {
 	case <-ready:
 		// The reconciliation goroutine also waits on this one-shot signal.
 	case <-time.After(releaseSmokeApprovalConnectTimeout):
-		cancel()
-		workers.Wait()
-		httpClient.CloseIdleConnections()
+		responder.Stop()
 		t.Fatalf("owner CLI approval SSE did not connect within %s", releaseSmokeApprovalConnectTimeout)
 	}
 	return responder
@@ -177,12 +200,17 @@ func startReleaseSmokeCLIApprovalResponder(t *testing.T, r *releaseSmokeRun) *re
 func (a *releaseSmokeCLIApprovalResponder) reconcile(ctx context.Context, r *releaseSmokeRun, client *http.Client, baseURL string) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+constants.APIPaths.ApprovalsCLIList, nil)
 	if err != nil {
+		slog.Error("failed to create pending approvals request", "error", err)
 		a.record(releaseSmokeApprovalResult{err: err})
 		return
+	}
+	if r.identity.CLISessionID != "" {
+		request.Header.Set(constants.HeaderCLISessionID, r.identity.CLISessionID)
 	}
 	response, err := client.Do(request)
 	if err != nil {
 		if ctx.Err() == nil {
+			slog.Error("failed to do pending approvals request", "error", err)
 			a.record(releaseSmokeApprovalResult{err: fmt.Errorf("list pending approvals: %w", err)})
 		}
 		return
@@ -190,21 +218,28 @@ func (a *releaseSmokeCLIApprovalResponder) reconcile(ctx context.Context, r *rel
 	body, readErr := io.ReadAll(response.Body)
 	closeErr := response.Body.Close()
 	if readErr != nil {
+		slog.Error("failed to read pending approvals response body", "error", readErr)
 		a.record(releaseSmokeApprovalResult{err: fmt.Errorf("read pending approvals: %w", readErr)})
 		return
 	}
 	if closeErr != nil {
+		slog.Error("failed to close pending approvals response body", "error", closeErr)
 		a.record(releaseSmokeApprovalResult{err: fmt.Errorf("close pending approvals: %w", closeErr)})
 		return
 	}
 	if response.StatusCode != http.StatusOK {
+		slog.Error("list pending approvals returned non-200 status", "status", response.StatusCode, "body", string(body))
 		a.record(releaseSmokeApprovalResult{err: fmt.Errorf("list pending approvals returned HTTP %d: %s", response.StatusCode, body)})
 		return
 	}
 	var pending models.SuspendedTransactionsResponse
 	if err := json.Unmarshal(body, &pending); err != nil {
+		slog.Error("failed to unmarshal pending approvals", "error", err, "body", string(body))
 		a.record(releaseSmokeApprovalResult{err: fmt.Errorf("decode pending approvals: %w", err)})
 		return
+	}
+	if len(pending.Transactions) > 0 {
+		slog.Info("approvals responder reconcile: pending transactions", "count", len(pending.Transactions))
 	}
 	for _, transaction := range pending.Transactions {
 		if transaction.TransactionHash == "" || !a.claim(transaction.TransactionHash) {
@@ -228,7 +263,13 @@ func (a *releaseSmokeCLIApprovalResponder) approve(ctx context.Context, r *relea
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	slog.Info("approving transaction via CLI", "hash", hash)
 	err := cmd.Run()
+	if err != nil {
+		slog.Error("CLI approval failed", "hash", hash, "error", err, "stdout", stdout.String(), "stderr", stderr.String())
+	} else {
+		slog.Info("CLI approval succeeded", "hash", hash, "stdout", strings.TrimSpace(stdout.String()))
+	}
 	a.record(releaseSmokeApprovalResult{
 		transactionHash: hash,
 		stdout:          stdout.String(),

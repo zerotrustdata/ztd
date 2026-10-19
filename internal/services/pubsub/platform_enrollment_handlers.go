@@ -763,7 +763,14 @@ func (h *PlatformEnrollmentHandler) HandleRevoke(ctx context.Context, msg *PubSu
 			if err := json.Unmarshal(bData, &boundPolicy); err != nil {
 				return "", fmt.Errorf("platform enrollment: decode consensus binding for revocation: %w", err)
 			}
-			if len(boundPolicy.MemberAppIDs) > 0 && boundPolicy.MemberAppIDs[0] == req.ComponentName {
+			isMember := false
+			for _, m := range boundPolicy.MemberAppIDs {
+				if m == req.ComponentName {
+					isMember = true
+					break
+				}
+			}
+			if boundPolicy.PrimaryAppID() == req.ComponentName || isMember {
 				if err := h.deps.DocStore.DocDelete(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding)); err != nil {
 					return "", fmt.Errorf("platform enrollment: revoke consensus binding: %w", err)
 				}
@@ -1035,6 +1042,7 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 	now := time.Now().UTC()
 	consensusDoc := models.ConsensusPolicy{
 		ID:              string(constants.DocIDConsensusBinding),
+		AppID:           appID,
 		MemberAppIDs:    append([]string(nil), memberAppIDs...),
 		Quorum:          quorum,
 		RequireDistinct: true,

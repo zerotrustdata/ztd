@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -44,9 +43,16 @@ import (
 func TestEvalLoopCrossProcess(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
-			repo, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+			repoRoot, err := os.Getwd()
 			require.NoError(t, err)
-			repoRoot := strings.TrimSpace(string(repo))
+			for {
+				if _, err := os.Stat(filepath.Join(repoRoot, "go.mod")); err == nil {
+					break
+				}
+				parent := filepath.Dir(repoRoot)
+				require.NotEqual(t, parent, repoRoot)
+				repoRoot = parent
+			}
 			binary := filepath.Join(repoRoot, "ztd")
 			if runtime.GOOS == "windows" {
 				binary += ".exe"

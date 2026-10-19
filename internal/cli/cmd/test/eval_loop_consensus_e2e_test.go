@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"

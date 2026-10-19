@@ -610,7 +610,7 @@ func TestHandleBindConsensus_PersistsKOfNMemberSet(t *testing.T) {
 		seedConsensusMember(t, env, appID, enrollTestOwnerID, true)
 	}
 	_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
-		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: []string{"reviewer-a", "reviewer-b", "reviewer-c"}, ConsensusQuorum: 2}))
+		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: []string{"reviewer-b", "reviewer-a", "reviewer-c"}, ConsensusQuorum: 2}))
 	require.NoError(t, err)
 	doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
 	require.NoError(t, err)
@@ -619,7 +619,9 @@ func TestHandleBindConsensus_PersistsKOfNMemberSet(t *testing.T) {
 	require.NoError(t, err)
 	var policy models.ConsensusPolicy
 	require.NoError(t, json.Unmarshal(data, &policy))
-	require.Equal(t, []string{"reviewer-a", "reviewer-b", "reviewer-c"}, policy.MemberAppIDs)
+	require.Equal(t, "reviewer-a", policy.AppID)
+	require.Equal(t, "reviewer-a", policy.PrimaryAppID())
+	require.Equal(t, []string{"reviewer-b", "reviewer-a", "reviewer-c"}, policy.MemberAppIDs)
 	require.Equal(t, 2, policy.Quorum)
 }
 

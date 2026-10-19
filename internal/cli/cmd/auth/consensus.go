@@ -109,7 +109,7 @@ func consensusBindCmd(newClient func() (APIClient, error)) *cobra.Command {
 			if request.Quorum == 0 {
 				request.Quorum = 1
 			}
-			if !sameStringList(policy.MemberAppIDs, request.MemberAppIDs) || policy.Quorum != request.Quorum || policy.EndpointURL != request.EndpointURL {
+			if (policy.AppID != "" && policy.AppID != request.AppID) || !sameStringList(policy.MemberAppIDs, request.MemberAppIDs) || policy.Quorum != request.Quorum || policy.EndpointURL != request.EndpointURL {
 				return fmt.Errorf("consensus bind: binding does not match request: %w", constants.ErrInvalidJSONResponse)
 			}
 			return output.WriteJSON(cmd.OutOrStdout(), policy)
