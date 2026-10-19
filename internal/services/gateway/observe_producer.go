@@ -1015,11 +1015,15 @@ func (s *ObserveProducerService) EmitHeartbeat(ctx context.Context, userID strin
 	return nil
 }
 
-// RequestStop persists the supervisor state projection and emits an
-// ai.eval.stop.requested SSE event after successful persistence.
-func (s *ObserveProducerService) RequestStop(ctx context.Context, userID string, route SSERoute, supervisorID, campaignID string, reason models.StopReason, scope models.StopScope) error {
+// RequestStop persists the supervisor state projection and emits a run-scoped
+// ai.eval.stop.requested SSE event after successful persistence. The event
+// names runID so the CLI process running that campaign run can act on it.
+func (s *ObserveProducerService) RequestStop(ctx context.Context, userID string, route SSERoute, supervisorID, campaignID, runID string, reason models.StopReason, scope models.StopScope) error {
 	if campaignID == "" {
 		return fmt.Errorf("observe producer: request stop: %w", constants.ErrObserveCampaignIDRequired)
+	}
+	if runID == "" {
+		return fmt.Errorf("observe producer: request stop: %w", constants.ErrObserveRunIDRequired)
 	}
 	if err := route.validate(); err != nil {
 		return fmt.Errorf("observe producer: request stop: %w", err)
@@ -1070,6 +1074,7 @@ func (s *ObserveProducerService) RequestStop(ctx context.Context, userID string,
 		SourceSequence: seq,
 		EventID:        eventID,
 		CampaignID:     campaignID,
+		RunID:          runID,
 		StopReason:     reason,
 		StopScope:      scope,
 		RequestedAt:    now,

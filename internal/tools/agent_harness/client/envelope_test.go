@@ -10,7 +10,6 @@ package client
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,23 +52,8 @@ func TestSubmitEnvelope_MarshalError(t *testing.T) {
 	_ = err
 }
 
-func TestSubmitMaximal_EnvelopeEventTypeResolvesInRegistry(t *testing.T) {
-	env, txHash, err := buildMaximalEnvelope(Persona{ID: "test-client"}, MaximalEnvelope{
-		OperatorID:     "op-123",
-		ToolName:       "fs_list",
-		ArgumentsJSON:  `{"path":"."}`,
-		TargetResource: "localhost",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, txHash, env.GetTransactionHash())
-
-	action, err := constants.ValidateGovernedRequest(constants.EventType(env.GetEventType()))
-	require.NoError(t, err)
-	assert.Equal(t, ActionMcpCall, string(action))
-}
-
-func TestSubmitMaximal_RejectsUnregisteredMcpEventSpelling(t *testing.T) {
-	// The event type SubmitMaximal used before this change is not in the registry.
+func TestValidateGovernedRequest_RejectsUnregisteredMcpEventSpelling(t *testing.T) {
+	// The pre-registry MCP event spelling must stay outside the registry.
 	_, err := constants.ValidateGovernedRequest(constants.EventType("operator.mcp.call.requested"))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrTxUnknownEventType)
@@ -79,54 +63,7 @@ func TestActionConstants(t *testing.T) {
 	if ActionMcpCall != "MCP_CALL" {
 		t.Errorf("ActionMcpCall = %s, want MCP_CALL", ActionMcpCall)
 	}
-	if ActionA2aCall != "A2A_CALL" {
-		t.Errorf("ActionA2aCall = %s, want A2A_CALL", ActionA2aCall)
-	}
 	if ProtocolVersion != "2" {
 		t.Errorf("ProtocolVersion = %s, want 2", ProtocolVersion)
 	}
-}
-
-func TestMaximalEnvelope(t *testing.T) {
-	maximal := MaximalEnvelope{
-		OperatorID:     "op-123",
-		ToolName:       "test-tool",
-		ArgumentsJSON:  `{"arg":"value"}`,
-		TargetResource: "localhost",
-		StateRoot:      "root-abc",
-		TTL:            5 * time.Minute,
-	}
-
-	if maximal.OperatorID != "op-123" {
-		t.Error("OperatorID not set correctly")
-	}
-	if maximal.ToolName != "test-tool" {
-		t.Error("ToolName not set correctly")
-	}
-	if maximal.ArgumentsJSON != `{"arg":"value"}` {
-		t.Error("ArgumentsJSON not set correctly")
-	}
-	if maximal.TargetResource != "localhost" {
-		t.Error("TargetResource not set correctly")
-	}
-	if maximal.StateRoot != "root-abc" {
-		t.Error("StateRoot not set correctly")
-	}
-	if maximal.TTL != 5*time.Minute {
-		t.Error("TTL not set correctly")
-	}
-}
-
-// Helper function
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

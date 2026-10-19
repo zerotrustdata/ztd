@@ -104,8 +104,7 @@ func (d *Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) ([]byt
 		if member.PrivateKey == nil {
 			continue
 		}
-		payload := fmt.Sprintf("%s|%v", env.Id, isSafe)
-		sig := ed25519.Sign(member.PrivateKey, []byte(payload))
+		sig := ed25519.Sign(member.PrivateKey, govsvc.L2VotePayload(env.Id, isSafe))
 		votes = append(votes, &commonv1.L2Vote{
 			SignerKeyId:        member.AppID,
 			ConsensusSignature: hex.EncodeToString(sig),

@@ -206,7 +206,7 @@ func signedEnvelope(
 	env.Id = hash
 	env.TransactionHash = hash
 
-	l2Sig := hex.EncodeToString(ed25519.Sign(privKey, []byte(hash+"|true")))
+	l2Sig := hex.EncodeToString(ed25519.Sign(privKey, governance.L2VotePayload(hash, true)))
 	env.Governance = &commonv1.GovernanceMetadata{
 		L2: &commonv1.L2Metadata{
 			ConsensusSetId: "chaos-consensus",

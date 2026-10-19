@@ -20,6 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -197,7 +199,7 @@ func TestMCPToolsList(t *testing.T) {
 					t.Errorf("expected path /mcp, got %s", r.URL.Path)
 				}
 
-				var req JSONRPCRequest
+				var req mcp.JSONRPCRequest
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					t.Errorf("failed to decode request: %v", err)
 				}
@@ -246,12 +248,12 @@ func TestMCPToolsCall_TypedArgs_SerializeToSameJSONRPCShape(t *testing.T) {
 		if r.URL.Path != "/mcp" {
 			t.Errorf("expected path /mcp, got %s", r.URL.Path)
 		}
-		var req JSONRPCRequest
+		var req mcp.JSONRPCRequest
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		if req.Method != "tools/call" {
 			t.Errorf("expected method tools/call, got %s", req.Method)
 		}
-		capturedParams, _ = req.Params.(map[string]any)
+		require.NoError(t, json.Unmarshal(req.Params, &capturedParams))
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}`))
 	})
@@ -262,8 +264,8 @@ func TestMCPToolsCall_TypedArgs_SerializeToSameJSONRPCShape(t *testing.T) {
 	c, err := New(cfg)
 	require.NoError(t, err)
 
-	args := ShellCommandArgs{Command: "dataop", Args: []string{"ingest", "TRK-001"}, Timeout: 10}
-	_, err = c.MCPToolsCall(context.Background(), Persona{ID: "test"}, "run_shell_command", args)
+	args := models.RunShellCommandRequest{Command: "dataop", Args: []string{"ingest", "TRK-001"}, Timeout: 10}
+	_, err = c.MCPToolsCall(context.Background(), Persona{ID: "test"}, mcp.CallToolRequest{Name: constants.MCPToolRunShellCommand, Arguments: mustJSON(t, args)})
 	require.NoError(t, err)
 
 	require.NotNil(t, capturedParams, "params should be a map")
@@ -277,35 +279,36 @@ func TestMCPToolsCall_TypedArgs_SerializeToSameJSONRPCShape(t *testing.T) {
 }
 
 func TestMCPToolsCall(t *testing.T) {
+	readTool := (&mcp.FileReadTool{}).Name()
 	tests := []struct {
-		name    string
-		tool    string
-		args    ToolArgs
-		wantErr bool
+		name      string
+		tool      string
+		arguments json.RawMessage
+		wantErr   bool
 	}{
 		{
-			name:    "successful call",
-			tool:    "fs_list",
-			args:    FSPathArgs{Path: "."},
-			wantErr: false,
+			name:      "successful call",
+			tool:      readTool,
+			arguments: mustJSON(t, mcp.FileReadRequest{Path: "."}),
+			wantErr:   false,
 		},
 		{
-			name:    "call with no args",
-			tool:    "fs_list",
-			args:    FSPathArgs{},
-			wantErr: false,
+			name:      "call with no args",
+			tool:      readTool,
+			arguments: mustJSON(t, mcp.FileReadRequest{}),
+			wantErr:   false,
 		},
 		{
-			name:    "call with nil args",
-			tool:    "fs_list",
-			args:    nil,
-			wantErr: false,
+			name:      "call with nil args",
+			tool:      readTool,
+			arguments: nil,
+			wantErr:   false,
 		},
 		{
-			name:    "call with multi-field args",
-			tool:    "fs_grep",
-			args:    FSGrepArgs{Path: ".", Pattern: "TODO"},
-			wantErr: false,
+			name:      "call with multi-field args",
+			tool:      constants.MCPToolRunShellCommand,
+			arguments: mustJSON(t, models.RunShellCommandRequest{Command: "grep", Args: []string{"-r", "TODO", "."}, Timeout: 5}),
+			wantErr:   false,
 		},
 	}
 
@@ -319,7 +322,7 @@ func TestMCPToolsCall(t *testing.T) {
 					t.Errorf("expected path /mcp, got %s", r.URL.Path)
 				}
 
-				var req JSONRPCRequest
+				var req mcp.JSONRPCRequest
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					t.Errorf("failed to decode request: %v", err)
 				}
@@ -328,9 +331,9 @@ func TestMCPToolsCall(t *testing.T) {
 					t.Errorf("expected method tools/call, got %s", req.Method)
 				}
 
-				params, ok := req.Params.(map[string]any)
-				if !ok {
-					t.Error("params should be a map")
+				var params map[string]any
+				if err := json.Unmarshal(req.Params, &params); err != nil {
+					t.Errorf("params should be a JSON object: %v", err)
 				}
 
 				if params["name"] != tt.tool {
@@ -357,7 +360,7 @@ func TestMCPToolsCall(t *testing.T) {
 			ctx := context.Background()
 			p := Persona{ID: "test-client"}
 
-			resp, err := client.MCPToolsCall(ctx, p, tt.tool, tt.args)
+			resp, err := client.MCPToolsCall(ctx, p, mcp.CallToolRequest{Name: tt.tool, Arguments: tt.arguments})
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("MCPToolsCall() error = %v, wantErr %v", err, tt.wantErr)
@@ -380,7 +383,7 @@ func TestMCPResourcesList(t *testing.T) {
 			t.Errorf("expected path /mcp, got %s", r.URL.Path)
 		}
 
-		var req JSONRPCRequest
+		var req mcp.JSONRPCRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Errorf("failed to decode request: %v", err)
 		}
@@ -429,7 +432,7 @@ func TestMCPResourcesRead(t *testing.T) {
 			t.Errorf("expected path /mcp, got %s", r.URL.Path)
 		}
 
-		var req JSONRPCRequest
+		var req mcp.JSONRPCRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Errorf("failed to decode request: %v", err)
 		}
@@ -438,9 +441,9 @@ func TestMCPResourcesRead(t *testing.T) {
 			t.Errorf("expected method resources/read, got %s", req.Method)
 		}
 
-		params, ok := req.Params.(map[string]any)
-		if !ok {
-			t.Error("params should be a map")
+		var params map[string]any
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Errorf("params should be a JSON object: %v", err)
 		}
 
 		if params["uri"] != "res://test" {
@@ -467,7 +470,7 @@ func TestMCPResourcesRead(t *testing.T) {
 	ctx := context.Background()
 	p := Persona{ID: "test-client"}
 
-	resp, err := client.MCPResourcesRead(ctx, p, "res://test")
+	resp, err := client.MCPResourcesRead(ctx, p, mcp.ReadResourceRequest{URI: "res://test"})
 
 	if err != nil {
 		t.Errorf("MCPResourcesRead() error = %v", err)
@@ -487,7 +490,7 @@ func TestMCPPromptsList(t *testing.T) {
 			t.Errorf("expected path /mcp, got %s", r.URL.Path)
 		}
 
-		var req JSONRPCRequest
+		var req mcp.JSONRPCRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Errorf("failed to decode request: %v", err)
 		}
@@ -536,7 +539,7 @@ func TestMCPPromptsGet(t *testing.T) {
 			t.Errorf("expected path /mcp, got %s", r.URL.Path)
 		}
 
-		var req JSONRPCRequest
+		var req mcp.JSONRPCRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Errorf("failed to decode request: %v", err)
 		}
@@ -545,9 +548,9 @@ func TestMCPPromptsGet(t *testing.T) {
 			t.Errorf("expected method prompts/get, got %s", req.Method)
 		}
 
-		params, ok := req.Params.(map[string]any)
-		if !ok {
-			t.Error("params should be a map")
+		var params map[string]any
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Errorf("params should be a JSON object: %v", err)
 		}
 
 		if params["name"] != "test-prompt" {
@@ -574,7 +577,7 @@ func TestMCPPromptsGet(t *testing.T) {
 	ctx := context.Background()
 	p := Persona{ID: "test-client"}
 
-	resp, err := client.MCPPromptsGet(ctx, p, "test-prompt", promptArgFixture{Arg: "value"})
+	resp, err := client.MCPPromptsGet(ctx, p, mcp.GetPromptRequest{Name: "test-prompt", Arguments: map[string]string{"arg": "value"}})
 
 	if err != nil {
 		t.Errorf("MCPPromptsGet() error = %v", err)
@@ -589,21 +592,21 @@ func TestA2ACall(t *testing.T) {
 	tests := []struct {
 		name    string
 		skill   string
-		payload SkillPayload
+		payload json.RawMessage
 		execID  string
 		wantErr bool
 	}{
 		{
 			name:    "successful call",
 			skill:   "test-skill",
-			payload: skillPayloadFixture{Input: "data"},
+			payload: json.RawMessage(`{"input":"data"}`),
 			execID:  "exec-123",
 			wantErr: false,
 		},
 		{
 			name:    "call with empty payload",
 			skill:   "test-skill",
-			payload: skillPayloadFixture{},
+			payload: json.RawMessage(`{}`),
 			execID:  "exec-456",
 			wantErr: false,
 		},
@@ -626,7 +629,7 @@ func TestA2ACall(t *testing.T) {
 					t.Errorf("expected path %s, got %s", constants.APIPaths.A2ACall, r.URL.Path)
 				}
 
-				var req JSONRPCRequest
+				var req mcp.JSONRPCRequest
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					t.Errorf("failed to decode request: %v", err)
 				}
@@ -635,9 +638,9 @@ func TestA2ACall(t *testing.T) {
 					t.Errorf("expected method a2a/call, got %s", req.Method)
 				}
 
-				params, ok := req.Params.(map[string]any)
-				if !ok {
-					t.Error("params should be a map")
+				var params map[string]any
+				if err := json.Unmarshal(req.Params, &params); err != nil {
+					t.Errorf("params should be a JSON object: %v", err)
 				}
 
 				if params["skill_name"] != tt.skill {
@@ -668,7 +671,7 @@ func TestA2ACall(t *testing.T) {
 			ctx := context.Background()
 			p := Persona{ID: "test-client"}
 
-			resp, err := client.A2ACall(ctx, p, tt.skill, tt.payload, tt.execID)
+			resp, err := client.A2ACall(ctx, p, mcp.A2ACallRequest{SkillName: tt.skill, Payload: tt.payload, ExecutionID: tt.execID})
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("A2ACall() error = %v, wantErr %v", err, tt.wantErr)

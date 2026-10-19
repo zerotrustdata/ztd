@@ -78,6 +78,7 @@
   "observe_producer_agent_state": "/api/v1/observe/producer/agent-state",
   "observe_producer_prefix": "/api/v1/observe/producer/",
   "observe_producer_run_state": "/api/v1/observe/producer/run-state",
+  "observe_producer_stop": "/api/v1/observe/producer/stop",
   "observe_runs": "/api/v1/observe/runs",
   "observe_runs_by_id": "/api/v1/observe/runs/",
   "operator_prefix": "/api",

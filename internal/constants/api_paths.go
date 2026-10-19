@@ -183,6 +183,7 @@ var APIPaths = struct {
 	ObserveProducerPrefix     string `json:"observe_producer_prefix"`
 	ObserveProducerAgentState string `json:"observe_producer_agent_state"`
 	ObserveProducerRunState   string `json:"observe_producer_run_state"`
+	ObserveProducerStop       string `json:"observe_producer_stop"`
 	// WebSocket prefix
 	WSPrefix string `json:"ws_prefix"`
 	// User routes
@@ -354,6 +355,7 @@ var APIPaths = struct {
 	ObserveProducerPrefix:     "/api/v1/observe/producer/",
 	ObserveProducerAgentState: "/api/v1/observe/producer/agent-state",
 	ObserveProducerRunState:   "/api/v1/observe/producer/run-state",
+	ObserveProducerStop:       "/api/v1/observe/producer/stop",
 	// WebSocket prefix
 	WSPrefix: "/ws/",
 	// User routes

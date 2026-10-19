@@ -30,6 +30,9 @@ const (
 	judgeObjective   = "Explain the open incident"
 	judgeFinalReply  = "The incident was a stale lock."
 	judgeMemoryFact1 = "stale lock on the release queue"
+	judgeRunID       = "run-1"
+	judgeAssignment  = "assignment-1"
+	judgeScenarioID  = "scenario-1"
 )
 
 type fakeDispatcher struct {
@@ -51,6 +54,9 @@ func judgmentResponse(req *operatorv1.InferenceDispatchRequest, text string) *op
 		ResultDigest:        "digest",
 		CampaignId:          req.GetCampaignId(),
 		ModelRegistryDigest: req.GetModelRegistryDigest(),
+		RunId:               req.GetRunId(),
+		AssignmentId:        req.GetAssignmentId(),
+		ScenarioId:          req.GetScenarioId(),
 		Parts:               []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: text}}},
 	}
 	return &operatorv1.InferenceDispatchResponse{
@@ -86,6 +92,9 @@ func judgeConfig(t *testing.T, mutate func(*Config)) Config {
 		CampaignID:          judgeCampaignID,
 		ModelRegistryDigest: digest,
 		ModelRegistry:       registry,
+		RunID:               judgeRunID,
+		AssignmentID:        judgeAssignment,
+		ScenarioID:          judgeScenarioID,
 		NewID:               func(prefix string) string { return prefix },
 	}
 	if mutate != nil {
@@ -156,6 +165,9 @@ func TestScoreTrace_FinalReplyAndMemoryAreScoredThroughCampaignAuthorizedDispatc
 		assert.Equal(t, strings.Repeat("d", 64), req.GetModelDigest())
 		assert.Equal(t, judgeSessionID, req.GetTargetOperatorSessionId())
 		assert.Equal(t, judgeCampaignID, req.GetCampaignId())
+		assert.Equal(t, judgeRunID, req.GetRunId())
+		assert.Equal(t, judgeAssignment, req.GetAssignmentId())
+		assert.Equal(t, judgeScenarioID, req.GetScenarioId())
 		assert.Equal(t, digest, req.GetModelRegistryDigest())
 		assert.Len(t, req.GetModelRegistry(), 1)
 		assert.Equal(t, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, req.GetMessages()[0].GetRole())
@@ -249,6 +261,33 @@ func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 			wantTxID: "tx-judge-final_reply",
 		},
 		{
+			name: "result for another run",
+			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+				resp := judgmentResponse(req, `{"score": 3, "rationale": "x"}`)
+				resp.GetResult().RunId = "other-run"
+				return resp, nil
+			},
+			wantTxID: "tx-judge-final_reply",
+		},
+		{
+			name: "result for another assignment",
+			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+				resp := judgmentResponse(req, `{"score": 3, "rationale": "x"}`)
+				resp.GetResult().AssignmentId = "other-assignment"
+				return resp, nil
+			},
+			wantTxID: "tx-judge-final_reply",
+		},
+		{
+			name: "result for another scenario",
+			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+				resp := judgmentResponse(req, `{"score": 3, "rationale": "x"}`)
+				resp.GetResult().ScenarioId = "other-scenario"
+				return resp, nil
+			},
+			wantTxID: "tx-judge-final_reply",
+		},
+		{
 			name: "score 0",
 			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 				return judgmentResponse(req, `{"score": 0, "rationale": "x"}`), nil
@@ -304,6 +343,61 @@ func TestScoreTrace_CampaignAuthorityMismatchFailsWithoutDispatch(t *testing.T) 
 	require.Len(t, scores, 1)
 	assert.Equal(t, StatusFailed, scores[0].Status)
 	assert.Empty(t, dispatcher.requests)
+}
+
+func TestScoreTrace_MissingRunAssignmentOrScenarioIDFailsWithoutDispatch(t *testing.T) {
+	cases := map[string]func(*Config){
+		"empty run id":        func(cfg *Config) { cfg.RunID = "" },
+		"empty assignment id": func(cfg *Config) { cfg.AssignmentID = "" },
+		"empty scenario id":   func(cfg *Config) { cfg.ScenarioID = "" },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+				return judgmentResponse(req, `{"score": 3, "rationale": "x"}`), nil
+			}}
+			j := newTestJudge(t, dispatcher, mutate)
+
+			req, _, err := j.buildDispatchRequest(SubjectFinalReply, judgeFinalReply)
+			assert.Nil(t, req)
+			assert.True(t, errors.Is(err, constants.ErrMissingRequiredField))
+
+			scores := j.ScoreTrace(context.Background(), trace(judgeFinalReply), judgeObjective, nil)
+
+			require.Len(t, scores, 1)
+			assert.Equal(t, StatusFailed, scores[0].Status)
+			assert.Empty(t, dispatcher.requests)
+		})
+	}
+}
+
+func TestValidateResponse_RejectsResultBoundToAnotherRunAssignmentOrScenario(t *testing.T) {
+	cases := map[string]func(*operatorv1.InferenceResult){
+		"another run":        func(r *operatorv1.InferenceResult) { r.RunId = "other-run" },
+		"another assignment": func(r *operatorv1.InferenceResult) { r.AssignmentId = "other-assignment" },
+		"another scenario":   func(r *operatorv1.InferenceResult) { r.ScenarioId = "other-scenario" },
+		"missing run":        func(r *operatorv1.InferenceResult) { r.RunId = "" },
+	}
+	for name, forge := range cases {
+		t.Run(name, func(t *testing.T) {
+			j := newTestJudge(t, &fakeDispatcher{}, nil)
+			req, providerAttemptID, err := j.buildDispatchRequest(SubjectFinalReply, judgeFinalReply)
+			require.NoError(t, err)
+			resp := judgmentResponse(req, `{"score": 3, "rationale": "x"}`)
+			forge(resp.GetResult())
+
+			err = j.validateResponse(providerAttemptID, resp)
+
+			assert.True(t, errors.Is(err, constants.ErrIdentityBindingFailed))
+		})
+	}
+	t.Run("result carrying the requested identity validates", func(t *testing.T) {
+		j := newTestJudge(t, &fakeDispatcher{}, nil)
+		req, providerAttemptID, err := j.buildDispatchRequest(SubjectFinalReply, judgeFinalReply)
+		require.NoError(t, err)
+
+		require.NoError(t, j.validateResponse(providerAttemptID, judgmentResponse(req, `{"score": 3, "rationale": "x"}`)))
+	})
 }
 
 func TestDecodeJudgment_AcceptsOnlyTheDeclaredShape(t *testing.T) {

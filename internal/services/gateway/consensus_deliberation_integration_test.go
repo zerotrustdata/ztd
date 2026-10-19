@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
@@ -53,7 +54,7 @@ func TestConsensusDeliberation_SpeaksProtobufToApplicationAndReturnsCallerWire(t
 			ConsensusSetId: string(constants.DocIDConsensusBinding),
 			Votes: []*commonv1.L2Vote{{
 				SignerKeyId: appID, Decision: true,
-				ConsensusSignature: hex.EncodeToString(ed25519.Sign(signingKey, []byte(envelope.GetId()+"|true"))),
+				ConsensusSignature: hex.EncodeToString(ed25519.Sign(signingKey, governance.L2VotePayload(envelope.GetId(), true))),
 			}},
 		}}
 		signed, err := proto.Marshal(&envelope)

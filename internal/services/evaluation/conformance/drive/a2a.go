@@ -9,10 +9,12 @@ package drive
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -42,7 +44,7 @@ func (d *A2A) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) 
 		return cases.Driven{}, fmt.Errorf("a2a %s: %w", a.Case.Fault, err)
 	}
 	d.stub.Begin(a.AttemptID)
-	outcome, callErr := d.client.A2ACall(ctx, d.persona, ConformanceA2ASkill, payload, a.AttemptID)
+	outcome, callErr := d.client.A2ACall(ctx, d.persona, mcp.A2ACallRequest{SkillName: ConformanceA2ASkill, Payload: payload, ExecutionID: a.AttemptID})
 	// End runs on every path so the attempt is always closed, even when the call failed.
 	calls := d.stub.End(a.AttemptID)
 	if callErr != nil {
@@ -54,14 +56,21 @@ func (d *A2A) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) 
 	}, nil
 }
 
-// a2aPayload maps a fault to the skill payload that submits it.
-func a2aPayload(a cases.Attempt) (client.SkillPayload, error) {
+// a2aPayload maps a fault to the skill payload that submits it, as the raw JSON
+// the A2A request carries.
+func a2aPayload(a cases.Attempt) (json.RawMessage, error) {
+	var payload any
 	switch a.Case.Fault {
 	case cases.FaultNone, cases.FaultUnattendedMutation, cases.FaultAttendedApprove, cases.FaultAttendedDeny:
-		return client.MarkerSkillPayload{Marker: a.Marker}, nil
+		payload = client.MarkerSkillPayload{Marker: a.Marker}
 	case cases.FaultDoctrine:
-		return client.CommandSkillPayload{Cmd: a.Case.Command}, nil
+		payload = client.CommandSkillPayload{Cmd: a.Case.Command}
 	default:
 		return nil, constants.ErrConformanceIngressUnsupported
 	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("a2a: marshal payload: %w", err)
+	}
+	return raw, nil
 }

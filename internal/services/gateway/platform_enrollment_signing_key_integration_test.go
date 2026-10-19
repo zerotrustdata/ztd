@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -88,7 +89,7 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		signature := ed25519.Sign(signingKey, []byte(envelope.GetTransactionHash()+"|true"))
+		signature := ed25519.Sign(signingKey, governance.L2VotePayload(envelope.GetTransactionHash(), true))
 		envelope.Governance = &commonv1.GovernanceMetadata{L2: &commonv1.L2Metadata{
 			ConsensusSetId: string(constants.DocIDConsensusBinding),
 			Votes:          []*commonv1.L2Vote{{SignerKeyId: "ordinary-consensus", Decision: true, ConsensusSignature: hex.EncodeToString(signature)}},
@@ -122,7 +123,7 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 	require.Len(t, proof.GetVotes(), 1)
 	signature, err := hex.DecodeString(proof.GetVotes()[0].GetConsensusSignature())
 	require.NoError(t, err)
-	require.True(t, ed25519.Verify(registered, []byte(envelope.TransactionHash+"|true"), signature))
+	require.True(t, ed25519.Verify(registered, governance.L2VotePayload(envelope.TransactionHash, true), signature))
 	trust, err := env.svc.GetConsensusStore().OperatorL2Trust(t.Context())
 	require.NoError(t, err)
 	require.Len(t, trust.Signers, 1)

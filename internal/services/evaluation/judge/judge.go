@@ -49,12 +49,17 @@ const (
 )
 
 // Config is the judge model and the campaign authority its dispatches run under.
+// RunID, AssignmentID, and ScenarioID bind every dispatch to the assignment being
+// graded; the Operator echoes them back and the judge rejects any mismatch.
 type Config struct {
 	InferenceSessionID  string
 	Variant             *evalv1.ModelVariant // the judge model; must be in the frozen registry
 	CampaignID          string
 	ModelRegistryDigest string
 	ModelRegistry       []*operatorv1.InferenceModelVariant
+	RunID               string
+	AssignmentID        string
+	ScenarioID          string
 	NewID               func(prefix string) string
 }
 
@@ -159,7 +164,7 @@ func (j *Judge) score(ctx context.Context, subject Subject, userText string) Sco
 	if err != nil {
 		return failedScore(result, err)
 	}
-	if err := validateResponse(providerAttemptID, j.cfg.Variant.GetServedModelTag(), j.cfg.CampaignID, j.cfg.ModelRegistryDigest, resp); err != nil {
+	if err := j.validateResponse(providerAttemptID, resp); err != nil {
 		return failedScore(result, err)
 	}
 	value, rationale, err := decodeJudgment(resp.GetResult())
@@ -179,7 +184,8 @@ func failedScore(score Score, err error) Score {
 
 func (j *Judge) buildDispatchRequest(subject Subject, userText string) (*operatorv1.InferenceDispatchRequest, string, error) {
 	providerAttemptID := j.cfg.NewID("judge-" + string(subject))
-	if providerAttemptID == "" || j.cfg.Variant.GetServedModelTag() == "" || j.cfg.InferenceSessionID == "" {
+	if providerAttemptID == "" || j.cfg.Variant.GetServedModelTag() == "" || j.cfg.InferenceSessionID == "" ||
+		j.cfg.RunID == "" || j.cfg.AssignmentID == "" || j.cfg.ScenarioID == "" {
 		return nil, "", fmt.Errorf("evaluation judge: build request: %w", constants.ErrMissingRequiredField)
 	}
 	if j.cfg.CampaignID == "" || j.cfg.ModelRegistryDigest == "" || len(j.cfg.ModelRegistry) == 0 || j.cfg.Variant.GetModelDigest() == "" {
@@ -208,33 +214,38 @@ func (j *Judge) buildDispatchRequest(subject Subject, userText string) (*operato
 		CampaignId:              j.cfg.CampaignID,
 		ModelRegistryDigest:     j.cfg.ModelRegistryDigest,
 		ModelRegistry:           j.cfg.ModelRegistry,
-		RunId:                   "probe-run",
-		AssignmentId:            "probe-assignment",
+		RunId:                   j.cfg.RunID,
+		AssignmentId:            j.cfg.AssignmentID,
 		EvaluationAttemptId:     providerAttemptID,
-		ScenarioId:              "probe-scenario",
+		ScenarioId:              j.cfg.ScenarioID,
 	}
 	return req, providerAttemptID, nil
 }
 
-func validateResponse(providerAttemptID, model, campaignID, registryDigest string, resp *operatorv1.InferenceDispatchResponse) error {
+// validateResponse checks that the Operator's result answers this judge's dispatch:
+// same attempt, same campaign authority, and same run, assignment, and scenario.
+func (j *Judge) validateResponse(providerAttemptID string, resp *operatorv1.InferenceDispatchResponse) error {
 	if resp == nil || resp.GetResult() == nil || resp.GetReceipt() == nil {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrMissingRequiredField)
 	}
 	result := resp.GetResult()
 	receipt := resp.GetReceipt()
-	if result.GetProviderAttemptId() != providerAttemptID {
+	if result.GetProviderAttemptId() != providerAttemptID ||
+		result.GetRunId() != j.cfg.RunID ||
+		result.GetAssignmentId() != j.cfg.AssignmentID ||
+		result.GetScenarioId() != j.cfg.ScenarioID {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrIdentityBindingFailed)
 	}
-	if result.GetRequestedModel() != model {
+	if result.GetRequestedModel() != j.cfg.Variant.GetServedModelTag() {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceModelOverrideDenied)
 	}
 	if result.GetResultDigest() == "" || receipt.GetResultSummary() != result.GetResultDigest() {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceResultDigest)
 	}
-	if campaignID != "" && result.GetCampaignId() != campaignID {
+	if j.cfg.CampaignID != "" && result.GetCampaignId() != j.cfg.CampaignID {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceModelRegistryInvalid)
 	}
-	if registryDigest != "" && result.GetModelRegistryDigest() != registryDigest {
+	if j.cfg.ModelRegistryDigest != "" && result.GetModelRegistryDigest() != j.cfg.ModelRegistryDigest {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceModelRegistryInvalid)
 	}
 	return nil

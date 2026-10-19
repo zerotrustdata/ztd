@@ -237,6 +237,9 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 		CampaignID:          req.Assignment.GetCampaignId(),
 		ModelRegistryDigest: req.Binding.ModelRegistryDigest,
 		ModelRegistry:       req.Binding.ModelRegistry,
+		RunID:               req.Assignment.GetRunId(),
+		AssignmentID:        req.Assignment.GetAssignmentId(),
+		ScenarioID:          req.Assignment.GetScenarioId(),
 		NewID:               e.newID,
 	}
 	j, err := judge.New(e.inference, cfg)
@@ -269,6 +272,9 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	if len(scores) == 0 {
 		return nil, nil
 	}
+	// Judge receipts verify against the same pinned anchors as the traced model
+	// calls, so the anchor set is built once for the whole loop.
+	anchors, anchorsErr := agentTraceAnchorSet(trace)
 	now := e.now().UTC()
 	var (
 		semanticGrades   []*evalv1.SemanticGrade
@@ -283,24 +289,42 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 		}
 		gradeID := fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), criterionID)
 		var graderCallRef *compliancev1.ComplianceEvidenceReference
-		if sc.TransactionID != "" {
-			graderCallRef = &compliancev1.ComplianceEvidenceReference{
-				ArtifactId:         "receipt:" + sc.TransactionID,
-				ArtifactType:       "action_receipt",
-				ProducerIdentity:   "ztd-eval-judge",
-				ProducedAt:         timestamppb.New(now),
-				ScopeId:            req.Assignment.GetCampaignId(),
-				RunId:              req.Assignment.GetRunId(),
-				ScenarioId:         req.Assignment.GetScenarioId(),
-				VerificationStatus: "verified",
-				VerifierId:         GraderID,
-				VerifierVersion:    GraderVersion,
-				VerifiedAt:         timestamppb.New(now),
+		var receiptErr error
+		if sc.Status == judge.StatusScored && (sc.TransactionID == "" || sc.Receipt == nil) {
+			// A scored judge whose response carries no transaction or no signed
+			// receipt has nothing to verify, so its grade cannot be attributed to
+			// a governed inference.
+			receiptErr = fmt.Errorf("judge score has no signed governed receipt: %w", constants.ErrMissingRequiredField)
+		} else if sc.TransactionID != "" {
+			receiptErr = anchorsErr
+			if receiptErr == nil {
+				receiptErr = verifyJudgeReceipt(anchors, trace.Inference.OperatorID, sc.TransactionID, sc.Receipt)
+			}
+			if receiptErr == nil {
+				graderCallRef = &compliancev1.ComplianceEvidenceReference{
+					ArtifactId:         "receipt:" + sc.TransactionID,
+					ArtifactType:       "action_receipt",
+					ProducerIdentity:   "ztd-eval-judge",
+					ProducedAt:         timestamppb.New(now),
+					ScopeId:            req.Assignment.GetCampaignId(),
+					RunId:              req.Assignment.GetRunId(),
+					ScenarioId:         req.Assignment.GetScenarioId(),
+					VerificationStatus: "verified",
+					VerifierId:         GraderID,
+					VerifierVersion:    GraderVersion,
+					VerifiedAt:         timestamppb.New(now),
+				}
 			}
 		}
 		status := evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 		var detail string
-		if sc.Status == judge.StatusFailed {
+		if receiptErr != nil {
+			// An unverifiable judge receipt fails only this semantic grade. Like a
+			// judge failure, it records no decomposed score and never overrides the
+			// deterministic verdicts.
+			status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
+			detail = fmt.Sprintf("judge receipt verification failed: %v", receiptErr)
+		} else if sc.Status == judge.StatusFailed {
 			status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
 			detail = fmt.Sprintf("judge failed: %s", sc.Detail)
 		} else {

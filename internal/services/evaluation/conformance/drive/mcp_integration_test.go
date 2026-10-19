@@ -97,17 +97,17 @@ func (g *fakeMCPGateway) recorded() []recordedToolCall {
 }
 
 // rpcResponse wraps a result in a JSON-RPC 2.0 success envelope.
-func rpcResponse(result json.RawMessage) client.JSONRPCResponse {
-	return client.JSONRPCResponse{JSONRPC: "2.0", ID: 1, Result: result}
+func rpcResponse(result json.RawMessage) mcp.JSONRPCResponse {
+	return mcp.JSONRPCResponse{JSONRPC: "2.0", ID: 1, Result: result}
 }
 
 // rpcErrorBody renders a JSON-RPC error envelope carrying data.
 func rpcErrorBody(t *testing.T, data []byte) []byte {
 	t.Helper()
-	body, err := json.Marshal(client.JSONRPCResponse{
+	body, err := json.Marshal(mcp.JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      1,
-		Error:   &client.JSONRPCError{Code: -32000, Message: "refused", Data: data},
+		Error:   &mcp.JSONRPCError{Code: -32000, Message: "refused", Data: data},
 	})
 	require.NoError(t, err)
 	return body
@@ -308,7 +308,7 @@ func TestMCPDriveObservationKinds(t *testing.T) {
 		{
 			name: "JSON-RPC error without data is untyped",
 			body: func() []byte {
-				body, err := json.Marshal(client.JSONRPCResponse{JSONRPC: "2.0", ID: 1, Error: &client.JSONRPCError{Code: -32603, Message: "boom"}})
+				body, err := json.Marshal(mcp.JSONRPCResponse{JSONRPC: "2.0", ID: 1, Error: &mcp.JSONRPCError{Code: -32603, Message: "boom"}})
 				require.NoError(t, err)
 				return body
 			}(),

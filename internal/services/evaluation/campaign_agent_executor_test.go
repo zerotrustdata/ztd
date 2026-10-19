@@ -210,6 +210,10 @@ type agentInferenceFake struct {
 	// foreignTurn, when set, has another caller execute on the Inference
 	// runtime during that turn, a commitment the trace cannot claim.
 	foreignTurn int
+	// tamperTurn, when set, has tamper rewrite that turn's response after the
+	// runtime signs its receipt, so the response or its receipt no longer verifies.
+	tamperTurn int
+	tamper     func(response *operatorv1.InferenceDispatchResponse)
 }
 
 func (f *agentInferenceFake) DispatchInference(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
@@ -228,11 +232,15 @@ func (f *agentInferenceFake) DispatchInference(_ context.Context, req *operatorv
 		return nil, governance.WithFailedReceipt(ledger.inferenceFailed(txID), errors.New("agent test inference: provider unreachable"))
 	}
 	result := oracletest.InferenceResult(f.fixture.t, req, f.turns[turn-1])
-	return &operatorv1.InferenceDispatchResponse{
+	response := &operatorv1.InferenceDispatchResponse{
 		TransactionId: txID,
 		Result:        result,
 		Receipt:       ledger.inferenceWithResultDigest(txID, result.GetResultDigest()),
-	}, nil
+	}
+	if turn == f.tamperTurn && f.tamper != nil {
+		f.tamper(response)
+	}
+	return response, nil
 }
 
 // agentSentinelFake reads the ledger as a harness sentinel. failOnRead, when

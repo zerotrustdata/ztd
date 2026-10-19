@@ -1224,6 +1224,8 @@ var (
 	ErrObserveRoleCombinationIDRequired = errors.New("observe: role_combination_id is required")
 	ErrObserveVariantIDRequired         = errors.New("observe: variant_id is required")
 	ErrObserveDuplicateEventID          = errors.New("observe: duplicate event_id suppressed")
+	ErrObserveStopReasonInvalid         = errors.New("observe: invalid stop reason")
+	ErrObserveStopScopeInvalid          = errors.New("observe: invalid stop scope")
 )
 
 // Public feed errors (O3-public-feed: outbound publisher, signed batches,

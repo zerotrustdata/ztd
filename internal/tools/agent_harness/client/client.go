@@ -276,16 +276,19 @@ func (c *Client) stateRoot(ctx context.Context, baseURL string) (string, error) 
 	return h.StateMerkleRoot, nil
 }
 
-// RegisterSigner registers an Ed25519 public key as a trusted L2/principal
-// signer so consensus/notary postures will accept Agent Harness's proofs.
-// Best-effort: the exact request shape lives in handleTrustedSigners; the call
-// is recorded and non-fatal so the doctrine-posture demos still run if it 404s.
-func (c *Client) RegisterSigner(ctx context.Context, keyID, pubHex, role string) error {
-	payload, _ := json.Marshal(map[string]any{
-		"id":             keyID,
-		"public_key_hex": pubHex,
-		"enabled":        true,
+// RegisterSigner registers an Ed25519 public key as a trusted signer so
+// consensus/notary postures will accept Agent Harness's proofs. The body is the
+// Gateway's models.TrustedSigner wire type, decoded by handleGovernanceSigners.
+// A non-2xx response is returned as an error.
+func (c *Client) RegisterSigner(ctx context.Context, keyID, pubHex string) error {
+	payload, err := json.Marshal(models.TrustedSigner{
+		ID:        keyID,
+		PublicKey: pubHex,
+		Enabled:   true,
 	})
+	if err != nil {
+		return fmt.Errorf("register signer %q: %w", keyID, err)
+	}
 	status, _, err := c.do(ctx, Persona{ID: "agent-harness"}, http.MethodPost,
 		c.cfg.MTLSBaseURL+constants.APIPaths.GovernanceSigners, payload)
 	if err != nil {

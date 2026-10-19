@@ -13,6 +13,7 @@ import (
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
@@ -84,28 +85,36 @@ func checkNativeTools(names []string) error {
 
 // Drive calls one tool for the attempt and returns one observation.
 func (m *MCP) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) {
-	tool, args, err := mcpCall(a)
+	call, err := mcpCall(a)
 	if err != nil {
 		return cases.Driven{}, fmt.Errorf("mcp %s: %w", a.Case.Fault, err)
 	}
-	outcome, err := m.client.MCPToolsCall(ctx, m.persona, tool, args)
+	outcome, err := m.client.MCPToolsCall(ctx, m.persona, call)
 	if err != nil {
 		return cases.Driven{}, fmt.Errorf("mcp %s: tools/call: %w", a.Case.Fault, err)
 	}
 	return cases.Driven{Observations: []*evalv1.ConformanceObservation{Observe(outcome)}}, nil
 }
 
-// mcpCall maps a fault to the tool and arguments that submit it.
-func mcpCall(a cases.Attempt) (string, client.ToolArgs, error) {
+// mcpCall maps a fault to the tools/call request that submits it. The arguments
+// are the production request type of the tool, marshaled here.
+func mcpCall(a cases.Attempt) (mcp.CallToolRequest, error) {
+	var name string
+	var args any
 	switch a.Case.Fault {
 	case cases.FaultNone, cases.FaultUnattendedMutation, cases.FaultAttendedApprove, cases.FaultAttendedDeny:
 		argv := cases.MarkerArgv(a)
-		return mcpShellTool, client.ShellCommandArgs{Command: argv[0], Args: argv[1:]}, nil
+		name, args = mcpShellTool, models.RunShellCommandRequest{Command: argv[0], Args: argv[1:]}
 	case cases.FaultReadBaseline:
-		return mcpReadTool, client.FSPathArgs{Path: a.ReadAbs}, nil
+		name, args = mcpReadTool, mcp.FileReadRequest{Path: a.ReadAbs}
 	case cases.FaultDoctrine:
-		return mcpShellTool, client.ShellCommandArgs{Command: a.Case.Command}, nil
+		name, args = mcpShellTool, models.RunShellCommandRequest{Command: a.Case.Command}
 	default:
-		return "", nil, constants.ErrConformanceIngressUnsupported
+		return mcp.CallToolRequest{}, constants.ErrConformanceIngressUnsupported
 	}
+	raw, err := json.Marshal(args)
+	if err != nil {
+		return mcp.CallToolRequest{}, fmt.Errorf("mcp: marshal %s arguments: %w", name, err)
+	}
+	return mcp.CallToolRequest{Name: name, Arguments: raw}, nil
 }

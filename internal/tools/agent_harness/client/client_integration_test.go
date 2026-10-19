@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -146,7 +147,6 @@ func TestClient_RegisterSigner(t *testing.T) {
 		name         string
 		keyID        string
 		pubHex       string
-		role         string
 		responseCode int
 		wantErr      bool
 	}{
@@ -154,23 +154,20 @@ func TestClient_RegisterSigner(t *testing.T) {
 			name:         "successful registration",
 			keyID:        "test-key",
 			pubHex:       "abc123",
-			role:         "consensus",
 			responseCode: http.StatusOK,
 			wantErr:      false,
 		},
 		{
-			name:         "principal role",
+			name:         "second signer",
 			keyID:        "principal-key",
 			pubHex:       "def456",
-			role:         "principal",
 			responseCode: http.StatusOK,
 			wantErr:      false,
 		},
 		{
-			name:         "server returns 404 (best-effort)",
+			name:         "server returns 404",
 			keyID:        "test-key",
 			pubHex:       "abc123",
-			role:         "consensus",
 			responseCode: http.StatusNotFound,
 			wantErr:      true,
 		},
@@ -178,7 +175,6 @@ func TestClient_RegisterSigner(t *testing.T) {
 			name:         "server returns 500",
 			keyID:        "test-key",
 			pubHex:       "abc123",
-			role:         "consensus",
 			responseCode: http.StatusInternalServerError,
 			wantErr:      true,
 		},
@@ -224,7 +220,7 @@ func TestClient_RegisterSigner(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			err = client.RegisterSigner(ctx, tt.keyID, tt.pubHex, tt.role)
+			err = client.RegisterSigner(ctx, tt.keyID, tt.pubHex)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RegisterSigner() error = %v, wantErr %v", err, tt.wantErr)
@@ -648,7 +644,7 @@ func TestMCPToolsCallWithCLI_RoutesThroughCLI(t *testing.T) {
 	assert.NotNil(t, c.cliHTTP, "cliHTTP must be non-nil for MCPToolsCallWithCLI to route through it")
 
 	ctx := context.Background()
-	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, "fs_list", FSPathArgs{Path: "."})
+	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, mcp.CallToolRequest{Name: (&mcp.FileReadTool{}).Name(), Arguments: mustJSON(t, mcp.FileReadRequest{Path: "."})})
 	require.NoError(t, err)
 	assert.True(t, sawRequest, "server should have received the request")
 }
@@ -673,7 +669,7 @@ func TestMCPToolsCallWithCLI_FallsBackToDoWhenNoCLIHTTP(t *testing.T) {
 	assert.Nil(t, c.cliHTTP, "cliHTTP should be nil — fallback to do() expected")
 
 	ctx := context.Background()
-	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, "fs_list", FSPathArgs{Path: "."})
+	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, mcp.CallToolRequest{Name: (&mcp.FileReadTool{}).Name(), Arguments: mustJSON(t, mcp.FileReadRequest{Path: "."})})
 	require.NoError(t, err)
 	assert.True(t, sawRequest, "server should have received the fallback request")
 }

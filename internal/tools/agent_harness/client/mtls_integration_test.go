@@ -24,12 +24,14 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestMTLSServerClient_Handshake(t *testing.T) {
@@ -200,7 +202,7 @@ func TestMTLSServerClient_InvalidClientCert(t *testing.T) {
 	}
 }
 
-func TestGetReceipt_Success(t *testing.T) {
+func TestGetActionReceipt_Success(t *testing.T) {
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -220,15 +222,18 @@ func TestGetReceipt_Success(t *testing.T) {
 	caPool.AddCert(caCert)
 
 	transactionID := "test-tx-123"
-	expectedReceipt := map[string]interface{}{
-		"transaction_id":    transactionID,
-		"transaction_hash":  "hash-abc123",
-		"action_type":       "EXECUTE_BASH",
-		"target_resource":   "localhost",
-		"status":            "completed",
-		"state_root_before": "root-before",
-		"state_root_after":  "root-after",
-		"signature":         "sig-def456",
+	expectedReceipt := &operatorv1.ActionReceipt{
+		TransactionId:   transactionID,
+		TransactionHash: "hash-abc123",
+		ActionType:      "EXECUTE_BASH",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		StateRootBefore: "root-before",
+		StateRootAfter:  "root-after",
+		Signature:       "sig-def456",
+	}
+	expectedBody, err := protojson.Marshal(expectedReceipt)
+	if err != nil {
+		t.Fatalf("failed to marshal expected receipt: %v", err)
 	}
 
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +248,7 @@ func TestGetReceipt_Success(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(expectedReceipt)
+		w.Write(expectedBody)
 	}))
 
 	server.TLS = &tls.Config{
@@ -293,34 +298,34 @@ func TestGetReceipt_Success(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	receipt, body, err := testClient.GetReceipt(ctx, transactionID)
+	receipt, body, err := testClient.GetActionReceipt(ctx, transactionID)
 
 	if err != nil {
-		t.Fatalf("GetReceipt failed: %v", err)
+		t.Fatalf("GetActionReceipt failed: %v", err)
 	}
 
 	if receipt == nil {
 		t.Fatal("Expected non-nil receipt")
 	}
 
-	if receipt.TransactionID != transactionID {
-		t.Errorf("Expected TransactionID %s, got %s", transactionID, receipt.TransactionID)
+	if receipt.GetTransactionId() != transactionID {
+		t.Errorf("Expected TransactionId %s, got %s", transactionID, receipt.GetTransactionId())
 	}
 
-	if receipt.TransactionHash != "hash-abc123" {
-		t.Errorf("Expected TransactionHash hash-abc123, got %s", receipt.TransactionHash)
+	if receipt.GetTransactionHash() != "hash-abc123" {
+		t.Errorf("Expected TransactionHash hash-abc123, got %s", receipt.GetTransactionHash())
 	}
 
-	if receipt.ActionType != "EXECUTE_BASH" {
-		t.Errorf("Expected ActionType EXECUTE_BASH, got %s", receipt.ActionType)
+	if receipt.GetActionType() != "EXECUTE_BASH" {
+		t.Errorf("Expected ActionType EXECUTE_BASH, got %s", receipt.GetActionType())
 	}
 
-	if receipt.Status != "completed" {
-		t.Errorf("Expected status completed, got %s", receipt.Status)
+	if receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		t.Errorf("Expected status EXECUTION_STATUS_COMPLETED, got %s", receipt.GetStatus())
 	}
 
-	if receipt.Signature != "sig-def456" {
-		t.Errorf("Expected signature sig-def456, got %s", receipt.Signature)
+	if receipt.GetSignature() != "sig-def456" {
+		t.Errorf("Expected signature sig-def456, got %s", receipt.GetSignature())
 	}
 
 	if len(body) == 0 {
@@ -328,7 +333,7 @@ func TestGetReceipt_Success(t *testing.T) {
 	}
 }
 
-func TestGetReceipt_NotFound(t *testing.T) {
+func TestGetActionReceipt_NotFound(t *testing.T) {
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -398,10 +403,10 @@ func TestGetReceipt_NotFound(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	receipt, _, err := testClient.GetReceipt(ctx, "nonexistent-tx")
+	receipt, _, err := testClient.GetActionReceipt(ctx, "nonexistent-tx")
 
 	if err != nil {
-		t.Fatalf("GetReceipt should not return error for 404: %v", err)
+		t.Fatalf("GetActionReceipt should not return error for 404: %v", err)
 	}
 
 	if receipt != nil {
@@ -409,7 +414,7 @@ func TestGetReceipt_NotFound(t *testing.T) {
 	}
 }
 
-func TestGetReceipt_ServerError(t *testing.T) {
+func TestGetActionReceipt_ServerError(t *testing.T) {
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -480,7 +485,7 @@ func TestGetReceipt_ServerError(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	receipt, body, err := testClient.GetReceipt(ctx, "test-tx")
+	receipt, body, err := testClient.GetActionReceipt(ctx, "test-tx")
 
 	if err == nil {
 		t.Fatal("Expected error for server error")
@@ -495,7 +500,7 @@ func TestGetReceipt_ServerError(t *testing.T) {
 	}
 }
 
-func TestGetReceipt_InvalidJSON(t *testing.T) {
+func TestGetActionReceipt_InvalidJSON(t *testing.T) {
 	caCert, caPriv, err := generateCA()
 	if err != nil {
 		t.Fatalf("generateCA failed: %v", err)
@@ -566,7 +571,7 @@ func TestGetReceipt_InvalidJSON(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	receipt, body, err := testClient.GetReceipt(ctx, "test-tx")
+	receipt, body, err := testClient.GetActionReceipt(ctx, "test-tx")
 
 	if err == nil {
 		t.Fatal("Expected error for invalid JSON")

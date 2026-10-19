@@ -263,7 +263,7 @@ func unsignedSignerEnvelope(t *testing.T, signerPriv ed25519.PrivateKey) *govpkg
 			Votes: []*commonv1.L2Vote{
 				{
 					SignerKeyId:        "missing-key",
-					ConsensusSignature: hex.EncodeToString(ed25519.Sign(signerPriv, []byte(hash+"|true"))),
+					ConsensusSignature: hex.EncodeToString(ed25519.Sign(signerPriv, governance.L2VotePayload(hash, true))),
 					Decision:           true,
 				},
 			},
@@ -381,7 +381,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) {
 		}
 		env.TransactionHash, _ = govpkg.GenerateMessageID(env)
 		env.Id = env.TransactionHash
-		sig := ed25519.Sign(f.SignerPriv, []byte(fmt.Sprintf("%s|true", env.TransactionHash)))
+		sig := ed25519.Sign(f.SignerPriv, governance.L2VotePayload(env.TransactionHash, true))
 		env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 
 		f.Svc.handleGovernanceEnvelope(env)
@@ -871,8 +871,8 @@ func TestOperatorPubSubService_AllActionTypesProduceReceipts(t *testing.T) {
 				env.Id = env.TransactionHash
 
 				// Sign for verifier
-				l2Payload := fmt.Sprintf("%s|true", env.TransactionHash)
-				sig := ed25519.Sign(f.SignerPriv, []byte(l2Payload))
+				l2Payload := governance.L2VotePayload(env.TransactionHash, true)
+				sig := ed25519.Sign(f.SignerPriv, l2Payload)
 				env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 
 				envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
@@ -943,8 +943,8 @@ func TestOperatorPubSubService_CancellationReceipt(t *testing.T) {
 		env.Id = env.TransactionHash
 
 		// Sign for verifier
-		l2Payload := fmt.Sprintf("%s|true", env.TransactionHash)
-		sig := ed25519.Sign(f.SignerPriv, []byte(l2Payload))
+		l2Payload := governance.L2VotePayload(env.TransactionHash, true)
+		sig := ed25519.Sign(f.SignerPriv, l2Payload)
 		env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 
 		envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
@@ -1487,8 +1487,8 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		env.Id = env.TransactionHash
 
 		// Sign for verifier
-		l2Payload := fmt.Sprintf("%s|true", env.TransactionHash)
-		sig := ed25519.Sign(f.SignerPriv, []byte(l2Payload))
+		l2Payload := governance.L2VotePayload(env.TransactionHash, true)
+		sig := ed25519.Sign(f.SignerPriv, l2Payload)
 		env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 
 		envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
@@ -1714,8 +1714,8 @@ func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *te
 				}
 				env.TransactionHash, _ = govpkg.GenerateMessageID(env)
 				env.Id = env.TransactionHash
-				l2Payload := fmt.Sprintf("%s|true", env.TransactionHash)
-				sig := ed25519.Sign(f.SignerPriv, []byte(l2Payload))
+				l2Payload := governance.L2VotePayload(env.TransactionHash, true)
+				sig := ed25519.Sign(f.SignerPriv, l2Payload)
 				env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 				envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
 

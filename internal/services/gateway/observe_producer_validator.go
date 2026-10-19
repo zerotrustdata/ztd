@@ -50,6 +50,25 @@ var validRunKinds = map[models.RunKind]struct{}{
 	models.RunKindWorkflow:      {},
 }
 
+// validStopReasons is the closed stop reason vocabulary: graceful owner stops
+// and the safety stops.
+var validStopReasons = map[models.StopReason]struct{}{
+	models.StopReasonGraceful:            {},
+	models.StopReasonSafetyBudget:        {},
+	models.StopReasonSafetyDisk:          {},
+	models.StopReasonSafetyHardwareDrift: {},
+	models.StopReasonSafetyCredential:    {},
+	models.StopReasonSafetyVerifier:      {},
+	models.StopReasonSafetyDisclosure:    {},
+	models.StopReasonSafetyPublication:   {},
+}
+
+// validStopScopes is the set of recognized stop scopes.
+var validStopScopes = map[models.StopScope]struct{}{
+	models.StopScopeCycle:      {},
+	models.StopScopeSupervisor: {},
+}
+
 // supportedProducerSchemaVersion is the single schema version accepted at the
 // producer boundary. Both agent and run producer requests carry the observe
 // event payload schema version.
@@ -103,6 +122,30 @@ func validateRunProducerRequest(req models.ObserveProducerRunStateRequest) error
 	}
 	if req.StartedAt != nil && req.EndedAt != nil && req.EndedAt.Before(*req.StartedAt) {
 		return fmt.Errorf("observe producer: validate run request: %w: started=%s ended=%s", constants.ErrObserveEndBeforeStart, req.StartedAt.Format(time.RFC3339Nano), req.EndedAt.Format(time.RFC3339Nano))
+	}
+	return nil
+}
+
+// validateStopProducerRequest validates the stop producer payload fields at
+// the Gateway boundary. It checks the supported schema version, the campaign
+// and run identities the stop names, and that the stop reason and scope come
+// from their closed vocabularies. The producer service re-checks the campaign
+// and run identities before persisting.
+func validateStopProducerRequest(req models.ObserveProducerStopRequest) error {
+	if req.SchemaVersion != supportedProducerSchemaVersion {
+		return fmt.Errorf("observe producer: validate stop request: %w: got %q", constants.ErrObserveUnsupportedSchemaVersion, req.SchemaVersion)
+	}
+	if req.CampaignID == "" {
+		return fmt.Errorf("observe producer: validate stop request: %w", constants.ErrObserveCampaignIDRequired)
+	}
+	if req.RunID == "" {
+		return fmt.Errorf("observe producer: validate stop request: %w", constants.ErrObserveRunIDRequired)
+	}
+	if _, ok := validStopReasons[req.StopReason]; !ok {
+		return fmt.Errorf("observe producer: validate stop request: %w: %q", constants.ErrObserveStopReasonInvalid, req.StopReason)
+	}
+	if _, ok := validStopScopes[req.StopScope]; !ok {
+		return fmt.Errorf("observe producer: validate stop request: %w: %q", constants.ErrObserveStopScopeInvalid, req.StopScope)
 	}
 	return nil
 }

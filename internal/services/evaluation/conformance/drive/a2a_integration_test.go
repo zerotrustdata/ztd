@@ -210,7 +210,7 @@ func TestA2AObservationKinds(t *testing.T) {
 		{
 			name: "JSON-RPC error without data is untyped",
 			body: func() []byte {
-				body, err := json.Marshal(client.JSONRPCResponse{JSONRPC: "2.0", ID: 1, Error: &client.JSONRPCError{Code: -32603, Message: "boom"}})
+				body, err := json.Marshal(mcp.JSONRPCResponse{JSONRPC: "2.0", ID: 1, Error: &mcp.JSONRPCError{Code: -32603, Message: "boom"}})
 				require.NoError(t, err)
 				return body
 			}(),

@@ -264,7 +264,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 					require.True(t, vote.GetDecision())
 					signature, err := hex.DecodeString(vote.GetConsensusSignature())
 					require.NoError(t, err)
-					require.True(t, ed25519.Verify(member.PrivateKey.Public().(ed25519.PublicKey), []byte(suspended.TransactionHash+"|true"), signature))
+					require.True(t, ed25519.Verify(member.PrivateKey.Public().(ed25519.PublicKey), govsvc.L2VotePayload(suspended.TransactionHash, true), signature))
 					voted[vote.GetSignerKeyId()] = struct{}{}
 				}
 				require.Len(t, voted, 2, "a 2-of-3 quorum needs two distinct signers")

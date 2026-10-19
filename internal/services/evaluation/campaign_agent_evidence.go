@@ -408,6 +408,20 @@ func verifiedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *opera
 	return oracle.Classify(receipt)
 }
 
+// verifyJudgeReceipt proves a judge score's governed inference receipt was
+// signed by the Inference runtime's pinned key and is the transaction the score
+// names. The judge's response checks do not verify the signature, so a judge
+// score is labelled verified only through this check.
+func verifyJudgeReceipt(anchors *oracle.AnchorSet, runtimeID, transactionID string, receipt *operatorv1.ActionReceipt) error {
+	if _, err := oracle.VerifyReceipt(anchors, runtimeID, receipt); err != nil {
+		return err
+	}
+	if receipt.GetTransactionId() != transactionID {
+		return fmt.Errorf("receipt transaction %q is not the judge transaction %q: %w", receipt.GetTransactionId(), transactionID, constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	return nil
+}
+
 // agentReceiptEvidenceReference names one verified receipt. The receipt lives
 // inside the sealed trace, so the reference carries the trace artifact's ID and
 // the digest of the receipt's canonical protojson.

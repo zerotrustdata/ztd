@@ -10,7 +10,6 @@ package pubsub
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"log/slog"
 	"testing"
 
@@ -33,7 +32,7 @@ import (
 // preventing decision/signature mismatch bugs where the signed string and the
 // Decision field diverge.
 func signL2Vote(privKey ed25519.PrivateKey, keyID, hash string, decision bool) *commonv1.L2Vote {
-	sig := ed25519.Sign(privKey, []byte(fmt.Sprintf("%s|%v", hash, decision)))
+	sig := ed25519.Sign(privKey, governance.L2VotePayload(hash, decision))
 	return &commonv1.L2Vote{
 		SignerKeyId:        keyID,
 		ConsensusSignature: hex.EncodeToString(sig),

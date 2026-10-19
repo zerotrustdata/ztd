@@ -35,7 +35,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
 	"github.com/zerotrustdata/ztd/internal/testutil"
-	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -65,7 +64,7 @@ func serveConformanceGateway(t *testing.T, posture constants.Posture, operators 
 			t.Errorf("marshal tools/list: %v", err)
 			return
 		}
-		writeConformanceTestJSON(t, w, harnessclient.JSONRPCResponse{JSONRPC: "2.0", ID: 1, Result: raw})
+		writeConformanceTestJSON(t, w, mcp.JSONRPCResponse{JSONRPC: "2.0", ID: 1, Result: raw})
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)

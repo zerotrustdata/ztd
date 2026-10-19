@@ -12,7 +12,6 @@ package config
 
 import (
 	"crypto/tls"
-	"time"
 )
 
 // Auth selects how Agent Harness authenticates to the Gateway's mTLS surface.
@@ -81,9 +80,6 @@ type Config struct {
 	// notary submit so handleCLIAuth stamps the host user onto the suspended
 	// transaction.
 	CLISessionID string `json:"cli_session_id"`
-
-	// EnvelopeTTL is how long a maximal envelope is valid before expiry.
-	EnvelopeTTL time.Duration `json:"envelope_ttl"`
 
 	// OutDir is where the auditor writes its detailed run report and receipt export.
 	OutDir string `json:"out_dir"`

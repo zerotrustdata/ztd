@@ -18,6 +18,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
@@ -186,7 +187,7 @@ func messageID(env *commonv1.GovernanceEnvelope) (string, error) {
 
 // signVote signs "<txHash>|<decision>" with priv, as the L2 verifier expects.
 func signVote(keyID string, priv ed25519.PrivateKey, txHash string, decision bool) *commonv1.L2Vote {
-	sig := ed25519.Sign(priv, []byte(fmt.Sprintf("%s|%v", txHash, decision)))
+	sig := ed25519.Sign(priv, govsvc.L2VotePayload(txHash, decision))
 	return &commonv1.L2Vote{
 		SignerKeyId:        keyID,
 		ConsensusSignature: hex.EncodeToString(sig),

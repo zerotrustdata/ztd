@@ -381,7 +381,7 @@ func (r *releaseSmokeRun) loginCLI(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	r.client, err = harness.New(harnessconfig.Config{MTLSBaseURL: fmt.Sprintf("https://127.0.0.1:%d", r.ports.https), Auth: harnessconfig.Auth{Certificate: &cliCert, CABundle: cfg.ResolvedTrustBundlePath()}, UserID: r.identity.UserID, CLISessionID: r.identity.CLISessionID, EnvelopeTTL: 5 * time.Minute, OutDir: filepath.Join(r.opts.RunDir, "evidence")})
+	r.client, err = harness.New(harnessconfig.Config{MTLSBaseURL: fmt.Sprintf("https://127.0.0.1:%d", r.ports.https), Auth: harnessconfig.Auth{Certificate: &cliCert, CABundle: cfg.ResolvedTrustBundlePath()}, UserID: r.identity.UserID, CLISessionID: r.identity.CLISessionID, OutDir: filepath.Join(r.opts.RunDir, "evidence")})
 	if err != nil {
 		return err
 	}

@@ -104,7 +104,7 @@ func decodeRPCOutcome(status int, raw []byte, result func(json.RawMessage) *Gove
 }
 
 func decodeRPCBody(raw []byte, result func(json.RawMessage) *GovernedOutcome) *GovernedOutcome {
-	var envelope JSONRPCResponse
+	var envelope mcp.JSONRPCResponse
 	if err := decodeStrictJSON(raw, &envelope); err != nil {
 		return untypedOutcome()
 	}
