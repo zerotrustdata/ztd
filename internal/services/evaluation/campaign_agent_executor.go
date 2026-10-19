@@ -62,7 +62,7 @@ type AgentToolDispatcher interface {
 // governed Inference Operator; every tool call runs as a governed action on
 // the bound Data Operator.
 type CampaignAgentExecutor struct {
-	inference  GovernedInferenceDispatcher
+	inference  AgentInferenceDispatcher
 	tools      AgentToolDispatcher
 	sentinel   cases.Sentinel
 	traceStore AgentTraceStore
@@ -73,7 +73,7 @@ type CampaignAgentExecutor struct {
 
 // NewCampaignAgentExecutor constructs the homogeneous agent executor. The
 // sentinel reads the ledger on the Data Operator before and after each attempt.
-func NewCampaignAgentExecutor(inference GovernedInferenceDispatcher, tools AgentToolDispatcher, sentinel cases.Sentinel, traceStore AgentTraceStore, now func() time.Time, newID func(string) string) (*CampaignAgentExecutor, error) {
+func NewCampaignAgentExecutor(inference AgentInferenceDispatcher, tools AgentToolDispatcher, sentinel cases.Sentinel, traceStore AgentTraceStore, now func() time.Time, newID func(string) string) (*CampaignAgentExecutor, error) {
 	if inference == nil || tools == nil || sentinel == nil || traceStore == nil || newID == nil {
 		return nil, fmt.Errorf("evaluation: agent executor: %w", constants.ErrMissingRequiredField)
 	}
@@ -762,20 +762,40 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 // signed receipt whenever the runtime executed the dispatch, including when err
 // reports its failure.
 func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
-	attemptID := r.executor.newID("agent-inference")
 	purpose, turn := call.Purpose, call.LoopTurn
 	modelRole := r.designated
 	if IsHeterogeneousAssignment(r.req.Assignment) {
-		if strings.HasPrefix(purpose, agentModelCallPurposeTribunalPrefix) {
-			modelRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
-		} else {
-			modelRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
-		}
+		modelRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
 	}
+	probe, err := r.bindInference(&call, modelRole, r.executor.newID("agent-inference"), messages, tools)
+	if err != nil {
+		return nil, call, err
+	}
+	dispatch, err := r.inferenceDispatchRequest(probe)
+	if err != nil {
+		return nil, call, err
+	}
+	response, err := r.executor.inference.DispatchInference(ctx, dispatch)
+	if err != nil {
+		if receipt := governance.FailedReceipt(err); receipt != nil {
+			call.TransactionID = receipt.GetTransactionId()
+			call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
+		}
+		return nil, call, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
+	}
+	if err := recordInferenceResponse(&call, probe, response); err != nil {
+		return nil, call, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
+	}
+	return response.GetResult(), call, nil
+}
+
+// bindInference binds call to the variant modelRole dispatches under and
+// returns the probe request its response is verified against.
+func (r *agentRun) bindInference(call *AgentModelCall, modelRole evalv1.ModelCampaignRole, attemptID string, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (InferenceProbeRequest, error) {
 	variant := r.variants[modelRole]
 	inferenceRole, err := campaignRoleToInferenceRole(modelRole)
 	if err != nil || variant == nil {
-		return nil, call, fmt.Errorf("evaluation: dispatch agent inference: role %s: %w", modelRole, constants.ErrFormationRegistryBinding)
+		return InferenceProbeRequest{}, fmt.Errorf("evaluation: dispatch agent inference: role %s: %w", modelRole, constants.ErrFormationRegistryBinding)
 	}
 	call.ProviderAttemptID = attemptID
 	call.ModelVariantID = variant.GetVariantId()
@@ -801,22 +821,27 @@ func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, m
 	if len(tools) > 0 {
 		probe.ToolChoice = &operatorv1.InferenceToolChoice{Mode: operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO}
 	}
+	return probe, nil
+}
+
+// inferenceDispatchRequest renders probe as a dispatch scoped to this
+// assignment's evaluation attempt.
+func (r *agentRun) inferenceDispatchRequest(probe InferenceProbeRequest) (*operatorv1.InferenceDispatchRequest, error) {
 	dispatch, err := BuildInferenceProbeDispatchRequest(probe)
 	if err != nil {
-		return nil, call, err
+		return nil, err
 	}
 	dispatch.RunId = r.trace.RunID
 	dispatch.AssignmentId = r.trace.AssignmentID
 	dispatch.EvaluationAttemptId = r.trace.EvaluationAttemptID
 	dispatch.ScenarioId = r.trace.ScenarioID
-	response, err := r.executor.inference.DispatchInference(ctx, dispatch)
-	if err != nil {
-		if receipt := governance.FailedReceipt(err); receipt != nil {
-			call.TransactionID = receipt.GetTransactionId()
-			call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
-		}
-		return nil, call, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
-	}
+	return dispatch, nil
+}
+
+// recordInferenceResponse verifies a governed inference response against probe
+// and records its receipt and telemetry on call. The receipt is recorded before
+// verification so a response that fails it still claims its ledger commitment.
+func recordInferenceResponse(call *AgentModelCall, probe InferenceProbeRequest, response *operatorv1.InferenceDispatchResponse) error {
 	result := response.GetResult()
 	call.TransactionID = response.GetTransactionId()
 	if receipt := response.GetReceipt(); receipt != nil {
@@ -824,10 +849,10 @@ func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, m
 	}
 	call.ResultDigest = result.GetResultDigest()
 	if err := ValidateInferenceProbeResponse(probe, response); err != nil {
-		return nil, call, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
+		return err
 	}
 	if result.GetPromptTokens() < 0 || result.GetCompletionTokens() < 0 {
-		return nil, call, fmt.Errorf("%s inference turn %d: negative token usage: %w", purpose, turn, constants.ErrInferenceProviderResponseInvalid)
+		return fmt.Errorf("negative token usage: %w", constants.ErrInferenceProviderResponseInvalid)
 	}
 	call.UsageReported = result.GetUsageReported()
 	call.PromptTokens = uint32(result.GetPromptTokens())
@@ -842,7 +867,7 @@ func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, m
 	if result.GenerationDurationNs != nil && *result.GenerationDurationNs > 0 {
 		call.GenerationDurationNanos = uint64(*result.GenerationDurationNs)
 	}
-	return result, call, nil
+	return nil
 }
 
 // runTool executes one model tool call and returns its trace record. A
@@ -870,13 +895,13 @@ func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, to
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("ZTD-1607: Unknown tool %q; %s", toolCall.GetName(), hint)})
 	}
 	record.IsOperatorTool = spec.Operator
-	args, failure := parseAgentToolArguments(spec, toolCall.GetArgumentsJson(), r.req.ScenarioTools.TribunalCommands)
+	args, failure := parseAgentToolArguments(spec, toolCall.GetArgumentsJson())
 	if failure != nil {
 		return r.fail(record, *failure)
 	}
 	switch spec.Name {
 	case agentToolRunCommands:
-		return r.runCommand(ctx, record, args)
+		return r.runIntent(ctx, record, args)
 	default:
 		return r.runNativeMCPTool(ctx, record, spec.Name, args)
 	}
@@ -987,6 +1012,14 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 	if err != nil {
 		return GovernedToolDispatch{}, false, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
+	denied, err := r.recordDispatch(record, dispatched)
+	return dispatched, denied, err
+}
+
+// recordDispatch records one governed answer's receipt and policy decision on
+// record. It returns denied=true with the record already completed for a
+// governance rejection or an ingress refusal.
+func (r *agentRun) recordDispatch(record *AgentToolCall, dispatched GovernedToolDispatch) (bool, error) {
 	if receipt := answerReceipt(dispatched.Outcome); receipt != nil {
 		record.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
 	}
@@ -1003,22 +1036,22 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 		}
 		completed, err := r.fail(*record, agentToolFailure{ErrorType: agentToolErrorSecurity, Error: "SECURITY VIOLATION: " + reason})
 		if err != nil {
-			return GovernedToolDispatch{}, true, err
+			return true, err
 		}
 		*record = completed
-		return dispatched, true, nil
+		return true, nil
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL:
 		reason := answerMessage(dispatched.Outcome)
 		completed, err := r.fail(*record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: reason})
 		if err != nil {
-			return GovernedToolDispatch{}, true, err
+			return true, err
 		}
 		*record = completed
-		return dispatched, true, nil
+		return true, nil
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
 		record.PolicyDecision = agentPolicyDecisionAllow
 	}
-	return dispatched, false, nil
+	return false, nil
 }
 
 // answerReceipt is the signed receipt a governed answer carries: the executed
@@ -1050,41 +1083,10 @@ type agentCommandResult struct {
 	Stderr     string `json:"stderr"`
 }
 
-// runCommand runs one governed command. Under a TribunalCommands scenario the
-// model only states the request: the Tribunal deliberation writes the command
-// first, and only an approved command is dispatched.
-func (r *agentRun) runCommand(ctx context.Context, record AgentToolCall, args agentToolArguments) (AgentToolCall, error) {
-	command := strings.TrimSpace(args.String(agentToolArgCommand))
-	if r.req.ScenarioTools.TribunalCommands {
-		deliberated, failure, err := r.deliberateCommand(ctx, record, args)
-		if err != nil {
-			return AgentToolCall{}, err
-		}
-		if failure != nil {
-			return r.fail(record, *failure)
-		}
-		command = deliberated
-	}
-	if command == "" {
-		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required"})
-	}
-
-	record.Command = command
-	payload, err := proto.Marshal(&operatorv1.CommandRequested{
-		Command:          command,
-		ExecutionId:      record.CallID,
-		Justification:    args.String("request"),
-		TimeoutSeconds:   int32(args.Int("timeout_seconds", 0)),
-		WorkingDirectory: r.workspace.OperatorWorkingDirectory,
-	})
-	if err != nil {
-		return AgentToolCall{}, fmt.Errorf("evaluation: marshal command payload: %w", err)
-	}
-	record.ActionType = string(constants.ActionTypeExecuteBash)
-	dispatched, denied, err := r.dispatch(ctx, &record, constants.ActionTypeExecuteBash, r.workspace.OperatorWorkingDirectory, payload)
-	if err != nil || denied {
-		return record, err
-	}
+// commandAnswer completes record with an admitted command's result: its
+// decoded output, or a model-visible failure when it did not run to a zero
+// exit.
+func (r *agentRun) commandAnswer(record AgentToolCall, command string, dispatched GovernedToolDispatch) (AgentToolCall, error) {
 	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(agentToolRunCommands, dispatched)})
 	}

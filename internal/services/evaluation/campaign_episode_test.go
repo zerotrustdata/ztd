@@ -28,8 +28,8 @@ func TestEpisode_InterrogationClarificationFollowUpContinuity(t *testing.T) {
 		{Part: &operatorv1.InferenceResponsePart_Text{Text: interrogationText}},
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-should-be-dropped",
-			Name:          agentTestRunCommandsName,
-			ArgumentsJson: `{"command":"cat status/health.txt"}`,
+			Name:          constants.MCPToolRunShellCommand,
+			ArgumentsJson: shellCommandArguments("cat status/health.txt"),
 		}}},
 	}
 
@@ -143,13 +143,13 @@ func TestEpisode_TerminalClassifications(t *testing.T) {
 	// Policy denial classification (denied tool call followed by yield)
 	toolCallParts := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
-			CallId: "call-denied", Name: agentTestRunCommandsName, ArgumentsJson: `{"command":"rm -rf /"}`,
+			CallId: "call-denied", Name: constants.MCPToolRunShellCommand, ArgumentsJson: shellCommandArguments("rm -rf /"),
 		}}},
 	}
 	fDenial := newAgentExecutorFixture(t, toolCallParts, []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_Text{Text: "Understood, command was denied."}},
 	})
-	rejected := fDenial.ledger.rejected("tx-rejected", string(constants.ActionTypeExecuteBash))
+	rejected := fDenial.ledger.rejected("tx-rejected", string(constants.ActionTypeMcpCall))
 	fDenial.client.answer = &agentAnswer{outcome: &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{
 			Kind:      evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
@@ -167,7 +167,7 @@ func TestEpisode_TerminalClassifications(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		loopTurns[i] = []*operatorv1.InferenceResponsePart{
 			{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
-				CallId: "call-loop", Name: agentTestRunCommandsName, ArgumentsJson: `{"command":"echo loop"}`,
+				CallId: "call-loop", Name: constants.MCPToolRunShellCommand, ArgumentsJson: shellCommandArguments("echo loop"),
 			}}},
 		}
 	}

@@ -48,6 +48,7 @@ type HTTPHandlerDependencies struct {
 	OperatorControllerDeps                OperatorControllerDeps
 	DispatchControllerDeps                DispatchControllerDeps
 	InferenceDispatchControllerDeps       InferenceDispatchControllerDeps
+	TribunalIntentControllerDeps          TribunalIntentControllerDeps
 	SSEControllerDeps                     SSEControllerDeps
 	HealthControllerDeps                  HealthControllerDeps
 	GovernanceControllerDeps              GovernanceControllerDeps
@@ -90,6 +91,7 @@ type HTTPHandler struct {
 	operatorController                *OperatorController
 	dispatchController                *DispatchController
 	inferenceDispatchController       *InferenceDispatchController
+	tribunalIntentController          *TribunalIntentController
 	sseController                     *SSEController
 	healthController                  *HealthController
 	governanceController              *GovernanceController
@@ -248,6 +250,7 @@ func newHTTPHandler(deps HTTPHandlerDependencies) (*HTTPHandler, error) {
 		operatorController:                newOperatorController(deps.OperatorControllerDeps),
 		dispatchController:                newDispatchController(deps.DispatchControllerDeps),
 		inferenceDispatchController:       newInferenceDispatchController(deps.InferenceDispatchControllerDeps),
+		tribunalIntentController:          newTribunalIntentController(deps.TribunalIntentControllerDeps),
 		sseController:                     newSSEController(deps.SSEControllerDeps),
 		healthController:                  newHealthController(deps.HealthControllerDeps),
 		governanceController:              governanceController,

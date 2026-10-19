@@ -260,6 +260,15 @@ type DispatchInferenceResult struct {
 	Receipt       *operatorv1.ActionReceipt
 }
 
+// Response is the result as its wire InferenceDispatchResponse.
+func (r *DispatchInferenceResult) Response() *operatorv1.InferenceDispatchResponse {
+	return &operatorv1.InferenceDispatchResponse{
+		TransactionId: r.TransactionID,
+		Result:        r.Result,
+		Receipt:       r.Receipt,
+	}
+}
+
 // DispatchInference constructs a governed InferenceRequested envelope,
 // resolves the Inference Node's operator session from the requestor's
 // enrolled operators (filtering by the inference capability),

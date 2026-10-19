@@ -8,11 +8,8 @@
 package evaluation
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-
-	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -73,53 +70,6 @@ func (e *CampaignAgentExecutor) investigationID(req AssignmentExecutionRequest) 
 		return "", fmt.Errorf("evaluation: fresh investigation identity: %w", constants.ErrMissingRequiredField)
 	}
 	return id, nil
-}
-
-func (r *agentRun) runInvestigationContext(ctx context.Context, record AgentToolCall, args agentToolArguments) (AgentToolCall, error) {
-	dataType := args.String("data_type")
-	if dataType == investigationDataStatus {
-		seed := r.req.ScenarioInput.Seed
-		return r.succeed(record, agentInvestigationContextResult{
-			Success: true, DataType: dataType, InvestigationID: r.trace.InvestigationID,
-			OperatorID: r.target.OperatorID, CaseTitle: seed.CaseTitle, CaseDescription: seed.CaseDescription,
-		})
-	}
-	if dataType != investigationDataHistoryTrail && dataType != investigationDataOperatorActions {
-		return r.fail(record, *agentToolValidationFailure(agentToolInvestigationCtx, []string{
-			fmt.Sprintf("data_type\n  Input should be '%s', '%s' or '%s'", investigationDataHistoryTrail, investigationDataStatus, investigationDataOperatorActions),
-		}))
-	}
-	limit := args.Int("limit", agentToolDefaultHistoryLimit)
-	if limit < 1 {
-		limit = agentToolDefaultHistoryLimit
-	}
-	if limit > investigationContextMaxReceipts {
-		limit = investigationContextMaxReceipts
-	}
-	query := mcp.AuditReceiptListRequest{InvestigationID: r.trace.InvestigationID, Limit: limit, ExcludeActionType: string(constants.ActionTypeMcpCall)}
-	queryJSON, err := json.Marshal(query)
-	if err != nil {
-		return AgentToolCall{}, fmt.Errorf("evaluation: encode investigation query: %w", err)
-	}
-	payload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolAuditReceiptList, ArgumentsJson: string(queryJSON), ExecutionId: record.CallID})
-	if err != nil {
-		return AgentToolCall{}, fmt.Errorf("evaluation: encode investigation MCP call: %w", err)
-	}
-	record.IsOperatorTool = true
-	record.ActionType = string(constants.ActionTypeMcpCall)
-	dispatched, denied, err := r.dispatch(ctx, &record, constants.ActionTypeMcpCall, constants.MCPToolAuditReceiptList, payload)
-	if err != nil || denied {
-		return record, err
-	}
-	if err := requireExecuted(dispatched.Outcome); err != nil {
-		return AgentToolCall{}, fmt.Errorf("evaluation: investigation query: %w", err)
-	}
-	result, refs, err := decodeInvestigationReceipts(r.trace, query, record.Receipt)
-	if err != nil {
-		return AgentToolCall{}, err
-	}
-	record.Retrieval = &AgentContextRetrieval{Query: query, Receipts: refs}
-	return r.succeed(record, investigationReceiptContext(dataType, query.InvestigationID, result, refs))
 }
 
 // decodeInvestigationReceipts trusts only the selected runtime's signed answer,

@@ -789,4 +789,3 @@ func TestClient_CLIOnlyCallsFailClosedWithoutCLICertificate(t *testing.T) {
 
 	assert.Zero(t, len(seen), "a CLI-only call must not reach the Gateway on the Operator identity")
 }
-

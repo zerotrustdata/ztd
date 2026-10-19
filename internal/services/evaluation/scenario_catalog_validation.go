@@ -178,8 +178,8 @@ func validateScenarioToolNames(blueprint ScenarioBlueprint, catalog *agentToolCa
 
 func validateScenarioToolSets(blueprint ScenarioBlueprint) error {
 	allowed := stringSet(blueprint.AllowedTools)
-	if _, ok := allowed[agentToolRunCommands]; blueprint.TribunalCommands && !ok {
-		return scenarioContractError(blueprint, "tribunal commands need %q in AllowedTools", agentToolRunCommands)
+	if _, ok := allowed[agentToolRunCommands]; blueprint.TribunalCommands != ok {
+		return scenarioContractError(blueprint, "%q is allowed exactly when tribunal commands are declared", agentToolRunCommands)
 	}
 	for _, name := range blueprint.ExpectedTools {
 		if _, ok := allowed[name]; !ok {
@@ -246,7 +246,7 @@ func validateArgumentValidators(blueprint ScenarioBlueprint, catalog *agentToolC
 		if !ok {
 			return scenarioContractError(blueprint, "validator for %q constrains unknown tool", validator.ToolName)
 		}
-		arguments := tool.Arguments(blueprint.TribunalCommands)
+		arguments := tool.Arguments()
 		known := stringSet(arguments)
 		for _, constraint := range validator.Arguments {
 			if _, ok := known[constraint.Name]; !ok {
@@ -279,7 +279,7 @@ func validatePromptHint(blueprint ScenarioBlueprint, catalog *agentToolCatalog) 
 		if !ok {
 			return scenarioContractError(blueprint, "hint names unknown tool %q", toolName)
 		}
-		requiredArguments := tool.RequiredArguments(blueprint.TribunalCommands)
+		requiredArguments := tool.RequiredArguments()
 		for _, required := range requiredArguments {
 			matches := hintArgumentsFor(hint, toolName, required)
 			if len(matches) != 1 {
@@ -337,11 +337,6 @@ func validateHintArgumentSource(blueprint ScenarioBlueprint, argument ScenarioHi
 func seedContains(seed InvestigationSeed, value string) bool {
 	for _, turn := range seed.Turns {
 		if strings.Contains(turn.Content, value) {
-			return true
-		}
-	}
-	for _, event := range seed.HistoryEvents {
-		if strings.Contains(event.Summary, value) || strings.Contains(event.ArgumentsJSON, value) {
 			return true
 		}
 	}

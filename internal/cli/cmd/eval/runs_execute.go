@@ -519,7 +519,7 @@ func newProductionCampaignAgentExecutor(in campaignAgentExecutorInputs) (evaluat
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: initialize ledger sentinel: %w", err)
 	}
-	return evaluation.NewCampaignAgentExecutor(&governedInferenceDispatcher{client: appClient}, evaluation.NewCommandLane(gatewayClient, persona), sentinel, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
+	return evaluation.NewCampaignAgentExecutor(&governedInferenceDispatcher{client: appClient, cliSessionID: persona.CLISessionID}, evaluation.NewCommandLane(gatewayClient, persona), sentinel, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
 }
 
 func resolveCampaignOllamaEndpoint(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (string, error) {

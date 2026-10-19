@@ -57,8 +57,8 @@ func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 
 	assert.Equal(t, DefaultSuiteVersion, defaultCatalog.GetCatalogRef().GetVersion())
 	assert.Equal(t, DefaultSuiteVersion, smokeCatalog.GetCatalogRef().GetVersion())
-	assert.Equal(t, "1.5.0", DefaultSuiteVersion)
-	assert.Equal(t, "1.2.0", GraderVersion)
+	assert.Equal(t, "1.6.0", DefaultSuiteVersion)
+	assert.Equal(t, "1.3.0", GraderVersion)
 }
 
 func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
@@ -85,6 +85,21 @@ func TestScenarioDiagnosisRubric_IsBoundIntoFrozenGoldArtifact(t *testing.T) {
 
 	assert.NotEqual(t, selectedArtifact.Reference.GetArtifactId(), unselectedArtifact.Reference.GetArtifactId())
 	assert.NotEqual(t, selectedArtifact.Body, unselectedArtifact.Body)
+}
+
+// tribunalInvestigationBlueprint is a planted-fault investigation scenario,
+// which declares the intent-only run_commands_with_operator through TribunalCommands.
+func tribunalInvestigationBlueprint() ScenarioBlueprint {
+	blueprints, err := InvestigationScenarioBlueprints()
+	if err != nil {
+		panic(err)
+	}
+	for _, blueprint := range blueprints {
+		if blueprint.TribunalCommands {
+			return blueprint
+		}
+	}
+	panic("no investigation scenario declares tribunal commands")
 }
 
 func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
@@ -203,12 +218,19 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"tribunal commands without run_commands_with_operator allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.TribunalCommands = true
 		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"tribunal validator constrains the direct command argument", toolArgRunCommands, func(b *ScenarioBlueprint) {
-			b.TribunalCommands = true
+		{"non-tribunal scenario allows the intent-only command tool", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.AllowedTools = append(b.AllowedTools, agentToolRunCommands)
 		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"tribunal hint omits the intent request argument", toolArgRunCommands, func(b *ScenarioBlueprint) {
-			b.TribunalCommands = true
-			b.Gold.ArgumentValidators = nil
+		{"tribunal validator constrains the intent-only command argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
+			b.Gold.ArgumentValidators = []ToolArgumentValidator{{
+				ToolName:  agentToolRunCommands,
+				Arguments: []ToolArgumentConstraint{{Name: agentToolArgCommand, RequiredTerms: [][]string{{"cat"}}}},
+			}}
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"tribunal hint omits the intent request argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
+			b.TrajectoryPolicy = evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED
+			b.ExpectedTools = []string{agentToolRunCommands}
+			b.Gold.PromptHint = hint([]string{agentToolRunCommands})
 		}, constants.ErrEvaluationPromptUnanswerable},
 	}
 	for _, tt := range tests {
@@ -251,18 +273,13 @@ func TestHintLint_RejectsCatalog100GrepPrompt(t *testing.T) {
 	require.NoError(t, validateScenarioContract(toolArgGrepPattern(), catalog))
 }
 
-func TestBuildScenarioCatalog_SeedsCarryVerbatimSeedHistory(t *testing.T) {
+func TestBuildScenarioCatalog_SeedsCarryConversationTurns(t *testing.T) {
 	catalog, artifacts, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
 
 	var input ScenarioInputFixture
 	require.NoError(t, json.Unmarshal(artifacts["recovery-error-guided-retry"].Input.Body, &input))
-
-	require.Len(t, input.Seed.HistoryEvents, 1)
-	event := input.Seed.HistoryEvents[0]
-	assert.Equal(t, string(constants.EventOperatorFilesystemGrepFailed), event.EventType)
-	assert.Equal(t, "log_stream_filter failed for pattern AUTH_FAILURE", event.Summary)
 
 	require.Len(t, input.Seed.Turns, 2)
 	assert.Equal(t, "user", input.Seed.Turns[0].Sender)

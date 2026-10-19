@@ -86,6 +86,7 @@
   "operators_bind": "/api/v1/operators/bind",
   "operators_by_id": "/api/v1/operators/",
   "operators_commands": "/api/v1/operators/commands",
+  "operators_intents": "/api/v1/operators/intents",
   "operators_stop": "/api/v1/operators/stop",
   "operators_session": "/api/v1/operators/session/",
   "operators_target": "/api/v1/operators/target",

@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -106,23 +107,6 @@ func TestCampaignTribunalPipeline_DeclaresIntentOnlyRunCommands(t *testing.T) {
 	assert.Equal(t, []string{agentToolArgRequest}, schema.Required)
 }
 
-func TestCampaignTribunalPipeline_DirectRunCommandsDeclaresNoGuidelines(t *testing.T) {
-	f := newAgentExecutorFixture(t, tribunalTextTurn("HEALTHY"))
-	f.req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{agentToolRunCommands}}
-
-	_, err := f.execute()
-
-	require.NoError(t, err)
-	var schema struct {
-		Properties map[string]json.RawMessage `json:"properties"`
-		Required   []string                   `json:"required"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(f.inference.requests[0].GetTools()[0].GetJsonSchema()), &schema))
-	assert.Contains(t, schema.Properties, agentToolArgCommand)
-	assert.NotContains(t, schema.Properties, agentToolArgGuidelines)
-	assert.Equal(t, []string{agentToolArgCommand}, schema.Required)
-}
-
 func TestCampaignTribunalPipeline_TribunalCommandsWithoutRunCommandsFailsClosed(t *testing.T) {
 	f := newAgentExecutorFixture(t)
 	f.req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{"read_file"}, TribunalCommands: true}
@@ -156,6 +140,19 @@ func TestCampaignTribunalPipeline_ApprovedCommandDispatchesWithGovernedDeliberat
 	assert.Equal(t, agentTestCommand, shell[0].GetCommand())
 	assert.Equal(t, tribunalTestRequest, shell[0].GetJustification())
 
+	// The intent carries a member template the Gateway completes per call: no
+	// messages, tools, attempt id or acting app, and each member call's attempt
+	// id is the intent's prefix numbered in deliberation order.
+	require.Len(t, f.inference.intents, 1)
+	intent := f.inference.intents[0]
+	template := intent.GetMemberInference()
+	assert.Empty(t, template.GetMessages(), "the Gateway owns each member call's messages")
+	assert.Empty(t, template.GetTools(), "a Tribunal call declares no tools")
+	assert.Empty(t, template.GetProviderAttemptId(), "the Gateway owns each member call's attempt id")
+	assert.Empty(t, template.GetActingAppId(), "the acting app comes from the intent's identity")
+	prefix := intent.GetProviderAttemptPrefix()
+	require.NotEmpty(t, prefix)
+
 	trace := f.storedTrace()
 	require.Len(t, trace.ToolCalls, 1)
 	tool := trace.ToolCalls[0]
@@ -174,6 +171,7 @@ func TestCampaignTribunalPipeline_ApprovedCommandDispatchesWithGovernedDeliberat
 		assert.Equal(t, tool.CallID, call.ToolCallID, "every Tribunal call hangs off its tool call")
 		assert.Equal(t, 1, call.LoopTurn)
 		assert.Empty(t, call.ToolsDeclared)
+		assert.Equal(t, fmt.Sprintf("%s-%d", prefix, i+1), call.ProviderAttemptID, "each member call is numbered in deliberation order")
 		require.NotNil(t, call.Receipt, "every Tribunal call keeps its signed receipt")
 		assert.True(t, call.Completed())
 	}
@@ -284,6 +282,34 @@ func TestCampaignTribunalPipeline_NoConsensusFailsCallWithoutDispatch(t *testing
 	require.NoError(t, VerifyAgentTraceEvidence(trace))
 }
 
+func TestCampaignTribunalPipeline_AuditFailureFailsCallWithoutDispatch(t *testing.T) {
+	const unknownVerdict = `{"verdict": "MAYBE", "swap_to_cluster": "", "revised_command": "", "rationale": "unsure"}`
+	f := newTribunalFixture(t,
+		tribunalSingle(tribunalIntentTurn("call-1")),
+		tribunalUnanimous(agentTestCommand),
+		tribunalSingle(tribunalTextTurn(tribunalTestLowRisk)),
+		tribunalSingle(tribunalTextTurn(unknownVerdict)),
+		tribunalSingle(tribunalTextTurn(unknownVerdict)),
+		tribunalSingle(tribunalTextTurn("I could not get a review of that command.")),
+	)
+
+	_, err := f.execute()
+
+	require.NoError(t, err, "an audit that fails closed is a scored answer, not a harness failure")
+	assert.Empty(t, f.shellDispatches(), "an unreviewed command never dispatches")
+	trace := f.storedTrace()
+	require.Len(t, trace.ToolCalls, 1)
+	tool := trace.ToolCalls[0]
+	assert.False(t, tool.Success)
+	assert.Equal(t, agentToolErrorExecution, tool.ErrorType)
+	assert.Equal(t, fmt.Sprintf(tribunalAuditFailedError, `unknown verdict "MAYBE"`), tool.Error)
+	require.Len(t, trace.ModelCalls, 10, "the turn, five candidates, the risk check, two Auditor answers, and the closing turn")
+	assert.Equal(t, "tribunal_audit", trace.ModelCalls[7].Purpose)
+	assert.Equal(t, "tribunal_audit", trace.ModelCalls[8].Purpose)
+	require.Len(t, trace.Steps, 8, "five candidates, the vote, the risk check, and the review")
+	require.NoError(t, VerifyAgentTraceEvidence(trace))
+}
+
 func TestCampaignTribunalPipeline_TribunalProviderFailureEndsLoopAndVerifies(t *testing.T) {
 	f := newTribunalFixture(t,
 		tribunalSingle(tribunalIntentTurn("call-1")),
@@ -300,6 +326,7 @@ func TestCampaignTribunalPipeline_TribunalProviderFailureEndsLoopAndVerifies(t *
 	require.Len(t, f.inference.requests, 3, "the deliberation stops at the failed call")
 	trace := f.storedTrace()
 	assert.NotEmpty(t, trace.ProviderFailure)
+	assert.Equal(t, string(inference.AttemptFailureBackendUnavailable), trace.ProviderFailureClass, "the member's typed failure code classifies the provider failure")
 	assert.Equal(t, AgentTerminalClassificationHarnessFailure, trace.TerminalClassification)
 	require.Len(t, trace.ModelCalls, 3, "the failed Tribunal call is recorded because its runtime committed it")
 	failed := trace.ModelCalls[2]

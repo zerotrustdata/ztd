@@ -33,6 +33,35 @@ func TestEvalLoopCommandSelectsOnlyOwnedCrossProcessQualification(t *testing.T) 
 	assert.Equal(t, "./internal/cli/cmd/test", args[len(args)-1])
 }
 
+func TestEvalLoopCommandSelectsLiveTargetWithTestBinaryFlags(t *testing.T) {
+	var args []string
+	cmd := testEvalLoopCmdWithRunner(func(_ context.Context, _ string, argv ...string) (int, error) {
+		args = argv
+		return 0, nil
+	})
+	cmd.SetArgs([]string{"--posture", "notary", "--live-ollama-endpoint", "http://192.0.2.10:11434", "--live-model", "qwen3:4b"})
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, args, "-tags=e2e,live")
+	assert.Contains(t, args, "^TestEvalLoopLive$/^notary$")
+	assert.Contains(t, args, "40m0s")
+	require.Equal(t, []string{"./internal/cli/cmd/test", "-args", "-eval-loop-live-endpoint=http://192.0.2.10:11434", "-eval-loop-live-model=qwen3:4b"}, args[len(args)-4:])
+}
+
+func TestEvalLoopCommandRejectsIncompleteLiveTargetBeforeStarting(t *testing.T) {
+	for _, flags := range [][]string{
+		{"--live-ollama-endpoint", "http://192.0.2.10:11434"},
+		{"--live-model", "qwen3:4b"},
+		{"--live-ollama-endpoint", "192.0.2.10:11434", "--live-model", "qwen3:4b"},
+	} {
+		cmd := testEvalLoopCmdWithRunner(func(context.Context, string, ...string) (int, error) {
+			t.Fatal("invalid live target started a child test")
+			return 0, nil
+		})
+		cmd.SetArgs(flags)
+		require.ErrorIs(t, cmd.Execute(), constants.ErrValidationFailed, flags)
+	}
+}
+
 func TestEvalLoopCommandRejectsUnsupportedPostureBeforeStarting(t *testing.T) {
 	cmd := testEvalLoopCmdWithRunner(func(context.Context, string, ...string) (int, error) {
 		t.Fatal("invalid posture started a child test")

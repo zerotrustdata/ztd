@@ -102,7 +102,6 @@
     - [RouterOutput](#ztd-eval-v1-RouterOutput)
     - [ScoredTurnEvent](#ztd-eval-v1-ScoredTurnEvent)
     - [ScoredTurnRequest](#ztd-eval-v1-ScoredTurnRequest)
-    - [SeedHistoryEvent](#ztd-eval-v1-SeedHistoryEvent)
     - [SeedTurn](#ztd-eval-v1-SeedTurn)
     - [SemanticGrade](#ztd-eval-v1-SemanticGrade)
     - [TitleOutput](#ztd-eval-v1-TitleOutput)
@@ -1235,7 +1234,6 @@ its own live services before the scored turn.
 | case_title | [string](#string) |  |  |
 | case_description | [string](#string) |  |  |
 | prior_turns | [SeedTurn](#ztd-eval-v1-SeedTurn) | repeated |  |
-| history | [SeedHistoryEvent](#ztd-eval-v1-SeedHistoryEvent) | repeated |  |
 | case_memory | [string](#string) | repeated |  |
 
 
@@ -2285,24 +2283,6 @@ reading at the first TERMINAL event and then fetches the AgentTrace once.
 | user_message | [string](#string) |  |  |
 | tool_turn_limit | [uint32](#uint32) |  |  |
 | wall_clock_limit_ms | [uint64](#uint64) |  |  |
-
-
-
-
-
-
-<a name="ztd-eval-v1-SeedHistoryEvent"></a>
-
-### SeedHistoryEvent
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| event_type | [string](#string) |  | COMMAND_COMPLETED, COMMAND_FAILED or FILE_EDIT_COMPLETED; the SUT maps it to its own event types |
-| summary | [string](#string) |  |  |
-| command | [string](#string) |  |  |
-| exit_code | [int32](#int32) |  |  |
 
 
 

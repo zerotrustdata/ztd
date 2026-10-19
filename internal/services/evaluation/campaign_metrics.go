@@ -249,10 +249,6 @@ func computeEvidenceBackedConclusion(trace *AgentTrace, gold ScenarioGoldCriteri
 	for _, turn := range input.Seed.Turns {
 		evidenceCorpus = append(evidenceCorpus, strings.ToLower(turn.Content))
 	}
-	for _, hist := range input.Seed.HistoryEvents {
-		evidenceCorpus = append(evidenceCorpus, strings.ToLower(hist.Summary))
-		evidenceCorpus = append(evidenceCorpus, strings.ToLower(hist.Command))
-	}
 
 	// If the scenario has content checks with required terms, ensure that
 	// the required terms appear somewhere in the evidence corpus or prompt

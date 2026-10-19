@@ -32,13 +32,6 @@ const (
 	MaxWallClockMS        = 30 * 60 * 1000
 )
 
-// History kinds are generic; the SUT maps them to its own event types.
-const (
-	HistoryCommandCompleted  = "COMMAND_COMPLETED"
-	HistoryCommandFailed     = "COMMAND_FAILED"
-	HistoryFileEditCompleted = "FILE_EDIT_COMPLETED"
-)
-
 const (
 	roleUser      = "user"
 	roleAssistant = "assistant"
@@ -62,23 +55,15 @@ type Scenario struct {
 }
 
 type Case struct {
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	PriorTurns  []PriorTurn    `json:"prior_turns"`
-	History     []HistoryEvent `json:"history"`
-	Memory      []string       `json:"memory"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	PriorTurns  []PriorTurn `json:"prior_turns"`
+	Memory      []string    `json:"memory"`
 }
 
 type PriorTurn struct {
 	Role string `json:"role"` // user | assistant
 	Text string `json:"text"`
-}
-
-type HistoryEvent struct {
-	Kind     string `json:"kind"` // one of the History* constants
-	Summary  string `json:"summary"`
-	Command  string `json:"command,omitempty"`
-	ExitCode int32  `json:"exit_code"`
 }
 
 type WorkspaceFile struct {
@@ -159,13 +144,6 @@ func (s *Scenario) Validate() error {
 			return invalid("case.prior_turns[%d].role %q must be user or assistant", i, turn.Role)
 		}
 	}
-	for i, event := range s.Case.History {
-		switch event.Kind {
-		case HistoryCommandCompleted, HistoryCommandFailed, HistoryFileEditCompleted:
-		default:
-			return invalid("case.history[%d].kind %q is not a known history kind", i, event.Kind)
-		}
-	}
 	workspace, err := s.validateWorkspace()
 	if err != nil {
 		return err
@@ -195,14 +173,6 @@ func (s *Scenario) Seed() *evalv1.InvestigationSeed {
 	}
 	for _, turn := range s.Case.PriorTurns {
 		seed.PriorTurns = append(seed.PriorTurns, &evalv1.SeedTurn{Role: turn.Role, Text: turn.Text})
-	}
-	for _, event := range s.Case.History {
-		seed.History = append(seed.History, &evalv1.SeedHistoryEvent{
-			EventType: event.Kind,
-			Summary:   event.Summary,
-			Command:   event.Command,
-			ExitCode:  event.ExitCode,
-		})
 	}
 	return seed
 }

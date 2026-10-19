@@ -14,14 +14,6 @@
         "text": "I can check disk usage and the scheduled jobs."
       }
     ],
-    "history": [
-      {
-        "kind": "COMMAND_COMPLETED",
-        "summary": "Disk usage checked, /var/tmp at 98 percent",
-        "command": "df -h /var/tmp",
-        "exit_code": 0
-      }
-    ],
     "memory": [
       "The app-report job runs daily at 03:00 and must keep running."
     ]

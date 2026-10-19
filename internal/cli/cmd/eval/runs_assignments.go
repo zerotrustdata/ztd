@@ -60,7 +60,7 @@ func scenarioResultClass(scenario *evalv1.EvaluationScenarioDefinition) string {
 		return ""
 	}
 	for _, tool := range scenario.GetExpectedTools() {
-		if tool == "run_commands_with_operator" {
+		if tool == constants.MCPToolRunShellCommand {
 			return scenarioClassCapabilityQualification
 		}
 	}

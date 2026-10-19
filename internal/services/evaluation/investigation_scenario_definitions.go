@@ -134,16 +134,6 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 		})
 	}
 
-	seedHistory := make([]InvestigationSeedHistoryEvent, 0, len(s.Case.History))
-	for _, h := range s.Case.History {
-		seedHistory = append(seedHistory, InvestigationSeedHistoryEvent{
-			EventType: h.Kind,
-			Actor:     "system",
-			Summary:   h.Summary,
-			Command:   h.Command,
-		})
-	}
-
 	var caseMemory *InvestigationSeedMemory
 	if len(s.Case.Memory) > 0 {
 		caseMemory = &InvestigationSeedMemory{
@@ -205,7 +195,6 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 				CaseTitle:       s.Case.Title,
 				CaseDescription: s.Case.Description,
 				Turns:           seedTurns,
-				HistoryEvents:   seedHistory,
 				CaseMemory:      caseMemory,
 			},
 			FollowUps: followUps,

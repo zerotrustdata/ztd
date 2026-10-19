@@ -87,27 +87,27 @@ func TestRunsAssignments_JSONStatesVerdictAndRateBesideCanonicalProtojson(t *tes
 	assert.Nil(t, queued.DurationMs)
 }
 
-func TestRunsAssignments_LabelsDirectCommandFromFrozenCatalogInTableAndJSON(t *testing.T) {
+func TestRunsAssignments_LabelsShellCommandFromFrozenCatalogInTableAndJSON(t *testing.T) {
 	env := newStoreRunEnv(t)
 	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	assignments, err := env.store(t).ListAssignments(context.Background(), "run-a-1")
 	require.NoError(t, err)
-	var directCommandID, ordinaryScenarioID string
+	var shellCommandID, ordinaryScenarioID string
 	for _, assignment := range assignments {
 		switch assignment.GetScenarioId() {
-		case "tool-arg-run-commands":
-			directCommandID = assignment.GetAssignmentId()
+		case "tool-arg-shell-command":
+			shellCommandID = assignment.GetAssignmentId()
 		case "tool-select-file-read":
 			ordinaryScenarioID = assignment.GetAssignmentId()
 		}
 	}
-	require.NotEmpty(t, directCommandID, "the prepared campaign contains the direct-command scenario")
+	require.NotEmpty(t, shellCommandID, "the prepared campaign contains the shell-command scenario")
 	require.NotEmpty(t, ordinaryScenarioID, "the prepared campaign contains an ordinary scenario")
 
 	table := env.mustRun(t, "runs", "assignments", "run-a-1")
 	assert.Contains(t, table, "CLASS")
-	assert.Contains(t, table, directCommandID)
+	assert.Contains(t, table, shellCommandID)
 	assert.Contains(t, table, scenarioClassCapabilityQualification)
 
 	var payload runAssignmentsJSON
@@ -116,7 +116,7 @@ func TestRunsAssignments_LabelsDirectCommandFromFrozenCatalogInTableAndJSON(t *t
 	for _, row := range payload.Assignments {
 		byID[row.AssignmentID] = row
 	}
-	assert.Equal(t, scenarioClassCapabilityQualification, byID[directCommandID].ScenarioClass)
+	assert.Equal(t, scenarioClassCapabilityQualification, byID[shellCommandID].ScenarioClass)
 	assert.Empty(t, byID[ordinaryScenarioID].ScenarioClass)
 }
 

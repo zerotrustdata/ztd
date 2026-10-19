@@ -286,24 +286,10 @@ type judgment struct {
 	Rationale *string `json:"rationale"`
 }
 
-// collectResponseText concatenates text parts from unary or streaming responses.
-func collectResponseText(result *operatorv1.InferenceResult) string {
-	if result == nil {
-		return ""
-	}
-	var text strings.Builder
-	for _, part := range result.GetParts() {
-		if t := part.GetText(); t != "" {
-			text.WriteString(t)
-		}
-	}
-	return text.String()
-}
-
 // decodeJudgment reads the judgment from the result text. Any shape outside
 // {"score": 1..5, "rationale": string} is ErrJudgeResponseInvalid.
 func decodeJudgment(result *operatorv1.InferenceResult) (int, string, error) {
-	dec := json.NewDecoder(strings.NewReader(collectResponseText(result)))
+	dec := json.NewDecoder(strings.NewReader(models.InferenceResultText(result)))
 	dec.DisallowUnknownFields()
 	var decoded judgment
 	if err := dec.Decode(&decoded); err != nil {

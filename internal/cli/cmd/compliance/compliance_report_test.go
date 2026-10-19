@@ -49,6 +49,7 @@ import (
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
 
 func complianceReportSigningFixtureForTest(t *testing.T, scopeID string) (*compliancereport.ComplianceReportSigningIdentity, *compliancev1.ComplianceReportTrustPolicy) {
@@ -746,6 +747,12 @@ func (f *complianceScriptedInference) DispatchInference(_ context.Context, req *
 	receipt.ResultSummary = result.GetResultDigest()
 	f.ledger.signer.Resign(f.ledger.t, receipt)
 	return &operatorv1.InferenceDispatchResponse{TransactionId: txID, Result: result, Receipt: receipt}, nil
+}
+
+// DispatchIntent is unscripted: the compliance campaign's agent never declares
+// the Tribunal's intent-only command tool.
+func (f *complianceScriptedInference) DispatchIntent(_ context.Context, _ *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
+	return nil, fmt.Errorf("complianceScriptedInference: tribunal intent not scripted")
 }
 
 // complianceScriptedLaneClient is the Gateway under the command lane: each

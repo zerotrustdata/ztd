@@ -373,8 +373,6 @@ func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
 	})
 }
 
-
-
 func TestClient_SubscribeApprovalsRequiresCLISession(t *testing.T) {
 	c, err := New(config.Config{
 		PublicBaseURL: "https://127.0.0.1:1",

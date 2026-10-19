@@ -160,11 +160,6 @@ func splitWindowsVolume(value string) (volume, rest string, ok bool) {
 	return strings.ToUpper(value[:1]) + ":", strings.ReplaceAll(value[2:], `\`, "/"), true
 }
 
-// Contains reports whether value resolves to the root or a path under it.
-func (w ScenarioWorkspace) Contains(value string) bool {
-	return pathWithin(w.Resolve(value), w.Root)
-}
-
 // Validate checks that the workspace is the one this run and attempt derive.
 func (w ScenarioWorkspace) Validate(runID, attemptID string) error {
 	expected, err := NewScenarioWorkspace(w.OperatorWorkingDirectory, runID, attemptID)

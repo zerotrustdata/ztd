@@ -33,6 +33,7 @@ var ingressRefusalCodes = []struct {
 	{constants.ErrJSONRPCBatchUnsupported, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
 	{constants.ErrJSONRPCVersionInvalid, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
 	{constants.ErrJSONRPCMethodRequired, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
+	{constants.ErrTribunalTemplateInvalid, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST},
 
 	{constants.ErrMissingRequiredField, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD},
 	{constants.ErrGatewayToolNameRequired, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD},

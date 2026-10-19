@@ -69,6 +69,13 @@ const (
 // AllMembers is the panel in canonical generation order.
 var AllMembers = []Member{MemberAxiom, MemberConcord, MemberVariance, MemberPragma, MemberNemesis}
 
+// generationRounds is the sealed round plus the one anonymized regeneration.
+const generationRounds = 2
+
+// MaxMemberCalls bounds the member inferences of one deliberation: every
+// member in both generation rounds, Marshal once, and each Auditor attempt.
+var MaxMemberCalls = generationRounds*len(AllMembers) + 1 + auditorMaxAttempts
+
 // RiskLevel is Marshal's classification of a command.
 type RiskLevel string
 

@@ -28,6 +28,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
 
 type testEvidenceLaneClient struct {
@@ -92,6 +93,12 @@ func (f *testEvidenceInferenceFake) DispatchInference(_ context.Context, req *op
 		Result:        result,
 		Receipt:       f.ledger.inferenceWithResultDigest(txID, resultDigest),
 	}, nil
+}
+
+// DispatchIntent is unscripted: this fake answers only the runCommandTurns
+// command path, never a Tribunal intent.
+func (f *testEvidenceInferenceFake) DispatchIntent(_ context.Context, _ *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
+	return nil, fmt.Errorf("testEvidenceInferenceFake: tribunal intent not scripted")
 }
 
 type testEvidenceSentinelFake struct {

@@ -129,16 +129,6 @@ func TestScenarioSeedRoundTripsCase(t *testing.T) {
 				t.Errorf("%s: prior turn %d not carried over", id, i)
 			}
 		}
-		if len(seed.History) != len(s.Case.History) {
-			t.Fatalf("%s: history = %d, want %d", id, len(seed.History), len(s.Case.History))
-		}
-		for i, event := range s.Case.History {
-			got := seed.History[i]
-			if got.EventType != event.Kind || got.Summary != event.Summary || got.Command != event.Command ||
-				got.ExitCode != event.ExitCode {
-				t.Errorf("%s: history %d not carried over: %+v", id, i, got)
-			}
-		}
 	}
 }
 
@@ -237,7 +227,6 @@ func TestScenarioValidateRejectsInvalidScenarios(t *testing.T) {
 		{"blank case title", func(s *Scenario) { s.Case.Title = "  " }},
 		{"blank user message", func(s *Scenario) { s.UserMessage = "" }},
 		{"prior turn role", func(s *Scenario) { s.Case.PriorTurns[0].Role = "system" }},
-		{"history kind", func(s *Scenario) { s.Case.History[0].Kind = "COMMAND_RAN" }},
 		{"empty workspace", func(s *Scenario) { s.Workspace = nil }},
 		{"dotdot path", func(s *Scenario) { s.Workspace[0].Path = "../app/service.conf" }},
 		{"absolute path", func(s *Scenario) { s.Workspace[0].Path = "/app/service.conf" }},

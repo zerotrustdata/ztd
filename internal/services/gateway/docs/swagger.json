@@ -1644,6 +1644,70 @@
                 }
             }
         },
+        "/api/v1/operators/intents": {
+            "post": {
+                "description": "Platform-internal endpoint (mTLS, app workload). The Gateway's Tribunal turns a\nplain-language command intent into one audited shell command through governed\ninference, then dispatches it to the target Operator as an ordinary governed\nEXECUTE_BASH. Under ratify or notary posture the command dispatch is suspended\nuntil a human approves or denies it. The Gateway never mints the approval proof.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "operators"
+                ],
+                "summary": "Deliberate and dispatch a command intent",
+                "parameters": [
+                    {
+                        "description": "Command intent and member inference template",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tribunalv1.TribunalIntentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deliberation record and, for an approved command, its governed outcome",
+                        "schema": {
+                            "$ref": "#/definitions/tribunalv1.TribunalIntentResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request — malformed body, missing field, or a member template that sets a Gateway-owned field",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized — missing delegated user identity",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden — not an app workload",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large — body exceeds the payload limit",
+                        "schema": {
+                            "$ref": "#/definitions/operatorv1.IngressRefusal"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/operators/validate": {
             "post": {
                 "description": "Validates the exact active operator-session, CLI-session, and user binding. The Gateway is authoritative; callers authenticate with an enrolled application mTLS certificate.",
@@ -2980,6 +3044,115 @@
             "x-enum-varnames": [
                 "UserStatusActive",
                 "UserStatusDisabled"
+            ]
+        },
+        "evalv1.AgentRole": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8
+            ],
+            "x-enum-comments": {
+                "AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR": "proposes a command candidate",
+                "AgentRole_AGENT_ROLE_CANDIDATE_VOTER": "votes on candidates / reports consensus",
+                "AgentRole_AGENT_ROLE_MEMORY_WRITER": "writes case memory after the turn",
+                "AgentRole_AGENT_ROLE_RESPONDER": "writes the user-facing reply",
+                "AgentRole_AGENT_ROLE_REVIEWER": "approves, revises or swaps the chosen command",
+                "AgentRole_AGENT_ROLE_RISK_ANALYST": "rates command / file / error risk",
+                "AgentRole_AGENT_ROLE_ROUTER": "classifies complexity, intent, posture",
+                "AgentRole_AGENT_ROLE_TITLE_WRITER": "writes the case title after the turn"
+            },
+            "x-enum-descriptions": [
+                "",
+                "classifies complexity, intent, posture",
+                "writes the user-facing reply",
+                "proposes a command candidate",
+                "votes on candidates / reports consensus",
+                "rates command / file / error risk",
+                "approves, revises or swaps the chosen command",
+                "writes case memory after the turn",
+                "writes the case title after the turn"
+            ],
+            "x-enum-varnames": [
+                "AgentRole_AGENT_ROLE_UNSPECIFIED",
+                "AgentRole_AGENT_ROLE_ROUTER",
+                "AgentRole_AGENT_ROLE_RESPONDER",
+                "AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR",
+                "AgentRole_AGENT_ROLE_CANDIDATE_VOTER",
+                "AgentRole_AGENT_ROLE_RISK_ANALYST",
+                "AgentRole_AGENT_ROLE_REVIEWER",
+                "AgentRole_AGENT_ROLE_MEMORY_WRITER",
+                "AgentRole_AGENT_ROLE_TITLE_WRITER"
+            ]
+        },
+        "evalv1.AgentStep": {
+            "type": "object",
+            "properties": {
+                "call_class": {
+                    "$ref": "#/definitions/evalv1.EvaluationCallClassification"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "model_digest": {
+                    "type": "string"
+                },
+                "model_tag": {
+                    "type": "string"
+                },
+                "output": {
+                    "description": "Types that are valid to be assigned to Output:\n\n\t*AgentStep_Router\n\t*AgentStep_Responder\n\t*AgentStep_Candidate\n\t*AgentStep_Vote\n\t*AgentStep_Risk\n\t*AgentStep_Review\n\t*AgentStep_Memory\n\t*AgentStep_Title"
+                },
+                "persona_label": {
+                    "description": "the SUT's own name for the step, display only",
+                    "type": "string"
+                },
+                "resolved_tier": {
+                    "$ref": "#/definitions/evalv1.ModelCampaignRole"
+                },
+                "role": {
+                    "$ref": "#/definitions/evalv1.AgentRole"
+                }
+            }
+        },
+        "evalv1.EvaluationCallClassification": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_UNSPECIFIED",
+                "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN",
+                "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_POST_TURN",
+                "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_GRADER"
+            ]
+        },
+        "evalv1.ModelCampaignRole": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED",
+                "ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY",
+                "ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT",
+                "ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE"
             ]
         },
         "models.ActionReceiptRecord": {
@@ -6391,6 +6564,196 @@
                 "VerificationRequired",
                 "VerificationPreferred",
                 "VerificationDiscouraged"
+            ]
+        },
+        "tribunalv1.TribunalIntentRequest": {
+            "type": "object",
+            "properties": {
+                "case_id": {
+                    "type": "string"
+                },
+                "cli_session_id": {
+                    "type": "string"
+                },
+                "execution_id": {
+                    "description": "execution_id and timeout_seconds become the CommandRequested fields of the\ndispatched EXECUTE_BASH.",
+                    "type": "string"
+                },
+                "guidelines": {
+                    "description": "Constraints the command must satisfy.",
+                    "type": "string"
+                },
+                "investigation_id": {
+                    "type": "string"
+                },
+                "member_inference": {
+                    "description": "member_inference is the template for every member call. The Gateway sets\nmessages and provider_attempt_id per call; the template must leave\nmessages, tools, provider_attempt_id, acting_app_id and stream empty.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.InferenceDispatchRequest"
+                        }
+                    ]
+                },
+                "os": {
+                    "type": "string"
+                },
+                "provider_attempt_prefix": {
+                    "description": "provider_attempt_prefix names the member calls: call n (from 1, in\ndeliberation order) uses provider_attempt_id \"\u003cprefix\u003e-\u003cn\u003e\". Required and\nunique per intent, so the caller can bind each result to its request.",
+                    "type": "string"
+                },
+                "request": {
+                    "description": "Plain-language description of the single command to run. Required.",
+                    "type": "string"
+                },
+                "shell": {
+                    "type": "string"
+                },
+                "step_start_index": {
+                    "description": "step_start_index numbers the persona steps from step_start_index + 1.",
+                    "type": "integer"
+                },
+                "target_operator_session_id": {
+                    "description": "Command dispatch target and scope, as on POST /api/v1/operators/commands.",
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "tier": {
+                    "description": "tier is the campaign role recorded on each persona step.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/evalv1.ModelCampaignRole"
+                        }
+                    ]
+                },
+                "timeout_seconds": {
+                    "type": "integer"
+                },
+                "working_directory": {
+                    "description": "Execution context shown to the panel. Empty os and shell use the\nTribunal defaults.",
+                    "type": "string"
+                }
+            }
+        },
+        "tribunalv1.TribunalIntentResult": {
+            "type": "object",
+            "properties": {
+                "audit_failure": {
+                    "description": "audit_failure explains an AUDIT_FAILED outcome.",
+                    "type": "string"
+                },
+                "command": {
+                    "description": "command is the audited command; set only when outcome is APPROVED.",
+                    "type": "string"
+                },
+                "commandOutcome": {
+                    "description": "The governed EXECUTE_BASH outcome of an approved command.\n\nTypes that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
+                },
+                "member_calls": {
+                    "description": "member_calls are the governed member inferences, in order.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/tribunalv1.TribunalMemberCall"
+                    }
+                },
+                "outcome": {
+                    "$ref": "#/definitions/tribunalv1.TribunalOutcome"
+                },
+                "risk_feedback": {
+                    "type": "string"
+                },
+                "risk_rationale": {
+                    "description": "Marshal's rationale and feedback for a BLOCKED outcome.",
+                    "type": "string"
+                },
+                "steps": {
+                    "description": "steps are the persona steps of the deliberation, in order.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/evalv1.AgentStep"
+                    }
+                }
+            }
+        },
+        "tribunalv1.TribunalMemberCall": {
+            "type": "object",
+            "properties": {
+                "failure": {
+                    "description": "failure is set on a call that did not complete.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.InferenceDispatchFailure"
+                        }
+                    ]
+                },
+                "persona": {
+                    "type": "string"
+                },
+                "provider_attempt_id": {
+                    "type": "string"
+                },
+                "receipt": {
+                    "description": "receipt is the Inference Operator's signed final ActionReceipt.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.ActionReceipt"
+                        }
+                    ]
+                },
+                "result": {
+                    "description": "result is the complete verified InferenceResult of a completed call.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.InferenceResult"
+                        }
+                    ]
+                },
+                "round": {
+                    "type": "integer"
+                },
+                "stage": {
+                    "$ref": "#/definitions/tribunalv1.TribunalStage"
+                },
+                "transaction_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "tribunalv1.TribunalOutcome": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5
+            ],
+            "x-enum-varnames": [
+                "TribunalOutcome_TRIBUNAL_OUTCOME_UNSPECIFIED",
+                "TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED",
+                "TribunalOutcome_TRIBUNAL_OUTCOME_NO_CONSENSUS",
+                "TribunalOutcome_TRIBUNAL_OUTCOME_BLOCKED",
+                "TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED",
+                "TribunalOutcome_TRIBUNAL_OUTCOME_INFERENCE_FAILED"
+            ]
+        },
+        "tribunalv1.TribunalStage": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "TribunalStage_TRIBUNAL_STAGE_UNSPECIFIED",
+                "TribunalStage_TRIBUNAL_STAGE_GENERATE",
+                "TribunalStage_TRIBUNAL_STAGE_MARSHAL",
+                "TribunalStage_TRIBUNAL_STAGE_AUDIT"
             ]
         }
     }

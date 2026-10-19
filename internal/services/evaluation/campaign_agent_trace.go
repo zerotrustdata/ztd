@@ -179,9 +179,6 @@ type AgentToolCall struct {
 	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
 	// Retrieval binds the authoritative query and the receipts it returned.
 	Retrieval *AgentContextRetrieval `json:"retrieval,omitempty"`
-	// Seeded marks a prior failing call replayed from the scenario seed for
-	// trajectory analysis only; it is never persisted.
-	Seeded bool `json:"-"`
 }
 
 // ShowedGuidance reports whether the call returned model-visible guidance.

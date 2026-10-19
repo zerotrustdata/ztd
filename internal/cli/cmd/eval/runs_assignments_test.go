@@ -104,7 +104,7 @@ func TestExecutedAssignmentLine_NamesWhatRanHowLongAndHowItWent(t *testing.T) {
 		line)
 }
 
-func TestScenarioResultClass_LabelsOnlyDirectCommandQualification(t *testing.T) {
+func TestScenarioResultClass_LabelsOnlyShellCommandQualification(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -113,9 +113,9 @@ func TestScenarioResultClass_LabelsOnlyDirectCommandQualification(t *testing.T) 
 		want     string
 	}{
 		{
-			name: "direct command",
+			name: "shell command",
 			scenario: &evalv1.EvaluationScenarioDefinition{
-				ExpectedTools: []string{"run_commands_with_operator"},
+				ExpectedTools: []string{"run_shell_command"},
 			},
 			want: scenarioClassCapabilityQualification,
 		},

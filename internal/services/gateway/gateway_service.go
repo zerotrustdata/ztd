@@ -905,6 +905,13 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Logger:      logger,
 			MaxPayload:  cfg.Gateway.MaxPayloadBytes,
 		},
+		TribunalIntentControllerDeps: TribunalIntentControllerDeps{
+			CommandDispatchSvc:   ls.dispatchSvc,
+			InferenceDispatchSvc: ls.inferenceDispatchSvc,
+			Responder:            ls.responder,
+			Logger:               logger,
+			MaxPayload:           cfg.Gateway.MaxPayloadBytes,
+		},
 		SSEControllerDeps: SSEControllerDeps{
 			Cfg:       cfg,
 			Logger:    logger,

@@ -304,7 +304,7 @@ func TestScoredTurnRequestCanonicalizationMatchesCrossLanguageVector(t *testing.
 	assert.Equal(t, encoded, canonical)
 	assert.Equal(t, evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE, request.GetLane())
 	assert.Equal(t, evalv1.AgentRole_AGENT_ROLE_REVIEWER, request.GetDesignatedRole())
-	assert.Equal(t, int32(2), request.GetSeed().GetHistory()[0].GetExitCode())
+	assert.Equal(t, []string{"Build failures on main are often stale generated files."}, request.GetSeed().GetCaseMemory())
 	assert.Equal(t, uint64(600000), request.GetWallClockLimitMs())
 }
 

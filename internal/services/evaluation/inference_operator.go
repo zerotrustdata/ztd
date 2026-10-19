@@ -14,6 +14,7 @@ import (
 
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -162,6 +163,14 @@ func GovernedInferenceOllamaEndpoint(operators []*operatorv1.OperatorDocument, i
 // Inference Operator session.
 type GovernedInferenceDispatcher interface {
 	DispatchInference(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error)
+}
+
+// AgentInferenceDispatcher is the agent executor's Gateway inference surface:
+// governed inference, and Tribunal intents whose member calls are governed
+// inferences under the same app identity (POST /api/v1/operators/intents).
+type AgentInferenceDispatcher interface {
+	GovernedInferenceDispatcher
+	DispatchIntent(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error)
 }
 
 func campaignRoleToInferenceRole(role evalv1.ModelCampaignRole) (models.InferenceModelRole, error) {

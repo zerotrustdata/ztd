@@ -162,6 +162,30 @@ func (c *longitudinalInvestigationLaneClient) DispatchCommand(ctx context.Contex
 		c.base.fixture.ledger.signer.Resign(c.base.fixture.t, receipt)
 	case constants.ActionTypeFileEdit:
 		result = &operatorv1.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: req.TargetResource, Operation: string(constants.FileOperationWrite)}
+	case constants.ActionTypeMcpCall:
+		// run_shell_command: the command line selects the scripted output, and the
+		// tool's JSON result is the receipt's summary.
+		call := &operatorv1.McpCallRequested{}
+		if err := proto.Unmarshal(req.Payload, call); err != nil {
+			return nil, err
+		}
+		var shell models.RunShellCommandRequest
+		if err := json.Unmarshal([]byte(call.GetArgumentsJson()), &shell); err != nil {
+			return nil, err
+		}
+		stdout := "OK\n"
+		for cmdSub, out := range c.commands {
+			if strings.Contains(shell.CommandLine(), cmdSub) {
+				stdout = out
+				break
+			}
+		}
+		summary, err := json.Marshal(map[string]any{"exit_code": 0, "stdout": stdout, "stderr": "", "timed_out": false})
+		if err != nil {
+			return nil, err
+		}
+		receipt.ResultSummary = string(summary)
+		c.base.fixture.ledger.signer.Resign(c.base.fixture.t, receipt)
 	default:
 		return nil, fmt.Errorf("longitudinal test client: unscripted action %s", action)
 	}
@@ -217,6 +241,19 @@ func TestInvestigationCatalog_LoadsAndValidatesAllPlantedFaultScenarios(t *testi
 	assert.Len(t, suite.Scenarios, 3)
 }
 
+// nativeShellSurface is the investigation's tool surface with the intent-only
+// command tool replaced by the native run_shell_command. The transport answers
+// native calls; an intent would dispatch its command past the transport.
+func nativeShellSurface(allowed []string) []string {
+	surface := make([]string, 0, len(allowed))
+	for _, name := range allowed {
+		if name != agentToolRunCommands {
+			surface = append(surface, name)
+		}
+	}
+	return append(surface, constants.MCPToolRunShellCommand)
+}
+
 func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T) {
 	blueprints, err := InvestigationScenarioBlueprints()
 	require.NoError(t, err)
@@ -252,8 +289,8 @@ func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T
 	turn3Parts := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-run-check",
-			Name:          agentToolRunCommands,
-			ArgumentsJson: `{"command":"sh ./check.sh","request":"verify health check"}`,
+			Name:          constants.MCPToolRunShellCommand,
+			ArgumentsJson: shellCommandArguments("sh ./check.sh"),
 		}}},
 	}
 	// Turn 4: Model diagnoses the issue
@@ -276,7 +313,7 @@ func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T
 	f1.req.ScenarioInput = bp.Input
 	f1.req.ScenarioGold = bp.Gold
 	f1.req.ScenarioTools = ScenarioToolExpectations{
-		AllowedTools:     bp.AllowedTools,
+		AllowedTools:     nativeShellSurface(bp.AllowedTools),
 		TrajectoryPolicy: bp.TrajectoryPolicy,
 	}
 	f1.req.Investigation = &evalv1.EvaluationInvestigation{
@@ -326,7 +363,7 @@ func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T
 	f2.req.ScenarioInput = bp.Input
 	f2.req.ScenarioGold = bp.Gold
 	f2.req.ScenarioTools = ScenarioToolExpectations{
-		AllowedTools:     bp.AllowedTools,
+		AllowedTools:     nativeShellSurface(bp.AllowedTools),
 		TrajectoryPolicy: bp.TrajectoryPolicy,
 	}
 	f2.req.Investigation = &evalv1.EvaluationInvestigation{
@@ -380,8 +417,8 @@ func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T
 	controlTurn4 := []*operatorv1.InferenceResponsePart{
 		{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 			CallId:        "call-run-check-control",
-			Name:          agentToolRunCommands,
-			ArgumentsJson: `{"command":"sh ./check.sh","request":"verify health check"}`,
+			Name:          constants.MCPToolRunShellCommand,
+			ArgumentsJson: shellCommandArguments("sh ./check.sh"),
 		}}},
 	}
 	// Turn 5: Finally outputs diagnosis
@@ -401,7 +438,7 @@ func TestLongitudinalCondition_ImprovementCurveAcrossSequentialRuns(t *testing.T
 	fCtrl.req.ScenarioInput = bp.Input
 	fCtrl.req.ScenarioGold = bp.Gold
 	fCtrl.req.ScenarioTools = ScenarioToolExpectations{
-		AllowedTools:     bp.AllowedTools,
+		AllowedTools:     nativeShellSurface(bp.AllowedTools),
 		TrajectoryPolicy: bp.TrajectoryPolicy,
 	}
 	fCtrl.req.Investigation = &evalv1.EvaluationInvestigation{
@@ -502,7 +539,7 @@ func TestPlantedFaultFixtures_EvaluationAcrossAllThreeScenarios(t *testing.T) {
 			f.req.ScenarioInput = bp.Input
 			f.req.ScenarioGold = bp.Gold
 			f.req.ScenarioTools = ScenarioToolExpectations{
-				AllowedTools:     bp.AllowedTools,
+				AllowedTools:     nativeShellSurface(bp.AllowedTools),
 				TrajectoryPolicy: bp.TrajectoryPolicy,
 			}
 

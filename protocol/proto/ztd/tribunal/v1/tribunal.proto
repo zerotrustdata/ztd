@@ -1,0 +1,119 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+syntax = "proto3";
+
+package ztd.tribunal.v1;
+
+option go_package = "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1;tribunalv1";
+
+import "ztd/eval/v1/eval.proto";
+import "ztd/operator/v1/operator.proto";
+
+// TribunalIntentRequest is the body of POST /api/v1/operators/intents. The
+// Gateway's Tribunal turns one plain-language command intent into an audited
+// shell command through governed INFERENCE dispatches, then dispatches that
+// command to the target Operator as an ordinary governed EXECUTE_BASH. The
+// Tribunal acts in front of envelope construction; it never supplies or
+// replaces an L2 quorum proof or an L3 approval.
+message TribunalIntentRequest {
+  // Plain-language description of the single command to run. Required.
+  string request = 1;
+  // Constraints the command must satisfy.
+  string guidelines = 2;
+  // Execution context shown to the panel. Empty os and shell use the
+  // Tribunal defaults.
+  string working_directory = 3;
+  string os = 4;
+  string shell = 5;
+
+  // Command dispatch target and scope, as on POST /api/v1/operators/commands.
+  string target_operator_session_id = 6;
+  string case_id = 7;
+  string investigation_id = 8;
+  string task_id = 9;
+  string cli_session_id = 10;
+  // execution_id and timeout_seconds become the CommandRequested fields of the
+  // dispatched EXECUTE_BASH.
+  string execution_id = 11;
+  int32 timeout_seconds = 12;
+
+  // member_inference is the template for every member call. The Gateway sets
+  // messages and provider_attempt_id per call; the template must leave
+  // messages, tools, provider_attempt_id, acting_app_id and stream empty.
+  ztd.operator.v1.InferenceDispatchRequest member_inference = 13;
+  // provider_attempt_prefix names the member calls: call n (from 1, in
+  // deliberation order) uses provider_attempt_id "<prefix>-<n>". Required and
+  // unique per intent, so the caller can bind each result to its request.
+  string provider_attempt_prefix = 14;
+  // tier is the campaign role recorded on each persona step.
+  ztd.eval.v1.ModelCampaignRole tier = 15;
+  // step_start_index numbers the persona steps from step_start_index + 1.
+  uint32 step_start_index = 16;
+}
+
+// TribunalStage is the deliberation stage of one member call.
+enum TribunalStage {
+  TRIBUNAL_STAGE_UNSPECIFIED = 0;
+  TRIBUNAL_STAGE_GENERATE = 1;
+  TRIBUNAL_STAGE_MARSHAL = 2;
+  TRIBUNAL_STAGE_AUDIT = 3;
+}
+
+// TribunalOutcome is how one deliberation ended.
+enum TribunalOutcome {
+  TRIBUNAL_OUTCOME_UNSPECIFIED = 0;
+  // The Auditor approved a command and the Gateway dispatched it; the command
+  // outcome is set.
+  TRIBUNAL_OUTCOME_APPROVED = 1;
+  // Neither voting round produced a winner.
+  TRIBUNAL_OUTCOME_NO_CONSENSUS = 2;
+  // Marshal blocked the winning command.
+  TRIBUNAL_OUTCOME_BLOCKED = 3;
+  // The Auditor's review did not produce a usable command.
+  TRIBUNAL_OUTCOME_AUDIT_FAILED = 4;
+  // A member inference failed; the last member call carries the failure.
+  TRIBUNAL_OUTCOME_INFERENCE_FAILED = 5;
+}
+
+// TribunalMemberCall is one governed INFERENCE dispatch made by the Tribunal.
+// Every call the Inference Operator executed carries its signed receipt.
+message TribunalMemberCall {
+  TribunalStage stage = 1;
+  string persona = 2;
+  uint32 round = 3;
+  string provider_attempt_id = 4;
+  string transaction_id = 5;
+  // result is the complete verified InferenceResult of a completed call.
+  ztd.operator.v1.InferenceResult result = 6;
+  // receipt is the Inference Operator's signed final ActionReceipt.
+  ztd.operator.v1.ActionReceipt receipt = 7;
+  // failure is set on a call that did not complete.
+  ztd.operator.v1.InferenceDispatchFailure failure = 8;
+}
+
+// TribunalIntentResult is the HTTP 200 body of POST /api/v1/operators/intents.
+message TribunalIntentResult {
+  TribunalOutcome outcome = 1;
+  // command is the audited command; set only when outcome is APPROVED.
+  string command = 2;
+  // steps are the persona steps of the deliberation, in order.
+  repeated ztd.eval.v1.AgentStep steps = 3;
+  // member_calls are the governed member inferences, in order.
+  repeated TribunalMemberCall member_calls = 4;
+  // Marshal's rationale and feedback for a BLOCKED outcome.
+  string risk_rationale = 8;
+  string risk_feedback = 9;
+  // audit_failure explains an AUDIT_FAILED outcome.
+  string audit_failure = 10;
+  // The governed EXECUTE_BASH outcome of an approved command.
+  oneof command_outcome {
+    ztd.operator.v1.GovernedDispatchResult dispatched = 5;
+    ztd.operator.v1.GovernanceRejection rejection = 6;
+    ztd.operator.v1.IngressRefusal refusal = 7;
+  }
+}

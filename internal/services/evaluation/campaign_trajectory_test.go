@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -32,9 +34,27 @@ func TestTrajectoryPolicyDenialRequiresGovernanceRejectionReceipt(t *testing.T) 
 
 func TestGovernedTrajectoryRejectsDenialLabelsWithoutSignedRejection(t *testing.T) {
 	trace := &AgentTrace{ToolCalls: []AgentToolCall{{ToolName: agentToolRunCommands, ErrorType: agentToolErrorSecurity}}}
-	view, err := newAgentGradingView(trace, nil)
+	view, err := newAgentGradingView(trace)
 	assert.NoError(t, err)
 	tools := ScenarioToolExpectations{TrajectoryPolicy: evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GOVERNED, ForbiddenTools: []string{agentToolRunCommands}}
 	result := readTrajectory(tools, ScenarioGoldCriteria{}, view)
 	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT, result.Outcome)
+}
+
+// The shell command's constraints screen its full command line, program and
+// arguments together, so a redirect hidden in an argument is still caught.
+func TestValidateToolCall_ShellCommandScreensTheWholeCommandLine(t *testing.T) {
+	ws, err := NewScenarioWorkspace(agentTestWorkingDirectory, "run-1", "attempt-1")
+	require.NoError(t, err)
+	validators := toolArgShellCommand().Gold.ArgumentValidators
+	call := AgentToolCall{ToolName: constants.MCPToolRunShellCommand}
+
+	call.ArgumentsJSON = `{"command":"cat","args":["health.txt"]}`
+	ok, detail := validateToolCall(call, validators, ws)
+	assert.True(t, ok, detail)
+
+	call.ArgumentsJSON = `{"command":"cat","args":["x",">","y"]}`
+	ok, detail = validateToolCall(call, validators, ws)
+	assert.False(t, ok)
+	assert.Contains(t, detail, `forbidden term ">"`)
 }

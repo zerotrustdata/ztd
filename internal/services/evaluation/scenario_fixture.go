@@ -22,12 +22,12 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.2.0"
+	GraderVersion = "1.3.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.5.0"
+	DefaultSuiteVersion = "1.6.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -88,19 +88,6 @@ type InvestigationSeedTurn struct {
 	Content string `json:"content"`
 }
 
-// InvestigationSeedHistoryEvent is one prior history-trail event.
-type InvestigationSeedHistoryEvent struct {
-	EventType     string `json:"event_type"`
-	Actor         string `json:"actor"`
-	Summary       string `json:"summary"`
-	ToolName      string `json:"tool_name,omitempty"`
-	ExecutionID   string `json:"execution_id,omitempty"`
-	ArgumentsJSON string `json:"arguments_json,omitempty"`
-	Command       string `json:"command,omitempty"`
-	Error         string `json:"error,omitempty"`
-	ErrorType     string `json:"error_type,omitempty"`
-}
-
 // InvestigationSeedMemory is the case memory of the seeded investigation.
 type InvestigationSeedMemory struct {
 	InvestigationSummary     string `json:"investigation_summary,omitempty"`
@@ -116,11 +103,10 @@ type InvestigationSeedMemory struct {
 // the scored turn is a real chat call. CaseTitle is a realistic case title the
 // model sees in its system prompt; it never names the evaluation.
 type InvestigationSeed struct {
-	CaseTitle       string                          `json:"case_title"`
-	CaseDescription string                          `json:"case_description,omitempty"`
-	Turns           []InvestigationSeedTurn         `json:"turns,omitempty"`
-	HistoryEvents   []InvestigationSeedHistoryEvent `json:"history_events,omitempty"`
-	CaseMemory      *InvestigationSeedMemory        `json:"case_memory,omitempty"`
+	CaseTitle       string                   `json:"case_title"`
+	CaseDescription string                   `json:"case_description,omitempty"`
+	Turns           []InvestigationSeedTurn  `json:"turns,omitempty"`
+	CaseMemory      *InvestigationSeedMemory `json:"case_memory,omitempty"`
 }
 
 // ScenarioScriptedFollowUp defines one frozen scripted user response to a clarification

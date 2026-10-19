@@ -161,6 +161,14 @@ func (l *CommandLane) DispatchAgentTool(ctx context.Context, target Target, runI
 	if err != nil {
 		return GovernedToolDispatch{}, err
 	}
+	return classifyToolDispatch(action, outcome)
+}
+
+// classifyToolDispatch reads one governed answer as a model tool call's
+// dispatch. A receipt, a governance rejection or an ingress refusal is an
+// answer the model sees; an untyped answer or an approval suspension is a
+// harness failure.
+func classifyToolDispatch(action constants.ActionType, outcome *client.GovernedOutcome) (GovernedToolDispatch, error) {
 	switch answerKind(outcome) {
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
 		return GovernedToolDispatch{Outcome: outcome, TransactionID: outcome.Dispatch.GetTransactionId(), ResultPayload: outcome.Dispatch.GetResultPayload()}, nil

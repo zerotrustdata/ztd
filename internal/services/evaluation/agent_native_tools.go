@@ -48,13 +48,7 @@ type agentToolSpec struct {
 }
 
 // Arguments returns the sorted property names declared to the model.
-func (s agentToolSpec) Arguments(tribunalCommands bool) []string {
-	if s.Name == agentToolRunCommands {
-		if tribunalCommands {
-			return []string{agentToolArgGuidelines, agentToolArgRequest}
-		}
-		return []string{agentToolArgCommand, agentToolArgRequest}
-	}
+func (s agentToolSpec) Arguments() []string {
 	names := make([]string, 0, len(s.Properties))
 	for name := range s.Properties {
 		names = append(names, name)
@@ -64,13 +58,7 @@ func (s agentToolSpec) Arguments(tribunalCommands bool) []string {
 }
 
 // RequiredArguments returns the required arguments declared to the model.
-func (s agentToolSpec) RequiredArguments(tribunalCommands bool) []string {
-	if s.Name == agentToolRunCommands {
-		if tribunalCommands {
-			return []string{agentToolArgRequest}
-		}
-		return []string{agentToolArgCommand}
-	}
+func (s agentToolSpec) RequiredArguments() []string {
 	return append([]string(nil), s.Required...)
 }
 
@@ -78,8 +66,6 @@ func (s agentToolSpec) RequiredArguments(tribunalCommands bool) []string {
 type agentToolCatalog struct {
 	specs        map[string]agentToolSpec
 	declarations []*operatorv1.InferenceToolDeclaration
-	intent       agentToolSpec
-	intentDecl   *operatorv1.InferenceToolDeclaration
 }
 
 // newAgentToolCatalog initializes the catalog from production MCP native tools
@@ -128,28 +114,9 @@ func newAgentToolCatalog() (*agentToolCatalog, error) {
 		catalog.declarations = append(catalog.declarations, decl)
 	}
 
-	// 2. Register run_commands_with_operator
-	// Direct variant:
-	directProps := map[string]*mcp.PropertySchema{
-		agentToolArgCommand: {Type: "string", Description: "The single shell command to run in the working directory."},
-		agentToolArgRequest: {Type: "string", Description: "Plain-language description of the single command to run."},
-	}
-	directRequired := []string{agentToolArgCommand}
-	directSpec := agentToolSpec{
-		Name:        agentToolRunCommands,
-		Description: "Run one shell command on an operator host under governance. Pass the single command in command; use request for its purpose.",
-		Operator:    true,
-		Properties:  directProps,
-		Required:    directRequired,
-	}
-	directDecl, err := buildInferenceToolDeclaration(agentToolRunCommands, directSpec.Description, directProps, directRequired)
-	if err != nil {
-		return nil, fmt.Errorf("evaluation: agent tool catalog: build direct %s declaration: %w", agentToolRunCommands, err)
-	}
-	catalog.specs[agentToolRunCommands] = directSpec
-	catalog.declarations = append(catalog.declarations, directDecl)
-
-	// Intent variant (TribunalCommands):
+	// 2. Register the intent-only run_commands_with_operator; the Gateway's
+	// Tribunal writes the command. Model-written commands use the native
+	// run_shell_command tool.
 	intentProps := map[string]*mcp.PropertySchema{
 		agentToolArgRequest:    {Type: "string", Description: "Plain-language description of the single command to run."},
 		agentToolArgGuidelines: {Type: "string", Description: "Constraints the command must satisfy, for example no writes outside /srv."},
@@ -164,10 +131,10 @@ func newAgentToolCatalog() (*agentToolCatalog, error) {
 	}
 	intentDecl, err := buildInferenceToolDeclaration(agentToolRunCommands, intentSpec.Description, intentProps, intentRequired)
 	if err != nil {
-		return nil, fmt.Errorf("evaluation: agent tool catalog: build intent %s declaration: %w", agentToolRunCommands, err)
+		return nil, fmt.Errorf("evaluation: agent tool catalog: build %s declaration: %w", agentToolRunCommands, err)
 	}
-	catalog.intent = intentSpec
-	catalog.intentDecl = intentDecl
+	catalog.specs[agentToolRunCommands] = intentSpec
+	catalog.declarations = append(catalog.declarations, intentDecl)
 
 	// Sort declarations alphabetically by name for deterministic order
 	sort.Slice(catalog.declarations, func(i, j int) bool {
@@ -229,8 +196,8 @@ func (c *agentToolCatalog) ToolNames() []string {
 // Scope creates an agentToolScope matching scenario expectations.
 func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope, error) {
 	surface := stringSet(tools.AllowedTools)
-	if _, ok := surface[agentToolRunCommands]; tools.TribunalCommands && !ok {
-		return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tribunal commands without allowed tool %s: %w", agentToolRunCommands, constants.ErrEvaluationScenarioContractInvalid)
+	if _, ok := surface[agentToolRunCommands]; tools.TribunalCommands != ok {
+		return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tribunal commands require exactly allowed tool %s: %w", agentToolRunCommands, constants.ErrEvaluationScenarioContractInvalid)
 	}
 	for _, name := range tools.ForbiddenTools {
 		surface[name] = struct{}{}
@@ -249,11 +216,7 @@ func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope
 		if _, ok := surface[name]; !ok {
 			continue
 		}
-		spec := c.specs[name]
-		if tools.TribunalCommands && name == agentToolRunCommands {
-			spec, declaration = c.intent, c.intentDecl
-		}
-		scope.specs[name] = spec
+		scope.specs[name] = c.specs[name]
 		scope.declarations = append(scope.declarations, declaration)
 	}
 	return scope, nil
@@ -388,7 +351,7 @@ func agentToolFailureJSON(failure agentToolFailure) (string, error) {
 }
 
 // parseAgentToolArguments decodes and validates tool arguments against its spec.
-func parseAgentToolArguments(spec agentToolSpec, raw string, tribunalCommands bool) (agentToolArguments, *agentToolFailure) {
+func parseAgentToolArguments(spec agentToolSpec, raw string) (agentToolArguments, *agentToolFailure) {
 	values := map[string]any{}
 	if strings.TrimSpace(raw) != "" {
 		decoder := json.NewDecoder(strings.NewReader(raw))
@@ -398,7 +361,7 @@ func parseAgentToolArguments(spec agentToolSpec, raw string, tribunalCommands bo
 		}
 	}
 	var problems []string
-	requiredArgs := spec.RequiredArguments(tribunalCommands)
+	requiredArgs := spec.RequiredArguments()
 	for _, name := range requiredArgs {
 		if value, ok := values[name]; !ok || value == nil {
 			problems = append(problems, name+"\n  Field required")
@@ -410,7 +373,7 @@ func parseAgentToolArguments(spec agentToolSpec, raw string, tribunalCommands bo
 	}
 	sort.Strings(names)
 
-	allowedArgs := stringSet(spec.Arguments(tribunalCommands))
+	allowedArgs := stringSet(spec.Arguments())
 	for _, name := range names {
 		if _, ok := allowedArgs[name]; !ok {
 			problems = append(problems, name+"\n  Extra inputs are not permitted")

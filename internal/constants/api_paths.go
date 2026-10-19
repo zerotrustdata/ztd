@@ -41,7 +41,11 @@ var APIPaths = struct {
 	OperatorsTarget   string `json:"operators_target"`
 	OperatorsSession  string `json:"operators_session"`
 	OperatorsCommands string `json:"operators_commands"`
-	OperatorsStop     string `json:"operators_stop"`
+	// OperatorsIntents is the Tribunal intent ingress: the Gateway deliberates
+	// a command intent through governed inference, then dispatches the audited
+	// command as an ordinary governed EXECUTE_BASH.
+	OperatorsIntents string `json:"operators_intents"`
+	OperatorsStop    string `json:"operators_stop"`
 	// Inference dispatch route (ztdllama). Platform-internal endpoint on the
 	// User Gateway that mTLS-authenticated app workloads call to dispatch a
 	// governed inference request to the Inference Node.
@@ -220,6 +224,7 @@ var APIPaths = struct {
 	OperatorsTarget:                      "/api/v1/operators/target",
 	OperatorsSession:                     "/api/v1/operators/session/",
 	OperatorsCommands:                    "/api/v1/operators/commands",
+	OperatorsIntents:                     "/api/v1/operators/intents",
 	OperatorsStop:                        "/api/v1/operators/stop",
 	InferenceDispatch:                    "/api/v1/inference/dispatch",
 	InferenceProviderObservations:        "/api/v1/inference/provider-observations/",

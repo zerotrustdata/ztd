@@ -78,7 +78,8 @@ func TestEvalLoopCrossProcess(t *testing.T) {
 					assert.NoError(t, r.runCleanups(cleanup))
 				}
 			})
-			provider := fixtures.NewScriptedOllama(t, []fixtures.OllamaReply{{Content: "READY"}})
+			replies := evalLoopReplies()
+			provider := fixtures.NewScriptedOllama(t, replies)
 			var approvals *releaseSmokeCLIApprovalResponder
 			var consensus *evalLoopConsensusApp
 			var inferenceRoot, inferenceID, inferenceSession string
@@ -111,7 +112,7 @@ func TestEvalLoopCrossProcess(t *testing.T) {
 			err = r.execute(ctx, phases)
 			finished = true
 			require.NoError(t, err)
-			assert.Equal(t, 1, provider.ChatCount())
+			assert.Equal(t, len(replies), provider.ChatCount(), "every scripted chat turn must be consumed")
 			require.NotNil(t, approvals)
 			assert.NotZero(t, approvals.Count(), "separate CLI processes must provide L3 approval")
 			assert.Empty(t, approvals.Errors())
@@ -176,63 +177,182 @@ func (r *releaseSmokeRun) executeEvalLoop(ctx context.Context, inferenceRoot, in
 	if err := files.WriteFile(ctx, constants.EvaluationModelInventoryPath, inventory, constants.PermFileReadOnly); err != nil {
 		return err
 	}
-	suite := evaluation.DefaultScenarioSuite()
-	suite.ID = "cross-process-suite"
-	for _, scenario := range suite.Scenarios {
-		if scenario.ScenarioID == "instruction-exact-format" {
-			suite.Scenarios = []evaluation.SuiteScenario{scenario}
-			break
+	campaigns, err := evalLoopCampaigns()
+	if err != nil {
+		return err
+	}
+	// Each campaign runs to completion through its own CLI processes first.
+	// Anchors are bound afterwards, and every trace is verified against them.
+	runs := make([]evalLoopRun, 0, len(campaigns))
+	for _, campaign := range campaigns {
+		run, err := r.runEvalCampaign(ctx, store, campaign)
+		if err != nil {
+			return err
+		}
+		runs = append(runs, run)
+	}
+	if err := r.bindEvalAnchors(ctx, files, inferenceRoot, inferenceID); err != nil {
+		return err
+	}
+	for _, run := range runs {
+		if err := r.verifyEvalRun(ctx, run, inferenceRoot, inferenceID, inferenceSession); err != nil {
+			return fmt.Errorf("campaign %s: %w", run.campaign.campaignID, err)
 		}
 	}
-	if len(suite.Scenarios) != 1 {
-		return constants.ErrEvaluationSuiteInvalid
+	return nil
+}
+
+// Model-call purposes, the intent tool, and the scripted answers of the loop.
+const (
+	evalLoopDirectAnswer    = "READY"
+	evalLoopIntentTool      = "run_commands_with_operator"
+	evalLoopPurposeTurn     = "agent_turn"
+	evalLoopPurposeGenerate = "tribunal_generate"
+	evalLoopPurposeMarshal  = "tribunal_marshal"
+	evalLoopPurposeAudit    = "tribunal_audit"
+	evalLoopTribunalCommand = "cat app/service.conf"
+	evalLoopTribunalAnswer  = "inventory-api listens on port 8081 in app/service.conf, but the upstream health check expects port 8080. Set listen_port = 8080 in the service configuration."
+)
+
+// evalLoopReplies is the scripted provider's answer sequence for the whole loop,
+// in chat order: the direct campaign's READY; then the Tribunal campaign's first
+// agent turn calling the intent tool, its seven member replies (five unanimous
+// generations, one LOW marshal, one APPROVE audit), and the final answer.
+func evalLoopReplies() []fixtures.OllamaReply {
+	replies := []fixtures.OllamaReply{
+		{Content: evalLoopDirectAnswer},
+		{ToolCalls: []fixtures.OllamaToolCall{{Name: evalLoopIntentTool, Arguments: json.RawMessage(`{"request": "print the configured port in the service config"}`)}}},
 	}
-	if err := store.CreateSuite(ctx, suite); err != nil {
-		return err
+	for range 5 {
+		replies = append(replies, fixtures.OllamaReply{Content: evalLoopTribunalCommand})
 	}
-	if _, err := r.ztdGateway(ctx, "create-eval-campaign", "eval", "campaigns", "create", "cross-process", "qwen3:4b", "--suite", suite.ID, "--posture", string(r.opts.Posture), "--investigation", "persistent:cross-process-incident", "--data-operator", r.workerOperatorID); err != nil {
-		return err
-	}
-	if _, err := r.ztdGateway(ctx, "prepare-eval-run", "eval", "runs", "start", "cross-process", "--prepare-only", "--daemon=false", "--publish=false", "--no-backup"); err != nil {
-		return err
-	}
-	runs, err := store.ListRunIDs(ctx)
+	return append(replies,
+		fixtures.OllamaReply{Content: `{"risk": "LOW", "rationale": "read-only", "feedback": ""}`},
+		fixtures.OllamaReply{Content: `{"verdict": "APPROVE", "rationale": "correct"}`},
+		fixtures.OllamaReply{Content: evalLoopTribunalAnswer},
+	)
+}
+
+// evalLoopCampaign is one single-scenario campaign the loop creates, prepares,
+// resumes, and verifies through the CLI.
+type evalLoopCampaign struct {
+	campaignID    string
+	record        string // scenario name recorded in the run summary
+	suite         evaluation.ScenarioSuite
+	investigation string
+	// tribunal marks the Tribunal intent scenario, whose trace must carry the
+	// member deliberation and the approved command's governed tool call.
+	tribunal bool
+}
+
+// evalLoopRun is one completed campaign run and its agent trace.
+type evalLoopRun struct {
+	campaign evalLoopCampaign
+	trace    *evaluation.AgentTrace
+}
+
+// evalLoopCampaigns returns the loop's campaigns in run order: the direct
+// instruction scenario, then the Tribunal intent scenario.
+func evalLoopCampaigns() ([]evalLoopCampaign, error) {
+	direct, err := singleScenarioSuite(evaluation.DefaultScenarioSuite(), "cross-process-suite", "instruction-exact-format")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if len(runs) != 1 {
-		return fmt.Errorf("eval loop has %d runs: %w", len(runs), constants.ErrValidationFailed)
-	}
-	if _, err := r.ztdGateway(ctx, "execute-eval-run", "eval", "runs", "resume", runs[0], "--no-backup"); err != nil {
-		return err
-	}
-	assignments, err := store.ListAssignments(ctx, runs[0])
+	investigations, err := evaluation.InvestigationsScenarioSuite()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if len(assignments) != 1 || assignments[0].GetLifecycleStatus() != evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED {
-		return fmt.Errorf("eval assignment not completed: %w", constants.ErrValidationFailed)
-	}
-	trace, err := store.LoadAssignmentAgentTrace(ctx, runs[0], assignments[0].GetAssignmentId())
+	tribunalSuite, err := singleScenarioSuite(investigations, "cross-process-tribunal-suite", "wrong-port-config")
 	if err != nil {
-		return err
+		return nil, err
+	}
+	return []evalLoopCampaign{
+		{campaignID: "cross-process", record: "eval-loop", suite: direct, investigation: "persistent:cross-process-incident"},
+		{campaignID: "cross-process-tribunal", record: "eval-loop-tribunal", suite: tribunalSuite, investigation: "persistent:cross-process-tribunal-incident", tribunal: true},
+	}, nil
+}
+
+// singleScenarioSuite returns source narrowed to the one scenario, under suiteID.
+func singleScenarioSuite(source evaluation.ScenarioSuite, suiteID, scenarioID string) (evaluation.ScenarioSuite, error) {
+	for _, scenario := range source.Scenarios {
+		if scenario.ScenarioID == scenarioID {
+			source.ID = suiteID
+			source.Scenarios = []evaluation.SuiteScenario{scenario}
+			return source, nil
+		}
+	}
+	return evaluation.ScenarioSuite{}, fmt.Errorf("eval loop suite %s has no scenario %s: %w", source.ID, scenarioID, constants.ErrEvaluationSuiteInvalid)
+}
+
+// runEvalCampaign creates one campaign through the CLI, prepares and resumes its
+// run, and returns the completed assignment's trace once its evidence verifies.
+// The run is selected by its campaign, since the store holds every campaign's runs.
+func (r *releaseSmokeRun) runEvalCampaign(ctx context.Context, store *evaluation.Store, campaign evalLoopCampaign) (evalLoopRun, error) {
+	if err := store.CreateSuite(ctx, campaign.suite); err != nil {
+		return evalLoopRun{}, err
+	}
+	if _, err := r.ztdGateway(ctx, "create-eval-campaign", "eval", "campaigns", "create", campaign.campaignID, "qwen3:4b", "--suite", campaign.suite.ID, "--posture", string(r.opts.Posture), "--investigation", campaign.investigation, "--data-operator", r.workerOperatorID); err != nil {
+		return evalLoopRun{}, err
+	}
+	if _, err := r.ztdGateway(ctx, "prepare-eval-run", "eval", "runs", "start", campaign.campaignID, "--prepare-only", "--daemon=false", "--publish=false", "--no-backup"); err != nil {
+		return evalLoopRun{}, err
+	}
+	runIDs, err := store.ListCampaignRunIDs(ctx, campaign.campaignID)
+	if err != nil {
+		return evalLoopRun{}, err
+	}
+	if len(runIDs) != 1 {
+		return evalLoopRun{}, fmt.Errorf("eval campaign %s has %d runs: %w", campaign.campaignID, len(runIDs), constants.ErrValidationFailed)
+	}
+	runID := runIDs[0]
+	if _, err := r.ztdGateway(ctx, "execute-eval-run", "eval", "runs", "resume", runID, "--no-backup"); err != nil {
+		return evalLoopRun{}, err
+	}
+	assignments, err := store.ListAssignments(ctx, runID)
+	if err != nil {
+		return evalLoopRun{}, err
+	}
+	// One resume executes at most --limit queued assignments, and that limit
+	// defaults to 1. The other cells the scenario's eligible roles scheduled stay
+	// QUEUED, with no result, until a later resume runs them.
+	var executed *evalv1.EvaluationAssignment
+	for _, assignment := range assignments {
+		switch assignment.GetLifecycleStatus() {
+		case evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED:
+			if executed != nil {
+				return evalLoopRun{}, fmt.Errorf("eval campaign %s completed more than one assignment: %w", campaign.campaignID, constants.ErrValidationFailed)
+			}
+			executed = assignment
+		case evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED:
+		default:
+			return evalLoopRun{}, fmt.Errorf("eval campaign %s assignment %s is %s: %w", campaign.campaignID, assignment.GetAssignmentId(), assignment.GetLifecycleStatus(), constants.ErrValidationFailed)
+		}
+	}
+	if executed == nil {
+		return evalLoopRun{}, fmt.Errorf("eval campaign %s executed no assignment: %w", campaign.campaignID, constants.ErrValidationFailed)
+	}
+	trace, err := store.LoadAssignmentAgentTrace(ctx, runID, executed.GetAssignmentId())
+	if err != nil {
+		return evalLoopRun{}, err
 	}
 	if err := evaluation.VerifyAgentTraceEvidence(trace); err != nil {
-		return err
+		return evalLoopRun{}, err
 	}
-	if trace.Data.OperatorID != r.workerOperatorID || trace.Inference.OperatorID != inferenceID || trace.Inference.SessionID != inferenceSession || trace.FinalOutput != "READY" || len(trace.ModelCalls) != 1 || trace.Bracket == nil {
-		return fmt.Errorf("eval trace runtime binding: %w", constants.ErrIdentityBindingFailed)
-	}
+	return evalLoopRun{campaign: campaign, trace: trace}, nil
+}
+
+// bindEvalAnchors sets the run's conformance anchors: the embedded Gateway
+// Operator's, and the Data and Inference Operators', each read from its own runtime.
+func (r *releaseSmokeRun) bindEvalAnchors(ctx context.Context, files fs.RuntimeFileService, inferenceRoot, inferenceID string) error {
 	operators, _, err := r.client.ListOperators(ctx)
 	if err != nil {
 		return err
 	}
-	var anchors []*evalv1.ConformanceAnchor
 	gatewayAnchor, err := oracle.LoadAnchor(ctx, files, releaseSmokeEmbeddedOpID)
 	if err != nil {
 		return err
 	}
-	anchors = append(anchors, gatewayAnchor)
+	anchors := []*evalv1.ConformanceAnchor{gatewayAnchor}
 	for _, target := range []struct{ root, id string }{{r.workerRoot, r.workerOperatorID}, {inferenceRoot, inferenceID}} {
 		for _, op := range operators {
 			if op.GetId() != target.id {
@@ -254,9 +374,26 @@ func (r *releaseSmokeRun) executeEvalLoop(ctx context.Context, inferenceRoot, in
 		}
 	}
 	r.anchors, err = oracle.NewAnchorSet(anchors)
-	if err != nil {
-		return err
+	return err
+}
+
+// verifyEvalRun checks one campaign's trace against the runtimes that produced
+// it, then verifies every receipt the trace carries against the Operator that
+// signed it: the harness sentinels and the governed command on the Data runtime,
+// and each model call on the Inference runtime.
+func (r *releaseSmokeRun) verifyEvalRun(ctx context.Context, run evalLoopRun, inferenceRoot, inferenceID, inferenceSession string) error {
+	trace := run.trace
+	if trace.Data.OperatorID != r.workerOperatorID || trace.Inference.OperatorID != inferenceID || trace.Inference.SessionID != inferenceSession || trace.Bracket == nil {
+		return fmt.Errorf("eval trace runtime binding: %w", constants.ErrIdentityBindingFailed)
 	}
+	if run.campaign.tribunal {
+		if err := verifyTribunalTrace(trace); err != nil {
+			return err
+		}
+	} else if trace.FinalOutput != evalLoopDirectAnswer || len(trace.ModelCalls) != 1 {
+		return fmt.Errorf("eval trace answer: %w", constants.ErrValidationFailed)
+	}
+	var txs []string
 	for _, receipt := range []*operatorv1.ActionReceipt{trace.Bracket.Before.ActionReceipt, trace.Bracket.After.ActionReceipt} {
 		if receipt == nil {
 			return constants.ErrEvidenceArtifactMalformed
@@ -264,17 +401,64 @@ func (r *releaseSmokeRun) executeEvalLoop(ctx context.Context, inferenceRoot, in
 		if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, receipt.GetTransactionId()); err != nil {
 			return err
 		}
+		txs = append(txs, receipt.GetTransactionId())
 	}
-	modelReceipt := trace.ModelCalls[0].Receipt
-	if modelReceipt == nil || modelReceipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
-		return fmt.Errorf("eval inference requires L3: %w", constants.ErrValidationFailed)
+	for _, call := range trace.ModelCalls {
+		receipt := call.Receipt
+		if receipt == nil || receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+			return fmt.Errorf("eval inference %s requires L3: %w", call.Purpose, constants.ErrValidationFailed)
+		}
+		if r.opts.Posture == constants.PostureNotary && receipt.GetL2Status() != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
+			return fmt.Errorf("eval inference %s requires L2: %w", call.Purpose, constants.ErrValidationFailed)
+		}
+		if err := r.verifyReceipt(ctx, inferenceRoot, inferenceID, inferenceSession, receipt.GetTransactionId()); err != nil {
+			return err
+		}
+		txs = append(txs, receipt.GetTransactionId())
 	}
-	if r.opts.Posture == constants.PostureNotary && modelReceipt.GetL2Status() != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
-		return fmt.Errorf("eval inference requires L2: %w", constants.ErrValidationFailed)
+	for _, call := range trace.ToolCalls {
+		if call.ActionType != string(constants.ActionTypeExecuteBash) {
+			continue
+		}
+		if call.Receipt == nil {
+			return fmt.Errorf("eval command %s has no receipt: %w", call.ToolName, constants.ErrValidationFailed)
+		}
+		if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, call.Receipt.GetTransactionId()); err != nil {
+			return err
+		}
+		txs = append(txs, call.Receipt.GetTransactionId())
 	}
-	if err := r.verifyReceipt(ctx, inferenceRoot, inferenceID, inferenceSession, modelReceipt.GetTransactionId()); err != nil {
-		return err
+	r.recordScenario(run.campaign.record, txs)
+	return nil
+}
+
+// verifyTribunalTrace checks the Tribunal campaign's trace: two agent turns, and
+// one intent tool call whose deliberation made five generations, one marshal
+// call and one audit call. The approved command ran as one governed EXECUTE_BASH.
+func verifyTribunalTrace(trace *evaluation.AgentTrace) error {
+	counts := make(map[string]int, len(trace.ModelCalls))
+	for _, call := range trace.ModelCalls {
+		counts[call.Purpose]++
 	}
-	r.recordScenario("eval-loop", []string{modelReceipt.GetTransactionId(), trace.Bracket.Before.GetTransactionId(), trace.Bracket.After.GetTransactionId()})
+	for _, want := range []struct {
+		purpose string
+		calls   int
+	}{{evalLoopPurposeTurn, 2}, {evalLoopPurposeGenerate, 5}, {evalLoopPurposeMarshal, 1}, {evalLoopPurposeAudit, 1}} {
+		if counts[want.purpose] != want.calls {
+			return fmt.Errorf("tribunal trace has %d %s calls, want %d: %w", counts[want.purpose], want.purpose, want.calls, constants.ErrValidationFailed)
+		}
+	}
+	if len(trace.ModelCalls) != 9 {
+		return fmt.Errorf("tribunal trace has %d model calls, want 9: %w", len(trace.ModelCalls), constants.ErrValidationFailed)
+	}
+	if len(trace.ToolCalls) != 1 {
+		return fmt.Errorf("tribunal trace has %d tool calls, want 1: %w", len(trace.ToolCalls), constants.ErrValidationFailed)
+	}
+	if call := trace.ToolCalls[0]; call.ToolName != evalLoopIntentTool || call.ActionType != string(constants.ActionTypeExecuteBash) || call.Command != evalLoopTribunalCommand {
+		return fmt.Errorf("tribunal tool call %s %s %q: %w", call.ToolName, call.ActionType, call.Command, constants.ErrValidationFailed)
+	}
+	if trace.FinalOutput != evalLoopTribunalAnswer || len(trace.Steps) == 0 {
+		return fmt.Errorf("tribunal trace answer or steps: %w", constants.ErrValidationFailed)
+	}
 	return nil
 }

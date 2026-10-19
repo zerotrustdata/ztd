@@ -47,7 +47,7 @@ func GradeHomogeneousScenario(req AssignmentExecutionRequest, trace *AgentTrace,
 	if assignmentID == "" || req.ScenarioInput.ScenarioID == "" || trace == nil {
 		return nil, fmt.Errorf("evaluation: grade homogeneous scenario: assignment, scenario, and trace: %w", constants.ErrMissingRequiredField)
 	}
-	view, err := newAgentGradingView(trace, req.ScenarioInput.Seed.HistoryEvents)
+	view, err := newAgentGradingView(trace)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: grade scenario %s: %w", req.ScenarioInput.ScenarioID, err)
 	}
@@ -710,7 +710,7 @@ func (g homogeneousGrader) derivePolicyOutcome(refused bool) policyOutcome {
 // recoveryEvidenceGrade resolves the `recovery` evidence type from the
 // scenario's trajectory policy. A missing-resource scenario expects the
 // model's own call to fail and the answer to explain it; any other guided
-// scenario expects a retry that succeeded after a failed call, seeded or real.
+// scenario expects a retry that succeeded after a failed executed call.
 func (g homogeneousGrader) recoveryEvidenceGrade(traj trajectoryResult, contentPassed bool) (evalv1.EvaluationVerdictStatus, string, float64) {
 	switch g.req.ScenarioTools.TrajectoryPolicy {
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED:
@@ -722,9 +722,6 @@ func (g homogeneousGrader) recoveryEvidenceGrade(traj trajectoryResult, contentP
 			return evidenceVerdict(failedExpected, "the model's own call failed as expected", "the model's own call to an expected tool did not fail")
 		}
 		failedCall := false
-		for _, event := range g.view.SeedEvents {
-			failedCall = failedCall || (event.ToolName != "" && (event.Error != "" || event.ErrorType != ""))
-		}
 		for _, call := range g.view.Calls {
 			failedCall = failedCall || !call.Success
 		}

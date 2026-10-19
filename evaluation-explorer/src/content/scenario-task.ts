@@ -25,7 +25,7 @@ export type ScenarioHintSource = 'prompt' | 'seed' | 'workspace' | 'operator_con
 
 /** True when a scenario's expected behavior is direct command execution. */
 export function isCapabilityQualificationScenario(expectedTools: readonly string[] | undefined): boolean {
-  return expectedTools?.includes('run_commands_with_operator') ?? false;
+  return expectedTools?.includes('run_shell_command') ?? false;
 }
 
 export type ScenarioInlineContent = {

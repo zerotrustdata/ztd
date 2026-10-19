@@ -16,12 +16,13 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 func TestCampaignAgentExecutor_RoutesSystemTurnAndTribunalToFrozenRoles(t *testing.T) {
-	f := newAgentExecutorFixture(t, tribunalTextTurn("primary answer"), tribunalTextTurn("assistant tribunal answer"))
+	// The third scripted turn is the second Tribunal member's, which fails before
+	// it is answered.
+	f := newAgentExecutorFixture(t, tribunalTextTurn("primary answer"), tribunalTextTurn("assistant tribunal answer"), tribunalTextTurn("unanswered"))
 	variants := testFormationCatalogVariants()
 	set, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID:   agentTestCampaignID,
@@ -41,26 +42,33 @@ func TestCampaignAgentExecutor_RoutesSystemTurnAndTribunalToFrozenRoles(t *testi
 	f.req.Assignment.Target = &evalv1.EvaluationAssignment_Heterogeneous{
 		Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: set.Stacks[0]},
 	}
+	f.req.ScenarioTools = ScenarioToolExpectations{AllowedTools: []string{agentToolRunCommands}, TribunalCommands: true}
+	// The second Tribunal member fails after the runtime executed it, so the
+	// deliberation stops with the first member's answer recorded.
+	f.inference.failTurn = 3
 
 	run, err := f.executor.newRun(f.req)
 	require.NoError(t, err)
 	_, primaryCall := run.infer(context.Background(), AgentModelCall{Purpose: agentModelCallPurposeTurn, LoopTurn: 1}, nil, nil)
 	require.NotNil(t, primaryCall)
-	_, err = (tribunalInferer{run: run, toolCallID: "tool-1", turn: 1}).Infer(context.Background(), tribunal.Call{
-		Stage: tribunal.StageGenerate, Persona: string(tribunal.MemberAxiom), System: "write a command", User: "show status",
-	})
+	call, err := run.runTool(context.Background(), 1, "primary-call", tribunalIntentTurn("call-1")[0].GetToolCall())
 	require.NoError(t, err)
+	assert.False(t, call.Success, "the deliberation ends at the failed member")
 
 	stack := set.Stacks[0]
 	primary := formationVariantByID(t, variants, stack.GetPrimarySlot().GetVariantId())
 	assistant := formationVariantByID(t, variants, stack.GetAssistantSlot().GetVariantId())
-	require.Len(t, f.inference.requests, 2)
+	require.Len(t, f.inference.intents, 1)
+	assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, f.inference.intents[0].GetTier(), "the Tribunal deliberates on the assistant tier")
+	require.Len(t, f.inference.requests, 3)
 	assert.Equal(t, primary.GetServedModelTag(), f.inference.requests[0].GetModel())
 	assert.Equal(t, primary.GetModelDigest(), f.inference.requests[0].GetModelDigest())
 	assert.Equal(t, primary.GetVariantId(), primaryCall.ModelVariantID)
 	assert.Equal(t, primary.GetServedModelTag(), primaryCall.ServedModelTag)
 	assert.Equal(t, assistant.GetServedModelTag(), f.inference.requests[1].GetModel())
 	assert.Equal(t, assistant.GetModelDigest(), f.inference.requests[1].GetModelDigest())
+	assert.Equal(t, assistant.GetServedModelTag(), f.inference.requests[2].GetModel())
+	require.Len(t, run.trace.ModelCalls, 3)
 	assert.Equal(t, assistant.GetVariantId(), run.trace.ModelCalls[1].ModelVariantID)
 	assert.Equal(t, assistant.GetServedModelTag(), run.trace.ModelCalls[1].ServedModelTag)
 	assert.Equal(t, assistant.GetModelDigest(), run.trace.ModelCalls[1].ModelDigest)

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,20 +25,26 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
 
 const (
 	agentTestWorkingDirectory = "/srv/ztd-operator"
 	agentTestCampaignID       = "campaign-1"
-	agentTestScenarioID       = "tool-arg-run-commands"
+	agentTestScenarioID       = "tool-arg-shell-command"
 	agentTestModelTag         = "agent-model:latest"
 	agentTestModelDigest      = "1111111111111111111111111111111111111111111111111111111111111111"
 	agentTestCommand          = "cat status/health.txt"
 	agentTestRunCommandsName  = "run_commands_with_operator"
 )
+
+// agentTestPersona is the persona the fixture's command lane dispatches as, and
+// the persona an approved Tribunal command dispatches as.
+var agentTestPersona = client.Persona{CLISessionID: "cli-session-1"}
 
 // agentAnswer replaces the governed answer for EXECUTE_BASH dispatches.
 type agentAnswer struct {
@@ -99,7 +106,7 @@ func newAgentExecutorFixtureOnRuntimes(t *testing.T, shared bool, turns ...[]*op
 		seq++
 		return fmt.Sprintf("%s-%d", prefix, seq)
 	}
-	lane := NewCommandLane(f.client, client.Persona{CLISessionID: "cli-session-1"})
+	lane := NewCommandLane(f.client, agentTestPersona)
 	f.executor, err = NewCampaignAgentExecutor(f.inference, lane, f.sentinel, f.traces, func() time.Time { return now }, newID)
 	require.NoError(t, err)
 
@@ -120,7 +127,7 @@ func newAgentExecutorFixtureOnRuntimes(t *testing.T, shared bool, turns ...[]*op
 			UserPrompt:     "Run one read-only command that prints " + ScenarioWorkspaceToken + "/status/health.txt.",
 			WorkspaceFiles: []ScenarioWorkspaceFile{{Label: "health", RelPath: "status/health.txt", Content: "HEALTHY"}},
 		},
-		ScenarioTools: ScenarioToolExpectations{AllowedTools: agentTestCatalogToolNames()},
+		ScenarioTools: ScenarioToolExpectations{AllowedTools: agentTestCatalogToolNames(), TribunalCommands: true},
 		GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC,
 		Binding: CampaignExecutionBinding{
 			Topology: CampaignOperatorTopology{
@@ -161,8 +168,13 @@ func (f *agentExecutorFixture) storedTrace() *AgentTrace {
 	return trace
 }
 
+// agentShellResultSummary is the run_shell_command result the Operator signs
+// into the receipt of a completed shell call.
+const agentShellResultSummary = `{"exit_code":0,"stdout":"HEALTHY\n","stderr":"","timed_out":false}`
+
 // agentLaneClient is the Gateway client under the command lane. Every governed
-// dispatch is one ledger link and a receipt, unless answer replaces EXECUTE_BASH.
+// dispatch is one ledger link and a receipt, unless answer replaces the tool
+// call's governed answer (EXECUTE_BASH or MCP_CALL).
 type agentLaneClient struct {
 	fixture  *agentExecutorFixture
 	answer   *agentAnswer
@@ -176,7 +188,7 @@ func (c *agentLaneClient) DispatchCommand(_ context.Context, _ client.Persona, r
 		return nil, err
 	}
 	c.fixture.log = append(c.fixture.log, "dispatch:"+string(action)+":"+request.TargetResource)
-	if c.answer != nil && action == constants.ActionTypeExecuteBash {
+	if c.answer != nil && (action == constants.ActionTypeExecuteBash || action == constants.ActionTypeMcpCall) {
 		return c.answer.outcome, c.answer.err
 	}
 	txID := fmt.Sprintf("tx-dispatch-%d", len(c.requests))
@@ -185,6 +197,10 @@ func (c *agentLaneClient) DispatchCommand(_ context.Context, _ client.Persona, r
 	switch action {
 	case constants.ActionTypeExecuteBash:
 		result = &operatorv1.CommandResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, Stdout: "HEALTHY\n"}
+	case constants.ActionTypeMcpCall:
+		// A native tool's answer is its result summary; the MCP payload carries none.
+		receipt.ResultSummary = agentShellResultSummary
+		c.fixture.ledger.signer.Resign(c.fixture.t, receipt)
 	case constants.ActionTypeFileEdit:
 		result = &operatorv1.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: request.TargetResource, Operation: string(constants.FileOperationWrite)}
 	default:
@@ -207,6 +223,8 @@ type agentInferenceFake struct {
 	fixture  *agentExecutorFixture
 	turns    [][]*operatorv1.InferenceResponsePart
 	requests []*operatorv1.InferenceDispatchRequest
+	// intents records each Tribunal intent the executor submitted, in order.
+	intents []*tribunalv1.TribunalIntentRequest
 	// failTurn, when set, makes that turn's provider fail after the runtime
 	// executed it, so the error carries the runtime's FAILED receipt.
 	failTurn int
@@ -246,6 +264,71 @@ func (f *agentInferenceFake) DispatchInference(_ context.Context, req *operatorv
 	return response, nil
 }
 
+// DispatchIntent answers a Tribunal intent as the Gateway's intent controller
+// does: the production Tribunal deliberates over this fake's scripted member
+// inferences, and an approved command dispatches as one governed EXECUTE_BASH
+// on the lane client. A transport failure of that dispatch is returned as an
+// error, which the executor classifies as a harness failure.
+func (f *agentInferenceFake) DispatchIntent(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
+	f.intents = append(f.intents, req)
+	result, err := tribunal.NewService(agentTribunalMembers{inference: f}).Deliberate(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if result.GetOutcome() != tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED {
+		return result, nil
+	}
+	payload, err := proto.Marshal(&operatorv1.CommandRequested{
+		Command:          result.GetCommand(),
+		ExecutionId:      req.GetExecutionId(),
+		Justification:    req.GetRequest(),
+		WorkingDirectory: req.GetWorkingDirectory(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	outcome, err := f.fixture.client.DispatchCommand(ctx, agentTestPersona, models.OperatorCommandRequest{
+		TargetOperatorSessionID: req.GetTargetOperatorSessionId(),
+		EventType:               string(constants.EventOperatorCommandRequested),
+		Payload:                 payload,
+		TargetResource:          req.GetWorkingDirectory(),
+		InvestigationID:         req.GetInvestigationId(),
+		TaskID:                  req.GetTaskId(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case outcome.Dispatch != nil:
+		result.CommandOutcome = &tribunalv1.TribunalIntentResult_Dispatched{Dispatched: outcome.Dispatch}
+	case outcome.Observation.GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION:
+		result.CommandOutcome = &tribunalv1.TribunalIntentResult_Rejection{Rejection: outcome.Observation.GetRejection()}
+	case outcome.Observation.GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL:
+		result.CommandOutcome = &tribunalv1.TribunalIntentResult_Refusal{Refusal: outcome.Observation.GetRefusal()}
+	}
+	return result, nil
+}
+
+// agentTribunalMembers is the Tribunal's member dispatcher: each member call is
+// one scripted governed inference on the fake. A failed call answers with the
+// typed failure the Gateway's member dispatcher returns, here a provider that
+// is unavailable, carrying the runtime's FAILED receipt.
+type agentTribunalMembers struct {
+	inference *agentInferenceFake
+}
+
+func (m agentTribunalMembers) DispatchMember(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, *operatorv1.InferenceDispatchFailure) {
+	response, err := m.inference.DispatchInference(ctx, req)
+	if err != nil {
+		return nil, &operatorv1.InferenceDispatchFailure{
+			Error:   err.Error(),
+			Code:    operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE,
+			Receipt: governance.FailedReceipt(err),
+		}
+	}
+	return response, nil
+}
+
 // agentSentinelFake reads the ledger as a harness sentinel. failOnRead, when
 // set, makes that numbered read (1 opens the bracket, 2 closes it) fail.
 type agentSentinelFake struct {
@@ -275,43 +358,59 @@ func (s *agentTraceStoreFake) SaveAssignmentAgentTrace(_ context.Context, _, _ s
 	return nil
 }
 
-func runCommandTurns(command string) [][]*operatorv1.InferenceResponsePart {
-	arguments := fmt.Sprintf(`{"command":%q,"request":"print the health file"}`, command)
+// shellCommandArguments encodes one command line as run_shell_command arguments:
+// the program, then its arguments.
+func shellCommandArguments(commandLine string) string {
+	request := models.RunShellCommandRequest{}
+	if fields := strings.Fields(commandLine); len(fields) > 0 {
+		request.Command, request.Args = fields[0], fields[1:]
+	}
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
+}
+
+// runCommandTurns scripts one native run_shell_command call for commandLine,
+// then the answer that reports its output.
+func runCommandTurns(commandLine string) [][]*operatorv1.InferenceResponsePart {
 	return [][]*operatorv1.InferenceResponsePart{
-		{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "call-1", Name: agentTestRunCommandsName, ArgumentsJson: arguments}}}},
+		{{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "call-1", Name: constants.MCPToolRunShellCommand, ArgumentsJson: shellCommandArguments(commandLine)}}}},
 		{{Part: &operatorv1.InferenceResponsePart_Text{Text: "HEALTHY"}}},
 	}
 }
 
-func TestCampaignAgentExecutor_RunCommandsDispatchesModelWrittenCommandVerbatim(t *testing.T) {
+func TestCampaignAgentExecutor_RunShellCommandDispatchesModelWrittenArgumentsVerbatim(t *testing.T) {
 	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
 
 	result, err := f.execute()
 
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus())
-	require.Len(t, f.inference.requests, 2, "the tool loop makes one inference per turn and no command-generation call")
-	for _, request := range f.inference.requests {
-		for _, message := range request.GetMessages() {
-			for _, part := range message.GetParts() {
-				assert.NotContains(t, part.GetText(), "Translate the operator request", "no second inference writes the command")
-			}
-		}
-	}
+	require.Len(t, f.inference.requests, 2, "the tool loop makes one inference per turn")
 	var shell *models.OperatorCommandRequest
 	for i := range f.client.requests {
-		if f.client.requests[i].EventType == string(constants.EventOperatorCommandRequested) {
+		if f.client.requests[i].EventType == string(constants.EventOperatorMcpCallRequested) {
 			shell = &f.client.requests[i]
 		}
 	}
-	require.NotNil(t, shell, "the run dispatches one governed EXECUTE_BASH")
-	command := &operatorv1.CommandRequested{}
-	require.NoError(t, proto.Unmarshal(shell.Payload, command))
-	assert.Equal(t, agentTestCommand, command.GetCommand())
-	assert.Equal(t, "print the health file", command.GetJustification())
+	require.NotNil(t, shell, "the run dispatches one governed MCP_CALL")
+	call := &operatorv1.McpCallRequested{}
+	require.NoError(t, proto.Unmarshal(shell.Payload, call))
+	assert.Equal(t, constants.MCPToolRunShellCommand, call.GetToolName())
+	var arguments map[string]any
+	require.NoError(t, json.Unmarshal([]byte(call.GetArgumentsJson()), &arguments))
+	assert.Equal(t, "cat", arguments["command"])
+	assert.Equal(t, []any{"status/health.txt"}, arguments["args"])
 	trace := f.storedTrace()
 	require.Len(t, trace.ToolCalls, 1)
-	assert.Equal(t, agentTestCommand, trace.ToolCalls[0].Command)
+	shellCall := trace.ToolCalls[0]
+	assert.True(t, shellCall.Success)
+	assert.Equal(t, constants.MCPToolRunShellCommand, shellCall.ToolName)
+	assert.Equal(t, string(constants.ActionTypeMcpCall), shellCall.ActionType)
+	assert.JSONEq(t, `{"command":"cat","args":["status/health.txt"]}`, shellCall.ArgumentsJSON)
+	assert.Contains(t, shellCall.ResultJSON, "HEALTHY")
 }
 
 func TestCampaignAgentExecutor_DispatchesToolsDespiteRecordedProbeRejection(t *testing.T) {
@@ -336,8 +435,9 @@ func TestCampaignAgentExecutor_DispatchesToolsDespiteRecordedProbeRejection(t *t
 func TestCampaignAgentExecutor_DeclaresScenarioAllowedAndForbiddenToolsInCatalogOrder(t *testing.T) {
 	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
 	f.req.ScenarioTools = ScenarioToolExpectations{
-		AllowedTools:   []string{agentToolRunCommands, "read_file"},
-		ForbiddenTools: []string{"run_shell_command"},
+		AllowedTools:     []string{agentToolRunCommands, "read_file"},
+		TribunalCommands: true,
+		ForbiddenTools:   []string{"run_shell_command"},
 	}
 
 	_, err := f.execute()
@@ -388,7 +488,7 @@ func TestCampaignAgentExecutor_UndeclaredToolCallFailsWithoutDispatch(t *testing
 	call := trace.ToolCalls[0]
 	assert.False(t, call.Success)
 	assert.Equal(t, agentToolErrorExecution, call.ErrorType)
-	assert.Equal(t, `ZTD-1607: Unknown tool "run_commands_with_operator"; use one of: read_file`, call.Error)
+	assert.Equal(t, `ZTD-1607: Unknown tool "run_shell_command"; use one of: read_file`, call.Error)
 }
 
 func TestCampaignAgentExecutor_UncatalogedScenarioToolFailsClosed(t *testing.T) {
@@ -431,23 +531,6 @@ func TestCampaignAgentExecutor_TraceRecordsExactInputThinkingAndProviderCallIDs(
 	require.NoError(t, ValidateAgentTraceDigest(trace))
 }
 
-func TestCampaignAgentExecutor_EmptyCommandFailsCallWithoutDispatch(t *testing.T) {
-	f := newAgentExecutorFixture(t, runCommandTurns("   ")...)
-
-	_, err := f.execute()
-
-	require.NoError(t, err, "a model-visible tool failure is a scored answer, not a harness failure")
-	for _, request := range f.client.requests {
-		assert.NotEqual(t, string(constants.EventOperatorCommandRequested), request.EventType, "an empty command dispatches nothing")
-	}
-	trace := f.storedTrace()
-	require.Len(t, trace.ToolCalls, 1)
-	call := trace.ToolCalls[0]
-	assert.False(t, call.Success)
-	assert.Equal(t, agentToolErrorExecution, call.ErrorType)
-	assert.Equal(t, "ZTD-1607: Tool execution failed for run_commands_with_operator: command is required", call.Error)
-}
-
 func TestCampaignAgentExecutor_MissingRequiredArgumentFailsValidationWithoutDispatch(t *testing.T) {
 	tool := "read_file"
 	turns := [][]*operatorv1.InferenceResponsePart{
@@ -483,7 +566,7 @@ func TestCampaignAgentExecutor_BracketsToolLoopWithSentinelReadsInOrder(t *testi
 		"dispatch:FILE_EDIT:" + healthPath,
 		"sentinel:" + sentinelPath,
 		"infer",
-		"dispatch:EXECUTE_BASH:" + agentTestWorkingDirectory,
+		"dispatch:MCP_CALL:run_shell_command",
 		"infer",
 		"sentinel:" + sentinelPath,
 	}, f.log)
@@ -535,7 +618,7 @@ func TestCampaignAgentExecutor_HarnessDispatchFailuresFailTheAssignment(t *testi
 
 func TestCampaignAgentExecutor_RejectionCompletesCallAsSecurityViolationDeny(t *testing.T) {
 	f := newAgentExecutorFixture(t, runCommandTurns("rm -rf status")...)
-	rejected := f.ledger.rejected("tx-rejected", string(constants.ActionTypeExecuteBash))
+	rejected := f.ledger.rejected("tx-rejected", string(constants.ActionTypeMcpCall))
 	f.client.answer = &agentAnswer{outcome: &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{
 			Kind:      evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,

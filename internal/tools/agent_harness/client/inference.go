@@ -27,7 +27,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
 
 // ListOperators returns the authenticated user's Operator documents through
@@ -96,7 +98,7 @@ func (c *Client) DispatchInference(ctx context.Context, req *operatorv1.Inferenc
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: marshal inference dispatch request: %v", constants.ErrRequestMarshalFailed, err)
 	}
-	status, respBody, err := c.doInference(ctx, c.appWorkloadPersona(), http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.InferenceDispatch, body, nil)
+	status, respBody, err := c.doInference(ctx, c.inferenceHTTP(), c.appWorkloadPersona(), http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.InferenceDispatch, body, nil)
 	if err != nil {
 		return nil, respBody, err
 	}
@@ -108,6 +110,44 @@ func (c *Client) DispatchInference(ctx context.Context, req *operatorv1.Inferenc
 		return nil, respBody, fmt.Errorf("%w: decode inference dispatch response: %v", constants.ErrInvalidJSONResponse, err)
 	}
 	return response, respBody, nil
+}
+
+// DispatchIntent sends POST /api/v1/operators/intents under the configured
+// platform-enrolled application identity, as DispatchInference does: the
+// Gateway's Tribunal dispatches every member call as governed inference under
+// that identity, then the approved command as a governed EXECUTE_BASH. A
+// deliberated intent is always a TribunalIntentResult; a request refused before
+// deliberation is an error carrying the typed IngressRefusal sentinel.
+func (c *Client) DispatchIntent(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, []byte, error) {
+	if req == nil {
+		return nil, nil, constants.ErrMissingRequiredField
+	}
+	body, err := protojson.Marshal(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: marshal tribunal intent request: %v", constants.ErrRequestMarshalFailed, err)
+	}
+	// Every member call may run to the inference deadline, and the approved
+	// command may wait for a human decision before its own dispatch deadline.
+	httpClient := &http.Client{
+		Timeout:   time.Duration(tribunal.MaxMemberCalls)*dispatch.RequestDeadline + mcp.ApprovalRequestTTL + dispatch.RequestDeadline,
+		Transport: c.http.Transport,
+	}
+	status, respBody, err := c.doInference(ctx, httpClient, c.appWorkloadPersona(), http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsIntents, body, nil)
+	if err != nil {
+		return nil, respBody, err
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		_, refusal, decodeErr := governance.DecodeIngressFailure(respBody)
+		if decodeErr != nil || refusal == nil {
+			return nil, respBody, fmt.Errorf("%w: tribunal intent returned status %d", constants.ErrHTTPStatusError, status)
+		}
+		return nil, respBody, fmt.Errorf("%w: tribunal intent returned status %d: %s (%s)", constants.ErrHTTPStatusError, status, refusal.GetError(), refusal.GetCode())
+	}
+	result := &tribunalv1.TribunalIntentResult{}
+	if err := protojson.Unmarshal(respBody, result); err != nil {
+		return nil, respBody, fmt.Errorf("%w: decode tribunal intent result: %v", constants.ErrInvalidJSONResponse, err)
+	}
+	return result, respBody, nil
 }
 
 // inferenceDispatchFailure maps a non-2xx dispatch response to its public
@@ -148,7 +188,7 @@ func (c *Client) DispatchInferenceStream(ctx context.Context, req *operatorv1.In
 		return nil, fmt.Errorf("%w: marshal inference dispatch request: %v", constants.ErrRequestMarshalFailed, err)
 	}
 	accept := constants.HeaderValueApplicationNDJSON
-	status, respBody, err := c.doInference(ctx, c.appWorkloadPersona(), http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.InferenceDispatch, body, &accept)
+	status, respBody, err := c.doInference(ctx, c.inferenceHTTP(), c.appWorkloadPersona(), http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.InferenceDispatch, body, &accept)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +243,7 @@ func (c *Client) inferenceHTTP() *http.Client {
 	}
 }
 
-func (c *Client) doInference(ctx context.Context, p Persona, method, url string, body []byte, accept *string) (int, []byte, error) {
+func (c *Client) doInference(ctx context.Context, hc *http.Client, p Persona, method, url string, body []byte, accept *string) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
 		return 0, nil, err
@@ -219,7 +259,7 @@ func (c *Client) doInference(ctx context.Context, p Persona, method, url string,
 		req.Header.Set(constants.HeaderOperatorSessionID, p.OperatorSessionID)
 	}
 	start := time.Now()
-	resp, err := c.inferenceHTTP().Do(req)
+	resp, err := hc.Do(req)
 	ex := Exchange{Persona: p.ID, Method: method, URL: url, At: start}
 	attachBody(&ex.ReqBody, &ex.ReqRaw, body)
 	if err != nil {

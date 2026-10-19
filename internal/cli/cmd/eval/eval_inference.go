@@ -34,6 +34,7 @@ import (
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
 
 // governedInferenceDispatchDeadline bounds one governed inference dispatch: the
@@ -388,6 +389,9 @@ func resolveInferenceProbeAppCredentials(fileSvc fs.RuntimeFileService, cfg *con
 // governed Inference Operator path under the ztd-eval application identity.
 type governedInferenceDispatcher struct {
 	client *harnessclient.Client
+	// cliSessionID scopes a Tribunal intent's command to the campaign's
+	// CLISession, as the command lane scopes a direct command.
+	cliSessionID string
 }
 
 func (d *governedInferenceDispatcher) DispatchInference(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
@@ -401,6 +405,20 @@ func (d *governedInferenceDispatcher) DispatchInference(ctx context.Context, req
 		return nil, fmt.Errorf("evaluation: governed inference dispatch: %w", err)
 	}
 	return response, nil
+}
+
+// DispatchIntent submits one Tribunal intent; the client bounds it by every
+// member call's deadline plus the approved command's approval wait.
+func (d *governedInferenceDispatcher) DispatchIntent(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
+	if d == nil || d.client == nil || req == nil {
+		return nil, fmt.Errorf("evaluation: governed tribunal intent: %w", constants.ErrMissingRequiredField)
+	}
+	req.CliSessionId = d.cliSessionID
+	result, _, err := d.client.DispatchIntent(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: governed tribunal intent: %w", err)
+	}
+	return result, nil
 }
 
 func parseInferenceProbeRole(role string) (models.InferenceModelRole, error) {

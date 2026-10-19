@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
 
 // GovernedOutcome is what one governed ingress call returned. Observation holds
@@ -91,6 +92,28 @@ func decodeHTTPBody(status int, body []byte, success proto.Message) *GovernedOut
 		outcome := receiptOutcome(msg.GetReceipt())
 		outcome.Dispatch = msg
 		return outcome
+	default:
+		return untypedOutcome()
+	}
+}
+
+// IntentCommandOutcome classifies the governed EXECUTE_BASH outcome of an
+// approved Tribunal intent as a POST /api/v1/operators/commands answer is
+// classified. An intent that carries no command outcome, or a dispatch result
+// without a receipt, is untyped.
+func IntentCommandOutcome(result *tribunalv1.TribunalIntentResult) *GovernedOutcome {
+	switch outcome := result.GetCommandOutcome().(type) {
+	case *tribunalv1.TribunalIntentResult_Dispatched:
+		if outcome.Dispatched.GetReceipt() == nil {
+			return untypedOutcome()
+		}
+		governed := receiptOutcome(outcome.Dispatched.GetReceipt())
+		governed.Dispatch = outcome.Dispatched
+		return governed
+	case *tribunalv1.TribunalIntentResult_Rejection:
+		return rejectionOutcome(outcome.Rejection)
+	case *tribunalv1.TribunalIntentResult_Refusal:
+		return refusalOutcome(outcome.Refusal)
 	default:
 		return untypedOutcome()
 	}
