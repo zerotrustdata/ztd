@@ -112,26 +112,6 @@ func TestBuiltinLoadsSortedScenarios(t *testing.T) {
 	}
 }
 
-func TestScenarioSeedRoundTripsCase(t *testing.T) {
-	for id, s := range mustBuiltin(t) {
-		seed := s.Seed()
-		if seed.CaseTitle != s.Case.Title || seed.CaseDescription != s.Case.Description {
-			t.Errorf("%s: title/description not carried over", id)
-		}
-		if !reflect.DeepEqual(seed.CaseMemory, s.Case.Memory) {
-			t.Errorf("%s: memory = %v, want %v", id, seed.CaseMemory, s.Case.Memory)
-		}
-		if len(seed.PriorTurns) != len(s.Case.PriorTurns) {
-			t.Fatalf("%s: prior turns = %d, want %d", id, len(seed.PriorTurns), len(s.Case.PriorTurns))
-		}
-		for i, turn := range s.Case.PriorTurns {
-			if seed.PriorTurns[i].Role != turn.Role || seed.PriorTurns[i].Text != turn.Text {
-				t.Errorf("%s: prior turn %d not carried over", id, i)
-			}
-		}
-	}
-}
-
 func TestBuiltinPredicatesFailUnfixedAndPassFixed(t *testing.T) {
 	for id, s := range mustBuiltin(t) {
 		for _, state := range s.Objective.FileState {

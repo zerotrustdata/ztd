@@ -1501,9 +1501,7 @@ var (
 	ErrConformancePostureUnknown        = errors.New("conformance posture unknown")
 
 	// Agent system-under-test errors
-	ErrSUTTurnFailed          = errors.New("agent sut turn failed")
-	ErrSUTTraceInvalid        = errors.New("agent sut trace invalid")
-	ErrSUTClaimedTxUnverified = errors.New("agent sut claimed transaction has no verified receipt")
+	ErrSUTTraceInvalid = errors.New("agent sut trace invalid")
 
 	// Campaign tool evidence errors
 	ErrCampaignToolEvidenceInvalid = errors.New("campaign tool evidence invalid")

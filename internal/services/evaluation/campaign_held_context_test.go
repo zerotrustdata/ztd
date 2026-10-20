@@ -93,30 +93,37 @@ func TestCampaignAgentExecutor_HeldRepetitionOnAReboundDataOperatorIsAHarnessFai
 }
 
 func TestImportAssignmentResultFromAgentTrace_HeldTraceMustRunInTheHeldWorkspace(t *testing.T) {
-	_, f := heldRepetitionFixture(t)
-	_, err := f.execute()
+	const runID = "run-held-workspace"
+	held, err := NewScenarioWorkspace(agentTestWorkingDirectory, runID, "attempt-1")
 	require.NoError(t, err)
-	trace := f.storedTrace()
+	heldWorkspace := AgentTraceWorkspace{Root: held.Root, OperatorWorkingDirectory: held.OperatorWorkingDirectory}
+	trace := &AgentTrace{
+		RunID: runID, EvaluationAttemptID: "attempt-2", Workspace: heldWorkspace,
+		HeldContext: &AgentTraceHeldContext{AssignmentID: "assignment-1", Repetition: 1, Workspace: heldWorkspace},
+	}
 	require.NoError(t, trace.validateWorkspace())
 
-	own, err := NewScenarioWorkspace(agentTestWorkingDirectory, trace.RunID, trace.EvaluationAttemptID)
+	own, err := NewScenarioWorkspace(agentTestWorkingDirectory, runID, trace.EvaluationAttemptID)
 	require.NoError(t, err)
-	trace.Workspace.Root = own.Root
-	require.ErrorIs(t, trace.validateWorkspace(), constants.ErrEvaluationWorkspaceUnavailable)
+	trace.Workspace = AgentTraceWorkspace{Root: own.Root, OperatorWorkingDirectory: own.OperatorWorkingDirectory}
+	require.ErrorIs(t, trace.validateWorkspace(), constants.ErrEvaluationWorkspaceUnavailable, "a held trace must run in the held workspace, not its own")
 
-	trace.Workspace = AgentTraceWorkspace{Root: agentTestWorkingDirectory + "/elsewhere", OperatorWorkingDirectory: agentTestWorkingDirectory}
-	trace.HeldContext.Workspace = trace.Workspace
+	elsewhere := AgentTraceWorkspace{Root: agentTestWorkingDirectory + "/elsewhere", OperatorWorkingDirectory: agentTestWorkingDirectory}
+	trace.Workspace = elsewhere
+	trace.HeldContext.Workspace = elsewhere
 	require.ErrorIs(t, trace.validateWorkspace(), constants.ErrEvaluationWorkspaceUnavailable, "a held workspace must still be an attempt-scoped root")
 }
 
 func TestAgentTraceConversation_ToolCallCountMismatchIsMalformed(t *testing.T) {
-	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
-	_, err := f.execute()
-	require.NoError(t, err)
-	trace := f.storedTrace()
-	trace.ModelCalls[0].ToolCallCount = 2
+	trace := &AgentTrace{
+		Input: &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "prompt"}}},
+		ModelCalls: []AgentModelCall{{
+			Purpose: agentModelCallPurposeTurn, LoopTurn: 1, ProviderAttemptID: "provider-1", TransactionID: "tx-1",
+			ToolCallCount: 2,
+		}},
+	}
 
-	_, err = trace.Conversation()
+	_, err := trace.Conversation()
 
 	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }

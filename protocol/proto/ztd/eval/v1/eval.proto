@@ -1585,52 +1585,6 @@ message AgentStep {
   }
 }
 
-message SeedTurn {
-  string role = 1;           // "user" or "assistant"
-  string text = 2;
-}
-
-// InvestigationSeed is the prior state of a case, applied by the SUT through
-// its own live services before the scored turn.
-message InvestigationSeed {
-  reserved 4;
-  reserved "history";
-
-  string case_title = 1;
-  string case_description = 2;
-  repeated SeedTurn prior_turns = 3;
-  repeated string case_memory = 5;
-}
-
-message ScoredTurnRequest {
-  string campaign_id = 1;
-  string run_id = 2;
-  string attempt_id = 3;
-  repeated ModelVariant model_registry = 4;
-  EvaluationLane lane = 5;                   // SYSTEM or MODEL_ROLE only
-  AgentRole designated_role = 6;             // required when lane is MODEL_ROLE
-  InvestigationSeed seed = 7;
-  string workspace_root = 8;
-  string data_operator_session_id = 9;
-  string user_message = 10;
-  uint32 tool_turn_limit = 11;
-  uint64 wall_clock_limit_ms = 12;
-}
-
-enum ScoredTurnEventKind {
-  SCORED_TURN_EVENT_KIND_UNSPECIFIED = 0;
-  SCORED_TURN_EVENT_KIND_PROGRESS = 1;
-  SCORED_TURN_EVENT_KIND_TERMINAL = 2;
-}
-
-// ScoredTurnEvent is one event on the turn's event stream. The client stops
-// reading at the first TERMINAL event and then fetches the AgentTrace once.
-message ScoredTurnEvent {
-  string attempt_id = 1;
-  ScoredTurnEventKind kind = 2;
-  string detail = 3;
-}
-
 message AgentTrace {
   string attempt_id = 1;
   repeated AgentStep steps = 2;

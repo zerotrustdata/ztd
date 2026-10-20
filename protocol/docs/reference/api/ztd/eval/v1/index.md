@@ -52,7 +52,6 @@
     - [HeterogeneousAssignmentTarget](#ztd-eval-v1-HeterogeneousAssignmentTarget)
     - [HeterogeneousStackDefinition](#ztd-eval-v1-HeterogeneousStackDefinition)
     - [HomogeneousAssignmentTarget](#ztd-eval-v1-HomogeneousAssignmentTarget)
-    - [InvestigationSeed](#ztd-eval-v1-InvestigationSeed)
     - [MemoryOutput](#ztd-eval-v1-MemoryOutput)
     - [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding)
     - [ModelCapabilityObservation](#ztd-eval-v1-ModelCapabilityObservation)
@@ -100,9 +99,6 @@
     - [RiskOutput](#ztd-eval-v1-RiskOutput)
     - [RoleAssignment](#ztd-eval-v1-RoleAssignment)
     - [RouterOutput](#ztd-eval-v1-RouterOutput)
-    - [ScoredTurnEvent](#ztd-eval-v1-ScoredTurnEvent)
-    - [ScoredTurnRequest](#ztd-eval-v1-ScoredTurnRequest)
-    - [SeedTurn](#ztd-eval-v1-SeedTurn)
     - [SemanticGrade](#ztd-eval-v1-SemanticGrade)
     - [TitleOutput](#ztd-eval-v1-TitleOutput)
     - [ToolCallRecord](#ztd-eval-v1-ToolCallRecord)
@@ -160,7 +156,6 @@
     - [PublicToolScoreDimension](#ztd-eval-v1-PublicToolScoreDimension)
     - [PublicUnavailableReason](#ztd-eval-v1-PublicUnavailableReason)
     - [PublicVerificationProvenance](#ztd-eval-v1-PublicVerificationProvenance)
-    - [ScoredTurnEventKind](#ztd-eval-v1-ScoredTurnEventKind)
   
 - [Scalar Value Types](#scalar-value-types)
 
@@ -1222,25 +1217,6 @@ HeterogeneousStackDefinition binds Primary, Assistant, and Lite slots.
 
 
 
-<a name="ztd-eval-v1-InvestigationSeed"></a>
-
-### InvestigationSeed
-InvestigationSeed is the prior state of a case, applied by the SUT through
-its own live services before the scored turn.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| case_title | [string](#string) |  |  |
-| case_description | [string](#string) |  |  |
-| prior_turns | [SeedTurn](#ztd-eval-v1-SeedTurn) | repeated |  |
-| case_memory | [string](#string) | repeated |  |
-
-
-
-
-
-
 <a name="ztd-eval-v1-MemoryOutput"></a>
 
 ### MemoryOutput
@@ -2245,66 +2221,6 @@ RoleAssignment binds one designated responsibility to one frozen variant.
 
 
 
-<a name="ztd-eval-v1-ScoredTurnEvent"></a>
-
-### ScoredTurnEvent
-ScoredTurnEvent is one event on the turn&#39;s event stream. The client stops
-reading at the first TERMINAL event and then fetches the AgentTrace once.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| attempt_id | [string](#string) |  |  |
-| kind | [ScoredTurnEventKind](#ztd-eval-v1-ScoredTurnEventKind) |  |  |
-| detail | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="ztd-eval-v1-ScoredTurnRequest"></a>
-
-### ScoredTurnRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| campaign_id | [string](#string) |  |  |
-| run_id | [string](#string) |  |  |
-| attempt_id | [string](#string) |  |  |
-| model_registry | [ModelVariant](#ztd-eval-v1-ModelVariant) | repeated |  |
-| lane | [EvaluationLane](#ztd-eval-v1-EvaluationLane) |  | SYSTEM or MODEL_ROLE only |
-| designated_role | [AgentRole](#ztd-eval-v1-AgentRole) |  | required when lane is MODEL_ROLE |
-| seed | [InvestigationSeed](#ztd-eval-v1-InvestigationSeed) |  |  |
-| workspace_root | [string](#string) |  |  |
-| data_operator_session_id | [string](#string) |  |  |
-| user_message | [string](#string) |  |  |
-| tool_turn_limit | [uint32](#uint32) |  |  |
-| wall_clock_limit_ms | [uint64](#uint64) |  |  |
-
-
-
-
-
-
-<a name="ztd-eval-v1-SeedTurn"></a>
-
-### SeedTurn
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| role | [string](#string) |  | &#34;user&#34; or &#34;assistant&#34; |
-| text | [string](#string) |  |  |
-
-
-
-
-
-
 <a name="ztd-eval-v1-SemanticGrade"></a>
 
 ### SemanticGrade
@@ -3203,19 +3119,6 @@ The release measured by a campaign is independent of verifier provenance.
 | PUBLIC_VERIFICATION_PROVENANCE_UNSPECIFIED | 0 |  |
 | PUBLIC_VERIFICATION_PROVENANCE_BOUND | 1 |  |
 | PUBLIC_VERIFICATION_PROVENANCE_LEGACY_UNBOUND | 2 |  |
-
-
-
-<a name="ztd-eval-v1-ScoredTurnEventKind"></a>
-
-### ScoredTurnEventKind
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| SCORED_TURN_EVENT_KIND_UNSPECIFIED | 0 |  |
-| SCORED_TURN_EVENT_KIND_PROGRESS | 1 |  |
-| SCORED_TURN_EVENT_KIND_TERMINAL | 2 |  |
 
 
  

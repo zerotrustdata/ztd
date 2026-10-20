@@ -90,12 +90,25 @@ func (d realStackInference) DispatchIntent(ctx context.Context, req *tribunalv1.
 	return result, err
 }
 
+// realStackOptions selects the campaign the rig initializes. Zero values keep
+// the smoke default: tool-arg-shell-command from the default catalog, both
+// roles, one repetition, doctrine posture, distinct runtimes.
 type realStackOptions struct {
 	posture    constants.Posture
 	shared     bool
 	singleRole bool
 	suffix     string
 	replies    []fixtures.OllamaReply
+	// catalog loads the frozen catalog; nil means evaluation.LoadScenarioCatalog.
+	catalog func() (*evalv1.EvaluationScenarioCatalog, map[string]evaluation.ScenarioArtifacts, error)
+	// scenarioID names the one scenario the run keeps; empty means realStackScenarioID.
+	scenarioID string
+	// scenario edits the kept scenario before the catalog digest is recomputed.
+	scenario func(*evalv1.EvaluationScenarioDefinition)
+	// repetitions is the campaign RepetitionCount; zero means 1.
+	repetitions uint32
+	// request edits the init request after the catalog is frozen into it.
+	request func(*evaluation.CampaignInitRequest)
 }
 
 // realStackAgentRun is a campaign initialized on the real eval stack, with the
@@ -110,6 +123,9 @@ type realStackAgentRun struct {
 	scheduledCount int
 	clock          func() time.Time
 	gateway        *harnessclient.Client
+	appClient      *harnessclient.Client
+	inference      realStackInference
+	sentinel       *drive.Sentinel
 	persona        harnessclient.Persona
 	dataOperatorID string
 	dataSessionID  string
@@ -167,8 +183,20 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	topology, err = topology.WithAnchors(operators)
 	require.NoError(t, err)
 
-	catalog, artifacts, err := evaluation.LoadScenarioCatalog()
+	loadCatalog := opts.catalog
+	if loadCatalog == nil {
+		loadCatalog = evaluation.LoadScenarioCatalog
+	}
+	catalog, artifacts, err := loadCatalog()
 	require.NoError(t, err)
+	scenarioID := opts.scenarioID
+	if scenarioID == "" {
+		scenarioID = realStackScenarioID
+	}
+	repetitions := opts.repetitions
+	if repetitions == 0 {
+		repetitions = 1
+	}
 	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: realStackModelTag, ModelDigest: realStackModelHash}
 	inventory, err := evaluation.MaterializeModelRegistry(realStackCampaignID, []*evalv1.ModelVariant{variant})
 	require.NoError(t, err)
@@ -179,7 +207,7 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 		Catalog:                    catalog,
 		Inventory:                  inventory,
 		ScenarioArtifacts:          artifacts,
-		RepetitionCount:            1,
+		RepetitionCount:            repetitions,
 		InferenceOperatorSessionID: inferenceWorkload.OperatorSessionID,
 		DataOperatorSessionID:      dataWorkload.OperatorSessionID,
 	}
@@ -190,14 +218,17 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	// recomputed over the truncated catalog.
 	var target *evalv1.EvaluationScenarioDefinition
 	for _, scenario := range catalog.GetScenarios() {
-		if scenario.GetScenarioId() == realStackScenarioID {
+		if scenario.GetScenarioId() == scenarioID {
 			target = scenario
 			break
 		}
 	}
-	require.NotNil(t, target, "scenario %s must exist in catalog", realStackScenarioID)
+	require.NotNil(t, target, "scenario %s must exist in catalog", scenarioID)
 	if opts.singleRole {
 		target.EligibleRoles = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY}
+	}
+	if opts.scenario != nil {
+		opts.scenario(target)
 	}
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
@@ -207,6 +238,9 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	truncated.CatalogDigest, err = evaluation.ComputeScenarioCatalogDigest(truncated)
 	require.NoError(t, err)
 	req.Catalog = truncated
+	if opts.request != nil {
+		opts.request(&req)
+	}
 
 	clock := func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }
 	seq := 0
@@ -220,9 +254,9 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 		cases.ExecutorOutbound: {OperatorID: dataWorkload.OperatorID, OperatorSessionID: dataWorkload.OperatorSessionID},
 	})
 	require.NoError(t, err)
+	inference := realStackInference{client: appClient, cliSessionID: persona.CLISessionID}
 	executor, err := evaluation.NewCampaignAgentExecutor(
-		realStackInference{client: appClient, cliSessionID: persona.CLISessionID},
-		evaluation.NewCommandLane(gateway, persona), sentinel, store, clock, newID)
+		inference, evaluation.NewCommandLane(gateway, persona), sentinel, store, clock, newID)
 	require.NoError(t, err)
 	controller := evaluation.NewCampaignController(store, executor, clock, newID)
 
@@ -230,10 +264,9 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	require.NoError(t, err)
 	scheduled, err := controller.ScheduleRun(ctx, req.RunID)
 	require.NoError(t, err)
+	require.Positive(t, scheduled)
 	if opts.singleRole {
-		require.Equal(t, 1, scheduled)
-	} else {
-		require.Equal(t, 2, scheduled)
+		require.Equal(t, int(repetitions), scheduled)
 	}
 
 	return &realStackAgentRun{
@@ -243,7 +276,8 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 			ModelRegistryDigest: req.Inventory.RegistryDigest,
 			ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
 		},
-		scheduledCount: scheduled, clock: clock, gateway: gateway, persona: persona,
+		scheduledCount: scheduled, clock: clock, gateway: gateway, appClient: appClient,
+		inference: inference, sentinel: sentinel, persona: persona,
 		dataOperatorID: dataWorkload.OperatorID, dataSessionID: dataWorkload.OperatorSessionID,
 	}
 }

@@ -61,9 +61,6 @@ var boundVerificationReportVectorJSON []byte
 //go:embed vectors/eval/canonical_json_numbers.json
 var canonicalJSONValuesVectorJSON []byte
 
-//go:embed vectors/eval/scored_turn_request.json
-var scoredTurnRequestVectorJSON []byte
-
 //go:embed vectors/eval/agent_trace.json
 var agentTraceVectorJSON []byte
 
@@ -288,24 +285,6 @@ func TestPublicLiveEventCanonicalizationMatchesCrossLanguageVector(t *testing.T)
 	assert.True(t, proto.Equal(event, reparsed))
 	require.NotNil(t, reparsed.Completed, "decoding keeps a zero count present")
 	require.NotNil(t, reparsed.GetMetricDelta()["pass"].Value)
-}
-
-func TestScoredTurnRequestCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
-	var vector evaluationCanonicalizationVector
-	require.NoError(t, json.Unmarshal(scoredTurnRequestVectorJSON, &vector))
-	assert.Equal(t, "ScoredTurnRequest", vector.MessageType)
-
-	request := &evalv1.ScoredTurnRequest{}
-	encoded := []byte(vector.CanonicalJSON)
-	require.NoError(t, evalv1.UnmarshalCanonical(encoded, request))
-
-	canonical, err := evalv1.MarshalCanonical(request)
-	require.NoError(t, err)
-	assert.Equal(t, encoded, canonical)
-	assert.Equal(t, evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE, request.GetLane())
-	assert.Equal(t, evalv1.AgentRole_AGENT_ROLE_REVIEWER, request.GetDesignatedRole())
-	assert.Equal(t, []string{"Build failures on main are often stale generated files."}, request.GetSeed().GetCaseMemory())
-	assert.Equal(t, uint64(600000), request.GetWallClockLimitMs())
 }
 
 func TestAgentTraceCanonicalizationMatchesCrossLanguageVector(t *testing.T) {

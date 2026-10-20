@@ -28,6 +28,7 @@ type CampaignInitRequest struct {
 	Inventory                  *ModelInventoryFreeze
 	ScenarioArtifacts          map[string]ScenarioArtifacts
 	RepetitionCount            uint32
+	HoldContext                bool
 	Platform                   PlatformIdentity
 	Investigation              *evalv1.EvaluationInvestigation
 	InferenceOperatorSessionID string
@@ -338,6 +339,7 @@ func (c *CampaignController) InitializeCampaign(ctx context.Context, req Campaig
 		Inventory:         req.Inventory,
 		ScenarioArtifacts: req.ScenarioArtifacts,
 		RepetitionCount:   req.RepetitionCount,
+		HoldContext:       req.HoldContext,
 		Platform:          req.Platform,
 		Investigation:     req.Investigation,
 		FormationStackSet: req.FormationStackSet,

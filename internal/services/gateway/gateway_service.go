@@ -1064,6 +1064,12 @@ func (ls *GatewayModeService) GetDocStore() *DocumentStoreService {
 	return ls.docStore
 }
 
+// GetPublicMirror returns the Gateway-owned public mirror, or nil when the
+// public spectator is disabled.
+func (ls *GatewayModeService) GetPublicMirror() *PublicMirrorServer {
+	return ls.publicSpectator.Mirror()
+}
+
 // GetPKI returns the PKI authority service.
 func (ls *GatewayModeService) GetPKI() *PKIAuthority {
 	return ls.pki

@@ -23,7 +23,6 @@ import (
 	"github.com/zerotrustdata/ztd/eval/investigations"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/persona"
-	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 const (
@@ -162,19 +161,6 @@ func (s *Scenario) Validate() error {
 		return fmt.Errorf("investigation scenario: labels: %w", err)
 	}
 	return nil
-}
-
-// Seed returns the case as the SUT contract's InvestigationSeed.
-func (s *Scenario) Seed() *evalv1.InvestigationSeed {
-	seed := &evalv1.InvestigationSeed{
-		CaseTitle:       s.Case.Title,
-		CaseDescription: s.Case.Description,
-		CaseMemory:      slices.Clone(s.Case.Memory),
-	}
-	for _, turn := range s.Case.PriorTurns {
-		seed.PriorTurns = append(seed.PriorTurns, &evalv1.SeedTurn{Role: turn.Role, Text: turn.Text})
-	}
-	return seed
 }
 
 // Builtin loads every scenario in eval/investigations, sorted by id. Any

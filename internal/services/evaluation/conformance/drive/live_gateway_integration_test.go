@@ -49,24 +49,8 @@ func bootLiveGateway(t *testing.T, opts fixtures.GatewayFixtureOptions) *liveGat
 	f.WaitForReady(t)
 	ident := fixtures.BootstrapCLIIdentity(t, f, opts.TestName+"-host")
 
-	cliCert, err := tls.X509KeyPair([]byte(ident.CLICertificate), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ident.CLIPrivateKey}))
-	require.NoError(t, err)
-	caBundle := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
-	if f.ConsensusServer != nil {
-		caBundle = append(caBundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.ConsensusServer.Certificate().Raw})...)
-	}
-	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
-	require.NoError(t, os.WriteFile(caPath, caBundle, constants.PermFilePrivate))
-
-	url := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
-	identity := agentconfig.Auth{Certificate: &cliCert, CABundle: caPath}
-	c, err := client.New(agentconfig.Config{
-		MTLSBaseURL:   url,
-		PublicBaseURL: url,
-		Auth:          identity,
-		CLIAuth:       identity,
-	})
-	require.NoError(t, err)
+	base := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
+	c := liveClient(t, f, ident, base, base)
 
 	return &liveGateway{
 		f:       f,
@@ -77,15 +61,48 @@ func bootLiveGateway(t *testing.T, opts fixtures.GatewayFixtureOptions) *liveGat
 	}
 }
 
-// unreachableClient returns a client for a loopback address with nothing listening.
-// The port is taken and released before the client is built, so every call through it
-// fails at the transport and never receives an HTTP answer. No server is started.
-func unreachableClient(t *testing.T) *client.Client {
+// liveClient returns a harness client that presents the identity's CLI certificate and
+// trusts the fixture's CA bundle. mtlsURL carries submissions and publicURL carries the
+// approval stream, so a test can point the two apart.
+func liveClient(t *testing.T, f *fixtures.GatewayFixture, ident *fixtures.ClientIdentity, mtlsURL, publicURL string) *client.Client {
+	t.Helper()
+	cliCert, err := tls.X509KeyPair([]byte(ident.CLICertificate), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ident.CLIPrivateKey}))
+	require.NoError(t, err)
+	caBundle := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
+	if f.ConsensusServer != nil {
+		caBundle = append(caBundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.ConsensusServer.Certificate().Raw})...)
+	}
+	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
+	require.NoError(t, os.WriteFile(caPath, caBundle, constants.PermFilePrivate))
+
+	identity := agentconfig.Auth{Certificate: &cliCert, CABundle: caPath}
+	c, err := client.New(agentconfig.Config{
+		MTLSBaseURL:   mtlsURL,
+		PublicBaseURL: publicURL,
+		Auth:          identity,
+		CLIAuth:       identity,
+	})
+	require.NoError(t, err)
+	return c
+}
+
+// unreachableURL returns a loopback base URL with nothing listening. The port is taken and
+// released before the URL is returned, so a call to it fails at the transport and never
+// receives an HTTP answer. No server is started.
+func unreachableURL(t *testing.T) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	base := "http://" + listener.Addr().String()
 	require.NoError(t, listener.Close())
+	return base
+}
+
+// unreachableClient returns a client for a loopback address with nothing listening.
+// Every call through it fails at the transport.
+func unreachableClient(t *testing.T) *client.Client {
+	t.Helper()
+	base := unreachableURL(t)
 	c, err := client.New(agentconfig.Config{MTLSBaseURL: base, PublicBaseURL: base})
 	require.NoError(t, err)
 	return c

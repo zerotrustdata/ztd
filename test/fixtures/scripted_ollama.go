@@ -12,6 +12,7 @@ package fixtures
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -93,6 +94,7 @@ type ScriptedOllama struct {
 	server        *httptest.Server
 	mu            sync.Mutex
 	replies       []OllamaReply
+	requests      []json.RawMessage
 	next          int
 	resident      bool
 	nextReplyGate *OllamaReplyGate
@@ -137,6 +139,14 @@ func (p *ScriptedOllama) ChatCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.next
+}
+
+// ChatRequests returns the exact /api/chat bodies the Inference Operator sent,
+// in arrival order, so a test can assert the model input on the wire.
+func (p *ScriptedOllama) ChatRequests() []json.RawMessage {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]json.RawMessage(nil), p.requests...)
 }
 
 // HoldNextReply blocks the next /api/chat request until the returned gate is
@@ -198,10 +208,15 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				} `json:"models"`
 			}{Models: models})
 		case r.Method == http.MethodPost && r.URL.Path == "/api/chat":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "unreadable chat request", http.StatusBadRequest)
+				return
+			}
 			var request struct {
 				Model string `json:"model"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			if err := json.Unmarshal(body, &request); err != nil {
 				http.Error(w, "invalid chat request", http.StatusBadRequest)
 				return
 			}
@@ -218,6 +233,7 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				return
 			}
 			reply := p.replies[p.next]
+			p.requests = append(p.requests, body)
 			p.next++
 			p.resident = true
 			gate := p.nextReplyGate

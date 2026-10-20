@@ -13,9 +13,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -27,6 +31,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/network"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
+	"github.com/zerotrustdata/ztd/internal/uuid"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
@@ -143,28 +150,44 @@ func TestAttendedRatifyDenialResumesMCPAsSignedRejection(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "a denied mutation must leave no file")
 }
 
+// pendingTransactions returns the hashes of the transactions the Gateway holds for a human
+// decision, as the approver's CLI client lists them.
+func (g *liveGateway) pendingTransactions(approver *http.Client) ([]string, error) {
+	resp, err := approver.Get(network.LocalhostHTTPSURL(g.f.Service.GetHTTPSPort()) + constants.APIPaths.ApprovalsCLIList)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("pending approvals: status %d: %s", resp.StatusCode, body)
+	}
+	var pending models.SuspendedTransactionsResponse
+	if err := json.Unmarshal(body, &pending); err != nil {
+		return nil, fmt.Errorf("pending approvals: decode: %w", err)
+	}
+	hashes := make([]string, 0, len(pending.Transactions))
+	for _, tx := range pending.Transactions {
+		hashes = append(hashes, tx.TransactionHash)
+	}
+	return hashes, nil
+}
+
 // awaitPendingApproval waits for the one transaction the blocked call suspended and
 // returns its hash. The approver learns of it the way a human does, from the Gateway's
 // pending approval list.
 func (g *liveGateway) awaitPendingApproval(t *testing.T, approver *http.Client) string {
 	t.Helper()
-	listURL := network.LocalhostHTTPSURL(g.f.Service.GetHTTPSPort()) + constants.APIPaths.ApprovalsCLIList
 	var txHash string
 	require.Eventually(t, func() bool {
-		resp, err := approver.Get(listURL)
-		if err != nil {
+		hashes, err := g.pendingTransactions(approver)
+		if err != nil || len(hashes) != 1 {
 			return false
 		}
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			return false
-		}
-		var pending models.SuspendedTransactionsResponse
-		if err := json.Unmarshal(body, &pending); err != nil || len(pending.Transactions) != 1 {
-			return false
-		}
-		txHash = pending.Transactions[0].TransactionHash
+		txHash = hashes[0]
 		return true
 	}, 10*time.Second, 25*time.Millisecond, "the blocked call must suspend one transaction for the human")
 	return txHash
@@ -380,4 +403,243 @@ func TestL3GarbageProofExecutesUnderDoctrine(t *testing.T) {
 	written, err := os.ReadFile(a.TargetAbs)
 	require.NoError(t, err)
 	assert.Equal(t, a.Marker, string(written))
+}
+
+// attendedCase is an attended row-23 style attempt on MCP with the given fault.
+func attendedCase(fault cases.Fault) cases.Attempt {
+	a := testAttempt(fault, cases.ActionMutation)
+	a.Case.Attended = true
+	a.Case.Ingress = cases.IngressMCP
+	return a
+}
+
+// unknownCLIPersona returns p with a CLI session the Gateway never issued, so the approval
+// stream the persona asks for is refused.
+func unknownCLIPersona(t *testing.T, p client.Persona) client.Persona {
+	t.Helper()
+	session, err := uuid.NewString()
+	require.NoError(t, err)
+	p.CLISessionID = session
+	return p
+}
+
+// redirectStderr sends os.Stderr to a file for the rest of the test and returns its path.
+// A file write returns only once the bytes are in the file, so the test can read what was
+// printed before a call reached the Gateway.
+func redirectStderr(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(testutil.TempDir(t), "stderr.txt")
+	file, err := os.Create(path)
+	require.NoError(t, err)
+	saved := os.Stderr
+	os.Stderr = file
+	t.Cleanup(func() {
+		os.Stderr = saved
+		assert.NoError(t, file.Close())
+	})
+	return path
+}
+
+// TestAttendedNonAttendedCasePassesThroughUntouched drives row 22 on MCP under ratify without
+// the attended flag. The Gateway suspends the call and the attended driver returns that
+// suspension as the inner driver gave it. The persona the driver would subscribe with names a
+// CLI session the Gateway never issued, so an approval stream would fail the call: none is
+// opened for an unattended case.
+func TestAttendedNonAttendedCasePassesThroughUntouched(t *testing.T) {
+	all, _, err := cases.Catalogue()
+	require.NoError(t, err)
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+	row22 := findCase(t, all, 22, cases.IngressMCP, ratify)
+	require.False(t, row22.Attended, "row 22 is the unattended suspension")
+
+	g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-passthrough", Posture: constants.PostureRatify})
+	mcpDriver, err := NewMCP(t.Context(), g.client, g.persona)
+	require.NoError(t, err)
+	approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
+
+	driven, err := NewAttended(mcpDriver, g.client, unknownCLIPersona(t, g.persona), g.ident.UserID).Drive(t.Context(), gatewayAttempt(t, g.f, row22))
+	require.NoError(t, err)
+	require.Len(t, driven.Observations, 1)
+	obs := driven.Observations[0]
+	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED, obs.GetKind(), "answer kind: %s", obs.GetKind())
+
+	pending, err := g.pendingTransactions(approver)
+	require.NoError(t, err)
+	assert.Equal(t, []string{obs.GetSuspendedTxHash()}, pending, "the returned suspension must be the Gateway's pending transaction")
+}
+
+// TestAttendedSubscriptionRefusedSubmitsNothing drives row 23 on MCP under ratify with an
+// approval stream the Gateway refuses: the persona names a CLI session it never issued. The
+// attended driver returns the subscribe error without submitting the call, so the Gateway's
+// approval queue holds nothing and no file is written.
+func TestAttendedSubscriptionRefusedSubmitsNothing(t *testing.T) {
+	all, _, err := cases.Catalogue()
+	require.NoError(t, err)
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+	row23 := findCase(t, all, 23, cases.IngressMCP, ratify)
+
+	g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-refused", Posture: constants.PostureRatify})
+	mcpDriver, err := NewMCP(t.Context(), g.client, g.persona)
+	require.NoError(t, err)
+	approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
+	a := gatewayAttempt(t, g.f, row23)
+
+	driven, err := NewAttended(mcpDriver, g.client, unknownCLIPersona(t, g.persona), g.ident.UserID).Drive(t.Context(), a)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "subscribe for approval", "the error must name the failed subscription")
+	assert.Empty(t, driven.Observations)
+
+	pending, err := g.pendingTransactions(approver)
+	require.NoError(t, err)
+	assert.Empty(t, pending, "a call without an approval stream must never reach the approval queue")
+	_, statErr := os.Stat(a.TargetAbs)
+	assert.True(t, os.IsNotExist(statErr), "nothing may execute without an approval stream")
+}
+
+// TestAttendedNonSuspendedAnswerReturnsWithoutWaiting drives an attended MCP call under
+// doctrine, where nothing is suspended for a human: row 1 executes and row 14 is rejected by
+// L1. Each answer is returned as the Gateway gave it. A suspension would fail the test
+// through the decide hook, so no wait for a human can happen.
+func TestAttendedNonSuspendedAnswerReturnsWithoutWaiting(t *testing.T) {
+	all, _, err := cases.Catalogue()
+	require.NoError(t, err)
+	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
+
+	tests := []struct {
+		name     string
+		row      int
+		executes bool
+	}{
+		{name: "receipt", row: 1, executes: true},
+		{name: "rejection", row: 14, executes: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := findCase(t, all, tt.row, cases.IngressMCP, doctrine)
+			c.Attended = true
+
+			g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-nonsuspended-" + tt.name, Posture: constants.PostureDoctrine})
+			mcpDriver, err := NewMCP(t.Context(), g.client, g.persona)
+			require.NoError(t, err)
+			approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
+			notSuspended := approvingDriver{inner: mcpDriver, decide: func(txHash string) {
+				t.Fatalf("a non-suspended answer must not wait for a human, but the call suspended %s", txHash)
+			}}
+			a := gatewayAttempt(t, g.f, c)
+
+			driven, err := NewAttended(notSuspended, g.client, g.persona, g.ident.UserID).Drive(t.Context(), a)
+			require.NoError(t, err)
+			require.Len(t, driven.Observations, len(c.Expect))
+			assertExpect(t, c.Expect[0], driven.Observations[0])
+
+			pending, err := g.pendingTransactions(approver)
+			require.NoError(t, err)
+			assert.Empty(t, pending, "nothing may be held for a human under doctrine")
+			_, statErr := os.Stat(a.TargetAbs)
+			if tt.executes {
+				written, err := os.ReadFile(a.TargetAbs)
+				require.NoError(t, err)
+				assert.Equal(t, a.Marker, string(written), "the executed mutation must write exactly the marker")
+			} else {
+				assert.True(t, os.IsNotExist(statErr), "an L1-rejected mutation must leave no file")
+			}
+		})
+	}
+}
+
+// TestAttendedBlockingDispatchAnnouncesBeforeTheCallWithoutOpeningAStream drives row 23 on
+// governed dispatch under ratify with an approval client whose stream endpoint is unreachable.
+// The banner is printed before the blocking request reaches the Gateway, and the approval
+// still resolves: a blocking ingress opens no approval stream, so the unreachable stream
+// endpoint is never dialed.
+func TestAttendedBlockingDispatchAnnouncesBeforeTheCallWithoutOpeningAStream(t *testing.T) {
+	all, _, err := cases.Catalogue()
+	require.NoError(t, err)
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+	c := findCase(t, all, 23, cases.IngressDispatchEmbedded, ratify)
+
+	g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-banner", Posture: constants.PostureRatify})
+	approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
+	noStream := liveClient(t, g.f, g.ident, network.LocalhostHTTPSURL(g.f.Service.GetHTTPSPort()), unreachableURL(t))
+	inner, err := NewDispatch(g.client, g.persona, map[cases.Executor]operator.Target{cases.ExecutorEmbedded: g.target})
+	require.NoError(t, err)
+	a := gatewayAttempt(t, g.f, c)
+	stderr := redirectStderr(t)
+
+	type answer struct {
+		driven cases.Driven
+		err    error
+	}
+	answered := make(chan answer, 1)
+	go func() {
+		driven, err := NewAttended(inner, noStream, g.persona, g.ident.UserID).Drive(t.Context(), a)
+		answered <- answer{driven, err}
+	}()
+
+	txHash := g.awaitPendingApproval(t, approver)
+	banner, err := os.ReadFile(stderr)
+	require.NoError(t, err)
+	assert.Contains(t, string(banner), "HUMAN APPROVAL REQUIRED", "the banner must be printed before the blocking request reaches the Gateway")
+
+	session := fixtures.ConsoleSignIn(t, g.f, approver, g.ident)
+	status, body := fixtures.ApproveWithPasskey(t, g.f, approver, session, g.ident, txHash)
+	require.Equal(t, http.StatusOK, status, "passkey approval must resume the call: %s", body)
+
+	var got answer
+	select {
+	case got = <-answered:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the call never answered after the human approved")
+	}
+	require.NoError(t, got.err, "a blocking ingress must not dial the approval stream")
+	require.Len(t, got.driven.Observations, len(c.Expect))
+	assertExpect(t, c.Expect[0], got.driven.Observations[0])
+	written, err := os.ReadFile(a.TargetAbs)
+	require.NoError(t, err)
+	assert.Equal(t, a.Marker, string(written), "the approved mutation must write exactly the marker")
+}
+
+// TestAttendedInnerTransportErrorIsWrappedWithItsCause drives a blocking governed dispatch
+// whose inner call cannot reach the Gateway. The attended driver returns the transport failure
+// with its cause and no observation.
+func TestAttendedInnerTransportErrorIsWrappedWithItsCause(t *testing.T) {
+	a := attendedCase(cases.FaultAttendedApprove)
+	a.Case.Ingress = cases.IngressDispatchEmbedded
+	inner, err := NewDispatch(unreachableClient(t), testIdentity().Persona, testDispatchTargets())
+	require.NoError(t, err)
+
+	driven, err := NewAttended(inner, unreachableClient(t), testIdentity().Persona, "user-approver").Drive(t.Context(), a)
+	require.Error(t, err)
+	var urlErr *url.Error
+	assert.ErrorAs(t, err, &urlErr, "the transport failure must keep its cause")
+	assert.ErrorContains(t, err, "attended "+string(cases.FaultAttendedApprove)+": drive:")
+	assert.Empty(t, driven.Observations)
+}
+
+// TestAttendedCancelledWaitReturnsWrappedErrorWithNoObservation drives row 23 on MCP under
+// ratify and cancels the call's context once the Gateway suspends it, before any human decides.
+// The wait fails with its cause and no observation is returned. The cause is whichever ends the
+// wait first: the cancelled context, the wait timeout, or the closed stream.
+func TestAttendedCancelledWaitReturnsWrappedErrorWithNoObservation(t *testing.T) {
+	all, _, err := cases.Catalogue()
+	require.NoError(t, err)
+	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
+	row23 := findCase(t, all, 23, cases.IngressMCP, ratify)
+
+	g := bootLiveGateway(t, fixtures.GatewayFixtureOptions{TestName: "conformance-attended-cancelled", Posture: constants.PostureRatify})
+	mcpDriver, err := NewMCP(t.Context(), g.client, g.persona)
+	require.NoError(t, err)
+	a := gatewayAttempt(t, g.f, row23)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	cancelling := approvingDriver{inner: mcpDriver, decide: func(string) { cancel() }}
+
+	driven, err := NewAttended(cancelling, g.client, g.persona, g.ident.UserID).Drive(ctx, a)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "wait for approval")
+	assert.Empty(t, driven.Observations)
+	assert.True(t,
+		errors.Is(err, context.Canceled) || errors.Is(err, constants.ErrApprovalSSETimeout) || errors.Is(err, constants.ErrSSEStreamClosed),
+		"the wait must keep its cause: %v", err)
 }
