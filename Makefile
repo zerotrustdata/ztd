@@ -705,6 +705,19 @@ test-integration:
 	@echo "Running Tier 2 (In-Process Integration) tests..."
 	@go test $(if $(TEST_P),-p=$(TEST_P),) -tags=integration $(TEST_RACE) $(TEST_COUNT) -timeout $(TEST_TIMEOUT) $(TEST_PKGS)
 
+# Real eval stack tests (fixtures.NewEvalStack: Gateway plus outbound Data and
+# Inference Operators) skip without the evalstack tag, so they never run in CI.
+# Keep EVAL_STACK_TEST_TIMEOUT in sync with evalStackTestTimeout in
+# internal/cli/cmd/test/test.go.
+EVAL_STACK_TEST_TIMEOUT := 30m
+EVAL_STACK_PKGS := ./internal/cli/cmd/eval ./internal/cli/cmd/compliance \
+	./internal/cli/cmd/gwremote ./internal/services/compliance/report \
+	./internal/services/evaluation ./internal/services/gateway ./test/fixtures
+.PHONY: test-eval-stack
+test-eval-stack:
+	@echo "Running real eval stack integration tests..."
+	@go test -tags='integration evalstack' $(TEST_RACE) $(TEST_COUNT) -timeout $(EVAL_STACK_TEST_TIMEOUT) $(EVAL_STACK_PKGS)
+
 # Timing contracts run separately from race and coverage instrumentation.
 .PHONY: test-enrollment-burst
 test-enrollment-burst:

@@ -241,11 +241,16 @@ func (es *ExecutionService) ExecuteCommand(ctx context.Context, request *models.
 		"timeout_seconds", request.TimeoutSeconds,
 		"has_working_dir", request.WorkingDirectory != nil)
 
-	// Acquire semaphore for concurrency control
+	// Acquire semaphore for concurrency control. A cancelled context must fail
+	// closed before the select: when a slot is free and Done is closed, select
+	// picks either case at random.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("execution: wait for semaphore: %w: %w", constants.ErrExecutionServiceStopping, err)
+	}
 	select {
 	case es.semaphore <- struct{}{}:
 	case <-ctx.Done():
-		return nil, fmt.Errorf("execution: wait for semaphore: %w", constants.ErrExecutionServiceStopping)
+		return nil, fmt.Errorf("execution: wait for semaphore: %w: %w", constants.ErrExecutionServiceStopping, ctx.Err())
 	}
 
 	// Create timeout context - use exactly what was requested

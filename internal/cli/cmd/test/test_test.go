@@ -91,6 +91,40 @@ func TestTestIntegrationCmd_DelegatesToMakefileTarget(t *testing.T) {
 	assert.Equal(t, []string{"test-integration"}, capturedArgs)
 }
 
+func TestTestIntegrationCmd_EvalStackDelegatesToMakefileTarget(t *testing.T) {
+	var capturedCmd string
+	var capturedArgs []string
+	runner := func(_ context.Context, name string, args ...string) (int, error) {
+		capturedCmd = name
+		capturedArgs = args
+		return 0, nil
+	}
+	cmd := testIntegrationCmdWithRunner(runner)
+	require.NoError(t, cmd.Flags().Set("eval-stack", "true"))
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	assert.Equal(t, "make", capturedCmd)
+	assert.Equal(t, []string{"test-eval-stack"}, capturedArgs)
+}
+
+func TestTestIntegrationCmd_EvalStackNarrowRunSetsTagAndTimeout(t *testing.T) {
+	var capturedArgs []string
+	runner := func(_ context.Context, _ string, args ...string) (int, error) {
+		capturedArgs = args
+		return 0, nil
+	}
+	cmd := testIntegrationCmdWithRunner(runner)
+	require.NoError(t, cmd.Flags().Set("eval-stack", "true"))
+	require.NoError(t, cmd.Flags().Set("pkg", "./internal/cli/cmd/eval"))
+
+	require.NoError(t, cmd.RunE(cmd, nil))
+
+	assert.Contains(t, capturedArgs, "-tags=integration evalstack")
+	assert.Contains(t, capturedArgs, evalStackTestTimeout.String())
+	assert.NotContains(t, capturedArgs, "-tags=integration")
+}
+
 func TestTestE2ECmd(t *testing.T) {
 	t.Run("e2e command has correct use and description", func(t *testing.T) {
 		cmd := testE2ECmd()
