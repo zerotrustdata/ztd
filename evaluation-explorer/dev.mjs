@@ -4,7 +4,8 @@
 //   ./ztd gw start -f --public-spectator
 //
 // This script optionally seeds fixture data in mock mode, replays scripted live
-// events, and runs Vite. It does not start a mirror process.
+// events, and runs Vite. It does not start a mirror process. It exits when Vite
+// exits, with Vite's exit code, after stopping any other child it started.
 //
 // Usage:
 //   node dev.mjs --mode mock   # seed + replay + frontend (gateway must be up)
@@ -75,15 +76,19 @@ function spawnChild(label, cmd, args, cwd) {
   children.push({ proc, label });
   proc.stdout?.on('data', (data) => process.stdout.write(`[${label}] ${data}`));
   proc.stderr?.on('data', (data) => process.stderr.write(`[${label}] ${data}`));
-  proc.on('exit', (code) => {
-    console.log(`[${label}] exited with code ${code}`);
+  proc.on('exit', (code, signal) => {
+    console.log(`[${label}] exited with ${code !== null ? `code ${code}` : `signal ${signal}`}`);
+    // The supervisor exists to run this child: stop anything else it started and
+    // exit with the child's status (non-zero when it failed or was killed).
+    killAll();
+    process.exit(code ?? 1);
   });
   return proc;
 }
 
 function killAll() {
   for (const { proc, label } of children) {
-    if (!proc.killed) {
+    if (proc.exitCode === null && proc.signalCode === null) {
       console.log(`Stopping ${label} (pid ${proc.pid})...`);
       proc.kill('SIGTERM');
     }

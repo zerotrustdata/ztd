@@ -53,6 +53,7 @@ func sendProofIngestToHandler(t *testing.T, handler http.Handler, req models.Pub
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodPost, "/proof-ingest", bytes.NewReader(bodyBytes))
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+mirrorTestIngestToken)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	var resp models.PublicProofIngestResponse
@@ -160,7 +161,7 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 		}
 
 		start := time.Now()
-		code, resp := sendIngestToHandler(t, smallEnv.mirror.Handler(), batch)
+		code, resp := sendIngestToHandler(t, smallEnv.mirror.IngestHandler(), batch)
 		smallBatchDurations[i] = time.Since(start)
 		require.Equal(t, http.StatusOK, code)
 		require.True(t, resp.Accepted)
@@ -184,7 +185,7 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 		largePrevBatchHash = batch.ContentHash
 
 		start := time.Now()
-		code, resp := sendIngestToHandler(t, largeEnv.mirror.Handler(), batch)
+		code, resp := sendIngestToHandler(t, largeEnv.mirror.IngestHandler(), batch)
 		largeBatchDurations[i] = time.Since(start)
 		require.Equal(t, http.StatusOK, code)
 		require.True(t, resp.Accepted)
@@ -208,7 +209,7 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 		}
 
 		start := time.Now()
-		code, resp := sendProofIngestToHandler(t, smallEnv.mirror.Handler(), req)
+		code, resp := sendProofIngestToHandler(t, smallEnv.mirror.IngestHandler(), req)
 		smallProofDurations[i] = time.Since(start)
 		require.Equal(t, http.StatusOK, code)
 		require.True(t, resp.Accepted)
@@ -230,7 +231,7 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 		}
 
 		start := time.Now()
-		code, resp := sendProofIngestToHandler(t, largeEnv.mirror.Handler(), req)
+		code, resp := sendProofIngestToHandler(t, largeEnv.mirror.IngestHandler(), req)
 		largeProofDurations[i] = time.Since(start)
 		require.Equal(t, http.StatusOK, code)
 		require.True(t, resp.Accepted)

@@ -1,5 +1,9 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
-// Licensed under the Business Source License 1.1 — see LICENSE for details.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
 
 package evaluation
 
@@ -16,23 +20,19 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-func savePublicRunIdentity(t *testing.T, store *Store, runID, campaignID string) {
-	t.Helper()
-	req := testCampaignInitRequest(t)
-	spec, err := MaterializeCampaignSpec(campaignID, req.Catalog, req.Inventory, req.RepetitionCount, false, testPlatform)
-	require.NoError(t, err)
-	require.NoError(t, store.SaveCampaignSpec(context.Background(), spec))
-	require.NoError(t, store.SaveRun(context.Background(), &evalv1.EvaluationRun{SchemaVersion: CampaignSchemaVersion, RunId: runID, CampaignBinding: &evalv1.ModelCampaignBinding{CampaignId: campaignID}}))
-}
-
+// Every public record kind carries the release, release basis, and source
+// revision its campaign was measured under, for recorded, asserted, and unknown
+// release provenance alike.
 func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testing.T) {
 	for _, tc := range []struct {
-		name, release, basis, revision string
-		legacy                         bool
+		name, release, revision string
+		basis                   ReleaseBasis
+		publicBasis             evalv1.PublicReleaseBasis
+		legacy                  bool
 	}{
-		{name: "recorded", release: testPlatform.Release, basis: "recorded", revision: testPlatform.SourceRevision},
-		{name: "asserted", release: "v2.2.7", basis: "asserted", legacy: true},
-		{name: "unknown", basis: "unknown", legacy: true},
+		{name: "recorded", release: testPlatform.Release, basis: ReleaseBasisRecorded, publicBasis: evalv1.PublicReleaseBasis_PUBLIC_RELEASE_BASIS_RECORDED, revision: testPlatform.SourceRevision},
+		{name: "asserted", release: "v2.2.7", basis: ReleaseBasisAsserted, publicBasis: evalv1.PublicReleaseBasis_PUBLIC_RELEASE_BASIS_ASSERTED, legacy: true},
+		{name: "unknown", basis: ReleaseBasisUnknown, publicBasis: evalv1.PublicReleaseBasis_PUBLIC_RELEASE_BASIS_UNKNOWN, legacy: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -40,7 +40,13 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 			runID := f.runIDs[0]
 			if tc.legacy {
 				saveLegacyCampaign(t, f, "legacy-public")
-				run, err := f.controller.StartRun(ctx, RunStartRequest{CampaignID: "legacy-public", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
+				run, err := f.controller.StartRun(ctx, RunStartRequest{
+					CampaignID:                "legacy-public",
+					RunID:                     "legacy-run",
+					PlatformRelease:           testPlatform.Release,
+					ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+					ModelProvenancePolicy:     evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+				})
 				require.NoError(t, err)
 				runID = run.GetRunId()
 				_, err = f.controller.ScheduleRun(ctx, runID)
@@ -50,17 +56,11 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 				}
 			}
 			exporter := &recordingCampaignFeedExporter{}
-			coordinator := NewCampaignPublicationCoordinator(f.store, f.files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+			coordinator := NewCampaignPublicationCoordinator(f.store, f.files, NewMemoryCampaignPublicationStateStore(), exporter)
 			f.controller.WithPublication(coordinator)
 			_, err := coordinator.PublishRunCatchUp(ctx, runID)
 			require.NoError(t, err)
-			for range 3 {
-				_, _, err = f.controller.ExecuteNextAssignment(ctx, runID, CampaignExecutionBinding{
-					Topology:            testOperatorTopology("inf-session", "data-session"),
-					ModelRegistryDigest: f.req.Inventory.RegistryDigest, ModelRegistry: InferenceVariantsFromEvalRegistry(f.req.Inventory.Variants),
-				}, f.req.ScenarioArtifacts)
-				require.NoError(t, err)
-			}
+			executeTestAssignments(t, f.controller, f.req, runID, 3)
 			_, err = coordinator.PublishRunCompletion(ctx, runID, archiveTestNow)
 			require.NoError(t, err)
 			run, err := f.store.LoadRun(ctx, runID)
@@ -68,6 +68,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 			report := buildBoundTestReport(t, f.store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
 			_, err = coordinator.PublishRunVerification(ctx, runID, report)
 			require.NoError(t, err)
+
 			kinds := map[string]bool{}
 			for _, published := range exporter.records {
 				var body struct {
@@ -77,7 +78,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 				}
 				require.NoError(t, json.Unmarshal([]byte(published.RecordBytes), &body))
 				payload := []byte(published.RecordBytes)
-				basis := tc.basis
+				basis := string(tc.basis)
 				// Protobuf-owned records (assignment messages and live events)
 				// carry the enum name; only the view snapshots keep the lowercase form.
 				if body.MessageType != "" {
@@ -85,7 +86,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 					body.Kind = body.MessageType
 				}
 				if body.MessageType != "" || published.RecordType == models.PublicFeedRecordTypeEvent {
-					basis = "PUBLIC_RELEASE_BASIS_" + map[string]string{"recorded": "RECORDED", "asserted": "ASSERTED", "unknown": "UNKNOWN"}[tc.basis]
+					basis = evalv1.PublicReleaseBasis_name[int32(tc.publicBasis)]
 				}
 				var identity struct {
 					Release        string `json:"release"`
@@ -105,17 +106,24 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 	}
 }
 
+// A malformed release tag stops catch-up before any public record is exported.
 func TestCampaignPublication_RejectsMalformedReleaseTags(t *testing.T) {
 	ctx := context.Background()
 	f := newArchiveFixture(t)
 	saveLegacyCampaign(t, f, "legacy-public")
-	run, err := f.controller.StartRun(ctx, RunStartRequest{CampaignID: "legacy-public", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
+	run, err := f.controller.StartRun(ctx, RunStartRequest{
+		CampaignID:                "legacy-public",
+		RunID:                     "legacy-run",
+		PlatformRelease:           testPlatform.Release,
+		ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+		ModelProvenancePolicy:     evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+	})
 	require.NoError(t, err)
 	_, err = f.controller.ScheduleRun(ctx, run.GetRunId())
 	require.NoError(t, err)
 	require.NoError(t, f.files.WriteFile(ctx, f.store.layout.campaignReleaseTagPath("legacy-public"), []byte(`{"campaign_id":"another","release":"v2.2.7"}`), constants.PermFilePrivate))
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(f.store, f.files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(f.store, f.files, NewMemoryCampaignPublicationStateStore(), exporter)
 	_, err = coordinator.PublishRunCatchUp(ctx, run.GetRunId())
 	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.Empty(t, exporter.records)

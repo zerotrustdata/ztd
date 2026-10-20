@@ -10,6 +10,7 @@
 package storage
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -68,9 +69,9 @@ func TestRecordActionReceipt_SameTransactionTwiceKeepsOneRow(t *testing.T) {
 	assert.Equal(t, "hash-first", got.TransactionHash, "transaction_hash is not rewritten by the upsert")
 }
 
-// TestListActionReceipts_FiltersBySessionAndActingApp verifies the session, acting-app, combined,
-// and unfiltered scopes of ListActionReceipts.
-func TestListActionReceipts_FiltersBySessionAndActingApp(t *testing.T) {
+// TestListActionReceipts_FiltersBySessionInvestigationAndActingApp verifies
+// intersected identity scopes, including stable Operator filtering before pagination.
+func TestListActionReceipts_FiltersBySessionInvestigationAndActingApp(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.CreateSession("scope-a", constants.SessionTypeOperator, "A", "user-a"))
 	require.NoError(t, ass.CreateSession("scope-b", constants.SessionTypeOperator, "B", "user-b"))
@@ -81,6 +82,10 @@ func TestListActionReceipts_FiltersBySessionAndActingApp(t *testing.T) {
 		receiptFor(t, "tx-scope-2", "scope-a", "app-y", now.Add(-2*time.Minute)),
 		receiptFor(t, "tx-scope-3", "scope-b", "app-y", now.Add(-1*time.Minute)),
 	}
+	fixtures[0].InvestigationID = "investigation-shared"
+	fixtures[1].InvestigationID = "investigation-other"
+	fixtures[2].InvestigationID = "investigation-shared"
+	fixtures[2].OperatorID = "other-operator"
 	for _, record := range fixtures {
 		require.NoError(t, ass.RecordActionReceipt(record))
 	}
@@ -105,9 +110,103 @@ func TestListActionReceipts_FiltersBySessionAndActingApp(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{"tx-scope-2": true}, ids(combined))
 
+	byInvestigation, err := ass.ListActionReceipts(models.AuditScope{InvestigationID: "investigation-shared"}, 10, 0)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{"tx-scope-1": true, "tx-scope-3": true}, ids(byInvestigation))
+
+	byOperator, err := ass.ListActionReceipts(models.AuditScope{OperatorID: fixtures[0].OperatorID, InvestigationID: "investigation-shared"}, 1, 0)
+	require.NoError(t, err)
+	require.Len(t, byOperator, 1, "operator filtering must precede pagination")
+	assert.Equal(t, "tx-scope-1", byOperator[0].TransactionID)
+
+	intersection, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "scope-a", InvestigationID: "investigation-shared"}, 10, 0)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{"tx-scope-1": true}, ids(intersection))
+
 	unfiltered, err := ass.ListActionReceipts(models.AuditScope{}, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, unfiltered, 3)
+}
+
+// TestListActionReceipts_ExcludeAuditReadsFiltersBeforePagination verifies that
+// ExcludeAuditReads drops only the audit-read tools' own receipts, keeps every other
+// MCP_CALL, and applies limit and offset to the filtered sequence. The newest receipt
+// is an audit read, so an unfiltered page would start with it.
+func TestListActionReceipts_ExcludeAuditReadsFiltersBeforePagination(t *testing.T) {
+	ass := newIntegrationAuditStore(t)
+	require.NoError(t, ass.CreateSession("mixed-session", constants.SessionTypeOperator, "Mixed", "mixed-user"))
+
+	base := time.Now().UTC().Add(-time.Hour)
+	fixtures := []struct {
+		txID   string
+		action constants.ActionType
+		target string
+	}{
+		{"tx-mixed-command", constants.ActionTypeExecuteBash, "localhost"},
+		{"tx-mixed-shell", constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand},
+		{"tx-mixed-read", constants.ActionTypeMcpCall, constants.MCPToolAuditReceiptList},
+	}
+	for i, f := range fixtures {
+		record := receiptFor(t, f.txID, "mixed-session", "", base.Add(time.Duration(i)*time.Minute))
+		record.InvestigationID = "investigation-mixed"
+		record.ActionType = f.action
+		record.TargetResource = f.target
+		require.NoError(t, ass.RecordActionReceipt(record))
+	}
+
+	scope := models.AuditScope{InvestigationID: "investigation-mixed", ExcludeAuditReads: true}
+
+	all, err := ass.ListActionReceipts(scope, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, all, 2)
+	assert.Equal(t, "tx-mixed-shell", all[0].TransactionID)
+	assert.Equal(t, "tx-mixed-command", all[1].TransactionID)
+
+	first, err := ass.ListActionReceipts(scope, 1, 0)
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+	assert.Equal(t, "tx-mixed-shell", first[0].TransactionID)
+
+	second, err := ass.ListActionReceipts(scope, 1, 1)
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	assert.Equal(t, "tx-mixed-command", second[0].TransactionID)
+
+	past, err := ass.ListActionReceipts(scope, 10, 2)
+	require.NoError(t, err)
+	assert.Empty(t, past)
+
+	unfiltered, err := ass.ListActionReceipts(models.AuditScope{InvestigationID: "investigation-mixed"}, 10, 0)
+	require.NoError(t, err)
+	assert.Len(t, unfiltered, 3, "without the flag every receipt in the investigation is returned")
+}
+
+// TestListActionReceipts_ExcludeAuditReadsPagesPastFullBatches verifies that the filtered scan
+// keeps reading SQL batches while they are full of audit reads, and reaches older receipts.
+func TestListActionReceipts_ExcludeAuditReadsPagesPastFullBatches(t *testing.T) {
+	ass := newIntegrationAuditStore(t)
+	require.NoError(t, ass.CreateSession("batch-session", constants.SessionTypeOperator, "Batch", "batch-user"))
+
+	base := time.Now().UTC().Add(-2 * time.Hour)
+	for i, txID := range []string{"tx-batch-command-old", "tx-batch-command-new"} {
+		record := receiptFor(t, txID, "batch-session", "", base.Add(time.Duration(i)*time.Minute))
+		record.InvestigationID = "investigation-batch"
+		record.ActionType = constants.ActionTypeExecuteBash
+		require.NoError(t, ass.RecordActionReceipt(record))
+	}
+	for i := range auditReadScanBatchSize + 5 {
+		record := receiptFor(t, fmt.Sprintf("tx-batch-read-%03d", i), "batch-session", "", base.Add(time.Hour+time.Duration(i)*time.Second))
+		record.InvestigationID = "investigation-batch"
+		record.ActionType = constants.ActionTypeMcpCall
+		record.TargetResource = constants.MCPToolAuditReceiptList
+		require.NoError(t, ass.RecordActionReceipt(record))
+	}
+
+	rows, err := ass.ListActionReceipts(models.AuditScope{InvestigationID: "investigation-batch", ExcludeAuditReads: true}, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "tx-batch-command-new", rows[0].TransactionID)
+	assert.Equal(t, "tx-batch-command-old", rows[1].TransactionID)
 }
 
 // TestListActionReceipts_PaginatesNewestFirst verifies limit/offset paging returns receipts

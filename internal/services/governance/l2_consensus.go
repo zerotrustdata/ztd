@@ -188,6 +188,11 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	return true, nil
 }
 
+// L2VotePayload returns the exact bytes L2 votes sign and L4 verifies: "<message_id>|<decision>".
+func L2VotePayload(messageID string, decision bool) []byte {
+	return []byte(fmt.Sprintf("%s|%v", messageID, decision))
+}
+
 // verifyL2Signature verifies an L2 ED25519 signature.
 func (tv *L4Warden) verifyL2Signature(pubKey ed25519.PublicKey, signature, messageID string, decision bool) bool {
 	if signature == "" || signature == "UNSIGNED" {
@@ -197,6 +202,5 @@ func (tv *L4Warden) verifyL2Signature(pubKey ed25519.PublicKey, signature, messa
 	if err != nil {
 		return false
 	}
-	payload := fmt.Sprintf("%s|%v", messageID, decision)
-	return ed25519.Verify(pubKey, []byte(payload), sigBytes)
+	return ed25519.Verify(pubKey, L2VotePayload(messageID, decision), sigBytes)
 }

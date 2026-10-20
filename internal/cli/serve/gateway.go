@@ -198,10 +198,7 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 			logger.Warn("L2 posture requires consensus but no consensus application is bound; L2-gated transactions will be rejected until a consensus application is bound",
 				"posture", cfg.Posture)
 		} else {
-			appID := ""
-			if len(bound.MemberAppIDs) > 0 {
-				appID = bound.MemberAppIDs[0]
-			}
+			appID := bound.PrimaryAppID()
 			logger.Info("Consensus application bound", "app_id", appID, "endpoint_url", bound.EndpointURL)
 		}
 	}

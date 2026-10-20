@@ -8,14 +8,19 @@
 package eval
 
 import (
+	"context"
 	"fmt"
-	"time"
+	"sync"
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -129,17 +134,36 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
-	if laneName == campaignLaneSystem {
-		return nil, fmt.Errorf("evaluation: runs start: campaign %q: %w", opts.CampaignID, constants.ErrEvaluationSystemLaneUnavailable)
-	}
 	runLane := evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE
+	if laneName == campaignLaneSystem {
+		runLane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
+		stackSet, err := store.LoadHeterogeneousStackSet(cmd.Context(), opts.CampaignID)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: frozen formations: %w", err)
+		}
+		if err := evaluation.ValidateFormationStackSetBinding(stackSet, opts.CampaignID, spec.GetModelRegistry()); err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: frozen formations: %w", err)
+		}
+	}
 	catalog, err := store.LoadScenarioCatalog(cmd.Context(), opts.CampaignID)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
 	var topology evaluation.CampaignOperatorTopology
 	if !opts.DryRun {
-		topology, err = resolveOperatorTopology(cmd, deps)
+		investigation := spec.GetInvestigation()
+		if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: campaign investigation: %w", err)
+		}
+		gatewayDeps := deps.gatewayDeps()
+		gatewayCfg, _, gatewayAuth, err := gatewayEvalEnvironment(cmd, gatewayDeps)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: %w", err)
+		}
+		if err := evalPreflightGatewayPosture(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec); err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: %w", err)
+		}
+		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId())
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
@@ -182,6 +206,8 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		Deployment:                 nativeEvalDeployment(cfg, authContext, runID, ""),
 		Lane:                       runLane,
 		PlatformRelease:            platformIdentity(cmd).Release,
+		ProviderObservationPolicy:  witnessPolicy(opts.RequireObservation),
+		ModelProvenancePolicy:      witnessPolicy(opts.RequireProvenance),
 	}); err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
@@ -212,12 +238,11 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		defer autoBackupEval(cmd, deps, opts.JSONOutput)
 	}
 	executed, err := executeRun(cmd, deps, runExecuteOptions{
-		RunID:                    runID,
-		Publish:                  opts.Publish,
-		Daemon:                   opts.Daemon,
-		EnforceProviderResidency: opts.RequireObservation,
-		NoAutoBind:               opts.NoAutoBind,
-		JSONOutput:               opts.JSONOutput,
+		RunID:      runID,
+		Publish:    opts.Publish,
+		Daemon:     opts.Daemon,
+		NoAutoBind: opts.NoAutoBind,
+		JSONOutput: opts.JSONOutput,
 	})
 	if err != nil {
 		return result, err
@@ -246,6 +271,13 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	return result, nil
 }
 
+func witnessPolicy(strict bool) evalv1.EvaluationWitnessPolicy {
+	if strict {
+		return evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT
+	}
+	return evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM
+}
+
 func runsStartCmd(deps nativeEvalDeps) *cobra.Command {
 	var opts runStartFlowOptions
 	var requireWitness bool
@@ -257,8 +289,9 @@ persists its full assignment matrix, and then executes it. Progress is
 resumable (ztd eval runs resume) and cancellable (ztd eval runs cancel).
 
 Operator sessions are resolved from the active Inference Operator and the
-data-operator. The data-operator is bound to the CLI session unless --no-auto-bind
-is set.
+campaign's Data Operator. A persistent campaign resolves its frozen Data
+Operator ID to the current active session on every run. The selected Data
+Operator session is bound to the CLI session unless --no-auto-bind is set.
 
 Examples:
   ztd eval runs start eval-qwen
@@ -460,9 +493,12 @@ public mirror, so the explorer stops reporting the run as running.`,
 			switch {
 			case err == nil && live(*lease):
 				result.WasRunning = true
-				if err := awaitRunStop(cmd, deps, store, control, live, lease, jsonOutput); err != nil {
+				cleared, err := awaitRunStop(cmd, deps, cfg, fileSvc, store, control, live, lease, jsonOutput)
+				if err != nil {
 					return fmt.Errorf("evaluation: runs cancel: %w", err)
 				}
+				// A holder that exited without releasing left its lease stale, and cancel cleared it.
+				result.ClearedStale = cleared
 			case err == nil:
 				result.ClearedStale = true
 				if err := store.ClearRunLease(cmd.Context(), runID); err != nil {
@@ -477,6 +513,36 @@ public mirror, so the explorer stops reporting the run as running.`,
 			controller := evaluation.NewCampaignController(store, nil, deps.now, adaptNewID(deps.newID))
 			if result.Stopped, err = controller.CancelRun(cmd.Context(), runID); err != nil {
 				return fmt.Errorf("evaluation: runs cancel: %w", err)
+			}
+			if result.Stopped > 0 && (!result.WasRunning || result.ClearedStale) {
+				// Cancel stopped work that no live process will report: the run was
+				// idle, or its holder exited without releasing. Cancel reports the
+				// cancelled status, as a holder would. A settled run stops nothing
+				// and posts nothing.
+				authContext, err := deps.authLoader(fileSvc, cfg)
+				if err != nil {
+					return fmt.Errorf("evaluation: runs cancel: load CLI identity: %w", err)
+				}
+				appClient, err := inferenceEvalAppClient(cmd.Context(), cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
+				if err != nil {
+					return fmt.Errorf("evaluation: runs cancel: %w", err)
+				}
+				run, err := store.LoadRun(cmd.Context(), runID)
+				if err != nil {
+					return fmt.Errorf("evaluation: runs cancel: %w", err)
+				}
+				reporter := &runLifecycle{
+					client:       appClient,
+					live:         live,
+					deps:         deps,
+					store:        store,
+					cliSessionID: authContext.CLISessionID,
+					runID:        runID,
+					startedAt:    run.GetStartedAt().AsTime().UTC(),
+				}
+				if err := reporter.reportTerminal(cmd.Context(), true); err != nil {
+					return fmt.Errorf("evaluation: runs cancel: %w", err)
+				}
 			}
 			if publish {
 				publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
@@ -502,35 +568,172 @@ public mirror, so the explorer stops reporting the run as running.`,
 }
 
 // awaitRunStop asks the process holding a run's lease to stop and waits until
-// it has released the lease, which happens once its current assignment reaches
-// a terminal record.
-func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, store *evaluation.Store, control processControl, live evaluation.LeaseLiveness, lease *evaluation.RunLease, jsonOutput bool) error {
-	if _, err := store.RequestRunCancel(cmd.Context(), lease.RunID, deps.now()); err != nil {
-		return err
+// that process releases the run, which it does after its current assignment
+// reaches a terminal record and it has reported the released status.
+//
+// The stop reaches the process as an event on the owner's CLI session stream,
+// and the release arrives on the same stream. The stream is subscribed first,
+// and its connect reconciles the lease, so a release that happened before the
+// subscription, or while the stream was down, is not missed.
+//
+// The holder's exit is watched on the operating system. A process that dies
+// without releasing the run does not leave cancel waiting for an event that never
+// comes: its lease is settled locally, and cleared reports that cancel cleared it.
+func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, fileSvc fs.RuntimeFileService, store *evaluation.Store, control processControl, live evaluation.LeaseLiveness, lease *evaluation.RunLease, jsonOutput bool) (bool, error) {
+	ctx := cmd.Context()
+	runID := lease.RunID
+	authContext, err := deps.authLoader(fileSvc, cfg)
+	if err != nil {
+		return false, fmt.Errorf("load CLI identity: %w", err)
+	}
+	appClient, err := inferenceEvalAppClient(ctx, cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
+	if err != nil {
+		return false, err
+	}
+	run, err := store.LoadRun(ctx, runID)
+	if err != nil {
+		return false, err
+	}
+	httpClient, err := auth.BuildMTLSClient(fileSvc, cfg, 0)
+	if err != nil {
+		return false, fmt.Errorf("build stream client: %w", err)
+	}
+
+	events := make(chan runEvent)
+	// released receives the first settled outcome of a connect reconcile.
+	released := make(chan runRelease, 1)
+	var releaseOnce sync.Once
+	release := func(r runRelease) { releaseOnce.Do(func() { released <- r }) }
+	stream, err := subscribeRunEvents(ctx, httpClient, cfg.OperatorPublicURL(), authContext.CLISessionID, runID, events, func() {
+		done, cleared, err := settleRunLease(ctx, store, live, runID)
+		switch {
+		case err != nil:
+			release(runRelease{err: err})
+		case done:
+			release(runRelease{cleared: cleared})
+		}
+	})
+	if err != nil {
+		return false, err
+	}
+	defer stream.Close()
+	select {
+	case r := <-released:
+		// The lease was already gone or stale when the stream connected.
+		return r.cleared, r.err
+	default:
+	}
+
+	// The exit is watched from before the stop request, so an exit that lands
+	// during the request is still seen.
+	exitCtx, stopExitWatch := context.WithCancel(ctx)
+	defer stopExitWatch()
+	holderExit := watchHolderExit(exitCtx, control, lease.PID)
+
+	if _, err := store.RequestRunCancel(ctx, runID, deps.now()); err != nil {
+		return false, err
 	}
 	// Delivery is best effort: the cancel request in the lease reaches a process
 	// that cannot be signalled.
 	_ = control.Interrupt(lease.PID)
+	if err := appClient.RequestRunStop(ctx, models.ObserveProducerStopRequest{
+		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
+		CampaignID:    run.GetCampaignBinding().GetCampaignId(),
+		RunID:         runID,
+		StopReason:    models.StopReasonGraceful,
+		StopScope:     models.StopScopeCycle,
+		CLISessionID:  authContext.CLISessionID,
+	}); err != nil {
+		return false, fmt.Errorf("request stop: %w", err)
+	}
 	if !jsonOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Waiting for process %d to finish its current assignment\n", lease.PID)
 	}
-	ticker := time.NewTicker(deps.runControl.interval())
-	defer ticker.Stop()
+	cleared, err := awaitRunRelease(ctx, released, events, stream, holderExit, func() (bool, bool, error) {
+		return settleRunLease(ctx, store, live, runID)
+	})
+	if err != nil {
+		return false, err
+	}
+	if cleared && !jsonOutput {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Process %d exited; cleared its lease on run %s\n", lease.PID, runID)
+	}
+	return cleared, nil
+}
+
+// runRelease is the outcome of a connect reconcile that settled a run's lease:
+// cleared reports that the reconcile cleared a stale lease, and err is the error
+// that kept the answer from being known.
+type runRelease struct {
+	cleared bool
+	err     error
+}
+
+// awaitRunRelease waits for the holder of a run to release it. It returns when
+// the stream reports a settled status, when released delivers the connect
+// reconcile's outcome, or when the holder's process exits and settle finds its
+// lease gone or stale. The reconcile and exit cases report whether the lease was
+// cleared. The wait also ends when the stream stops on its own, with the stream's
+// error, or when ctx ends.
+func awaitRunRelease(ctx context.Context, released <-chan runRelease, events <-chan runEvent, stream *runEventStream, holderExit <-chan error, settle func() (bool, bool, error)) (bool, error) {
 	for {
-		current, err := store.LoadRunLease(cmd.Context(), lease.RunID)
-		if err != nil {
-			if isMissingRecord(err) {
-				return nil
-			}
-			return err
-		}
-		if !live(*current) {
-			return store.ClearRunLease(cmd.Context(), lease.RunID)
-		}
 		select {
-		case <-cmd.Context().Done():
-			return cmd.Context().Err()
-		case <-ticker.C:
+		case r := <-released:
+			return r.cleared, r.err
+		case ev := <-events:
+			if ev.Status != nil && runStatusSettled(ev.Status.Status) {
+				return false, nil
+			}
+		case err := <-holderExit:
+			if err != nil {
+				return false, fmt.Errorf("wait for run holder: %w", err)
+			}
+			done, cleared, err := settle()
+			if err != nil {
+				return false, err
+			}
+			if done {
+				return cleared, nil
+			}
+			// The PID now names another live process, so the lease still looks held.
+			// The stream remains the release signal, and the exit is not awaited again.
+			holderExit = nil
+		case <-stream.Done():
+			return false, stream.StoppedError()
+		case <-ctx.Done():
+			return false, ctx.Err()
 		}
 	}
+}
+
+// settleRunLease reports whether a run's process has released the run: its lease
+// is missing, or it names a process that is no longer alive. A stale lease is
+// cleared, as cancel always has, and cleared reports that this call cleared it. A
+// lease the process released itself, or that a concurrent settle already cleared,
+// counts as released and is not reported as cleared.
+func settleRunLease(ctx context.Context, store *evaluation.Store, live evaluation.LeaseLiveness, runID string) (released, cleared bool, err error) {
+	lease, err := store.LoadRunLease(ctx, runID)
+	switch {
+	case isMissingRecord(err):
+		return true, false, nil
+	case err != nil:
+		return false, false, err
+	case live(*lease):
+		return false, false, nil
+	}
+	err = store.ClearRunLease(ctx, runID)
+	switch {
+	case isMissingRecord(err):
+		return true, false, nil
+	case err != nil:
+		return false, false, err
+	}
+	return true, true, nil
+}
+
+// runStatusSettled reports whether a run status means its process has finished
+// with the run. The process reports running before it executes, and every other
+// status it reports comes after it has released the lease.
+func runStatusSettled(status models.RunLifecycleStatus) bool {
+	return status != models.RunLifecycleStatusQueued && status != models.RunLifecycleStatusRunning
 }

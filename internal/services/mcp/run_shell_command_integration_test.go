@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -24,7 +25,7 @@ func TestRunShellCommandTool_Execute_SimpleCommand(t *testing.T) {
 	tool := &RunShellCommandTool{}
 	ctx := context.Background()
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command: "echo",
 		Args:    []string{"hello"},
 	}
@@ -53,7 +54,7 @@ func TestRunShellCommandTool_Execute_WithWorkingDir(t *testing.T) {
 		pwdCmd = "cmd.exe"
 	}
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command:    pwdCmd,
 		WorkingDir: tmpDir,
 	}
@@ -82,7 +83,7 @@ func TestRunShellCommandTool_Execute_WithTimeout(t *testing.T) {
 	tool := &RunShellCommandTool{}
 	ctx := context.Background()
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command: "echo",
 		Args:    []string{"test"},
 		Timeout: 10,
@@ -104,7 +105,7 @@ func TestRunShellCommandTool_Execute_TimeoutExceedsMax(t *testing.T) {
 	tool := &RunShellCommandTool{}
 	ctx := context.Background()
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command: "echo",
 		Args:    []string{"test"},
 		Timeout: 301, // Exceeds max of 300
@@ -121,7 +122,7 @@ func TestRunShellCommandTool_Execute_MissingCommand(t *testing.T) {
 	tool := &RunShellCommandTool{}
 	ctx := context.Background()
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command: "",
 	}
 	reqJSON, err := json.Marshal(req)
@@ -147,7 +148,7 @@ func TestRunShellCommandTool_Execute_NonexistentCommand(t *testing.T) {
 	tool := &RunShellCommandTool{}
 	ctx := context.Background()
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command: "nonexistent_command_12345",
 	}
 	reqJSON, err := json.Marshal(req)
@@ -168,7 +169,7 @@ func TestRunShellCommandTool_Execute_CommandRejected(t *testing.T) {
 	tool := &RunShellCommandTool{}
 	ctx := context.Background()
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command: "rm",
 		Args:    []string{"-rf", "/"},
 	}
@@ -191,7 +192,7 @@ func TestRunShellCommandTool_Execute_MultiHost(t *testing.T) {
 	tool := &RunShellCommandTool{}
 	ctx := context.Background()
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command:   "echo",
 		Args:      []string{"test"},
 		Hostnames: []string{"localhost", "127.0.0.1"},
@@ -221,7 +222,7 @@ func TestRunShellCommandTool_Execute_SingleHost(t *testing.T) {
 	tool := &RunShellCommandTool{}
 	ctx := context.Background()
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command:   "echo",
 		Args:      []string{"test"},
 		Hostnames: []string{"localhost"},
@@ -245,7 +246,7 @@ func TestRunShellCommandTool_Execute_DefaultHostname(t *testing.T) {
 	tool := &RunShellCommandTool{}
 	ctx := context.Background()
 
-	req := RunShellCommandRequest{
+	req := models.RunShellCommandRequest{
 		Command: "echo",
 		Args:    []string{"test"},
 		// No hostnames specified - should default to localhost

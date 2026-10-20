@@ -60,6 +60,8 @@ func WirePosture(posture constants.Posture) (evalv1.EvaluationGovernancePosture,
 var (
 	ingressAll      = []Ingress{IngressDirect, IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI}
 	ingressDispatch = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound}
+	// ingressApproval are the ingresses a human approval can resume under ratify and notary.
+	ingressApproval = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI}
 
 	postureAll = []evalv1.EvaluationGovernancePosture{
 		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
@@ -137,7 +139,7 @@ type gapSpec struct {
 	reason    string
 }
 
-// rowSpecs is the catalogue table, rows 1 to 26 of the plan's A2 case catalogue.
+// rowSpecs is the catalogue table, rows 1 to 24. Row 25 is a gap only (gapSpecs).
 var rowSpecs = []rowSpec{
 	// Row 1: the clean mutation executes under the postures that do not suspend it.
 	{row: 1, faults: []Fault{FaultNone}, ingresses: ingressAll, postures: postureDoctrineConsensus,
@@ -296,18 +298,18 @@ var rowSpecs = []rowSpec{
 	{row: 21, faults: []Fault{FaultL3Garbage}, ingresses: []Ingress{IngressDirect}, postures: postureDoctrineConsensus,
 		action: ActionMutation, outcomes: []outcome{executed()}},
 
-	// Row 22: no L3 path can be minted on these ingresses.
-	{row: 22, faults: []Fault{FaultNoL3Path}, ingresses: []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressCLI},
-		postures: postureRatifyNotary, action: ActionMutation,
-		outcomes: []outcome{refused(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L3_PROOF_UNMINTABLE)}},
-
-	// Rows 23 to 25: the attended approval path on MCP and A2A. A deny is the
-	// Operator-signed L3_DENIED rejection.
-	{row: 23, faults: []Fault{FaultUnattendedMutation}, ingresses: []Ingress{IngressMCP, IngressA2A}, postures: postureRatifyNotary,
+	// Rows 22 to 24: the human approval path under ratify and notary. MCP and A2A
+	// answer a mutation with a suspension, so an unattended run observes it (row 22).
+	// Governed dispatch and the CLI do not answer until a human decides: the request
+	// blocks for the approval TTL, so a suspension is not observable there and those
+	// ingresses carry only the attended rows. An approve executes (row 23). A deny is
+	// the Operator-signed L3_DENIED rejection (row 24), a rejection receipt on MCP and
+	// A2A and the same signed rejection in the dispatch answer.
+	{row: 22, faults: []Fault{FaultUnattendedMutation}, ingresses: []Ingress{IngressMCP, IngressA2A}, postures: postureRatifyNotary,
 		action: ActionMutation, outcomes: []outcome{suspended()}},
-	{row: 24, faults: []Fault{FaultAttendedApprove}, ingresses: []Ingress{IngressMCP, IngressA2A}, postures: postureRatifyNotary,
+	{row: 23, faults: []Fault{FaultAttendedApprove}, ingresses: ingressApproval, postures: postureRatifyNotary,
 		action: ActionMutation, attended: true, outcomes: []outcome{executed()}},
-	{row: 25, faults: []Fault{FaultAttendedDeny}, ingresses: []Ingress{IngressMCP, IngressA2A}, postures: postureRatifyNotary,
+	{row: 24, faults: []Fault{FaultAttendedDeny}, ingresses: ingressApproval, postures: postureRatifyNotary,
 		action: ActionMutation, attended: true,
 		outcomes: []outcome{rejected(operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)}},
 }
@@ -315,12 +317,12 @@ var rowSpecs = []rowSpec{
 // l2Faults is the six L2 faults of rows 18 and 19.
 var l2Faults = []Fault{FaultL2Missing, FaultL2BelowQuorum, FaultL2DuplicateSigner, FaultL2SignatureFlipped, FaultL2NonMember, FaultL2UnknownSet}
 
-// gapSpecs records the cells the ingresses cannot express. Row 26 follows the T06
+// gapSpecs records the cells the ingresses cannot express. Row 25 follows the T06
 // handoff answer: no tool or skill argument can carry an L3 proof.
 var gapSpecs = []gapSpec{
 	{row: 2, fault: FaultReadBaseline, ingresses: []Ingress{IngressA2A}, reason: "every A2A call is a mutation"},
 	{row: 2, fault: FaultReadBaseline, ingresses: []Ingress{IngressCLI}, reason: "`ztd operator run` sends EXECUTE_BASH only"},
-	{row: 26, fault: FaultL3ViaArguments, ingresses: []Ingress{IngressMCP, IngressA2A},
+	{row: 25, fault: FaultL3ViaArguments, ingresses: []Ingress{IngressMCP, IngressA2A},
 		reason: "no tool or skill argument can carry an L3 proof; the only attachment is ResumeWithL3Proof, fed by the WebAuthn assertion (T06 handoff, answer a)"},
 }
 

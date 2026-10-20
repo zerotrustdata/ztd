@@ -11,7 +11,7 @@
 
 import { ValidationError, assert, assertBoolean, assertInteger, assertObject, assertString, rejectUnknown } from './validators';
 
-export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5'] as const;
+export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7'] as const;
 export type AgentTraceSchemaVersion = (typeof AGENT_TRACE_SCHEMA_VERSIONS)[number];
 
 /** One canonical protojson message (ActionReceipt or ConformanceAnchor). */
@@ -64,6 +64,13 @@ export interface AgentTraceModelCall {
   transaction_id: string;
   purpose: string;
   loop_turn: number;
+  tool_call_id?: string;
+  persona?: string;
+  model_variant_id?: string;
+  model_role?: string;
+  served_model_tag?: string;
+  model_digest?: string;
+  inference_result?: AgentTraceProto;
   tools_declared: string[];
   result_digest: string;
   usage_reported: boolean;
@@ -79,6 +86,7 @@ export interface AgentTraceModelCall {
   tool_call_count: number;
   error?: string;
   receipt?: AgentTraceProto;
+  observation_receipts?: AgentTraceProto[];
 }
 
 export interface AgentTraceToolCall {
@@ -98,6 +106,28 @@ export interface AgentTraceToolCall {
   transaction_id?: string;
   policy_decision?: string;
   receipt?: AgentTraceProto;
+  retrieval?: AgentTraceRetrieval;
+}
+
+/** The typed query that the local Operator answered for a v6 context call. */
+export interface AgentTraceRetrievalQuery {
+  operator_session_id?: string;
+  investigation_id?: string;
+  action_type?: string;
+  exclude_audit_reads?: boolean;
+  not_before?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface AgentTraceRetrievalReceipt {
+  receipt_id: string;
+  sha256: string;
+}
+
+export interface AgentTraceRetrieval {
+  query: AgentTraceRetrievalQuery;
+  receipts: AgentTraceRetrievalReceipt[];
 }
 
 export interface AgentTrace {
@@ -112,6 +142,7 @@ export interface AgentTrace {
   served_model_tag: string;
   model_digest: string;
   model_registry_digest: string;
+  investigation_id?: string;
   inference: AgentTraceRuntime;
   data: AgentTraceRuntime;
   workspace: { root: string; operator_working_directory: string };
@@ -120,6 +151,9 @@ export interface AgentTrace {
   model_calls: AgentTraceModelCall[];
   tool_calls: AgentTraceToolCall[];
   final_output: string;
+  terminal_classification?: string;
+  clarifications?: { loop_turn: number; questions: string[]; selected_branch?: string; user_response?: string }[];
+  steps?: AgentTraceProto[];
   tool_turn_limit_reached: boolean;
   provider_failure?: string;
   provider_failure_class?: string;
@@ -235,12 +269,14 @@ function parseHeldContext(value: unknown, path: string): AgentTraceHeldContext {
 const MODEL_CALL_FIELDS = [
   'provider_attempt_id', 'transaction_id', 'purpose', 'loop_turn', 'tools_declared', 'result_digest', 'usage_reported',
   'prompt_tokens', 'completion_tokens', 'ttft_nanos', 'generation_duration_nanos', 'finish_reason', 'load_state',
-  'retry_count', 'thinking', 'text', 'tool_call_count', 'error', 'receipt',
+  'retry_count', 'thinking', 'text', 'tool_call_count', 'error', 'receipt', 'observation_receipts',
+  'tool_call_id', 'persona',
 ] as const;
 
-function parseModelCall(value: unknown, path: string): AgentTraceModelCall {
+function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion): AgentTraceModelCall {
   assertObject(value, path);
-  rejectUnknown(value, MODEL_CALL_FIELDS, path);
+  const identity = ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest', 'inference_result'];
+  rejectUnknown(value, schemaVersion === 'agent-trace.v7' ? [...MODEL_CALL_FIELDS, ...identity] : MODEL_CALL_FIELDS, path);
   requiredStrings(value, ['provider_attempt_id', 'transaction_id', 'purpose', 'result_digest'], path);
   for (const key of ['loop_turn', 'prompt_tokens', 'completion_tokens', 'retry_count', 'tool_call_count']) {
     assertInteger(value[key], `${path}.${key}`);
@@ -252,6 +288,20 @@ function parseModelCall(value: unknown, path: string): AgentTraceModelCall {
   optionalInteger(value, 'ttft_nanos', path);
   optionalInteger(value, 'generation_duration_nanos', path);
   optionalProto(value, 'receipt', path);
+  if (value.observation_receipts !== undefined) {
+    list(value.observation_receipts, `${path}.observation_receipts`).forEach((receipt, index) => proto(receipt, `${path}.observation_receipts[${index}]`));
+  }
+  optionalString(value, 'tool_call_id', path);
+  optionalString(value, 'persona', path);
+  if (schemaVersion === 'agent-trace.v7') {
+    requiredStrings(value, identity.filter((key) => key !== 'inference_result'), path);
+    for (const key of ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest']) {
+      assert((value[key] as string).length > 0, `${path}.${key}`, 'expected non-empty model identity');
+    }
+    assert(SHA256.test(value.model_digest as string), `${path}.model_digest`, 'expected lowercase SHA-256');
+    optionalProto(value, 'inference_result', path);
+    if (!value.error) proto(value.inference_result, `${path}.inference_result`);
+  }
   return { ...value, tools_declared: declared } as unknown as AgentTraceModelCall;
 }
 
@@ -260,9 +310,44 @@ const TOOL_CALL_FIELDS = [
   'error', 'success', 'is_operator_tool', 'loop_turn', 'action_type', 'transaction_id', 'policy_decision', 'receipt',
 ] as const;
 
-function parseToolCall(value: unknown, path: string): AgentTraceToolCall {
+const RETRIEVAL_QUERY_FIELDS = [
+  'operator_session_id', 'investigation_id', 'action_type', 'exclude_audit_reads', 'not_before', 'limit', 'offset',
+] as const;
+
+function parseRetrieval(value: unknown, path: string, investigationId: string | undefined): AgentTraceRetrieval {
   assertObject(value, path);
-  rejectUnknown(value, TOOL_CALL_FIELDS, path);
+  rejectUnknown(value, ['query', 'receipts'], path);
+  assertObject(value.query, `${path}.query`);
+  rejectUnknown(value.query, RETRIEVAL_QUERY_FIELDS, `${path}.query`);
+  for (const key of ['operator_session_id', 'investigation_id', 'action_type', 'not_before']) {
+    optionalString(value.query, key, `${path}.query`);
+  }
+  for (const key of ['limit', 'offset']) optionalInteger(value.query, key, `${path}.query`);
+  const receipts = list(value.receipts, `${path}.receipts`).map((receipt, index) => {
+    const receiptPath = `${path}.receipts[${index}]`;
+    assertObject(receipt, receiptPath);
+    rejectUnknown(receipt, ['receipt_id', 'sha256'], receiptPath);
+    requiredStrings(receipt, ['receipt_id', 'sha256'], receiptPath);
+    assert((receipt.receipt_id as string).length > 0, `${receiptPath}.receipt_id`, 'expected non-empty receipt ID');
+    assert(SHA256.test(receipt.sha256 as string), `${receiptPath}.sha256`, 'expected lowercase SHA-256');
+    return receipt as unknown as AgentTraceRetrievalReceipt;
+  });
+  assertString(value.query.investigation_id, `${path}.query.investigation_id`);
+  assert(value.query.investigation_id === investigationId, `${path}.query.investigation_id`, 'must match trace investigation_id');
+  assert(value.query.exclude_audit_reads === true, `${path}.query.exclude_audit_reads`, 'expected true');
+  assertInteger(value.query.limit, `${path}.query.limit`);
+  assert(value.query.limit >= 1 && value.query.limit <= 50, `${path}.query.limit`, 'expected a limit from 1 through 50');
+  assert(value.query.operator_session_id === undefined || value.query.operator_session_id === '', `${path}.query.operator_session_id`, 'operator-local query must not be session-scoped');
+  assert(value.query.action_type === undefined, `${path}.query.action_type`, 'operator-local query does not filter action type');
+  assert(value.query.not_before === undefined, `${path}.query.not_before`, 'operator-local query does not filter by time');
+  assert(value.query.offset === undefined, `${path}.query.offset`, 'operator-local query does not use an offset');
+  return { query: value.query as unknown as AgentTraceRetrievalQuery, receipts };
+}
+
+function parseToolCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion, investigationId?: string): AgentTraceToolCall {
+  assertObject(value, path);
+  const fields = schemaVersion === 'agent-trace.v6' || schemaVersion === 'agent-trace.v7' ? [...TOOL_CALL_FIELDS, 'retrieval'] : TOOL_CALL_FIELDS;
+  rejectUnknown(value, fields, path);
   requiredStrings(value, ['call_id', 'model_call_id', 'tool_name', 'arguments_json'], path);
   for (const key of ['provider_call_id', 'command', 'result_json', 'error_type', 'error', 'action_type', 'transaction_id', 'policy_decision']) {
     optionalString(value, key, path);
@@ -271,14 +356,67 @@ function parseToolCall(value: unknown, path: string): AgentTraceToolCall {
   assertBoolean(value.is_operator_tool, `${path}.is_operator_tool`);
   assertInteger(value.loop_turn, `${path}.loop_turn`);
   optionalProto(value, 'receipt', path);
-  return value as unknown as AgentTraceToolCall;
+  let retrieval: AgentTraceRetrieval | undefined;
+  if (value.retrieval !== undefined) retrieval = parseRetrieval(value.retrieval, `${path}.retrieval`, investigationId);
+  return { ...(value as unknown as AgentTraceToolCall), retrieval };
 }
 
 const TRACE_FIELDS = [
   'schema_version', 'evidence_digest', 'run_id', 'assignment_id', 'evaluation_attempt_id', 'campaign_id', 'scenario_id',
-  'designated_role', 'served_model_tag', 'model_digest', 'model_registry_digest', 'inference', 'data', 'workspace', 'held_context', 'input',
+  'designated_role', 'served_model_tag', 'model_digest', 'model_registry_digest', 'investigation_id', 'inference', 'data', 'workspace', 'held_context', 'input',
   'model_calls', 'tool_calls', 'final_output', 'tool_turn_limit_reached', 'provider_failure', 'provider_failure_class', 'bracket',
+  'terminal_classification', 'clarifications', 'steps',
 ] as const;
+
+const INVESTIGATION_CONTEXT_TOOL = 'query_investigation_context';
+const AUDIT_RECEIPT_LIST_TOOL = 'audit_receipt_list';
+const INVESTIGATION_STATUS_TYPE = 'investigation_status';
+const COMPLETED_EXECUTION_STATUS = 'EXECUTION_STATUS_COMPLETED';
+
+function parseContextCallArguments(call: AgentTraceToolCall, path: string): Record<string, unknown> {
+  let args: unknown;
+  try {
+    args = JSON.parse(call.arguments_json) as unknown;
+  } catch {
+    throw new ValidationError('expected JSON object', `${path}.arguments_json`);
+  }
+  assertObject(args, `${path}.arguments_json`);
+  if (call.tool_name === INVESTIGATION_CONTEXT_TOOL) {
+    assertString(args.data_type, `${path}.arguments_json.data_type`);
+  }
+  return args;
+}
+
+function validateV6ContextRetrievals(calls: AgentTraceToolCall[], investigationId: string | undefined): void {
+  calls.forEach((call, index) => {
+    const path = `agent_trace.tool_calls[${index}]`;
+    if (call.tool_name !== INVESTIGATION_CONTEXT_TOOL && call.tool_name !== AUDIT_RECEIPT_LIST_TOOL) {
+      assert(call.retrieval === undefined, `${path}.retrieval`, 'retrieval is only valid for query_investigation_context or audit_receipt_list');
+      return;
+    }
+    const completedReceipt = call.receipt?.status === COMPLETED_EXECUTION_STATUS;
+    if (call.retrieval === undefined) {
+      assert(!completedReceipt, `${path}.retrieval`, 'a completed context query must carry retrieval evidence');
+      if (!call.success) return;
+      if (call.tool_name === INVESTIGATION_CONTEXT_TOOL) {
+        const args = parseContextCallArguments(call, path);
+        assert(args.data_type === INVESTIGATION_STATUS_TYPE, `${path}.retrieval`, 'a successful non-status context query must carry retrieval evidence');
+      }
+      return;
+    }
+    assert(call.success, `${path}.retrieval`, 'retrieval evidence requires a successful tool call');
+    assert(call.action_type === 'MCP_CALL', `${path}.retrieval`, 'retrieval evidence requires a governed MCP_CALL');
+    assert(investigationId !== undefined, `${path}.retrieval`, 'retrieval evidence requires trace investigation_id');
+    if (call.tool_name === INVESTIGATION_CONTEXT_TOOL) {
+      const args = parseContextCallArguments(call, path);
+      assert(
+        args.data_type === 'history_trail' || args.data_type === 'operator_actions',
+        `${path}.retrieval`,
+        'only history_trail and operator_actions return receipt retrievals',
+      );
+    }
+  });
+}
 
 /** Decodes one trace against the closed AgentTrace schema. */
 export function parseAgentTrace(value: unknown): AgentTrace {
@@ -290,8 +428,18 @@ export function parseAgentTrace(value: unknown): AgentTrace {
     `${path}.schema_version`,
     `expected one of ${AGENT_TRACE_SCHEMA_VERSIONS.join(', ')}`,
   );
+  const schemaVersion = value.schema_version as AgentTraceSchemaVersion;
   assertString(value.evidence_digest, `${path}.evidence_digest`);
   assert(SHA256.test(value.evidence_digest), `${path}.evidence_digest`, 'expected lowercase SHA-256');
+  const liveContext = schemaVersion === 'agent-trace.v6' || schemaVersion === 'agent-trace.v7';
+  if (liveContext) {
+    optionalString(value, 'investigation_id', path);
+    if (value.investigation_id !== undefined) {
+      assert((value.investigation_id as string).length > 0, `${path}.investigation_id`, 'expected non-empty investigation ID');
+    }
+  } else {
+    assert(value.investigation_id === undefined, `${path}.investigation_id`, `${schemaVersion} never carries investigation ID`);
+  }
   requiredStrings(
     value,
     ['run_id', 'assignment_id', 'evaluation_attempt_id', 'campaign_id', 'scenario_id', 'designated_role', 'served_model_tag', 'model_digest', 'model_registry_digest', 'final_output'],
@@ -308,13 +456,27 @@ export function parseAgentTrace(value: unknown): AgentTrace {
     assert(input.messages.length > 0, `${path}.input.messages`, `${value.schema_version} records the exact model input`);
   }
   let heldContext: AgentTraceHeldContext | undefined;
-  if (value.schema_version === 'agent-trace.v5' && value.held_context !== undefined) {
+  if ((schemaVersion === 'agent-trace.v5' || liveContext) && value.held_context !== undefined) {
     heldContext = parseHeldContext(value.held_context, `${path}.held_context`);
   } else {
-    assert(value.held_context === undefined, `${path}.held_context`, `${value.schema_version} never carries held context`);
+    assert(value.held_context === undefined, `${path}.held_context`, `${schemaVersion} never carries held context`);
   }
-  const modelCalls = list(value.model_calls, `${path}.model_calls`).map((call, index) => parseModelCall(call, `${path}.model_calls[${index}]`));
-  const toolCalls = list(value.tool_calls, `${path}.tool_calls`).map((call, index) => parseToolCall(call, `${path}.tool_calls[${index}]`));
+  const modelCalls = list(value.model_calls, `${path}.model_calls`).map((call, index) => parseModelCall(call, `${path}.model_calls[${index}]`, schemaVersion));
+  const toolCalls = list(value.tool_calls, `${path}.tool_calls`).map((call, index) => parseToolCall(call, `${path}.tool_calls[${index}]`, schemaVersion, value.investigation_id as string | undefined));
+  if (liveContext) validateV6ContextRetrievals(toolCalls, value.investigation_id as string | undefined);
+  optionalString(value, 'terminal_classification', path);
+  if (value.steps !== undefined) list(value.steps, `${path}.steps`).forEach((step, index) => proto(step, `${path}.steps[${index}]`));
+  if (value.clarifications !== undefined) {
+    list(value.clarifications, `${path}.clarifications`).forEach((turn, index) => {
+      const turnPath = `${path}.clarifications[${index}]`;
+      assertObject(turn, turnPath);
+      rejectUnknown(turn, ['loop_turn', 'questions', 'selected_branch', 'user_response'], turnPath);
+      assertInteger(turn.loop_turn, `${turnPath}.loop_turn`);
+      list(turn.questions, `${turnPath}.questions`).forEach((question, i) => assertString(question, `${turnPath}.questions[${i}]`));
+      optionalString(turn, 'selected_branch', turnPath);
+      optionalString(turn, 'user_response', turnPath);
+    });
+  }
   assertBoolean(value.tool_turn_limit_reached, `${path}.tool_turn_limit_reached`);
   optionalString(value, 'provider_failure', path);
   optionalString(value, 'provider_failure_class', path);

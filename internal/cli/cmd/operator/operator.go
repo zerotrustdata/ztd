@@ -354,8 +354,8 @@ func operatorStartCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Start the ztd Operator in foreground (worker mode)",
-		Long:  `Start the ztd Operator in foreground as a worker. This connects to the Gateway and executes commands. This is the re-exec target for remote deployment and can also be run directly for debugging.`,
+		Short: "Start the ztd Operator in foreground",
+		Long:  `Start the ztd Operator in foreground. This connects to the Gateway and executes commands. This is the re-exec target for remote deployment and can also be run directly for debugging.`,
 		// Anything after "--" is positional and would otherwise be silently
 		// dropped, starting the Operator without the intended flags.
 		Args: cobra.NoArgs,

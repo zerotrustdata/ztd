@@ -22,8 +22,8 @@ func TestBuildHomogeneousAssignmentMatrix_MaterializesFullCrossProduct(t *testin
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	variants := []*evalv1.ModelVariant{
-		{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: "qwen3:4b", ModelDigest: repeatHex('a', 64)},
-		{VariantId: "gemma3-4b", ProviderClass: "ollama", ServedModelTag: "gemma3:4b", ModelDigest: repeatHex('b', 64)},
+		{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: "qwen3:4b", ModelDigest: repeatHex('a')},
+		{VariantId: "gemma3-4b", ProviderClass: "ollama", ServedModelTag: "gemma3:4b", ModelDigest: repeatHex('b')},
 	}
 	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
 		CampaignID:      "smoke-campaign",
@@ -41,9 +41,9 @@ func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	variants := []*evalv1.ModelVariant{
-		{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: "qwen3:4b", ModelDigest: repeatHex('a', 64)},
-		{VariantId: "gemma3-4b", ProviderClass: "ollama", ServedModelTag: "gemma3:4b", ModelDigest: repeatHex('b', 64)},
-		{VariantId: "llama3-2-3b", ProviderClass: "ollama", ServedModelTag: "llama3.2:3b", ModelDigest: repeatHex('c', 64)},
+		{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: "qwen3:4b", ModelDigest: repeatHex('a')},
+		{VariantId: "gemma3-4b", ProviderClass: "ollama", ServedModelTag: "gemma3:4b", ModelDigest: repeatHex('b')},
+		{VariantId: "llama3-2-3b", ProviderClass: "ollama", ServedModelTag: "llama3.2:3b", ModelDigest: repeatHex('c')},
 	}
 	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
 		CampaignID:      "model-by-model",
@@ -79,7 +79,7 @@ func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
 func TestBuildHomogeneousAssignmentMatrix_SchedulesEachScenarioOnlyForItsEligibleRoles(t *testing.T) {
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
-	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: "qwen3:4b", ModelDigest: repeatHex('a', 64)}
+	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: "qwen3:4b", ModelDigest: repeatHex('a')}
 	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
 		CampaignID:      "role-eligibility",
 		RunID:           "run-1",

@@ -11,6 +11,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/cli/serve"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestDiagnosticFromChildOutput_PrefersErrorRecordCause(t *testing.T) {
@@ -35,4 +39,30 @@ func TestDiagnosticFromChildOutput_ErrorRecordWithoutCause(t *testing.T) {
 
 func TestDiagnosticFromChildOutput_PlainStderrFallsBackToLastLine(t *testing.T) {
 	assert.Equal(t, "gateway child startup diagnostic", diagnosticFromChildOutput("noise\ngateway child startup diagnostic\n"))
+}
+
+func TestSpectatorListenerPorts_IncludesEvaluationExplorer(t *testing.T) {
+	ports, err := spectatorListenerPorts(serve.GatewayConfig{PublicSpectatorEnabled: true})
+	require.NoError(t, err)
+	assert.Equal(t, []spectatorListenerPort{
+		{name: "public spectator ingest", port: constants.PublicSpectatorPrivatePort},
+		{name: "public spectator", port: constants.PublicSpectatorPublicPort},
+		{name: "evaluation explorer", port: constants.EvalExplorerDefaultPort},
+	}, ports)
+
+	ports, err = spectatorListenerPorts(serve.GatewayConfig{
+		PublicSpectatorEnabled: true,
+		EvalExplorerAddr:       "127.0.0.1:5999",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 5999, ports[2].port, "a custom --eval-explorer-listen port must be the one probed")
+}
+
+func TestSpectatorListenerPorts_DisabledAndMalformed(t *testing.T) {
+	ports, err := spectatorListenerPorts(serve.GatewayConfig{EvalExplorerAddr: "127.0.0.1:5999"})
+	require.NoError(t, err)
+	assert.Empty(t, ports, "a disabled spectator binds no listeners")
+
+	_, err = spectatorListenerPorts(serve.GatewayConfig{PublicSpectatorEnabled: true, EvalExplorerAddr: "127.0.0.1"})
+	assert.ErrorIs(t, err, constants.ErrPortUnavailable)
 }

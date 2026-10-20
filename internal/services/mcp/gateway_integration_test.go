@@ -203,11 +203,13 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 	_ = pubKey
 
 	g := &GatewayService{
-		posture:           constants.PostureDoctrine,
-		logger:            slog.New(slog.NewTextHandler(os.Stdout, nil)),
-		maxPayloadBytes:   10 * 1024 * 1024,
-		maxFailures:       3, // Lower threshold for faster test
-		cooldownDuration:  100 * time.Millisecond,
+		posture:         constants.PostureDoctrine,
+		logger:          slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		maxPayloadBytes: 10 * 1024 * 1024,
+		maxFailures:     3, // Lower threshold for faster test
+		// Long enough that a slow runner cannot lapse it between the third
+		// failure and the open assertions; the close is driven below.
+		cooldownDuration:  time.Minute,
 		envProc:           &fakeEnvelopeProcessor{},
 		signingKey:        privKey,
 		keyID:             "circuit-test-key",
@@ -243,8 +245,10 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 	require.NotNil(t, resp.Error)
 	require.Contains(t, resp.Error.Message, "circuit open")
 
-	// Wait for cooldown and verify circuit closes
-	time.Sleep(150 * time.Millisecond)
+	// Age the last failure past the cooldown and verify circuit closes
+	g.mu.Lock()
+	g.lastFailure = time.Now().Add(-2 * g.cooldownDuration)
+	g.mu.Unlock()
 	require.False(t, g.isCircuitOpen(), "Circuit should close after cooldown")
 }
 

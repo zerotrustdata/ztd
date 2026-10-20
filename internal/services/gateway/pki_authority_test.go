@@ -576,7 +576,7 @@ func TestPKIAuthority_Phase0Regression_C3_LeafCertTTL(t *testing.T) {
 	expectedDuration := time.Duration(leafCertValidityDays) * 24 * time.Hour
 	assert.InDelta(t, expectedDuration.Hours(), duration.Hours(), 1.0, RegressionMarkerAfterFix+": leaf cert has 7-day TTL")
 
-	assert.Equal(t, 7, int(leafCertValidityDays), RegressionMarkerAfterFix+": leaf cert TTL is 7 days")
+	assert.Equal(t, 7, leafCertValidityDays, RegressionMarkerAfterFix+": leaf cert TTL is 7 days")
 }
 
 func TestPKIAuthority_SignCSR(t *testing.T) {

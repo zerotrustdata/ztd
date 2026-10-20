@@ -272,7 +272,7 @@ func TestPublicRotateKeyCmd_PreRegistersNewKeyAndDurablyRevokesOldKey(t *testing
 	require.NoError(t, err)
 	mirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), oldConfig.SourceID, oldConfig.SigningKeyID, ed25519.PrivateKey(oldPrivateKeyBytes).Public().(ed25519.PublicKey)))
-	server := httptest.NewServer(mirror.Handler())
+	server := httptest.NewServer(mirror.IngestHandler())
 
 	setCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
 	setCmd.SetArgs([]string{"--mirror-origin", server.URL})
@@ -301,7 +301,7 @@ func TestPublicRotateKeyCmd_PreRegistersNewKeyAndDurablyRevokesOldKey(t *testing
 	restartedMirror, err := gateway.NewPublicMirrorServer(slog.Default(), store, gateway.PublicMirrorConfig{})
 	require.NoError(t, err)
 	restartedMirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
-	restartedServer := httptest.NewServer(restartedMirror.Handler())
+	restartedServer := httptest.NewServer(restartedMirror.IngestHandler())
 	t.Cleanup(restartedServer.Close)
 	setCmd = publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
 	setCmd.SetArgs([]string{"--mirror-origin", restartedServer.URL})
@@ -365,7 +365,7 @@ func TestPublicRotateKeyCmd_RecoversAfterLocalConfigurationPersistenceFailure(t 
 	require.NoError(t, err)
 	mirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), oldConfig.SourceID, oldConfig.SigningKeyID, ed25519.PrivateKey(privateKeyBytes).Public().(ed25519.PublicKey)))
-	server := httptest.NewServer(mirror.Handler())
+	server := httptest.NewServer(mirror.IngestHandler())
 	t.Cleanup(server.Close)
 	setCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
 	setCmd.SetArgs([]string{"--mirror-origin", server.URL})
@@ -479,7 +479,7 @@ func TestPublicPushCmd_RetriesDurableOutboxAfterCommandRestart(t *testing.T) {
 	require.NoError(t, err)
 	mirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), exportConfig.SourceID, exportConfig.SigningKeyID, ed25519.PrivateKey(privateKeyBytes).Public().(ed25519.PublicKey)))
-	server := httptest.NewServer(mirror.Handler())
+	server := httptest.NewServer(mirror.IngestHandler())
 	t.Cleanup(server.Close)
 	setCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
 	setCmd.SetArgs([]string{"--mirror-origin", server.URL})
@@ -510,8 +510,10 @@ func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
 	require.NoError(t, err)
 	mirror.SetIngestAuthToken(hex.EncodeToString(tokenBytes))
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), exportConfig.SourceID, exportConfig.SigningKeyID, ed25519.PrivateKey(privateKeyBytes).Public().(ed25519.PublicKey)))
-	server := httptest.NewServer(mirror.Handler())
+	server := httptest.NewServer(mirror.IngestHandler())
 	t.Cleanup(server.Close)
+	publicServer := httptest.NewServer(mirror.PublicHandler())
+	t.Cleanup(publicServer.Close)
 	exportConfig.MirrorOrigin = server.URL
 	require.NoError(t, writePublicExportConfig(context.Background(), fileSvc, exportConfig))
 	pushCmd := publicPushCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
@@ -542,7 +544,7 @@ func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
 
 	// Export the mirror's signed log, disconnect, and run the documented
 	// offline verifier against the content-addressed publisher artifacts.
-	response, err := http.Get(server.URL + "/proof-segments?source=" + exportConfig.SourceID)
+	response, err := http.Get(publicServer.URL + "/proof-segments?source=" + exportConfig.SourceID)
 	require.NoError(t, err)
 	defer response.Body.Close()
 	require.Equal(t, http.StatusOK, response.StatusCode)

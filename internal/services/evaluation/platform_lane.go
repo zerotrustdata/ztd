@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -33,16 +34,27 @@ type Target struct {
 	SessionID  string
 }
 
+type agentDispatchPhase string
+
+const (
+	agentDispatchFixtureSetup agentDispatchPhase = "fixture-setup"
+	agentDispatchHarnessProbe agentDispatchPhase = "harness-probe"
+)
+
 // AgentDispatchScope identifies one governed dispatch made for a campaign attempt.
 type AgentDispatchScope struct {
-	RunID      string
-	ScenarioID string
-	AttemptID  string
-	Target     Target
+	RunID           string
+	ScenarioID      string
+	InvestigationID string
+	AttemptID       string
+	Target          Target
+	// HarnessPhase separates fixture and probe receipts from scored actions.
+	// Empty denotes a model tool call.
+	HarnessPhase agentDispatchPhase
 }
 
 type laneClient interface {
-	DispatchCommand(context.Context, client.Persona, client.DispatchCommandRequest) (*client.GovernedOutcome, error)
+	DispatchCommand(context.Context, client.Persona, models.OperatorCommandRequest) (*client.GovernedOutcome, error)
 }
 
 // CommandLane is the campaign's governed path to a bound Data Operator. Each
@@ -74,7 +86,7 @@ func (l *CommandLane) WriteWorkspaceFile(ctx context.Context, target Target, run
 	if err != nil {
 		return fmt.Errorf("%w: marshal file edit request: %v", constants.ErrEvaluationDispatchFailed, err)
 	}
-	scope := AgentDispatchScope{RunID: runID, ScenarioID: scenarioID, AttemptID: attemptID, Target: target}
+	scope := AgentDispatchScope{RunID: runID, ScenarioID: scenarioID, AttemptID: attemptID, Target: target, HarnessPhase: agentDispatchFixtureSetup}
 	outcome, err := l.dispatchAction(ctx, scope, constants.ActionTypeFileEdit, absPath, payload)
 	if err != nil {
 		return err
@@ -100,7 +112,7 @@ func (l *CommandLane) ReadWorkspaceFile(ctx context.Context, target Target, runI
 	if err != nil {
 		return "", fmt.Errorf("%w: marshal filesystem read request: %v", constants.ErrEvaluationDispatchFailed, err)
 	}
-	scope := AgentDispatchScope{RunID: runID, ScenarioID: scenarioID, AttemptID: attemptID, Target: target}
+	scope := AgentDispatchScope{RunID: runID, ScenarioID: scenarioID, AttemptID: attemptID, Target: target, HarnessPhase: agentDispatchHarnessProbe}
 	outcome, err := l.dispatchAction(ctx, scope, constants.ActionTypeFsRead, absPath, payload)
 	if err != nil {
 		return "", err
@@ -137,18 +149,26 @@ type GovernedToolDispatch struct {
 // rejection or an ingress refusal is an answer the model sees. A transport
 // failure, an untyped answer or an approval suspension is a harness failure and
 // is returned as an error so it is never graded against the model.
-func (l *CommandLane) DispatchAgentTool(ctx context.Context, target Target, runID, scenarioID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error) {
+func (l *CommandLane) DispatchAgentTool(ctx context.Context, target Target, runID, investigationID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error) {
 	if l == nil || l.client == nil {
 		return GovernedToolDispatch{}, fmt.Errorf("%w: evaluation lane client is required", constants.ErrMissingRequiredField)
 	}
-	if target.SessionID == "" || runID == "" || scenarioID == "" || attemptID == "" || len(payload) == 0 {
+	if target.OperatorID == "" || target.SessionID == "" || runID == "" || investigationID == "" || attemptID == "" || len(payload) == 0 {
 		return GovernedToolDispatch{}, fmt.Errorf("%w: agent tool dispatch requires operator target, scenario identity, and payload", constants.ErrMissingRequiredField)
 	}
-	scope := AgentDispatchScope{RunID: runID, ScenarioID: scenarioID, AttemptID: attemptID, Target: target}
+	scope := AgentDispatchScope{RunID: runID, InvestigationID: investigationID, AttemptID: attemptID, Target: target}
 	outcome, err := l.dispatchAction(ctx, scope, action, targetResource, payload)
 	if err != nil {
 		return GovernedToolDispatch{}, err
 	}
+	return classifyToolDispatch(action, outcome)
+}
+
+// classifyToolDispatch reads one governed answer as a model tool call's
+// dispatch. A receipt, a governance rejection or an ingress refusal is an
+// answer the model sees; an untyped answer or an approval suspension is a
+// harness failure.
+func classifyToolDispatch(action constants.ActionType, outcome *client.GovernedOutcome) (GovernedToolDispatch, error) {
 	switch answerKind(outcome) {
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
 		return GovernedToolDispatch{Outcome: outcome, TransactionID: outcome.Dispatch.GetTransactionId(), ResultPayload: outcome.Dispatch.GetResultPayload()}, nil
@@ -168,9 +188,18 @@ func (l *CommandLane) DispatchAgentTool(ctx context.Context, target Target, runI
 // answer unclassified. A transport failure or a missing answer is
 // ErrEvaluationDispatchFailed; the caller classifies the answer it received.
 func (l *CommandLane) dispatchAction(ctx context.Context, scope AgentDispatchScope, action constants.ActionType, targetResource string, payload []byte) (*client.GovernedOutcome, error) {
-	outcome, err := l.client.DispatchCommand(ctx, l.persona, client.DispatchCommandRequest{
-		TargetOperatorSessionID: scope.Target.SessionID, ActionType: string(action), Payload: payload, TargetResource: targetResource,
-		CaseID: scope.RunID, InvestigationID: scope.ScenarioID, TaskID: scope.AttemptID, CLISessionID: l.persona.CLISessionID,
+	investigationID, taskID := scope.InvestigationID, scope.AttemptID
+	if scope.HarnessPhase != "" {
+		investigationID = "eval-harness:" + scope.AttemptID
+		taskID = string(scope.HarnessPhase) + ":" + scope.AttemptID
+	}
+	eventType, err := constants.RequestEventForAction(action)
+	if err != nil {
+		return nil, fmt.Errorf("%w: resolve governed %s event: %w", constants.ErrEvaluationDispatchFailed, action, err)
+	}
+	outcome, err := l.client.DispatchCommand(ctx, l.persona, models.OperatorCommandRequest{
+		TargetOperatorSessionID: scope.Target.SessionID, EventType: string(eventType), Payload: payload, TargetResource: targetResource,
+		InvestigationID: investigationID, TaskID: taskID, CLISessionID: l.persona.CLISessionID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: submit governed %s: %w", constants.ErrEvaluationDispatchFailed, action, err)

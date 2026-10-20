@@ -188,7 +188,7 @@ func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfr
 			Responder: infra.Responder,
 		},
 		DispatchControllerDeps: DispatchControllerDeps{
-			DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, infra.Cfg.Gateway.Posture, governance.NewL1Doctrine(), nil, infra.SignerStore, nil),
+			DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, infra.Cfg.Gateway.Posture, governance.NewL1Doctrine(), nil, infra.SignerStore, nil, nil),
 			Responder:   infra.Responder,
 			Logger:      infra.Logger,
 		},
@@ -212,9 +212,10 @@ func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfr
 			IsGovernanceReady: func(context.Context) bool { return true },
 		},
 		GovernanceControllerDeps: GovernanceControllerDeps{
-			Cfg:       infra.Cfg,
-			Logger:    infra.Logger,
-			Responder: infra.Responder,
+			Cfg:         infra.Cfg,
+			Logger:      infra.Logger,
+			Responder:   infra.Responder,
+			CLISessions: infra.CLISessionSvc,
 		},
 		MCPControllerDeps:     MCPControllerDeps{MCPGateway: mcpGateway},
 		PubSubControllerDeps:  PubSubControllerDeps{Handler: infra.Pubsub},
@@ -542,6 +543,7 @@ func TestCLICertBoundToOperator(t *testing.T) {
 		ID:                cliSessionID,
 		UserID:            userID,
 		OperatorSessionID: operatorSessionID,
+		IsActive:          true,
 		ExpiresAt:         time.Now().Add(24 * time.Hour),
 	}
 	b, _ := json.Marshal(cliSess)
@@ -582,6 +584,7 @@ func TestCLICertBoundToOperator(t *testing.T) {
 			ID:                "cli-expired",
 			UserID:            userID,
 			OperatorSessionID: operatorSessionID,
+			IsActive:          true,
 			ExpiresAt:         time.Now().Add(-1 * time.Hour),
 		}
 		eb, _ := json.Marshal(expired)

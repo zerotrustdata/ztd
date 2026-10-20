@@ -290,6 +290,38 @@ func TestPlatformEnrollmentService_BootstrapEnablesRequestCreation(t *testing.T)
 	assert.Nil(t, stored.Issued)
 }
 
+// TestPlatformEnrollmentService_BindConsensusRequiresExplicitQuorumForMembers
+// proves that a multi-member consensus bind without a quorum fails closed
+// before any governed envelope is submitted, so a K-of-N policy is never
+// written by omission. An explicit quorum passes the quorum gate, and a single
+// application keeps the 1-of-1 default.
+func TestPlatformEnrollmentService_BindConsensusRequiresExplicitQuorumForMembers(t *testing.T) {
+	env := setupPlatformEnrollmentEnv(t, true)
+	const endpointURL = "https://reviewer.example/deliberate"
+
+	_, err := env.enrollSvc.BindConsensusApplication(t.Context(), env.ownerID, models.PlatformEnrollmentBindConsensusRequest{
+		AppID: "reviewer-a", EndpointURL: endpointURL, MemberAppIDs: []string{"reviewer-a", "reviewer-b"},
+	})
+	require.ErrorIs(t, err, constants.ErrConsensusQuorumInvalid)
+
+	bound, err := env.docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	require.NoError(t, err)
+	assert.Nil(t, bound, "no consensus binding may be written when quorum is omitted for multiple members")
+
+	// An explicit quorum passes the quorum gate; the unenrolled primary app
+	// then fails at the enrollment check, which proves the gate was passed.
+	_, err = env.enrollSvc.BindConsensusApplication(t.Context(), env.ownerID, models.PlatformEnrollmentBindConsensusRequest{
+		AppID: "reviewer-a", EndpointURL: endpointURL, MemberAppIDs: []string{"reviewer-a", "reviewer-b"}, Quorum: 2,
+	})
+	require.ErrorIs(t, err, constants.ErrConsensusAppNotEnrolled)
+
+	// A single application without a quorum keeps the 1-of-1 default.
+	_, err = env.enrollSvc.BindConsensusApplication(t.Context(), env.ownerID, models.PlatformEnrollmentBindConsensusRequest{
+		AppID: "reviewer-a", EndpointURL: endpointURL,
+	})
+	require.ErrorIs(t, err, constants.ErrConsensusAppNotEnrolled)
+}
+
 // ============================================================================
 // Owner authorization tests
 // ============================================================================

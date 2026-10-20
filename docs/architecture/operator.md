@@ -3,8 +3,8 @@ doc_id: operator
 title: Operator Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - internal/services/ztdo.go
   - internal/services/operatorcapability/
@@ -76,15 +76,15 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only operators (`provenance`, `observer` without `data`) MUST reject arbitrary command execution via `ValidateWitnessCommand`. Adding `data` permits governed commands in the same process. |
+| INV-OP-CAP-01 | Operator capabilities (`data`, `inference`, `provenance`, `observer`) MUST be declared at startup and enforced by membership. Witness-only Operators (`provenance`, `observer` without `data` or `inference`) MUST reject arbitrary command execution via `ValidateWitnessCommand` and governed native MCP tools via `ValidateWitnessNativeTool`, except `audit_receipt_list` and `audit_receipt_get` over their own audit store. The executing Operator enforces both at its boundary; the Gateway refuses the same dispatch up front against `GetOperatorCapabilities` with `ErrWitnessCommandNotCapable` (HTTP 422, `INGRESS_REFUSAL_CODE_WITNESS_NOT_CAPABLE`). Adding `data` permits governed commands in the same process. |
 | INV-OP-CAP-02 | The Provenance capability MUST require `--model-storage-root` at configuration time and fails closed if missing. The Inference capability MUST resolve its Ollama provider endpoint from `--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`, else `http://127.0.0.1:11434`. |
 
 ### Coexistence and Fingerprinting (`INV-OP-FPR`)
 
 | ID | Rule |
 | :--- | :--- |
-| INV-OP-FPR-01 | Multiple Operators on a single host MUST be disambiguated by a composite SHA-256 `system_fingerprint` combining immutable host properties with `local_dir`, `account`, the platform-default Operator HTTPS port, and canonical `operator_capabilities`. |
-| INV-OP-FPR-02 | Issuing an Operator whose `system_fingerprint` matches an existing non-terminated Operator under the same owner MUST terminate the earlier document and deactivate its session. An identity MUST NOT hold duplicate active leases. |
+| INV-OP-FPR-01 | Multiple Operators on a single host MUST be disambiguated by a composite SHA-256 `system_fingerprint` combining immutable host properties with `local_dir`, `account`, the platform-default Operator HTTP port, and canonical `operator_capabilities`. |
+| INV-OP-FPR-02 | Issuing an Operator whose `system_fingerprint` matches an existing non-terminated Operator under the same owner MUST supersede that document: the replacement is persisted first, then each prior non-terminated document for the owner and fingerprint is terminated and its session deactivated (`supersedeOperatorLeases` in `internal/services/pubsub/platform_enrollment_handlers.go`). A successful issuance leaves the replacement as the only non-terminated lease for that owner and fingerprint. The persist-first order never leaves zero leases; a failure between the steps MAY leave a redundant lease, the issuance returns an error without credentials, and a retried issuance (which mints a new `operator_id`) supersedes it. The guarantee covers sequential issuance: the handler takes no lock across its persist and terminate steps. |
 
 ### Readiness (`INV-OP-READY`)
 
@@ -147,8 +147,15 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 The platform supports two distinct Operator deployments:
 
-1. **Remote Governed Operator (`operator_type: remote`)**: An outbound daemon started via `ztd operator start`. It enrolls with the Gateway over WebSocket, runs with dedicated local state in `.ztd/`, maintains an in-memory mTLS identity, and executes tasks on target servers, virtual machines, or developer workstations.
+1. **Remote Governed Operator (`operator_type: remote`)**: An outbound Operator process started via `ztd operator start`. It enrolls with the Gateway over WebSocket, runs with dedicated local state in `.ztd/`, maintains an in-memory mTLS identity, and executes tasks on target servers, virtual machines, or developer workstations.
 2. **Embedded Operator (`operator_type: embedded`)**: An in-process substrate running inside the Gateway daemon (`ztd gw start`). It always carries the `data` and `inference` capabilities (`WithEmbeddedBaseline()`), is the default Data and Inference Operator, shares the Gateway's local runtime tree, and executes tasks targeting the Gateway host itself from its disposable working directory `.ztd/operators/embedded-operator`, never the ztd project root. Every Operator heartbeat reports its configured execution directory (`WorkDir`) as `pwd`, not the host process cwd, so Data Operator binding sees where commands actually run.
+
+Local deployment stop discovers Operator processes by executable name, startup arguments (`operator start`), owner, and working directory. The deployed executable must be named `ztd` (`ztd.exe` on Windows) so discovery can identify it. The recorded `operator.pid` file is deployment metadata only: stop never reads it as a signal target, and stop removes it after a stopped Operator exits. If discovery fails, stop returns an error and leaves the recorded PID untouched.
+
+Signal atomicity is platform-specific:
+- **Linux**: discovery opens a pidfd for each candidate before it inspects identity. TERM and KILL are sent through that pidfd, which refers to the process that was identified, so a PID reused after discovery cannot receive the signal.
+- **Windows**: discovery opens a process handle for each candidate, and termination goes through that handle.
+- **Darwin**: no pidfd exists. Discovery opens a kqueue exit watch before it verifies the executable and process start time, but the signal is a `kill(2)` by PID preceded by a non-blocking exit check. The kqueue watch cannot make that check-then-signal sequence atomic, so a PID reused between the check and the signal could receive the signal. This is a documented platform limitation pending native Darwin qualification.
 
 ### Capabilities Model and Enforcement Boundaries
 
@@ -180,7 +187,7 @@ Each Operator process declares its functional roles through startup flags:
 ```
 
 Witness constraints:
-- Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand`.
+- Processes carrying only `provenance` or `observer` capabilities are witnesses. They reject arbitrary command dispatch via `ValidateWitnessCommand` and native MCP tools other than the audit-receipt reads via `ValidateWitnessNativeTool`.
 - Adding `data` permits governed command execution in the same process.
 - Streamed inference progress is scrubbed at the source before publication. Streams are buffered line-by-line and scrubbed against regex patterns. Private keys are buffered until completion. The terminal `output_hash` binds the concatenated scrubbed progress chunks.
 
@@ -191,10 +198,10 @@ Bootstrap sends the active startup settings in `OperatorRuntimeConfig`, persiste
 Multiple Operator instances can execute concurrently on a single host. Operators are disambiguated by four factors:
 1. `local_dir`: The runtime working directory containing sovereign `.ztd/` state.
 2. `account`: The operating system user running the process.
-3. `port`: The platform-default Operator HTTPS port included in the fingerprint.
+3. `port`: The platform-default Operator HTTP port included in the fingerprint.
 4. `operator_capabilities`: The canonical set of enabled capabilities.
 
-The canonical `system_fingerprint` is a SHA-256 hash combining immutable host attributes (`os`, `arch`, `cpu_count`, `machine_id`, `hostname`) with `local_dir`, `account`, the platform-default Operator HTTPS port, and `capabilities`. Re-enrolling an existing fingerprint deactivates the prior session and replaces the document atomically.
+The canonical `system_fingerprint` is a SHA-256 hash combining immutable host attributes (`os`, `arch`, `cpu_count`, `machine_id`, `hostname`) with `local_dir`, `account`, the platform-default Operator HTTP port, and `capabilities`. Re-enrolling an existing fingerprint persists the replacement Operator document first, then terminates each prior non-terminated document for that fingerprint and deactivates its session. A failure between those steps leaves a redundant lease, and a retried enrollment supersedes it.
 
 ### Liveness, Heartbeats, and Staleness Derivation
 
@@ -222,11 +229,13 @@ Startup order in `StartOperator`:
 
 ### In-Band Certificate Renewal over mTLS Pub/Sub
 
-Workload leaf certificates are valid for 7 days. Two-thirds through the validity period, `OperatorCertRenewer` initiates in-band renewal:
+Operator leaf certificates are valid for `OperatorLeafCertTTL` (default 7 days). The Gateway caps it at `constants.MaxWorkloadLeafCertTTL` (7 days): config validation (`ValidateOperatorLeafCertTTL`) fails Gateway startup with `ErrConfigLeafCertTTLInvalid` for any value that is not positive or exceeds the cap. See [auth.md](auth.md#mutual-tls-and-spiffe-identity-binding) and [network.md](network.md) (`INV-NET-PKI-03`). Two-thirds through the validity period, a scheduled timer in `OperatorCertRenewer` (`internal/cli/serve/operator_cert_renewal.go`), computed from the leaf's `NotBefore` and `NotAfter`, initiates in-band renewal:
 1. Subscribes to `renewal:<operator_id>:<operator_session_id>` over the existing mTLS WebSocket connection.
 2. Generates a new P-256 key and CSR in memory and publishes a `request` frame.
 3. The Gateway validates connection identity, verifies the active session, issues a renewed leaf certificate, and updates L2 signer trust.
 4. The Operator swaps the in-memory certificate for future handshakes without interrupting established connections or writing to disk.
+
+A failed attempt retries with backoff (starting at 1 second, doubling, capped at 1 minute) until it succeeds, the Gateway refuses the renewal (final for that identity), or the leaf expires. After a refusal or expiry, the Operator stops renewing and re-enrolls. The renewed leaf is signed with the Gateway's `OperatorLeafCertTTL`, so it has the same lifetime as the enrolled leaf.
 
 ### Command Dispatch and Receipt Channels
 
@@ -263,7 +272,8 @@ A rejected transaction produces a rejection receipt instead of executing. The re
 ### Local State, Native Tools, and Git File Ledger
 
 - **State Directory (`.ztd/`)**: Contains SQLite database `data/ztd.db` (audit records, nonces, suspended transactions), encrypted vault storage (`vault/`), and Git file ledger (`data/ledger/`).
-- **Git File Ledger**: Every governed `FILE_EDIT` or `RESTORE_FILE` action creates an encrypted snapshot in Git before and after modification.
+- **Git File Ledger**: A governed `FILE_EDIT` that mutates a file writes encrypted snapshots to the Git file ledger before and after the change. `RESTORE_FILE` restores a file from a ledger commit under the same path policy.
+- **Native Tools**: A verified `MCP_CALL` envelope runs a tool from the shared registry (`RegisterNativeTools`) on the Operator's own host, `mcp.NewOperatorNativeToolHandler`; the Operator never constructs `mcp.GatewayService`. `audit_receipt_list` and `audit_receipt_get` read the Operator's own audit store, so their answers are authoritative for its receipts. Every other tool's result is scrubbed before it enters the signed receipt, and a missing egress scrubber fails the call closed. Witness-only Operators run only the audit-receipt reads (INV-OP-CAP-01). L1 screens `run_shell_command` as the command line it executes, exactly as `EXECUTE_BASH`.
 - **File Confinement**: Governed file operations cannot touch `.ztd/` runtime state except the controlled evaluation directory `.ztd/eval/targets/`. All I/O routes through `RuntimeFileService.OpenFileEditTarget`.
 - **Unsupported Patches**: File editing rejects the `patch` operation without creating a backup or changing the target. Protobuf field 12 (`patch_content`) remains in the wire contract for compatibility and is not consumed by the file-edit handler.
 - **Environment Scrubbing**: Command subprocesses never inherit the registry `secret` keys (`constants.SecretEnvVars`, from `protocol/constants/env_vars.json`), including keys loaded from `.env`. All other variables, including non-secret registry keys such as `ZTD_OLLAMA_ENDPOINT`, are inherited unchanged.
@@ -272,7 +282,7 @@ A rejected transaction produces a rejection receipt instead of executing. The re
 ### Autochthon Subsystem
 
 The `ztd autochthon` command is an isolated, autonomous runtime observer and forecaster operating without Gateway dependencies:
-- **Operation**: Samples system load, memory, and process metrics once per second. Trains a fixed-topology neural network predicting the next sample relative to a persistence baseline.
+- **Operation**: Samples once per second: load, memory in use, the `TERM` environment variable, process count, and the UTC hour, weekday, and minute. The hour, weekday, and minute senses are inputs only. Breeds a population of 16 fixed-topology networks (8 hidden units, direct input-to-output connections) by selection and mutation, with no gradient training. Each network predicts the next value of load, memory, TERM, and process count as a change from the current sample; the zero genome is persistence. The champion is the fittest genome over the last 128 samples, re-selected at each 32-sample episode boundary. Children are mutated copies of the top four genomes, with no crossover.
 - **State Storage**: Persisted under `.ztd/autochthon/` (`run.lock`, `culture.bin`, and hash-chained `tally.jsonl`).
 - **Independence**: Accepts no governance envelopes, opens no network listeners, and produces no `ActionReceipt` records. `ztd autochthon status` verifies the tally hash chain from genesis without acquiring locks.
 
@@ -286,7 +296,7 @@ The `ztd autochthon` command is an isolated, autonomous runtime observer and for
 
 - **Opening Inbound Management Listeners on Operators**: Exposing inbound ports instead of maintaining outbound-only mTLS connections (INV-OP-CONN-01).
 - **Executing Unverified Commands**: Treating Gateway delivery as proof of authorization without running the L4 Warden (INV-OP-CONN-02).
-- **Dispatching Commands to Witness Operators**: Sending mutating commands to Provenance or Observer operators lacking the `data` capability (INV-OP-CAP-01).
+- **Dispatching Commands to Witness Operators**: Sending commands or generic native MCP tools to Provenance or Observer Operators lacking the `data` or `inference` capability (INV-OP-CAP-01).
 - **Persisting Private Keys to Disk**: Writing Operator private keys or enrollment certificates to unencrypted files in `.ztd/` (INV-OP-STOR-02).
 - **Dangling Replay Nonce Reservations**: Failing to release a nonce after an ordinary L4 validation failure; explicit human L3 denial is the exception because its nonce remains spent (INV-OP-WARD-01).
 - **Executing Actions Before Initial Receipt Persistence**: Invoking execution handlers before the initial `EXECUTING` receipt and commitment attestation are persisted (INV-OP-ACT-01).

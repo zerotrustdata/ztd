@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.1.3
-last_updated: 2026-10-18
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/
   - protocol/docs/
@@ -159,6 +159,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Changelog](../../CHANGELOG.md): Release index documenting changes across versions with links to per-release notes.
 - [Early Testers Guide](../../EARLY_TESTERS.md): Feedback and bug reports: how to report defects, what to include, response expectations, and licensing summary.
 - [Third-Party Notices](../../THIRD_PARTY_NOTICES.md): Distributed third-party software licenses and notices generated from committed vendor and npm metadata (`INV-DOC-GEN-07`).
+- [Commercial OEM License Agreement](../../legal/oem-license-agreement.md): Agreement template for OEM buyers who embed and redistribute ztd in their products, published at `/terms/oem/`.
 - [Contributing](../../.github/CONTRIBUTING.md): Contribution workflow, local development setup, check selection, pull request and issue expectations, documentation contributions, and licensing.
 - [Code of Conduct](../../.github/CODE_OF_CONDUCT.md): Contributor code of conduct.
 - [Security Policy](../../.github/SECURITY.md): Supported versions, private vulnerability reporting, disclosure policy, and scope.
@@ -187,7 +188,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Operator Architecture](../architecture/operator.md): Outbound and embedded Operator architecture, task execution, and host lifecycle.
 - [Governance Architecture](../architecture/governance.md): Five-layer governance framework (L1 doctrine to L5 audit), posture policies, and enforcement.
 - [AI Agents and Governance Boundary](../architecture/agents.md): AI agent integration patterns, tool boundaries, and trust limits.
-- [Consensus Architecture](../architecture/consensus.md): L2 bound application deliberation, verification, and receipt evidence.
+- [Consensus Architecture](../architecture/consensus.md): L2 K-of-N bound-member deliberation, verification, and receipt evidence.
 - [Storage Architecture](../architecture/storage.md): SQLite persistence, schema migrations, and storage service layout.
 - [Events Architecture](../architecture/events.md): Event taxonomy, delivery guarantees, and event bus lifecycle.
 - [Evaluation Architecture](../architecture/evals.md): Native evaluation framework, campaign specifications, scoring, and evidence capture.
@@ -219,13 +220,13 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Reset Workload Identity](../guides/reset_workload_identity.md): Resetting and re-enrolling workload identity credentials.
 - [Run an Autochthon](../guides/autochthon.md): Running Gateway-less `ztd autochthon`, reading status reports, anchoring and recovering tallies.
 - [Sovereignty Gauntlet](../guides/sovereignty_gauntlet.md): Step-by-step verification procedures for sovereignty and governance controls.
-- [Lovable Integration](../guides/lovable.md): Integrating with Lovable.dev low-code applications.
+- [Connect a Lovable App to the Gateway](../guides/lovable.md): Connecting a Lovable.dev frontend to the Gateway with origin registration and certificate trust.
 - [Host-Native Headless UX Smoke Test](../guides/ux_smoke_test.md): Release smoke runbook for `./ztd test release-smoke`: options, scenarios, evidence, and acceptance criteria.
 
 #### Reference and compliance (`docs/reference/`)
 
 - [Glossary](../reference/glossary.md): Canonical platform definitions, acronyms, and terminology.
-- [Compliance Alignment](../reference/compliance-alignment.md): Mapping of ztd controls to NIST, SOC 2, ISO 27001, and COSAiS frameworks.
+- [Compliance Alignment](../reference/compliance-alignment.md): Mapping of ztd assertions to FedRAMP 20x KSIs, NIST SP 800-53 controls, and COSAiS overlays.
 - [Compliance Evidence](../reference/compliance-evidence.md): Evidence collection requirements, schema definitions, and audit verification.
 - [FIPS 140-3 Module Linkage and Scope](../reference/fips140-3.md): FIPS 140-3 cryptographic module boundary, build flags, and verification instructions.
 
@@ -251,6 +252,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Generated Eval API](../../protocol/docs/reference/api/ztd/eval/v1/index.md): Evaluation campaign, scenario, and metrics messages.
 - [Generated Operator API](../../protocol/docs/reference/api/ztd/operator/v1/index.md): Operator task, execution, and receipt messages.
 - [Generated PubSub API](../../protocol/docs/reference/api/ztd/pubsub/v1/index.md): Pub/sub message contracts and event envelopes.
+- [Generated Tribunal API](../../protocol/docs/reference/api/ztd/tribunal/v1/index.md): Tribunal intent request and result, member call, outcome, and stage messages.
 - [Protocol Conformance](../../protocol/conformance/README.md): Conformance test harness and cross-language compatibility tests.
 
 #### Claude Code plugin (`claude-plugin/`)
@@ -264,6 +266,8 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [From 936 to 2,000 Operators on one Gateway](../../website/content/posts/enrolling-two-thousand-operators.md): Build in Public field notes on enrollment scale, measurements, and limits.
 - [Going public, and finding out onboarding only worked on Linux](../../website/content/posts/going-public-onboarding-beyond-linux.md): Build in Public field notes on the public repo, the unshipped 1.0.1–1.0.3 tags, and Windows and macOS onboarding.
 - [The day my evals deleted the repo](../../website/content/posts/the-day-my-evals-deleted-the-repo.md): Build in Public field notes on an eval bug that wiped the repo root, evals bypassing L1–L5, and demo-driven v1.1.0 testing.
+- [Ugly evals, pprof, and the bugs in L2–L5](../../website/content/posts/ugly-evals-pprof-and-the-bugs-in-l2-l5.md): Build in Public field notes on bolted-on evaluations, pprof profiling, and the bugs they exposed across L2–L5.
+- [Commercial License and Services Terms](../../website/content/terms.md): Commercial license plans, production limits, and services terms for purchases on zerotrustdata.io, published at `/terms/`.
 - [Evaluation Explorer Runbook](../../evaluation-explorer/RUNBOOK.md): Operational runbook for developing and building the Evaluation Explorer SPA.
 - [Evaluation Explorer Contract](../../evaluation-explorer/src/contract/CONTRACT.md): Browser view contract, canonical schema validators, and release provenance rules.
 - [Evaluation Campaign README](../../eval/README.md): Evaluation campaign data layout, fixtures, and directory conventions.
@@ -285,12 +289,20 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.0.5 Release Notes](../release_notes/v1.0.x/v1.0.5.md): v1.0.5 release scope and changes.
 - [v1.0.6 Release Notes](../release_notes/v1.0.x/v1.0.6.md): v1.0.6 release scope and changes.
 - [v1.0.6 Compliance Evidence](../release_notes/v1.0.x/v1.0.6-compliance-evidence.md): Generated compliance evidence projection for v1.0.6.
+- [v1.0.6 Compliance Evidence CSV](../release_notes/v1.0.x/v1.0.6-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.0.6.
 - [v1.1.0 Release Notes](../release_notes/v1.1.x/v1.1.0.md): v1.1.0 release scope and changes.
 - [v1.1.0 Compliance Evidence](../release_notes/v1.1.x/v1.1.0-compliance-evidence.md): Generated compliance evidence projection for v1.1.0.
+- [v1.1.0 Compliance Evidence CSV](../release_notes/v1.1.x/v1.1.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.1.0.
 - [v1.1.1 Release Notes](../release_notes/v1.1.x/v1.1.1.md): v1.1.1 release scope and changes.
 - [v1.1.1 Compliance Evidence](../release_notes/v1.1.x/v1.1.1-compliance-evidence.md): Generated compliance evidence projection for v1.1.1.
+- [v1.1.1 Compliance Evidence CSV](../release_notes/v1.1.x/v1.1.1-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.1.1.
 - [v1.1.2 Release Notes](../release_notes/v1.1.x/v1.1.2.md): v1.1.2 release scope and changes.
 - [v1.1.2 Compliance Evidence](../release_notes/v1.1.x/v1.1.2-compliance-evidence.md): Generated compliance evidence projection for v1.1.2.
+- [v1.1.2 Compliance Evidence CSV](../release_notes/v1.1.x/v1.1.2-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.1.2.
+- [v1.1.3 Release Notes](../release_notes/v1.1.x/v1.1.3.md): v1.1.3 release scope and changes.
+- [v1.1.3 Compliance Evidence](../release_notes/v1.1.x/v1.1.3-compliance-evidence.md): Generated compliance evidence projection for v1.1.3.
+- [v1.1.3 Compliance Evidence CSV](../release_notes/v1.1.x/v1.1.3-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.1.3.
+- [v1.2.0 Release Notes](../release_notes/v1.2.x/v1.2.0.md): Release preparation draft; final qualification and signed compliance evidence pending.
 
 ## Procedures
 
@@ -321,7 +333,6 @@ Execute these steps in order when updating maintained documentation:
 | Persistence and runtime files | Owning store or service and `internal/services/fs/` for `.ztd/` state | Path constants, schema lifecycle, permissions, cleanup behavior, and tests using isolated runtime roots |
 | Wire messages and gRPC services | Protobuf schemas in `protocol/proto/ztd/`, model schemas in `protocol/models/`, and canonicalization implementations | Generated bindings, vectors, contract tests, and cross-language conformance tests |
 | Protocol identifiers and registries | Registry-specific source declaration in `protocol/constants/` or `internal/constants/` | Mirrors, consumers, package loaders, and contract tests; verify owning generator and check target |
-| Agent tool registry | Checked-in source registry in `protocol/constants/agenttools/agent-tool-registry.json` and Go accessor in `registry.go` | Embedded JSON document tests |
 | Gateway OpenAPI | Router/controller behavior and Go Swagger annotations in `cmd/ztd`, `internal/services/gateway/`, `internal/models/`, `internal/constants/` | Generated `swagger.json` and `swagger.yaml`, route registration, and authentication behavior |
 | Third-party dependencies and notices | Committed dependencies in `go.mod`, `vendor/modules.txt`, and npm `package.json` | `THIRD_PARTY_NOTICES.md` generated via `make third-party-notices` |
 | Deployment and ports | Host lifecycle targets in `Makefile` (`up`, `gw`, `operator`, `status`, `down`), `ztd gw start` and `ztd operator start` flags, and `internal/constants/ports.go` | Listener defaults, identity enrollment, network exposure, and documented commands |

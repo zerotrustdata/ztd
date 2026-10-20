@@ -309,6 +309,82 @@ func TestSubscribeApprovals_WaitFailsClosedWhenStreamEndsBeforeApproval(t *testi
 	assert.Equal(t, int32(1), connections.Load(), "a stream that ended after connecting must not be re-opened")
 }
 
+// approvalsChangedFrame returns one ztd.v1.platform.approvals.changed SSE frame for subject.
+func approvalsChangedFrame(t *testing.T, subject models.ApprovalsChangedSubject) string {
+	t.Helper()
+	data, err := json.Marshal(models.ApprovalsChangedPayload{Subject: subject, Timestamp: time.Now().UTC()})
+	require.NoError(t, err)
+	event, err := json.Marshal(struct {
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
+	}{Type: string(constants.EventPlatformApprovalsChanged), Data: data})
+	require.NoError(t, err)
+	envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: "user-changed", CliSessionID: "cli-changed", Event: event})
+	require.NoError(t, err)
+	return fmt.Sprintf("event: %s\ndata: %s\n\n", constants.EventPlatformApprovalsChanged, envelopeJSON)
+}
+
+// TestSubscribeApprovals_WaitTransactionsChangedWakesOnTransactionsAnnouncement checks that
+// a transactions invalidation wakes the caller, which then re-lists the pending transactions.
+func TestSubscribeApprovals_WaitTransactionsChangedWakesOnTransactionsAnnouncement(t *testing.T) {
+	frame := approvalsChangedFrame(t, models.ApprovalsChangedTransactions)
+	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
+		startSSE(w)
+		writeSSE(w, frame)
+		<-r.Context().Done()
+	})
+
+	sub, err := SubscribeApprovals(context.Background(), srv.Client(), srv.URL, "cli-changed")
+	require.NoError(t, err)
+	defer sub.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, sub.WaitTransactionsChanged(ctx))
+}
+
+// TestSubscribeApprovals_WaitTransactionsChangedIgnoresEnrollmentAnnouncement checks that an
+// enrollments invalidation does not wake a transactions waiter. The approval that follows it
+// on the same stream is processed first, so the wait sees the enrollments frame already.
+func TestSubscribeApprovals_WaitTransactionsChangedIgnoresEnrollmentAnnouncement(t *testing.T) {
+	const userID = "user-enrollment-only"
+	const txHash = "tx-enrollment-only"
+	frames := approvalsChangedFrame(t, models.ApprovalsChangedEnrollments) + approvalFrame(t, userID, txHash, resumedReceiptJSON(t, txHash))
+	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
+		startSSE(w)
+		writeSSE(w, frames)
+		<-r.Context().Done()
+	})
+
+	sub, err := SubscribeApprovals(context.Background(), srv.Client(), srv.URL, "cli-enrollment-only")
+	require.NoError(t, err)
+	defer sub.Close()
+
+	_, err = sub.Wait(context.Background(), txHash, userID)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	require.ErrorIs(t, sub.WaitTransactionsChanged(ctx), context.DeadlineExceeded)
+}
+
+// TestSubscribeApprovals_WaitTransactionsChangedFailsClosedWhenStreamEnds checks that a
+// transactions waiter fails at once when the stream ends before any announcement.
+func TestSubscribeApprovals_WaitTransactionsChangedFailsClosedWhenStreamEnds(t *testing.T) {
+	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
+		startSSE(w)
+		// Returning closes the stream cleanly without an announcement.
+	})
+
+	sub, err := SubscribeApprovals(context.Background(), srv.Client(), srv.URL, "cli-stream-closed")
+	require.NoError(t, err)
+	defer sub.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.ErrorIs(t, sub.WaitTransactionsChanged(ctx), constants.ErrSSEStreamClosed)
+}
+
 func TestSubscribeApprovals_ReturnsFirstConnectFailureWithoutRetry(t *testing.T) {
 	tests := []struct {
 		name    string

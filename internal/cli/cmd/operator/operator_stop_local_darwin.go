@@ -17,9 +17,10 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/ebitengine/purego"
+	"github.com/zerotrustdata/ztd/internal/cli/platform"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"golang.org/x/sys/unix"
 )
 
@@ -58,10 +59,10 @@ var loadLibproc = sync.OnceValues(func() (*libprocAPI, error) {
 	return api, nil
 })
 
-// Register a kqueue exit watch before confirming identity, so a PID reused
-// between listing and registration is detected by its start time, and a
-// recorded exit stops any later signal. Inspect argv tokens, never a substring
-// of a shell command or a parent PID.
+// Open an exit watch before confirming identity, so a PID reused between listing
+// and opening is detected by its start time, and a recorded exit stops any later
+// signal. Inspect argv tokens, never a substring of a shell command or a parent
+// PID.
 func discoverLocalOperators() ([]localOperatorProcess, error) {
 	api, err := loadLibproc()
 	if err != nil {
@@ -69,7 +70,7 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 	}
 	procs, err := unix.SysctlKinfoProcSlice("kern.proc.uid", os.Geteuid())
 	if err != nil {
-		return nil, fmt.Errorf("operator stop: discover local workers: %w", err)
+		return nil, fmt.Errorf("operator stop: discover local Operators: %w", err)
 	}
 	var processes []localOperatorProcess
 	for i := range procs {
@@ -95,8 +96,8 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 }
 
 func watchLocalOperator(api *libprocAPI, pid int, started unix.Timeval) (localOperatorProcess, bool, error) {
-	kq, err := watchExit(pid)
-	if errors.Is(err, unix.ESRCH) {
+	watch, err := platform.WatchProcessExit(pid)
+	if errors.Is(err, constants.ErrProcessNotFound) {
 		return localOperatorProcess{}, false, nil
 	}
 	if err != nil {
@@ -107,24 +108,16 @@ func watchLocalOperator(api *libprocAPI, pid int, started unix.Timeval) (localOp
 	executable, exeErr := processPath(api, pid)
 	if err != nil || argsErr != nil || exeErr != nil || info.Proc.P_starttime != started ||
 		!isLocalOperatorArgv(args) || !isZtdExecutable(filepath.Base(executable)) {
-		_ = unix.Close(kq)
+		_ = watch.Close()
 		return localOperatorProcess{}, false, nil
 	}
 	cwd, _ := processCwd(api, pid)
 	dir := localOperatorDir(args, cwd)
 
-	exited := false
-	wait := func(timeout time.Duration) (bool, error) {
-		if exited {
-			return true, nil
-		}
-		ok, err := waitExit(kq, timeout)
-		exited = ok
-		return ok, err
-	}
+	wait := exitWait(watch)
 	return localOperatorProcess{
 		pid: pid, dir: dir, sessionID: localOperatorSessionID(dir),
-		close: func() { _ = unix.Close(kq) },
+		close: func() { _ = watch.Close() },
 		signal: func(force bool) error {
 			// Never signal a PID whose watched process already exited: the
 			// number may belong to another process by now.
@@ -142,39 +135,6 @@ func watchLocalOperator(api *libprocAPI, pid int, started unix.Timeval) (localOp
 		},
 		wait: wait,
 	}, true, nil
-}
-
-// watchExit returns a kqueue that reports NOTE_EXIT for pid.
-func watchExit(pid int) (int, error) {
-	kq, err := unix.Kqueue()
-	if err != nil {
-		return -1, err
-	}
-	var change unix.Kevent_t
-	unix.SetKevent(&change, pid, unix.EVFILT_PROC, unix.EV_ADD|unix.EV_ONESHOT)
-	change.Fflags = unix.NOTE_EXIT
-	if _, err := unix.Kevent(kq, []unix.Kevent_t{change}, nil, nil); err != nil {
-		_ = unix.Close(kq)
-		return -1, err
-	}
-	return kq, nil
-}
-
-// waitExit reports whether the process watched by kq exited within timeout.
-func waitExit(kq int, timeout time.Duration) (bool, error) {
-	deadline := time.Now().Add(max(timeout, 0))
-	events := make([]unix.Kevent_t, 1)
-	for {
-		ts := unix.NsecToTimespec(max(time.Until(deadline), 0).Nanoseconds())
-		n, err := unix.Kevent(kq, nil, events, &ts)
-		if errors.Is(err, unix.EINTR) {
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-		return n > 0, nil
-	}
 }
 
 // processArgs reads argv from kern.procargs2: a native int argc, the exec path,
@@ -222,17 +182,4 @@ func processCwd(api *libprocAPI, pid int) (string, error) {
 	}
 	path := buf[procVnodeInfoSize : procVnodeInfoSize+unix.PathMax]
 	return unix.ByteSliceToString(path), nil
-}
-
-// waitPIDTermination waits for the process with the given PID to exit, up to timeout.
-func waitPIDTermination(pid int, timeout time.Duration) (bool, error) {
-	kq, err := watchExit(pid)
-	if errors.Is(err, unix.ESRCH) {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = unix.Close(kq) }()
-	return waitExit(kq, timeout)
 }

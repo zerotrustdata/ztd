@@ -395,7 +395,7 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	require.NoError(t, err)
 	exchangeRef, err := store.SaveJSONArtifact(ctx, EvidenceScope{RunID: req.RunID, ScenarioID: "scenario-1", AttemptID: "attempt-1"}, complianceevidence.ArtifactTypeEvalExchange, exchanges)
 	require.NoError(t, err)
-	exchangeBody, err := rt.files.ReadFile(ctx, filepath.Join(evaluationEvidenceDir(req.RunID), exchangeRef.GetSha256()+constants.FileExtJSON))
+	exchangeBody, err := rt.files.ReadFile(ctx, filepath.Join(store.layout.evidenceDir(req.RunID), exchangeRef.GetSha256()+constants.FileExtJSON))
 	require.NoError(t, err)
 	assert.Contains(t, string(exchangeBody), evidenceMarker, "the exchange evidence round-trips through the encrypted store")
 

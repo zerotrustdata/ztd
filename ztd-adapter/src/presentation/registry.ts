@@ -9,13 +9,13 @@
 // This module is pure: it maps a NormalizedGatewayEvent or a projection to a
 // presentation model. It does not touch the DOM, network, or state stores.
 
-import type { NormalizedGatewayEvent } from '../sse/normalizer';
+import type { NormalizedGatewayEvent } from '../sse/normalizer.js';
 import type {
   AgentStateProjection,
   EvalSummary,
   RunSummary,
-} from '../types/observe';
-import type { NarrativeRow } from '../state/stores';
+} from '../types/observe.js';
+import type { NarrativeRow } from '../state/stores.js';
 
 // --- View states ---
 
@@ -339,8 +339,8 @@ export function presentNarrativeRow(row: NarrativeRow): NarrativeRowPresentation
 
 // --- Connection view state ---
 
-import type { SseConnectionState } from '../sse/stream';
-import type { AuthStatus } from '../state/stores';
+import type { SseConnectionState } from '../sse/stream.js';
+import type { AuthStatus } from '../state/stores.js';
 
 export function connectionViewState(state: SseConnectionState): ViewState {
   switch (state) {

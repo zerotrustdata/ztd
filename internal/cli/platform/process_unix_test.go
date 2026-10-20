@@ -11,6 +11,7 @@
 package platform
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -76,43 +77,37 @@ func (m *mockCommandExecutor) Run(cmd *exec.Cmd) error {
 	return nil
 }
 
-// mockSleeper is a mock implementation of the sleeper interface
-type mockSleeper struct {
-	sleepFunc func(d time.Duration)
+// mockExitWatcher is a mock implementation of the exitWatcher interface.
+// Its default Wait reports the process as already exited.
+type mockExitWatcher struct {
+	waitFunc  func(ctx context.Context) error
+	closeFunc func() error
 }
 
-func (m *mockSleeper) Sleep(d time.Duration) {
-	if m.sleepFunc != nil {
-		m.sleepFunc(d)
+func (m *mockExitWatcher) Wait(ctx context.Context) error {
+	if m.waitFunc != nil {
+		return m.waitFunc(ctx)
 	}
+	return nil
 }
 
-// mockTicker is a mock implementation of the ticker interface
-type mockTicker struct {
-	c        chan time.Time
-	stopFunc func()
-}
-
-func (m *mockTicker) C() <-chan time.Time {
-	return m.c
-}
-
-func (m *mockTicker) Stop() {
-	if m.stopFunc != nil {
-		m.stopFunc()
+func (m *mockExitWatcher) Close() error {
+	if m.closeFunc != nil {
+		return m.closeFunc()
 	}
+	return nil
 }
 
-// mockTickerFactory is a mock implementation of the tickerFactory interface
-type mockTickerFactory struct {
-	newTickerFunc func(d time.Duration) ticker
+// mockExitWatchOpener is a mock implementation of the exitWatchOpener interface
+type mockExitWatchOpener struct {
+	openFunc func(pid int) (exitWatcher, error)
 }
 
-func (m *mockTickerFactory) NewTicker(d time.Duration) ticker {
-	if m.newTickerFunc != nil {
-		return m.newTickerFunc(d)
+func (m *mockExitWatchOpener) Open(pid int) (exitWatcher, error) {
+	if m.openFunc != nil {
+		return m.openFunc(pid)
 	}
-	return &mockTicker{c: make(chan time.Time)}
+	return &mockExitWatcher{}, nil
 }
 
 func TestIsProcessRunningWithFinder(t *testing.T) {
@@ -380,221 +375,224 @@ func TestStopProcessWithDeps(t *testing.T) {
 		t.Fatalf("NewProcessManager failed: %v", err)
 	}
 
+	// signalRecorder returns a finder whose processes append each signal to
+	// signals and fail with failErr when they receive failOn.
+	signalRecorder := func(signals *[]syscall.Signal, failOn syscall.Signal, failErr error) *mockProcessFinder {
+		return &mockProcessFinder{
+			findProcessFunc: func(pid int) (process, error) {
+				return &mockProcess{
+					signalFunc: func(sig syscall.Signal) error {
+						*signals = append(*signals, sig)
+						if sig == failOn {
+							return failErr
+						}
+						return nil
+					},
+				}, nil
+			},
+		}
+	}
+
+	// blockUntilDeadline stands in for an exit wait that never sees an exit.
+	blockUntilDeadline := func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+
 	t.Run("returns nil for PID 0", func(t *testing.T) {
-		finder := &mockProcessFinder{}
-		sleeper := &mockSleeper{}
-		tickerFactory := &mockTickerFactory{}
-		err := pm.stopProcessWithDeps(0, finder, sleeper, tickerFactory, 10*time.Second)
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				t.Error("exit watch should not open for PID 0")
+				return nil, errors.New("unexpected open")
+			},
+		}
+		err := pm.stopProcessWithDeps(0, &mockProcessFinder{}, exits, 10*time.Second)
 		if err != nil {
 			t.Errorf("expected nil for PID 0, got %v", err)
 		}
 	})
 
 	t.Run("returns nil when process is not running", func(t *testing.T) {
-		finder := &mockProcessFinder{
-			findProcessFunc: func(pid int) (process, error) {
-				return nil, errors.New("process not found")
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				return nil, fmt.Errorf("watch: %w", constants.ErrProcessNotFound)
 			},
 		}
-		sleeper := &mockSleeper{}
-		tickerFactory := &mockTickerFactory{}
-		err := pm.stopProcessWithDeps(123, finder, sleeper, tickerFactory, 10*time.Second)
+		finder := &mockProcessFinder{
+			findProcessFunc: func(pid int) (process, error) {
+				t.Error("no process should be signaled when the PID has no process")
+				return nil, errors.New("unexpected find")
+			},
+		}
+		err := pm.stopProcessWithDeps(123, finder, exits, 10*time.Second)
 		if err != nil {
 			t.Errorf("expected nil when process not running, got %v", err)
 		}
 	})
 
-	t.Run("returns error when FindProcess fails after running check", func(t *testing.T) {
-		callCount := 0
+	t.Run("returns error when exit watch cannot open", func(t *testing.T) {
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				return nil, errors.New("watch unavailable")
+			},
+		}
 		finder := &mockProcessFinder{
 			findProcessFunc: func(pid int) (process, error) {
-				callCount++
-				if callCount == 1 {
-					// First call for isProcessRunning - process is running
-					return &mockProcess{
-						signalFunc: func(sig syscall.Signal) error {
-							return nil
-						},
-					}, nil
-				}
-				// Second call for stopProcess - process not found
+				t.Error("no process should be signaled without an exit watch")
+				return nil, errors.New("unexpected find")
+			},
+		}
+		err := pm.stopProcessWithDeps(123, finder, exits, 10*time.Second)
+		if err == nil {
+			t.Error("expected error when exit watch cannot open")
+		}
+	})
+
+	t.Run("returns error when FindProcess fails after watch opens", func(t *testing.T) {
+		closed := false
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				return &mockExitWatcher{
+					closeFunc: func() error {
+						closed = true
+						return nil
+					},
+				}, nil
+			},
+		}
+		finder := &mockProcessFinder{
+			findProcessFunc: func(pid int) (process, error) {
 				return nil, errors.New("process not found")
 			},
 		}
-		sleeper := &mockSleeper{}
-		tickerFactory := &mockTickerFactory{}
-		err := pm.stopProcessWithDeps(123, finder, sleeper, tickerFactory, 10*time.Second)
+		err := pm.stopProcessWithDeps(123, finder, exits, 10*time.Second)
 		if err == nil {
 			t.Error("expected error when FindProcess fails")
+		}
+		if !closed {
+			t.Error("exit watch should be closed on return")
 		}
 	})
 
 	t.Run("returns error when SIGTERM fails", func(t *testing.T) {
-		finder := &mockProcessFinder{
-			findProcessFunc: func(pid int) (process, error) {
-				return &mockProcess{
-					signalFunc: func(sig syscall.Signal) error {
-						if sig == syscall.SIGTERM {
-							return errors.New("SIGTERM failed")
-						}
-						return nil
-					},
-				}, nil
-			},
-		}
-		sleeper := &mockSleeper{}
-		tickerFactory := &mockTickerFactory{}
-		err := pm.stopProcessWithDeps(123, finder, sleeper, tickerFactory, 10*time.Second)
+		var signals []syscall.Signal
+		finder := signalRecorder(&signals, syscall.SIGTERM, errors.New("SIGTERM failed"))
+		err := pm.stopProcessWithDeps(123, finder, &mockExitWatchOpener{}, 10*time.Second)
 		if err == nil {
 			t.Error("expected error when SIGTERM fails")
 		}
+		if len(signals) != 1 || signals[0] != syscall.SIGTERM {
+			t.Errorf("expected SIGTERM only, got %v", signals)
+		}
 	})
 
-	t.Run("returns nil when process exits after SIGTERM", func(t *testing.T) {
-		sigtermCalled := false
-		finder := &mockProcessFinder{
-			findProcessFunc: func(pid int) (process, error) {
-				return &mockProcess{
-					signalFunc: func(sig syscall.Signal) error {
-						if sig == syscall.SIGTERM {
-							sigtermCalled = true
-							return nil
-						}
-						// Process is running until SIGTERM is sent
-						if sigtermCalled {
-							return errors.New("process not running")
-						}
-						return nil
-					},
-				}, nil
-			},
-		}
-		sleeper := &mockSleeper{}
-		tickerFactory := &mockTickerFactory{
-			newTickerFunc: func(d time.Duration) ticker {
-				tickerChan := make(chan time.Time, 1)
-				tickerChan <- time.Now() // Immediate tick
-				return &mockTicker{
-					c: tickerChan,
-					stopFunc: func() {
-						close(tickerChan)
-					},
+	t.Run("opens exit watch before SIGTERM and returns nil when process exits", func(t *testing.T) {
+		var signals []syscall.Signal
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				if len(signals) != 0 {
+					t.Error("exit watch must open before any signal is sent")
 				}
+				// The default Wait reports the exit at once.
+				return &mockExitWatcher{}, nil
 			},
 		}
-		err := pm.stopProcessWithDeps(123, finder, sleeper, tickerFactory, 10*time.Second)
+		finder := signalRecorder(&signals, syscall.SIGTERM, nil)
+		err := pm.stopProcessWithDeps(123, finder, exits, 10*time.Second)
 		if err != nil {
 			t.Errorf("expected nil when process exits after SIGTERM, got %v", err)
 		}
-		if !sigtermCalled {
-			t.Error("SIGTERM should have been called")
+		if len(signals) != 1 || signals[0] != syscall.SIGTERM {
+			t.Errorf("expected SIGTERM only, got %v", signals)
 		}
 	})
 
 	t.Run("sends SIGKILL after timeout", func(t *testing.T) {
-		finder := &mockProcessFinder{
-			findProcessFunc: func(pid int) (process, error) {
-				return &mockProcess{
-					signalFunc: func(sig syscall.Signal) error {
-						if sig == syscall.SIGTERM {
-							return nil
-						}
-						if sig == syscall.SIGKILL {
-							return nil
+		var signals []syscall.Signal
+		waits := 0
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				return &mockExitWatcher{
+					waitFunc: func(ctx context.Context) error {
+						waits++
+						if waits == 1 {
+							return blockUntilDeadline(ctx)
 						}
 						return nil
 					},
 				}, nil
 			},
 		}
-		sleeper := &mockSleeper{}
-		tickerFactory := &mockTickerFactory{
-			newTickerFunc: func(d time.Duration) ticker {
-				tickerChan := make(chan time.Time)
-				return &mockTicker{
-					c: tickerChan,
-					stopFunc: func() {
-						close(tickerChan)
-					},
-				}
-			},
+		finder := signalRecorder(&signals, syscall.SIGKILL, nil)
+		err := pm.stopProcessWithDeps(123, finder, exits, 50*time.Millisecond)
+		if err != nil {
+			t.Errorf("expected nil when process exits after SIGKILL, got %v", err)
 		}
-		// Use a short timeout by manipulating time.After indirectly
-		// Since we can't mock time.After, we'll just test the SIGKILL path
-		// by ensuring the ticker never fires
-		err := pm.stopProcessWithDeps(123, finder, sleeper, tickerFactory, 50*time.Millisecond)
-		// With a 50ms timeout, the SIGKILL path is exercised quickly.
-		_ = err
+		if len(signals) != 2 || signals[0] != syscall.SIGTERM || signals[1] != syscall.SIGKILL {
+			t.Errorf("expected SIGTERM then SIGKILL, got %v", signals)
+		}
 	})
 
 	t.Run("returns error when SIGKILL fails", func(t *testing.T) {
-		finder := &mockProcessFinder{
-			findProcessFunc: func(pid int) (process, error) {
-				return &mockProcess{
-					signalFunc: func(sig syscall.Signal) error {
-						if sig == syscall.SIGTERM {
-							return nil
-						}
-						if sig == syscall.SIGKILL {
-							return errors.New("SIGKILL failed")
-						}
-						return nil
-					},
-				}, nil
+		var signals []syscall.Signal
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				return &mockExitWatcher{waitFunc: blockUntilDeadline}, nil
 			},
 		}
-		sleeper := &mockSleeper{}
-		tickerFactory := &mockTickerFactory{
-			newTickerFunc: func(d time.Duration) ticker {
-				tickerChan := make(chan time.Time)
-				return &mockTicker{
-					c: tickerChan,
-					stopFunc: func() {
-						close(tickerChan)
-					},
-				}
-			},
+		finder := signalRecorder(&signals, syscall.SIGKILL, errors.New("SIGKILL failed"))
+		err := pm.stopProcessWithDeps(123, finder, exits, 50*time.Millisecond)
+		if err == nil {
+			t.Error("expected error when SIGKILL fails")
 		}
-		err := pm.stopProcessWithDeps(123, finder, sleeper, tickerFactory, 50*time.Millisecond)
-		_ = err
 	})
 
-	t.Run("returns nil when process exits after SIGKILL", func(t *testing.T) {
-		sigkillExitCount := 0
-		finder := &mockProcessFinder{
-			findProcessFunc: func(pid int) (process, error) {
-				return &mockProcess{
-					signalFunc: func(sig syscall.Signal) error {
-						if sig == syscall.SIGTERM {
-							return nil
+	t.Run("returns SIGKILL timeout error when process survives SIGKILL", func(t *testing.T) {
+		var signals []syscall.Signal
+		waits := 0
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				return &mockExitWatcher{
+					waitFunc: func(ctx context.Context) error {
+						waits++
+						if waits == 1 {
+							return blockUntilDeadline(ctx)
 						}
-						if sig == syscall.SIGKILL {
-							return nil
+						// The SIGKILL wait is bounded; the test does not sit out its budget.
+						if _, ok := ctx.Deadline(); !ok {
+							t.Error("SIGKILL wait should be bounded by a deadline")
 						}
-						// After SIGKILL, check if process exited
-						sigkillExitCount++
-						if sigkillExitCount > 0 {
-							return errors.New("process not running")
-						}
-						return nil
+						return context.DeadlineExceeded
 					},
 				}, nil
 			},
 		}
-		sleeper := &mockSleeper{}
-		tickerFactory := &mockTickerFactory{
-			newTickerFunc: func(d time.Duration) ticker {
-				tickerChan := make(chan time.Time)
-				return &mockTicker{
-					c: tickerChan,
-					stopFunc: func() {
-						close(tickerChan)
+		finder := signalRecorder(&signals, syscall.SIGTERM, nil)
+		err := pm.stopProcessWithDeps(123, finder, exits, 50*time.Millisecond)
+		if !errors.Is(err, constants.ErrProcessSigKillTimeout) {
+			t.Errorf("expected ErrProcessSigKillTimeout, got %v", err)
+		}
+	})
+
+	t.Run("returns error without SIGKILL when exit cannot be observed", func(t *testing.T) {
+		var signals []syscall.Signal
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				return &mockExitWatcher{
+					waitFunc: func(ctx context.Context) error {
+						return errors.New("poll failed")
 					},
-				}
+				}, nil
 			},
 		}
-		err := pm.stopProcessWithDeps(123, finder, sleeper, tickerFactory, 50*time.Millisecond)
-		_ = err
+		finder := signalRecorder(&signals, syscall.SIGTERM, nil)
+		err := pm.stopProcessWithDeps(123, finder, exits, 10*time.Second)
+		if err == nil {
+			t.Error("expected error when exit cannot be observed")
+		}
+		if len(signals) != 1 || signals[0] != syscall.SIGTERM {
+			t.Errorf("expected SIGTERM only, got %v", signals)
+		}
 	})
 }
 
@@ -673,94 +671,6 @@ func TestMockCommandExecutor(t *testing.T) {
 		}
 		if string(output) != string(expectedOutput) {
 			t.Errorf("expected %v, got %v", expectedOutput, output)
-		}
-	})
-}
-
-func TestMockSleeper(t *testing.T) {
-	t.Run("mockSleeper Sleep is no-op by default", func(t *testing.T) {
-		s := &mockSleeper{}
-		s.Sleep(time.Second) // Should not panic
-	})
-
-	t.Run("mockSleeper Sleep uses custom function", func(t *testing.T) {
-		called := false
-		s := &mockSleeper{
-			sleepFunc: func(d time.Duration) {
-				called = true
-				if d != time.Second {
-					t.Errorf("expected 1s, got %v", d)
-				}
-			},
-		}
-		s.Sleep(time.Second)
-		if !called {
-			t.Error("sleep function should have been called")
-		}
-	})
-}
-
-func TestMockTicker(t *testing.T) {
-	t.Run("mockTicker C returns channel", func(t *testing.T) {
-		tickerChan := make(chan time.Time, 1)
-		tickerChan <- time.Now()
-		ticker := &mockTicker{c: tickerChan}
-		c := ticker.C()
-		if c == nil {
-			t.Error("expected non-nil channel")
-		}
-		select {
-		case <-c:
-			// OK
-		default:
-			t.Error("channel should have value")
-		}
-	})
-
-	t.Run("mockTicker Stop is no-op by default", func(t *testing.T) {
-		tickerChan := make(chan time.Time)
-		ticker := &mockTicker{c: tickerChan}
-		ticker.Stop() // Should not panic
-	})
-
-	t.Run("mockTicker Stop uses custom function", func(t *testing.T) {
-		called := false
-		tickerChan := make(chan time.Time)
-		ticker := &mockTicker{
-			c: tickerChan,
-			stopFunc: func() {
-				called = true
-			},
-		}
-		ticker.Stop()
-		if !called {
-			t.Error("stop function should have been called")
-		}
-	})
-}
-
-func TestMockTickerFactory(t *testing.T) {
-	t.Run("mockTickerFactory NewTicker returns mock by default", func(t *testing.T) {
-		f := &mockTickerFactory{}
-		ticker := f.NewTicker(time.Second)
-		if ticker == nil {
-			t.Error("expected non-nil ticker")
-		}
-	})
-
-	t.Run("mockTickerFactory NewTicker uses custom function", func(t *testing.T) {
-		expectedTicker := &mockTicker{}
-		f := &mockTickerFactory{
-			newTickerFunc: func(d time.Duration) ticker {
-				if d != time.Second {
-					t.Errorf("expected 1s, got %v", d)
-				}
-				return expectedTicker
-			},
-		}
-		ticker := f.NewTicker(time.Second)
-		if ticker != expectedTicker {
-			t.Error("expected custom ticker")
 		}
 	})
 }

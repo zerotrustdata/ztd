@@ -765,8 +765,8 @@ LAUNCH AN AGENT (one command does everything):
 EXTERNAL MCP SERVERS:
   To govern external third-party MCP servers (stdio subprocess or HTTP), attach
   them directly to the gateway via downstream egress flags:
-    ztd serve gateway --mcp-downstream-cmd npx --mcp-downstream-args '-y,@modelcontextprotocol/server-filesystem,/path'
-    ztd serve gateway --mcp-downstream-url http://localhost:3000
+    ztd gw start --mcp-downstream-cmd npx --mcp-downstream-args '-y,@modelcontextprotocol/server-filesystem,/path'
+    ztd gw start --mcp-downstream-url http://localhost:3000
 
 ` + agentRunPostureHelp() + `
 
@@ -777,8 +777,8 @@ AUDIT TRAIL:
   trails separate from human operator activity.
 
   Query audit events for a specific agent:
-    ztd gw data audit list --operator-session-id spiffe://ztd.local/app/claude
-    ztd gw data audit summary --operator-session-id spiffe://ztd.local/app/claude
+    ztd audit events --app spiffe://ztd.local/app/claude
+    ztd audit summary --app spiffe://ztd.local/app/claude
 
 APPLICATION ENROLLMENT MODEL:
   Each agent is an application enrolled through the owner-approved platform
@@ -1053,7 +1053,7 @@ func agentAppEnrollmentOptions(fileSvc fs.RuntimeFileService, cfg *config.Config
 		return auth.AppEnrollmentOptions{}, fmt.Errorf("owner API client: %w", err)
 	}
 	return auth.AppEnrollmentOptions{
-		Approver: authcmd.OwnerAppEnrollmentApprover(ownerClient, "ztd mcp agent run: enrolled by the authenticated owner"),
+		Approver: auth.OwnerAppEnrollmentApprover(ownerClient, "ztd mcp agent run: enrolled by the authenticated owner"),
 	}, nil
 }
 

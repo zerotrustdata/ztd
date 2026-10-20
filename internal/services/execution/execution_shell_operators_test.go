@@ -350,52 +350,64 @@ func TestExecutionService_ConcurrencyStress(t *testing.T) {
 
 	t.Run("context cancelled while waiting for semaphore", func(t *testing.T) {
 		t.Parallel()
-		maxConcurrent := cfg.MaxConcurrentTasks
-		var wg sync.WaitGroup
-
-		// Fill all semaphore slots
-		for i := 0; i < maxConcurrent; i++ {
-			wg.Add(1)
-			go func(idx int) {
-				defer wg.Done()
-				req := &models.ExecutionRequestPayload{
-					ExecutionID:    fmt.Sprintf("semaphore-fill-%d", idx),
-					CaseID:         "test-semaphore",
-					Command:        "sleep",
-					Args:           []string{"2"},
-					TimeoutSeconds: 5,
-					RequestedBy:    "test-user",
-				}
-				svc.ExecuteCommand(context.Background(), req)
-			}(i)
+		waitSvc := NewExecutionService(cfg, logger)
+		for range cap(waitSvc.semaphore) {
+			waitSvc.semaphore <- struct{}{}
 		}
+		t.Cleanup(func() {
+			for range cap(waitSvc.semaphore) {
+				<-waitSvc.semaphore
+			}
+		})
 
-		// Wait for executions to start with polling
-		require.Eventually(t, func() bool {
-			time.Sleep(200 * time.Millisecond)
-			return true
-		}, 500*time.Millisecond, 20*time.Millisecond)
+		ctx, cancel := context.WithCancel(context.Background())
+		type outcome struct {
+			result *models.ExecutionResult
+			err    error
+		}
+		done := make(chan outcome, 1)
+		go func() {
+			result, err := waitSvc.ExecuteCommand(ctx, &models.ExecutionRequestPayload{
+				ExecutionID:    "semaphore-cancelled",
+				CaseID:         "test-semaphore",
+				Command:        "echo",
+				Args:           []string{"blocked"},
+				TimeoutSeconds: 5,
+				RequestedBy:    "test-user",
+			})
+			done <- outcome{result: result, err: err}
+		}()
+		cancel()
 
-		// Try with cancelled context
+		got := <-done
+		assert.Nil(t, got.result)
+		require.ErrorIs(t, got.err, constants.ErrExecutionServiceStopping)
+		require.ErrorIs(t, got.err, context.Canceled)
+	})
+
+	t.Run("cancelled context never takes a free slot", func(t *testing.T) {
+		t.Parallel()
+		freeSvc := NewExecutionService(cfg, logger)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		req := &models.ExecutionRequestPayload{
-			ExecutionID:    "semaphore-cancelled",
-			CaseID:         "test-semaphore",
-			Command:        "echo",
-			Args:           []string{"blocked"},
-			TimeoutSeconds: 5,
-			RequestedBy:    "test-user",
+		// A select between a ready semaphore send and a closed Done channel
+		// picks either case at random, so repeat until a fail-open choice
+		// would have surfaced.
+		for i := range 64 {
+			result, err := freeSvc.ExecuteCommand(ctx, &models.ExecutionRequestPayload{
+				ExecutionID:    fmt.Sprintf("cancelled-free-slot-%d", i),
+				CaseID:         "test-semaphore",
+				Command:        "echo",
+				Args:           []string{"must-not-run"},
+				TimeoutSeconds: 5,
+				RequestedBy:    "test-user",
+			})
+			assert.Nil(t, result)
+			require.ErrorIs(t, err, constants.ErrExecutionServiceStopping)
+			require.ErrorIs(t, err, context.Canceled)
 		}
-
-		result, err := svc.ExecuteCommand(ctx, req)
-		require.Error(t, err)
-		assert.Nil(t, result)
-		// Check for context cancellation or service stopping error
-		require.ErrorIs(t, err, constants.ErrExecutionServiceStopping, "error should be ErrExecutionServiceStopping, got: %v", err.Error())
-
-		wg.Wait()
+		assert.Zero(t, len(freeSvc.semaphore))
 	})
 
 	t.Run("concurrent active executions tracking", func(t *testing.T) {

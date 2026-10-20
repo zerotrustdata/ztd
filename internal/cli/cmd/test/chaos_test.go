@@ -50,18 +50,19 @@ func TestChaosCmd(t *testing.T) {
 
 	t.Run("chaos long description mentions distribution", func(t *testing.T) {
 		cmd := chaosCmd()
-		assert.Contains(t, cmd.Long, "70%")
+		assert.Contains(t, cmd.Long, "60%")
 		assert.Contains(t, cmd.Long, "Good Actor")
 		assert.Contains(t, cmd.Long, "20%")
 		assert.Contains(t, cmd.Long, "Prompt Inj")
 		assert.Contains(t, cmd.Long, "10%")
 		assert.Contains(t, cmd.Long, "MitM")
+		assert.Contains(t, cmd.Long, "File Mut.")
 	})
 
-	t.Run("chaos command mentions TransactionVerifier and Actuator", func(t *testing.T) {
+	t.Run("chaos command mentions L4Warden and L5Actuator", func(t *testing.T) {
 		cmd := chaosCmd()
-		assert.Contains(t, cmd.Long, "TransactionVerifier")
-		assert.Contains(t, cmd.Long, "Actuator")
+		assert.Contains(t, cmd.Long, "L4Warden")
+		assert.Contains(t, cmd.Long, "L5Actuator")
 	})
 
 	t.Run("chaos command mentions in-process execution", func(t *testing.T) {

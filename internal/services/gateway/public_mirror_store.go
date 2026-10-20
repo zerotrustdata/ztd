@@ -28,6 +28,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 // publicMirrorSchema is the canonical public mirror SQLite schema, embedded at
@@ -147,10 +148,10 @@ type PublicMirrorStore struct {
 	logger  *slog.Logger
 }
 
-// OpenPublicMirrorStore opens the mirror store, imports a legacy state.json
-// once when no database exists yet, and verifies every retained signature,
-// hash chain, record, revocation, proof manifest, and proof artifact before
-// returning. Any inconsistency fails closed with ErrPublicFeedMirrorStoreCorrupt.
+// OpenPublicMirrorStore opens the mirror store at constants.PublicMirrorDBPath
+// and verifies every retained signature, hash chain, record, revocation, proof
+// manifest, and proof artifact before returning. Any inconsistency fails closed
+// with ErrPublicFeedMirrorStoreCorrupt.
 func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, logger *slog.Logger) (*PublicMirrorStore, error) {
 	if fileSvc == nil {
 		return nil, fmt.Errorf("public mirror store: %w: runtime file service", constants.ErrMissingRequiredField)
@@ -161,10 +162,7 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 	if err := fileSvc.MkdirAll(ctx, constants.PublicMirrorProofsDir, constants.PermDirPrivate); err != nil {
 		return nil, fmt.Errorf("public mirror store: create proofs dir: %w", err)
 	}
-	if err := importLegacyPublicMirrorState(ctx, fileSvc, logger); err != nil {
-		return nil, err
-	}
-	store, err := openPublicMirrorStoreAt(ctx, fileSvc, logger, constants.PublicMirrorDBPath)
+	store, err := openPublicMirrorStoreAt(ctx, fileSvc, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -175,10 +173,10 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 	return store, nil
 }
 
-func openPublicMirrorStoreAt(ctx context.Context, fileSvc fs.RuntimeFileService, logger *slog.Logger, relPath string) (*PublicMirrorStore, error) {
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(relPath)), logger)
+func openPublicMirrorStoreAt(ctx context.Context, fileSvc fs.RuntimeFileService, logger *slog.Logger) (*PublicMirrorStore, error) {
+	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.PublicMirrorDBPath)), logger)
 	if err != nil {
-		return nil, fmt.Errorf("public mirror store: open %s: %w", relPath, err)
+		return nil, fmt.Errorf("public mirror store: open %s: %w", constants.PublicMirrorDBPath, err)
 	}
 	if _, err := db.ExecWithRetry(ctx, publicMirrorSchema); err != nil {
 		_ = db.Close()
@@ -470,6 +468,9 @@ func insertPublicMirrorBatchHeader(ctx context.Context, tx *sql.Tx, batch models
 	return nil
 }
 
+// insertPublicMirrorRecords stores records and indexes their event records in
+// the caller's transaction, so a record and its index row commit or roll back
+// together.
 func insertPublicMirrorRecords(ctx context.Context, tx *sql.Tx, sourceID string, records []models.PublicFeedRecord) error {
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO records (source_id, sequence, record_type, record_hash, record_bytes) VALUES (?, ?, ?, ?, ?)`)
 	if err != nil {
@@ -481,7 +482,47 @@ func insertPublicMirrorRecords(ctx context.Context, tx *sql.Tx, sourceID string,
 			return fmt.Errorf("insert record %s@%d: %w", sourceID, record.Sequence, err)
 		}
 	}
+	return insertAssignmentEventRecords(ctx, tx, sourceID, records)
+}
+
+// insertAssignmentEventRecords indexes every event record by the run and
+// assignment its body names. The body is decoded with the same canonical
+// decoder the assignment audit database builder uses, so a record that cannot
+// be built into a database fails the insert instead of being stored unindexed.
+func insertAssignmentEventRecords(ctx context.Context, tx *sql.Tx, sourceID string, records []models.PublicFeedRecord) error {
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO assignment_event_records (source_id, sequence, run_id, assignment_id) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("prepare assignment event insert: %w", err)
+	}
+	defer stmt.Close()
+	for _, record := range records {
+		if record.RecordType != models.PublicFeedRecordTypeEvent {
+			continue
+		}
+		event := &evalv1.PublicLiveEvent{}
+		if err := evalv1.UnmarshalCanonical([]byte(record.RecordBytes), event); err != nil {
+			return fmt.Errorf("index event record %s@%d: %w: %w", sourceID, record.Sequence, constants.ErrPublicFeedRecordSchemaInvalid, err)
+		}
+		if _, err := stmt.ExecContext(ctx, sourceID, record.Sequence, event.GetRunId(), event.GetAssignmentId()); err != nil {
+			return fmt.Errorf("insert assignment event record %s@%d: %w", sourceID, record.Sequence, err)
+		}
+	}
 	return nil
+}
+
+// AssignmentEventRecords returns the retained event records of one run's
+// assignment, oldest first. It returns no records when none are retained.
+func (s *PublicMirrorStore) AssignmentEventRecords(ctx context.Context, sourceID, runID, assignmentID string) ([]models.PublicFeedRecord, error) {
+	records, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT r.sequence, r.record_type, r.record_hash, r.record_bytes
+		FROM assignment_event_records a
+		JOIN records r ON r.source_id = a.source_id AND r.sequence = a.sequence
+		WHERE a.source_id = ? AND a.run_id = ? AND a.assignment_id = ?
+		ORDER BY a.sequence`,
+		[]interface{}{sourceID, runID, assignmentID}, scanPublicMirrorRecord)
+	if err != nil {
+		return nil, fmt.Errorf("public mirror store: read assignment event records: %w", err)
+	}
+	return records, nil
 }
 
 func insertPublicMirrorRevocations(ctx context.Context, tx *sql.Tx, revocations []models.PublicKeyRevocationRecord) error {
@@ -562,6 +603,9 @@ func (s *PublicMirrorStore) appendBatch(ctx context.Context, batch models.Public
 				result, err := tx.ExecContext(ctx, `DELETE FROM records WHERE source_id = ? AND sequence < ?`, summary.SourceID, retainedFrom)
 				if err != nil {
 					return fmt.Errorf("prune records: %w", err)
+				}
+				if _, err := tx.ExecContext(ctx, `DELETE FROM assignment_event_records WHERE source_id = ? AND sequence < ?`, summary.SourceID, retainedFrom); err != nil {
+					return fmt.Errorf("prune assignment event records: %w", err)
 				}
 				actualPrunedRecords, err := result.RowsAffected()
 				if err != nil {

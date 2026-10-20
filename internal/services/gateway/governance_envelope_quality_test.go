@@ -201,7 +201,7 @@ func TestVerifyEnvelopeIdentityBinding_Exhaustive(t *testing.T) {
 				ActingAppId:       tc.actingAppID,
 				SourceComponent:   tc.source,
 			})
-			err := verifyEnvelopeIdentityBinding(req, envelope)
+			err := newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, envelope)
 			if tc.expectErr {
 				wantErr := tc.wantErr
 				if wantErr == nil {

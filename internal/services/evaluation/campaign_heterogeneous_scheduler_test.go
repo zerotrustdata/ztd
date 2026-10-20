@@ -20,11 +20,7 @@ import (
 func TestBuildHeterogeneousAssignmentMatrix_MaterializesStacksByScenarios(t *testing.T) {
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
-	stackSet, err := GenerateHeterogeneousStackSet(HeterogeneousStackGenerationRequest{
-		CampaignID: "heterogeneous-campaign",
-		Seed:       11,
-		Variants:   testHeterogeneousVariants(),
-	})
+	stackSet, err := testFormationStackSet("heterogeneous-campaign", 11, testFormationCatalogVariants())
 	require.NoError(t, err)
 	assignments, err := BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
 		CampaignID: "heterogeneous-campaign",

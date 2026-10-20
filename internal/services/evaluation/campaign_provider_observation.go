@@ -12,29 +12,15 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
-	"github.com/zerotrustdata/ztd/internal/services/inference"
+	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-)
-
-// ProviderObservationRemote loads provider-boundary observation evidence from a
-// remote gateway when local runtime files are unavailable.
-type ProviderObservationRemote interface {
-	Load(ctx context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, *operatorv1.InferenceProviderAttemptRecord, error)
-	// WatchRecorded delivers the provider attempt ID of every observation window
-	// the Gateway records; see evidenceWindowWatch.
-	WatchRecorded(ctx context.Context, connected func(), recorded func(providerAttemptID string)) error
-}
-
-const (
-	providerObservationArtifactType = "provider-boundary-observation-window"
-	providerObservationSchemaRef    = "ztd.eval.v1.ProviderBoundaryObservationWindow"
 )
 
 // ProviderObservationPolicy controls whether missing provider-boundary windows
@@ -116,223 +102,126 @@ var gradeToToolScorecardDimension = map[string]string{
 }
 
 // CampaignProviderObservationReader loads provider-boundary observation windows
-// and governed provider-attempt records for campaign verification.
+// and governed provider-attempt records for campaign verification and export. It
+// reads only the sealed copies in the run's evidence directory; the Gateway is
+// never consulted here, and capture belongs to CampaignWitnessCapture.
 type CampaignProviderObservationReader struct {
-	windows       provider_observer.WindowStore
-	attempts      inference.AttemptStore
-	localWindows  provider_observer.WindowStore
-	localAttempts inference.AttemptStore
-	remote        ProviderObservationRemote
+	store *Store
 }
 
-// NewCampaignProviderObservationReader constructs one read-only provider
-// observation accessor from runtime file services.
-func NewCampaignProviderObservationReader(fileSvc fs.RuntimeFileService) (*CampaignProviderObservationReader, error) {
-	return NewCampaignProviderObservationReaderWithRemote(fileSvc, nil)
-}
-
-// NewCampaignProviderObservationReaderWithRemote constructs one read-only
-// provider observation accessor from local runtime files with optional gateway
-// fallback when local evidence is missing.
-func NewCampaignProviderObservationReaderWithRemote(fileSvc fs.RuntimeFileService, remote ProviderObservationRemote) (*CampaignProviderObservationReader, error) {
-	if fileSvc == nil {
+// NewCampaignProviderObservationReader constructs one provider observation
+// accessor over the evaluation store that owns the run's sealed evidence.
+func NewCampaignProviderObservationReader(store *Store) (*CampaignProviderObservationReader, error) {
+	if store == nil || store.files == nil {
 		return nil, fmt.Errorf("evaluation: provider observation reader: %w", constants.ErrMissingRequiredField)
 	}
-	localWindows, err := provider_observer.NewWindowStore(fileSvc)
-	if err != nil {
-		return nil, err
-	}
-	localAttempts, err := inference.NewAttemptStore(fileSvc)
-	if err != nil {
-		return nil, err
-	}
-	windows := localWindows
-	attempts := localAttempts
-	if remote != nil {
-		windows = &fallbackProviderObservationWindows{local: localWindows, remote: remote}
-		attempts = &fallbackProviderObservationAttempts{local: localAttempts, remote: remote}
-	}
-	return &CampaignProviderObservationReader{windows: windows, attempts: attempts, localWindows: localWindows, localAttempts: localAttempts, remote: remote}, nil
-}
-
-func (r *CampaignProviderObservationReader) CaptureAssignmentEvidence(ctx context.Context, result *evalv1.EvaluationAssignmentResult) error {
-	if r == nil || result == nil || r.remote == nil {
-		return nil
-	}
-	for _, inferenceRecord := range scoredModelInferences(result) {
-		attemptID := inferenceRecord.GetProviderAttemptId()
-		if attemptID == "" {
-			continue
-		}
-		_, windowErr := r.localWindows.Load(ctx, attemptID)
-		if windowErr != nil && !isProviderEvidenceNotFound(windowErr) {
-			return fmt.Errorf("evaluation: capture provider observation window: %w", windowErr)
-		}
-		_, attemptErr := r.localAttempts.Get(ctx, attemptID)
-		if attemptErr != nil && !isProviderEvidenceNotFound(attemptErr) {
-			return fmt.Errorf("evaluation: capture provider attempt: %w", attemptErr)
-		}
-		if windowErr == nil && attemptErr == nil {
-			continue
-		}
-		window, attempt, err := r.remote.Load(ctx, attemptID)
-		if err != nil {
-			if isProviderEvidenceNotFound(err) {
-				continue
-			}
-			return fmt.Errorf("evaluation: capture provider evidence: %w", err)
-		}
-		if attemptErr != nil {
-			if err := r.localAttempts.Import(ctx, attempt); err != nil {
-				return fmt.Errorf("evaluation: persist provider attempt: %w", err)
-			}
-		}
-		if windowErr != nil {
-			if err := r.localWindows.Save(ctx, window); err != nil {
-				return fmt.Errorf("evaluation: persist provider observation window: %w", err)
-			}
-		}
-	}
-	return nil
-}
-
-type fallbackProviderObservationWindows struct {
-	local  provider_observer.WindowStore
-	remote ProviderObservationRemote
-}
-
-func (s *fallbackProviderObservationWindows) Save(ctx context.Context, window *evalv1.ProviderBoundaryObservationWindow) error {
-	return s.local.Save(ctx, window)
-}
-
-func (s *fallbackProviderObservationWindows) Load(ctx context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, error) {
-	window, err := s.local.Load(ctx, providerAttemptID)
-	if err == nil || !isProviderEvidenceNotFound(err) || s.remote == nil {
-		return window, err
-	}
-	window, _, remoteErr := s.remote.Load(ctx, providerAttemptID)
-	if remoteErr != nil {
-		return nil, err
-	}
-	return window, nil
-}
-
-type fallbackProviderObservationAttempts struct {
-	local  inference.AttemptStore
-	remote ProviderObservationRemote
-}
-
-func (s *fallbackProviderObservationAttempts) Begin(ctx context.Context, record *operatorv1.InferenceProviderAttemptRecord) error {
-	return s.local.Begin(ctx, record)
-}
-
-func (s *fallbackProviderObservationAttempts) Import(ctx context.Context, record *operatorv1.InferenceProviderAttemptRecord) error {
-	return s.local.Import(ctx, record)
-}
-
-func (s *fallbackProviderObservationAttempts) Complete(ctx context.Context, providerAttemptID, resultDigest string) error {
-	return s.local.Complete(ctx, providerAttemptID, resultDigest)
-}
-
-func (s *fallbackProviderObservationAttempts) Fail(ctx context.Context, providerAttemptID string, class inference.AttemptFailureClass) error {
-	return s.local.Fail(ctx, providerAttemptID, class)
-}
-
-func (s *fallbackProviderObservationAttempts) RecordRawResponse(ctx context.Context, providerAttemptID string, response []byte) error {
-	return s.local.RecordRawResponse(ctx, providerAttemptID, response)
-}
-
-func (s *fallbackProviderObservationAttempts) Get(ctx context.Context, providerAttemptID string) (*operatorv1.InferenceProviderAttemptRecord, error) {
-	attempt, err := s.local.Get(ctx, providerAttemptID)
-	if err == nil || !isProviderEvidenceNotFound(err) || s.remote == nil {
-		return attempt, err
-	}
-	_, attempt, remoteErr := s.remote.Load(ctx, providerAttemptID)
-	if remoteErr != nil {
-		return nil, err
-	}
-	return attempt, nil
+	return &CampaignProviderObservationReader{store: store}, nil
 }
 
 func isProviderEvidenceNotFound(err error) bool {
 	return isGatewayEvidenceNotFound(err)
 }
 
-// LoadObservationWindow returns one provider-boundary observation window for a
-// governed provider attempt ID.
-func (r *CampaignProviderObservationReader) LoadObservationWindow(ctx context.Context, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, error) {
-	if r == nil || r.windows == nil || providerAttemptID == "" {
-		return nil, fmt.Errorf("evaluation: load provider observation window: %w", constants.ErrMissingRequiredField)
+// SaveProviderObservationWindow seals one provider observation window in the
+// run's evidence directory and records its reference under the attempt.
+func (s *Store) SaveProviderObservationWindow(ctx context.Context, runID string, window *evalv1.ProviderBoundaryObservationWindow) error {
+	if window == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(window.GetProviderAttemptId()) {
+		return fmt.Errorf("%w: run ID, provider attempt ID, and observation window are required", constants.ErrEvaluationReportPersistFailed)
 	}
-	window, err := r.windows.Load(ctx, providerAttemptID)
+	attemptID := window.GetProviderAttemptId()
+	reference, err := s.SaveProtoArtifact(ctx, EvidenceScope{RunID: runID, AttemptID: attemptID}, complianceevidence.ArtifactTypeProviderObservationWindow, window)
 	if err != nil {
-		return nil, fmt.Errorf("evaluation: load provider observation window: %w", err)
+		return err
+	}
+	return s.writeEvidenceRef(ctx, s.layout.providerWindowRefPath(runID, attemptID), reference)
+}
+
+// SaveProviderAttemptRecord seals one governed provider-attempt record in the
+// run's evidence directory and records its reference under the attempt.
+func (s *Store) SaveProviderAttemptRecord(ctx context.Context, runID string, attempt *operatorv1.InferenceProviderAttemptRecord) error {
+	if attempt == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(attempt.GetProviderAttemptId()) {
+		return fmt.Errorf("%w: run ID, provider attempt ID, and attempt record are required", constants.ErrEvaluationReportPersistFailed)
+	}
+	attemptID := attempt.GetProviderAttemptId()
+	reference, err := s.SaveProtoArtifact(ctx, EvidenceScope{RunID: runID, AttemptID: attemptID}, complianceevidence.ArtifactTypeProviderAttemptRecord, attempt)
+	if err != nil {
+		return err
+	}
+	return s.writeEvidenceRef(ctx, s.layout.providerAttemptRefPath(runID, attemptID), reference)
+}
+
+// LoadProviderObservationWindow returns the sealed window recorded for one
+// provider attempt of a run. A missing record reports constants.ErrNotFound.
+func (s *Store) LoadProviderObservationWindow(ctx context.Context, runID, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, error) {
+	if s == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(providerAttemptID) {
+		return nil, fmt.Errorf("%w: run ID and provider attempt ID are required", constants.ErrEvidenceArtifactMalformed)
+	}
+	reference, err := s.readEvidenceRef(ctx, s.layout.providerWindowRefPath(runID, providerAttemptID), runID, providerAttemptID)
+	if err != nil {
+		return nil, err
+	}
+	window := &evalv1.ProviderBoundaryObservationWindow{}
+	if err := s.loadProtoArtifact(ctx, runID, reference, window); err != nil {
+		return nil, err
+	}
+	if window.GetProviderAttemptId() != providerAttemptID {
+		return nil, fmt.Errorf("%w: provider observation window binding does not match requested attempt", constants.ErrEvidenceScopeMismatch)
 	}
 	return window, nil
 }
 
-// WaitForObservationWindow captures one provider-boundary window the Observer
-// completes after governed inference returns, driven by the Gateway's
-// observation-recorded events (see awaitEvidenceWindows). The caller owns the
-// deadline.
-func (r *CampaignProviderObservationReader) WaitForObservationWindow(ctx context.Context, providerAttemptID string) error {
-	if r == nil || providerAttemptID == "" {
-		return fmt.Errorf("evaluation: wait for provider observation: %w", constants.ErrMissingRequiredField)
+// LoadProviderAttemptRecord returns the sealed provider-attempt record recorded
+// for one provider attempt of a run. A missing record reports constants.ErrNotFound.
+func (s *Store) LoadProviderAttemptRecord(ctx context.Context, runID, providerAttemptID string) (*operatorv1.InferenceProviderAttemptRecord, error) {
+	if s == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(providerAttemptID) {
+		return nil, fmt.Errorf("%w: run ID and provider attempt ID are required", constants.ErrEvidenceArtifactMalformed)
 	}
-	_, err := r.localWindows.Load(ctx, providerAttemptID)
-	if err == nil {
-		return nil
-	}
-	if !isProviderEvidenceNotFound(err) {
-		return fmt.Errorf("evaluation: wait for provider observation %s: %w", providerAttemptID, err)
-	}
-	pending := map[string]struct{}{providerAttemptID: {}}
-	missing := func(cause error) error {
-		return missingEvidenceWindowsError("provider-boundary observation", "check Observer Operator logs", cause, pending)
-	}
-	if r.remote == nil {
-		return missing(constants.ErrGatewayNotReachable)
-	}
-	return awaitEvidenceWindows(ctx, pending, r.remote.WatchRecorded, r.captureRemoteWindow, missing)
-}
-
-// captureRemoteWindow persists the Gateway observation window for one attempt.
-// A window the Gateway has not recorded yet stays pending for its event.
-func (r *CampaignProviderObservationReader) captureRemoteWindow(ctx context.Context, id string) (bool, error) {
-	window, _, err := r.remote.Load(ctx, id)
+	reference, err := s.readEvidenceRef(ctx, s.layout.providerAttemptRefPath(runID, providerAttemptID), runID, providerAttemptID)
 	if err != nil {
-		if isProviderEvidenceNotFound(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("evaluation: wait for provider observation %s: %w", id, err)
+		return nil, err
 	}
-	if err := r.localWindows.Save(ctx, window); err != nil {
-		return false, fmt.Errorf("evaluation: capture provider observation %s: %w", id, err)
+	attempt := &operatorv1.InferenceProviderAttemptRecord{}
+	if err := s.loadProtoArtifact(ctx, runID, reference, attempt); err != nil {
+		return nil, err
 	}
-	return true, nil
+	if attempt.GetProviderAttemptId() != providerAttemptID {
+		return nil, fmt.Errorf("%w: provider attempt record binding does not match requested attempt", constants.ErrEvidenceScopeMismatch)
+	}
+	return attempt, nil
 }
 
-// BindProviderBoundaryObservationRefs attaches observation evidence references
-// to scored model inferences when durable windows exist.
-func (r *CampaignProviderObservationReader) BindProviderBoundaryObservationRefs(ctx context.Context, result *evalv1.EvaluationAssignmentResult) error {
-	if r == nil || result == nil {
-		return nil
+// writeEvidenceRef records the reference to one sealed body under a provider
+// attempt. The record is canonical and read-only, and it is written once per
+// attempt; capture only saves a body that is not yet recorded.
+func (s *Store) writeEvidenceRef(ctx context.Context, path string, reference *compliancev1.ComplianceEvidenceReference) error {
+	body, err := compliancev1.MarshalCanonical(reference)
+	if err != nil {
+		return fmt.Errorf("%w: canonicalize evidence reference: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	for _, inferenceRecord := range scoredModelInferences(result) {
-		attemptID := inferenceRecord.GetProviderAttemptId()
-		if attemptID == "" {
-			continue
-		}
-		window, err := r.windows.Load(ctx, attemptID)
-		if err != nil {
-			if errors.Is(err, constants.ErrNotFound) {
-				continue
-			}
-			return fmt.Errorf("evaluation: bind provider boundary observation refs: %w", err)
-		}
-		inferenceRecord.ProviderBoundaryObservationRef = providerBoundaryObservationRef(window)
+	if err := s.files.MkdirAll(ctx, filepath.Dir(path), constants.PermDirPrivate); err != nil {
+		return fmt.Errorf("%w: create evidence reference directory: %w", constants.ErrEvaluationReportPersistFailed, err)
+	}
+	if err := s.files.WriteFile(ctx, path, body, constants.PermFileReadOnly); err != nil {
+		return fmt.Errorf("%w: write evidence reference: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	return nil
+}
+
+// readEvidenceRef reads one provider attempt's evidence reference record and
+// checks that it is bound to the requested run and attempt.
+func (s *Store) readEvidenceRef(ctx context.Context, path, runID, providerAttemptID string) (*compliancev1.ComplianceEvidenceReference, error) {
+	body, err := s.files.ReadFile(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: read evidence reference: %w", err)
+	}
+	reference := &compliancev1.ComplianceEvidenceReference{}
+	if err := compliancev1.UnmarshalCanonical(body, reference); err != nil {
+		return nil, fmt.Errorf("%w: canonical evidence reference: %v", constants.ErrEvidenceArtifactMalformed, err)
+	}
+	if reference.GetRunId() != runID || reference.GetAttemptId() != providerAttemptID {
+		return nil, fmt.Errorf("%w: evidence reference binding does not match requested run and attempt", constants.ErrEvidenceScopeMismatch)
+	}
+	return reference, nil
 }
 
 // VerifyAssignmentProviderObservations independently checks provider-boundary
@@ -352,7 +241,7 @@ func (r *CampaignProviderObservationReader) VerifyAssignmentProviderObservations
 		if attemptID == "" {
 			continue
 		}
-		window, err := r.windows.Load(ctx, attemptID)
+		window, err := r.store.LoadProviderObservationWindow(ctx, result.GetRunId(), attemptID)
 		if err != nil {
 			if errors.Is(err, constants.ErrNotFound) {
 				unavailable = appendUniqueStrings(unavailable, "source_not_captured")
@@ -364,7 +253,7 @@ func (r *CampaignProviderObservationReader) VerifyAssignmentProviderObservations
 			failures = append(failures, fmt.Sprintf("inference %s observation window load failed: %v", inferenceRecord.GetInferenceRecordId(), err))
 			continue
 		}
-		attempt, err := r.attempts.Get(ctx, attemptID)
+		attempt, err := r.store.LoadProviderAttemptRecord(ctx, result.GetRunId(), attemptID)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("inference %s provider attempt load failed: %v", inferenceRecord.GetInferenceRecordId(), err))
 			continue
@@ -444,7 +333,7 @@ func (r *CampaignProviderObservationReader) buildPublicBenchmarkObservations(ctx
 		if attemptID == "" {
 			continue
 		}
-		window, err := r.windows.Load(ctx, attemptID)
+		window, err := r.store.LoadProviderObservationWindow(ctx, result.GetRunId(), attemptID)
 		if err != nil {
 			if isProviderEvidenceNotFound(err) {
 				observations.UnavailableReasons = appendUniqueStrings(observations.UnavailableReasons, "source_not_captured")
@@ -572,18 +461,6 @@ func scoredModelInferences(result *evalv1.EvaluationAssignmentResult) []*evalv1.
 		records = append(records, record)
 	}
 	return records
-}
-
-func providerBoundaryObservationRef(window *evalv1.ProviderBoundaryObservationWindow) *compliancev1.ComplianceEvidenceReference {
-	if window == nil || window.GetProviderAttemptId() == "" {
-		return nil
-	}
-	return &compliancev1.ComplianceEvidenceReference{
-		ArtifactId:   window.GetProviderAttemptId(),
-		ArtifactType: providerObservationArtifactType,
-		SchemaRef:    providerObservationSchemaRef,
-		Sha256:       window.GetObservationDigest(),
-	}
 }
 
 type benchmarkTimingAggregate struct {

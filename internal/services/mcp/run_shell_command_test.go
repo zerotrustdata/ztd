@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -157,6 +158,12 @@ func TestRunShellCommandTool_Denylist_AllowsSafeCommands(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestRunShellCommandTool_CommandLineInCommandNamesArgvForm(t *testing.T) {
+	err := validateCommandSafety("cat -n", []string{"/var/log/app.log"}, "")
+	require.ErrorIs(t, err, constants.ErrMCPRunShellCommandNotExecutable)
+	require.Contains(t, err.Error(), `{"args":["-n","/var/log/app.log"],"command":"cat"}`)
 }
 
 func TestValidateForSSHExecution_BlocksShellMetacharacters(t *testing.T) {

@@ -32,6 +32,7 @@
     - [EvaluationAttempt](#ztd-eval-v1-EvaluationAttempt)
     - [EvaluationCampaignSpec](#ztd-eval-v1-EvaluationCampaignSpec)
     - [EvaluationDeploymentIdentity](#ztd-eval-v1-EvaluationDeploymentIdentity)
+    - [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation)
     - [EvaluationMetric](#ztd-eval-v1-EvaluationMetric)
     - [EvaluationObservation](#ztd-eval-v1-EvaluationObservation)
     - [EvaluationReport](#ztd-eval-v1-EvaluationReport)
@@ -51,7 +52,6 @@
     - [HeterogeneousAssignmentTarget](#ztd-eval-v1-HeterogeneousAssignmentTarget)
     - [HeterogeneousStackDefinition](#ztd-eval-v1-HeterogeneousStackDefinition)
     - [HomogeneousAssignmentTarget](#ztd-eval-v1-HomogeneousAssignmentTarget)
-    - [InvestigationSeed](#ztd-eval-v1-InvestigationSeed)
     - [MemoryOutput](#ztd-eval-v1-MemoryOutput)
     - [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding)
     - [ModelCapabilityObservation](#ztd-eval-v1-ModelCapabilityObservation)
@@ -99,10 +99,6 @@
     - [RiskOutput](#ztd-eval-v1-RiskOutput)
     - [RoleAssignment](#ztd-eval-v1-RoleAssignment)
     - [RouterOutput](#ztd-eval-v1-RouterOutput)
-    - [ScoredTurnEvent](#ztd-eval-v1-ScoredTurnEvent)
-    - [ScoredTurnRequest](#ztd-eval-v1-ScoredTurnRequest)
-    - [SeedHistoryEvent](#ztd-eval-v1-SeedHistoryEvent)
-    - [SeedTurn](#ztd-eval-v1-SeedTurn)
     - [SemanticGrade](#ztd-eval-v1-SemanticGrade)
     - [TitleOutput](#ztd-eval-v1-TitleOutput)
     - [ToolCallRecord](#ztd-eval-v1-ToolCallRecord)
@@ -126,6 +122,7 @@
     - [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture)
     - [EvaluationGradingMethod](#ztd-eval-v1-EvaluationGradingMethod)
     - [EvaluationHintArgumentSource](#ztd-eval-v1-EvaluationHintArgumentSource)
+    - [EvaluationInvestigationMode](#ztd-eval-v1-EvaluationInvestigationMode)
     - [EvaluationLane](#ztd-eval-v1-EvaluationLane)
     - [EvaluationLoadState](#ztd-eval-v1-EvaluationLoadState)
     - [EvaluationMetricDirection](#ztd-eval-v1-EvaluationMetricDirection)
@@ -159,7 +156,6 @@
     - [PublicToolScoreDimension](#ztd-eval-v1-PublicToolScoreDimension)
     - [PublicUnavailableReason](#ztd-eval-v1-PublicUnavailableReason)
     - [PublicVerificationProvenance](#ztd-eval-v1-PublicVerificationProvenance)
-    - [ScoredTurnEventKind](#ztd-eval-v1-ScoredTurnEventKind)
   
 - [Scalar Value Types](#scalar-value-types)
 
@@ -743,6 +739,8 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | platform_release | [string](#string) |  | platform_release is the ztd build version that froze the campaign. It is part of campaign_digest, so a campaign cannot be re-labeled. Empty only on campaigns frozen before v2.3.0; their release is an operator-asserted tag held outside the digest. |
 | source_revision | [string](#string) |  | source_revision is the source commit of the build that froze the campaign. |
 | hold_context | [bool](#bool) |  | hold_context makes every repetition after the first continue the previous repetition&#39;s investigation: the model receives that repetition&#39;s complete conversation and works in the same workspace. Only set when repetition_count &gt; 1; false on campaigns frozen before it existed. |
+| investigation | [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation) |  | Investigation identity and its authoritative Data Operator are frozen into campaign_digest. Absent only on legacy specs frozen before this field. |
+| formation_stack_set_digest | [string](#string) |  | Nonempty only for a system campaign. Binds the complete frozen catalog formation set into campaign_digest, independently of later catalog edits. |
 
 
 
@@ -762,6 +760,25 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | runtime_boundaries | [EvaluationRuntimeBoundary](#ztd-eval-v1-EvaluationRuntimeBoundary) | repeated |  |
 | controlled_target | [string](#string) |  |  |
 | independent_observer | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-EvaluationInvestigation"></a>
+
+### EvaluationInvestigation
+EvaluationInvestigation declares the campaign&#39;s scored investigation scope.
+Persistent investigations require both a stable investigation_id and the
+stable identity (not session ID) of the Data Operator that owns its ledger.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| mode | [EvaluationInvestigationMode](#ztd-eval-v1-EvaluationInvestigationMode) |  |  |
+| investigation_id | [string](#string) |  |  |
+| data_operator_id | [string](#string) |  |  |
 
 
 
@@ -866,6 +883,8 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | attempt_refs | [string](#string) | repeated |  |
 | final_verification_report_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | campaign_binding | [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding) |  |  |
+| provider_observation_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
+| model_provenance_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
 
 
 
@@ -936,6 +955,7 @@ EvaluationScenarioDefinition describes one frozen typed scenario.
 | eligible_roles | [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) | repeated | eligible_roles lists the model roles that perform this task in the external client. The homogeneous scheduler assigns the scenario only to these roles; the frozen catalog digest binds the set. |
 | trajectory_policy | [EvaluationTrajectoryPolicy](#ztd-eval-v1-EvaluationTrajectoryPolicy) |  |  |
 | prompt_hint | [PromptHint](#ztd-eval-v1-PromptHint) |  |  |
+| tribunal_commands | [bool](#bool) |  | tribunal_commands declares run_commands_with_operator intent-only: the model states the request and the Tribunal deliberation writes the command, which then runs through L1-L5 like any other. Unset, the model authors the command itself. The frozen catalog digest binds the choice. |
 
 
 
@@ -1197,26 +1217,6 @@ HeterogeneousStackDefinition binds Primary, Assistant, and Lite slots.
 
 
 
-<a name="ztd-eval-v1-InvestigationSeed"></a>
-
-### InvestigationSeed
-InvestigationSeed is the prior state of a case, applied by the SUT through
-its own live services before the scored turn.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| case_title | [string](#string) |  |  |
-| case_description | [string](#string) |  |  |
-| prior_turns | [SeedTurn](#ztd-eval-v1-SeedTurn) | repeated |  |
-| history | [SeedHistoryEvent](#ztd-eval-v1-SeedHistoryEvent) | repeated |  |
-| case_memory | [string](#string) | repeated |  |
-
-
-
-
-
-
 <a name="ztd-eval-v1-MemoryOutput"></a>
 
 ### MemoryOutput
@@ -1310,7 +1310,6 @@ ModelInferenceRecord captures one governed scored inference call.
 | privacy_attested | [bool](#bool) |  |  |
 | governed_receipt_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | result_digest | [string](#string) |  |  |
-| provider_boundary_observation_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | tools_declared | [string](#string) | repeated | Tool names as sent to the provider for this call, captured at the provider boundary. tools_declared_reported distinguishes &#34;none declared&#34; from &#34;not reported&#34;. |
 | tools_declared_reported | [bool](#bool) |  |  |
 | classification | [EvaluationCallClassification](#ztd-eval-v1-EvaluationCallClassification) |  | Which chain the call belongs to, stated by the producer at the call site. Aggregators select scored calls by this field, never by persona or span. |
@@ -2222,84 +2221,6 @@ RoleAssignment binds one designated responsibility to one frozen variant.
 
 
 
-<a name="ztd-eval-v1-ScoredTurnEvent"></a>
-
-### ScoredTurnEvent
-ScoredTurnEvent is one event on the turn&#39;s event stream. The client stops
-reading at the first TERMINAL event and then fetches the AgentTrace once.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| attempt_id | [string](#string) |  |  |
-| kind | [ScoredTurnEventKind](#ztd-eval-v1-ScoredTurnEventKind) |  |  |
-| detail | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="ztd-eval-v1-ScoredTurnRequest"></a>
-
-### ScoredTurnRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| campaign_id | [string](#string) |  |  |
-| run_id | [string](#string) |  |  |
-| attempt_id | [string](#string) |  |  |
-| model_registry | [ModelVariant](#ztd-eval-v1-ModelVariant) | repeated |  |
-| lane | [EvaluationLane](#ztd-eval-v1-EvaluationLane) |  | SYSTEM or MODEL_ROLE only |
-| designated_role | [AgentRole](#ztd-eval-v1-AgentRole) |  | required when lane is MODEL_ROLE |
-| seed | [InvestigationSeed](#ztd-eval-v1-InvestigationSeed) |  |  |
-| workspace_root | [string](#string) |  |  |
-| data_operator_session_id | [string](#string) |  |  |
-| user_message | [string](#string) |  |  |
-| tool_turn_limit | [uint32](#uint32) |  |  |
-| wall_clock_limit_ms | [uint64](#uint64) |  |  |
-
-
-
-
-
-
-<a name="ztd-eval-v1-SeedHistoryEvent"></a>
-
-### SeedHistoryEvent
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| event_type | [string](#string) |  | COMMAND_COMPLETED, COMMAND_FAILED or FILE_EDIT_COMPLETED; the SUT maps it to its own event types |
-| summary | [string](#string) |  |  |
-| command | [string](#string) |  |  |
-| exit_code | [int32](#int32) |  |  |
-
-
-
-
-
-
-<a name="ztd-eval-v1-SeedTurn"></a>
-
-### SeedTurn
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| role | [string](#string) |  | &#34;user&#34; or &#34;assistant&#34; |
-| text | [string](#string) |  |  |
-
-
-
-
-
-
 <a name="ztd-eval-v1-SemanticGrade"></a>
 
 ### SemanticGrade
@@ -2684,6 +2605,19 @@ derivable from, so catalog lint can prove a prompt is answerable.
 | EVALUATION_HINT_ARGUMENT_SOURCE_WORKSPACE | 3 | The value is the attempt-scoped fixture workspace named in the prompt. |
 | EVALUATION_HINT_ARGUMENT_SOURCE_OPERATOR_CONTEXT | 4 | The value comes from the bound-operator context supplied by the external client. |
 | EVALUATION_HINT_ARGUMENT_SOURCE_MODEL_AUTHORED | 5 | Free-text rationale the model authors (for example a justification). |
+
+
+
+<a name="ztd-eval-v1-EvaluationInvestigationMode"></a>
+
+### EvaluationInvestigationMode
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| EVALUATION_INVESTIGATION_MODE_UNSPECIFIED | 0 |  |
+| EVALUATION_INVESTIGATION_MODE_FRESH | 1 | Each assignment starts with an independent investigation identity. |
+| EVALUATION_INVESTIGATION_MODE_PERSISTENT | 2 | Assignments in the campaign reuse the declared investigation identity. |
 
 
 
@@ -3185,19 +3119,6 @@ The release measured by a campaign is independent of verifier provenance.
 | PUBLIC_VERIFICATION_PROVENANCE_UNSPECIFIED | 0 |  |
 | PUBLIC_VERIFICATION_PROVENANCE_BOUND | 1 |  |
 | PUBLIC_VERIFICATION_PROVENANCE_LEGACY_UNBOUND | 2 |  |
-
-
-
-<a name="ztd-eval-v1-ScoredTurnEventKind"></a>
-
-### ScoredTurnEventKind
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| SCORED_TURN_EVENT_KIND_UNSPECIFIED | 0 |  |
-| SCORED_TURN_EVENT_KIND_PROGRESS | 1 |  |
-| SCORED_TURN_EVENT_KIND_TERMINAL | 2 |  |
 
 
  

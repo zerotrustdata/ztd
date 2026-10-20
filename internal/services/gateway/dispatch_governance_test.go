@@ -273,6 +273,7 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 				deliberator,
 				&stubSignerStore{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPub}},
 				nil,
+				nil,
 			)
 
 			// Register an operator handler that publishes a result and its
@@ -329,6 +330,7 @@ func TestDispatchService_L2DeliberationFailureFailsClosed(t *testing.T) {
 		failingL2Deliberator{},
 		nil,
 		nil,
+		nil,
 	)
 
 	published := false
@@ -347,12 +349,12 @@ func TestDispatchService_L2DeliberationFailureFailsClosed(t *testing.T) {
 	assert.False(t, published, "envelope must not be published when L2 deliberation fails")
 }
 
-// TestDispatchService_BootstrapActionSkipsL2Deliberation proves that both
-// deliberation sites apply L4's bootstrap exemption: a platform enrollment
-// action is not sent to the L2 deliberator under a posture that requires L2,
-// while a non-bootstrap action under the same posture is. Neither entry point
-// has a cmd-channel subscriber, so each returns ErrDispatchNoDelivery straight
-// after the deliberation gate and never waits for a result.
+// TestDispatchService_BootstrapActionSkipsL2Deliberation proves that Dispatch
+// applies L4's bootstrap exemption: a platform enrollment action is not sent to
+// the L2 deliberator under a posture that requires L2, while a non-bootstrap
+// action under the same posture is. There is no cmd-channel subscriber, so
+// Dispatch returns ErrDispatchNoDelivery straight after the deliberation gate
+// and never waits for a result.
 func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
@@ -399,6 +401,7 @@ func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
 					deliberator,
 					nil,
 					nil,
+					nil,
 				)
 			}
 
@@ -411,16 +414,6 @@ func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
 			})
 			require.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
 			assert.Equal(t, tc.wantDeliberated, dispatchDeliberator.called, "Dispatch deliberation")
-
-			publishDeliberator := &stubL2Deliberator{}
-			_, err = newService(publishDeliberator).PublishCommand(context.Background(), PublishCommandRequest{
-				TargetOperatorSessionID: op.OperatorSessionId,
-				EventType:               string(tc.event),
-				Payload:                 tc.payload,
-				RequestorUserID:         "user-001",
-			})
-			require.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
-			assert.Equal(t, tc.wantDeliberated, publishDeliberator.called, "PublishCommand deliberation")
 		})
 	}
 }

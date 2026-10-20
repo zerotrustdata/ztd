@@ -1148,7 +1148,9 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_DigestCoversScrubbedOutput(
 	}
 	require.Len(t, resp.Parts, 3)
 	assert.Equal(t, scrubber.ScrubText(context.Background(), "write to "+outputScrubEmail), resp.Parts[0].GetText())
-	assert.Equal(t, "write to "+outputScrubEmail, scrubber.RehydrateText(context.Background(), resp.Parts[0].GetText()))
+	rehydrated, err := scrubber.RehydrateText(context.Background(), resp.Parts[0].GetText())
+	require.NoError(t, err)
+	assert.Equal(t, "write to "+outputScrubEmail, rehydrated)
 	assert.Equal(t, "stop", resp.FinishReason)
 	scrubbedHash, err := models.ComputeInferenceOutputHash(resp.Parts, resp.FinishReason)
 	require.NoError(t, err)

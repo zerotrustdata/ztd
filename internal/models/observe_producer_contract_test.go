@@ -156,6 +156,41 @@ func TestObserveProducerRunStateRequestOmitsOptionalFields(t *testing.T) {
 	assert.NotContains(t, raw, "cli_session_id")
 }
 
+// TestObserveProducerStopRequestRoundTrip asserts the stop producer request
+// round-trips through JSON with canonical wire field names and preserves every
+// stop reason and scope.
+func TestObserveProducerStopRequestRoundTrip(t *testing.T) {
+	for _, reason := range []StopReason{
+		StopReasonGraceful, StopReasonSafetyBudget, StopReasonSafetyDisk,
+		StopReasonSafetyHardwareDrift, StopReasonSafetyCredential,
+		StopReasonSafetyVerifier, StopReasonSafetyDisclosure, StopReasonSafetyPublication,
+	} {
+		for _, scope := range []StopScope{StopScopeCycle, StopScopeSupervisor} {
+			req := ObserveProducerStopRequest{
+				SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
+				CampaignID:    "campaign-1",
+				RunID:         "run-1",
+				StopReason:    reason,
+				StopScope:     scope,
+				CLISessionID:  "cli-1",
+			}
+			data, err := json.Marshal(req)
+			require.NoError(t, err, "marshal failed for reason=%s scope=%s", reason, scope)
+
+			var raw map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(data, &raw))
+			assert.Contains(t, raw, "run_id")
+			assert.Contains(t, raw, "campaign_id")
+			assert.NotContains(t, raw, "web_session_id")
+			assert.NotContains(t, raw, "user_id")
+
+			var decoded ObserveProducerStopRequest
+			require.NoError(t, json.Unmarshal(data, &decoded), "unmarshal failed for reason=%s scope=%s", reason, scope)
+			assert.Equal(t, req, decoded, "round-trip mismatch for reason=%s scope=%s", reason, scope)
+		}
+	}
+}
+
 // TestObserveProducerRequestWebRoutingSerializes asserts a web-routed producer
 // request serializes with web_session_id set and cli_session_id omitted.
 func TestObserveProducerRequestWebRoutingSerializes(t *testing.T) {

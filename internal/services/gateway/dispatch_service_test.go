@@ -28,6 +28,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
@@ -57,17 +58,17 @@ func (s *stubOperatorSessionValidator) ValidateOperatorSession(_ context.Context
 	return s.op, s.err
 }
 
-// --- OperatorCommandRequest.Validate tests ---
+// --- models.OperatorCommandRequest.Validate tests ---
 
 func TestOperatorCommandRequest_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		req     OperatorCommandRequest
+		req     models.OperatorCommandRequest
 		wantErr error
 	}{
 		{
 			name: "valid request",
-			req: OperatorCommandRequest{
+			req: models.OperatorCommandRequest{
 				TargetOperatorSessionID: "session-123",
 				EventType:               string(constants.Event.Operator.FsRead.Requested),
 				Payload:                 []byte("payload"),
@@ -76,7 +77,7 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "missing operator session id",
-			req: OperatorCommandRequest{
+			req: models.OperatorCommandRequest{
 				EventType: string(constants.Event.Operator.FsRead.Requested),
 				Payload:   []byte("payload"),
 			},
@@ -84,7 +85,7 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "missing action type",
-			req: OperatorCommandRequest{
+			req: models.OperatorCommandRequest{
 				TargetOperatorSessionID: "session-123",
 				Payload:                 []byte("payload"),
 			},
@@ -92,7 +93,7 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "missing payload",
-			req: OperatorCommandRequest{
+			req: models.OperatorCommandRequest{
 				TargetOperatorSessionID: "session-123",
 				EventType:               string(constants.Event.Operator.FsRead.Requested),
 			},
@@ -241,6 +242,7 @@ func newTestDispatchService(t *testing.T, _ string, op *operatorv1.OperatorDocum
 		nil, // no L2 deliberator under doctrine posture
 		&stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}},
 		nil, // no embedded processor in remote dispatch tests
+		nil,
 	)
 	return svc, broker
 }
@@ -427,6 +429,7 @@ func TestDispatchService_Dispatch_StateRootError(t *testing.T) {
 		&stubOperatorSessionValidator{op: op},
 		"doctrine",
 		governance.NewL1Doctrine(),
+		nil,
 		nil,
 		nil,
 		nil,
@@ -799,6 +802,61 @@ func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
 	}
 }
 
+// TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt pins the MCP_CALL
+// exception: the Operator publishes no result envelope for an MCP_CALL, so the
+// verified final receipt alone completes the dispatch. Every other action still
+// needs its result envelope and times out on a receipt alone.
+func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
+	mcpPayload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: `{"command":"pwd"}`, ExecutionId: "exec-mcp"})
+	require.NoError(t, err)
+	tests := []struct {
+		name      string
+		eventType constants.EventType
+		payload   []byte
+		wantErr   error
+	}{
+		{name: "MCP_CALL completes on its verified final receipt", eventType: constants.Event.Operator.Mcp.CallRequested, payload: mcpPayload},
+		{name: "FS_READ still waits for its result envelope", eventType: constants.Event.Operator.FsRead.Requested, payload: fsReadPayloadBytes(t), wantErr: constants.ErrDispatchResultTimeout},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
+			svc, broker := newTestDispatchService(t, "root-abc", op)
+			boundPub, signPriv, signKeyID := dispatchTestActuator()
+
+			unreg := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), func(_ string, data []byte) {
+				cmdEnv := &commonv1.GovernanceEnvelope{}
+				if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, cmdEnv); err != nil {
+					t.Errorf("operator: unmarshal command: %v", err)
+					return
+				}
+				publishDispatchTestReceipt(t, broker, op, cmdEnv, signPriv, signKeyID)
+			})
+			defer unreg()
+
+			timeout := 5 * time.Second
+			if tt.wantErr != nil {
+				timeout = 200 * time.Millisecond
+			}
+			result, err := svc.Dispatch(context.Background(), DispatchRequest{
+				TargetOperatorSessionID: "sess-001",
+				EventType:               string(tt.eventType),
+				Payload:                 tt.payload,
+				Timeout:                 timeout,
+			})
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, result, "an unproven outcome must never be returned as a success")
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, result.Receipt)
+			assert.Nil(t, result.ResultEnvelope, "MCP_CALL publishes no result envelope")
+			assert.NoError(t, governance.VerifyActionReceiptSignature(result.Receipt, boundPub))
+		})
+	}
+}
+
 // --- DispatchController.HandleDispatch tests ---
 
 func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(t *testing.T) {
@@ -824,7 +882,7 @@ func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(
 		Responder:   response.NewWriter(logger),
 		Logger:      logger,
 	})
-	body, err := json.Marshal(OperatorCommandRequest{
+	body, err := json.Marshal(models.OperatorCommandRequest{
 		TargetOperatorSessionID: "sess-001",
 		EventType:               string(constants.Event.Operator.FsRead.Requested),
 		Payload:                 fsReadPayloadBytes(t),
@@ -923,7 +981,7 @@ func TestDispatchController_HandleDispatch_WitnessCommandRejectedAsUnprocessable
 		ExecutionId: "exec-1",
 	})
 	require.NoError(t, err)
-	body, err := json.Marshal(OperatorCommandRequest{
+	body, err := json.Marshal(models.OperatorCommandRequest{
 		TargetOperatorSessionID: observer.OperatorSessionId,
 		EventType:               string(constants.Event.Operator.Command.Requested),
 		Payload:                 payload,

@@ -158,3 +158,74 @@ func TestMaterializeCampaignSpec_HoldContextIsPartOfTheDigest(t *testing.T) {
 	flipped.HoldContext = false
 	require.ErrorIs(t, ValidateCampaignSpecDigest(flipped), constants.ErrChecksumMismatch)
 }
+
+func TestCampaignCondition(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, CampaignConditionControl, CampaignCondition(nil))
+
+	held := &evalv1.EvaluationCampaignSpec{HoldContext: true}
+	assert.Equal(t, CampaignConditionHeldContext, CampaignCondition(held))
+
+	persistent := &evalv1.EvaluationCampaignSpec{
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "inv-1",
+			DataOperatorId:  "op-1",
+		},
+	}
+	assert.Equal(t, CampaignConditionLongitudinal, CampaignCondition(persistent))
+
+	fresh := &evalv1.EvaluationCampaignSpec{
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode: evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_FRESH,
+		},
+	}
+	assert.Equal(t, CampaignConditionControl, CampaignCondition(fresh))
+}
+
+func TestValidateCampaignSpecPosture_AcceptsKnownPosturesAndRejectsUnspecified(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		posture evalv1.EvaluationGovernancePosture
+		ok      bool
+	}{
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS, true},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, true},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY, true},
+		{evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, false},
+	}
+	for _, tt := range tests {
+		err := ValidateCampaignSpecPosture(&evalv1.EvaluationCampaignSpec{CampaignId: "c", GovernancePosture: tt.posture})
+		if tt.ok {
+			assert.NoError(t, err, tt.posture.String())
+			continue
+		}
+		require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported, tt.posture.String())
+		assert.Equal(t, ExecutionFailurePosture, ClassifyExecutionFailure(err))
+	}
+}
+
+func TestValidateGatewayPosture_RequiresTheFrozenPosture(t *testing.T) {
+	t.Parallel()
+	catalog, _, err := LoadScenarioCatalog()
+	require.NoError(t, err)
+	inventory, err := MaterializeModelRegistry("posture-campaign", []*evalv1.ModelVariant{testModelVariant()})
+	require.NoError(t, err)
+	spec, err := MaterializeCampaignSpec("posture-campaign", catalog, inventory, 1, false, testPlatform)
+	require.NoError(t, err)
+
+	require.NoError(t, ValidateGatewayPosture(spec, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE))
+
+	err = ValidateGatewayPosture(spec, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS)
+	require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+	require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported)
+
+	err = ValidateGatewayPosture(spec, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY)
+	require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+
+	notary := proto.Clone(spec).(*evalv1.EvaluationCampaignSpec)
+	notary.GovernancePosture = evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY
+	err = ValidateGatewayPosture(notary, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY)
+	require.NoError(t, err)
+}

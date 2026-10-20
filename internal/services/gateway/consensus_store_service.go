@@ -21,12 +21,14 @@ import (
 	"unicode"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -84,7 +86,7 @@ func (s *ConsensusStoreService) ClearConsensusBinding(ctx context.Context, appID
 	if err != nil || bound == nil {
 		return err
 	}
-	if appID == "" || len(bound.MemberAppIDs) == 0 || bound.MemberAppIDs[0] == appID {
+	if appID == "" || bound.PrimaryAppID() == appID {
 		_, err := s.DeleteConsensus(ctx, string(constants.DocIDConsensusBinding))
 		return err
 	}
@@ -151,9 +153,12 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 }
 
 // ConsensusAppDeliberator dispatches the GovernanceEnvelope to the bound consensus application's HTTPS endpoint.
+// It accepts and returns the Gateway's canonical protojson envelope wire and exchanges
+// binary protobuf with the application.
 type ConsensusAppDeliberator struct {
-	store      *ConsensusStoreService
-	httpClient *http.Client
+	store             *ConsensusStoreService
+	httpClient        *http.Client
+	httpClientFactory func(appID string) (*http.Client, error)
 }
 
 // NewConsensusAppDeliberator creates a new deliberator backed by the bound consensus app.
@@ -161,14 +166,17 @@ func (s *ConsensusStoreService) NewConsensusAppDeliberator(httpClient *http.Clie
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
-	appClient := *httpClient
-	appClient.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return constants.ErrConsensusEndpointInvalid
-	}
 	return &ConsensusAppDeliberator{
 		store:      s,
-		httpClient: &appClient,
+		httpClient: httpClient,
 	}
+}
+
+// NewConsensusAppDeliberatorWithClientFactory creates a deliberator whose
+// client is selected from the bound primary application identity. The factory
+// is called after the current binding is loaded for each request.
+func (s *ConsensusStoreService) NewConsensusAppDeliberatorWithClientFactory(factory func(appID string) (*http.Client, error)) mcp.L2ConsensusDeliberator {
+	return &ConsensusAppDeliberator{store: s, httpClientFactory: factory}
 }
 
 // Deliberate sends the envelope to the bound consensus app and verifies the returned envelope carries a ConsensusProof.
@@ -184,13 +192,43 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 		return nil, fmt.Errorf("consensus deliberation endpoint: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bound.EndpointURL, bytes.NewReader(envelopeBytes))
+	// Callers hold the envelope in the Gateway's canonical protojson wire form;
+	// the consensus application speaks protobuf (INV-CON-VOTE-03), so the
+	// transcoding is owned here, in both directions.
+	var outgoing commonv1.GovernanceEnvelope
+	if err := protojson.Unmarshal(envelopeBytes, &outgoing); err != nil {
+		return nil, fmt.Errorf("consensus deliberation: decode envelope: %w: %w", constants.ErrTxInvalidEnvelope, err)
+	}
+	body, err := proto.Marshal(&outgoing)
+	if err != nil {
+		return nil, fmt.Errorf("consensus deliberation: encode envelope: %w", err)
+	}
+
+	httpClient := d.httpClient
+	if d.httpClientFactory != nil {
+		primaryAppID := bound.PrimaryAppID()
+		if primaryAppID == "" {
+			return nil, constants.ErrConsensusAppNotEnrolled
+		}
+		httpClient, err = d.httpClientFactory(primaryAppID)
+		if err != nil {
+			return nil, fmt.Errorf("create consensus application HTTPS client: %w", err)
+		}
+	}
+	if httpClient == nil {
+		return nil, constants.ErrInternal
+	}
+	// The bound endpoint is the identity the Operator trusts. Every client
+	// source, including factory-built clients, is pinned here so none can
+	// re-enable redirects.
+	httpClient = httpclient.WithoutRedirects(httpClient, constants.ErrConsensusEndpointInvalid)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bound.EndpointURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create consensus deliberation request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-protobuf")
 
-	resp, err := d.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("consensus deliberation request failed: %w", err)
 	}
@@ -213,8 +251,34 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 	if updated.GetGovernance() == nil || updated.GetGovernance().GetL2() == nil || len(updated.GetGovernance().GetL2().GetVotes()) == 0 {
 		return nil, constants.ErrTxL2SignatureMissing
 	}
+	// Dispatch publishes this response while keying screening and the receipt
+	// wait on the envelope it sent, so the application may add L2 votes only.
+	if !sameEnvelopeExceptL2(&outgoing, &updated) {
+		return nil, constants.ErrTxL2EnvelopeAltered
+	}
 
-	return respBytes, nil
+	deliberated, err := protojson.Marshal(&updated)
+	if err != nil {
+		return nil, fmt.Errorf("encode deliberated envelope: %w", err)
+	}
+	return deliberated, nil
+}
+
+// sameEnvelopeExceptL2 reports whether two envelopes are equal once their L2
+// metadata is removed.
+func sameEnvelopeExceptL2(sent, returned *commonv1.GovernanceEnvelope) bool {
+	return proto.Equal(withoutL2(sent), withoutL2(returned))
+}
+
+func withoutL2(env *commonv1.GovernanceEnvelope) *commonv1.GovernanceEnvelope {
+	stripped := proto.Clone(env).(*commonv1.GovernanceEnvelope)
+	if gov := stripped.GetGovernance(); gov != nil {
+		gov.L2 = nil
+		if proto.Size(gov) == 0 {
+			stripped.Governance = nil
+		}
+	}
+	return stripped
 }
 
 // AddConsensus adds or updates a ConsensusPolicy in the database.

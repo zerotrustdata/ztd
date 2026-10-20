@@ -43,14 +43,14 @@ func scenarioUnanswerableError(blueprint ScenarioBlueprint, format string, args 
 // validateScenarioContract fails closed on any breach of the scenario
 // contract. Both catalog builders call it, so a bad blueprint cannot
 // materialize. Checks run in the order the plan lists them.
-func validateScenarioContract(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {
+func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
 	if blueprint.TrajectoryPolicy == evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_UNSPECIFIED {
 		return scenarioContractError(blueprint, "trajectory policy is unspecified")
 	}
 	if err := validateSeedCaseTitle(blueprint); err != nil {
 		return err
 	}
-	if err := validateScenarioToolNames(blueprint, registry); err != nil {
+	if err := validateScenarioToolNames(blueprint, catalog); err != nil {
 		return err
 	}
 	if err := validateScenarioToolSets(blueprint); err != nil {
@@ -67,16 +67,25 @@ func validateScenarioContract(blueprint ScenarioBlueprint, registry *AgentToolRe
 	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) {
 		return scenarioContractError(blueprint, "scenario has no content check, so it cannot fail")
 	}
-	if err := validateArgumentValidators(blueprint, registry); err != nil {
+	if err := validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck); err != nil {
 		return err
 	}
-	if err := validatePromptHint(blueprint, registry); err != nil {
+	if err := validateArgumentValidators(blueprint, catalog); err != nil {
+		return err
+	}
+	if err := validatePromptHint(blueprint, catalog); err != nil {
 		return err
 	}
 	if err := validateWorkspaceFiles(blueprint); err != nil {
 		return err
 	}
 	if err := validatePlayerExpectations(blueprint); err != nil {
+		return err
+	}
+	if err := validateFollowUps(blueprint); err != nil {
+		return err
+	}
+	if err := validateGoldEvidenceReferences(blueprint); err != nil {
 		return err
 	}
 	return validateRequiredEvidenceTypes(blueprint)
@@ -114,6 +123,9 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	if players.Command != nil && !contentCheckHasConstraint(players.Command) {
 		return scenarioContractError(blueprint, "command expectation has no constraint")
 	}
+	if players.Command != nil && players.Command.DiagnosisRubric != "" {
+		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
+	}
 	if marshal := players.Marshal; marshal != nil {
 		if len(marshal.Risk) == 0 {
 			return scenarioContractError(blueprint, "marshal expectation accepts no risk level")
@@ -126,6 +138,9 @@ func validatePlayerExpectations(blueprint ScenarioBlueprint) error {
 	}
 	if players.Codex != nil && !contentCheckHasConstraint(players.Codex) {
 		return scenarioContractError(blueprint, "codex expectation has no constraint")
+	}
+	if players.Codex != nil && players.Codex.DiagnosisRubric != "" {
+		return scenarioContractError(blueprint, "diagnosis rubric is only supported by scenario content checks")
 	}
 	return nil
 }
@@ -142,7 +157,7 @@ func validateSeedCaseTitle(blueprint ScenarioBlueprint) error {
 	return nil
 }
 
-func validateScenarioToolNames(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {
+func validateScenarioToolNames(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
 	names := make([]string, 0, len(blueprint.AllowedTools)+len(blueprint.ExpectedTools)+len(blueprint.ForbiddenTools))
 	names = append(names, blueprint.AllowedTools...)
 	names = append(names, blueprint.ExpectedTools...)
@@ -154,8 +169,8 @@ func validateScenarioToolNames(blueprint ScenarioBlueprint, registry *AgentToolR
 		names = append(names, validator.ToolName)
 	}
 	for _, name := range names {
-		if _, ok := registry.Tool(name); !ok {
-			return scenarioContractError(blueprint, "tool %q is not in the agent tool registry", name)
+		if _, ok := catalog.Tool(name); !ok {
+			return scenarioContractError(blueprint, "tool %q is not in the agent tool catalog", name)
 		}
 	}
 	return nil
@@ -163,6 +178,9 @@ func validateScenarioToolNames(blueprint ScenarioBlueprint, registry *AgentToolR
 
 func validateScenarioToolSets(blueprint ScenarioBlueprint) error {
 	allowed := stringSet(blueprint.AllowedTools)
+	if _, ok := allowed[agentToolRunCommands]; blueprint.TribunalCommands != ok {
+		return scenarioContractError(blueprint, "%q is allowed exactly when tribunal commands are declared", agentToolRunCommands)
+	}
 	for _, name := range blueprint.ExpectedTools {
 		if _, ok := allowed[name]; !ok {
 			return scenarioContractError(blueprint, "expected tool %q is not in AllowedTools", name)
@@ -180,8 +198,8 @@ func validateTrajectoryPolicyShape(blueprint ScenarioBlueprint) error {
 	hint := blueprint.Gold.PromptHint
 	switch blueprint.TrajectoryPolicy {
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER:
-		if len(blueprint.ExpectedTools) > 0 || len(blueprint.AllowedTools) > 0 || hint != nil {
-			return scenarioContractError(blueprint, "ANSWER scenarios declare no expected tools, allowed tools, or prompt hint")
+		if len(blueprint.ExpectedTools) > 0 || hint != nil {
+			return scenarioContractError(blueprint, "ANSWER scenarios declare no expected tools or prompt hint")
 		}
 	case evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_FIRST_CHOICE, evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED:
 		if len(blueprint.ExpectedTools) == 0 {
@@ -212,13 +230,24 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 	}
 	return check.ExactToken != "" || len(check.ExactLabels) > 0 || check.LeadingLabel != "" || check.WordCount > 0 ||
 		check.MaxSentences > 0 || len(check.RequiredTerms) > 0 || len(check.ForbiddenTerms) > 0 ||
-		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation
+		len(check.JSONStringFields) > 0 || len(check.JSONIntegerFields) > 0 || check.Interrogation || check.DiagnosisRubric != ""
 }
 
-func validateArgumentValidators(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {
+func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {
+	if check == nil || check.DiagnosisRubric == "" || check.DiagnosisRubric == ScenarioDiagnosisRubricCheckoutTimeoutV1 {
+		return nil
+	}
+	return scenarioContractError(blueprint, "unknown diagnosis rubric %q", check.DiagnosisRubric)
+}
+
+func validateArgumentValidators(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
 	for _, validator := range blueprint.Gold.ArgumentValidators {
-		tool, _ := registry.Tool(validator.ToolName)
-		known := stringSet(tool.Arguments)
+		tool, ok := catalog.Tool(validator.ToolName)
+		if !ok {
+			return scenarioContractError(blueprint, "validator for %q constrains unknown tool", validator.ToolName)
+		}
+		arguments := tool.Arguments()
+		known := stringSet(arguments)
 		for _, constraint := range validator.Arguments {
 			if _, ok := known[constraint.Name]; !ok {
 				return scenarioContractError(blueprint, "validator for %q constrains unknown argument %q", validator.ToolName, constraint.Name)
@@ -234,7 +263,7 @@ func validateArgumentValidators(blueprint ScenarioBlueprint, registry *AgentTool
 
 // validatePromptHint enforces INV-EVAL-CAMP-11: every required argument of
 // every hinted tool is derivable from where the hint says it is.
-func validatePromptHint(blueprint ScenarioBlueprint, registry *AgentToolRegistry) error {
+func validatePromptHint(blueprint ScenarioBlueprint, catalog *agentToolCatalog) error {
 	hint := blueprint.Gold.PromptHint
 	if hint == nil {
 		return nil
@@ -246,8 +275,12 @@ func validatePromptHint(blueprint ScenarioBlueprint, registry *AgentToolRegistry
 		}
 	}
 	for _, toolName := range hint.HintedTools {
-		tool, _ := registry.Tool(toolName)
-		for _, required := range tool.RequiredArguments {
+		tool, ok := catalog.Tool(toolName)
+		if !ok {
+			return scenarioContractError(blueprint, "hint names unknown tool %q", toolName)
+		}
+		requiredArguments := tool.RequiredArguments()
+		for _, required := range requiredArguments {
 			matches := hintArgumentsFor(hint, toolName, required)
 			if len(matches) != 1 {
 				return scenarioUnanswerableError(blueprint, "required argument %q of %q has %d hint sources, want exactly 1", required, toolName, len(matches))
@@ -304,11 +337,6 @@ func validateHintArgumentSource(blueprint ScenarioBlueprint, argument ScenarioHi
 func seedContains(seed InvestigationSeed, value string) bool {
 	for _, turn := range seed.Turns {
 		if strings.Contains(turn.Content, value) {
-			return true
-		}
-	}
-	for _, event := range seed.HistoryEvents {
-		if strings.Contains(event.Summary, value) || strings.Contains(event.ArgumentsJSON, value) {
 			return true
 		}
 	}
@@ -371,6 +399,43 @@ func stringSet(values []string) map[string]struct{} {
 func validateWorkspaceRelPath(relPath string) error {
 	if relPath == "" || path.IsAbs(relPath) || path.Clean(relPath) != relPath || relPath == "." || strings.HasPrefix(relPath, "../") || strings.Contains(relPath, "\x00") {
 		return fmt.Errorf("evaluation: workspace file path %q must be a clean relative path inside the workspace", relPath)
+	}
+	return nil
+}
+
+func validateFollowUps(blueprint ScenarioBlueprint) error {
+	seen := make(map[string]bool, len(blueprint.Input.FollowUps))
+	for _, fu := range blueprint.Input.FollowUps {
+		if fu.ID == "" {
+			return scenarioContractError(blueprint, "scripted follow-up has empty ID")
+		}
+		if fu.ResponseText == "" {
+			return scenarioContractError(blueprint, "scripted follow-up %q has empty response_text", fu.ID)
+		}
+		if seen[fu.ID] {
+			return scenarioContractError(blueprint, "duplicate scripted follow-up ID %q", fu.ID)
+		}
+		seen[fu.ID] = true
+	}
+	return nil
+}
+
+func validateGoldEvidenceReferences(blueprint ScenarioBlueprint) error {
+	seen := make(map[string]bool, len(blueprint.Gold.GoldEvidenceReferences))
+	for _, ref := range blueprint.Gold.GoldEvidenceReferences {
+		if strings.TrimSpace(ref.ReferenceID) == "" {
+			return scenarioContractError(blueprint, "gold evidence reference has empty reference_id")
+		}
+		if ref.ReferenceID != strings.TrimSpace(ref.ReferenceID) {
+			return scenarioContractError(blueprint, "gold evidence reference %q has surrounding whitespace", ref.ReferenceID)
+		}
+		if seen[ref.ReferenceID] {
+			return scenarioContractError(blueprint, "duplicate gold evidence reference ID %q", ref.ReferenceID)
+		}
+		seen[ref.ReferenceID] = true
+		if ref.ActionType == "" && ref.TargetResource == "" && ref.CommandPattern == "" && ref.ExpectedContent == "" {
+			return scenarioContractError(blueprint, "gold evidence reference %q must specify at least one criterion (action_type, target_resource, command_pattern, expected_content)", ref.ReferenceID)
+		}
 	}
 	return nil
 }

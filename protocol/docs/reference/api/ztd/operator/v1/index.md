@@ -1362,7 +1362,10 @@ handler rejects before dispatch (method, identity, body size). Receipt is
 the executing Operator&#39;s verified signed FAILED receipt when the dispatch
 reached it: a governance rejection, or a failed execution whose commitment
 the Operator&#39;s ledger holds. It is absent for every failure that ended
-before the Operator signed an outcome.
+before the Operator signed an outcome. Observation_receipts are the
+observers&#39; verified signed BEGIN and FINALIZE receipts the failed attempt
+produced, in dispatch order, so a trace bracket can claim their
+commitments as it does for InferenceDispatchResponse.
 
 
 | Field | Type | Label | Description |
@@ -1370,6 +1373,7 @@ before the Operator signed an outcome.
 | error | [string](#string) |  |  |
 | code | [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode) |  |  |
 | receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| observation_receipts | [ActionReceipt](#ztd-operator-v1-ActionReceipt) | repeated |  |
 
 
 
@@ -1443,6 +1447,7 @@ the gateway&#39;s standard typed error envelope with a public-safe code.
 | transaction_id | [string](#string) |  | Transaction ID correlating the dispatch with the audit chain. |
 | result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  | The complete inference result whose result_digest is bound into the signed receipt. |
 | receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  | The verified final signed ActionReceipt for the transaction. |
+| observation_receipts | [ActionReceipt](#ztd-operator-v1-ActionReceipt) | repeated | The observers&#39; verified final signed receipts for this attempt&#39;s provider-boundary and model provenance BEGIN and FINALIZE commands, in dispatch order. Each was signed before the response was returned, so a trace bracket closing after the dispatch can claim its commitment. |
 
 
 
@@ -2976,6 +2981,7 @@ bound into the receipt signature.
 | GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID | 22 |  |
 | GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN | 23 | The L2 proof names a consensus set that is unknown or disabled. |
 | GOVERNANCE_REJECTION_CODE_L3_DENIED | 24 | The human denied the suspended transaction at the L3 approval. |
+| GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH | 25 | An MCP_CALL&#39;s target_resource is not its payload&#39;s tool name. |
 
 
 
@@ -3240,6 +3246,7 @@ string-matching the result_summary. It is bound into the receipt signature.
 | RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID | 18 |  |
 | RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED | 19 |  |
 | RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW | 20 | The prompt filled the provider&#39;s context window, so the provider truncated it or left no room to generate. |
+| RECEIPT_FAILURE_CODE_REHYDRATION_FAILED | 21 | A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch. |
 
 
  

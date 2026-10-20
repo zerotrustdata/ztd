@@ -146,8 +146,8 @@ func TestObserveReadModelsRejectUnknownFields(t *testing.T) {
 // schema itself has been corrupted.
 //
 // The producer request entries (observe_producer_agent_state_request,
-// observe_producer_run_state_request, observe_producer_eval_publication_request)
-// are mTLS-internal and legitimately carry web_session_id/cli_session_id as
+// observe_producer_run_state_request, observe_producer_stop_request,
+// observe_producer_eval_publication_request) are mTLS-internal and legitimately carry web_session_id/cli_session_id as
 // SSE routing targets — the gateway derives user_id from the mTLS peer
 // certificate, never from the request body. They are excluded from this
 // browser-disclosure check.
@@ -165,6 +165,7 @@ func TestObservePayloadSchemasExcludeRestrictedFields(t *testing.T) {
 	producerEntries := []string{
 		"observe_producer_agent_state_request",
 		"observe_producer_run_state_request",
+		"observe_producer_stop_request",
 		"observe_producer_eval_publication_request",
 	}
 	schemaFiles := []string{

@@ -69,12 +69,19 @@ func TestValidateWitnessCommand(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateWitnessCommand(tt.cfg, "ollama ps")
+			capabilities := ResolveOperatorCapabilities(tt.cfg)
+			commandErr := ValidateWitnessCommand(capabilities, "ollama ps")
+			nativeToolErr := ValidateWitnessNativeTool(capabilities, constants.MCPToolRunShellCommand)
+			for _, ledgerRead := range []string{constants.MCPToolAuditReceiptList, constants.MCPToolAuditReceiptGet} {
+				require.NoError(t, ValidateWitnessNativeTool(capabilities, ledgerRead), ledgerRead)
+			}
 			if tt.want {
-				require.NoError(t, err)
+				require.NoError(t, commandErr)
+				require.NoError(t, nativeToolErr)
 				return
 			}
-			require.ErrorIs(t, err, constants.ErrWitnessCommandNotCapable)
+			require.ErrorIs(t, commandErr, constants.ErrWitnessCommandNotCapable)
+			require.ErrorIs(t, nativeToolErr, constants.ErrWitnessCommandNotCapable)
 		})
 	}
 }

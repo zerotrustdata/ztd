@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -307,7 +308,7 @@ func TestOperatorDeployInstallsBinaryWithoutStartingIt(t *testing.T) {
 		assert.NotZero(t, info.Mode()&0o111, "installed binary must be executable")
 	}
 	assert.NoFileExists(t, filepath.Join(remoteDir, "ztd.new"), "staging file must be renamed into place")
-	assert.NoFileExists(t, filepath.Join(remoteDir, operatorDeployStartLog))
+	assert.NoFileExists(t, filepath.Join(remoteDir, constants.DeployStartLogFilename))
 }
 
 func TestOperatorDeployStagesFleetBeforeOneApprovalAndReportsSessions(t *testing.T) {
@@ -626,7 +627,7 @@ func TestOperatorDeployStopsBeforeStartingWorkersWhenTheGatewayIsUnreachable(t *
 	data, readErr := os.ReadFile(filepath.Join(root, "preflight.txt"))
 	require.NoError(t, readErr)
 	assert.Equal(t, "operator\ngateway-preflight\n192.168.1.2\n--gateway-https-port=9443\n", string(data))
-	assert.NoFileExists(t, filepath.Join(root, operatorDeployStartLog), "no worker may start")
+	assert.NoFileExists(t, filepath.Join(root, constants.DeployStartLogFilename), "no worker may start")
 }
 
 func TestOperatorDeployRejectsGatewayPortsOutOfRange(t *testing.T) {
@@ -753,7 +754,7 @@ func TestEnrollDeployedOperatorsApprovesThroughAReadinessDrivenWindow(t *testing
 	gateway.pending, err = json.Marshal(pending)
 	require.NoError(t, err)
 
-	require.NoError(t, enrollDeployedOperators(context.Background(), gateway, ops, window))
+	require.NoError(t, enrollDeployedOperators(context.Background(), gateway, ops, window, io.Discard))
 
 	require.LessOrEqual(t, gateway.peak, window, "never more approved workers awaiting readiness than the window")
 	require.Greater(t, len(gateway.waves), 1, "the cohort is not approved in one burst")
@@ -768,6 +769,55 @@ func TestEnrollDeployedOperatorsApprovesThroughAReadinessDrivenWindow(t *testing
 	require.Equal(t, staged, approved, "every staged request is approved once, in staging order")
 	for _, op := range ops {
 		require.Equal(t, "session-"+op.Dir, op.SessionID)
+	}
+}
+
+// l3SuspendingGateway answers every batch decision with an L3 suspension, as a
+// notary-posture Gateway does, and approves nothing on its own.
+type l3SuspendingGateway struct {
+	*cmdtest.MockAPIClient
+	pending []byte
+	posts   int
+}
+
+func (g *l3SuspendingGateway) Get(string) ([]byte, error) { return g.pending, nil }
+
+func (g *l3SuspendingGateway) Post(string, interface{}) ([]byte, error) {
+	g.posts++
+	return json.Marshal(models.PlatformEnrollmentL3SuspensionResponse{
+		Status:      models.PlatformEnrollmentStatusL3Required,
+		Posture:     constants.PostureNotary,
+		TxHash:      "tx-l3",
+		ApprovalURL: "https://gateway.test/approve/tx-l3",
+		ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+		Message:     "human approval required",
+	})
+}
+
+func TestEnrollDeployedOperatorsSurfacesL3SuspensionWithoutCountingItApproved(t *testing.T) {
+	events := newDeploymentEvents()
+	var pending models.PlatformEnrollmentPendingResponse
+	var ops []deployedOperator
+	for _, id := range []string{"req-1", "req-2"} {
+		pending.Requests = append(pending.Requests, models.PlatformEnrollmentPendingRequest{RequestID: id, Fingerprints: testWorkerFingerprints})
+		ops = append(ops, deployedOperator{target: deploySSH{local: true}, Dir: testutil.TempDir(t), RequestID: id, Fingerprints: testWorkerFingerprints, watch: events.watch(id)})
+	}
+	body, err := json.Marshal(pending)
+	require.NoError(t, err)
+	gateway := &l3SuspendingGateway{MockAPIClient: &cmdtest.MockAPIClient{}, pending: body}
+
+	// No human approves and no worker comes online, so the wait must fail at the
+	// deadline rather than report readiness for a wave that was never approved.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	var out bytes.Buffer
+	err = enrollDeployedOperators(ctx, gateway, ops, 1, &out)
+	require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
+	require.Equal(t, 1, gateway.posts, "no further wave is submitted while the first awaits L3 approval")
+	require.Contains(t, out.String(), "https://gateway.test/approve/tx-l3", "the approval URL reaches the operator")
+	require.Contains(t, out.String(), "tx-l3")
+	for _, op := range ops {
+		require.Empty(t, op.SessionID, "a suspended worker is not reported as online")
 	}
 }
 

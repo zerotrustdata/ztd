@@ -17,7 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/protocol"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -49,14 +49,22 @@ const (
 )
 
 // Config is the judge model and the campaign authority its dispatches run under.
+// RunID, AssignmentID, and ScenarioID bind every dispatch to the assignment being
+// graded; the Operator echoes them back and the judge rejects any mismatch.
 type Config struct {
 	InferenceSessionID  string
 	Variant             *evalv1.ModelVariant // the judge model; must be in the frozen registry
 	CampaignID          string
 	ModelRegistryDigest string
 	ModelRegistry       []*operatorv1.InferenceModelVariant
+	RunID               string
+	AssignmentID        string
+	ScenarioID          string
 	NewID               func(prefix string) string
 }
+
+// RubricVersion freezes the rubric version used for diagnosis quality evaluation.
+const RubricVersion = "diagnosis-quality-v1"
 
 // Score is one secondary judge score. Status is SCORED or FAILED; a FAILED
 // score carries Detail and no Value.
@@ -68,6 +76,9 @@ type Score struct {
 	JudgeModelTag    string
 	JudgeModelDigest string
 	TransactionID    string // the governed inference transaction
+	Receipt          *operatorv1.ActionReceipt
+	Result           *operatorv1.InferenceResult // the result the receipt's result summary binds
+	RubricVersion    string
 	Detail           string
 }
 
@@ -86,8 +97,10 @@ const memoryRubric = "You grade the quality of an agent's memory write, against 
 	"(excellent). Judge quality only: do not decide pass or fail. " +
 	`Respond only with JSON: {"score": <integer 1-5>, "rationale": "<one short sentence>"}.`
 
-const judgmentJSONSchema = `{"additionalProperties":false,"properties":{"score":{"type":"integer","minimum":1,"maximum":5},` +
-	`"rationale":{"type":"string"}},"required":["score","rationale"],"type":"object"}`
+// judgmentJSONSchema is canonical JSON (sorted keys, no whitespace): the
+// Inference Operator refuses a non-canonical response schema.
+const judgmentJSONSchema = `{"additionalProperties":false,"properties":{"rationale":{"type":"string"},` +
+	`"score":{"maximum":5,"minimum":1,"type":"integer"}},"required":["score","rationale"],"type":"object"}`
 
 // New validates the judge configuration. Every field is required, so a judge that
 // cannot dispatch is never constructed.
@@ -140,18 +153,22 @@ func (j *Judge) score(ctx context.Context, subject Subject, userText string) Sco
 		Status:           StatusScored,
 		JudgeModelTag:    j.cfg.Variant.GetServedModelTag(),
 		JudgeModelDigest: j.cfg.Variant.GetModelDigest(),
+		RubricVersion:    RubricVersion,
 	}
-	req := j.probeRequest(subject, userText)
-	dispatchReq, err := evaluation.BuildInferenceProbeDispatchRequest(req)
+	dispatchReq, providerAttemptID, err := j.buildDispatchRequest(subject, userText)
 	if err != nil {
 		return failedScore(result, err)
 	}
 	resp, err := j.dispatcher.DispatchInference(ctx, dispatchReq)
-	result.TransactionID = resp.GetTransactionId()
+	if resp != nil {
+		result.TransactionID = resp.GetTransactionId()
+		result.Receipt = resp.GetReceipt()
+		result.Result = resp.GetResult()
+	}
 	if err != nil {
 		return failedScore(result, err)
 	}
-	if err := evaluation.ValidateInferenceProbeResponse(req, resp); err != nil {
+	if err := j.validateResponse(providerAttemptID, resp); err != nil {
 		return failedScore(result, err)
 	}
 	value, rationale, err := decodeJudgment(resp.GetResult())
@@ -169,13 +186,24 @@ func failedScore(score Score, err error) Score {
 	return score
 }
 
-func (j *Judge) probeRequest(subject Subject, userText string) evaluation.InferenceProbeRequest {
-	return evaluation.InferenceProbeRequest{
-		ProviderAttemptID:       j.cfg.NewID("judge-" + string(subject)),
-		Role:                    models.InferenceModelRolePrimary,
-		Model:                   j.cfg.Variant.GetServedModelTag(),
-		ModelDigest:             j.cfg.Variant.GetModelDigest(),
-		TargetOperatorSessionID: j.cfg.InferenceSessionID,
+func (j *Judge) buildDispatchRequest(subject Subject, userText string) (*operatorv1.InferenceDispatchRequest, string, error) {
+	providerAttemptID := j.cfg.NewID("judge-" + string(subject))
+	if providerAttemptID == "" || j.cfg.Variant.GetServedModelTag() == "" || j.cfg.InferenceSessionID == "" ||
+		j.cfg.RunID == "" || j.cfg.AssignmentID == "" || j.cfg.ScenarioID == "" {
+		return nil, "", fmt.Errorf("evaluation judge: build request: %w", constants.ErrMissingRequiredField)
+	}
+	if j.cfg.CampaignID == "" || j.cfg.ModelRegistryDigest == "" || len(j.cfg.ModelRegistry) == 0 || j.cfg.Variant.GetModelDigest() == "" {
+		return nil, "", fmt.Errorf("evaluation judge: build request: %w", constants.ErrInferenceModelRegistryInvalid)
+	}
+	digest, err := models.ComputeInferenceModelRegistryDigest(j.cfg.CampaignID, j.cfg.ModelRegistry)
+	if err != nil || digest != j.cfg.ModelRegistryDigest {
+		return nil, "", fmt.Errorf("evaluation judge: build request: %w", constants.ErrInferenceModelRegistryInvalid)
+	}
+	req := &operatorv1.InferenceDispatchRequest{
+		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
+		Role:                 models.InferenceModelRolePrimary.ToProto(),
+		Model:                j.cfg.Variant.GetServedModelTag(),
+		ModelDigest:          j.cfg.Variant.GetModelDigest(),
 		Messages: []*operatorv1.InferenceMessage{
 			textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, rubricFor(subject)),
 			textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, userText),
@@ -184,10 +212,47 @@ func (j *Judge) probeRequest(subject Subject, userText string) evaluation.Infere
 			MediaType:  "application/json",
 			JsonSchema: judgmentJSONSchema,
 		},
-		CampaignID:          j.cfg.CampaignID,
-		ModelRegistryDigest: j.cfg.ModelRegistryDigest,
-		ModelRegistry:       j.cfg.ModelRegistry,
+		ProviderAttemptId:       providerAttemptID,
+		TargetOperatorSessionId: j.cfg.InferenceSessionID,
+		ActingAppId:             protocol.NewWorkloadIdentity().AppSPIFFEID(constants.EvaluationAppName),
+		CampaignId:              j.cfg.CampaignID,
+		ModelRegistryDigest:     j.cfg.ModelRegistryDigest,
+		ModelRegistry:           j.cfg.ModelRegistry,
+		RunId:                   j.cfg.RunID,
+		AssignmentId:            j.cfg.AssignmentID,
+		EvaluationAttemptId:     providerAttemptID,
+		ScenarioId:              j.cfg.ScenarioID,
 	}
+	return req, providerAttemptID, nil
+}
+
+// validateResponse checks that the Operator's result answers this judge's dispatch:
+// same attempt, same campaign authority, and same run, assignment, and scenario.
+func (j *Judge) validateResponse(providerAttemptID string, resp *operatorv1.InferenceDispatchResponse) error {
+	if resp == nil || resp.GetResult() == nil || resp.GetReceipt() == nil {
+		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrMissingRequiredField)
+	}
+	result := resp.GetResult()
+	receipt := resp.GetReceipt()
+	if result.GetProviderAttemptId() != providerAttemptID ||
+		result.GetRunId() != j.cfg.RunID ||
+		result.GetAssignmentId() != j.cfg.AssignmentID ||
+		result.GetScenarioId() != j.cfg.ScenarioID {
+		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrIdentityBindingFailed)
+	}
+	if result.GetRequestedModel() != j.cfg.Variant.GetServedModelTag() {
+		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceModelOverrideDenied)
+	}
+	if result.GetResultDigest() == "" || receipt.GetResultSummary() != result.GetResultDigest() {
+		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceResultDigest)
+	}
+	if j.cfg.CampaignID != "" && result.GetCampaignId() != j.cfg.CampaignID {
+		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceModelRegistryInvalid)
+	}
+	if j.cfg.ModelRegistryDigest != "" && result.GetModelRegistryDigest() != j.cfg.ModelRegistryDigest {
+		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceModelRegistryInvalid)
+	}
+	return nil
 }
 
 func rubricFor(subject Subject) string {
@@ -228,7 +293,7 @@ type judgment struct {
 // decodeJudgment reads the judgment from the result text. Any shape outside
 // {"score": 1..5, "rationale": string} is ErrJudgeResponseInvalid.
 func decodeJudgment(result *operatorv1.InferenceResult) (int, string, error) {
-	dec := json.NewDecoder(strings.NewReader(evaluation.CollectResponseText(result)))
+	dec := json.NewDecoder(strings.NewReader(models.InferenceResultText(result)))
 	dec.DisallowUnknownFields()
 	var decoded judgment
 	if err := dec.Decode(&decoded); err != nil {

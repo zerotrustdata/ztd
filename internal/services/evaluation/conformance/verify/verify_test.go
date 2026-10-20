@@ -23,7 +23,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/governance/doctrinecorpus"
-	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -133,7 +132,7 @@ func canaryEntry(path, content string) *evalv1.CanaryEntry {
 // skill payload, JSON-encoded, so a newline in the marker is the escape \n.
 func markerPayloadJSON(t *testing.T, marker string) string {
 	t.Helper()
-	raw, err := json.Marshal(client.MarkerSkillPayload{Marker: marker})
+	raw, err := json.Marshal(cases.MarkerSkillPayload{Marker: marker})
 	require.NoError(t, err)
 	return string(raw)
 }
@@ -818,17 +817,25 @@ func TestVerifyPersistedPassingRecordIsPass(t *testing.T) {
 	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_PASS, set.GetSuiteVerdict())
 }
 
-func TestVerifyPersistedEveryFlippedBitIsInvalidEvidence(t *testing.T) {
+func TestVerifyPersistedFlippedBitIsInvalidEvidence(t *testing.T) {
 	f := newFixture(t)
 	raw, err := evalv1.MarshalCanonical(f.record())
 	require.NoError(t, err)
 	digest := sha256Hex(raw)
 
-	stride := 1
-	if len(raw) >= 64*1024 {
-		stride = 7
+	// Every flip takes the same digest-mismatch path, and each costs a full hash
+	// and decode, so a bounded spread of offsets covers it: every byte of the
+	// head and tail, plus evenly spaced interior offsets.
+	const edge, interior = 64, 256
+	offsets := map[int]struct{}{}
+	for i := 0; i < edge && i < len(raw); i++ {
+		offsets[i] = struct{}{}
+		offsets[len(raw)-1-i] = struct{}{}
 	}
-	for offset := 0; offset < len(raw); offset += stride {
+	for i := 0; i < interior; i++ {
+		offsets[i*len(raw)/interior] = struct{}{}
+	}
+	for offset := range offsets {
 		flipped := append([]byte(nil), raw...)
 		flipped[offset] ^= 1 << (offset % 8)
 

@@ -14,9 +14,9 @@ import (
 
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 )
 
@@ -52,9 +52,11 @@ func ActiveInferenceOperators(operators []*operatorv1.OperatorDocument) []Infere
 }
 
 // SelectInferenceOperator resolves exactly one inference-capable Operator.
-// When sessionID is non-empty it must match an active inference Operator;
-// otherwise the Gateway's embedded Operator is the default, and without it
-// exactly one active inference Operator must exist.
+// When sessionID is non-empty it must match an active inference Operator.
+// When sessionID is empty, dedicated remote inference Operators take precedence
+// over the Gateway's embedded Operator fallback; exactly one dedicated
+// inference Operator must exist, or with no dedicated Operators active, the
+// embedded Operator is selected.
 func SelectInferenceOperator(operators []*operatorv1.OperatorDocument, sessionID string) (*InferenceOperatorStatus, error) {
 	return SelectInferenceOperatorForHardware(operators, sessionID, "")
 }
@@ -91,21 +93,40 @@ func SelectInferenceOperatorForHardware(
 		}
 		return nil, fmt.Errorf("%w: session %s", constants.ErrInferenceOperatorNotCapable, sessionID)
 	}
+
+	var dedicatedMatches []InferenceOperatorStatus
+	var embeddedMatches []InferenceOperatorStatus
 	for _, match := range matches {
 		if match.Embedded {
-			selected := match
-			return &selected, nil
+			embeddedMatches = append(embeddedMatches, match)
+		} else {
+			dedicatedMatches = append(dedicatedMatches, match)
 		}
 	}
-	switch len(matches) {
+
+	if len(dedicatedMatches) == 1 {
+		selected := dedicatedMatches[0]
+		return &selected, nil
+	}
+	if len(dedicatedMatches) > 1 {
+		candidates := make([]string, 0, len(dedicatedMatches))
+		for _, match := range dedicatedMatches {
+			candidates = append(candidates, fmt.Sprintf("%s (session %s)", match.OperatorID, match.OperatorSessionID))
+		}
+		return nil, fmt.Errorf("%w: %s", constants.ErrInferenceOperatorAmbiguous, strings.Join(candidates, ", "))
+	}
+
+	// Fall back to the Gateway's embedded Operator when no dedicated inference
+	// operators are active.
+	switch len(embeddedMatches) {
 	case 0:
 		return nil, constants.ErrInferenceOperatorNotFound
 	case 1:
-		selected := matches[0]
+		selected := embeddedMatches[0]
 		return &selected, nil
 	default:
-		candidates := make([]string, 0, len(matches))
-		for _, match := range matches {
+		candidates := make([]string, 0, len(embeddedMatches))
+		for _, match := range embeddedMatches {
 			candidates = append(candidates, fmt.Sprintf("%s (session %s)", match.OperatorID, match.OperatorSessionID))
 		}
 		return nil, fmt.Errorf("%w: %s", constants.ErrInferenceOperatorAmbiguous, strings.Join(candidates, ", "))
@@ -143,17 +164,12 @@ type GovernedInferenceDispatcher interface {
 	DispatchInference(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error)
 }
 
-func campaignRoleToInferenceRole(role evalv1.ModelCampaignRole) (models.InferenceModelRole, error) {
-	switch role {
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY:
-		return models.InferenceModelRolePrimary, nil
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT:
-		return models.InferenceModelRoleAssistant, nil
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE:
-		return models.InferenceModelRoleLite, nil
-	default:
-		return models.InferenceModelRoleUnspecified, fmt.Errorf("evaluation: inference role %s: %w", role, constants.ErrInferenceRoleInvalid)
-	}
+// AgentInferenceDispatcher is the agent executor's Gateway inference surface:
+// governed inference, and Tribunal intents whose member calls are governed
+// inferences under the same app identity (POST /api/v1/operators/intents).
+type AgentInferenceDispatcher interface {
+	GovernedInferenceDispatcher
+	DispatchIntent(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error)
 }
 
 // operatorLoadStateToEvaluation maps the operator-layer model load

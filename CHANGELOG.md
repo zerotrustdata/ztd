@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## v1.2.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.2.0 | 2026-10-20 | Production Tribunal (`POST /api/v1/operators/intents`), CLI and outbound-Operator L3 approval (`ztd auth approve --cli`, `PasskeyVerificationContext`), K-of-N consensus bindings (`--member-app`, `--quorum`), fresh/persistent investigation campaigns with Tribunal-authored commands, sealed `agent-trace.v7` evidence and witness policies, event-driven process exit, and removal of the legacy evaluation SUT and JSON agent-tool registry. | [v1.2.0](docs/release_notes/v1.2.x/v1.2.0.md) |
+
 ## v1.1.x
 
 | Version | Date | Description | Notes |

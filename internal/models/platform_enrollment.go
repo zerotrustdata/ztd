@@ -15,12 +15,49 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 )
+
+// platformAppNamePattern is the application name format. The Gateway and the
+// CLI both enforce it through ValidateAppName.
+var platformAppNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// ValidateAppName is the single application name rule: non-empty, at most
+// constants.PlatformEnrollmentMaxAppNameBytes bytes, matching the lowercase
+// name format, and not a reserved platform or operator identity. A reserved
+// name fails with both ErrPlatformEnrollmentInvalidAppName and
+// ErrPlatformEnrollmentReservedIdentity.
+func ValidateAppName(name string) error {
+	if name == "" {
+		return constants.ErrPlatformEnrollmentAppNameRequired
+	}
+	if len(name) > constants.PlatformEnrollmentMaxAppNameBytes || !platformAppNamePattern.MatchString(name) {
+		return constants.ErrPlatformEnrollmentInvalidAppName
+	}
+	if isReservedPlatformAppName(name) {
+		return fmt.Errorf("%w: %w", constants.ErrPlatformEnrollmentInvalidAppName, constants.ErrPlatformEnrollmentReservedIdentity)
+	}
+	return nil
+}
+
+// isReservedPlatformAppName reports whether name collides with a canonical
+// platform component identity or a reserved operator/CLI name. Those
+// identities are issued only through the owner-approved enrollment protocol.
+func isReservedPlatformAppName(name string) bool {
+	switch name {
+	case "ztd", "ztdg", PlatformOperatorName, "ztde", PlatformDashboardName,
+		"ztd-gateway", "ztd-operator", "ztd-ensemble", "ztd-dashboard", "ztd-cli",
+		"operator", "ensemble", "dashboard", "gateway", "cli", "admin", "system":
+		return true
+	default:
+		return false
+	}
+}
 
 type PlatformComponentKind string
 
@@ -170,11 +207,8 @@ func (r PlatformEnrollmentCreateRequest) ValidateShape() error {
 		return constants.ErrPlatformEnrollmentInvalidHostname
 	}
 	if r.ComponentKind == PlatformComponentApplication {
-		if r.AppName == "" {
-			return constants.ErrPlatformEnrollmentAppNameRequired
-		}
-		if len(r.AppName) > constants.PlatformEnrollmentMaxAppNameBytes {
-			return constants.ErrPlatformEnrollmentInvalidAppName
+		if err := ValidateAppName(r.AppName); err != nil {
+			return err
 		}
 	}
 	if r.ComponentKind == PlatformComponentOperator {

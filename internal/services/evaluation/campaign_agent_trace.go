@@ -28,25 +28,47 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v5
-// adds the held context a repetition continued; v4 added the exact model
+// agentTraceSchemaVersion is the version every new trace is sealed with. v7
+// carries each complete signed inference result and its per-call model identity;
+// v6 binds scored investigation identity and authoritative context retrievals; v5
+// added the held context a repetition continued; v4 added the exact model
 // input, per-turn thinking, and provider tool-call IDs. v4 and v3 traces
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion   = "agent-trace.v5"
+	agentTraceSchemaVersion   = "agent-trace.v7"
+	agentTraceSchemaVersionV6 = "agent-trace.v6"
+	agentTraceSchemaVersionV5 = "agent-trace.v5"
 	agentTraceSchemaVersionV4 = "agent-trace.v4"
 	agentTraceSchemaVersionV3 = "agent-trace.v3"
 )
 
-// agentModelCallPurposeTurn is the purpose of every governed agent inference.
-// Each one is a scored step of the tool loop.
+// agentModelCallPurposeTurn is the purpose of every governed agent turn. Each
+// one is a scored step of the tool loop.
 const agentModelCallPurposeTurn = "agent_turn"
+
+// agentModelCallPurposeTribunalPrefix prefixes the purpose of every governed
+// inference a Tribunal deliberation dispatches inside one intent-only
+// run_commands_with_operator call: tribunal_generate, tribunal_marshal, or
+// tribunal_audit. These calls are not turns; they hang off their tool call.
+const agentModelCallPurposeTribunalPrefix = "tribunal_"
 
 // Policy decisions recorded on a governed tool call.
 const (
 	agentPolicyDecisionAllow = "allow"
 	agentPolicyDecisionDeny  = "deny"
+)
+
+// Terminal classifications for homogeneous agent executor outcomes (D6).
+const (
+	AgentTerminalClassificationFinalDiagnosis           = "final_diagnosis"
+	AgentTerminalClassificationClarification            = "clarification"
+	AgentTerminalClassificationEscalationOrRefusal      = "escalation_or_refusal"
+	AgentTerminalClassificationPolicyDenial             = "policy_denial"
+	AgentTerminalClassificationPipelineOutcome          = "pipeline_outcome"
+	AgentTerminalClassificationBudgetExhaustion         = "budget_exhaustion"
+	AgentTerminalClassificationHarnessFailure           = "harness_failure"
+	AgentTerminalClassificationUnsupportedClarification = "unsupported_clarification"
 )
 
 // AgentTraceWorkspace is the attempt-scoped workspace one agent trace ran in.
@@ -61,10 +83,23 @@ type AgentTraceWorkspace struct {
 // failed after the Operator committed the execution (Error then names the
 // failure). Either way the execution sits on the Inference runtime's ledger.
 type AgentModelCall struct {
-	ProviderAttemptID       string   `json:"provider_attempt_id"`
-	TransactionID           string   `json:"transaction_id"`
-	Purpose                 string   `json:"purpose"`
-	LoopTurn                int      `json:"loop_turn"`
+	ProviderAttemptID string `json:"provider_attempt_id"`
+	TransactionID     string `json:"transaction_id"`
+	Purpose           string `json:"purpose"`
+	LoopTurn          int    `json:"loop_turn"`
+	// Model identity is repeated per call so a trace can bind each inference
+	// result to its selected frozen variant and role.
+	ModelVariantID string `json:"model_variant_id,omitempty"`
+	ModelRole      string `json:"model_role,omitempty"`
+	ServedModelTag string `json:"served_model_tag,omitempty"`
+	ModelDigest    string `json:"model_digest,omitempty"`
+	// InferenceResult is the complete response covered by ResultDigest and the
+	// signed receipt. Earlier trace versions did not retain it.
+	InferenceResult *AgentTraceInferenceResult `json:"inference_result,omitempty"`
+	// ToolCallID and Persona are set on a Tribunal call: the tool call whose
+	// deliberation dispatched it and the persona that answered.
+	ToolCallID              string   `json:"tool_call_id,omitempty"`
+	Persona                 string   `json:"persona,omitempty"`
 	ToolsDeclared           []string `json:"tools_declared"`
 	ResultDigest            string   `json:"result_digest"`
 	UsageReported           bool     `json:"usage_reported"`
@@ -83,11 +118,44 @@ type AgentModelCall struct {
 	// Error is the public failure of a call that did not complete.
 	Error   string             `json:"error,omitempty"`
 	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
+	// ObservationReceipts are the observers' signed final receipts for this
+	// attempt's BEGIN and FINALIZE commands. The Gateway waits for each before
+	// the dispatch returns, so a shared runtime claims their commitments in the
+	// trace bracket.
+	ObservationReceipts []AgentTraceReceipt `json:"observation_receipts,omitempty"`
+}
+
+// AgentTraceInferenceResult carries a complete inference result as canonical
+// protojson, like AgentTraceReceipt.
+type AgentTraceInferenceResult struct{ *operatorv1.InferenceResult }
+
+// MarshalJSON writes the result as canonical protojson.
+func (r AgentTraceInferenceResult) MarshalJSON() ([]byte, error) {
+	if r.InferenceResult == nil {
+		return nil, fmt.Errorf("evaluation: encode agent trace inference result: %w", constants.ErrMissingRequiredField)
+	}
+	return evalv1.MarshalCanonical(r.InferenceResult)
+}
+
+// UnmarshalJSON decodes canonical protojson strictly.
+func (r *AgentTraceInferenceResult) UnmarshalJSON(b []byte) error {
+	result := &operatorv1.InferenceResult{}
+	if err := unmarshalAgentTraceCanonical(b, result); err != nil {
+		return fmt.Errorf("evaluation: decode agent trace inference result: %w", err)
+	}
+	r.InferenceResult = result
+	return nil
 }
 
 // Completed reports whether the call returned a governed result.
 func (c AgentModelCall) Completed() bool {
 	return c.TransactionID != "" && c.Error == ""
+}
+
+// IsTurn reports whether the call is a scored agent turn rather than an
+// inference a tool call dispatched.
+func (c AgentModelCall) IsTurn() bool {
+	return c.Purpose == agentModelCallPurposeTurn
 }
 
 // AgentToolCall is one tool call the model made and what it returned. An
@@ -114,14 +182,21 @@ type AgentToolCall struct {
 	// Receipt is the signed receipt the Gateway answered the dispatch with: the
 	// executed receipt, or a governance rejection's receipt. A refusal has none.
 	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
-	// Seeded marks a prior failing call replayed from the scenario seed for
-	// trajectory analysis only; it is never persisted.
-	Seeded bool `json:"-"`
+	// Retrieval binds the authoritative query and the receipts it returned.
+	Retrieval *AgentContextRetrieval `json:"retrieval,omitempty"`
 }
 
 // ShowedGuidance reports whether the call returned model-visible guidance.
 func (c AgentToolCall) ShowedGuidance() bool {
 	return c.Error != ""
+}
+
+// AgentClarificationTurn records one interrogation clarification turn within an episode.
+type AgentClarificationTurn struct {
+	LoopTurn       int      `json:"loop_turn"`
+	Questions      []string `json:"questions"`
+	SelectedBranch string   `json:"selected_branch,omitempty"`
+	UserResponse   string   `json:"user_response,omitempty"`
 }
 
 // AgentTrace is the canonical persisted evidence for one homogeneous
@@ -137,6 +212,7 @@ type AgentTrace struct {
 	EvaluationAttemptID string `json:"evaluation_attempt_id"`
 	CampaignID          string `json:"campaign_id"`
 	ScenarioID          string `json:"scenario_id"`
+	InvestigationID     string `json:"investigation_id,omitempty"`
 	DesignatedRole      string `json:"designated_role"`
 	ServedModelTag      string `json:"served_model_tag"`
 	ModelDigest         string `json:"model_digest"`
@@ -156,12 +232,14 @@ type AgentTrace struct {
 	// assistant message (the call's Text, then its tool calls with
 	// ProviderCallID, ToolName and ArgumentsJSON) and one tool message per
 	// call carrying ResultJSON. v3 traces have none.
-	Input                *AgentTraceInput `json:"input,omitempty"`
-	ModelCalls           []AgentModelCall `json:"model_calls"`
-	ToolCalls            []AgentToolCall  `json:"tool_calls"`
-	FinalOutput          string           `json:"final_output"`
-	ToolTurnLimitReached bool             `json:"tool_turn_limit_reached"`
-	ProviderFailure      string           `json:"provider_failure,omitempty"`
+	Input                  *AgentTraceInput         `json:"input,omitempty"`
+	ModelCalls             []AgentModelCall         `json:"model_calls"`
+	ToolCalls              []AgentToolCall          `json:"tool_calls"`
+	Clarifications         []AgentClarificationTurn `json:"clarifications,omitempty"`
+	FinalOutput            string                   `json:"final_output"`
+	TerminalClassification string                   `json:"terminal_classification,omitempty"`
+	ToolTurnLimitReached   bool                     `json:"tool_turn_limit_reached"`
+	ProviderFailure        string                   `json:"provider_failure,omitempty"`
 	// ProviderFailureClass is the inference attempt failure class
 	// (capability_unsupported, backend_timeout, ...) when the provider
 	// classified the failure. Traces sealed before it existed omit it.
@@ -169,6 +247,7 @@ type AgentTrace struct {
 	// Bracket holds the harness sentinel receipts read on the Data runtime
 	// before and after the attempt. Import fails closed when it is missing.
 	Bracket *AgentTraceBracket `json:"bracket,omitempty"`
+	Steps   AgentTraceSteps    `json:"steps,omitempty"`
 }
 
 // AgentTraceInput is the rendered conversation and the complete tool
@@ -246,13 +325,29 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 	}
 	assistantRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT.String()
 	toolRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL.String()
+	userRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String()
 	for _, call := range t.ModelCalls {
-		if call.Purpose != agentModelCallPurposeTurn || !call.Completed() {
+		if !call.IsTurn() {
+			continue
+		}
+		if !call.Completed() {
 			break
 		}
-		if call.ToolCallCount == 0 {
+		_, interrogation := parseInterrogationQuestions(call.Text)
+		if call.ToolCallCount == 0 || interrogation {
 			if call.Text != "" {
 				messages = append(messages, AgentTraceContextMessage{Role: assistantRole, Text: call.Text})
+			}
+			var followUpResp string
+			for _, clar := range t.Clarifications {
+				if clar.LoopTurn == call.LoopTurn && clar.UserResponse != "" {
+					followUpResp = clar.UserResponse
+					break
+				}
+			}
+			if followUpResp != "" {
+				messages = append(messages, AgentTraceContextMessage{Role: userRole, Text: followUpResp})
+				continue
 			}
 			break
 		}
@@ -264,6 +359,11 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 			}
 			assistant.ToolCalls = append(assistant.ToolCalls, AgentTraceContextToolCall{CallID: tool.ProviderCallID, Name: tool.ToolName, ArgumentsJSON: tool.ArgumentsJSON})
 			results = append(results, AgentTraceContextMessage{Role: toolRole, ToolResult: &AgentTraceContextToolResult{CallID: tool.ProviderCallID, Name: tool.ToolName, ResultJSON: tool.ResultJSON}})
+		}
+		if len(assistant.ToolCalls) < call.ToolCallCount && t.ProviderFailure != "" {
+			// A Tribunal inference failed inside this turn's tool calls and
+			// ended the loop; the turn never completed.
+			break
 		}
 		if len(assistant.ToolCalls) != call.ToolCallCount {
 			return nil, fmt.Errorf("evaluation: agent trace conversation: turn %d recorded %d of %d tool calls: %w", call.LoopTurn, len(assistant.ToolCalls), call.ToolCallCount, constants.ErrEvidenceArtifactMalformed)
@@ -345,6 +445,38 @@ func (t *AgentTrace) SharedRuntime() bool {
 	return t != nil && t.Inference.OperatorID == t.Data.OperatorID
 }
 
+// ToProto converts the canonical agent trace to its protobuf contract form
+// for persona and judge grading.
+func (t *AgentTrace) ToProto() *evalv1.AgentTrace {
+	if t == nil {
+		return nil
+	}
+	finishReason := evalv1.AgentFinishReason_AGENT_FINISH_REASON_STOPPED
+	if t.ToolTurnLimitReached {
+		finishReason = evalv1.AgentFinishReason_AGENT_FINISH_REASON_TOOL_TURN_LIMIT
+	} else if t.ProviderFailure != "" {
+		finishReason = evalv1.AgentFinishReason_AGENT_FINISH_REASON_ERROR
+	}
+	var claims []string
+	for _, call := range t.ModelCalls {
+		if call.TransactionID != "" {
+			claims = append(claims, call.TransactionID)
+		}
+	}
+	for _, tool := range t.ToolCalls {
+		if tool.TransactionID != "" {
+			claims = append(claims, tool.TransactionID)
+		}
+	}
+	return &evalv1.AgentTrace{
+		AttemptId:             t.EvaluationAttemptID,
+		Steps:                 t.Steps,
+		ClaimedTransactionIds: claims,
+		FinishReason:          finishReason,
+		FinalReply:            t.FinalOutput,
+	}
+}
+
 // AgentTraceReceipt is a signed ActionReceipt carried in the trace as
 // canonical protojson. It is decoded strictly; unknown fields fail.
 type AgentTraceReceipt struct{ *operatorv1.ActionReceipt }
@@ -386,6 +518,45 @@ func (a *AgentTraceAnchor) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("evaluation: decode agent trace anchor: %w", err)
 	}
 	a.ConformanceAnchor = anchor
+	return nil
+}
+
+// AgentTraceSteps are the persona steps of the attempt, carried in the trace
+// as an array of canonical protojson values like a receipt: a step's output is
+// a protobuf oneof, which encoding/json cannot decode.
+type AgentTraceSteps []*evalv1.AgentStep
+
+// MarshalJSON writes each step as canonical protojson.
+func (s AgentTraceSteps) MarshalJSON() ([]byte, error) {
+	encoded := make([]json.RawMessage, 0, len(s))
+	for i, step := range s {
+		if step == nil {
+			return nil, fmt.Errorf("evaluation: encode agent trace step %d: %w", i, constants.ErrMissingRequiredField)
+		}
+		canonical, err := evalv1.MarshalCanonical(step)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: encode agent trace step %d: %w", i, err)
+		}
+		encoded = append(encoded, canonical)
+	}
+	return json.Marshal(encoded)
+}
+
+// UnmarshalJSON decodes each step's canonical protojson strictly.
+func (s *AgentTraceSteps) UnmarshalJSON(b []byte) error {
+	var encoded []json.RawMessage
+	if err := json.Unmarshal(b, &encoded); err != nil {
+		return fmt.Errorf("evaluation: decode agent trace steps: %w: %w", constants.ErrEvidenceArtifactMalformed, err)
+	}
+	steps := make(AgentTraceSteps, 0, len(encoded))
+	for i, raw := range encoded {
+		step := &evalv1.AgentStep{}
+		if err := unmarshalAgentTraceCanonical(raw, step); err != nil {
+			return fmt.Errorf("evaluation: decode agent trace step %d: %w", i, err)
+		}
+		steps = append(steps, step)
+	}
+	*s = steps
 	return nil
 }
 
@@ -439,7 +610,7 @@ func (t *AgentTrace) HasGovernedModelCalls() bool {
 		return false
 	}
 	for _, call := range t.ModelCalls {
-		if call.Purpose == agentModelCallPurposeTurn && call.Completed() {
+		if call.IsTurn() && call.Completed() {
 			return true
 		}
 	}
@@ -452,7 +623,7 @@ func (t *AgentTrace) DeclaredTool(tool string) bool {
 		return false
 	}
 	for _, call := range t.ModelCalls {
-		if call.Purpose != agentModelCallPurposeTurn {
+		if !call.IsTurn() {
 			continue
 		}
 		for _, declared := range call.ToolsDeclared {
@@ -512,7 +683,7 @@ func ValidateAgentTraceDigest(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}

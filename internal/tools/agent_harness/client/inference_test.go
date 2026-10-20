@@ -16,8 +16,23 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
+	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
+
+func TestInferenceHTTP_TimeoutCoversApprovalAndDispatchDeadline(t *testing.T) {
+	client, err := New(config.Config{MTLSBaseURL: "http://inference.test"})
+	require.NoError(t, err)
+
+	hc := client.inferenceHTTP()
+
+	assert.Equal(t, mcp.ApprovalRequestTTL+dispatch.RequestDeadline, hc.Timeout)
+	assert.Greater(t, hc.Timeout, mcp.ApprovalRequestTTL+inference.ProviderRequestTimeout, "the timeout must outlast the approval wait plus the provider request")
+	assert.Same(t, client.http.Transport, hc.Transport)
+}
 
 func TestInferenceDispatchFailure_MapsCodeToSentinel(t *testing.T) {
 	body, err := protojson.Marshal(&operatorv1.InferenceDispatchFailure{

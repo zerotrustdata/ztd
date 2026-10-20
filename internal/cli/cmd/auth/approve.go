@@ -13,16 +13,19 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
-
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -39,8 +42,14 @@ func DefaultAPIClientFactory(fileSvc fs.RuntimeFileService, cfg *config.Config) 
 	return api.NewClient(fileSvc, cfg)
 }
 
+// approvalAPIClientFactory waits for the resumed execution's final receipt.
+// Inference can take the full governed provider deadline after L3 approval.
+func approvalAPIClientFactory(fileSvc fs.RuntimeFileService, cfg *config.Config) (APIClient, error) {
+	return api.NewClientWithTimeout(fileSvc, cfg, inferencedispatch.RequestDeadline)
+}
+
 func approveCmd() *cobra.Command {
-	return approveCmdWithConfig(shared.LoadConfig, DefaultAPIClientFactory, shared.NewFileSvc, platform.OpenBrowser)
+	return approveCmdWithConfig(shared.LoadConfig, approvalAPIClientFactory, shared.NewFileSvc, platform.OpenBrowser)
 }
 
 func approveCmdWithConfig(
@@ -51,15 +60,21 @@ func approveCmdWithConfig(
 ) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "approve <transaction_hash>",
-		Short: "Approve a suspended L3 transaction via browser WebAuthn",
-		Long: `Approve a suspended transaction by opening the gateway's browser-based approval page.
-The browser handles the WebAuthn/passkey ceremony; the CLI subscribes to the
-gateway's SSE stream and waits for the approval.completed event. CLI credentials
-(mTLS) are required for L3 approval flows. L3 approval always needs a passkey
-assertion; there is no CLI-only approval.`,
+		Short: "Approve a suspended L3 transaction via browser WebAuthn or enrolled CLI key",
+		Long: `Approve a suspended transaction using the browser passkey flow by default, or an enrolled
+CLI certificate signature with --cli.
+
+By default, the CLI opens the Gateway approval page and waits for its completion event. With
+--cli, it signs the transaction hash using the enrolled CLI certificate and submits the signature
+over mTLS. Both flows require enrolled CLI credentials. The --cli flow waits for the final
+execution receipt and allows the governed inference request deadline for that response.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			txHash := args[0]
+			cliApproval, err := cmd.Flags().GetBool("cli")
+			if err != nil {
+				return fmt.Errorf("approve: read CLI approval flag: %w", err)
+			}
 			cfg, err := configLoader("")
 			if err != nil {
 				return err
@@ -78,6 +93,9 @@ assertion; there is no CLI-only approval.`,
 			ctx := cmd.Context()
 			if ctx == nil {
 				ctx = context.Background()
+			}
+			if cliApproval {
+				return approveWithCLI(cmd, fileSvc, cfg, client, txHash)
 			}
 
 			// Subscribe before the browser opens: the approver can complete the approval as
@@ -103,8 +121,47 @@ assertion; there is no CLI-only approval.`,
 			return waitForApprovalAndVerify(ctx, cmd, approvals, client, txHash)
 		},
 	}
+	cmd.Flags().Bool("cli", false, "sign the transaction hash with the enrolled CLI certificate")
 
 	return cmd
+}
+
+func approveWithCLI(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config, client APIClient, txHash string) error {
+	clientAuth, err := auth.LoadClientAuthContext(fileSvc, cfg)
+	if err != nil {
+		return fmt.Errorf("approve: load enrolled CLI identity: %w", err)
+	}
+	proof, err := governance.SignCLIApproval(txHash, clientAuth.Certificate)
+	if err != nil {
+		return fmt.Errorf("approve: sign transaction hash: %w", err)
+	}
+	resp, err := client.Post(constants.APIPaths.ApprovalsRespond, models.ApprovalRespondRequest{
+		ApprovalID:   txHash,
+		Approved:     true,
+		CLISignature: proof.GetCliSignature(),
+	})
+	if err != nil {
+		return fmt.Errorf("approve: submit CLI approval: %w", err)
+	}
+	var receipt operatorv1.ActionReceipt
+	if err := protojson.Unmarshal(resp, &receipt); err != nil {
+		return fmt.Errorf("approve: parse CLI approval receipt: %w", err)
+	}
+	if receipt.GetTransactionHash() != txHash {
+		return fmt.Errorf("approve: receipt transaction hash %q does not match requested hash: %w", receipt.GetTransactionHash(), constants.ErrTxTransactionHashMismatch)
+	}
+	if receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return fmt.Errorf("approve: transaction %s did not complete (status %s): %w", txHash, receipt.GetStatus(), constants.ErrActionExecutionFailed)
+	}
+	if receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+		return fmt.Errorf("approve: transaction %s did not confirm required L3 proof (status %s): %w", txHash, receipt.GetL3Status(), constants.ErrTxL3ProofInvalid)
+	}
+	cmd.Printf("\n✓ Transaction %s approved successfully\n", txHash)
+	cmd.Printf("  Receipt: %s (L3 %s)\n", receipt.GetStatus(), receipt.GetL3Status())
+	if receipt.GetResultSummary() != "" {
+		cmd.Printf("  Result: %s\n", receipt.GetResultSummary())
+	}
+	return nil
 }
 
 // subscribeApproval loads CLI credentials, builds an mTLS SSE client, and opens the

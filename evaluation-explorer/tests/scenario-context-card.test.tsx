@@ -26,4 +26,15 @@ describe('ScenarioContextCard', () => {
     const { container } = render(<ScenarioContextCard scenario={undefined} />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it('labels shell command results as capability qualification', () => {
+    render(<ScenarioContextCard scenario={{ ...scenario, expected_tools: ['run_shell_command'] }} />);
+    expect(screen.getByText(/Capability qualification\./)).toBeInTheDocument();
+    expect(screen.getByText(/does not measure investigation context retrieval or continuity/)).toBeInTheDocument();
+  });
+
+  it('does not label ordinary scenarios as capability qualification', () => {
+    render(<ScenarioContextCard scenario={scenario} />);
+    expect(screen.queryByText(/Capability qualification\./)).not.toBeInTheDocument();
+  });
 });

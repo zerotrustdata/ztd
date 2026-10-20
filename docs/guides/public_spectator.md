@@ -3,12 +3,13 @@ doc_id: public_spectator
 title: Public Spectator Operations Guide
 audience: platform operators, release managers, publication reviewers
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/public_spectator.md
   - internal/cli/cmd/public/
-  - internal/services/public/
+  - internal/services/gateway/public_spectator_runtime.go
+  - internal/services/gateway/public_mirror.go
 related:
   - docs/architecture/public_spectator.md
   - docs/guides/unified_stack.md
@@ -23,7 +24,7 @@ do_not_use_for:
 
 # Public Spectator Operations Guide
 
-This guide covers the Gateway-owned anonymous public mirror and evaluation explorer. It is separate from the passkey-authenticated owner-local observe frontend connected with `./ztd gw connect <origin>`; see [Generator-Neutral Builder Guide](./build_observe_frontend.md) and [Build a ztd-Compatible Frontend](./build_frontend.md#generator-neutral-observe-frontend).
+This guide covers the Gateway-owned anonymous public mirror and evaluation explorer. It is separate from the passkey-authenticated owner-local observe frontend connected with `./ztd gw connect <origin>`; see [Generator-Neutral Builder Guide](./build_observe_frontend.md) and [Build a ztd-Compatible Frontend](./build_frontend.md).
 
 ## Runtime boundaries
 
@@ -31,18 +32,18 @@ The Gateway-owned public spectator runs inside the Gateway process when started 
 
 - **Private ingest** (`--public-spectator-private-listen`, default `127.0.0.1:8081`): authenticated publisher ingest, proof ingest, replacement-key registration.
 - **Public read/SSE** (`--public-spectator-public-listen`, default `127.0.0.1:8082`): anonymous bootstrap, snapshot, history, SSE, proof catalog/manifest, content-addressed proof downloads.
-- **Evaluation explorer** (`--eval-explorer-listen`, default `127.0.0.1:5173`): embedded acceptance UI.
+- **Evaluation explorer** (`--eval-explorer-listen`, default `127.0.0.1:5173`): dedicated explorer listener that reads the local public listener API. The public listener also serves the explorer assets (`GET` and `HEAD`), so the public origin hosts the explorer.
 
-Durable feed, signing keys, and outbox state live in the Gateway runtime tree under `.ztd/public-feed/`. Listeners bind loopback by default. Only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
+Publisher configuration, signing key, ingest token, and outbox state live under `.ztd/public-feed/`. The publisher's signed proof log and artifacts live under `.ztd/public-proofs/`, with its delivery checkpoint in `.ztd/proof-mirror-sync.json`. Together these form one feed generation. A new signing key never adopts a previous generation's state; startup fails closed with `ErrPublicFeedOrphanedGeneration`. The mirror database and content-addressed proof artifacts live under `.ztd/public-mirror/`. Listeners bind loopback by default. Only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
 
 Restarting the Gateway preserves mirror state and publisher outbox state.
 
 Campaign publication from the host CLI uses owner mTLS and `POST /api/v1/public-feed/batches`.
 
-For an existing run, use verified catch-up after the verification report is persisted:
+For an existing run, use verified catch-up after the verification report is persisted. Set the shell variable `RUN_ID` to the ID of the run to publish, then run:
 
 ```bash
-./ztd eval runs publish <run-id>
+./ztd eval runs publish "$RUN_ID"
 ```
 
 The publication coordinator probes the Gateway-owned dataset during catch-up. If the dataset is absent while host publication idempotency still lists records, it clears stale state and republishes the canonical run. Use `--force` only when the mirror was wiped or is known to be missing records.
@@ -51,11 +52,11 @@ The mirror is a visibility boundary, not a Policy Decision Point or Policy Execu
 
 ## Start a fresh source chain
 
-Use an explicit source transition when archiving current public datasets to start an independent publication generation:
+Use an explicit source transition when archiving current public datasets to start an independent publication generation. Set the shell variable `NEW_SOURCE_ID` to the new public source pseudonym before running:
 
 ```bash
 ./ztd gw stop
-./ztd public source transition --source-id <new-public-source-pseudonym> --yes
+./ztd public source transition --source-id "$NEW_SOURCE_ID" --yes
 ./ztd gw start
 ```
 
@@ -71,12 +72,12 @@ curl -o /dev/null -sS -w '%{http_code}\n' -X POST http://127.0.0.1:8082/keys/reg
 curl -o /dev/null -sS -w '%{http_code}\n' -X POST http://127.0.0.1:8082/proof-ingest
 ```
 
-Verify the anonymous allowlist on the public listener:
+Verify the anonymous allowlist on the public listener. Set the shell variable `SOURCE_ID` to the public source pseudonym of the current publication generation before running the source-scoped requests:
 
 ```bash
 curl -fsS http://127.0.0.1:8082/bootstrap
-curl -fsS 'http://127.0.0.1:8082/history?source=<public-source-pseudonym>&cursor=0&limit=20&kind=catalog_snapshot'
-curl -fsS 'http://127.0.0.1:8082/snapshot?source=<public-source-pseudonym>'
+curl -fsS "http://127.0.0.1:8082/history?source=${SOURCE_ID}&cursor=0&limit=20&kind=catalog_snapshot"
+curl -fsS "http://127.0.0.1:8082/snapshot?source=${SOURCE_ID}"
 curl -fsS http://127.0.0.1:8082/proof-catalog
 curl -fsS http://127.0.0.1:8082/proof-manifest
 ```
@@ -104,16 +105,16 @@ Scan public responses and proof bytes for credentials, private endpoints, machin
 
 ## Manual record publish (advanced)
 
-`ztd public publish`, `ztd public push`, `ztd public status`, `ztd public repair-outbox`, and `ztd public restore` manage host publisher state and Gateway mirror reconciliation:
+`ztd public publish`, `ztd public push`, `ztd public status`, `ztd public repair-outbox`, and `ztd public restore` manage host publisher state and Gateway mirror reconciliation. Set the shell variable `RECORDS_FILE` to the JSONL file of records to publish:
 
 ```bash
-./ztd public publish <public-records.jsonl>
+./ztd public publish "$RECORDS_FILE"
 ./ztd public push
 ./ztd public status
 ./ztd public restore --queue
 ```
 
-`public publish` durably appends records before transmission. `public push` retries delivery without re-executing inference. `public restore` republishes completed runs from the queue to the mirror after a storage reset.
+`public publish` durably appends records before transmission. `public push` retries outbox delivery and pushes the proof package without re-executing inference. `public restore --queue` republishes completed, passing verified runs from the campaign queue to the mirror after a storage reset.
 
 ## Links out
 

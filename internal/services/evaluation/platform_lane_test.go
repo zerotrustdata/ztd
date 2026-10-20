@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -27,10 +28,10 @@ import (
 type laneTestClient struct {
 	dispatchOutcome  *client.GovernedOutcome
 	dispatchErr      error
-	dispatchRequests []client.DispatchCommandRequest
+	dispatchRequests []models.OperatorCommandRequest
 }
 
-func (c *laneTestClient) DispatchCommand(_ context.Context, _ client.Persona, request client.DispatchCommandRequest) (*client.GovernedOutcome, error) {
+func (c *laneTestClient) DispatchCommand(_ context.Context, _ client.Persona, request models.OperatorCommandRequest) (*client.GovernedOutcome, error) {
 	c.dispatchRequests = append(c.dispatchRequests, request)
 	return c.dispatchOutcome, c.dispatchErr
 }
@@ -56,9 +57,9 @@ func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsComplete
 	dispatch := fakeClient.dispatchRequests[0]
 	assert.Equal(t, target.SessionID, dispatch.TargetOperatorSessionID)
 	assert.Equal(t, absPath, dispatch.TargetResource)
-	assert.Equal(t, "run-1", dispatch.CaseID)
-	assert.Equal(t, "tool-arg-file-path", dispatch.InvestigationID)
-	assert.Equal(t, "attempt-1", dispatch.TaskID)
+	assert.Empty(t, dispatch.CaseID, "a run ID must not impersonate a case ID")
+	assert.Equal(t, "eval-harness:attempt-1", dispatch.InvestigationID)
+	assert.Equal(t, "fixture-setup:attempt-1", dispatch.TaskID)
 	fileEdit := &operatorv1.FileEditRequested{}
 	require.NoError(t, proto.Unmarshal(dispatch.Payload, fileEdit))
 	assert.Equal(t, absPath, fileEdit.FilePath)
@@ -123,13 +124,42 @@ func TestCommandLane_ReadWorkspaceFile_DispatchesGovernedFsReadAndReturnsContent
 	assert.Equal(t, "canary-1", content)
 	require.Len(t, fakeClient.dispatchRequests, 1)
 	dispatch := fakeClient.dispatchRequests[0]
-	assert.Equal(t, string(constants.ActionTypeFsRead), dispatch.ActionType)
+	assert.Equal(t, string(constants.EventOperatorFilesystemReadRequested), dispatch.EventType)
 	assert.Equal(t, target.SessionID, dispatch.TargetOperatorSessionID)
 	assert.Equal(t, absPath, dispatch.TargetResource)
 	fsRead := &operatorv1.FsReadRequested{}
+	assert.Equal(t, "eval-harness:attempt-1", dispatch.InvestigationID)
+	assert.Equal(t, "harness-probe:attempt-1", dispatch.TaskID)
 	require.NoError(t, proto.Unmarshal(dispatch.Payload, fsRead))
 	assert.Equal(t, absPath, fsRead.Path)
 	assert.Equal(t, "attempt-1", fsRead.ExecutionId)
+}
+
+// Setup and probe receipts must never appear when the scored investigation's
+// ledger is queried, even when they share an attempt and Data Operator.
+func TestCommandLane_HarnessScopeIsSeparateFromScoredActions(t *testing.T) {
+	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
+	readResult, err := proto.Marshal(&operatorv1.FsReadResult{
+		Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, Content: "fixture",
+	})
+	require.NoError(t, err)
+	fakeClient := &laneTestClient{dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{
+		TransactionId: "tx-1", ResultPayload: readResult, Receipt: laneCompletedReceipt(),
+	})}
+	lane := NewCommandLane(fakeClient, client.Persona{})
+	ctx := context.Background()
+	require.NoError(t, lane.WriteWorkspaceFile(ctx, target, "run-1", "scenario-1", "attempt-1", "/tmp/fixture", "secret setup"))
+	_, err = lane.ReadWorkspaceFile(ctx, target, "run-1", "scenario-1", "attempt-1", "/tmp/fixture")
+	require.NoError(t, err)
+	_, err = lane.DispatchAgentTool(ctx, target, "run-1", "scenario-1", "attempt-1", constants.ActionTypeFsRead, "/tmp/fixture", []byte("payload"))
+	require.NoError(t, err)
+	require.Len(t, fakeClient.dispatchRequests, 3)
+	setup, probe, scored := fakeClient.dispatchRequests[0], fakeClient.dispatchRequests[1], fakeClient.dispatchRequests[2]
+	assert.Equal(t, setup.InvestigationID, probe.InvestigationID)
+	assert.NotEqual(t, setup.InvestigationID, scored.InvestigationID)
+	assert.Equal(t, "scenario-1", scored.InvestigationID)
+	assert.NotEqual(t, setup.TaskID, probe.TaskID)
+	assert.NotEqual(t, setup.TaskID, scored.TaskID)
 }
 
 func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {

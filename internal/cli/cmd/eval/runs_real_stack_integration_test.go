@@ -1,0 +1,259 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+package eval
+
+import (
+	"bytes"
+	"context"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
+	"github.com/zerotrustdata/ztd/internal/services/storage"
+	"github.com/zerotrustdata/ztd/internal/testutil"
+	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
+	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
+	"github.com/zerotrustdata/ztd/internal/uuid"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	"github.com/zerotrustdata/ztd/test/fixtures"
+)
+
+// realStackRun is a real-stack eval ready to run: the stack is up, the CLI
+// runtime is installed against it, and the campaign is created on it.
+type realStackRun struct {
+	ctx     context.Context
+	root    string
+	stack   *fixtures.EvalStack
+	deps    nativeEvalDeps
+	cfg     *config.Config
+	fileSvc fs.RuntimeFileService
+}
+
+// newRealStackRun starts the real stack under posture and creates campaignID on
+// it: one answer-only scenario repeated repetitions times, each assignment one
+// real model turn that the scripted provider answers READY. runControl is the
+// run's process boundary.
+func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string, repetitions uint32, runControl runControlDeps) *realStackRun {
+	t.Helper()
+	// The version context is what the root command attaches; run start reads the
+	// platform release from it.
+	ctx, cancel := context.WithTimeout(testVersionContext(), 3*time.Minute)
+	t.Cleanup(cancel)
+	replies := make([]fixtures.OllamaReply, repetitions)
+	for i := range replies {
+		replies[i] = fixtures.OllamaReply{Content: "READY"}
+	}
+	run := newRealStackEnvironment(t, fixtures.EvalStackOptions{Posture: posture, Replies: replies}, runControl)
+	deps, stack, evidenceFiles := run.deps, run.stack, run.fileSvc
+	governancePosture, err := cases.WirePosture(posture)
+	require.NoError(t, err)
+	dataWorkload, err := stack.Data.Workload()
+	require.NoError(t, err)
+
+	// Keep the live run to the answer-only Lite scenario: each assignment is one
+	// real model turn with no synthetic tools or receipts.
+	suite := evaluation.DefaultScenarioSuite()
+	suite.ID = "real-stack-suite"
+	suite.Version = evaluation.SuiteSchemaVersion
+	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
+		if scenario.ScenarioID == "instruction-exact-format" {
+			suite.Scenarios = []evaluation.SuiteScenario{scenario}
+			break
+		}
+	}
+	require.Len(t, suite.Scenarios, 1)
+	require.NoError(t, evaluation.NewStore(evidenceFiles).CreateSuite(ctx, suite))
+	_, err = createCampaign(ctx, deps, evidenceFiles, campaignCreateSpec{
+		GovernancePosture: governancePosture,
+		Platform:          testPlatform,
+		CampaignID:        campaignID,
+		Variants:          []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions:       repetitions,
+		SuiteID:           suite.ID,
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "real-stack-investigation",
+			DataOperatorId:  dataWorkload.OperatorID,
+		},
+	})
+	require.NoError(t, err)
+	return run
+}
+
+// newRealStackEnvironment retains every production factory; only Ollama replies
+// and the process control boundary are supplied by the test.
+func newRealStackEnvironment(t *testing.T, opts fixtures.EvalStackOptions, runControl runControlDeps) *realStackRun {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(testVersionContext(), 3*time.Minute)
+	t.Cleanup(cancel)
+	root := testutil.TempDir(t)
+	keyring := keystoretest.NewMemoryKeyring()
+	cfgLoader := func(projectRoot string) (*config.Config, error) {
+		cfg, err := config.Load(projectRoot)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Keyring = keyring
+		return cfg, nil
+	}
+	deps := nativeEvalDeps{
+		configLoader:      cfgLoader,
+		fileSvcFactory:    shared.EvidenceFileSvcFactory(keystore.Options{Keyring: keyring}),
+		createRuntimeTree: func(ctx context.Context, fileSvc fs.RuntimeFileService) error { return fileSvc.CreateRuntimeTree(ctx) },
+		clientFactory:     func(cfg harnessconfig.Config) (*harnessclient.Client, error) { return harnessclient.New(cfg) },
+		authLoader:        auth.LoadClientAuthContext,
+		bindClientFactory: defaultEvalBindClient,
+		campaignPublicationFactory: func(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config) (campaignVerificationPublication, error) {
+			return NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
+		},
+		agentExecutorFactory: newProductionCampaignAgentExecutor,
+		appEnroller:          enrollEvalAppIdentity,
+		runControl:           runControl,
+		conformance:          defaultConformanceDeps(),
+		now:                  time.Now,
+		newID:                uuid.NewString,
+	}
+
+	stack := fixtures.NewEvalStack(t, opts)
+
+	fileSvc, err := fs.NewRuntimeFileService(root, slog.Default())
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(ctx))
+	keyStore, err := keystore.NewWithKeyringAndFS(testutil.NewTestLogger(), keyring, fileSvc)
+	require.NoError(t, err)
+	require.NoError(t, keyStore.Initialize())
+	require.NoError(t, keyStore.InitVault())
+	cfg, err := cfgLoader(root)
+	require.NoError(t, err)
+	stack.Identity.InstallCLIRuntime(t, stack.Gateway, fileSvc, cfg)
+	writeTestFrozenInventory(t, root, testQwenVariant())
+	evidenceFiles, err := deps.fileSvcFactory(root, slog.Default())
+	require.NoError(t, err)
+	return &realStackRun{ctx: ctx, root: root, stack: stack, deps: deps, cfg: cfg, fileSvc: evidenceFiles}
+}
+
+// newGatewayRunEnv is the CLI test environment backed by the real eval stack.
+func newGatewayRunEnv(t *testing.T) *runEnv {
+	t.Helper()
+	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	return env
+}
+
+func newGatewayRunEnvWithPosture(t *testing.T, posture constants.Posture) (*runEnv, *realStackRun) {
+	t.Helper()
+	return newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{Posture: posture})
+}
+
+func newPublicationRunEnv(t *testing.T) *runEnv {
+	t.Helper()
+	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{Posture: constants.PostureDoctrine, EnablePublicSpectator: true})
+	previous := gwremote.PublicMirrorOrigin
+	gwremote.PublicMirrorOrigin = run.stack.Gateway.PublicMirrorOrigin
+	t.Cleanup(func() { gwremote.PublicMirrorOrigin = previous })
+	return env
+}
+
+func newGatewayRunEnvWithOptions(t *testing.T, opts fixtures.EvalStackOptions) (*runEnv, *realStackRun) {
+	t.Helper()
+	control := newFakeProcessControl()
+	replies := make([]fixtures.OllamaReply, 16)
+	for i := range replies {
+		replies[i] = fixtures.OllamaReply{Content: "READY"}
+	}
+	opts.Replies = replies
+	run := newRealStackEnvironment(t, opts, testRunControl(control))
+	cmd := &cobra.Command{}
+	cmd.SetContext(run.ctx)
+	cmd.Flags().String("project-root", run.root, "")
+	data, err := run.stack.Data.Workload()
+	require.NoError(t, err)
+	inference, err := run.stack.Inference.Workload()
+	require.NoError(t, err)
+	authContext, err := run.deps.authLoader(run.fileSvc, run.cfg)
+	require.NoError(t, err)
+	_, err = evalBindSessions(cmd, run.cfg, run.fileSvc, defaultEvalBindClient(run.cfg), authContext, []string{data.OperatorSessionID})
+	require.NoError(t, err)
+	return &runEnv{root: run.root, deps: run.deps, cmd: cmd, control: control,
+		dataOperatorID: data.OperatorID, dataSession: data.OperatorSessionID, inferenceSession: inference.OperatorSessionID}, run
+}
+
+func TestRunsExecute_RealStack(t *testing.T) {
+	tests := []struct {
+		name    string
+		posture constants.Posture
+	}{
+		{name: "doctrine", posture: constants.PostureDoctrine},
+		{name: "ratify", posture: constants.PostureRatify},
+		{name: "notary", posture: constants.PostureNotary},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			run := newRealStackRun(t, tt.posture, "real-stack-campaign", 1, defaultRunControlDeps())
+
+			cmd := evalCmdWithConfig(run.deps)
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{"runs", "start", "real-stack-campaign", "--daemon=false", "--publish=false", "--no-backup", "--project-root", run.root})
+			cmdCtx, cancelCmd := context.WithTimeout(testVersionContext(), 2*time.Minute)
+			t.Cleanup(cancelCmd)
+			require.NoError(t, cmd.ExecuteContext(cmdCtx), out.String())
+			assert.Contains(t, out.String(), "Executed 1 assignment")
+			assert.Equal(t, 1, run.stack.Provider.ChatCount())
+
+			store := evaluation.NewStore(run.fileSvc)
+			runIDs, err := store.ListRunIDs(run.ctx)
+			require.NoError(t, err)
+			require.Len(t, runIDs, 1)
+			assignments, err := store.ListAssignments(run.ctx, runIDs[0])
+			require.NoError(t, err)
+			require.Len(t, assignments, 1)
+			assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, assignments[0].GetLifecycleStatus())
+			trace, err := store.LoadAssignmentAgentTrace(run.ctx, runIDs[0], assignments[0].GetAssignmentId())
+			require.NoError(t, err)
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+			require.Len(t, trace.ModelCalls, 1)
+			assert.Equal(t, "READY", trace.FinalOutput)
+			require.NotNil(t, trace.ModelCalls[0].Receipt)
+			receipt := trace.ModelCalls[0].Receipt.ActionReceipt
+			workload, err := run.stack.Inference.Workload()
+			require.NoError(t, err)
+			assert.Equal(t, workload.OperatorID, trace.Inference.OperatorID)
+			assert.Equal(t, workload.OperatorSessionID, trace.Inference.SessionID)
+			dataWorkload, err := run.stack.Data.Workload()
+			require.NoError(t, err)
+			assert.Equal(t, dataWorkload.OperatorID, trace.Data.OperatorID)
+			assert.NotEqual(t, trace.Data.OperatorID, trace.Inference.OperatorID)
+
+			operatorFiles, err := fs.NewRuntimeFileService(run.stack.InferenceHost.WorkingDir, slog.Default())
+			require.NoError(t, err)
+			local, err := storage.ReadLocalActionReceipt(operatorFiles, slog.Default(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, receipt.GetTransactionId())
+			require.NoError(t, err)
+			require.NotNil(t, local)
+			assert.True(t, proto.Equal(receipt, local.ActionReceipt), "the imported trace receipt must match the Inference Operator's authoritative local record")
+		})
+	}
+}

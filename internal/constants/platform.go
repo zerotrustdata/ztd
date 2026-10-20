@@ -18,10 +18,6 @@ const (
 	InferenceMaxOutputTokens int32 = 256_000
 )
 
-// SUTTerminalGrace is how long past the turn's wall-clock limit ztd keeps the
-// SUT's event stream open before the turn counts as a contract failure.
-const SUTTerminalGrace = 30 * time.Second
-
 // Platform binary names.
 const (
 	BinaryNameWindows = "ztd-windows-amd64.exe"

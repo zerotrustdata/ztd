@@ -31,6 +31,7 @@ const (
 	relPathProtocolEvents    = "protocol/constants/events.json"
 	relPathProtocolStatus    = "protocol/constants/status.json"
 	relPathOperatorHierarchy = "internal/tools/constgen/operator_hierarchy.json"
+	relPathEventSchema       = "protocol/models/event_registry.schema.json"
 )
 
 func generateAll(root string, reg registryFile, actionTypes map[string]actionTypeMeta) (generationOutputs, error) {

@@ -45,24 +45,27 @@ func (p *panickingRefreshClient) Refresh(ctx context.Context, fileSvc fs.Runtime
 }
 
 // TestRefreshCmd_Success verifies the success path: credentials exist, the
-// refresh client returns a new session, and the command updates the local
-// credentials with the new session ID and prints the confirmation.
+// refresh client extends the session in place (the session ID is unchanged) and
+// returns the authoritative operator binding, and the command resyncs the local
+// credentials and prints the confirmation.
 func TestRefreshCmd_Success(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
-	// Seed local credentials with an old session ID.
+	// Seed local credentials with a session ID and a stale operator binding.
 	creds := &auth.Credentials{
 		OperatorSessionID: "op-sess-old",
 		UserID:            "user-refresh-success",
 		OperatorID:        "op-id-old",
-		CLISessionID:      "cli-sess-old",
+		CLISessionID:      "cli-sess-same",
 	}
 	require.NoError(t, auth.SaveCredentials(fileSvc, cfg, creds))
 
 	stub := &StubRefreshClient{
 		Result: auth.CLISessionRefresh{
-			CLISessionID: "cli-sess-new",
-			UserID:       "user-refresh-success",
+			CLISessionID:      "cli-sess-same",
+			UserID:            "user-refresh-success",
+			OperatorSessionID: "op-sess-new",
+			OperatorID:        "op-id-new",
 		},
 	}
 
@@ -80,13 +83,16 @@ func TestRefreshCmd_Success(t *testing.T) {
 
 	assert.True(t, stub.called, "refresh client should have been called")
 	assert.Contains(t, buf.String(), "CLI session refreshed successfully")
-	assert.Contains(t, buf.String(), "cli-sess-new")
+	assert.Contains(t, buf.String(), "CLI Session ID: cli-sess-same")
 
-	// The local credentials must be updated with the new session ID.
+	// The local credentials keep the session ID the gateway confirmed and take
+	// the authoritative operator binding it returned.
 	loaded, Err := auth.LoadCredentials(fileSvc, cfg)
 	require.NoError(t, Err)
 	require.NotNil(t, loaded)
-	assert.Equal(t, "cli-sess-new", loaded.CLISessionID, "local credentials must reflect the new session ID")
+	assert.Equal(t, "cli-sess-same", loaded.CLISessionID, "a refresh keeps the CLI session ID")
+	assert.Equal(t, "op-sess-new", loaded.OperatorSessionID, "local credentials must resync the operator binding")
+	assert.Equal(t, "op-id-new", loaded.OperatorID, "local credentials must resync the operator ID")
 	assert.Equal(t, "user-refresh-success", loaded.UserID, "user ID must be unchanged")
 }
 

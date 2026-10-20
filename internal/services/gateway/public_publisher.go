@@ -31,6 +31,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/assignmentaudit"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 )
@@ -292,6 +293,9 @@ type PublicPublisherService struct {
 	mirrorOrigin    string
 	ingestAuthToken string
 	batchMaxRecords int
+	// assignmentEvents supplies the signed event records assignment audit
+	// databases are built from. It is the gateway's own mirror store.
+	assignmentEvents PublicAssignmentEventSource
 
 	// highWaterSeq is the last acknowledged sequence number.
 	highWaterSeq  int64
@@ -338,6 +342,21 @@ func (s *PublicPublisherService) SetBatchMaxRecords(max int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.batchMaxRecords = max
+}
+
+// PublicAssignmentEventSource returns the signed event records retained for one
+// run's assignment in one source, oldest first. The gateway's public mirror
+// store implements it.
+type PublicAssignmentEventSource interface {
+	AssignmentEventRecords(ctx context.Context, sourceID, runID, assignmentID string) ([]models.PublicFeedRecord, error)
+}
+
+// SetAssignmentEventSource sets where assignment audit databases read their
+// signed event records. Publishing an assignment fails closed without one.
+func (s *PublicPublisherService) SetAssignmentEventSource(source PublicAssignmentEventSource) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.assignmentEvents = source
 }
 
 // validRecordType returns true if the record type is in the closed vocabulary.
@@ -1588,42 +1607,57 @@ func (s *PublicPublisherService) BuildProofPackage(ctx context.Context, campaign
 	return s.finalizeProofManifest(ctx, campaignID, campaignRevision, verifiedIndexGenHash, verificationOK, entries)
 }
 
-func assignmentAuditProofArtifacts(request models.PublicAssignmentAuditProofPublishRequest) ([]ProofArtifactInput, string, string, string, error) {
-	if request.CampaignID == "" || request.RunID == "" || request.AssignmentID == "" || len(request.Database) == 0 || len(request.VaultKey) == 0 {
-		return nil, "", "", "", fmt.Errorf("public-feed: publish assignment audit proof: %w", constants.ErrMissingRequiredField)
+// assignmentAuditProofPlan is one request's publication: the artifacts that
+// still have to be written, the already-active catalog entries it reuses, and
+// the digests reported back to the caller.
+type assignmentAuditProofPlan struct {
+	artifacts []ProofArtifactInput
+	reused    []models.PublicProofCatalogEntry
+	response  models.PublicAssignmentAuditProofPublishResponse
+}
+
+// planAssignmentAuditProof validates one assignment audit request and plans its
+// artifacts. An active assignment database already published for the same run
+// is reused by digest and not rebuilt. Otherwise the database is built from the
+// gateway's own signed event records. The trace and scenario fixtures are
+// published as given.
+func (s *PublicPublisherService) planAssignmentAuditProof(ctx context.Context, request models.PublicAssignmentAuditProofPublishRequest) (assignmentAuditProofPlan, error) {
+	if request.CampaignID == "" || request.CampaignRevision == "" || request.RunID == "" || request.AssignmentID == "" || request.IndexDigest == "" {
+		return assignmentAuditProofPlan{}, fmt.Errorf("public-feed: publish assignment audit proof: %w", constants.ErrMissingRequiredField)
 	}
-	revision := request.CampaignRevision
-	if revision == "" {
-		revision = request.CampaignID
+	if (len(request.ScenarioInput) > 0 || len(request.ScenarioGold) > 0) &&
+		(request.ScenarioID == "" || len(request.ScenarioInput) == 0 || len(request.ScenarioGold) == 0) {
+		return assignmentAuditProofPlan{}, fmt.Errorf("public-feed: publish scenario fixture: %w", constants.ErrMissingRequiredField)
 	}
-	indexDigest := request.IndexDigest
-	if indexDigest == "" {
-		indexDigest = request.AssignmentID
-	}
+
+	plan := assignmentAuditProofPlan{response: models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: request.AssignmentID}}
 	dbFilename := fmt.Sprintf("assignment-%s.db", request.AssignmentID)
-	keyFilename := fmt.Sprintf("assignment-%s.vault.key", request.AssignmentID)
-	verifyCommand := fmt.Sprintf("ztd public verify-assignment --db %s --vault-key %s", dbFilename, keyFilename)
-	artifacts := []ProofArtifactInput{
-		{
+	active, found, err := s.activeRunProofEntry(ctx, request.RunID, dbFilename)
+	if err != nil {
+		return assignmentAuditProofPlan{}, err
+	}
+	if found {
+		plan.reused = append(plan.reused, active)
+		plan.response.DatabaseSHA256 = active.ArtifactID
+	} else {
+		database, err := s.buildAssignmentDatabase(ctx, request)
+		if err != nil {
+			return assignmentAuditProofPlan{}, err
+		}
+		plan.artifacts = append(plan.artifacts, ProofArtifactInput{
 			Filename:            dbFilename,
 			MediaType:           "application/vnd.sqlite3",
-			Content:             request.Database,
+			Content:             database,
 			CampaignID:          request.CampaignID,
 			SourceRunID:         request.RunID,
-			VerificationCommand: verifyCommand,
-		},
-		{
-			Filename:            keyFilename,
-			MediaType:           "text/plain",
-			Content:             request.VaultKey,
-			CampaignID:          request.CampaignID,
-			SourceRunID:         request.RunID,
-			VerificationCommand: verifyCommand,
-		},
+			VerificationCommand: fmt.Sprintf("ztd public verify-assignment --db %s --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>", dbFilename),
+		})
+		plan.response.DatabaseSHA256 = hashBytes(database)
 	}
+
 	if len(request.AgentTrace) > 0 {
 		traceFilename := fmt.Sprintf("assignment-%s.agent-trace.json", request.AssignmentID)
-		artifacts = append(artifacts, ProofArtifactInput{
+		plan.artifacts = append(plan.artifacts, ProofArtifactInput{
 			Filename:            traceFilename,
 			MediaType:           constants.MediaTypeJSON,
 			Content:             request.AgentTrace,
@@ -1632,13 +1666,12 @@ func assignmentAuditProofArtifacts(request models.PublicAssignmentAuditProofPubl
 			VerificationCommand: fmt.Sprintf("ztd public verify-agent-trace --trace %s", traceFilename),
 		})
 	}
-	if len(request.ScenarioInput) > 0 || len(request.ScenarioGold) > 0 {
-		if request.ScenarioID == "" || len(request.ScenarioInput) == 0 || len(request.ScenarioGold) == 0 {
-			return nil, "", "", "", fmt.Errorf("public-feed: publish scenario fixture: %w", constants.ErrMissingRequiredField)
-		}
+	plan.response.AgentTraceSHA256 = optionalSHA256(request.AgentTrace)
+
+	if len(request.ScenarioInput) > 0 {
 		// Frozen fixtures are campaign-scoped: every run of the campaign shares
 		// the same bytes, so no single run's prune may remove them.
-		artifacts = append(artifacts,
+		plan.artifacts = append(plan.artifacts,
 			ProofArtifactInput{
 				Filename:   fmt.Sprintf("scenario-%s.input.json", request.ScenarioID),
 				MediaType:  constants.MediaTypeJSON,
@@ -1653,54 +1686,145 @@ func assignmentAuditProofArtifacts(request models.PublicAssignmentAuditProofPubl
 			},
 		)
 	}
-	return artifacts, request.CampaignID, revision, indexDigest, nil
+	plan.response.ScenarioInputSHA256 = optionalSHA256(request.ScenarioInput)
+	plan.response.ScenarioGoldSHA256 = optionalSHA256(request.ScenarioGold)
+	return plan, nil
 }
 
-// PublishAssignmentAuditProof ingests one assignment audit export package into
-// the public proof catalog and mirror.
-func (s *PublicPublisherService) PublishAssignmentAuditProof(ctx context.Context, request models.PublicAssignmentAuditProofPublishRequest) (models.PublicProofManifest, error) {
-	return s.PublishAssignmentAuditProofBatch(ctx, models.PublicAssignmentAuditProofBatchPublishRequest{
+// buildAssignmentDatabase builds one assignment's audit database from the
+// signed event records the gateway stores for it. The caller supplies no rows.
+func (s *PublicPublisherService) buildAssignmentDatabase(ctx context.Context, request models.PublicAssignmentAuditProofPublishRequest) ([]byte, error) {
+	s.mu.Lock()
+	source := s.assignmentEvents
+	s.mu.Unlock()
+	if source == nil {
+		return nil, fmt.Errorf("public-feed: build assignment database: event source: %w", constants.ErrMissingRequiredField)
+	}
+	records, err := source.AssignmentEventRecords(ctx, s.cfg.SourceID, request.RunID, request.AssignmentID)
+	if err != nil {
+		return nil, fmt.Errorf("public-feed: build assignment database: read events: %w", err)
+	}
+	if len(records) == 0 {
+		return nil, fmt.Errorf("public-feed: build assignment database: run %s assignment %s: %w", request.RunID, request.AssignmentID, constants.ErrPublicAssignmentAuditEventsMissing)
+	}
+	database, err := assignmentaudit.BuildDatabase(ctx, s.fileSvc, assignmentaudit.Header{
+		SourceID:         s.cfg.SourceID,
+		CampaignID:       request.CampaignID,
+		CampaignRevision: request.CampaignRevision,
+		RunID:            request.RunID,
+		AssignmentID:     request.AssignmentID,
+	}, records)
+	if err != nil {
+		return nil, fmt.Errorf("public-feed: build assignment database: %w", err)
+	}
+	return database, nil
+}
+
+// activeRunProofEntry returns the active catalog entry of the artifact named
+// filename that one source run published, if there is one. It reads the proof
+// index's per-run map, so its cost does not grow with the catalog.
+func (s *PublicPublisherService) activeRunProofEntry(ctx context.Context, runID, filename string) (models.PublicProofCatalogEntry, bool, error) {
+	s.proofMu.Lock()
+	err := s.syncProofIndexLocked(ctx)
+	if err == nil && len(s.proofIndex.segments) > 0 {
+		for _, id := range s.proofIndex.activeRunArtifactIDs(runID) {
+			if entry := s.proofIndex.active[id]; entry.Filename == filename {
+				s.proofMu.Unlock()
+				return entry, true, nil
+			}
+		}
+		s.proofMu.Unlock()
+		return models.PublicProofCatalogEntry{}, false, nil
+	}
+	s.proofMu.Unlock()
+	if err != nil {
+		return models.PublicProofCatalogEntry{}, false, err
+	}
+	legacy, err := s.loadLegacyProofCatalog(ctx)
+	if err != nil {
+		return models.PublicProofCatalogEntry{}, false, err
+	}
+	for _, entry := range legacy.Entries {
+		if entry.SourceRunID == runID && entry.Filename == filename {
+			return entry, true, nil
+		}
+	}
+	return models.PublicProofCatalogEntry{}, false, nil
+}
+
+// hashBytes returns the hex SHA-256 of value.
+func hashBytes(value []byte) string {
+	sum := sha256.Sum256(value)
+	return hex.EncodeToString(sum[:])
+}
+
+// optionalSHA256 returns the hex SHA-256 of body, or "" when body is empty.
+func optionalSHA256(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	return hashBytes(body)
+}
+
+// PublishAssignmentAuditProof publishes one assignment audit database and
+// returns its digests.
+func (s *PublicPublisherService) PublishAssignmentAuditProof(ctx context.Context, request models.PublicAssignmentAuditProofPublishRequest) (models.PublicAssignmentAuditProofPublishResponse, error) {
+	batch, err := s.PublishAssignmentAuditProofBatch(ctx, models.PublicAssignmentAuditProofBatchPublishRequest{
 		Proofs:          []models.PublicAssignmentAuditProofPublishRequest{request},
 		DeferMirrorPush: request.DeferMirrorPush,
 	})
+	if err != nil {
+		return models.PublicAssignmentAuditProofPublishResponse{}, err
+	}
+	return batch.Proofs[0], nil
 }
 
-// PublishAssignmentAuditProofBatch ingests many assignment audit export
-// packages in one catalog update and one signed manifest rebuild.
-func (s *PublicPublisherService) PublishAssignmentAuditProofBatch(ctx context.Context, request models.PublicAssignmentAuditProofBatchPublishRequest) (models.PublicProofManifest, error) {
+// PublishAssignmentAuditProofBatch publishes many assignment audit databases in
+// one catalog update and one signed segment. It returns each proof's digests in
+// request order. An assignment whose database is already active for its run is
+// reused by digest and not rebuilt.
+func (s *PublicPublisherService) PublishAssignmentAuditProofBatch(ctx context.Context, request models.PublicAssignmentAuditProofBatchPublishRequest) (models.PublicAssignmentAuditProofBatchPublishResponse, error) {
+	response := models.PublicAssignmentAuditProofBatchPublishResponse{Accepted: true, Proofs: []models.PublicAssignmentAuditProofPublishResponse{}}
 	if len(request.Proofs) == 0 {
-		return models.PublicProofManifest{}, nil
+		return response, nil
 	}
-	artifacts := make([]ProofArtifactInput, 0, len(request.Proofs)*2)
-	campaignID := ""
-	campaignRevision := ""
-	verifiedIndexGenHash := ""
+	var artifacts []ProofArtifactInput
+	var reused []models.PublicProofCatalogEntry
 	for _, proof := range request.Proofs {
-		proofArtifacts, proofCampaignID, revision, indexDigest, err := assignmentAuditProofArtifacts(proof)
+		plan, err := s.planAssignmentAuditProof(ctx, proof)
 		if err != nil {
-			return models.PublicProofManifest{}, err
+			return models.PublicAssignmentAuditProofBatchPublishResponse{}, err
 		}
-		if campaignID == "" {
-			campaignID = proofCampaignID
-			campaignRevision = revision
-		}
-		verifiedIndexGenHash = indexDigest
-		artifacts = append(artifacts, proofArtifacts...)
+		artifacts = append(artifacts, plan.artifacts...)
+		reused = append(reused, plan.reused...)
+		response.Proofs = append(response.Proofs, plan.response)
 	}
-	entries, err := s.writeProofArtifacts(ctx, campaignID, artifacts)
-	if err != nil {
-		return models.PublicProofManifest{}, err
+	campaignID := request.Proofs[0].CampaignID
+	campaignRevision := request.Proofs[0].CampaignRevision
+	verifiedIndexGenHash := request.Proofs[len(request.Proofs)-1].IndexDigest
+	entries := reused
+	if len(artifacts) > 0 {
+		written, err := s.writeProofArtifacts(ctx, campaignID, artifacts)
+		if err != nil {
+			return models.PublicAssignmentAuditProofBatchPublishResponse{}, err
+		}
+		entries = append(written, reused...)
 	}
 	manifest, err := s.finalizeProofManifest(ctx, campaignID, campaignRevision, verifiedIndexGenHash, true, entries)
 	if err != nil {
-		return models.PublicProofManifest{}, err
+		return models.PublicAssignmentAuditProofBatchPublishResponse{}, err
 	}
 	if !request.DeferMirrorPush {
 		if err := s.PushProofPackage(ctx); err != nil {
-			return models.PublicProofManifest{}, err
+			return models.PublicAssignmentAuditProofBatchPublishResponse{}, err
 		}
 	}
-	return manifest, nil
+	response.IngestedProofs = len(request.Proofs)
+	response.ProofRootSHA256 = manifest.ProofRootSHA256
+	for index := range response.Proofs {
+		response.Proofs[index].ProofRootSHA256 = manifest.ProofRootSHA256
+	}
+	return response, nil
 }
 
 // PruneProofCatalogForRun appends a signed withdrawal for one run. Immutable

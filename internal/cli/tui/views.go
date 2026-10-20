@@ -132,12 +132,12 @@ func (m Model) helpLines() []string {
 			"j/k, ↓/↑         select a connected Operator",
 			"enter            show the selected Operator's heartbeat details",
 			"s                stop the selected remote Operator (governed shutdown)",
-			"b / u            bind / unbind this CLI session (replacement session)")
+			"b / u            bind / unbind this CLI session (same session ID)")
 	case viewOperatorDetails:
 		lines = append(lines,
 			"j/k, ↓/↑         scroll the heartbeat details",
 			"s                stop the selected remote Operator (governed shutdown)",
-			"b / u            bind / unbind this CLI session (replacement session)",
+			"b / u            bind / unbind this CLI session (same session ID)",
 			"esc              return to the Operators list")
 	case viewEnrollments:
 		lines = append(lines,

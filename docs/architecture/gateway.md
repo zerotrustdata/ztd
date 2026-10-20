@@ -3,8 +3,8 @@ doc_id: gateway
 title: Gateway Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.1.3
-last_updated: 2026-10-18
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/gw/
@@ -62,7 +62,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-GW-POST-01 | The Gateway MUST run in one of four immutable governance postures defined by `constants.Posture` (`internal/constants/posture.go`): `doctrine` (default; L1 enforced, L2/L3 audited), `consensus` (L1/L2 enforced, L3 audited), `ratify` (L1/L3 enforced, L2 audited), or `notary` (L1/L2/L3 enforced). The posture is set once at startup via `--posture`, validated via `Posture.Valid()` (rejecting unknown or empty postures with `ErrInvalidPosture`), and MUST NOT change at runtime. |
+| INV-GW-POST-01 | The Gateway MUST run in one of four immutable governance postures defined by `constants.Posture` (`internal/constants/posture.go`): `doctrine` (default; L1 enforced, L2/L3 audited), `consensus` (L1/L2 enforced, L3 audited), `ratify` (L1/L3 enforced, L2 audited), or `notary` (L1/L2/L3 enforced). The posture is set once at startup via `--posture`, validated via `constants.ParsePosture`, which wraps `ErrInvalidPosture` for unknown or empty values, and MUST NOT change at runtime. |
 | INV-GW-POST-02 | Launch profiles written by `ztd gw start` to `.ztd/pids/operator-launch-profile.json` are versioned and mandatory for `ztd gw restart`. Restart MUST fail closed if the profile is missing, malformed, or of an unknown version. |
 
 ### Network Surfaces and Route Classification (`INV-GW-NET`)
@@ -78,16 +78,17 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-GW-GOV-01 | Every transaction submitted via `POST /api/v1/governance/envelopes` or admitted via MCP/A2A MUST traverse the five-layer governance pipeline. The Gateway PDP coordinates L1–L3; the executing Operator PEP (embedded or remote) enforces L4–L5. |
 | INV-GW-GOV-02 | The Gateway MUST NOT synthesize missing L2 consensus votes or L3 notary proofs for direct envelope submissions or governed HTTP command dispatch. Transactions lacking required proofs MUST fail closed at L4. |
-| INV-GW-GOV-03 | Governed HTTP command dispatch (`POST /api/v1/operators/commands`) reports an admitted action whose handler ran and failed the same way for the embedded and an outbound Operator: HTTP 200 with a `GovernedDispatchResult` carrying the handler's typed failure result and the executing Operator's verified final `ActionReceipt` (`DispatchService`, `executionFailedReceipt`). Every non-inference success, for every event type, waits for both the terminal result and that verified final receipt, in either order; a result without a verified receipt ends in result timeout, never a success. An L4 rejection is 403 with a `GovernanceRejection` body that carries the signed rejection receipt (`INV-GOV-ACT-10`). Every other error body is an `IngressRefusal{code, error}` (`INV-GOV-ACT-11`) whose `error` renders only the typed sentinel, never the wrapped chain (`dispatchErrorCode`): an unresolved target operator session is 404 `OPERATOR_SESSION_NOT_FOUND`, witness capability 422, no delivery 503, result timeout 504, and an unclassified fault 500 `ErrInternal` with `UNCLASSIFIED`. Any embedded failure before or around the handler (no final receipt, no failed L5 execution stage) fails the dispatch. |
+| INV-GW-GOV-03 | Governed HTTP command dispatch (`POST /api/v1/operators/commands`) reports an admitted action whose handler ran and failed the same way for the embedded and an outbound Operator: HTTP 200 with a `GovernedDispatchResult` carrying the handler's typed failure result and the executing Operator's verified final `ActionReceipt` (`DispatchService`, `executionFailedReceipt`). Every non-inference success, for every event type, waits for both the terminal result and that verified final receipt, in either order; a result without a verified receipt ends in result timeout, never a success. The exceptions are `MCP_CALL` and the observation actions (`PROVIDER_BOUNDARY_OBSERVATION`, `MODEL_PROVENANCE_OBSERVATION`), which publish no result envelope: their verified final receipt is the terminal outcome. An `MCP_CALL` tool result is the receipt's signed `ResultSummary`. `DispatchService.DispatchObservation` accepts only observation actions (`ErrTxEventActionMismatch`), returns the verified `COMPLETED` receipt, and fails closed with `ErrEvaluationObservationUnavailable` on any other final status. An L4 rejection is 403 with a `GovernanceRejection` body that carries the signed rejection receipt (`INV-GOV-ACT-10`). Every other error body is an `IngressRefusal{code, error}` (`INV-GOV-ACT-11`) whose `error` renders only the typed sentinel, never the wrapped chain (`dispatchErrorCode`): an unresolved target operator session is 404 `OPERATOR_SESSION_NOT_FOUND`, witness capability 422, no delivery 503, result timeout 504, and an unclassified fault 500 `ErrInternal` with `UNCLASSIFIED`. Any embedded failure before or around the handler (no final receipt, no failed L5 execution stage) fails the dispatch. |
 | INV-GW-GOV-04 | Model inference dispatch (`POST /api/v1/inference/dispatch`, `InferenceDispatchController`) MUST report every failure as a typed `InferenceDispatchFailure` body: the public sentinel text plus an `InferenceDispatchFailureCode` from the single sentinel↔code table in `internal/services/inference/dispatch/failure.go`. When dispatch reached the executing Operator and the provider subsequently failed or governance rejected the execution, `InferenceDispatchFailure.receipt` MUST carry the executing Operator's verified signed `FAILED` receipt. A stream that already started NDJSON delivery ends with an `InferenceDispatchStreamFailure` frame that carries the same code. The `dispatch failed` log records the code; the provider response body MUST NOT be logged or returned. A request fault without a dispatch sentinel (method, body size, JSON decode, identity binding) carries `INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED`. |
 | INV-GW-GOV-05 | Direct envelope submission (`POST /api/v1/governance/envelopes`, `envelopeErrorCode` in `internal/services/gateway/governance_controller.go`) MUST return the signed receipt as canonical protojson (proto field names) on 200 and map errors by type, never to 500 for a governance sentinel: a malformed request (unreadable body, caller-supplied posture, undecodable envelope) is 400; an L4 rejection is 403 with a `GovernanceRejection` body, or 503 when the verifier cannot run (`RUNTIME_VAULT_LOCKED`, `VERIFIER_MISCONFIGURED`); a refusal before L4 (transport identity binding, `ErrTxOutcomeNotRegistered`, `ErrTxOutcomeNotAllowed`, `ErrTxL3ProofUnmintable`) is 403 without a receipt. Every non-rejection error body is an `IngressRefusal{code, error}` (`INV-GOV-ACT-11`) whose `error` renders the typed sentinel only, never the wrapped chain. Only an unclassified fault is 500. |
 | INV-GW-GOV-06 | Receipt signers resolve by the executing Operator's identity. The embedded Operator (`constants.DocIDEmbeddedOperator`) resolves to the Gateway Actuator key. An outbound Operator resolves to the Actuator key bound on its `OperatorDocument` at enrollment (`actuator_public_key`, `actuator_key_id`). A receipt's self-declared `signer_key_id` MUST equal the bound key id and is never a trust source. Otherwise the receipt fails closed with `ErrReceiptSignerNotBound`. Owner: `SignerStoreService.ReceiptSignerKey`. |
+| INV-GW-GOV-07 | Tribunal intent dispatch (`POST /api/v1/operators/intents`, `TribunalIntentController`) requires an app workload identity with a delegated user. The Gateway's Tribunal (`tribunal.Service.Deliberate`) runs every member call as a governed `INFERENCE` dispatch under that identity, through the same `dispatch.DispatchService` as `POST /api/v1/inference/dispatch`, and returns each call with its signed receipt or typed `InferenceDispatchFailure`. Only an `APPROVED` command is dispatched, as an ordinary governed `EXECUTE_BASH` through `DispatchService.Dispatch`, so L2/L3 posture gating and suspension apply unchanged. The Tribunal never supplies or replaces an L2 quorum proof or an L3 approval. A completed deliberation is HTTP 200 `TribunalIntentResult`, and a deliberation fault is 500 `IngressRefusal`; the command outcome is exactly one of a `GovernedDispatchResult`, a signed `GovernanceRejection`, or an `IngressRefusal` carrying only the sentinel. A member template that sets a Gateway-owned field (messages, tools, attempt id, acting app, stream) is 400 `ErrTribunalTemplateInvalid`. A `tier` that is unspecified or not a campaign role is 400 `ErrMissingRequiredField` or `ErrInferenceRoleInvalid`, and a member template `role` that is not the inference role of `tier` is 400 `ErrTribunalTierMismatch`, so every recorded step names the role its calls run under. |
 
 ### MCP Native Tool Registry (`INV-GW-MCP`)
 
 | ID | Rule |
 | :--- | :--- |
-| INV-GW-MCP-01 | The Gateway MUST compile a fixed registry of 32 native tools (`internal/services/mcp/native_tool_registry.go`). All tools MUST enforce fail-closed input validation per category (SQL, URL, path, protocol, hostname, cloud metadata). |
+| INV-GW-MCP-01 | The Gateway MUST compile a fixed registry of native tools registered explicitly in `RegisterNativeTools` (`internal/services/mcp/native_tool_registry.go`). All tools MUST enforce fail-closed input validation per category (SQL, URL, path, protocol, hostname, cloud metadata). |
 | INV-GW-MCP-02 | Native MCP tools MUST implement the `mcp.NativeTool` interface and MUST be registered explicitly during startup via `RegisterNativeTools`. Dynamic registration via package `init()` is prohibited. |
 
 ### Session Identity and State Tracking (`INV-GW-SESS`)
@@ -117,7 +118,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 The Gateway binary operates in two distinct execution modes:
 
-1. **Governance Gateway Mode (`ztd gw start`)**: The central control plane and PDP. It binds the HTTP and HTTPS routers (default ports 8080 and 8443; startup may resolve an available pair at higher offsets), initializes the SQLite database (`.ztd/data/ztd.db`), hosts the PKI certificate authority, screens transactions against L1 Doctrine, delegates L2 deliberation (`application/x-protobuf`) over HTTPS to the bound consensus application, manages L3 human WebAuthn suspensions, brokers WebSocket pub/sub command channels to remote Operators, and runs an in-process embedded Operator substrate for Gateway-host execution.
+1. **Governance Gateway Mode (`ztd gw start`)**: The central control plane and PDP. It binds the HTTP and HTTPS routers (default ports 8080 and 8443; startup may resolve an available pair at higher offsets), initializes the SQLite database (`.ztd/data/ztd.db`), hosts the PKI certificate authority, screens transactions against L1 Doctrine, delegates L2 deliberation (`application/x-protobuf`) over HTTPS to the bound consensus policy's deliberation endpoint, manages L3 human WebAuthn suspensions, brokers WebSocket pub/sub command channels to remote Operators, and runs an in-process embedded Operator substrate for Gateway-host execution.
 2. **Standard Operator Mode (`ztd operator start`)**: When started as an Operator, the same static binary operates as a remote Policy Execution Point (PEP). It opens an outbound-only mTLS WebSocket connection to the Gateway, receives transactions on its assigned command channel, executes independent L4 Warden verification, and enforces L5 Actuator execution. The Gateway does not make inbound connections to remote Operators.
 
 ### Configuration, Startup, and Launch Profiles
@@ -141,11 +142,11 @@ The Gateway enforces one of four postures (`constants.Posture`) selected at star
 | Posture | L1 Doctrine | L2 Consensus (`RequiresL2()`) | L3 Notary (`governance.L3Required`) | L3 Notary (Read-Only or `AuthorizedByDecision`) |
 | :--- | :--- | :--- | :--- | :--- |
 | **`doctrine`** | Enforced | Audited | Audited | Not Required |
-| **`consensus`** | Enforced | Enforced (Bound App) | Audited | Not Required |
+| **`consensus`** | Enforced | Enforced (Bound Members) | Audited | Not Required |
 | **`ratify`** | Enforced | Audited | Enforced (Human) | Not Required |
-| **`notary`** | Enforced | Enforced (Bound App) | Enforced (Human) | Not Required |
+| **`notary`** | Enforced | Enforced (Bound Members) | Enforced (Human) | Not Required |
 
-Selecting a posture does not automatically enroll its supporting identities. The `consensus` and `notary` postures require an enrolled `PLATFORM_COMPONENT_KIND_APPLICATION` bound as the Gateway's consensus application via `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`POST /api/v1/auth/platform-enrollments/consensus`). Human approval under `ratify` and `notary` requires a WebAuthn passkey assertion (or signed CLI approval for outbound Operators).
+Selecting a posture does not automatically enroll its supporting identities. The `consensus` and `notary` postures require enrolled `PLATFORM_COMPONENT_KIND_APPLICATION` members bound as the Gateway's K-of-N consensus member set via `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`POST /api/v1/auth/platform-enrollments/consensus`). Human approval under `ratify` and `notary` requires a WebAuthn passkey assertion (or signed CLI approval for outbound Operators).
 
 ### HTTP and HTTPS Route Classifications
 
@@ -153,8 +154,11 @@ The Gateway segments traffic across two network listeners:
 
 #### HTTP Surface (Default Port 8080)
 The HTTP router (`buildHTTPRouter`) serves unauthenticated discovery endpoints:
-- `/.well-known/ztd/pki/*`: CA root bundles and CRL endpoints.
-- `/health`: Lightweight bootstrap health check.
+- `/.well-known/ztd/pki/ca-bundle` and `/.well-known/ztd/pki/fingerprint`: CA bundle and fingerprint discovery. The CRL endpoint is HTTPS only.
+- `/.well-known/ztd/bin/` and the Linux and Windows deploy scripts: Operator binary download and deploy scripts.
+- `/health`: Lightweight bootstrap health check. `/api/v1/state`: State root for envelope binding.
+- `/api/v1/auth/bootstrap` and `/api/v1/auth/bootstrap/status`: Local bootstrap.
+- CLI recovery and platform enrollment `request`, `status`, and `complete` endpoints: Token-scoped discovery for clients without trusted TLS. The approve and owner decision endpoints are HTTPS only.
 - `/ws/operator/bootstrap`: Bootstrap WebSocket for Operator enrollment.
 - Catch-all: Redirects all other paths to HTTPS on the Gateway's resolved HTTPS port.
 
@@ -163,26 +167,28 @@ The HTTPS router (`buildPublicRouter`) manages authenticated platform APIs. The 
 
 | Auth Policy | Routes Covered | Identity Requirement |
 | :--- | :--- | :--- |
-| **`RouteAuthNone`** | `/health`, `/console/*`, WebAuthn login/assertion ceremonies, bootstrap and platform enrollment token request/status/complete | No identity required |
-| **`RouteAuthMTLS`** | `/api/v1/operators/commands`, `/api/v1/governance/envelopes`, `/api/v1/pki/*`, pub/sub WebSockets, observe producer routes | Valid mTLS client certificate |
-| **`RouteAuthWebSession`** | `/api/v1/approvals/*`, `/api/v1/users/*`, passkey management, console data APIs | Valid WebAuthn session cookie |
+| **`RouteAuthNone`** | `/health`, `/console/*`, PKI discovery (`/.well-known/ztd/pki/*`), PKI device enrollment (`/api/v1/pki/devices/enroll`), WebAuthn login/assertion ceremonies, bootstrap and platform enrollment token request/status/complete | No identity required |
+| **`RouteAuthMTLS`** | `/api/v1/operators/commands`, `/api/v1/operators/intents`, `/api/v1/governance/envelopes`, `/api/v1/pki/*` (except device enrollment), pub/sub WebSockets, observe producer routes | Valid mTLS client certificate |
+| **`RouteAuthWebSession`** | `/api/v1/approvals/*` (except `respond`, which is `RouteAuthDual`, and the CLI `pending` and `status` paths, which are `RouteAuthMTLS`), `/api/v1/users/*`, passkey management, console data APIs | Valid WebAuthn session cookie |
 | **`RouteAuthDual`** | `/api/v1/sse/stream`, `/api/v1/sse/events`, `/api/v1/operators` (listing), `/api/v1/approvals/respond`, `/api/v1/auth/platform-enrollments/{pending,enrolled,decision,decisions,revoke,consensus}` | Either valid mTLS client certificate OR web session cookie |
+
+Paths absent from the registry default to `RouteAuthMTLS`. When a JWKS verifier is configured, `/mcp`, the `/api/v1/a2a/` prefix, and JIT passkey routes are `RouteAuthNone` and the JWT middleware authenticates them; otherwise JIT passkey routes are `RouteAuthMTLS`.
 
 ### Five-Layer Governance Verification Sequence
 
 Every transaction entering `POST /api/v1/governance/envelopes` or arriving via MCP/A2A traverses all five governance layers:
 
-1. **L1 Doctrine (Gateway PDP)**: Static regex screening on protobuf string fields and MITRE ATT&CK heuristics on commands, arguments, and file edits. Violations reject fail closed with `ErrTxL1ValidationFailed`.
-2. **L2 Consensus (Gateway Coordination)**: Under `consensus` and `notary` (`posture.RequiresL2()`), the Gateway sends the full `GovernanceEnvelope` (`application/x-protobuf`) to the bound consensus application's HTTPS deliberation endpoint (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`) and receives the envelope with its `ConsensusProof` signed by the application's Ed25519 key over `<transaction_hash>|<decision>`.
-3. **L3 Notary (Gateway Suspension)**: For actions where `governance.L3Required(actionType, posture)` is true (`actionType.IsMutation() && !actionType.AuthorizedByDecision() && posture.RequiresL3()`), transactions lacking human proof are suspended in SQLite (`SuspendedTransactionStore` via `mcp.GatewayService.SuspendGovernanceEnvelope`). The Gateway issues an approval challenge (`GovernedSuspension` on MCP/A2A, or HTTP `202 Accepted` with `status: "l3_required"` on `PLATFORM_ENROLLMENT_DECIDE` and `PLATFORM_ENROLLMENT_REVOKE`). A WebAuthn passkey assertion produces the proof and resumes execution via `ResumeWithL3Proof`.
+1. **L1 Doctrine (Gateway PDP)**: Static regex screening on protobuf string fields annotated with `(ztd.common.v1).forbidden_patterns`, and MITRE ATT&CK heuristics on commands, arguments, and file edits. Violations reject fail closed with `ErrTxL1ValidationFailed`.
+2. **L2 Consensus (Gateway Coordination)**: Under `consensus` and `notary` (`posture.RequiresL2()`), the Gateway sends the full `GovernanceEnvelope` (`application/x-protobuf`) to the bound policy's HTTPS deliberation endpoint (`endpoint_url` of `constants.DocIDConsensusBinding` in `constants.CollectionConsensus`, hosted by the primary member) and receives the envelope with its `L2Metadata` votes (`L2Vote` entries), each signed by a member application's Ed25519 key over `<transaction_hash>|<decision>`.
+3. **L3 Notary (Gateway Suspension)**: For actions where `governance.L3Required(actionType, posture)` is true (`actionType.IsMutation() && !actionType.AuthorizedByDecision() && posture.RequiresL3()`), transactions lacking human proof are suspended in SQLite (`SuspendedTransactionStore` via `mcp.GatewayService.SuspendGovernanceEnvelope`). The Gateway issues an approval challenge (`GovernedSuspension` on MCP/A2A, or HTTP `202 Accepted` with `status: "l3_required"` on `PLATFORM_ENROLLMENT_DECIDE` and `PLATFORM_ENROLLMENT_REVOKE`). A WebAuthn passkey assertion or an enrolled CLI P-256 signature produces the proof and resumes execution via `ResumeWithL3Proof`. Governed HTTP dispatch (`POST /api/v1/operators/commands`) takes the same suspension path but keeps the original request open (`DispatchApprovalCoordinator`) up to `mcp.ApprovalRequestTTL`; see [Governance Architecture](governance.md#layer-3-l3-notary-human-authorization).
 4. **L4 Warden (Operator PEP)**: Executes pre-dispatch verification in the target Operator runtime: validates nonce replay against SQLite, verifies TTL expiry, recomputes the canonical transaction hash, checks the state Merkle root, and enforces posture-required L2/L3 proofs.
 5. **L5 Actuator (Operator PEP)**: The singular execution boundary. Persists an initial `EXECUTING` receipt, appends to the SQLite commitment ledger, rehydrates scrubbed secrets, mints a short-lived capability, dispatches to the handler, dissolves the capability, and signs the final `COMPLETED` or `FAILED` receipt.
 
 ### Model Context Protocol (MCP) Endpoint and Native Tools
 
-The Gateway serves an MCP endpoint at `POST /mcp` supporting JSON-RPC 2.0 methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`, and `a2a/call`. With a downstream MCP server configured, `tools/list` returns the native tools followed by the downstream's tools, and a native tool wins a name collision (the downstream entry is dropped).
+The Gateway serves an MCP endpoint at `POST /mcp` supporting JSON-RPC 2.0 methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `resources/templates/list`, `prompts/list`, `prompts/get`, and `a2a/call`. With a downstream MCP server configured, `tools/list` returns the native tools followed by the downstream's tools, and a native tool wins a name collision (the downstream entry is dropped).
 
-The native tool inventory is `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`; documentation does not duplicate the tool list (INV-MCP-03 in [Developer Guidelines](../devs/devs.md)). Tools span database, filesystem, network, process, system, configuration and cloud, and execution and audit domains.
+The native tool inventory is `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`; documentation does not duplicate the tool list (INV-MCP-03 in [Developer Guidelines](../devs/devs.md)). Tools span database, filesystem, network, process, system, configuration and cloud, and execution and audit domains. Gateway MCP calls run on the embedded Operator. An `MCP_CALL` dispatched to an outbound Operator runs the same registry on that Operator's own host after its L4/L5, subject to its witness capability gate (see [Operator Architecture](operator.md#local-state-native-tools-and-git-file-ledger)).
 
 All tools enforce fail-closed input validation: SQL tools reject multi-statement injection; URLs reject private IP ranges (SSRF prevention); filesystem tools reject directory traversal; command tools restrict metacharacters.
 
@@ -205,7 +211,7 @@ The Gateway maintains an incremental 16-ary Merkle commitment tree (algorithm 2)
 
 ### Readiness and Health Endpoints
 
-- **Readiness Check (`HTTPS /health`, default port 8443)**: Verifies that SQLite databases are mounted, the state Merkle root is calculated, and the governance pipeline is initialized. Returns `status`, `mode`, `version`, `pid`, `governance_ready`, and `state_merkle_root`.
+- **Readiness Check (`HTTPS /health`, default port 8443)**: Verifies that the platform settings document is readable and the state Merkle root is calculated. Returns `status`, `mode`, `version`, `pid`, `posture`, `governance_ready`, and `state_merkle_root`. `governance_ready` reports pipeline initialization without failing the response.
 - **Bootstrap Check (`HTTP /health`, default port 8080)**: Lightweight process check verifying listener availability prior to database initialization.
 
 ## Anti-patterns

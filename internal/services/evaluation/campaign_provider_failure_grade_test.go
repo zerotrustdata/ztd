@@ -51,6 +51,7 @@ func TestGradeHomogeneousScenario_ProviderFailureLeadsWithAttemptClass(t *testin
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, first.GetStatus())
 	assert.Equal(t, "designated model role was not invoked: provider_failure (capability_unsupported)", first.GetDetail())
 	assert.Equal(t, "Provider rejected a requested capability (capability_unsupported); no final response was produced.", grading.Trajectory.PublicFailureReason)
+	assert.Empty(t, grading.DecomposedScores, "provider failure must not produce decomposed scores lacking task_score")
 }
 
 func TestGradeHomogeneousScenario_ContextFailureIsNotReportedAsModelBehavior(t *testing.T) {

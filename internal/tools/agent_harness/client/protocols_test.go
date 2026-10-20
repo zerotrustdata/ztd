@@ -8,28 +8,61 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 )
 
-type promptArgFixture struct {
-	Arg string `json:"arg"`
+// deadlineRecorder is a RoundTripper that records the request context deadline
+// the http.Client derived from its Timeout.
+type deadlineRecorder struct {
+	deadline time.Time
+	has      bool
 }
 
-func (promptArgFixture) isPromptArgs() {}
-
-type skillPayloadFixture struct {
-	Input string `json:"input,omitempty"`
+func (r *deadlineRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.deadline, r.has = req.Context().Deadline()
+	return &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    req,
+	}, nil
 }
 
-func (skillPayloadFixture) isSkillPayload() {}
+func TestDispatchCommandBody_ClientTimeoutCoversApprovalAndDispatchDeadline(t *testing.T) {
+	recorder := &deadlineRecorder{}
+	client, err := New(config.Config{MTLSBaseURL: "http://dispatch.test"})
+	require.NoError(t, err)
+	client.http.Transport = recorder
+
+	start := time.Now()
+	_, err = client.DispatchCommandBody(context.Background(), Persona{ID: "test", CLISessionID: "cli-1"}, []byte(`{}`))
+	require.NoError(t, err)
+
+	require.True(t, recorder.has, "the dispatch client must bound the request")
+	want := mcp.ApprovalRequestTTL + dispatch.RequestDeadline
+	assert.GreaterOrEqual(t, recorder.deadline.Sub(start), want-time.Second, "the timeout must outlast the approval wait plus the dispatch deadline")
+	assert.Less(t, recorder.deadline.Sub(start), want+time.Minute)
+}
 
 func TestJSONRPCRequest(t *testing.T) {
-	req := JSONRPCRequest{
+	req := mcp.JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      1,
 		Method:  "test/method",
-		Params:  map[string]any{"key": "value"},
+		Params:  json.RawMessage(`{"key":"value"}`),
 	}
 
 	data, err := json.Marshal(req)
@@ -37,7 +70,7 @@ func TestJSONRPCRequest(t *testing.T) {
 		t.Fatalf("failed to marshal: %v", err)
 	}
 
-	var decoded JSONRPCRequest
+	var decoded mcp.JSONRPCRequest
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
@@ -45,7 +78,7 @@ func TestJSONRPCRequest(t *testing.T) {
 	if decoded.JSONRPC != "2.0" {
 		t.Error("JSONRPC mismatch")
 	}
-	if decoded.ID != 1 {
+	if decoded.ID != float64(1) {
 		t.Error("ID mismatch")
 	}
 	if decoded.Method != "test/method" {
@@ -54,7 +87,7 @@ func TestJSONRPCRequest(t *testing.T) {
 }
 
 func TestJSONRPCResponse(t *testing.T) {
-	resp := JSONRPCResponse{
+	resp := mcp.JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      1,
 		Result:  json.RawMessage(`{"status":"ok"}`),
@@ -66,7 +99,7 @@ func TestJSONRPCResponse(t *testing.T) {
 		t.Fatalf("failed to marshal: %v", err)
 	}
 
-	var decoded JSONRPCResponse
+	var decoded mcp.JSONRPCResponse
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
@@ -74,7 +107,7 @@ func TestJSONRPCResponse(t *testing.T) {
 	if decoded.JSONRPC != "2.0" {
 		t.Error("JSONRPC mismatch")
 	}
-	if decoded.ID != 1 {
+	if decoded.ID != float64(1) {
 		t.Error("ID mismatch")
 	}
 	if decoded.Error != nil {
@@ -83,7 +116,7 @@ func TestJSONRPCResponse(t *testing.T) {
 }
 
 func TestJSONRPCError(t *testing.T) {
-	err := JSONRPCError{
+	err := mcp.JSONRPCError{
 		Code:    -32600,
 		Message: "Invalid Request",
 		Data:    json.RawMessage(`{"details":"more info"}`),
@@ -94,7 +127,7 @@ func TestJSONRPCError(t *testing.T) {
 		t.Fatalf("failed to marshal: %v", errData)
 	}
 
-	var decoded JSONRPCError
+	var decoded mcp.JSONRPCError
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}

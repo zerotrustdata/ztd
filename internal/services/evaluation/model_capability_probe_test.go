@@ -43,7 +43,7 @@ func TestGovernedCapabilityProbeRunner_RecordsDescriptiveOutcomesWithoutExclusio
 		VariantId:      "probe-model",
 		ProviderClass:  "ollama",
 		ServedModelTag: "probe-model:latest",
-		ModelDigest:    repeatHex('d', 64),
+		ModelDigest:    repeatHex('d'),
 		ContextLimit:   4096,
 	}
 	dispatcher := &stubGovernedCapabilityProbeDispatcher{bySuffix: map[string]func(InferenceProbeRequest) (*operatorv1.InferenceDispatchResponse, error){
@@ -87,7 +87,7 @@ func (d *capturingProbeDispatcher) DispatchInference(_ context.Context, req *ope
 }
 
 func TestGovernedCapabilityProbeRunner_ToolProbeUsesAutoToolChoice(t *testing.T) {
-	variant := &evalv1.ModelVariant{VariantId: "probe-model", ServedModelTag: "probe-model:latest", ModelDigest: repeatHex('d', 64)}
+	variant := &evalv1.ModelVariant{VariantId: "probe-model", ServedModelTag: "probe-model:latest", ModelDigest: repeatHex('d')}
 	dispatcher := &capturingProbeDispatcher{err: constants.ErrInferenceBackendTimeout}
 	runner := NewGovernedCapabilityProbeRunner(dispatcher, "infer-session", func(prefix string) string { return prefix }).(*governedCapabilityProbeRunner)
 	_, err := runner.probeToolCallingCapability(context.Background(), variant)
@@ -97,7 +97,7 @@ func TestGovernedCapabilityProbeRunner_ToolProbeUsesAutoToolChoice(t *testing.T)
 }
 
 func TestGovernedCapabilityProbeRunner_DispatchFailureIsNotUnsupported(t *testing.T) {
-	variant := &evalv1.ModelVariant{VariantId: "probe-model", ServedModelTag: "probe-model:latest", ModelDigest: repeatHex('d', 64)}
+	variant := &evalv1.ModelVariant{VariantId: "probe-model", ServedModelTag: "probe-model:latest", ModelDigest: repeatHex('d')}
 	runner := NewGovernedCapabilityProbeRunner(&capturingProbeDispatcher{err: fmt.Errorf("probe: %w", constants.ErrInferenceBackendTimeout)}, "infer-session", func(prefix string) string { return prefix }).(*governedCapabilityProbeRunner)
 	structured, err := runner.probeStructuredOutputCapability(context.Background(), variant)
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestGovernedCapabilityProbeRunner_ToolProbeDispatchFailureIsNotUnsupported(
 		VariantId:      "probe-model",
 		ProviderClass:  "ollama",
 		ServedModelTag: "probe-model:latest",
-		ModelDigest:    repeatHex('d', 64),
+		ModelDigest:    repeatHex('d'),
 	}
 	dispatcher := &stubGovernedCapabilityProbeDispatcher{bySuffix: map[string]func(InferenceProbeRequest) (*operatorv1.InferenceDispatchResponse, error){
 		"tools": func(InferenceProbeRequest) (*operatorv1.InferenceDispatchResponse, error) {

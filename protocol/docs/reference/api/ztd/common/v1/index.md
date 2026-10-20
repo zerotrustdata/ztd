@@ -12,6 +12,7 @@
     - [L2Vote](#ztd-common-v1-L2Vote)
     - [L3Metadata](#ztd-common-v1-L3Metadata)
     - [L3Proof](#ztd-common-v1-L3Proof)
+    - [PasskeyVerificationContext](#ztd-common-v1-PasskeyVerificationContext)
     - [PlatformEnrollmentCompletionTranscript](#ztd-common-v1-PlatformEnrollmentCompletionTranscript)
     - [PlatformEnrollmentDecisionTarget](#ztd-common-v1-PlatformEnrollmentDecisionTarget)
     - [PlatformEnrollmentFingerprints](#ztd-common-v1-PlatformEnrollmentFingerprints)
@@ -181,6 +182,7 @@ Consensus (L2) Governance: a vote from a single L2 consensus member.
 | ----- | ---- | ----- | ----------- |
 | proof | [L3Proof](#ztd-common-v1-L3Proof) |  | WebAuthn or CLI/mTLS proof |
 | denied | [bool](#bool) |  | The human declined the suspended transaction. L4 rejects a denied envelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so the deny is an Operator-signed rejection receipt. A deny can only stop execution, so it needs no proof. |
+| pending_dispatch | [bool](#bool) |  | Gateway-owned suspension provenance. A waiting dispatch must receive the decision in-process; after restart/cancellation it must never resume alone. |
 
 
 
@@ -192,7 +194,7 @@ Consensus (L2) Governance: a vote from a single L2 consensus member.
 ### L3Proof
 Notary (L3Notary) Governance: Authorization (Human-in-the-loop)
 L3Proof is a union: fields 1-4 are populated for WebAuthn (web sessions),
-fields 5-6 for CLI/mTLS (operator sessions). Exactly one proof type
+fields 5-7 for CLI approvals. Exactly one proof type
 should be populated per instance.
 
 
@@ -203,7 +205,30 @@ should be populated per instance.
 | signature | [string](#string) |  | WebAuthn: signature over the authenticator assertion |
 | credential_id | [string](#string) |  | WebAuthn: credential ID used for the assertion |
 | mtls_cert_fingerprint | [string](#string) |  | CLI/mTLS: SHA-256 fingerprint of the CLI certificate used for authentication |
-| cli_signature | [string](#string) |  | CLI/mTLS: Ed25519 signature over transaction_hash using the operator private key |
+| cli_signature | [string](#string) |  | CLI approval: ECDSA P-256 signature over the domain-separated transaction hash |
+| cli_certificate_der | [bytes](#bytes) |  | CLI approval: DER-encoded enrolled CLI leaf certificate (not a trust chain) |
+| passkey_context | [PasskeyVerificationContext](#ztd-common-v1-PasskeyVerificationContext) |  | Gateway-sourced registration context for independent outbound verification. Context is trusted only on the authenticated Gateway command channel. |
+| cli_intermediates_der | [bytes](#bytes) | repeated | Untrusted chain-building hints; only the Operator&#39;s pinned CA pool is trusted. |
+
+
+
+
+
+
+<a name="ztd-common-v1-PasskeyVerificationContext"></a>
+
+### PasskeyVerificationContext
+PasskeyVerificationContext transfers registration facts, never an approval.
+The assertion must still verify for this user, credential and transaction.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| user_id | [string](#string) |  |  |
+| credential_id | [string](#string) |  |  |
+| public_key_cose | [bytes](#bytes) |  |  |
+| rp_id | [string](#string) |  |  |
+| allowed_origins | [string](#string) | repeated |  |
 
 
 
@@ -293,6 +318,8 @@ should be populated per instance.
 | decision_targets | [PlatformEnrollmentDecisionTarget](#ztd-common-v1-PlatformEnrollmentDecisionTarget) | repeated | A fixed, bounded decision cohort. Every member is fingerprint-bound and committed atomically by the existing PLATFORM_ENROLLMENT_DECIDE action. |
 | issuance_lease_owner | [string](#string) |  | The issuance lease the ISSUE submitter holds. The handler signs and writes only while the stored lease still names this owner, so a holder whose lease was reclaimed cannot complete or roll back the request. |
 | consensus_endpoint_url | [string](#string) |  | HTTPS deliberation endpoint for a bound consensus application. |
+| consensus_member_app_ids | [string](#string) | repeated | Ordered set of enrolled signing applications participating in L2. |
+| consensus_quorum | [uint32](#uint32) |  | Affirmative distinct signatures required from consensus_member_app_ids. |
 
 
 

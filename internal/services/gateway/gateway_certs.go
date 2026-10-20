@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -39,7 +40,7 @@ const (
 	rootValidityDays         = 3650
 	intermediateValidityDays = 3650
 	servingCertValidityDays  = 90 // 90-day TTL for gateway serving certificate
-	leafCertValidityDays     = 7  // 7-day TTL for operator/cli leaf certificates
+	leafCertValidityDays     = int(constants.MaxWorkloadLeafCertTTL / (24 * time.Hour))
 	peerCertValidityDays     = 90 // 90-day TTL for gateway peer certificates
 
 	hubCommonName         = "ztd Hub Intermediate CA"
@@ -104,7 +105,7 @@ func newPKIAuthority(fileSvc fs.RuntimeFileService, docStore *DocumentStoreServi
 		db:              docStore,
 		secretManager:   secretManager,
 		logger:          logger,
-		operatorLeafTTL: leafCertValidityDays * 24 * time.Hour,
+		operatorLeafTTL: time.Duration(leafCertValidityDays) * 24 * time.Hour,
 	}
 }
 
@@ -514,6 +515,54 @@ func (pki *PKIAuthority) GatewayTrustBundle() ([]byte, error) {
 	return data, nil
 }
 
+// NewConsensusAppHTTPClient builds the Gateway's HTTPS client for its bound
+// enrolled consensus application. Application certificates are issued by the
+// Gateway Operator CA, so system roots alone cannot authenticate them.
+func (pki *PKIAuthority) NewConsensusAppHTTPClient(appID string) (*http.Client, error) {
+	if strings.TrimSpace(appID) == "" {
+		return nil, constants.ErrMissingRequiredField
+	}
+	bundle, err := pki.GatewayTrustBundle()
+	if err != nil {
+		return nil, fmt.Errorf("read consensus application trust bundle: %w", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(bundle) {
+		return nil, constants.ErrEmptyTrustBundle
+	}
+	expectedIdentity := protocol.NewWorkloadIdentity().AppSPIFFEID(appID)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		// App certificates are authenticated by their Gateway-issued SPIFFE
+		// URI SAN, not a caller-controlled DNS name. Verify the chain and exact
+		// bound app identity below while skipping only hostname matching.
+		InsecureSkipVerify: true, // #nosec G402 -- VerifyConnection performs chain and identity validation.
+		MinVersion:         tls.VersionTLS13,
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if len(state.PeerCertificates) == 0 {
+				return constants.ErrConsensusAppNotEnrolled
+			}
+			intermediates := x509.NewCertPool()
+			for _, cert := range state.PeerCertificates[1:] {
+				intermediates.AddCert(cert)
+			}
+			if _, err := state.PeerCertificates[0].Verify(x509.VerifyOptions{
+				Roots: roots, Intermediates: intermediates,
+				KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			}); err != nil {
+				return fmt.Errorf("verify consensus app certificate chain: %w", err)
+			}
+			for _, uri := range state.PeerCertificates[0].URIs {
+				if uri.String() == expectedIdentity {
+					return nil
+				}
+			}
+			return constants.ErrConsensusAppNotEnrolled
+		},
+	}
+	return &http.Client{Transport: transport, Timeout: 30 * time.Second}, nil
+}
+
 // RevokeCertificate adds a certificate serial to the revocation list.
 func (pki *PKIAuthority) RevokeCertificate(ctx context.Context, serial string, reason string) error {
 	pki.mu.Lock()
@@ -668,7 +717,7 @@ func (pki *PKIAuthority) SignCSR(csrPEM string, leafType string, organizationID,
 		}
 		caCert = pki.operatorCert
 		caType = constants.CATypeOperator
-		validity = leafCertValidityDays * 24 * time.Hour
+		validity = time.Duration(leafCertValidityDays) * 24 * time.Hour
 		if leafType == constants.LeafTypeOperator {
 			validity = pki.operatorLeafTTL
 		}
@@ -1040,7 +1089,7 @@ func (pki *PKIAuthority) generateServiceCertWithNames(extraIPs []net.IP, extraDN
 		return fmt.Errorf("%s: %w", constants.ErrPKIGenerateSerial, err)
 	}
 
-	dnsNames := []string{"localhost", "ztd.local", string(constants.SessionTypeOperator)}
+	dnsNames := []string{"localhost", constants.GatewayInternalHostname, string(constants.SessionTypeOperator)}
 	// Add extra DNS names from network identity detection
 	if extraDNSNames != nil {
 		dnsNames = append(dnsNames, extraDNSNames...)

@@ -21,6 +21,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -628,14 +629,60 @@ func TestDispatchInference_UndecodableResultFinalizesObservation(t *testing.T) {
 	}
 }
 
-func (s *stubObservationNotifier) NotifyAttemptBegin(_ context.Context, _, _ string, _ int64, _ uint32) error {
+func (s *stubObservationNotifier) NotifyAttemptBegin(_ context.Context, _, _ string, _ int64, _ uint32) (*operatorv1.ActionReceipt, error) {
 	s.beginCalls++
-	return s.beginErr
+	if s.beginErr != nil {
+		return nil, s.beginErr
+	}
+	return &operatorv1.ActionReceipt{TransactionId: "observe-begin"}, nil
 }
 
-func (s *stubObservationNotifier) NotifyAttemptFinalize(_ context.Context, _, _, _ string, _, _ int64, _ bool, _ uint32) error {
+func (s *stubObservationNotifier) NotifyAttemptFinalize(_ context.Context, _, _, _ string, _, _ int64, _ bool, _ uint32) (*operatorv1.ActionReceipt, error) {
 	s.finalizeCalls++
-	return s.finalizeErr
+	if s.finalizeErr != nil {
+		return nil, s.finalizeErr
+	}
+	return &operatorv1.ActionReceipt{TransactionId: "observe-finalize"}, nil
+}
+
+// The observers' BEGIN and FINALIZE receipts are returned with the result, in
+// dispatch order, so the caller can claim their ledger commitments.
+func TestDispatchInference_ReturnsObservationReceiptsInDispatchOrder(t *testing.T) {
+	req := baseRequest()
+	configureCampaignRequest(t, &req)
+	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}, testLogger())
+	svc.SetProviderObservationNotifier(&stubObservationNotifier{})
+	svc.SetProvenanceObservationNotifier(&recordingProvenanceNotifier{})
+
+	result, err := svc.DispatchInference(t.Context(), req)
+	require.NoError(t, err)
+	var got []string
+	for _, receipt := range result.Response().GetObservationReceipts() {
+		got = append(got, receipt.GetTransactionId())
+	}
+	assert.Equal(t, []string{"observe-begin", "provenance-begin", "observe-finalize", "provenance-finalize"}, got)
+}
+
+// A failed attempt keeps its observers' BEGIN and FINALIZE receipts on the
+// error, in dispatch order, alongside the Operator's signed FAILED receipt.
+func TestDispatchInference_FailedAttemptCarriesObservationReceipts(t *testing.T) {
+	req := baseRequest()
+	configureCampaignRequest(t, &req)
+	failedReceipt := &operatorv1.ActionReceipt{TransactionId: "tx-failed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+	dispatcher := &stubCommandDispatcher{err: governance.WithFailedReceipt(failedReceipt, constants.ErrInferenceReceiptFailed)}
+	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}, testLogger())
+	svc.SetProviderObservationNotifier(&stubObservationNotifier{})
+	svc.SetProvenanceObservationNotifier(&recordingProvenanceNotifier{})
+
+	_, err := svc.DispatchInference(t.Context(), req)
+	require.ErrorIs(t, err, constants.ErrInferenceReceiptFailed)
+	assert.Same(t, failedReceipt, governance.FailedReceipt(err))
+	var got []string
+	for _, receipt := range ObservationReceipts(err) {
+		got = append(got, receipt.GetTransactionId())
+	}
+	assert.Equal(t, []string{"observe-begin", "provenance-begin", "observe-finalize", "provenance-finalize"}, got)
 }
 
 func TestDispatchInference_ObservationBeginFailureFailsClosedBeforeProviderCall(t *testing.T) {
@@ -654,6 +701,24 @@ func TestDispatchInference_ObservationBeginFailureFailsClosedBeforeProviderCall(
 	assert.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
 	assert.Equal(t, 1, notifier.beginCalls)
 	assert.Equal(t, 0, dispatcher.calls, "inference must not dispatch when observation begin fails")
+}
+
+// Observation is optional: with no observer connected, a campaign attempt
+// reaches the provider unobserved and no FINALIZE is sent.
+func TestDispatchInference_NoObserverProceedsUnobserved(t *testing.T) {
+	req := baseRequest()
+	configureCampaignRequest(t, &req)
+	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}, testLogger())
+	notifier := &stubObservationNotifier{beginErr: fmt.Errorf("provider observation: %w", constants.ErrProviderBoundaryObserverNotFound)}
+	svc.SetProviderObservationNotifier(notifier)
+
+	result, err := svc.DispatchInference(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, 1, dispatcher.calls)
+	assert.Equal(t, 1, notifier.beginCalls)
+	assert.Zero(t, notifier.finalizeCalls)
+	assert.Empty(t, result.Response().GetObservationReceipts())
 }
 
 func TestDispatchInference_CampaignObservationFinalizeFailureFailsClosed(t *testing.T) {

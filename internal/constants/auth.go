@@ -220,6 +220,12 @@ const (
 	ContextKeyStateMerkleRoot ContextKey = "state_merkle_root"
 )
 
+// MaxWorkloadLeafCertTTL is the platform maximum validity of a workload leaf
+// certificate (Operator, CLI, and app). It is the single source for the CLI and
+// app leaf validity in the Gateway PKI and the ceiling that config validation
+// enforces on OperatorLeafCertTTL.
+const MaxWorkloadLeafCertTTL = 7 * 24 * time.Hour
+
 // Session constants
 const (
 	// WebSessionTTL defines the lifetime of a web session.
@@ -233,8 +239,8 @@ const (
 	// was valid but the session was expired, leaving no recovery path short
 	// of nuking the gateway volume. When the session does expire (gateway
 	// restart, manual deactivation, or cert expiry), the auth/cli/refresh
-	// endpoint reissues a session using the still-valid cert as proof of
-	// identity.
+	// endpoint extends that same session in place for the still-valid cert,
+	// which is the proof of identity.
 	CLISessionTTL = 7 * 24 * time.Hour
 
 	// CLIBindMaxOperators caps how many operator sessions one bind call may
@@ -275,10 +281,7 @@ func (s LogoutScope) Valid() bool {
 }
 
 // L3 notary constants
-const (
-	// L3ApprovalWindow is the maximum time between approval and L3 verification.
-	L3ApprovalWindow = 30 * time.Minute
-)
+const ()
 
 // Auth scheme and default identity constants.
 const (

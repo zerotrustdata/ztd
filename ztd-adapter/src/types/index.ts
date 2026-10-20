@@ -5,5 +5,5 @@
 // the generated SPA consumes; they match the Go wire shapes byte-for-byte on
 // field names and enum values.
 
-export * from './enums';
-export * from './observe';
+export * from './enums.js';
+export * from './observe.js';

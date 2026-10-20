@@ -203,9 +203,10 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 
 	// --- PKI ---
 	pki := newPKIAuthority(b.fileSvc, docStore, sm, logger)
-	if cfg.Gateway.OperatorLeafCertTTL > 0 {
-		pki.operatorLeafTTL = cfg.Gateway.OperatorLeafCertTTL
+	if err := config.ValidateOperatorLeafCertTTL(cfg.Gateway.OperatorLeafCertTTL); err != nil {
+		return nil, fmt.Errorf("gateway: operator leaf cert TTL: %w", err)
 	}
+	pki.operatorLeafTTL = cfg.Gateway.OperatorLeafCertTTL
 
 	// --- Core services ---
 	userSvc := NewUserService(docStore, logger)
@@ -344,14 +345,18 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	// --- Consensus bootstrap (C2 inverted order: before pubsub and mcpGateway) ---
 	l2Deliberator := b.deliberator
 	if l2Deliberator == nil {
-		l2Deliberator = consensusStore.NewConsensusAppDeliberator(nil)
+		l2Deliberator = consensusStore.NewConsensusAppDeliberatorWithClientFactory(pki.NewConsensusAppHTTPClient)
 	}
 
 	// --- Command Service (OperatorPubSubService) ---
+	cliVerifier := NewCLISessionVerifier(docStore, pki, logger, userSvc, cliSessionSvc)
+	l3Notary := governance.NewGatewayL3Notary(cliVerifier, passkey, logger)
+	outboundApproval, err := NewOutboundApprovalService(l3Notary, passkey)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: outbound approval: %w", err)
+	}
 	cmdSvc := b.cmdSvc
 	if cmdSvc == nil {
-		cliVerifier := NewCLISessionVerifier(docStore, pki, logger, userSvc, cliSessionSvc)
-		l3Notary := governance.NewGatewayL3Notary(cliVerifier, passkey, logger)
 		platformDeps := &pubsub.PlatformEnrollmentDeps{
 			DocStore:         docStore,
 			PKI:              pki,
@@ -435,6 +440,18 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		}
 	}
 
+	// Construct dispatch before MCP so outbound suspension resume can reuse its
+	// verified delivery loop without importing gateway from the mcp package.
+	suspender, err := mcp.NewEnvelopeSuspender(newNotifyingSuspendedStore(suspendedTxService, approvalsPublisher), auditStore, cfg.Gateway.Posture, publicBaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: dispatch suspender: %w", err)
+	}
+	dispatchApprovals, err := NewDispatchApprovalCoordinator(suspender)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: dispatch approvals: %w", err)
+	}
+	dispatchSvc := NewDispatchService(logger, wsHandler, stateRootSvc, auth, cfg.Gateway.Posture, doctrine, l2Deliberator, signerStore, cmdSvc, dispatchApprovals)
+
 	// --- MCP gateway (C2: concrete cmdSvc, auditLogger, l2Deliberator injected) ---
 	var auditLogger mcp.AuditLogger
 	if auditStore != nil {
@@ -454,6 +471,9 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		AuditStore:             auditStore,
 		AuditReceiptQuery:      auditStore,
 		EnvProc:                cmdSvc,
+		OutboundEnvProc:        dispatchSvc,
+		OutboundProofPreparer:  outboundApproval,
+		PendingDispatchResumer: dispatchApprovals,
 		StateRootProvider:      stateRootSvc,
 		SigningKey:             actuatorPriv,
 		KeyID:                  actuatorKeyID,
@@ -496,16 +516,15 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		Posture:            cfg.Gateway.Posture,
 	})
 
-	// Construct the command dispatch service and the inference dispatch
-	// service. The inference dispatch service wraps the command dispatch
+	// Construct the inference dispatch service around the command dispatch
+	// service created above. The inference dispatch service wraps command dispatch
 	// service and the registration service through adapters that implement
 	// the dispatch package's interfaces, breaking the import cycle. The
 	// dispatch service is wired with the L1 doctrine (for envelope L1
 	// screening) and the L2 consensus deliberator (for postures that require
 	// L2 signatures). Under postures that require L3 proof (ratify, notary),
-	// mutation dispatches are rejected at envelope construction because the
-	// gateway dispatch path cannot mint human proofs.
-	dispatchSvc := NewDispatchService(logger, wsHandler, stateRootSvc, auth, cfg.Gateway.Posture, doctrine, l2Deliberator, signerStore, cmdSvc)
+	// mutation dispatches suspend and wait for a real human decision through
+	// the dispatch approval coordinator; the Gateway never mints human proofs.
 	inferenceDispatchSvc := dispatch.NewDispatchService(
 		&gatewayDispatcherAdapter{svc: dispatchSvc},
 		&gatewayOperatorListerAdapter{svc: reg},
@@ -887,6 +906,13 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Logger:      logger,
 			MaxPayload:  cfg.Gateway.MaxPayloadBytes,
 		},
+		TribunalIntentControllerDeps: TribunalIntentControllerDeps{
+			CommandDispatchSvc:   ls.dispatchSvc,
+			InferenceDispatchSvc: ls.inferenceDispatchSvc,
+			Responder:            ls.responder,
+			Logger:               logger,
+			MaxPayload:           cfg.Gateway.MaxPayloadBytes,
+		},
 		SSEControllerDeps: SSEControllerDeps{
 			Cfg:       cfg,
 			Logger:    logger,
@@ -907,10 +933,11 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			IsGovernanceReady: ls.IsGovernanceReady,
 		},
 		GovernanceControllerDeps: GovernanceControllerDeps{
-			Cfg:       cfg,
-			Logger:    logger,
-			Responder: ls.responder,
-			EnvProc:   envProc,
+			Cfg:         cfg,
+			Logger:      logger,
+			Responder:   ls.responder,
+			EnvProc:     envProc,
+			CLISessions: cliSessionSvc,
 		},
 		MCPControllerDeps: MCPControllerDeps{
 			MCPGateway: ls.mcpGateway,
@@ -1036,6 +1063,12 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 // GetDocStore returns the document store service.
 func (ls *GatewayModeService) GetDocStore() *DocumentStoreService {
 	return ls.docStore
+}
+
+// GetPublicMirror returns the Gateway-owned public mirror, or nil when the
+// public spectator is disabled.
+func (ls *GatewayModeService) GetPublicMirror() *PublicMirrorServer {
+	return ls.publicSpectator.Mirror()
 }
 
 // GetPKI returns the PKI authority service.

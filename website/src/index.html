@@ -71,11 +71,9 @@ h3{font-size:20px;line-height:1.2}
 .brand:hover{text-decoration:none}
 .brand img{display:block;height:32px;width:auto}
 .brand small{display:block;font:500 10px/1 var(--mono);letter-spacing:.18em;color:var(--dim);margin-top:5px}
-.nav ul{display:flex;gap:18px;list-style:none;margin:0;padding:0;align-items:center}
+.nav ul{display:flex;gap:28px;list-style:none;margin:0;padding:0;align-items:center}
 .nav ul a{color:var(--muted);font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;display:inline-block}
 .nav ul a:hover{color:var(--cyan);text-decoration:none}
-.nav ul a.nav-hot{color:var(--acid);border:1px solid rgba(182,255,59,.35);padding:6px 10px;border-radius:2px;background:rgba(182,255,59,.06)}
-.nav ul a.nav-hot:hover{background:rgba(182,255,59,.16);box-shadow:0 0 16px rgba(182,255,59,.3)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;font:600 13px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:14px 20px;border:1px solid var(--cyan);color:var(--cyan);background:rgba(0,240,255,.06);border-radius:var(--r);transition:background .2s,box-shadow .2s,transform .2s;position:relative;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px));cursor:pointer;text-align:center}
 .btn:hover{text-decoration:none;background:rgba(0,240,255,.16);box-shadow:0 0 24px rgba(0,240,255,.35)}
 .btn.solid{background:var(--cyan);color:#001318;border-color:var(--cyan)}
@@ -343,13 +341,9 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 .no-js .rv{opacity:1;transform:none}
 
 /* ---------- responsive ---------- */
-@media (max-width:1320px){
-  .nav ul li.nav-opt{display:none}
-}
 @media (max-width:1080px){
-  .nav ul{display:none}
-  .nav ul:has(.journal-nav){display:flex}
-  .nav ul li:not(.journal-nav):not(.pricing-nav){display:none}
+  .nav ul{gap:18px}
+  .nav ul li:not(.nav-keep){display:none}
   .hero .wrap{grid-template-columns:1fr}
   .flow{grid-template-columns:1fr;gap:0}
   .link{height:52px}
@@ -385,7 +379,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   .status,.oem-box{padding:26px}
   .foot{grid-template-columns:1fr}
   .nav .btn{display:none}
-  .nav ul .journal-nav a,.nav ul .pricing-nav a{font-size:10px;letter-spacing:0;white-space:nowrap}
+  .nav ul{gap:12px}
+  .nav ul a{font-size:10px;letter-spacing:0}
   .nav .brand{font-size:12px;gap:6px;letter-spacing:.08em}
   .card{padding:22px}
   table.pm{font-size:11.5px}
@@ -417,14 +412,12 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     </a>
     <nav aria-label="Primary">
       <ul>
-        <li class="nav-opt"><a href="#problem">Problem</a></li>
-        <li><a href="#how">How it works</a></li>
-        <li class="nav-opt"><a href="#pipeline">Pipeline</a></li>
-        <li><a href="#start">Quick start</a></li>
-        <li class="pricing-nav"><a class="nav-hot" href="#licensing">Pricing</a></li>
-        <li><a href="#sprints">Architecture Sprints</a></li>
-        <li class="journal-nav"><a href="/releases/">Releases</a></li>
-        <li class="journal-nav"><a href="/build-in-public/">Build in Public</a></li>
+        <li><a href="#how">Platform</a></li>
+        <li><a href="#start">Install</a></li>
+        <li class="nav-keep"><a href="#licensing">Pricing</a></li>
+        <li><a href="#sprints">Consulting</a></li>
+        <li class="nav-keep"><a href="/releases/">Releases</a></li>
+        <li class="nav-keep"><a href="/build-in-public/" title="Build in Public">Journal</a></li>
       </ul>
     </nav>
     <a class="btn sm" href="https://github.com/zerotrustdata/ztd" rel="noopener">
@@ -440,7 +433,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <div>
       <div class="status-line">
-        <span class="chip"><span class="dot"></span>ztd <b>v1.1</b></span>
+        <span class="chip"><span class="dot"></span>ztd <b>v1.2.0</b></span>
         <span class="chip">Zero-trust execution layer</span>
         <span class="chip">Source available · BSL 1.1</span>
       </div>
@@ -565,7 +558,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <article class="feat rv">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg></div>
         <h3>Humans approve mutations</h3>
-        <p>Under human-approval postures, mutating actions suspend until someone approves with a WebAuthn passkey. Read-only actions don't need that step.</p>
+        <p>Under human-approval postures, mutating actions suspend until someone approves with a WebAuthn passkey or the enrolled CLI certificate (<code>ztd auth approve --cli</code>). Read-only actions don't need that step.</p>
       </article>
       <article class="feat rv">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.6 10.5 15.4 7.5M8.6 13.5l6.8 3"/></svg></div>
@@ -592,7 +585,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     <div class="pipe">
       <div class="layer rv"><span class="lv">L1</span><h3>Doctrine</h3><p>Forbidden-pattern matching, MITRE ATT&amp;CK heuristics, and command safety analysis for things like reverse shells, privilege escalation, destructive disk operations, and credential theft.</p><span class="own">Owner<b>Gateway + Operator</b></span></div>
       <div class="layer rv"><span class="lv">L2</span><h3>Consensus</h3><p>K-of-N multi-signature Ed25519 authorization from enrolled member keys, each signing the transaction hash and its decision.</p><span class="own">Owner<b>Gateway + Operator</b></span></div>
-      <div class="layer rv"><span class="lv">L3</span><h3>Notary</h3><p>Human authorization for mutations: the transaction suspends until a person approves it with a WebAuthn passkey. An outbound Operator re-verifies the recorded approval and its Ed25519 signature over the transaction hash.</p><span class="own">Owner<b>Gateway + Operator</b></span></div>
+      <div class="layer rv"><span class="lv">L3</span><h3>Notary</h3><p>Human authorization for mutations: the transaction suspends until a person approves it with a WebAuthn passkey or, via <code>ztd auth approve --cli</code>, the enrolled CLI certificate. An outbound Operator re-verifies the recorded approval and its Ed25519 signature over the transaction hash.</p><span class="own">Owner<b>Gateway + Operator</b></span></div>
       <div class="layer rv"><span class="lv">L4</span><h3>Warden</h3><p>Pre-dispatch gate on the target host: durable nonce reservation, expiry, typed payload decode, local doctrine, hash recomputation, state Merkle root, and posture-required proofs.</p><span class="own">Owner<b>Executing Operator</b></span></div>
       <div class="layer rv"><span class="lv">L5</span><h3>Actuator</h3><p>The single execution boundary. Signs an EXECUTING receipt, appends a signed commitment, mints a short-lived capability bound to the transaction hash, runs the typed handler, dissolves the capability, and signs the final receipt.</p><span class="own">Owner<b>Executing Operator</b></span></div>
     </div>
@@ -668,7 +661,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div><dt>Topology</dt><dd>Outbound-only Operators<small>No inbound management ports into target environments.</small></dd></div>
       <div><dt>Signatures</dt><dd>Ed25519<small>Consensus votes and approval proofs over the transaction hash.</small></dd></div>
       <div><dt>At rest</dt><dd>AES-256-GCM vault<small>Three-tier keys: master key, HKDF-derived KEK, wrapped DEK.</small></dd></div>
-      <div><dt>Human auth</dt><dd>WebAuthn passkeys<small>For the console and for L3 approvals.</small></dd></div>
+      <div><dt>Human auth</dt><dd>WebAuthn passkeys, CLI certificates<small>Passkeys for the console; the enrolled CLI certificate for <code>ztd auth approve --cli</code>.</small></dd></div>
       <div><dt>Revocation</dt><dd>Immediate cut-off<small>Revoking an enrollment adds it to the CRL and drops live sockets.</small></dd></div>
     </dl>
   </div>
@@ -692,9 +685,10 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <h3>Ways in · all governed</h3>
       <div class="ing">
         <code>POST /mcp</code><span>Model Context Protocol over HTTP, or stdio via <code>ztd mcp stdio</code></span>
-        <code>POST /a2a</code><span>Agent-to-agent skill calls</span>
-        <code>/operators/commands</code><span>Governed HTTP dispatch for enrolled apps</span>
-        <code>/governance/envelopes</code><span>Pre-built envelopes; missing proofs are never synthesized</span>
+        <code>POST /api/v1/a2a/call</code><span>Agent-to-agent skill calls</span>
+        <code>POST /api/v1/operators/commands</code><span>Governed HTTP dispatch for enrolled apps</span>
+        <code>POST /api/v1/operators/intents</code><span>Plain-language intent; the Gateway Tribunal writes the command, then it runs as an ordinary governed EXECUTE_BASH</span>
+        <code>POST /api/v1/governance/envelopes</code><span>Pre-built envelopes; missing proofs are never synthesized</span>
         <code>ztd operator run</code><span>CLI dispatch to bound Operators</span>
       </div>
       <div class="clients" aria-label="MCP clients named in the docs">
@@ -739,27 +733,30 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <button class="btn sm ghost copy" type="button" data-copy="irm https://zerotrustdata.io/start.ps1 | iex">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1" hidden>
-<pre><span class="p">$ </span>git clone --depth 1 https://github.com/zerotrustdata/ztd.git
+<pre><span class="p">$ </span>git clone https://github.com/zerotrustdata/ztd.git
 <span class="p">$ </span>cd ztd
 <span class="p">$ </span>bash scripts/linux-setup.sh --build-only
 <span class="p">$ </span>make quickstart
-<span class="c"># macOS: bash scripts/macos-setup.sh --build-only</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="git clone --depth 1 https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;bash scripts/linux-setup.sh --build-only&#10;make quickstart">Copy</button>
+<span class="c"># macOS: bash scripts/macos-setup.sh --build-only</span>
+<span class="c"># Windows (PowerShell 7): pwsh scripts/windows-setup.ps1 --build-only</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="git clone https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;bash scripts/linux-setup.sh --build-only&#10;make quickstart">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-2" aria-labelledby="tb-2" hidden>
 <pre><span class="c"># sign in as the owner with a passkey, then approve workloads</span>
 <span class="p">$ </span>./ztd login web
 <span class="p">$ </span>./ztd auth enroll pending
-<span class="p">$ </span>./ztd auth enroll approve &lt;request-id&gt; --yes
+<span class="c"># set REQUEST_ID to a request ID listed by pending</span>
+<span class="p">$ </span>./ztd auth enroll approve "$REQUEST_ID" --yes
 <span class="c"># headless: ./ztd login for a CLI-only mTLS identity</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="./ztd login web&#10;./ztd auth enroll pending&#10;./ztd auth enroll approve <request-id> --yes">Copy</button>
+        <button class="btn sm ghost copy" type="button" data-copy="./ztd login web&#10;./ztd auth enroll pending&#10;./ztd auth enroll approve &quot;$REQUEST_ID&quot; --yes">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-3" aria-labelledby="tb-3" hidden>
 <pre><span class="c"># Gateway + embedded Operator with data, inference, and observer capabilities</span>
-<span class="p">$ </span>make gw GW_ARGS='--inference-ollama-endpoint http://&lt;ollama-host&gt;:11434'
+<span class="c"># set OLLAMA_HOST to your Ollama host name or address</span>
+<span class="p">$ </span>make gw GW_ARGS="--inference-ollama-endpoint http://${OLLAMA_HOST}:11434"
 <span class="p">$ </span>make status
 <span class="c"># then sign in at https://localhost:8443/console/</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="make gw GW_ARGS='--inference-ollama-endpoint http://&lt;ollama-host&gt;:11434'&#10;make status">Copy</button>
+        <button class="btn sm ghost copy" type="button" data-copy="make gw GW_ARGS=&quot;--inference-ollama-endpoint http://${OLLAMA_HOST}:11434&quot;&#10;make status">Copy</button>
       </div>
     </div>
   </div>

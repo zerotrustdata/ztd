@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 	}
 	cancel()
 
-	client, err := newE2EClient(context.Background(), cfg)
+	client, err := newE2EClient(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: E2E client construction failed: %v\n", err)
 		os.Exit(1)

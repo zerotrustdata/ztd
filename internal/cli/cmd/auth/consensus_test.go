@@ -68,6 +68,59 @@ func TestConsensusEnrollmentCommands(t *testing.T) {
 	}
 }
 
+func TestConsensusEnrollmentBind_SendsKOfNFlags(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), MemberAppIDs: []string{"reviewer-a", "reviewer-b", "reviewer-c"}, Quorum: 2, RequireDistinct: true, Enabled: true, EndpointURL: "https://reviewer-a.example/deliberate"}
+	body, err := json.Marshal(policy)
+	require.NoError(t, err)
+	client := &cmdtest.MockAPIClient{PostResp: body}
+	cmd := consensusEnrollmentCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return client, nil }, cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetArgs([]string{"bind", "reviewer-a", policy.EndpointURL, "--member-app", "reviewer-a", "--member-app", "reviewer-b", "--member-app", "reviewer-c", "--quorum", "2"})
+	require.NoError(t, cmd.Execute())
+	require.Len(t, client.PostCalls, 1)
+	require.Equal(t, models.PlatformEnrollmentBindConsensusRequest{AppID: "reviewer-a", EndpointURL: policy.EndpointURL, MemberAppIDs: []string{"reviewer-a", "reviewer-b", "reviewer-c"}, Quorum: 2}, client.PostCalls[0].Body)
+}
+
+func TestConsensusEnrollmentBind_TrimsMemberAppIDsBeforeCompare(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), MemberAppIDs: []string{"reviewer", "peer"}, Quorum: 2, RequireDistinct: true, Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
+	body, err := json.Marshal(policy)
+	require.NoError(t, err)
+	client := &cmdtest.MockAPIClient{PostResp: body}
+	cmd := consensusEnrollmentCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return client, nil }, cmdtest.FileSvcFactoryFor(fileSvc))
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"bind", " reviewer ", policy.EndpointURL, "--member-app", " reviewer ", "--member-app", "peer ", "--quorum", "2"})
+	require.NoError(t, cmd.Execute())
+	require.Len(t, client.PostCalls, 1)
+	require.Equal(t, models.PlatformEnrollmentBindConsensusRequest{AppID: "reviewer", EndpointURL: policy.EndpointURL, MemberAppIDs: []string{"reviewer", "peer"}, Quorum: 2}, client.PostCalls[0].Body)
+}
+
+func TestConsensusEnrollmentBind_RejectsEmptyMemberAppLocally(t *testing.T) {
+	for _, member := range []string{"", "   "} {
+		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+		client := &cmdtest.MockAPIClient{}
+		cmd := consensusEnrollmentCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return client, nil }, cmdtest.FileSvcFactoryFor(fileSvc))
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&bytes.Buffer{})
+		cmd.SetArgs([]string{"bind", "reviewer", "https://reviewer.example/deliberate", "--member-app", "reviewer", "--member-app", member, "--quorum", "1"})
+		err := cmd.Execute()
+		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+		require.Empty(t, client.PostCalls)
+	}
+}
+
+func TestConsensusEnrollmentBind_HelpListsMemberAndQuorumOptions(t *testing.T) {
+	cmd := consensusBindCmd(nil)
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"--help"})
+	require.NoError(t, cmd.Execute())
+	require.Contains(t, output.String(), "--member-app")
+	require.Contains(t, output.String(), "--quorum")
+}
+
 func TestConsensusEnrollmentBind_PrintsPostureSuspension(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {

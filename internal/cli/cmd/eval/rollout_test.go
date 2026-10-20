@@ -5,30 +5,23 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-//go:build integration
-
 package eval
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 func TestRolloutAdd_QueuesModelsByTag(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	out := env.mustRun(t, "rollout", "add", "qwen3:4b")
 	assert.Contains(t, out, "Queued qwen3:4b")
 	assert.Contains(t, out, "1 model(s) in the rollout queue")
@@ -43,7 +36,7 @@ func TestRolloutAdd_QueuesModelsByTag(t *testing.T) {
 }
 
 func TestRolloutAdd_RejectsEmptyRegistry(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	// Remove the test variant from the registry
 	fileSvc := env.fileSvc(t)
 	require.NoError(t, fileSvc.Remove(context.Background(), evaluation.DefaultModelInventoryRelPath))
@@ -55,14 +48,14 @@ func TestRolloutAdd_RejectsEmptyRegistry(t *testing.T) {
 }
 
 func TestRolloutAdd_RejectsUnknownModel(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	_, err := env.run(t, "rollout", "add", "unknown:model")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
 }
 
 func TestRolloutRemove_DropsModelByTag(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	out := env.mustRun(t, "rollout", "remove", "qwen3:4b")
 	assert.Contains(t, out, "Removed qwen3:4b")
@@ -72,7 +65,7 @@ func TestRolloutRemove_DropsModelByTag(t *testing.T) {
 }
 
 func TestRolloutRemove_LastEntryDeletesQueueFile(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	env.mustRun(t, "rollout", "remove", "qwen3:4b")
 
@@ -84,7 +77,7 @@ func TestRolloutRemove_LastEntryDeletesQueueFile(t *testing.T) {
 }
 
 func TestRolloutRetry_ReturnsModelsToPending(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	env.mustRun(t, "rollout", "skip", "qwen3:4b")
 
@@ -98,7 +91,7 @@ func TestRolloutRetry_ReturnsModelsToPending(t *testing.T) {
 }
 
 func TestRolloutSkip_ExcludesModelFromRuns(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	out := env.mustRun(t, "rollout", "skip", "qwen3:4b")
 	assert.Contains(t, out, "Skipped qwen3:4b")
@@ -110,7 +103,7 @@ func TestRolloutSkip_ExcludesModelFromRuns(t *testing.T) {
 }
 
 func TestRolloutNext_ReturnsFirstPendingModel(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 
 	out := env.mustRun(t, "rollout", "next")
@@ -119,14 +112,14 @@ func TestRolloutNext_ReturnsFirstPendingModel(t *testing.T) {
 }
 
 func TestRolloutNext_FailsWhenNoPendingModels(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	_, err := env.run(t, "rollout", "next")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
 func TestRolloutList_FiltersByStatus(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	env.mustRun(t, "rollout", "skip", "qwen3:4b")
 
@@ -139,94 +132,15 @@ func TestRolloutList_FiltersByStatus(t *testing.T) {
 }
 
 func TestRolloutRun_DryRunDoesNotExecute(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 
 	out := env.mustRun(t, "rollout", "run", "--dry-run")
 	assert.Contains(t, out, "Rollout plan")
 }
 
-func TestRunRollout_FailedGateMarksEntryFailedAndContinues(t *testing.T) {
-	env := setupRunEnv(t)
-	env.mustRun(t, "rollout", "add", "qwen3:4b")
-	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
-	t.Cleanup(mirror.Close)
-	env.cmd.SetOut(&bytes.Buffer{})
-	env.cmd.SetErr(&bytes.Buffer{})
-
-	gates := func(fs.RuntimeFileService, []*evalv1.ModelVariant) rolloutGateRunner {
-		return func(_ *cobra.Command, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
-			return &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, RunID: "run-failed", Gate: gate}, constants.ErrEvalRunVerificationFailed
-		}
-	}
-	err := runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirror.URL}, gates)
-	require.Error(t, err)
-
-	queue, err := evaluation.LoadRolloutQueue(context.Background(), env.fileSvc(t))
-	require.NoError(t, err)
-	require.Len(t, queue.Models, 1)
-	assert.Equal(t, evaluation.QueueStatusFailed, queue.Models[0].Status)
-	assert.Equal(t, "run-failed", queue.Models[0].VerifiedRunID)
-}
-
-func TestRunRollout_StoppedRunLeavesEntryPendingAndEndsBatch(t *testing.T) {
-	env := setupRunEnv(t)
-	second := testQwenVariant()
-	second.VariantId, second.ServedModelTag = "qwen3-8b", "qwen3:8b"
-	second.ModelDigest = repeatTestHex('8')
-	writeTestFrozenInventory(t, env.root, testQwenVariant(), second)
-	env.mustRun(t, "rollout", "add", "qwen3:4b")
-	env.mustRun(t, "rollout", "add", "qwen3:8b")
-	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
-	t.Cleanup(mirror.Close)
-	env.cmd.SetOut(&bytes.Buffer{})
-	env.cmd.SetErr(&bytes.Buffer{})
-
-	started := 0
-	gates := func(fs.RuntimeFileService, []*evalv1.ModelVariant) rolloutGateRunner {
-		return func(_ *cobra.Command, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
-			started++
-			return &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, RunID: "run-stopped", Gate: gate}, constants.ErrEvaluationRunStopped
-		}
-	}
-	err := runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirror.URL}, gates)
-	require.ErrorIs(t, err, constants.ErrEvaluationRunStopped)
-	assert.Equal(t, 1, started, "a stop ends the batch before the next entry starts")
-
-	queue, err := evaluation.LoadRolloutQueue(context.Background(), env.fileSvc(t))
-	require.NoError(t, err)
-	require.Len(t, queue.Models, 2)
-	for _, model := range queue.Models {
-		assert.Equal(t, evaluation.QueueStatusPending, model.Status)
-		assert.Empty(t, model.VerifiedRunID)
-	}
-}
-
-func TestRunRollout_HoldsQueueLockForTheBatch(t *testing.T) {
-	env := setupRunEnv(t)
-	env.mustRun(t, "rollout", "add", "qwen3:4b")
-	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
-	t.Cleanup(mirror.Close)
-	env.cmd.SetOut(&bytes.Buffer{})
-	env.cmd.SetErr(&bytes.Buffer{})
-
-	var lockErr error
-	gates := func(fs.RuntimeFileService, []*evalv1.ModelVariant) rolloutGateRunner {
-		return func(_ *cobra.Command, entry evaluation.CampaignQueueModel, gate string) (*rolloutRunSuccess, error) {
-			_, lockErr = evaluation.LockRolloutQueue(context.Background(), env.fileSvc(t))
-			return &rolloutRunSuccess{VariantID: entry.VariantID, Tag: entry.ServedModelTag, RunID: "run-failed", Gate: gate}, constants.ErrEvalRunVerificationFailed
-		}
-	}
-	require.Error(t, runRolloutWith(env.cmd, env.deps, rolloutRunOptions{MirrorBootstrapURL: mirror.URL}, gates))
-	require.ErrorIs(t, lockErr, constants.ErrRuntimeFileLocked)
-
-	held, err := evaluation.LockRolloutQueue(context.Background(), env.fileSvc(t))
-	require.NoError(t, err, "the batch releases the queue lock when it ends")
-	require.NoError(t, held.Close())
-}
-
 func TestRolloutAdd_FailsWhileQueueIsLocked(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	held, err := evaluation.LockRolloutQueue(context.Background(), env.fileSvc(t))
 	require.NoError(t, err)
 
@@ -242,7 +156,7 @@ func TestRolloutAdd_FailsWhileQueueIsLocked(t *testing.T) {
 }
 
 func TestRolloutRun_PromoteOnPassRequiresGateSmoke(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 
 	_, err := env.run(t, "rollout", "run", "--promote-on-pass")
@@ -251,7 +165,7 @@ func TestRolloutRun_PromoteOnPassRequiresGateSmoke(t *testing.T) {
 }
 
 func TestRolloutRun_UntilCannotBeNegative(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 
 	_, err := env.run(t, "rollout", "run", "--until", "-1")
@@ -260,8 +174,8 @@ func TestRolloutRun_UntilCannotBeNegative(t *testing.T) {
 }
 
 func TestRequireRunServed_FailsWhenEveryAssignmentFailedAtTheProvider(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	ctx := context.Background()
 	store := env.store(t)
 	assignments, err := store.ListAssignments(ctx, "run-a-1")

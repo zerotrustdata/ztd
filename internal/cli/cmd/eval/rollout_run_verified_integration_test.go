@@ -42,14 +42,14 @@ func skipVerifiedRolloutPlan(t *testing.T, env *runEnv) []string {
 }
 
 func TestRolloutRun_SkipVerifiedSkipsAnEntryVerifiedOnTheCurrentCatalog(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	markVerifiedOn(t, env, evaluation.DefaultSuiteID)
 
 	assert.Empty(t, skipVerifiedRolloutPlan(t, env))
 }
 
 func TestRolloutRun_SkipVerifiedRequalifiesAnEntryVerifiedOnAnOlderCatalog(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	// The smoke suite stands in for a catalog that is no longer the built-in one.
 	markVerifiedOn(t, env, evaluation.SmokeSuiteID)
 
@@ -57,7 +57,7 @@ func TestRolloutRun_SkipVerifiedRequalifiesAnEntryVerifiedOnAnOlderCatalog(t *te
 }
 
 func TestRolloutRun_SkipVerifiedRequalifiesAnEntryWhoseVerifiedRunIsGone(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "rollout", "add", "qwen3:4b")
 	_, err := evaluation.MarkCampaignQueueEntry(evaluation.MarkCampaignQueueEntryRequest{
 		FileService:   env.fileSvc(t),

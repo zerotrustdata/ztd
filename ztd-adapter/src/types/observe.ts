@@ -14,7 +14,7 @@ import type {
   RunKind,
   RunLifecycleStatus,
   SnapshotFreshness,
-} from './enums';
+} from './enums.js';
 
 // An ISO-8601 UTC timestamp string. The Go side serializes time.Time as RFC3339.
 export type UTCDatetime = string;

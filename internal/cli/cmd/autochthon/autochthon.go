@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/autochthon"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -39,7 +40,7 @@ func Cmd() *cobra.Command {
 		Short: "Run with no Gateway: sample this host and breed a local prior",
 		Long: `Run the autochthon in the foreground. It does not dial a Gateway, enroll, or listen, and it accepts no envelope. It samples this host, including TERM, once a second and breeds a local prior under .ztd/autochthon/ in the working directory.
 
-Only --working-dir and --log are accepted; any Gateway-facing flag, including the inherited --endpoint and --port, fails before any file is opened. Verify and report on a runtime root with:
+Only --working-dir and --log are accepted; any other flag, including the inherited --endpoint, --port, and --json, is refused before any runtime state under .ztd/ is read. Verify and report on a runtime root with:
 ztd autochthon status`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -47,6 +48,7 @@ ztd autochthon status`,
 		},
 	}
 
+	shared.DeclareNoLaunchProfile(cmd)
 	cmd.Flags().StringVar(&workingDir, "working-dir", "", "Runtime root; state is written under .ztd/autochthon/")
 	cmd.Flags().StringVarP(&logLevel, "log", "l", "info", "Log level: info, error, debug")
 

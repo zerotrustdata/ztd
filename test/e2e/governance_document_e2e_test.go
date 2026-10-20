@@ -14,7 +14,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -71,13 +70,37 @@ func buildE2EDocumentEnvelope(
 	return env, nil
 }
 
-// docString returns a string field of doc and fails the test when the field is
-// absent or not a JSON string.
-func docString(t *testing.T, doc DocumentResponse, field string) string {
+// e2eDocument is the document shape this test writes through DOCUMENT_UPDATE
+// and reads back from GET /api/v1/data/{collection}/{id}.
+type e2eDocument struct {
+	ID     string `json:"id"`
+	FieldA string `json:"field_a"`
+	FieldB string `json:"field_b"`
+	FieldC string `json:"field_c"`
+	Status string `json:"status"`
+}
+
+// requireDocument reads collection/docID back from the Gateway and decodes it
+// into the shape the test wrote.
+func requireDocument(ctx context.Context, t *testing.T, collection, docID string) e2eDocument {
 	t.Helper()
-	value, ok := doc.GetString(field)
-	require.True(t, ok, "document field %q must be a string", field)
-	return value
+	body, err := e2eClient.GetDocument(ctx, collection, docID)
+	require.NoError(t, err, "get document %s/%s", collection, docID)
+	doc, err := decodeJSON[e2eDocument](body, "document")
+	require.NoError(t, err)
+	require.Equal(t, docID, doc.ID, "read-back must return the requested document")
+	return doc
+}
+
+// submitEnvelope submits env and fails the test unless the Gateway answers
+// with a completed signed receipt for it.
+func submitEnvelope(ctx context.Context, t *testing.T, env *governance.GovernanceEnvelope, what string) {
+	t.Helper()
+	receipt, err := e2eClient.SubmitGovernanceEnvelope(ctx, env)
+	require.NoError(t, err, "gateway must accept %s envelope", what)
+	require.Equal(t, env.GetTransactionHash(), receipt.GetTransactionId(), "%s receipt must name the submitted transaction", what)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus(), "%s envelope must complete", what)
+	t.Logf("%s envelope admitted: tx=%s", what, receipt.GetTransactionId())
 }
 
 // TestGovernance_DocumentUpdateAndDelete verifies the governed document lifecycle
@@ -157,10 +180,7 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	require.NoError(t, err, "build create governance envelope")
 
 	notBeforeCreate := time.Now().Add(-2 * time.Second)
-	txHash, status, body, err := e2eClient.SubmitGovernanceEnvelope(ctx, createEnv)
-	require.NoError(t, err, "submit create envelope")
-	require.Equal(t, http.StatusOK, status, "gateway must accept envelope: %s", string(body))
-	t.Logf("create envelope admitted: tx=%s", txHash)
+	submitEnvelope(ctx, t, createEnv, "create")
 
 	// Correlate receipt for creation
 	createReceipt := requireRecordedReceipt(ctx, t, constants.ActionTypeDocumentUpdate, targetResource, notBeforeCreate)
@@ -171,12 +191,10 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	t.Logf("create receipt verified: tx=%s", createReceipt.TransactionID)
 
 	// Read back created document
-	doc, getStatus, err := e2eClient.GetDocument(ctx, collection, docID)
-	require.NoError(t, err, "get document after create")
-	require.Equal(t, http.StatusOK, getStatus)
-	assert.Equal(t, "initial_value", docString(t, doc, "field_a"))
-	assert.Equal(t, "keep_me", docString(t, doc, "field_b"))
-	assert.Equal(t, "active", docString(t, doc, "status"))
+	doc := requireDocument(ctx, t, collection, docID)
+	assert.Equal(t, "initial_value", doc.FieldA)
+	assert.Equal(t, "keep_me", doc.FieldB)
+	assert.Equal(t, "active", doc.Status)
 	t.Logf("document read-back verified after create")
 
 	// -------------------------------------------------------------------------
@@ -216,10 +234,7 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	require.NoError(t, err, "build merge governance envelope")
 
 	notBeforeMerge := time.Now().Add(-2 * time.Second)
-	txHash, status, body, err = e2eClient.SubmitGovernanceEnvelope(ctx, mergeEnv)
-	require.NoError(t, err, "submit merge envelope")
-	require.Equal(t, http.StatusOK, status, "gateway must accept merge envelope: %s", string(body))
-	t.Logf("merge envelope admitted: tx=%s", txHash)
+	submitEnvelope(ctx, t, mergeEnv, "merge")
 
 	// Correlate receipt for merge update
 	mergeReceipt := requireRecordedReceipt(ctx, t, constants.ActionTypeDocumentUpdate, targetResource, notBeforeMerge)
@@ -229,13 +244,11 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	t.Logf("merge receipt verified: tx=%s", mergeReceipt.TransactionID)
 
 	// Read back and verify untouched fields survived
-	doc, getStatus, err = e2eClient.GetDocument(ctx, collection, docID)
-	require.NoError(t, err, "get document after merge")
-	require.Equal(t, http.StatusOK, getStatus)
-	assert.Equal(t, "updated_value", docString(t, doc, "field_a"), "field_a must be updated")
-	assert.Equal(t, "keep_me", docString(t, doc, "field_b"), "untouched field_b must survive merge")
-	assert.Equal(t, "active", docString(t, doc, "status"), "untouched status must survive merge")
-	assert.Equal(t, "newly_added", docString(t, doc, "field_c"), "field_c must be added")
+	doc = requireDocument(ctx, t, collection, docID)
+	assert.Equal(t, "updated_value", doc.FieldA, "field_a must be updated")
+	assert.Equal(t, "keep_me", doc.FieldB, "untouched field_b must survive merge")
+	assert.Equal(t, "active", doc.Status, "untouched status must survive merge")
+	assert.Equal(t, "newly_added", doc.FieldC, "field_c must be added")
 	t.Logf("document read-back verified after merge (untouched fields survived)")
 
 	// -------------------------------------------------------------------------
@@ -267,10 +280,7 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	require.NoError(t, err, "build delete governance envelope")
 
 	notBeforeDelete := time.Now().Add(-2 * time.Second)
-	txHash, status, body, err = e2eClient.SubmitGovernanceEnvelope(ctx, deleteEnv)
-	require.NoError(t, err, "submit delete envelope")
-	require.Equal(t, http.StatusOK, status, "gateway must accept delete envelope: %s", string(body))
-	t.Logf("delete envelope admitted: tx=%s", txHash)
+	submitEnvelope(ctx, t, deleteEnv, "delete")
 
 	// Correlate receipt for delete
 	deleteReceipt := requireRecordedReceipt(ctx, t, constants.ActionTypeDocumentDelete, targetResource, notBeforeDelete)
@@ -279,11 +289,9 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	assert.Equal(t, e2eClient.userID, deleteReceipt.RequestorUserID, "requestor_user_id must match")
 	t.Logf("delete receipt verified: tx=%s", deleteReceipt.TransactionID)
 
-	// Verify document is deleted (GET returns 404 and nil doc)
-	doc, getStatus, err = e2eClient.GetDocument(ctx, collection, docID)
-	require.NoError(t, err, "get document after delete must not error")
-	assert.Equal(t, http.StatusNotFound, getStatus, "get document after delete must return 404")
-	assert.Nil(t, doc, "document must be nil after delete")
+	// Verify document is deleted (GET returns 404)
+	_, err = e2eClient.GetDocument(ctx, collection, docID)
+	require.ErrorIs(t, err, constants.ErrNotFound, "get document after delete must return 404")
 	t.Logf("verified document %s returns 404 after deletion", targetResource)
 }
 

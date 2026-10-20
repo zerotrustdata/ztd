@@ -19,7 +19,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"regexp"
-	"unicode"
 
 	"google.golang.org/protobuf/proto"
 
@@ -38,18 +37,6 @@ func validatePlatformEnrollmentRequest(request models.PlatformEnrollmentCreateRe
 	if !validPlatformHostname(request.Hostname) {
 		return models.PlatformEnrollmentCSRFingerprints{}, constants.ErrPlatformEnrollmentInvalidHostname
 	}
-	if request.ComponentKind == models.PlatformComponentApplication {
-		if request.AppName == "" {
-			return models.PlatformEnrollmentCSRFingerprints{}, constants.ErrPlatformEnrollmentAppNameRequired
-		}
-		if len(request.AppName) > constants.PlatformEnrollmentMaxAppNameBytes || !isValidAppName(request.AppName) {
-			return models.PlatformEnrollmentCSRFingerprints{}, constants.ErrPlatformEnrollmentInvalidAppName
-		}
-		if isReservedPlatformName(request.AppName) {
-			return models.PlatformEnrollmentCSRFingerprints{}, constants.ErrPlatformEnrollmentReservedIdentity
-		}
-	}
-
 	fingerprints := models.PlatformEnrollmentCSRFingerprints{}
 	if request.App != nil {
 		fingerprint, _, err := parsePlatformEnrollmentCSR(request.App.CSRPEM)
@@ -199,29 +186,4 @@ func validPlatformInstanceID(value string) bool {
 func validPlatformHostname(value string) bool {
 	matched, err := regexp.MatchString(`^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$`, value)
 	return err == nil && matched
-}
-
-// isValidAppName validates that the app name contains only allowed characters.
-func isValidAppName(name string) bool {
-	if name == "" {
-		return false
-	}
-	for _, r := range name {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' {
-			return false
-		}
-	}
-	return true
-}
-
-// isReservedPlatformName reports whether the given app name collides with a
-// canonical platform component identity. Those identities are issued only
-// through the owner-approved platform enrollment protocol.
-func isReservedPlatformName(name string) bool {
-	switch name {
-	case models.PlatformDashboardName, models.PlatformOperatorName:
-		return true
-	default:
-		return false
-	}
 }

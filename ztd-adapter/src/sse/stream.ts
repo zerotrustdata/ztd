@@ -2,17 +2,16 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 // SSE stream connection and reconciliation. Opens an absolute configured
-// /api/v1/sse/stream EventSource with credentials, implements polling fallback
-// using serialized stored push envelopes, and reconciles snapshots after
-// initial connection, reconnect gaps, truncated, replay_failed, visibility
-// restoration, unknown transition versions, and dropped live delivery.
+// /api/v1/sse/stream EventSource with credentials, and reconciles snapshots
+// after initial connection, reconnect gaps, truncated, replay_failed,
+// visibility restoration, unknown transition versions, and dropped live delivery.
 //
 // SSE is invalidation/live narrative, not the durable database. The snapshot
 // (from the observe API) is the source of truth; SSE provides incremental
 // change notifications.
 
-import type { FrontendRuntimeConfig } from '../config/runtime_config';
-import { EventDeduplicator, normalizeGatewayEvent, type NormalizedGatewayEvent } from './normalizer';
+import type { FrontendRuntimeConfig } from '../config/runtime_config.js';
+import { EventDeduplicator, normalizeGatewayEvent, type NormalizedGatewayEvent } from './normalizer.js';
 
 export type SseConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'unauthenticated';
 

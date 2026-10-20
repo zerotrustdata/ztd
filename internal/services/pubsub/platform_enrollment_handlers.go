@@ -763,7 +763,14 @@ func (h *PlatformEnrollmentHandler) HandleRevoke(ctx context.Context, msg *PubSu
 			if err := json.Unmarshal(bData, &boundPolicy); err != nil {
 				return "", fmt.Errorf("platform enrollment: decode consensus binding for revocation: %w", err)
 			}
-			if len(boundPolicy.MemberAppIDs) > 0 && boundPolicy.MemberAppIDs[0] == req.ComponentName {
+			isMember := false
+			for _, m := range boundPolicy.MemberAppIDs {
+				if m == req.ComponentName {
+					isMember = true
+					break
+				}
+			}
+			if boundPolicy.PrimaryAppID() == req.ComponentName || isMember {
 				if err := h.deps.DocStore.DocDelete(ctx, marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding)); err != nil {
 					return "", fmt.Errorf("platform enrollment: revoke consensus binding: %w", err)
 				}
@@ -955,43 +962,60 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 	if actorUserID == "" {
 		return "", constants.ErrPlatformEnrollmentInvalidDecision
 	}
-
-	// Verify app is enrolled and completed
-	spiffeID := protocol.NewWorkloadIdentity().AppSPIFFEID(appID)
-	appDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), spiffeID)
+	memberAppIDs, quorum, err := models.ResolveConsensusMembership(appID, payload.GetConsensusMemberAppIds(), int(payload.GetConsensusQuorum()))
 	if err != nil {
-		return "", fmt.Errorf("platform enrollment: check app policy: %w", err)
-	}
-	if appDoc == nil {
-		return "", constants.ErrConsensusAppNotEnrolled
+		return "", fmt.Errorf("platform enrollment: %w", err)
 	}
 
-	// Verify app has a trusted signer registered
-	signerDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), appID)
-	if err != nil {
-		return "", fmt.Errorf("platform enrollment: check trusted signer: %w", err)
-	}
-	if signerDoc == nil {
-		return "", constants.ErrConsensusAppMissingSignerKey
-	}
-	signerData, err := json.Marshal(signerDoc.Data)
-	if err != nil {
-		return "", fmt.Errorf("platform enrollment: marshal trusted signer: %w", err)
-	}
-	var signer models.TrustedSigner
-	if err := json.Unmarshal(signerData, &signer); err != nil {
-		return "", fmt.Errorf("platform enrollment: decode trusted signer: %w", err)
-	}
-	key, err := hex.DecodeString(signer.PublicKey)
-	if err != nil || !signer.Enabled || len(key) != ed25519.PublicKeySize {
-		return "", constants.ErrConsensusAppMissingSignerKey
+	// Validate ownership, active enrollment policy, and signing key for every
+	// member at the governed L5 boundary before writing the consensus policy.
+	for _, memberID := range memberAppIDs {
+		spiffeID := protocol.NewWorkloadIdentity().AppSPIFFEID(memberID)
+		appDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), spiffeID)
+		if err != nil {
+			return "", fmt.Errorf("platform enrollment: check app policy: %w", err)
+		}
+		if appDoc == nil {
+			return "", constants.ErrConsensusAppNotEnrolled
+		}
+		policyData, err := json.Marshal(appDoc.Data)
+		if err != nil {
+			return "", fmt.Errorf("platform enrollment: marshal app policy: %w", err)
+		}
+		var appPolicy models.AppPolicy
+		if err := json.Unmarshal(policyData, &appPolicy); err != nil {
+			return "", fmt.Errorf("platform enrollment: decode app policy: %w", err)
+		}
+		if appPolicy.OwnerUserID != actorUserID {
+			return "", constants.ErrConsensusMemberNotOwned
+		}
+		signerDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionTrustedSigners), memberID)
+		if err != nil {
+			return "", fmt.Errorf("platform enrollment: check trusted signer: %w", err)
+		}
+		if signerDoc == nil {
+			return "", constants.ErrConsensusAppMissingSignerKey
+		}
+		signerData, err := json.Marshal(signerDoc.Data)
+		if err != nil {
+			return "", fmt.Errorf("platform enrollment: marshal trusted signer: %w", err)
+		}
+		var signer models.TrustedSigner
+		if err := json.Unmarshal(signerData, &signer); err != nil {
+			return "", fmt.Errorf("platform enrollment: decode trusted signer: %w", err)
+		}
+		key, err := hex.DecodeString(signer.PublicKey)
+		if err != nil || !signer.Enabled || len(key) != ed25519.PublicKeySize {
+			return "", constants.ErrConsensusAppMissingSignerKey
+		}
 	}
 
 	now := time.Now().UTC()
 	consensusDoc := models.ConsensusPolicy{
 		ID:              string(constants.DocIDConsensusBinding),
-		MemberAppIDs:    []string{appID},
-		Quorum:          1,
+		AppID:           appID,
+		MemberAppIDs:    append([]string(nil), memberAppIDs...),
+		Quorum:          quorum,
 		RequireDistinct: true,
 		EndpointURL:     endpointURL,
 		Enabled:         true,

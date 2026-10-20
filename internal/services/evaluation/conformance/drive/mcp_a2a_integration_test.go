@@ -11,11 +11,8 @@ package drive
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
-	"encoding/pem"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -24,10 +21,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
-	"github.com/zerotrustdata/ztd/internal/services/network"
-	"github.com/zerotrustdata/ztd/internal/testutil"
-	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
-	agentconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
@@ -49,38 +42,20 @@ func TestMCPA2A(t *testing.T) {
 		assert.NoError(t, stub.Close(ctx))
 	})
 
-	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
+	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName:         "conformance-mcp-a2a",
 		Posture:          constants.PostureDoctrine,
 		A2ADownstreamURL: stub.URL(),
 	})
-	f.WaitForReady(t)
-	ident := fixtures.BootstrapCLIIdentity(t, f, "conformance-mcp-a2a-host")
-
-	cliCert, err := tls.X509KeyPair([]byte(ident.CLICertificate), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ident.CLIPrivateKey}))
-	require.NoError(t, err)
-	caBundle := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
-	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
-	require.NoError(t, os.WriteFile(caPath, caBundle, 0o600))
-
-	url := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
-	c, err := client.New(agentconfig.Config{
-		MTLSBaseURL:   url,
-		PublicBaseURL: url,
-		Auth:          agentconfig.Auth{Certificate: &cliCert, CABundle: caPath},
-	})
-	require.NoError(t, err)
-
-	persona := client.Persona{ID: "conformance-mcp-a2a", UserID: ident.UserID, CLISessionID: ident.CLISessionID}
-	mcpDriver, err := NewMCP(context.Background(), c, persona)
+	mcpDriver, err := NewMCP(context.Background(), gw.client, gw.persona)
 	require.NoError(t, err)
 	drivers := map[cases.Ingress]cases.Driver{
 		cases.IngressMCP: mcpDriver,
-		cases.IngressA2A: NewA2A(c, persona, stub),
+		cases.IngressA2A: NewA2A(gw.client, gw.persona, stub),
 	}
 
 	// attemptFor only reads the fixture's work directory, so a bare fixture is enough.
-	fx := &directFixture{f: f, workDir: f.Config.WorkDir}
+	fx := &directFixture{f: gw.f}
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 
 	// First row-1 and first row-14 case for each ingress under doctrine.
@@ -122,7 +97,7 @@ func TestMCPA2A(t *testing.T) {
 			}
 			require.Len(t, driven.A2ACalls, 1, "exactly one stub call must carry the marker")
 			assert.Equal(t, ConformanceA2ASkill, driven.A2ACalls[0].GetSkillName())
-			want, err := json.Marshal(client.MarkerSkillPayload{Marker: a.Marker})
+			want, err := json.Marshal(cases.MarkerSkillPayload{Marker: a.Marker})
 			require.NoError(t, err)
 			assert.JSONEq(t, string(want), driven.A2ACalls[0].GetPayloadJson())
 		})

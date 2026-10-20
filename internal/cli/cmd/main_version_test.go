@@ -10,6 +10,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -19,6 +20,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestVersionInfoFromCmd_WithVersionInfo(t *testing.T) {
@@ -178,4 +182,44 @@ func TestNewRootCmd_PersistentPreRunE_SetsEndpointOverride(t *testing.T) {
 		assert.Contains(t, cfg.OperatorPublicURL(), "localhost")
 		assert.NotContains(t, cfg.OperatorPublicURL(), "2222")
 	})
+}
+
+// TestRootPreRunRefusesAutochthonBeforeRuntimeFiles proves that the root
+// pre-run does not read the launch profile or PID file from the working
+// directory for an autochthon command, so the refused flag fails first. The
+// working directory has no launch profile; any runtime file service the root
+// opens is recorded.
+func TestRootPreRunRefusesAutochthonBeforeRuntimeFiles(t *testing.T) {
+	dir := testutil.TempDir(t)
+	t.Chdir(dir)
+
+	var opened []string
+	original := shared.NewFileSvc
+	shared.NewFileSvc = func(baseDir string, logger *slog.Logger) (fs.RuntimeFileService, error) {
+		opened = append(opened, baseDir)
+		return original(baseDir, logger)
+	}
+	t.Cleanup(func() {
+		shared.NewFileSvc = original
+		config.SetEndpointOverride("")
+	})
+
+	cases := map[string][]string{
+		"inherited json flag": {"autochthon", "--working-dir", dir, "--json"},
+		"endpoint flag":       {"autochthon", "--working-dir", dir, "--endpoint", "gateway.example"},
+		"port flag on status": {"autochthon", "status", "--working-dir", dir, "--port", "8443"},
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			opened = nil
+			rootCmd := NewRootCmd("dev", serve.VersionInfo{})
+			rootCmd.SetArgs(args)
+			rootCmd.SetOut(&bytes.Buffer{})
+			rootCmd.SetErr(&bytes.Buffer{})
+
+			err := rootCmd.Execute()
+			require.ErrorIs(t, err, constants.ErrAutochthonGatewayFlag)
+			assert.Empty(t, opened, "refusal must precede any runtime file service")
+		})
+	}
 }

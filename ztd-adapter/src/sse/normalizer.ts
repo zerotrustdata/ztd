@@ -16,7 +16,7 @@ import {
   isEvalVerificationStatus,
   isRunKind,
   isRunLifecycleStatus,
-} from '../types/enums';
+} from '../types/enums.js';
 
 export const OBSERVE_EVENT_PAYLOAD_SCHEMA_VERSION = '1.0.0';
 

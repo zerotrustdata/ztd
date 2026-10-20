@@ -110,6 +110,58 @@ func TestCatalogueCountsPerRowAndIngress(t *testing.T) {
 	}
 }
 
+// TestApprovalRowsPinTheHumanDecisionPerIngress pins the human approval rows under
+// ratify and notary. Governed dispatch and the CLI block until a human decides, so
+// they carry only the attended rows and never the unattended suspension (row 22).
+// No case on any ingress expects a refusal because an L3 proof cannot be minted:
+// the Gateway suspends the request for a human instead.
+func TestApprovalRowsPinTheHumanDecisionPerIngress(t *testing.T) {
+	cs, _ := mustCatalogue(t)
+
+	suspending := map[Ingress]bool{IngressMCP: true, IngressA2A: true}
+	for _, ing := range []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI} {
+		wantSuspended := 0
+		if suspending[ing] {
+			wantSuspended = 2
+		}
+		if got := countCases(cs, row(22), ingress(ing)); got != wantSuspended {
+			t.Errorf("row 22 %s: got %d cases, want %d", ing, got, wantSuspended)
+		}
+		if got := countCases(cs, row(23), ingress(ing)); got != 2 {
+			t.Errorf("row 23 %s: got %d cases, want 2 (ratify, notary)", ing, got)
+		}
+		if got := countCases(cs, row(24), ingress(ing)); got != 2 {
+			t.Errorf("row 24 %s: got %d cases, want 2 (ratify, notary)", ing, got)
+		}
+	}
+	if got := countCases(cs, row(22), ingress(IngressDirect)) + countCases(cs, row(23), ingress(IngressDirect)) + countCases(cs, row(24), ingress(IngressDirect)); got != 0 {
+		t.Errorf("DIRECT carries %d approval cases, want 0", got)
+	}
+
+	for _, c := range cs {
+		switch c.Row {
+		case 22:
+			if c.Attended || len(c.Expect) != 1 || c.Expect[0].Kind != ExpectSuspended {
+				t.Errorf("case %s: want one unattended SUSPENDED expectation, got attended=%v %+v", c.ID, c.Attended, c.Expect)
+			}
+		case 23:
+			if !c.Attended || len(c.Expect) != 1 || c.Expect[0].Kind != ExpectExecuted || c.Expect[0].L3Status != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+				t.Errorf("case %s: want one attended EXECUTED expectation with valid L3, got attended=%v %+v", c.ID, c.Attended, c.Expect)
+			}
+		case 24:
+			if !c.Attended || len(c.Expect) != 1 || c.Expect[0].Kind != ExpectRejected ||
+				c.Expect[0].RejectionCode != operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+				t.Errorf("case %s: want one attended L3_DENIED rejection, got attended=%v %+v", c.ID, c.Attended, c.Expect)
+			}
+		}
+		for _, e := range c.Expect {
+			if e.Kind == ExpectRefused && e.RefusalCode == operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L3_PROOF_UNMINTABLE {
+				t.Errorf("case %s expects an unmintable L3 refusal, which governed dispatch no longer returns", c.ID)
+			}
+		}
+	}
+}
+
 // TestRowSeventeenMissingFieldPinsDirectRejectionAndDispatchRefusal pins the
 // missing_field body fault per ingress: DIRECT reaches L4 and is rejected by the
 // signed payload-decode check, while governed dispatch refuses before an envelope exists.
@@ -161,7 +213,7 @@ func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
 	}
 	for _, c := range cs {
 		switch c.Row {
-		case 18, 20, 22, 23, 24, 25, 26:
+		case 18, 20, 22, 23, 24, 25:
 			t.Errorf("Applicable(DOCTRINE) contains row %d case %s", c.Row, c.ID)
 		}
 	}

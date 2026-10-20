@@ -8,6 +8,8 @@
 package operatorcapability
 
 import (
+	"fmt"
+
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -60,6 +62,27 @@ func IsActiveOperatorSession(op *operatorv1.OperatorDocument) bool {
 	default:
 		return false
 	}
+}
+
+// runsGenericWork reports whether capabilities admit generic host work:
+// commands and native tools. Witness-only Operators (provenance, observer)
+// keep only their narrowly scoped observation handlers.
+func runsGenericWork(capabilities constants.OperatorCapabilities) bool {
+	return capabilities.Has(constants.OperatorCapabilityData) || capabilities.Has(constants.OperatorCapabilityInference)
+}
+
+// ValidateWitnessNativeTool rejects governed native MCP tools on witness-only
+// Operators, except reads of the executing runtime's own signed audit store,
+// which every Operator serves for its own evidence.
+func ValidateWitnessNativeTool(capabilities constants.OperatorCapabilities, toolName string) error {
+	if runsGenericWork(capabilities) {
+		return nil
+	}
+	switch toolName {
+	case constants.MCPToolAuditReceiptList, constants.MCPToolAuditReceiptGet:
+		return nil
+	}
+	return fmt.Errorf("%w: native tool %q", constants.ErrWitnessCommandNotCapable, toolName)
 }
 
 // HasActiveCapability reports whether op is an active Operator session whose

@@ -40,39 +40,40 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
-	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/governance/consensustest"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/uuid"
-	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 )
 
 // GatewayFixture provides a reusable gateway setup for integration tests.
 // It encapsulates the common pattern of creating a gateway, downstream server,
 // and all required dependencies.
 type GatewayFixture struct {
-	Config           *config.Config
-	Service          *gateway.GatewayModeService
-	DownstreamServer *httptest.Server
-	DataDir          string
-	SecretsDir       string
-	PKIDir           string
-	MCPGateway       *mcp.GatewayService
-	ActuatorPriv     ed25519.PrivateKey
-	ActuatorKeyID    string
-	DownstreamURL    string // URL of the downstream MCP/A2A server
-	DownstreamCmd    string // Command of downstream subprocess MCP server
-	DownstreamArgs   []string
-	Keystore         *keystore.Keystore
-	A2ADownstreamURL string           // URL used for A2A (same as DownstreamURL if not overridden)
-	ConsensusServer  *httptest.Server // External HTTPS protobuf deliberation endpoint, when configured
+	FileService              fs.RuntimeFileService
+	Config                   *config.Config
+	Service                  *gateway.GatewayModeService
+	DownstreamServer         *httptest.Server
+	DataDir                  string
+	SecretsDir               string
+	PKIDir                   string
+	MCPGateway               *mcp.GatewayService
+	ActuatorPriv             ed25519.PrivateKey
+	ActuatorKeyID            string
+	DownstreamURL            string // URL of the downstream MCP/A2A server
+	DownstreamCmd            string // Command of downstream subprocess MCP server
+	DownstreamArgs           []string
+	Keystore                 *keystore.Keystore
+	A2ADownstreamURL         string           // URL used for A2A (same as DownstreamURL if not overridden)
+	ConsensusServer          *httptest.Server // External HTTPS protobuf deliberation endpoint, when configured
+	PublicMirrorOrigin       string           // Anonymous public mirror origin, when enabled
+	PublicMirrorBootstrapURL string           // Anonymous public mirror bootstrap endpoint, when enabled
 }
 
 // GatewayFixtureOptions configures the gateway fixture.
@@ -83,6 +84,7 @@ type GatewayFixtureOptions struct {
 	DownstreamCmd    string   // MCP downstream stdio subprocess command
 	DownstreamArgs   []string // MCP downstream stdio subprocess arguments
 	A2ADownstreamURL string   // A2A downstream; if empty, reuses MCP downstream server
+	NoDownstream     bool     // If true, do not create a mock downstream server when DownstreamURL/Cmd are empty
 	PublicBaseURL    string   // Public base URL for approval links; defaults to localhost:HTTPS_port
 
 	// Consensus configuration for consensus/notary postures. When zero-valued,
@@ -92,6 +94,13 @@ type GatewayFixtureOptions struct {
 	ConsensusNMembers        int
 	ConsensusQuorum          int
 	ConsensusNServiceMembers int
+
+	// ProductionConsensus uses HTTPS deliberation and gives enrolled Operators
+	// the same complete bound consensus policy that signs their commands.
+	ProductionConsensus bool
+	// EnablePublicSpectator starts the real Gateway-owned public mirror on
+	// isolated loopback listeners.
+	EnablePublicSpectator bool
 
 	// OperatorLeafCertTTL, when nonzero, shortens the lifetime of issued
 	// Operator leaves so a test observes renewal.
@@ -149,7 +158,7 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	var downstreamServer *httptest.Server
 	var downstreamURL string
 
-	if opts.DownstreamCmd == "" {
+	if !opts.NoDownstream && opts.DownstreamCmd == "" {
 		if opts.DownstreamURL == "" {
 			// Create default mock downstream MCP server
 			downstreamServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +221,6 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	if posture == "" {
 		posture = constants.PostureNotary
 	}
-
 	// WorkDir roots the Gateway (and its embedded Operator's working directory)
 	// in this test's runtime base, exactly as `gw start` roots it in the project.
 	cfg, err := config.LoadGateway(config.GatewayOptions{
@@ -236,6 +244,30 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	cfg.Gateway.MCPDownstreamURL = downstreamURL
 	cfg.Gateway.MCPDownstreamCmd = opts.DownstreamCmd
 	cfg.Gateway.MCPDownstreamArgs = opts.DownstreamArgs
+	var mirrorReservations []io.Closer
+	releaseMirrorReservations := func() {
+		for _, reservation := range mirrorReservations {
+			_ = reservation.Close()
+		}
+		mirrorReservations = nil
+	}
+	if opts.EnablePublicSpectator {
+		privatePort, reservation, reserveErr := netutil.ReserveTCPPort()
+		require.NoError(t, reserveErr)
+		mirrorReservations = append(mirrorReservations, reservation)
+		publicPort, reservation, reserveErr := netutil.ReserveTCPPort()
+		require.NoError(t, reserveErr)
+		mirrorReservations = append(mirrorReservations, reservation)
+		t.Cleanup(releaseMirrorReservations)
+		privateAddr := fmt.Sprintf("127.0.0.1:%d", privatePort)
+		publicAddr := fmt.Sprintf("127.0.0.1:%d", publicPort)
+		cfg.Gateway.PublicSpectatorEnabled = true
+		cfg.Gateway.PublicSpectatorPrivateAddr = privateAddr
+		cfg.Gateway.PublicSpectatorPublicAddr = publicAddr
+		// The public handler serves both the mirror API and explorer assets;
+		// pointing the explorer at that address suppresses a second listener.
+		cfg.Gateway.EvalExplorerAddr = publicAddr
+	}
 
 	if opts.PublicBaseURL != "" {
 		cfg.Gateway.PublicBaseURL = opts.PublicBaseURL
@@ -283,8 +315,19 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		if nServiceMembers == 0 {
 			nServiceMembers = 1
 		}
-		cs := SetupConsensus(t, db.GetConsensusStore(), db.GetSignerStore(), consensusID, nMembers, quorum, nServiceMembers)
+		cs := consensustest.SetupConsensus(t, db.GetConsensusStore(), db.GetSignerStore(), consensusID, nMembers, quorum, nServiceMembers)
 		l2Deliberator = cs.Deliberator
+		if opts.ProductionConsensus {
+			policy, err := db.GetConsensusStore().GetConsensus(t.Context(), consensusID)
+			require.NoError(t, err)
+			require.NotNil(t, policy)
+			policy.ID = string(constants.DocIDConsensusBinding)
+			policy.EndpointURL = cs.Server.URL
+			require.NoError(t, db.GetConsensusStore().ClearConsensusBinding(t.Context(), ""))
+			require.NoError(t, db.GetConsensusStore().AddConsensus(t.Context(), *policy))
+			cs.Deliberator.ConsensusID = policy.ID
+			l2Deliberator = db.GetConsensusStore().NewConsensusAppDeliberator(cs.Server.Client())
+		}
 		consensusServer = cs.Server
 	}
 
@@ -320,6 +363,9 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 	// test has completed (which would panic the test runtime under -race).
 	ctx, cancel := context.WithCancel(context.Background())
 	serverErr := make(chan error, 1)
+	// Keep reservations held through all fixture construction and release them
+	// only when the Gateway is ready to bind every listener.
+	releaseMirrorReservations()
 	go func() {
 		serverErr <- ls.Start(ctx)
 	}()
@@ -349,39 +395,61 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		t.Fatal("gateway service did not become ready")
 	}
 
+	mirrorOrigin, mirrorBootstrapURL := publicMirrorOrigin(cfg), ""
+	if mirrorOrigin != "" {
+		mirrorBootstrapURL = mirrorOrigin + "/bootstrap"
+	}
 	return &GatewayFixture{
-		Config:           cfg,
-		Service:          ls,
-		DownstreamServer: downstreamServer,
-		DataDir:          dataDir,
-		SecretsDir:       secretsDir,
-		PKIDir:           pkiDir,
-		MCPGateway:       mcpGateway,
-		ActuatorPriv:     ActuatorPriv,
-		ActuatorKeyID:    ActuatorKeyID,
-		DownstreamURL:    downstreamURL,
-		DownstreamCmd:    opts.DownstreamCmd,
-		DownstreamArgs:   opts.DownstreamArgs,
-		Keystore:         ks,
-		A2ADownstreamURL: a2aURL,
-		ConsensusServer:  consensusServer,
+		FileService:              fileSvc,
+		Config:                   cfg,
+		Service:                  ls,
+		DownstreamServer:         downstreamServer,
+		DataDir:                  dataDir,
+		SecretsDir:               secretsDir,
+		PKIDir:                   pkiDir,
+		MCPGateway:               mcpGateway,
+		ActuatorPriv:             ActuatorPriv,
+		ActuatorKeyID:            ActuatorKeyID,
+		DownstreamURL:            downstreamURL,
+		DownstreamCmd:            opts.DownstreamCmd,
+		DownstreamArgs:           opts.DownstreamArgs,
+		Keystore:                 ks,
+		A2ADownstreamURL:         a2aURL,
+		ConsensusServer:          consensusServer,
+		PublicMirrorOrigin:       mirrorOrigin,
+		PublicMirrorBootstrapURL: mirrorBootstrapURL,
 	}
 }
 
-// WaitForReady polls the HTTP health endpoint until the server accepts connections.
-// Uses HTTP port instead of HTTPS to avoid mTLS certificate requirements.
+// publicMirrorOrigin returns the Gateway's anonymous mirror origin, or "" when
+// the public spectator is disabled.
+func publicMirrorOrigin(cfg *config.Config) string {
+	if cfg == nil || !cfg.Gateway.PublicSpectatorEnabled || cfg.Gateway.PublicSpectatorPublicAddr == "" {
+		return ""
+	}
+	return "http://" + cfg.Gateway.PublicSpectatorPublicAddr
+}
+
+// WaitForReady waits for the Gateway's listener signal, then verifies the
+// public health endpoint once. No timer-driven health polling is needed.
 func (f *GatewayFixture) WaitForReady(t *testing.T) {
 	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	select {
+	case <-f.Service.Ready():
+	case <-ctx.Done():
+		t.Fatal("Gateway listeners did not become ready: ", ctx.Err())
+	}
 	client := &http.Client{Timeout: 2 * time.Second}
-	require.Eventually(t, func() bool {
-		httpURL := network.LocalhostHTTPURL(f.Service.GetHTTPPort())
-		resp, err := client.Get(httpURL + constants.APIPaths.Health)
-		if err != nil {
-			return false
-		}
-		defer resp.Body.Close()
-		return resp.StatusCode == http.StatusOK
-	}, 10*time.Second, 100*time.Millisecond, "HTTP server did not become ready")
+	defer client.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		network.LocalhostHTTPURL(f.Service.GetHTTPPort())+constants.APIPaths.Health, nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Gateway health after listener readiness")
 }
 
 func mustMarshal(t *testing.T, v interface{}) json.RawMessage {
@@ -643,167 +711,9 @@ func (rt *cliSessionRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	return rt.base.RoundTrip(clone)
 }
 
-// TestConsensusMember represents a test consensus member holding an Ed25519 key.
-type TestConsensusMember struct {
-	AppID      string
-	PrivateKey ed25519.PrivateKey
-}
-
-// ConsensusSetup holds the result of wiring a test consensus deliberator into a gateway fixture.
-type ConsensusSetup struct {
-	ConsensusID string
-	Members     []TestConsensusMember
-	Deliberator mcp.L2ConsensusDeliberator
-	Server      *httptest.Server
-}
-
-// TestConsensusDeliberator implements mcp.L2ConsensusDeliberator for test fixtures.
-type TestConsensusDeliberator struct {
-	ConsensusID string
-	Members     []TestConsensusMember
-	Doctrine    *govsvc.L1Doctrine
-}
-
-// Deliberate implements mcp.L2ConsensusDeliberator.
-func (d *TestConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
-	var env commonv1.GovernanceEnvelope
-	isJSON := false
-	if err := proto.Unmarshal(envelopeBytes, &env); err != nil {
-		if jsonErr := protojson.Unmarshal(envelopeBytes, &env); jsonErr != nil {
-			return nil, fmt.Errorf("test consensus deliberator: unmarshal envelope: %w", err)
-		}
-		isJSON = true
-	}
-
-	var cmdData string
-	if env.IntentData != nil && len(env.IntentData.AsMap()) > 0 {
-		jsonBytes, err := json.Marshal(env.IntentData.AsMap())
-		if err == nil {
-			cmdData = string(jsonBytes)
-		}
-	}
-	if cmdData == "" {
-		cmdData = string(env.Payload)
-	}
-
-	isSafe := true
-	if d.Doctrine != nil && cmdData != "" {
-		signals := d.Doctrine.AnalyzeCommand(cmdData)
-		for _, sig := range signals {
-			if sig.BlockRecommended {
-				isSafe = false
-				break
-			}
-		}
-	}
-
-	var votes []*commonv1.L2Vote
-	for _, member := range d.Members {
-		if member.PrivateKey == nil {
-			continue
-		}
-		payload := fmt.Sprintf("%s|%v", env.Id, isSafe)
-		sig := ed25519.Sign(member.PrivateKey, []byte(payload))
-		votes = append(votes, &commonv1.L2Vote{
-			SignerKeyId:        member.AppID,
-			ConsensusSignature: hex.EncodeToString(sig),
-			Decision:           isSafe,
-		})
-	}
-	if len(votes) == 0 {
-		return nil, constants.ErrConsensusNoSigningMembers
-	}
-
-	if env.Governance == nil {
-		env.Governance = &commonv1.GovernanceMetadata{}
-	}
-	if env.Governance.L2 == nil {
-		env.Governance.L2 = &commonv1.L2Metadata{}
-	}
-	env.Governance.L2.ConsensusSetId = d.ConsensusID
-	env.Governance.L2.Votes = votes
-
-	if isJSON {
-		return protojson.Marshal(&env)
-	}
-	return proto.Marshal(&env)
-}
-
-// SetupConsensus seeds consensus policy and trusted signers into the stores and
-// returns a ConsensusSetup with a TestConsensusDeliberator.
-func SetupConsensus(t *testing.T, consensusStore *gateway.ConsensusStoreService, signerStore *gateway.SignerStoreService, consensusID string, nMembers, quorum, nServiceMembers int) *ConsensusSetup {
-	t.Helper()
-
-	memberAppIDs := make([]string, nMembers)
-	signingMembers := make([]TestConsensusMember, 0, nServiceMembers)
-
-	for i := 0; i < nMembers; i++ {
-		appID := fmt.Sprintf("%s-member-%d", consensusID, i)
-		memberAppIDs[i] = appID
-
-		pub, priv, err := ed25519.GenerateKey(nil)
-		require.NoError(t, err)
-
-		err = signerStore.AddTrustedSigner(t.Context(), models.TrustedSigner{
-			ID:        appID,
-			PublicKey: hex.EncodeToString(pub),
-			AddedAt:   time.Now().UTC(),
-			Enabled:   true,
-		})
-		require.NoError(t, err)
-
-		if i < nServiceMembers {
-			signingMembers = append(signingMembers, TestConsensusMember{
-				AppID:      appID,
-				PrivateKey: priv,
-			})
-		}
-	}
-
-	policy := models.ConsensusPolicy{
-		ID:              consensusID,
-		MemberAppIDs:    memberAppIDs,
-		Quorum:          quorum,
-		RequireDistinct: true,
-		Enabled:         true,
-	}
-	err := consensusStore.AddConsensus(t.Context(), policy)
-	require.NoError(t, err)
-
-	deliberator := &TestConsensusDeliberator{
-		ConsensusID: consensusID,
-		Members:     signingMembers,
-		Doctrine:    govsvc.NewL1Doctrine(),
-	}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/x-protobuf" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		wire, err := io.ReadAll(r.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		signed, err := deliberator.Deliberate(r.Context(), wire)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/x-protobuf")
-		_, _ = w.Write(signed)
-	}))
-	t.Cleanup(server.Close)
-	err = consensusStore.AddConsensus(t.Context(), models.ConsensusPolicy{
-		ID: string(constants.DocIDConsensusBinding), MemberAppIDs: []string{memberAppIDs[0]},
-		Quorum: 1, RequireDistinct: true, EndpointURL: server.URL, Enabled: true,
-	})
-	require.NoError(t, err)
-
-	return &ConsensusSetup{
-		ConsensusID: consensusID,
-		Members:     signingMembers,
-		Deliberator: deliberator,
-		Server:      server,
+// CloseIdleConnections forwards the HTTP client's cleanup to its base transport.
+func (rt *cliSessionRoundTripper) CloseIdleConnections() {
+	if closer, ok := rt.base.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
@@ -241,8 +242,10 @@ func TestNewOperatorBootstrapClient_RejectsIncompleteConfig(t *testing.T) {
 		Logger:            testLogger(),
 		ActuatorPublicKey: strings.Repeat("ab", 32),
 	}
-	_, err = NewOperatorBootstrapClient(valid)
+	client, err := NewOperatorBootstrapClient(valid)
 	require.NoError(t, err)
+	require.NotNil(t, client.dialer.TLSClientConfig, "a bootstrap without a trust bundle still pins TLS 1.3 for wss")
+	assert.Equal(t, uint16(tls.VersionTLS13), client.dialer.TLSClientConfig.MinVersion)
 
 	for name, mutate := range map[string]func(*OperatorBootstrapClientConfig){
 		"url":            func(c *OperatorBootstrapClientConfig) { c.URL = "" },

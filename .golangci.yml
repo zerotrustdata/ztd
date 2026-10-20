@@ -5,6 +5,7 @@ run:
   tests: true
   build-tags:
     - integration
+    - evalstack
 linters:
   default: none
   enable:

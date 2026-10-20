@@ -15,11 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-func TestCampaignController_GenerateHeterogeneousStackSet_PersistsStacks(t *testing.T) {
+func TestCampaignController_GenerateFormationStackSet_PersistsStacks(t *testing.T) {
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -39,22 +38,20 @@ func TestCampaignController_GenerateHeterogeneousStackSet_PersistsStacks(t *test
 	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, testHeterogeneousVariants())
 	require.NoError(t, err)
 
-	run, err := controller.InitializeCampaign(context.Background(), req)
-	require.NoError(t, err)
-
-	stackSet, err := controller.GenerateHeterogeneousStackSet(context.Background(), run.GetCampaignBinding().GetCampaignId(), 17)
+	stackSet, err := testFormationStackSet(req.CampaignID, 17, req.Inventory.Variants)
 	require.NoError(t, err)
 	require.NotNil(t, stackSet)
 	assert.NotEmpty(t, stackSet.Stacks)
+	req.FormationStackSet = stackSet
+	run, err := controller.InitializeCampaign(context.Background(), req)
+	require.NoError(t, err)
 
 	loaded, err := store.LoadHeterogeneousStackSet(context.Background(), run.GetCampaignBinding().GetCampaignId())
 	require.NoError(t, err)
 	assert.Equal(t, stackSet.SetDigest, loaded.SetDigest)
 }
 
-// A system-lane run has no executor, so scheduling it fails closed before any
-// assignment is persisted.
-func TestCampaignController_ScheduleRun_SystemLaneFailsClosed(t *testing.T) {
+func TestCampaignController_ScheduleRun_SystemLaneUsesFrozenCatalogFormations(t *testing.T) {
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
@@ -65,16 +62,20 @@ func TestCampaignController_ScheduleRun_SystemLaneFailsClosed(t *testing.T) {
 	req.Inventory, err = MaterializeModelRegistry(req.CampaignID, testHeterogeneousVariants())
 	require.NoError(t, err)
 
-	run, err := controller.InitializeCampaign(context.Background(), req)
+	stackSet, err := testFormationStackSet(req.CampaignID, 17, req.Inventory.Variants)
 	require.NoError(t, err)
-	_, err = controller.GenerateHeterogeneousStackSet(context.Background(), run.GetCampaignBinding().GetCampaignId(), 17)
+	req.FormationStackSet = stackSet
+	_, err = controller.InitializeCampaign(context.Background(), req)
 	require.NoError(t, err)
 
 	count, err := controller.ScheduleRun(context.Background(), req.RunID)
-	require.ErrorIs(t, err, constants.ErrEvaluationSystemLaneUnavailable)
-	assert.Zero(t, count)
+	require.NoError(t, err)
+	assert.Equal(t, int(FormationMatrixSize(req.Catalog, uint64(len(stackSet.Stacks)))), count)
 
 	assignments, err := store.ListAssignments(context.Background(), req.RunID)
 	require.NoError(t, err)
-	assert.Empty(t, assignments)
+	assert.Len(t, assignments, count)
+	for _, assignment := range assignments {
+		assert.Equal(t, evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM, assignment.GetLane())
+	}
 }

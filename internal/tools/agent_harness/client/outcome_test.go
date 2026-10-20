@@ -23,6 +23,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
@@ -50,10 +51,10 @@ func outcomeEnvelope() *commonv1.GovernanceEnvelope {
 	}
 }
 
-func outcomeDispatchRequest() DispatchCommandRequest {
-	return DispatchCommandRequest{
+func outcomeDispatchRequest() models.OperatorCommandRequest {
+	return models.OperatorCommandRequest{
 		TargetOperatorSessionID: "session-1",
-		ActionType:              string(constants.ActionTypeFileEdit),
+		EventType:               string(constants.EventOperatorFileEditRequested),
 		Payload:                 []byte("payload"),
 		CLISessionID:            "cli-1",
 	}
@@ -92,9 +93,9 @@ func outcomeClient(t *testing.T, status int, body []byte) *Client {
 // rpcAnswer renders a JSON-RPC envelope with either a result or an error.
 func rpcAnswer(t *testing.T, result json.RawMessage, errData json.RawMessage) []byte {
 	t.Helper()
-	envelope := JSONRPCResponse{JSONRPC: "2.0", ID: 1}
+	envelope := mcp.JSONRPCResponse{JSONRPC: "2.0", ID: 1}
 	if errData != nil {
-		envelope.Error = &JSONRPCError{Code: -32000, Message: "governed call failed", Data: errData}
+		envelope.Error = &mcp.JSONRPCError{Code: -32000, Message: "governed call failed", Data: errData}
 	} else {
 		envelope.Result = result
 	}
@@ -340,7 +341,10 @@ func TestMCPToolsCall_ClassifiesResults(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := outcomeClient(t, http.StatusOK, tt.body)
-			outcome, err := client.MCPToolsCall(context.Background(), Persona{ID: "test"}, "fs_list", FSPathArgs{Path: "."})
+			outcome, err := client.MCPToolsCall(context.Background(), Persona{ID: "test"}, mcp.CallToolRequest{
+				Name:      (&mcp.FileReadTool{}).Name(),
+				Arguments: mustJSON(t, mcp.FileReadRequest{Path: "."}),
+			})
 			require.NoError(t, err)
 			require.NotNil(t, outcome)
 			assert.Equal(t, tt.wantKind, outcome.Observation.GetKind())
@@ -389,7 +393,11 @@ func TestA2ACall_ClassifiesResults(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := outcomeClient(t, http.StatusOK, tt.body)
-			outcome, err := client.A2ACall(context.Background(), Persona{ID: "test"}, outcomeTestSkill, ListDirectorySkillPayload{Path: "."}, "exec-1")
+			outcome, err := client.A2ACall(context.Background(), Persona{ID: "test"}, mcp.A2ACallRequest{
+				SkillName:   outcomeTestSkill,
+				Payload:     json.RawMessage(`{"path":"."}`),
+				ExecutionID: "exec-1",
+			})
 			require.NoError(t, err)
 			require.NotNil(t, outcome)
 			assert.Equal(t, tt.wantKind, outcome.Observation.GetKind())

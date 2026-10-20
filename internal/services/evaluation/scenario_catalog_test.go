@@ -41,18 +41,69 @@ func TestBuildScenarioCatalog_HasTwentySevenScenariosWithExpectedCategoryCounts(
 	assert.Equal(t, 3, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY])
 	assert.Equal(t, 3, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY])
 	assert.Equal(t, 1, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE])
-}
 
-func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
-	registry, err := LoadAgentToolRegistry()
-	require.NoError(t, err)
-	for _, blueprint := range scenarioBlueprints() {
-		assert.NoError(t, validateScenarioContract(blueprint, registry), blueprint.ScenarioID)
+	for _, scenario := range catalog.GetScenarios() {
+		if scenario.GetScenarioId() == "final-response-diagnosis" {
+			assert.Equal(t, finalResponseDiagnosisScenarioVersion, scenario.GetScenarioVersion())
+		}
 	}
 }
 
+func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
+	defaultCatalog, _, err := BuildScenarioCatalog()
+	require.NoError(t, err)
+	smokeCatalog, _, err := BuildSmokeGateScenarioCatalog()
+	require.NoError(t, err)
+
+	assert.Equal(t, DefaultSuiteVersion, defaultCatalog.GetCatalogRef().GetVersion())
+	assert.Equal(t, DefaultSuiteVersion, smokeCatalog.GetCatalogRef().GetVersion())
+	assert.Equal(t, "1.6.0", DefaultSuiteVersion)
+	assert.Equal(t, "1.3.0", GraderVersion)
+}
+
+func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	for _, blueprint := range scenarioBlueprints() {
+		assert.NoError(t, validateScenarioContract(blueprint, catalog), blueprint.ScenarioID)
+	}
+}
+
+func TestScenarioDiagnosisRubric_IsBoundIntoFrozenGoldArtifact(t *testing.T) {
+	blueprint := finalResponseDiagnosis()
+	selected := blueprint.Gold
+	selected.ScenarioID = blueprint.ScenarioID
+	unselected := selected
+	plainCheck := *selected.ContentCheck
+	plainCheck.DiagnosisRubric = ""
+	unselected.ContentCheck = &plainCheck
+
+	selectedArtifact, err := buildScenarioGoldArtifact(DefaultSuiteID, selected)
+	require.NoError(t, err)
+	unselectedArtifact, err := buildScenarioGoldArtifact(DefaultSuiteID, unselected)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, selectedArtifact.Reference.GetArtifactId(), unselectedArtifact.Reference.GetArtifactId())
+	assert.NotEqual(t, selectedArtifact.Body, unselectedArtifact.Body)
+}
+
+// tribunalInvestigationBlueprint is a planted-fault investigation scenario,
+// which declares the intent-only run_commands_with_operator through TribunalCommands.
+func tribunalInvestigationBlueprint() ScenarioBlueprint {
+	blueprints, err := InvestigationScenarioBlueprints()
+	if err != nil {
+		panic(err)
+	}
+	for _, blueprint := range blueprints {
+		if blueprint.TribunalCommands {
+			return blueprint
+		}
+	}
+	panic("no investigation scenario declares tribunal commands")
+}
+
 func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
-	registry, err := LoadAgentToolRegistry()
+	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -68,17 +119,20 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"case title names the evaluation", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.Input.Seed.CaseTitle = "Eval run 3" }, constants.ErrEvaluationScenarioContractInvalid},
 		{"case title carries a template token", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.Input.Seed.CaseTitle = "Sweep {{workspace}}" }, constants.ErrEvaluationScenarioContractInvalid},
 		{"allowed tool not in registry", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.AllowedTools = append(b.AllowedTools, "no_such_tool") }, constants.ErrEvaluationScenarioContractInvalid},
-		{"expected tool not allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.AllowedTools = []string{"file_read_on_operator"} }, constants.ErrEvaluationScenarioContractInvalid},
-		{"tool both allowed and forbidden", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.ForbiddenTools = []string{"recursive_grep_search"} }, constants.ErrEvaluationScenarioContractInvalid},
+		{"expected tool not allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.AllowedTools = []string{"read_file"} }, constants.ErrEvaluationScenarioContractInvalid},
+		{"tool both allowed and forbidden", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.ForbiddenTools = []string{"log_stream_filter"} }, constants.ErrEvaluationScenarioContractInvalid},
 		{"ANSWER scenario declares expected tools", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.TrajectoryPolicy = evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER
 		}, constants.ErrEvaluationScenarioContractInvalid},
 		{"GUIDED scenario has no prompt hint", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.Gold.PromptHint = nil }, constants.ErrEvaluationScenarioContractInvalid},
 		{"hinted tool is not an expected tool", toolSelectFileRead, func(b *ScenarioBlueprint) {
-			b.Gold.PromptHint.HintedTools = []string{"recursive_grep_search"}
+			b.Gold.PromptHint.HintedTools = []string{"log_stream_filter"}
 		}, constants.ErrEvaluationScenarioContractInvalid},
 		{"GOVERNED scenario has no forbidden tools", securityPolicyBlockRun, func(b *ScenarioBlueprint) { b.ForbiddenTools = nil }, constants.ErrEvaluationScenarioContractInvalid},
 		{"deterministic scenario has no content check", techNetworkSummary, func(b *ScenarioBlueprint) { b.Gold.ContentCheck = nil }, constants.ErrEvaluationScenarioContractInvalid},
+		{"unknown diagnosis rubric", finalResponseDiagnosis, func(b *ScenarioBlueprint) {
+			b.Gold.ContentCheck.DiagnosisRubric = "checkout-timeout-v999"
+		}, constants.ErrEvaluationScenarioContractInvalid},
 		{"validator constrains unknown argument", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.Gold.ArgumentValidators[0].Arguments[0].Name = "no_such_argument"
 		}, constants.ErrEvaluationScenarioContractInvalid},
@@ -86,10 +140,10 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 			b.Gold.ArgumentValidators[0].Arguments[0].RegexRejects = nil
 		}, constants.ErrEvaluationScenarioContractInvalid},
 		{"required argument has no hint source", toolArgGrepPattern, func(b *ScenarioBlueprint) {
-			b.Gold.PromptHint.Arguments = b.Gold.PromptHint.Arguments[:2]
+			b.Gold.PromptHint.Arguments = b.Gold.PromptHint.Arguments[:1]
 		}, constants.ErrEvaluationPromptUnanswerable},
 		{"required argument has two hint sources", toolArgGrepPattern, func(b *ScenarioBlueprint) {
-			b.Gold.PromptHint.Arguments = append(b.Gold.PromptHint.Arguments, hintArg("recursive_grep_search", "pattern", sourcePrompt, "AUTH_FAILURE"))
+			b.Gold.PromptHint.Arguments = append(b.Gold.PromptHint.Arguments, hintArg("log_stream_filter", "pattern", sourcePrompt, "AUTH_FAILURE"))
 		}, constants.ErrEvaluationPromptUnanswerable},
 		{"prompt source value missing from prompt", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.Input.UserPrompt = "Search " + ScenarioWorkspaceToken + " for the failures."
@@ -146,13 +200,45 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"codex expectation has no constraint", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.Gold.Players = &ScenarioPlayerExpectations{Codex: &ScenarioContentCheck{}}
 		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"gold evidence reference has empty id", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{{ReferenceID: "", ExpectedContent: "error"}}
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"gold evidence reference has whitespace in id", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{{ReferenceID: " ref-1 ", ExpectedContent: "error"}}
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"gold evidence reference has duplicate id", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{
+				{ReferenceID: "ref-1", ExpectedContent: "error"},
+				{ReferenceID: "ref-1", ExpectedContent: "timeout"},
+			}
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"gold evidence reference has no criteria", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{{ReferenceID: "ref-1"}}
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"tribunal commands without run_commands_with_operator allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.TribunalCommands = true
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"non-tribunal scenario allows the intent-only command tool", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.AllowedTools = append(b.AllowedTools, agentToolRunCommands)
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"tribunal validator constrains the intent-only command argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
+			b.Gold.ArgumentValidators = []ToolArgumentValidator{{
+				ToolName:  agentToolRunCommands,
+				Arguments: []ToolArgumentConstraint{{Name: agentToolArgCommand, RequiredTerms: [][]string{{"cat"}}}},
+			}}
+		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"tribunal hint omits the intent request argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
+			b.TrajectoryPolicy = evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED
+			b.ExpectedTools = []string{agentToolRunCommands}
+			b.Gold.PromptHint = hint([]string{agentToolRunCommands})
+		}, constants.ErrEvaluationPromptUnanswerable},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			blueprint := tt.base()
-			require.NoError(t, validateScenarioContract(blueprint, registry), "base blueprint must be valid")
+			require.NoError(t, validateScenarioContract(blueprint, catalog), "base blueprint must be valid")
 			tt.mutate(&blueprint)
-			err := validateScenarioContract(blueprint, registry)
+			err := validateScenarioContract(blueprint, catalog)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, tt.sentinel)
 			assert.Contains(t, err.Error(), blueprint.ScenarioID)
@@ -161,67 +247,43 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 }
 
 func TestBuildScenarioCatalog_RejectsABlueprintThatBreaksTheContract(t *testing.T) {
-	registry, err := LoadAgentToolRegistry()
+	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	blueprint := toolArgGrepPattern()
 	blueprint.Gold.PromptHint = nil
 
-	_, _, err = materializeScenarioBlueprint(DefaultSuiteID, blueprint, registry)
+	_, _, err = materializeScenarioBlueprint(DefaultSuiteID, blueprint, catalog)
 
 	require.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
 }
 
 // TestHintLint_RejectsCatalog100GrepPrompt reproduces finding E3: the 1.0.0
-// prompt named no path although recursive_grep_search requires one, so the
+// prompt named no path although log_stream_filter requires one, so the
 // task was not answerable. The 1.1.0 prompt names the workspace and passes.
 func TestHintLint_RejectsCatalog100GrepPrompt(t *testing.T) {
-	registry, err := LoadAgentToolRegistry()
+	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 
 	blueprint := toolArgGrepPattern()
-	blueprint.Input.UserPrompt = "Search the synthetic workspace for the exact pattern AUTH_FAILURE using recursive grep."
-	err = validateScenarioContract(blueprint, registry)
+	blueprint.Input.UserPrompt = "Search for the exact pattern AUTH_FAILURE using log_stream_filter."
+	err = validateScenarioContract(blueprint, catalog)
 	require.ErrorIs(t, err, constants.ErrEvaluationPromptUnanswerable)
-	assert.Contains(t, err.Error(), "path")
+	assert.Contains(t, err.Error(), "log_path")
 
-	require.NoError(t, validateScenarioContract(toolArgGrepPattern(), registry))
+	require.NoError(t, validateScenarioContract(toolArgGrepPattern(), catalog))
 }
 
-func TestBuildScenarioCatalog_SeedsCarryRegistryGuidanceVerbatim(t *testing.T) {
-	registry, err := LoadAgentToolRegistry()
-	require.NoError(t, err)
+func TestBuildScenarioCatalog_SeedsCarryConversationTurns(t *testing.T) {
 	catalog, artifacts, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
 
-	vector, ok := registry.GuidanceVector("recursive_grep_search.missing_path")
-	require.True(t, ok)
 	var input ScenarioInputFixture
 	require.NoError(t, json.Unmarshal(artifacts["recovery-error-guided-retry"].Input.Body, &input))
 
-	require.Len(t, input.Seed.HistoryEvents, 1)
-	event := input.Seed.HistoryEvents[0]
-	assert.Equal(t, vector.Error, event.Error)
-	assert.Equal(t, vector.ToolName, event.ToolName)
-	assert.Equal(t, vector.ArgumentsJSON, event.ArgumentsJSON)
-	assert.Equal(t, vector.ErrorType, event.ErrorType)
-	assert.Equal(t, vector.ExecutionID, event.ExecutionID)
-	assert.Empty(t, event.GuidanceVectorID)
-
 	require.Len(t, input.Seed.Turns, 2)
-	assert.Contains(t, input.Seed.Turns[1].Content, "Tool result:\n"+vector.Error)
-	assert.Empty(t, input.Seed.Turns[1].GuidanceVectorID)
-}
-
-func TestBuildScenarioCatalog_RejectsUnknownGuidanceVector(t *testing.T) {
-	registry, err := LoadAgentToolRegistry()
-	require.NoError(t, err)
-	blueprint := recoveryErrorGuidedRetry()
-	blueprint.Input.Seed.HistoryEvents[0].GuidanceVectorID = "no_such_tool.no_such_vector"
-
-	_, _, err = materializeScenarioBlueprint(DefaultSuiteID, blueprint, registry)
-
-	require.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
+	assert.Equal(t, "user", input.Seed.Turns[0].Sender)
+	assert.Equal(t, "primary", input.Seed.Turns[1].Sender)
 }
 
 func TestBuildScenarioCatalog_PublicHintNeverCarriesValues(t *testing.T) {

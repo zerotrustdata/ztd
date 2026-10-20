@@ -3,8 +3,8 @@ doc_id: cloudflare_tunnel
 title: Cloudflare Tunnel Integration
 audience: operators, infrastructure engineers, deployment specialists
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/cloudflare_tunnel.md
   - internal/cli/cmd/gw/tunnel.go
@@ -41,7 +41,6 @@ The tunnel secures transport between Cloudflare's edge and the local origin. Aut
 - [Scope and Architecture](#scope-and-architecture)
 - [Procedures](#procedures)
 - [Configuration Reference](#configuration-reference)
-- [Verification](#verification)
 - [Troubleshooting](#troubleshooting)
 - [Links out](#links-out)
 
@@ -59,7 +58,7 @@ The tunnel secures transport between Cloudflare's edge and the local origin. Aut
 [Browser] -> https://console.example.com -> [Cloudflare Edge] -> [cloudflared] -> [Gateway HTTPS localhost:8443]
 ```
 
-`cloudflared` maintains outbound connections to Cloudflare, so the Gateway host requires zero inbound firewall openings. Cloudflare terminates public TLS. The Gateway applies its own route authentication, WebAuthn sessions, mTLS requirements, and governance checks.
+`cloudflared` maintains outbound connections to Cloudflare, so the Gateway host requires zero inbound firewall openings. Cloudflare terminates public TLS. The Gateway applies its own route authentication, WebAuthn passkey authentication, WebSessions, mTLS requirements, and governance checks.
 
 ## Procedures
 
@@ -78,14 +77,15 @@ The command:
 
 ### 2. Route DNS with zone-specific API token (when needed)
 
-If the login session selected a different zone than the target domain:
+If the login session selected a different zone than the target domain, set `CLOUDFLARE_API_TOKEN` to an API token with DNS edit permission. The block below prompts for the token without echoing it or recording it in shell history:
 
 ```bash
-export CLOUDFLARE_API_TOKEN='<token-with-dns-edit-permission>'
+read -rsp 'Cloudflare API token: ' CLOUDFLARE_API_TOKEN && echo
+export CLOUDFLARE_API_TOKEN
 ./ztd gw tunnel route-dns --name ztd console.example.com
 ```
 
-To keep the token in the repo-root `.env` instead (template: `.env.example`, mode `0600`), set `CLOUDFLARE_API_TOKEN` there; `./ztd` loads `.env` from the working directory at startup. `--api-token` overrides the environment.
+To keep the token in the repo-root `.env` instead (template: `.env.example`, mode `0600` or `0400`), set `CLOUDFLARE_API_TOKEN` there; `./ztd` loads `.env` from the working directory at startup. `--api-token` overrides the environment.
 
 ### 3. Start the Gateway with tunnel-aware configuration
 
@@ -126,7 +126,7 @@ Expected response contains `"status":"ok"` and `"governance_ready":true`.
 
 ```yaml
 tunnel: <tunnel-id>
-credentials-file: ~/.cloudflared/<tunnel-id>.json
+credentials-file: <home>/.cloudflared/<tunnel-id>.json
 
 ingress:
   - hostname: console.example.com
@@ -137,7 +137,7 @@ ingress:
   - service: http_status:404
 ```
 
-To enable origin certificate verification, pass `--ca-bundle /path/to/ztdg-ca-bundle.pem` to `gw tunnel create`.
+By default, `cloudflared` does not verify the Gateway certificate (`noTLSVerify: true`), so the `cloudflared`-to-Gateway hop is encrypted but not authenticated. To enable origin certificate verification, pass `--ca-bundle /path/to/ztdg-ca-bundle.pem` to `gw tunnel create`; the generated config then sets `originCaPool` in place of `noTLSVerify`. The origin TLS server name (SNI) is set to `ztd.local` by default, which is the DNS SAN every Gateway server certificate carries, so verification does not depend on the `--service` host matching the certificate. Pass `--origin-server-name <name>` to override it. `--origin-server-name` MUST be used with `--ca-bundle`; without it the command fails, because `noTLSVerify` mode never sends a server name.
 
 ## Troubleshooting
 

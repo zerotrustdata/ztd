@@ -14,7 +14,7 @@
     "GatewayHTTPPort": {
       "_go_const": "GatewayHTTPPort",
       "value": "8080",
-      "description": "Gateway HTTP port (plaintext, for health checks and redirects)"
+      "description": "Gateway HTTP port (plaintext): health, PKI bootstrap and discovery, CLI recovery and platform enrollment discovery, and deploy script distribution; all other paths redirect to HTTPS"
     },
     "GatewayHTTPSPort": {
       "_go_const": "GatewayHTTPSPort",

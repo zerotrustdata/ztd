@@ -20,7 +20,7 @@ import (
 )
 
 func TestRunsAssignments_FailedListsEveryAssignmentThatDidNotPassWithItsCause(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	run := seedGradedRun(t, env)
 
 	out := env.mustRun(t, "runs", "assignments", "run-a-1", "--failed")
@@ -38,7 +38,7 @@ func TestRunsAssignments_FailedListsEveryAssignmentThatDidNotPassWithItsCause(t 
 }
 
 func TestRunsAssignments_UnfilteredListsEveryAssignment(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	run := seedGradedRun(t, env)
 
 	out := env.mustRun(t, "runs", "assignments", "run-a-1")
@@ -50,7 +50,7 @@ func TestRunsAssignments_UnfilteredListsEveryAssignment(t *testing.T) {
 }
 
 func TestRunsAssignments_JSONStatesVerdictAndRateBesideCanonicalProtojson(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	run := seedGradedRun(t, env)
 
 	var payload runAssignmentsJSON
@@ -87,9 +87,42 @@ func TestRunsAssignments_JSONStatesVerdictAndRateBesideCanonicalProtojson(t *tes
 	assert.Nil(t, queued.DurationMs)
 }
 
+func TestRunsAssignments_LabelsShellCommandFromFrozenCatalogInTableAndJSON(t *testing.T) {
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+
+	assignments, err := env.store(t).ListAssignments(context.Background(), "run-a-1")
+	require.NoError(t, err)
+	var shellCommandID, ordinaryScenarioID string
+	for _, assignment := range assignments {
+		switch assignment.GetScenarioId() {
+		case "tool-arg-shell-command":
+			shellCommandID = assignment.GetAssignmentId()
+		case "tool-select-file-read":
+			ordinaryScenarioID = assignment.GetAssignmentId()
+		}
+	}
+	require.NotEmpty(t, shellCommandID, "the prepared campaign contains the shell-command scenario")
+	require.NotEmpty(t, ordinaryScenarioID, "the prepared campaign contains an ordinary scenario")
+
+	table := env.mustRun(t, "runs", "assignments", "run-a-1")
+	assert.Contains(t, table, "CLASS")
+	assert.Contains(t, table, shellCommandID)
+	assert.Contains(t, table, scenarioClassCapabilityQualification)
+
+	var payload runAssignmentsJSON
+	require.NoError(t, env.runJSON(t, &payload, "runs", "assignments", "run-a-1"))
+	byID := make(map[string]runAssignmentJSON, len(payload.Assignments))
+	for _, row := range payload.Assignments {
+		byID[row.AssignmentID] = row
+	}
+	assert.Equal(t, scenarioClassCapabilityQualification, byID[shellCommandID].ScenarioClass)
+	assert.Empty(t, byID[ordinaryScenarioID].ScenarioClass)
+}
+
 func TestRunsAssignments_AStatedZeroPassRateIsNotNull(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	assignments, err := env.store(t).ListAssignments(context.Background(), "run-a-1")
 	require.NoError(t, err)
 	env.saveGradedResult(t, assignments[0], cellPassRate(0), cellGrade("scenario-content", basisObservation, gradeFail))
@@ -103,7 +136,7 @@ func TestRunsAssignments_AStatedZeroPassRateIsNotNull(t *testing.T) {
 }
 
 func TestRunsAssignments_OneAssignmentShowsEveryGradeWithItsBasis(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	run := seedGradedRun(t, env)
 
 	out := env.mustRun(t, "runs", "assignments", "run-a-1", "--assignment", run.missed)
@@ -116,7 +149,7 @@ func TestRunsAssignments_OneAssignmentShowsEveryGradeWithItsBasis(t *testing.T) 
 }
 
 func TestRunsAssignments_UnknownAssignmentIsNotFound(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	seedGradedRun(t, env)
 
 	_, err := env.run(t, "runs", "assignments", "run-a-1", "--assignment", "no-such-assignment")

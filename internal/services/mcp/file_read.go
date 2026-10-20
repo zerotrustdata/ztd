@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // FileReadTool reads file contents with path validation and safety checks.
@@ -64,7 +66,6 @@ type FileReadResult struct {
 	Path    string `json:"path"`
 	Offset  int    `json:"offset,omitempty"`
 	Limit   int    `json:"limit,omitempty"`
-	Error   string `json:"error,omitempty"`
 }
 
 // Execute implements the tool logic.
@@ -81,20 +82,12 @@ func (t *FileReadTool) Execute(ctx context.Context, args json.RawMessage) (CallT
 	// Resolve to absolute path
 	absPath, err := filepath.Abs(req.Path)
 	if err != nil {
-		result := FileReadResult{
-			Path:  req.Path,
-			Error: fmt.Sprintf("failed to resolve absolute path: %v", err),
-		}
-		resultJSON, _ := json.Marshal(result)
-		return CallToolResult{
-			Content: []TextContent{
-				{
-					Type: "text",
-					Text: string(resultJSON),
-				},
-			},
-		}, nil
+		return CallToolResult{}, fmt.Errorf("read_file: %w %s: %w", constants.ErrMCPGetAbsolutePath, req.Path, err)
 	}
+
+	// Every failure below returns an error, never a success result carrying
+	// an error field: the Actuator records a failed tool call as a FAILED
+	// receipt, and a COMPLETED receipt must mean the file was read.
 
 	// Security check: prevent reading sensitive system files
 	dangerousPaths := []string{
@@ -105,19 +98,7 @@ func (t *FileReadTool) Execute(ctx context.Context, args json.RawMessage) (CallT
 	}
 	for _, dangerous := range dangerousPaths {
 		if absPath == dangerous {
-			result := FileReadResult{
-				Path:  absPath,
-				Error: "access denied: sensitive file",
-			}
-			resultJSON, _ := json.Marshal(result)
-			return CallToolResult{
-				Content: []TextContent{
-					{
-						Type: "text",
-						Text: string(resultJSON),
-					},
-				},
-			}, nil
+			return CallToolResult{}, fmt.Errorf("read_file: %w: %s", constants.ErrMCPSensitiveFile, absPath)
 		}
 	}
 
@@ -130,38 +111,14 @@ func (t *FileReadTool) Execute(ctx context.Context, args json.RawMessage) (CallT
 	basename := filepath.Base(absPath)
 	for _, dangerous := range dangerousBasenames {
 		if basename == dangerous {
-			result := FileReadResult{
-				Path:  absPath,
-				Error: "access denied: sensitive file",
-			}
-			resultJSON, _ := json.Marshal(result)
-			return CallToolResult{
-				Content: []TextContent{
-					{
-						Type: "text",
-						Text: string(resultJSON),
-					},
-				},
-			}, nil
+			return CallToolResult{}, fmt.Errorf("read_file: %w: %s", constants.ErrMCPSensitiveFile, absPath)
 		}
 	}
 
 	// Read file
 	content, err := os.ReadFile(absPath)
 	if err != nil {
-		result := FileReadResult{
-			Path:  absPath,
-			Error: fmt.Sprintf("failed to read file: %v", err),
-		}
-		resultJSON, _ := json.Marshal(result)
-		return CallToolResult{
-			Content: []TextContent{
-				{
-					Type: "text",
-					Text: string(resultJSON),
-				},
-			},
-		}, nil
+		return CallToolResult{}, fmt.Errorf("read_file: %w: %w", constants.ErrMCPReadFile, err)
 	}
 
 	// Convert to string and handle offset/limit

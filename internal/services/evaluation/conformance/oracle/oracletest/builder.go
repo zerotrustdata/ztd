@@ -6,7 +6,14 @@
 // released under the Apache License, Version 2.0.
 
 // Package oracletest builds signed action receipts that pass oracle.VerifyReceipt,
-// for tests in the oracle and its callers. It is imported only from _test.go files.
+// and the complete inference results they bind, as inputs to verifier tests in
+// the oracle and its callers. It is imported only from _test.go files.
+//
+// Each Signer is a fresh test key. A receipt built here shows only that a
+// verifier accepts well-formed, correctly signed bytes and rejects tampered
+// ones; it is never Operator output. An end-to-end test that needs an
+// Operator's receipts must run a real Operator and read them from its audit
+// store. It must not sign receipts with a Signer to stand in for that Operator.
 package oracletest
 
 import (
@@ -15,6 +22,7 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -37,6 +45,7 @@ type Signer struct {
 // ReceiptOpts names the identity and posture a built receipt carries.
 type ReceiptOpts struct {
 	TransactionID, OperatorID, SessionID, ActionType string
+	ResultSummary                                    string
 	L2                                               operatorv1.L2Status
 	L3                                               operatorv1.L3Status
 }
@@ -121,6 +130,37 @@ func (s Signer) Resign(t testing.TB, receipt *operatorv1.ActionReceipt) {
 	receipt.FinalPersistenceAttestation = attestation
 }
 
+// InferenceResult returns the complete result an Inference Operator returns for
+// req: it echoes the request's campaign binding and model identity, answers
+// with parts and carries its computed result digest. A receipt for it binds
+// that digest as its result summary.
+func InferenceResult(t testing.TB, req *operatorv1.InferenceDispatchRequest, parts []*operatorv1.InferenceResponsePart) *operatorv1.InferenceResult {
+	t.Helper()
+	result := &operatorv1.InferenceResult{
+		Model:                req.GetModel(),
+		ProviderAttemptId:    req.GetProviderAttemptId(),
+		RequestedModel:       req.GetModel(),
+		RequestedModelDigest: req.GetModelDigest(),
+		ServedModelDigest:    req.GetModelDigest(),
+		CampaignId:           req.GetCampaignId(),
+		RunId:                req.GetRunId(),
+		AssignmentId:         req.GetAssignmentId(),
+		EvaluationAttemptId:  req.GetEvaluationAttemptId(),
+		ScenarioId:           req.GetScenarioId(),
+		ModelRegistryDigest:  req.GetModelRegistryDigest(),
+		FinishReason:         "stop",
+		Parts:                parts,
+		LoadState:            operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_UNSPECIFIED,
+		RetryClassification:  operatorv1.InferenceRetryClassification_INFERENCE_RETRY_CLASSIFICATION_UNSPECIFIED,
+	}
+	digest, err := models.ComputeInferenceResultDigest(result)
+	if err != nil {
+		t.Fatalf("compute inference result digest: %v", err)
+	}
+	result.ResultDigest = digest
+	return result
+}
+
 func (s Signer) newReceipt(t testing.TB, opts ReceiptOpts, status operatorv1.ExecutionStatus) *operatorv1.ActionReceipt {
 	t.Helper()
 	if opts.TransactionID == "" || opts.OperatorID == "" || opts.ActionType == "" {
@@ -133,6 +173,7 @@ func (s Signer) newReceipt(t testing.TB, opts ReceiptOpts, status operatorv1.Exe
 		SignerKeyId:      s.KeyID,
 		ExecutedAtUnixMs: executedAtUnixMs,
 		ActionType:       opts.ActionType,
+		ResultSummary:    opts.ResultSummary,
 		L2Status:         opts.L2,
 		L3Status:         opts.L3,
 	}

@@ -24,8 +24,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/uuid"
@@ -88,4 +91,34 @@ func BootstrapCLIIdentity(t *testing.T, f *GatewayFixture, systemFingerprint str
 		OperatorSessionID: bootstrap.OperatorSessionID,
 		Passkey:           passkey,
 	}
+}
+
+// InstallCLIRuntime writes this identity's CLI credentials into a local runtime
+// and points CLI endpoint discovery at the fixture Gateway.
+func (identity *ClientIdentity) InstallCLIRuntime(t *testing.T, f *GatewayFixture, fileSvc fs.RuntimeFileService, cfg *config.Config) {
+	t.Helper()
+	require.NotNil(t, identity)
+	require.NotNil(t, f)
+	require.NotNil(t, fileSvc)
+	require.NotNil(t, cfg)
+
+	certPath, err := fileSvc.RelFromAbs(cfg.CLICertFile())
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.WriteFile(t.Context(), certPath, []byte(identity.CLICertificate), constants.PermFilePrivate))
+
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: identity.CLIPrivateKey})
+	require.NoError(t, auth.SealIdentityKey(t.Context(), fileSvc, cfg, cfg.CLIKeyFile(), keyPEM))
+
+	trust := append(append([]byte{}, testutil.ReadRootCA(t, f.PKIDir)...), testutil.ReadOperatorCA(t, f.PKIDir)...)
+	require.NoError(t, auth.WriteTrustBundleFS(fileSvc, cfg, trust, constants.PermFilePublic))
+	require.NoError(t, auth.SaveCredentials(fileSvc, cfg, &auth.Credentials{
+		OperatorSessionID: identity.OperatorSessionID,
+		OperatorID:        identity.OperatorID,
+		CLISessionID:      identity.CLISessionID,
+		UserID:            identity.UserID,
+	}))
+
+	config.SetHTTPEndpointOverride(network.LocalhostHTTPURL(f.Service.GetHTTPPort()))
+	config.SetHTTPSEndpointOverride(network.LocalhostHTTPSURL(f.Service.GetHTTPSPort()))
+	t.Cleanup(func() { config.SetEndpointOverride("") })
 }

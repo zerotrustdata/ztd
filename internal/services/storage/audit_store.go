@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1084,7 +1085,23 @@ func (ass *SQLAuditStore) GetActionReceiptByInvestigationID(
 	return ass.GetActionReceipt(rows[0])
 }
 
+// auditReadScanBatchSize is how many SQL rows one scan pulls while
+// ExcludeAuditReads filters the receipt stream after decryption.
+const auditReadScanBatchSize = 100
+
+// isAuditReadReceipt reports whether r is an audit-read tool's own MCP_CALL
+// receipt. For MCP_CALL, target_resource is the tool name: the Gateway MCP
+// ingress and the evaluation lane both set it, and the executing Operator signs
+// the envelope target into the receipt.
+func isAuditReadReceipt(r *models.ActionReceiptRecord) bool {
+	if r == nil || r.ActionType != constants.ActionTypeMcpCall {
+		return false
+	}
+	return r.TargetResource == constants.MCPToolAuditReceiptList || r.TargetResource == constants.MCPToolAuditReceiptGet
+}
+
 // ListActionReceipts retrieves action receipts with optional filtering and pagination.
+// With ExcludeAuditReads, limit and offset apply after the audit reads are dropped.
 func (ass *SQLAuditStore) ListActionReceipts(scope models.AuditScope, limit, offset int) ([]*models.ActionReceiptRecord, error) {
 	if ass == nil || ass.db == nil {
 		return nil, constants.ErrAuditStoreDisabled
@@ -1094,29 +1111,74 @@ func (ass *SQLAuditStore) ListActionReceipts(scope models.AuditScope, limit, off
 		limit = 50
 	}
 
-	var query strings.Builder
-	query.WriteString(`
-	SELECT ` + receiptSelectColumns + `
-	FROM receipts
-	`)
+	query, args := receiptScopeQuery(scope)
+	if !scope.ExcludeAuditReads {
+		return ass.queryReceiptRows(query+" ORDER BY timestamp DESC LIMIT ? OFFSET ?", append(args, limit, offset))
+	}
+	return ass.listReceiptsExcludingAuditReads(query, args, limit, offset)
+}
 
+// receiptScopeQuery builds the receipts SELECT for the scope fields that SQL can
+// filter. target_resource is encrypted, so audit-read exclusion is not a predicate here.
+func receiptScopeQuery(scope models.AuditScope) (string, []interface{}) {
 	args := []interface{}{}
 	predicates := []string{}
+	if scope.OperatorID != "" {
+		predicates = append(predicates, "operator_id = ?")
+		args = append(args, scope.OperatorID)
+	}
 	if scope.OperatorSessionID != "" {
 		predicates = append(predicates, "operator_session_id = ?")
 		args = append(args, scope.OperatorSessionID)
 	}
-
+	if scope.InvestigationID != "" {
+		predicates = append(predicates, "investigation_id = ?")
+		args = append(args, scope.InvestigationID)
+	}
 	if scope.ActingAppID != "" {
 		predicates = append(predicates, "acting_app_id = ?")
 		args = append(args, scope.ActingAppID)
 	}
+	query := "SELECT " + receiptSelectColumns + " FROM receipts"
 	if len(predicates) > 0 {
-		query.WriteString(" WHERE " + strings.Join(predicates, " AND "))
+		query += " WHERE " + strings.Join(predicates, " AND ")
 	}
-	query.WriteString(" ORDER BY timestamp DESC LIMIT ? OFFSET ?")
-	args = append(args, limit, offset)
+	return query, args
+}
 
+// listReceiptsExcludingAuditReads pages the SQL scope newest first in batches, drops
+// audit reads from each decrypted batch, and applies offset and limit to what remains.
+// It stops once limit receipts are collected or the scope is exhausted.
+func (ass *SQLAuditStore) listReceiptsExcludingAuditReads(query string, args []interface{}, limit, offset int) ([]*models.ActionReceiptRecord, error) {
+	var out []*models.ActionReceiptRecord
+	skip := offset
+	for sqlOffset := 0; ; sqlOffset += auditReadScanBatchSize {
+		batchArgs := append(slices.Clone(args), auditReadScanBatchSize, sqlOffset)
+		batch, err := ass.queryReceiptRows(query+" ORDER BY timestamp DESC LIMIT ? OFFSET ?", batchArgs)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range batch {
+			if isAuditReadReceipt(r) {
+				continue
+			}
+			if skip > 0 {
+				skip--
+				continue
+			}
+			out = append(out, r)
+			if len(out) == limit {
+				return out, nil
+			}
+		}
+		if len(batch) < auditReadScanBatchSize {
+			return out, nil
+		}
+	}
+}
+
+// queryReceiptRows runs one receipts SELECT and returns its rows decrypted and hydrated.
+func (ass *SQLAuditStore) queryReceiptRows(query string, args []interface{}) ([]*models.ActionReceiptRecord, error) {
 	type receiptRow struct {
 		record          models.ActionReceiptRecord
 		executedAtMs    int64
@@ -1128,7 +1190,7 @@ func (ass *SQLAuditStore) ListActionReceipts(scope models.AuditScope, limit, off
 		receiptBytes    []byte
 	}
 
-	rows, err := sqliteutil.MaterializeRows(context.Background(), ass.db, query.String(), args, func(r *sql.Rows) (receiptRow, error) {
+	rows, err := sqliteutil.MaterializeRows(context.Background(), ass.db, query, args, func(r *sql.Rows) (receiptRow, error) {
 		var row receiptRow
 		err := r.Scan(
 			&row.record.TransactionID, &row.record.TransactionHash, &row.investigationID, &row.record.OperatorID, &row.sessionID,

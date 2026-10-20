@@ -62,6 +62,14 @@ func TestTunnelCreateCmdFlags(t *testing.T) {
 		require.NotNil(t, flag)
 		assert.Equal(t, "ztd", flag.DefValue)
 	})
+
+	t.Run("origin-server-name without ca-bundle fails closed", func(t *testing.T) {
+		cmd := tunnelCreateCmd()
+		require.NoError(t, cmd.Flags().Set("origin-server-name", "gateway.corp.example"))
+		err := cmd.RunE(cmd, nil)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrValidationFailed)
+	})
 }
 
 func TestTunnelRunCmdFlags(t *testing.T) {
@@ -150,6 +158,50 @@ func TestGenerateTunnelConfig(t *testing.T) {
 		assert.Contains(t, config, "originCaPool: "+caBundle)
 		assert.Contains(t, config, "originServerName: ztd.local")
 		assert.NotContains(t, config, "noTLSVerify")
+	})
+
+	t.Run("CA bundle without override defaults originServerName to the Gateway certificate SAN", func(t *testing.T) {
+		caBundle := filepath.Join(constants.RuntimeDirname, constants.PkiDirname, constants.PkiFileGatewayBundle)
+		config := generateTunnelConfig(
+			"abc123",
+			"/home/user/.cloudflared/abc123.json",
+			"console.zerotrustdata.io",
+			"https://192.168.1.50:8443",
+			caBundle,
+			"",
+		)
+
+		assert.Contains(t, config, "originCaPool: "+caBundle)
+		assert.Contains(t, config, "originServerName: "+constants.GatewayInternalHostname)
+		assert.NotContains(t, config, "noTLSVerify")
+	})
+
+	t.Run("explicit origin server name overrides the CA bundle default", func(t *testing.T) {
+		caBundle := filepath.Join(constants.RuntimeDirname, constants.PkiDirname, constants.PkiFileGatewayBundle)
+		config := generateTunnelConfig(
+			"abc123",
+			"/home/user/.cloudflared/abc123.json",
+			"console.zerotrustdata.io",
+			"https://192.168.1.50:8443",
+			caBundle,
+			"gateway.corp.example",
+		)
+
+		assert.Contains(t, config, "originServerName: gateway.corp.example")
+		assert.NotContains(t, config, "originServerName: "+constants.GatewayInternalHostname)
+	})
+
+	t.Run("no CA bundle omits originServerName", func(t *testing.T) {
+		config := generateTunnelConfig(
+			"abc123",
+			"/home/user/.cloudflared/abc123.json",
+			"console.zerotrustdata.io",
+			"https://localhost:8443",
+			"",
+			"",
+		)
+
+		assert.NotContains(t, config, "originServerName")
 	})
 
 	t.Run("uses custom HTTPS port", func(t *testing.T) {

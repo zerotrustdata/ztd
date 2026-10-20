@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -353,42 +354,27 @@ func ReadOllamaProviderResidency(ctx context.Context, dispatcher OllamaModelComm
 	return residency, nil
 }
 
-// WaitForOllamaModelsAbsent polls governed residency until named tags are absent.
-func WaitForOllamaModelsAbsent(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext, modelTags []string) error {
+// VerifyOllamaModelsAbsent reads governed residency once after ReleaseOllamaModels
+// and fails closed if any named tag is still resident. The unload is synchronous:
+// each release returns only after the provider confirms done_reason "unload"
+// (inference.OllamaBackend.ReleaseModel), so no polling is needed.
+func VerifyOllamaModelsAbsent(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext, modelTags []string) error {
 	if len(modelTags) == 0 {
 		return nil
 	}
-	pollMaintenance := maintenance
-	if pollMaintenance.Timeout <= 0 {
-		pollMaintenance.Timeout = inference.ProviderStatusTimeout
+	if maintenance.Timeout <= 0 {
+		maintenance.Timeout = inference.ProviderStatusTimeout
 	}
-	pollInterval := 2 * time.Second
-	for {
-		residency, err := ReadOllamaProviderResidency(ctx, dispatcher, pollMaintenance)
-		if err != nil {
-			return fmt.Errorf("evaluation: wait for Ollama models absent: %w", err)
-		}
-		absent := true
-		for _, resident := range residency.Models {
-			for _, wanted := range modelTags {
-				if resident.Name == wanted {
-					absent = false
-					break
-				}
-			}
-			if !absent {
-				break
-			}
-		}
-		if absent {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("evaluation: wait for Ollama models absent: %w", ctx.Err())
-		case <-time.After(pollInterval):
+	residency, err := ReadOllamaProviderResidency(ctx, dispatcher, maintenance)
+	if err != nil {
+		return fmt.Errorf("evaluation: verify Ollama models absent: %w", err)
+	}
+	for _, resident := range residency.Models {
+		if slices.Contains(modelTags, resident.Name) {
+			return fmt.Errorf("evaluation: verify Ollama models absent: %w: model %q still resident after unload", constants.ErrInferenceModelReleaseFailed, resident.Name)
 		}
 	}
+	return nil
 }
 
 // ReleaseOllamaModels unloads only the validated campaign-owned model tags

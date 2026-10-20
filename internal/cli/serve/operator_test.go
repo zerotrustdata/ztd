@@ -459,6 +459,9 @@ func TestOperatorInstanceIDSeparatesSameHostAndRole(t *testing.T) {
 	assert.Equal(t, first, operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityData}, "/fleet/./op-00001"))
 	assert.NotEqual(t, first, operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityData}, "/fleet/op-00002"))
 	assert.NotEqual(t, first, operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityInference}, "/fleet/op-00001"))
+	multi := operatorInstanceID("host", constants.OperatorCapabilities{constants.OperatorCapabilityInference, constants.OperatorCapabilityObserver}, "/fleet/op-00001")
+	assert.NotContains(t, multi, ",")
+	assert.Contains(t, multi, "inference_observer")
 	assert.LessOrEqual(t, len(operatorInstanceID(strings.Repeat("h", 253), constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, "/fleet")), constants.PlatformEnrollmentMaxInstanceIDBytes)
 }
 

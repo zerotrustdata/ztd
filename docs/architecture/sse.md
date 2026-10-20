@@ -3,8 +3,8 @@ doc_id: sse
 title: SSE Streaming
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - internal/services/gateway/sse_controller.go
   - internal/services/gateway/sse_event_publisher.go
@@ -14,6 +14,9 @@ owners:
   - internal/services/gateway/passkey_orchestrator.go
   - internal/services/gateway/observe_producer_controller.go
   - internal/services/gateway/observe_producer.go
+  - internal/services/gateway/evidence_window_publisher.go
+  - internal/services/gateway/gateway_auth.go
+  - internal/services/gateway/gateway_pubsub.go
   - internal/services/pubsub/channels.go
 related:
   - docs/architecture/gateway.md
@@ -61,7 +64,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SSE-EVT-01 | Every SSE event is keyed by two routing dimensions: `user_id` (ownership) and exactly one of `web_session_id` or `cli_session_id` (delivery target). A bare `user_id` is not a valid route. The Gateway does not provide user-wide fan-out. |
-| INV-SSE-EVT-02 | Registered event type strings are constants generated from `protocol/constants/events.json` (`internal/constants/events_gen.go`). Special flat CLI notification types such as `approval.completed` and `passkey.registered` are defined by their owning producers. The registry's `persistence` value is the contract for registered events: a publisher uses `SSEEventPublisher.Publish` for a persisted event and `PublishEphemeral` for an `ephemeral` one. |
+| INV-SSE-EVT-02 | Registered event type strings are constants generated from `protocol/constants/events.json` (`internal/constants/events_gen.go`). Non-registry CLI notification types such as `approval.completed` and `passkey.registered` are defined by their owning producers. The registry's `persistence` value is the contract for registered events: a publisher uses `SSEEventPublisher.Publish` for a persisted event and `PublishEphemeral` for an `ephemeral` one. |
 | INV-SSE-EVT-03 | SSE frames carry a `data:` field and, for persisted events, an `id:` field; no `event:` field is emitted. Ephemeral events have no durable row and therefore no `id:` line. Consumers read the application event type from the nested `event.type` value in the JSON data payload. Heartbeats are SSE comments (`: heartbeat\n\n`) and do not advance the event cursor. |
 | INV-SSE-EVT-04 | Ephemeral events are delivered via live streams but not persisted to the SSE store; consumers cannot recover them via replay. Persisted events are appended before live publication, so a persistence failure prevents delivery. A live ephemeral event is emitted without an `id:` line to avoid rewinding the client's `Last-Event-ID` cursor. |
 
@@ -69,25 +72,24 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
+| INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`, `POST /api/v1/observe/producer/stop`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
 
 ### Consumer authentication (`INV-SSE-CONS`)
 
 | ID | Rule |
 | --- | --- |
-| INV-SSE-CONS-01 | Consumers use dual authentication: either a web-session cookie (browser) or mTLS certificate + `X-ZTD-CLI-Session-ID` header (CLI or Operator). When both are presented, mTLS takes precedence; an invalid certificate does not fall back to cookie auth. App certificates cannot consume SSE events. |
-| INV-SSE-CONS-02 | `GET /api/v1/sse/events` (polling) and `GET /api/v1/sse/stream` (live) build the route entirely from authenticated context; routing query parameters are ignored. Queries match both the authenticated user and session before returning rows. |
-| INV-SSE-CONS-03 | An Operator holding an mTLS certificate can select an owned CLI session via `X-ZTD-CLI-Session-ID` or an owned web session via `X-ZTD-Web-Session-ID`. The Gateway verifies the named CLI session belongs to that Operator session, or that the Operator's binding record names that web session, before returning events. |
+| INV-SSE-CONS-01 | Consumers use dual authentication: either a web-session cookie (browser) or an mTLS certificate (CLI or Operator). When both are presented, mTLS takes precedence; an invalid certificate does not fall back to cookie auth. App certificates cannot consume SSE events. |
+| INV-SSE-CONS-02 | `GET /api/v1/sse/events` (cursor fetch) and `GET /api/v1/sse/stream` (live) build the route entirely from authenticated context; routing query parameters are ignored. Queries match both the authenticated user and session before returning rows. |
+| INV-SSE-CONS-03 | A CLI certificate selects its own CLI session via `X-ZTD-CLI-Session-ID`. The Gateway verifies the CLI session belongs to the authenticated user and, when the request carries an Operator session, that the Operator session is in the CLI session's persisted operator binding list (the primary binding or any secondary bound operator session, checked with the same binding-record rule `handleCLIAuth` uses). An unbound Operator session fails closed with `403`. An Operator certificate never selects a CLI session (`INV-AUTH-OP-BIND-07`); it selects an owned web session via `X-ZTD-Web-Session-ID`, and the Gateway verifies the Operator session's binding record names that web session before returning events. |
 
 ### Delivery semantics (`INV-SSE-DEL`)
 
 | ID | Rule |
 | --- | --- |
-| INV-SSE-DEL-01 | `GET /api/v1/sse/events` returns rows with `id > since_id`, ordered ascending. `limit` defaults to 200; values below 1 or above 1000 also use 200. Polling does not delete or acknowledge rows. |
+| INV-SSE-DEL-01 | `GET /api/v1/sse/events` returns rows with `id > since_id`, ordered ascending. `limit` defaults to 200; values below 1 or above 1000 also use 200. A cursor fetch does not delete or acknowledge rows. |
 | INV-SSE-DEL-02 | `GET /api/v1/sse/stream` replays at most 1,000 rows per connection. With no cursor parameters, a fresh connection replays from ID 0; a `Last-Event-ID` header or positive `since_id` query parameter replays from that cursor. Explicit `since_id=0` without `Last-Event-ID` requests a live-only stream. When replay returns 1,000 rows, an unnumbered `truncated` sentinel carries the last emitted ID and limit; the client may reconnect with a higher cursor. |
 | INV-SSE-DEL-03 | Each live stream maintains a 100-event in-memory queue. If a consumer falls behind, the Gateway drops the oldest queued event; persisted events can be recovered through cursor-based replay on reconnect, while ephemeral events cannot. |
 | INV-SSE-DEL-04 | The stream installs its live listener and clears the server write deadline before flushing response headers. Heartbeats are sent every 30 seconds as SSE comments. The maintenance loop (every 30 seconds) removes events older than one hour from `sse_events`. |
-
 | INV-SSE-DEL-05 | The pub/sub broker MUST invoke in-process callbacks outside its handler registry lock so callbacks can publish notifications while other handlers unregister. Unregistration prevents selection by later publishes; callbacks already selected MAY finish. SSE teardown MUST leave its queue safe for these callbacks; the request context owns stream termination. |
 
 ## Owned surfaces
@@ -128,12 +130,12 @@ Persisted Event             Ephemeral Event
 - **Persisted Frame**:
   ```text
   id: 1042
-  data: {"user_id":"alice","cli_session_id":"...","event":{"type":"ztd.v1.operator.status.updated.active","data":{...}}}
+  data: {"user_id":"alice","web_session_id":"","cli_session_id":"...","event":{"type":"ztd.v1.operator.status.updated.active","data":{...}}}
 
   ```
 - **Ephemeral Frame** (no `id:` field):
   ```text
-  data: {"user_id":"alice","web_session_id":"...","event":{"type":"ztd.v1.platform.approvals.changed","data":{"subject":"transactions"}}}
+  data: {"user_id":"alice","web_session_id":"...","cli_session_id":"","event":{"type":"ztd.v1.platform.approvals.changed","data":{"subject":"transactions"}}}
 
   ```
 - **Heartbeat Frame** (comment):
@@ -153,8 +155,9 @@ Persisted Event             Ephemeral Event
 | `ztd.v1.inference.provider.boundary.observation.recorded` | ephemeral | `evidence_window_publisher.go` | The Gateway stored an Observer Operator provider-boundary window; carries `provider_attempt_id`. Sent to the owner's connected CLISessions |
 | `ztd.v1.app.agent.status.updated` | per registry | `observe_producer.go` | Agent state emitted by registered application workloads |
 | `ztd.v1.app.run.status.updated` | per registry | `observe_producer.go` | Run state emitted by registered application workloads |
-| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct flat CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `ActionReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
-| `passkey.registered` | persisted | `passkey_orchestrator.go` | Direct flat frame notifying CLI of completed passkey registration |
+| `ztd.v1.ai.eval.stop.requested` | ephemeral | `observe_producer.go` | Run-scoped stop request from an app workload; carries `campaign_id` and `run_id`. Sent to the named session's open stream only and never stored |
+| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `ActionReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
+| `passkey.registered` | persisted | `passkey_orchestrator.go` | Direct CLI notification of completed passkey registration |
 
 ## Observe Producers
 
@@ -162,8 +165,9 @@ App workloads enrolled through platform enrollment publish telemetry over mTLS t
 
 - `POST /api/v1/observe/producer/agent-state`
 - `POST /api/v1/observe/producer/run-state`
+- `POST /api/v1/observe/producer/stop`
 
-The Gateway accepts these typed updates only from app-workload mTLS identities, derives `user_id` from the authenticated certificate, and validates strict request JSON. Each request names exactly one web or CLI session as its SSE target; after persisting the associated projection, the Gateway stores the event for that session and delivers it live when that session has an open stream.
+The Gateway accepts these typed updates only from app-workload mTLS identities, derives `user_id` from the authenticated certificate, and validates strict request JSON. Each request names exactly one web or CLI session as its SSE target; after persisting the associated projection, the Gateway emits the event for that session on the path its registry persistence class selects. A persisted event is stored for that session and delivered live when the session has an open stream; an `ephemeral` event is delivered live only. A stop request names one campaign run (`campaign_id` and `run_id`), and the `ai.eval.stop.requested` event it produces carries the same `run_id`. That event is `ephemeral`, so a session without an open stream when the stop is posted never receives it and cannot replay it.
 
 ## Consumer Replay and Reconnection
 
@@ -185,7 +189,7 @@ Browser / CLI Client                          Gateway SSE Controller
         │◄────── : heartbeat ────────────────────────────┤
 ```
 
-1. **Replay Phase**: With no cursor parameters, the Gateway fetches stored events from ID 0. A `Last-Event-ID` header takes precedence over `since_id`; an explicit `since_id=0` without that header skips replay. Replay returns rows where `id > cursor`, up to 1,000 events. If 1,000 rows are returned, a `truncated` frame is emitted.
+1. **Replay Phase**: With no cursor parameters, the Gateway fetches stored events from ID 0. A `Last-Event-ID` header takes precedence over `since_id`; an explicit `since_id=0` without that header skips replay. Replay returns rows where `id > cursor`, up to 1,000 events. If 1,000 rows are returned, a `truncated` frame is emitted. If the replay query fails, the Gateway emits an unnumbered `{"type":"error","reason":"replay_failed"}` frame and proceeds to the live phase.
 2. **Live Phase**: As events arrive on the pub/sub channel, the Gateway streams them to the client. Persisted events emitted during replay are deduplicated by ID.
 3. **Queue Overflow**: Each stream buffer holds up to 100 events. If the consumer cannot keep up, the oldest event is dropped. Reconnecting with `Last-Event-ID` recovers dropped persisted events from SQLite.
 
@@ -195,24 +199,24 @@ Browser / CLI Client                          Gateway SSE Controller
 
 The CLI SSE client (`internal/cli/sse`) is used by auth flows that wait for approval or passkey-registration events. For example, `ztd auth approve` opens the browser approval page and waits for its completion event:
 
-```bash
-# Open the browser approval page and wait on the CLI SSE subscription
-./ztd auth approve <transaction-hash>
-```
+`ztd auth approve <transaction_hash>` opens the Gateway approval page and waits for the `approval.completed` event for that transaction. The `--cli` flag signs the transaction hash with the enrolled CLI certificate instead (`./ztd auth approve --help`).
 
 ### Consuming Polled Events
 
 Query stored events after a known cursor:
 
+Set `ZTD_WEB_SESSION_COOKIE` to the `ztd_web_session_cookie` value of a signed-in browser session, then run:
+
 ```bash
-curl -k -H "Cookie: ztd_web_session_cookie=<cookie>" \
+curl -k -H "Cookie: ztd_web_session_cookie=${ZTD_WEB_SESSION_COOKIE}" \
   "https://localhost:8443/api/v1/sse/events?since_id=1000&limit=50"
 ```
 
 ## Anti-patterns
 
 - **Broadcasting user-wide events without session scoping**: Attempting to publish without specifying `cli_session_id` or `web_session_id` (`INV-SSE-EVT-01`).
-- **Supplying routing IDs in the request body**: Attempting to override the authenticated user or session ID via body JSON (`INV-SSE-CONS-02`).
+- **Supplying routing IDs in consumer query parameters**: Attempting to select a user or session through query parameters; routing derives only from authenticated context (`INV-SSE-CONS-02`).
+- **Supplying `user_id` in an observe producer request body**: Attempting to name the owning user in the body; `user_id` derives from the mTLS peer certificate and strict decoding rejects unknown fields (`INV-SSE-PROD-03`).
 - **Treating SSE as a permanent audit log**: Relying on `sse_events` for long-term historical records; rows older than 1 hour are automatically pruned (`INV-SSE-DEL-04`).
 - **Emitting `id:` lines on ephemeral events**: Rewinding consumer cursors by sending synthetic or zero IDs for ephemeral notifications (`INV-SSE-EVT-03`).
 

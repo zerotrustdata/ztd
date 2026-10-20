@@ -55,7 +55,7 @@ test('homepage quick start leads with the signed installers and links the Releas
   assert.match(html, /id="tb-w"[^>]*>Windows<\/button>/);
   assert.match(html, /data-copy="curl -fsSL https:\/\/zerotrustdata\.io\/start\.sh \| sh"/);
   assert.match(html, /data-copy="irm https:\/\/zerotrustdata\.io\/start\.ps1 \| iex"/);
-  assert.match(html, /<li class="journal-nav"><a href="\/releases\/">Releases<\/a><\/li>/);
+  assert.match(html, /<li class="nav-keep"><a href="\/releases\/">Releases<\/a><\/li>/);
   assert.match(html, /<a href="\/releases\/latest\/">Release notes<\/a>/);
 });
 

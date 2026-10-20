@@ -62,5 +62,4 @@ Remove-Item -Force $TempChecksum -ErrorAction SilentlyContinue
 Write-Host "ztd deployed successfully!" -ForegroundColor Green
 
 Write-Host "Starting ztd Operator to connect to Gateway at ${GatewayHost}..." -ForegroundColor Yellow
-Write-Host "DEBUG: GatewayHost = ${GatewayHost}" -ForegroundColor Yellow
 & .\ztd.exe operator start -e $GatewayHost

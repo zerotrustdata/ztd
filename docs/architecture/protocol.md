@@ -3,8 +3,8 @@ doc_id: protocol
 title: Protocol Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - protocol/
   - internal/constants/
@@ -35,7 +35,7 @@ do_not_use_for:
 
 ## Purpose
 
-Documents the wire contracts, serialization specifications, code generation pipelines, and verification mechanisms of the ztd protocol library. The protocol library establishes the canonical wire contract for all governed transactions entering the platform through a ztd ingress. It provides Protobuf schemas and compiled bindings for Go and TypeScript, authoritative JSON constant registries, JSON Schema model definitions, SPIFFE workload identity helpers, deterministic canonical JSON serialization, Ed25519 receipt verification routines, envelope transaction hashing, and conformance vectors.
+Documents the wire contracts, serialization specifications, code generation pipelines, and verification mechanisms of the ztd protocol library. The protocol library establishes the canonical wire contract for all governed transactions entering the platform through a ztd ingress. It provides Protobuf schemas and compiled bindings for Go and TypeScript, authoritative JSON constant registries, JSON Schema model definitions, SPIFFE workload identity helpers (`protocol/workload_identity.go`), and conformance vectors. Receipt canonicalization, Ed25519 receipt verification, and envelope transaction hashing are implemented in `internal/services/governance` and `internal/governance` and pinned by those vectors.
 
 ## Quick index
 
@@ -85,7 +85,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-PROT-ID-01 | All platform workload identities MUST belong to the `ztd.local` trust domain (`protocol.TrustDomain`) and follow one of six canonical URI schemes: `operator`, `cli`, `app`, `user`, `hub`, or `gateway`. |
+| INV-PROT-ID-01 | All platform workload identities MUST belong to the `ztd.local` trust domain (`protocol.TrustDomain`) and follow one of six canonical SPIFFE path types: `operator`, `cli`, `app`, `user`, `hub`, or `gateway`. |
 | INV-PROT-ID-03 | SPIFFE parsing and extraction methods (`ExtractCLISessionID`, `ExtractUserID`, `ExtractUserIDFromUserSAN`, `ExtractOperatorSessionID`, `ExtractGatewayID`) MUST fail closed and return `("", false)` if prefix matching, segment counting, or non-empty validation fails. |
 
 ### Canonicalization, Receipts, and Vectors (`INV-PROT-CANON`)
@@ -118,15 +118,15 @@ Ids are stable. Append the next free number within each group; do not renumber.
 The wire protocol defines the structure of all transactions moving through the platform:
 
 ```text
-Incoming Ingress (MCP / A2A / HTTP / WebSocket)
+Incoming Ingress (MCP / A2A / governed HTTP dispatch / direct envelope submission / CLI operator run)
                       │
                       ▼
          Canonical GovernanceEnvelope (JSON / Protojson)
                       │
-                      ├── Header: id (SHA-256), sequence, timestamp, nonce, ttl
-                      ├── Identity: client_id, acting_app_id, operator_session_id
-                      ├── Action: type, action_payload (typed message)
-                      ├── Proofs: l2_consensus_proof, l3_notary_proof
+                      ├── Header: id, transaction_hash, timestamp, expires_at, nonce, protocol_version
+                      ├── Identity: requestor_user_id, acting_app_id, operator_id, operator_session_id, web_session_id, cli_session_id
+                      ├── Action: event_type, action_type, target_resource, payload, intent_data
+                      ├── Governance: governance.l1, governance.l2, governance.l3 (proof metadata)
                       └── State: state_merkle_root
 ```
 
@@ -134,7 +134,7 @@ Incoming Ingress (MCP / A2A / HTTP / WebSocket)
 - **Code Generation via Buf**: Managed entirely through Buf CLI (`protocol/proto/buf.yaml` defines module `buf.build/ztd/platform`):
   - `make proto-go`: Emits Go structs to `protocol/proto/ztd/` using `protoc-gen-go` and generates API documentation to `protocol/docs/reference/api/` using `protoc-gen-doc`.
   - `make proto-node`: Emits TypeScript stubs to `protocol/node/src/gen/` using `@bufbuild/protoc-gen-es`.
-  - `make proto-generate`: Runs both targets atomically.
+  - `make proto-generate`: Runs both targets.
 
 ## Canonical JSON Serialization
 
@@ -142,12 +142,12 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
 
 1. **Receipt Canonicalization**:
    - `internal/services/governance.CanonicalizeActionReceipt` formats `ActionReceipt` into deterministic UTF-8 JSON.
-   - Keys are sorted lexicographically, floats formatted with consistent precision, and whitespace stripped.
+   - Keys follow the declaration order of the internal `canonicalReceipt` struct, not lexicographic order. Enum fields serialize as integers, fields tagged `omitempty` are omitted at zero value, and the output contains no whitespace.
    - Typed failure fields are signed: `failure_code` (`ReceiptFailureCode`) and `rejection_code` (`GovernanceRejectionCode`, `ActionReceipt` field 18). Both are bound into the signature, and `rejection_code` is omitted when `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` (`omitempty`). Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`.
    - `GovernanceRejection` (`error`, `receipt`) is the client body for an L4 rejection on every ingress. Ingresses render it with `protojson` proto names, and clients verify `receipt` with `VerifyActionReceiptSignature`.
    - `IngressRefusalCode` and `IngressRefusal` (`code`, `error`) are the pre-envelope refusal body on the direct and dispatch ingresses, and JSON-RPC `error.data` on MCP and A2A. A refusal carries no receipt.
    - `GovernedDispatchResult` (`transaction_id`, `event_type`, `action_type`, `result_payload`, `inference_result`, `receipt`) is the HTTP 200 body of governed dispatch.
-   - `InferenceDispatchFailure` (`error`, `code`, `receipt`) is the client body for a non-2xx failure on `POST /api/v1/inference/dispatch`. When dispatch reaches the executing Operator and the provider subsequently fails or governance rejects the execution, `receipt` carries the executing Operator's verified signed `FAILED` receipt (a governance rejection, or a failed execution whose commitment the Operator's ledger holds).
+   - `InferenceDispatchFailure` (`error`, `code`, `receipt`, `observation_receipts`) is the client body for a non-2xx failure on `POST /api/v1/inference/dispatch`. When dispatch reaches the executing Operator and the provider subsequently fails or governance rejects the execution, `receipt` carries the executing Operator's verified signed `FAILED` receipt (a governance rejection, or a failed execution whose commitment the Operator's ledger holds). `observation_receipts` carries the verified signed observer receipts for the attempt in dispatch order.
    - `VerifyActionReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
    - `VerifyReceiptPersistenceAttestation` canonicalizes and verifies persistence attestations.
 2. **Evaluation Protojson Canonicalization**:
@@ -155,7 +155,7 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - Uses protobuf field names through protojson, compacts whitespace, and omits proto3 zero-value scalar fields.
    - `UnmarshalCanonical` rejects any payload whose raw bytes differ from its canonical re-encoding.
    - `ConformanceRunRecord`, `ConformanceVerdictSet` and their evidence messages (`ConformanceCaseEvidence`, `ConformanceObservation`, `CanaryManifest`, `ConformanceAnchor`) hold the governance-conformance suite: raw evidence per case and the verdict set, kept as separate messages.
-   - `AgentRole`, `AgentStep`, `ScoredTurnRequest`, `ScoredTurnEvent`, `AgentTrace` and `InvestigationSeed` define the external agent system-under-test (SUT) contract. The SUT consumes a `ScoredTurnRequest` and returns its `AgentTrace`; the contract contains no product persona or route names. This protobuf `AgentTrace` is distinct from the campaign executor's persisted evidence envelope, whose JSON schema is `agent-trace.v5` (`agent-trace.v4` before held repetition context was recorded, `agent-trace.v3` before exact model input was captured; `internal/services/evaluation/campaign_agent_trace.go`) and which is published byte for byte as the `ztd.eval.v1.PublicAssignmentAgentTrace` proof artifact. The SUT contract and vectors are present, while campaign runs currently use the built-in governed executor rather than this external SUT exchange.
+   - `AgentRole`, `AgentStep` and `AgentTrace` define the agent trace shape. This protobuf `AgentTrace` is the protobuf projection (`AgentTrace.ToProto`) of the campaign executor's persisted evidence envelope, whose JSON schema is `agent-trace.v7` (`agent-trace.v6` before per-call model bindings and complete inference results were recorded, `agent-trace.v5` before investigation identity and authoritative retrieval evidence were recorded, `agent-trace.v4` before held repetition context was recorded, `agent-trace.v3` before exact model input was captured; `internal/services/evaluation/campaign_agent_trace.go`) and which is published as the `ztd.eval.v1.PublicAssignmentAgentTrace` proof artifact with a SHA-256 binding. Campaign runs use the built-in governed executor; ztd defines no external system-under-test exchange.
    - `ContainmentResult` (`verdict`, `breaches`) is the red-team verdict for one attempt, reported apart from model quality.
 3. **Canonicalization Conformance Vectors**:
    - Pinned in `protocol/vectors/`:
@@ -169,10 +169,10 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
 
 ## Envelope Hashing and Parity Vectors
 
-Every governed transaction has an immutable envelope `id` that serves as the transaction hash (`tx_hash`):
+Every governed transaction has a transaction hash computed over its envelope fields. The envelope `id` and `transaction_hash` both carry this value:
 
 ```text
-Envelope Fields (caller, target, action, payload, nonce, timestamp, state_root)
+Envelope Fields (action_type, target_resource, payload, state_merkle_root, nonce, expires_at, intent_data, identity and context IDs)
                                   │
                                   ▼
                Canonical UTF-8 Representation (Deterministic)
@@ -181,11 +181,11 @@ Envelope Fields (caller, target, action, payload, nonce, timestamp, state_root)
                      SHA-256 Digest (64-char Hex)
                                   │
                                   ▼
-                          Envelope.Id
+                          Envelope.Id and Envelope.TransactionHash
 ```
 
-- **Algorithm**: `GenerateMessageID` computes the SHA-256 hash across canonical envelope fields in a deterministic order.
-- **L4 Verification**: The L4 Warden recalculates this hash before dispatch and rejects any transaction where the envelope `id` does not match the recomputed hash.
+- **Algorithm**: `GenerateMessageID` computes the SHA-256 hash across canonical envelope fields in a deterministic order. Protocol version 2 envelopes add `event_type` and a `ztd-tx-v2|` domain prefix to the digest input.
+- **L4 Verification**: The L4 Warden recalculates this hash before dispatch (`verifyTransactionHash` in `internal/services/governance/l4_warden.go`) and rejects any transaction whose `transaction_hash` or `id` does not match the recomputed hash.
 - **Hash Parity Vectors**:
   - `protocol/conformance/hash_vectors.json`: Golden vectors for standard envelope hashing.
   - `protocol/conformance/hash_vectors_v2.json`: Golden vectors for protocol version 2 envelopes.
@@ -193,13 +193,13 @@ Envelope Fields (caller, target, action, payload, nonce, timestamp, state_root)
 
 ## Shared Constants and Model Registries
 
-The `protocol/constants/` directory maintains 26 authoritative JSON registries that serve as the single source of truth for the platform:
+The `protocol/constants/` directory maintains the authoritative JSON registries that serve as the single source of truth for the platform:
 
 - `events.json`: Authoritative taxonomy of all platform event types.
 - `event_dashboard_classification.json`: Maps events to dashboard stream behaviors (`produced_to_sse`, `governed_record_only`, `mixed`, `unsupported`).
-- `action_types_gen.go` & `events_gen.go`: Code-generated Go constants mirroring the JSON registries via `make constants-generate`.
+- `internal/constants/action_types_gen.go` and `internal/constants/events_gen.go`: Code-generated Go constants mirroring the JSON registries via `make constants-generate`.
 - `console/src/generated/events.ts`: Code-generated TypeScript constants for browser clients.
-- `doctrine/`: L1 security heuristic registries (`blacklist_doctrine.json`, `whitelist_doctrine.json`, `gitleaks_doctrine.json`, `owasp_crs_doctrine.json`, `mcp_vectors_doctrine.json`).
+- `doctrine/`: L1 security heuristic registries (`blacklist_doctrine.json`, `whitelist_doctrine.json`, `gitleaks_doctrine.json`, `owasp_crs_doctrine.json`, `mcp_vectors_doctrine.json`) and the source index `doctrine_registry.json`.
 
 ## Workload Identity (SPIFFE)
 
@@ -213,7 +213,7 @@ Platform identities use the canonical SPIFFE trust domain `ztd.local` (`protocol
 
 All first-party components adhere strictly to the root `VERSION` file:
 
-1. **Check and Sync**: `internal/tools/versionsync` verifies that `protocol/docs/*.md` headers and `package.json` files match `VERSION`. Verified with `make version-sync-check`.
+1. **Check and Sync**: `internal/tools/versionsync` verifies that the `Version:` headers of `protocol/docs/a2a.md`, `constants.md`, `mcp.md`, and `spec.md`, and the `package.json` and `package-lock.json` root versions of first-party npm packages, match `VERSION`. Verified with `make version-sync-check`.
 2. **Release Target**: `make release` requires clean `main` at `origin/main` and a successful release-workflow rehearsal for that commit. It runs version sync, requires a clean working tree and release notes, then tags and pushes `v<VERSION>`. See [Release Process](../devs/release_process.md) for the full workflow.
 
 ## Anti-patterns
@@ -230,7 +230,7 @@ All first-party components adhere strictly to the root `VERSION` file:
 - [Consensus Architecture](consensus.md): L2 multi-member Ed25519 signature policies and deliberation.
 - [Network Architecture](network.md): Platform PKI, TLS/mTLS, SPIFFE identity SAN issuance, and port topology.
 - [Gateway Architecture](gateway.md): Gateway ingress routing, policy decision points, and dispatch mechanics.
-- [Operator Architecture](operator.md): Operator runtime daemon, local execution, and L4/L5 verification.
+- [Operator Architecture](operator.md): Operator runtime, local execution, and L4/L5 verification.
 - [Event and Action Protocol](events.md): Event catalog taxonomy, SSE streaming, and payload structures.
 - [Release Process](../devs/release_process.md): Detailed release workflows, compliance bundles, and native eval acceptance.
 - [Documentation Guide](../devs/docs.md): Standards, invariants, and procedures for ztd documentation.

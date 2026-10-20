@@ -103,7 +103,6 @@ const (
 	FaultL3Missing            Fault = "l3_missing"
 	FaultL3Invalid            Fault = "l3_invalid"
 	FaultL3Garbage            Fault = "l3_garbage"
-	FaultNoL3Path             Fault = "no_l3_path"
 	FaultUnattendedMutation   Fault = "unattended_mutation"
 	FaultAttendedApprove      Fault = "attended_approve"
 	FaultAttendedDeny         Fault = "attended_deny"
@@ -188,6 +187,17 @@ type Driver interface {
 // absolute on ex) and returns its signed receipt.
 type Sentinel interface {
 	Read(ctx context.Context, ex Executor, readAbs string) (*operatorv1.ActionReceipt, error)
+}
+
+// CommandSkillPayload is the payload for a skill that carries a shell command.
+type CommandSkillPayload struct {
+	Cmd string `json:"cmd"`
+}
+
+// MarkerSkillPayload is the conformance skill payload that names the marker the
+// A2A downstream records.
+type MarkerSkillPayload struct {
+	Marker string `json:"marker"`
 }
 
 // Marker returns the exact bytes a mutation attempt writes.

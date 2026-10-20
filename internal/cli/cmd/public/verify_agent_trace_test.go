@@ -66,7 +66,7 @@ func TestPublicVerifyAgentTraceCmd_VerifiesPublishedTrace(t *testing.T) {
 	out, err := runVerifyAgentTrace(t, body)
 
 	require.NoError(t, err)
-	assert.Contains(t, out, "Agent trace verified (agent-trace.v5, sha256 "+models.SHA256Hex(body)+")")
+	assert.Contains(t, out, "Agent trace verified (agent-trace.v7, sha256 "+models.SHA256Hex(body)+")")
 }
 
 func TestPublicVerifyAgentTraceCmd_RejectsEditedTrace(t *testing.T) {

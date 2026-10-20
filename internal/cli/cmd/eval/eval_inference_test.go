@@ -30,7 +30,10 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
+	inferdispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -207,6 +210,12 @@ func TestGatesProbe_TakesModelOnlyAsPositionalArgument(t *testing.T) {
 	assert.NotNil(t, cmd.Flags().Lookup("operator-session-id"), "the --operator-session-id flag must exist")
 	assert.Error(t, cmd.Args(cmd, nil), "probe requires the positional <model>")
 	assert.NoError(t, cmd.Args(cmd, []string{"qwen3:4b"}))
+}
+
+func TestGovernedInferenceDispatchDeadline_CoversApprovalAndProviderRequest(t *testing.T) {
+	assert.Equal(t, mcp.ApprovalRequestTTL+inferdispatch.RequestDeadline, governedInferenceDispatchDeadline)
+	assert.Greater(t, governedInferenceDispatchDeadline, mcp.ApprovalRequestTTL+inference.ProviderRequestTimeout,
+		"a probe must outlast the human approval wait plus the provider request")
 }
 
 func TestParseInferenceAcceptanceCases_RejectsAllBlankSelection(t *testing.T) {

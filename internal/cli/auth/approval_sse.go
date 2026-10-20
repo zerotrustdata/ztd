@@ -54,6 +54,11 @@ type ApprovalSubscription struct {
 	completed map[approvalKey]models.ApprovalCompletedEvent
 	order     []approvalKey
 	arrived   chan struct{} // closed and replaced each time an approval is recorded
+
+	// transactionsChanged holds one pending announcement of ztd.v1.platform.approvals.changed
+	// (subject transactions). Announcements coalesce: the Gateway's event carries no hash,
+	// so a caller that needs the list re-lists once it is woken.
+	transactionsChanged chan struct{}
 }
 
 // SubscribeApprovals opens the gateway SSE stream live-only (since_id=0 carries no
@@ -76,10 +81,11 @@ func SubscribeApprovals(ctx context.Context, httpClient *http.Client, baseURL, c
 
 	subCtx, cancel := context.WithCancel(ctx)
 	sub := &ApprovalSubscription{
-		cancel:    cancel,
-		done:      make(chan struct{}),
-		completed: make(map[approvalKey]models.ApprovalCompletedEvent),
-		arrived:   make(chan struct{}),
+		cancel:              cancel,
+		done:                make(chan struct{}),
+		completed:           make(map[approvalKey]models.ApprovalCompletedEvent),
+		arrived:             make(chan struct{}),
+		transactionsChanged: make(chan struct{}, 1),
 	}
 
 	// ready carries exactly one result: nil once the listener is registered, or the
@@ -128,15 +134,40 @@ func SubscribeApprovals(ctx context.Context, httpClient *http.Client, baseURL, c
 	return sub, nil
 }
 
-// record decodes one SSE frame and keeps its approval.completed event. It runs on the
-// SSE stream goroutine. A frame that does not decode is not an approval and is ignored.
+// record decodes one SSE frame and keeps the approval.completed event or wakes a
+// WaitTransactionsChanged caller for a transactions invalidation. It runs on the SSE
+// stream goroutine. A frame that does not decode is not an approval and is ignored.
 func (s *ApprovalSubscription) record(eventType, data string) {
 	ev, ok := sse.DecodeEvent(eventType, data)
-	if !ok || ev.Type != constants.SSEEventTypeApprovalCompleted {
+	if !ok {
 		return
 	}
+	switch ev.Type {
+	case constants.SSEEventTypeApprovalCompleted:
+		s.recordCompleted(ev.Raw)
+	case string(constants.EventPlatformApprovalsChanged):
+		s.recordTransactionsChanged(ev.Data)
+	}
+}
+
+// recordTransactionsChanged wakes one WaitTransactionsChanged caller when the event
+// announces a change to the pending transactions. Enrollment changes are not this
+// subscription's concern and are ignored.
+func (s *ApprovalSubscription) recordTransactionsChanged(data json.RawMessage) {
+	var payload models.ApprovalsChangedPayload
+	if err := json.Unmarshal(data, &payload); err != nil || payload.Subject != models.ApprovalsChangedTransactions {
+		return
+	}
+	select {
+	case s.transactionsChanged <- struct{}{}:
+	default:
+	}
+}
+
+// recordCompleted keeps one approval.completed event for Wait to find.
+func (s *ApprovalSubscription) recordCompleted(raw json.RawMessage) {
 	var event models.ApprovalCompletedEvent
-	if err := json.Unmarshal(ev.Raw, &event); err != nil {
+	if err := json.Unmarshal(raw, &event); err != nil {
 		return
 	}
 
@@ -194,6 +225,11 @@ func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) 
 			if ok {
 				return approvalReceipt(event, txHash)
 			}
+			// A stream bound to the caller's context ends when that context
+			// does; both channels are then ready, and the deadline is the cause.
+			if waitCtx.Err() != nil {
+				return nil, constants.ErrApprovalSSETimeout
+			}
 			if s.dropErr != nil {
 				return nil, fmt.Errorf("L3 approval: stream dropped: %w", s.dropErr)
 			}
@@ -201,6 +237,30 @@ func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) 
 		case <-waitCtx.Done():
 			return nil, constants.ErrApprovalSSETimeout
 		}
+	}
+}
+
+// WaitTransactionsChanged blocks until the Gateway announces that the subscribing user's
+// pending transactions changed, then consumes that announcement. The announcement names
+// no transaction, so the caller re-lists the pending transactions once it returns. It
+// returns constants.ErrSSEStreamClosed (or the stream error) when the stream ends first,
+// and ctx's error when ctx ends first.
+func (s *ApprovalSubscription) WaitTransactionsChanged(ctx context.Context) error {
+	select {
+	case <-s.transactionsChanged:
+		return nil
+	case <-s.done:
+		select {
+		case <-s.transactionsChanged:
+			return nil
+		default:
+		}
+		if s.dropErr != nil {
+			return fmt.Errorf("L3 approval: stream dropped: %w", s.dropErr)
+		}
+		return fmt.Errorf("L3 approval: %w", constants.ErrSSEStreamClosed)
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

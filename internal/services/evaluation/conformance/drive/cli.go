@@ -40,6 +40,8 @@ func NewCLI(poster operator.CommandPoster, outbound operator.Target, cliSessionI
 }
 
 // Drive runs one command through RunOnce and maps its answer to one observation.
+// Like governed dispatch, RunOnce blocks under ratify and notary until a human
+// decides, so the poster's timeout must outlast the approval wait.
 func (c *CLI) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) {
 	if a.Case.Ingress != cases.IngressCLI {
 		return cases.Driven{}, fmt.Errorf("cli %s: ingress %s: %w", a.Case.Fault, a.Case.Ingress, constants.ErrConformanceIngressUnsupported)
@@ -48,7 +50,7 @@ func (c *CLI) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) 
 	switch a.Case.Fault {
 	case cases.FaultDoctrine:
 		command = a.Case.Command
-	case cases.FaultNone, cases.FaultNoL3Path:
+	case cases.FaultNone, cases.FaultAttendedApprove, cases.FaultAttendedDeny:
 		command = cases.MarkerCommand(a)
 	default:
 		return cases.Driven{}, fmt.Errorf("cli %s: %w", a.Case.Fault, constants.ErrConformanceIngressUnsupported)

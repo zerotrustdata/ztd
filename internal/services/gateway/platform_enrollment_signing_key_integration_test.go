@@ -13,11 +13,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +27,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -73,10 +77,12 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 	certificate, err := x509.ParseCertificate(block.Bytes)
 	require.NoError(t, err)
 	require.IsType(t, &ecdsa.PublicKey{}, certificate.PublicKey)
+	require.Empty(t, certificate.DNSNames, "app certificate TLS identity is the Gateway-issued SPIFFE URI, not CSR-provided DNS")
+	require.Contains(t, certificate.URIs[0].String(), "/app/ordinary-consensus")
 	registered, err := env.svc.GetSignerStore().GetTrustedSigner(t.Context(), "ordinary-consensus")
 	require.NoError(t, err)
 	require.Equal(t, publicKey, registered)
-	endpoint := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	endpointHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/x-protobuf" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -87,7 +93,7 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		signature := ed25519.Sign(signingKey, []byte(envelope.GetTransactionHash()+"|true"))
+		signature := ed25519.Sign(signingKey, governance.L2VotePayload(envelope.GetTransactionHash(), true))
 		envelope.Governance = &commonv1.GovernanceMetadata{L2: &commonv1.L2Metadata{
 			ConsensusSetId: string(constants.DocIDConsensusBinding),
 			Votes:          []*commonv1.L2Vote{{SignerKeyId: "ordinary-consensus", Decision: true, ConsensusSignature: hex.EncodeToString(signature)}},
@@ -99,21 +105,34 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 		}
 		w.Header().Set("Content-Type", "application/x-protobuf")
 		_, _ = w.Write(wire)
-	}))
+	})
+	transportKeyDER, err := x509.MarshalECPrivateKey(transportKey)
+	require.NoError(t, err)
+	serverCert, err := tls.X509KeyPair(
+		[]byte(completed.App.AppCert+"\n"+completed.App.CertChain),
+		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: transportKeyDER}),
+	)
+	require.NoError(t, err)
+	endpoint := httptest.NewUnstartedServer(endpointHandler)
+	endpoint.TLS = &tls.Config{Certificates: []tls.Certificate{serverCert}}
+	endpoint.StartTLS()
 	t.Cleanup(endpoint.Close)
+	_, port, err := net.SplitHostPort(endpoint.Listener.Addr().String())
+	require.NoError(t, err)
+	endpointURL := "https://localhost:" + port + "/deliberate"
 	bound, err := env.enrollSvc.BindConsensusApplication(t.Context(), env.ownerID, models.PlatformEnrollmentBindConsensusRequest{
-		AppID: "ordinary-consensus", EndpointURL: endpoint.URL,
+		AppID: "ordinary-consensus", EndpointURL: endpointURL,
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"ordinary-consensus"}, bound.MemberAppIDs)
-	require.Equal(t, endpoint.URL, bound.EndpointURL)
+	require.Equal(t, endpointURL, bound.EndpointURL)
 	envelope := &commonv1.GovernanceEnvelope{TransactionHash: "ordinary-enrollment-l2", Payload: []byte("full-envelope-payload")}
-	wire, err := proto.Marshal(envelope)
+	wire, err := protojson.Marshal(envelope)
 	require.NoError(t, err)
-	signedWire, err := env.svc.GetConsensusStore().NewConsensusAppDeliberator(endpoint.Client()).Deliberate(t.Context(), wire)
+	signedWire, err := env.svc.GetConsensusStore().NewConsensusAppDeliberatorWithClientFactory(env.svc.GetPKI().NewConsensusAppHTTPClient).Deliberate(t.Context(), wire)
 	require.NoError(t, err)
 	var signed commonv1.GovernanceEnvelope
-	require.NoError(t, proto.Unmarshal(signedWire, &signed))
+	require.NoError(t, protojson.Unmarshal(signedWire, &signed))
 	require.Equal(t, envelope.TransactionHash, signed.GetTransactionHash())
 	require.Equal(t, envelope.Payload, signed.GetPayload())
 	proof := signed.GetGovernance().GetL2()
@@ -121,7 +140,30 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 	require.Len(t, proof.GetVotes(), 1)
 	signature, err := hex.DecodeString(proof.GetVotes()[0].GetConsensusSignature())
 	require.NoError(t, err)
-	require.True(t, ed25519.Verify(registered, []byte(envelope.TransactionHash+"|true"), signature))
+	require.True(t, ed25519.Verify(registered, governance.L2VotePayload(envelope.TransactionHash, true), signature))
+
+	wrongIdentityClient, err := env.svc.GetPKI().NewConsensusAppHTTPClient("different-consensus-app")
+	require.NoError(t, err)
+	wrongIdentityRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, endpointURL, nil)
+	require.NoError(t, err)
+	wrongIdentityResponse, err := wrongIdentityClient.Do(wrongIdentityRequest)
+	if wrongIdentityResponse != nil {
+		wrongIdentityResponse.Body.Close()
+	}
+	require.Error(t, err, "TLS peer with another enrolled app identity must be rejected")
+	wrongIdentityClient.CloseIdleConnections()
+	untrusted := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	t.Cleanup(untrusted.Close)
+	untrustedClient, err := env.svc.GetPKI().NewConsensusAppHTTPClient("ordinary-consensus")
+	require.NoError(t, err)
+	untrustedRequest, err := http.NewRequestWithContext(t.Context(), http.MethodGet, untrusted.URL, nil)
+	require.NoError(t, err)
+	untrustedResponse, err := untrustedClient.Do(untrustedRequest)
+	if untrustedResponse != nil {
+		untrustedResponse.Body.Close()
+	}
+	require.Error(t, err, "certificate chain outside Gateway PKI must be rejected")
+	untrustedClient.CloseIdleConnections()
 	trust, err := env.svc.GetConsensusStore().OperatorL2Trust(t.Context())
 	require.NoError(t, err)
 	require.Len(t, trust.Signers, 1)

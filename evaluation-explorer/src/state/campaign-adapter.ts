@@ -349,7 +349,7 @@ function adaptResultProjection(
     activity_summary: mapActivitySummary(record.activity_summary),
     evidence_bindings: mapEvidenceBindings(record.evidence_bindings),
     terminal_status: terminalStatus,
-    metric_values: mapDecomposedScores(record.decomposed_scores),
+    metric_values: mapDecomposedScores(record.decomposed_scores, terminalStatus),
     missingness_reason: unavailableMetricReason(record.unavailable_metric_reasons),
     benchmark_observations: mapBenchmarkObservations(record.benchmark_observations),
     stage_summary: [],
@@ -775,16 +775,22 @@ function decomposedScoreKey(score: WireScore): string | undefined {
 
 /** A published score set always carries the task score, which is the verdict. A
  *  set without it is a contract violation, never a reason to infer a verdict
- *  from another metric. */
-function taskScoreAsPass(metrics: Record<string, MetricValue>): void {
-  if (!metrics.task_score) {
-    throw new ValidationError('decomposed scores are missing task_score', 'decomposed_scores');
+ *  from another metric. For non-verdict assignments (e.g. provider failures),
+ *  pass is unavailable rather than inferred or failing closed. */
+function taskScoreAsPass(metrics: Record<string, MetricValue>, terminalStatus?: TerminalStatus): void {
+  if (metrics.task_score) {
+    metrics.pass = metrics.task_score;
+    return;
   }
-  metrics.pass = metrics.task_score;
+  if (terminalStatus && terminalStatus !== 'completed' && terminalStatus !== 'model_failed') {
+    metrics.pass = { unavailable_reason: 'task score not published' };
+    return;
+  }
+  throw new ValidationError('decomposed scores are missing task_score', 'decomposed_scores');
 }
 
-function mapDecomposedScores(value: WireScore[] | undefined): Record<string, MetricValue> {
-  if (value === undefined) {
+function mapDecomposedScores(value: WireScore[] | undefined, terminalStatus?: TerminalStatus): Record<string, MetricValue> {
+  if (value === undefined || value.length === 0) {
     return { pass: { unavailable_reason: 'decomposed scores not published' } };
   }
   const metrics: Record<string, MetricValue> = {};
@@ -796,7 +802,7 @@ function mapDecomposedScores(value: WireScore[] | undefined): Record<string, Met
     // `score.value` is a number: the wire decoder materialized the proto3 default.
     metrics[key] = { value: score.value };
   }
-  taskScoreAsPass(metrics);
+  taskScoreAsPass(metrics, terminalStatus);
   return metrics;
 }
 

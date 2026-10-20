@@ -21,8 +21,8 @@ import (
 )
 
 func TestRunsTrace_ShowsHeldContextThinkingAndFinalOutputOfSealedTraces(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	ctx := context.Background()
 	store := env.store(t)
 	assignments, err := store.ListAssignments(ctx, "run-a-1")
@@ -38,7 +38,7 @@ func TestRunsTrace_ShowsHeldContextThinkingAndFinalOutputOfSealedTraces(t *testi
 	}
 	seal(first, &evaluation.AgentTrace{
 		Input:       &evaluation.AgentTraceInput{Messages: []evaluation.AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "Diagnose the outage."}}},
-		ModelCalls:  []evaluation.AgentModelCall{{ProviderAttemptID: "call-1", LoopTurn: 1, PromptTokens: 100, CompletionTokens: 40, Thinking: "First look at the evidence.", Text: "checkout-api is timing out"}},
+		ModelCalls:  []evaluation.AgentModelCall{{ProviderAttemptID: "call-1", Purpose: "agent_turn", LoopTurn: 1, PromptTokens: 100, CompletionTokens: 40, Thinking: "First look at the evidence.", Text: "checkout-api is timing out"}},
 		FinalOutput: "checkout-api is timing out",
 	})
 	seal(second, &evaluation.AgentTrace{
@@ -47,7 +47,7 @@ func TestRunsTrace_ShowsHeldContextThinkingAndFinalOutputOfSealedTraces(t *testi
 			{Role: "INFERENCE_MESSAGE_ROLE_ASSISTANT", Text: "checkout-api is timing out"},
 		}},
 		Input:       &evaluation.AgentTraceInput{Messages: []evaluation.AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "Diagnose the outage."}}},
-		ModelCalls:  []evaluation.AgentModelCall{{ProviderAttemptID: "call-2", LoopTurn: 1, PromptTokens: 140, CompletionTokens: 20, Thinking: "Identical input; I will repeat my answer.", Text: "checkout-api is timing out"}},
+		ModelCalls:  []evaluation.AgentModelCall{{ProviderAttemptID: "call-2", Purpose: "agent_turn", LoopTurn: 1, PromptTokens: 140, CompletionTokens: 20, Thinking: "Identical input; I will repeat my answer.", Text: "checkout-api is timing out"}},
 		FinalOutput: "checkout-api is timing out",
 	})
 

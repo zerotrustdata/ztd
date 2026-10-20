@@ -548,15 +548,6 @@ type NetHTTPProbeResult struct {
 	Error      string            `json:"error,omitempty"`
 }
 
-// RunShellCommandRequest is the params for the "run_shell_command" tool.
-type RunShellCommandRequest struct {
-	Command    string   `json:"command"`
-	Args       []string `json:"args,omitempty"`
-	Timeout    int      `json:"timeout,omitempty"`
-	WorkingDir string   `json:"working_dir,omitempty"`
-	Hostnames  []string `json:"hostnames,omitempty"`
-}
-
 // RunShellCommandResult is the result for the "run_shell_command" tool.
 type RunShellCommandResult struct {
 	ExitCode int    `json:"exit_code"`

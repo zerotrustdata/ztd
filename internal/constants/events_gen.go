@@ -185,13 +185,10 @@ const EventOperatorShutdownAcknowledged EventType = "ztd.v1.operator.shutdown.ac
 const EventOperatorShutdownRequested EventType = "ztd.v1.operator.shutdown.requested"
 const EventOperatorSlotInitializationFailed EventType = "ztd.v1.operator.slot.initialization.failed"
 const EventOperatorStatusUpdatedActive EventType = "ztd.v1.operator.status.updated.active"
-const EventOperatorStatusUpdatedAvailable EventType = "ztd.v1.operator.status.updated.available"
-const EventOperatorStatusUpdatedBound EventType = "ztd.v1.operator.status.updated.bound"
 const EventOperatorStatusUpdatedOffline EventType = "ztd.v1.operator.status.updated.offline"
 const EventOperatorStatusUpdatedStale EventType = "ztd.v1.operator.status.updated.stale"
 const EventOperatorStatusUpdatedStopped EventType = "ztd.v1.operator.status.updated.stopped"
 const EventOperatorStatusUpdatedTerminated EventType = "ztd.v1.operator.status.updated.terminated"
-const EventOperatorStatusUpdatedUnavailable EventType = "ztd.v1.operator.status.updated.unavailable"
 const EventOperatorTerminalApprovalDenied EventType = "ztd.v1.operator.terminal.approval.denied"
 const EventOperatorTerminalAuthStateChanged EventType = "ztd.v1.operator.terminal.auth.state.changed"
 const EventOperatorUnbound EventType = "ztd.v1.operator.unbound"
@@ -319,7 +316,7 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Kind:        EventKindFact,
 		Transport:   nil,
 		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
+		Persistence: "gateway.sse_store",
 	},
 	EventAiEvalMetricAvailable: {
 		Key:         "AiEvalMetricAvailable",
@@ -458,7 +455,7 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Producers:         []string{"cli", "mcp"},
 		Persistence:       "ephemeral",
 		GovernanceAction:  ActionTypeA2aCall,
-		GovernancePayload: "ztd.operator.v1.A2ACallRequested",
+		GovernancePayload: "ztd.operator.v1.A2aCallRequested",
 	},
 	EventOperatorAuditAiRecordRequested: {
 		Key:         "OperatorAuditAiRecordRequested",
@@ -1625,56 +1622,35 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Kind:        EventKindFact,
 		Transport:   []string{"sse"},
 		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
-	},
-	EventOperatorStatusUpdatedAvailable: {
-		Key:         "OperatorStatusUpdatedAvailable",
-		Kind:        EventKindFact,
-		Transport:   nil,
-		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
-	},
-	EventOperatorStatusUpdatedBound: {
-		Key:         "OperatorStatusUpdatedBound",
-		Kind:        EventKindFact,
-		Transport:   []string{"sse"},
-		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
+		Persistence: "gateway.sse_store",
 	},
 	EventOperatorStatusUpdatedOffline: {
 		Key:         "OperatorStatusUpdatedOffline",
 		Kind:        EventKindFact,
-		Transport:   nil,
+		Transport:   []string{"sse"},
 		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
+		Persistence: "gateway.sse_store",
 	},
 	EventOperatorStatusUpdatedStale: {
 		Key:         "OperatorStatusUpdatedStale",
 		Kind:        EventKindFact,
-		Transport:   nil,
+		Transport:   []string{"sse"},
 		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
+		Persistence: "gateway.sse_store",
 	},
 	EventOperatorStatusUpdatedStopped: {
 		Key:         "OperatorStatusUpdatedStopped",
 		Kind:        EventKindFact,
-		Transport:   nil,
+		Transport:   []string{"sse"},
 		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
+		Persistence: "gateway.sse_store",
 	},
 	EventOperatorStatusUpdatedTerminated: {
 		Key:         "OperatorStatusUpdatedTerminated",
 		Kind:        EventKindFact,
-		Transport:   nil,
+		Transport:   []string{"sse"},
 		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
-	},
-	EventOperatorStatusUpdatedUnavailable: {
-		Key:         "OperatorStatusUpdatedUnavailable",
-		Kind:        EventKindFact,
-		Transport:   nil,
-		Producers:   []string{"gateway"},
-		Persistence: "gateway.operator_docs",
+		Persistence: "gateway.sse_store",
 	},
 	EventOperatorTerminalApprovalDenied: {
 		Key:         "OperatorTerminalApprovalDenied",
@@ -2271,14 +2247,11 @@ type _EventOperatorRestoreFile struct {
 }
 
 type _EventOperatorStatusUpdated struct {
-	Active      EventType
-	Available   EventType
-	Bound       EventType
-	Offline     EventType
-	Stale       EventType
-	Stopped     EventType
-	Terminated  EventType
-	Unavailable EventType
+	Active     EventType
+	Offline    EventType
+	Stale      EventType
+	Stopped    EventType
+	Terminated EventType
 }
 
 var Event = struct {
@@ -2467,14 +2440,11 @@ var Event = struct {
 		ShutdownRequested:        EventOperatorShutdownRequested,
 		SlotInitializationFailed: EventOperatorSlotInitializationFailed,
 		StatusUpdated: _EventOperatorStatusUpdated{
-			Active:      EventOperatorStatusUpdatedActive,
-			Available:   EventOperatorStatusUpdatedAvailable,
-			Bound:       EventOperatorStatusUpdatedBound,
-			Offline:     EventOperatorStatusUpdatedOffline,
-			Stale:       EventOperatorStatusUpdatedStale,
-			Stopped:     EventOperatorStatusUpdatedStopped,
-			Terminated:  EventOperatorStatusUpdatedTerminated,
-			Unavailable: EventOperatorStatusUpdatedUnavailable,
+			Active:     EventOperatorStatusUpdatedActive,
+			Offline:    EventOperatorStatusUpdatedOffline,
+			Stale:      EventOperatorStatusUpdatedStale,
+			Stopped:    EventOperatorStatusUpdatedStopped,
+			Terminated: EventOperatorStatusUpdatedTerminated,
 		},
 		TerminalApprovalDenied:   EventOperatorTerminalApprovalDenied,
 		TerminalAuthStateChanged: EventOperatorTerminalAuthStateChanged,

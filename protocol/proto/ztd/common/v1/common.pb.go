@@ -354,7 +354,7 @@ func (x *L2Metadata) GetVotes() []*L2Vote {
 
 // Notary (L3Notary) Governance: Authorization (Human-in-the-loop)
 // L3Proof is a union: fields 1-4 are populated for WebAuthn (web sessions),
-// fields 5-6 for CLI/mTLS (operator sessions). Exactly one proof type
+// fields 5-7 for CLI approvals. Exactly one proof type
 // should be populated per instance.
 type L3Proof struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -368,10 +368,17 @@ type L3Proof struct {
 	CredentialId string `protobuf:"bytes,4,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
 	// CLI/mTLS: SHA-256 fingerprint of the CLI certificate used for authentication
 	MtlsCertFingerprint string `protobuf:"bytes,5,opt,name=mtls_cert_fingerprint,json=mtlsCertFingerprint,proto3" json:"mtls_cert_fingerprint,omitempty"`
-	// CLI/mTLS: Ed25519 signature over transaction_hash using the operator private key
-	CliSignature  string `protobuf:"bytes,6,opt,name=cli_signature,json=cliSignature,proto3" json:"cli_signature,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// CLI approval: ECDSA P-256 signature over the domain-separated transaction hash
+	CliSignature string `protobuf:"bytes,6,opt,name=cli_signature,json=cliSignature,proto3" json:"cli_signature,omitempty"`
+	// CLI approval: DER-encoded enrolled CLI leaf certificate (not a trust chain)
+	CliCertificateDer []byte `protobuf:"bytes,7,opt,name=cli_certificate_der,json=cliCertificateDer,proto3" json:"cli_certificate_der,omitempty"`
+	// Gateway-sourced registration context for independent outbound verification.
+	// Context is trusted only on the authenticated Gateway command channel.
+	PasskeyContext *PasskeyVerificationContext `protobuf:"bytes,8,opt,name=passkey_context,json=passkeyContext,proto3" json:"passkey_context,omitempty"`
+	// Untrusted chain-building hints; only the Operator's pinned CA pool is trusted.
+	CliIntermediatesDer [][]byte `protobuf:"bytes,9,rep,name=cli_intermediates_der,json=cliIntermediatesDer,proto3" json:"cli_intermediates_der,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *L3Proof) Reset() {
@@ -446,6 +453,105 @@ func (x *L3Proof) GetCliSignature() string {
 	return ""
 }
 
+func (x *L3Proof) GetCliCertificateDer() []byte {
+	if x != nil {
+		return x.CliCertificateDer
+	}
+	return nil
+}
+
+func (x *L3Proof) GetPasskeyContext() *PasskeyVerificationContext {
+	if x != nil {
+		return x.PasskeyContext
+	}
+	return nil
+}
+
+func (x *L3Proof) GetCliIntermediatesDer() [][]byte {
+	if x != nil {
+		return x.CliIntermediatesDer
+	}
+	return nil
+}
+
+// PasskeyVerificationContext transfers registration facts, never an approval.
+// The assertion must still verify for this user, credential and transaction.
+type PasskeyVerificationContext struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	UserId         string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	CredentialId   string                 `protobuf:"bytes,2,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
+	PublicKeyCose  []byte                 `protobuf:"bytes,3,opt,name=public_key_cose,json=publicKeyCose,proto3" json:"public_key_cose,omitempty"`
+	RpId           string                 `protobuf:"bytes,4,opt,name=rp_id,json=rpId,proto3" json:"rp_id,omitempty"`
+	AllowedOrigins []string               `protobuf:"bytes,5,rep,name=allowed_origins,json=allowedOrigins,proto3" json:"allowed_origins,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *PasskeyVerificationContext) Reset() {
+	*x = PasskeyVerificationContext{}
+	mi := &file_ztd_common_v1_common_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PasskeyVerificationContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PasskeyVerificationContext) ProtoMessage() {}
+
+func (x *PasskeyVerificationContext) ProtoReflect() protoreflect.Message {
+	mi := &file_ztd_common_v1_common_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PasskeyVerificationContext.ProtoReflect.Descriptor instead.
+func (*PasskeyVerificationContext) Descriptor() ([]byte, []int) {
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *PasskeyVerificationContext) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *PasskeyVerificationContext) GetCredentialId() string {
+	if x != nil {
+		return x.CredentialId
+	}
+	return ""
+}
+
+func (x *PasskeyVerificationContext) GetPublicKeyCose() []byte {
+	if x != nil {
+		return x.PublicKeyCose
+	}
+	return nil
+}
+
+func (x *PasskeyVerificationContext) GetRpId() string {
+	if x != nil {
+		return x.RpId
+	}
+	return ""
+}
+
+func (x *PasskeyVerificationContext) GetAllowedOrigins() []string {
+	if x != nil {
+		return x.AllowedOrigins
+	}
+	return nil
+}
+
 type L3Metadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Proof *L3Proof               `protobuf:"bytes,1,opt,name=proof,proto3" json:"proof,omitempty"` // WebAuthn or CLI/mTLS proof
@@ -453,14 +559,17 @@ type L3Metadata struct {
 	// envelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so
 	// the deny is an Operator-signed rejection receipt. A deny can only stop
 	// execution, so it needs no proof.
-	Denied        bool `protobuf:"varint,2,opt,name=denied,proto3" json:"denied,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Denied bool `protobuf:"varint,2,opt,name=denied,proto3" json:"denied,omitempty"`
+	// Gateway-owned suspension provenance. A waiting dispatch must receive the
+	// decision in-process; after restart/cancellation it must never resume alone.
+	PendingDispatch bool `protobuf:"varint,3,opt,name=pending_dispatch,json=pendingDispatch,proto3" json:"pending_dispatch,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *L3Metadata) Reset() {
 	*x = L3Metadata{}
-	mi := &file_ztd_common_v1_common_proto_msgTypes[4]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -472,7 +581,7 @@ func (x *L3Metadata) String() string {
 func (*L3Metadata) ProtoMessage() {}
 
 func (x *L3Metadata) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_common_v1_common_proto_msgTypes[4]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -485,7 +594,7 @@ func (x *L3Metadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use L3Metadata.ProtoReflect.Descriptor instead.
 func (*L3Metadata) Descriptor() ([]byte, []int) {
-	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{4}
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *L3Metadata) GetProof() *L3Proof {
@@ -502,6 +611,13 @@ func (x *L3Metadata) GetDenied() bool {
 	return false
 }
 
+func (x *L3Metadata) GetPendingDispatch() bool {
+	if x != nil {
+		return x.PendingDispatch
+	}
+	return false
+}
+
 // Unified Governance Metadata
 type GovernanceMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -514,7 +630,7 @@ type GovernanceMetadata struct {
 
 func (x *GovernanceMetadata) Reset() {
 	*x = GovernanceMetadata{}
-	mi := &file_ztd_common_v1_common_proto_msgTypes[5]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -526,7 +642,7 @@ func (x *GovernanceMetadata) String() string {
 func (*GovernanceMetadata) ProtoMessage() {}
 
 func (x *GovernanceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_common_v1_common_proto_msgTypes[5]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -539,7 +655,7 @@ func (x *GovernanceMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GovernanceMetadata.ProtoReflect.Descriptor instead.
 func (*GovernanceMetadata) Descriptor() ([]byte, []int) {
-	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{5}
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GovernanceMetadata) GetL1() *L1Metadata {
@@ -614,7 +730,7 @@ type GovernanceEnvelope struct {
 
 func (x *GovernanceEnvelope) Reset() {
 	*x = GovernanceEnvelope{}
-	mi := &file_ztd_common_v1_common_proto_msgTypes[6]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -626,7 +742,7 @@ func (x *GovernanceEnvelope) String() string {
 func (*GovernanceEnvelope) ProtoMessage() {}
 
 func (x *GovernanceEnvelope) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_common_v1_common_proto_msgTypes[6]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -639,7 +755,7 @@ func (x *GovernanceEnvelope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GovernanceEnvelope.ProtoReflect.Descriptor instead.
 func (*GovernanceEnvelope) Descriptor() ([]byte, []int) {
-	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{6}
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GovernanceEnvelope) GetId() string {
@@ -844,7 +960,7 @@ type PlatformEnrollmentFingerprints struct {
 
 func (x *PlatformEnrollmentFingerprints) Reset() {
 	*x = PlatformEnrollmentFingerprints{}
-	mi := &file_ztd_common_v1_common_proto_msgTypes[7]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -856,7 +972,7 @@ func (x *PlatformEnrollmentFingerprints) String() string {
 func (*PlatformEnrollmentFingerprints) ProtoMessage() {}
 
 func (x *PlatformEnrollmentFingerprints) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_common_v1_common_proto_msgTypes[7]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -869,7 +985,7 @@ func (x *PlatformEnrollmentFingerprints) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlatformEnrollmentFingerprints.ProtoReflect.Descriptor instead.
 func (*PlatformEnrollmentFingerprints) Descriptor() ([]byte, []int) {
-	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{7}
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *PlatformEnrollmentFingerprints) GetApp() string {
@@ -933,13 +1049,17 @@ type PlatformEnrollmentGovernancePayload struct {
 	IssuanceLeaseOwner string `protobuf:"bytes,20,opt,name=issuance_lease_owner,json=issuanceLeaseOwner,proto3" json:"issuance_lease_owner,omitempty"`
 	// HTTPS deliberation endpoint for a bound consensus application.
 	ConsensusEndpointUrl string `protobuf:"bytes,21,opt,name=consensus_endpoint_url,json=consensusEndpointUrl,proto3" json:"consensus_endpoint_url,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Ordered set of enrolled signing applications participating in L2.
+	ConsensusMemberAppIds []string `protobuf:"bytes,22,rep,name=consensus_member_app_ids,json=consensusMemberAppIds,proto3" json:"consensus_member_app_ids,omitempty"`
+	// Affirmative distinct signatures required from consensus_member_app_ids.
+	ConsensusQuorum uint32 `protobuf:"varint,23,opt,name=consensus_quorum,json=consensusQuorum,proto3" json:"consensus_quorum,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *PlatformEnrollmentGovernancePayload) Reset() {
 	*x = PlatformEnrollmentGovernancePayload{}
-	mi := &file_ztd_common_v1_common_proto_msgTypes[8]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -951,7 +1071,7 @@ func (x *PlatformEnrollmentGovernancePayload) String() string {
 func (*PlatformEnrollmentGovernancePayload) ProtoMessage() {}
 
 func (x *PlatformEnrollmentGovernancePayload) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_common_v1_common_proto_msgTypes[8]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -964,7 +1084,7 @@ func (x *PlatformEnrollmentGovernancePayload) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use PlatformEnrollmentGovernancePayload.ProtoReflect.Descriptor instead.
 func (*PlatformEnrollmentGovernancePayload) Descriptor() ([]byte, []int) {
-	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{8}
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *PlatformEnrollmentGovernancePayload) GetAction() string {
@@ -1114,6 +1234,20 @@ func (x *PlatformEnrollmentGovernancePayload) GetConsensusEndpointUrl() string {
 	return ""
 }
 
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusMemberAppIds() []string {
+	if x != nil {
+		return x.ConsensusMemberAppIds
+	}
+	return nil
+}
+
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusQuorum() uint32 {
+	if x != nil {
+		return x.ConsensusQuorum
+	}
+	return 0
+}
+
 type PlatformEnrollmentDecisionTarget struct {
 	state         protoimpl.MessageState          `protogen:"open.v1"`
 	RequestId     string                          `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -1124,7 +1258,7 @@ type PlatformEnrollmentDecisionTarget struct {
 
 func (x *PlatformEnrollmentDecisionTarget) Reset() {
 	*x = PlatformEnrollmentDecisionTarget{}
-	mi := &file_ztd_common_v1_common_proto_msgTypes[9]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1136,7 +1270,7 @@ func (x *PlatformEnrollmentDecisionTarget) String() string {
 func (*PlatformEnrollmentDecisionTarget) ProtoMessage() {}
 
 func (x *PlatformEnrollmentDecisionTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_common_v1_common_proto_msgTypes[9]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1149,7 +1283,7 @@ func (x *PlatformEnrollmentDecisionTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlatformEnrollmentDecisionTarget.ProtoReflect.Descriptor instead.
 func (*PlatformEnrollmentDecisionTarget) Descriptor() ([]byte, []int) {
-	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{9}
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *PlatformEnrollmentDecisionTarget) GetRequestId() string {
@@ -1180,7 +1314,7 @@ type PlatformEnrollmentCompletionTranscript struct {
 
 func (x *PlatformEnrollmentCompletionTranscript) Reset() {
 	*x = PlatformEnrollmentCompletionTranscript{}
-	mi := &file_ztd_common_v1_common_proto_msgTypes[10]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1192,7 +1326,7 @@ func (x *PlatformEnrollmentCompletionTranscript) String() string {
 func (*PlatformEnrollmentCompletionTranscript) ProtoMessage() {}
 
 func (x *PlatformEnrollmentCompletionTranscript) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_common_v1_common_proto_msgTypes[10]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1205,7 +1339,7 @@ func (x *PlatformEnrollmentCompletionTranscript) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use PlatformEnrollmentCompletionTranscript.ProtoReflect.Descriptor instead.
 func (*PlatformEnrollmentCompletionTranscript) Descriptor() ([]byte, []int) {
-	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{10}
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PlatformEnrollmentCompletionTranscript) GetProtocolVersion() string {
@@ -1280,7 +1414,7 @@ type CommandIntent struct {
 
 func (x *CommandIntent) Reset() {
 	*x = CommandIntent{}
-	mi := &file_ztd_common_v1_common_proto_msgTypes[11]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1292,7 +1426,7 @@ func (x *CommandIntent) String() string {
 func (*CommandIntent) ProtoMessage() {}
 
 func (x *CommandIntent) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_common_v1_common_proto_msgTypes[11]
+	mi := &file_ztd_common_v1_common_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1305,7 +1439,7 @@ func (x *CommandIntent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandIntent.ProtoReflect.Descriptor instead.
 func (*CommandIntent) Descriptor() ([]byte, []int) {
-	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{11}
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CommandIntent) GetOperatorId() string {
@@ -1430,18 +1564,28 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\n" +
 	"L2Metadata\x12(\n" +
 	"\x10consensus_set_id\x18\x01 \x01(\tR\x0econsensusSetId\x12+\n" +
-	"\x05votes\x18\x02 \x03(\v2\x15.ztd.common.v1.L2VoteR\x05votes\"\xfe\x01\n" +
+	"\x05votes\x18\x02 \x03(\v2\x15.ztd.common.v1.L2VoteR\x05votes\"\xb6\x03\n" +
 	"\aL3Proof\x12(\n" +
 	"\x10client_data_json\x18\x01 \x01(\tR\x0eclientDataJSON\x12-\n" +
 	"\x12authenticator_data\x18\x02 \x01(\tR\x11authenticatorData\x12\x1c\n" +
 	"\tsignature\x18\x03 \x01(\tR\tsignature\x12#\n" +
 	"\rcredential_id\x18\x04 \x01(\tR\fcredentialId\x122\n" +
 	"\x15mtls_cert_fingerprint\x18\x05 \x01(\tR\x13mtlsCertFingerprint\x12#\n" +
-	"\rcli_signature\x18\x06 \x01(\tR\fcliSignature\"R\n" +
+	"\rcli_signature\x18\x06 \x01(\tR\fcliSignature\x12.\n" +
+	"\x13cli_certificate_der\x18\a \x01(\fR\x11cliCertificateDer\x12R\n" +
+	"\x0fpasskey_context\x18\b \x01(\v2).ztd.common.v1.PasskeyVerificationContextR\x0epasskeyContext\x122\n" +
+	"\x15cli_intermediates_der\x18\t \x03(\fR\x13cliIntermediatesDer\"\xc0\x01\n" +
+	"\x1aPasskeyVerificationContext\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12#\n" +
+	"\rcredential_id\x18\x02 \x01(\tR\fcredentialId\x12&\n" +
+	"\x0fpublic_key_cose\x18\x03 \x01(\fR\rpublicKeyCose\x12\x13\n" +
+	"\x05rp_id\x18\x04 \x01(\tR\x04rpId\x12'\n" +
+	"\x0fallowed_origins\x18\x05 \x03(\tR\x0eallowedOrigins\"}\n" +
 	"\n" +
 	"L3Metadata\x12,\n" +
 	"\x05proof\x18\x01 \x01(\v2\x16.ztd.common.v1.L3ProofR\x05proof\x12\x16\n" +
-	"\x06denied\x18\x02 \x01(\bR\x06denied\"\x95\x01\n" +
+	"\x06denied\x18\x02 \x01(\bR\x06denied\x12)\n" +
+	"\x10pending_dispatch\x18\x03 \x01(\bR\x0fpendingDispatch\"\x95\x01\n" +
 	"\x12GovernanceMetadata\x12)\n" +
 	"\x02l1\x18\x01 \x01(\v2\x19.ztd.common.v1.L1MetadataR\x02l1\x12)\n" +
 	"\x02l2\x18\x02 \x01(\v2\x19.ztd.common.v1.L2MetadataR\x02l2\x12)\n" +
@@ -1487,7 +1631,7 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x10\n" +
 	"\x03cli\x18\x03 \x01(\tR\x03cli\x12\x1f\n" +
 	"\vsigning_key\x18\x04 \x01(\tR\n" +
-	"signingKey\"\xf7\a\n" +
+	"signingKey\"\xdb\b\n" +
 	"#PlatformEnrollmentGovernancePayload\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x16\n" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x1d\n" +
@@ -1513,7 +1657,9 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\x06reason\x18\x12 \x01(\tR\x06reason\x12Z\n" +
 	"\x10decision_targets\x18\x13 \x03(\v2/.ztd.common.v1.PlatformEnrollmentDecisionTargetR\x0fdecisionTargets\x120\n" +
 	"\x14issuance_lease_owner\x18\x14 \x01(\tR\x12issuanceLeaseOwner\x124\n" +
-	"\x16consensus_endpoint_url\x18\x15 \x01(\tR\x14consensusEndpointUrl\"\x94\x01\n" +
+	"\x16consensus_endpoint_url\x18\x15 \x01(\tR\x14consensusEndpointUrl\x127\n" +
+	"\x18consensus_member_app_ids\x18\x16 \x03(\tR\x15consensusMemberAppIds\x12)\n" +
+	"\x10consensus_quorum\x18\x17 \x01(\rR\x0fconsensusQuorum\"\x94\x01\n" +
 	" PlatformEnrollmentDecisionTarget\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12Q\n" +
@@ -1574,7 +1720,7 @@ func file_ztd_common_v1_common_proto_rawDescGZIP() []byte {
 }
 
 var file_ztd_common_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_ztd_common_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_ztd_common_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_ztd_common_v1_common_proto_goTypes = []any{
 	(Component)(0),                                 // 0: ztd.common.v1.Component
 	(PlatformComponentKind)(0),                     // 1: ztd.common.v1.PlatformComponentKind
@@ -1583,42 +1729,44 @@ var file_ztd_common_v1_common_proto_goTypes = []any{
 	(*L2Vote)(nil),                                 // 4: ztd.common.v1.L2Vote
 	(*L2Metadata)(nil),                             // 5: ztd.common.v1.L2Metadata
 	(*L3Proof)(nil),                                // 6: ztd.common.v1.L3Proof
-	(*L3Metadata)(nil),                             // 7: ztd.common.v1.L3Metadata
-	(*GovernanceMetadata)(nil),                     // 8: ztd.common.v1.GovernanceMetadata
-	(*GovernanceEnvelope)(nil),                     // 9: ztd.common.v1.GovernanceEnvelope
-	(*PlatformEnrollmentFingerprints)(nil),         // 10: ztd.common.v1.PlatformEnrollmentFingerprints
-	(*PlatformEnrollmentGovernancePayload)(nil),    // 11: ztd.common.v1.PlatformEnrollmentGovernancePayload
-	(*PlatformEnrollmentDecisionTarget)(nil),       // 12: ztd.common.v1.PlatformEnrollmentDecisionTarget
-	(*PlatformEnrollmentCompletionTranscript)(nil), // 13: ztd.common.v1.PlatformEnrollmentCompletionTranscript
-	(*CommandIntent)(nil),                          // 14: ztd.common.v1.CommandIntent
-	(*timestamppb.Timestamp)(nil),                  // 15: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                        // 16: google.protobuf.Struct
-	(*descriptorpb.FieldOptions)(nil),              // 17: google.protobuf.FieldOptions
+	(*PasskeyVerificationContext)(nil),             // 7: ztd.common.v1.PasskeyVerificationContext
+	(*L3Metadata)(nil),                             // 8: ztd.common.v1.L3Metadata
+	(*GovernanceMetadata)(nil),                     // 9: ztd.common.v1.GovernanceMetadata
+	(*GovernanceEnvelope)(nil),                     // 10: ztd.common.v1.GovernanceEnvelope
+	(*PlatformEnrollmentFingerprints)(nil),         // 11: ztd.common.v1.PlatformEnrollmentFingerprints
+	(*PlatformEnrollmentGovernancePayload)(nil),    // 12: ztd.common.v1.PlatformEnrollmentGovernancePayload
+	(*PlatformEnrollmentDecisionTarget)(nil),       // 13: ztd.common.v1.PlatformEnrollmentDecisionTarget
+	(*PlatformEnrollmentCompletionTranscript)(nil), // 14: ztd.common.v1.PlatformEnrollmentCompletionTranscript
+	(*CommandIntent)(nil),                          // 15: ztd.common.v1.CommandIntent
+	(*timestamppb.Timestamp)(nil),                  // 16: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                        // 17: google.protobuf.Struct
+	(*descriptorpb.FieldOptions)(nil),              // 18: google.protobuf.FieldOptions
 }
 var file_ztd_common_v1_common_proto_depIdxs = []int32{
 	4,  // 0: ztd.common.v1.L2Metadata.votes:type_name -> ztd.common.v1.L2Vote
-	6,  // 1: ztd.common.v1.L3Metadata.proof:type_name -> ztd.common.v1.L3Proof
-	3,  // 2: ztd.common.v1.GovernanceMetadata.l1:type_name -> ztd.common.v1.L1Metadata
-	5,  // 3: ztd.common.v1.GovernanceMetadata.l2:type_name -> ztd.common.v1.L2Metadata
-	7,  // 4: ztd.common.v1.GovernanceMetadata.l3:type_name -> ztd.common.v1.L3Metadata
-	15, // 5: ztd.common.v1.GovernanceEnvelope.timestamp:type_name -> google.protobuf.Timestamp
-	15, // 6: ztd.common.v1.GovernanceEnvelope.expires_at:type_name -> google.protobuf.Timestamp
-	0,  // 7: ztd.common.v1.GovernanceEnvelope.source_component:type_name -> ztd.common.v1.Component
-	16, // 8: ztd.common.v1.GovernanceEnvelope.intent_data:type_name -> google.protobuf.Struct
-	8,  // 9: ztd.common.v1.GovernanceEnvelope.governance:type_name -> ztd.common.v1.GovernanceMetadata
-	1,  // 10: ztd.common.v1.PlatformEnrollmentGovernancePayload.component_kind:type_name -> ztd.common.v1.PlatformComponentKind
-	2,  // 11: ztd.common.v1.PlatformEnrollmentGovernancePayload.decision:type_name -> ztd.common.v1.PlatformEnrollmentDecision
-	10, // 12: ztd.common.v1.PlatformEnrollmentGovernancePayload.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
-	12, // 13: ztd.common.v1.PlatformEnrollmentGovernancePayload.decision_targets:type_name -> ztd.common.v1.PlatformEnrollmentDecisionTarget
-	10, // 14: ztd.common.v1.PlatformEnrollmentDecisionTarget.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
-	1,  // 15: ztd.common.v1.PlatformEnrollmentCompletionTranscript.component_kind:type_name -> ztd.common.v1.PlatformComponentKind
-	10, // 16: ztd.common.v1.PlatformEnrollmentCompletionTranscript.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
-	17, // 17: ztd.common.v1.forbidden_patterns:extendee -> google.protobuf.FieldOptions
-	18, // [18:18] is the sub-list for method output_type
-	18, // [18:18] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	17, // [17:18] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	7,  // 1: ztd.common.v1.L3Proof.passkey_context:type_name -> ztd.common.v1.PasskeyVerificationContext
+	6,  // 2: ztd.common.v1.L3Metadata.proof:type_name -> ztd.common.v1.L3Proof
+	3,  // 3: ztd.common.v1.GovernanceMetadata.l1:type_name -> ztd.common.v1.L1Metadata
+	5,  // 4: ztd.common.v1.GovernanceMetadata.l2:type_name -> ztd.common.v1.L2Metadata
+	8,  // 5: ztd.common.v1.GovernanceMetadata.l3:type_name -> ztd.common.v1.L3Metadata
+	16, // 6: ztd.common.v1.GovernanceEnvelope.timestamp:type_name -> google.protobuf.Timestamp
+	16, // 7: ztd.common.v1.GovernanceEnvelope.expires_at:type_name -> google.protobuf.Timestamp
+	0,  // 8: ztd.common.v1.GovernanceEnvelope.source_component:type_name -> ztd.common.v1.Component
+	17, // 9: ztd.common.v1.GovernanceEnvelope.intent_data:type_name -> google.protobuf.Struct
+	9,  // 10: ztd.common.v1.GovernanceEnvelope.governance:type_name -> ztd.common.v1.GovernanceMetadata
+	1,  // 11: ztd.common.v1.PlatformEnrollmentGovernancePayload.component_kind:type_name -> ztd.common.v1.PlatformComponentKind
+	2,  // 12: ztd.common.v1.PlatformEnrollmentGovernancePayload.decision:type_name -> ztd.common.v1.PlatformEnrollmentDecision
+	11, // 13: ztd.common.v1.PlatformEnrollmentGovernancePayload.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
+	13, // 14: ztd.common.v1.PlatformEnrollmentGovernancePayload.decision_targets:type_name -> ztd.common.v1.PlatformEnrollmentDecisionTarget
+	11, // 15: ztd.common.v1.PlatformEnrollmentDecisionTarget.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
+	1,  // 16: ztd.common.v1.PlatformEnrollmentCompletionTranscript.component_kind:type_name -> ztd.common.v1.PlatformComponentKind
+	11, // 17: ztd.common.v1.PlatformEnrollmentCompletionTranscript.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
+	18, // 18: ztd.common.v1.forbidden_patterns:extendee -> google.protobuf.FieldOptions
+	19, // [19:19] is the sub-list for method output_type
+	19, // [19:19] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	18, // [18:19] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_ztd_common_v1_common_proto_init() }
@@ -1632,7 +1780,7 @@ func file_ztd_common_v1_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ztd_common_v1_common_proto_rawDesc), len(file_ztd_common_v1_common_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 1,
 			NumServices:   0,
 		},

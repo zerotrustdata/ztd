@@ -32,6 +32,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/assignmentaudit"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
@@ -297,11 +298,165 @@ func Cmd() *cobra.Command {
 		eval.PublicRestoreCmdWithConfig(shared.LoadConfig, shared.NewEvidenceFileSvc),
 		publicStatusCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicRotateKeyCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
-		publicVerifyAssignmentCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
+		publicVerifyAssignmentCmd(),
 		publicVerifyAgentTraceCmd(),
 		publicVerifyProofCmd(),
 	)
 	return cmd
+}
+
+// publicProofKeyRegistry maps a signing key ID to its pinned Ed25519 public key.
+// The entry under "*", set by --public-key, verifies a segment whose key ID is
+// not otherwise registered.
+type publicProofKeyRegistry map[string]ed25519.PublicKey
+
+// publicProofChain is a verified proof segment log and the artifacts it leaves
+// active at its head.
+type publicProofChain struct {
+	// Segments are the log's segments in chain order.
+	Segments []models.PublicProofManifestSegment
+	// Active maps each artifact the chain lists and does not withdraw to its
+	// catalog entry, keyed by artifact ID.
+	Active map[string]models.PublicProofCatalogEntry
+	// ActiveIDs lists the Active artifact IDs in the order the chain first lists them.
+	ActiveIDs []string
+}
+
+// loadPublicProofKeyRegistry pins the trusted signing keys named by --public-key
+// and --key-registry. At least one of the two must be set.
+func loadPublicProofKeyRegistry(publicKeyHex, keyRegistryPath string) (publicProofKeyRegistry, error) {
+	if strings.TrimSpace(publicKeyHex) == "" && strings.TrimSpace(keyRegistryPath) == "" {
+		return nil, constants.ErrMissingRequiredField
+	}
+	keyRegistry := make(publicProofKeyRegistry)
+	if strings.TrimSpace(publicKeyHex) != "" {
+		pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(publicKeyHex))
+		if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
+			return nil, fmt.Errorf("%w: invalid ed25519 public key hex", constants.ErrPublicFeedProofSegmentInvalid)
+		}
+		keyRegistry["*"] = ed25519.PublicKey(pubKeyBytes)
+	}
+	if strings.TrimSpace(keyRegistryPath) != "" {
+		regData, err := os.ReadFile(keyRegistryPath)
+		if err != nil {
+			return nil, fmt.Errorf("public-feed: read key registry: %w", err)
+		}
+		var rawMap map[string]string
+		if err := json.Unmarshal(regData, &rawMap); err != nil {
+			return nil, fmt.Errorf("%w: decode key registry: %v", constants.ErrPublicFeedProofSegmentInvalid, err)
+		}
+		for k, hexStr := range rawMap {
+			pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(hexStr))
+			if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
+				return nil, fmt.Errorf("%w: invalid ed25519 public key for %s", constants.ErrPublicFeedProofSegmentInvalid, k)
+			}
+			keyRegistry[k] = ed25519.PublicKey(pubKeyBytes)
+		}
+	}
+	return keyRegistry, nil
+}
+
+// readPublicProofSegments decodes a JSON Lines proof segment log. Blank lines are
+// skipped; every other line must hold exactly one segment with no unknown fields.
+func readPublicProofSegments(segmentsPath string) ([]models.PublicProofManifestSegment, error) {
+	segmentsData, err := os.ReadFile(segmentsPath)
+	if err != nil {
+		return nil, fmt.Errorf("public-feed: read proof segments: %w", err)
+	}
+	lines := strings.Split(string(segmentsData), "\n")
+	segments := make([]models.PublicProofManifestSegment, 0, len(lines))
+	for idx, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var seg models.PublicProofManifestSegment
+		decoder := json.NewDecoder(strings.NewReader(line))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&seg); err != nil {
+			return nil, fmt.Errorf("%w: segment line %d: %v", constants.ErrPublicFeedProofSegmentInvalid, idx+1, err)
+		}
+		var trailing json.RawMessage
+		if err := decoder.Decode(&trailing); err != io.EOF {
+			return nil, fmt.Errorf("%w: trailing JSON on line %d", constants.ErrPublicFeedProofSegmentInvalid, idx+1)
+		}
+		segments = append(segments, seg)
+	}
+	return segments, nil
+}
+
+// verifyPublicProofChain checks a proof segment log from its zero root: indexes
+// and previous roots link consecutively, each root and signature verifies under
+// its registered key, withdrawals name only artifacts already listed and not yet
+// withdrawn, and no artifact is listed twice. It returns the artifacts still
+// active at the head.
+func verifyPublicProofChain(segments []models.PublicProofManifestSegment, keyRegistry publicProofKeyRegistry) (publicProofChain, error) {
+	if len(segments) == 0 {
+		return publicProofChain{}, fmt.Errorf("%w: segments log is empty", constants.ErrPublicFeedProofSegmentInvalid)
+	}
+	withdrawn := make(map[string]bool)
+	type orderedEntry struct {
+		id    string
+		entry models.PublicProofCatalogEntry
+	}
+	var allEntries []orderedEntry
+	listed := make(map[string]bool)
+
+	for i, seg := range segments {
+		expectedIndex := int64(i + 1)
+		if seg.SegmentIndex != expectedIndex {
+			return publicProofChain{}, fmt.Errorf("%w: segment index %d expected %d", constants.ErrPublicFeedProofSegmentOutOfOrder, seg.SegmentIndex, expectedIndex)
+		}
+		expectedPrevRoot := constants.PublicFeedZeroHashHex
+		if i > 0 {
+			expectedPrevRoot = segments[i-1].ProofRootSHA256
+		}
+		if seg.PreviousRoot != expectedPrevRoot {
+			return publicProofChain{}, fmt.Errorf("%w: segment %d previous root %s != expected %s", constants.ErrPublicFeedProofSegmentLinkMismatch, seg.SegmentIndex, seg.PreviousRoot, expectedPrevRoot)
+		}
+
+		var segKey ed25519.PublicKey
+		if k, ok := keyRegistry[seg.SigningKeyID]; ok {
+			segKey = k
+		} else if k, ok := keyRegistry[seg.SourceID+":"+seg.SigningKeyID]; ok {
+			segKey = k
+		} else if k, ok := keyRegistry["*"]; ok {
+			segKey = k
+		} else {
+			return publicProofChain{}, fmt.Errorf("%w: unknown signing key %s for segment %d", constants.ErrPublicFeedProofSegmentInvalid, seg.SigningKeyID, seg.SegmentIndex)
+		}
+
+		if err := models.VerifyPublicProofSegment(segments[0].SourceID, seg, segKey); err != nil {
+			return publicProofChain{}, fmt.Errorf("public-feed: verify segment %d: %w", seg.SegmentIndex, err)
+		}
+
+		for _, w := range seg.WithdrawnArtifactIDs {
+			if !listed[w] || withdrawn[w] {
+				return publicProofChain{}, fmt.Errorf("%w: withdrawal of inactive artifact %s", constants.ErrPublicFeedProofSegmentInvalid, w)
+			}
+			withdrawn[w] = true
+		}
+		for _, entry := range seg.Entries {
+			if listed[entry.ArtifactID] {
+				return publicProofChain{}, fmt.Errorf("%w: artifact %s repeated", constants.ErrPublicFeedProofSegmentEquivocation, entry.ArtifactID)
+			}
+			listed[entry.ArtifactID] = true
+			allEntries = append(allEntries, orderedEntry{id: entry.ArtifactID, entry: entry})
+		}
+	}
+
+	chain := publicProofChain{
+		Segments: segments,
+		Active:   make(map[string]models.PublicProofCatalogEntry, len(allEntries)),
+	}
+	for _, item := range allEntries {
+		if withdrawn[item.id] {
+			continue
+		}
+		chain.Active[item.id] = item.entry
+		chain.ActiveIDs = append(chain.ActiveIDs, item.id)
+	}
+	return chain, nil
 }
 
 // publicVerifyProofCmd verifies a chained proof manifest segment log and its
@@ -321,125 +476,21 @@ func publicVerifyProofCmd() *cobra.Command {
 			if strings.TrimSpace(segmentsPath) == "" || strings.TrimSpace(artifactsPath) == "" {
 				return constants.ErrMissingRequiredField
 			}
-			if strings.TrimSpace(publicKeyHex) == "" && strings.TrimSpace(keyRegistryPath) == "" {
-				return constants.ErrMissingRequiredField
-			}
-
-			keyRegistry := make(map[string]ed25519.PublicKey)
-			if strings.TrimSpace(publicKeyHex) != "" {
-				pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(publicKeyHex))
-				if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
-					return fmt.Errorf("%w: invalid ed25519 public key hex", constants.ErrPublicFeedProofSegmentInvalid)
-				}
-				keyRegistry["*"] = ed25519.PublicKey(pubKeyBytes)
-			}
-			if strings.TrimSpace(keyRegistryPath) != "" {
-				regData, err := os.ReadFile(keyRegistryPath)
-				if err != nil {
-					return fmt.Errorf("public-feed: read key registry: %w", err)
-				}
-				var rawMap map[string]string
-				if err := json.Unmarshal(regData, &rawMap); err != nil {
-					return fmt.Errorf("%w: decode key registry: %v", constants.ErrPublicFeedProofSegmentInvalid, err)
-				}
-				for k, hexStr := range rawMap {
-					pubKeyBytes, err := hex.DecodeString(strings.TrimSpace(hexStr))
-					if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
-						return fmt.Errorf("%w: invalid ed25519 public key for %s", constants.ErrPublicFeedProofSegmentInvalid, k)
-					}
-					keyRegistry[k] = ed25519.PublicKey(pubKeyBytes)
-				}
-			}
-
-			segmentsData, err := os.ReadFile(segmentsPath)
+			keyRegistry, err := loadPublicProofKeyRegistry(publicKeyHex, keyRegistryPath)
 			if err != nil {
-				return fmt.Errorf("public-feed: read proof segments: %w", err)
+				return err
 			}
-			lines := strings.Split(string(segmentsData), "\n")
-			segments := make([]models.PublicProofManifestSegment, 0, len(lines))
-			for idx, line := range lines {
-				line = strings.TrimSpace(line)
-				if line == "" {
-					continue
-				}
-				var seg models.PublicProofManifestSegment
-				decoder := json.NewDecoder(strings.NewReader(line))
-				decoder.DisallowUnknownFields()
-				if err := decoder.Decode(&seg); err != nil {
-					return fmt.Errorf("%w: segment line %d: %v", constants.ErrPublicFeedProofSegmentInvalid, idx+1, err)
-				}
-				var trailing json.RawMessage
-				if err := decoder.Decode(&trailing); err != io.EOF {
-					return fmt.Errorf("%w: trailing JSON on line %d", constants.ErrPublicFeedProofSegmentInvalid, idx+1)
-				}
-				segments = append(segments, seg)
+			segments, err := readPublicProofSegments(segmentsPath)
+			if err != nil {
+				return err
 			}
-			if len(segments) == 0 {
-				return fmt.Errorf("%w: segments log is empty", constants.ErrPublicFeedProofSegmentInvalid)
+			chain, err := verifyPublicProofChain(segments, keyRegistry)
+			if err != nil {
+				return err
 			}
 
-			withdrawn := make(map[string]bool)
-			type orderedEntry struct {
-				id    string
-				entry models.PublicProofCatalogEntry
-			}
-			var allEntries []orderedEntry
-			listed := make(map[string]bool)
-
-			for i, seg := range segments {
-				expectedIndex := int64(i + 1)
-				if seg.SegmentIndex != expectedIndex {
-					return fmt.Errorf("%w: segment index %d expected %d", constants.ErrPublicFeedProofSegmentOutOfOrder, seg.SegmentIndex, expectedIndex)
-				}
-				expectedPrevRoot := constants.PublicFeedZeroHashHex
-				if i > 0 {
-					expectedPrevRoot = segments[i-1].ProofRootSHA256
-				}
-				if seg.PreviousRoot != expectedPrevRoot {
-					return fmt.Errorf("%w: segment %d previous root %s != expected %s", constants.ErrPublicFeedProofSegmentLinkMismatch, seg.SegmentIndex, seg.PreviousRoot, expectedPrevRoot)
-				}
-
-				var segKey ed25519.PublicKey
-				if k, ok := keyRegistry[seg.SigningKeyID]; ok {
-					segKey = k
-				} else if k, ok := keyRegistry[seg.SourceID+":"+seg.SigningKeyID]; ok {
-					segKey = k
-				} else if k, ok := keyRegistry["*"]; ok {
-					segKey = k
-				} else {
-					return fmt.Errorf("%w: unknown signing key %s for segment %d", constants.ErrPublicFeedProofSegmentInvalid, seg.SigningKeyID, seg.SegmentIndex)
-				}
-
-				if err := models.VerifyPublicProofSegment(segments[0].SourceID, seg, segKey); err != nil {
-					return fmt.Errorf("public-feed: verify segment %d: %w", seg.SegmentIndex, err)
-				}
-
-				for _, w := range seg.WithdrawnArtifactIDs {
-					if !listed[w] || withdrawn[w] {
-						return fmt.Errorf("%w: withdrawal of inactive artifact %s", constants.ErrPublicFeedProofSegmentInvalid, w)
-					}
-					withdrawn[w] = true
-				}
-				for _, entry := range seg.Entries {
-					if listed[entry.ArtifactID] {
-						return fmt.Errorf("%w: artifact %s repeated", constants.ErrPublicFeedProofSegmentEquivocation, entry.ArtifactID)
-					}
-					listed[entry.ArtifactID] = true
-					allEntries = append(allEntries, orderedEntry{id: entry.ArtifactID, entry: entry})
-				}
-			}
-
-			seen := make(map[string]bool)
-			var activeEntries []models.PublicProofCatalogEntry
-			for _, item := range allEntries {
-				if withdrawn[item.id] || seen[item.id] {
-					continue
-				}
-				seen[item.id] = true
-				activeEntries = append(activeEntries, item.entry)
-			}
-
-			for _, entry := range activeEntries {
+			for _, artifactID := range chain.ActiveIDs {
+				entry := chain.Active[artifactID]
 				if entry.ArtifactID == "" || entry.ByteSize < 0 {
 					return fmt.Errorf("%w: invalid entry %s", constants.ErrPublicFeedProofCatalogMismatch, entry.ArtifactID)
 				}
@@ -465,8 +516,8 @@ func publicVerifyProofCmd() *cobra.Command {
 				}
 			}
 
-			last := segments[len(segments)-1]
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Proof package verified (%d segments, %d active artifacts, root %s)\n", len(segments), len(activeEntries), last.ProofRootSHA256)
+			last := chain.Segments[len(chain.Segments)-1]
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Proof package verified (%d segments, %d active artifacts, root %s)\n", len(chain.Segments), len(chain.Active), last.ProofRootSHA256)
 			return err
 		},
 	}
@@ -511,43 +562,59 @@ func publicVerifyAgentTraceCmd() *cobra.Command {
 	return cmd
 }
 
-func publicVerifyAssignmentCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory publicFileSvcFactory) *cobra.Command {
+// publicVerifyAssignmentCmd verifies an assignment audit database offline. The
+// proof segment log is verified first. The database's SHA-256 must then be an
+// active artifact of that chain before the database's own live events are
+// checked against their record hashes and the header's run and assignment.
+// The database file is read once; the digest and the verified events both come
+// from those bytes.
+func publicVerifyAssignmentCmd() *cobra.Command {
 	var dbPath string
-	var vaultKeyPath string
+	var segmentsPath string
+	var publicKeyHex string
+	var keyRegistryPath string
+
 	cmd := &cobra.Command{
 		Use:   "verify-assignment",
-		Short: "Verify an assignment audit slice offline",
+		Short: "Verify an assignment audit database against its signed proof segments",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(vaultKeyPath) == "" {
+			if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(segmentsPath) == "" {
 				return constants.ErrMissingRequiredField
+			}
+			keyRegistry, err := loadPublicProofKeyRegistry(publicKeyHex, keyRegistryPath)
+			if err != nil {
+				return err
+			}
+			segments, err := readPublicProofSegments(segmentsPath)
+			if err != nil {
+				return err
+			}
+			chain, err := verifyPublicProofChain(segments, keyRegistry)
+			if err != nil {
+				return err
 			}
 			dbBytes, err := os.ReadFile(dbPath)
 			if err != nil {
 				return fmt.Errorf("public-feed: read assignment audit db: %w", err)
 			}
-			keyBytes, err := os.ReadFile(vaultKeyPath)
+			digest := models.SHA256Hex(dbBytes)
+			if _, active := chain.Active[digest]; !active {
+				return fmt.Errorf("%w: sha256 %s", constants.ErrPublicAssignmentAuditNotInProof, digest)
+			}
+			header, records, err := assignmentaudit.VerifyDatabase(shared.CommandContext(cmd), dbBytes)
 			if err != nil {
-				return fmt.Errorf("public-feed: read assignment audit vault key: %w", err)
+				return fmt.Errorf("public-feed: verify assignment audit db: %w", err)
 			}
-			cfg, err := configLoader("")
-			if err != nil {
-				return err
-			}
-			fileSvc, err := fileSvcFactory(cfg.ProjectRoot, slog.Default())
-			if err != nil {
-				return err
-			}
-			if err := evaluation.VerifyAssignmentAuditSlice(cmd.Context(), fileSvc, dbBytes, keyBytes); err != nil {
-				return err
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Assignment audit slice verified")
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Assignment audit verified (run %s, assignment %s, %d events, sha256 %s)\n", header.RunID, header.AssignmentID, len(records), digest)
 			return err
 		},
 	}
 	cmd.Flags().StringVar(&dbPath, "db", "", "Path to the assignment audit SQLite file")
-	cmd.Flags().StringVar(&vaultKeyPath, "vault-key", "", "Path to the assignment audit vault key")
+	cmd.Flags().StringVar(&segmentsPath, "segments", "", "Path to the chained proof-segments.jsonl file")
+	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Hex-encoded Ed25519 public key")
+	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Path to JSON file containing pinned key registry {key_id: public_key_hex}")
 	_ = cmd.MarkFlagRequired("db")
-	_ = cmd.MarkFlagRequired("vault-key")
+	_ = cmd.MarkFlagRequired("segments")
 	return cmd
 }
 

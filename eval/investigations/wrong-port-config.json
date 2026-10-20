@@ -10,14 +10,6 @@
         "text": "The inventory dashboard says the inventory-api service is unreachable. Can you look into it?"
       }
     ],
-    "history": [
-      {
-        "kind": "COMMAND_FAILED",
-        "summary": "Service health check failed",
-        "command": "sh ./check.sh",
-        "exit_code": 1
-      }
-    ],
     "memory": [
       "inventory-api runs as a local service on this host and is configured in app/service.conf"
     ]

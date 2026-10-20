@@ -41,7 +41,11 @@ var APIPaths = struct {
 	OperatorsTarget   string `json:"operators_target"`
 	OperatorsSession  string `json:"operators_session"`
 	OperatorsCommands string `json:"operators_commands"`
-	OperatorsStop     string `json:"operators_stop"`
+	// OperatorsIntents is the Tribunal intent ingress: the Gateway deliberates
+	// a command intent through governed inference, then dispatches the audited
+	// command as an ordinary governed EXECUTE_BASH.
+	OperatorsIntents string `json:"operators_intents"`
+	OperatorsStop    string `json:"operators_stop"`
 	// Inference dispatch route (ztdllama). Platform-internal endpoint on the
 	// User Gateway that mTLS-authenticated app workloads call to dispatch a
 	// governed inference request to the Inference Node.
@@ -152,9 +156,6 @@ var APIPaths = struct {
 	AdminAppPoliciesBySigner string `json:"admin_app_policies_by_signer"`
 	AdminAppsRevoke          string `json:"admin_apps_revoke"`
 	AdminAppPoliciesPrefix   string `json:"admin_app_policies_prefix"`
-	AdminConsensus           string `json:"admin_consensus"`
-	AdminConsensusByID       string `json:"admin_consensus_by_id"`
-	AdminConsensusPrefix     string `json:"admin_consensus_prefix"`
 	// Consensus routes
 	// Well-known routes
 	WellKnownPKICABundle    string `json:"well_known_pki_ca_bundle"`
@@ -183,6 +184,7 @@ var APIPaths = struct {
 	ObserveProducerPrefix     string `json:"observe_producer_prefix"`
 	ObserveProducerAgentState string `json:"observe_producer_agent_state"`
 	ObserveProducerRunState   string `json:"observe_producer_run_state"`
+	ObserveProducerStop       string `json:"observe_producer_stop"`
 	// WebSocket prefix
 	WSPrefix string `json:"ws_prefix"`
 	// User routes
@@ -219,6 +221,7 @@ var APIPaths = struct {
 	OperatorsTarget:                      "/api/v1/operators/target",
 	OperatorsSession:                     "/api/v1/operators/session/",
 	OperatorsCommands:                    "/api/v1/operators/commands",
+	OperatorsIntents:                     "/api/v1/operators/intents",
 	OperatorsStop:                        "/api/v1/operators/stop",
 	InferenceDispatch:                    "/api/v1/inference/dispatch",
 	InferenceProviderObservations:        "/api/v1/inference/provider-observations/",
@@ -327,9 +330,6 @@ var APIPaths = struct {
 	AdminAppPoliciesBySigner: "/api/v1/admin/app-policies/",
 	AdminAppsRevoke:          "/api/v1/admin/apps/revoke",
 	AdminAppPoliciesPrefix:   "/api/v1/admin/app-policies/",
-	AdminConsensus:           "/api/v1/admin/consensus",
-	AdminConsensusByID:       "/api/v1/admin/consensus/",
-	AdminConsensusPrefix:     "/api/v1/admin/consensus/",
 	// Consensus routes
 	// Well-known routes
 	WellKnownPKICABundle:    "/.well-known/ztd/pki/ca-bundle",
@@ -354,6 +354,7 @@ var APIPaths = struct {
 	ObserveProducerPrefix:     "/api/v1/observe/producer/",
 	ObserveProducerAgentState: "/api/v1/observe/producer/agent-state",
 	ObserveProducerRunState:   "/api/v1/observe/producer/run-state",
+	ObserveProducerStop:       "/api/v1/observe/producer/stop",
 	// WebSocket prefix
 	WSPrefix: "/ws/",
 	// User routes
@@ -367,12 +368,3 @@ var APIPaths = struct {
 	// Landing
 	Landing: "/",
 }
-
-// Agent system-under-test routes. The SUT serves these, never the Gateway.
-// ztd posts one scored turn, reads its event stream to the terminal event and
-// fetches its trace once.
-const (
-	SUTTurnsPath      = "/ztd-sut/v1/turns"           // POST ScoredTurnRequest
-	SUTTurnEventsPath = "/ztd-sut/v1/turns/%s/events" // GET, SSE of ScoredTurnEvent
-	SUTTurnTracePath  = "/ztd-sut/v1/turns/%s/trace"  // GET AgentTrace
-)

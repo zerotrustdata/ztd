@@ -11,7 +11,6 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
@@ -74,7 +74,7 @@ func verifyVote(pub ed25519.PublicKey, txHash string, vote *commonv1.L2Vote) boo
 	if err != nil {
 		return false
 	}
-	return ed25519.Verify(pub, []byte(fmt.Sprintf("%s|%v", txHash, vote.GetDecision())), sig)
+	return ed25519.Verify(pub, govsvc.L2VotePayload(txHash, vote.GetDecision()), sig)
 }
 
 // memberPublicKeys returns the public key of each synthetic member, in order.

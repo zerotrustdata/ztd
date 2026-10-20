@@ -231,28 +231,17 @@ func ValidateInferenceAcceptanceCase(caseID InferenceAcceptanceCaseID, resp *ope
 }
 
 func requireResponseTextContains(result *operatorv1.InferenceResult, want string) error {
-	text := strings.ToLower(CollectResponseText(result))
+	text := strings.ToLower(models.InferenceResultText(result))
 	if !strings.Contains(text, strings.ToLower(want)) {
 		return fmt.Errorf("evaluation: acceptance response missing %q: %w", want, constants.ErrInferenceProviderResponseInvalid)
 	}
 	return nil
 }
 
-// CollectResponseText joins the text parts of an inference result in order.
-func CollectResponseText(result *operatorv1.InferenceResult) string {
-	var builder strings.Builder
-	for _, part := range result.GetParts() {
-		if part.GetText() != "" {
-			builder.WriteString(part.GetText())
-		}
-	}
-	return builder.String()
-}
-
 var structuredJSONFencePattern = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{.*\\})\\s*```")
 
 func validateStructuredAnswer(result *operatorv1.InferenceResult, want string) error {
-	text := extractStructuredJSONPayload(CollectResponseText(result))
+	text := extractStructuredJSONPayload(models.InferenceResultText(result))
 	if text == "" {
 		return fmt.Errorf("evaluation: structured acceptance missing JSON text: %w", constants.ErrInferenceProviderResponseInvalid)
 	}

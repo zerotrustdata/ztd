@@ -10,6 +10,7 @@ package evaluation
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -102,7 +103,7 @@ func BuildAssignmentResultProjection(assignment *evalv1.EvaluationAssignment, re
 		ResultDigest:       result.GetResultDigest(),
 		VerificationStatus: verificationStatus,
 		CompletedAt:        result.GetCompletedAt(),
-		DecomposedScores:   append([]*evalv1.DecomposedScoreRecord(nil), result.GetDecomposedScores()...),
+		DecomposedScores:   projectedDecomposedScores(result.GetDecomposedScores()),
 		// The private failure_reason quotes hint values and the start of the
 		// model output; only the bounded public sentence is projected (R7).
 		TrajectoryOutcome: result.GetTrajectoryOutcome(),
@@ -252,4 +253,18 @@ func collectUnavailableMetricReasons(result *evalv1.EvaluationAssignmentResult) 
 		}
 	}
 	return reasons
+}
+
+func projectedDecomposedScores(scores []*evalv1.DecomposedScoreRecord) []*evalv1.DecomposedScoreRecord {
+	hasTaskScore := false
+	for _, s := range scores {
+		if s != nil && (s.GetDimension() == "task_score" || strings.HasSuffix(s.GetScoreId(), ":task-score")) {
+			hasTaskScore = true
+			break
+		}
+	}
+	if !hasTaskScore {
+		return nil
+	}
+	return append([]*evalv1.DecomposedScoreRecord(nil), scores...)
 }

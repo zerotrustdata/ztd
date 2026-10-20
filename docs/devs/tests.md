@@ -3,8 +3,8 @@ doc_id: tests
 title: Testing Guide
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - internal/cli/cmd/test/
   - internal/testutil/
@@ -35,8 +35,8 @@ Defines the four-tier test model, execution entry points, fixture lifecycle, spe
 The platform enforces a four-tier test architecture:
 - **Tier 1 (Unit)**: Fast, in-memory, hermetic unit tests that execute without a running platform, external databases, or network listeners. Parallel across packages.
 - **Tier 2 (In-Process Integration)**: In-process integration tests exercising real local SQLite databases, local PKI generation, pub/sub, and the in-process Gateway with race detection on non-Windows hosts. Banned from calling `t.Parallel()`.
-- **Tier 3 (Live Platform E2E)**: End-to-end tests exercising deployed service boundaries, including steady-state platform verification, multi-worker scale, and stateful enrollment topologies.
-- **Tier 4 (External-Service Integration)**: Tests calling live external LLM providers or remote cloud services. These require dedicated opt-in targets and credentials and do not run in default CI. The repository has no general `ztd test` Tier 4 command; use the owning package's documented target.
+- **Tier 3 (Live Platform E2E)**: End-to-end tests exercising deployed service boundaries, including steady-state platform verification, multi-Operator scale, and stateful enrollment topologies.
+- **Tier 4 (External-Service Integration)**: Tests calling live external LLM providers or remote cloud services. These require dedicated opt-in targets and credentials and do not run in default CI. The repository has no general `ztd test` Tier 4 command. The dedicated live-provider gate is `ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>`; other Tier 4 tests use the owning package's documented target.
 
 ## Quick index
 
@@ -103,19 +103,26 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Chaos testing harness and summary | `internal/tools/chaos/`, `internal/cli/cmd/test/chaos.go` | `./ztd test chaos --help`, `./ztd test summary` |
 | Public loop qualification harness | `internal/cli/cmd/test/public_loop.go` | `./ztd test public-loop --help` |
 | Operator fleet scale qualification | `internal/cli/cmd/test/scale.go`, `test/e2e/operator_fleet_e2e_test.go` | `./ztd test scale --help`, `make test-scale` |
-| Makefile platform test targets and coverage exclusions | `Makefile` (`TEST_PKGS`, `COVERAGE_EXCLUDE_PKGS`) | `make test`, `make test-unit`, `make test-integration`, `make test-enrollment-burst`, `make test-operator-burst`, `make test-coverage`, `make test-cross-enrollment`, `make test-scale`, `make test-airgap` |
+| Makefile platform test targets and coverage exclusions | `Makefile` (`TEST_PKGS`, `COVERAGE_EXCLUDE_PKGS`) | `make test`, `make test-unit`, `make test-integration`, `make test-eval-stack`, `make test-enrollment-burst`, `make test-operator-burst`, `make test-coverage`, `make test-cross-enrollment`, `make test-scale`, `make test-airgap` |
 | Platform CI scope | `.github/workflows/build-and-test.yml`, `.github/workflows/build-and-test-fips.yml` | Workflow job steps and `Makefile` CI targets |
 | Cross-component test targets | `Makefile`, `console/`, `protocol/` | `make console-test`, `make ci-protocol` |
 | Onboarding script tests | `scripts/test-onboarding.sh`, `scripts/onboarding/` | `make test-onboarding`, `make test-onboarding-docker` |
 | Integration Gateway fixture | `test/fixtures/gateway_fixture.go` | `NewGatewayFixture` |
 | Gateway-local client identity | `test/fixtures/cli_identity.go` | `BootstrapCLIIdentity` and `CreateCLIMTLSClient` |
+| Production eval stack | `test/fixtures/eval_stack.go`, `test/fixtures/eval_stack_gate*.go`, `test/fixtures/scripted_ollama.go` | `NewEvalStack`, `TestEvalStackUsesDistinctOutboundOperatorRoots`, `TestRunsExecute_RealStack` |
 | File service test isolation | `internal/testutil/paths.go`, `internal/services/fs/file_service.go` | `testutil.TempDir` |
 | Socket test tags and serial boundary tests | `internal/testutil/test_tiers_test.go` | `TestTestTiers_ListenersRequireIntegrationAndBoundaryTestsStaySerial` |
 | Cross-platform port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go`, `internal/netutil/port_probe_other_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort`, `TestTCPPortProbe_RejectsWildcardAndLoopbackConflictsAndReleasesPort` |
+| Cross-process evaluation loop qualification | `internal/cli/cmd/test/eval_loop_e2e_test.go` | `./ztd test eval-loop --help` |
+| Live Tier 4 evaluation loop | `internal/cli/cmd/test/eval_loop_live_e2e_test.go` | `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` |
 | Live E2E suite | `test/e2e/` | `./ztd test e2e` |
 | Completion transcript wire contract | `internal/services/gateway/platform_enrollment_validation_test.go` | `TestPlatformEnrollmentCompletionTranscriptGoldenVector` |
 
-Gateway-local MCP/A2A tests use `BootstrapCLIIdentity` to enroll the owner through the real bootstrap endpoint and bind the CLI session to the certless embedded Operator that executes those calls. `EnrollClientIdentity` enrolls a remote Operator and its CLI identity; that remote Operator remains offline until it subscribes to its command channel. Enrollment persists its session synchronously and must not be tested by waiting for active command readiness.
+Gateway-local MCP/A2A tests use `BootstrapCLIIdentity` to enroll the owner through the real bootstrap endpoint and bind the CLISession to the certless embedded Operator that executes those calls. `EnrollClientIdentity` enrolls a remote Operator and its CLI identity; that remote Operator remains offline until it subscribes to its command channel. Enrollment persists its session synchronously and must not be tested by waiting for active command readiness.
+
+Evaluation integration tests that execute assignments MUST use `fixtures.NewEvalStack`. It starts the production Gateway and separate outbound Data and Inference Operators with independent runtime roots and keyrings; only the Ollama provider is scripted. `OperatorWireWitness` records the enrolled certificates presented over mTLS. `ClientIdentity.InstallCLIRuntime` installs the bootstrap owner's certificate, sealed key, trust bundle and credentials into the test's CLI runtime. Tests MUST keep the production harness client, authentication loader, application enroller, binding client and campaign executor factories. Store-only tests use local campaign-controller records without a Gateway. Lifecycle tests consume the real CLI SSE stream; execution delays gate the scripted provider reply and keep the production executor factory. A scripted reply whose content depends on the run, such as a tool call naming the run's workspace path, uses `OllamaReply.Respond`, which receives the decoded provider-bound request; tests MUST NOT pre-compute such values or rewrite assertions to relative paths. Publication tests enable the real Gateway-owned public mirror through `EvalStackOptions.EnablePublicSpectator`. `NewEvalStack` skips its test unless the `evalstack` build tag is set, so CI's `make test-integration` never runs real eval stacks; run them with `./ztd test integration --eval-stack` (`make test-eval-stack`, 30m per package) or narrow with `--eval-stack --pkg <pkg> --run <regexp>`. A package that adds a `NewEvalStack` caller MUST be listed in `EVAL_STACK_PKGS` in the `Makefile`.
+
+For ratify and notary, the stack's owner answers the existing transaction-approval notifications through the mTLS pending-list and signed CLI approval HTTP routes. The app enroller still submits its own enrollment decision and waits for L3; the fixture does not replace the proof or resume handler. Notary uses the fixture's real Ed25519 consensus application. `ApprovalReceipts` exposes the returned receipts for assertions. `OwnerConsole.DenyToolTransactions(tool)` makes the owner sign a denial for one tool's transactions through the same route; enrollment and agent-turn inference are L3 transactions under ratify and stay approved. `EvalStackOptions.Provenance` adds a Provenance Operator over a real Ollama model store whose digest the scripted provider serves, so attestation windows come from the production path. These are in-process Tier 2 runtimes using the real network transport, not separate OS processes or live model evidence. An Operator runs governed `ztd operator model <verb>` commands by executing its own binary, never a `ztd` found on `PATH`. In-process, that binary is the Go test binary, so a package whose stack runs model commands MUST answer them from `TestMain` (see `internal/cli/cmd/eval/main_integration_test.go`). Component fixtures own teardown through `t.Cleanup`; callers MUST NOT stop them again.
 
 ## Procedures
 
@@ -138,6 +145,11 @@ make test-integration
 
 # Show individual test names and durations while diagnosing a slow package
 ./ztd test integration -v --pkg ./internal/services/gateway
+
+# Real eval stack tests (evalstack tag; skipped in CI)
+./ztd test integration --eval-stack
+make test-eval-stack
+./ztd test integration --eval-stack --pkg ./internal/cli/cmd/eval --run '^TestPublicationRealStack_'
 
 # Tier 3: Live platform E2E (against an already-running stack)
 ./ztd test e2e
@@ -164,6 +176,8 @@ Unfiltered unit and integration commands delegate to `make test-unit` and `make 
 
 ### Run Specialized Test Harnesses
 
+For the Tier 4 live-provider gate, set `LIVE_OLLAMA_ENDPOINT` to the Ollama endpoint URL and `LIVE_MODEL` to the model name before running the commands below.
+
 ```bash
 # Run chaos testing: fire synthetic governance events directly in-process
 ./ztd test chaos --count 100
@@ -174,6 +188,16 @@ Unfiltered unit and integration commands delegate to `make test-unit` and `make 
 # Run provider-free public feed qualification loop
 ./ztd test public-loop --candidate candidate.json --output evidence.json
 
+# Run cross-process evaluation loop qualification (real Gateway, Data and Inference processes under ratify and notary)
+./ztd test eval-loop
+./ztd test eval-loop --posture ratify
+./ztd test eval-loop --posture notary
+
+# Tier 4 live-provider gate (explicit only; the provider is reached through the governed Inference Operator)
+./ztd test eval-loop --live-ollama-endpoint "$LIVE_OLLAMA_ENDPOINT" --live-model "$LIVE_MODEL"
+./ztd test eval-loop --live-ollama-endpoint "$LIVE_OLLAMA_ENDPOINT" --live-model "$LIVE_MODEL" --posture ratify
+./ztd test eval-loop --live-ollama-endpoint "$LIVE_OLLAMA_ENDPOINT" --live-model "$LIVE_MODEL" --posture notary
+
 # Verify air-gapped vendored compilation without network access
 make test-airgap
 
@@ -182,14 +206,18 @@ make test-airgap
 make test-scale SCALE_COUNT=1000 SCALE_ARGS='--soak 10m --fan-out-concurrency 64,all --root .local.dev/scale/run-1'
 ```
 
-`./ztd test chaos` generates synthetic governance events (70% valid intent, 20% L1 forbidden command injection, 10% corrupted transaction hash MitM) directly in-process through `TransactionVerifier` and `Actuator`, bypassing network and TLS layers. Results persist to SQLite databases under `.ztd/test-vault/<timestamp>-chaos-test/`. `./ztd test summary` aggregates outcomes across runs in the test vault directory.
+`./ztd test eval-loop` qualifies the full cross-process evaluation pipeline against live OS processes under both `ratify` and `notary` governance postures. The runner starts isolated Gateway, Data Operator, and Inference Operator processes under distinct `.ztd/` roots via `RuntimeFileService`, deploys them via `ztd operator deploy --approve`, handles L3 human authorizations through an event-driven `ztd auth approve --cli` responder driven entirely by the Gateway's SSE stream (`ztd.v1.platform.approvals.changed`), exercises real Ed25519 K-of-N consensus deliberation under `notary`, and verifies authoritative local execution receipts directly from each Operator's own SQLite store (LFAA). The runner executes the repository-root `./ztd` binary, so run `make build` first. Before the campaigns run, the scripted gate freezes the scripted provider's inventory with `ztd eval models freeze` against the isolated Gateway; the freeze replaces the Gateway's model registry that the campaigns bind. The frozen digest of the scripted model MUST equal the digest the scripted provider serves, and a mismatch fails the run.
+
+`./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` is the dedicated Tier 4 gate under `INV-TEST-RUN-05`. It builds with the `e2e,live` tags, runs `TestEvalLoopLive` under a default timeout of 40m per selected posture (each posture's run takes what remains of that deadline, less the cleanup margin), and replaces only the provider: the Inference Operator reaches that endpoint through the governed Inference Operator, and no provider is scripted. Each posture freezes the provider's real model digest with `ztd eval models freeze` and runs one Tribunal campaign. The gate proves the loop and its evidence, not model quality, so a FAIL verdict passes. A subtest that fails has its run root under `.ztd/operators/` deleted; a passing run root is kept.
+
+`./ztd test chaos` generates synthetic governance events (60% `GOOD_ACTOR` safe `FS_LIST`, 20% `PROMPT_INJECTION` forbidden `EXECUTE_BASH` rejected at L1, 10% `MITM` corrupted transaction hash, 10% `FILE_MUTATION` `FILE_EDIT` carrying an L3 proof) directly in-process through `L4Warden` and `L5Actuator`, bypassing network and TLS layers. Results persist to SQLite databases under `.ztd/test-vault/<timestamp>-chaos-test/`. `./ztd test summary` aggregates outcomes across runs in the test vault directory.
 
 `./ztd test scale` runs fleet scale tests in an isolated Gateway listening on reserved ephemeral ports, avoiding conflicts with running production Gateways. The runner:
 1. Starts a doctrine Gateway in `<root>/run` with public spectator and evaluation explorer disabled.
 2. Deploys `--count` Operators via `operator deploy`.
 3. Runs `TestOperatorFleet_HoldsUnderFanOut`: enrollment, heartbeats, idle soak, and governed fan-out.
 4. Runs `TestOperatorFleet_RecoversAfterGatewayRestart`: restart recovery, heartbeat resume, and fan-out verification.
-5. Performs complete cleanup: stops workers and Gateway, retaining logs and metrics under `<root>/out`.
+5. Performs complete cleanup: stops the run's Operators and Gateway, retaining logs and metrics under `<root>/out`.
 
 ### Cross-Component Test Execution
 
@@ -251,7 +279,7 @@ On Linux, `bash scripts/ci/operator-deploy-lifecycle.sh --count 3` starts a fres
 
 ### Run the Release Smoke
 
-Build candidate binaries with `make build`, then execute `./ztd test release-smoke --root .ztd/operators/release-smoke-<unique-name>`. The run contains mutable Gateway and Operator working trees, so it must live outside protected runtime scratch paths such as `.ztd/tmp/`; the CLI rejects those roots before startup. The runner owns an isolated Gateway and data Operator, exercises governed `FILE_EDIT` mutations with exact local read-back and receipts, tests embedded governed document operations, and exports `report all` for both runtime roots. Acceptance requires zero `FAIL` and zero `SKIPPED` rows.
+Build `ztd` with `make build`, then run `./ztd test release-smoke`; the runner's options, scenarios, PASS gating checks, and retained artifacts are documented in [Host-Native Headless UX Smoke Test](../guides/ux_smoke_test.md).
 
 ### Profile Integration Tests
 

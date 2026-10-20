@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -61,6 +62,7 @@ type SuiteScenario struct {
 	PublicDescription string               `json:"public_description"`
 	GradingMethod     string               `json:"grading_method"`
 	TrajectoryPolicy  string               `json:"trajectory_policy"`
+	TribunalCommands  bool                 `json:"tribunal_commands,omitempty"`
 	EligibleRoles     []string             `json:"eligible_roles"`
 	AllowedTools      []string             `json:"allowed_tools,omitempty"`
 	ExpectedTools     []string             `json:"expected_tools,omitempty"`
@@ -117,30 +119,52 @@ func SmokeScenarioSuite() ScenarioSuite {
 		smokeSuiteBlueprints())
 }
 
-// BuiltinScenarioSuite returns the built-in suite with the given ID.
-func BuiltinScenarioSuite(id string) (ScenarioSuite, bool) {
-	switch id {
-	case DefaultSuiteID:
-		return DefaultScenarioSuite(), true
-	case SmokeSuiteID:
-		return SmokeScenarioSuite(), true
-	default:
-		return ScenarioSuite{}, false
+// builtinSuites is the one table of built-in suites, in display order.
+var builtinSuites = []struct {
+	id    string
+	build func() (ScenarioSuite, error)
+}{
+	{DefaultSuiteID, func() (ScenarioSuite, error) { return DefaultScenarioSuite(), nil }},
+	{SmokeSuiteID, func() (ScenarioSuite, error) { return SmokeScenarioSuite(), nil }},
+	{InvestigationsSuiteID, InvestigationsScenarioSuite},
+}
+
+// BuiltinSuiteIDs lists the built-in suite IDs in display order.
+func BuiltinSuiteIDs() []string {
+	ids := make([]string, 0, len(builtinSuites))
+	for _, builtin := range builtinSuites {
+		ids = append(ids, builtin.id)
 	}
+	return ids
+}
+
+// isBuiltinSuiteID reports whether id names a built-in suite. Membership comes
+// from the table alone, so a built-in whose build fails stays reserved.
+func isBuiltinSuiteID(id string) bool {
+	return slices.Contains(BuiltinSuiteIDs(), id)
+}
+
+// BuiltinScenarioSuite returns the built-in suite with the given ID. The second
+// result reports whether the ID names a built-in suite; a built-in whose build
+// fails returns that error rather than a zero suite.
+func BuiltinScenarioSuite(id string) (ScenarioSuite, bool, error) {
+	for _, builtin := range builtinSuites {
+		if builtin.id != id {
+			continue
+		}
+		suite, err := builtin.build()
+		if err != nil {
+			return ScenarioSuite{}, true, fmt.Errorf("evaluation: build built-in suite %s: %w", id, err)
+		}
+		return suite, true, nil
+	}
+	return ScenarioSuite{}, false, nil
 }
 
 // reservedSuiteID reports whether a custom suite may not use the ID: the
 // built-in suites and the default suite's pre-rename ID.
 func reservedSuiteID(id string) bool {
-	if _, builtin := BuiltinScenarioSuite(id); builtin {
-		return true
-	}
-	return id == LegacyDefaultSuiteID
-}
-
-// BuiltinSuiteIDs lists the built-in suite IDs in display order.
-func BuiltinSuiteIDs() []string {
-	return []string{DefaultSuiteID, SmokeSuiteID}
+	return isBuiltinSuiteID(id) || id == LegacyDefaultSuiteID
 }
 
 // CatalogRecomputesGrades reports whether verification regrades the stored
@@ -288,6 +312,7 @@ func suiteScenarioFromBlueprint(blueprint ScenarioBlueprint) SuiteScenario {
 		PublicDescription: blueprint.PublicDescription,
 		GradingMethod:     enumName(blueprint.GradingMethod.String(), gradingMethodEnumPrefix),
 		TrajectoryPolicy:  enumName(blueprint.TrajectoryPolicy.String(), trajectoryPolicyEnumPrefix),
+		TribunalCommands:  blueprint.TribunalCommands,
 		EligibleRoles:     roles,
 		AllowedTools:      append([]string(nil), blueprint.AllowedTools...),
 		ExpectedTools:     append([]string(nil), blueprint.ExpectedTools...),
@@ -346,6 +371,7 @@ func (s SuiteScenario) blueprint() (ScenarioBlueprint, error) {
 		RequiredConcepts:  append([]string(nil), s.RequiredConcepts...),
 		EligibleRoles:     roles,
 		TrajectoryPolicy:  policy,
+		TribunalCommands:  s.TribunalCommands,
 		Input:             s.Input,
 		Gold:              gold,
 	}, nil

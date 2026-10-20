@@ -3,8 +3,8 @@ doc_id: compliance-alignment
 title: Compliance Alignment
 audience: compliance officers, auditors, security architects, and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - protocol/constants/compliance/
   - internal/services/compliance/
@@ -28,7 +28,7 @@ do_not_use_for:
 
 This document identifies the authoritative, machine-maintained sources for ztd compliance mappings and defines how cryptographically verified evidence translates into atomic assertion assessments, framework-control assessments, framework profiles, and rendered compliance reports.
 
-ztd disclaims broad claims of external certification, accreditation, commercial authorization, legal compliance, or institutional maturity. Technical control satisfaction reports the deterministic outcome of declared evidence and verifier contracts for a single, immutable assessment scope and time window. A passing technical assertion does not satisfy customer-operated, organizational, procedural, or external assessor-dependent requirements. Missing, stale, malformed, unsupported, or untrusted evidence fails closed and is reported as `unverifiable` rather than being inferred as passed or failed.
+ztd disclaims broad claims of external certification, accreditation, commercial authorization, legal compliance, or institutional maturity. Technical control satisfaction reports the deterministic outcome of declared evidence and verifier contracts for a single, immutable assessment scope and time window. A passing technical assertion does not satisfy customer-operated, organizational, procedural, or external assessor-dependent requirements. Missing or stale evidence resolves to the assertion's declared `missing_evidence_policy`, which is `unverifiable` or `customer_attestation_required`. Malformed, unsupported, or untrusted evidence fails closed rather than being inferred as passed or failed.
 
 ## Maintained Sources of Truth
 
@@ -36,18 +36,18 @@ ztd disclaims broad claims of external certification, accreditation, commercial 
 | :--- | :--- | :--- |
 | **Atomic Assertions** | `protocol/constants/compliance/assertion-catalog.json` | Versioned, framework-neutral technical assertions, component scopes, responsibilities, grader references, evidence level thresholds, and passing rules. |
 | **Framework Catalog** | `protocol/constants/compliance/framework-catalog.json` | Authoritative inventory of framework controls, responsibility classifications, source standards, and explicit support statuses. |
-| **Reviewed Crosswalk** | `protocol/constants/compliance/fedramp-nist-crosswalk.json` | Cryptographically signed mappings from framework controls to atomic assertions, declaring mapping types, review timestamps, and reviewers. |
+| **Reviewed Crosswalk** | `protocol/constants/compliance/fedramp-nist-crosswalk.json` | Content-addressed mappings from framework controls to atomic assertions, declaring mapping types, review timestamps, and reviewers. |
 | **Protocol Contracts** | `protocol/proto/ztd/compliance/v1/compliance.proto` | Strongly typed Protobuf schemas defining assessment scopes, evidence nodes, assertion evaluations, framework profiles, and report manifests. |
 | **FedRAMP KSI Catalog** | `docs/reference/ksi-catalog.json` | 31 machine-evaluable Key Security Indicator (KSI) definitions spanning ten operational categories under FedRAMP 20x. |
-| **COSAiS Overlays** | `docs/reference/cosais-overlays.json` | Machine-readable AI security control overlays mapped against platform KSI definitions. |
+| **COSAiS Overlays** | `docs/reference/cosais-overlays.json` | Machine-readable AI security control overlay definitions, all in `draft` status, referenced by platform KSI definitions. |
 
-The JSON catalogs are compact, content-addressed documents with embedded version identifiers and SHA-256 digests. Platform catalog loaders in `internal/services/compliance/catalog/` validate digests and schemas at startup, rejecting duplicate IDs, malformed versions, and dangling references.
+The assertion, framework, and crosswalk catalogs are compact, content-addressed documents with embedded version identifiers and SHA-256 digests. `protocol/constants/compliance/catalogs.go` embeds them into the binary. `LoadCanonicalCatalogs` in `internal/services/compliance/catalog/` verifies each digest and runs `ValidateCatalogSet`, which rejects duplicate IDs and invalid catalog semantics.
 
 ## Maintained Framework Scope
 
 The platform reference catalogs define mappings for two primary frameworks:
-- **FedRAMP 20x (CR26-2026-06-24)**: 31 Key Security Indicators (14 mapped to platform assertions, 17 unsupported or customer-operated).
-- **NIST SP 800-53 Rev. 5**: 100 evaluated controls (20 mapped to platform assertions, 80 unsupported or customer-operated).
+- **FedRAMP 20x (CR26-2026-06-24)**: 31 Key Security Indicators (14 mapped to platform assertions, 17 unsupported).
+- **NIST SP 800-53 Rev. 5**: 100 evaluated controls (20 mapped to platform assertions, 80 unsupported).
 
 Frameworks lacking reviewed, canonical JSON crosswalks in this repository (e.g. SOC 2, ISO/IEC 27001, HIPAA, PCI DSS, GDPR) do not receive generated framework assessments. Relevant architectural capabilities are never presented as evaluated compliance outcomes without a corresponding reviewed crosswalk.
 
@@ -59,7 +59,7 @@ The compliance engine decouples evidence collection, cryptographic verification,
 flowchart TD
     A["Raw Evidence\n(Evaluations, Receipts, Audit Logs, Ledgers)"] --> B["Typed Importers\n(internal/services/compliance/evidence/)"]
     B --> C["Content-Addressed Evidence Graph\n(Cycle-free DAG, Scoped Bindings)"]
-    C --> D["Atomic Assertion Graders\n(13 Technical Assertions, L0-L3)"]
+    C --> D["Atomic Assertion Graders\n(13 Technical Assertions, L2-L3 Minimum Levels)"]
     D --> E["Crosswalk Projection\n(FedRAMP 20x & NIST SP 800-53)"]
     E --> F["Canonical Compliance Analysis\n(BuildComplianceAnalysis)"]
     F --> G["Framework Profiles\n(BuildFrameworkProfiles)"]
@@ -83,53 +83,53 @@ Compliance evaluation outcomes use unambiguous, machine-readable statuses:
 | **`satisfied`** | Cryptographically verified, scope-bound evidence satisfies the full passing rule defined by the assertion or control. |
 | **`not_satisfied`** | Verified evidence demonstrates an explicit failure of the declared technical assertion rule. |
 | **`not_applicable`** | The assertion or control is formally excluded by component scope, action class, or deployment mode. |
-| **`unverifiable`** | Required evidence is absent, stale, malformed, unsupported, or cryptographically invalid. The engine refuses to guess an outcome. |
+| **`unverifiable`** | Required evidence is absent, stale, malformed, unsupported, or cryptographically invalid, and the assertion's `missing_evidence_policy` is `unverifiable`. The engine refuses to guess an outcome. |
 | **`customer_attestation_required`** | The requirement demands organizational, policy, or operational evidence that only the customer can supply. |
 
-Crosswalk mappings maintain `supporting`, `partial`, `full`, and `not_applicable` classifications. A `supporting` technical mapping cannot be aggregated into a complete control satisfaction claim without external customer or assessor evidence.
+Crosswalk mappings maintain `supporting`, `partial`, `full`, and `not_applicable` classifications. The framework grader derives control status only from `full` mappings. `supporting` and `partial` mappings record a limitation on the control assessment, and `not_applicable` mappings are excluded. A control with no `full` mapping resolves to `unverifiable`.
 
 ## Generating and Verifying Evidence
 
 ### Verify Persisted Evaluation Evidence
 
-Validate imported evaluation runs as a content-addressed evidence graph:
+Validate imported evaluation runs as a content-addressed evidence graph. Set the shell variable `EVAL_RUN_ID` to the eval run ID to validate:
 
 ```bash
-ztd compliance evidence-graph verify --eval-run <eval-run-id>
+ztd compliance evidence-graph verify --eval-run "$EVAL_RUN_ID"
 ```
 
 ### Generate a Signed Compliance Report Bundle
 
-Generate a signed, immutable compliance report bundle from an explicit assessment scope:
+Generate a signed, immutable compliance report bundle from an explicit assessment scope. Set these shell variables first: `SCOPE_FILE` to the assessment scope JSON file, `EVAL_RUN_ID` to the eval run ID, `OPERATIONAL_SOURCE_DIR` to the operational source directory, `REPORT_ID` to a new report identifier, `SIGNING_METADATA_FILE` to the signing metadata JSON file, `SIGNING_PRIVATE_KEY_FILE` to the hex-encoded signing private key file, and `EVIDENCE_TRUST_FILE` to the evidence trust JSON file:
 
 ```bash
 ztd compliance report generate \
-  --scope <assessment-scope.json> \
-  --eval-run <eval-run-id> \
-  --source <operational-source-dir> \
-  --report-id <report-id> \
+  --scope "$SCOPE_FILE" \
+  --eval-run "$EVAL_RUN_ID" \
+  --source "$OPERATIONAL_SOURCE_DIR" \
+  --report-id "$REPORT_ID" \
   --profile restricted \
-  --signing-metadata <signing-metadata.json> \
-  --signing-private-key <signing-private-key.hex> \
-  --evidence-trust <evidence-trust.json>
+  --signing-metadata "$SIGNING_METADATA_FILE" \
+  --signing-private-key "$SIGNING_PRIVATE_KEY_FILE" \
+  --evidence-trust "$EVIDENCE_TRUST_FILE"
 ```
 
 Generation defaults to the `restricted` profile. The `--profile public` flag is accepted only when all admitted evidence sources are explicitly marked public-safe.
 
-The bundle is sealed at rest under `.ztd/reports/<report-id>/` with the runtime vault, because it carries the raw sources the verifier replays. To disclose it, export the plaintext copy to a new directory outside the runtime root:
+The bundle is sealed at rest under `.ztd/reports/<report-id>/` with the runtime vault, because it carries the raw sources the verifier replays. To disclose it, export the plaintext copy to a new directory outside the runtime root. Set `EXPORT_DIR` to a directory outside the runtime root that does not exist yet:
 
 ```bash
-ztd compliance report export --report-id <report-id> --out <new-dir>
+ztd compliance report export --report-id "$REPORT_ID" --out "$EXPORT_DIR"
 ```
 
 ### Offline Independent Verification
 
-Verify an exported bundle offline without network access or ambient runtime credentials:
+Verify an exported bundle offline without network access or ambient runtime credentials. Set `REPORT_TRUST_FILE` to the assessed report trust JSON file and `ASSESSED_EVIDENCE_TRUST_FILE` to the assessed evidence trust JSON file, both kept outside the bundle:
 
 ```bash
-ztd compliance report verify <new-dir>/manifest.json \
-  --trust-policy <assessed-report-trust.json> \
-  --evidence-trust <assessed-evidence-trust.json>
+ztd compliance report verify "$EXPORT_DIR/manifest.json" \
+  --trust-policy "$REPORT_TRUST_FILE" \
+  --evidence-trust "$ASSESSED_EVIDENCE_TRUST_FILE"
 ```
 
 Verification enforces complete offline independence:

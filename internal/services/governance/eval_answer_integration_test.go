@@ -95,7 +95,7 @@ func TestEvalAnswerVerification(t *testing.T) {
 			Votes: []*commonv1.L2Vote{
 				{
 					SignerKeyId:        "test-key-id",
-					ConsensusSignature: hex.EncodeToString(ed25519.Sign(privKey, []byte(computedHash+"|true"))),
+					ConsensusSignature: hex.EncodeToString(ed25519.Sign(privKey, L2VotePayload(computedHash, true))),
 					Decision:           true,
 				},
 			},

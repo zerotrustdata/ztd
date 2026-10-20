@@ -78,11 +78,12 @@ func newProofPushTestMirror(t *testing.T, publisher *PublicPublisherService) (*P
 	require.NoError(t, err)
 	mirror.SetIngestAuthToken("proof-token")
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), publisher.cfg.SourceID, publisher.signingKeyID, publisher.signingPrivKey.Public().(ed25519.PublicKey)))
-	recorder := &proofIngestRecorder{t: t, next: mirror.Handler()}
+	recorder := &proofIngestRecorder{t: t, next: mirror.IngestHandler()}
 	server := httptest.NewServer(recorder)
 	t.Cleanup(server.Close)
 	publisher.SetMirrorOrigin(server.URL)
 	publisher.SetIngestAuthToken("proof-token")
+	publisher.SetAssignmentEventSource(store)
 	return store, recorder
 }
 

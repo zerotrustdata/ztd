@@ -44,8 +44,8 @@ func (c *capturingPublicationStateClient) Delete(path string) ([]byte, error) {
 }
 
 func TestNewCampaignPublicationStateStore_RequiresHealthyGateway(t *testing.T) {
-	WithGatewayHealthCheck(t, false)
-	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+	cfg.Paths.Host = "http://127.0.0.1:1"
 
 	_, err := NewCampaignPublicationStateStore(fileSvc, cfg)
 	assert.ErrorIs(t, err, constants.ErrGatewayUnhealthy)

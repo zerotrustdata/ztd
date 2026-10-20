@@ -73,12 +73,13 @@ export function PanelSection({ title, note, id, className = '', children }: {
   </section>;
 }
 
-export function DetailLayout({ children, aside, asideLabel = 'Evidence and context' }: {
-  children: ReactNode; aside?: ReactNode; asideLabel?: string;
+export function DetailLayout({ children, aside, asideLabel = 'Evidence and context', footer }: {
+  children: ReactNode; aside?: ReactNode; asideLabel?: string; footer?: ReactNode;
 }) {
   return <div className={`evidence-layout${aside ? '' : ' evidence-layout-single'}`}>
     <div className="evidence-main">{children}</div>
     {aside ? <aside className="evidence-aside" aria-label={asideLabel}>{aside}</aside> : null}
+    {footer ? <div className="evidence-full">{footer}</div> : null}
   </div>;
 }
 
@@ -97,9 +98,9 @@ export function OutcomeBreakdown({ outcomes }: { outcomes: Partial<Record<Termin
   if (!breakdown) return <UnavailableValue reason="terminal outcomes not published" />;
   if (breakdown.total === 0) return <span>No terminal outcomes</span>;
   return <div className="outcome-breakdown" data-testid="outcome-breakdown">
-    {breakdown.verdictCount > 0 ? <div className="outcome-bar" aria-label={`${breakdown.verdictCount} model verdicts`}>
-      {breakdown.verdicts.map(({ status, count, tone }) => <span key={status} className={`outcome-segment outcome-segment-${tone}`} style={{ flexGrow: count }} title={`${status}: ${count}`} />)}
-    </div> : null}
+    <div className="outcome-bar" aria-label={`${breakdown.verdictCount} model verdicts, ${breakdown.nonVerdictCount} non-verdict outcomes`}>
+      {[...breakdown.verdicts, ...breakdown.nonVerdicts].map(({ status, count, tone }) => <span key={status} className={`outcome-segment outcome-segment-${tone}`} style={{ flexGrow: count }} title={`${status.replace(/_/g, ' ')}: ${count}`} />)}
+    </div>
     <ul className="outcome-legend">
       {[...breakdown.verdicts, ...breakdown.nonVerdicts].map(({ status, count, tone }) => <li key={status}><ToneDot tone={tone} />{status.replace(/_/g, ' ')}: {formatNumber(count)}</li>)}
     </ul>

@@ -526,7 +526,7 @@ func TestCampaignPublicationCoordinatorPublishRunAggregates(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" }).WithPublication(coordinator)
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
@@ -543,12 +543,7 @@ func TestCampaignPublicationCoordinatorPublishRunAggregates(t *testing.T) {
 	require.NoError(t, err)
 	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
-	_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
-		Topology:            testOperatorTopology("inf-session", "data-session"),
-		ModelRegistryDigest: req.Inventory.RegistryDigest,
-		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
-	}, req.ScenarioArtifacts)
-	require.NoError(t, err)
+	executeTestAssignments(t, controller, req, run.GetRunId(), 1)
 
 	var aggregateKinds []string
 	for _, record := range exporter.records {

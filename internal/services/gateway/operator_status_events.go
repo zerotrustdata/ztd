@@ -26,10 +26,11 @@ import (
 const operatorStatusProducerID = "ztd-gateway-operator-status"
 
 // operatorStatusEvents maps each Operator status the Gateway pushes to the
-// status.updated event that announces the transition into it. Bound and
-// unbound transitions are published by the binding client after the session bind
-// and are not Gateway-originated, so they are absent. Offline is announced when
-// an enrollment claims or creates the Operator: it is enrolled but has not yet
+// status.updated event that announces the transition into it. Bound is a view of
+// an active Operator whose bound_web_session_id is set, not a status the Gateway
+// stores or announces, so it, available and unavailable have no event and
+// Publish rejects them. Offline is announced when an enrollment claims or
+// creates the Operator: it is enrolled but has not yet
 // subscribed to its command channel, so it is not ready for commands. Active is
 // announced only when that subscription is established
 // (OperatorCommandSubscribed), so active means ready to receive commands.

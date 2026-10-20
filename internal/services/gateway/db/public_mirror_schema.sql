@@ -59,6 +59,19 @@ CREATE TABLE IF NOT EXISTS records (
     PRIMARY KEY (source_id, sequence)
 );
 
+-- Assignment index over retained event records: one row per event record,
+-- naming the run and assignment its body carries. Rows are written and pruned
+-- with their records in the same transaction, so they never outlive them.
+CREATE TABLE IF NOT EXISTS assignment_event_records (
+    source_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    run_id TEXT NOT NULL,
+    assignment_id TEXT NOT NULL,
+    PRIMARY KEY (source_id, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS idx_public_mirror_assignment_event_records_assignment ON assignment_event_records(source_id, run_id, assignment_id);
+
 -- Source signing keys, keyed "<source_id>:<key_id>".
 CREATE TABLE IF NOT EXISTS key_registry (
     registry_id TEXT PRIMARY KEY,

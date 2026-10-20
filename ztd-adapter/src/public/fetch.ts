@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import type { PublicRuntimeConfig } from './runtime_config';
+import type { PublicRuntimeConfig } from './runtime_config.js';
 
 const PUBLIC_ENDPOINTS = {
   bootstrap: '/bootstrap',

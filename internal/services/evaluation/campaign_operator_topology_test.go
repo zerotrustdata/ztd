@@ -132,6 +132,53 @@ func TestResolveCampaignOperatorTopology(t *testing.T) {
 	}
 }
 
+func TestResolveCampaignOperatorTopologyForDataOperatorFollowsStableIdentityAcrossSessions(t *testing.T) {
+	inference := topologyOperator("inference", "inference-session", constants.OperatorCapabilityInference)
+	oldSession := topologyOperator("data-stable", "old-session", constants.OperatorCapabilityData)
+	oldSession.Status = string(constants.OperatorStatusOffline)
+	newSession := topologyOperator("data-stable", "new-session", constants.OperatorCapabilityData)
+	otherData := topologyOperator("other-data", "other-session", constants.OperatorCapabilityData)
+	embedded := topologyOperator("embedded", "embedded-session", constants.OperatorCapabilityData)
+	embedded.OperatorType = string(constants.OperatorTypeEmbedded)
+
+	topology, err := ResolveCampaignOperatorTopologyForDataOperator(
+		[]*operatorv1.OperatorDocument{inference, oldSession, newSession, otherData, embedded},
+		"",
+		"data-stable",
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, "data-stable", topology.Data.OperatorID)
+	assert.Equal(t, "new-session", topology.Data.OperatorSessionID)
+}
+
+func TestResolveCampaignOperatorTopologyForDataOperatorFailsClosed(t *testing.T) {
+	inference := topologyOperator("inference", "inference-session", constants.OperatorCapabilityInference)
+	wrongCapability := topologyOperator("stable-id", "wrong-capability", constants.OperatorCapabilityObserver)
+	inactive := topologyOperator("stable-id", "offline", constants.OperatorCapabilityData)
+	inactive.Status = string(constants.OperatorStatusOffline)
+	otherEmbedded := topologyOperator("other-embedded", "embedded-session", constants.OperatorCapabilityData)
+	otherEmbedded.OperatorType = string(constants.OperatorTypeEmbedded)
+	first := topologyOperator("stable-id", "session-1", constants.OperatorCapabilityData)
+	second := topologyOperator("stable-id", "session-2", constants.OperatorCapabilityData)
+
+	for _, test := range []struct {
+		name      string
+		operators []*operatorv1.OperatorDocument
+		wantErr   error
+	}{
+		{name: "missing stable operator does not fall back to embedded", operators: []*operatorv1.OperatorDocument{inference, otherEmbedded}, wantErr: constants.ErrDataOperatorNotFound},
+		{name: "stable operator lacks data capability", operators: []*operatorv1.OperatorDocument{inference, wrongCapability, otherEmbedded}, wantErr: constants.ErrDataOperatorNotFound},
+		{name: "stable operator is offline", operators: []*operatorv1.OperatorDocument{inference, inactive, otherEmbedded}, wantErr: constants.ErrDataOperatorNotFound},
+		{name: "several active sessions are ambiguous", operators: []*operatorv1.OperatorDocument{inference, first, second}, wantErr: constants.ErrDataOperatorAmbiguous},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := ResolveCampaignOperatorTopologyForDataOperator(test.operators, "", "stable-id")
+			require.ErrorIs(t, err, test.wantErr)
+		})
+	}
+}
+
 func TestCampaignOperatorTopology_WithAnchorsBindsEachRuntime(t *testing.T) {
 	inferenceSigner, dataSigner := oracletest.NewSigner(t), oracletest.NewSigner(t)
 	operators := []*operatorv1.OperatorDocument{

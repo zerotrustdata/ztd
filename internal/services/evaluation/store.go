@@ -62,7 +62,7 @@ func (s *Store) SaveProtoArtifact(ctx context.Context, scope EvidenceScope, arti
 	if s == nil || s.files == nil || message == nil || !validEvidenceScope(scope) || !complianceevidence.ContainsArtifactType(complianceevidence.SupportedArtifactTypes(), artifactType) {
 		return nil, fmt.Errorf("%w: evidence scope, supported artifact type, and protocol message are required", constants.ErrEvaluationReportPersistFailed)
 	}
-	artifact, err := complianceevidence.PersistCanonicalProtoArtifact(ctx, s.files, evaluationEvidenceDir(scope.RunID), artifactType, message)
+	artifact, err := complianceevidence.PersistCanonicalProtoArtifact(ctx, s.files, s.layout.evidenceDir(scope.RunID), artifactType, message)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", constants.ErrEvaluationReportPersistFailed, err)
 	}
@@ -84,7 +84,7 @@ func (s *Store) SaveJSONArtifact(ctx context.Context, scope EvidenceScope, artif
 	if !ok {
 		return nil, fmt.Errorf("%w: evidence content address is invalid", constants.ErrEvaluationReportPersistFailed)
 	}
-	directory := evaluationEvidenceDir(scope.RunID)
+	directory := s.layout.evidenceDir(scope.RunID)
 	if err := s.files.MkdirAll(ctx, directory, constants.PermDirPrivate); err != nil {
 		return nil, fmt.Errorf("%w: create evidence directory: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
@@ -117,10 +117,30 @@ func scopedReference(reference *compliancev1.ComplianceEvidenceReference, scope 
 	return reference
 }
 
-func evaluationRunDir(runID string) string {
-	return filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID)
+// loadProtoArtifact reads the sealed body a reference names in the run's
+// evidence directory. The body must hash to the reference's content address and
+// decode as canonical protobuf JSON; a missing body reports constants.ErrNotFound.
+func (s *Store) loadProtoArtifact(ctx context.Context, runID string, reference *compliancev1.ComplianceEvidenceReference, message proto.Message) error {
+	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || reference == nil || message == nil {
+		return fmt.Errorf("%w: file service, run ID, evidence reference, and protocol message are required", constants.ErrEvidenceArtifactMalformed)
+	}
+	artifactType, digest, ok := complianceevidence.ParseContentAddress(reference.GetArtifactId())
+	if !ok || string(artifactType) != reference.GetArtifactType() || digest != reference.GetSha256() || reference.GetRunId() != runID || !complianceevidence.ContainsArtifactType(complianceevidence.SupportedArtifactTypes(), artifactType) {
+		return fmt.Errorf("%w: evidence reference binding is invalid", constants.ErrEvidenceArtifactMalformed)
+	}
+	body, err := s.files.ReadFile(ctx, filepath.Join(s.layout.evidenceDir(runID), digest+constants.FileExtJSON))
+	if err != nil {
+		return fmt.Errorf("evaluation: read evidence artifact %s: %w", reference.GetArtifactId(), err)
+	}
+	if complianceevidence.ContentAddress(artifactType, body) != reference.GetArtifactId() {
+		return fmt.Errorf("%w: evidence body does not match its content address", constants.ErrEvidenceArtifactMalformed)
+	}
+	if err := compliancev1.UnmarshalCanonical(body, message); err != nil {
+		return fmt.Errorf("%w: canonical evidence body: %v", constants.ErrEvidenceArtifactMalformed, err)
+	}
+	return nil
 }
 
-func evaluationEvidenceDir(runID string) string {
-	return filepath.Join(evaluationRunDir(runID), constants.EvaluationEvidenceDirname)
+func evaluationRunDir(runID string) string {
+	return filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID)
 }

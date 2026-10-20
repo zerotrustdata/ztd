@@ -93,6 +93,12 @@ Prerequisites:
   - A Cloudflare account with a registered domain
   - The gateway running on the configured HTTPS port`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Without --ca-bundle the origin hop is noTLSVerify and SNI is never sent, so an
+			// --origin-server-name would be silently dropped. Reject it instead.
+			if originServerName != "" && caBundle == "" {
+				return fmt.Errorf("%w: --origin-server-name requires --ca-bundle", constants.ErrValidationFailed)
+			}
+
 			if err := checkCloudflared(); err != nil {
 				return err
 			}
@@ -442,9 +448,14 @@ func generateTunnelConfig(tunnelID, credentialsFile, hostname, service, caBundle
 		sb.WriteString("    originRequest:\n")
 		if caBundle != "" {
 			fmt.Fprintf(&sb, "      originCaPool: %s\n", caBundle)
-			if originServerName != "" {
-				fmt.Fprintf(&sb, "      originServerName: %s\n", originServerName)
+			// The Gateway server certificate always carries GatewayInternalHostname as a DNS SAN
+			// (generateServiceCertWithNames), while the --service host may not match any SAN.
+			// Default SNI to that name so origin verification succeeds; an explicit override wins.
+			serverName := originServerName
+			if serverName == "" {
+				serverName = constants.GatewayInternalHostname
 			}
+			fmt.Fprintf(&sb, "      originServerName: %s\n", serverName)
 		} else {
 			sb.WriteString("      noTLSVerify: true\n")
 		}

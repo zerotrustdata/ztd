@@ -21,15 +21,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestBackupRestore_RoundTripAfterWipe(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	fileSvc := env.fileSvc(t)
 	ctx := context.Background()
 	backupRoot := filepath.Join(testutil.TempDir(t), "my-eval-backups")
@@ -62,16 +61,16 @@ func TestBackupRestore_RoundTripAfterWipe(t *testing.T) {
 }
 
 func TestBackup_RejectsOutputDirInsideRuntime(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "backup", "--output-dir", env.fileSvc(t).Resolve("eval-backups"))
 	assert.ErrorIs(t, err, constants.ErrEvaluationBackupDestinationInvalid)
 }
 
 func TestBackupRestore_DefaultsToProjectEvalBackups(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	fileSvc := env.fileSvc(t)
 	ctx := context.Background()
 
@@ -92,15 +91,15 @@ func TestBackupRestore_DefaultsToProjectEvalBackups(t *testing.T) {
 // The newest snapshot is not a complete restore: evidence deleted or archived
 // since an older snapshot is only in that older one.
 func TestRestore_DefaultMergesEverySnapshotIncludingEvidenceOnlyAnOlderOneHolds(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	fileSvc := env.fileSvc(t)
 	ctx := context.Background()
 
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	var first evalBackupJSON
 	require.NoError(t, env.runJSON(t, &first, "backup"))
 
-	env.prepareRun(t, "eval-b", "run-b-1")
+	env.prepareStoredRun(t, "eval-b", "run-b-1")
 	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationDataPath, constants.EvaluationCampaignsDirname, "eval-a")))
 	require.NoError(t, fileSvc.RemoveAll(ctx, path.Join(constants.EvaluationDataPath, constants.EvaluationRunsDirname, "run-a-1")))
 	var second evalBackupJSON
@@ -141,7 +140,7 @@ func TestRestore_DefaultMergesEverySnapshotIncludingEvidenceOnlyAnOlderOneHolds(
 }
 
 func TestRestore_WithoutSnapshotAndNoDefaultBackupsFails(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "restore")
 
@@ -149,8 +148,8 @@ func TestRestore_WithoutSnapshotAndNoDefaultBackupsFails(t *testing.T) {
 }
 
 func TestAutoBackupEval_SnapshotsOnceThenSkipsUnchangedEvidence(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	var out bytes.Buffer
 	env.cmd.SetOut(&out)
 	backupDir := filepath.Join(env.root, "eval", "backups")
@@ -171,8 +170,8 @@ func TestAutoBackupEval_SnapshotsOnceThenSkipsUnchangedEvidence(t *testing.T) {
 }
 
 func TestAutoBackupEval_JSONModeStaysSilentOnStdout(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	var out bytes.Buffer
 	env.cmd.SetOut(&out)
 
@@ -183,7 +182,7 @@ func TestAutoBackupEval_JSONModeStaysSilentOnStdout(t *testing.T) {
 }
 
 func TestAutoBackupEval_WarnsWithoutFailingWhenBackupIsImpossible(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	// A file where the backup directory belongs makes the snapshot impossible.
 	require.NoError(t, os.MkdirAll(filepath.Join(env.root, "eval"), constants.PermDirPrivate))
 	require.NoError(t, os.WriteFile(filepath.Join(env.root, "eval", "backups"), []byte("in the way"), constants.PermFilePrivate))
@@ -198,10 +197,8 @@ func TestAutoBackupEval_WarnsWithoutFailingWhenBackupIsImpossible(t *testing.T) 
 }
 
 func TestRunsResume_BacksUpEvidenceWhenItFinishes(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withExecuteGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	runID := env.prepareRun(t)
 
 	out := env.mustRun(t, "runs", "resume", runID)
 
@@ -214,10 +211,8 @@ func TestRunsResume_BacksUpEvidenceWhenItFinishes(t *testing.T) {
 }
 
 func TestRunsResume_NoBackupFlagSkipsTheBackup(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withExecuteGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	runID := env.prepareRun(t)
 
 	out := env.mustRun(t, "runs", "resume", runID, "--no-backup")
 
@@ -226,8 +221,8 @@ func TestRunsResume_NoBackupFlagSkipsTheBackup(t *testing.T) {
 }
 
 func TestRestore_RejectsConflictingEvidenceWithoutOverwrite(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	backupRoot := filepath.Join(testutil.TempDir(t), "backups")
 	var created evalBackupJSON
 	require.NoError(t, env.runJSON(t, &created, "backup", "--output-dir", backupRoot))

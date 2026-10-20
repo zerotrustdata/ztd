@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-// Browser-reachable Gateway routes. Values mirror internal/constants/api_paths.go;
-// every route here is classified RouteAuthNone, RouteAuthWebSession, or
-// RouteAuthDual in internal/services/gateway/gateway_auth.go.
+// Browser-reachable Gateway routes. The canonical registry is
+// protocol/constants/api_paths.json; values here mirror it, and the Go mirror
+// lives in internal/constants/api_paths.go. Every route here is classified
+// RouteAuthNone, RouteAuthWebSession, or RouteAuthDual in
+// internal/services/gateway/gateway_auth.go.
 
 const enc = encodeURIComponent;
 

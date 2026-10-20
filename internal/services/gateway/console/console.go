@@ -33,7 +33,7 @@ const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 
 // Handler returns the HTTP handler serving the embedded Console SPA.
 //
 // @Summary		Console SPA
-// @Description	Serves the ztd Console: passkey authentication, approvals, Operator inventory and binding, cases, investigations, and chat.
+// @Description	Serves the ztd Console: passkey authentication, approvals, Operator inventory, binding, deploy, and stop, and the native API reference.
 // @Tags			public
 // @Accept			html
 // @Produce		html

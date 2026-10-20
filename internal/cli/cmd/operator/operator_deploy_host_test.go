@@ -21,12 +21,14 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -216,17 +218,31 @@ func TestExecuteDeployHostStart(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("starts worker detached and writes operator.pid and start.log", func(t *testing.T) {
+		if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+			t.Skip("identity-bound local worker discovery is only exercised on Linux and macOS")
+		}
 		workingDir := testutil.TempDir(t)
+		executable, err := os.Executable()
+		require.NoError(t, err)
 		mockWorker := filepath.Join(workingDir, "ztd")
-		script := "#!/bin/sh\necho \"worker running\"\nsleep 30\n"
-		require.NoError(t, os.WriteFile(mockWorker, []byte(script), constants.PermFileExecutable))
+		if runtime.GOOS == "darwin" {
+			require.NoError(t, CopyFile(executable, mockWorker))
+		} else {
+			require.NoError(t, os.Link(executable, mockWorker))
+		}
+		t.Setenv("ZTD_STOP_TEST_WORKER", "1")
 
-		pid, err := ExecuteDeployHostStart(ctx, workingDir, "ztd", []string{"--dummy-arg"})
+		args := []string{"operator", "start", "--working-dir=" + workingDir}
+		pid, err := ExecuteDeployHostStart(ctx, workingDir, "ztd", args)
 		require.NoError(t, err)
 		require.Greater(t, pid, 1)
 
 		t.Cleanup(func() {
-			_, _ = ExecuteDeployHostStop(context.Background(), "", workingDir)
+			stopCtx, cancelStop := context.WithTimeout(context.Background(), 6*time.Second)
+			defer cancelStop()
+			if _, stopErr := ExecuteDeployHostStop(stopCtx, "", workingDir); stopErr != nil {
+				t.Errorf("stop test worker in %s during cleanup: %v", workingDir, stopErr)
+			}
 		})
 
 		// Verify pid file exists and matches
@@ -241,15 +257,14 @@ func TestExecuteDeployHostStart(t *testing.T) {
 		require.NoError(t, err)
 
 		// Calling start again in same workingDir stops previous worker first
-		pid2, err := ExecuteDeployHostStart(ctx, workingDir, "ztd", []string{"--dummy-arg-2"})
+		pid2, err := ExecuteDeployHostStart(ctx, workingDir, "ztd", args)
 		require.NoError(t, err)
 		require.Greater(t, pid2, 1)
 		require.NotEqual(t, pid, pid2)
 
-		// Previous pid should no longer be running
-		prevProc, err := os.FindProcess(pid)
-		require.NoError(t, err)
-		_ = prevProc.Release()
+		exitCtx, cancelExit := context.WithTimeout(ctx, 3*time.Second)
+		defer cancelExit()
+		require.NoError(t, platform.WaitForProcessExit(exitCtx, pid))
 	})
 
 	t.Run("missing working_dir", func(t *testing.T) {
@@ -258,9 +273,16 @@ func TestExecuteDeployHostStart(t *testing.T) {
 		require.Contains(t, err.Error(), "working_dir required")
 	})
 
-	t.Run("binary not found", func(t *testing.T) {
+	t.Run("noncanonical worker binary name rejected", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
-		_, err := ExecuteDeployHostStart(ctx, tempDir, "nonexistent-bin", nil)
+		_, err := ExecuteDeployHostStart(ctx, tempDir, "custom-ztd", nil)
+		require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
+		require.Contains(t, err.Error(), "must be named ztd")
+	})
+
+	t.Run("canonical binary missing", func(t *testing.T) {
+		tempDir := testutil.TempDir(t)
+		_, err := ExecuteDeployHostStart(ctx, tempDir, "ztd", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
 	})
@@ -403,42 +425,83 @@ func TestExecuteDeployHostStop(t *testing.T) {
 		require.True(t, errors.Is(err, os.ErrNotExist))
 	})
 
-	t.Run("pid file fallback terminates process and removes pid file", func(t *testing.T) {
+	t.Run("PID metadata cannot authorize termination", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
-			t.Skip("skipping process exec on windows")
+			t.Skip("uses a POSIX subprocess to verify a recorded PID remains alive")
 		}
+		for _, tc := range []struct {
+			name     string
+			discover func() ([]localOperatorProcess, error)
+			wantErr  bool
+		}{
+			{name: "discovery error", discover: func() ([]localOperatorProcess, error) { return nil, errors.New("discovery unavailable") }, wantErr: true},
+			{name: "successful discovery with no matching worker", discover: func() ([]localOperatorProcess, error) { return nil, nil }},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				origDiscoverer := defaultLocalOperatorDiscoverer
+				defaultLocalOperatorDiscoverer = tc.discover
+				t.Cleanup(func() { defaultLocalOperatorDiscoverer = origDiscoverer })
 
+				tempDir := testutil.TempDir(t)
+				workerDir := filepath.Join(tempDir, "worker")
+				require.NoError(t, os.MkdirAll(workerDir, constants.PermDirPrivate))
+				cmd := exec.Command("sleep", "30")
+				require.NoError(t, cmd.Start())
+				t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+				pidFile := filepath.Join(workerDir, constants.OperatorPIDFilename)
+				require.NoError(t, os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), constants.PermFilePrivate))
+
+				stopped, err := ExecuteDeployHostStop(ctx, tempDir, "")
+				if tc.wantErr {
+					require.Error(t, err)
+					require.Empty(t, stopped)
+				} else {
+					require.NoError(t, err)
+					require.Empty(t, stopped)
+				}
+				require.NoError(t, cmd.Process.Signal(syscall.Signal(0)), "recorded PID must remain alive")
+				_, err = os.Stat(pidFile)
+				require.NoError(t, err, "unverified PID metadata remains untouched")
+			})
+		}
+	})
+
+	t.Run("signal and wait failures are returned", func(t *testing.T) {
+		workerDir := testutil.TempDir(t)
+		for _, tc := range []struct {
+			name string
+			proc localOperatorProcess
+			want string
+		}{
+			{name: "signal", proc: localOperatorProcess{pid: 301, dir: workerDir, signal: func(bool) error { return errors.New("signal failed") }}, want: "send TERM"},
+			{name: "wait", proc: localOperatorProcess{pid: 302, dir: workerDir, signal: func(bool) error { return nil }, wait: func(time.Duration) (bool, error) { return false, errors.New("wait failed") }}, want: "wait for Operator PID"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				origDiscoverer := defaultLocalOperatorDiscoverer
+				defaultLocalOperatorDiscoverer = func() ([]localOperatorProcess, error) { return []localOperatorProcess{tc.proc}, nil }
+				t.Cleanup(func() { defaultLocalOperatorDiscoverer = origDiscoverer })
+				pids, err := ExecuteDeployHostStop(ctx, "", workerDir)
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.want)
+				require.Empty(t, pids)
+			})
+		}
+	})
+
+	t.Run("cancelled context stops before discovery", func(t *testing.T) {
+		called := false
 		origDiscoverer := defaultLocalOperatorDiscoverer
 		defaultLocalOperatorDiscoverer = func() ([]localOperatorProcess, error) {
-			return nil, errors.New("discovery not available")
+			called = true
+			return nil, nil
 		}
-		t.Cleanup(func() {
-			defaultLocalOperatorDiscoverer = origDiscoverer
-		})
-
-		tempDir := testutil.TempDir(t)
-		workerDir := filepath.Join(tempDir, "worker")
-		require.NoError(t, os.MkdirAll(workerDir, constants.PermDirPrivate))
-
-		// Start a real dummy process
-		cmd := exec.Command("sleep", "30")
-		require.NoError(t, cmd.Start())
-		pid := cmd.Process.Pid
-		t.Cleanup(func() {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-		})
-
-		pidFile := filepath.Join(workerDir, constants.OperatorPIDFilename)
-		require.NoError(t, os.WriteFile(pidFile, []byte(strconv.Itoa(pid)+"\n"), constants.PermFilePrivate))
-
-		stopped, err := ExecuteDeployHostStop(ctx, tempDir, "")
-		require.NoError(t, err)
-		require.Contains(t, stopped, pid)
-
-		// PID file should be removed
-		_, err = os.Stat(pidFile)
-		require.True(t, errors.Is(err, os.ErrNotExist))
+		t.Cleanup(func() { defaultLocalOperatorDiscoverer = origDiscoverer })
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		pids, err := ExecuteDeployHostStop(cancelled, "", testutil.TempDir(t))
+		require.ErrorIs(t, err, context.Canceled)
+		require.Empty(t, pids)
+		require.False(t, called)
 	})
 
 	t.Run("missing both dest_dir and working_dir returns error", func(t *testing.T) {

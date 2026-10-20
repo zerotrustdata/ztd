@@ -22,12 +22,12 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.0.0"
+	GraderVersion = "1.3.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.2.0"
+	DefaultSuiteVersion = "1.6.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -46,6 +46,12 @@ const (
 	// validator runs; nothing else is templated.
 	ScenarioWorkspaceToken = "{{workspace}}"
 )
+
+// ScenarioDiagnosisRubric selects a versioned deterministic diagnosis rule
+// frozen as part of a scenario's gold content check.
+type ScenarioDiagnosisRubric string
+
+const ScenarioDiagnosisRubricCheckoutTimeoutV1 ScenarioDiagnosisRubric = "checkout-timeout-v1"
 
 // scenarioCatalogFreezeTime is the fixed production and verification time of
 // every catalog fixture artifact, so identical suite content always yields
@@ -76,31 +82,10 @@ type ScenarioWorkspaceFile struct {
 }
 
 // InvestigationSeedTurn is one prior conversation turn. Sender is "user",
-// "primary", or "assistant". When GuidanceVectorID is set, catalog build
-// appends the vector's real model-visible error to Content (so a prior AI turn
-// quotes the text the model actually saw) and clears the ID.
+// "primary", or "assistant".
 type InvestigationSeedTurn struct {
-	Sender           string `json:"sender"`
-	Content          string `json:"content"`
-	GuidanceVectorID string `json:"guidance_vector_id,omitempty"`
-}
-
-// InvestigationSeedHistoryEvent is one prior history-trail event. When
-// GuidanceVectorID is set, the event is a prior tool call whose ErrorType,
-// Error, ExecutionID, and ArgumentsJSON are copied at catalog build from the
-// generated agent tool registry, i.e. the genuine text the tool handler returned when the
-// failing call ran, never hand-written prose.
-type InvestigationSeedHistoryEvent struct {
-	EventType        string `json:"event_type"`
-	Actor            string `json:"actor"`
-	Summary          string `json:"summary"`
-	ToolName         string `json:"tool_name,omitempty"`
-	GuidanceVectorID string `json:"guidance_vector_id,omitempty"`
-	ExecutionID      string `json:"execution_id,omitempty"`
-	ArgumentsJSON    string `json:"arguments_json,omitempty"`
-	Command          string `json:"command,omitempty"`
-	Error            string `json:"error,omitempty"`
-	ErrorType        string `json:"error_type,omitempty"`
+	Sender  string `json:"sender"`
+	Content string `json:"content"`
 }
 
 // InvestigationSeedMemory is the case memory of the seeded investigation.
@@ -118,24 +103,33 @@ type InvestigationSeedMemory struct {
 // the scored turn is a real chat call. CaseTitle is a realistic case title the
 // model sees in its system prompt; it never names the evaluation.
 type InvestigationSeed struct {
-	CaseTitle       string                          `json:"case_title"`
-	CaseDescription string                          `json:"case_description,omitempty"`
-	Turns           []InvestigationSeedTurn         `json:"turns,omitempty"`
-	HistoryEvents   []InvestigationSeedHistoryEvent `json:"history_events,omitempty"`
-	CaseMemory      *InvestigationSeedMemory        `json:"case_memory,omitempty"`
+	CaseTitle       string                   `json:"case_title"`
+	CaseDescription string                   `json:"case_description,omitempty"`
+	Turns           []InvestigationSeedTurn  `json:"turns,omitempty"`
+	CaseMemory      *InvestigationSeedMemory `json:"case_memory,omitempty"`
+}
+
+// ScenarioScriptedFollowUp defines one frozen scripted user response to a clarification
+// question in an investigation episode. Each follow-up has a declared trigger.
+type ScenarioScriptedFollowUp struct {
+	ID           string     `json:"id"`
+	Description  string     `json:"description,omitempty"`
+	TriggerTerms [][]string `json:"trigger_terms,omitempty"`
+	ResponseText string     `json:"response_text"`
 }
 
 // ScenarioInputFixture is the typed prompt/input payload for one scenario. Its
 // campaign-frozen canonical bytes are published unredacted as a public proof
 // artifact alongside each assignment result that ran it.
 type ScenarioInputFixture struct {
-	SchemaVersion  string                  `json:"schema_version"`
-	ScenarioID     string                  `json:"scenario_id"`
-	SyntheticLabel string                  `json:"synthetic_label"`
-	UserPrompt     string                  `json:"user_prompt"`
-	InlineContext  []ScenarioInlineContent `json:"inline_context,omitempty"`
-	WorkspaceFiles []ScenarioWorkspaceFile `json:"workspace_files,omitempty"`
-	Seed           InvestigationSeed       `json:"seed"`
+	SchemaVersion  string                     `json:"schema_version"`
+	ScenarioID     string                     `json:"scenario_id"`
+	SyntheticLabel string                     `json:"synthetic_label"`
+	UserPrompt     string                     `json:"user_prompt"`
+	InlineContext  []ScenarioInlineContent    `json:"inline_context,omitempty"`
+	WorkspaceFiles []ScenarioWorkspaceFile    `json:"workspace_files,omitempty"`
+	Seed           InvestigationSeed          `json:"seed"`
+	FollowUps      []ScenarioScriptedFollowUp `json:"follow_ups,omitempty"`
 }
 
 // ScenarioCriterion describes one responsibility-specific scoring criterion.
@@ -159,17 +153,19 @@ type ScenarioPipelineCriteria struct {
 
 // ScenarioContentCheck is a typed, conjunctive check of the designated role's
 // final output. Every set constraint must hold. Term matching is
-// case-insensitive; each RequiredTerms group must match at least one term.
+// case-insensitive and treats whitespace, '-' and '_' as one separator
+// (foldContentTerm); each RequiredTerms group must match at least one term.
 type ScenarioContentCheck struct {
-	ExactToken        string            `json:"exact_token,omitempty"`
-	ExactLabels       []string          `json:"exact_labels,omitempty"`
-	LeadingLabel      string            `json:"leading_label,omitempty"`
-	WordCount         int               `json:"word_count,omitempty"`
-	MaxSentences      int               `json:"max_sentences,omitempty"`
-	RequiredTerms     [][]string        `json:"required_terms,omitempty"`
-	ForbiddenTerms    []string          `json:"forbidden_terms,omitempty"`
-	JSONStringFields  map[string]string `json:"json_string_fields,omitempty"`
-	JSONIntegerFields map[string]int64  `json:"json_integer_fields,omitempty"`
+	ExactToken        string                  `json:"exact_token,omitempty"`
+	ExactLabels       []string                `json:"exact_labels,omitempty"`
+	LeadingLabel      string                  `json:"leading_label,omitempty"`
+	WordCount         int                     `json:"word_count,omitempty"`
+	MaxSentences      int                     `json:"max_sentences,omitempty"`
+	RequiredTerms     [][]string              `json:"required_terms,omitempty"`
+	ForbiddenTerms    []string                `json:"forbidden_terms,omitempty"`
+	JSONStringFields  map[string]string       `json:"json_string_fields,omitempty"`
+	JSONIntegerFields map[string]int64        `json:"json_integer_fields,omitempty"`
+	DiagnosisRubric   ScenarioDiagnosisRubric `json:"diagnosis_rubric,omitempty"`
 	// Interrogation requires the whole answer to be the Interrogation Protocol
 	// block Sage and Dash are told to emit when context is missing: one
 	// <interrogation> element holding exactly three numbered, strictly binary
@@ -249,23 +245,36 @@ type ScenarioRecoveryExpectation struct {
 	Detail   string `json:"detail,omitempty"`
 }
 
+// ScenarioGoldEvidenceReference defines one authoritative evidence reference
+// (receipt or observation) that a correct investigation should retrieve or
+// produce. Kept strictly out of every model-visible input.
+type ScenarioGoldEvidenceReference struct {
+	ReferenceID     string `json:"reference_id"`
+	Description     string `json:"description,omitempty"`
+	ActionType      string `json:"action_type,omitempty"`
+	TargetResource  string `json:"target_resource,omitempty"`
+	CommandPattern  string `json:"command_pattern,omitempty"`
+	ExpectedContent string `json:"expected_content,omitempty"`
+}
+
 // ScenarioGoldCriteria is the typed gold standard for one scenario. Its
 // campaign-frozen canonical bytes are published unredacted as a public proof
 // artifact alongside each assignment result graded against it.
 type ScenarioGoldCriteria struct {
-	SchemaVersion         string                        `json:"schema_version"`
-	ScenarioID            string                        `json:"scenario_id"`
-	ExpectedBehavior      string                        `json:"expected_behavior"`
-	RoleCriteria          []ScenarioRoleCriteria        `json:"role_criteria"`
-	PipelineCriteria      []ScenarioPipelineCriteria    `json:"pipeline_criteria"`
-	ContentCheck          *ScenarioContentCheck         `json:"content_check,omitempty"`
-	ArgumentValidators    []ToolArgumentValidator       `json:"argument_validators,omitempty"`
-	Players               *ScenarioPlayerExpectations   `json:"players,omitempty"`
-	PromptHint            *ScenarioPromptHint           `json:"prompt_hint,omitempty"`
-	PolicyExpectation     ScenarioPolicyExpectation     `json:"policy_expectation"`
-	EscalationExpectation ScenarioEscalationExpectation `json:"escalation_expectation"`
-	RecoveryExpectation   ScenarioRecoveryExpectation   `json:"recovery_expectation"`
-	RequiredEvidenceTypes []string                      `json:"required_evidence_types"`
+	SchemaVersion          string                          `json:"schema_version"`
+	ScenarioID             string                          `json:"scenario_id"`
+	ExpectedBehavior       string                          `json:"expected_behavior"`
+	RoleCriteria           []ScenarioRoleCriteria          `json:"role_criteria"`
+	PipelineCriteria       []ScenarioPipelineCriteria      `json:"pipeline_criteria"`
+	ContentCheck           *ScenarioContentCheck           `json:"content_check,omitempty"`
+	ArgumentValidators     []ToolArgumentValidator         `json:"argument_validators,omitempty"`
+	Players                *ScenarioPlayerExpectations     `json:"players,omitempty"`
+	PromptHint             *ScenarioPromptHint             `json:"prompt_hint,omitempty"`
+	PolicyExpectation      ScenarioPolicyExpectation       `json:"policy_expectation"`
+	EscalationExpectation  ScenarioEscalationExpectation   `json:"escalation_expectation"`
+	RecoveryExpectation    ScenarioRecoveryExpectation     `json:"recovery_expectation"`
+	RequiredEvidenceTypes  []string                        `json:"required_evidence_types"`
+	GoldEvidenceReferences []ScenarioGoldEvidenceReference `json:"gold_evidence_references,omitempty"`
 }
 
 // ScenarioArtifactPair holds canonical fixture bytes and their evidence reference.

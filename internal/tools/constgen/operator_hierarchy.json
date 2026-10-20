@@ -129,13 +129,10 @@
   "EventOperatorShutdownRequested": "ShutdownRequested",
   "EventOperatorSlotInitializationFailed": "SlotInitializationFailed",
   "EventOperatorStatusUpdatedActive": "StatusUpdated.Active",
-  "EventOperatorStatusUpdatedAvailable": "StatusUpdated.Available",
-  "EventOperatorStatusUpdatedBound": "StatusUpdated.Bound",
   "EventOperatorStatusUpdatedOffline": "StatusUpdated.Offline",
   "EventOperatorStatusUpdatedStale": "StatusUpdated.Stale",
   "EventOperatorStatusUpdatedStopped": "StatusUpdated.Stopped",
   "EventOperatorStatusUpdatedTerminated": "StatusUpdated.Terminated",
-  "EventOperatorStatusUpdatedUnavailable": "StatusUpdated.Unavailable",
   "EventOperatorTerminalApprovalDenied": "TerminalApprovalDenied",
   "EventOperatorTerminalAuthStateChanged": "TerminalAuthStateChanged",
   "EventOperatorUnbound": "Unbound"

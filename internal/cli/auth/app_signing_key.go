@@ -14,6 +14,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
 )
@@ -21,7 +22,7 @@ import (
 // LoadAppSigningKey unseals the app's independent L2 identity. The caller owns
 // the returned key and must clear it after use. No transport key is reused.
 func LoadAppSigningKey(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config, appName string) (ed25519.PrivateKey, error) {
-	if err := validateAppName(appName); err != nil {
+	if err := models.ValidateAppName(appName); err != nil {
 		return nil, err
 	}
 	if fileSvc == nil || cfg == nil {

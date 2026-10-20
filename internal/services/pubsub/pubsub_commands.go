@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -55,6 +56,10 @@ type PubSubCommandMessage struct {
 	// handleInferenceRequestSync so the post-actuation completion
 	// publication can bind it to the final signed receipt.
 	InferenceResult *operatorv1.InferenceResult `json:"-"`
+
+	// auditReceiptListSummary carries only the local route's typed allowlisted
+	// receipt result to L5 for its verified MCP_CALL summary path.
+	auditReceiptListSummary *models.OperatorAuditReceiptListResult
 }
 
 // verifiedActionHandler executes a governed action class after L4 verification.
@@ -116,6 +121,10 @@ type OperatorPubSubService struct {
 	// MCP gateway for protocol translation egress
 	mcpGateway   *mcp.GatewayService
 	mcpGatewayMu sync.RWMutex
+	// localNativeTools executes native MCP tools on this runtime against its
+	// own audit store. Outbound Operators route every MCP_CALL here; Gateway
+	// mode routes only the Operator-local audit_receipt_list shape here.
+	localNativeTools *mcp.NativeToolHandler
 
 	// platformEnrollment dispatches the five platform enrollment
 	// governance actions. Nil in outbound (operator) mode; the handlers
@@ -232,6 +241,13 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 	rs.ollama = ollama
 
 	rs.audit = NewAuditService(c.Config, c.Logger, c.AuditStore)
+	if c.Config != nil && c.Config.OperatorID != "" && c.AuditStore != nil {
+		rs.localNativeTools, err = mcp.NewOperatorNativeToolHandler(c.Logger, c.Config.OperatorID, c.AuditStore)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("pubsub: local native tool handler: %w", err)
+		}
+	}
 
 	history, err := NewHistoryService(c.Config, c.Logger, client, c.HistoryHandler, c.Scrubbing, c.AuditStore)
 	if err != nil {
@@ -425,6 +441,7 @@ func (rs *OperatorPubSubService) buildHandlers() {
 		constants.ActionTypeInference:                   rs.handleInferenceRequestSync,
 		constants.ActionTypeProviderBoundaryObservation: rs.handleProviderBoundaryObservationSync,
 		constants.ActionTypeModelProvenanceObservation:  rs.handleModelProvenanceObservationSync,
+		constants.ActionTypeMcpCall:                     rs.handleMcpCallRequestSync,
 		constants.ActionTypeShutdown: func(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 			return rs.handleShutdownRequest(msg)
 		},
@@ -445,7 +462,6 @@ func (rs *OperatorPubSubService) registerPlatformEnrollmentHandlers() {
 }
 
 func (rs *OperatorPubSubService) buildGatewayHandlers() {
-	rs.actionHandlers[constants.ActionTypeMcpCall] = rs.handleMcpCallRequestSync
 	rs.actionHandlers[constants.ActionTypeA2aCall] = rs.handleA2aCallRequestSync
 	rs.actionHandlers[constants.ActionTypeMcpResourceRead] = rs.handleMcpResourceReadSync
 	rs.actionHandlers[constants.ActionTypeMcpPromptGet] = rs.handleMcpPromptGetSync
@@ -960,15 +976,12 @@ func (rs *OperatorPubSubService) ExecuteVerifiedTransaction(ctx context.Context,
 }
 
 // handleMcpCallRequestSync is the Actuator egress for MCP_CALL transactions:
-// it decodes the typed payload, dispatches to the configured downstream MCP
-// server via the gateway, and returns the textual result so the Actuator can
-// stamp it into the signed ActionReceipt.
+// it decodes the typed payload, executes the tool on the owning runtime, and
+// returns the textual result so the Actuator can stamp it into the signed
+// ActionReceipt. Outbound Operators execute native tools locally against their
+// own audit store; Gateway mode dispatches through the MCP gateway, which also
+// owns read_field and the downstream MCP server.
 func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
-	gw := rs.GetMCPGateway()
-	if gw == nil {
-		return "", constants.ErrPubSubMCPGateway
-	}
-
 	req, err := unmarshalPayload(msg.EventType, msg.Payload)
 	if err != nil {
 		rs.logger.Error("Failed to unmarshal MCP call payload", string(constants.ConnectionStateError), err)
@@ -986,6 +999,14 @@ func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, m
 	if len(args) == 0 {
 		args = json.RawMessage("{}")
 	}
+	if rs.useLocalNativeToolRoute(mcpReq.ToolName, args) {
+		return rs.executeLocalNativeTool(ctx, msg, mcpReq.ToolName, args)
+	}
+
+	gw := rs.GetMCPGateway()
+	if gw == nil {
+		return "", constants.ErrPubSubMCPGateway
+	}
 
 	rs.logger.Info("Dispatching verified MCP call to downstream",
 		"tool", mcpReq.ToolName,
@@ -1002,6 +1023,62 @@ func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, m
 	}
 
 	return summary, nil
+}
+
+// executeLocalNativeTool runs a native MCP tool on this runtime's own handler.
+// The egress scrubber is required before execution because the summary leaves
+// the execution boundary in the signed receipt. audit_receipt_list returns
+// canonical signed receipts that must stay byte-exact, so its result is parsed
+// into the typed allowlisted summary instead of being scrubbed; every other
+// native tool result is scrubbed like the Gateway's native dispatch.
+func (rs *OperatorPubSubService) executeLocalNativeTool(ctx context.Context, msg *PubSubCommandMessage, toolName string, args json.RawMessage) (string, error) {
+	if rs.localNativeTools == nil {
+		return "", fmt.Errorf("mcp call %q: %w", toolName, constants.ErrMCPNativeToolHostMissing)
+	}
+	if err := operatorcapability.ValidateWitnessNativeTool(rs.config.EffectiveOperatorCapabilities(), toolName); err != nil {
+		return "", fmt.Errorf("mcp call: %w", err)
+	}
+	if rs.scrubbing == nil || !rs.scrubbing.IsEnabled() {
+		return "", constants.ErrEgressScrubberUnavailable
+	}
+	rs.logger.Info("Executing verified MCP call on local native tool host",
+		"tool", toolName,
+		"transaction_id", msg.ID)
+	result, err := rs.localNativeTools.HandleTool(ctx, toolName, args)
+	if err != nil {
+		return "", fmt.Errorf("mcp call %q: %w", toolName, err)
+	}
+	summary := mcp.ToolResultSummary(result)
+	if toolName != constants.MCPToolAuditReceiptList {
+		return rs.scrubbing.ScrubText(ctx, summary), nil
+	}
+	var typedResult mcp.OperatorAuditReceiptListResult
+	if err := json.Unmarshal([]byte(summary), &typedResult); err != nil {
+		return "", fmt.Errorf("operator audit receipt result: %w: %w", constants.ErrMCPUnmarshalArguments, err)
+	}
+	msg.auditReceiptListSummary = &typedResult
+	return summary, nil
+}
+
+// useLocalNativeToolRoute selects this runtime's own native tool host.
+// Outbound Operators always own it: they never construct mcp.GatewayService.
+// Gateway mode also owns an embedded Operator ledger, but session-only public
+// Gateway queries and every other tool keep using the Gateway's MCP handler;
+// the explicit local query shape is audit_receipt_list with investigation_id
+// plus exclude_audit_reads=true, which excludes only the audit-read tools' own
+// receipts and keeps every other native-tool MCP_CALL as investigation context.
+func (rs *OperatorPubSubService) useLocalNativeToolRoute(toolName string, args json.RawMessage) bool {
+	if rs == nil || !rs.gatewayMode {
+		return true
+	}
+	if toolName != constants.MCPToolAuditReceiptList {
+		return false
+	}
+	var request mcp.AuditReceiptListRequest
+	if err := json.Unmarshal(args, &request); err != nil {
+		return false
+	}
+	return request.InvestigationID != "" && request.ExcludeAuditReads
 }
 
 func mcpGatewayOrErr(rs *OperatorPubSubService) (*mcp.GatewayService, error) {
@@ -1495,6 +1572,15 @@ func (m *PubSubCommandMessage) InferenceResultDigest() string {
 		return ""
 	}
 	return m.InferenceResult.GetResultDigest()
+}
+
+// AuditReceiptListSummary returns the local tool's typed, allowlisted result.
+// L5 checks the verified MCP request and serialized output before preserving it.
+func (m *PubSubCommandMessage) AuditReceiptListSummary() *models.OperatorAuditReceiptListResult {
+	if m == nil {
+		return nil
+	}
+	return m.auditReceiptListSummary
 }
 
 // ResultOrigin preserves request identity when a witness completion is published.

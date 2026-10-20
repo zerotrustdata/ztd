@@ -14,9 +14,11 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,13 +29,15 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/uuid"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // OwnerPolicy is how the owner answers enrollment requests.
 type OwnerPolicy int
 
 const (
-	// OwnerApprovesEach approves every enrollment request as it is announced.
+	// OwnerApprovesEach automatically approves each Operator enrollment request.
+	// Application enrollment is handled by its production owner approval flow.
 	OwnerApprovesEach OwnerPolicy = iota
 	// OwnerHoldsRequests records requests and leaves the decision to the test.
 	OwnerHoldsRequests
@@ -59,10 +63,15 @@ type OwnerConsole struct {
 	events  *eventLog[OwnerEvent]
 	faults  *eventLog[error]
 
-	mu        sync.Mutex
-	requested map[string]struct{}
-	decisions sync.WaitGroup
-	closed    bool
+	mu               sync.Mutex
+	requested        map[string]struct{}
+	approvalReceipts *eventLog[*operatorv1.ActionReceipt]
+	decisions        sync.WaitGroup
+	l3Responder      bool
+	closed           bool
+	// deniedTool names the tool whose transactions the CLI responder denies;
+	// every other transaction is still approved. It is set after setup.
+	deniedTool atomic.Pointer[string]
 }
 
 // NewOwnerConsole creates the owner and opens their session stream. It must
@@ -73,9 +82,6 @@ func NewOwnerConsole(t *testing.T, f *GatewayFixture, policy OwnerPolicy) *Owner
 
 	user, err := f.Service.GetUserService().CreateUser(ctx)
 	require.NoError(t, err)
-	ownerID, err := f.Service.GetUserService().FirstUserID(ctx)
-	require.NoError(t, err)
-	require.Equal(t, user.ID, ownerID, "owner console must be the first user")
 
 	sessionID, err := uuid.NewString()
 	require.NoError(t, err)
@@ -94,17 +100,28 @@ func NewOwnerConsole(t *testing.T, f *GatewayFixture, policy OwnerPolicy) *Owner
 	sessionBytes, err := json.Marshal(session)
 	require.NoError(t, err)
 	require.NoError(t, f.Service.GetDocStore().DocSet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), session.ID, sessionBytes))
+	return AttachOwnerConsole(t, f, user.ID, session.ID, policy)
+}
+
+// AttachOwnerConsole opens the stream of an owner who already holds a CLI
+// session, such as the first user BootstrapCLIIdentity enrolls.
+func AttachOwnerConsole(t *testing.T, f *GatewayFixture, ownerID, cliSessionID string, policy OwnerPolicy) *OwnerConsole {
+	t.Helper()
+	firstUserID, err := f.Service.GetUserService().FirstUserID(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, firstUserID, ownerID, "owner console must be the first user")
 
 	c := &OwnerConsole{
-		UserID:       user.ID,
-		CLISessionID: session.ID,
-		gateway:      f,
-		policy:       policy,
-		events:       newEventLog[OwnerEvent](),
-		faults:       newEventLog[error](),
-		requested:    make(map[string]struct{}),
+		UserID:           ownerID,
+		CLISessionID:     cliSessionID,
+		gateway:          f,
+		policy:           policy,
+		events:           newEventLog[OwnerEvent](),
+		faults:           newEventLog[error](),
+		requested:        make(map[string]struct{}),
+		approvalReceipts: newEventLog[*operatorv1.ActionReceipt](),
 	}
-	unregister := f.Service.GetGatewayWebSocketHandler().RegisterHandler(pubsub.SSECLIChannel(session.ID), c.receive)
+	unregister := f.Service.GetGatewayWebSocketHandler().RegisterHandler(pubsub.SSECLIChannel(cliSessionID), c.receive)
 
 	t.Cleanup(func() {
 		unregister()
@@ -158,11 +175,26 @@ func (c *OwnerConsole) receive(_ string, data []byte) {
 	if decide {
 		go func() {
 			defer c.decisions.Done()
-			_, err := c.gateway.Service.GetPlatformEnrollmentService().Decide(context.Background(), c.UserID, models.PlatformEnrollmentDecisionRequest{
+			request, err := c.StoredRequest(context.Background(), requestID)
+			if err != nil {
+				c.faults.append(fmt.Errorf("load enrollment %s: %w", requestID, err))
+				return
+			}
+			if request.ComponentKind != models.PlatformComponentOperator {
+				return
+			}
+			_, err = c.gateway.Service.GetPlatformEnrollmentService().Decide(context.Background(), c.UserID, models.PlatformEnrollmentDecisionRequest{
 				RequestID: requestID,
 				Decision:  models.PlatformEnrollmentDecisionApprove,
 			})
 			if err != nil {
+				var l3Required *models.PlatformEnrollmentL3RequiredError
+				c.mu.Lock()
+				l3Responder := c.l3Responder
+				c.mu.Unlock()
+				if errors.As(err, &l3Required) && l3Responder {
+					return
+				}
 				c.faults.append(fmt.Errorf("approve %s: %w", requestID, err))
 			}
 		}()

@@ -8,8 +8,6 @@
 package gateway
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -133,11 +131,11 @@ func (c *PublicFeedController) handlePublicFeedBatches(w http.ResponseWriter, r 
 }
 
 // @Summary		Publish assignment audit proof
-// @Description	Ingests one assignment audit export package into the gateway-owned public proof catalog (mTLS owner CLI only).
+// @Description	Builds one assignment's audit database from the gateway's stored signed event records and publishes it to the gateway-owned public proof catalog (mTLS owner CLI only). The request names the run and assignment; it carries no database or key.
 // @Tags			public-feed
 // @Accept			json
 // @Produce		json
-// @Param			request	body	models.PublicAssignmentAuditProofPublishRequest	true	"Assignment audit proof package"
+// @Param			request	body	models.PublicAssignmentAuditProofPublishRequest	true	"Assignment audit proof request"
 // @Success		200	{object}	models.PublicAssignmentAuditProofPublishResponse
 // @Failure		400	{string}	string	"Bad Request"
 // @Failure		405	{string}	string	"Method Not Allowed"
@@ -167,26 +165,18 @@ func (c *PublicFeedController) handlePublicFeedProofs(w http.ResponseWriter, r *
 		return
 	}
 
-	manifest, err := publisher.PublishAssignmentAuditProof(r.Context(), request)
+	response, err := publisher.PublishAssignmentAuditProof(r.Context(), request)
 	if err != nil {
 		status, message := publicFeedProofPublishErrorStatus(err)
 		c.responder.Error(w, status, message)
 		return
 	}
 
-	c.responder.JSON(w, http.StatusOK, models.PublicAssignmentAuditProofPublishResponse{
-		Accepted:            true,
-		DatabaseSHA256:      hashBytes(request.Database),
-		VaultKeySHA256:      hashBytes(request.VaultKey),
-		AgentTraceSHA256:    optionalSHA256(request.AgentTrace),
-		ScenarioInputSHA256: optionalSHA256(request.ScenarioInput),
-		ScenarioGoldSHA256:  optionalSHA256(request.ScenarioGold),
-		ProofRootSHA256:     manifest.ProofRootSHA256,
-	})
+	c.responder.JSON(w, http.StatusOK, response)
 }
 
 // @Summary		Publish assignment audit proof batch
-// @Description	Ingests many assignment audit export packages in one request (mTLS owner CLI only).
+// @Description	Builds many assignments' audit databases from the gateway's stored signed event records and publishes them in one request (mTLS owner CLI only). The response carries each proof's digests in request order.
 // @Tags			public-feed
 // @Accept			json
 // @Produce		json
@@ -220,18 +210,14 @@ func (c *PublicFeedController) handlePublicFeedProofsBatch(w http.ResponseWriter
 		return
 	}
 
-	manifest, err := publisher.PublishAssignmentAuditProofBatch(r.Context(), request)
+	response, err := publisher.PublishAssignmentAuditProofBatch(r.Context(), request)
 	if err != nil {
 		status, message := publicFeedProofPublishErrorStatus(err)
 		c.responder.Error(w, status, message)
 		return
 	}
 
-	c.responder.JSON(w, http.StatusOK, models.PublicAssignmentAuditProofBatchPublishResponse{
-		Accepted:        true,
-		IngestedProofs:  len(request.Proofs),
-		ProofRootSHA256: manifest.ProofRootSHA256,
-	})
+	c.responder.JSON(w, http.StatusOK, response)
 }
 
 // @Summary		Push proof catalog to mirror
@@ -317,6 +303,7 @@ func publicFeedProofPublishErrorStatus(err error) (int, string) {
 		return http.StatusServiceUnavailable, err.Error()
 	case errors.Is(err, constants.ErrMissingRequiredField),
 		errors.Is(err, constants.ErrPublicFeedProofNotVerified),
+		errors.Is(err, constants.ErrPublicAssignmentAuditEventsMissing),
 		errors.Is(err, constants.ErrPublicFeedBatchEmpty),
 		errors.Is(err, constants.ErrPublicFeedProofOversized),
 		errors.Is(err, constants.ErrPublicFeedProofPathTraversal):
@@ -324,20 +311,6 @@ func publicFeedProofPublishErrorStatus(err error) (int, string) {
 	default:
 		return http.StatusInternalServerError, err.Error()
 	}
-}
-
-func hashBytes(value []byte) string {
-	sum := sha256.Sum256(value)
-	return hex.EncodeToString(sum[:])
-}
-
-// agentTraceSHA256 hashes the optional agent trace artifact; assignments
-// without a trace report no hash.
-func optionalSHA256(body []byte) string {
-	if len(body) == 0 {
-		return ""
-	}
-	return hashBytes(body)
 }
 
 func (c *PublicFeedController) publisher() (*PublicPublisherService, error) {

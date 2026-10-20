@@ -106,7 +106,7 @@ Controls:
   a / d / x        Enrollments view: approve / deny the selected request,
                    revoke the selected enrollment
   Enter            Operators view: show the selected Operator's heartbeat details
-  b / u            Operators view: bind / unbind this CLI session (replacement session)
+  b / u            Operators view: bind / unbind this CLI session (same session ID)
   n / p            Audit view: next / previous event page
   v                Audit view: verify the Gateway audit hash chain
   j / k            Status view: move through enrolled workloads

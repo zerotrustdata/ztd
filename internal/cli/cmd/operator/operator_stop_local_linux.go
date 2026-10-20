@@ -17,8 +17,9 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
+	"github.com/zerotrustdata/ztd/internal/cli/platform"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"golang.org/x/sys/unix"
 )
 
@@ -27,7 +28,7 @@ import (
 func discoverLocalOperators() ([]localOperatorProcess, error) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
-		return nil, fmt.Errorf("operator stop: discover local workers: %w", err)
+		return nil, fmt.Errorf("operator stop: discover local Operators: %w", err)
 	}
 	var processes []localOperatorProcess
 	for _, entry := range entries {
@@ -49,6 +50,8 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 		if err != nil || !isLocalOperatorArgv(strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")) {
 			continue
 		}
+		// The pidfd is the signal handle and the watch observes the exit. Both are
+		// held before identity is inspected.
 		fd, err := unix.PidfdOpen(pid, 0)
 		if errors.Is(err, unix.ESRCH) {
 			continue
@@ -59,18 +62,34 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 			}
 			return nil, fmt.Errorf("operator stop: open PID %d: %w", pid, err)
 		}
+		watch, err := platform.WatchProcessExit(pid)
+		if errors.Is(err, constants.ErrProcessNotFound) {
+			_ = unix.Close(fd)
+			continue
+		}
+		if err != nil {
+			_ = unix.Close(fd)
+			for _, p := range processes {
+				p.close()
+			}
+			return nil, fmt.Errorf("operator stop: watch PID %d: %w", pid, err)
+		}
 		raw, err = os.ReadFile(filepath.Join(root, "cmdline"))
 		args := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
 		executable, exeErr := os.Readlink(filepath.Join(root, "exe"))
 		if err != nil || exeErr != nil || !isLocalOperatorArgv(args) || !isZtdExecutable(filepath.Base(strings.TrimSuffix(executable, " (deleted)"))) {
-			unix.Close(fd)
+			_ = unix.Close(fd)
+			_ = watch.Close()
 			continue
 		}
 		cwd, _ := os.Readlink(filepath.Join(root, "cwd"))
 		dir := localOperatorDir(args, cwd)
 		processes = append(processes, localOperatorProcess{
 			pid: pid, dir: dir, sessionID: localOperatorSessionID(dir),
-			close: func() { unix.Close(fd) },
+			close: func() {
+				_ = unix.Close(fd)
+				_ = watch.Close()
+			},
 			signal: func(force bool) error {
 				sig := unix.SIGTERM
 				if force {
@@ -82,57 +101,8 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 				}
 				return err
 			},
-			wait: func(timeout time.Duration) (bool, error) {
-				deadline := time.Now().Add(timeout)
-				for {
-					remaining := time.Until(deadline)
-					ms := 0
-					if remaining > 0 {
-						ms = int((remaining + time.Millisecond - 1) / time.Millisecond)
-					}
-					fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-					n, err := unix.Poll(fds, ms)
-					if errors.Is(err, unix.EINTR) {
-						continue
-					}
-					if err != nil {
-						return false, err
-					}
-					return n > 0, nil
-				}
-			},
+			wait: exitWait(watch),
 		})
 	}
 	return processes, nil
-}
-
-// waitPIDTermination waits for the process with the given PID to exit, up to timeout.
-// It uses pidfd polling to avoid sleep loops.
-func waitPIDTermination(pid int, timeout time.Duration) (bool, error) {
-	fd, err := unix.PidfdOpen(pid, 0)
-	if errors.Is(err, unix.ESRCH) {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	defer unix.Close(fd)
-
-	deadline := time.Now().Add(timeout)
-	for {
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return false, nil
-		}
-		ms := int((remaining + time.Millisecond - 1) / time.Millisecond)
-		fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-		n, err := unix.Poll(fds, ms)
-		if errors.Is(err, unix.EINTR) {
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-		return n > 0, nil
-	}
 }

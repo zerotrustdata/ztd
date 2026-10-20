@@ -22,7 +22,7 @@ func TestAssignmentPublicationIncludesPersistedAgentTranscript(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, nil, nil)
 	req := testCampaignInitRequest(t)
 	run, err := controller.InitializeCampaign(ctx, req)
@@ -32,7 +32,7 @@ func TestAssignmentPublicationIncludesPersistedAgentTranscript(t *testing.T) {
 	assignments, err := store.ListAssignments(ctx, run.GetRunId())
 	require.NoError(t, err)
 	assignment := assignments[0]
-	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout failures are caused by upstream payment timeouts.", ModelCalls: []AgentModelCall{{LoopTurn: 1, Text: "I will inspect the evidence.", FinishReason: "tool_call"}, {LoopTurn: 2, Text: "Checkout failures are caused by upstream payment timeouts.", FinishReason: "stop"}}, ToolCalls: []AgentToolCall{{ToolName: "inspect", ArgumentsJSON: `{"target":"checkout"}`, ResultJSON: `{"timeout_rate":18}`, Success: true, LoopTurn: 1}}}
+	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout failures are caused by upstream payment timeouts.", ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1, Text: "I will inspect the evidence.", FinishReason: "tool_call"}, {Purpose: agentModelCallPurposeTurn, LoopTurn: 2, Text: "Checkout failures are caused by upstream payment timeouts.", FinishReason: "stop"}}, ToolCalls: []AgentToolCall{{ToolName: "inspect", ArgumentsJSON: `{"target":"checkout"}`, ResultJSON: `{"timeout_rate":18}`, Success: true, LoopTurn: 1}}}
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), assignment.GetAssignmentId(), body))

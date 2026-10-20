@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -122,8 +123,10 @@ authenticated user and be active.`,
 			if poolSize < 1 {
 				poolSize = defaultOperatorCommandConcurrency
 			}
+			// Under ratify/notary the Gateway holds the request open for the
+			// human decision before it dispatches.
 			client, err := clientFactory(fileSvc, cfg, api.ClientOptions{
-				Timeout:             time.Duration(timeoutSeconds)*time.Second + 5*time.Second,
+				Timeout:             mcp.ApprovalRequestTTL + time.Duration(timeoutSeconds)*time.Second + 5*time.Second,
 				MaxIdleConnsPerHost: poolSize,
 			})
 			if err != nil {
@@ -191,12 +194,12 @@ func operatorStopCmdWithLocal(
 	var grace time.Duration
 	cmd := &cobra.Command{
 		Use:          "stop [operator-session-id]",
-		Short:        "Stop operators, terminating local workers if governed shutdown stalls",
+		Short:        "Stop Operators, terminating local Operators if governed shutdown stalls",
 		SilenceUsage: true,
-		Long: `Request governed shutdown, then wait briefly for local workers to exit.
-Local workers that remain running receive TERM, then KILL. Bulk stops process at most
-64 workers concurrently and report each outcome. With no session ID,
-stop all local ztd operator workers owned by the current user, including workers
+		Long: `Request governed shutdown, then wait briefly for local Operators to exit.
+Local Operators that remain running receive TERM, then KILL. Bulk stops process at most
+64 Operators concurrently and report each outcome. With no session ID,
+stop all local ztd Operators owned by the current user, including Operators
 missing from the gateway registry. Remote-only targets receive governed shutdown.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -223,7 +226,7 @@ missing from the gateway registry. Remote-only targets receive governed shutdown
 				if output.JSONEnabled(cmd) {
 					return output.WriteJSON(cmd.OutOrStdout(), []operatorStopResult{})
 				}
-				cmd.Println("No local operator workers running.")
+				cmd.Println("No local Operators running.")
 				return nil
 			}
 			var client authcmd.APIClient
@@ -272,7 +275,7 @@ missing from the gateway registry. Remote-only targets receive governed shutdown
 					}
 				}
 				if len(matched) > 1 {
-					return fmt.Errorf("operator stop: ambiguous local workers for session %s\nStop all local workers with:\nztd operator stop", sessionID)
+					return fmt.Errorf("operator stop: ambiguous local Operators for session %s\nStop all local Operators with:\nztd operator stop", sessionID)
 				}
 				response, err := requestOperatorStop(client, sessionID, reason)
 				if len(matched) == 0 {

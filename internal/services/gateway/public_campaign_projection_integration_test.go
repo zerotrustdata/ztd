@@ -120,9 +120,14 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	t.Cleanup(func() { _ = mirrorStore.Close() })
 	mirror, err := gateway.NewPublicMirrorServer(testutil.NewTestLogger(), mirrorStore, gateway.PublicMirrorConfig{})
 	require.NoError(t, err)
+	const ingestToken = "campaign-projection-token"
+	mirror.SetIngestAuthToken(ingestToken)
+	publisher.SetIngestAuthToken(ingestToken)
 	require.NoError(t, mirror.RegisterSourceKey(ctx, exportConfig.SourceID, exportConfig.SigningKeyID, publicKey))
-	server := httptest.NewServer(mirror.Handler())
+	server := httptest.NewServer(mirror.IngestHandler())
 	t.Cleanup(server.Close)
+	publicServer := httptest.NewServer(mirror.PublicHandler())
+	t.Cleanup(publicServer.Close)
 	publisher.SetMirrorOrigin(server.URL)
 
 	spanNanos := uint64(200_000_000)
@@ -231,7 +236,7 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	require.NoError(t, publisher.ExportBatch(ctx, feedRecords))
 
 	var bootstrap models.PublicFeedBootstrap
-	response, err := server.Client().Get(server.URL + "/bootstrap?source=" + exportConfig.SourceID)
+	response, err := publicServer.Client().Get(publicServer.URL + "/bootstrap?source=" + exportConfig.SourceID)
 	require.NoError(t, err)
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&bootstrap))
 	require.NoError(t, response.Body.Close())
@@ -240,7 +245,7 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	var history struct {
 		Items []evaluationSummaryTestView `json:"items"`
 	}
-	response, err = server.Client().Get(server.URL + "/history?source=" + exportConfig.SourceID + "&kind=evaluation_summary&limit=10")
+	response, err = publicServer.Client().Get(publicServer.URL + "/history?source=" + exportConfig.SourceID + "&kind=evaluation_summary&limit=10")
 	require.NoError(t, err)
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&history))
 	require.NoError(t, response.Body.Close())
@@ -249,7 +254,7 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	assert.Equal(t, evaluationSummaryFromRecords(t, verificationRecords), history.Items[1])
 	assert.Equal(t, "not_run", history.Items[0].VerifierState)
 	summary := history.Items[1]
-	assert.Equal(t, "1.9.0", summary.SchemaVersion)
+	assert.Equal(t, "1.10.0", summary.SchemaVersion)
 	assert.Equal(t, "evaluation_summary", summary.Kind)
 	assert.Equal(t, "passed", summary.VerifierState)
 	assert.Equal(t, 1.0, summary.HeadlineMetrics.PassRate.Value)
@@ -274,7 +279,7 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	assert.Equal(t, populationDigest, summary.VerificationMetadata.PopulationDigest)
 
 	var snapshot models.PublicFeedSnapshot
-	response, err = server.Client().Get(server.URL + "/snapshot?source=" + exportConfig.SourceID)
+	response, err = publicServer.Client().Get(publicServer.URL + "/snapshot?source=" + exportConfig.SourceID)
 	require.NoError(t, err)
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&snapshot))
 	require.NoError(t, response.Body.Close())
@@ -283,9 +288,9 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 
 	streamContext, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	streamRequest, err := http.NewRequestWithContext(streamContext, http.MethodGet, server.URL+"/stream?source="+exportConfig.SourceID+"&since_id=0", nil)
+	streamRequest, err := http.NewRequestWithContext(streamContext, http.MethodGet, publicServer.URL+"/stream?source="+exportConfig.SourceID+"&since_id=0", nil)
 	require.NoError(t, err)
-	streamResponse, err := server.Client().Do(streamRequest)
+	streamResponse, err := publicServer.Client().Do(streamRequest)
 	require.NoError(t, err)
 	defer streamResponse.Body.Close()
 	scanner := bufio.NewScanner(streamResponse.Body)

@@ -312,7 +312,7 @@ type SuspendedTxResponse struct {
 }
 
 // ApprovalStatusResponse is the typed response for GET /api/v1/approvals/status/{txHash}.
-// The CLI polls this mTLS-authenticated endpoint after opening the browser approval page.
+// The CLI verifies this mTLS-authenticated endpoint after receiving approval.completed on the SSE stream.
 type ApprovalStatusResponse struct {
 	Status   string `json:"status"`
 	TxHash   string `json:"tx_hash,omitempty"`
@@ -320,13 +320,14 @@ type ApprovalStatusResponse struct {
 }
 
 // ApprovalRespondRequest is the typed request for POST /api/v1/approvals/respond.
-// It records a deny decision for a suspended transaction from a grounded session
-// (mTLS CLI or WebAuthn-backed web session). Approved=true is rejected: L3
-// approval needs a passkey assertion through the approval verify action.
+// It records a deny decision from a grounded session, or an explicit CLI
+// approval signed over the pending transaction hash. Browser approvals use
+// the WebAuthn verify action.
 type ApprovalRespondRequest struct {
-	ApprovalID string `json:"approval_id"`
-	Approved   bool   `json:"approved"`
-	Reason     string `json:"reason,omitempty"`
+	ApprovalID   string `json:"approval_id"`
+	Approved     bool   `json:"approved"`
+	Reason       string `json:"reason,omitempty"`
+	CLISignature string `json:"cli_signature,omitempty"`
 }
 
 // BootstrapResponse is the typed response for POST /api/auth/bootstrap.

@@ -153,6 +153,39 @@ func TestValidateAssertionCatalogRejectsUnknownVerifierAndGraderVersions(t *test
 	}
 }
 
+func TestValidateAssertionCatalogRejectsUnknownComponentScope(t *testing.T) {
+	tests := []struct {
+		name      string
+		component string
+	}{
+		{name: "actuator is not an assessed component", component: "actuator"},
+		{name: "scope values are case sensitive", component: "Gateway"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate := validAssertionCatalog()
+			candidate.Assertions[0].ComponentScope = []string{"gateway", tt.component}
+			err := catalog.ValidateAssertionCatalog(candidate)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+			assert.ErrorContains(t, err, "ZTD-GOV-BLOCK-001")
+			assert.ErrorContains(t, err, tt.component)
+		})
+	}
+}
+
+func TestShippedAssertionCatalogComponentScopesAreClosedVocabulary(t *testing.T) {
+	assertions := &compliancev1.ControlAssertionCatalog{}
+	require.NoError(t, compliancev1.UnmarshalCanonical(complianceconstants.AssertionCatalogJSON(), assertions))
+	require.NoError(t, catalog.ValidateAssertionCatalog(assertions))
+	for _, assertion := range assertions.Assertions {
+		for _, component := range assertion.GetComponentScope() {
+			assert.Contains(t, constants.ComplianceComponentScopes, component, assertion.GetAssertionId())
+		}
+	}
+}
+
 func TestValidateFrameworkDefinitionAcceptsPlannedControl(t *testing.T) {
 	framework := validFramework()
 	framework.Controls[0].SupportStatus = "planned"
@@ -212,10 +245,11 @@ func TestLoadCanonicalCatalogsResolveAllReferences(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, catalog.ValidateCatalogSet(assertions, frameworks, crosswalks))
 
-	assert.Equal(t, "2.0.0", assertions.GetCatalogVersion())
-	for _, id := range []string{"ZTD-GOV-BLOCK-001", "ZTD-AU-RECEIPT-001", "ZTD-CM-STATE-001"} {
+	assert.Equal(t, "2.1.0", assertions.GetCatalogVersion())
+	for _, id := range []string{"ZTD-GOV-BLOCK-001", "ZTD-AU-RECEIPT-001"} {
 		assert.NotNil(t, catalog.FindAssertion(assertions, id, "2.0.0"), id)
 	}
+	assert.NotNil(t, catalog.FindAssertion(assertions, "ZTD-CM-STATE-001", "2.1.0"))
 	assert.NotNil(t, catalog.FindFramework(frameworks, "fedramp-20x", "CR26-2026-06-24"))
 	assert.NotNil(t, catalog.FindFramework(frameworks, "nist-sp-800-53", "rev5"))
 }
@@ -226,6 +260,7 @@ func TestLoadCanonicalAssertionCatalogDefinesTruthfulNativeClaims(t *testing.T) 
 
 	tests := []struct {
 		assertionID       string
+		version           string
 		level             string
 		components        []string
 		evidenceTypes     []string
@@ -233,18 +268,20 @@ func TestLoadCanonicalAssertionCatalogDefinesTruthfulNativeClaims(t *testing.T) 
 		verifierIDs       []string
 		forbiddenEvidence string
 	}{
-		{assertionID: "ZTD-GOV-BLOCK-001", level: "L3", components: []string{"gateway", "operator"}, evidenceTypes: []string{"deterministic_stage", "state_observation"}, graderIDs: []string{"policy_outcome", "protocol_chain"}, verifierIDs: []string{"deterministic_stage_chain", "state_observation"}, forbiddenEvidence: "action_receipt"},
-		{assertionID: "ZTD-AU-RECEIPT-001", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"action_receipt"}, graderIDs: []string{"receipt_integrity"}, verifierIDs: []string{"receipt_integrity"}},
-		{assertionID: "ZTD-AU-PERSIST-001", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"action_receipt", "final_persistence_attestation"}, graderIDs: []string{"receipt_persistence"}, verifierIDs: []string{"receipt_integrity", "receipt_persistence"}},
-		{assertionID: "ZTD-AU-COMMIT-001", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"commitment"}, graderIDs: []string{"commitment_attestation"}, verifierIDs: []string{"commitment_attestation"}, forbiddenEvidence: "ledger_commit"},
-		{assertionID: "ZTD-CM-STATE-001", level: "L3", components: []string{"operator", "actuator"}, evidenceTypes: []string{"state_observation", "metric"}, graderIDs: []string{"independent_state"}, verifierIDs: []string{"state_observation", "eval_metric"}},
-		{assertionID: "ZTD-IA-MTLS-001", level: "L3", components: []string{"gateway", "operator"}, evidenceTypes: []string{"identity_attestation", "state_observation", "metric"}, graderIDs: []string{"authenticated_operation"}, verifierIDs: []string{"identity_attestation", "state_observation", "eval_metric"}},
-		{assertionID: "ZTD-IA-NOTARY-001", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"deterministic_stage", "attestation"}, graderIDs: []string{"protocol_chain"}, verifierIDs: []string{"deterministic_stage_chain", "notary_proof"}},
-		{assertionID: "ZTD-CRYPTO-FIPS-001", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"build_attestation", "runtime_attestation"}, graderIDs: []string{"fips_mode"}, verifierIDs: []string{"build_provenance", "runtime_fips"}},
+		{assertionID: "ZTD-GOV-BLOCK-001", version: "2.0.0", level: "L3", components: []string{"gateway", "operator"}, evidenceTypes: []string{"deterministic_stage", "state_observation"}, graderIDs: []string{"policy_outcome", "protocol_chain"}, verifierIDs: []string{"deterministic_stage_chain", "state_observation"}, forbiddenEvidence: "action_receipt"},
+		{assertionID: "ZTD-AU-RECEIPT-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"action_receipt"}, graderIDs: []string{"receipt_integrity"}, verifierIDs: []string{"receipt_integrity"}},
+		{assertionID: "ZTD-AU-PERSIST-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"action_receipt", "final_persistence_attestation"}, graderIDs: []string{"receipt_persistence"}, verifierIDs: []string{"receipt_integrity", "receipt_persistence"}},
+		{assertionID: "ZTD-AU-COMMIT-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"commitment"}, graderIDs: []string{"commitment_attestation"}, verifierIDs: []string{"commitment_attestation"}, forbiddenEvidence: "ledger_commit"},
+		{assertionID: "ZTD-CM-STATE-001", version: "2.1.0", level: "L3", components: []string{"gateway", "operator"}, evidenceTypes: []string{"state_observation", "metric"}, graderIDs: []string{"independent_state"}, verifierIDs: []string{"state_observation", "eval_metric"}},
+		{assertionID: "ZTD-IA-MTLS-001", version: "2.0.0", level: "L3", components: []string{"gateway", "operator"}, evidenceTypes: []string{"identity_attestation", "state_observation", "metric"}, graderIDs: []string{"authenticated_operation"}, verifierIDs: []string{"identity_attestation", "state_observation", "eval_metric"}},
+		{assertionID: "ZTD-IA-NOTARY-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"deterministic_stage", "attestation"}, graderIDs: []string{"protocol_chain"}, verifierIDs: []string{"deterministic_stage_chain", "notary_proof"}},
+		{assertionID: "ZTD-CRYPTO-FIPS-001", version: "2.0.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"build_attestation", "runtime_attestation"}, graderIDs: []string{"fips_mode"}, verifierIDs: []string{"build_provenance", "runtime_fips"}},
+		{assertionID: "ZTD-DLP-BOUNDARY-001", version: "2.1.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"metric", "state_observation"}, graderIDs: []string{"model_boundary_raw_secret_rate"}, verifierIDs: []string{"eval_metric", "state_observation"}},
+		{assertionID: "ZTD-DLP-REHYDRATE-001", version: "2.1.0", level: "L2", components: []string{"gateway", "operator"}, evidenceTypes: []string{"metric", "state_observation"}, graderIDs: []string{"exact_local_rehydration"}, verifierIDs: []string{"eval_metric", "state_observation"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.assertionID, func(t *testing.T) {
-			assertion := catalog.FindAssertion(assertions, tt.assertionID, "2.0.0")
+			assertion := catalog.FindAssertion(assertions, tt.assertionID, tt.version)
 			require.NotNil(t, assertion)
 			assert.Equal(t, tt.level, assertion.GetMinimumEvidenceLevel())
 			assert.ElementsMatch(t, tt.components, assertion.GetComponentScope())

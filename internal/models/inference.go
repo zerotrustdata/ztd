@@ -360,6 +360,16 @@ func ComputeInferenceResultDigest(result *operatorv1.InferenceResult) (string, e
 	return SHA256Hex(data), nil
 }
 
+// InferenceResultText returns the concatenated text parts of result, in order.
+// Thinking and tool-call parts are excluded.
+func InferenceResultText(result *operatorv1.InferenceResult) string {
+	var builder strings.Builder
+	for _, part := range result.GetParts() {
+		builder.WriteString(part.GetText())
+	}
+	return builder.String()
+}
+
 func ComputeInferenceModelRegistryDigest(campaignID string, variants []*operatorv1.InferenceModelVariant) (string, error) {
 	if campaignID == "" || len(variants) == 0 {
 		return "", fmt.Errorf("models: compute inference model registry digest: %w", constants.ErrMissingRequiredField)

@@ -112,6 +112,20 @@ func TestTransitionLocalPublicFeed_PreservesEveryImmutableGeneration(t *testing.
 	assert.ErrorIs(t, err, constants.ErrPublicFeedArchiveGenerationExists)
 }
 
+func TestEnsureLocalPublicFeed_RejectsOrphanedProofGeneration(t *testing.T) {
+	fileSvc := newProducerFileSvc(t)
+	ks := newTestKeystore(t, fileSvc, testutil.NewTestLogger())
+	ctx := context.Background()
+	require.NoError(t, fileSvc.MkdirAll(ctx, constants.PublicProofsDirname, constants.PermDirPrivate))
+	require.NoError(t, fileSvc.WriteFile(ctx, constants.PublicProofSegmentsFilename, []byte("{}\n"), constants.PermFilePrivate))
+
+	_, err := EnsureLocalPublicFeed(ctx, fileSvc, ks, "source-one", "http://127.0.0.1:8081")
+	require.ErrorIs(t, err, constants.ErrPublicFeedOrphanedGeneration)
+	keyExists, err := fileSvc.FileExists(ctx, constants.PublicFeedSigningKeyPath)
+	require.NoError(t, err)
+	assert.False(t, keyExists)
+}
+
 func TestValidatePublicMirrorListenAddresses_RejectsDuplicate(t *testing.T) {
 	err := ValidatePublicMirrorListenAddresses("127.0.0.1:8081", "127.0.0.1:8081", false)
 	assert.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)

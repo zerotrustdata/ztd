@@ -16,6 +16,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -36,20 +37,41 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
+// mirrorTestIngestToken is the ingest bearer token every test mirror is
+// configured with. The mirror rejects ingest traffic without one.
+const mirrorTestIngestToken = "test-ingest-token"
+
+// mirrorTestAuthTransport adds the ingest bearer token to requests that do not
+// set Authorization, so fixtures that post ingest traffic authenticate by
+// default. Tests that probe missing credentials use a client without it.
+type mirrorTestAuthTransport struct {
+	base  http.RoundTripper
+	token string
+}
+
+func (t mirrorTestAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("Authorization") == "" {
+		req = req.Clone(req.Context())
+		req.Header.Set("Authorization", "Bearer "+t.token)
+	}
+	return t.base.RoundTrip(req)
+}
+
 // mirrorTestEnv builds a reference mirror server with a registered source
 // key, a test HTTP server, and helper functions for building and sending
 // signed batches.
 type mirrorTestEnv struct {
-	t        *testing.T
-	mirror   *PublicMirrorServer
-	server   *httptest.Server
-	pub      ed25519.PublicKey
-	priv     ed25519.PrivateKey
-	keyID    string
-	sourceID string
-	client   *http.Client
-	fileSvc  fs.RuntimeFileService
-	store    *PublicMirrorStore
+	t            *testing.T
+	mirror       *PublicMirrorServer
+	server       *httptest.Server // ingest listener (IngestHandler)
+	publicServer *httptest.Server // anonymous read listener (PublicHandler)
+	pub          ed25519.PublicKey
+	priv         ed25519.PrivateKey
+	keyID        string
+	sourceID     string
+	client       *http.Client
+	fileSvc      fs.RuntimeFileService
+	store        *PublicMirrorStore
 }
 
 // openTestPublicMirrorStore opens the durable mirror store under fileSvc and
@@ -70,6 +92,7 @@ func (e *mirrorTestEnv) reopenMirror() *PublicMirrorServer {
 	e.store = openTestPublicMirrorStore(e.t, e.fileSvc)
 	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), e.store, PublicMirrorConfig{})
 	require.NoError(e.t, err)
+	mirror.SetIngestAuthToken(mirrorTestIngestToken)
 	return mirror
 }
 
@@ -108,27 +131,40 @@ func newMirrorTestEnv(t *testing.T) *mirrorTestEnv {
 	store := openTestPublicMirrorStore(t, fileSvc)
 	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), store, PublicMirrorConfig{})
 	require.NoError(t, err)
+	mirror.SetIngestAuthToken(mirrorTestIngestToken)
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "test-key-1"
 	sourceID := "test-source-1"
 	require.NoError(t, mirror.RegisterSourceKey(context.Background(), sourceID, keyID, pub))
 
-	server := httptest.NewServer(mirror.Handler())
-	t.Cleanup(server.Close)
+	ingestServer, publicServer := newSplitMirrorServers(t, mirror)
 
 	return &mirrorTestEnv{
-		t:        t,
-		mirror:   mirror,
-		server:   server,
-		pub:      pub,
-		priv:     priv,
-		keyID:    keyID,
-		sourceID: sourceID,
-		client:   server.Client(),
-		fileSvc:  fileSvc,
-		store:    store,
+		t:            t,
+		mirror:       mirror,
+		server:       ingestServer,
+		publicServer: publicServer,
+		pub:          pub,
+		priv:         priv,
+		keyID:        keyID,
+		sourceID:     sourceID,
+		client:       &http.Client{Transport: mirrorTestAuthTransport{base: ingestServer.Client().Transport, token: mirrorTestIngestToken}},
+		fileSvc:      fileSvc,
+		store:        store,
 	}
+}
+
+// newSplitMirrorServers serves the private ingest surface and the anonymous
+// public read surface of one mirror on separate listeners, mirroring the
+// runtime split. Both servers are closed when the test ends.
+func newSplitMirrorServers(t *testing.T, mirror *PublicMirrorServer) (*httptest.Server, *httptest.Server) {
+	t.Helper()
+	ingestServer := httptest.NewServer(mirror.IngestHandler())
+	t.Cleanup(ingestServer.Close)
+	publicServer := httptest.NewServer(mirror.PublicHandler())
+	t.Cleanup(publicServer.Close)
+	return ingestServer, publicServer
 }
 
 // buildBatch builds a signed batch with the given records, previous batch
@@ -222,13 +258,52 @@ func (e *mirrorTestEnv) sendIngest(batch models.PublicFeedBatch) (int, models.Pu
 // getJSON performs a GET request and decodes the JSON response.
 func (e *mirrorTestEnv) getJSON(path string, target any) int {
 	e.t.Helper()
-	resp, err := e.client.Get(e.server.URL + path)
+	resp, err := e.client.Get(e.publicServer.URL + path)
 	require.NoError(e.t, err)
 	defer resp.Body.Close()
 	if target != nil {
 		require.NoError(e.t, json.NewDecoder(resp.Body).Decode(target))
 	}
 	return resp.StatusCode
+}
+
+// TestPublicMirror_IngestHandlerRejectsReadRoutes verifies that the private
+// ingest listener serves no anonymous read route, even for authenticated GET
+// requests.
+func TestPublicMirror_IngestHandlerRejectsReadRoutes(t *testing.T) {
+	env := newMirrorTestEnv(t)
+
+	for _, path := range []string{"/bootstrap", "/snapshot", "/history", "/stream", "/proof-catalog", "/proof-manifest", "/proof-segments", "/proofs/unknown-artifact-id"} {
+		t.Run(path, func(t *testing.T) {
+			request, requestErr := http.NewRequest(http.MethodGet, env.server.URL+path, nil)
+			require.NoError(t, requestErr)
+			request.Header.Set("Authorization", "Bearer "+mirrorTestIngestToken)
+			response, requestErr := env.server.Client().Do(request)
+			require.NoError(t, requestErr)
+			require.NoError(t, response.Body.Close())
+			assert.Equal(t, http.StatusNotFound, response.StatusCode)
+			assert.Empty(t, response.Header.Get("Access-Control-Allow-Origin"))
+		})
+	}
+}
+
+// TestPublicMirror_PublicHandlerRejectsIngestRoutesWithToken verifies that the
+// public read listener mounts no ingest route, so a correctly authenticated
+// ingest request is answered as not found rather than admitted.
+func TestPublicMirror_PublicHandlerRejectsIngestRoutesWithToken(t *testing.T) {
+	env := newMirrorTestEnv(t)
+
+	for _, path := range []string{"/ingest", "/keys/register", "/proof-ingest", "/proof-root?source=" + env.sourceID} {
+		t.Run(path, func(t *testing.T) {
+			request, requestErr := http.NewRequest(http.MethodPost, env.publicServer.URL+path, strings.NewReader("{}"))
+			require.NoError(t, requestErr)
+			request.Header.Set("Authorization", "Bearer "+mirrorTestIngestToken)
+			response, requestErr := env.publicServer.Client().Do(request)
+			require.NoError(t, requestErr)
+			require.NoError(t, response.Body.Close())
+			assert.Equal(t, http.StatusNotFound, response.StatusCode)
+		})
+	}
 }
 
 func TestPublicMirror_PublicHandlerExposesOnlyAnonymousReadRoutes(t *testing.T) {
@@ -272,7 +347,7 @@ func TestMirror_IngestAuth_RejectsMissingToken(t *testing.T) {
 	reqBody := models.PublicIngestRequest{Batch: batch}
 	bodyBytes, err := json.Marshal(reqBody)
 	require.NoError(t, err)
-	resp, err := env.client.Post(env.server.URL+"/ingest", "application/json", bytes.NewReader(bodyBytes))
+	resp, err := env.server.Client().Post(env.server.URL+"/ingest", "application/json", bytes.NewReader(bodyBytes))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -402,19 +477,19 @@ func TestMirror_AnonymousReadRateLimitRejectsAndResetsPerClientWindow(t *testing
 	env.mirror.now = func() time.Time { return now }
 
 	for range 2 {
-		response, err := env.client.Get(env.server.URL + "/snapshot?source=" + env.sourceID)
+		response, err := env.client.Get(env.publicServer.URL + "/snapshot?source=" + env.sourceID)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, response.StatusCode)
 		require.NoError(t, response.Body.Close())
 	}
-	response, err := env.client.Get(env.server.URL + "/snapshot?source=" + env.sourceID)
+	response, err := env.client.Get(env.publicServer.URL + "/snapshot?source=" + env.sourceID)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusTooManyRequests, response.StatusCode)
 	assert.Equal(t, "60", response.Header.Get("Retry-After"))
 	require.NoError(t, response.Body.Close())
 
 	now = now.Add(time.Minute)
-	response, err = env.client.Get(env.server.URL + "/snapshot?source=" + env.sourceID)
+	response, err = env.client.Get(env.publicServer.URL + "/snapshot?source=" + env.sourceID)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 	require.NoError(t, response.Body.Close())
@@ -519,11 +594,10 @@ func TestMirror_RestartRecoversAcceptedStateAndContinuesHashChain(t *testing.T) 
 	require.True(t, resp1.Accepted)
 
 	mirror2 := env.reopenMirror()
-	server2 := httptest.NewServer(mirror2.Handler())
-	t.Cleanup(server2.Close)
+	ingest2, public2 := newSplitMirrorServers(t, mirror2)
 
 	var snapshot models.PublicFeedSnapshot
-	response, err := server2.Client().Get(server2.URL + "/snapshot?source=" + env.sourceID)
+	response, err := public2.Client().Get(public2.URL + "/snapshot?source=" + env.sourceID)
 	require.NoError(t, err)
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&snapshot))
 	require.NoError(t, response.Body.Close())
@@ -532,7 +606,7 @@ func TestMirror_RestartRecoversAcceptedStateAndContinuesHashChain(t *testing.T) 
 
 	requestBody, err := json.Marshal(models.PublicIngestRequest{Batch: batch1})
 	require.NoError(t, err)
-	response, err = server2.Client().Post(server2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
+	response, err = env.client.Post(ingest2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
 	require.NoError(t, err)
 	var replayResponse models.PublicIngestResponse
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&replayResponse))
@@ -546,7 +620,7 @@ func TestMirror_RestartRecoversAcceptedStateAndContinuesHashChain(t *testing.T) 
 	batch2 := env.buildBatch(records2, batch1.ContentHash)
 	requestBody, err = json.Marshal(models.PublicIngestRequest{Batch: batch2})
 	require.NoError(t, err)
-	response, err = server2.Client().Post(server2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
+	response, err = env.client.Post(ingest2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
 	require.NoError(t, err)
 	var resp2 models.PublicIngestResponse
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&resp2))
@@ -1024,7 +1098,7 @@ func TestMirror_History_CompressesGzipResponse(t *testing.T) {
 	_, ingestResp := env.sendIngest(batch)
 	require.True(t, ingestResp.Accepted)
 
-	req, err := http.NewRequest(http.MethodGet, env.server.URL+"/history?source="+env.sourceID, nil)
+	req, err := http.NewRequest(http.MethodGet, env.publicServer.URL+"/history?source="+env.sourceID, nil)
 	require.NoError(t, err)
 	req.Header.Set("Accept-Encoding", "gzip")
 	resp, err := env.client.Do(req)
@@ -1080,7 +1154,7 @@ func TestMirror_History_FiltersByRecordKindBeforePagination(t *testing.T) {
 // include CORS headers.
 func TestMirror_CORS_AllowsAnonymousReads(t *testing.T) {
 	env := newMirrorTestEnv(t)
-	resp, err := env.client.Get(env.server.URL + "/snapshot?source=" + env.sourceID)
+	resp, err := env.client.Get(env.publicServer.URL + "/snapshot?source=" + env.sourceID)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
@@ -1091,7 +1165,7 @@ func TestMirror_CORS_AllowsAnonymousReads(t *testing.T) {
 // requests return 204 No Content.
 func TestMirror_CORS_OptionsReturnsNoContent(t *testing.T) {
 	env := newMirrorTestEnv(t)
-	req, err := http.NewRequest(http.MethodOptions, env.server.URL+"/snapshot", nil)
+	req, err := http.NewRequest(http.MethodOptions, env.publicServer.URL+"/snapshot", nil)
 	require.NoError(t, err)
 	resp, err := env.client.Do(req)
 	require.NoError(t, err)
@@ -1133,7 +1207,7 @@ func TestMirror_SSE_ReplaysExistingRecords(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.server.URL+"/stream?source="+env.sourceID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.publicServer.URL+"/stream?source="+env.sourceID, nil)
 	require.NoError(t, err)
 	resp2, err := env.client.Do(req)
 	require.NoError(t, err)
@@ -1159,7 +1233,7 @@ func TestMirror_SSE_DeliversFirstBatchToExplicitSourceSubscriber(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.server.URL+"/stream?source="+env.sourceID+"&since_id=0", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.publicServer.URL+"/stream?source="+env.sourceID+"&since_id=0", nil)
 	require.NoError(t, err)
 	streamResponse, err := env.client.Do(req)
 	require.NoError(t, err)
@@ -1224,7 +1298,7 @@ func TestMirror_SSE_ResumesFromSinceID(t *testing.T) {
 	defer cancel()
 
 	// Resume from sequence 1 (should get records 2 and 3).
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.server.URL+"/stream?source="+env.sourceID+"&since_id=1", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.publicServer.URL+"/stream?source="+env.sourceID+"&since_id=1", nil)
 	require.NoError(t, err)
 	resp2, err := env.client.Do(req)
 	require.NoError(t, err)
@@ -1260,7 +1334,7 @@ func TestMirror_SSE_ReplayTruncatesAtLimit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.server.URL+"/stream?source="+env.sourceID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.publicServer.URL+"/stream?source="+env.sourceID, nil)
 	require.NoError(t, err)
 	resp2, err := env.client.Do(req)
 	require.NoError(t, err)
@@ -1404,7 +1478,11 @@ func TestMirror_KeyRegistration_RequiresAuthenticationStrictPayloadAndCurrentKey
 			if testCase.authenticate {
 				httpRequest.Header.Set("Authorization", "Bearer registration-token")
 			}
-			response, err := env.client.Do(httpRequest)
+			client := env.client
+			if !testCase.authenticate {
+				client = env.server.Client()
+			}
+			response, err := client.Do(httpRequest)
 			require.NoError(t, err)
 			require.NoError(t, response.Body.Close())
 			assert.Equal(t, testCase.expectedStatus, response.StatusCode)
@@ -1572,7 +1650,7 @@ func TestMirror_ProofIngest_AuthenticatesValidatesAndAtomicallyStoresPackage(t *
 	assert.True(t, ingestResponse.Accepted)
 	assert.Equal(t, 1, ingestResponse.ArtifactCount)
 
-	response, err = env.client.Get(env.server.URL + "/proofs/" + artifactID)
+	response, err = env.client.Get(env.publicServer.URL + "/proofs/" + artifactID)
 	require.NoError(t, err)
 	stored, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
@@ -1634,7 +1712,7 @@ func TestMirror_ProofIngest_AcceptsIncrementalArtifactDelta(t *testing.T) {
 	require.NoError(t, response.Body.Close())
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 
-	response, err = env.client.Get(env.server.URL + "/proofs/" + secondID)
+	response, err = env.client.Get(env.publicServer.URL + "/proofs/" + secondID)
 	require.NoError(t, err)
 	stored, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
@@ -1832,7 +1910,11 @@ func TestMirror_ProofRoot_AuthenticatesAndReportsStoredRoot(t *testing.T) {
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
-		response, err := env.client.Do(req)
+		client := env.client
+		if token == "" {
+			client = env.server.Client()
+		}
+		response, err := client.Do(req)
 		require.NoError(t, err)
 		defer response.Body.Close()
 		var root models.PublicProofRootResponse
@@ -1874,7 +1956,7 @@ func TestMirror_ProofDownload_ServesContentAddressedArtifact(t *testing.T) {
 	require.NoError(t, env.mirror.storeProofPackage(context.Background(), proofRequest))
 	artifactID := proofRequest.Artifacts[0].ArtifactID
 
-	resp, err := env.client.Get(env.server.URL + "/proofs/" + artifactID)
+	resp, err := env.client.Get(env.publicServer.URL + "/proofs/" + artifactID)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -1896,9 +1978,8 @@ func TestMirror_RestartRecoversProofCatalogArtifactAndKeyRevocation(t *testing.T
 	require.NoError(t, env.mirror.RevokeSourceKey(context.Background(), env.sourceID, env.keyID))
 
 	mirror2 := env.reopenMirror()
-	server2 := httptest.NewServer(mirror2.Handler())
-	t.Cleanup(server2.Close)
-	response, err := server2.Client().Get(server2.URL + "/proofs/" + artifactID)
+	ingest2, public2 := newSplitMirrorServers(t, mirror2)
+	response, err := public2.Client().Get(public2.URL + "/proofs/" + artifactID)
 	require.NoError(t, err)
 	body, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
@@ -1909,7 +1990,7 @@ func TestMirror_RestartRecoversProofCatalogArtifactAndKeyRevocation(t *testing.T
 	batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"v": "1"}))}, constants.PublicFeedZeroHashHex)
 	requestBody, err := json.Marshal(models.PublicIngestRequest{Batch: batch})
 	require.NoError(t, err)
-	response, err = server2.Client().Post(server2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
+	response, err = env.client.Post(ingest2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
 	require.NoError(t, err)
 	var ingestResponse models.PublicIngestResponse
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&ingestResponse))
@@ -2016,7 +2097,7 @@ func TestMirror_ProofManifest_ReturnsManifest(t *testing.T) {
 // manifest endpoint returns 404 for an unknown source.
 func TestMirror_ProofManifest_Returns404ForUnknown(t *testing.T) {
 	env := newMirrorTestEnv(t)
-	resp, err := env.client.Get(env.server.URL + "/proof-manifest?source=unknown")
+	resp, err := env.client.Get(env.publicServer.URL + "/proof-manifest?source=unknown")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
@@ -2183,7 +2264,7 @@ func TestMirror_RecordType_AcceptsKeyRevocationRecords(t *testing.T) {
 func TestMirror_MethodNotAllowed_RejectsPOSTOnReadEndpoints(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	for _, path := range []string{"/bootstrap", "/snapshot", "/history", "/proof-catalog"} {
-		resp, err := env.client.Post(env.server.URL+path, "application/json", strings.NewReader("{}"))
+		resp, err := env.client.Post(env.publicServer.URL+path, "application/json", strings.NewReader("{}"))
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode, "path: %s", path)
 		resp.Body.Close()
@@ -2309,4 +2390,98 @@ func TestMirror_History_CursorIsOpaqueSequence(t *testing.T) {
 	var page2FirstSeq int64
 	require.NoError(t, json.Unmarshal(page2.Items[0]["sequence"], &page2FirstSeq))
 	assert.Greater(t, page2FirstSeq, page1LastSeq)
+}
+
+// TestPublicMirrorStore_AssignmentAuditIndexFollowsEventRecords checks that the
+// index names each event record's run and assignment, returns them in sequence
+// order, and holds no row for a non-event record.
+func TestPublicMirrorStore_AssignmentAuditIndexFollowsEventRecords(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	records := []models.PublicFeedRecord{
+		liveEventRecord(t, 1, "run-1", "assignment-1", "event-1", 0, 2),
+		env.makeRecord(2, projectionWithInt64Field("sequence", 2)),
+		liveEventRecord(t, 3, "run-1", "assignment-2", "event-3", 0, 1),
+		liveEventRecord(t, 4, "run-1", "assignment-1", "event-4", 1, 2),
+	}
+	_, resp := env.sendIngest(env.buildBatch(records, constants.PublicFeedZeroHashHex))
+	require.True(t, resp.Accepted)
+
+	first, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-1", "assignment-1")
+	require.NoError(t, err)
+	require.Len(t, first, 2)
+	assert.Equal(t, int64(1), first[0].Sequence)
+	assert.Equal(t, int64(4), first[1].Sequence)
+	assert.Equal(t, records[0].RecordBytes, first[0].RecordBytes)
+	assert.Equal(t, models.PublicFeedRecordTypeEvent, first[0].RecordType)
+
+	second, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-1", "assignment-2")
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	assert.Equal(t, int64(3), second[0].Sequence)
+
+	none, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-2", "assignment-1")
+	require.NoError(t, err)
+	assert.Empty(t, none)
+
+	var indexed int
+	require.NoError(t, env.store.db.QueryRowWithRetry(ctx, `SELECT COUNT(*) FROM assignment_event_records WHERE source_id = ?`, env.sourceID).Scan(&indexed))
+	assert.Equal(t, 3, indexed, "one index row per event record, none for the projection")
+}
+
+// TestPublicMirrorStore_AssignmentAuditIndexPrunesWithRecords checks that the
+// retention prune removes an index row together with its record.
+func TestPublicMirrorStore_AssignmentAuditIndexPrunesWithRecords(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	require.NoError(t, env.mirror.SetMaxRetainedBatches(1))
+	first := env.buildBatch([]models.PublicFeedRecord{liveEventRecord(t, 1, "run-1", "assignment-1", "event-1", 0, 2)}, constants.PublicFeedZeroHashHex)
+	_, resp := env.sendIngest(first)
+	require.True(t, resp.Accepted)
+	second := env.buildBatch([]models.PublicFeedRecord{liveEventRecord(t, 2, "run-1", "assignment-1", "event-2", 1, 2)}, first.ContentHash)
+	_, resp = env.sendIngest(second)
+	require.True(t, resp.Accepted)
+
+	retained, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-1", "assignment-1")
+	require.NoError(t, err)
+	require.Len(t, retained, 1)
+	assert.Equal(t, int64(2), retained[0].Sequence)
+
+	var indexed int
+	require.NoError(t, env.store.db.QueryRowWithRetry(ctx, `SELECT COUNT(*) FROM assignment_event_records WHERE source_id = ?`, env.sourceID).Scan(&indexed))
+	assert.Equal(t, 1, indexed, "the pruned record's index row is removed with it")
+}
+
+// TestPublicMirrorStore_AssignmentAuditIndexRejectsUndecodableEvent checks that
+// an event body the canonical decoder cannot read fails the store write, so the
+// batch is not accepted and nothing is stored. The body passes the mirror's
+// protojson validation because its fields are reordered, which the canonical
+// form forbids.
+func TestPublicMirrorStore_AssignmentAuditIndexRejectsUndecodableEvent(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	body := []byte(`{"kind":"stage_updated","schema_version":"1.9.0","dataset_id":"dataset-1","quality_state":"live_in_progress","observed_at":"2026-10-19T00:00:00Z","event_id":"event-1","run_id":"run-1","assignment_id":"assignment-1","lifecycle_status":"running","completed":0,"total":1}`)
+	digest := sha256.Sum256(body)
+	record := models.PublicFeedRecord{Sequence: 1, RecordType: models.PublicFeedRecordTypeEvent, RecordHash: hex.EncodeToString(digest[:]), RecordBytes: string(body)}
+
+	t.Run("ingest is refused with a server error and stores nothing", func(t *testing.T) {
+		status, resp := env.sendIngest(env.buildBatch([]models.PublicFeedRecord{record}, constants.PublicFeedZeroHashHex))
+
+		assert.False(t, resp.Accepted)
+		assert.Equal(t, http.StatusInternalServerError, status, "a store write failure, not a validation rejection")
+		stored, err := env.store.recordsInRange(ctx, env.sourceID, 1, 1)
+		require.NoError(t, err)
+		assert.Empty(t, stored)
+		indexed, err := env.store.AssignmentEventRecords(ctx, env.sourceID, "run-1", "assignment-1")
+		require.NoError(t, err)
+		assert.Empty(t, indexed)
+	})
+
+	t.Run("the index write reports the record schema sentinel", func(t *testing.T) {
+		err := env.store.write(ctx, "test index write", func(tx *sql.Tx) error {
+			return insertAssignmentEventRecords(ctx, tx, env.sourceID, []models.PublicFeedRecord{record})
+		})
+
+		require.ErrorIs(t, err, constants.ErrPublicFeedRecordSchemaInvalid)
+	})
 }

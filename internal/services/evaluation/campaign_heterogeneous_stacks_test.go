@@ -13,45 +13,40 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 func testHeterogeneousVariants() []*evalv1.ModelVariant {
-	return []*evalv1.ModelVariant{
-		{VariantId: "qwen3-8b", ProviderClass: "ollama", ServedModelTag: "qwen3:8b", ModelDigest: repeatHex('a', 64), ModelFamily: "qwen3", ParameterCount: 8_000_000_000},
-		{VariantId: "phi4-mini", ProviderClass: "ollama", ServedModelTag: "phi4:mini", ModelDigest: repeatHex('b', 64), ModelFamily: "phi", ParameterCount: 3_800_000_000, CapabilityObservations: []*evalv1.ModelCapabilityObservation{
-			{Capability: evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, Outcome: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS},
-		}},
-		{VariantId: "smollm2-360m", ProviderClass: "ollama", ServedModelTag: "smollm2:360m", ModelDigest: repeatHex('c', 64), ModelFamily: "smollm", ParameterCount: 360_000_000, Quantization: "q4_0"},
-		{VariantId: "gemma3-4b", ProviderClass: "ollama", ServedModelTag: "gemma3:4b", ModelDigest: repeatHex('d', 64), ModelFamily: "gemma", ParameterCount: 4_000_000_000, Quantization: "q8_0"},
-	}
+	return testFormationCatalogVariants()
 }
 
 func mustHeterogeneousStack(t *testing.T) *evalv1.HeterogeneousStackDefinition {
 	t.Helper()
-	stackSet, err := GenerateHeterogeneousStackSet(HeterogeneousStackGenerationRequest{
-		CampaignID: "heterogeneous-campaign",
-		Seed:       11,
-		Variants:   testHeterogeneousVariants(),
-	})
+	stackSet, err := testFormationStackSet("heterogeneous-campaign", 11, testHeterogeneousVariants())
 	require.NoError(t, err)
 	return stackSet.Stacks[0]
 }
 
 func heterogeneousAssignmentExecutionRequest(t *testing.T, stack *evalv1.HeterogeneousStackDefinition, variants []*evalv1.ModelVariant) AssignmentExecutionRequest {
 	t.Helper()
+	stackSet, err := testFormationStackSet("heterogeneous-campaign", 11, variants)
+	require.NoError(t, err)
+	registry, err := MaterializeModelRegistry("heterogeneous-campaign", variants)
+	require.NoError(t, err)
 	return AssignmentExecutionRequest{
 		Assignment: &evalv1.EvaluationAssignment{
 			AssignmentId: "assignment-heterogeneous-1",
 			RunId:        "run-heterogeneous-1",
-			CampaignId:   "campaign-heterogeneous-1",
+			CampaignId:   "heterogeneous-campaign",
 			ScenarioId:   "instruction-exact-format",
 			Lane:         evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
 			Target: &evalv1.EvaluationAssignment_Heterogeneous{
 				Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack},
 			},
 		},
-		AttemptID: "attempt-heterogeneous-1",
+		FormationStackSet: stackSet,
+		AttemptID:         "attempt-heterogeneous-1",
 		ScenarioInput: ScenarioInputFixture{
 			ScenarioID: "instruction-exact-format",
 			UserPrompt: "Reply with exactly: SUITE-OK",
@@ -59,42 +54,36 @@ func heterogeneousAssignmentExecutionRequest(t *testing.T, stack *evalv1.Heterog
 		GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_DETERMINISTIC,
 		Binding: CampaignExecutionBinding{
 			Topology:            testOperatorTopology("infer-session", "data-session"),
-			ModelRegistryDigest: "d" + repeatHex('d', 63),
+			ModelRegistryDigest: registry.RegistryDigest,
 			ModelRegistry:       InferenceVariantsFromEvalRegistry(variants),
+			ModelVariants:       variants,
 		},
 	}
 }
 
-// A stack set persisted under the pre-formation generation rule must keep
-// validating so its runs stay resumable and verifiable.
-func TestValidateHeterogeneousStackSet_AcceptsAPersistedLegacyRuleSet(t *testing.T) {
-	set, err := GenerateHeterogeneousStackSet(HeterogeneousStackGenerationRequest{
-		CampaignID: "heterogeneous-campaign",
-		Seed:       42,
-		Variants:   testHeterogeneousVariants(),
-	})
+func TestValidateHeterogeneousStackSet_RejectsRetiredLegacyGenerationRule(t *testing.T) {
+	set, err := testFormationStackSet("heterogeneous-campaign", 42, testHeterogeneousVariants())
 	require.NoError(t, err)
-	assert.Equal(t, HeterogeneousStackGenerationRule, set.GenerationRule)
-	for _, variantID := range set.VariantIDs {
-		assert.Len(t, set.Coverage.VariantRoleCoverage[variantID], 3)
-	}
-	require.NoError(t, ValidateHeterogeneousStackSet(set))
-}
-
-func TestValidateHeterogeneousStackSet_RejectsAVariantMissingARole(t *testing.T) {
-	set, err := GenerateHeterogeneousStackSet(HeterogeneousStackGenerationRequest{
-		CampaignID: "heterogeneous-campaign",
-		Variants:   testHeterogeneousVariants(),
-	})
-	require.NoError(t, err)
-	set.Stacks = set.Stacks[:1]
+	set.GenerationRule = "heterogeneous-v1"
 	set.SetDigest, err = ComputeHeterogeneousStackSetDigest(set)
 	require.NoError(t, err)
-	assert.ErrorContains(t, ValidateHeterogeneousStackSet(set), "missing role coverage")
+	assert.ErrorIs(t, ValidateHeterogeneousStackSet(set), constants.ErrFormationRegistryBinding)
+}
+
+func TestValidateHeterogeneousStackSet_RejectsMalformedCatalogStack(t *testing.T) {
+	set, err := testFormationStackSet("heterogeneous-campaign", 42, testHeterogeneousVariants())
+	require.NoError(t, err)
+	set.Stacks[0].PrimarySlot.VariantId = "not-frozen"
+	stackDigest, err := ComputeHeterogeneousStackDigest(set.Stacks[0])
+	require.NoError(t, err)
+	set.Stacks[0].StackDigest = stackDigest
+	set.SetDigest, err = ComputeHeterogeneousStackSetDigest(set)
+	require.NoError(t, err)
+	assert.ErrorIs(t, ValidateHeterogeneousStackSet(set), constants.ErrFormationRegistryBinding)
 }
 
 func TestComputeHeterogeneousStackDigest_RejectsDuplicateVariants(t *testing.T) {
-	variants := testHeterogeneousVariants()
+	variants := testFormationCatalogVariants()
 	_, err := materializeStack("invalid", variants[0], variants[0], variants[1])
 	assert.Error(t, err)
 }

@@ -93,6 +93,8 @@ func NewTestConfig(t *testing.T) *config.Config {
 			PasskeyRpID:     "localhost",
 			PasskeyRpName:   "ztd",
 			Posture:         constants.PostureNotary,
+			// Same platform default LoadGateway applies; the Gateway PKI rejects zero.
+			OperatorLeafCertTTL: constants.MaxWorkloadLeafCertTTL,
 		},
 		WorkDir:    workDir,
 		PKIDir:     pkiDir,

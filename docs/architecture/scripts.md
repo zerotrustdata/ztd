@@ -3,8 +3,8 @@ doc_id: scripts
 title: Automation Scripts
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - scripts/
   - internal/services/gateway/scripts/
@@ -58,7 +58,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-SCRIPTS-07 | A prerequisite that resolves under `/mnt/<drive>/` MUST NOT count as installed on WSL. |
 | INV-SCRIPTS-08 | Re-running setup MUST reuse installed prerequisites, Go dev tools, and ready Node dependency trees. Dependency installation runs only when tooling is missing or manifests change. |
 | INV-SCRIPTS-09 | `.gitignore` is the authoritative list of paths that must never be committed. `scripts/check-commit-hygiene.sh` MUST reject any added path it matches, any blob over 5 MiB outside `vendor/`, any ELF, Mach-O, or PE executable, and the committer's own home-directory path. |
-| INV-SCRIPTS-10 | `make quickstart` MUST compose only public `ztd` CLI commands, MUST reuse a running Gateway and an existing CLI identity, and MUST NOT read or write `.ztd/` directly. |
+| INV-SCRIPTS-10 | `make quickstart` MUST compose only public `ztd` CLI commands, MUST reuse a running Gateway and an existing CLI identity, and MUST NOT read or write runtime state under `.ztd/`. Its only `.ztd/` write is a scratch directory under `.ztd/tmp/` (`INV-FS-11` in [Developer Guidelines](../devs/devs.md)), removed on exit. |
 
 ## Owned surfaces
 
@@ -68,7 +68,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | macOS development bootstrap | `scripts/macos-setup.sh` | Prerequisite checks, Homebrew packages, Xcode tools prompt, toolchain setup |
 | Windows development bootstrap | `scripts/windows-setup.ps1` | PowerShell 7+, build/toolchain checks, winget/Chocolatey package installs |
 | Shared setup helpers | `scripts/lib/dev-setup-common.sh` | Version comparison, prerequisite checks, PATH profile updates, TTY formatting |
-| Quickstart script | `scripts/quickstart.sh`, `make quickstart` | Builds `./ztd`, boots/reuses Gateway, logs in, executes first governed action |
+| Quickstart script | `scripts/quickstart.sh`, `make quickstart` | Builds `./ztd` when absent, boots/reuses Gateway, logs in, executes first governed action |
 | Onboarding script tests | `scripts/test-onboarding.sh`, `make test-onboarding` | Hermetic offline test of setup library and quickstart |
 | Fresh-host onboarding matrix | `scripts/onboarding/`, `make test-onboarding-docker` | Disposable per-distro containers testing setup and quickstart scenarios |
 | Toolchain preflight | `scripts/dev-check.sh`, `make dev-check` | Reports missing/mismatched tools and exits non-zero if invalid |
@@ -77,9 +77,13 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Fresh onboarding smoke test | `scripts/ci/onboarding-smoke.sh` | Automated Linux runner testing full setup, smoke actions, and local evidence |
 | Operator deployment lifecycle | `scripts/ci/operator-deploy-lifecycle.sh` | Automated multi-operator deployment, liveness, and termination lifecycle |
 | Commit hygiene gate | `scripts/check-commit-hygiene.sh`, `scripts/git-hooks/` | Pre-commit (`--staged`) and pre-push (`--range`) hygiene validations |
+| Commit hygiene tests | `scripts/test-commit-hygiene.sh`, `make test-commit-hygiene` | Exercises the hygiene hook in disposable repositories |
+| Release automation | `scripts/release-preflight.sh`, `scripts/release-artifacts.sh`, `scripts/release-r2.sh`, `scripts/test-release-scripts.sh` | Release tag and `VERSION` preflight, binary set checksums, signing, and verification, R2 publication, and offline gate tests; called by `.github/workflows/release-binary.yml` |
+| Gateway LAN helper (Windows) | `scripts/configure-gateway-lan.ps1` | Inspects, applies, or removes Windows portproxy and firewall rules that expose Gateway ports 8080 and 8443 to a WSL distribution |
+| Shared scratch helper | `scripts/lib/scratch.sh` | Creates repo-run scratch directories under `.ztd/tmp/` (`INV-FS-11`) |
 | Gateway-embedded deploy (Bash) | `internal/services/gateway/scripts/ztd-deploy.sh` | Embedded in binary; served at `/ztd-deploy.sh` |
 | Gateway-embedded deploy (PowerShell) | `internal/services/gateway/scripts/ztd-deploy.ps1` | Embedded in binary; served at `/ztd-deploy.ps1` |
-| Binary download manifest | `bin/ztd-binaries.json` | Cross-platform binary catalog matrix |
+| Binary download manifest | `bin/ztd-binaries.json` | Written by `make build-all` through `internal/tools/ztdbinaries` |
 
 ## Development Bootstrap
 
@@ -98,7 +102,7 @@ pwsh scripts/windows-setup.ps1
 
 - **Options**: `-y` / `--yes` (unattended installation), `--build-only` (skip Node/explorer, build binary only), `-h` (help).
 - **WSL Isolation**: Rejects binaries resolving under `/mnt/<drive>/` to avoid broken Windows interoperability shims (`INV-SCRIPTS-07`).
-- **Profile Updates**: Persistently configures `PATH` in `~/.zshrc`, `~/.bashrc`, or registry without overwriting existing configurations.
+- **Profile Updates**: Persistently configures `PATH` in `~/.zshrc`, `~/.bashrc`, or `~/.profile` (Linux and macOS) or the user-level `Path` in the registry (Windows). Profiles are only appended to, never rewritten.
 - **Env File**: After `make build`, setup copies `.env.example` to `.env` (owner-only mode `0600` on Linux and macOS) and keeps an existing `.env`. Every `./ztd` command loads it (`INV-ENV-04` in [Developer Guidelines](../devs/devs.md)).
 
 ## Contributor Toolchain
@@ -117,17 +121,17 @@ make dev-check    # Preflight verification; runs before all CI targets
 
 ## Smoke and Onboarding Tests
 
-- **`scripts/smoke-test-go.sh`**: Creates an ephemeral Go module with a `replace` directive pointing to `github.com/zerotrustdata/ztd/protocol` to ensure the Go module resolves and compiles cleanly.
+- **`scripts/smoke-test-go.sh`**: Creates an ephemeral Go module under `.ztd/tmp/` with a `replace` directive mapping `github.com/zerotrustdata/ztd` to the local repository, then builds a program that imports `github.com/zerotrustdata/ztd/protocol`.
 - **`make test-onboarding`**: Offline, hermetic unit tests validating setup scripts, version checking, and quickstart execution.
 - **`make test-onboarding-docker`**: Replays setup and execution across clean container images (`ubuntu`, `debian`, `fedora`, `arch`).
 
 ## Host Lifecycle Targets
 
-The root `Makefile` provides targets to manage platform processes on the development host without requiring Docker. The targets call `./ztd`, which loads only registry `secret` and `user_endpoint` keys from `.env` (`INV-ENV-04`); pass every other flag through `GW_ARGS`, `OPERATOR_ARGS`, or `QUICKSTART_ARGS`:
+The root `Makefile` provides targets to manage platform processes on the development host without requiring Docker. The targets call `./ztd`, which loads only registry `secret` and `user_endpoint` keys from `.env` (`INV-ENV-04`); pass global CLI flags through `ZTD_ARGS`, and every other flag through `GW_ARGS`, `OPERATOR_ARGS`, or `QUICKSTART_ARGS`:
 
 | Target | Description |
 | :--- | :--- |
-| `make quickstart` | Builds `./ztd`, boots Gateway with data capability, logs in, executes test command, prints next steps |
+| `make quickstart` | Builds `./ztd` when absent, boots Gateway with data capability, logs in, executes test command, prints next steps |
 | `make up` | Builds `./ztd` and starts Gateway in background (`./ztd gw start`) |
 | `make up-public` | Same as `make up` with `--listen-host 0.0.0.0` so Operators on other hosts can enroll |
 | `make gw` | Builds `./ztd`, starts Gateway with `GW_CAPABILITIES` (default `data,inference,observer`; `MODEL_STORAGE_ROOT` adds `provenance`), then runs `./ztd gw status` |
@@ -145,31 +149,32 @@ The `internal/tools/` package implements Go-based generators and verification to
 - `chaos`: Test-only governance event generator behind `./ztd test chaos`; drives the L4/L5 stack in process against a run-local audit store.
 - `constgen`: Generates Go and TypeScript constant files from `protocol/constants/` and checks the environment registry (`make constants-generate`, `make constants-check`).
 - `explorercatalog`: Generates scenario catalogs for the Evaluation Explorer (`make explorer-catalog-generate`, `make explorer-catalog-check`).
-- `jsoncheck`: Validates JSON doctrine schema structures (`make doctrines-validate`).
+- `jsoncheck`: Verifies that each named doctrine file is well-formed JSON (`make doctrines-validate`).
 - `sourcefiles`: Lists frontend source files as portable `Makefile` dependencies for the incremental console and explorer builds.
 - `thirdpartynotices`: Generates `THIRD_PARTY_NOTICES.md` (`make third-party-notices`, `make third-party-notices-check`).
 - `treehash`: Computes the source-tree digest stamped into release binaries.
 - `versionsync`: Synchronizes version declarations across protocol docs and package manifests (`make version-sync`, `make version-sync-check`).
-- `ztdbinaries`: Maintains cross-compilation target definitions for release distribution.
+- `ztdbinaries`: Maintains cross-compilation target definitions and writes the `ztd-binaries.json` manifest and `checksums-sha256.txt` for release distribution (`make build-all`).
 
 ## Commit Hygiene and Validation Gate
 
-Enforced via `scripts/check-commit-hygiene.sh` locally and in CI:
-- Rejects files tracked by `.gitignore`.
+Enforced via `scripts/check-commit-hygiene.sh` in the pre-commit and pre-push hooks and in CI:
+- Rejects added paths that `.gitignore` matches.
 - Blocks binary blobs exceeding 5 MiB (outside `vendor/`).
 - Blocks ELF, Mach-O, and Windows PE executable binaries.
-- Blocks committer home-directory paths and secret leaks (via Gitleaks).
+- Rejects file modes that disagree with content outside `vendor/`: mode `100755` without a `#!` shebang, or a `#!` script at mode `100644`.
+- Blocks committer home-directory paths on local runs only. Scans for secrets with Gitleaks: locally when `gitleaks` is installed, and always in CI.
 
 ## Gateway-Embedded Operator Bootstrap
 
-The Gateway embeds `ztd-deploy.sh` and `ztd-deploy.ps1`, serving them over plain HTTP port 8080:
+The Gateway embeds `ztd-deploy.sh` and `ztd-deploy.ps1`, serving them over plain HTTP port 8080. Set `GATEWAY_HOST` to the Gateway host name or IP address before running the matching command (POSIX shell: `GATEWAY_HOST=...`; PowerShell: `$GATEWAY_HOST = '...'`):
 
 ```bash
 # Linux / macOS
-curl -fsSL http://<gateway-host>:8080/ztd-deploy.sh | bash
+curl -fsSL "http://${GATEWAY_HOST}:8080/ztd-deploy.sh" | bash
 
 # Windows PowerShell
-iwr http://<gateway-host>:8080/ztd-deploy.ps1 -UseBasicParsing | iex
+iwr "http://${GATEWAY_HOST}:8080/ztd-deploy.ps1" -UseBasicParsing | iex
 ```
 
 - Cleans existing `~/.ztd/pki` credentials.
@@ -179,7 +184,7 @@ iwr http://<gateway-host>:8080/ztd-deploy.ps1 -UseBasicParsing | iex
 ## Anti-patterns
 
 - **Running CLI without new shell after setup**: Expecting immediate PATH updates without opening a new terminal session (`INV-SCRIPTS-02`).
-- **Executing scripts outside repo root**: Running setup from arbitrary directories, breaking Makefile dependency discovery (`INV-SCRIPTS-01`).
+- **Running setup scripts from a copy outside the clone**: The setup library resolves the repository root from its own location and exits with a fatal error when `go.mod` is absent there (`scripts/lib/dev-setup-common.sh`, `ztd_setup_init`).
 - **Using WSL Windows shims for Node/Go**: Relying on `/mnt/c/...` executables inside Linux environments (`INV-SCRIPTS-07`).
 - **Deploying bootstrap scripts in production**: Running unauthenticated plain-HTTP deploy scripts across untrusted public networks (`INV-SCRIPTS-04`).
 

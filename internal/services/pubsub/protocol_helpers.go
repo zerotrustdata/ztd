@@ -26,7 +26,7 @@ import (
 )
 
 // mapProtoToPayloadType maps a protobuf message to its canonical ztd payload type string.
-// This ensures synchronization with agent Pydantic models.
+// The mapping is the single source of that discriminator for the typed protobuf payloads.
 func mapProtoToPayloadType(msg proto.Message) string {
 	switch m := msg.(type) {
 	case *operatorv1.CommandResult:
@@ -153,7 +153,7 @@ func buildResultEnvelope(
 		return nil, fmt.Errorf("failed to unmarshal payload intent data: %w", err)
 	}
 
-	// Inject canonical payload_type for consumer discriminator-based parsing (e.g., agent Pydantic).
+	// Inject canonical payload_type for consumer discriminator-based parsing of the typed payload.
 	if _, ok := intentDataStruct.Fields["payload_type"]; !ok {
 		intentDataStruct.Fields["payload_type"] = structpb.NewStringValue(mapProtoToPayloadType(payload))
 	}

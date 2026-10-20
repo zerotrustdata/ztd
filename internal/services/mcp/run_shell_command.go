@@ -23,6 +23,7 @@ import (
 	sshlib "golang.org/x/crypto/ssh"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/pkg/ssh"
 )
 
@@ -31,7 +32,7 @@ type RunShellCommandTool struct{}
 
 // Name returns the tool identifier.
 func (t *RunShellCommandTool) Name() string {
-	return "run_shell_command"
+	return constants.MCPToolRunShellCommand
 }
 
 // Description returns a human-readable description.
@@ -46,11 +47,11 @@ func (t *RunShellCommandTool) InputSchema() *InputSchema {
 		Properties: map[string]*PropertySchema{
 			"command": {
 				Type:        "string",
-				Description: "Command to execute (e.g., 'ls', 'echo')",
+				Description: "One executable name only, without arguments (e.g., 'cat'). The command is not run through a shell.",
 			},
 			"args": {
 				Type:        "array",
-				Description: "Command arguments (optional)",
+				Description: "Every argument of the command as its own string, e.g. [\"-n\", \"5\", \"/var/log/app.log\"] (optional)",
 			},
 			"timeout": {
 				Type:        "integer",
@@ -71,7 +72,7 @@ func (t *RunShellCommandTool) InputSchema() *InputSchema {
 
 // Execute implements the tool logic.
 func (t *RunShellCommandTool) Execute(ctx context.Context, args json.RawMessage) (CallToolResult, error) {
-	var req RunShellCommandRequest
+	var req models.RunShellCommandRequest
 	if err := json.Unmarshal(args, &req); err != nil {
 		return CallToolResult{}, fmt.Errorf("run_shell_command: unmarshal arguments: %w", err)
 	}
@@ -173,13 +174,8 @@ func validateCommandSafety(command string, args []string, workingDir string) err
 		}
 	}
 
-	// Check for dangerous patterns in arguments
-	fullCommand := command
-	if len(args) > 0 {
-		fullCommand = strings.Join(append([]string{command}, args...), " ")
-	}
-
-	lowerCmd := strings.ToLower(fullCommand)
+	// Check for dangerous patterns across the command line L1 doctrine screens
+	lowerCmd := strings.ToLower(models.RunShellCommandRequest{Command: command, Args: args}.CommandLine())
 	for _, pattern := range constants.DangerousPatterns {
 		if strings.Contains(lowerCmd, pattern) {
 			return fmt.Errorf("run_shell_command: %w: %s", constants.ErrMCPRunShellCommandDangerousPattern, pattern)
@@ -191,6 +187,16 @@ func validateCommandSafety(command string, args []string, workingDir string) err
 		if strings.Contains(lowerCmd, pattern) {
 			return fmt.Errorf("run_shell_command: %w", constants.ErrMCPRunShellCommandShellInjection)
 		}
+	}
+
+	// The command is exec'd without a shell, so a command line in command
+	// can never resolve; name the argv form the caller must send instead.
+	if fields := strings.Fields(command); len(fields) > 1 {
+		argv, err := json.Marshal(map[string]any{"command": fields[0], "args": append(fields[1:], args...)})
+		if err != nil {
+			return fmt.Errorf("run_shell_command: %w", constants.ErrMCPRunShellCommandMarshalResult)
+		}
+		return fmt.Errorf("run_shell_command: %w: send %s", constants.ErrMCPRunShellCommandNotExecutable, argv)
 	}
 
 	// Validate working directory if specified

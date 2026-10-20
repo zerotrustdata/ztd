@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { useMemo } from 'react';
 import type { PublicEvidenceBinding } from '../contract/types';
 import { useMirrorOrigin } from '../state/mirror';
 import { useStoreState } from '../state/store';
@@ -21,23 +20,14 @@ function formatBytes(value: number): string {
 export function AssignmentAuditProofRow({ bindings }: { bindings: PublicEvidenceBinding[] | undefined }) {
   const origin = useMirrorOrigin();
   const sliceBinding = bindingForKind(bindings, 'assignment_audit_slice');
-  const keyBinding = bindingForKind(bindings, 'assignment_audit_vault_key');
   const sliceArtifact = useStoreState((state) =>
     sliceBinding ? state.proofArtifacts.get(sliceBinding.sha256) : undefined,
   );
-  const keyArtifact = useStoreState((state) =>
-    keyBinding ? state.proofArtifacts.get(keyBinding.sha256) : undefined,
-  );
 
-  const verifyCommand = useMemo(() => {
-    if (!sliceBinding || !keyBinding) return undefined;
-    return 'ztd public verify-assignment --db assignment.db --vault-key assignment.vault.key';
-  }, [sliceBinding, keyBinding]);
-
-  if (!sliceBinding || !keyBinding || !sliceArtifact || !keyArtifact) return null;
+  if (!sliceBinding || !sliceArtifact) return null;
 
   const dbUrl = origin ? `${origin}${sliceArtifact.immutable_url}` : undefined;
-  const keyUrl = origin ? `${origin}${keyArtifact.immutable_url}` : undefined;
+  const verifyCommand = sliceArtifact.verification_command;
 
   return (
     <section className="assignment-audit-proof" aria-label="Audit slice">
@@ -55,30 +45,21 @@ export function AssignmentAuditProofRow({ bindings }: { bindings: PublicEvidence
           ) : (
             <span>Download SQLite</span>
           )}
-          {keyUrl ? (
-            <a href={keyUrl} download={keyArtifact.filename}>
-              Download vault key
-            </a>
-          ) : (
-            <span>Download vault key</span>
-          )}
-          {verifyCommand ? (
-            <button
-              type="button"
-              className="copy-verify-command"
-              onClick={() => {
-                if (verifyCommand && navigator.clipboard?.writeText) {
-                  void navigator.clipboard.writeText(verifyCommand);
-                }
-              }}
-            >
-              Copy verify command
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="copy-verify-command"
+            onClick={() => {
+              if (navigator.clipboard?.writeText) {
+                void navigator.clipboard.writeText(verifyCommand);
+              }
+            }}
+          >
+            Copy verify command
+          </button>
         </span>
       </div>
       <p className="assignment-audit-proof-note">
-        Files verify offline with <code>{verifyCommand}</code>. Browser download checks content addressing only; commitment-chain verification requires the CLI.
+        Files verify offline with <code>{verifyCommand}</code>. Browser download checks content addressing only; verifying the signed proof segment requires the CLI.
       </p>
     </section>
   );
@@ -89,7 +70,6 @@ export function filterNonAuditEvidenceBindings(bindings: PublicEvidenceBinding[]
   const filtered = bindings.filter(
     (binding) =>
       binding.kind !== 'assignment_audit_slice' &&
-      binding.kind !== 'assignment_audit_vault_key' &&
       binding.kind !== 'assignment_agent_trace' &&
       binding.kind !== 'scenario_input_fixture' &&
       binding.kind !== 'scenario_gold_criteria',

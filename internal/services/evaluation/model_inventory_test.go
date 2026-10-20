@@ -40,8 +40,8 @@ func TestComputeHomogeneousMatrixSize(t *testing.T) {
 func TestBuildModelVariantsFromProviderInventory_SortsAndDedupes(t *testing.T) {
 	t.Parallel()
 	entries := []inference.ProviderModelInventoryEntry{
-		{ServedModelTag: "z-model:7b", ModelDigest: repeatHex('a', 64), ModelFamily: "z"},
-		{ServedModelTag: "a-model:7b", ModelDigest: repeatHex('b', 64), ModelFamily: "a"},
+		{ServedModelTag: "z-model:7b", ModelDigest: repeatHex('a'), ModelFamily: "z"},
+		{ServedModelTag: "a-model:7b", ModelDigest: repeatHex('b'), ModelFamily: "a"},
 	}
 	variants, err := BuildModelVariantsFromProviderInventory(context.Background(), entries, ModelInventoryOptions{})
 	require.NoError(t, err)
@@ -53,8 +53,8 @@ func TestBuildModelVariantsFromProviderInventory_SortsAndDedupes(t *testing.T) {
 func TestBuildModelVariantsFromProviderInventory_RejectsDuplicateTags(t *testing.T) {
 	t.Parallel()
 	entries := []inference.ProviderModelInventoryEntry{
-		{ServedModelTag: "dup:7b", ModelDigest: repeatHex('a', 64)},
-		{ServedModelTag: "dup:7b", ModelDigest: repeatHex('b', 64)},
+		{ServedModelTag: "dup:7b", ModelDigest: repeatHex('a')},
+		{ServedModelTag: "dup:7b", ModelDigest: repeatHex('b')},
 	}
 	_, err := BuildModelVariantsFromProviderInventory(context.Background(), entries, ModelInventoryOptions{})
 	require.Error(t, err)
@@ -100,7 +100,7 @@ func TestLoadModelInventoryFreezeFile_RejectsMissingDigest(t *testing.T) {
 func TestBuildModelVariantsFromProviderInventory_RequiresGovernedProbeRunnerWhenRequested(t *testing.T) {
 	t.Parallel()
 	entries := []inference.ProviderModelInventoryEntry{
-		{ServedModelTag: "probe:7b", ModelDigest: repeatHex('a', 64)},
+		{ServedModelTag: "probe:7b", ModelDigest: repeatHex('a')},
 	}
 	_, err := BuildModelVariantsFromProviderInventory(context.Background(), entries, ModelInventoryOptions{RunCapabilityProbes: true})
 	require.Error(t, err)
@@ -200,7 +200,7 @@ func TestAddOrUpdateModelVariant_And_Merge(t *testing.T) {
 			VariantId:      "model-a-1b",
 			ProviderClass:  "ollama",
 			ServedModelTag: "model-a:1b",
-			ModelDigest:    repeatHex('a', 64),
+			ModelDigest:    repeatHex('a'),
 			ModelFamily:    "test",
 		},
 	})
@@ -208,7 +208,7 @@ func TestAddOrUpdateModelVariant_And_Merge(t *testing.T) {
 
 	updated, err := AddOrUpdateModelVariant(freeze, &evalv1.ModelVariant{
 		ServedModelTag: "model-b:2b",
-		ModelDigest:    repeatHex('b', 64),
+		ModelDigest:    repeatHex('b'),
 		ModelFamily:    "test",
 	})
 	require.NoError(t, err)
@@ -219,7 +219,7 @@ func TestAddOrUpdateModelVariant_And_Merge(t *testing.T) {
 	// Replace existing
 	updated2, err := AddOrUpdateModelVariant(updated, &evalv1.ModelVariant{
 		ServedModelTag: "model-a:1b",
-		ModelDigest:    repeatHex('c', 64),
+		ModelDigest:    repeatHex('c'),
 		ModelFamily:    "test",
 		ParameterCount: 1_000_000_000,
 	})
@@ -229,7 +229,7 @@ func TestAddOrUpdateModelVariant_And_Merge(t *testing.T) {
 
 	// Merge
 	merged, err := MergeModelVariants(freeze, []*evalv1.ModelVariant{
-		{ServedModelTag: "model-c:3b", ModelDigest: repeatHex('d', 64), ModelFamily: "test"},
+		{ServedModelTag: "model-c:3b", ModelDigest: repeatHex('d'), ModelFamily: "test"},
 	})
 	require.NoError(t, err)
 	require.Len(t, merged.Variants, 2)

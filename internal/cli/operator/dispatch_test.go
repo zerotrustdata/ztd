@@ -21,6 +21,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -34,7 +35,7 @@ func TestBuildExecuteBashDispatchRequest(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "4881d566-90a9-44c9-9e3e-c6bb51e07f5c", request.TargetOperatorSessionID)
 	assert.Equal(t, string(constants.Event.Operator.Command.Requested), request.EventType)
-	assert.Equal(t, "cli-1", request.CliSessionID)
+	assert.Equal(t, "cli-1", request.CLISessionID)
 
 	var payload operatorv1.CommandRequested
 	require.NoError(t, proto.Unmarshal(request.Payload, &payload))
@@ -105,18 +106,19 @@ func TestBuildExecuteBashDispatchRequest_RejectsMissingRequiredFields(t *testing
 		sessionID   string
 		command     string
 		executionID string
+		want        error
 	}{
-		{name: "empty operator session", sessionID: "", command: "echo", executionID: "exec-1"},
-		{name: "empty command", sessionID: "session-1", command: "", executionID: "exec-1"},
-		{name: "whitespace-only command", sessionID: "session-1", command: " \t\n", executionID: "exec-1"},
-		{name: "empty execution id", sessionID: "session-1", command: "echo", executionID: ""},
+		{name: "empty operator session", sessionID: "", command: "echo", executionID: "exec-1", want: constants.ErrGatewayOperatorSessionIDRequired},
+		{name: "empty command", sessionID: "session-1", command: "", executionID: "exec-1", want: constants.ErrMissingRequiredField},
+		{name: "whitespace-only command", sessionID: "session-1", command: " \t\n", executionID: "exec-1", want: constants.ErrMissingRequiredField},
+		{name: "empty execution id", sessionID: "session-1", command: "echo", executionID: "", want: constants.ErrMissingRequiredField},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			request, err := BuildExecuteBashDispatchRequest(tt.sessionID, tt.command, tt.executionID, "cli-1")
 
-			require.ErrorIs(t, err, constants.ErrMissingRequiredField)
-			assert.Equal(t, DispatchRequest{}, request, "no partial request may be returned on failure")
+			require.ErrorIs(t, err, tt.want)
+			assert.Equal(t, models.OperatorCommandRequest{}, request, "no partial request may be returned on failure")
 		})
 	}
 }

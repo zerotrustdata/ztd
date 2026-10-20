@@ -23,6 +23,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -128,6 +129,119 @@ func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) 
 	}
 }
 
+type operatorAuditSummaryCommand struct {
+	result *models.OperatorAuditReceiptListResult
+}
+
+func (*operatorAuditSummaryCommand) GetPayload() []byte            { return nil }
+func (*operatorAuditSummaryCommand) SetPayload([]byte)             {}
+func (*operatorAuditSummaryCommand) InferenceResultDigest() string { return "" }
+func (c *operatorAuditSummaryCommand) AuditReceiptListSummary() *models.OperatorAuditReceiptListResult {
+	return c.result
+}
+
+type operatorAuditSummaryCommandWithoutTypedResult struct{}
+
+func (*operatorAuditSummaryCommandWithoutTypedResult) GetPayload() []byte            { return nil }
+func (*operatorAuditSummaryCommandWithoutTypedResult) SetPayload([]byte)             {}
+func (*operatorAuditSummaryCommandWithoutTypedResult) InferenceResultDigest() string { return "" }
+
+func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testing.T) {
+	actuator, publicKey := newTestActuator(t)
+	request, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_list"})
+	require.NoError(t, err)
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId:   "tx-command",
+		TransactionHash: "hash-command",
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		SignerKeyId:     actuator.KeyID,
+	}
+	receipt.Signature, err = actuator.signReceipt(receipt)
+	require.NoError(t, err)
+	require.NoError(t, VerifyActionReceiptSignature(receipt, publicKey))
+	result := &models.OperatorAuditReceiptListResult{
+		Receipts:        []*operatorv1.ActionReceipt{receipt},
+		Count:           1,
+		OperatorID:      "op-1",
+		Authority:       "operator_local_ledger",
+		InvestigationID: "investigation-1",
+	}
+	summaryBytes, err := json.Marshal(result)
+	require.NoError(t, err)
+	summary := string(summaryBytes)
+	vt := &VerifiedTransaction{
+		Envelope: &govtypes.GovernanceEnvelope{
+			OperatorId:      "op-1",
+			InvestigationId: "investigation-1",
+			Payload:         request,
+		},
+		ActionType: constants.ActionTypeMcpCall,
+	}
+	command := &operatorAuditSummaryCommand{result: result}
+
+	assert.Equal(t, summary, actuator.auditReceiptListSummary(vt, command, summary))
+	assert.Contains(t, summary, receipt.GetSignature())
+	assert.Empty(t, actuator.auditReceiptListSummary(vt, command, `{"authority":"operator_local_ledger"}`))
+	assert.Empty(t, actuator.auditReceiptListSummary(vt, &operatorAuditSummaryCommandWithoutTypedResult{}, summary))
+
+	tests := []struct {
+		name   string
+		mutate func(*VerifiedTransaction, *models.OperatorAuditReceiptListResult)
+	}{
+		{
+			name: "wrong action",
+			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditReceiptListResult) {
+				v.ActionType = constants.ActionTypeExecuteBash
+			},
+		},
+		{
+			name: "wrong tool",
+			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditReceiptListResult) {
+				v.Envelope.Payload, _ = proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_get"})
+			},
+		},
+		{
+			name: "wrong authority",
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+				r.Authority = "gateway_mirror"
+			},
+		},
+		{
+			name: "wrong operator",
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+				r.OperatorID = "op-2"
+			},
+		},
+		{
+			name: "wrong investigation",
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+				r.InvestigationID = "investigation-2"
+			},
+		},
+		{
+			name: "count mismatch",
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+				r.Count = 2
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vtCopy := proto.Clone(vt.Envelope).(*govtypes.GovernanceEnvelope)
+			verified := *vt
+			verified.Envelope = vtCopy
+			resultCopy := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+			copied := *result
+			copied.Receipts = []*operatorv1.ActionReceipt{resultCopy}
+			commandCopy := &operatorAuditSummaryCommand{result: &copied}
+			tt.mutate(&verified, &copied)
+			mutatedSummary, marshalErr := json.Marshal(&copied)
+			require.NoError(t, marshalErr)
+			assert.Empty(t, actuator.auditReceiptListSummary(&verified, commandCopy, string(mutatedSummary)))
+		})
+	}
+}
+
 func TestVerifyReceiptPersistenceAttestationRejectsSemanticallyUnboundFields(t *testing.T) {
 	t.Parallel()
 	actuator, publicKey := newTestActuator(t)
@@ -220,6 +334,72 @@ func TestL5ActuatorExecuteMissingExecutionHandler(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "L5Actuator: ExecutionHandler not set")
 	require.Nil(t, receipt)
+}
+
+// rehydrationCommandMessage is a CommandMessage whose payload carries UEI placeholders.
+type rehydrationCommandMessage struct{ payload []byte }
+
+func (m *rehydrationCommandMessage) GetPayload() []byte          { return m.payload }
+func (m *rehydrationCommandMessage) SetPayload(p []byte)         { m.payload = p }
+func (*rehydrationCommandMessage) InferenceResultDigest() string { return "" }
+
+func rehydrationTestVT() *VerifiedTransaction {
+	return &VerifiedTransaction{Envelope: &govtypes.GovernanceEnvelope{Id: "test-rehydrate-message"}}
+}
+
+func TestL5RehydratePayloadRestoresResolvableTokens(t *testing.T) {
+	t.Parallel()
+	actuator, _ := newTestActuator(t)
+	token, err := actuator.Scrubbing.GetTokenForValue(context.Background(), "s3cret-value")
+	require.NoError(t, err)
+
+	msg := &rehydrationCommandMessage{payload: []byte(`{"command":"login --password ` + token + `"}`)}
+	require.NoError(t, actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg))
+	assert.JSONEq(t, `{"command":"login --password s3cret-value"}`, string(msg.GetPayload()))
+}
+
+// A payload with a placeholder that cannot be resolved fails rehydration and is left untouched,
+// so the caller has nothing to dispatch.
+func TestL5RehydratePayloadFailsClosedOnUnresolvableToken(t *testing.T) {
+	t.Parallel()
+	actuator, _ := newTestActuator(t)
+	original := []byte(`{"command":"login --password {{UEI_999999}}"}`)
+
+	msg := &rehydrationCommandMessage{payload: original}
+	err := actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg)
+	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
+	require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+	assert.Equal(t, original, msg.GetPayload(), "an unrehydrated payload is never handed back as dispatchable")
+}
+
+// An Actuator with no scrubbing service cannot rehydrate a token, so a payload that holds one is
+// refused; a payload with no token passes unchanged.
+func TestL5RehydratePayloadWithoutScrubberRefusesTokens(t *testing.T) {
+	t.Parallel()
+	actuator, _ := newTestActuator(t)
+	actuator.Scrubbing = nil
+
+	tokenized := []byte(`{"command":"login --password {{UEI_1}}"}`)
+	msg := &rehydrationCommandMessage{payload: tokenized}
+	err := actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg)
+	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
+	require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+	assert.Equal(t, tokenized, msg.GetPayload())
+
+	plain := []byte(`{"command":"uptime"}`)
+	msg = &rehydrationCommandMessage{payload: plain}
+	require.NoError(t, actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg))
+	assert.Equal(t, plain, msg.GetPayload())
+}
+
+// Both rehydration sentinels, wrapped the way rehydratePayload wraps them, classify as
+// REHYDRATION_FAILED so the signed receipt names the cause.
+func TestClassifyReceiptFailureRehydration(t *testing.T) {
+	t.Parallel()
+	for _, sentinel := range []error{constants.ErrScrubbingTokenUnresolved, constants.ErrScrubbingKeyCollision} {
+		wrapped := fmt.Errorf("%w: %w", constants.ErrL5ActuatorRehydrate, sentinel)
+		assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, classifyReceiptFailure(wrapped), sentinel.Error())
+	}
 }
 
 func TestCanonicalizeActionReceipt(t *testing.T) {

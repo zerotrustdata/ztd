@@ -241,11 +241,16 @@ func (es *ExecutionService) ExecuteCommand(ctx context.Context, request *models.
 		"timeout_seconds", request.TimeoutSeconds,
 		"has_working_dir", request.WorkingDirectory != nil)
 
-	// Acquire semaphore for concurrency control
+	// Acquire semaphore for concurrency control. A cancelled context must fail
+	// closed before the select: when a slot is free and Done is closed, select
+	// picks either case at random.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("execution: wait for semaphore: %w: %w", constants.ErrExecutionServiceStopping, err)
+	}
 	select {
 	case es.semaphore <- struct{}{}:
 	case <-ctx.Done():
-		return nil, fmt.Errorf("execution: wait for semaphore: %w", constants.ErrExecutionServiceStopping)
+		return nil, fmt.Errorf("execution: wait for semaphore: %w: %w", constants.ErrExecutionServiceStopping, ctx.Err())
 	}
 
 	// Create timeout context - use exactly what was requested
@@ -335,6 +340,8 @@ func (es *ExecutionService) ExecuteCommand(ctx context.Context, request *models.
 // (the ztd binary image name, exact match, `operator model <verb>` shape only)
 // to this operator's running executable. Resolution happens at the executing
 // operator; the governed command and recorded evidence retain the token text.
+// It never falls back to a ztd found on PATH: that binary may be a different
+// build than the executing operator.
 func resolveCommandBinary(parts []string) (string, error) {
 	if len(parts) >= 3 && parts[0] == constants.BinaryImageName &&
 		parts[1] == "operator" && parts[2] == "model" {

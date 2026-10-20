@@ -72,6 +72,16 @@ func NewIPv4Transport(tlsCfg *tls.Config) *http.Transport {
 	}
 }
 
+// WithoutRedirects returns a copy of client that fails every redirect with
+// refusal. Use it for a client whose destination is a bound identity, where a
+// Location header would send the request to a host nobody bound or downgrade
+// its TLS. The caller's client is not mutated.
+func WithoutRedirects(client *http.Client, refusal error) *http.Client {
+	pinned := *client
+	pinned.CheckRedirect = func(*http.Request, []*http.Request) error { return refusal }
+	return &pinned
+}
+
 func WebSocketDialerWithTLS(tlsCfg *tls.Config) *websocket.Dialer {
 	return &websocket.Dialer{
 		TLSClientConfig:  tlsCfg,

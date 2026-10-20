@@ -198,7 +198,7 @@ func TestCampaignPublicationCoordinator_ExportsProjectionRecordsOnly(t *testing.
 	store := NewStore(files)
 	savePublicRunIdentity(t, store, "run-1", "campaign-1")
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	assignment := &evalv1.EvaluationAssignment{
 		AssignmentId:    "assign-1",
 		RunId:           "run-1",
@@ -225,7 +225,7 @@ func TestCampaignPublication_PublishesNativeLiveEventsFromTerminalResult(t *test
 	require.True(t, campaignPublicationEmitsNativeLiveEvents)
 	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter)
 	runID := "run-live-1"
 	assignmentID := "assign-1"
 	assignment := &evalv1.EvaluationAssignment{
@@ -297,7 +297,7 @@ func TestCampaignPublication_PublishesNativeLiveEventsFromTerminalResult(t *test
 func TestCampaignPublication_PublishesInvocationAtAssignmentStart(t *testing.T) {
 	files := newCampaignRuntimeFileService(t)
 	exporter := &recordingCampaignFeedExporter{}
-	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter, nil)
+	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), exporter)
 	runID := "run-live-start"
 	assignment := &evalv1.EvaluationAssignment{
 		SchemaVersion:   CampaignSchemaVersion,

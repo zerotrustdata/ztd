@@ -24,7 +24,7 @@ import (
 
 // seedHistoryDocuments inserts n receipt-sized documents in one transaction,
 // standing in for accumulated audit/receipt history.
-func seedHistoryDocuments(t *testing.T, db *CanonicalDBService, n int) {
+func seedHistoryDocuments(t testing.TB, db *CanonicalDBService, n int) {
 	t.Helper()
 	body := strings.Repeat("x", 4096)
 	now := timesvc.FormatTimestamp(time.Now().UTC())
@@ -43,32 +43,29 @@ func seedHistoryDocuments(t *testing.T, db *CanonicalDBService, n int) {
 	}))
 }
 
-// TestStateRoot_OneWriteCostAtGrowingHistory records the cost of the root read
-// that follows one ordinary write, at growing history sizes. Each governed
-// mutation reads the root after a write (L5 state_after), so this is the
-// per-envelope commitment cost. The test logs the measurements; the bounded-work
-// assertions live in the incremental commitment tests.
-func TestStateRoot_OneWriteCostAtGrowingHistory(t *testing.T) {
+// BenchmarkStateRoot_OneWriteAtGrowingHistory measures the root read that
+// follows one ordinary write, at growing history sizes. Each governed mutation
+// reads the root after a write (L5 state_after), so this is the per-envelope
+// commitment cost. The bounded-work assertion is
+// TestStateRootService_OneWriteWorkIsIndependentOfHistory.
+func BenchmarkStateRoot_OneWriteAtGrowingHistory(b *testing.B) {
 	for _, n := range []int{100, 1000, 10000} {
-		t.Run(fmt.Sprintf("history=%d", n), func(t *testing.T) {
-			db := newTestDB(t)
-			seedHistoryDocuments(t, db, n)
+		b.Run(fmt.Sprintf("history=%d", n), func(b *testing.B) {
+			db := newTestDB(b)
+			seedHistoryDocuments(b, db, n)
 			svc := db.GetStateRootSvc()
-			_, err := svc.GetCurrentStateRoot(t.Context())
-			require.NoError(t, err)
+			_, err := svc.GetCurrentStateRoot(b.Context())
+			require.NoError(b, err)
 
-			const rounds = 20
-			var total, worst time.Duration
-			for i := 0; i < rounds; i++ {
-				require.NoError(t, db.GetDocStore().DocSet(t.Context(), "operators", "op-1", json.RawMessage(fmt.Sprintf(`{"heartbeat":%d}`, i))))
-				start := time.Now()
-				_, err := svc.GetCurrentStateRoot(t.Context())
-				require.NoError(t, err)
-				elapsed := time.Since(start)
-				total += elapsed
-				worst = max(worst, elapsed)
+			i := 0
+			for b.Loop() {
+				b.StopTimer()
+				require.NoError(b, db.GetDocStore().DocSet(b.Context(), "operators", "op-1", json.RawMessage(fmt.Sprintf(`{"heartbeat":%d}`, i))))
+				i++
+				b.StartTimer()
+				_, err := svc.GetCurrentStateRoot(b.Context())
+				require.NoError(b, err)
 			}
-			t.Logf("history=%d root-after-write mean=%s max=%s", n, total/rounds, worst)
 		})
 	}
 }

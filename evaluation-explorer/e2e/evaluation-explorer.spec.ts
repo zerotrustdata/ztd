@@ -218,7 +218,7 @@ test('Live panels fit above the footer and scroll independently through resizing
     schema_version: '1.4.0', ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED',
     kind: 'assignment_completed', dataset_id: runs[0]!.dataset_id, run_id: runs[0]!.run_id,
     event_id: `scroll-event-${index}`, assignment_id: `scroll-assignment-${index}`,
-    task_id: 'tool-arg-run-commands', variant_id: 'qwen3:8b', role: 'primary',
+    task_id: 'tool-arg-shell-command', variant_id: 'qwen3:8b', role: 'primary',
     quality_state: 'live_in_progress', lifecycle_status: 'completed', completed: index + 1, total: 60,
     observed_at: new Date(Date.UTC(2026, 9, 16, 14, index)).toISOString(),
   }));
@@ -289,8 +289,8 @@ for (const viewport of [
 ]) {
   test(`Live activity stays compact and opens evidence at ${viewport.width}px in ${viewport.theme} mode`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
-    const failureReason = 'The model called file_read_on_operator instead of the required run_commands_with_operator.';
-    const taskIds = ['tool-arg-run-commands', 'tool-arg-grep-pattern', 'tool-arg-file-path', 'tech-log-parse', 'tech-error-diagnosis', 'tool-select-file-read'];
+    const failureReason = 'The model called file_read_on_operator instead of the required run_shell_command.';
+    const taskIds = ['tool-arg-shell-command', 'tool-arg-grep-pattern', 'tool-arg-file-path', 'tech-log-parse', 'tech-error-diagnosis', 'tool-select-file-read'];
     const assignments = taskIds.map((task, index) => ({
       ...fixtureEnrichedAssignmentResult,
       dataset_id: 'ds-live-redesign', run_id: 'live-design-run', assignment_id: `live-assignment-${index}`,
@@ -337,8 +337,8 @@ for (const viewport of [
     }
     await page.screenshot({ path: testInfo.outputPath('live-view.png'), fullPage: true });
     await expect(live.getByRole('button', { name: /Needs attention|Pause|Resume/i })).toHaveCount(0);
-    await live.getByRole('link', { name: 'tool-arg-run-commands — View details' }).click();
-    await expect(page.getByRole('heading', { level: 1, name: 'tool-arg-run-commands' })).toBeVisible();
+    await live.getByRole('link', { name: 'tool-arg-shell-command — View details' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'tool-arg-shell-command' })).toBeVisible();
     await expect(page.getByText(failureReason, { exact: true }).first()).toBeVisible();
   });
 }

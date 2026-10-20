@@ -32,7 +32,9 @@ const (
 	ModelProvenanceCompletionTimeout = 5 * time.Minute
 )
 
-// ProviderObservationCompletionTimeout bounds the wait for the Observer's
-// observation-recorded event after governed inference returns. FINALIZE only
-// stops sampling and signs the window, so a window this late is missing.
+// ProviderObservationCompletionTimeout bounds a strict run's completion wait for
+// the Observer's observation-recorded events. Each assignment's windows are
+// sealed as its result is recorded, so the wait covers only the run's last
+// windows; FINALIZE only stops sampling and signs, so a window this late is
+// missing.
 const ProviderObservationCompletionTimeout = 30 * time.Second

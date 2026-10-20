@@ -712,6 +712,11 @@ const (
 	EvaluationScenarioArtifactsDirname            = "scenario-artifacts"
 	EvaluationRunStateFilename                    = "run.json"
 	EvaluationEvidenceDirname                     = "evidence"
+	EvaluationProviderObservationsDirname         = "provider-observations"
+	EvaluationProviderWindowRefFilename           = "window-ref.json"
+	EvaluationProviderAttemptRefFilename          = "attempt-ref.json"
+	EvaluationModelProvenanceDirname              = "model-provenance"
+	EvaluationModelProvenanceWindowRefFilename    = "window-ref.json"
 	ConformanceVerifierID                         = "ztd-governance-conformance-verifier"
 	ConformanceVerifierVersion                    = "1.0.0"
 	EvaluationSourceKindConformance               = "governance-conformance"
@@ -874,13 +879,9 @@ const (
 	PublicFeedArchiveGenerationsDirname = "public-feed-archive/generations"
 	PublicMirrorDirname                 = "public-mirror"
 	PublicMirrorDBPath                  = "public-mirror/mirror.db"
-	PublicMirrorImportDBPath            = "public-mirror/mirror-import.db"
 	PublicMirrorProofsDir               = "public-mirror/proofs"
-	// PublicMirrorStatePath is the legacy JSON mirror store, read only by the
-	// one-time import into PublicMirrorDBPath. Remove after v1.1.3.
-	PublicMirrorStatePath       = "public-mirror/state.json"
-	PublicProofsDirname         = "public-proofs"
-	PublicProofSegmentsFilename = "public-proofs/proof-segments.jsonl"
+	PublicProofsDirname                 = "public-proofs"
+	PublicProofSegmentsFilename         = "public-proofs/proof-segments.jsonl"
 	// PublicProofSegmentsLockFilename serializes appends to
 	// PublicProofSegmentsFilename across processes.
 	PublicProofSegmentsLockFilename = "public-proofs/proof-segments.lock"

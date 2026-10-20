@@ -310,9 +310,9 @@ func (c *EnrollmentClient) Rotate(ctx context.Context, fileSvc fs.RuntimeFileSer
 // (POST /api/v1/auth/cli/refresh over the public HTTPS surface). The
 // caller's existing CLI cert is used to build the mTLS client; the
 // gateway derives the user from the authenticated certificate context.
-// The request body is empty — the cert is the proof of identity. A new
-// CLI session is issued bound to the same user, with a fresh TTL. The
-// cert is NOT rotated.
+// The request body is empty — the cert is the proof of identity. The
+// caller's CLI session is extended in place: the same session ID, bound to
+// the same user, with a fresh TTL. The cert is NOT rotated.
 //
 // This is the recovery path for an expired CLI session with a still-valid
 // cert. The caller must hold a valid (non-expired) cert; an expired cert
@@ -355,8 +355,9 @@ func (c *EnrollmentClient) Refresh(ctx context.Context, fileSvc fs.RuntimeFileSe
 // surface). The first ID is the primary binding. The caller's existing CLI
 // cert is used to build the mTLS client; the gateway derives the user from
 // the authenticated certificate context and validates every target before
-// changing the binding. When the binding changes, a replacement CLI session
-// is issued with a fresh TTL.
+// changing the binding. The binding is updated in place: the CLI session
+// keeps its ID and certificate, so the returned CLI session ID is the one
+// already in local credentials.
 func (c *EnrollmentClient) Bind(ctx context.Context, fileSvc fs.RuntimeFileService, operatorSessionIDs []string) (CLISessionBind, error) {
 	if len(operatorSessionIDs) == 0 {
 		return CLISessionBind{}, constants.ErrGatewayOperatorSessionIDRequired
@@ -403,8 +404,8 @@ type CLISessionBind struct {
 }
 
 // Unbind clears the authenticated CLI session's operator binding
-// (POST /api/v1/auth/cli/unbind over the public HTTPS surface). When a
-// binding was present, a replacement CLI session is issued with a fresh TTL.
+// (POST /api/v1/auth/cli/unbind over the public HTTPS surface). The binding is
+// cleared in place; the CLI session keeps its ID and certificate.
 func (c *EnrollmentClient) Unbind(ctx context.Context, fileSvc fs.RuntimeFileService) (CLISessionUnbind, error) {
 	mtlsClient, err := BuildMTLSClient(fileSvc, c.cfg, httpTimeout)
 	if err != nil {

@@ -91,6 +91,7 @@ func newInferenceIntegrationFixture(t *testing.T) (*OperatorPubSubService, *stub
 	t.Helper()
 
 	cfg := testutil.NewTestConfig(t)
+	cfg.OperatorID = "operator-inference-int"
 	cfg.Inference = config.InferenceConfig{
 		Enabled:   true,
 		KeepAlive: "-1",

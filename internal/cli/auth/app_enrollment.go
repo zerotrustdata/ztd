@@ -26,20 +26,16 @@ import (
 	"log/slog"
 	"math"
 	mathrand "math/rand/v2"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/netutil"
 	serviceauth "github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
@@ -112,7 +108,7 @@ type AppPlatformEnrollmentClient struct {
 
 // NewAppPlatformEnrollmentClient constructs an app platform enrollment client.
 func NewAppPlatformEnrollmentClient(appName string, fileSvc fs.RuntimeFileService, cfg *config.Config, logger *slog.Logger, opts ...AppEnrollmentOptions) (*AppPlatformEnrollmentClient, error) {
-	if err := validateAppName(appName); err != nil {
+	if err := models.ValidateAppName(appName); err != nil {
 		return nil, err
 	}
 	if fileSvc == nil {
@@ -147,7 +143,7 @@ func NewAppPlatformEnrollmentClient(appName string, fileSvc fs.RuntimeFileServic
 
 	gatewayHTTPURL := opt.GatewayHTTPURL
 	if gatewayHTTPURL == "" {
-		gatewayHTTPURL = resolveGatewayHTTPURL(cfg)
+		gatewayHTTPURL = cfg.OperatorDiscoveryURL()
 	}
 	gatewayHTTPURL = strings.TrimRight(gatewayHTTPURL, "/")
 
@@ -396,7 +392,7 @@ func (c *AppPlatformEnrollmentClient) HasValidIdentity() bool {
 
 // LoadAppIdentity loads and verifies the installed TLS certificate for the given appName.
 func LoadAppIdentity(fileSvc fs.RuntimeFileService, cfg *config.Config, appName string) (*tls.Certificate, error) {
-	if err := validateAppName(appName); err != nil {
+	if err := models.ValidateAppName(appName); err != nil {
 		return nil, err
 	}
 	if fileSvc == nil || cfg == nil {
@@ -846,53 +842,6 @@ func parseRetryAfter(value string) time.Duration {
 		return 0
 	}
 	return time.Duration(seconds) * time.Second
-}
-
-func resolveGatewayHTTPURL(cfg *config.Config) string {
-	if cfg != nil && cfg.Paths != nil && cfg.Paths.Host != "" {
-		host := cfg.Paths.Host
-		if strings.Contains(host, "://") {
-			return strings.TrimRight(host, "/")
-		}
-		if bare, port, err := netutil.SplitEndpoint(host); err == nil && port == 0 {
-			return "http://" + net.JoinHostPort(bare, strconv.Itoa(constants.Ports.OperatorHttp))
-		}
-		return "http://" + host
-	}
-	host := "127.0.0.1"
-	if cfg != nil && cfg.Paths != nil && cfg.Paths.Host != "" {
-		host = cfg.Paths.Host
-	}
-	return fmt.Sprintf("http://%s:%d", host, constants.Ports.OperatorHttp)
-}
-
-func validateAppName(appName string) error {
-	if appName == "" {
-		return constants.ErrPlatformEnrollmentAppNameRequired
-	}
-	if len(appName) > constants.PlatformEnrollmentMaxAppNameBytes {
-		return constants.ErrPlatformEnrollmentInvalidAppName
-	}
-	if !isValidAppNameFormat(appName) || isReservedPlatformName(appName) {
-		return constants.ErrPlatformEnrollmentInvalidAppName
-	}
-	return nil
-}
-
-func isValidAppNameFormat(name string) bool {
-	matched, err := regexp.MatchString(`^[a-z0-9][a-z0-9._-]*$`, name)
-	return err == nil && matched
-}
-
-func isReservedPlatformName(name string) bool {
-	switch name {
-	case "ztd", "ztdg", "ztdo", "ztde", "ztdd",
-		"ztd-gateway", "ztd-operator", "ztd-ensemble", "ztd-dashboard", "ztd-cli",
-		"operator", "ensemble", "dashboard", "gateway", "cli", "admin", "system":
-		return true
-	default:
-		return false
-	}
 }
 
 func isGatewayRequiresBootstrap(body []byte) bool {

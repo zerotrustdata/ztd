@@ -3,8 +3,8 @@ doc_id: position-paper
 title: Governing Agentic Execution Without Surrendering Data Custody
 audience: researchers, security architects, compliance officers, and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - protocol/
   - internal/services/governance/
@@ -199,7 +199,7 @@ Empirical studies demonstrate the systemic necessity of an external execution bo
 ### 6.2 Published ztd Evidence
 
 ztd maintains a verifiable, proof-backed compliance and evidence engine:
-- The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, v2.0.0) defines 13 atomic, framework-neutral technical assertions covering identity, least privilege, allow/block outcomes, receipt integrity, persistence, Merkle state tracking, DLP scrubbing, and FIPS cryptographic modes.
+- The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, v2.1.0) defines 13 atomic, framework-neutral technical assertions covering identity, least privilege, allow/block outcomes, receipt integrity, persistence, Merkle state tracking, DLP scrubbing, and FIPS cryptographic modes.
 - The framework catalog covers FedRAMP 20x CR26 (31 controls: 14 mapped, 17 unsupported) and NIST SP 800-53 Rev. 5 (100 controls: 20 mapped, 80 unsupported).
 - Catalog coverage is strictly distinguished from customer compliance; unsupported controls are explicitly reported rather than hidden.
 - The evidence hierarchy enforces strict levels from L0 (Documented) to L5 (Externally Attested); the automated platform pipeline generates evidence up to L3 (Demonstrated).

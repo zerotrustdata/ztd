@@ -407,6 +407,8 @@ const (
 	ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED          ReceiptFailureCode = 19
 	// The prompt filled the provider's context window, so the provider truncated it or left no room to generate.
 	ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW ReceiptFailureCode = 20
+	// A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch.
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED ReceiptFailureCode = 21
 )
 
 // Enum value maps for ReceiptFailureCode.
@@ -433,6 +435,7 @@ var (
 		18: "RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID",
 		19: "RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED",
 		20: "RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW",
+		21: "RECEIPT_FAILURE_CODE_REHYDRATION_FAILED",
 	}
 	ReceiptFailureCode_value = map[string]int32{
 		"RECEIPT_FAILURE_CODE_UNSPECIFIED":                0,
@@ -456,6 +459,7 @@ var (
 		"RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID":   18,
 		"RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED":          19,
 		"RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW":           20,
+		"RECEIPT_FAILURE_CODE_REHYDRATION_FAILED":         21,
 	}
 )
 
@@ -528,6 +532,8 @@ const (
 	GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN GovernanceRejectionCode = 23
 	// The human denied the suspended transaction at the L3 approval.
 	GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED GovernanceRejectionCode = 24
+	// An MCP_CALL's target_resource is not its payload's tool name.
+	GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH GovernanceRejectionCode = 25
 )
 
 // Enum value maps for GovernanceRejectionCode.
@@ -558,6 +564,7 @@ var (
 		22: "GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID",
 		23: "GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN",
 		24: "GOVERNANCE_REJECTION_CODE_L3_DENIED",
+		25: "GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH",
 	}
 	GovernanceRejectionCode_value = map[string]int32{
 		"GOVERNANCE_REJECTION_CODE_UNSPECIFIED":                      0,
@@ -585,6 +592,7 @@ var (
 		"GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID":                 22,
 		"GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN":         23,
 		"GOVERNANCE_REJECTION_CODE_L3_DENIED":                        24,
+		"GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH":              25,
 	}
 )
 
@@ -12076,14 +12084,18 @@ func (x *InferenceDispatchRequest) GetSeed() int32 {
 // the executing Operator's verified signed FAILED receipt when the dispatch
 // reached it: a governance rejection, or a failed execution whose commitment
 // the Operator's ledger holds. It is absent for every failure that ended
-// before the Operator signed an outcome.
+// before the Operator signed an outcome. Observation_receipts are the
+// observers' verified signed BEGIN and FINALIZE receipts the failed attempt
+// produced, in dispatch order, so a trace bracket can claim their
+// commitments as it does for InferenceDispatchResponse.
 type InferenceDispatchFailure struct {
-	state         protoimpl.MessageState       `protogen:"open.v1"`
-	Error         string                       `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
-	Code          InferenceDispatchFailureCode `protobuf:"varint,2,opt,name=code,proto3,enum=ztd.operator.v1.InferenceDispatchFailureCode" json:"code,omitempty"`
-	Receipt       *ActionReceipt               `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState       `protogen:"open.v1"`
+	Error               string                       `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	Code                InferenceDispatchFailureCode `protobuf:"varint,2,opt,name=code,proto3,enum=ztd.operator.v1.InferenceDispatchFailureCode" json:"code,omitempty"`
+	Receipt             *ActionReceipt               `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	ObservationReceipts []*ActionReceipt             `protobuf:"bytes,4,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *InferenceDispatchFailure) Reset() {
@@ -12133,6 +12145,13 @@ func (x *InferenceDispatchFailure) GetCode() InferenceDispatchFailureCode {
 func (x *InferenceDispatchFailure) GetReceipt() *ActionReceipt {
 	if x != nil {
 		return x.Receipt
+	}
+	return nil
+}
+
+func (x *InferenceDispatchFailure) GetObservationReceipts() []*ActionReceipt {
+	if x != nil {
+		return x.ObservationReceipts
 	}
 	return nil
 }
@@ -12310,9 +12329,14 @@ type InferenceDispatchResponse struct {
 	// signed receipt.
 	Result *InferenceResult `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
 	// The verified final signed ActionReceipt for the transaction.
-	Receipt       *ActionReceipt `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Receipt *ActionReceipt `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	// The observers' verified final signed receipts for this attempt's
+	// provider-boundary and model provenance BEGIN and FINALIZE commands, in
+	// dispatch order. Each was signed before the response was returned, so a
+	// trace bracket closing after the dispatch can claim its commitment.
+	ObservationReceipts []*ActionReceipt `protobuf:"bytes,4,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *InferenceDispatchResponse) Reset() {
@@ -12362,6 +12386,13 @@ func (x *InferenceDispatchResponse) GetResult() *InferenceResult {
 func (x *InferenceDispatchResponse) GetReceipt() *ActionReceipt {
 	if x != nil {
 		return x.Receipt
+	}
+	return nil
+}
+
+func (x *InferenceDispatchResponse) GetObservationReceipts() []*ActionReceipt {
+	if x != nil {
+		return x.ObservationReceipts
 	}
 	return nil
 }
@@ -13621,11 +13652,12 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x06_top_kB\x16\n" +
 	"\x14_parallel_tool_callsB\x10\n" +
 	"\x0e_context_limitB\a\n" +
-	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"\xad\x01\n" +
+	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"\x80\x02\n" +
 	"\x18InferenceDispatchFailure\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error\x12A\n" +
 	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\x128\n" +
-	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\"{\n" +
+	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12Q\n" +
+	"\x14observation_receipts\x18\x04 \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"{\n" +
 	"\x1eInferenceDispatchStreamFailure\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12A\n" +
 	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\"\x89\x02\n" +
@@ -13635,11 +13667,12 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"completion\x18\x02 \x01(\v2*.ztd.operator.v1.InferenceDispatchResponseH\x00R\n" +
 	"completion\x12K\n" +
 	"\afailure\x18\x03 \x01(\v2/.ztd.operator.v1.InferenceDispatchStreamFailureH\x00R\afailureB\a\n" +
-	"\x05frame\"\xb6\x01\n" +
+	"\x05frame\"\x89\x02\n" +
 	"\x19InferenceDispatchResponse\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x128\n" +
 	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x128\n" +
-	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt*\xce\x01\n" +
+	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12Q\n" +
+	"\x14observation_receipts\x18\x04 \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts*\xce\x01\n" +
 	"\x0fExecutionStatus\x12 \n" +
 	"\x1cEXECUTION_STATUS_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aEXECUTION_STATUS_EXECUTING\x10\x01\x12\x1e\n" +
@@ -13675,7 +13708,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"$DETERMINISTIC_STAGE_OUTCOME_VERIFIED\x10\x01\x12,\n" +
 	"(DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED\x10\x02\x12)\n" +
 	"%DETERMINISTIC_STAGE_OUTCOME_COMPLETED\x10\x03\x12&\n" +
-	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\xd7\a\n" +
+	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\x84\b\n" +
 	"\x12ReceiptFailureCode\x12$\n" +
 	" RECEIPT_FAILURE_CODE_UNSPECIFIED\x10\x00\x12,\n" +
 	"(RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED\x10\x01\x12.\n" +
@@ -13698,7 +13731,9 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"+RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID\x10\x11\x121\n" +
 	"-RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID\x10\x12\x12*\n" +
 	"&RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED\x10\x13\x12)\n" +
-	"%RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW\x10\x14*\xff\t\n" +
+	"%RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW\x10\x14\x12+\n" +
+	"'RECEIPT_FAILURE_CODE_REHYDRATION_FAILED\x10\x15*\xb2\n" +
+	"\n" +
 	"\x17GovernanceRejectionCode\x12)\n" +
 	"%GOVERNANCE_REJECTION_CODE_UNSPECIFIED\x10\x00\x12*\n" +
 	"&GOVERNANCE_REJECTION_CODE_UNCLASSIFIED\x10\x01\x122\n" +
@@ -13725,7 +13760,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"*GOVERNANCE_REJECTION_CODE_L3_PROOF_MISSING\x10\x15\x12.\n" +
 	"*GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID\x10\x16\x126\n" +
 	"2GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN\x10\x17\x12'\n" +
-	"#GOVERNANCE_REJECTION_CODE_L3_DENIED\x10\x18*\xd4\a\n" +
+	"#GOVERNANCE_REJECTION_CODE_L3_DENIED\x10\x18\x121\n" +
+	"-GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH\x10\x19*\xd4\a\n" +
 	"\x12IngressRefusalCode\x12$\n" +
 	" INGRESS_REFUSAL_CODE_UNSPECIFIED\x10\x00\x12%\n" +
 	"!INGRESS_REFUSAL_CODE_UNCLASSIFIED\x10\x01\x12+\n" +
@@ -14104,27 +14140,29 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	137, // 94: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
 	16,  // 95: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
 	69,  // 96: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	16,  // 97: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	141, // 98: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
-	147, // 99: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
-	145, // 100: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
-	140, // 101: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
-	69,  // 102: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	17,  // 103: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
-	18,  // 104: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
-	19,  // 105: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
-	20,  // 106: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
-	21,  // 107: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
-	74,  // 108: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
-	74,  // 109: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
-	74,  // 110: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
-	74,  // 111: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
-	74,  // 112: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
-	108, // [108:113] is the sub-list for method output_type
-	103, // [103:108] is the sub-list for method input_type
-	103, // [103:103] is the sub-list for extension type_name
-	103, // [103:103] is the sub-list for extension extendee
-	0,   // [0:103] is the sub-list for field type_name
+	69,  // 97: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
+	16,  // 98: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
+	141, // 99: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
+	147, // 100: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
+	145, // 101: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
+	140, // 102: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
+	69,  // 103: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	69,  // 104: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
+	17,  // 105: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
+	18,  // 106: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
+	19,  // 107: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
+	20,  // 108: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
+	21,  // 109: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
+	74,  // 110: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
+	74,  // 111: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
+	74,  // 112: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
+	74,  // 113: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
+	74,  // 114: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
+	110, // [110:115] is the sub-list for method output_type
+	105, // [105:110] is the sub-list for method input_type
+	105, // [105:105] is the sub-list for extension type_name
+	105, // [105:105] is the sub-list for extension extendee
+	0,   // [0:105] is the sub-list for field type_name
 }
 
 func init() { file_ztd_operator_v1_operator_proto_init() }

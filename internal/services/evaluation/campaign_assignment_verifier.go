@@ -10,13 +10,16 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -36,6 +39,8 @@ type CampaignAssignmentVerificationRequest struct {
 	ProviderObservationPolicy ProviderObservationPolicy
 	ModelProvenanceReader     *CampaignModelProvenanceReader
 	ModelProvenancePolicy     ModelProvenancePolicy
+	Binding                   CampaignExecutionBinding
+	FormationStackSet         *HeterogeneousStackSet
 }
 
 // CampaignAssignmentVerifier independently verifies one persisted assignment
@@ -73,17 +78,13 @@ func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAss
 		failures = append(failures, "assignment and result are required")
 		return finalizeCampaignVerificationReport(report, failures), nil
 	}
-	if req.Assignment.GetAssignmentId() != req.Result.GetAssignmentId() || req.Assignment.GetRunId() != req.Result.GetRunId() {
+	if req.Assignment.GetAssignmentId() != req.Result.GetAssignmentId() || req.Assignment.GetRunId() != req.Result.GetRunId() || req.Assignment.GetCampaignId() != req.Result.GetCampaignId() || req.Assignment.GetLane() != req.Result.GetLane() {
 		failures = append(failures, "assignment and result binding mismatch")
 	}
 	if err := ValidateAssignmentResultDigest(req.Result); err != nil {
 		failures = append(failures, "result digest validation failed: "+err.Error())
 	}
-	if IsHeterogeneousAssignment(req.Assignment) {
-		failures = append(failures, "heterogeneous assignment: "+constants.ErrEvaluationSystemLaneUnavailable.Error())
-	} else {
-		failures = append(failures, v.verifyHomogeneousAssignment(req)...)
-	}
+	failures = append(failures, v.verifyHomogeneousAssignment(req)...)
 	if req.ProviderObservationReader != nil && len(scoredModelInferences(req.Result)) > 0 {
 		observationFailures, _ := req.ProviderObservationReader.VerifyAssignmentProviderObservations(ctx, req.Result, req.ProviderObservationPolicy)
 		failures = append(failures, observationFailures...)
@@ -127,24 +128,56 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 		}
 	}
 	execReq := AssignmentExecutionRequest{
-		Assignment:    req.Assignment,
-		AttemptID:     trace.EvaluationAttemptID,
-		GradingMethod: req.GradingMethod,
-		ScenarioInput: req.ScenarioInput,
-		ScenarioGold:  req.ScenarioGold,
-		ScenarioTools: req.ScenarioTools,
+		Assignment:        req.Assignment,
+		AttemptID:         trace.EvaluationAttemptID,
+		GradingMethod:     req.GradingMethod,
+		ScenarioInput:     req.ScenarioInput,
+		ScenarioGold:      req.ScenarioGold,
+		ScenarioTools:     req.ScenarioTools,
+		Binding:           req.Binding,
+		FormationStackSet: req.FormationStackSet,
 	}
+	if trace.SchemaVersion == agentTraceSchemaVersion {
+		expected, _ := modelInferenceRecordsFromAgentTrace(execReq, trace, func(string) string { return "" })
+		if len(expected) != len(req.Result.GetModelInferences()) {
+			failures = append(failures, "result inference count does not match agent trace")
+		} else {
+			for i, record := range req.Result.GetModelInferences() {
+				if record == nil {
+					failures = append(failures, fmt.Sprintf("result inference %d is missing", i))
+					continue
+				}
+				// Record IDs and governed receipt references are assigned after
+				// import. The execution identity and telemetry must be reproducible.
+				actual := proto.Clone(record).(*evalv1.ModelInferenceRecord)
+				actual.InferenceRecordId = ""
+				actual.GovernedReceiptRef = nil
+				if !proto.Equal(actual, expected[i]) {
+					failures = append(failures, fmt.Sprintf("result inference %d does not match agent trace", i))
+				}
+			}
+		}
+	}
+	// The lifecycle is recomputed from the evidence rules and grader verdict the
+	// live import applies, so a stored INVALID_EVIDENCE from any of them is
+	// recomputed and accepted here, and a trace that fails them under any other
+	// stored lifecycle does not verify. The verdict is recomputed under any
+	// catalog: only the grade comparison depends on CatalogRecomputesGrades.
 	lifecycle := agentTraceLifecycle(execReq, trace)
+	assessment := assessAgentTrace(execReq, trace, lifecycle, agentTraceEvidenceError(execReq, trace))
+	if assessment.invalid != nil {
+		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+	}
 	if req.Result.GetLifecycleStatus() != lifecycle {
 		failures = append(failures, fmt.Sprintf("stored lifecycle %s does not match agent trace lifecycle %s", req.Result.GetLifecycleStatus(), lifecycle))
 	}
-	if !CatalogRecomputesGrades(req.CatalogRef) {
+	if assessment.invalid != nil || !CatalogRecomputesGrades(req.CatalogRef) {
 		return failures
 	}
-	grading, err := GradeHomogeneousScenario(execReq, trace, lifecycle)
-	if err != nil {
-		return append(failures, "homogeneous grade recomputation failed: "+err.Error())
+	if assessment.failed != nil {
+		return append(failures, "homogeneous grade recomputation failed: "+assessment.failed.Error())
 	}
+	grading := assessment.grading
 	if !gradesEquivalent(req.Result.GetDeterministicGrades(), grading.DeterministicGrades) {
 		failures = append(failures, "stored deterministic grades do not match agent trace recomputation")
 	}
@@ -152,6 +185,68 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 		failures = append(failures, fmt.Sprintf("stored trajectory outcome %s does not match agent trace recomputation %s", req.Result.GetTrajectoryOutcome(), grading.Trajectory.Outcome))
 	}
 	return failures
+}
+
+// verifyAssignmentTraceModels binds the signed identity of each v7 inference
+// to the assignment's frozen candidate or formation. A formation cannot use
+// older traces, which did not record independently verifiable per-call models.
+func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTrace) error {
+	if trace == nil || req.Assignment == nil {
+		return constants.ErrMissingRequiredField
+	}
+	if trace.CampaignID != req.Assignment.GetCampaignId() || trace.ScenarioID != req.Assignment.GetScenarioId() {
+		return constants.ErrEvaluationEvidenceTraceMismatch
+	}
+	system := IsHeterogeneousAssignment(req.Assignment)
+	if trace.SchemaVersion != agentTraceSchemaVersion {
+		if system {
+			return fmt.Errorf("formation requires per-call model evidence: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+		}
+		return nil
+	}
+	var resolved map[evalv1.ModelCampaignRole]*evalv1.ModelVariant
+	if system || len(req.Binding.ModelVariants) > 0 {
+		var err error
+		resolved, err = ResolveAssignmentModels(req)
+		if err != nil {
+			return err
+		}
+		if trace.ModelRegistryDigest != req.Binding.ModelRegistryDigest {
+			return constants.ErrInferenceModelRegistryInvalid
+		}
+	} else {
+		target := req.Assignment.GetHomogeneous()
+		if target == nil || target.GetCandidateVariant() == nil {
+			return constants.ErrEvaluationTargetKindMismatch
+		}
+		resolved = map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{target.GetDesignatedRole(): target.GetCandidateVariant()}
+	}
+	designated := req.Assignment.GetHomogeneous().GetDesignatedRole()
+	if system {
+		designated = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+	}
+	variant := resolved[designated]
+	label, err := modelCampaignRoleLabel(designated)
+	if err != nil || variant == nil || trace.DesignatedRole != label || trace.ServedModelTag != variant.GetServedModelTag() || trace.ModelDigest != variant.GetModelDigest() {
+		return constants.ErrFormationRegistryBinding
+	}
+	for _, call := range trace.ModelCalls {
+		role := designated
+		if !call.IsTurn() {
+			if !strings.HasPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix) {
+				return fmt.Errorf("unknown model call purpose %q: %w", call.Purpose, constants.ErrEvaluationEvidenceTraceMismatch)
+			}
+			if system {
+				role = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+			}
+		}
+		model := resolved[role]
+		inferenceRole, err := tribunal.InferenceRoleForTier(role)
+		if err != nil || model == nil || call.ModelVariantID != model.GetVariantId() || call.ModelRole != inferenceRole.ToProto().String() || call.ServedModelTag != model.GetServedModelTag() || call.ModelDigest != model.GetModelDigest() {
+			return fmt.Errorf("model call %q differs from frozen role %s: %w", call.ProviderAttemptID, role, constants.ErrFormationRegistryBinding)
+		}
+	}
+	return nil
 }
 
 func resultReferencesEvidenceBody(result *evalv1.EvaluationAssignmentResult, body []byte) bool {

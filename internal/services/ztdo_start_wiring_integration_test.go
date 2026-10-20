@@ -103,7 +103,6 @@ func TestZtdoService_Start_InitializesRequiredFileLedger(t *testing.T) {
 	assert.True(t, service.running)
 	assert.NotNil(t, service.evidence.Ledger, "the file ledger is a required Operator dependency")
 	assert.NotNil(t, service.replayStore, "replay protection is mandatory in every mode")
-	assert.NotNil(t, service.suspendedTxStore)
 	assert.NotNil(t, service.evidence.HistoryHandler)
 }
 

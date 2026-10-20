@@ -10,6 +10,7 @@ package constants
 import (
 	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -67,6 +68,56 @@ func TestObserveAPIPathsJSONSync(t *testing.T) {
 		jsonVal, ok := rawVal.(string)
 		require.True(t, ok, "api_paths.json key %s is not a string", tc.jsonKey)
 		assert.Equal(t, tc.goValue, jsonVal, "Go constant for %s does not match JSON", tc.jsonKey)
+	}
+}
+
+// apiPathsNonRouteAllowList names APIPaths fields (by json key) that are
+// deliberately excluded from the bidirectional JSON sync check because they
+// are not standalone HTTP routes. Every entry needs a reason. Empty today:
+// every APIPaths field is a route, a route prefix, or a route fragment
+// (e.g. approvals_verify_action), and each one is mirrored in
+// protocol/constants/api_paths.json and value-checked.
+var apiPathsNonRouteAllowList = map[string]string{}
+
+// TestAPIPathsJSONBidirectionalSync verifies that every APIPaths field has a
+// matching entry in protocol/constants/api_paths.json with the same value, and
+// that every JSON entry maps back to an APIPaths field.
+func TestAPIPathsJSONBidirectionalSync(t *testing.T) {
+	data, err := os.ReadFile("../../protocol/constants/api_paths.json")
+	require.NoError(t, err)
+
+	var jsonPaths map[string]string
+	require.NoError(t, json.Unmarshal(data, &jsonPaths))
+
+	goPaths := make(map[string]string)
+	goType := reflect.TypeOf(APIPaths)
+	goVal := reflect.ValueOf(APIPaths)
+	for i := 0; i < goType.NumField(); i++ {
+		key := goType.Field(i).Tag.Get("json")
+		require.NotEmpty(t, key, "APIPaths field %s has no json tag", goType.Field(i).Name)
+		_, dup := goPaths[key]
+		require.False(t, dup, "APIPaths json key %s is used by more than one field", key)
+		goPaths[key] = goVal.Field(i).String()
+	}
+
+	for key, reason := range apiPathsNonRouteAllowList {
+		assert.NotEmpty(t, reason, "allow-list entry %s must carry a reason", key)
+		_, inGo := goPaths[key]
+		assert.True(t, inGo, "allow-list entry %s does not match any APIPaths field", key)
+		delete(goPaths, key)
+		delete(jsonPaths, key)
+	}
+
+	for key, goValue := range goPaths {
+		jsonValue, ok := jsonPaths[key]
+		assert.True(t, ok, "APIPaths json key %s has no entry in api_paths.json", key)
+		if ok {
+			assert.Equal(t, goValue, jsonValue, "api_paths.json value for %s does not match APIPaths", key)
+		}
+	}
+	for key := range jsonPaths {
+		_, ok := goPaths[key]
+		assert.True(t, ok, "api_paths.json key %s has no APIPaths field", key)
 	}
 }
 

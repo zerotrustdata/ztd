@@ -20,7 +20,30 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+// TestPublicMirrorIngestAuthFailsClosedWithoutConfiguredToken verifies that an
+// unconfigured ingest token rejects every request, including one that presents
+// a bearer header, and that a configured token still requires an exact match.
+func TestPublicMirrorIngestAuthFailsClosedWithoutConfiguredToken(t *testing.T) {
+	mirror := &PublicMirrorServer{logger: testutil.NewTestLogger()}
+	for _, header := range []string{"", "Bearer ", "Bearer anything"} {
+		request := httptest.NewRequest(http.MethodPost, "/ingest", nil)
+		if header != "" {
+			request.Header.Set("Authorization", header)
+		}
+		require.ErrorIs(t, mirror.ingestAuthorized(request), constants.ErrPublicFeedIngestTokenRequired, "header %q", header)
+	}
+
+	mirror.SetIngestAuthToken("configured-token")
+	request := httptest.NewRequest(http.MethodPost, "/ingest", nil)
+	require.ErrorIs(t, mirror.ingestAuthorized(request), constants.ErrPublicFeedIngestUnauthorized)
+	request.Header.Set("Authorization", "Bearer wrong-token")
+	require.ErrorIs(t, mirror.ingestAuthorized(request), constants.ErrPublicFeedIngestUnauthorized)
+	request.Header.Set("Authorization", "Bearer configured-token")
+	require.NoError(t, mirror.ingestAuthorized(request))
+}
 
 type mirrorFailedResponseWriter struct {
 	http.ResponseWriter

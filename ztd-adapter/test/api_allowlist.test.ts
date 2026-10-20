@@ -55,6 +55,7 @@ describe('endpoint allowlist', () => {
       // SSE push (producer endpoints are mTLS-only, never browser)
       ['POST', '/api/v1/observe/producer/agent-state'],
       ['POST', '/api/v1/observe/producer/run-state'],
+      ['POST', '/api/v1/observe/producer/stop'],
       // Generic data
       ['GET', '/api/v1/data'],
       ['POST', '/api/v1/data'],

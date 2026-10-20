@@ -9,10 +9,7 @@ package gateway
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -160,17 +157,19 @@ func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
 	// never browser-accessible. The producer prefix is longer than
 	// ObservePrefix so it takes precedence in the longest-prefix match,
 	// ensuring producer paths fail closed to mTLS instead of inheriting
-	// the observe prefix's web-session classification. The two exact
-	// producer paths are also classified explicitly so they are matched at
-	// the highest priority (exact match before prefix match).
+	// the observe prefix's web-session classification. The exact producer
+	// paths are also classified explicitly so they are matched at the
+	// highest priority (exact match before prefix match).
 	r.addPrefix(constants.APIPaths.ObserveProducerPrefix, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.ObserveProducerAgentState, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.ObserveProducerRunState, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.ObserveProducerStop, RouteAuthMTLS)
 
 	// mTLS-only operator sub-paths (must precede the browser-capable prefix).
 	r.addExact(constants.APIPaths.OperatorsValidate, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.OperatorsTarget, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.OperatorsCommands, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.OperatorsIntents, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.OperatorsStop, RouteAuthMTLS)
 	r.addPrefix(constants.APIPaths.OperatorsSession, RouteAuthMTLS)
 	// Browser operator list/bind/unbind (cookie or mTLS for CLI parity).
@@ -568,7 +567,7 @@ func (s *AuthService) ValidateOperatorCLISessionBinding(ctx context.Context, ope
 		return nil, fmt.Errorf("gateway: auth: unmarshal CLI session binding: %w: %w", err, constants.ErrResponseParseFailed)
 	}
 	checkTime := time.Now()
-	if !cliSession.IsActive || (!cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(checkTime)) || (!cliSession.AbsoluteExpiresAt.IsZero() && cliSession.AbsoluteExpiresAt.Before(checkTime)) || (!cliSession.IdleExpiresAt.IsZero() && cliSession.IdleExpiresAt.Before(checkTime)) {
+	if !cliSession.IsActive || cliSessionExpired(&cliSession, checkTime) {
 		return nil, &AuthError{Message: constants.ErrCLISessionExpired.Error(), Status: http.StatusUnauthorized}
 	}
 	if cliSession.UserID != userID || !cliSessionBindsOperator(&cliSession, operatorSessionID) {
@@ -697,6 +696,9 @@ func (s *AuthService) handleWebSessionAuth(w http.ResponseWriter, r *http.Reques
 
 // handleOperatorAuth handles authentication for Operator sessions.
 // Always handles the request (succeeds or writes an error response).
+// The CLI session header is consulted only by cliCertBoundToOperator, which
+// admits it solely when the certificate's own URI SAN names that session. It
+// is never stamped into the request context.
 func (s *AuthService) handleOperatorAuth(w http.ResponseWriter, r *http.Request, operatorSessionID, cliSessionID string, next http.Handler) {
 	op, err := s.ValidateOperatorSession(r.Context(), operatorSessionID)
 	if err == nil {
@@ -731,9 +733,10 @@ func (s *AuthService) handleOperatorAuth(w http.ResponseWriter, r *http.Request,
 		ctx = context.WithValue(ctx, constants.ContextKeyTenantID, op.OrganizationId)
 		ctx = context.WithValue(ctx, constants.ContextKeyOperatorID, op.Id)
 		ctx = context.WithValue(ctx, constants.ContextKeyOperatorSessionID, operatorSessionID)
-		if cliSessionID != "" {
-			ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, cliSessionID)
-		}
+		// No CLI session is stamped on an Operator certificate. An Operator
+		// certificate names no CLI session, and the X-ZTD-CLI-Session-ID header
+		// is client-controlled, so CLI-only routes reject these requests
+		// (INV-AUTH-OP-BIND-07).
 		if webSessionID := r.Header.Get(constants.HeaderWebSessionID); webSessionID != "" {
 			ctx = context.WithValue(ctx, constants.ContextKeyWebSessionID, webSessionID)
 		}
@@ -800,9 +803,7 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 		}
 
 		checkTime := time.Now()
-		if (!cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(checkTime)) ||
-			(!cliSession.AbsoluteExpiresAt.IsZero() && cliSession.AbsoluteExpiresAt.Before(checkTime)) ||
-			(!cliSession.IdleExpiresAt.IsZero() && cliSession.IdleExpiresAt.Before(checkTime)) {
+		if cliSessionExpired(&cliSession, checkTime) {
 			// Session expired. The only paths that may proceed with an
 			// expired session are the refresh and logout endpoints, where
 			// the cert is the proof of identity and the session expiry is
@@ -827,17 +828,12 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 			return true
 		}
 
+		// The certificate's URI SAN must name this session. A session keeps the ID
+		// its certificate was signed against for its whole life (INV-AUTH-ID-07),
+		// so there is no fingerprint fallback for a session the cert does not name.
 		match := false
-		fingerprintMatch := matchesCertificateFingerprint(cert, cliSession.CertFingerprint)
 		for _, uri := range cert.URIs {
-			uriString := uri.String()
-			if wid.MatchesCLI(uriString, cliSession.UserID, cliSessionID) {
-				match = true
-				break
-			}
-			certUserID, userOK := wid.ExtractUserID(uriString)
-			certSessionID, sessionOK := wid.ExtractCLISessionID(uriString)
-			if fingerprintMatch && userOK && sessionOK && certUserID == cliSession.UserID && wid.MatchesCLI(uriString, certUserID, certSessionID) {
+			if wid.MatchesCLI(uri.String(), cliSession.UserID, cliSessionID) {
 				match = true
 				break
 			}
@@ -908,15 +904,6 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 	return false
 }
 
-func matchesCertificateFingerprint(cert *x509.Certificate, expected string) bool {
-	if cert == nil || expected == "" {
-		return false
-	}
-	fingerprint := sha256.Sum256(cert.Raw)
-	actual := hex.EncodeToString(fingerprint[:])
-	return subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) == 1
-}
-
 // isCLISessionCertIdentityPath reports whether path is admitted on the CLI
 // certificate alone, whatever state its CLI session is in. Refresh needs this
 // to recover a stale session. Logout needs it so a user whose session already
@@ -926,31 +913,19 @@ func isCLISessionCertIdentityPath(path string) bool {
 	return path == constants.APIPaths.AuthCLIRefresh || path == constants.APIPaths.AuthCLILogout
 }
 
-// handleCLIRefreshAuth is the fail-closed auth path for the CLI session refresh and logout endpoints. It runs before persisted CLI session and Operator binding validation because refresh recovers expired, missing, inactive, or stale session state, and logout must work from that same state. The cert is the proof of identity: handleMTLSAuth already verified its revocation status, chain, and expiry.
+// handleCLIRefreshAuth is the fail-closed auth path for the CLI session refresh and logout endpoints. It runs before persisted CLI session and Operator binding validation because refresh recovers an expired session, and logout must work from that same state. The cert is the proof of identity: handleMTLSAuth already verified its revocation status, chain, and expiry.
 //
 // Security guarantees:
 //   - The cert is verified (revocation, chain, expiry) by handleMTLSAuth.
 //   - The user ID is extracted from the cert URI SAN, never from the
-//     request body or the expired/missing session record.
+//     request body or the session record.
 //   - The user is validated as active.
-//   - The header session either matches the cert URI SAN or carries the same user and certificate fingerprint after a prior session rotation.
+//   - The header session must be the one the cert URI SAN names. There is no
+//     fingerprint fallback: a session keeps the ID its certificate was signed
+//     against, so a mismatch is rejected.
 //   - Only the refresh and logout endpoints are reachable through this path;
-//     all other endpoints fail closed on expired/missing sessions.
-func (s *AuthService) cliRefreshSessionMatchesCertificate(ctx context.Context, cliSessionID, userID string, cert *x509.Certificate) (bool, error) {
-	doc, err := s.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID)
-	if err != nil {
-		return false, fmt.Errorf("gateway: auth: load refreshed CLI session: %w", err)
-	}
-	if doc == nil {
-		return false, nil
-	}
-	session, err := decodeCLISession(doc)
-	if err != nil {
-		return false, fmt.Errorf("gateway: auth: decode refreshed CLI session: %w", err)
-	}
-	return session.UserID == userID && matchesCertificateFingerprint(cert, session.CertFingerprint), nil
-}
-
+//     all other endpoints fail closed on expired/missing sessions. The refresh
+//     handler requires the session to exist and be active.
 func (s *AuthService) handleCLIRefreshAuth(w http.ResponseWriter, r *http.Request, cert *x509.Certificate, oldCLISessionID string, wid *protocol.WorkloadIdentity, next http.Handler) bool {
 	var userID string
 	var certSessionID string
@@ -970,17 +945,9 @@ func (s *AuthService) handleCLIRefreshAuth(w http.ResponseWriter, r *http.Reques
 		return true
 	}
 	if certSessionID != oldCLISessionID {
-		matches, err := s.cliRefreshSessionMatchesCertificate(r.Context(), oldCLISessionID, userID, cert)
-		if err != nil {
-			s.logger.Error("gateway: auth: CLI refresh: validate rotated session binding", "cli_session_id", oldCLISessionID, string(constants.ConnectionStateError), err)
-			s.responder.Error(w, http.StatusInternalServerError, constants.ErrIdentityValidationFailed.Error())
-			return true
-		}
-		if !matches {
-			s.logger.Warn("gateway: auth: CLI refresh: cert does not match rotated session", "path", r.URL.Path, "cli_session_id_prefix", safeTruncateID(oldCLISessionID))
-			s.responder.Error(w, http.StatusForbidden, constants.ErrMTLSIdentityMismatch.Error())
-			return true
-		}
+		s.logger.Warn("gateway: auth: CLI refresh: cert does not name the presented session", "path", r.URL.Path, "cli_session_id_prefix", safeTruncateID(oldCLISessionID))
+		s.responder.Error(w, http.StatusForbidden, constants.ErrMTLSIdentityMismatch.Error())
+		return true
 	}
 
 	// Validate the user is still active. An expired session does not
@@ -996,7 +963,7 @@ func (s *AuthService) handleCLIRefreshAuth(w http.ResponseWriter, r *http.Reques
 		return true
 	}
 
-	s.logger.Info("gateway: auth: CLI refresh: admitting expired/missing session for refresh",
+	s.logger.Info("gateway: auth: CLI refresh: admitting certificate for session refresh",
 		"user_id", userID,
 		"cli_session_id_prefix", safeTruncateID(oldCLISessionID),
 	)
@@ -1175,7 +1142,8 @@ func (s *AuthService) cliCertBoundToOperator(ctx context.Context, certURIs []*ur
 	if err := json.Unmarshal(b, &cliSession); err != nil {
 		return false, fmt.Errorf("gateway: auth: unmarshal CLI session %s for cert binding: %w: %w", cliSessionID, err, constants.ErrResponseParseFailed)
 	}
-	if !cliSession.ExpiresAt.IsZero() && cliSession.ExpiresAt.Before(time.Now()) {
+	checkTime := time.Now()
+	if !cliSession.IsActive || cliSessionExpired(&cliSession, checkTime) {
 		return false, nil
 	}
 	return cliSessionBindsOperator(&cliSession, operatorSessionID), nil

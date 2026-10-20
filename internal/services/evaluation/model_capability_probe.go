@@ -214,7 +214,7 @@ func inferenceResultHasText(result *operatorv1.InferenceResult, expected string)
 	if result == nil {
 		return false
 	}
-	text := strings.ToLower(CollectResponseText(result))
+	text := strings.ToLower(models.InferenceResultText(result))
 	return strings.Contains(text, strings.ToLower(expected))
 }
 
@@ -246,7 +246,7 @@ func inferenceResultStructuredJSON(result *operatorv1.InferenceResult) (string, 
 	if result == nil {
 		return "", false
 	}
-	text := extractStructuredJSONPayload(CollectResponseText(result))
+	text := extractStructuredJSONPayload(models.InferenceResultText(result))
 	if text == "" {
 		return "", false
 	}

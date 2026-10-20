@@ -87,6 +87,6 @@ func FuzzEnvelopeIdentityBinding(f *testing.F) {
 			PeerCertificates: []*x509.Certificate{{URIs: []*url.URL{spiffeURL}}},
 		}
 		// Must never panic regardless of input.
-		_ = verifyEnvelopeIdentityBinding(req, []byte(data))
+		_ = newTestGovernanceController(t).verifyEnvelopeIdentityBinding(req, []byte(data))
 	})
 }

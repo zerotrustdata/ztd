@@ -14,8 +14,8 @@ export const REPOSITORY_URL = 'https://github.com/zerotrustdata/ztd';
 export const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
 const NAV = [
-  { section: 'journal', href: JOURNAL_PATH, label: 'Build in Public' },
-  { section: 'releases', href: RELEASES_PATH, label: 'Releases' }
+  { section: 'releases', href: RELEASES_PATH, label: 'Releases' },
+  { section: 'journal', href: JOURNAL_PATH, label: 'Journal' }
 ];
 
 // section names the primary navigation entry for this page; current marks it as the page itself (index pages).
@@ -51,7 +51,7 @@ ${article ? `<meta name="author" content="${escape(article.author)}"><meta prope
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-header"><div class="shell header-inner">
 <a class="brand" href="/" aria-label="Zero Trust Data home"><img src="/logo.png" width="74" height="32" alt=""><span>ZERO TRUST DATA</span></a>
-<nav aria-label="Primary"><a href="/#how">The platform</a>${nav}<a class="github-link" href="${REPOSITORY_URL}">GitHub <span aria-hidden="true">↗</span></a></nav>
+<nav aria-label="Primary"><a href="/#how">Platform</a><a href="/#licensing">Pricing</a>${nav}<a class="github-link" href="${REPOSITORY_URL}">GitHub <span aria-hidden="true">↗</span></a></nav>
 </div></header>
 ${article ? '<progress class="reading-progress" max="100" value="0" aria-label="Reading progress" hidden></progress>' : ''}
 <main id="main" class="shell">${content}</main>

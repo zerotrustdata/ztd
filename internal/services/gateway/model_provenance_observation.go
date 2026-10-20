@@ -157,7 +157,12 @@ func (c *ModelProvenanceObservationCoordinator) Stop() {
 	c.resetOperator()
 }
 
-// NotifyAttemptBegin delivers a BEGIN command with the expected model binding.
+// NotifyAttemptBegin dispatches a BEGIN command with the expected model binding
+// and returns the provenance Operator's verified final signed receipt. An
+// attempt without an attempt ID, served tag, or expected digest is not sent and
+// returns a nil receipt. A missing provenance Operator returns an error wrapping
+// constants.ErrProvenanceOperatorNotFound, which inference dispatch treats as
+// an unattested attempt.
 func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 	ctx context.Context,
 	_ string,
@@ -168,12 +173,12 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 	campaignID string,
 	startedAtUnixMs int64,
 	retryCount uint32,
-) error {
+) (*operatorv1.ActionReceipt, error) {
 	if providerAttemptID == "" || servedModelTag == "" || expectedModelDigest == "" {
-		return nil
+		return nil, nil
 	}
 	if err := c.synchronizeOperatorSubscription(ctx); err != nil {
-		return fmt.Errorf("model provenance observation begin: %w", err)
+		return nil, fmt.Errorf("model provenance observation begin: %w", err)
 	}
 	command := &evalv1.ModelProvenanceObservationCommand{
 		ProviderAttemptId:      providerAttemptID,
@@ -188,7 +193,9 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 	return c.publishCommand(ctx, command)
 }
 
-// NotifyAttemptFinalize delivers a FINALIZE command to the provenance operator.
+// NotifyAttemptFinalize dispatches a FINALIZE command to the provenance
+// Operator and returns its verified final signed receipt. A missing provenance
+// Operator returns an error wrapping constants.ErrProvenanceOperatorNotFound.
 func (c *ModelProvenanceObservationCoordinator) NotifyAttemptFinalize(
 	ctx context.Context,
 	_ string,
@@ -202,12 +209,12 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptFinalize(
 	completedAtUnixMs int64,
 	failed bool,
 	retryCount uint32,
-) error {
+) (*operatorv1.ActionReceipt, error) {
 	if providerAttemptID == "" {
-		return nil
+		return nil, nil
 	}
 	if err := c.synchronizeOperatorSubscription(ctx); err != nil {
-		return fmt.Errorf("model provenance observation finalize: %w", err)
+		return nil, fmt.Errorf("model provenance observation finalize: %w", err)
 	}
 	status := evalv1.ModelProvenanceObservationAttemptStatus_MODEL_PROVENANCE_OBSERVATION_ATTEMPT_STATUS_COMPLETED
 	if failed {
@@ -229,42 +236,39 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptFinalize(
 	return c.publishCommand(ctx, command)
 }
 
-func (c *ModelProvenanceObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ModelProvenanceObservationCommand) error {
+func (c *ModelProvenanceObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ModelProvenanceObservationCommand) (*operatorv1.ActionReceipt, error) {
 	c.mu.Lock()
 	operator := c.operator
 	c.mu.Unlock()
 	if operator == nil || c.dispatch == nil {
-		return constants.ErrMissingRequiredField
+		return nil, constants.ErrMissingRequiredField
 	}
-	cmdChannel := pubsub.CmdChannel(operator.OperatorID, operator.OperatorSessionID)
 	payload, err := proto.Marshal(command)
 	if err != nil {
-		c.logger.Warn("Model provenance observation command marshal failed", "error", err)
-		return err
+		return nil, fmt.Errorf("model provenance observation command marshal: %w", err)
 	}
-	txID, err := c.dispatch.PublishCommand(ctx, PublishCommandRequest{
+	receipt, err := c.dispatch.DispatchObservation(ctx, ObservationDispatchRequest{
 		TargetOperatorSessionID: operator.OperatorSessionID,
 		EventType:               string(constants.Event.Operator.ModelProvenanceObservation.Requested),
 		Payload:                 payload,
 	})
 	if err != nil {
-		c.logger.Warn("Model provenance observation command publish failed",
+		c.logger.Warn("Model provenance observation command dispatch failed",
 			"provider_attempt_id", command.GetProviderAttemptId(),
 			"phase", command.GetPhase().String(),
 			"operator_id", operator.OperatorID,
 			"operator_session_id", operator.OperatorSessionID,
-			"cmd_channel", cmdChannel,
 			"error", err)
-		return err
+		return nil, err
 	}
-	c.logger.Info("Model provenance observation command published",
-		"transaction_id", txID,
+	c.logger.Info("Model provenance observation command executed",
+		"transaction_id", receipt.GetTransactionId(),
+		"status", receipt.GetStatus().String(),
 		"provider_attempt_id", command.GetProviderAttemptId(),
 		"phase", command.GetPhase().String(),
 		"operator_id", operator.OperatorID,
-		"operator_session_id", operator.OperatorSessionID,
-		"cmd_channel", cmdChannel)
-	return nil
+		"operator_session_id", operator.OperatorSessionID)
+	return receipt, nil
 }
 
 func (c *ModelProvenanceObservationCoordinator) ingestResult(ctx context.Context, operator *modelProvenanceOperatorTarget, data []byte) {

@@ -1,5 +1,5 @@
 {
-  "description": "Rollout intake models staged via `ztd eval models stage` (Ollama Go client + Hugging Face deep pulls). Re-freeze provider inventory after staging.",
+  "description": "Rollout intake models pulled via `ztd eval models pull` through the governed Inference Operator (Ollama and Hugging Face pulls). Re-freeze provider inventory with `ztd eval models freeze` after pulling.",
   "ollama_endpoint": "http://192.168.1.2:11434",
   "pull_timeout_seconds": 86400,
   "pull_connect_timeout_seconds": 120,

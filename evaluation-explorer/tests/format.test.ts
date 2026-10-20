@@ -12,6 +12,7 @@ import {
   formatTimestamp,
   metricDisplay,
   abbreviateAssignmentId,
+  formatRank,
 } from '../src/utils/format';
 
 describe('formatPercent', () => {
@@ -142,5 +143,40 @@ describe('abbreviateAssignmentId', () => {
     expect(abbreviateAssignmentId('asg-live-001')).toBe('asg-li…');
     expect(abbreviateAssignmentId('asg-ifeval-001')).toBe('asg-if…');
     expect(abbreviateAssignmentId('abxyzx12345')).toBe('abxyzx…');
+  });
+});
+
+describe('formatRank', () => {
+  it('formats ordinal ranks 1st, 2nd, 3rd, and 4th correctly', () => {
+    expect(formatRank(1)).toBe('1st');
+    expect(formatRank(2)).toBe('2nd');
+    expect(formatRank(3)).toBe('3rd');
+    expect(formatRank(4)).toBe('4th');
+    expect(formatRank(5)).toBe('5th');
+  });
+
+  it('formats teen numbers with th suffix', () => {
+    expect(formatRank(11)).toBe('11th');
+    expect(formatRank(12)).toBe('12th');
+    expect(formatRank(13)).toBe('13th');
+    expect(formatRank(14)).toBe('14th');
+  });
+
+  it('formats larger numbers correctly', () => {
+    expect(formatRank(21)).toBe('21st');
+    expect(formatRank(22)).toBe('22nd');
+    expect(formatRank(23)).toBe('23rd');
+    expect(formatRank(24)).toBe('24th');
+    expect(formatRank(101)).toBe('101st');
+    expect(formatRank(111)).toBe('111th');
+    expect(formatRank(112)).toBe('112th');
+    expect(formatRank(121)).toBe('121st');
+  });
+
+  it('returns Unavailable for non-finite or invalid numbers', () => {
+    expect(formatRank(0)).toBe('Unavailable');
+    expect(formatRank(-1)).toBe('Unavailable');
+    expect(formatRank(1.5)).toBe('Unavailable');
+    expect(formatRank(Number.NaN)).toBe('Unavailable');
   });
 });

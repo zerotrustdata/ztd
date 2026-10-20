@@ -3,8 +3,8 @@ doc_id: build_frontend
 title: Build a ztd-Compatible Frontend
 audience: frontend developers, web application builders
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/build_frontend.md
   - docs/guides/build_observe_frontend.md
@@ -29,7 +29,7 @@ do_not_use_for:
 
 ## Purpose
 
-Describes how to build a ztd-compatible browser frontend. The guide covers Gateway configuration, WebAuthn passkey ceremonies, SSE audit streaming, transaction approvals, observe API access, component structure, and integration testing. It applies to custom React, Vue, and vanilla JavaScript SPAs, Lovable-generated frontends, and any browser app that communicates directly with the Gateway over HTTPS with passkey authentication.
+Describes how to build a ztd-compatible browser frontend. The guide covers Gateway configuration, WebAuthn passkey ceremonies, SSE audit streaming, transaction approvals, observe API access, and an integration checklist. It applies to custom React, Vue, and vanilla JavaScript SPAs, Lovable-generated frontends, and any browser app that communicates directly with the Gateway over HTTPS with passkey authentication.
 
 For minimal local Lovable setup with guided one-command configuration, see [Connect a Lovable App](./lovable.md). For generator-neutral observe frontends, see [Generator-Neutral Builder Guide](./build_observe_frontend.md).
 
@@ -43,11 +43,7 @@ For minimal local Lovable setup with guided one-command configuration, see [Conn
 - [WebAuthn Flow Requirements](#webauthn-flow-requirements)
 - [SSE Live Audit Stream](#sse-live-audit-stream)
 - [Observe API](#observe-api-read-only-browser-surface)
-- [Pages and Components](#pages-and-components)
-- [Error Handling](#error-handling)
-- [Recommended Project Structure](#recommended-project-structure)
 - [Frontend Integration Checklist](#frontend-integration-checklist)
-- [Troubleshooting](#troubleshooting)
 - [Links out](#links-out)
 
 The browser SPA communicates with the ztd Gateway over HTTPS at the configured origin. Authentication uses WebAuthn passkeys (no passwords, no API keys). The Gateway issues an HttpOnly, Secure session cookie after successful passkey verification. All authenticated API calls include `credentials: 'include'` to send the session cookie cross-origin. Real-time telemetry arrives via Server-Sent Events (SSE), not WebSockets (the WebSocket endpoint at `/api/v1/pubsub/stream` requires mTLS and is not browser-accessible).
@@ -73,22 +69,22 @@ For same-computer local frontends, run `./ztd gw connect <frontend-origin>` to a
   --cors-origin https://your-app.example.com
 ```
 
-- `--passkey-rp-id`: WebAuthn Relying Party ID. Must be the frontend origin hostname or a registrable parent domain suffix.
-- `--passkey-rp-origin`: Allowed origin for WebAuthn ceremonies.
-- `--cors-origin`: Allowed origin for CORS fetch requests.
-- `--public-base-url`: Public URL of the Gateway for approval redirect links.
+- `--passkey-rp-id`: WebAuthn Relying Party ID. MUST be the frontend origin hostname or a registrable parent domain suffix.
+- `--passkey-rp-origin`: Allowed origin for WebAuthn ceremonies (repeatable).
+- `--cors-origin`: Allowed origin for CORS fetch requests (repeatable).
+- `--public-base-url`: Public base URL for approval links and host validation.
 
 ### Session Cookie Behavior
 
 The Gateway sets `ztd_web_session_cookie` on successful passkey verification:
 - `HttpOnly`: Always true.
 - `Secure`: Always true.
-- `SameSite=Lax`: Default when no cross-origin origins are configured.
+- `SameSite=Lax`: Default when no `--cors-origin` is configured.
 - `SameSite=None`: Automatically set when `--cors-origin` is specified.
 
 ## API Reference
 
-All paths are relative to the Gateway's base URL. Authenticated routes require `credentials: 'include'`.
+All paths are relative to the Gateway's base URL. Authenticated routes MUST send `credentials: 'include'`.
 
 ### Public Routes
 
@@ -97,31 +93,31 @@ All paths are relative to the Gateway's base URL. Authenticated routes require `
 | `GET` | `/api/v1/health` | Gateway health check |
 | `GET` | `/api/v1/auth/bootstrap/status` | Report whether Gateway has an owner user |
 | `POST` | `/api/v1/auth/passkeys/console/register/challenge` | Get bootstrap WebAuthn registration challenge |
-| `POST` | `/api/v1/auth/passkeys/console/register/verify` | Verify bootstrap registration attestation and create web session |
+| `POST` | `/api/v1/auth/passkeys/console/register/verify` | Verify bootstrap registration attestation and create WebSession |
 | `POST` | `/api/v1/auth/passkeys/console/authenticate/challenge` | Get WebAuthn authentication challenge for a user ID |
-| `POST` | `/api/v1/auth/passkeys/console/authenticate/verify` | Verify authentication assertion and create web session |
+| `POST` | `/api/v1/auth/passkeys/console/authenticate/verify` | Verify authentication assertion and create WebSession |
 | `POST` | `/api/v1/auth/passkeys/enrollment/register/challenge` | Get token-gated registration challenge |
-| `POST` | `/api/v1/auth/passkeys/enrollment/register/verify` | Verify token-gated registration and create web session |
-| `POST` | `/api/v1/auth/logout` | End session and clear session cookie |
+| `POST` | `/api/v1/auth/passkeys/enrollment/register/verify` | Verify token-gated registration and create WebSession |
+| `POST` | `/api/v1/auth/logout` | End the WebSession and clear the session cookie |
 
 ### Authenticated Routes
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/v1/users/me` | Get current authenticated user |
-| `GET` | `/api/v1/auth/sessions/me` | Get current web session information |
+| `GET` | `/api/v1/auth/sessions/me` | Get current WebSession information |
 | `GET` | `/api/v1/auth/passkeys` | List user's passkey credentials |
 | `DELETE` | `/api/v1/auth/passkeys/{credentialId}` | Revoke a passkey credential |
 | `GET` | `/api/v1/approvals` | List pending suspended transactions |
-| `POST` | `/api/v1/approvals/respond` | Deny an approval request |
+| `POST` | `/api/v1/approvals/respond` | Approve (with an mTLS CLI signature) or deny a suspended transaction |
 | `GET` | `/api/v1/approvals/{txHash}/challenge` | Get WebAuthn approval challenge |
 | `POST` | `/api/v1/approvals/{txHash}/verify` | Verify approval assertion |
 | `GET` | `/api/v1/sse/stream` | SSE stream for live audit events |
-| `GET` | `/api/v1/sse/events?since_id={n}&limit={n}` | Poll SSE events |
+| `GET` | `/api/v1/sse/events?since_id={n}&limit={n}` | Query stored SSE events (backfill) |
 
 ## WebAuthn Flow Requirements
 
-Binary fields in challenges and responses use unpadded base64url encoding.
+Binary fields in challenges and responses MUST use unpadded base64url encoding.
 
 ### Registration Flow (First-Time Setup)
 
@@ -158,18 +154,19 @@ source.addEventListener('message', (event) => {
 });
 ```
 
-Session routing is derived from the cookie. Do not append `user_id` or `web_session_id` in query strings.
+Stream routing is derived from the WebSession cookie. Clients MUST NOT append `user_id` or `web_session_id` to the query string; the stream accepts only `since_id`.
 
 ## Observe API (Read-Only Browser Surface)
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/v1/observe/bootstrap` | Bootstrap snapshot: agents, runs, metrics, downloads |
+| `GET` | `/api/v1/observe/bootstrap` | Bootstrap snapshot: agents, active and recent runs, overview counters, measurements, latest evals, downloads |
 | `GET` | `/api/v1/observe/runs?cursor=&limit=` | Paginated run summaries |
 | `GET` | `/api/v1/observe/runs/{run_id}` | Run detail with tasks and evidence links |
-| `GET` | `/api/v1/observe/evals` | Paginated evaluation summaries |
+| `GET` | `/api/v1/observe/evals?cursor=&limit=` | Paginated evaluation summaries |
 | `GET` | `/api/v1/observe/evals/{run_id}` | Evaluation detail with metrics |
-| `GET` | `/api/v1/observe/downloads` | Paginated download artifacts |
+| `GET` | `/api/v1/observe/downloads?cursor=&limit=` | Paginated download artifacts |
+| `GET` | `/api/v1/observe/downloads/{artifact_id}` | Artifact metadata; `download=1` streams the artifact bytes |
 
 ## Frontend Integration Checklist
 

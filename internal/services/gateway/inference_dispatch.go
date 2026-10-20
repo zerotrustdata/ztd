@@ -179,28 +179,83 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 		return
 	}
 
-	if len(req.GetMessages()) == 0 {
-		c.writeFailure(w, http.StatusBadRequest, constants.ErrInferenceMessagesRequired)
+	dispatchReq, err := newDispatchInferenceRequest(req, appID, userID)
+	if err != nil {
+		c.writeFailure(w, http.StatusBadRequest, err)
 		return
 	}
-	if req.GetProviderAttemptId() == "" {
-		c.writeFailure(w, http.StatusBadRequest, constants.ErrInferenceProviderAttemptRequired)
+
+	rc := http.NewResponseController(w)
+	if err := rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		c.logger.Warn("inference dispatch: failed to clear WriteTimeout, request may be killed by server deadline", "error", err)
+	}
+
+	if req.GetStream() {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			c.writeFailure(w, http.StatusInternalServerError, constants.ErrInternal)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		dispatchReq.OnProgress = func(progress *operatorv1.InferenceProgressEvent) error {
+			return writeInferenceDispatchStreamFrame(w, flusher, &operatorv1.InferenceDispatchStreamFrame{
+				Frame: &operatorv1.InferenceDispatchStreamFrame_Progress{Progress: progress},
+			})
+		}
+
+		result, err := c.dispatchSvc.DispatchInference(r.Context(), dispatchReq)
+		if err != nil {
+			writeInferenceDispatchStreamFailure(c, w, flusher, req.GetProviderAttemptId(), err)
+			return
+		}
+		if err := writeInferenceDispatchStreamFrame(w, flusher, &operatorv1.InferenceDispatchStreamFrame{
+			Frame: &operatorv1.InferenceDispatchStreamFrame_Completion{Completion: result.Response()},
+		}); err != nil {
+			c.logger.Error("inference dispatch: failed to write completion frame", logging.ErrorKind(err))
+		}
 		return
+	}
+
+	result, err := c.dispatchSvc.DispatchInference(r.Context(), dispatchReq)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, constants.ErrInferenceCanceled) {
+			c.logger.Info("inference dispatch: caller canceled", slog.String("provider_attempt_id", req.GetProviderAttemptId()), logging.ErrorKind(err))
+			return
+		}
+		status, failure := inferenceDispatchFailure(err)
+		c.logger.Error("inference dispatch: dispatch failed", slog.Any("status", status), slog.String("failure_code", failure.GetCode().String()),
+			slog.String("provider_attempt_id", req.GetProviderAttemptId()), slog.String("transaction_id", failure.GetReceipt().GetTransactionId()), logging.ErrorKind(err))
+		c.responder.ProtoJSONCanonical(w, status, failure)
+		return
+	}
+
+	c.responder.ProtoJSONCanonical(w, http.StatusOK, result.Response())
+}
+
+// newDispatchInferenceRequest validates one wire inference request and binds
+// it to the authenticated caller. It returns a public sentinel for a request
+// the Gateway refuses before dispatch.
+func newDispatchInferenceRequest(req *operatorv1.InferenceDispatchRequest, appID, userID string) (dispatch.DispatchInferenceRequest, error) {
+	if len(req.GetMessages()) == 0 {
+		return dispatch.DispatchInferenceRequest{}, constants.ErrInferenceMessagesRequired
+	}
+	if req.GetProviderAttemptId() == "" {
+		return dispatch.DispatchInferenceRequest{}, constants.ErrInferenceProviderAttemptRequired
 	}
 	role := models.InferenceModelRoleFromProto(req.GetRole())
 	if role == models.InferenceModelRoleUnspecified {
-		c.writeFailure(w, http.StatusBadRequest, constants.ErrInferenceRoleInvalid)
-		return
+		return dispatch.DispatchInferenceRequest{}, constants.ErrInferenceRoleInvalid
 	}
 	// acting_app_id derives from the authenticated app identity. A body
 	// value that contradicts it is an identity binding violation; an absent
 	// value is populated from the mTLS identity.
 	if bodyAppID := req.GetActingAppId(); bodyAppID != "" && bodyAppID != appID {
-		c.writeFailure(w, http.StatusBadRequest, constants.ErrIdentityBindingFailed)
-		return
+		return dispatch.DispatchInferenceRequest{}, constants.ErrIdentityBindingFailed
 	}
-
-	dispatchReq := dispatch.DispatchInferenceRequest{
+	return dispatch.DispatchInferenceRequest{
 		Role:                    role,
 		Messages:                req.GetMessages(),
 		Tools:                   req.GetTools(),
@@ -237,68 +292,21 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 		CliSessionID:            req.GetCliSessionId(),
 		Stream:                  req.GetStream(),
 		RetryCount:              req.GetRetryCount(),
+	}, nil
+}
+
+// inferenceDispatchFailure renders a dispatched inference failure as its HTTP
+// status and typed body: the public sentinel's code and text, the Operator's
+// signed FAILED receipt when one was produced, and the observers' signed
+// receipts for the attempt.
+func inferenceDispatchFailure(err error) (int, *operatorv1.InferenceDispatchFailure) {
+	status, publicErr := classifyInferenceDispatchError(err)
+	return status, &operatorv1.InferenceDispatchFailure{
+		Error:               publicErr.Error(),
+		Code:                dispatch.FailureCode(publicErr),
+		Receipt:             governance.FailedReceipt(err),
+		ObservationReceipts: dispatch.ObservationReceipts(err),
 	}
-
-	rc := http.NewResponseController(w)
-	if err := rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
-		c.logger.Warn("inference dispatch: failed to clear WriteTimeout, request may be killed by server deadline", "error", err)
-	}
-
-	if req.GetStream() {
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			c.writeFailure(w, http.StatusInternalServerError, constants.ErrInternal)
-			return
-		}
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.WriteHeader(http.StatusOK)
-		flusher.Flush()
-
-		dispatchReq.OnProgress = func(progress *operatorv1.InferenceProgressEvent) error {
-			return writeInferenceDispatchStreamFrame(w, flusher, &operatorv1.InferenceDispatchStreamFrame{
-				Frame: &operatorv1.InferenceDispatchStreamFrame_Progress{Progress: progress},
-			})
-		}
-
-		result, err := c.dispatchSvc.DispatchInference(r.Context(), dispatchReq)
-		if err != nil {
-			writeInferenceDispatchStreamFailure(c, w, flusher, req.GetProviderAttemptId(), err)
-			return
-		}
-		if err := writeInferenceDispatchStreamFrame(w, flusher, &operatorv1.InferenceDispatchStreamFrame{
-			Frame: &operatorv1.InferenceDispatchStreamFrame_Completion{Completion: &operatorv1.InferenceDispatchResponse{
-				TransactionId: result.TransactionID,
-				Result:        result.Result,
-				Receipt:       result.Receipt,
-			}},
-		}); err != nil {
-			c.logger.Error("inference dispatch: failed to write completion frame", logging.ErrorKind(err))
-		}
-		return
-	}
-
-	result, err := c.dispatchSvc.DispatchInference(r.Context(), dispatchReq)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, constants.ErrInferenceCanceled) {
-			c.logger.Info("inference dispatch: caller canceled", slog.String("provider_attempt_id", req.GetProviderAttemptId()), logging.ErrorKind(err))
-			return
-		}
-		status, publicErr := classifyInferenceDispatchError(err)
-		c.logger.Error("inference dispatch: dispatch failed", slog.Any("status", status), slog.String("failure_code", dispatch.FailureCode(publicErr).String()),
-			slog.String("provider_attempt_id", req.GetProviderAttemptId()), slog.String("transaction_id", governance.FailedReceipt(err).GetTransactionId()), logging.ErrorKind(err))
-		c.responder.ProtoJSONCanonical(w, status, &operatorv1.InferenceDispatchFailure{
-			Error:   publicErr.Error(),
-			Code:    dispatch.FailureCode(publicErr),
-			Receipt: governance.FailedReceipt(err),
-		})
-		return
-	}
-
-	c.responder.ProtoJSONCanonical(w, http.StatusOK, &operatorv1.InferenceDispatchResponse{
-		TransactionId: result.TransactionID,
-		Result:        result.Result,
-		Receipt:       result.Receipt,
-	})
 }
 
 // writeFailure writes the typed InferenceDispatchFailure body for a public

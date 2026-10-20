@@ -124,16 +124,16 @@ func writeTestCLICert(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.C
 }
 
 func TestValidateAppName(t *testing.T) {
-	assert.ErrorIs(t, validateAppName(""), constants.ErrPlatformEnrollmentAppNameRequired)
-	assert.ErrorIs(t, validateAppName("ztd"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("ztdo"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("ztde"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("operator"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("INVALID-UPPER"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("app/slash"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.NoError(t, validateAppName("ztd-eval"))
-	assert.NoError(t, validateAppName("my-agent-1"))
-	assert.NoError(t, validateAppName("custom.app"))
+	assert.ErrorIs(t, models.ValidateAppName(""), constants.ErrPlatformEnrollmentAppNameRequired)
+	assert.ErrorIs(t, models.ValidateAppName("ztd"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("ztdo"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("ztde"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("operator"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("INVALID-UPPER"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("app/slash"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.NoError(t, models.ValidateAppName("ztd-eval"))
+	assert.NoError(t, models.ValidateAppName("my-agent-1"))
+	assert.NoError(t, models.ValidateAppName("custom.app"))
 }
 
 func TestLoadAppIdentity_Missing(t *testing.T) {
@@ -388,4 +388,15 @@ func TestAppPlatformEnrollmentClient_SubmitRequest_RejectsUnrelated403Containing
 	_, err = client.Enroll(ctx, nil)
 	require.Error(t, err)
 	assert.Equal(t, 1, hits, "unrelated 403 containing 'bootstrapped' substring must not trigger bootstrap retry loop")
+}
+
+func TestNewAppPlatformEnrollmentClient_UsesConfiguredGatewayDiscoveryEndpoint(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	cfg.Paths.Host = "localhost"
+	config.SetHTTPEndpointOverride("http://gateway-fixture.example:19080")
+	t.Cleanup(func() { config.SetEndpointOverride("") })
+
+	client, err := NewAppPlatformEnrollmentClient("ztd-eval", fileSvc, cfg, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "http://gateway-fixture.example:19080", client.gatewayHTTPURL)
 }

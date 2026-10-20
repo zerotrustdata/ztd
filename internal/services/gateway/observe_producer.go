@@ -365,9 +365,20 @@ func (s *ObserveProducerService) UpdateRunState(ctx context.Context, userID stri
 	return nil
 }
 
-// emitSSEEvent appends the event to the SSE event store and publishes it live
-// for the given route, attributed to the observe producer.
+// emitSSEEvent emits eventType for the given route, attributed to the observe
+// producer. The event's registry persistence class selects the delivery path
+// (INV-SSE-EVT-02): an "ephemeral" event is published live only and is never
+// stored, and every other class is appended to the SSE event store before it
+// is published. An event type missing from the registry fails closed before
+// anything is emitted.
 func (s *ObserveProducerService) emitSSEEvent(route SSERoute, eventType string, payload any) error {
+	entry, ok := constants.Registry.Lookup(constants.EventType(eventType))
+	if !ok {
+		return fmt.Errorf("observe producer: emit sse %q: %w", eventType, constants.ErrTxUnknownEventType)
+	}
+	if entry.Persistence == "ephemeral" {
+		return s.publisher.PublishEphemeral(route, eventType, payload)
+	}
 	return s.publisher.Publish(route, eventType, payload, observeProducerID)
 }
 
@@ -1015,11 +1026,15 @@ func (s *ObserveProducerService) EmitHeartbeat(ctx context.Context, userID strin
 	return nil
 }
 
-// RequestStop persists the supervisor state projection and emits an
-// ai.eval.stop.requested SSE event after successful persistence.
-func (s *ObserveProducerService) RequestStop(ctx context.Context, userID string, route SSERoute, supervisorID, campaignID string, reason models.StopReason, scope models.StopScope) error {
+// RequestStop persists the supervisor state projection and emits a run-scoped
+// ai.eval.stop.requested SSE event after successful persistence. The event
+// names runID so the CLI process running that campaign run can act on it.
+func (s *ObserveProducerService) RequestStop(ctx context.Context, userID string, route SSERoute, supervisorID, campaignID, runID string, reason models.StopReason, scope models.StopScope) error {
 	if campaignID == "" {
 		return fmt.Errorf("observe producer: request stop: %w", constants.ErrObserveCampaignIDRequired)
+	}
+	if runID == "" {
+		return fmt.Errorf("observe producer: request stop: %w", constants.ErrObserveRunIDRequired)
 	}
 	if err := route.validate(); err != nil {
 		return fmt.Errorf("observe producer: request stop: %w", err)
@@ -1070,6 +1085,7 @@ func (s *ObserveProducerService) RequestStop(ctx context.Context, userID string,
 		SourceSequence: seq,
 		EventID:        eventID,
 		CampaignID:     campaignID,
+		RunID:          runID,
 		StopReason:     reason,
 		StopScope:      scope,
 		RequestedAt:    now,

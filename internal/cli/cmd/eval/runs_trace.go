@@ -158,6 +158,9 @@ func writeRunTrace(out io.Writer, view runTraceView, full bool) {
 		}
 	}
 	for _, call := range trace.ModelCalls {
+		if !call.IsTurn() {
+			continue
+		}
 		_, _ = fmt.Fprintf(out, "Turn %d  %s  prompt=%d completion=%d finish=%s tool_calls=%d\n", call.LoopTurn, call.ProviderAttemptID, call.PromptTokens, call.CompletionTokens, call.FinishReason, call.ToolCallCount)
 		if call.Error != "" {
 			_, _ = fmt.Fprintf(out, "  Error: %s\n", call.Error)
@@ -168,6 +171,7 @@ func writeRunTrace(out io.Writer, view runTraceView, full bool) {
 			if tool.ModelCallID != call.ProviderAttemptID {
 				continue
 			}
+			writeTribunalCalls(out, trace, tool.CallID)
 			status := "ok"
 			if !tool.Success {
 				status = "failed " + tool.ErrorType
@@ -184,6 +188,22 @@ func writeRunTrace(out io.Writer, view runTraceView, full bool) {
 	}
 	writeTraceBlock(out, "Final output", trace.FinalOutput)
 	_, _ = fmt.Fprintln(out)
+}
+
+// writeTribunalCalls prints the Tribunal inferences one intent-only
+// run_commands_with_operator call dispatched before its command ran.
+func writeTribunalCalls(out io.Writer, trace *evaluation.AgentTrace, toolCallID string) {
+	for _, call := range trace.ModelCalls {
+		if call.IsTurn() || call.ToolCallID != toolCallID {
+			continue
+		}
+		_, _ = fmt.Fprintf(out, "  Tribunal %s %s  %s  prompt=%d completion=%d\n", call.Purpose, call.Persona, call.ProviderAttemptID, call.PromptTokens, call.CompletionTokens)
+		if call.Error != "" {
+			_, _ = fmt.Fprintf(out, "    Error: %s\n", call.Error)
+		}
+		writeTraceBlock(out, "  Thinking", call.Thinking)
+		writeTraceBlock(out, "  Text", call.Text)
+	}
 }
 
 // writeTraceComparison tabulates the listed traces so repetitions of one cell

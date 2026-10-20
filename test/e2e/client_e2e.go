@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +24,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/httpclient"
+	"github.com/zerotrustdata/ztd/internal/models"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // maxListResponseBytes bounds the operator registry listing, which grows with
@@ -33,101 +34,77 @@ import (
 // maxResponseBytes.
 const maxListResponseBytes = 64 << 20
 
-// dispatchRequestJSON is the typed JSON body for POST
-// /api/v1/operators/commands. Mirrors gateway.OperatorCommandRequest. Defined
-// locally to keep the E2E package decoupled from internal gateway types.
-type dispatchRequestJSON struct {
-	TargetOperatorSessionID string `json:"target_operator_session_id"`
-	EventType               string `json:"event_type"`
-	Payload                 []byte `json:"payload"`
-	TargetResource          string `json:"target_resource,omitempty"`
+// E2EClient owns bounded public and mTLS HTTP clients for communicating with
+// a running production platform. It has no deployment-specific fields, no test framework
+// dependency, no bootstrap mutation, and no filesystem writes. Each request
+// accepts a context, uses constants from constants.APIPaths, applies the CLI
+// session header when authenticated, limits response reads, checks status
+// codes, decodes a typed response, and returns contextual errors.
+type E2EClient struct {
+	publicClient      *http.Client // no client cert, for health/CA bundle endpoints
+	mtlsClient        *http.Client // owner CLI cert, for authenticated endpoints
+	cliSessionID      string
+	userID            string
+	operatorID        string
+	operatorSessionID string
+	gatewayHTTPS      string
 }
 
-// DocumentResponse is the wire shape returned by GET /api/v1/data/{collection}/{id}.
-type DocumentResponse map[string]json.RawMessage
-
-// GetString extracts a string field from a DocumentResponse. The bool is false
-// when the field is absent or not a JSON string.
-func (d DocumentResponse) GetString(field string) (string, bool) {
-	raw, ok := d[field]
-	if !ok {
-		return "", false
+// newAuthenticatedRequest builds an HTTP request with the CLI session header
+// set, targeting the gateway HTTPS URL. The body parameter may be nil for GET
+// requests.
+func (c *E2EClient) newAuthenticatedRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
+	reqURL := c.gatewayHTTPS + path
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("build request %s %s: %w", method, path, err)
 	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return "", false
-	}
-	return s, true
+	req.Header.Set(constants.HeaderCLISessionID, c.cliSessionID)
+	return req, nil
 }
 
-// GetBool extracts a bool field from a DocumentResponse. The bool is false when
-// the field is absent or not a JSON bool.
-func (d DocumentResponse) GetBool(field string) (bool, bool) {
-	raw, ok := d[field]
-	if !ok {
-		return false, false
-	}
-	var b bool
-	if err := json.Unmarshal(raw, &b); err != nil {
-		return false, false
-	}
-	return b, true
-}
-
-// SubmitGovernanceEnvelope posts a GovernanceEnvelope proto to /api/v1/governance/envelopes.
-func (c *E2EClient) SubmitGovernanceEnvelope(ctx context.Context, env *governance.GovernanceEnvelope) (string, int, []byte, error) {
+// SubmitGovernanceEnvelope posts a GovernanceEnvelope to
+// /api/v1/governance/envelopes and returns the signed ActionReceipt the Gateway
+// answers with. Any status other than 200 (an IngressRefusal or a
+// GovernanceRejection) is an error carrying the response body.
+func (c *E2EClient) SubmitGovernanceEnvelope(ctx context.Context, env *governance.GovernanceEnvelope) (*operatorv1.ActionReceipt, error) {
 	wire, err := protojson.Marshal(env)
 	if err != nil {
-		return env.Id, 0, nil, fmt.Errorf("marshal governance envelope: %w", err)
+		return nil, fmt.Errorf("marshal governance envelope: %w", err)
 	}
-
 	req, err := c.newAuthenticatedRequest(ctx, http.MethodPost, constants.APIPaths.GovernanceEnvelopes, bytes.NewReader(wire))
 	if err != nil {
-		return env.Id, 0, nil, err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.mtlsClient.Do(req)
+	body, _, err := doRequest(c.mtlsClient, req, http.StatusOK)
 	if err != nil {
-		return env.Id, 0, nil, fmt.Errorf("submit governance envelope: %w", err)
+		return nil, fmt.Errorf("submit governance envelope %s: %w", env.GetId(), err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if err != nil {
-		return env.Id, resp.StatusCode, nil, fmt.Errorf("read governance envelope response: %w", err)
+	receipt := &operatorv1.ActionReceipt{}
+	if err := protojson.Unmarshal(body, receipt); err != nil {
+		return nil, fmt.Errorf("decode governance envelope receipt: %w", err)
 	}
-	return env.Id, resp.StatusCode, body, nil
+	return receipt, nil
 }
 
-// GetDocument retrieves a document from /api/v1/data/{collection}/{id}.
-func (c *E2EClient) GetDocument(ctx context.Context, collection, documentID string) (DocumentResponse, int, error) {
-	path := constants.APIPaths.DataPrefix + collection + "/" + documentID
-	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, path, nil)
+// GetDocument reads a document from /api/v1/data/{collection}/{id} and returns
+// its wire JSON for the caller to decode into the shape it wrote. A document
+// the Gateway does not hold returns constants.ErrNotFound.
+func (c *E2EClient) GetDocument(ctx context.Context, collection, documentID string) ([]byte, error) {
+	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, constants.APIPaths.DataPrefix+collection+"/"+documentID, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	resp, err := c.mtlsClient.Do(req)
+	body, status, err := doRequest(c.mtlsClient, req, http.StatusOK)
+	if status == http.StatusNotFound {
+		return nil, fmt.Errorf("get document %s/%s: %w", collection, documentID, constants.ErrNotFound)
+	}
 	if err != nil {
-		return nil, 0, fmt.Errorf("get document %s/%s: %w", collection, documentID, err)
+		return nil, fmt.Errorf("get document %s/%s: %w", collection, documentID, err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("read get document response: %w", err)
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, http.StatusNotFound, nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, resp.StatusCode, fmt.Errorf("get document status %d: %s", resp.StatusCode, truncateBody(body))
-	}
-	var doc DocumentResponse
-	if err := json.Unmarshal(body, &doc); err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("decode document response: %w", err)
-	}
-	return doc, resp.StatusCode, nil
+	return body, nil
 }
 
 // GetStateRoot fetches the current state_merkle_root from /state on the gateway.
@@ -140,68 +117,42 @@ func (c *E2EClient) GetStateRoot(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("fetch state root: %w", err)
 	}
-	var h struct {
-		StateMerkleRoot string `json:"state_merkle_root"`
-		StateRoot       string `json:"state_root"`
+	state, err := decodeJSON[models.StateResponse](body, "state root response")
+	if err != nil {
+		return "", err
 	}
-	if err := json.Unmarshal(body, &h); err != nil {
-		return "", fmt.Errorf("decode state root response: %w", err)
+	if state.StateMerkleRoot == "" {
+		return "", fmt.Errorf("fetch state root: state_merkle_root: %w", constants.ErrMissingRequiredField)
 	}
-	if h.StateMerkleRoot != "" {
-		return h.StateMerkleRoot, nil
-	}
-	return h.StateRoot, nil
+	return state.StateMerkleRoot, nil
 }
 
-// newE2EClient constructs an E2EClient from the resolved e2eConfig. It loads
-// the owner CLI certificate and key from disk, reads the CA bundle from the
-// runtime tree, and builds strict mTLS HTTP clients using ServerName derived
-// from the validated HTTPS URL. No InsecureSkipVerify — normal Go TLS hostname
-// and chain verification is used.
-func newE2EClient(ctx context.Context, cfg *e2eConfig) (*E2EClient, error) {
-	cliCert, err := auth.LoadCLICertificate(cfg.fileSvc, cfg.cfg)
+// newE2EClient constructs an E2EClient from the resolved e2eConfig. The mTLS
+// client is the CLI's own auth.BuildMTLSClient (owner certificate plus the
+// runtime trust bundle); the public client trusts the same bundle without a
+// client certificate. Both verify the chain and the gateway hostname from the
+// request URL — there is no InsecureSkipVerify.
+func newE2EClient(cfg *e2eConfig) (*E2EClient, error) {
+	mtlsClient, err := auth.BuildMTLSClient(cfg.fileSvc, cfg.cfg, defaultClientTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("e2e: load CLI key pair: %w", err)
+		return nil, fmt.Errorf("e2e: build mTLS client: %w", err)
 	}
 
-	caBundle, err := cfg.readCABundle(ctx)
+	caBundle, err := auth.ReadTrustBundle(cfg.fileSvc, cfg.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("e2e: read CA bundle: %w", err)
 	}
-
 	caPool, err := parseCAPool(caBundle)
 	if err != nil {
 		return nil, fmt.Errorf("e2e: parse CA bundle: %w", err)
 	}
-
-	serverName, err := extractServerName(cfg.gatewayHTTPSURL)
-	if err != nil {
-		return nil, fmt.Errorf("e2e: extract server name: %w", err)
-	}
-
-	tlsConfig := &tls.Config{
-		Certificates:     []tls.Certificate{cliCert},
-		RootCAs:          caPool,
-		ServerName:       serverName,
-		MinVersion:       tls.VersionTLS13,
-		CurvePreferences: certs.FIPSCurvePreferences(),
-	}
-
-	mtlsClient := &http.Client{
-		Transport: httpclient.NewIPv4Transport(tlsConfig),
-		Timeout:   defaultClientTimeout,
-	}
-
-	publicTLSConfig := &tls.Config{
-		RootCAs:          caPool,
-		ServerName:       serverName,
-		MinVersion:       tls.VersionTLS13,
-		CurvePreferences: certs.FIPSCurvePreferences(),
-	}
-
 	publicClient := &http.Client{
-		Transport: httpclient.NewIPv4Transport(publicTLSConfig),
-		Timeout:   defaultClientTimeout,
+		Transport: httpclient.NewIPv4Transport(&tls.Config{
+			RootCAs:          caPool,
+			MinVersion:       tls.VersionTLS13,
+			CurvePreferences: certs.FIPSCurvePreferences(),
+		}),
+		Timeout: defaultClientTimeout,
 	}
 
 	return &E2EClient{

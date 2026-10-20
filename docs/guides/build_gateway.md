@@ -3,8 +3,8 @@ doc_id: build-gateway
 title: Build Gateway
 audience: developers and operators
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/build_gateway.md
   - Makefile
@@ -28,9 +28,9 @@ do_not_use_for:
 - [Overview](#overview)
 - [Reference Implementation](#reference-implementation) — Prerequisites, build from source, build targets, cross-compilation, running the gateway
 - [Protocol Library Dependencies](#protocol-library-dependencies) — Go module setup
-- [Custom Gateway Implementation](#custom-gateway-implementation) — Required capabilities, invariants, governance modes, session types, two-port architecture, protocol schema
+- [Custom Gateway Implementation](#custom-gateway-implementation) — Required capabilities, protocol invariants, two-port architecture
 - [Testing](#testing) — Test suite tiers and test commands
-- [Manage](#manage) — Gateway lifecycle commands (start, stop, restart, reset, clean, setup, security validation)
+- [Manage](#manage) — Gateway lifecycle commands (stop, restart, settings, reset, clean, setup, security validation)
 - [Monitor](#monitor) — Status, logs, data queries, and Cloudflare Tunnel
 - [Next Steps](#next-steps) — Related guides and references
 
@@ -38,7 +38,7 @@ do_not_use_for:
 
 ## Overview
 
-A ztd Gateway implements the platform's Policy Decision Point (PDP). It manages PKI, canonical platform state, governance admission, messaging, and MCP/A2A protocol translation. The Gateway owns L1 Doctrine, L2 Consensus, and L3 Notary decisions; an in-process Operator substrate applies L4 Warden and L5 Actuator for operations that target the Gateway host.
+A ztd Gateway implements the platform's Policy Decision Point (PDP). It manages PKI, canonical platform state, governance admission, messaging, and MCP/A2A protocol translation. The Gateway coordinates L1 Doctrine, L2 Consensus, and L3 Notary; each executing Operator independently re-verifies those proofs at L4 Warden and applies L5 Actuator. For operations that target the Gateway host, an in-process Operator substrate applies L4 and L5.
 
 The reference implementation is the static `ztd` binary running in Gateway mode. The same binary runs as a Governed Operator, the Policy Execution Point (PEP) that connects outbound to a Gateway and applies L4-L5 on a managed host. Custom implementations conform to the same protocol contracts and fail-closed invariants described in the [ztd Protocol specification](../../protocol/docs/spec.md).
 
@@ -82,7 +82,7 @@ The Makefile provides several build targets:
 - `make fips-verify` — Builds the FIPS variant and runs its self-check with FIPS enforcement enabled.
 - `make clean` — Removes `bin/`, test and coverage artifacts, harness directories, and the Go build cache (the shared module cache is left alone; builds use `vendor/`). It preserves `.ztd/`, workload identities, and the repository-root `ztd` binary.
 
-To intentionally reset Gateway state, use `./ztd gw clean`. This archives the runtime, replaces the CA on the next start, and requires fresh owner and workload enrollment.
+To intentionally reset Gateway state, use `./ztd gw clean`. This archives the runtime, removes ztd root CA anchors from the OS trust store, replaces the CA on the next start, and invalidates CLI credentials. Re-enroll the owner with `./ztd login web` after the next start.
 
 The FIPS build claim is limited to linux/amd64. Approved mode is enabled by the build, while strict runtime enforcement is separate and requires `GODEBUG=fips140=only`. `make fips-build` installs the binary as `./ztd-fips`; check it with `GODEBUG=fips140=only ./ztd-fips version --fips`.
 
@@ -108,7 +108,7 @@ Use `--follow` to run in the foreground:
 ./ztd gw start --follow
 ```
 
-On first start, the Gateway creates the `.ztd/` runtime tree and PKI hierarchy. The Gateway defaults to plain HTTP on port 8080 and HTTPS on port 8443; use `--http-port` and `--https-port` flags to override defaults. Both listeners bind `127.0.0.1` unless `--listen-host` names another address; pass `--listen-host 0.0.0.0` when Operators or workstations on other hosts must reach the Gateway. Confirm endpoints, then enroll the first owner:
+On first start, the Gateway creates the `.ztd/` runtime tree and PKI hierarchy. The Gateway defaults to plain HTTP on port 8080 and HTTPS on port 8443; use `--http-port` and `--https-port` flags to override defaults. When a requested port is busy, the Gateway advances both listeners by the same offset to the next free pair, up to 100 offsets. Both listeners bind `127.0.0.1` unless `--listen-host` names another address; pass `--listen-host 0.0.0.0` when Operators or workstations on other hosts must reach the Gateway. Confirm endpoints, then enroll the first owner:
 
 ```bash
 ./ztd gw status
@@ -125,11 +125,13 @@ Choose a stricter posture only after configuring required proofs:
 ./ztd gw start --posture notary
 ```
 
-Consensus and notary require a bound consensus application. Enroll it as an ordinary application with an L2 signing identity, then bind its HTTPS endpoint:
+Consensus and notary require a bound consensus application. Enroll it as an ordinary application with an L2 signing identity, then bind its HTTPS endpoint. Set `APP_NAME` to the application name and `APP_ENDPOINT` to its HTTPS deliberation endpoint (the application host plus `/deliberate`), then run:
 
 ```bash
-./ztd auth enroll app <app-name> --signing-key
-./ztd auth enroll consensus bind <app-name> https://<app-host>/<deliberate-path>
+APP_NAME=etl-service
+APP_ENDPOINT=https://etl.example.com/deliberate
+./ztd auth enroll app "$APP_NAME" --signing-key
+./ztd auth enroll consensus bind "$APP_NAME" "$APP_ENDPOINT"
 ./ztd auth enroll consensus show
 ```
 
@@ -146,10 +148,10 @@ Use `./ztd gw start --help` for current startup flags and defaults. Global `-e, 
 Custom Gateway implementations consume the ztd Protocol Library for protobuf schema definitions, SPIFFE workload identity helpers, and JSON protocol constants.
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.0.6
+go get github.com/zerotrustdata/ztd@v1.2.0
 ```
 
-Import protobuf types and SPIFFE helpers from `github.com/zerotrustdata/ztd/protocol`.
+Import SPIFFE workload identity helpers and protocol constants from `github.com/zerotrustdata/ztd/protocol`. Import generated protobuf types from the package path under `github.com/zerotrustdata/ztd/protocol/proto/ztd/`, for example `protocol/proto/ztd/operator/v1`.
 
 ---
 
@@ -182,7 +184,7 @@ To build a custom ztd-compatible Gateway, your implementation must satisfy the f
 
 | Port | Transport | Client Cert | Purpose |
 | :--- | :--- | :--- | :--- |
-| **HTTP 8080** | Plain HTTP | None | Bootstrap health, CA discovery, initial owner bootstrap, token-scoped CLI recovery, enrollment, binary downloads |
+| **HTTP 8080** | Plain HTTP | None | Bootstrap health, CA discovery, initial owner bootstrap, token-scoped CLI recovery, platform enrollment request/status/complete, Operator bootstrap WebSocket, binary and deploy script downloads; other paths redirect to HTTPS |
 | **HTTPS 8443** | TLS 1.3 | Verified when presented | Console and WebAuthn, public TLS routes, authenticated API and PKI management, pub/sub, MCP/A2A, governance, audit |
 
 Port mixing is prohibited. The Gateway fails startup if HTTP and HTTPS surfaces are assigned to the same port.
@@ -200,7 +202,7 @@ Port mixing is prohibited. The Gateway fails startup if HTTP and HTTPS surfaces 
 ./ztd test chaos        # Governance chaos testing
 ```
 
-Run all unit and integration tests with `make test`. Run the local platform CI gate with `make ci`.
+Run all unit and integration tests with `make test`. Run the local CI gate with `make ci`.
 
 ---
 
@@ -218,7 +220,7 @@ Run all unit and integration tests with `make test`. Run the local platform CI g
 ./ztd gw restart
 ```
 
-Restart reads the complete validated launch profile from `.ztd/pids/operator-launch-profile.json` and restarts the Gateway with its exact persisted configuration.
+Restart reads the complete validated launch profile from `.ztd/pids/operator-launch-profile.json` and restarts the Gateway with its persisted configuration. Network identity is re-detected on every restart.
 
 ### Gateway Settings
 
@@ -232,7 +234,7 @@ Restart reads the complete validated launch profile from `.ztd/pids/operator-lau
 ./ztd gw reset
 ```
 
-Moves the `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>` and starts a fresh doctrine Gateway.
+Runs the `gw clean` cleanup, which moves the `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>`, and then starts a fresh doctrine Gateway.
 
 ### Gateway Clean
 
@@ -240,7 +242,7 @@ Moves the `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>` and starts a fresh doc
 ./ztd gw clean
 ```
 
-Archives `.ztd/` to `.ztd-<MMDDHHMM>` and cleans local runtime state.
+Stops all Gateway services, archives `.ztd/` to `.ztd-<MMDDHHMM>`, removes ztd root CA anchors from the OS trust store, and invalidates CLI credentials. Run `./ztd login web` after the next start to re-enroll the owner.
 
 ### Gateway Setup
 
@@ -278,6 +280,11 @@ Runs the interactive setup wizard to preview configuration parameters.
 ./ztd gw data operators
 ./ztd gw data users
 ./ztd gw data settings
+```
+
+The parameterized forms take a collection name or an Operator session ID, with optional flags for narrowing results. Run `./ztd gw data --help` for the complete flag set:
+
+```text
 ./ztd gw data store --collection <name> [--document-id <id>]
 ./ztd gw data audit list --operator-session-id <session-id>
 ./ztd gw data audit summary [--operator-session-id <session-id>]
@@ -285,10 +292,14 @@ Runs the interactive setup wizard to preview configuration parameters.
 
 ### Cloudflare Tunnel
 
+Set `TUNNEL_NAME` to the tunnel name and `TUNNEL_HOSTNAME` to the public hostname you control, then run:
+
 ```bash
-./ztd gw tunnel create --name <tunnel-name> --hostname <your-domain>
-./ztd gw tunnel run --name <tunnel-name>
-./ztd gw tunnel status --name <tunnel-name> --hostname <your-domain>
+TUNNEL_NAME=ztd
+TUNNEL_HOSTNAME=console.example.com
+./ztd gw tunnel create --name "$TUNNEL_NAME" --hostname "$TUNNEL_HOSTNAME"
+./ztd gw tunnel run --name "$TUNNEL_NAME"
+./ztd gw tunnel status --name "$TUNNEL_NAME" --hostname "$TUNNEL_HOSTNAME"
 ```
 
 ---

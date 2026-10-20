@@ -90,9 +90,12 @@ func TempDir(t testing.TB) string {
 // the module's .ztd/operators (INV-FS-11). Use it where the code under test
 // treats the directory as an Operator root that agents may edit: everything
 // under .ztd/tmp is protected runtime state (security.IsProtectedRuntimePath).
+// The prefix ends in a letter so the random digits stay inside one word: a
+// standalone 10-digit run is phone-shaped, and the egress scrubber would
+// tokenize the Operator's path in provider-bound prompts.
 func OperatorDir(t testing.TB) string {
 	t.Helper()
-	return runtimeTestDir(t, constants.OperatorsDirname, "test-")
+	return runtimeTestDir(t, constants.OperatorsDirname, "test-op")
 }
 
 func runtimeTestDir(t testing.TB, subdir, prefix string) string {

@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.1.3
-last_updated: 2026-10-18
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -159,7 +159,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 ### Process entry
 
-The executable starts in `cmd/ztd/main.go`. Command registration and process-level error handling reside in `internal/cli/cmd/main.go`. `ExecuteWithVersionInfo` loads the working-directory `.env` through `config.LoadEnvFile` before executing any command and exits on a load error (`INV-ENV-04`). `NewRootCmd` registers public command groups; confirm current inventory with `./ztd --help` rather than duplicating ordering here.
+The executable starts in `cmd/ztd/main.go`. Command registration and process-level error handling reside in `internal/cli/cmd/main.go`. The root `PersistentPreRunE` loads the working-directory `.env` through `config.LoadEnvFile` after its own gates pass and before any command runs; a load error fails that command (`INV-ENV-04`). `NewRootCmd` registers public command groups; confirm current inventory with `./ztd --help` rather than duplicating ordering here.
 
 | Path | Owns |
 | :--- | :--- |
@@ -170,7 +170,7 @@ The executable starts in `cmd/ztd/main.go`. Command registration and process-lev
 | `internal/cli/serve/operator_cert_renewal.go` | `OperatorCertRenewer`: in-memory Operator certificate and L2 trust renewal over the `renewal:` pub/sub channel. |
 | `internal/cli/serve/cert.go` | CSR generation and certificate bundle logging. |
 | `internal/cli/serve/version.go` | Build version metadata passed from `cmd/ztd`. |
-| `internal/services/logging/` | Daemon log files and `slog` configuration. |
+| `internal/services/logging/` | Runtime log files and `slog` configuration. |
 
 ### CLI packages
 
@@ -185,7 +185,7 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `reset-identity`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
 | `autochthon` | `autochthoncmd` | `internal/cli/cmd/autochthon/` | | Gateway-less foreground runtime: host sampling and local prior under `.ztd/autochthon/`, and read-only `status` reporting. Not an Operator mode; refuses Gateway-facing flags. |
 | `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, and reset. |
-| `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, and `release-smoke`. |
+| `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, `release-smoke`, and `eval-loop`. |
 | `audit` | `audit` | `internal/cli/cmd/audit/` | `audits` | Receipt, event, summary, export, report, and verify queries against a running Gateway. |
 | `report` | `report` | `internal/cli/cmd/report/` | `reports` | Deterministic CSV evidence generation and offline verification. |
 | `public` | `public` | `internal/cli/cmd/public/` | | Public spectator feed. `restore` is constructed in eval package (`INV-PKG-02`). |
@@ -233,7 +233,7 @@ Mode dependency types reside in `internal/services/pubsub/mode_deps.go`. Wiring 
 | Deps type | Adds beyond `GovernanceCoreDeps` |
 | :--- | :--- |
 | `pubsub.GovernanceCoreDeps` | Shared execution target, replay store, state-root provider, transaction audit, L3 notary, signer store, and L1 doctrine. |
-| `pubsub.GatewayModeDeps` | Governed document store, consensus store, field reader, consensus deliberator, platform enrollment, and posture. |
+| `pubsub.GatewayModeDeps` | Governed document store, consensus policy store, field reader, platform enrollment, and posture. |
 | `pubsub.OutboundModeDeps` | Consensus policy store only. `ZtdoService` passes one in-memory `governance.L2TrustStore`, built from enrollment bundle and replaced at each certificate renewal, as both signer store and consensus policy store. |
 
 Outbound groups owned by `ZtdoService`: enrollment-bundle L2 trust (`governance.L2TrustStore`, required at construction) and mTLS pub/sub; `ExecutionService` and `FileEditService`; `CanonicalDBService` plus vault, suspended transactions, replay, SQL audit, and required Git ledger; local L1 doctrine, outbound L3 notary, L4, and L5; enabled inference, provider-boundary observer, and model-provenance capability handlers from `pubsub.NewCapabilityHandlers`.
@@ -257,7 +257,7 @@ Mutations that traverse a ztd ingress use a typed `GovernanceEnvelope` (`INV-BOU
 
 | Field | Listener | Handler | Role |
 | :--- | :--- | :--- | :--- |
-| `server` | `Gateway.HTTPPort` | `buildHTTPRouter` | Plain HTTP: bootstrap health, state, bootstrap, CA bundle and fingerprint, CLI recovery request/status/complete, platform enrollment request/status/complete, `/.well-known/ztd/bin/`, deploy scripts. Other paths redirect to HTTPS. Path-traversal guard and rate limit wrap mux. |
+| `server` | `Gateway.HTTPPort` | `buildHTTPRouter` | Plain HTTP: bootstrap health, state, bootstrap, CA bundle and fingerprint, CLI recovery request/status/complete, platform enrollment request/status/complete, Operator bootstrap websocket, `/.well-known/ztd/bin/`, deploy scripts. Other paths redirect to HTTPS. Path-traversal guard and rate limit wrap mux. |
 | `publicServer` | `Gateway.HTTPSPort` | `HTTPHandler` (`buildPublicRouter`) | Full API. TLS `ClientAuth` is `VerifyClientCertIfGiven`. `AuthService.Middleware` classifies routes. `RouteAuthRegistry.AuthMode` defaults unknown paths to `RouteAuthMTLS`. CORS and path-traversal guard wrap handler. |
 
 Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
@@ -266,7 +266,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | :--- | :--- |
 | Identity and enrollment | PKI, bootstrap, CLI recovery, CLI rotation, CLI refresh, CLI session, enrollment token, user, session, passkey, platform enrollment |
 | Data and audit | Data, signer, audit |
-| Operators and dispatch | Operator, dispatch, inference dispatch |
+| Operators and dispatch | Operator, dispatch, inference dispatch, tribunal intent |
 | Streams and ingress | SSE, MCP, pub/sub |
 | Governance and admin | Governance, health, admin |
 | Observation and publication | Observe, observe producer, public feed, eval campaign publication, provider observation, model provenance |
@@ -278,7 +278,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/gateway/docs/` | Generated OpenAPI (`swagger.json` embedded by `docs.go`, plus `swagger.yaml`). Generator: `make swagger-generate`. |
 | `internal/services/gateway/explorer/` | Embedded evaluation-explorer assets. |
 | `internal/services/gateway/db/schema.sql` | Canonical SQLite schema embedded by `CanonicalDBService`. |
-| `internal/services/gateway/db/public_mirror_schema.sql` | Public mirror SQLite schema embedded by `PublicMirrorStore`. |
+| `internal/services/gateway/db/public_mirror_schema.sql` | Public mirror SQLite schema embedded by `PublicMirrorStore`. `db/public_mirror_segments_migration.sql` is embedded alongside it and applied when `proof_manifest_entries` lacks `segment_index`. |
 
 ### Persistence
 
@@ -286,10 +286,10 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 
 | Owner | Path | Notes |
 | :--- | :--- | :--- |
-| `RuntimeFileService` | `internal/services/fs/file_service.go` | Canonical `.ztd/` file service. Startup calls `CreateRuntimeTree` from `internal/cli/serve/gateway.go` and `internal/cli/serve/operator.go`. |
+| `RuntimeFileService` | `internal/services/fs/file_service.go` | Canonical `.ztd/` file service. Startup calls `CreateRuntimeTree` from `internal/cli/serve/gateway.go` and `internal/cli/serve/operator_runtime.go`. |
 | Path constants | `internal/constants/paths.go` | Reusable system, repository, and runtime path strings. |
-| `CanonicalDBService` | `internal/services/gateway/gateway_db.go` | Primary SQLite connection, schema lifecycle, encrypted vault, secret manager, maintenance, and store lifetimes. Constructor: `OpenCanonicalDBService`. Gateway builder and `ZtdoService` both call it. |
-| `PublicMirrorStore` | `internal/services/gateway/public_mirror_store.go` | Public spectator mirror store: `public-mirror/mirror.db` plus content-addressed `public-mirror/proofs/`. Constructor: `OpenPublicMirrorStore`, which verifies the chain and proofs on every open. `public_mirror_import.go` is the one-time `state.json` import, removed after v1.1.3. |
+| `CanonicalDBService` | `internal/services/gateway/gateway_db.go` | Primary SQLite connection, schema lifecycle, encrypted vault, secret manager, maintenance, and store lifetimes. Constructor: `OpenCanonicalDBService`, called by the Gateway builder and by Operator startup in `internal/cli/serve/operator_runtime.go`. `ZtdoService` receives the opened instance. |
+| `PublicMirrorStore` | `internal/services/gateway/public_mirror_store.go` | Public spectator mirror store: `public-mirror/mirror.db` plus content-addressed `public-mirror/proofs/`. Constructor: `OpenPublicMirrorStore`, which verifies the chain and proofs on every open. |
 
 `CanonicalDBService` accessors:
 
@@ -313,7 +313,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 
 | Path | Owns |
 | :--- | :--- |
-| `internal/services/auth/` | Operator bootstrap transport and host fingerprinting. |
+| `internal/services/auth/` | Host and system fingerprinting, CSR and certificate fingerprints, and current-account resolution. |
 | `internal/services/autochthon/` | Gateway-less `ztd autochthon` command (CLI: `internal/cli/cmd/autochthon/`): host sampling, local predictor population, `.ztd/autochthon/` hash-chained tally, and read-only status report. No governance path. |
 | `internal/services/compliance/` | KSI evaluation and history, OSCAL support, catalog validation, evidence import and graph verification, and signed report bundles. |
 | `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. |
@@ -339,7 +339,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/scrubbing/` | Sensitive-value detection, tokenization, and rehydration. |
 | `internal/services/sqliteutil/` | Shared SQLite configuration and connection helpers. |
 | `internal/services/storage/` | Audit, execution, replay, suspension, commitment, and Git ledger persistence. |
-| `internal/services/system/` | Host capability and embedded Git selection. |
+| `internal/services/system/` | Host metrics, OS details, and network interface sampling. |
 | `internal/services/vault/` | Encryption vault lifecycle. |
 
 Test doubles reside in `internal/services/pubsub/pubsubtest/`, `internal/services/governance/governancetest/`, and `internal/services/keystore/keystoretest/`. `internal/services/storage/storagetest/` holds test helpers (vaults, file services, token store) and chaos test's `chaos.db` event store; audit store is always production `storage.SQLAuditStore`. `internal/tools/chaos` imports `storagetest` for `ztd test chaos`. Gateway and Operator production service code does not import these test packages.
@@ -355,6 +355,7 @@ Schemas reside in `protocol/proto/ztd/`. Wire requirements: [Protocol Specificat
 | `eval/v1` | Evaluation campaign, scenario catalog, assignment, run verification, witness (provider-boundary and model-provenance) evidence, public projection, governance-conformance record and verdict, and agent system-under-test messages. |
 | `operator/v1` | Operator commands, execution results, telemetry, receipts, and service RPC definitions. |
 | `pubsub/v1` | Pub/sub event and message envelopes. |
+| `tribunal/v1` | Tribunal intent request, member-call, and result messages for `POST /api/v1/operators/intents`. |
 
 | Output | Generator | Make target |
 | :--- | :--- | :--- |
@@ -372,7 +373,6 @@ Schemas reside in `protocol/proto/ztd/`. Wire requirements: [Protocol Specificat
 | `examples/` | Runnable Go examples, external-console app, and MCP client configuration templates. |
 | `protocol/docs/` | Protocol specifications and generated API references. |
 | `internal/tools/constgen/` | Regenerates event and action-type constants from `protocol/constants/events.json` and `protocol/constants/status.json`. `make constants-generate` writes. `make constants-check` verifies. `check_env.go` also validates `protocol/constants/env_vars.json` and requires every `secret` and `user_endpoint` key in repo-root `.env.example`. Outputs include `internal/constants/events_gen.go`, `internal/constants/action_types_gen.go`, and `console/src/generated/events.ts`. |
-| `protocol/constants/agenttools/` | Agent tool registry JSON (`agent-tool-registry.json`) and `registry.go`. The JSON is checked-in source data; no exporter or root Makefile target regenerates it. |
 
 ### Native tools
 
@@ -412,8 +412,9 @@ In-depth test rules reside in [Testing Guide](tests.md).
 | `./ztd test chaos` | | Chaos command in `internal/cli/cmd/test/chaos.go`. Engine: `internal/tools/chaos/`. |
 | `./ztd test summary` | | Reads chaos summary from test vault. |
 | `./ztd test public-loop` | | Provider-free public-feed qualification. Stays in `testcmd` (`INV-PKG-02`). |
-| `./ztd test scale` | 3 | Operator fleet scale qualification in `internal/cli/cmd/test/scale.go`: isolated Gateway, `operator deploy` batches, then `TestOperatorFleet_*` in `test/e2e/`. Owns its own Gateway and worker teardown. |
+| `./ztd test scale` | 3 | Operator fleet scale qualification in `internal/cli/cmd/test/scale.go`: isolated Gateway, `operator deploy` batches, then `TestOperatorFleet_*` in `test/e2e/`. Owns its own Gateway and Operator teardown. |
 | `./ztd test release-smoke` | | Provider-free governed release qualification in `internal/cli/cmd/test/release_smoke.go`: isolated Gateway and data Operator, governed file and document mutations, local evidence exports, and owned-process cleanup. Runs on Unix-like hosts and Windows. |
+| `./ztd test eval-loop` | | Cross-process eval qualification across real Gateway and Operator processes in `internal/cli/cmd/test/eval_loop.go`. |
 
 Component test entry points named by root Makefile: `make test`, `make test-unit`, `make test-integration`, `make console-test`, `make website-test`.
 

@@ -87,10 +87,10 @@ func (c *remoteProviderObservationClient) Load(ctx context.Context, providerAtte
 	return bundle.window, bundle.attempt, nil
 }
 
+// NewProviderObservationRemote builds the Gateway client that reads provider
+// observation windows. Callers decide whether the Gateway is reachable first; see
+// NewCampaignWitnessCapture.
 func NewProviderObservationRemote(fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.ProviderObservationRemote, error) {
-	if !IsGatewayHealthy() {
-		return nil, nil
-	}
 	client, err := api.NewClient(fileSvc, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("provider observation: create gateway client: %w", err)
@@ -98,16 +98,50 @@ func NewProviderObservationRemote(fileSvc fs.RuntimeFileService, cfg *config.Con
 	return &remoteProviderObservationClient{client: client, stream: client.NewSSEClient}, nil
 }
 
-func NewCampaignProviderObservationReader(fileSvc fs.RuntimeFileService, cfg *config.Config) (*evaluation.CampaignProviderObservationReader, error) {
-	remote, err := NewProviderObservationRemote(fileSvc, cfg)
+// NewCampaignWitnessCapture builds the run's Gateway witness capture over both
+// witness remotes. It reports constants.ErrGatewayNotReachable while the Gateway
+// is down, when nothing can be fetched.
+func NewCampaignWitnessCapture(fileSvc fs.RuntimeFileService, store *evaluation.Store, cfg *config.Config) (*evaluation.CampaignWitnessCapture, error) {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
+		return nil, fmt.Errorf("campaign witness capture: %w", constants.ErrGatewayNotReachable)
+	}
+	providers, err := NewProviderObservationRemote(fileSvc, cfg)
 	if err != nil {
 		return nil, err
 	}
-	return evaluation.NewCampaignProviderObservationReaderWithRemote(fileSvc, remote)
+	provenance, err := newModelProvenanceRemote(fileSvc, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return evaluation.NewCampaignWitnessCapture(store, providers, provenance)
+}
+
+// ConfiguredGatewayHealthCheck overrides isConfiguredGatewayHealthy in tests.
+var ConfiguredGatewayHealthCheck func(fileSvc fs.RuntimeFileService, cfg *config.Config) bool
+
+// isConfiguredGatewayHealthy checks the Gateway selected by the CLI config
+// through its authenticated API client.
+func isConfiguredGatewayHealthy(fileSvc fs.RuntimeFileService, cfg *config.Config) bool {
+	if ConfiguredGatewayHealthCheck != nil {
+		return ConfiguredGatewayHealthCheck(fileSvc, cfg)
+	}
+	client, err := api.NewClient(fileSvc, cfg)
+	if err != nil {
+		return false
+	}
+	body, err := client.Get(constants.APIPaths.Health)
+	if err != nil {
+		return false
+	}
+	var health models.HealthResponse
+	if err := json.Unmarshal(body, &health); err != nil {
+		return false
+	}
+	return health.Posture != ""
 }
 
 func PreflightProviderObservationDelivery(fileSvc fs.RuntimeFileService, cfg *config.Config) error {
-	if !IsGatewayHealthy() {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return constants.ErrEvaluationObservationUnavailable
 	}
 	client, err := authcmd.DefaultAPIClientFactory(fileSvc, cfg)

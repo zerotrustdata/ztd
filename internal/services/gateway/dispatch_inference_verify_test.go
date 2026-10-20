@@ -94,6 +94,7 @@ func newInferenceDispatchService(t *testing.T, signerStore ReceiptSignerResolver
 		nil,
 		signerStore,
 		nil,
+		nil,
 	)
 }
 

@@ -10,12 +10,14 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -91,23 +93,12 @@ func TestFileReadTool_Execute_SensitiveSystemFile(t *testing.T) {
 			args, err := json.Marshal(req)
 			require.NoError(t, err)
 
-			result, err := tool.Execute(ctx, args)
-			require.NoError(t, err)
-			require.Len(t, result.Content, 1)
-
-			var fileResult FileReadResult
-			err = json.Unmarshal([]byte(result.Content[0].Text), &fileResult)
-			require.NoError(t, err)
-
-			require.NotEmpty(t, fileResult.Error)
 			// On Windows, the path resolves to D:\etc\shadow which doesn't exist,
-			// so we get "failed to read file" instead of "access denied"
-			// On Unix-like systems, we get "access denied"
-			// Either error is acceptable as long as the file is not read
-			isAccessDenied := strings.Contains(fileResult.Error, "access denied")
-			isReadFailure := strings.Contains(fileResult.Error, "failed to read file")
-			require.True(t, isAccessDenied || isReadFailure,
-				"expected either access denied or read failure, got: %s", fileResult.Error)
+			// so the read fails instead of being denied. Either way the file
+			// is not read.
+			_, err = tool.Execute(ctx, args)
+			require.True(t, errors.Is(err, constants.ErrMCPSensitiveFile) || errors.Is(err, constants.ErrMCPReadFile),
+				"expected access denied or read failure, got: %v", err)
 		})
 	}
 }
@@ -133,17 +124,8 @@ func TestFileReadTool_Execute_SensitiveSSHKey(t *testing.T) {
 			args, err := json.Marshal(req)
 			require.NoError(t, err)
 
-			result, err := tool.Execute(ctx, args)
-			require.NoError(t, err)
-			require.Len(t, result.Content, 1)
-
-			var fileResult FileReadResult
-			err = json.Unmarshal([]byte(result.Content[0].Text), &fileResult)
-			require.NoError(t, err)
-
-			require.NotEmpty(t, fileResult.Error)
-			require.Contains(t, fileResult.Error, "access denied")
-			require.Contains(t, fileResult.Error, "sensitive file")
+			_, err = tool.Execute(ctx, args)
+			require.ErrorIs(t, err, constants.ErrMCPSensitiveFile)
 		})
 	}
 }
@@ -169,7 +151,6 @@ func TestFileReadTool_Execute_SafeSSHKeyWithExtension(t *testing.T) {
 	err = json.Unmarshal([]byte(result.Content[0].Text), &fileResult)
 	require.NoError(t, err)
 
-	require.Empty(t, fileResult.Error)
 	require.Equal(t, "public key content", fileResult.Content)
 }
 
@@ -181,16 +162,9 @@ func TestFileReadTool_Execute_FileNotFound(t *testing.T) {
 	args, err := json.Marshal(req)
 	require.NoError(t, err)
 
-	result, err := tool.Execute(ctx, args)
-	require.NoError(t, err)
-	require.Len(t, result.Content, 1)
-
-	var fileResult FileReadResult
-	err = json.Unmarshal([]byte(result.Content[0].Text), &fileResult)
-	require.NoError(t, err)
-
-	require.NotEmpty(t, fileResult.Error)
-	require.Contains(t, fileResult.Error, "failed to read file")
+	_, err = tool.Execute(ctx, args)
+	require.ErrorIs(t, err, constants.ErrMCPReadFile)
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestFileReadTool_Execute_Success(t *testing.T) {
@@ -217,7 +191,6 @@ func TestFileReadTool_Execute_Success(t *testing.T) {
 
 	require.Equal(t, testContent, fileResult.Content)
 	require.Equal(t, testFile, fileResult.Path)
-	require.Empty(t, fileResult.Error)
 }
 
 func TestFileReadTool_Execute_EmptyFile(t *testing.T) {
@@ -241,7 +214,6 @@ func TestFileReadTool_Execute_EmptyFile(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Empty(t, fileResult.Content)
-	require.Empty(t, fileResult.Error)
 }
 
 func TestFileReadTool_Execute_WithOffset(t *testing.T) {
@@ -591,16 +563,8 @@ func TestFileReadTool_Execute_DirectoryInsteadOfFile(t *testing.T) {
 	args, err := json.Marshal(req)
 	require.NoError(t, err)
 
-	result, err := tool.Execute(ctx, args)
-	require.NoError(t, err)
-	require.Len(t, result.Content, 1)
-
-	var fileResult FileReadResult
-	err = json.Unmarshal([]byte(result.Content[0].Text), &fileResult)
-	require.NoError(t, err)
-
-	require.NotEmpty(t, fileResult.Error)
-	require.Contains(t, fileResult.Error, "failed to read file")
+	_, err = tool.Execute(ctx, args)
+	require.ErrorIs(t, err, constants.ErrMCPReadFile)
 }
 
 func TestFileReadTool_Execute_TrailingNewline(t *testing.T) {

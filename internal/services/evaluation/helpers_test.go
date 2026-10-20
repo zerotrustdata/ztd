@@ -21,8 +21,8 @@ const (
 	verdictInvalidEvidence = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE
 )
 
-func repeatHex(ch byte, count int) string {
-	out := make([]byte, count)
+func repeatHex(ch byte) string {
+	out := make([]byte, 64)
 	for i := range out {
 		out[i] = ch
 	}

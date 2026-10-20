@@ -104,7 +104,7 @@ func TestProviderBoundaryObservationCoordinator_NotifyAttemptBegin_FailsWithoutC
 		logger,
 	)
 
-	err = coordinator.NotifyAttemptBegin(context.Background(), "user-1", "attempt-1", time.Now().UnixMilli(), 0)
+	_, err = coordinator.NotifyAttemptBegin(context.Background(), "user-1", "attempt-1", time.Now().UnixMilli(), 0)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
 }

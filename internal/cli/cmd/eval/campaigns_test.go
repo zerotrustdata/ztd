@@ -8,8 +8,101 @@
 package eval
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
+
+func TestLongitudinalConditionFreezesPersistentInvestigation(t *testing.T) {
+	mode, holdContext, err := applyCampaignCondition("longitudinal", "campaign-a", "fresh", "operator-a", false)
+	require.NoError(t, err)
+	assert.False(t, holdContext)
+	investigation, err := parseCampaignInvestigation(mode, "operator-a")
+	require.NoError(t, err)
+
+	catalog, _, err := evaluation.LoadScenarioCatalog()
+	require.NoError(t, err)
+	inventory, err := evaluation.MaterializeModelRegistry("campaign-a", []*evalv1.ModelVariant{{
+		VariantId: "model-a", ServedModelTag: "model:a", ModelDigest: repeatTestHex('a'), ProviderClass: "ollama",
+	}})
+	require.NoError(t, err)
+	spec, err := evaluation.MaterializeCampaignSpecWithInvestigation("campaign-a", catalog, inventory, 3, holdContext, evaluation.PlatformIdentity{Release: "test"}, investigation)
+	require.NoError(t, err)
+	assert.Equal(t, "longitudinal", evaluation.CampaignCondition(spec))
+	assert.Equal(t, "campaign-a-inv", spec.GetInvestigation().GetInvestigationId())
+	assert.Equal(t, "operator-a", spec.GetInvestigation().GetDataOperatorId())
+}
+
+func TestLongitudinalConditionRequiresDataOperator(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		condition         string
+		investigationMode string
+		dataOperatorID    string
+	}{
+		{name: "longitudinal", condition: "longitudinal", investigationMode: "fresh"},
+		{name: "persistent alias", condition: "persistent", investigationMode: "fresh"},
+		{name: "whitespace data operator", condition: "longitudinal", investigationMode: "fresh", dataOperatorID: "  "},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := applyCampaignCondition(test.condition, "campaign-a", test.investigationMode, test.dataOperatorID, false)
+			require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+		})
+	}
+}
+
+func TestLongitudinalConditionTrimsInvestigationMode(t *testing.T) {
+	mode, _, err := applyCampaignCondition("longitudinal", "campaign-a", " fresh ", "operator-a", false)
+	require.NoError(t, err)
+	assert.Equal(t, "persistent:campaign-a-inv", mode)
+}
+
+func TestParseCampaignInvestigation(t *testing.T) {
+	tests := []struct {
+		name           string
+		mode           string
+		dataOperatorID string
+		want           *evalv1.EvaluationInvestigation
+		wantErr        error
+	}{
+		{
+			name: "fresh default",
+			mode: "fresh",
+			want: &evalv1.EvaluationInvestigation{Mode: evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_FRESH},
+		},
+		{
+			name:           "persistent identity",
+			mode:           "persistent:checkout-incident",
+			dataOperatorID: "operator-stable",
+			want: &evalv1.EvaluationInvestigation{
+				Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+				InvestigationId: "checkout-incident",
+				DataOperatorId:  "operator-stable",
+			},
+		},
+		{name: "persistent ID is required", mode: "persistent:", dataOperatorID: "operator-stable", wantErr: constants.ErrEvaluationFlagsInvalid},
+		{name: "persistent Data Operator is required", mode: "persistent:checkout-incident", wantErr: constants.ErrEvaluationFlagsInvalid},
+		{name: "Data Operator is invalid for fresh mode", mode: "fresh", dataOperatorID: "operator-stable", wantErr: constants.ErrEvaluationFlagsInvalid},
+		{name: "unknown mode is rejected", mode: "hold-context", wantErr: constants.ErrEvaluationFlagsInvalid},
+		{name: "reserved harness ID is rejected", mode: "persistent:eval-harness:case", dataOperatorID: "operator-stable", wantErr: constants.ErrEvaluationInvestigationInvalid},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parseCampaignInvestigation(test.mode, test.dataOperatorID)
+			if test.wantErr != nil {
+				require.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.want, got)
+		})
+	}
+}
 
 func threeModelRegistry() []*evalv1.ModelVariant {
 	return []*evalv1.ModelVariant{
@@ -17,4 +110,9 @@ func threeModelRegistry() []*evalv1.ModelVariant {
 		{VariantId: "qwen3-4b", ServedModelTag: "qwen3:4b", ModelDigest: repeatTestHex('b'), ProviderClass: "ollama", ParameterCount: 4_000_000_000, ModelFamily: "Qwen"},
 		{VariantId: "llama3-8b", ServedModelTag: "llama3:8b", ModelDigest: repeatTestHex('c'), ProviderClass: "ollama", ParameterCount: 8_000_000_000, ModelFamily: "Llama"},
 	}
+}
+
+func TestExtractCampaignMetricsCurve_EmptyOnNoResults(t *testing.T) {
+	curve := extractCampaignMetricsCurve(t.Context(), nil, []string{"run-empty"})
+	assert.Empty(t, curve)
 }

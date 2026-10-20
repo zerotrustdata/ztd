@@ -68,14 +68,75 @@ func TestCLIRefreshController_Bind_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 	c.handleBind(rr, req)
 
-	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 	var resp models.CLIBindResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	assert.True(t, resp.Success)
-	assert.NotEmpty(t, resp.CLISessionID)
-	assert.NotEqual(t, oldSessionID, resp.CLISessionID)
+	assert.False(t, resp.AlreadyBound)
+	assert.Equal(t, oldSessionID, resp.CLISessionID, "a bind keeps the caller's CLI session ID")
 	assert.Equal(t, targetSessionID, resp.OperatorSessionID)
 	assert.Equal(t, "bind-op-1", resp.OperatorID)
+
+	persisted, err := c.cliSessionSvc.loadCLISession(t.Context(), oldSessionID)
+	require.NoError(t, err)
+	assert.True(t, persisted.IsActive, "the bound session stays active")
+	assert.Equal(t, targetSessionID, persisted.OperatorSessionID)
+	assert.Equal(t, []string{targetSessionID}, persisted.BoundOperatorSessionIDs)
+	assert.Equal(t, "test-cert-fp", persisted.CertFingerprint, "the certificate grounding is kept")
+	assert.Equal(t, "test-serial", persisted.CertSerial)
+
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1, "a bind must not mint a replacement session")
+}
+
+func TestCLIRefreshController_Bind_MissingCallerSessionFailsClosed(t *testing.T) {
+	c, user := setupTestCLIRefreshController(t)
+	targetSessionID := "bind-ctrl-target-missing"
+	persistOperatorForBindController(t, c, user.ID, "bind-op-missing", targetSessionID)
+
+	rr := httptest.NewRecorder()
+	c.handleBind(rr, bindRequestWithContext(t, user.ID, "bind-ctrl-never-issued", targetSessionID))
+
+	require.Equal(t, http.StatusNotFound, rr.Code, rr.Body.String())
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	assert.Empty(t, sessions, "a bind with a missing caller session must not mint one")
+}
+
+func TestCLIRefreshController_Bind_NoCallerSessionInContextFailsClosed(t *testing.T) {
+	c, user := setupTestCLIRefreshController(t)
+	targetSessionID := "bind-ctrl-target-nocaller"
+	persistOperatorForBindController(t, c, user.ID, "bind-op-nocaller", targetSessionID)
+
+	rr := httptest.NewRecorder()
+	c.handleBind(rr, bindRequestWithContext(t, user.ID, "", targetSessionID))
+
+	require.Equal(t, http.StatusNotFound, rr.Code, rr.Body.String())
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	assert.Empty(t, sessions, "a bind without a caller session must not mint one")
+}
+
+func TestCLIRefreshController_Bind_InactiveCallerSessionFailsClosed(t *testing.T) {
+	c, user := setupTestCLIRefreshController(t)
+	oldSessionID := "bind-ctrl-inactive"
+	targetSessionID := "bind-ctrl-target-inactive"
+	persistOperatorForBindController(t, c, user.ID, "bind-op-inactive", targetSessionID)
+	persistCLISessionForController(t, c, user.ID, oldSessionID, "bind-ctrl-stale-inactive")
+	require.NoError(t, c.cliSessionSvc.DeactivateCLISession(t.Context(), oldSessionID))
+
+	rr := httptest.NewRecorder()
+	c.handleBind(rr, bindRequestWithContext(t, user.ID, oldSessionID, targetSessionID))
+
+	require.Equal(t, http.StatusConflict, rr.Code, rr.Body.String())
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1, "a bind with an inactive caller session must not mint one")
+	persisted, err := c.cliSessionSvc.loadCLISession(t.Context(), oldSessionID)
+	require.NoError(t, err)
+	assert.False(t, persisted.IsActive)
+	assert.Equal(t, "bind-ctrl-stale-inactive", persisted.OperatorSessionID, "an inactive session keeps its binding")
 }
 
 func TestCLIRefreshController_Bind_AlreadyBound(t *testing.T) {
@@ -116,12 +177,50 @@ func TestCLIRefreshController_Unbind_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 	c.handleUnbind(rr, req)
 
-	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 	var resp models.CLIUnbindResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	assert.True(t, resp.Success)
-	assert.NotEmpty(t, resp.CLISessionID)
-	assert.NotEqual(t, oldSessionID, resp.CLISessionID)
+	assert.False(t, resp.AlreadyUnbound)
+	assert.Equal(t, oldSessionID, resp.CLISessionID, "an unbind keeps the caller's CLI session ID")
+
+	persisted, err := c.cliSessionSvc.loadCLISession(t.Context(), oldSessionID)
+	require.NoError(t, err)
+	assert.True(t, persisted.IsActive, "the unbound session stays active")
+	assert.Empty(t, persisted.OperatorSessionID)
+	assert.Empty(t, persisted.BoundOperatorSessionIDs)
+	assert.Equal(t, "test-cert-fp", persisted.CertFingerprint, "the certificate grounding is kept")
+
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1, "an unbind must not mint a replacement session")
+}
+
+func TestCLIRefreshController_Unbind_MissingCallerSessionFailsClosed(t *testing.T) {
+	c, user := setupTestCLIRefreshController(t)
+
+	rr := httptest.NewRecorder()
+	c.handleUnbind(rr, unbindRequestWithContext(t, user.ID, "unbind-ctrl-never-issued"))
+
+	require.Equal(t, http.StatusNotFound, rr.Code, rr.Body.String())
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	assert.Empty(t, sessions, "an unbind with a missing caller session must not mint one")
+}
+
+func TestCLIRefreshController_Unbind_InactiveCallerSessionFailsClosed(t *testing.T) {
+	c, user := setupTestCLIRefreshController(t)
+	oldSessionID := "unbind-ctrl-inactive"
+	persistCLISessionForController(t, c, user.ID, oldSessionID, "unbind-ctrl-stale-inactive")
+	require.NoError(t, c.cliSessionSvc.DeactivateCLISession(t.Context(), oldSessionID))
+
+	rr := httptest.NewRecorder()
+	c.handleUnbind(rr, unbindRequestWithContext(t, user.ID, oldSessionID))
+
+	require.Equal(t, http.StatusConflict, rr.Code, rr.Body.String())
+	sessions, err := c.cliSessionSvc.ListUserCLISessions(t.Context(), user.ID)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1, "an unbind with an inactive caller session must not mint one")
 }
 
 func TestCLIRefreshController_Unbind_AlreadyUnbound(t *testing.T) {
@@ -163,18 +262,19 @@ func TestCLIRefreshController_Bind_MultipleOperatorsInOneCall(t *testing.T) {
 	rr := httptest.NewRecorder()
 	c.handleBind(rr, multiBindRequestWithContext(t, user.ID, oldSessionID, sessionIDs))
 
-	require.Equal(t, http.StatusCreated, rr.Code, rr.Body.String())
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 	var resp models.CLIBindResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	assert.True(t, resp.Success)
 	assert.False(t, resp.AlreadyBound)
+	assert.Equal(t, oldSessionID, resp.CLISessionID, "a multi-operator bind keeps the CLI session ID")
 	assert.Equal(t, sessionIDs[0], resp.OperatorSessionID, "first target is the primary binding")
 	require.Len(t, resp.Bound, 3)
 	for i, sessionID := range sessionIDs {
 		assert.Equal(t, sessionID, resp.Bound[i].OperatorSessionID)
 	}
 
-	persisted, err := c.cliSessionSvc.loadCLISession(t.Context(), resp.CLISessionID)
+	persisted, err := c.cliSessionSvc.loadCLISession(t.Context(), oldSessionID)
 	require.NoError(t, err)
 	assert.Equal(t, sessionIDs[0], persisted.OperatorSessionID)
 	assert.Equal(t, sessionIDs, persisted.BoundOperatorSessionIDs)
@@ -191,9 +291,10 @@ func TestCLIRefreshController_Bind_MultipleOperatorsAlreadyBound(t *testing.T) {
 
 	first := httptest.NewRecorder()
 	c.handleBind(first, multiBindRequestWithContext(t, user.ID, oldSessionID, sessionIDs))
-	require.Equal(t, http.StatusCreated, first.Code, first.Body.String())
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
 	var created models.CLIBindResponse
 	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &created))
+	require.Equal(t, oldSessionID, created.CLISessionID)
 
 	second := httptest.NewRecorder()
 	c.handleBind(second, multiBindRequestWithContext(t, user.ID, created.CLISessionID, sessionIDs))
@@ -201,7 +302,7 @@ func TestCLIRefreshController_Bind_MultipleOperatorsAlreadyBound(t *testing.T) {
 	var again models.CLIBindResponse
 	require.NoError(t, json.Unmarshal(second.Body.Bytes(), &again))
 	assert.True(t, again.AlreadyBound)
-	assert.Equal(t, created.CLISessionID, again.CLISessionID, "rebinding the same list must not rotate the session")
+	assert.Equal(t, oldSessionID, again.CLISessionID, "rebinding the same list must not change the session")
 }
 
 func TestCLIRefreshController_Bind_OneBadTargetBindsNothing(t *testing.T) {

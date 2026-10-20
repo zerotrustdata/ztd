@@ -14,7 +14,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -188,6 +187,10 @@ func verifyRun(
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
 	}
+	requireObservation, requireProvenance, err = resolveRunWitnessPolicies(run, requireObservation, requireProvenance)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
+	}
 	catalog, err := store.LoadScenarioCatalog(cmd.Context(), run.GetCampaignBinding().GetCampaignId())
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
@@ -199,8 +202,7 @@ func verifyRun(
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
 	}
-	verifier := evaluation.NewCampaignRunVerifier(deps.now)
-	observationReader, err := gwremote.NewCampaignProviderObservationReader(fileSvc, cfg)
+	observationReader, err := evaluation.NewCampaignProviderObservationReader(store)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
 	}
@@ -208,8 +210,7 @@ func verifyRun(
 	if requireObservation {
 		providerPolicy = evaluation.ProviderObservationPolicyStrict
 	}
-	verifier = verifier.WithProviderObservationReader(observationReader, providerPolicy)
-	provenanceReader, err := gwremote.NewCampaignModelProvenanceReader(fileSvc, cfg)
+	provenanceReader, err := evaluation.NewCampaignModelProvenanceReader(store)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
 	}
@@ -217,23 +218,9 @@ func verifyRun(
 	if requireProvenance {
 		provenancePolicy = evaluation.ModelProvenancePolicyStrict
 	}
-	verifier = verifier.WithModelProvenanceReader(provenanceReader, provenancePolicy)
-	if err := evaluation.CaptureCampaignRunProviderObservationEvidence(cmd.Context(), store, runID, observationReader); err != nil {
-		return nil, fmt.Errorf("evaluation: runs verify: provider observation: %w", err)
-	}
-	if requireProvenance {
-		if !jsonOutput {
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Waiting for model provenance completion (up to %s)\n", constants.ModelProvenanceCompletionTimeout)
-		}
-		waitCtx, cancel := context.WithTimeout(cmd.Context(), constants.ModelProvenanceCompletionTimeout)
-		err := evaluation.WaitForCampaignRunModelProvenanceEvidence(waitCtx, store, runID, provenanceReader)
-		cancel()
-		if err != nil {
-			return nil, fmt.Errorf("evaluation: runs verify: model provenance: %w", err)
-		}
-	} else if err := evaluation.CaptureCampaignRunModelProvenanceEvidence(cmd.Context(), store, runID, provenanceReader); err != nil {
-		return nil, fmt.Errorf("evaluation: runs verify: model provenance: %w", err)
-	}
+	verifier := evaluation.NewCampaignRunVerifier(deps.now).
+		WithProviderObservationReader(observationReader, providerPolicy).
+		WithModelProvenanceReader(provenanceReader, provenancePolicy)
 	report, err := verifier.VerifyRun(cmd.Context(), store, runID, catalog, artifacts)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
@@ -278,4 +265,15 @@ func verifyRun(
 		}
 	}
 	return report, nil
+}
+
+func resolveRunWitnessPolicies(run *evalv1.EvaluationRun, requireObservation, requireProvenance bool) (bool, bool, error) {
+	valid := func(policy evalv1.EvaluationWitnessPolicy) bool {
+		return policy == evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM || policy == evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT
+	}
+	if run == nil || !valid(run.GetProviderObservationPolicy()) || !valid(run.GetModelProvenancePolicy()) {
+		return false, false, constants.ErrEvaluationFlagsInvalid
+	}
+	return requireObservation || run.GetProviderObservationPolicy() == evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT,
+		requireProvenance || run.GetModelProvenancePolicy() == evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT, nil
 }

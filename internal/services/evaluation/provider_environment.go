@@ -37,7 +37,7 @@ type ProviderEnvironment struct {
 // capacity: a run that spans different hardware makes no environment claim, so
 // it can never be matched against another run's.
 func (r *CampaignProviderObservationReader) ObservedProviderEnvironment(ctx context.Context, results map[string]*evalv1.EvaluationAssignmentResult) (*ProviderEnvironment, error) {
-	if r == nil || r.windows == nil {
+	if r == nil || r.store == nil {
 		return nil, fmt.Errorf("evaluation: observed provider environment: %w", constants.ErrMissingRequiredField)
 	}
 	vramTotals := map[uint64]struct{}{}
@@ -48,7 +48,7 @@ func (r *CampaignProviderObservationReader) ObservedProviderEnvironment(ctx cont
 			if attemptID == "" {
 				continue
 			}
-			window, err := r.windows.Load(ctx, attemptID)
+			window, err := r.store.LoadProviderObservationWindow(ctx, result.GetRunId(), attemptID)
 			if err != nil {
 				if isProviderEvidenceNotFound(err) {
 					continue

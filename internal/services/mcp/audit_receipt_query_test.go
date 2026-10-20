@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/jsonschema"
 	"github.com/zerotrustdata/ztd/internal/models"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -33,16 +34,24 @@ type stubAuditReceiptQuery struct {
 	listSinceErr  error
 	getErr        error
 
-	lastListSession string
-	lastListLimit   int
-	lastListOffset  int
-	lastSinceTime   time.Time
-	lastSinceLimit  int
-	lastGetID       string
+	lastListSession       string
+	lastListInvestigation string
+	lastListOperator      string
+	lastExcludeAuditReads bool
+	listCalls             int
+	lastListLimit         int
+	lastListOffset        int
+	lastSinceTime         time.Time
+	lastSinceLimit        int
+	lastGetID             string
 }
 
 func (s *stubAuditReceiptQuery) ListActionReceipts(scope models.AuditScope, limit, offset int) ([]*models.ActionReceiptRecord, error) {
+	s.listCalls++
 	s.lastListSession = scope.OperatorSessionID
+	s.lastListInvestigation = scope.InvestigationID
+	s.lastListOperator = scope.OperatorID
+	s.lastExcludeAuditReads = scope.ExcludeAuditReads
 	s.lastListLimit = limit
 	s.lastListOffset = offset
 	if s.listErr != nil {
@@ -97,7 +106,22 @@ func TestAuditReceiptListTool_Name_Description_Schema(t *testing.T) {
 	require.NotNil(t, schema)
 	assert.Equal(t, "object", schema.Type)
 	assert.Contains(t, schema.Properties, "operator_session_id")
-	assert.Contains(t, schema.Required, "operator_session_id")
+	assert.Contains(t, schema.Properties, "investigation_id")
+	assert.NotContains(t, schema.Required, "operator_session_id", "the shared schema must allow Operator-local queries to span sessions")
+	assert.Contains(t, schema.Properties["operator_session_id"].Description, "required there")
+	assert.Contains(t, schema.Properties["investigation_id"].Description, "required for Operator-local queries")
+	assert.Contains(t, schema.Properties["investigation_id"].Description, "Optional")
+	assert.NotContains(t, schema.Required, "investigation_id")
+}
+
+func TestAuditReceiptListTool_InputSchemaAcceptsOperatorLocalSessionlessQuery(t *testing.T) {
+	schemaWire, err := json.Marshal((&AuditReceiptListTool{}).InputSchema())
+	require.NoError(t, err)
+	compiled, err := jsonschema.NewCompiler().Compile(schemaWire)
+	require.NoError(t, err)
+
+	localQuery := []byte(`{"investigation_id":"investigation-1","exclude_audit_reads":true}`)
+	assert.Empty(t, jsonschema.NewValidator().Validate(compiled, localQuery), "the declared schema must admit the Operator-local query shape")
 }
 
 func TestAuditReceiptListTool_Execute_Success(t *testing.T) {
@@ -122,8 +146,95 @@ func TestAuditReceiptListTool_Execute_Success(t *testing.T) {
 	assert.Len(t, lr.Receipts, 2)
 	assert.Equal(t, 2, lr.Count)
 	assert.Equal(t, "sess-1", stub.lastListSession)
+	assert.Empty(t, stub.lastListInvestigation)
 	assert.Equal(t, 50, stub.lastListLimit)
 	assert.Equal(t, 0, stub.lastListOffset)
+}
+
+func TestAuditReceiptListTool_Execute_InvestigationOnlyScopeFailsBeforeQuery(t *testing.T) {
+	stub := &stubAuditReceiptQuery{}
+	ctx := withAuditReceiptQuery(context.Background(), stub)
+	args, err := json.Marshal(AuditReceiptListRequest{
+		InvestigationID: "investigation-1",
+	})
+	require.NoError(t, err)
+
+	_, err = (&AuditReceiptListTool{}).Execute(ctx, args)
+	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptListOperatorSessionReq)
+	assert.Zero(t, stub.listCalls, "investigation-only native queries are rejected before reading the Gateway store")
+}
+
+func TestAuditReceiptListTool_Execute_BothScopes(t *testing.T) {
+	stub := &stubAuditReceiptQuery{}
+	ctx := withAuditReceiptQuery(context.Background(), stub)
+	args, err := json.Marshal(AuditReceiptListRequest{
+		OperatorSessionID: "sess-1",
+		InvestigationID:   "investigation-1",
+	})
+	require.NoError(t, err)
+
+	_, err = (&AuditReceiptListTool{}).Execute(ctx, args)
+	require.NoError(t, err)
+	assert.Equal(t, "sess-1", stub.lastListSession)
+	assert.Equal(t, "investigation-1", stub.lastListInvestigation)
+}
+
+func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	receipt := sampleReceiptRecord("tx-command", "session-old", "EXECUTE_BASH", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
+	receipt.ActionReceipt = &operatorv1.ActionReceipt{TransactionId: "tx-command", Signature: "sig-tx-command"}
+	stub := &stubAuditReceiptQuery{
+		listBySession: []*models.ActionReceiptRecord{receipt},
+	}
+	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub)
+	require.NoError(t, err)
+	args, err := json.Marshal(AuditReceiptListRequest{
+		InvestigationID:   "investigation-1",
+		ExcludeAuditReads: true,
+	})
+	require.NoError(t, err)
+
+	result, err := handler.HandleTool(context.Background(), "audit_receipt_list", args)
+	require.NoError(t, err)
+	require.Len(t, result.Content, 1)
+
+	var list OperatorAuditReceiptListResult
+	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &list))
+	assert.Equal(t, "op-1", list.OperatorID)
+	assert.Equal(t, "operator_local_ledger", list.Authority)
+	assert.Equal(t, "investigation-1", stub.lastListInvestigation)
+	assert.Equal(t, "op-1", stub.lastListOperator)
+	assert.True(t, stub.lastExcludeAuditReads)
+	assert.Empty(t, stub.lastListSession, "local queries span Operator sessions")
+	assert.Equal(t, "tx-command", list.Receipts[0].GetTransactionId())
+}
+
+func TestOperatorNativeToolHandler_AuditReceiptListRequiresInvestigation(t *testing.T) {
+	stub := &stubAuditReceiptQuery{}
+	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub)
+	require.NoError(t, err)
+
+	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"operator_session_id":"session-1"}`))
+	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptListInvestigationReq)
+	assert.Zero(t, stub.listCalls)
+
+	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"investigation_id":"investigation-1"}`))
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Zero(t, stub.listCalls)
+
+	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"investigation_id":"investigation-1","exclude_audit_reads":false}`))
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.Zero(t, stub.listCalls)
+
+	_, err = handler.HandleTool(context.Background(), "read_field", nil)
+	require.ErrorIs(t, err, constants.ErrMCPNativeToolUnknown, "Gateway-local tools are not native Operator tools")
+}
+
+func TestNewOperatorNativeToolHandler_RequiresIdentityAndLocalStore(t *testing.T) {
+	_, err := NewOperatorNativeToolHandler(nil, "", &stubAuditReceiptQuery{})
+	require.ErrorIs(t, err, constants.ErrOperatorIDMissing)
+	_, err = NewOperatorNativeToolHandler(nil, "op-1", nil)
+	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptQueryNotConfigured)
 }
 
 func TestAuditReceiptListTool_Execute_ActionTypeFilter(t *testing.T) {
@@ -186,13 +297,15 @@ func TestAuditReceiptListTool_Execute_Pagination(t *testing.T) {
 }
 
 func TestAuditReceiptListTool_Execute_MissingOperatorSessionID(t *testing.T) {
-	ctx := withAuditReceiptQuery(context.Background(), &stubAuditReceiptQuery{})
+	stub := &stubAuditReceiptQuery{}
+	ctx := withAuditReceiptQuery(context.Background(), stub)
 	args, _ := json.Marshal(AuditReceiptListRequest{})
 
 	tool := &AuditReceiptListTool{}
 	_, err := tool.Execute(ctx, args)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, constants.ErrMCPAuditReceiptListOperatorSessionReq))
+	assert.Zero(t, stub.listCalls)
 }
 
 func TestAuditReceiptListTool_Execute_QueryNotConfigured(t *testing.T) {
@@ -319,7 +432,7 @@ func TestAuditReceiptGetTool_Execute_InvalidJSON(t *testing.T) {
 
 // TestNativeToolHandler_SetAuditReceiptQuery verifies the handler injects the
 // configured AuditReceiptQuery into the execution context so the audit
-// receipt tools can access the operator audit vault.
+// receipt tools can access the configured local audit store.
 func TestNativeToolHandler_SetAuditReceiptQuery(t *testing.T) {
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)

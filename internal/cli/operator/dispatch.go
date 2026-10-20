@@ -22,18 +22,10 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
-
-// DispatchRequest is the typed JSON body for POST /api/v1/operators/commands.
-type DispatchRequest struct {
-	TargetOperatorSessionID string `json:"target_operator_session_id"`
-	EventType               string `json:"event_type"`
-	Payload                 []byte `json:"payload"`
-	TargetResource          string `json:"target_resource,omitempty"`
-	CliSessionID            string `json:"cli_session_id,omitempty"`
-}
 
 // CommandPoster posts a JSON body to a Gateway API path and returns the raw
 // 2xx body, or an *api.StatusError carrying the non-2xx body.
@@ -152,22 +144,29 @@ func MarshalExecuteBashPayload(command, executionID, justification string) ([]by
 }
 
 // BuildExecuteBashDispatchRequest assembles a governed shell dispatch request.
-func BuildExecuteBashDispatchRequest(operatorSessionID, command, executionID, cliSessionID string) (DispatchRequest, error) {
+// The command and execution id are checked here because they are only visible
+// before they are marshaled into the payload; every other field is checked by
+// models.OperatorCommandRequest.Validate before the request is returned.
+func BuildExecuteBashDispatchRequest(operatorSessionID, command, executionID, cliSessionID string) (models.OperatorCommandRequest, error) {
 	command = strings.TrimSpace(command)
-	if operatorSessionID == "" || command == "" || executionID == "" {
-		return DispatchRequest{}, constants.ErrMissingRequiredField
+	if command == "" || executionID == "" {
+		return models.OperatorCommandRequest{}, constants.ErrMissingRequiredField
 	}
 	payload, err := MarshalExecuteBashPayload(command, executionID, "ztd operator run")
 	if err != nil {
-		return DispatchRequest{}, err
+		return models.OperatorCommandRequest{}, err
 	}
-	return DispatchRequest{
+	request := models.OperatorCommandRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.Command.Requested),
 		Payload:                 payload,
 		TargetResource:          "cli",
-		CliSessionID:            cliSessionID,
-	}, nil
+		CLISessionID:            cliSessionID,
+	}
+	if err := request.Validate(); err != nil {
+		return models.OperatorCommandRequest{}, fmt.Errorf("operator dispatch: validate execute bash request: %w", err)
+	}
+	return request, nil
 }
 
 // ParseCommandResult decodes the governed operator command result from a dispatch

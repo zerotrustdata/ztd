@@ -324,7 +324,7 @@ export function MethodologyView() {
           </DocsCard>
           <div className="docs-split">
             <DocsCard title="Lane and runner">
-              <p>Every campaign is a model-role campaign over exactly one registry model, executed by the agent executor. The system lane, which would score a heterogeneous three-role formation as one unit, has no executor in v1.1.3: campaign scheduling, <code>ztd eval runs start</code>, and <code>runs execute</code> fail closed on it. Formations return in v1.1.4, running inside the investigation loop. The formation catalog stays browsable on the Evaluations page.</p>
+              <p>A model-role campaign evaluates exactly one registry model. A system-lane campaign, created with <code>ztd eval campaigns create --formations</code>, freezes one stack per selected formation and scores each stack as one unit. It runs every formation against every scenario with one repetition: the Primary model takes the investigation turn, and the Tribunal members run on the Assistant tier. Both lanes execute on the agent executor, and <code>ztd eval runs start</code> takes the lane from the campaign. The formation catalog stays browsable on the Evaluations page.</p>
             </DocsCard>
             <DocsCard title="Qualification rollout">
               <p>The rollout queue freezes a single-model campaign for each queued registry model and runs it with strict witness verification (provider observation and model provenance). A verified run marks the entry verified. Use <code>--dry-run</code> to print the plan, <code>--until</code> to cap how many models run, and <code>--gate-smoke</code> to screen each model with the smoke suite first.</p>

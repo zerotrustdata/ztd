@@ -34,6 +34,7 @@ import {
   formatNumber,
 } from '../components/shared';
 import type { AssignmentResult, VerifierState } from '../contract/types';
+import { isCapabilityQualificationScenario } from '../content/scenario-task';
 import { assignmentVerdictTone, campaignTerminalProgress, isNonVerdictOutcome, lifecycleStateTone, nativeResultTone, nativeScenarioTone, roleLabel, verifierStateTone } from './derived';
 
 const verifierStateLabels: Record<VerifierState, string> = {
@@ -93,6 +94,14 @@ export function EvaluationDetailView() {
         ),
       },
       { id: 'task', header: 'Task', accessorKey: 'task_id' },
+      {
+        id: 'scope',
+        header: 'Scope',
+        accessorFn: (row: AssignmentResult) => isCapabilityQualificationScenario(row.scenario_summary?.expected_tools) ? 'capability qualification' : '',
+        cell: ({ row }) => isCapabilityQualificationScenario(row.original.scenario_summary?.expected_tools)
+          ? <TonePill tone="warn" title="This result measures direct command handling, not investigation context retrieval or continuity.">Capability qualification</TonePill>
+          : '—',
+      },
       { id: 'variant', header: 'Variant', accessorKey: 'variant_id' },
       {
         id: 'role',
@@ -203,6 +212,33 @@ export function EvaluationDetailView() {
       <PanelSection id="run-evidence" title="Evidence bundle">
         {run.evidence_link ? <SafeSourceLink href={run.evidence_link} label="Public-safe evidence" /> : <p className="panel-note">Evidence bundle not published.</p>}
       </PanelSection>
+      </>} footer={run.native_result ? undefined : <>
+        <PanelSection id="run-results" title={`Assignments (${formatNumber(assignments.length)})`}>
+          {assignments.length === 0 ? (
+            <p>No assignment results for this run.</p>
+          ) : (
+            <>
+              <input
+                type="search"
+                placeholder="Search assignments..."
+                value={assignmentSearch}
+                aria-label="Search assignments"
+                onChange={(e) => setAssignmentSearch(e.target.value)}
+              />
+              <select aria-label="Filter assignments by verdict" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="all">All statuses</option><option value="verdict">Model verdicts</option><option value="non-verdict">Non-verdict outcomes</option>
+              </select>
+              <DataTable
+                data={filteredAssignments}
+                columns={assignmentColumns}
+                pageSize={50}
+                caption={`Assignments for ${run.run_id}`}
+                empty={<p>No assignments match the search or status filter.</p>}
+              />
+            </>
+          )}
+        </PanelSection>
+        <RunFailuresSection assignments={assignments} connection={connection} />
       </>}>
 
       <PanelSection title={run.native_result ? 'Invariant summary' : 'Assignment progress'}>
@@ -245,41 +281,11 @@ export function EvaluationDetailView() {
           ))}
           </div>
         </PanelSection>
-      ) : (
-        <PanelSection id="run-results" title={`Assignments (${formatNumber(assignments.length)})`}>
-          {assignments.length === 0 ? (
-            <p>No assignment results for this run.</p>
-          ) : (
-            <>
-              <input
-                type="search"
-                placeholder="Search assignments..."
-                value={assignmentSearch}
-                aria-label="Search assignments"
-                onChange={(e) => setAssignmentSearch(e.target.value)}
-              />
-              <select aria-label="Filter assignments by verdict" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                <option value="all">All statuses</option><option value="verdict">Model verdicts</option><option value="non-verdict">Non-verdict outcomes</option>
-              </select>
-              <DataTable
-                data={filteredAssignments}
-                columns={assignmentColumns}
-                pageSize={50}
-                caption={`Assignments for ${run.run_id}`}
-                empty={<p>No assignments match the search or status filter.</p>}
-              />
-            </>
-          )}
-        </PanelSection>
-      )}
+      ) : null}
 
       {run.native_result && run.native_result.metrics.length > 0 ? <PanelSection title="Native metrics"><div className="stat-tile-grid">
         {run.native_result.metrics.map((metric) => <StatTile key={`${metric.metric_id}@${metric.metric_version}`} label={`${metric.metric_id}@${metric.metric_version}`} value={metric.unit === 'ratio' ? formatPercent(metric.value) : formatNumber(metric.value)} hint={`${formatNumber(metric.numerator)} / ${formatNumber(metric.denominator)}`} />)}
       </div></PanelSection> : null}
-
-      {!run.native_result ? (
-        <RunFailuresSection assignments={assignments} connection={connection} />
-      ) : null}
       </DetailLayout>
     </div>
   );

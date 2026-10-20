@@ -10,10 +10,13 @@
 package report
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,133 +25,128 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	govtypes "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/compliance/catalog"
 	"github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
-	"github.com/zerotrustdata/ztd/internal/services/governance"
-	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
-	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore"
+	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
-	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/services/vault"
 	"github.com/zerotrustdata/ztd/internal/testutil"
-	"github.com/zerotrustdata/ztd/internal/uuid"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"github.com/zerotrustdata/ztd/test/fixtures"
 )
 
-type operationalAcceptanceHandler struct{}
-
-func (operationalAcceptanceHandler) ExecuteVerifiedTransaction(context.Context, constants.EventType, governance.CommandMessage) (string, error) {
-	return "operator fixture completed", nil
-}
-
-// mustUUID returns a fresh UUID string, failing the test on the
-// (practically impossible) failure of the OS random source.
-func mustUUID(t *testing.T) string {
-	t.Helper()
-	id, err := uuid.NewString()
-	require.NoError(t, err)
-	return id
-}
-
+// TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline
+// dispatches one real governed command through the real Gateway. The outbound
+// Data Operator executes it and writes its own signed receipt, commitment, and
+// audit rows. The test then reads that Operator's authoritative store, exports
+// it as an operational source, and generates and verifies the bundle offline.
+// Only the model provider is scripted, and this path makes no model call.
 func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(t *testing.T) {
-	ctx := context.Background()
-	tempDir := testutil.TempDir(t)
-	fileSvc := storagetest.NewTestFileSvc(t, tempDir)
-	_, vaultKey, err := ed25519.GenerateKey(nil)
-	require.NoError(t, err)
-	testVault := storagetest.CreateTestVault(t, fileSvc.Resolve(constants.VaultDirname), vaultKey)
-
-	require.NoError(t, fileSvc.MkdirAll(context.Background(), constants.DataDirname, constants.PermDirStandard))
-	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(dbPath), testutil.NewTestLogger())
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	t.Cleanup(cancel)
+	logger := testutil.NewTestLogger()
+	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{})
+	dataWorkload, err := stack.Data.Workload()
 	require.NoError(t, err)
 
-	auditConfig := storage.DefaultAuditStoreConfig()
-	auditConfig.EncryptionVault = testVault
-	auditStore, err := storage.NewSQLAuditStore(auditConfig, db, testutil.NewTestLogger(), fileSvc)
-	require.NoError(t, err)
-	closed := false
-	t.Cleanup(func() {
-		if !closed {
-			_ = auditStore.Close()
-			_ = db.Close()
-		}
+	payload, err := proto.Marshal(&operatorv1.CommandRequested{
+		Command:       "echo ztd-operational-evidence",
+		ExecutionId:   "operational-evidence-marker",
+		Justification: "Produce operational evidence for the assurance report",
+		Intent:        "Print a fixed verification marker",
 	})
-	require.NoError(t, auditStore.CreateSession("operator-session-1", constants.SessionTypeOperator, "operator fixture", "test-user"))
+	require.NoError(t, err)
+	body, err := json.Marshal(models.OperatorCommandRequest{
+		TargetOperatorSessionID: dataWorkload.OperatorSessionID,
+		EventType:               string(constants.Event.Operator.Command.Requested),
+		Payload:                 payload,
+	})
+	require.NoError(t, err)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		network.LocalhostHTTPSURL(stack.Gateway.Service.GetHTTPSPort())+constants.APIPaths.OperatorsCommands, bytes.NewReader(body))
+	require.NoError(t, err)
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(constants.HeaderCLISessionID, stack.Identity.CLISessionID)
+	client := fixtures.CreateCLIMTLSClient(t, stack.Gateway, stack.Identity)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	respBody, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, resp.Body.Close())
+	require.NoError(t, readErr)
+	require.Equalf(t, http.StatusOK, resp.StatusCode, "dispatch response: %s", respBody)
 
-	receiptPublicKey, receiptPrivateKey, err := ed25519.GenerateKey(nil)
+	var result operatorv1.GovernedDispatchResult
+	require.NoError(t, protojson.Unmarshal(respBody, &result), "dispatch response: %s", respBody)
+	require.Equal(t, string(constants.Event.Operator.Command.Completed), result.GetEventType())
+	require.NotEmpty(t, result.GetTransactionId())
+	require.NotNil(t, result.GetReceipt())
+	var commandResult operatorv1.CommandResult
+	require.NoError(t, proto.Unmarshal(result.GetResultPayload(), &commandResult))
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, commandResult.GetStatus())
+
+	// The Data Operator's authoritative store and keystore, opened read-only.
+	dataFiles, err := fs.NewRuntimeFileService(stack.DataHost.WorkingDir, logger)
 	require.NoError(t, err)
-	auditorPublicKey, auditorPrivateKey, err := ed25519.GenerateKey(nil)
+	ks, err := keystore.Open(dataFiles, logger, keystore.Options{Keyring: stack.DataHost.Keyring})
 	require.NoError(t, err)
-	receiptKeyID := hex.EncodeToString(receiptPublicKey)
+	vaultKey, err := ks.LoadVaultKey()
+	require.NoError(t, err)
+	t.Cleanup(func() { vault.SecureZero(vaultKey) })
+	dataVault, err := vault.NewVault(&vault.VaultConfig{FileSvc: dataFiles, Logger: logger})
+	require.NoError(t, err)
+	require.NoError(t, dataVault.Unlock(vaultKey))
+
+	// The actuator key signs receipts; it is the key the Gateway registered for
+	// this Operator. The auditor key signs commitments and is the Operator's own
+	// keystore secret, derived the same way its secret manager derives it.
+	operatorDoc, err := stack.Gateway.Service.GetRegistrationService().GetOperator(ctx, dataWorkload.OperatorID)
+	require.NoError(t, err)
+	actuatorPublicKey, err := models.DecodeActuatorPublicKey(operatorDoc.GetActuatorPublicKey())
+	require.NoError(t, err)
+	actuatorKeyID := hex.EncodeToString(actuatorPublicKey)
+	require.Equal(t, actuatorKeyID, result.GetReceipt().GetSignerKeyId(), "the dispatched receipt must be signed by the registered actuator key")
+	auditorSeedHex, err := ks.DecryptSecret(constants.SecretsFileAuditorSigningKey)
+	require.NoError(t, err)
+	auditorSeed, err := hex.DecodeString(auditorSeedHex)
+	require.NoError(t, err)
+	require.Len(t, auditorSeed, ed25519.SeedSize)
+	auditorPublicKey := ed25519.NewKeyFromSeed(auditorSeed).Public().(ed25519.PublicKey)
 	auditorKeyID := hex.EncodeToString(auditorPublicKey)
-	stateRoot := testutil.NewMockStateRootProvider("operator-state-root")
-	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), testutil.NewTestLogger(), storagetest.NewTestTokenStore())
-	require.NoError(t, err)
-	actuator := &governance.L5Actuator{
-		Logger:            testutil.NewTestLogger(),
-		Scrubbing:         scrubber,
-		SQLAuditStore:     auditStore,
-		StateRootProvider: stateRoot,
-		ExecutionHandler:  operationalAcceptanceHandler{},
-		SigningKey:        receiptPrivateKey,
-		KeyID:             receiptKeyID,
-		AuditorSigningKey: auditorPrivateKey,
-		AuditorKeyID:      auditorKeyID,
-	}
 
-	envelope := &govtypes.GovernanceEnvelope{
-		Id:                mustUUID(t),
-		TransactionHash:   "operator-transaction-hash",
-		OperatorId:        "operator-1",
-		OperatorSessionId: "operator-session-1",
-		RequestorUserId:   "test-user",
-		EventType:         string(constants.Event.Operator.Command.Requested),
-		ActionType:        string(constants.ActionTypeExecuteBash),
-		TargetResource:    "operator-fixture-target",
-		CaseId:            "operator-run-1",
-		InvestigationId:   "operator-investigation-1",
-		TaskId:            "operator-attempt-1",
-	}
-	l4StageID := envelope.Id + ":l4"
-	vt := &governance.VerifiedTransaction{
-		Envelope:   envelope,
-		ActionType: constants.ActionTypeExecuteBash,
-		L2Status:   operatorv1.L2Status_L2_STATUS_NOT_REQUIRED,
-		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
-		DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{
-			{StageId: envelope.Id + ":l1", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED, TransactionId: envelope.Id, TransactionHash: envelope.TransactionHash, ActionType: envelope.ActionType, OperatorId: envelope.OperatorId, OperatorSessionId: envelope.OperatorSessionId, CaseId: envelope.CaseId, InvestigationId: envelope.InvestigationId, TaskId: envelope.TaskId, ParentStageId: l4StageID},
-			{StageId: envelope.Id + ":l2", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED, TransactionId: envelope.Id, TransactionHash: envelope.TransactionHash, ActionType: envelope.ActionType, OperatorId: envelope.OperatorId, OperatorSessionId: envelope.OperatorSessionId, CaseId: envelope.CaseId, InvestigationId: envelope.InvestigationId, TaskId: envelope.TaskId, ParentStageId: l4StageID},
-			{StageId: envelope.Id + ":l3", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED, TransactionId: envelope.Id, TransactionHash: envelope.TransactionHash, ActionType: envelope.ActionType, OperatorId: envelope.OperatorId, OperatorSessionId: envelope.OperatorSessionId, CaseId: envelope.CaseId, InvestigationId: envelope.InvestigationId, TaskId: envelope.TaskId, ParentStageId: l4StageID},
-			{StageId: l4StageID, Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED, TransactionId: envelope.Id, TransactionHash: envelope.TransactionHash, ActionType: envelope.ActionType, OperatorId: envelope.OperatorId, OperatorSessionId: envelope.OperatorSessionId, CaseId: envelope.CaseId, InvestigationId: envelope.InvestigationId, TaskId: envelope.TaskId},
-		},
-	}
-	receipt, err := actuator.Execute(ctx, vt, nil)
-	require.NoError(t, err)
-	require.NotNil(t, receipt)
-
-	now := time.Now().UTC()
-	windowStart := now.Add(-time.Minute)
-	windowEnd := now.Add(time.Minute)
-	dbPath = filepath.Join(fileSvc.Resolve(constants.DataDirname), constants.DbFilename)
-	reader, err := storage.OpenReadOnlyOperationalEvidence(dbPath, testVault, testutil.NewTestLogger())
+	assessmentAsOf := time.Now().UTC()
+	windowStart := assessmentAsOf.Add(-time.Minute)
+	windowEnd := assessmentAsOf.Add(time.Minute)
+	reader, err := storage.OpenReadOnlyOperationalEvidence(dataFiles.Resolve(constants.CanonicalDBRelPath), dataVault, logger)
 	require.NoError(t, err)
 	snapshot, err := reader.Snapshot(ctx, storage.OperationalEvidenceQuery{WindowStart: windowStart, WindowEnd: windowEnd, MaxRows: 10})
 	require.NoError(t, err)
-	require.Len(t, snapshot.Receipts, 1)
-	require.NotEmpty(t, snapshot.Receipts[0].Body)
-	require.Len(t, snapshot.Commitments, 1)
 	require.NoError(t, reader.Close())
-	require.NoError(t, auditStore.Close())
-	require.NoError(t, db.Close())
-	closed = true
 
-	assessmentAsOf := now
+	receiptFound := false
+	for _, receipt := range snapshot.Receipts {
+		if receipt.TransactionID == result.GetTransactionId() {
+			receiptFound = true
+		}
+	}
+	require.True(t, receiptFound, "the Data Operator's receipt for the dispatched transaction must be in the window")
+	commitmentFound := false
+	for _, commitment := range snapshot.Commitments {
+		if commitment.TransactionID == result.GetTransactionId() {
+			commitmentFound = true
+		}
+	}
+	require.True(t, commitmentFound, "the Data Operator's commitment for the dispatched transaction must be in the window")
+
 	scope := validGenerationScope(windowStart, windowEnd)
 	scope.AssessmentAsOf = timestamppb.New(assessmentAsOf)
 	admission := scope.SourceAdmissions[0]
@@ -192,7 +190,7 @@ func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(
 		sourceBodies[path.Join(sourceRoot, artifact.RelativePath)] = body
 	}
 
-	trust := &assessedEvidenceSignerStub{keys: map[string]ed25519.PublicKey{receiptKeyID: receiptPublicKey, auditorKeyID: auditorPublicKey}}
+	trust := &assessedEvidenceSignerStub{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPublicKey, auditorKeyID: auditorPublicKey}}
 	importer := evidence.NewOperationalExportImporter(&bundledSourceArtifactReader{bodies: sourceBodies}, trust, path.Join(sourceRoot, constants.ComplianceOperationalInventoryFilename), sourceRoot, scope.GetScopeId(), admission, assessmentAsOf, func() time.Time { return assessmentAsOf })
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
 	require.NoError(t, err)

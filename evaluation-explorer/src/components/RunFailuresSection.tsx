@@ -11,6 +11,7 @@ import { NON_VERDICT_NOTE, PanelSection, TonePill } from './evidence';
 import type { AssignmentResult, TerminalStatus } from '../contract/types';
 import type { FeedConnectionState } from '../utils/feed-state';
 import { assignmentVerdictTone, isFailureTerminalStatus, isNonVerdictOutcome, roleLabel } from '../views/derived';
+import { isCapabilityQualificationScenario } from '../content/scenario-task';
 
 function observationLabel(value: string): string {
   return value.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
@@ -46,6 +47,14 @@ export function RunFailuresSection({ assignments, connection }: RunFailuresSecti
         ),
       },
       { id: 'task', header: 'Task', accessorKey: 'task_id' },
+      {
+        id: 'scope',
+        header: 'Scope',
+        accessorFn: (row: AssignmentResult) => isCapabilityQualificationScenario(row.scenario_summary?.expected_tools) ? 'capability qualification' : '',
+        cell: ({ row }) => isCapabilityQualificationScenario(row.original.scenario_summary?.expected_tools)
+          ? <TonePill tone="warn" title="This result measures direct command handling, not investigation context retrieval or continuity.">Capability qualification</TonePill>
+          : '—',
+      },
       { id: 'variant', header: 'Variant', accessorKey: 'variant_id' },
       {
         id: 'role',

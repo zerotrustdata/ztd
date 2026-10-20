@@ -237,6 +237,59 @@ func TestDecodeProducerRequest_RejectsTrailingJSON(t *testing.T) {
 	assert.True(t, errors.Is(err, constants.ErrInvalidJSONBody))
 }
 
+// validStopReq returns a fully valid stop producer request for mutation in
+// table-driven tests.
+func validStopReq() models.ObserveProducerStopRequest {
+	return models.ObserveProducerStopRequest{
+		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
+		CampaignID:    "campaign-1",
+		RunID:         "run-1",
+		StopReason:    models.StopReasonGraceful,
+		StopScope:     models.StopScopeSupervisor,
+		CLISessionID:  "cli-1",
+	}
+}
+
+func TestValidateStopProducerRequest_AcceptsEveryStopReasonAndScope(t *testing.T) {
+	for _, reason := range []models.StopReason{
+		models.StopReasonGraceful, models.StopReasonSafetyBudget, models.StopReasonSafetyDisk,
+		models.StopReasonSafetyHardwareDrift, models.StopReasonSafetyCredential,
+		models.StopReasonSafetyVerifier, models.StopReasonSafetyDisclosure,
+		models.StopReasonSafetyPublication,
+	} {
+		for _, scope := range []models.StopScope{models.StopScopeCycle, models.StopScopeSupervisor} {
+			req := validStopReq()
+			req.StopReason = reason
+			req.StopScope = scope
+			assert.NoError(t, validateStopProducerRequest(req), "reason %s scope %s should be accepted", reason, scope)
+		}
+	}
+}
+
+func TestValidateStopProducerRequest_Rejections(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*models.ObserveProducerStopRequest)
+		want   error
+	}{
+		{"unsupported schema version", func(r *models.ObserveProducerStopRequest) { r.SchemaVersion = "9.9.9" }, constants.ErrObserveUnsupportedSchemaVersion},
+		{"missing campaign id", func(r *models.ObserveProducerStopRequest) { r.CampaignID = "" }, constants.ErrObserveCampaignIDRequired},
+		{"missing run id", func(r *models.ObserveProducerStopRequest) { r.RunID = "" }, constants.ErrObserveRunIDRequired},
+		{"unknown stop reason", func(r *models.ObserveProducerStopRequest) { r.StopReason = "because" }, constants.ErrObserveStopReasonInvalid},
+		{"empty stop reason", func(r *models.ObserveProducerStopRequest) { r.StopReason = "" }, constants.ErrObserveStopReasonInvalid},
+		{"unknown stop scope", func(r *models.ObserveProducerStopRequest) { r.StopScope = "fleet" }, constants.ErrObserveStopScopeInvalid},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := validStopReq()
+			tc.mutate(&req)
+			err := validateStopProducerRequest(req)
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, tc.want), "want %v, got %v", tc.want, err)
+		})
+	}
+}
+
 // TestDecodeProducerRequest_RejectsMalformedJSON asserts the strict decode
 // helper rejects malformed JSON.
 func TestDecodeProducerRequest_RejectsMalformedJSON(t *testing.T) {

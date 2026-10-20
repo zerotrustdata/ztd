@@ -112,36 +112,6 @@ func TestBuiltinLoadsSortedScenarios(t *testing.T) {
 	}
 }
 
-func TestScenarioSeedRoundTripsCase(t *testing.T) {
-	for id, s := range mustBuiltin(t) {
-		seed := s.Seed()
-		if seed.CaseTitle != s.Case.Title || seed.CaseDescription != s.Case.Description {
-			t.Errorf("%s: title/description not carried over", id)
-		}
-		if !reflect.DeepEqual(seed.CaseMemory, s.Case.Memory) {
-			t.Errorf("%s: memory = %v, want %v", id, seed.CaseMemory, s.Case.Memory)
-		}
-		if len(seed.PriorTurns) != len(s.Case.PriorTurns) {
-			t.Fatalf("%s: prior turns = %d, want %d", id, len(seed.PriorTurns), len(s.Case.PriorTurns))
-		}
-		for i, turn := range s.Case.PriorTurns {
-			if seed.PriorTurns[i].Role != turn.Role || seed.PriorTurns[i].Text != turn.Text {
-				t.Errorf("%s: prior turn %d not carried over", id, i)
-			}
-		}
-		if len(seed.History) != len(s.Case.History) {
-			t.Fatalf("%s: history = %d, want %d", id, len(seed.History), len(s.Case.History))
-		}
-		for i, event := range s.Case.History {
-			got := seed.History[i]
-			if got.EventType != event.Kind || got.Summary != event.Summary || got.Command != event.Command ||
-				got.ExitCode != event.ExitCode {
-				t.Errorf("%s: history %d not carried over: %+v", id, i, got)
-			}
-		}
-	}
-}
-
 func TestBuiltinPredicatesFailUnfixedAndPassFixed(t *testing.T) {
 	for id, s := range mustBuiltin(t) {
 		for _, state := range s.Objective.FileState {
@@ -237,7 +207,6 @@ func TestScenarioValidateRejectsInvalidScenarios(t *testing.T) {
 		{"blank case title", func(s *Scenario) { s.Case.Title = "  " }},
 		{"blank user message", func(s *Scenario) { s.UserMessage = "" }},
 		{"prior turn role", func(s *Scenario) { s.Case.PriorTurns[0].Role = "system" }},
-		{"history kind", func(s *Scenario) { s.Case.History[0].Kind = "COMMAND_RAN" }},
 		{"empty workspace", func(s *Scenario) { s.Workspace = nil }},
 		{"dotdot path", func(s *Scenario) { s.Workspace[0].Path = "../app/service.conf" }},
 		{"absolute path", func(s *Scenario) { s.Workspace[0].Path = "/app/service.conf" }},

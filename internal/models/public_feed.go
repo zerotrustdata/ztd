@@ -240,16 +240,17 @@ type PublicProofSegmentsResponse struct {
 	Segments      []PublicProofManifestSegment `json:"segments"`
 }
 
-// PublicAssignmentAuditProofPublishRequest ingests one assignment audit export
-// package through the gateway-owned public publisher.
+// PublicAssignmentAuditProofPublishRequest asks the gateway-owned public
+// publisher to publish one assignment's audit database. The gateway builds the
+// database itself from the signed event records it stores for the run and
+// assignment; the request carries no database bytes and no key.
 type PublicAssignmentAuditProofPublishRequest struct {
-	CampaignID       string `json:"campaign_id"`
+	CampaignID string `json:"campaign_id"`
+	// CampaignRevision and IndexDigest are required.
 	CampaignRevision string `json:"campaign_revision"`
 	RunID            string `json:"run_id"`
 	AssignmentID     string `json:"assignment_id"`
 	IndexDigest      string `json:"index_digest"`
-	Database         []byte `json:"database"`
-	VaultKey         []byte `json:"vault_key"`
 	// AgentTrace is the exact sealed agent trace body for agent assignments.
 	// It is published unredacted as a content-addressed proof artifact.
 	AgentTrace []byte `json:"agent_trace,omitempty"`
@@ -297,20 +298,26 @@ type PublicProofMirrorSyncState struct {
 	SyncedAt        time.Time `json:"synced_at"`
 }
 
+// PublicAssignmentAuditProofPublishResponse reports the digests of one
+// published assignment. DatabaseSHA256 is the SHA-256 of the assignment audit
+// database the gateway built; the proof segment signature covers it.
 type PublicAssignmentAuditProofPublishResponse struct {
 	Accepted            bool   `json:"accepted"`
+	AssignmentID        string `json:"assignment_id,omitempty"`
 	DatabaseSHA256      string `json:"database_sha256,omitempty"`
-	VaultKeySHA256      string `json:"vault_key_sha256,omitempty"`
 	AgentTraceSHA256    string `json:"agent_trace_sha256,omitempty"`
 	ScenarioInputSHA256 string `json:"scenario_input_sha256,omitempty"`
 	ScenarioGoldSHA256  string `json:"scenario_gold_sha256,omitempty"`
 	ProofRootSHA256     string `json:"proof_root_sha256,omitempty"`
 }
 
+// PublicAssignmentAuditProofBatchPublishResponse reports a batch publication.
+// Proofs holds one response per request, in request order.
 type PublicAssignmentAuditProofBatchPublishResponse struct {
-	Accepted        bool   `json:"accepted"`
-	IngestedProofs  int    `json:"ingested_proofs,omitempty"`
-	ProofRootSHA256 string `json:"proof_root_sha256,omitempty"`
+	Accepted        bool                                        `json:"accepted"`
+	IngestedProofs  int                                         `json:"ingested_proofs,omitempty"`
+	ProofRootSHA256 string                                      `json:"proof_root_sha256,omitempty"`
+	Proofs          []PublicAssignmentAuditProofPublishResponse `json:"proofs"`
 }
 
 // PublicKeyRevocationRecord is a key revocation record published as a signed

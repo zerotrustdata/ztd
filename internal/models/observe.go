@@ -563,6 +563,20 @@ type ObserveProducerRunStateRequest struct {
 	CLISessionID   string             `json:"cli_session_id,omitempty"`
 }
 
+// ObserveProducerStopRequest is the typed request body for the mTLS producer
+// endpoint POST /api/v1/observe/producer/stop. It names one campaign run to
+// stop and carries the SSE routing target. The gateway derives user_id from
+// the mTLS peer certificate, never from the request body.
+type ObserveProducerStopRequest struct {
+	SchemaVersion string     `json:"schema_version"`
+	CampaignID    string     `json:"campaign_id"`
+	RunID         string     `json:"run_id"`
+	StopReason    StopReason `json:"stop_reason"`
+	StopScope     StopScope  `json:"stop_scope"`
+	WebSessionID  string     `json:"web_session_id,omitempty"`
+	CLISessionID  string     `json:"cli_session_id,omitempty"`
+}
+
 // ObserveProducerResponse is the typed response body for the mTLS producer
 // endpoints. It carries a single accepted flag indicating the gateway
 // accepted and persisted the projection. The response contains no record
@@ -745,11 +759,14 @@ type EvalHeartbeatPayload struct {
 }
 
 // EvalStopRequestedPayload is the payload for ai.eval.stop.requested events.
+// The event is run-scoped: RunID names the campaign run to stop, and the CLI
+// process that owns that run is the consumer that acts on it.
 type EvalStopRequestedPayload struct {
 	SchemaVersion  string     `json:"schema_version"`
 	SourceSequence int64      `json:"source_sequence"`
 	EventID        string     `json:"event_id"`
 	CampaignID     string     `json:"campaign_id"`
+	RunID          string     `json:"run_id"`
 	StopReason     StopReason `json:"stop_reason"`
 	StopScope      StopScope  `json:"stop_scope"`
 	RequestedAt    time.Time  `json:"requested_at"`

@@ -42,7 +42,7 @@ func operatorResetIdentityCmdWithDiscovery(discover func() ([]localOperatorProce
 				return err
 			}
 			proceed, err := shared.ConfirmDestructive(cmd, shared.DestructiveOptions{
-				Effects: []string{"Stop local operator workers in " + dir, "Remove CLI session credentials, the CLI certificate and key, and cached Gateway trust", "Preserve working data, model files, vault keys, configuration, and logs; fresh enrollment requires gateway approval"}, AssumeYes: yes,
+				Effects: []string{"Stop local Operators in " + dir, "Remove CLI session credentials, the CLI certificate and key, and cached Gateway trust", "Preserve working data, model files, vault keys, configuration, and logs; fresh enrollment requires gateway approval"}, AssumeYes: yes,
 			})
 			if err != nil || !proceed {
 				return err

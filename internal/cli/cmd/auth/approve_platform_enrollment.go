@@ -286,7 +286,7 @@ func platformEnrollmentDecisionCmdWithConfig(
 				}
 			}
 
-			resp, err := PostPlatformEnrollmentBatchDecision(client, decision)
+			resp, err := auth.PostPlatformEnrollmentBatchDecision(client, decision)
 			if err != nil {
 				var l3Err *models.PlatformEnrollmentL3RequiredError
 				if errors.As(err, &l3Err) {
@@ -323,38 +323,6 @@ func confirmPlatformEnrollmentAction(cmd *cobra.Command, prompt string) error {
 		return constants.ErrConfirmationAborted
 	}
 	return nil
-}
-
-// PostPlatformEnrollmentBatchDecision sends one atomic, governed decision.
-func PostPlatformEnrollmentBatchDecision(client APIClient, req models.PlatformEnrollmentBatchDecisionRequest) (*models.PlatformEnrollmentBatchDecisionResponse, error) {
-	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("validate batch decision: %w", err)
-	}
-	body, err := client.Post(constants.APIPaths.AuthPlatformEnrollmentBatchDecision, req)
-	if err != nil {
-		return nil, fmt.Errorf("post batch decision: %w", err)
-	}
-	var suspension models.PlatformEnrollmentL3SuspensionResponse
-	if err := json.Unmarshal(body, &suspension); err == nil && suspension.Status == models.PlatformEnrollmentStatusL3Required {
-		return nil, &models.PlatformEnrollmentL3RequiredError{Suspension: suspension}
-	}
-	var resp models.PlatformEnrollmentBatchDecisionResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decode batch decision: %w", err)
-	}
-	if len(resp.Requests) != len(req.Requests) || resp.ReceiptID == "" {
-		return nil, constants.ErrPlatformEnrollmentInvalidDecision
-	}
-	for i, result := range resp.Requests {
-		expected := models.PlatformEnrollmentStateApproved
-		if req.Decision == models.PlatformEnrollmentDecisionDeny {
-			expected = models.PlatformEnrollmentStateDenied
-		}
-		if result.RequestID != req.Requests[i].RequestID || result.State != expected {
-			return nil, constants.ErrPlatformEnrollmentInvalidDecision
-		}
-	}
-	return &resp, nil
 }
 
 // selectPendingRequests resolves each selector against the pending list by exact

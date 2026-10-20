@@ -86,9 +86,7 @@ func (cs *CommandService) HandleExecutionRequest(ctx context.Context, msg *PubSu
 	cs.logger.Info("Parsed command payload via Protobuf (CommandRequested)")
 
 	command := protoCmd.Command
-	if err := operatorcapability.ValidateWitnessCommand(&operatorv1.OperatorRuntimeConfig{
-		Capabilities: models.OperatorCapabilitiesToProto(cs.config.EffectiveOperatorCapabilities()),
-	}, command); err != nil {
+	if err := operatorcapability.ValidateWitnessCommand(cs.config.EffectiveOperatorCapabilities(), command); err != nil {
 		// The validator's error embeds the command line, so only its sentinel is logged.
 		cs.logger.Error("Witness command rejected", "message_id", msg.ID, string(constants.ConnectionStateError), constants.ErrWitnessCommandNotCapable)
 		return "", err

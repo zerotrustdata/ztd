@@ -83,7 +83,7 @@ The L5 Actuator (`internal/services/governance/l5_actuator.go`) is the sole enti
 
 1. **Pre-Execution Signing**: Generates and signs the initial `EXECUTING` `ActionReceipt` using the local Actuator Ed25519 signing key.
 2. **Commitment Attestation**: Appends a signed attestation to the SQLite chain head.
-3. **Payload Rehydration**: Resolves reversible `{{UEI_N}}` tokens to unredacted plaintext through `ScrubbingService`. Fails closed if token lookup fails.
+3. **Payload Rehydration**: Resolves reversible `{{UEI_N}}` tokens to unredacted plaintext through `ScrubbingService`. Fails closed: a token that cannot be resolved, or any token when no `ScrubbingService` is configured, skips dispatch and finalizes a signed `FAILED` receipt.
 4. **Just-In-Time (JIT) Capability**: Mints an ephemeral, transaction-scoped capability granting the exact permissions required by the handler.
 5. **Execution Dispatch**: Invokes the registered MCP tool handler or native command runner.
 6. **Capability Dissolution**: Destroys the ephemeral capability immediately upon command completion.

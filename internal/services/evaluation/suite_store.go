@@ -33,10 +33,14 @@ func suitePath(id string) string {
 // ResolveSuite returns the suite with the given ID: a built-in suite, or a
 // custom one from the suite store. The second result reports a built-in suite.
 func (s *Store) ResolveSuite(ctx context.Context, id string) (ScenarioSuite, bool, error) {
-	if def, ok := BuiltinScenarioSuite(id); ok {
+	def, builtin, err := BuiltinScenarioSuite(id)
+	if err != nil {
+		return ScenarioSuite{}, true, fmt.Errorf("evaluation: resolve suite %q: %w", id, err)
+	}
+	if builtin {
 		return def, true, nil
 	}
-	def, err := s.loadCustomSuite(ctx, id)
+	def, err = s.loadCustomSuite(ctx, id)
 	return def, false, err
 }
 
@@ -50,6 +54,8 @@ func (s *Store) LoadSuiteCatalog(ctx context.Context, id string) (*evalv1.Evalua
 		return LoadScenarioCatalog()
 	case SmokeSuiteID:
 		return LoadSmokeGateScenarioCatalog()
+	case InvestigationsSuiteID:
+		return LoadInvestigationsScenarioCatalog()
 	}
 	def, err := s.loadCustomSuite(ctx, id)
 	if err != nil {
@@ -67,7 +73,10 @@ func (s *Store) ListSuites(ctx context.Context) ([]SuiteSummary, error) {
 	}
 	summaries := make([]SuiteSummary, 0, len(BuiltinSuiteIDs()))
 	for _, id := range BuiltinSuiteIDs() {
-		def, _ := BuiltinScenarioSuite(id)
+		def, _, err := BuiltinScenarioSuite(id)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: list suites: %w", err)
+		}
 		summaries = append(summaries, def.Summary(true))
 	}
 	entries, err := s.files.ReadDir(ctx, suitesRootDir())
@@ -152,7 +161,7 @@ func (s *Store) DeleteSuite(ctx context.Context, id string) error {
 	if err := s.requireSuiteStore(); err != nil {
 		return err
 	}
-	if _, builtin := BuiltinScenarioSuite(id); builtin {
+	if isBuiltinSuiteID(id) {
 		return fmt.Errorf("evaluation: delete suite %q: %w", id, constants.ErrEvaluationSuiteBuiltin)
 	}
 	if _, err := s.loadCustomSuite(ctx, id); err != nil {

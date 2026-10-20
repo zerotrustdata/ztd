@@ -79,7 +79,7 @@ func TestTokenize_KeepsExistingTokens(t *testing.T) {
 
 	result := service.tokenize(ctx, "  Bearer "+inner)
 	assert.Regexp(t, `^  \{\{UEI_\d+\}\} `+regexp.QuoteMeta(inner)+`$`, result)
-	assert.Equal(t, "  Bearer abc", service.RehydrateText(ctx, result))
+	assert.Equal(t, "  Bearer abc", mustRehydrateText(t, service, result))
 }
 
 func TestTokenKeymapHash_Empty(t *testing.T) {

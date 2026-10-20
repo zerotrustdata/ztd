@@ -20,7 +20,7 @@ import {
   type StreamConnectionState,
 } from '../utils/feed-state';
 import { qualityStateTone } from '../views/derived';
-import { metricDisplay, formatPercent, formatNumber, formatLatency, formatThroughput, formatTokens, formatDuration, formatTimestamp, formatRelativeTime } from '../utils/format';
+import { metricDisplay, formatPercent, formatNumber, formatLatency, formatThroughput, formatTokens, formatDuration, formatTimestamp, formatRelativeTime, formatRank } from '../utils/format';
 export const toneClass: Record<string, string> = {
   ok: 'tone-ok',
   info: 'tone-info',
@@ -393,4 +393,4 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-export { formatPercent, formatNumber, formatLatency, formatThroughput, formatTokens, formatDuration, formatTimestamp };
+export { formatPercent, formatNumber, formatLatency, formatThroughput, formatTokens, formatDuration, formatTimestamp, formatRank };

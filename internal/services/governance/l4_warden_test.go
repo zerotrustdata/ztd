@@ -11,7 +11,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
-	"fmt"
 	"testing"
 	"time"
 
@@ -97,7 +96,7 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 	case constants.ActionTypeEvalAnswer:
 		msg = &operatorv1.EvalAnswerRequested{PromptId: "test", Benchmark: "test", Model: "test", Answer: "test"}
 	case constants.ActionTypeMcpCall:
-		msg = &operatorv1.McpCallRequested{ToolName: "test", ArgumentsJson: "{}", ExecutionId: "exec-1"}
+		msg = &operatorv1.McpCallRequested{ToolName: testMCPToolName, ArgumentsJson: "{}", ExecutionId: "exec-1"}
 	case constants.ActionTypeA2aCall:
 		msg = &operatorv1.A2ACallRequested{SkillName: "test", PayloadJson: "{}", ExecutionId: "exec-1"}
 	case constants.ActionTypeMcpResourceList:
@@ -173,12 +172,24 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 // preventing decision/signature mismatch bugs where the signed string and the
 // Decision field diverge.
 func signL2Vote(privKey ed25519.PrivateKey, keyID, hash string, decision bool) *commonv1.L2Vote {
-	sig := ed25519.Sign(privKey, []byte(fmt.Sprintf("%s|%v", hash, decision)))
+	sig := ed25519.Sign(privKey, L2VotePayload(hash, decision))
 	return &commonv1.L2Vote{
 		SignerKeyId:        keyID,
 		ConsensusSignature: hex.EncodeToString(sig),
 		Decision:           decision,
 	}
+}
+
+// testMCPToolName is the tool of typedPayload's MCP_CALL.
+const testMCPToolName = "test"
+
+// testEnvelopeTarget is signedEnvelope's target_resource: an MCP_CALL targets
+// its tool, as the Warden requires; every other action targets localhost.
+func testEnvelopeTarget(actionType constants.ActionType) string {
+	if actionType == constants.ActionTypeMcpCall {
+		return testMCPToolName
+	}
+	return "localhost"
 }
 
 func signedEnvelope(t *testing.T, actionType constants.ActionType, payload []byte, privKey ed25519.PrivateKey, posture constants.Posture) *govtypes.GovernanceEnvelope {
@@ -206,7 +217,7 @@ func signedEnvelope(t *testing.T, actionType constants.ActionType, payload []byt
 		OperatorSessionId: "operator-session-1",
 		EventType:         string(eventType),
 		ActionType:        string(actionType),
-		TargetResource:    "localhost",
+		TargetResource:    testEnvelopeTarget(actionType),
 		Payload:           payload,
 		StateMerkleRoot:   "root-1",
 		Nonce:             "nonce-" + string(actionType) + "-" + nonceSuffix,

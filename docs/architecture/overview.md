@@ -3,8 +3,8 @@ doc_id: overview
 title: Platform Architecture Overview
 audience: maintainers and coding agents
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - cmd/ztd/
   - internal/cli/
@@ -62,7 +62,7 @@ Defines the architecture of the ztd zero-trust governance and execution platform
   - [Client Ingress Surfaces and Protocol Adapters](#client-ingress-surfaces-and-protocol-adapters)
   - [Operator Capability Model and Coexistence](#operator-capability-model-and-coexistence)
   - [Network Topology, Ports, and SPIFFE Identity](#network-topology-ports-and-spiffe-identity)
-  - [Authentication, Sessions, and Enrollment Lifecycle](#authentication-sessions-and-enrollment-lifecycle)
+  - [Authentication and Enrollment Lifecycle](#authentication-and-enrollment-lifecycle)
   - [Cryptographic Key Custody and Vault Hierarchy](#cryptographic-key-custody-and-vault-hierarchy)
   - [Local-First Audit Architecture (LFAA)](#local-first-audit-architecture-lfaa)
   - [Server-Sent Events (SSE) Infrastructure](#server-sent-events-sse-infrastructure)
@@ -91,7 +91,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-ARCH-NODE-01 | The Gateway (PDP) and Operator (PEP) MUST be instantiated from the single static `ztd` Go binary (`ztd gw start` and `ztd operator start`). The Gateway coordinates ingress, PKI, and L1–L3 deliberation; the Operator maintains sovereign execution and local audit evidence. |
 | INV-ARCH-NODE-02 | Outbound Operators MUST establish outbound-only mTLS connections to the Gateway and subscribe to exact session-specific command channels (`cmd:<operator_id>:<operator_session_id>`). The Gateway MUST NOT expose or require inbound management listeners into remote Operator environments. |
-| INV-ARCH-NODE-03 | Multiple Operator instances running on the same host MUST be disambiguated by a composite SHA-256 system fingerprint combining host properties with `local_dir`, `account`, `port`, and `operator_capabilities` (`data`, `inference`, `provenance`, `observer`). Witness-only operators (`provenance`, `observer`) MUST reject arbitrary command execution; adding `data` enables governed commands in the same process. |
+| INV-ARCH-NODE-03 | Multiple Operator instances running on the same host MUST be disambiguated by a composite SHA-256 system fingerprint combining host properties with `local_dir`, `account`, `port`, and `operator_capabilities` (`data`, `inference`, `provenance`, `observer`). Witness-only operators (`provenance`, `observer`) MUST reject arbitrary command execution; adding `data` or `inference` enables generic command execution in the same process. |
 | INV-ARCH-NODE-04 | Every read of an Operator document MUST move an active remote Operator without a heartbeat for longer than `constants.OperatorStaleAfter` (twice its declared heartbeat interval, floor 60 seconds, ceiling 10 minutes) to `stale` on read. The embedded Operator is exempt. Heartbeats restore `stale` to `active`; heartbeats MUST NOT revive `stopped` or `terminated` Operators. |
 | INV-ARCH-NODE-05 | Enrolling an Operator whose `system_fingerprint` matches an existing non-terminated remote Operator held by the same owner MUST terminate the earlier Operator document and deactivate its session in the same governed issuance step. One Operator identity MUST NOT hold multiple active leases. |
 
@@ -100,7 +100,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-ARCH-INGR-01 | Client-native tools, direct shell execution, MCP servers reached directly by clients, and unmonitored side channels remain outside the governance boundary. Tools are governed ONLY when invoked through a ztd ingress (Gateway MCP, A2A, Governed HTTP dispatch, CLI `operator run`, or direct envelope) and executed via the L5 Actuator. |
-| INV-ARCH-INGR-02 | Direct envelope submission (`POST /api/v1/governance/envelopes`) and governed HTTP dispatch (`POST /api/v1/operators/commands`) MUST NOT synthesize missing L2 votes or L3 proofs; transactions missing posture-required evidence MUST fail closed at L4 verification. |
+| INV-ARCH-INGR-02 | Direct envelope submission (`POST /api/v1/governance/envelopes`) and governed HTTP dispatch (`POST /api/v1/operators/commands`) MUST NOT synthesize missing L2 votes or L3 proofs; transactions missing posture-required evidence MUST fail closed at L4 verification. Governed HTTP dispatch under `ratify` or `notary` does not execute without proof: it suspends and holds the request until a human supplies the proof ([Layer 3 (L3) Notary: Human Authorization](governance.md#layer-3-l3-notary-human-authorization)). |
 
 ### Identity and Trust Boundaries (`INV-ARCH-TRUST`)
 
@@ -122,18 +122,18 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- | :--- |
 | Unified CLI entrypoint and commands | `cmd/ztd/main.go`, `internal/cli/cmd/` | `make build && ./ztd --help` |
 | Gateway daemon and lifecycle | `internal/cli/cmd/gw/`, `internal/services/gateway/` | `ztd gw start`, `ztd gw status` |
-| Operator daemon and lifecycle | `internal/cli/cmd/operator/`, `internal/services/operator/` | `ztd operator start`, `ztd operator list` |
+| Operator daemon and lifecycle | `internal/cli/cmd/operator/`, `internal/cli/serve/operator.go`, `internal/services/ztdo.go` | `ztd operator start`, `ztd operator list` |
 | Five-layer governance pipeline | `internal/services/governance/` | `internal/services/governance/` |
-| Machine consensus and deliberation | `internal/services/consensus/`, `internal/services/governance/l2_consensus.go` | `internal/services/consensus/` |
+| Machine consensus and deliberation | `internal/services/governance/l2_consensus.go` | `internal/services/governance/l4_warden_consensus_test.go` |
 | MCP server and native tool registry | `internal/services/mcp/` | `internal/services/mcp/native_tool_registry.go` |
 | Network, PKI, and SPIFFE identity | `internal/services/network/`, `protocol/workload_identity.go` | `internal/services/network/` |
 | Cryptographic vault and keystore | `internal/services/vault/`, `internal/services/keystore/` | `internal/services/vault/` |
-| Sovereign audit and SQLite storage | `internal/services/storage/`, `internal/services/audit/` | `internal/services/storage/` |
-| SSE event bridge and pub/sub broker | `internal/services/sse/`, `internal/services/pubsub/` | `internal/services/sse/` |
+| Sovereign audit and SQLite storage | `internal/services/storage/` | `internal/services/storage/` |
+| SSE event bridge and pub/sub broker | `internal/services/gateway/sse_event_service.go`, `internal/services/pubsub/` | `internal/services/gateway/sse_event_service_test.go` |
 | Terminal UI (`ztd tui`) | `internal/cli/tui/`, `internal/cli/cmd/tui/` | `./ztd tui --help` |
 | Console (Gateway-embedded browser frontend) | `console/`, `internal/services/gateway/console/` | `make console-embed-check` |
 | Protocol definitions and bindings | `protocol/proto/ztd/`, `protocol/` | `make proto-generate`, `make doctrines-validate` |
-| Compliance catalogs and KSI verification | `protocol/compliance/`, `internal/cli/cmd/compliance/` | `ztd compliance evidence-graph verify` |
+| Compliance catalogs and KSI verification | `protocol/constants/compliance/`, `internal/services/compliance/`, `internal/cli/cmd/compliance/` | `ztd compliance evidence-graph verify` |
 
 ## Procedures
 
@@ -144,7 +144,7 @@ The platform ships as a single static Go binary (`ztd`) serving multiple operati
 1. **Governance Gateway (`ztd gw start`)**: The central Policy Decision Point (PDP) and protocol coordinator. The Gateway admits client transactions, manages PKI, runs L1 Doctrine screening, coordinates L2 Consensus deliberation, manages L3 Notary approval suspensions, brokers outbound-only pub/sub WebSocket channels to Operators, and persists Gateway coordination state. For local operations, the Gateway executes through an in-process embedded Operator substrate (`internal/services/gateway/embedded/`).
 2. **Governed Operator (`ztd operator start`)**: The sovereign Policy Execution Point (PEP) for target runtimes. The Operator exposes no inbound management listeners, initiates an outbound-only TLS 1.3 mTLS connection to the Gateway, pulls work exclusively from a dedicated session command channel (`cmd:<operator_id>:<operator_session_id>`), independently executes L4 Warden verification, and executes accepted actions through the L5 Actuator.
 3. **Embedded Operator**: The in-process Operator substrate inside the Gateway (`operator_type: embedded`). It runs concurrently with the Gateway, always carries the `data` and `inference` capabilities, works in `.ztd/operators/embedded-operator`, and accesses local execution evidence via `storage.OpenLocalExecutionEvidence`.
-4. **CLI Client (`ztd`)**: Unified command-line interface encompassing command groups: `gw`, `auth`, `mcp`, `operator`, `vault`, `test`, `audit`, `report`, `public`, `swagger`, `tui`, `version`, `compliance`, and `eval`. Flags and defaults resolve via `./ztd <command> --help`.
+4. **CLI Client (`ztd`)**: Unified command-line interface encompassing command groups: `gw`, `auth`, `mcp`, `operator`, `vault`, `test`, `audit`, `report`, `public`, `swagger`, `tui`, `version`, `compliance`, `eval`, and `autochthon`, plus the top-level `login` and `logout` commands. Flags and defaults resolve via `./ztd <command> --help`.
 5. **Terminal UI (`ztd tui`)**: Interactive terminal interface monitoring Gateway state, connected Operators, session leases, and recent transactions.
 6. **Console**: React and TypeScript Single Page Application embedded into the Gateway binary and served at `/console/` on the Gateway HTTPS origin. It calls Gateway APIs for WebAuthn authentication, human approvals, Operator inventory, and audit telemetry; it does not communicate directly with Operators.
 7. **Evaluation Explorer**: Optional evaluation campaign interface served by the Gateway's loopback Explorer listener when enabled and configured. It is an auxiliary surface, not a separate always-running platform service.
@@ -159,7 +159,7 @@ Every transaction entering a governed platform path traverses five distinct veri
 | **L2 Consensus** | Gateway (Coord.) & Operator (Verify) | $K$-of-$N$ Ed25519 multi-agent machine quorum over `<transaction_hash>\|<decision>`. Members independently deliberate and sign affirmative or negative votes. | Fails closed with `ErrTxL2QuorumNotMet`, or `ErrTxL2SignatureInvalid` for a forged member vote, under `consensus` and `notary`. Audited under `doctrine` and `ratify`. |
 | **L3 Notary** | Gateway (Coord.) & Operator (Verify) | Human authorization for mutating operations. Gateway challenges require WebAuthn passkey assertions. Operator verification checks approved suspended transactions with authorized cryptographic proofs. | Fails closed with `ErrTxL3ProofMissing` for mutations under `ratify` and `notary`. Audited under `doctrine` and `consensus`. |
 | **L4 Warden** | Executing Operator (PEP) | Pre-dispatch verification gate: reserves nonce in durable SQLite replay store, verifies TTL expiry, decodes typed payload, validates target ownership, re-runs L1 Doctrine, recalculates transaction hash, checks state Merkle root, and enforces posture-required L2/L3 proofs. | Fails closed; releases reserved nonce and records a signed failed receipt. |
-| **L5 Actuator** | Executing Operator (PEP) | Sole execution boundary: signs and persists an initial `EXECUTING` receipt, appends signed commitment to SQL ledger, rehydrates scrubbed secrets via local vault, mints a short-lived JIT capability, dispatches typed action handler, dissolves capability, and persists signed `COMPLETED` or `FAILED` receipt. | Fails closed; execution aborts if receipt signing, commitment append, or capability minting fails. |
+| **L5 Actuator** | Executing Operator (PEP) | Sole execution boundary: signs and persists an initial `EXECUTING` receipt, appends signed commitment to SQL ledger, rehydrates `{{UEI_N}}` tokens through `ScrubbingService`, mints a short-lived JIT capability, dispatches typed action handler, dissolves capability, and persists signed `COMPLETED` or `FAILED` receipt. | Fails closed; execution aborts if receipt signing, commitment append, or capability minting fails. A token that cannot be rehydrated, including any token when no `ScrubbingService` is configured, is never dispatched: the receipt finalizes as a signed `FAILED` receipt. |
 
 ### Governance Postures and Enforcement Matrix
 
@@ -215,7 +215,7 @@ ztd provides five distinct ingress channels:
 
 1. **Model Context Protocol (MCP)**: JSON-RPC 2.0 endpoint at `POST /mcp` and stdio bridge via `ztd mcp stdio`. Translates `tools/call`, `resources/read`, and `prompts/get` into canonical `GovernanceEnvelope` transactions.
 2. **Agent-to-Agent (A2A)**: JSON-RPC endpoint at `POST /api/v1/a2a/call` for cross-agent skill invocation wrapped in `A2A_CALL` envelopes.
-3. **Governed HTTP Dispatch**: Authenticated applications post registered request event types and serialized protobuf payloads to `POST /api/v1/operators/commands`. The Gateway validates session identity, derives `action_type`, attaches posture, and publishes to the Operator command channel. Fails closed if L3 proofs are required.
+3. **Governed HTTP Dispatch**: Authenticated applications post registered request event types and serialized protobuf payloads to `POST /api/v1/operators/commands`. The Gateway validates session identity, derives `action_type`, attaches posture, and publishes to the Operator command channel. When L3 proof is required, the Gateway suspends the envelope and holds the request until a human approves or denies it, or the approval expires.
 4. **Direct Envelope Submission**: Pre-constructed envelopes submitted via `POST /api/v1/governance/envelopes` with pre-gathered L2/L3 proofs. The Gateway does not synthesize missing proofs; unproved transactions fail closed at L4.
 5. **CLI-Directed Execution**: Enrolled operators bound via `ztd operator bind` receive parallel commands dispatched through `ztd operator run`.
 
@@ -254,12 +254,12 @@ Certificates are issued under the `ztd.local` SPIFFE trust domain:
 - Human User: `spiffe://ztd.local/user/<user_id>`
 - Gateway Hub: `spiffe://ztd.local/hub/operator-listen`
 
-### Authentication, Sessions, and Enrollment Lifecycle
+### Authentication and Enrollment Lifecycle
 
 Authentication enforces strong cryptographic identity:
 1. **Workload and Operator Authentication**: Mutual TLS using ECDSA P-256 leaf certificates with a 7-day maximum validity. Re-enrollment of an existing active fingerprint supersedes the previous lease.
-2. **Console Browser Sessions**: Web sessions authenticated via WebAuthn/FIDO2 passkey assertions registered during initial Gateway bootstrap.
-3. **CLI Authentication**: Mutual TLS certificates issued through interactive browser ceremonies or headless enrollment requiring administrative approval (`POST /api/v1/auth/approve-cli`).
+2. **Console WebSessions**: WebSessions authenticated via WebAuthn/FIDO2 passkey assertions registered during initial Gateway bootstrap.
+3. **CLI Authentication**: Mutual TLS certificates issued through interactive browser ceremonies or headless recovery requiring human approval (`ztd auth approve-recovery`, which posts to `POST /api/v1/auth/cli/recovery/approve-cli` over mTLS).
 4. **Revocation**: Administrative revocation immediately adds the certificate serial to local CRL storage, invalidates active sessions, and terminates WebSocket connections.
 
 ### Cryptographic Key Custody and Vault Hierarchy
@@ -267,7 +267,7 @@ Authentication enforces strong cryptographic identity:
 ztd protects sensitive data using a three-tier encryption hierarchy:
 - **Platform Master Key**: 32-byte key sealed by the OS key store, or by an ssh-agent key on hosts without one. Never stored in plaintext, and a host with neither fails closed.
 - **Vault Key**: 32-byte key sealed under the master key and stored in `.ztd/secrets/vault_key`.
-- **Key Encryption Key (KEK)**: Derived from the vault key using HKDF-SHA256 with domain-specific salt and info strings.
+- **Key Encryption Key (KEK)**: Derived from the vault key using HKDF-SHA256 with a domain-specific info string.
 - **Data Encryption Key (DEK)**: 256-bit AES key wrapped by the KEK using AES Key Wrap and stored in `.ztd/vault/vault.header`. Encrypts sensitive audit logs, file diffs, and scrubber tokens using AES-256-GCM.
 
 ### Local-First Audit Architecture (LFAA)
@@ -297,12 +297,12 @@ Observation operates across strict trust tiers:
 The protocol library (`protocol/`) establishes the canonical platform contracts:
 - **Protobuf Contracts**: Schemas defined under `protocol/proto/ztd/` generate Go and TypeScript bindings via `make proto-generate`. Hand-editing generated code is prohibited.
 - **Constants Registries**: Central JSON registries in `protocol/constants/` define events, action types, error codes, and ports. Validated via `make constants-check`.
-- **Canonical Serialization**: Transaction hashing enforces canonical protojson serialization (`ztd-tx-v2|<action_type>|<event_type>|<canonical_v1>`) to guarantee cross-language signature compatibility.
+- **Canonical Serialization**: Transaction hashing computes SHA-256 over a deterministic field encoding (`ztd-tx-v2|<action_type>|<event_type>|<canonical_v1>`, with the payload base64-encoded inside `<canonical_v1>`) to guarantee cross-language signature compatibility.
 
 ### Compliance Evidence and Verification Engine
 
 The platform provides a built-in compliance evidence engine:
-- **Framework Mapping**: Protocol catalogs map platform governance controls directly to FedRAMP, NIST SP 800-53, SOC 2, and COSAiS frameworks.
+- **Framework Mapping**: Protocol catalogs in `protocol/constants/compliance/` map platform controls to FedRAMP 20x and NIST SP 800-53 Rev. 5. COSAiS AI security overlays map to platform KSI definitions. Frameworks without a reviewed crosswalk receive no generated assessment ([Compliance Alignment Reference](../reference/compliance-alignment.md)).
 - **Evidence Graphs**: Evaluation and runtime evidence is imported into a content-addressed evidence graph verified via `ztd compliance evidence-graph verify --eval-run <run-id>`.
 - **Release Preparation**: `ztd compliance release-prepare` exports bounded operational evidence, generates a sealed public report bundle, exports and verifies it offline, and generates immutable compliance evidence projections.
 
@@ -323,7 +323,7 @@ The primary deployment model is host-native execution using the single static bi
 - **Treating Gateway Mirrors as Authoritative Execution Truth**: Relying on Gateway receipt mirrors rather than the executing Operator's sovereign local audit store (INV-ARCH-STOR-01).
 - **Opening Inbound Management Listeners on Operators**: Exposing inbound network ports on remote Operators instead of maintaining outbound-only mTLS connections (INV-ARCH-NODE-02).
 - **Dispatching Mutating Actions to Witness Operators**: Routing general command execution to Provenance or Observer operators rather than Data operators (INV-ARCH-NODE-03).
-- **Exposing Internal Gateway Routes to Public Spectators**: Routing public traffic directly to the private Gateway on port 8443 rather than through the isolated public mirror on port 8082 (INV-ARCH-TRUST-01).
+- **Exposing Internal Gateway Routes to Public Spectators**: Routing public traffic directly to the private Gateway on port 8443 rather than through the isolated public mirror on port 8082 (`INV-SPEC-ISO-01` in [Public Spectator Architecture](public_spectator.md)).
 - **Hard-Wrapping Source Prose Lines or Inserting Dynamic Timestamps**: Breaking context cache prefix stability and formatting guidelines during documentation edits (INV-DOC-STYLE-01, INV-DOC-CACHE-01).
 
 ## Links out
@@ -345,4 +345,4 @@ The primary deployment model is host-native execution using the single static bi
 - [Protocol Library](protocol.md): Protobuf definitions, JSON registries, and code generation.
 - [Documentation Guide](../devs/docs.md): Invariant definitions, metadata specifications, and audit workflows.
 - [Developer Guidelines](../devs/devs.md): Repository coding standards and invariant rules.
-- [Compliance Alignment Reference](../reference/compliance-alignment.md): KSI evaluation framework and control crosswalks.
+- [Compliance Alignment Reference](../reference/compliance-alignment.md): Assertion-to-control mappings for FedRAMP 20x KSIs, NIST SP 800-53, and COSAiS, and assessment status semantics.

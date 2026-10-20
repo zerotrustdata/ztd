@@ -164,6 +164,7 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	mux.Handle(constants.APIPaths.OperatorsSession, http.HandlerFunc(h.operatorController.handleGetOperatorBySession))
 	mux.HandleFunc(constants.APIPaths.OperatorsCommands, h.dispatchController.HandleDispatch)
 	mux.HandleFunc(constants.APIPaths.InferenceDispatch, h.inferenceDispatchController.HandleDispatch)
+	mux.HandleFunc(constants.APIPaths.OperatorsIntents, h.tribunalIntentController.HandleIntent)
 	mux.HandleFunc(constants.APIPaths.GovernanceSigners, h.signerController.handleGovernanceSigners)
 	mux.Handle(constants.APIPaths.GovernanceSignersByID, http.HandlerFunc(h.signerController.handleGovernanceSignerByID))
 	mux.Handle(constants.APIPaths.AdminAppPoliciesBySigner, http.HandlerFunc(h.adminController.handleAppPolicySigner))
@@ -257,6 +258,7 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	// the producer prefix does not shadow any by-id read path.
 	mux.HandleFunc(constants.APIPaths.ObserveProducerAgentState, h.observeProducerController.handleAgentState)
 	mux.HandleFunc(constants.APIPaths.ObserveProducerRunState, h.observeProducerController.handleRunState)
+	mux.HandleFunc(constants.APIPaths.ObserveProducerStop, h.observeProducerController.handleStop)
 
 	var handler http.Handler = mux
 	if h.authMiddleware != nil {

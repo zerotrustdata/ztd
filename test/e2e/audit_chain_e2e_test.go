@@ -54,7 +54,7 @@ func TestDispatch_UnknownEventRejected(t *testing.T) {
 	payload, err := proto.Marshal(fsReadReq)
 	require.NoError(t, err)
 
-	reqBody := dispatchRequestJSON{
+	reqBody := models.OperatorCommandRequest{
 		TargetOperatorSessionID: target.OperatorSessionId,
 		EventType:               "ztd.v1.not.registered.event",
 		Payload:                 payload,

@@ -301,23 +301,26 @@ func TestAppEnrollment_ParseRetryAfter(t *testing.T) {
 	}
 }
 
-func TestAppEnrollment_ResolveGatewayHTTPURL(t *testing.T) {
-	defaultURL := fmt.Sprintf("http://127.0.0.1:%d", constants.Ports.OperatorHttp)
+func TestAppEnrollment_UsesConfigDiscoveryEndpoint(t *testing.T) {
+	config.SetEndpointOverride("")
+	t.Cleanup(func() { config.SetEndpointOverride("") })
+	defaultURL := fmt.Sprintf("http://localhost:%d", constants.Ports.OperatorHttp)
 	tests := []struct {
 		name string
-		cfg  *config.Config
+		host string
 		want string
 	}{
-		{"nil config uses the loopback default", nil, defaultURL},
-		{"config without paths uses the loopback default", &config.Config{}, defaultURL},
-		{"empty host uses the loopback default", &config.Config{Paths: &config.PathsConfig{}}, defaultURL},
-		{"full URL is used verbatim minus trailing slashes", &config.Config{Paths: &config.PathsConfig{Host: "http://gw.example:9000//"}}, "http://gw.example:9000"},
-		{"host:port gains the http scheme", &config.Config{Paths: &config.PathsConfig{Host: "gw.example:9000"}}, "http://gw.example:9000"},
-		{"bare host gains the default discovery port", &config.Config{Paths: &config.PathsConfig{Host: "gw.example"}}, fmt.Sprintf("http://gw.example:%d", constants.Ports.OperatorHttp)},
+		{"full URL is used verbatim minus trailing slashes", "http://gw.example:9000//", "http://gw.example:9000"},
+		{"host:port uses the canonical local discovery endpoint", "gw.example:9000", defaultURL},
+		{"bare host uses the canonical local discovery endpoint", "gw.example", defaultURL},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, resolveGatewayHTTPURL(tt.cfg))
+			fileSvc, cfg := newAuthTestEnv(t)
+			cfg.Paths.Host = tt.host
+			client, err := NewAppPlatformEnrollmentClient("test-app", fileSvc, cfg, nil)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, client.gatewayHTTPURL)
 		})
 	}
 }

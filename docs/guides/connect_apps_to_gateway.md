@@ -3,8 +3,8 @@ doc_id: connect_apps_to_gateway
 title: Connect Apps to Gateway
 audience: application developers and system integrators
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/connect_apps_to_gateway.md
   - internal/services/gateway/
@@ -55,7 +55,7 @@ Port mixing is prohibited. The Gateway fails startup if the HTTP and HTTPS surfa
 
 > **Identity keys are sealed.** The CLI key, each app key, and the pending enrollment state under `.ztd/` are sealed under the keystore master key (the OS key store, or an ssh-agent on Linux hosts without one). No PEM private key exists on disk, so no external process, `curl`, or SDK can read them. `ztd` unseals them in process: use `ztd` commands for Gateway requests, and put `ztd mcp stdio` (add `--app <name>` for an app identity) in front of any MCP client. A missing or locked master key fails closed, and a plaintext key file at a sealed path is refused with `ErrIdentityFilePlaintext`. See `docs/architecture/encryption.md` (`INV-ENC-STORE-06`).
 >
-> The HTTP sections below document the wire contract as method, path, and body. Every HTTPS request authenticates with an mTLS client certificate chained to the Gateway CA bundle (`.ztd/pki/trust/ztdg-ca-bundle.pem`); the private key for that certificate must be held by the client process that makes the call.
+> The HTTP sections below document the wire contract as method, path, and body. Routes that require mTLS, including the governance, audit, document store, and dispatch routes, authenticate with a client certificate chained to the Gateway CA bundle (`.ztd/pki/trust/ztdg-ca-bundle.pem`); the private key for that certificate must be held by the client process that makes the call. The Gateway classifies each HTTPS route by auth mode, and unclassified routes default to mTLS. When JWKS is configured, the MCP and A2A endpoints authenticate with JWT instead.
 
 ### 1. Model Context Protocol (MCP)
 
@@ -155,7 +155,8 @@ The Gateway provides mTLS-authenticated real-time pub/sub at `wss://<gateway>:84
 
 Canonical channels include:
 - `cmd:<operator_id>:<operator_session_id>`: Gateway-to-Operator governed envelope delivery.
-- `results:<operator_id>:<operator_session_id>`: Operator results and receipts.
+- `results:<operator_id>:<operator_session_id>`: Operator execution results.
+- `receipts:<operator_id>:<operator_session_id>`: Operator receipts, intercepted by the Gateway.
 - `heartbeat:<operator_id>:<operator_session_id>`: Operator liveness telemetry.
 
 ---
@@ -181,7 +182,7 @@ The query endpoint is `POST /api/v1/data/{collection}/_query` over mTLS with `Co
 }
 ```
 
-Direct mutations (PUT, PATCH, DELETE) are restricted to infrastructure collections (`settings`, `users`, `operators`, `bound_sessions`). Governed collections (`cases`, `tasks`, `memories`) permit reads via GET and require `GovernanceEnvelope` transactions for mutations.
+Direct mutations (PUT, PATCH, DELETE) are restricted to infrastructure collections: `settings`, `users`, `operators`, `operator_sessions`, `bound_sessions`, `passkey_challenges`, `revoked_certificates`, and `trusted_signers`. Every other collection, including governed collections such as `cases`, `tasks`, and `memories`, permits reads via GET and requires `GovernanceEnvelope` transactions for mutations.
 
 ---
 
@@ -193,13 +194,17 @@ Enroll an application workload using owner-approved platform enrollment:
 ./ztd auth enroll app etl-service
 ```
 
-This generates an ECDSA P-256 private key and CSR locally, submits an enrollment request to the Gateway, and displays the approval command. The platform owner approves the request:
+This generates an ECDSA P-256 private key and CSR locally, submits an enrollment request to the Gateway, and displays the approval command. The platform owner sets `REQUEST_ID` to the request ID that enrollment printed, then approves the request:
 
 ```bash
-./ztd auth enroll approve <request-id> --yes
+./ztd auth enroll approve "$REQUEST_ID" --yes
 ```
 
 Upon approval, the certificate carrying `spiffe://ztd.local/app/etl-service` is stored and an `AppPolicy` is registered. The application's private key stays sealed under the keystore master key; use it through `./ztd mcp stdio --app etl-service` or other `ztd` commands.
+
+### Consensus Members
+
+A consensus member is an enrolled application bound into the Gateway's K-of-N consensus set. Enroll each member with `./ztd auth enroll app <name> --signing-key`, then bind the set with `./ztd auth enroll consensus bind <app-name> <https-endpoint>`, repeating `--member-app` for every member, including the primary app. A set with more than one member MUST state `--quorum` explicitly; a single application defaults to 1-of-1. The Gateway trims member IDs and rejects duplicate members and a quorum outside the member count. Binding requires the owner's CLI identity, and passkey approval under `ratify` and `notary`. See [Consensus](../architecture/consensus.md) for the signature model and `./ztd auth enroll consensus bind --help` for flags.
 
 ---
 
@@ -217,14 +222,14 @@ In `ratify` and `notary` postures, operations requiring human authorization with
 
 ## Audit Receipts
 
-Query signed receipts from the CLI:
+List audit events for an operator session with `./ztd gw data audit list --operator-session-id <session-id>`, or aggregate them by type with `./ztd gw data audit summary`. Query one application's records with `--app`, which matches the exact `acting_app_id`, the application's SPIFFE URI (`spiffe://ztd.local/app/<name>`):
 
 ```bash
-./ztd gw data audit list --operator-session-id <session-id>
-./ztd gw data audit summary
+./ztd audit events --app spiffe://ztd.local/app/etl-service
+./ztd audit summary --app spiffe://ztd.local/app/etl-service
 ```
 
-Over HTTP, receipts are served by `GET /api/v1/audit/receipts?operator_session_id=<session-id>` and exported as JSON by `GET /api/v1/audit/receipts/export?limit=100`, both over mTLS. To export every store to CSV with independent signature and hash-chain verification, run `./ztd report all`.
+Over HTTP, receipts are served by `GET /api/v1/audit/receipts` with an `operator_session_id` or `acting_app_id` query parameter, and exported as JSON by `GET /api/v1/audit/receipts/export?limit=100`, both over mTLS. To export every store to CSV with independent signature and hash-chain verification, run `./ztd report all`.
 
 ---
 

@@ -1851,7 +1851,7 @@
       }
     },
     "eval_stop_requested_payload": {
-      "_description": "Payload for ai.eval.stop.requested events. Emitted only after the supervisor state projection is persisted. Reports a typed stop reason from a closed vocabulary distinguishing graceful owner stops from safety stops.",
+      "_description": "Payload for ai.eval.stop.requested events. Run-scoped: names the campaign run to stop, and is delivered only to the CLI session running that run. Emitted only after the supervisor state projection is persisted. Reports a typed stop reason from a closed vocabulary distinguishing graceful owner stops from safety stops.",
       "campaign_id": {
         "description": "Campaign identity from the campaign manifest",
         "required": true,
@@ -1871,6 +1871,11 @@
       "requested_at": {
         "description": "UTC timestamp when the stop was requested",
         "format": "iso8601",
+        "required": true,
+        "type": "string"
+      },
+      "run_id": {
+        "description": "Campaign run identifier this stop applies to",
         "required": true,
         "type": "string"
       },
@@ -2304,6 +2309,57 @@
         "description": "Total number of tasks in this run",
         "required": true,
         "type": "integer"
+      },
+      "web_session_id": {
+        "description": "SSE routing target for browser sessions. Exactly one of web_session_id or cli_session_id is required.",
+        "required": false,
+        "type": "string"
+      }
+    },
+    "observe_producer_stop_request": {
+      "_description": "Typed request body for the mTLS producer endpoint POST /api/v1/observe/producer/stop. Names one campaign run to stop and carries the SSE routing target. The gateway derives user_id from the mTLS peer certificate, never from the request body.",
+      "campaign_id": {
+        "description": "Campaign identity from the campaign manifest",
+        "required": true,
+        "type": "string"
+      },
+      "cli_session_id": {
+        "description": "SSE routing target for CLI sessions. Exactly one of web_session_id or cli_session_id is required.",
+        "required": false,
+        "type": "string"
+      },
+      "run_id": {
+        "description": "Campaign run identifier the stop targets. The ai.eval.stop.requested event names this run, and only the CLI session running it acts on the stop.",
+        "required": true,
+        "type": "string"
+      },
+      "schema_version": {
+        "required": true,
+        "type": "string"
+      },
+      "stop_reason": {
+        "description": "Typed stop reason from a closed vocabulary",
+        "enum": [
+          "graceful",
+          "safety_budget",
+          "safety_disk",
+          "safety_hardware_drift",
+          "safety_credential",
+          "safety_verifier",
+          "safety_disclosure",
+          "safety_publication"
+        ],
+        "required": true,
+        "type": "string"
+      },
+      "stop_scope": {
+        "description": "Scope of the stop",
+        "enum": [
+          "cycle",
+          "supervisor"
+        ],
+        "required": true,
+        "type": "string"
       },
       "web_session_id": {
         "description": "SSE routing target for browser sessions. Exactly one of web_session_id or cli_session_id is required.",

@@ -29,6 +29,14 @@ enum ModelCampaignRole {
   MODEL_CAMPAIGN_ROLE_LITE = 3;
 }
 
+enum EvaluationInvestigationMode {
+  EVALUATION_INVESTIGATION_MODE_UNSPECIFIED = 0;
+  // Each assignment starts with an independent investigation identity.
+  EVALUATION_INVESTIGATION_MODE_FRESH = 1;
+  // Assignments in the campaign reuse the declared investigation identity.
+  EVALUATION_INVESTIGATION_MODE_PERSISTENT = 2;
+}
+
 enum EvaluationScenarioCategory {
   EVALUATION_SCENARIO_CATEGORY_UNSPECIFIED = 0;
   EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE = 1;
@@ -355,6 +363,8 @@ message EvaluationRun {
   repeated string attempt_refs = 11;
   ztd.compliance.v1.ComplianceEvidenceReference final_verification_report_ref = 12;
   ModelCampaignBinding campaign_binding = 13;
+  EvaluationWitnessPolicy provider_observation_policy = 14;
+  EvaluationWitnessPolicy model_provenance_policy = 15;
 }
 
 message EvaluationAttempt {
@@ -484,6 +494,21 @@ message EvaluationCampaignSpec {
   // conversation and works in the same workspace. Only set when
   // repetition_count > 1; false on campaigns frozen before it existed.
   bool hold_context = 13;
+  // Investigation identity and its authoritative Data Operator are frozen
+  // into campaign_digest. Absent only on legacy specs frozen before this field.
+  EvaluationInvestigation investigation = 14;
+  // Nonempty only for a system campaign. Binds the complete frozen catalog
+  // formation set into campaign_digest, independently of later catalog edits.
+  string formation_stack_set_digest = 15;
+}
+
+// EvaluationInvestigation declares the campaign's scored investigation scope.
+// Persistent investigations require both a stable investigation_id and the
+// stable identity (not session ID) of the Data Operator that owns its ledger.
+message EvaluationInvestigation {
+  EvaluationInvestigationMode mode = 1;
+  string investigation_id = 2;
+  string data_operator_id = 3;
 }
 
 // EvaluationScenarioCatalog is the immutable 25-scenario private catalog.
@@ -543,6 +568,11 @@ message EvaluationScenarioDefinition {
   repeated ModelCampaignRole eligible_roles = 14;
   EvaluationTrajectoryPolicy trajectory_policy = 15;
   PromptHint prompt_hint = 16;
+  // tribunal_commands declares run_commands_with_operator intent-only: the
+  // model states the request and the Tribunal deliberation writes the
+  // command, which then runs through L1-L5 like any other. Unset, the model
+  // authors the command itself. The frozen catalog digest binds the choice.
+  bool tribunal_commands = 17;
 }
 
 // ModelVariant is one frozen provider-backed model identity in a campaign.
@@ -807,7 +837,8 @@ message ModelInferenceRecord {
   bool privacy_attested = 29;
   ztd.compliance.v1.ComplianceEvidenceReference governed_receipt_ref = 30;
   string result_digest = 31;
-  ztd.compliance.v1.ComplianceEvidenceReference provider_boundary_observation_ref = 32;
+  reserved 32;
+  reserved "provider_boundary_observation_ref";
   // Tool names as sent to the provider for this call, captured at the
   // provider boundary. tools_declared_reported distinguishes "none declared"
   // from "not reported".
@@ -1552,57 +1583,6 @@ message AgentStep {
     MemoryOutput memory = 16;
     TitleOutput title = 17;
   }
-}
-
-message SeedTurn {
-  string role = 1;           // "user" or "assistant"
-  string text = 2;
-}
-
-message SeedHistoryEvent {
-  string event_type = 1;     // COMMAND_COMPLETED, COMMAND_FAILED or FILE_EDIT_COMPLETED; the SUT maps it to its own event types
-  string summary = 2;
-  string command = 3;
-  int32 exit_code = 4;
-}
-
-// InvestigationSeed is the prior state of a case, applied by the SUT through
-// its own live services before the scored turn.
-message InvestigationSeed {
-  string case_title = 1;
-  string case_description = 2;
-  repeated SeedTurn prior_turns = 3;
-  repeated SeedHistoryEvent history = 4;
-  repeated string case_memory = 5;
-}
-
-message ScoredTurnRequest {
-  string campaign_id = 1;
-  string run_id = 2;
-  string attempt_id = 3;
-  repeated ModelVariant model_registry = 4;
-  EvaluationLane lane = 5;                   // SYSTEM or MODEL_ROLE only
-  AgentRole designated_role = 6;             // required when lane is MODEL_ROLE
-  InvestigationSeed seed = 7;
-  string workspace_root = 8;
-  string data_operator_session_id = 9;
-  string user_message = 10;
-  uint32 tool_turn_limit = 11;
-  uint64 wall_clock_limit_ms = 12;
-}
-
-enum ScoredTurnEventKind {
-  SCORED_TURN_EVENT_KIND_UNSPECIFIED = 0;
-  SCORED_TURN_EVENT_KIND_PROGRESS = 1;
-  SCORED_TURN_EVENT_KIND_TERMINAL = 2;
-}
-
-// ScoredTurnEvent is one event on the turn's event stream. The client stops
-// reading at the first TERMINAL event and then fetches the AgentTrace once.
-message ScoredTurnEvent {
-  string attempt_id = 1;
-  ScoredTurnEventKind kind = 2;
-  string detail = 3;
 }
 
 message AgentTrace {

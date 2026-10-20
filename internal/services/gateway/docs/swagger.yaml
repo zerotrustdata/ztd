@@ -246,13 +246,10 @@ definitions:
     - ztd.v1.operator.shutdown.requested
     - ztd.v1.operator.slot.initialization.failed
     - ztd.v1.operator.status.updated.active
-    - ztd.v1.operator.status.updated.available
-    - ztd.v1.operator.status.updated.bound
     - ztd.v1.operator.status.updated.offline
     - ztd.v1.operator.status.updated.stale
     - ztd.v1.operator.status.updated.stopped
     - ztd.v1.operator.status.updated.terminated
-    - ztd.v1.operator.status.updated.unavailable
     - ztd.v1.operator.terminal.approval.denied
     - ztd.v1.operator.terminal.auth.state.changed
     - ztd.v1.operator.unbound
@@ -471,13 +468,10 @@ definitions:
     - EventOperatorShutdownRequested
     - EventOperatorSlotInitializationFailed
     - EventOperatorStatusUpdatedActive
-    - EventOperatorStatusUpdatedAvailable
-    - EventOperatorStatusUpdatedBound
     - EventOperatorStatusUpdatedOffline
     - EventOperatorStatusUpdatedStale
     - EventOperatorStatusUpdatedStopped
     - EventOperatorStatusUpdatedTerminated
-    - EventOperatorStatusUpdatedUnavailable
     - EventOperatorTerminalApprovalDenied
     - EventOperatorTerminalAuthStateChanged
     - EventOperatorUnbound
@@ -551,29 +545,94 @@ definitions:
     x-enum-varnames:
     - UserStatusActive
     - UserStatusDisabled
-  gateway.OperatorCommandRequest:
+  evalv1.AgentRole:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    format: int32
+    type: integer
+    x-enum-comments:
+      AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR: proposes a command candidate
+      AgentRole_AGENT_ROLE_CANDIDATE_VOTER: votes on candidates / reports consensus
+      AgentRole_AGENT_ROLE_MEMORY_WRITER: writes case memory after the turn
+      AgentRole_AGENT_ROLE_RESPONDER: writes the user-facing reply
+      AgentRole_AGENT_ROLE_REVIEWER: approves, revises or swaps the chosen command
+      AgentRole_AGENT_ROLE_RISK_ANALYST: rates command / file / error risk
+      AgentRole_AGENT_ROLE_ROUTER: classifies complexity, intent, posture
+      AgentRole_AGENT_ROLE_TITLE_WRITER: writes the case title after the turn
+    x-enum-descriptions:
+    - ""
+    - classifies complexity, intent, posture
+    - writes the user-facing reply
+    - proposes a command candidate
+    - votes on candidates / reports consensus
+    - rates command / file / error risk
+    - approves, revises or swaps the chosen command
+    - writes case memory after the turn
+    - writes the case title after the turn
+    x-enum-varnames:
+    - AgentRole_AGENT_ROLE_UNSPECIFIED
+    - AgentRole_AGENT_ROLE_ROUTER
+    - AgentRole_AGENT_ROLE_RESPONDER
+    - AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR
+    - AgentRole_AGENT_ROLE_CANDIDATE_VOTER
+    - AgentRole_AGENT_ROLE_RISK_ANALYST
+    - AgentRole_AGENT_ROLE_REVIEWER
+    - AgentRole_AGENT_ROLE_MEMORY_WRITER
+    - AgentRole_AGENT_ROLE_TITLE_WRITER
+  evalv1.AgentStep:
     properties:
-      case_id:
+      call_class:
+        $ref: '#/definitions/evalv1.EvaluationCallClassification'
+      index:
+        type: integer
+      model_digest:
         type: string
-      cli_session_id:
+      model_tag:
         type: string
-      event_type:
+      output:
+        description: "Types that are valid to be assigned to Output:\n\n\t*AgentStep_Router\n\t*AgentStep_Responder\n\t*AgentStep_Candidate\n\t*AgentStep_Vote\n\t*AgentStep_Risk\n\t*AgentStep_Review\n\t*AgentStep_Memory\n\t*AgentStep_Title"
+      persona_label:
+        description: the SUT's own name for the step, display only
         type: string
-      investigation_id:
-        type: string
-      payload:
-        items:
-          type: integer
-        type: array
-      target_operator_session_id:
-        type: string
-      target_resource:
-        type: string
-      task_id:
-        type: string
-      web_session_id:
-        type: string
+      resolved_tier:
+        $ref: '#/definitions/evalv1.ModelCampaignRole'
+      role:
+        $ref: '#/definitions/evalv1.AgentRole'
     type: object
+  evalv1.EvaluationCallClassification:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_UNSPECIFIED
+    - EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN
+    - EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_POST_TURN
+    - EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_GRADER
+  evalv1.ModelCampaignRole:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED
+    - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+    - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+    - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
   models.ActionReceiptRecord:
     properties:
       acting_app_id:
@@ -668,6 +727,8 @@ definitions:
         type: string
       approved:
         type: boolean
+      cli_signature:
+        type: string
       reason:
         type: string
     type: object
@@ -1047,6 +1108,23 @@ definitions:
       web_session_id:
         type: string
     type: object
+  models.ObserveProducerStopRequest:
+    properties:
+      campaign_id:
+        type: string
+      cli_session_id:
+        type: string
+      run_id:
+        type: string
+      schema_version:
+        type: string
+      stop_reason:
+        $ref: '#/definitions/models.StopReason'
+      stop_scope:
+        $ref: '#/definitions/models.StopScope'
+      web_session_id:
+        type: string
+    type: object
   models.ObservedMeasurement:
     properties:
       collector_version:
@@ -1071,6 +1149,29 @@ definitions:
         type: number
       window_seconds:
         type: number
+    type: object
+  models.OperatorCommandRequest:
+    properties:
+      case_id:
+        type: string
+      cli_session_id:
+        type: string
+      event_type:
+        type: string
+      investigation_id:
+        type: string
+      payload:
+        items:
+          type: integer
+        type: array
+      target_operator_session_id:
+        type: string
+      target_resource:
+        type: string
+      task_id:
+        type: string
+      web_session_id:
+        type: string
     type: object
   models.OperatorSessionValidationRequest:
     properties:
@@ -1325,6 +1426,10 @@ definitions:
         type: integer
       proof_root_sha256:
         type: string
+      proofs:
+        items:
+          $ref: '#/definitions/models.PublicAssignmentAuditProofPublishResponse'
+        type: array
     type: object
   models.PublicAssignmentAuditProofPublishRequest:
     properties:
@@ -1340,11 +1445,8 @@ definitions:
       campaign_id:
         type: string
       campaign_revision:
+        description: CampaignRevision and IndexDigest are required.
         type: string
-      database:
-        items:
-          type: integer
-        type: array
       defer_mirror_push:
         type: boolean
       index_digest:
@@ -1365,16 +1467,14 @@ definitions:
         items:
           type: integer
         type: array
-      vault_key:
-        items:
-          type: integer
-        type: array
     type: object
   models.PublicAssignmentAuditProofPublishResponse:
     properties:
       accepted:
         type: boolean
       agent_trace_sha256:
+        type: string
+      assignment_id:
         type: string
       database_sha256:
         type: string
@@ -1383,8 +1483,6 @@ definitions:
       scenario_gold_sha256:
         type: string
       scenario_input_sha256:
-        type: string
-      vault_key_sha256:
         type: string
     type: object
   models.PublicFeedExportBatchResponse:
@@ -1614,6 +1712,34 @@ definitions:
       status:
         $ref: '#/definitions/constants.GatewayMode'
     type: object
+  models.StopReason:
+    enum:
+    - graceful
+    - safety_budget
+    - safety_disk
+    - safety_hardware_drift
+    - safety_credential
+    - safety_verifier
+    - safety_disclosure
+    - safety_publication
+    type: string
+    x-enum-varnames:
+    - StopReasonGraceful
+    - StopReasonSafetyBudget
+    - StopReasonSafetyDisk
+    - StopReasonSafetyHardwareDrift
+    - StopReasonSafetyCredential
+    - StopReasonSafetyVerifier
+    - StopReasonSafetyDisclosure
+    - StopReasonSafetyPublication
+  models.StopScope:
+    enum:
+    - cycle
+    - supervisor
+    type: string
+    x-enum-varnames:
+    - StopScopeCycle
+    - StopScopeSupervisor
   models.SuccessRateMeasurement:
     properties:
       denominator:
@@ -1937,6 +2063,7 @@ definitions:
     - 22
     - 23
     - 24
+    - 25
     format: int32
     type: integer
     x-enum-varnames:
@@ -1965,6 +2092,7 @@ definitions:
     - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID
     - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN
     - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED
+    - GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH
   operatorv1.GovernedDispatchResult:
     properties:
       action_type:
@@ -1991,6 +2119,10 @@ definitions:
         $ref: '#/definitions/operatorv1.InferenceDispatchFailureCode'
       error:
         type: string
+      observation_receipts:
+        items:
+          $ref: '#/definitions/operatorv1.ActionReceipt'
+        type: array
       receipt:
         $ref: '#/definitions/operatorv1.ActionReceipt'
     type: object
@@ -2196,6 +2328,15 @@ definitions:
     type: object
   operatorv1.InferenceDispatchResponse:
     properties:
+      observation_receipts:
+        description: |-
+          The observers' verified final signed receipts for this attempt's
+          provider-boundary and model provenance BEGIN and FINALIZE commands, in
+          dispatch order. Each was signed before the response was returned, so a
+          trace bracket closing after the dispatch can claim its commitment.
+        items:
+          $ref: '#/definitions/operatorv1.ActionReceipt'
+        type: array
       receipt:
         allOf:
         - $ref: '#/definitions/operatorv1.ActionReceipt'
@@ -2544,6 +2685,7 @@ definitions:
     - 18
     - 19
     - 20
+    - 21
     format: int32
     type: integer
     x-enum-varnames:
@@ -2568,6 +2710,7 @@ definitions:
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED
   operatorv1.ReceiptPersistenceAttestation:
     properties:
       audit_record_id:
@@ -2992,6 +3135,155 @@ definitions:
     - VerificationRequired
     - VerificationPreferred
     - VerificationDiscouraged
+  tribunalv1.TribunalIntentRequest:
+    properties:
+      case_id:
+        type: string
+      cli_session_id:
+        type: string
+      execution_id:
+        description: |-
+          execution_id and timeout_seconds become the CommandRequested fields of the
+          dispatched EXECUTE_BASH.
+        type: string
+      guidelines:
+        description: Constraints the command must satisfy.
+        type: string
+      investigation_id:
+        type: string
+      member_inference:
+        allOf:
+        - $ref: '#/definitions/operatorv1.InferenceDispatchRequest'
+        description: |-
+          member_inference is the template for every member call. The Gateway sets
+          messages and provider_attempt_id per call; the template must leave
+          messages, tools, provider_attempt_id, acting_app_id and stream empty.
+      os:
+        type: string
+      provider_attempt_prefix:
+        description: |-
+          provider_attempt_prefix names the member calls: call n (from 1, in
+          deliberation order) uses provider_attempt_id "<prefix>-<n>". Required and
+          unique per intent, so the caller can bind each result to its request.
+        type: string
+      request:
+        description: Plain-language description of the single command to run. Required.
+        type: string
+      shell:
+        type: string
+      step_start_index:
+        description: step_start_index numbers the persona steps from step_start_index
+          + 1.
+        type: integer
+      target_operator_session_id:
+        description: Command dispatch target and scope, as on POST /api/v1/operators/commands.
+        type: string
+      task_id:
+        type: string
+      tier:
+        allOf:
+        - $ref: '#/definitions/evalv1.ModelCampaignRole'
+        description: tier is the campaign role recorded on each persona step.
+      timeout_seconds:
+        type: integer
+      working_directory:
+        description: |-
+          Execution context shown to the panel. Empty os and shell use the
+          Tribunal defaults.
+        type: string
+    type: object
+  tribunalv1.TribunalIntentResult:
+    properties:
+      audit_failure:
+        description: audit_failure explains an AUDIT_FAILED outcome.
+        type: string
+      command:
+        description: command is the audited command; set only when outcome is APPROVED.
+        type: string
+      commandOutcome:
+        description: "The governed EXECUTE_BASH outcome of an approved command.\n\nTypes
+          that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
+      member_calls:
+        description: member_calls are the governed member inferences, in order.
+        items:
+          $ref: '#/definitions/tribunalv1.TribunalMemberCall'
+        type: array
+      outcome:
+        $ref: '#/definitions/tribunalv1.TribunalOutcome'
+      risk_feedback:
+        type: string
+      risk_rationale:
+        description: Marshal's rationale and feedback for a BLOCKED outcome.
+        type: string
+      steps:
+        description: steps are the persona steps of the deliberation, in order.
+        items:
+          $ref: '#/definitions/evalv1.AgentStep'
+        type: array
+    type: object
+  tribunalv1.TribunalMemberCall:
+    properties:
+      failure:
+        allOf:
+        - $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
+        description: failure is set on a call that did not complete.
+      observation_receipts:
+        description: |-
+          observation_receipts are the observers' signed final receipts for the
+          call's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).
+        items:
+          $ref: '#/definitions/operatorv1.ActionReceipt'
+        type: array
+      persona:
+        type: string
+      provider_attempt_id:
+        type: string
+      receipt:
+        allOf:
+        - $ref: '#/definitions/operatorv1.ActionReceipt'
+        description: receipt is the Inference Operator's signed final ActionReceipt.
+      result:
+        allOf:
+        - $ref: '#/definitions/operatorv1.InferenceResult'
+        description: result is the complete verified InferenceResult of a completed
+          call.
+      round:
+        type: integer
+      stage:
+        $ref: '#/definitions/tribunalv1.TribunalStage'
+      transaction_id:
+        type: string
+    type: object
+  tribunalv1.TribunalOutcome:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - TribunalOutcome_TRIBUNAL_OUTCOME_UNSPECIFIED
+    - TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED
+    - TribunalOutcome_TRIBUNAL_OUTCOME_NO_CONSENSUS
+    - TribunalOutcome_TRIBUNAL_OUTCOME_BLOCKED
+    - TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED
+    - TribunalOutcome_TRIBUNAL_OUTCOME_INFERENCE_FAILED
+  tribunalv1.TribunalStage:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - TribunalStage_TRIBUNAL_STAGE_UNSPECIFIED
+    - TribunalStage_TRIBUNAL_STAGE_GENERATE
+    - TribunalStage_TRIBUNAL_STAGE_MARSHAL
+    - TribunalStage_TRIBUNAL_STAGE_AUDIT
 info:
   contact: {}
 paths:
@@ -3168,13 +3460,18 @@ paths:
       consumes:
       - application/json
       description: |-
-        Denies a suspended transaction owned by the caller. The envelope is re-submitted to its executing
+        Denies a suspended transaction owned by the caller, or approves it with a CLI certificate signature.
+        CLI approval requires mTLS and cli_signature over the domain-separated transaction hash using the enrolled P-256 key.
+        The Gateway takes the certificate and chain hints from the mTLS connection. For an outbound Operator target the
+        Gateway checks the active user, CLI session and revocation, then forwards the original proof for the Operator to
+        re-verify against its pinned Gateway CA. If a governed dispatch is waiting on the transaction, the request returns after
+        that dispatch completes, so clients allow the approval TTL plus the dispatch deadline.
+        The envelope is re-submitted to its executing
         Operator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and
         L5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to
         the CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must
         present an mTLS client certificate and a web caller must hold a registered passkey.
-        `approved: true` is always rejected with 403: approval requires a WebAuthn assertion through
-        `/api/v1/approvals/{txHash}/verify`.
+        Browser approval requires a WebAuthn assertion through `/api/v1/approvals/{txHash}/verify`.
       parameters:
       - description: Approval decision
         in: body
@@ -3187,7 +3484,7 @@ paths:
       responses:
         "200":
           description: 'Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED
-            receipt of the deny'
+            receipt of a deny, or the executing Operator''s signed receipt of an approval'
           schema:
             $ref: '#/definitions/operatorv1.ActionReceipt'
         "400":
@@ -3216,7 +3513,7 @@ paths:
             resubmitted
           schema:
             type: string
-      summary: Deny a suspended transaction
+      summary: Approve or deny a suspended transaction
       tags:
       - approvals
   /api/v1/audit/receipts:
@@ -3996,6 +4293,47 @@ paths:
       summary: Push observe run state
       tags:
       - observe
+  /api/v1/observe/producer/stop:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a typed stop request for one campaign run from an mTLS-authenticated
+        app workload. The gateway derives user_id from the peer certificate, persists
+        the supervisor state projection, and emits an ai.eval.stop.requested SSE event
+        carrying run_id to the routed session after successful persistence.
+      parameters:
+      - description: Stop request
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ObserveProducerStopRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: accepted
+          schema:
+            type: string
+        "400":
+          description: Invalid stop reason or scope, or missing campaign_id or run_id
+          schema:
+            type: string
+        "401":
+          description: Unauthorized — mTLS user identity required
+          schema:
+            type: string
+        "403":
+          description: Forbidden — not an app workload or cross-user
+          schema:
+            type: string
+        "500":
+          description: Persistence failure
+          schema:
+            type: string
+      summary: Request observe campaign run stop
+      tags:
+      - observe
   /api/v1/observe/runs:
     get:
       description: Returns paginated read-only run summaries owned by the authenticated
@@ -4062,13 +4400,16 @@ paths:
       description: |-
         Constructs a governed envelope for the target Operator session, waits for the
         terminal result and the Operator's verified final receipt, and returns both.
+        Under ratify or notary posture a mutation is suspended and the request stays open
+        until a human approves or denies it, up to the approval TTL, in addition to the
+        dispatch deadline; clients allow both. The Gateway never mints the approval proof.
       parameters:
       - description: Dispatch request (JSON)
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/gateway.OperatorCommandRequest'
+          $ref: '#/definitions/models.OperatorCommandRequest'
       produces:
       - application/json
       responses:
@@ -4108,6 +4449,56 @@ paths:
           schema:
             $ref: '#/definitions/operatorv1.IngressRefusal'
       summary: Dispatch governed operator command
+      tags:
+      - operators
+  /api/v1/operators/intents:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Platform-internal endpoint (mTLS, app workload). The Gateway's Tribunal turns a
+        plain-language command intent into one audited shell command through governed
+        inference, then dispatches it to the target Operator as an ordinary governed
+        EXECUTE_BASH. Under ratify or notary posture the command dispatch is suspended
+        until a human approves or denies it. The Gateway never mints the approval proof.
+      parameters:
+      - description: Command intent and member inference template
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/tribunalv1.TribunalIntentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deliberation record and, for an approved command, its governed
+            outcome
+          schema:
+            $ref: '#/definitions/tribunalv1.TribunalIntentResult'
+        "400":
+          description: Bad Request — malformed body, missing field, a member template
+            that sets a Gateway-owned field, or a member template role that does not
+            run the requested tier
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "401":
+          description: Unauthorized — missing delegated user identity
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "403":
+          description: Forbidden — not an app workload
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+        "413":
+          description: Request Entity Too Large — body exceeds the payload limit
+          schema:
+            $ref: '#/definitions/operatorv1.IngressRefusal'
+      summary: Deliberate and dispatch a command intent
       tags:
       - operators
   /api/v1/operators/validate:
@@ -4249,10 +4640,12 @@ paths:
     post:
       consumes:
       - application/json
-      description: Ingests one assignment audit export package into the gateway-owned
-        public proof catalog (mTLS owner CLI only).
+      description: Builds one assignment's audit database from the gateway's stored
+        signed event records and publishes it to the gateway-owned public proof catalog
+        (mTLS owner CLI only). The request names the run and assignment; it carries
+        no database or key.
       parameters:
-      - description: Assignment audit proof package
+      - description: Assignment audit proof request
         in: body
         name: request
         required: true
@@ -4284,8 +4677,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Ingests many assignment audit export packages in one request (mTLS
-        owner CLI only).
+      description: Builds many assignments' audit databases from the gateway's stored
+        signed event records and publishes them in one request (mTLS owner CLI only).
+        The response carries each proof's digests in request order.
       parameters:
       - description: Assignment audit proof batch
         in: body
@@ -4543,7 +4937,7 @@ paths:
       consumes:
       - text/html
       description: 'Serves the ztd Console: passkey authentication, approvals, Operator
-        inventory and binding, cases, investigations, and chat.'
+        inventory, binding, deploy, and stop, and the native API reference.'
       produces:
       - text/html
       responses:

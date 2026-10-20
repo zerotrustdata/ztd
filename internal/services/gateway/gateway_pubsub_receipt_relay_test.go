@@ -117,7 +117,7 @@ func buildSignedReceiptEnvelope(t *testing.T, signerPriv ed25519.PrivateKey, key
 	t.Helper()
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:    transactionID,
-		TransactionHash:  "hash-" + transactionID,
+		TransactionHash:  transactionID,
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		ResultSummary:    "completed",
 		StateRootBefore:  "root-before",

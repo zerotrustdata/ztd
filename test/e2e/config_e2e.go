@@ -10,7 +10,6 @@
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"os"
@@ -32,7 +31,6 @@ import (
 type e2eConfig struct {
 	gatewayHTTPURL    string
 	gatewayHTTPSURL   string
-	caBundleRelPath   string
 	cliSessionID      string
 	userID            string
 	operatorID        string
@@ -128,7 +126,6 @@ func loadE2EConfig() (*e2eConfig, error) {
 	return &e2eConfig{
 		gatewayHTTPURL:    gatewayHTTPURL,
 		gatewayHTTPSURL:   gatewayHTTPSURL,
-		caBundleRelPath:   cfg.DefaultTrustBundleRelPath(),
 		cliSessionID:      creds.CLISessionID,
 		userID:            creds.UserID,
 		operatorID:        creds.OperatorID,
@@ -136,10 +133,4 @@ func loadE2EConfig() (*e2eConfig, error) {
 		fileSvc:           fileSvc,
 		cfg:               cfg,
 	}, nil
-}
-
-// readCABundle reads the CA bundle from the runtime tree via fileSvc. Returns
-// the raw PEM bytes.
-func (c *e2eConfig) readCABundle(ctx context.Context) ([]byte, error) {
-	return auth.ReadTrustBundle(c.fileSvc, c.cfg)
 }

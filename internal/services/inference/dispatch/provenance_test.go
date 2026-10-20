@@ -9,6 +9,8 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,23 +26,29 @@ type recordingProvenanceNotifier struct {
 	finalizeErr error
 }
 
-func (n *recordingProvenanceNotifier) NotifyAttemptBegin(_ context.Context, _, attemptID, model, digest, registryDigest, campaignID string, startedAt int64, retry uint32) error {
+func (n *recordingProvenanceNotifier) NotifyAttemptBegin(_ context.Context, _, attemptID, model, digest, registryDigest, campaignID string, startedAt int64, retry uint32) (*operatorv1.ActionReceipt, error) {
 	n.commands = append(n.commands, &evalv1.ModelProvenanceObservationCommand{
 		ProviderAttemptId: attemptID, ServedModelTag: model, ExpectedModelDigest: digest,
 		ModelRegistryDigest: registryDigest, CampaignId: campaignID, RetryCount: retry,
 		AttemptStartedAtUnixMs: startedAt, Phase: evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_BEGIN,
 	})
-	return n.beginErr
+	if n.beginErr != nil {
+		return nil, n.beginErr
+	}
+	return &operatorv1.ActionReceipt{TransactionId: "provenance-begin"}, nil
 }
 
-func (n *recordingProvenanceNotifier) NotifyAttemptFinalize(_ context.Context, _, attemptID, transactionID, model, digest, registryDigest, campaignID string, startedAt, completedAt int64, _ bool, retry uint32) error {
+func (n *recordingProvenanceNotifier) NotifyAttemptFinalize(_ context.Context, _, attemptID, transactionID, model, digest, registryDigest, campaignID string, startedAt, completedAt int64, _ bool, retry uint32) (*operatorv1.ActionReceipt, error) {
 	n.commands = append(n.commands, &evalv1.ModelProvenanceObservationCommand{
 		ProviderAttemptId: attemptID, InferenceTransactionId: transactionID, ServedModelTag: model, ExpectedModelDigest: digest,
 		ModelRegistryDigest: registryDigest, CampaignId: campaignID, RetryCount: retry,
 		AttemptStartedAtUnixMs: startedAt, AttemptCompletedAtUnixMs: completedAt,
 		Phase: evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_FINALIZE,
 	})
-	return n.finalizeErr
+	if n.finalizeErr != nil {
+		return nil, n.finalizeErr
+	}
+	return &operatorv1.ActionReceipt{TransactionId: "provenance-finalize"}, nil
 }
 
 func TestDispatchInference_PerAttemptProvenanceWithoutPreflight(t *testing.T) {
@@ -83,4 +91,48 @@ func TestDispatchInference_PerAttemptProvenanceWithoutPreflight(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Provenance is optional: with no provenance Operator connected, campaign and
+// non-campaign attempts both reach the provider unattested, and no FINALIZE is
+// sent for a window that never opened.
+func TestDispatchInference_ZeroProvenanceOperatorProceedsUnattested(t *testing.T) {
+	notFound := fmt.Errorf("provenance observation: %w", constants.ErrProvenanceOperatorNotFound)
+	lister := &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}
+
+	for _, campaign := range []bool{true, false} {
+		t.Run(fmt.Sprintf("campaign=%t", campaign), func(t *testing.T) {
+			req := baseRequest()
+			if campaign {
+				configureCampaignRequest(t, &req)
+			} else {
+				req.ModelDigest = strings.Repeat("a", 64)
+			}
+			dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+			svc := NewDispatchService(dispatcher, lister, testLogger())
+			notifier := &recordingProvenanceNotifier{beginErr: notFound}
+			svc.SetProvenanceObservationNotifier(notifier)
+
+			result, err := svc.DispatchInference(t.Context(), req)
+			require.NoError(t, err)
+			require.Equal(t, 1, dispatcher.calls)
+			require.Len(t, notifier.commands, 1)
+			require.Equal(t, evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_BEGIN, notifier.commands[0].GetPhase())
+			require.Empty(t, result.Response().GetObservationReceipts())
+		})
+	}
+
+	// A provenance Operator that is connected but fails FINALIZE is not an absent
+	// one: the failure surfaces for a non-campaign attempt too.
+	t.Run("non-campaign finalize failure surfaces", func(t *testing.T) {
+		req := baseRequest()
+		req.ModelDigest = strings.Repeat("a", 64)
+		dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+		svc := NewDispatchService(dispatcher, lister, testLogger())
+		svc.SetProvenanceObservationNotifier(&recordingProvenanceNotifier{finalizeErr: constants.ErrDispatchNoDelivery})
+
+		_, err := svc.DispatchInference(t.Context(), req)
+		require.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
+		require.Equal(t, 1, dispatcher.calls)
+	})
 }

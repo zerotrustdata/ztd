@@ -65,27 +65,71 @@ func (a *CampaignPopulationAccountant) AccountRun(
 	if err != nil {
 		return nil, err
 	}
+	binding := run.GetCampaignBinding()
+	if binding == nil || binding.GetCampaignId() == "" {
+		return nil, fmt.Errorf("evaluation: account campaign population: run binding: %w", constants.ErrMissingRequiredField)
+	}
 	spec, err := store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
 	if err != nil {
 		return nil, err
+	}
+	if err := ValidateCampaignSpecDigest(spec); err != nil {
+		return nil, fmt.Errorf("evaluation: account campaign population: campaign spec: %w", err)
+	}
+	if binding.GetCampaignDigest() != spec.GetCampaignDigest() ||
+		binding.GetCatalogDigest() != spec.GetCatalogDigest() ||
+		binding.GetModelRegistryDigest() != spec.GetModelRegistryDigest() {
+		return nil, fmt.Errorf("evaluation: account campaign population: run differs from frozen campaign: %w", constants.ErrEvidenceScopeMismatch)
+	}
+	if err := ValidateScenarioCatalogDigest(catalog); err != nil {
+		return nil, fmt.Errorf("evaluation: account campaign population: catalog: %w", err)
+	}
+	if catalog.GetCatalogDigest() != spec.GetCatalogDigest() || !sameReference(catalog.GetCatalogRef(), spec.GetCatalogRef()) {
+		return nil, fmt.Errorf("evaluation: account campaign population: catalog differs from frozen campaign: %w", constants.ErrEvidenceScopeMismatch)
 	}
 	assignments, err := store.ListAssignments(ctx, runID)
 	if err != nil {
 		return nil, err
 	}
-	repetition := spec.GetRepetitionCount()
-	if repetition == 0 {
-		repetition = 1
-	}
-	expectedMatrix, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
-		CampaignID:      spec.GetCampaignId(),
-		RunID:           runID,
-		Catalog:         catalog,
-		Variants:        spec.GetModelRegistry(),
-		RepetitionCount: repetition,
-	})
-	if err != nil {
-		return nil, err
+	var expectedMatrix []*evalv1.EvaluationAssignment
+	switch run.GetLane() {
+	case evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM:
+		if spec.GetRepetitionCount() != 1 || spec.GetHoldContext() || spec.GetFormationStackSetDigest() == "" {
+			return nil, fmt.Errorf("evaluation: account campaign population: invalid frozen system campaign: %w", constants.ErrEvaluationTargetKindMismatch)
+		}
+		stackSet, err := store.LoadHeterogeneousStackSet(ctx, spec.GetCampaignId())
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: account campaign population: frozen formations: %w", err)
+		}
+		if err := validateCampaignFormationDigest(spec, stackSet); err != nil {
+			return nil, fmt.Errorf("evaluation: account campaign population: frozen formations: %w", err)
+		}
+		expectedMatrix, err = BuildHeterogeneousAssignmentMatrix(HeterogeneousScheduleRequest{
+			CampaignID: spec.GetCampaignId(), RunID: runID, Catalog: catalog, StackSet: stackSet,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: account campaign population: expected system matrix: %w", err)
+		}
+	case evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE:
+		if spec.GetFormationStackSetDigest() != "" || len(spec.GetModelRegistry()) != 1 {
+			return nil, fmt.Errorf("evaluation: account campaign population: frozen campaign does not match model-role lane: %w", constants.ErrEvaluationTargetKindMismatch)
+		}
+		repetition := spec.GetRepetitionCount()
+		if repetition == 0 {
+			repetition = 1
+		}
+		expectedMatrix, err = BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
+			CampaignID:      spec.GetCampaignId(),
+			RunID:           runID,
+			Catalog:         catalog,
+			Variants:        spec.GetModelRegistry(),
+			RepetitionCount: repetition,
+		})
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("evaluation: account campaign population: run lane %s: %w", run.GetLane(), constants.ErrEvaluationTargetKindMismatch)
 	}
 	expected := uint64(len(expectedMatrix))
 	report := &CampaignPopulationReport{
@@ -110,6 +154,10 @@ func (a *CampaignPopulationAccountant) AccountRun(
 		if identity == "" {
 			report.FailureReasons = append(report.FailureReasons, fmt.Sprintf("assignment %s is missing deterministic identity", assignment.GetAssignmentId()))
 			continue
+		}
+		recomputedIdentity, err := ComputeAssignmentDeterministicIdentity(assignment)
+		if err != nil || recomputedIdentity != identity {
+			report.FailureReasons = append(report.FailureReasons, fmt.Sprintf("assignment %s deterministic identity does not match its target", assignment.GetAssignmentId()))
 		}
 		if _, exists := seen[identity]; exists {
 			report.DuplicateIdentities = append(report.DuplicateIdentities, identity)

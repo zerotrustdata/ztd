@@ -15,13 +15,13 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// AuditReceiptQuery is the read interface into the operator audit vault for
-// the governed native audit receipt tools. It is implemented by
-// *storage.SQLAuditStore in production and by stubs in unit tests. The
-// interface is intentionally narrow: only the receipt retrieval methods the
-// native tools require are exposed, so the tools cannot mutate audit state.
+// AuditReceiptQuery is the read interface into the configured local audit
+// store for the governed native audit receipt tools. The Gateway production
+// handler uses its local SQLAuditStore, which may contain best-effort remote
+// Operator receipt projections. The interface exposes only receipt reads.
 type AuditReceiptQuery interface {
 	ListActionReceipts(scope models.AuditScope, limit, offset int) ([]*models.ActionReceiptRecord, error)
 	ListActionReceiptsSince(since time.Time, limit int) ([]*models.ActionReceiptRecord, error)
@@ -34,9 +34,16 @@ type AuditReceiptQuery interface {
 // the injection mechanism internal to the mcp package.
 type auditReceiptQueryCtxKey struct{}
 
+type auditReceiptListAuthority struct {
+	operatorID string
+	name       string
+}
+
+type auditReceiptListAuthorityCtxKey struct{}
+
 // withAuditReceiptQuery returns a context carrying the provided
-// AuditReceiptQuery so audit receipt tools can access the operator audit
-// vault during native tool execution.
+// AuditReceiptQuery so audit receipt tools can access the configured local
+// audit store during native tool execution.
 func withAuditReceiptQuery(ctx context.Context, q AuditReceiptQuery) context.Context {
 	return context.WithValue(ctx, auditReceiptQueryCtxKey{}, q)
 }
@@ -50,20 +57,24 @@ func auditReceiptQueryFromContext(ctx context.Context) AuditReceiptQuery {
 	return q
 }
 
-// AuditReceiptListTool queries signed ActionReceipt records from the operator
-// audit vault under governed MCP tool dispatch. It is the governed
+func withAuditReceiptListAuthority(ctx context.Context, authority auditReceiptListAuthority) context.Context {
+	return context.WithValue(ctx, auditReceiptListAuthorityCtxKey{}, authority)
+}
+
+// AuditReceiptListTool queries signed ActionReceipt records from the executing
+// runtime's local audit store under governed MCP tool dispatch. It is the governed
 // replacement for unauthenticated HTTP audit polling: every invocation
 // traverses the L1–L5 gauntlet and produces its own audit record.
 type AuditReceiptListTool struct{}
 
 // Name returns the tool identifier.
 func (t *AuditReceiptListTool) Name() string {
-	return "audit_receipt_list"
+	return constants.MCPToolAuditReceiptList
 }
 
 // Description returns a human-readable description.
 func (t *AuditReceiptListTool) Description() string {
-	return "Lists signed ActionReceipt records from the operator audit vault, scoped to an operator session. Supports optional action_type and not_before (RFC3339) filtering with limit/offset pagination."
+	return "Lists signed ActionReceipt records. Gateway-native queries require an operator session and optionally intersect an investigation; remote receipts there are best-effort projections. Explicit Operator-local queries require investigation_id and exclude_audit_reads=true, return the executing Operator's authoritative signed receipts, and may omit the session filter to span reconnects. Supports optional action_type and not_before (RFC3339) filtering with limit/offset pagination. This read-only query runs as a governed MCP_CALL."
 }
 
 // InputSchema returns the JSON Schema for tool validation.
@@ -73,11 +84,19 @@ func (t *AuditReceiptListTool) InputSchema() *InputSchema {
 		Properties: map[string]*PropertySchema{
 			"operator_session_id": {
 				Type:        "string",
-				Description: "Operator session ID to scope the receipt query (required).",
+				Description: "Operator session ID to scope Gateway-native queries (required there); omit for Operator-local queries to span reconnects.",
+			},
+			"investigation_id": {
+				Type:        "string",
+				Description: "Optional for Gateway-native queries; required for Operator-local queries.",
 			},
 			"action_type": {
 				Type:        "string",
 				Description: "Optional action type filter (e.g. FILE_EDIT, DOCUMENT_UPDATE).",
+			},
+			"exclude_audit_reads": {
+				Type:        "boolean",
+				Description: "Exclude audit receipt read receipts before pagination. Operator-local queries require true.",
 			},
 			"not_before": {
 				Type:        "string",
@@ -92,14 +111,16 @@ func (t *AuditReceiptListTool) InputSchema() *InputSchema {
 				Description: "Pagination offset (default 0).",
 			},
 		},
-		Required: []string{"operator_session_id"},
+		Required: []string{},
 	}
 }
 
 // AuditReceiptListRequest is the params for the "audit_receipt_list" tool.
 type AuditReceiptListRequest struct {
 	OperatorSessionID string `json:"operator_session_id"`
+	InvestigationID   string `json:"investigation_id,omitempty"`
 	ActionType        string `json:"action_type,omitempty"`
+	ExcludeAuditReads bool   `json:"exclude_audit_reads,omitempty"`
 	NotBefore         string `json:"not_before,omitempty"`
 	Limit             int    `json:"limit,omitempty"`
 	Offset            int    `json:"offset,omitempty"`
@@ -107,10 +128,17 @@ type AuditReceiptListRequest struct {
 
 // AuditReceiptListResult is the result for the "audit_receipt_list" tool.
 type AuditReceiptListResult struct {
-	Receipts []*models.ActionReceiptRecord `json:"receipts"`
-	Count    int                           `json:"count"`
-	Error    string                        `json:"error,omitempty"`
+	Receipts   []*models.ActionReceiptRecord `json:"receipts"`
+	Count      int                           `json:"count"`
+	OperatorID string                        `json:"operator_id,omitempty"`
+	Authority  string                        `json:"authority,omitempty"`
+	Error      string                        `json:"error,omitempty"`
 }
+
+// OperatorAuditReceiptListResult is the allowlisted result returned by the
+// Operator-local audit_receipt_list route. It contains canonical signed
+// receipts and the identity/scope metadata needed to establish authority.
+type OperatorAuditReceiptListResult = models.OperatorAuditReceiptListResult
 
 // Execute implements the tool logic.
 func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage) (CallToolResult, error) {
@@ -119,7 +147,18 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 		return CallToolResult{}, fmt.Errorf("audit_receipt_list: unmarshal arguments: %w", err)
 	}
 
-	if req.OperatorSessionID == "" {
+	authority, operatorLocal := ctx.Value(auditReceiptListAuthorityCtxKey{}).(auditReceiptListAuthority)
+	if operatorLocal {
+		if authority.operatorID == "" {
+			return CallToolResult{}, fmt.Errorf("audit_receipt_list: %w", constants.ErrOperatorIDMissing)
+		}
+		if req.InvestigationID == "" {
+			return CallToolResult{}, fmt.Errorf("audit_receipt_list: %w", constants.ErrMCPAuditReceiptListInvestigationReq)
+		}
+		if !req.ExcludeAuditReads {
+			return CallToolResult{}, fmt.Errorf("audit_receipt_list: exclude_audit_reads: %w", constants.ErrMissingRequiredField)
+		}
+	} else if req.OperatorSessionID == "" {
 		return CallToolResult{}, fmt.Errorf("audit_receipt_list: %w", constants.ErrMCPAuditReceiptListOperatorSessionReq)
 	}
 
@@ -133,9 +172,24 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 		limit = 50
 	}
 
-	receipts, err := q.ListActionReceipts(models.AuditScope{OperatorSessionID: req.OperatorSessionID}, limit, req.Offset)
+	scope := models.AuditScope{
+		OperatorSessionID: req.OperatorSessionID,
+		InvestigationID:   req.InvestigationID,
+		ExcludeAuditReads: req.ExcludeAuditReads,
+	}
+	if operatorLocal {
+		scope.OperatorID = authority.operatorID
+	}
+	receipts, err := q.ListActionReceipts(scope, limit, req.Offset)
 	if err != nil {
 		return CallToolResult{}, fmt.Errorf("audit_receipt_list: query: %w", err)
+	}
+	if operatorLocal {
+		for _, receipt := range receipts {
+			if receipt.OperatorID != authority.operatorID {
+				return CallToolResult{}, fmt.Errorf("audit_receipt_list: receipt belongs to Operator %q, expected %q", receipt.OperatorID, authority.operatorID)
+			}
+		}
 	}
 
 	var notBefore time.Time
@@ -158,10 +212,28 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 		filtered = append(filtered, rec)
 	}
 
-	result := AuditReceiptListResult{
-		Receipts: filtered,
-		Count:    len(filtered),
+	if operatorLocal {
+		signedReceipts := make([]*operatorv1.ActionReceipt, 0, len(filtered))
+		for _, record := range filtered {
+			if record.ActionReceipt == nil {
+				return CallToolResult{}, fmt.Errorf("audit_receipt_list: transaction %q has no canonical signed receipt", record.TransactionID)
+			}
+			signedReceipts = append(signedReceipts, record.ActionReceipt)
+		}
+		result := OperatorAuditReceiptListResult{
+			Receipts:        signedReceipts,
+			Count:           len(signedReceipts),
+			OperatorID:      authority.operatorID,
+			Authority:       authority.name,
+			InvestigationID: req.InvestigationID,
+		}
+		resultJSON, err := json.Marshal(result)
+		if err != nil {
+			return CallToolResult{}, fmt.Errorf("audit_receipt_list: %w: %w", constants.ErrMCPAuditReceiptMarshalResult, err)
+		}
+		return CallToolResult{Content: []TextContent{{Type: "text", Text: string(resultJSON)}}, IsError: false}, nil
 	}
+	result := AuditReceiptListResult{Receipts: filtered, Count: len(filtered)}
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
 		return CallToolResult{}, fmt.Errorf("audit_receipt_list: %w: %w", constants.ErrMCPAuditReceiptMarshalResult, err)
@@ -175,17 +247,18 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 }
 
 // AuditReceiptGetTool retrieves a single signed ActionReceipt by transaction
-// ID from the operator audit vault under governed MCP tool dispatch.
+// ID from the executing runtime's local audit store under governed MCP tool
+// dispatch.
 type AuditReceiptGetTool struct{}
 
 // Name returns the tool identifier.
 func (t *AuditReceiptGetTool) Name() string {
-	return "audit_receipt_get"
+	return constants.MCPToolAuditReceiptGet
 }
 
 // Description returns a human-readable description.
 func (t *AuditReceiptGetTool) Description() string {
-	return "Retrieves a single signed ActionReceipt by transaction_id from the operator audit vault."
+	return "Retrieves a single signed ActionReceipt by transaction_id from the executing runtime's local audit store. An Operator's store is authoritative for its own receipts; remote Operator receipts in the Gateway's store are best-effort projections, not authoritative evidence."
 }
 
 // InputSchema returns the JSON Schema for tool validation.

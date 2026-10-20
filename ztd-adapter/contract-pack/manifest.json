@@ -2,7 +2,7 @@
   "files": [
     {
       "path": "builder-prompt.md",
-      "sha256": "5f392f48b73c1f419dae59efcbf45869e34157042007fbc1066cbce6fa8e63e4"
+      "sha256": "af1964ed4f04b1387a5cfc8c2c4aa212ee49d08ec9b66197758d85f6aa8b776d"
     },
     {
       "path": "event-schemas.json",
@@ -54,11 +54,11 @@
     },
     {
       "path": "models.ts",
-      "sha256": "301a9447dc258076d5641ee5805ef7224caf9428ca0b3119d695768b51c02963"
+      "sha256": "199ed5d60923442f7bd2fb22521cec8301e2242d2a5d3517e2eb4a6dec06d3a6"
     },
     {
       "path": "observe.openapi.json",
-      "sha256": "3bfefdb3c4e48902990c2f2f04dd022186d5a5c2e16b081dca329ab4d163a96e"
+      "sha256": "e1ee1cf35d58e1957254a87f37776e4194fdd454513e44231908a157c76e9cfd"
     },
     {
       "path": "public/disclosure-matrix.json",

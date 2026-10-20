@@ -3,12 +3,11 @@ doc_id: glossary
 title: ztd Glossary
 audience: developers, maintainers, and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - protocol/
   - internal/services/
-  - internal/operator/
 related:
   - docs/architecture/gateway.md
   - docs/architecture/operator.md
@@ -29,7 +28,7 @@ Core terminology for the ztd Governance Suite, including the protocol, Governanc
 
 ## A2A (Agent2Agent)
 
-A JSON-RPC protocol surface for agent-to-agent skill invocation exposed at `POST /api/v1/a2a/call`. The Gateway converts an `a2a/call` request into a typed `ztd.operator.v1.A2aCallRequested` (`A2ACallRequested`) protobuf payload, associates it with action type `A2A_CALL` and event type `ztd.v1.operator.a2a.call.requested`, wraps it inside a **Governance Envelope**, and processes it through the governance pipeline. It returns either a signed receipt or a structured suspension response containing an approval URL (`<public base URL>/approve/<txHash>`). When admitted under the active governance posture, the request dispatches to the configured downstream A2A server.
+A JSON-RPC protocol surface for agent-to-agent skill invocation exposed at `POST /api/v1/a2a/call`. The Gateway converts an `a2a/call` request into a typed `ztd.operator.v1.A2aCallRequested` (`A2ACallRequested`) protobuf payload, associates it with action type `A2A_CALL` and event type `ztd.v1.operator.a2a.call.requested`, wraps it inside a **Governance Envelope**, and processes it through the governance pipeline. It returns either a signed receipt or a structured suspension response containing an approval URL (`<public base URL>/api/v1/approve/<txHash>`). When admitted under the active governance posture, the request dispatches to the configured downstream A2A server.
 
 ---
 
@@ -83,7 +82,13 @@ A just-in-time, single-action, self-dissolving permission minted by the L5 Actua
 
 ## CLI Operator Session Binding
 
-The persisted pair of `operator_session_id` and `operator_id` stamped on an authenticated CLI session. Running `ztd operator bind <operator-session-id>...` pins the CLI session to one or more active operator sessions owned by the same user in a single `POST /api/v1/auth/cli/bind` call (all targets are validated first; the first is the primary binding); `ztd operator bind list` inspects bindings; `ztd operator bind unbind` clears the binding via `POST /api/v1/auth/cli/unbind`. Binding changes issue a replacement CLI session server-side and update local credentials. Session refresh, rotation, and recovery inherit the prior binding when present. The unified auth middleware derives operator identity from the session record and rejects contradictory request headers.
+The persisted pair of `operator_session_id` and `operator_id` stamped on an authenticated CLI session. Running `ztd operator bind <operator-session-id>...` pins the CLI session to one or more active operator sessions owned by the same user in a single `POST /api/v1/auth/cli/bind` call (all targets are validated first; the first is the primary binding); `ztd operator bind list` inspects bindings; `ztd operator bind unbind` clears the binding via `POST /api/v1/auth/cli/unbind`. Binding changes update the CLI session in place (same CLI session ID and certificate) and refresh local credentials. Session refresh, rotation, and recovery inherit the prior binding when present. The unified auth middleware derives operator identity from the session record and rejects contradictory request headers.
+
+---
+
+## CLISession
+
+The mTLS-authenticated session of an enrolled CLI or BYO client (`internal/models/auth.go`, `CLISession`). The Gateway persists it in the `cli_sessions` collection (`constants.CollectionCLISessions`) through `CLISessionService` (`internal/services/gateway/cli_session_service.go`). The enrolled user's CLI holds it (`ztd auth enroll user`), including `ztd tui` and the `ztd mcp` proxy, and it is the routing namespace for that client's SSE streams. Authentication requires a client certificate whose SPIFFE URI SAN is `spiffe://ztd.local/cli/<user_id>/<cli_session_id>` plus the `X-ZTD-CLI-Session-ID` header (`constants.HeaderCLISessionID`). `handleCLIAuth` in `internal/services/gateway/gateway_auth.go` rejects the request with `ErrMTLSIdentityMismatch` when the certificate SAN does not name the header session, and it rejects inactive or expired sessions. The session lifetime is `constants.CLISessionTTL` (7 days), aligned with the CLI certificate. `ztd auth refresh` extends it in place under the same ID. It is disjoint from **OperatorSession** and may bind to operator sessions through `operator_session_id` and `bound_operator_session_ids` (see **CLI Operator Session Binding**).
 
 ---
 
@@ -113,7 +118,7 @@ A portable, content-addressed release package (`internal/services/compliance/rep
 
 ## Consensus
 
-A named L2 governance body defined by a `ConsensusPolicy` (`internal/models/auth.go`). Its enrolled members correspond to trusted signer identities (`member_app_ids`), and the policy defines the affirmative quorum threshold (`quorum`), distinct-signature requirement (`require_distinct`), and enabled state. Members sign Ed25519 votes over `<transaction_hash>|<decision>`. L2 gates execution under `consensus` and `notary` postures and remains audited under `doctrine` and `ratify`.
+A named L2 governance body defined by a `ConsensusPolicy` (`internal/models/auth.go`). Its enrolled members are a bound set of N trusted signer identities (`member_app_ids`), and the policy defines the affirmative quorum threshold (`quorum`, K distinct affirmative members), distinct-signature requirement (`require_distinct`), and enabled state. Members sign Ed25519 votes over `<transaction_hash>|<decision>`. L2 gates execution under `consensus` and `notary` postures and remains audited under `doctrine` and `ratify`.
 
 ---
 
@@ -125,7 +130,7 @@ The first-party browser frontend (`console/`), embedded in the `ztd` binary and 
 
 ## Control Assertion
 
-A framework-neutral, atomic statement of technical behavior defined in the protocol assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, catalog version 2.0.0). Each assertion declares its identifier, version, title, statement, category, component scope, responsibility, applicable action classes, required evidence types, required grader and verifier references, minimum evidence level, validation cycle, missing-evidence policy, and passing rule. Typed crosswalks map these assertions to external framework controls (e.g. FedRAMP 20x CR26, NIST SP 800-53 Rev. 5).
+A framework-neutral, atomic statement of technical behavior defined in the protocol assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, catalog version 2.1.0). Each assertion declares its identifier, version, title, statement, category, component scope, responsibility, applicable action classes, required evidence types, required grader and verifier references, minimum evidence level, validation cycle, missing-evidence policy, and passing rule. Typed crosswalks map these assertions to external framework controls (e.g. FedRAMP 20x CR26, NIST SP 800-53 Rev. 5).
 
 ---
 
@@ -169,7 +174,7 @@ The pipeline produces evidence up to L3; L4 requires historical effectiveness st
 
 ## Execution Record
 
-The `events` table in `ztd.db` (`internal/services/storage/audit_store.go`). It is the sole record of each command and file operation, keyed by `execution_id`. It holds the full raw stdout and stderr, gzip-compressed and encrypted with the local vault, and records content hashes. Nothing truncates it. Egress is scrubbed by the publisher, not by the local record. File diffs are not stored separately; they are computed from the git file ledger on demand.
+The `events` table in `ztd.db` (`internal/services/storage/audit_store.go`). It is the sole record of each command and file operation, keyed by `execution_id`. It holds the full raw stdout and stderr, gzip-compressed and encrypted with the local vault, and records content hashes. Nothing truncates it. Egress is scrubbed by the publisher, not by the local record. Full file diffs are not stored; they are computed from the git file ledger on demand, and the `file_mutation_log` table keeps only encrypted diff statistics.
 
 ---
 
@@ -234,7 +239,7 @@ The governed model-inference dispatch subsystem (`internal/services/inference/`)
 
 ## KSI (Key Security Indicator)
 
-A typed, machine-evaluable security requirement defined in the FedRAMP 20x catalog (`docs/reference/ksi-catalog.json`). KSIs span ten functional categories: `CED` (Cybersecurity Education), `CMT` (Change Management), `CNA` (Cloud Native Architecture), `IAM` (Identity and Access Management), `INR` (Incident Response), `MLA` (Monitoring, Logging, and Auditing), `PIY` (Policy and Inventory), `RCP` (Recovery Planning), `SVC` (Service Configuration), and `TPR` (Supply Chain Risk). The KSI evaluator derives status (`satisfied`, `not_satisfied`, `unverifiable`, `not_applicable`) from registered automated methods and typed evidence artifacts.
+A typed, machine-evaluable security requirement defined in the FedRAMP 20x catalog (`docs/reference/ksi-catalog.json`). KSIs span ten operational categories: `CED` (Cybersecurity Education), `CMT` (Change Management), `CNA` (Cloud Native Architecture), `IAM` (Identity and Access Management), `INR` (Incident Response), `MLA` (Monitoring, Logging, and Auditing), `PIY` (Policy and Inventory), `RCP` (Recovery Planning), `SVC` (Service Configuration), and `TPR` (Supply Chain Risk). The KSI evaluator derives status (`satisfied`, `not_satisfied`, `unverifiable`, `not_applicable`) from registered automated methods and typed evidence artifacts.
 
 ---
 
@@ -252,7 +257,7 @@ The multi-signature governance layer (`internal/services/governance/l2_consensus
 
 ## L3 Notary (L3Notary)
 
-The human-authorization layer for mutations under `ratify` and `notary` postures (`internal/services/governance/l3_notary.go`). Gateway mode verifies a WebAuthn passkey assertion against the transaction hash challenge; CLI-originated proofs additionally bind the authenticated CLI session ID and certificate fingerprint. Outbound mode verifies an approved suspended transaction record and its Ed25519 approval signature over the transaction hash. Read-only actions do not require L3 proof in any posture; `doctrine` and `consensus` postures audit L3 proofs when provided without gating execution.
+The human-authorization layer for mutations under `ratify` and `notary` postures (`internal/services/governance/l3_notary.go`). Gateway mode verifies a WebAuthn passkey assertion against the transaction hash challenge; CLI-originated proofs additionally bind the authenticated CLI session ID and certificate fingerprint. Outbound mode verifies the same proof types against the Operator's pinned Gateway CA trust: a WebAuthn passkey assertion, or an enrolled CLI certificate signature (ECDSA P-256) over the transaction hash. No local suspended-transaction record or Gateway-issued authorization substitutes for the human proof. Read-only actions do not require L3 proof in any posture; `doctrine` and `consensus` postures audit L3 proofs when provided without gating execution.
 
 ---
 
@@ -307,7 +312,7 @@ The three typed model tiers used by governed inference requests (`internal/model
 
 ## Mutual TLS (mTLS)
 
-Bidirectional TLS authentication enforced across all protected transport surfaces. ztd requires TLS 1.3 and uses certificate URI Subject Alternative Names (SANs) under the `ztd.local` trust domain to authenticate workload and session identities, encrypt data in transit, bind callers to envelope claims, and enforce certificate revocation. Workload certificates authenticate communicating processes, while binary build provenance is verified separately.
+Bidirectional TLS authentication enforced across all protected transport surfaces. Gateway mTLS listeners and mTLS clients require TLS 1.3, and certificates use URI Subject Alternative Names (SANs) under the `ztd.local` trust domain to authenticate workload and session identities, encrypt data in transit, bind callers to envelope claims, and enforce certificate revocation. Workload certificates authenticate communicating processes, while binary build provenance is verified separately.
 
 ---
 
@@ -323,9 +328,9 @@ The enrolled-CLI automation path for governed shell execution across one or more
 
 ---
 
-## Operator Session
+## OperatorSession
 
-The runtime authorization and execution context of an active Governed Operator, identified by `operator_session_id`. It scopes the Operator's SPIFFE workload identity, pub/sub communication channels (`cmd:<operator_id>:<operator_session_id>`), audit records, and isolated git ledger repository.
+The runtime authorization and execution context of an active Governed Operator, identified by `operator_session_id`. It scopes the Operator's SPIFFE workload identity, pub/sub communication channels (`cmd:<operator_id>:<operator_session_id>`), audit records, and isolated git ledger repository. The Governed Operator holds it. Its mTLS certificate carries the session in the SPIFFE URI SAN, and `handleOperatorAuth` in `internal/services/gateway/gateway_auth.go` matches that SAN against the linked Operator document (`ValidateOperatorSession`). The Gateway persists the session in the `operator_sessions` collection (`constants.CollectionOperatorSessions`) through `OperatorSessionService` (`internal/services/gateway/operator_session_service.go`) and starts a matching `sessions` row in the audit store. It is disjoint from **CLISession** and **WebSession**.
 
 ---
 
@@ -361,7 +366,7 @@ A client or service that translates a principal's intent into a conformant **Gov
 
 ## Receipt Failure Code
 
-A strongly typed classification enum (`ReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `ActionReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `RECEIPT_FAILURE_CODE_ROLE_INVALID`, `RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `RECEIPT_FAILURE_CODE_GENERATE_FAILED`), missing models (`RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), prompts that fill the model context window (`RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), and general execution failures (`RECEIPT_FAILURE_CODE_EXECUTION_FAILED`). The failure code is bound into the receipt signature.
+A strongly typed classification enum (`ReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `ActionReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `RECEIPT_FAILURE_CODE_ROLE_INVALID`, `RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `RECEIPT_FAILURE_CODE_GENERATE_FAILED`), missing models (`RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), prompts that fill the model context window (`RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), general execution failures (`RECEIPT_FAILURE_CODE_EXECUTION_FAILED`), and payloads withheld because a UEI placeholder could not be rehydrated (`RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`). The failure code is bound into the receipt signature.
 
 ---
 
@@ -431,7 +436,7 @@ A SHA-256 host identifier (`internal/services/auth/fingerprint.go`, `SystemFinge
 
 ## Tactical Governance Console (TUI)
 
-The terminal user interface launched via `ztd tui` (`internal/cli/cmd/tui/`, implemented in `internal/cli/tui/`). It runs as the enrolled CLI session (`ztd auth enroll user`): the same mTLS identity, CLI session header, and live SSE stream as every other CLI command. Its header shows the CLI identity (user, CLI session, bound Operator) and the Gateway's governance posture, marking L2 and L3 as audited when the posture does not enforce them. Number keys switch between views. The overview shows the L1–L5 execution pipeline, an audit ledger of the session's stream events and TUI action results, the pending L3 approval queue, and the connected Operators. The Operators view lists connected Operators; Enter opens a scrollable detail view using the same heartbeat snapshot as `ztd operator show`, Esc returns to the list, `b` binds the CLI session to the selected Operator, and `u` clears the binding; binding changes rotate the CLI session and reconnect SSE. The Audit view lists paged Gateway audit events, summary totals, and on-demand hash-chain verification using the same endpoints as `ztd audit events`, `ztd audit summary`, and `ztd audit verify`. The Status view shows Gateway health, connected Operators, and completed platform-enrolled workloads using the same health and enrollment data as `ztd gw status`. The Recovery view accepts a one-time headless CLI recovery token and submits the same approve/deny request as `ztd auth approve-recovery`, after confirmation. Other views show the approval queue and the platform enrollments (owner only). Pending approvals and enrollments are re-listed on every stream connect and on each `ztd.v1.platform.approvals.changed` event for their subject. Approving a selected transaction opens the same browser WebAuthn page as `ztd auth approve` and then verifies the result over mTLS. Enrollment decisions and revocations make the same mTLS requests as `ztd auth enroll approve|deny|revoke`, and stopping a remote Operator makes the same governed shutdown request as `ztd operator stop <session_id>`, each after a y/N confirmation. The Operator list is re-listed on every stream connect and on each `ztd.v1.operator.status.updated.*` event; each `ztd.v1.operator.heartbeat.received` event updates the listed Operator in place, and stale status is derived from `stale_at` at render time. For views and controls, see `ztd tui --help`.
+The terminal user interface launched via `ztd tui` (`internal/cli/cmd/tui/`, implemented in `internal/cli/tui/`). It runs as the enrolled CLI session (`ztd auth enroll user`): the same mTLS identity, CLI session header, and live SSE stream as every other CLI command. Its header shows the CLI identity (user, CLI session, bound Operator) and the Gateway's governance posture, marking L2 and L3 as audited when the posture does not enforce them. Number keys switch between views. The overview shows the L1–L5 execution pipeline, an audit ledger of the session's stream events and TUI action results, the pending L3 approval queue, and the connected Operators. The Operators view lists connected Operators; Enter opens a scrollable detail view using the same heartbeat snapshot as `ztd operator show`, Esc returns to the list, `b` binds the CLI session to the selected Operator, and `u` clears the binding; binding changes keep the same CLI session ID, refresh the live session from the updated local credentials, and reconnect SSE. The Audit view lists paged Gateway audit events, summary totals, and on-demand hash-chain verification using the same endpoints as `ztd audit events`, `ztd audit summary`, and `ztd audit verify`. The Status view shows Gateway health, connected Operators, and completed platform-enrolled workloads using the same health and enrollment data as `ztd gw status`. The Recovery view accepts a one-time headless CLI recovery token and submits the same approve/deny request as `ztd auth approve-recovery`, after confirmation. Other views show the approval queue and the platform enrollments (owner only). Pending approvals and enrollments are re-listed on every stream connect and on each `ztd.v1.platform.approvals.changed` event for their subject. Approving a selected transaction opens the same browser WebAuthn page as `ztd auth approve` and then verifies the result over mTLS. Enrollment decisions and revocations make the same mTLS requests as `ztd auth enroll approve|deny|revoke`, and stopping a remote Operator makes the same governed shutdown request as `ztd operator stop <session_id>`, each after a y/N confirmation. The Operator list is re-listed on every stream connect and on each `ztd.v1.operator.status.updated.*` event; each `ztd.v1.operator.heartbeat.received` event updates the listed Operator in place, and stale status is derived from `stale_at` at render time. For views and controls, see `ztd tui --help`.
 
 ---
 
@@ -459,6 +464,12 @@ The local AES-256-GCM encryption service and key management hierarchy (`internal
 
 ---
 
+## WebSession
+
+The browser-authenticated session that the Gateway issues after a passkey ceremony (`internal/models/auth.go`, `WebSession`). The browser user of the embedded console (`console/`) holds it. `PasskeyHandler.RegisterVerify` and `PasskeyHandler.AuthenticateVerify` (`internal/services/gateway/passkey_service_http.go`) call `WebSessionService.CreateWebSession` (`internal/services/gateway/web_session_service.go`), which persists the document in the `web_sessions` collection (`constants.CollectionWebSessions`) of the Gateway document store. The lifetime is `constants.WebSessionTTL` (24 hours). The Gateway sets the session ID as the value of the `ztd_web_session_cookie` cookie (`constants.WebSessionCookieName`; HttpOnly, Secure, SameSite=Lax, or SameSite=None for cross-origin). `ValidateWebSessionCookie` in `internal/services/gateway/gateway_auth.go` admits a request only when the cookie names an unexpired document whose user is active. The cookie value is the web session ID (`ContextKeyWebSessionID`), because the stored body does not carry its own ID. Logout deletes the document and clears the cookie. A WebSession does not authenticate a CLI or Operator; those use mTLS certificates (see **CLISession** and **OperatorSession**).
+
+---
+
 ## Workload Identity
 
 A SPIFFE URI Subject Alternative Name encoded in an X.509 certificate under the `ztd.local` trust domain (`protocol/workload_identity.go`). Formats are:
@@ -481,4 +492,4 @@ The statically linked Go executable (`cmd/ztd/main.go`) that operates as a **Gov
 
 ## ztd Protocol
 
-The canonical wire contract and invariant set for ztd (`protocol/`). It defines protobuf schemas (`ztd.common.v1`, `ztd.operator.v1`, `ztd.compliance.v1`, `ztd.eval.v1`), Go protocol libraries and TypeScript bindings, JSON constant registries (`protocol/constants/`, such as `events.json`, `status.json`, and `intents.json`), JSON model schemas, doctrine definitions, SPIFFE workload-identity helpers, receipt verification routines, and compliance crosswalks. Client-facing protobuf messages use protojson on wire boundaries.
+The canonical wire contract and invariant set for ztd (`protocol/`). It defines protobuf schemas (`ztd.common.v1`, `ztd.operator.v1`, `ztd.compliance.v1`, `ztd.eval.v1`, `ztd.pubsub.v1`, `ztd.tribunal.v1`), Go protocol libraries and TypeScript bindings, JSON constant registries (`protocol/constants/`, such as `events.json`, `status.json`, and `intents.json`), JSON model schemas, doctrine definitions, SPIFFE workload-identity helpers, receipt verification routines, and compliance crosswalks. Client-facing protobuf messages use protojson on wire boundaries.

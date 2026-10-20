@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -146,7 +147,6 @@ func TestClient_RegisterSigner(t *testing.T) {
 		name         string
 		keyID        string
 		pubHex       string
-		role         string
 		responseCode int
 		wantErr      bool
 	}{
@@ -154,23 +154,20 @@ func TestClient_RegisterSigner(t *testing.T) {
 			name:         "successful registration",
 			keyID:        "test-key",
 			pubHex:       "abc123",
-			role:         "consensus",
 			responseCode: http.StatusOK,
 			wantErr:      false,
 		},
 		{
-			name:         "principal role",
+			name:         "second signer",
 			keyID:        "principal-key",
 			pubHex:       "def456",
-			role:         "principal",
 			responseCode: http.StatusOK,
 			wantErr:      false,
 		},
 		{
-			name:         "server returns 404 (best-effort)",
+			name:         "server returns 404",
 			keyID:        "test-key",
 			pubHex:       "abc123",
-			role:         "consensus",
 			responseCode: http.StatusNotFound,
 			wantErr:      true,
 		},
@@ -178,7 +175,6 @@ func TestClient_RegisterSigner(t *testing.T) {
 			name:         "server returns 500",
 			keyID:        "test-key",
 			pubHex:       "abc123",
-			role:         "consensus",
 			responseCode: http.StatusInternalServerError,
 			wantErr:      true,
 		},
@@ -224,7 +220,7 @@ func TestClient_RegisterSigner(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			err = client.RegisterSigner(ctx, tt.keyID, tt.pubHex, tt.role)
+			err = client.RegisterSigner(ctx, tt.keyID, tt.pubHex)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RegisterSigner() error = %v, wantErr %v", err, tt.wantErr)
@@ -298,7 +294,7 @@ func TestClient_do(t *testing.T) {
 			},
 		},
 		{
-			name:         "request with CLI session ID",
+			name:         "CLI session ID is not sent on the Operator identity",
 			persona:      Persona{ID: "test-client", CLISessionID: "cli-session-123"},
 			method:       http.MethodGet,
 			body:         nil,
@@ -306,7 +302,7 @@ func TestClient_do(t *testing.T) {
 			responseBody: `{"result": "ok"}`,
 			wantErr:      false,
 			verifyHeaders: map[string]string{
-				constants.HeaderCLISessionID: "cli-session-123",
+				constants.HeaderCLISessionID: "",
 			},
 		},
 		{
@@ -560,13 +556,18 @@ func TestClient_ApprovalSubscription_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
+	client, err := New(config.Config{
+		PublicBaseURL: srv.URL,
+		MTLSBaseURL:   srv.URL,
+		Auth:          config.Auth{},
+		CLIAuth:       writeIdentity(t, "cli"),
+	})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	sub, err := client.SubscribeApprovals(ctx, Persona{ID: "test"})
+	sub, err := client.SubscribeApprovals(ctx, Persona{ID: "test", CLISessionID: "cli-approval-session"})
 	require.NoError(t, err)
 	defer sub.Close()
 
@@ -598,7 +599,12 @@ func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := New(config.Config{PublicBaseURL: srv.URL, MTLSBaseURL: srv.URL, Auth: config.Auth{}})
+	client, err := New(config.Config{
+		PublicBaseURL: srv.URL,
+		MTLSBaseURL:   srv.URL,
+		Auth:          config.Auth{},
+		CLIAuth:       writeIdentity(t, "cli"),
+	})
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -626,8 +632,10 @@ func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
 
 func TestMCPToolsCallWithCLI_RoutesThroughCLI(t *testing.T) {
 	var sawRequest bool
+	var cliSession string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sawRequest = true
+		cliSession = r.Header.Get(constants.HeaderCLISessionID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
@@ -637,10 +645,7 @@ func TestMCPToolsCallWithCLI_RoutesThroughCLI(t *testing.T) {
 	cfg := config.Config{
 		MTLSBaseURL: srv.URL,
 		Auth:        config.Auth{},
-		CLIAuth: config.Auth{
-			ClientCert: "/cli/cert",
-			ClientKey:  "/cli/key",
-		},
+		CLIAuth:     writeIdentity(t, "cli"),
 	}
 
 	c, err := New(cfg)
@@ -648,34 +653,10 @@ func TestMCPToolsCallWithCLI_RoutesThroughCLI(t *testing.T) {
 	assert.NotNil(t, c.cliHTTP, "cliHTTP must be non-nil for MCPToolsCallWithCLI to route through it")
 
 	ctx := context.Background()
-	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, "fs_list", FSPathArgs{Path: "."})
+	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test", CLISessionID: "cli-1"}, mcp.CallToolRequest{Name: (&mcp.FileReadTool{}).Name(), Arguments: mustJSON(t, mcp.FileReadRequest{Path: "."})})
 	require.NoError(t, err)
 	assert.True(t, sawRequest, "server should have received the request")
-}
-
-func TestMCPToolsCallWithCLI_FallsBackToDoWhenNoCLIHTTP(t *testing.T) {
-	var sawRequest bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sawRequest = true
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
-	}))
-	defer srv.Close()
-
-	cfg := config.Config{
-		MTLSBaseURL: srv.URL,
-		Auth:        config.Auth{},
-	}
-
-	c, err := New(cfg)
-	require.NoError(t, err)
-	assert.Nil(t, c.cliHTTP, "cliHTTP should be nil — fallback to do() expected")
-
-	ctx := context.Background()
-	_, err = c.MCPToolsCallWithCLI(ctx, Persona{ID: "test"}, "fs_list", FSPathArgs{Path: "."})
-	require.NoError(t, err)
-	assert.True(t, sawRequest, "server should have received the fallback request")
+	assert.Equal(t, "cli-1", cliSession, "the CLI identity carries the persona's CLI session")
 }
 
 func TestStateRoot_DecodesGatewayField(t *testing.T) {
@@ -717,4 +698,94 @@ func TestStateRoot_FailsClosedOnBadBody(t *testing.T) {
 			assert.Empty(t, root)
 		})
 	}
+}
+
+// recordCLISessionHeader serves requests and reports the CLI session header each one carried.
+func recordCLISessionHeader(t *testing.T) (*httptest.Server, chan string) {
+	t.Helper()
+	seen := make(chan string, 8)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.Header.Get(constants.HeaderCLISessionID)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, seen
+}
+
+func TestClient_CLISessionHeaderFollowsTheCertificateIdentity(t *testing.T) {
+	operator := writeIdentity(t, "operator")
+	cli := writeIdentity(t, "cli")
+	persona := Persona{ID: "test", CLISessionID: "cli-1"}
+	ctx := context.Background()
+
+	t.Run("Operator identity never carries the CLI session", func(t *testing.T) {
+		srv, seen := recordCLISessionHeader(t)
+		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: operator, CLIAuth: cli})
+		require.NoError(t, err)
+
+		_, _, err = c.do(ctx, persona, http.MethodGet, srv.URL+"/test", nil)
+		require.NoError(t, err)
+		assert.Empty(t, <-seen)
+	})
+
+	t.Run("CLI identity carries the CLI session", func(t *testing.T) {
+		srv, seen := recordCLISessionHeader(t)
+		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: operator, CLIAuth: cli})
+		require.NoError(t, err)
+
+		_, _, err = c.doWithCLI(ctx, persona, http.MethodGet, srv.URL+"/test", nil)
+		require.NoError(t, err)
+		assert.Equal(t, "cli-1", <-seen)
+	})
+
+	t.Run("one identity serves both when CLIAuth names the Operator certificate", func(t *testing.T) {
+		srv, seen := recordCLISessionHeader(t)
+		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: cli, CLIAuth: cli})
+		require.NoError(t, err)
+
+		_, _, err = c.do(ctx, persona, http.MethodGet, srv.URL+"/test", nil)
+		require.NoError(t, err)
+		assert.Equal(t, "cli-1", <-seen)
+	})
+
+	t.Run("governed dispatch without a CLI certificate runs on the Operator identity", func(t *testing.T) {
+		srv, seen := recordCLISessionHeader(t)
+		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: operator})
+		require.NoError(t, err)
+
+		_, err = c.DispatchCommandBody(ctx, persona, []byte(`{}`))
+		require.NoError(t, err)
+		assert.Empty(t, <-seen)
+	})
+
+	t.Run("governed dispatch with a CLI certificate uses the CLI identity", func(t *testing.T) {
+		srv, seen := recordCLISessionHeader(t)
+		c, err := New(config.Config{MTLSBaseURL: srv.URL, Auth: operator, CLIAuth: cli})
+		require.NoError(t, err)
+
+		_, err = c.DispatchCommandBody(ctx, persona, []byte(`{}`))
+		require.NoError(t, err)
+		assert.Equal(t, "cli-1", <-seen)
+	})
+}
+
+func TestClient_CLIOnlyCallsFailClosedWithoutCLICertificate(t *testing.T) {
+	srv, seen := recordCLISessionHeader(t)
+	c, err := New(config.Config{
+		MTLSBaseURL:   srv.URL,
+		PublicBaseURL: srv.URL,
+		Auth:          writeIdentity(t, "operator"),
+	})
+	require.NoError(t, err)
+	ctx := context.Background()
+	persona := Persona{ID: "test", CLISessionID: "cli-1"}
+
+	_, err = c.MCPToolsCallWithCLI(ctx, persona, mcp.CallToolRequest{Name: (&mcp.FileReadTool{}).Name(), Arguments: json.RawMessage(`{"path":"."}`)})
+	require.ErrorIs(t, err, constants.ErrMissingCertificate)
+
+	_, err = c.SubscribeApprovals(ctx, persona)
+	require.ErrorIs(t, err, constants.ErrMissingCertificate)
+
+	assert.Zero(t, len(seen), "a CLI-only call must not reach the Gateway on the Operator identity")
 }

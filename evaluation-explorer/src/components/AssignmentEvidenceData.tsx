@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
+import { LIVE_EVENT_RETENTION_LIMIT } from '../constants';
 import type { AssignmentResult, LiveEvent, ProjectionRecord } from '../contract/types';
 import { PanelSection } from './evidence';
 import { CopyButton } from './shared';
@@ -29,7 +30,7 @@ export function AssignmentEvidenceData({ assignment, events, source }: { assignm
       <PanelSection className="assignment-events" title="Assignment feed events">
         <p className="panel-note">
           {events.length} events loaded for this assignment from retained public feed history. Each row exposes
-          every event field. This history is independent of the live feed’s 500-event display limit.
+          every event field. This history is independent of the live feed’s {LIVE_EVENT_RETENTION_LIMIT}-event display limit.
         </p>
         {events.length > 0 ? <>
           <ol className="assignment-event-list">

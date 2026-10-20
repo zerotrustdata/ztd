@@ -19,10 +19,10 @@
 //   --once       publish the projections and all events without delays
 //   --run-tag    identity suffix for this run (default: current timestamp)
 //
-// The mirror is started detached if it is not already running. The feed
-// must be initialized (run scripts/seed.mjs or `ztd public init` first).
+// Requires the gateway-owned mirror (`./ztd gw start --public-spectator`);
+// the script exits if its public port is not listening.
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
@@ -32,7 +32,6 @@ import { fixturePublishLines } from './fixture-lines.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 
-const PRIVATE_PORT = process.env.ZTD_PRIVATE_PORT ?? '8081';
 const PUBLIC_PORT = process.env.ZTD_PUBLIC_PORT ?? '8082';
 const LIVE_DATASET_PREFIX = 'ds-live-demo-';
 const LIVE_RUN_PREFIX = 'run-live-demo';
@@ -68,32 +67,10 @@ function checkPort(port) {
   return result.stdout.includes(`:${port}`);
 }
 
-function waitForPort(port, label, timeoutMs) {
-  return new Promise((resolvePromise, reject) => {
-    const deadline = Date.now() + timeoutMs;
-    const check = () => {
-      if (checkPort(port)) return resolvePromise();
-      if (Date.now() > deadline) return reject(new Error(`${label} on port ${port} did not start within ${timeoutMs}ms`));
-      setTimeout(check, 200);
-    };
-    check();
-  });
-}
-
-async function ensureMirror() {
-  if (checkPort(PRIVATE_PORT) && checkPort(PUBLIC_PORT)) return;
-  console.log('Mirror not running; starting it detached...');
-  const proc = spawn(ztdBin(), [
-    'public', 'mirror', 'run',
-    '--listen', `127.0.0.1:${PRIVATE_PORT}`,
-    '--public-listen', `127.0.0.1:${PUBLIC_PORT}`,
-  ], { cwd: ztdCwd(), detached: true, stdio: 'ignore' });
-  proc.unref();
-  await waitForPort(PUBLIC_PORT, 'mirror public listener', 10000);
-  if (!checkPort(PRIVATE_PORT)) {
-    throw new Error(`mirror private listener on port ${PRIVATE_PORT} did not start`);
+function requireGatewayOwnedMirror() {
+  if (!checkPort(PUBLIC_PORT)) {
+    throw new Error(`gateway-owned public mirror is not listening on port ${PUBLIC_PORT}; start ztd-gateway with --public-spectator`);
   }
-  console.log(`Mirror is up on ${PRIVATE_PORT} (private) and ${PUBLIC_PORT} (public).`);
 }
 
 function defaultRunTag() {
@@ -198,7 +175,7 @@ async function main() {
 
   console.log(`Replaying ${events.length} live events for run tag ${runTag} (interval=${interval}ms, once=${once})`);
 
-  await ensureMirror();
+  requireGatewayOwnedMirror();
 
   const tmpDir = mkdtempSync(resolve(tmpdir(), 'ztd-replay-'));
   try {

@@ -21,6 +21,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	gov "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
@@ -74,6 +75,7 @@ type PasskeyService struct {
 	logger        *slog.Logger
 	rpID          string
 	rpName        string
+	rpOrigins     []string
 }
 
 // PasskeyConfig holds configuration for passkey operations.
@@ -289,6 +291,7 @@ func NewPasskeyService(docStore *DocumentStoreService, logger *slog.Logger, cfg 
 		logger:        logger,
 		rpID:          cfg.RpID,
 		rpName:        rpName,
+		rpOrigins:     append([]string(nil), rpOrigins...),
 	}, nil
 }
 
@@ -545,7 +548,7 @@ func (s *PasskeyService) VerifyAuthentication(ctx context.Context, userID string
 		return nil, err
 	}
 
-	parsedResponse, err := parseAssertion(assertion)
+	parsedResponse, err := gov.ParsePasskeyAssertion(assertion)
 	if err != nil {
 		return nil, err
 	}
@@ -677,7 +680,7 @@ func (s *PasskeyService) VerifyPasskeyProof(ctx context.Context, userID, transac
 		UserVerification:     protocol.VerificationRequired,
 	}
 
-	parsedResponse, err := parseAssertion(&models.WebAuthnAssertionResponse{
+	parsedResponse, err := gov.ParsePasskeyAssertion(&models.WebAuthnAssertionResponse{
 		ID:                proof.CredentialId,
 		RawID:             proof.CredentialId,
 		ClientDataJSON:    proof.ClientDataJson,
@@ -697,33 +700,6 @@ func (s *PasskeyService) VerifyPasskeyProof(ctx context.Context, userID, transac
 	}
 
 	return true, nil
-}
-
-// parseAssertion converts the flat assertion a browser or CLI submits into the
-// nested credential form go-webauthn validates.
-func parseAssertion(assertion *models.WebAuthnAssertionResponse) (*protocol.ParsedCredentialAssertionData, error) {
-	if assertion == nil {
-		return nil, constants.ErrMissingRequiredField
-	}
-	body, err := json.Marshal(models.ParsedAssertionResponse{
-		ID:    assertion.ID,
-		RawID: assertion.RawID,
-		Type:  string(protocol.PublicKeyCredentialType),
-		Response: models.ParsedAssertionResponseBody{
-			ClientDataJSON:    assertion.ClientDataJSON,
-			AuthenticatorData: assertion.AuthenticatorData,
-			Signature:         assertion.Signature,
-			UserHandle:        assertion.UserHandle,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal assertion response: %w", err)
-	}
-	parsed, err := protocol.ParseCredentialRequestResponseBytes(body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse credential assertion: %w", err)
-	}
-	return parsed, nil
 }
 
 // recordCredentialUse rejects an assertion whose signature counter did not

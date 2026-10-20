@@ -163,11 +163,17 @@ func IsGatewayHealthy() bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-// publicMirrorBootstrapURL overrides the default mirror bootstrap URL in tests.
-var PublicMirrorBootstrapURL string
+// PublicMirrorOrigin overrides the default public mirror origin in tests.
+var PublicMirrorOrigin string
 
-// publicMirrorHistoryURL overrides the default mirror history URL in tests.
-var publicMirrorHistoryURL string
+// publicMirrorOrigin is the single origin every mirror read and the publisher
+// status resolve: the override, or the Gateway's default loopback listener.
+func publicMirrorOrigin() string {
+	if PublicMirrorOrigin != "" {
+		return PublicMirrorOrigin
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d", constants.PublicSpectatorPublicPort)
+}
 
 // gatewayHealthCheck overrides isGatewayHealthy in tests.
 var GatewayHealthCheck func() bool
@@ -243,11 +249,7 @@ func indexMirrorDatasets(datasetIDs map[string]struct{}, projections []models.Pu
 }
 
 func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID, cursor string, limit int) (models.PublicFeedCursorPage, error) {
-	historyURL := publicMirrorHistoryURL
-	if historyURL == "" {
-		historyURL = fmt.Sprintf("http://127.0.0.1:%d/history", constants.PublicSpectatorPublicPort)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, historyURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicMirrorOrigin()+"/history", nil)
 	if err != nil {
 		return models.PublicFeedCursorPage{}, err
 	}
@@ -286,11 +288,7 @@ func FetchPublicMirrorBootstrap(ctx context.Context) (models.PublicFeedBootstrap
 }
 
 func fetchPublicMirrorBootstrapWithClient(ctx context.Context, client *http.Client) (models.PublicFeedBootstrap, error) {
-	bootstrapURL := PublicMirrorBootstrapURL
-	if bootstrapURL == "" {
-		bootstrapURL = fmt.Sprintf("http://127.0.0.1:%d/bootstrap", constants.PublicSpectatorPublicPort)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, bootstrapURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicMirrorOrigin()+"/bootstrap", nil)
 	if err != nil {
 		return models.PublicFeedBootstrap{}, err
 	}
@@ -350,7 +348,7 @@ func waitForPublicMirrorRetry(ctx context.Context, retryAfter string) error {
 }
 
 func NewCampaignFeedExporter(cmd context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.CampaignFeedExporter, error) {
-	if !IsGatewayHealthy() {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return nil, fmt.Errorf("campaign publication: start ztd-gateway with --public-spectator: %w", constants.ErrGatewayUnhealthy)
 	}
 	client, err := campaignPublicationAPIClientFactory(fileSvc, cfg)
@@ -364,12 +362,15 @@ type remoteGatewayCampaignProofPublisher struct {
 	client authcmd.APIClient
 }
 
-func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx context.Context, inputs []evaluation.AssignmentAuditProofInput, deferMirrorPush bool) error {
+// IngestAssignmentAuditSlices publishes the assignment audit proofs and returns
+// the Gateway's answer for each one, in request order. Each answer's database
+// digest is the digest of the database the Gateway built or reused.
+func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx context.Context, inputs []evaluation.AssignmentAuditProofInput, deferMirrorPush bool) ([]models.PublicAssignmentAuditProofPublishResponse, error) {
 	if p == nil || p.client == nil {
-		return fmt.Errorf("campaign publication: publish assignment audit proof: %w", constants.ErrMissingRequiredField)
+		return nil, fmt.Errorf("campaign publication: publish assignment audit proof: %w", constants.ErrMissingRequiredField)
 	}
 	if len(inputs) == 0 {
-		return nil
+		return nil, nil
 	}
 	proofs := make([]models.PublicAssignmentAuditProofPublishRequest, len(inputs))
 	for index, input := range inputs {
@@ -379,8 +380,6 @@ func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx co
 			RunID:            input.RunID,
 			AssignmentID:     input.AssignmentID,
 			IndexDigest:      input.IndexDigest,
-			Database:         input.Artifacts.Database,
-			VaultKey:         input.Artifacts.VaultKey,
 			AgentTrace:       input.Artifacts.AgentTrace,
 			ScenarioID:       input.Artifacts.ScenarioID,
 			ScenarioInput:    input.Artifacts.ScenarioInput,
@@ -404,24 +403,45 @@ func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx co
 		})
 	}
 	if err != nil {
-		return fmt.Errorf("campaign publication: publish assignment audit proof: %w", err)
+		return nil, fmt.Errorf("campaign publication: publish assignment audit proof: %w", err)
 	}
+	var responses []models.PublicAssignmentAuditProofPublishResponse
 	if len(proofs) == 1 {
 		var response models.PublicAssignmentAuditProofPublishResponse
 		if err := json.Unmarshal(responseBody, &response); err != nil {
-			return fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+			return nil, fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
 		}
 		if !response.Accepted {
-			return constants.ErrPublicFeedProofIngestRejected
+			return nil, constants.ErrPublicFeedProofIngestRejected
 		}
-		return nil
+		responses = []models.PublicAssignmentAuditProofPublishResponse{response}
+	} else {
+		var response models.PublicAssignmentAuditProofBatchPublishResponse
+		if err := json.Unmarshal(responseBody, &response); err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+		}
+		if !response.Accepted {
+			return nil, constants.ErrPublicFeedProofIngestRejected
+		}
+		responses = response.Proofs
 	}
-	var response models.PublicAssignmentAuditProofBatchPublishResponse
-	if err := json.Unmarshal(responseBody, &response); err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+	if err := verifyAssignmentAuditProofDigests(proofs, responses); err != nil {
+		return nil, err
 	}
-	if !response.Accepted {
-		return constants.ErrPublicFeedProofIngestRejected
+	return responses, nil
+}
+
+// verifyAssignmentAuditProofDigests checks that the gateway answered every
+// request, in request order, with the assignment it published and a database
+// digest. The caller receives only answers that pass this check.
+func verifyAssignmentAuditProofDigests(proofs []models.PublicAssignmentAuditProofPublishRequest, responses []models.PublicAssignmentAuditProofPublishResponse) error {
+	if len(responses) != len(proofs) {
+		return fmt.Errorf("%w: gateway returned %d assignment audit proofs for %d requests", constants.ErrInvalidJSONResponse, len(responses), len(proofs))
+	}
+	for index, proof := range proofs {
+		if responses[index].AssignmentID != proof.AssignmentID || responses[index].DatabaseSHA256 == "" {
+			return fmt.Errorf("%w: gateway proof %d is for assignment %q without a database digest, want %q", constants.ErrInvalidJSONResponse, index, responses[index].AssignmentID, proof.AssignmentID)
+		}
 	}
 	return nil
 }
@@ -463,7 +483,7 @@ func (p *remoteGatewayCampaignProofPublisher) FlushProofCatalog(ctx context.Cont
 }
 
 func NewCampaignProofPublisher(cmd context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.CampaignProofPublisher, error) {
-	if !IsGatewayHealthy() {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return nil, fmt.Errorf("campaign publication: start ztd-gateway with --public-spectator: %w", constants.ErrGatewayUnhealthy)
 	}
 	client, err := campaignPublicationAPIClientFactory(fileSvc, cfg)
@@ -497,7 +517,7 @@ func GatewayPublisherStatus(ctx context.Context, fileSvc fs.RuntimeFileService, 
 	}
 	return models.PublicPublisherStatus{
 		Enabled:           true,
-		MirrorOrigin:      fmt.Sprintf("http://127.0.0.1:%d", constants.PublicSpectatorPublicPort),
+		MirrorOrigin:      publicMirrorOrigin(),
 		SourceID:          bootstrap.Snapshot.SourceID,
 		HighWaterSequence: highWater,
 		FeedChainHash:     bootstrap.Snapshot.FeedChainHash,

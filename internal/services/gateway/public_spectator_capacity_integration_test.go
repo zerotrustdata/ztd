@@ -60,6 +60,7 @@ func newCapacityMirrorEnv(t *testing.T, recordCount int) *capacityMirrorEnv {
 		TrustedProxyCIDRs: []string{capacityTrustedProxyCIDR},
 	})
 	require.NoError(t, err)
+	mirror.SetIngestAuthToken(mirrorTestIngestToken)
 
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -85,13 +86,13 @@ func newCapacityMirrorEnv(t *testing.T, recordCount int) *capacityMirrorEnv {
 		})))
 	}
 	batch := helper.buildBatch(records, constants.PublicFeedZeroHashHex)
-	status, ingestResp := sendIngestToHandler(t, mirror.Handler(), batch)
+	status, ingestResp := sendIngestToHandler(t, mirror.IngestHandler(), batch)
 	require.Equal(t, http.StatusOK, status)
 	require.True(t, ingestResp.Accepted)
 
-	server := httptest.NewServer(mirror.Handler())
+	server := httptest.NewServer(mirror.PublicHandler())
 	t.Cleanup(server.Close)
-	helper.server = server
+	helper.publicServer = server
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 2000
 	transport.MaxIdleConnsPerHost = 2000
@@ -162,6 +163,7 @@ func sendIngestToHandler(t *testing.T, handler http.Handler, batch models.Public
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodPost, "/ingest", bytes.NewReader(bodyBytes))
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+mirrorTestIngestToken)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	var ingestResp models.PublicIngestResponse
@@ -416,7 +418,7 @@ func TestPublicSpectatorPublicationDeliversDuringSSEHold(t *testing.T) {
 		"dataset_id": "dataset-publish",
 	})))
 	batch := env.helper.buildBatch([]models.PublicFeedRecord{publishRecord}, snapshot.FeedChainHash)
-	status, ingestResp := sendIngestToHandler(t, env.helper.mirror.Handler(), batch)
+	status, ingestResp := sendIngestToHandler(t, env.helper.mirror.IngestHandler(), batch)
 	require.Equal(t, http.StatusOK, status)
 	require.True(t, ingestResp.Accepted)
 

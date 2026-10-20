@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,18 +32,20 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	"github.com/zerotrustdata/ztd/test/fixtures"
 )
 
 func TestRunsList_EmptyProject(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	assert.Contains(t, env.mustRun(t, "runs", "list"), "No runs found")
 }
 
 func TestRunsList_AfterPrepare(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "runs", "list")
 	assert.Contains(t, out, "run-a-1")
@@ -60,9 +63,9 @@ func TestRunsList_AfterPrepare(t *testing.T) {
 }
 
 func TestRunsList_FiltersByCampaignAndStatus(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.prepareRun(t, "eval-b", "run-b-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+	env.prepareStoredRun(t, "eval-b", "run-b-1")
 
 	var payload runListJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "list", "--campaign", "eval-b"))
@@ -77,8 +80,8 @@ func TestRunsList_FiltersByCampaignAndStatus(t *testing.T) {
 }
 
 func TestRunsShow_AfterPrepare(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	out := env.mustRun(t, "runs", "show", "run-a-1")
 	assert.Contains(t, out, "Run: run-a-1")
@@ -90,14 +93,14 @@ func TestRunsShow_AfterPrepare(t *testing.T) {
 	require.NoError(t, env.runJSON(t, &payload, "runs", "show", "run-a-1"))
 	assert.Equal(t, "run-a-1", payload.RunID)
 	assert.Equal(t, "eval-a", payload.CampaignID)
-	assert.Equal(t, testInferenceSession, payload.InferenceSession)
-	assert.Equal(t, testDataSession, payload.DataSession)
+	assert.Equal(t, "store-only-inference-session", payload.InferenceSession)
+	assert.Equal(t, "store-only-data-session", payload.DataSession)
 	assert.Equal(t, uint32(testModelRoleCells(t)), payload.Queued)
 	assert.Nil(t, payload.Holder)
 }
 
 func TestRunsShow_RejectsMissingRun(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "show", "missing-run-id")
 	require.Error(t, err)
@@ -105,8 +108,8 @@ func TestRunsShow_RejectsMissingRun(t *testing.T) {
 }
 
 func TestRunsShow_ReportsInterruptedWhenNoProcessHoldsARunningAssignment(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	markFirstAssignmentRunning(t, env)
 
 	var payload runShowJSON
@@ -116,8 +119,8 @@ func TestRunsShow_ReportsInterruptedWhenNoProcessHoldsARunningAssignment(t *test
 }
 
 func TestRunsShow_ReportsRunningOnlyWhileALiveProcessHoldsTheLease(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	markFirstAssignmentRunning(t, env)
 	_, err := env.store(t).AcquireRunLease(context.Background(), evaluation.RunLease{RunID: "run-a-1", PID: testPID, Host: testHost, StartedAt: env.deps.now()}, nil)
 	require.NoError(t, err)
@@ -139,8 +142,8 @@ func TestRunsShow_ReportsRunningOnlyWhileALiveProcessHoldsTheLease(t *testing.T)
 }
 
 func TestRunsVerify_CoverageReportsIncompleteScheduledRun(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	out, err := env.run(t, "runs", "verify", "run-a-1", "--coverage")
 	require.Error(t, err)
@@ -155,8 +158,8 @@ func TestRunsVerify_CoverageReportsIncompleteScheduledRun(t *testing.T) {
 }
 
 func TestRunsVerify_CoverageCannotCombineWithWitnessRequirements(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "verify", "run-a-1", "--coverage", "--require-observation")
 	require.Error(t, err)
@@ -164,7 +167,7 @@ func TestRunsVerify_CoverageCannotCombineWithWitnessRequirements(t *testing.T) {
 }
 
 func TestRunsVerify_RejectsMissingRun(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "verify", "missing-run-id")
 	require.Error(t, err)
@@ -172,8 +175,8 @@ func TestRunsVerify_RejectsMissingRun(t *testing.T) {
 }
 
 func TestRunsExport_WritesArtifacts(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	outputRelDir := filepath.Join(constants.EvaluationCampaignExportDirname, "run-a-1")
 
 	out := env.mustRun(t, "runs", "export", "run-a-1", "--output-dir", outputRelDir)
@@ -185,8 +188,8 @@ func TestRunsExport_WritesArtifacts(t *testing.T) {
 }
 
 func TestRunsExport_RejectsSealedOutputDir(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "export", "run-a-1", "--output-dir", filepath.Join("data", "eval", "runs", "run-a-1", "export"))
 	require.Error(t, err)
@@ -194,8 +197,8 @@ func TestRunsExport_RejectsSealedOutputDir(t *testing.T) {
 }
 
 func TestRunsExport_RejectsExternalOutputDir(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "export", "run-a-1", "--output-dir", filepath.Join(env.root, "exports", "run-a-1"))
 	require.Error(t, err)
@@ -203,8 +206,8 @@ func TestRunsExport_RejectsExternalOutputDir(t *testing.T) {
 }
 
 func TestRunsExport_RequiresOutputDir(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	_, err := env.run(t, "runs", "export", "run-a-1")
 	require.Error(t, err)
@@ -212,8 +215,8 @@ func TestRunsExport_RequiresOutputDir(t *testing.T) {
 }
 
 func TestRunsRepair_BackfillsResults(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 
 	assert.Contains(t, env.mustRun(t, "runs", "repair", "run-a-1"), "Repaired")
 
@@ -223,7 +226,7 @@ func TestRunsRepair_BackfillsResults(t *testing.T) {
 }
 
 func TestRunsStart_DryRunPrintsPlanWithoutWriting(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 	env.deps.authLoader = func(fs.RuntimeFileService, *config.Config) (*auth.ClientAuthContext, error) {
 		return nil, errors.New("CLI auth should not be loaded for a dry run")
@@ -240,7 +243,7 @@ func TestRunsStart_DryRunPrintsPlanWithoutWriting(t *testing.T) {
 }
 
 func TestRunsStart_DryRunJSON(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	var payload runStartPlanJSON
@@ -254,7 +257,7 @@ func TestRunsStart_DryRunJSON(t *testing.T) {
 }
 
 func TestRunsStart_PrepareOnlyPersistsRunAndSchedulesAssignments(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newGatewayRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	out := env.mustRun(t, "runs", "start", "eval-a", "--prepare-only", "--publish=false", "--daemon=false")
@@ -273,17 +276,115 @@ func TestRunsStart_PrepareOnlyPersistsRunAndSchedulesAssignments(t *testing.T) {
 }
 
 func TestRunsStart_PrepareOnlyBindsTheOperatorSessions(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	env.prepareRun(t)
 
 	run, err := env.store(t).LoadRun(context.Background(), "run-a-1")
 	require.NoError(t, err)
-	assert.Equal(t, testInferenceSession, run.GetCampaignBinding().GetInferenceOperatorSessionId())
-	assert.Equal(t, testDataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
+	assert.Equal(t, env.inferenceSession, run.GetCampaignBinding().GetInferenceOperatorSessionId())
+	assert.Equal(t, env.dataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
+}
+
+func TestRunsStart_PersistentResolvesFrozenDataOperator(t *testing.T) {
+	env := newGatewayRunEnv(t)
+	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
+		Platform:    testPlatform,
+		CampaignID:  "eval-persistent",
+		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions: 1,
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "checkout-incident",
+			DataOperatorId:  env.dataOperatorID,
+		},
+	})
+	require.NoError(t, err)
+
+	result, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{
+		CampaignID:  "eval-persistent",
+		RunID:       "run-persistent",
+		PrepareOnly: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, env.dataOperatorID, result.Topology.Data.OperatorID)
+	assert.Equal(t, env.dataSession, result.Topology.Data.OperatorSessionID)
+
+	run, err := env.store(t).LoadRun(context.Background(), "run-persistent")
+	require.NoError(t, err)
+	assert.Equal(t, env.dataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
+}
+
+func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t *testing.T) {
+	env := newGatewayRunEnv(t)
+	_, err := createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
+		Platform:    testPlatform,
+		CampaignID:  "eval-missing-operator",
+		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions: 1,
+		Investigation: &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "checkout-incident",
+			DataOperatorId:  "operator-offline",
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = runStartFlow(env.cmd, env.deps, runStartFlowOptions{
+		CampaignID: "eval-missing-operator",
+		RunID:      "run-missing-operator",
+	})
+	require.ErrorIs(t, err, constants.ErrDataOperatorNotFound)
+	runIDs, err := env.store(t).ListRunIDs(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, runIDs, "preflight must fail before a run is persisted")
+}
+
+// A live Gateway running a posture the campaign did not freeze fails preflight
+// before a run is persisted.
+func TestRunsStart_FailsPreflightUnderAnUnfrozenGatewayPosture(t *testing.T) {
+	for _, posture := range []constants.Posture{constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
+		t.Run(string(posture), func(t *testing.T) {
+			env, _ := newGatewayRunEnvWithPosture(t, posture)
+			env.createCampaign(t, "eval-posture")
+
+			_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{CampaignID: "eval-posture", RunID: "run-posture"})
+			require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported)
+			require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
+			runIDs, err := env.store(t).ListRunIDs(context.Background())
+			require.NoError(t, err)
+			assert.Empty(t, runIDs, "posture preflight must fail before a run is persisted")
+		})
+	}
+}
+
+func TestRunsStart_PersistentRejectsReplacementOperatorAfterReenrollment(t *testing.T) {
+	env, stackRun := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	env.createCampaign(t, "eval-session-rotation")
+	_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{
+		CampaignID: "eval-session-rotation", RunID: "run-session-rotation", PrepareOnly: true,
+	})
+	require.NoError(t, err)
+	oldSession := env.dataSession
+	require.NoError(t, stackRun.stack.Data.Stop(env.cmd.Context()))
+	rotated := stackRun.stack.Witness.LaunchOperator(t, stackRun.stack.DataHost, fixtures.OperatorProcessOptions{
+		Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
+	})
+	require.NoError(t, rotated.AwaitStarted(env.cmd.Context()))
+	_, err = rotated.AwaitHeartbeat(env.cmd.Context())
+	require.NoError(t, err)
+	workload, err := rotated.Workload()
+	require.NoError(t, err)
+	require.NotEqual(t, env.dataOperatorID, workload.OperatorID)
+	require.NotEqual(t, oldSession, workload.OperatorSessionID)
+	operators, err := stackRun.stack.Gateway.Service.GetRegistrationService().ListUserOperators(env.cmd.Context(), stackRun.stack.Identity.UserID)
+	require.NoError(t, err)
+	_, err = evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", env.dataOperatorID)
+	require.ErrorIs(t, err, constants.ErrDataOperatorNotFound)
+	assert.Zero(t, stackRun.stack.Provider.ChatCount(), "re-enrollment must not silently replace a persistent investigation's frozen Operator")
 }
 
 func TestRunsStart_RejectsUnknownCampaign(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "start", "missing", "--dry-run")
 	require.Error(t, err)
@@ -291,44 +392,32 @@ func TestRunsStart_RejectsUnknownCampaign(t *testing.T) {
 }
 
 func TestRunsStart_RequiresACampaignArgument(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "start")
 	require.Error(t, err)
 }
 
 func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	publication := env.recordPublication()
-	env.createCampaign(t, "eval-a")
+	env, run := newPublicationEnv(t, readyReplies(1))
+	createPublicationCampaign(t, run, "eval-a", 3)
+	before := mirrorHighWater(t)
 
-	var out bytes.Buffer
-	env.cmd.SetOut(&out)
-	result, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{
-		CampaignID: "eval-a",
-		RunID:      "run-a-1",
-		NoAutoBind: true,
-		Verify:     true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Equal(t, 1, result.Executed)
-	require.NotNil(t, result.Report)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, result.Report.GetStatus())
-	assertPopulationBoundCampaignReport(t, result.Report)
-	assert.Contains(t, out.String(), "verification")
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--verify", "--no-backup")
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "Executed 1 assignment(s)")
+	assert.Contains(t, out, "verification: "+evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS.String())
+	assert.Equal(t, before, mirrorHighWater(t), "a run started with publication off appends nothing to the public mirror")
 
-	loaded, err := env.store(t).LoadCampaignVerification(context.Background(), "run-a-1")
+	runID := onlyRunID(t, run)
+	report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
 	require.NoError(t, err)
-	assertPopulationBoundCampaignReport(t, loaded)
-	assert.Empty(t, publication.completionRunIDs)
-	assert.Empty(t, publication.reports)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus())
+	assertPopulationBoundReport(t, report, uint32(len(runAssignments(t, run, runID))), 1)
 }
 
 func TestRunsStart_ReleasesTheLeaseAndWritesNoLogFileAfterExecution(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
+	env := newGatewayRunEnv(t)
 	env.createCampaign(t, "eval-a")
 
 	env.cmd.SetOut(&bytes.Buffer{})
@@ -347,7 +436,7 @@ func TestRunsStart_ReleasesTheLeaseAndWritesNoLogFileAfterExecution(t *testing.T
 }
 
 func TestRunsStart_RejectsAnArchivedCampaign(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.createCampaign(t, "eval-a")
 	env.mustRun(t, "campaigns", "archive", "eval-a")
 
@@ -357,9 +446,8 @@ func TestRunsStart_RejectsAnArchivedCampaign(t *testing.T) {
 }
 
 func TestRunsResume_ExecutesOneAssignment(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	runID := env.prepareRun(t)
 	assignment := env.firstQueuedAssignment(t, runID)
 
 	var out bytes.Buffer
@@ -375,9 +463,8 @@ func TestRunsResume_ExecutesOneAssignment(t *testing.T) {
 }
 
 func TestRunsResume_DefaultsLimitToOne(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	runID := env.prepareRun(t)
 
 	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, NoAutoBind: true})
 	require.NoError(t, err)
@@ -385,9 +472,8 @@ func TestRunsResume_DefaultsLimitToOne(t *testing.T) {
 }
 
 func TestRunsResume_StopWithQueuedAssignmentsIsAnError(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	runID := env.prepareRun(t)
 	handled := make(chan struct{}, 1)
 	env.deps.runControl.onSignalHandled = func() {
 		select {
@@ -415,7 +501,7 @@ func TestRunsResume_StopWithQueuedAssignmentsIsAnError(t *testing.T) {
 }
 
 func TestRunsResume_RejectsMissingRunWithoutLeavingALease(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "resume", "missing-run-id")
 	require.Error(t, err)
@@ -427,24 +513,26 @@ func TestRunsResume_RejectsMissingRunWithoutLeavingALease(t *testing.T) {
 	assert.Contains(t, env.mustRun(t, "runs", "list"), "No runs found")
 }
 
-func TestRunsResume_RejectsPreflightWhenGatewayUnhealthy(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, false)
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+func TestRunsResume_GatewayOutageReleasesLeaseWithoutExecuting(t *testing.T) {
+	env, run := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	env.prepareRun(t)
+	gatewayEvalAppClient(t, env, run)
+	config.SetHTTPEndpointOverride("http://127.0.0.1:1")
+	config.SetHTTPSEndpointOverride("https://127.0.0.1:1")
 
 	_, err := env.run(t, "runs", "resume", "run-a-1", "--no-auto-bind")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+	var transportError *url.Error
+	assert.ErrorAs(t, err, &transportError)
+	assert.Zero(t, run.stack.Provider.ChatCount())
 
 	_, leaseErr := env.store(t).LoadRunLease(context.Background(), "run-a-1")
 	assert.True(t, isMissingRecord(leaseErr), "a failed resume releases its lease")
 }
 
 func TestRunsResume_ExecutesOneAssignmentViaCLI(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withExecuteGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	runID := env.prepareRun(t)
 	assignment := env.firstQueuedAssignment(t, runID)
 
 	out := env.mustRun(t, "runs", "resume", runID)
@@ -453,10 +541,8 @@ func TestRunsResume_ExecutesOneAssignmentViaCLI(t *testing.T) {
 }
 
 func TestRunsResume_JSONOutput(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withExecuteGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	runID := env.prepareRun(t)
 
 	var payload runResumeJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "resume", runID))
@@ -467,10 +553,8 @@ func TestRunsResume_JSONOutput(t *testing.T) {
 }
 
 func TestRunsResume_WithPublishFlag(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withExecuteGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newPublicationRunEnv(t)
+	runID := env.prepareRun(t)
 	assignment := env.firstQueuedAssignment(t, runID)
 
 	out := env.mustRun(t, "runs", "resume", runID, "--publish")
@@ -478,9 +562,8 @@ func TestRunsResume_WithPublishFlag(t *testing.T) {
 }
 
 func TestRunsResume_RefusesARunHeldByALiveProcess(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	runID := env.prepareRun(t)
 	_, err := env.store(t).AcquireRunLease(context.Background(), evaluation.RunLease{RunID: runID, PID: 9999, Host: testHost, StartedAt: env.deps.now()}, nil)
 	require.NoError(t, err)
 	env.control.setAlive(9999, true)
@@ -492,9 +575,8 @@ func TestRunsResume_RefusesARunHeldByALiveProcess(t *testing.T) {
 }
 
 func TestRunsResume_ReplacesAStaleLeaseAndReportsIt(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	env := newGatewayRunEnv(t)
+	runID := env.prepareRun(t)
 	_, err := env.store(t).AcquireRunLease(context.Background(), evaluation.RunLease{RunID: runID, PID: 9999, Host: testHost, StartedAt: env.deps.now()}, nil)
 	require.NoError(t, err)
 
@@ -507,41 +589,41 @@ func TestRunsResume_ReplacesAStaleLeaseAndReportsIt(t *testing.T) {
 }
 
 func TestVerifyRun_PersistsAndPublishesPopulationBoundReport(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	publication := env.recordPublication()
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
-	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, Limit: 1, NoAutoBind: true})
-	require.NoError(t, err)
-	require.Equal(t, 1, executed)
+	env, run := newPublicationEnv(t, readyReplies(1))
+	createPublicationCampaign(t, run, "eval-a", 3)
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--no-backup")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
+	before := len(mirrorSummaries(t))
 
-	store := env.store(t)
-	spec, err := store.LoadCampaignSpec(context.Background(), "eval-a")
-	require.NoError(t, err)
-	var out bytes.Buffer
-	env.cmd.SetOut(&out)
-	report, err := verifyRun(env.cmd, env.deps, store, runID, false, false, true, false)
-	require.NoError(t, err)
-	require.NotNil(t, report)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus())
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "PASS")
 
-	loaded, err := store.LoadCampaignVerification(context.Background(), runID)
+	store := evaluation.NewStore(run.fileSvc)
+	spec, err := store.LoadCampaignSpec(run.ctx, "eval-a")
 	require.NoError(t, err)
-	assert.Equal(t, report.GetStatus(), loaded.GetStatus())
-	assertPopulationBoundCampaignReport(t, loaded)
+	loaded, err := store.LoadCampaignVerification(run.ctx, runID)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, loaded.GetStatus())
+	assertPopulationBoundReport(t, loaded, 3, 1)
 	assert.Equal(t, evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, loaded.GetProviderObservationPolicy())
 	assert.Equal(t, evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, loaded.GetModelProvenancePolicy())
 	assert.Equal(t, spec.GetCampaignDigest(), loaded.GetCampaignDigest())
 	assert.Equal(t, spec.GetCatalogDigest(), loaded.GetCatalogDigest())
 	assert.Equal(t, spec.GetModelRegistryDigest(), loaded.GetModelRegistryDigest())
-	assert.Equal(t, []string{runID}, publication.completionRunIDs)
-	require.Len(t, publication.reports, 1)
-	assertPopulationBoundCampaignReport(t, publication.reports[0])
-	assert.Equal(t, loaded.GetReportDigestRef().GetSha256(), publication.reports[0].GetReportDigestRef().GetSha256())
+
+	// The verify publishes the completion summary and the bound verification revision.
+	require.Greater(t, len(mirrorSummaries(t)), before)
+	latest := latestSummary(t)
+	require.NotNil(t, latest.Metadata)
+	assert.Equal(t, "bound", latest.Metadata.Provenance)
+	assert.Equal(t, loaded.GetReportDigestRef().GetSha256(), latest.Metadata.ReportDigest)
+	assert.Equal(t, loaded.GetVerifiedPopulationDigest(), latest.Metadata.PopulationDigest)
 }
 
 func TestVerifyRun_RejectsMissingRun(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	report, err := verifyRun(env.cmd, env.deps, env.store(t), "missing-run-id", false, false, false, false)
 	require.Error(t, err)
@@ -550,53 +632,46 @@ func TestVerifyRun_RejectsMissingRun(t *testing.T) {
 }
 
 func TestRunsVerify_ViaCLIPersistsAndPublishesPopulationBoundReport(t *testing.T) {
-	env := setupRunEnv(t)
-	env.enableWitnessGateway(t)
-	publication := env.recordPublication()
-	env.createCampaign(t, "eval-a")
-	env.cmd.SetOut(&bytes.Buffer{})
-	_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{CampaignID: "eval-a", RunID: "run-a-1", NoAutoBind: true})
-	require.NoError(t, err)
+	env, run := newPublicationEnv(t, readyReplies(1))
+	createPublicationCampaign(t, run, "eval-a", 3)
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--no-backup")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
 
-	out := env.mustRun(t, "runs", "verify", "run-a-1")
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
 	assert.Contains(t, out, "PASS")
 
-	loaded, err := env.store(t).LoadCampaignVerification(context.Background(), "run-a-1")
+	loaded, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
 	require.NoError(t, err)
-	assertPopulationBoundCampaignReport(t, loaded)
-	assert.Equal(t, []string{"run-a-1"}, publication.completionRunIDs)
-	require.Len(t, publication.reports, 1)
-	assert.Equal(t, loaded.GetReportDigestRef().GetSha256(), publication.reports[0].GetReportDigestRef().GetSha256())
+	assertPopulationBoundReport(t, loaded, 3, 1)
+	latest := latestSummary(t)
+	require.NotNil(t, latest.Metadata)
+	assert.Equal(t, loaded.GetReportDigestRef().GetSha256(), latest.Metadata.ReportDigest, "the mirror serves the persisted report")
 
 	var payload runVerifyJSON
-	require.NoError(t, env.runJSON(t, &payload, "runs", "verify", "run-a-1"))
-	assert.Equal(t, "run-a-1", payload.RunID)
+	require.NoError(t, env.runJSON(t, &payload, "runs", "verify", runID))
+	assert.Equal(t, runID, payload.RunID)
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS.String(), payload.Status)
 }
 
 func TestRunsPublish_PublishesScheduledRun(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withPublishGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newPublicationRunEnv(t)
+	env.prepareRun(t)
 
 	assert.Contains(t, env.mustRun(t, "runs", "publish", "run-a-1"), "Published")
 }
 
 func TestRunsPublish_ForceRepublish(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withPublishGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newPublicationRunEnv(t)
+	env.prepareRun(t)
 
 	assert.Contains(t, env.mustRun(t, "runs", "publish", "run-a-1", "--force"), "forced republish")
 }
 
 func TestRunsPublish_IgnoresLegacyFailedReport(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withPublishGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newPublicationRunEnv(t)
+	env.prepareRun(t)
 	require.NoError(t, env.store(t).SaveCampaignVerification(context.Background(), "run-a-1", &evalv1.EvaluationVerificationReport{
 		SchemaVersion: evaluation.CampaignSchemaVersion,
 		ReportId:      "run-a-1",
@@ -608,11 +683,11 @@ func TestRunsPublish_IgnoresLegacyFailedReport(t *testing.T) {
 	env.mustRun(t, "runs", "publish", "run-a-1")
 }
 
-func TestRunsPublish_RejectsPersistedPassingReportThatDoesNotApply(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, true)
-	env := setupRunEnv(t)
-	env.withPublishGateway(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+// A non-applicable passing report on an unsettled run is not bound, so publish
+// continues; the settled-run refusal is covered by the publication real-stack tests.
+func TestRunsPublish_IgnoresPersistedPassingReportThatDoesNotApplyToUnsettledRun(t *testing.T) {
+	env := newPublicationRunEnv(t)
+	env.prepareRun(t)
 	require.NoError(t, env.store(t).SaveCampaignVerification(context.Background(), "run-a-1", &evalv1.EvaluationVerificationReport{
 		SchemaVersion:            constants.CampaignVerifierVersion,
 		ReportId:                 "run-a-1",
@@ -620,17 +695,19 @@ func TestRunsPublish_RejectsPersistedPassingReportThatDoesNotApply(t *testing.T)
 		Status:                   evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
 		VerifiedAt:               timestamppb.New(time.Unix(1_700_000_200, 0).UTC()),
 		VerifiedPopulationDigest: strings.Repeat("9", 64),
+		VerifierReleaseVersion:   constants.EvaluationSourceVersion,
+		VerifierContractVersion:  constants.CampaignVerifierVersion,
+		ReportDigestRef:          &compliancev1.ComplianceEvidenceReference{Sha256: strings.Repeat("a", 64)},
 	}))
 
-	_, err := env.run(t, "runs", "publish", "run-a-1")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	env.mustRun(t, "runs", "publish", "run-a-1")
 }
 
 func TestRunsPublish_RejectsWhenGatewayUnhealthy(t *testing.T) {
-	gwremote.WithGatewayHealthCheck(t, false)
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newPublicationRunEnv(t)
+	env.prepareRun(t)
+	config.SetHTTPEndpointOverride("http://127.0.0.1:1")
+	config.SetHTTPSEndpointOverride("https://127.0.0.1:1")
 
 	_, err := env.run(t, "runs", "publish", "run-a-1")
 	require.Error(t, err)
@@ -638,9 +715,9 @@ func TestRunsPublish_RejectsWhenGatewayUnhealthy(t *testing.T) {
 }
 
 func TestRunsCompare_ReportsSharedCellsAndDifferences(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
-	env.startPrepared(t, "eval-a", "run-a-2")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
+	env.startStoredRun(t, "eval-a", "run-a-2")
 
 	var payload runCompareJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "compare", "run-a-1", "run-a-2"))
@@ -659,8 +736,8 @@ func TestRunsCompare_ReportsSharedCellsAndDifferences(t *testing.T) {
 }
 
 func TestRunsCompare_FlagsCellsOnlyInOneRun(t *testing.T) {
-	env := setupRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env := newStoreRunEnv(t)
+	env.prepareStoredRun(t, "eval-a", "run-a-1")
 	other := &evalv1.ModelVariant{
 		VariantId:      "gemma3-1b",
 		ServedModelTag: "gemma3:1b",
@@ -674,7 +751,7 @@ func TestRunsCompare_FlagsCellsOnlyInOneRun(t *testing.T) {
 		Repetitions: 1,
 	})
 	require.NoError(t, err)
-	env.startPrepared(t, "eval-b", "run-b-1")
+	env.startStoredRun(t, "eval-b", "run-b-1")
 
 	var payload runCompareJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "compare", "run-a-1", "run-b-1"))
@@ -683,14 +760,14 @@ func TestRunsCompare_FlagsCellsOnlyInOneRun(t *testing.T) {
 }
 
 func TestRunsCompare_RequiresTwoRuns(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "runs", "compare", "only-one")
 	require.Error(t, err)
 }
 
 func TestPublicRestore_RequiresTarget(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	command := PublicRestoreCmdWithConfig(env.deps.configLoader, env.deps.fileSvcFactory)
 	command.SetArgs([]string{"--project-root", env.root})
@@ -700,11 +777,43 @@ func TestPublicRestore_RequiresTarget(t *testing.T) {
 }
 
 func TestPublicRestore_RejectsBothTargets(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	command := PublicRestoreCmdWithConfig(env.deps.configLoader, env.deps.fileSvcFactory)
 	command.SetArgs([]string{"--project-root", env.root, "--queue", "--run-id", "run-1"})
 	err := command.Execute()
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+}
+
+func TestResolveRunWitnessPoliciesPreservesStrictRunPolicy(t *testing.T) {
+	run := &evalv1.EvaluationRun{
+		ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT,
+		ModelProvenancePolicy:     evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT,
+	}
+	observation, provenance, err := resolveRunWitnessPolicies(run, false, false)
+	require.NoError(t, err)
+	assert.True(t, observation)
+	assert.True(t, provenance)
+}
+
+func TestResolveRunWitnessPoliciesRejectsUnspecifiedStoredPolicies(t *testing.T) {
+	_, _, err := resolveRunWitnessPolicies(&evalv1.EvaluationRun{
+		ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+	}, false, false)
+	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+}
+
+func TestRunsResume_RejectsPreflightWhenGatewayUnhealthy(t *testing.T) {
+	env, run := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t)
+	gwremote.WithConfiguredGatewayHealthCheck(t, false)
+
+	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+	assert.Zero(t, run.stack.Provider.ChatCount(), "the preflight refuses before any model turn")
+
+	_, leaseErr := env.store(t).LoadRunLease(context.Background(), runID)
+	assert.True(t, isMissingRecord(leaseErr), "a failed resume releases its lease")
 }

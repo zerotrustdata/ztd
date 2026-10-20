@@ -3,8 +3,8 @@ doc_id: public_spectator
 title: Public Spectator Architecture and Threat Model
 audience: architects and security reviewers
 status: current
-version: v1.1.3
-last_updated: 2026-10-18
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - internal/services/gateway/public_mirror.go
   - internal/services/gateway/public_mirror_store.go
@@ -58,9 +58,10 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-SPEC-ISO-01 | Owner-local observe mode and anonymous public spectator mode MUST NOT share state, configuration, credentials, or endpoints. Public visitors NEVER connect directly to the private Gateway API. |
+| INV-SPEC-ISO-01 | Owner-local observe mode and anonymous public spectator mode MUST NOT share state, configuration, credentials, or endpoints. Public visitors MUST NOT connect directly to the private Gateway API. |
 | INV-SPEC-ISO-02 | The public mirror listener MUST expose only read-only endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proof-segments`, and `GET /proofs/<artifact-id>`), plus the read-only evaluation explorer static host (`GET` and `HEAD`, from embedded assets or the `--eval-explorer-root` directory). It MUST NOT mount mutation, producer, governance, audit, or runtime-state filesystem routes. |
-| INV-SPEC-ISO-03 | Private ingest operations (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`) MUST be served on an isolated loopback listener accessible only to the authenticated publisher. |
+| INV-SPEC-ISO-03 | Private ingest operations (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`) MUST be served on an isolated loopback listener and MUST require the ingest bearer token. |
+| INV-SPEC-ISO-04 | The private ingest listener (`PublicMirrorServer.IngestHandler()`) MUST NOT mount anonymous read routes, and the public read listener (`PublicMirrorServer.PublicHandler()`) MUST NOT mount ingest routes. |
 
 ### Data Classification and Projection (`INV-SPEC-DATA`)
 
@@ -85,7 +86,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Claim | Path | Verify |
 | --- | --- | --- |
 | Public mirror durable store | `public-mirror/mirror.db`, `public-mirror/proofs/<artifact-id>` (`internal/services/gateway/public_mirror_store.go`) | `./ztd test integration --pkg ./internal/services/gateway --run 'TestMirror\|TestPublicMirrorStore'` |
-| Public feed configuration | `public-feed/` | Key, token, snapshot persist with 0700/0600 permissions |
+| Public feed configuration | `public-feed/` | Directory `0700`, files `0600`; the signing key and ingest token are keystore-sealed |
 | Public publisher commands | `internal/cli/cmd/public/` | `./ztd public status`, `./ztd public publish --help` |
 | Disclosure validation | `internal/services/publicdisclosure/validator.go` | `./ztd test unit --pkg ./internal/services/publicdisclosure` |
 | Public spectator runtime | `internal/services/gateway/public_spectator_runtime.go` | `./ztd test integration --pkg ./internal/services/gateway --run TestPublicSpectator` |
@@ -134,8 +135,10 @@ POST /api/v1/public-feed/batches ──► PublicSpectatorRuntime
                                                                              Public Browser
 ```
 
-1. **Private Ingest Listener**: Accepts authenticated batch submissions from the publisher (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`).
-2. **Public Read Listener**: Exposes anonymous read endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proofs/<id>`). Unknown paths and mutation methods are rejected. When explorer assets are available, the same listener also serves the explorer static host for `GET` and `HEAD`; other methods on those paths return HTTP 404.
+1. **Private Ingest Listener**: Serves ingest routes only (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`), each of which requires the ingest bearer token. It is built from `PublicMirrorServer.IngestHandler()` and mounts no anonymous read route: a read path such as `GET /snapshot` returns 404 here. No external path reaches it because `cloudflared` dials only the Public Read Listener.
+2. **Public Read Listener**: Serves anonymous read endpoints only (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proof-segments`, `GET /proofs/<id>`). It is built from `PublicMirrorServer.PublicHandler()` and mounts no ingest or mutation route: `POST /ingest` and the other ingest paths return 404 here, regardless of credentials. Unknown paths and mutation methods are rejected. When explorer assets are available, the same listener also serves the explorer static host for `GET` and `HEAD`; other methods on those paths return HTTP 404.
+
+The two handlers are separate by construction; there is no combined mirror handler. The publisher's mirror origin is the private ingest listener, and Gateway-side read probes (`gwremote` publication status and history/bootstrap reads) resolve against the public read listener on `127.0.0.1:8082`.
 3. **Explorer Listener**: When explorer assets are available and `ExplorerListenAddress` differs from the public listener, the runtime binds it as a dedicated listener for the same explorer host. The default address is `127.0.0.1:5173`; `--eval-explorer-listen` overrides it.
 4. **Loopback Binding**: Listeners bind only to loopback interfaces unless the explicit `--public-spectator-allow-container-bind` gateway flag is set. External visitors reach the public listener solely via `cloudflared` tunnel configured with trusted proxy CIDRs.
 
@@ -153,8 +156,9 @@ Only allowlisted fields and records cross into the public spectator feed.
 - **Categorical Environment Labels**: `environment_class`, `backend_name`, `quantization`.
 - **Bounded Diagnostic Detail**: `trajectory_outcome` (closed vocabulary), `guided_retry_count`, `failure_reason`, `tools_declared`.
 - **Verbatim Model and Grader Text (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts`, and `benchmark_observations.grade_summaries[].detail` / `semantic_grade_summaries[].detail` (each text within the 256 KiB record bound, at most 8 role transcripts, no screening or redaction).
-- **Agent Trace Proof Artifact**: `assignment-<id>.agent-trace.json`, the persisted `AgentTrace` body byte for byte, served at `/proofs/<sha256>` and bound by an `assignment_agent_trace` evidence binding. `agent-trace.v5` and `agent-trace.v4` carry the exact first-turn model input (`input.messages`, `input.tools`); `agent-trace.v5` also carries `held_context`, the earlier repetition's conversation that a held-context repetition continued from, which the explorer renders before the model input; `agent-trace.v3` carries no input, and the explorer labels it not captured.
+- **Agent Trace Proof Artifact**: `assignment-<id>.agent-trace.json`, the persisted `AgentTrace` body byte for byte, served at `/proofs/<sha256>` and bound by an `assignment_agent_trace` evidence binding. `agent-trace.v7`, `agent-trace.v6`, `agent-trace.v5`, and `agent-trace.v4` carry the exact first-turn model input (`input.messages`, `input.tools`); `agent-trace.v5` and later also carry `held_context`, the earlier repetition's conversation that a held-context repetition continued from, which the explorer renders before the model input. `agent-trace.v6` adds the scored investigation identity and authoritative context query details with returned receipt IDs and digests; see the [evaluation architecture](evals.md#model-campaign-architecture-system-lane-and-model-role-lane). `agent-trace.v7`, the version every new trace is sealed with, adds each complete signed inference result and its per-call model identity. `agent-trace.v3` carries no input, and the explorer labels it not captured.
 - **Scenario Fixture Proof Artifacts**: `scenario-<id>.input.json` (`ScenarioInputFixture`: user prompt, inline context, workspace files including decoys, seeded investigation) and `scenario-<id>.gold.json` (`ScenarioGoldCriteria`), the campaign-frozen canonical bytes, so each SHA-256 equals the campaign's fixture reference. They are served at `/proofs/<sha256>` and bound by `scenario_input_fixture` and `scenario_gold_criteria` evidence bindings, which appear together or not at all. Their catalog entries carry no source run because every run of the campaign shares them, so one run's prune never removes them.
+- **Assignment Audit Database Proof Artifact**: `assignment-<id>.db`, a plaintext SQLite database of the assignment's public live-event records exactly as the Gateway signed and stored them. The Gateway builds it from its own stored signed rows when the assignment is published; the request carries no database and no key. A republish reuses the assignment's active database by digest and does not rebuild it. The eval CLI requests the proof before it exports the assignment's result record. This holds on the live, catch-up and verified-republish paths. Catch-up and verified republish first export the assignment's live event records (idempotent by key), because a run executed with `--publish=false` never sent them and the Gateway indexes only records it was sent. The CLI binds the `database_sha256` the Gateway returns, and it fails closed on a missing answer, an answer for another assignment, or an empty digest. There is no vault key and no key artifact: the proof segment signature covers the database's SHA-256, and `ztd public verify-assignment --db assignment-<id>.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>` checks it offline.
 
 ## Export Binding and Cryptographic Continuity
 
@@ -196,6 +200,8 @@ Withdrawal preserves the publisher's immutable artifact files so an unsent prefi
 
 The publisher keeps an in-memory index of the log: the byte offset and root of every segment, the active catalog, and every content ID ever listed. The first read replays and verifies the whole log once. After that, each access stats the file and verifies only bytes past the indexed offset, so appends by another process are picked up. A log that was replaced or shrank is replayed from the start, and nothing is appended to a log that does not verify. Every append verifies the new segment against the chain rules the mirror enforces (consecutive link, no relisting of a listed ID, withdrawals of active IDs only, the active-artifact cap), so a link the mirror would reject is never written. Appends hold the `public-proofs/proof-segments.lock` file lock across processes; a held lock fails the publication with `ErrRuntimeFileLocked`. A final line with no newline is an interrupted append. Reads ignore it, and the next append truncates it before writing. Delivery reads only the byte range of the pending segments. A publication's cost depends on its new entries, not on retained history; `TestPublisherProofLog_PublicationCostIsFlatInHistory` guards allocation, log growth, and push body size.
 
+The proof log, its artifacts, and `proof-mirror-sync.json` belong to the feed generation of the key that signed them. `EnsureLocalPublicFeed` mints a new signing key only when no generation path exists. If any feed-generation path remains without its key, startup fails closed with `ErrPublicFeedOrphanedGeneration`, because segments signed by a deleted key can never verify. `public source transition` archives the whole generation, including the sync checkpoint, under `public-feed-archive/generations/<source_id>/`.
+
 Offline verification supports one pinned signing key through `verify-proof --public-key`, or a pinned key registry through `--key-registry` for logs spanning rotations. Neither trust input is fetched from the mirror during verification.
 
 ## Threat Model and Mitigations
@@ -225,17 +231,16 @@ Offline verification supports one pinned signing key through `verify-proof --pub
 ### Retention
 
 - **Batches and Records**: Retains up to 25,000 batches and 128 MiB of record payload bytes per source by default (`PublicFeedMirrorRetainedBatches`, `PublicFeedMirrorRetainedRecordBytes`). Whichever limit is hit first advances `retained_from_sequence`.
-- **Proof Artifacts**: Content-addressed storage persists indefinitely until explicit operator cleanup.
+- **Proof Artifacts**: Content-addressed storage persists indefinitely. A withdrawal removes an artifact from the active catalog and public download authorization but keeps its stored bytes.
 - **Publisher Outbox**: Unacknowledged batches persist until acknowledged by the mirror.
 
 ### Durable Mirror Store
 
-The mirror persists to a SQLite database (`public-mirror/mirror.db`, schema `internal/services/gateway/db/public_mirror_schema.sql`) owned by `PublicMirrorStore`. Proof artifact bytes are stored as content-addressed files under `public-mirror/proofs/<sha256>`; the database holds only artifact metadata and proof manifests.
+The mirror persists to a SQLite database (`public-mirror/mirror.db`, schema `internal/services/gateway/db/public_mirror_schema.sql`) owned by `PublicMirrorStore`. Proof artifact bytes are stored as content-addressed files under `public-mirror/proofs/<sha256>`; the database holds only artifact metadata and proof manifests. Event records are also indexed by run and assignment (`assignment_event_records`) in the transaction that stores them and pruned with them; the Gateway builds each assignment audit database from that index. A store written before the index existed has no rows for its older events, so publishing those assignments fails closed with `ErrPublicAssignmentAuditEventsMissing`.
 
 - **Incremental writes**: Each accepted batch, key registration, revocation, withdrawal, and proof ingest is one SQLite transaction. Retention pruning of the oldest batches and their records runs inside the same transaction as the append, so the retained window and chain anchor (`retained_from_sequence`, `retained_previous_batch_hash`) never diverge from the stored rows.
 - **Verified on open**: Every open re-verifies the retained chain (contiguous sequences, `previous_batch_hash` links, `content_hash` recomputation, Ed25519 signatures against the key registry, record hashes against stored record bytes), each proof manifest's root and entries, and each stored artifact file's SHA-256. Any mismatch fails startup with `ErrPublicFeedMirrorStoreCorrupt`.
 - **Proof ingest**: `POST /proof-ingest` carries one signed segment and its new artifact bytes; a withdrawal carries no artifact bytes. `GET /proof-catalog` is derived from the active entry projection. The mirror also accepts legacy full manifests until a source's first segment arrives. An entry whose artifact is neither in the request nor stored is rejected with HTTP 400 and `missing_artifact_ids`; nothing is committed. Private `GET /proof-root` supplies the delivery position without reading the full manifest. Each accepted segment updates the publisher's small delivery checkpoint. Pruning a run invalidates that checkpoint and appends a signed withdrawal.
-- **Legacy import**: A Gateway upgraded from the JSON store imports `public-mirror/state.json` once at open. The import builds `public-mirror/mirror-import.db`, verifies it with the same open-time checks, renames it to `mirror.db`, and only then removes `state.json`; a failed import leaves `state.json` untouched. If both `state.json` and `mirror.db` exist, open fails with `ErrPublicFeedMirrorLegacyStateConflict`. The import is removed after v1.1.3.
 
 ## Relationship to Platform Architecture
 
@@ -277,10 +282,10 @@ jq -r '.entries[].artifact_id' proof-catalog.json | while IFS= read -r artifact_
 done
 ```
 
-Alternatively, copy the publisher's local `public-proofs/proof-segments.jsonl` and its content-addressed artifact files. Disconnect network connectivity, then verify using a public key pinned through a trusted channel:
+Alternatively, copy the publisher's local `public-proofs/proof-segments.jsonl` and its content-addressed artifact files. Disconnect network connectivity, then set `PUBLIC_KEY_HEX` to the publisher's Ed25519 public key (hex), pinned through a trusted channel, and verify:
 
 ```bash
-./ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs --public-key <ed25519-public-key-hex>
+./ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs --public-key "$PUBLIC_KEY_HEX"
 ```
 
 For a log spanning key rotations, replace `--public-key` with `--key-registry trusted-keys.json`, where the JSON object maps each signing key ID to a public key hex value pinned through a trusted channel.
@@ -289,7 +294,7 @@ The command checks one source's consecutive indexes and root links from zero, re
 
 For sources still publishing full manifests, download `/proof-manifest`, `/proof-catalog`, and their artifact files. Offline, compare every artifact's SHA-256 and size with the catalog, check catalog membership against the signed manifest, recompute the legacy manifest root, and verify its Ed25519 signature with the trusted source key. Do not present a legacy manifest signature as proof of a segment link or withdrawal.
 
-Verify a downloaded agent trace with `./ztd public verify-agent-trace --trace assignment-<id>.agent-trace.json`: it checks `evidence_digest`, every model and tool receipt signature against the trace's actuator anchors, and the sentinel bracket ordering. `./ztd public verify-assignment` verifies an assignment audit slice with its vault key.
+Verify a downloaded agent trace with `./ztd public verify-agent-trace --trace assignment-<id>.agent-trace.json`: it checks `evidence_digest`, every model and tool receipt signature against the trace's actuator anchors, and the sentinel bracket ordering. `./ztd public verify-assignment --db assignment-<id>.db --segments proof-segments.jsonl --public-key <ed25519-public-key-hex>` verifies a downloaded assignment audit database. Like `verify-proof`, it takes `--public-key` or `--key-registry` and verifies the segment chain first. It then requires the database's SHA-256 to be an active artifact of that chain, and checks the database's live events: each record's hash, its run and assignment scope, and sequence order. The command reads the database file once and loads those same bytes into a private in-memory SQLite copy, so the reported SHA-256 is the digest of the content that was verified. The database is plaintext SQLite and has no vault key.
 
 ## Anti-patterns
 

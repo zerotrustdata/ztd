@@ -477,6 +477,7 @@ export function ModelsView() {
       <RoleLeadersPanel
         models={models}
         evaluations={evaluations}
+        assignments={assignments}
         stats={[
           { label: 'Measured models', value: models.filter((model) => model.pass_rate).length },
           { label: 'Inventory-only models', value: models.filter((model) => model.inventory_only).length },

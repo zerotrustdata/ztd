@@ -28,8 +28,10 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
@@ -55,6 +57,116 @@ func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) 
 			_, err := handler(t.Context(), &PubSubCommandMessage{ID: "decode-failure", Payload: []byte{0xff}})
 			require.Error(t, err, "a handler failure must reach L5 instead of producing a completed receipt")
 			assert.ErrorIs(t, err, proto.Error, "the original protobuf decoding failure must remain in the error chain")
+		})
+	}
+}
+
+func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.T) {
+	gateway := &OperatorPubSubService{gatewayMode: true}
+	local := &OperatorPubSubService{}
+	tests := []struct {
+		name      string
+		tool      string
+		args      string
+		wantLocal bool
+	}{
+		{
+			name:      "Gateway native tool stays on the MCP gateway",
+			tool:      "run_shell_command",
+			args:      `{"command":"true"}`,
+			wantLocal: false,
+		},
+		{
+			name:      "Gateway-local read_field stays on the MCP gateway",
+			tool:      "read_field",
+			args:      `{}`,
+			wantLocal: false,
+		},
+		{
+			name:      "Gateway public session query",
+			args:      `{"operator_session_id":"session-1"}`,
+			wantLocal: false,
+		},
+		{
+			name:      "explicit investigation query selects embedded Operator ledger",
+			args:      `{"investigation_id":"investigation-1","exclude_audit_reads":true}`,
+			wantLocal: true,
+		},
+		{
+			name:      "missing local exclusion remains on public Gateway policy",
+			args:      `{"investigation_id":"investigation-1","exclude_audit_reads":false}`,
+			wantLocal: false,
+		},
+		{
+			name:      "malformed arguments remain on public Gateway policy",
+			args:      `{`,
+			wantLocal: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tool := tt.tool
+			if tool == "" {
+				tool = "audit_receipt_list"
+			}
+			useLocal := gateway.useLocalNativeToolRoute(tool, json.RawMessage(tt.args))
+			assert.Equal(t, tt.wantLocal, useLocal)
+			assert.True(t, local.useLocalNativeToolRoute(tool, json.RawMessage(tt.args)), "outbound Operators never fall back to a Gateway mirror")
+		})
+	}
+}
+
+// unreachableAuditReceiptQuery satisfies the Operator native tool host's
+// required store; the witness gate refuses or passes before any query runs.
+type unreachableAuditReceiptQuery struct{}
+
+func (unreachableAuditReceiptQuery) ListActionReceipts(models.AuditScope, int, int) ([]*models.ActionReceiptRecord, error) {
+	return nil, errors.ErrUnsupported
+}
+
+func (unreachableAuditReceiptQuery) ListActionReceiptsSince(time.Time, int) ([]*models.ActionReceiptRecord, error) {
+	return nil, errors.ErrUnsupported
+}
+
+func (unreachableAuditReceiptQuery) GetActionReceipt(string) (*models.ActionReceiptRecord, error) {
+	return nil, errors.ErrUnsupported
+}
+
+// The executing Operator is the PEP for witness-only capability: a provenance
+// or observer Operator refuses generic native tools at its own boundary, even
+// when the Gateway pre-check was skipped, but still serves reads of its own
+// signed audit store.
+func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
+	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditReceiptQuery{})
+	require.NoError(t, err)
+	tests := []struct {
+		name         string
+		capabilities constants.OperatorCapabilities
+		tool         string
+		wantRefused  bool
+	}{
+		{name: "observer refuses run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolRunShellCommand, wantRefused: true},
+		{name: "provenance refuses run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolRunShellCommand, wantRefused: true},
+		{name: "observer serves its own audit_receipt_get", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolAuditReceiptGet},
+		{name: "provenance serves its own audit_receipt_list", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolAuditReceiptList},
+		{name: "data runs run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData}, tool: constants.MCPToolRunShellCommand},
+		{name: "provenance with inference runs run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance, constants.OperatorCapabilityInference}, tool: constants.MCPToolRunShellCommand},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &OperatorPubSubService{
+				config:           &config.Config{OperatorCapabilities: tt.capabilities},
+				logger:           testutil.NewTestLogger(),
+				localNativeTools: host,
+			}
+			_, err := svc.executeLocalNativeTool(t.Context(), &PubSubCommandMessage{ID: "witness-gate"}, tt.tool, json.RawMessage(`{"command":"pwd"}`))
+			if tt.wantRefused {
+				require.ErrorIs(t, err, constants.ErrWitnessCommandNotCapable)
+				return
+			}
+			// Past the capability gate, the missing egress scrubber is the next
+			// fail-closed check, so the tool itself never runs here.
+			require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
 		})
 	}
 }
@@ -151,7 +263,7 @@ func unsignedSignerEnvelope(t *testing.T, signerPriv ed25519.PrivateKey) *govpkg
 			Votes: []*commonv1.L2Vote{
 				{
 					SignerKeyId:        "missing-key",
-					ConsensusSignature: hex.EncodeToString(ed25519.Sign(signerPriv, []byte(hash+"|true"))),
+					ConsensusSignature: hex.EncodeToString(ed25519.Sign(signerPriv, governance.L2VotePayload(hash, true))),
 					Decision:           true,
 				},
 			},
@@ -269,7 +381,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope(t *testing.T) {
 		}
 		env.TransactionHash, _ = govpkg.GenerateMessageID(env)
 		env.Id = env.TransactionHash
-		sig := ed25519.Sign(f.SignerPriv, []byte(fmt.Sprintf("%s|true", env.TransactionHash)))
+		sig := ed25519.Sign(f.SignerPriv, governance.L2VotePayload(env.TransactionHash, true))
 		env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 
 		f.Svc.handleGovernanceEnvelope(env)
@@ -759,8 +871,8 @@ func TestOperatorPubSubService_AllActionTypesProduceReceipts(t *testing.T) {
 				env.Id = env.TransactionHash
 
 				// Sign for verifier
-				l2Payload := fmt.Sprintf("%s|true", env.TransactionHash)
-				sig := ed25519.Sign(f.SignerPriv, []byte(l2Payload))
+				l2Payload := governance.L2VotePayload(env.TransactionHash, true)
+				sig := ed25519.Sign(f.SignerPriv, l2Payload)
 				env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 
 				envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
@@ -831,8 +943,8 @@ func TestOperatorPubSubService_CancellationReceipt(t *testing.T) {
 		env.Id = env.TransactionHash
 
 		// Sign for verifier
-		l2Payload := fmt.Sprintf("%s|true", env.TransactionHash)
-		sig := ed25519.Sign(f.SignerPriv, []byte(l2Payload))
+		l2Payload := governance.L2VotePayload(env.TransactionHash, true)
+		sig := ed25519.Sign(f.SignerPriv, l2Payload)
 		env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 
 		envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
@@ -922,16 +1034,21 @@ func TestOperatorPubSubService_ExecuteVerifiedTransaction(t *testing.T) {
 func TestOperatorPubSubService_handleMcpCallRequestSync(t *testing.T) {
 	f := newPubsubFixture(t)
 
-	t.Run("rejects when MCP gateway not configured", func(t *testing.T) {
-		t.Parallel()
-		msg := &PubSubCommandMessage{
-			EventType: constants.Event.Operator.Mcp.CallRequested,
-			ID:        "msg-1",
-			Payload:   mustMarshalProto(t, &operatorv1.McpCallRequested{ToolName: "test"}),
-		}
+	msg := &PubSubCommandMessage{
+		EventType: constants.Event.Operator.Mcp.CallRequested,
+		ID:        "msg-1",
+		Payload:   mustMarshalProto(t, &operatorv1.McpCallRequested{ToolName: "test"}),
+	}
+
+	t.Run("outbound Operator rejects tools outside the native registry", func(t *testing.T) {
 		_, err := f.Svc.handleMcpCallRequestSync(context.Background(), msg)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "MCP gateway not configured")
+		require.ErrorIs(t, err, constants.ErrMCPNativeToolUnknown)
+	})
+
+	t.Run("outbound Operator without a local native tool host fails closed", func(t *testing.T) {
+		svc := &OperatorPubSubService{logger: testutil.NewTestLogger()}
+		_, err := svc.handleMcpCallRequestSync(context.Background(), msg)
+		require.ErrorIs(t, err, constants.ErrMCPNativeToolHostMissing)
 	})
 }
 
@@ -1370,8 +1487,8 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		env.Id = env.TransactionHash
 
 		// Sign for verifier
-		l2Payload := fmt.Sprintf("%s|true", env.TransactionHash)
-		sig := ed25519.Sign(f.SignerPriv, []byte(l2Payload))
+		l2Payload := governance.L2VotePayload(env.TransactionHash, true)
+		sig := ed25519.Sign(f.SignerPriv, l2Payload)
 		env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 
 		envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
@@ -1597,8 +1714,8 @@ func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *te
 				}
 				env.TransactionHash, _ = govpkg.GenerateMessageID(env)
 				env.Id = env.TransactionHash
-				l2Payload := fmt.Sprintf("%s|true", env.TransactionHash)
-				sig := ed25519.Sign(f.SignerPriv, []byte(l2Payload))
+				l2Payload := governance.L2VotePayload(env.TransactionHash, true)
+				sig := ed25519.Sign(f.SignerPriv, l2Payload)
 				env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 				envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
 

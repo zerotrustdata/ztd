@@ -101,7 +101,7 @@ func operatorBindCmdWithConfig(
 
 Every operator session is validated before any binding changes; if one is
 rejected, nothing is bound. The first session is the primary binding. Binding
-changes issue a replacement CLI session server-side and update local
+changes update this CLI session in place (same session ID) and refresh local
 credentials. Discover operator session IDs with:
 ./ztd operator list
 Confirmation can be skipped with --yes for non-interactive automation.`,
@@ -237,7 +237,7 @@ func runOperatorBind(
 		cmd.Printf("CLI session already bound to %d operator session(s); primary %s\n", len(bind.Bound), bind.OperatorSessionID)
 	} else {
 		cmd.Printf("CLI session bound to %d operator session(s); primary %s\n", len(bind.Bound), bind.OperatorSessionID)
-		cmd.Printf("New CLI session ID: %s\n", bind.CLISessionID)
+		cmd.Printf("CLI session ID: %s\n", bind.CLISessionID)
 	}
 	cmd.Printf("Operator ID: %s\n", bind.OperatorID)
 	return nil
@@ -444,7 +444,7 @@ func runOperatorBindUnbind(
 		cmd.Println("CLI session already has no operator binding.")
 	} else {
 		cmd.Println("CLI session unbound from operator.")
-		cmd.Printf("New CLI session ID: %s\n", unbind.CLISessionID)
+		cmd.Printf("CLI session ID: %s\n", unbind.CLISessionID)
 	}
 	return nil
 }

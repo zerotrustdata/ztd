@@ -18,7 +18,7 @@ This prompt instructs a generator-neutral builder (Lovable, Notion, or other sup
 Populate every section in the homepage matrix from typed stores only. Static sections remain static. Dynamic values come only from observe reads, normalized safe events, runtime health, or explicit unavailable state.
 
 - Connection state: disconnected, connecting, connected, reconnecting, unauthenticated. Use non-color labels.
-- Auth state: unauthenticated, bootstrapping, enrolling, authenticating, authenticated, error.
+- Auth state: unauthenticated, enrolling, authenticating, authenticated, error.
 - Overview counters: agents running and tasks in queue, each with a freshness label (observed, stale, unavailable). Success rate only when a typed success_rate measurement exists.
 - Agent roster: each agent's display name, role, status label, and freshness. Throughput only when a typed throughput measurement exists.
 - Active run and recent runs: display name, run kind, status label, completed/total task counts. No fabricated task counts.

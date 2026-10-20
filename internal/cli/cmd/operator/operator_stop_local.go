@@ -21,6 +21,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
 	"github.com/spf13/cobra"
+	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
@@ -32,6 +33,21 @@ type localOperatorProcess struct {
 	wait      func(time.Duration) (bool, error)
 	signal    func(bool) error // false: TERM, true: KILL
 	close     func()
+}
+
+// exitWait returns the wait for a watched worker. It reports whether the worker
+// exited within the timeout, and a timeout of zero or less checks the current
+// state only.
+func exitWait(watch *platform.ProcessExitWatch) func(time.Duration) (bool, error) {
+	return func(timeout time.Duration) (bool, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		err := watch.Wait(ctx)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return false, nil
+		}
+		return err == nil, err
+	}
 }
 
 func (p localOperatorProcess) matches(op *operatorv1.OperatorDocument) bool {

@@ -169,7 +169,7 @@ func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCm
 		logger,
 	)
 
-	err = coordinator.NotifyAttemptBegin(
+	_, err = coordinator.NotifyAttemptBegin(
 		context.Background(),
 		"user-1",
 		"attempt-1",
@@ -182,4 +182,54 @@ func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCm
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
+}
+
+// With no provenance Operator connected, the coordinator reports the NotFound
+// sentinel for both phases. Campaign authority is decided by the dispatch layer,
+// so the coordinator must never turn the miss into a silent nil receipt.
+func TestModelProvenanceObservationCoordinator_ZeroProvenanceOperatorReportsNotFound(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
+	windowStore, err := model_provenance.NewWindowStore(fileSvc)
+	require.NoError(t, err)
+
+	coordinator := NewModelProvenanceObservationCoordinator(
+		&DispatchService{},
+		&stubModelProvenanceOperatorLister{},
+		NewGatewayWebSocketHandler(logger),
+		windowStore,
+		nil,
+		logger,
+	)
+
+	begin, err := coordinator.NotifyAttemptBegin(
+		context.Background(),
+		"user-1",
+		"attempt-1",
+		"probe-model:7b",
+		strings.Repeat("a", 64),
+		strings.Repeat("c", 64),
+		"",
+		time.Now().UnixMilli(),
+		0,
+	)
+	require.ErrorIs(t, err, constants.ErrProvenanceOperatorNotFound)
+	assert.Nil(t, begin)
+
+	finalize, err := coordinator.NotifyAttemptFinalize(
+		context.Background(),
+		"user-1",
+		"attempt-1",
+		"tx-1",
+		"probe-model:7b",
+		strings.Repeat("a", 64),
+		strings.Repeat("c", 64),
+		"",
+		time.Now().UnixMilli(),
+		time.Now().UnixMilli(),
+		false,
+		0,
+	)
+	require.ErrorIs(t, err, constants.ErrProvenanceOperatorNotFound)
+	assert.Nil(t, finalize)
 }

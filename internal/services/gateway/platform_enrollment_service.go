@@ -647,6 +647,10 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 	if err := models.ValidateConsensusEndpoint(endpointURL); err != nil {
 		return nil, fmt.Errorf("platform enrollment: consensus endpoint: %w", err)
 	}
+	members, quorum, err := models.ResolveConsensusMembership(appID, req.MemberAppIDs, req.Quorum)
+	if err != nil {
+		return nil, fmt.Errorf("platform enrollment: %w", err)
+	}
 	user, err := s.userSvc.GetByID(ctx, actorUserID)
 	if err != nil {
 		return nil, fmt.Errorf("platform enrollment: authorize consensus binding: %w", err)
@@ -673,11 +677,13 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 	}
 
 	payload := &commonv1.PlatformEnrollmentGovernancePayload{
-		Action:               string(constants.PlatformEnrollmentActionBindConsensus),
-		ComponentKind:        commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_APPLICATION,
-		InstanceId:           appID,
-		ConsensusEndpointUrl: endpointURL,
-		ActorUserId:          actorUserID,
+		Action:                string(constants.PlatformEnrollmentActionBindConsensus),
+		ComponentKind:         commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_APPLICATION,
+		InstanceId:            appID,
+		ConsensusEndpointUrl:  endpointURL,
+		ActorUserId:           actorUserID,
+		ConsensusMemberAppIds: members,
+		ConsensusQuorum:       uint32(quorum),
 	}
 	_, err = s.submitEnvelope(ctx, constants.PlatformEnrollmentActionBindConsensus, payload)
 	if err != nil {

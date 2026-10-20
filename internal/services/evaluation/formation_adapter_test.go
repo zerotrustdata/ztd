@@ -23,7 +23,7 @@ func ultraEfficientSpeedsterRegistryVariants() []*evalv1.ModelVariant {
 			VariantId:      "qwen35-4b",
 			ProviderClass:  "ollama",
 			ServedModelTag: "qwen3.5:4b",
-			ModelDigest:    repeatHex('a', 64),
+			ModelDigest:    repeatHex('a'),
 			ModelFamily:    "Qwen 3.5",
 			ParameterCount: 4_000_000_000,
 			Quantization:   "Q4_K_M",
@@ -32,7 +32,7 @@ func ultraEfficientSpeedsterRegistryVariants() []*evalv1.ModelVariant {
 			VariantId:      "gemma4-e2b",
 			ProviderClass:  "ollama",
 			ServedModelTag: "gemma4:e2b",
-			ModelDigest:    repeatHex('b', 64),
+			ModelDigest:    repeatHex('b'),
 			ModelFamily:    "Gemma 4",
 			ParameterCount: 5_100_000_000,
 			Quantization:   "Q4_K_M",
@@ -41,7 +41,7 @@ func ultraEfficientSpeedsterRegistryVariants() []*evalv1.ModelVariant {
 			VariantId:      "llama32-1b-speed",
 			ProviderClass:  "ollama",
 			ServedModelTag: "llama3.2:1b",
-			ModelDigest:    repeatHex('c', 64),
+			ModelDigest:    repeatHex('c'),
 			ModelFamily:    "Llama 3.2",
 			ParameterCount: 1_200_000_000,
 			Quantization:   "Q8_0",
@@ -69,9 +69,9 @@ func TestBindFormation_BindsUltraEfficientSpeedsterDigestsFromFrozenRegistry(t *
 
 	formation, err := BindFormation(req)
 	require.NoError(t, err)
-	assert.Equal(t, repeatHex('a', 64), formation.Primary.ModelDigest)
-	assert.Equal(t, repeatHex('b', 64), formation.Assistant.ModelDigest)
-	assert.Equal(t, repeatHex('c', 64), formation.Lite.ModelDigest)
+	assert.Equal(t, repeatHex('a'), formation.Primary.ModelDigest)
+	assert.Equal(t, repeatHex('b'), formation.Assistant.ModelDigest)
+	assert.Equal(t, repeatHex('c'), formation.Lite.ModelDigest)
 	assert.Equal(t, "qwen3.5:4b", formation.Primary.ServedModelTag)
 }
 
@@ -81,7 +81,7 @@ func TestFormationBindingFromCatalog_PrefersServedTagOverCollidingVariantID(t *t
 		VariantId:      "gemma4-e4b",
 		ProviderClass:  "ollama",
 		ServedModelTag: "gemma4:e4b-other",
-		ModelDigest:    repeatHex('x', 64),
+		ModelDigest:    repeatHex('x'),
 		ModelFamily:    "gemma4",
 		Quantization:   "Q4_0",
 	})
@@ -91,7 +91,7 @@ func TestFormationBindingFromCatalog_PrefersServedTagOverCollidingVariantID(t *t
 	bound, err := BindFormation(binding)
 	require.NoError(t, err)
 	assert.Equal(t, "gemma4:e4b", bound.Primary.ServedModelTag)
-	assert.Equal(t, repeatHex('6', 64), bound.Primary.ModelDigest)
+	assert.Equal(t, repeatHex('6'), bound.Primary.ModelDigest)
 }
 
 // Frozen inventory IDs routinely differ from catalog IDs; the sealed stack must
@@ -102,7 +102,7 @@ func TestFormationBindingFromCatalog_SealsFreezeVariantIDsWhenCatalogIDsDiffer(t
 			VariantId:      "qwen3-5-4b",
 			ProviderClass:  "ollama",
 			ServedModelTag: "qwen3.5:4b",
-			ModelDigest:    repeatHex('a', 64),
+			ModelDigest:    repeatHex('a'),
 			ModelFamily:    "Qwen 3.5",
 			ParameterCount: 4_000_000_000,
 			Quantization:   "Q4_K_M",
@@ -111,7 +111,7 @@ func TestFormationBindingFromCatalog_SealsFreezeVariantIDsWhenCatalogIDsDiffer(t
 			VariantId:      "gemma4-e2b-q4-k-m",
 			ProviderClass:  "ollama",
 			ServedModelTag: "gemma4:e2b",
-			ModelDigest:    repeatHex('b', 64),
+			ModelDigest:    repeatHex('b'),
 			ModelFamily:    "Gemma 4",
 			ParameterCount: 5_100_000_000,
 			Quantization:   "Q4_K_M",
@@ -120,7 +120,7 @@ func TestFormationBindingFromCatalog_SealsFreezeVariantIDsWhenCatalogIDsDiffer(t
 			VariantId:      "llama3-2-1b-q8-0",
 			ProviderClass:  "ollama",
 			ServedModelTag: "llama3.2:1b",
-			ModelDigest:    repeatHex('c', 64),
+			ModelDigest:    repeatHex('c'),
 			ModelFamily:    "Llama 3.2",
 			ParameterCount: 1_200_000_000,
 			Quantization:   "Q8_0",
@@ -133,7 +133,7 @@ func TestFormationBindingFromCatalog_SealsFreezeVariantIDsWhenCatalogIDsDiffer(t
 	formation, err := BindFormation(binding)
 	require.NoError(t, err)
 	assert.Equal(t, "qwen3-5-4b", formation.Primary.VariantID)
-	assert.Equal(t, repeatHex('a', 64), formation.Primary.ModelDigest)
+	assert.Equal(t, repeatHex('a'), formation.Primary.ModelDigest)
 	assert.Equal(t, "gemma4-e2b-q4-k-m", formation.Assistant.VariantID)
 	assert.Equal(t, "llama3-2-1b-q8-0", formation.Lite.VariantID)
 }

@@ -194,7 +194,7 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 	payload, err := proto.Marshal(fsReadReq)
 	require.NoError(t, err)
 
-	reqBody := OperatorCommandRequest{
+	reqBody := models.OperatorCommandRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.FsRead.Requested),
 		Payload:                 payload,
@@ -316,7 +316,7 @@ func TestDispatchService_ShutdownPublishesReceiptThenAcknowledgementBeforeCancel
 	}, time.Second, 10*time.Millisecond)
 	payload, err := proto.Marshal(&operatorv1.ShutdownRequested{Reason: "planned maintenance"})
 	require.NoError(t, err)
-	dispatch := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	dispatch := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil)
 	result, err := dispatch.Dispatch(context.Background(), DispatchRequest{
 		TargetOperatorSessionID: sessionID,
 		EventType:               string(constants.Event.Operator.ShutdownRequested),
@@ -353,7 +353,7 @@ func TestDispatch_UnknownSession_ReturnsIngressRefusal(t *testing.T) {
 	payload, err := proto.Marshal(fsReadReq)
 	require.NoError(t, err)
 
-	reqBody := OperatorCommandRequest{
+	reqBody := models.OperatorCommandRequest{
 		TargetOperatorSessionID: "nonexistent-session-int",
 		EventType:               string(constants.Event.Operator.FsRead.Requested),
 		Payload:                 payload,
@@ -385,7 +385,7 @@ func TestDispatch_UnknownSession_ReturnsIngressRefusal(t *testing.T) {
 func TestDispatch_DoctrineViolation_ReturnsIngressRefusal(t *testing.T) {
 	h, _, infra := setupTestHTTPHandler(t)
 	h.dispatchController = newDispatchController(DispatchControllerDeps{
-		DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil),
+		DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil),
 		Responder:   infra.Responder,
 		Logger:      infra.Logger,
 	})
@@ -403,7 +403,7 @@ func TestDispatch_DoctrineViolation_ReturnsIngressRefusal(t *testing.T) {
 		ExecutionId: "exec-doctrine-bash",
 	})
 	require.NoError(t, err)
-	body, err := json.Marshal(OperatorCommandRequest{
+	body, err := json.Marshal(models.OperatorCommandRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.Command.Requested),
 		Payload:                 payload,
@@ -606,7 +606,12 @@ func startInferenceOperatorWithResultTampering(t *testing.T, infra *TestInfrastr
 	if tamperResult {
 		resultsPublisher = &boundaryTamperingResultsService{PubSubResultsService: resultsSvc}
 	}
-	cliVerifier := NewCLISessionVerifier(infra.DocStore, infra.PKI, infra.Logger, infra.UserSvc, infra.CLISessionSvc)
+	rootPEM, err := infra.PKI.RootCAPEM()
+	require.NoError(t, err)
+	roots := x509.NewCertPool()
+	require.True(t, roots.AppendCertsFromPEM(rootPEM))
+	notary, err := govsvc.NewOutboundL3Notary(roots)
+	require.NoError(t, err)
 	operatorSvc, err := pubsub.NewOperatorPubSubService(withRequiredOperatorDeps(t, pubsub.CommandServiceConfig{
 		Ledger:             storagetest.NewTestLedger(t),
 		RuntimeVault:       governancetest.UnlockedVault{},
@@ -626,7 +631,7 @@ func startInferenceOperatorWithResultTampering(t *testing.T, infra *TestInfrastr
 		ReplayStore:       infra.ReplayStore,
 		StateRootProvider: stateRoots,
 		TransactionAudit:  infra.AuditStore,
-		L3Notary:          govsvc.NewGatewayL3Notary(cliVerifier, infra.Passkey.PasskeyService, infra.Logger),
+		L3Notary:          notary,
 		SignerStore:       infra.SignerStore,
 		Doctrine:          govsvc.NewL1Doctrine(),
 	}})
@@ -644,6 +649,19 @@ func startInferenceOperatorWithResultTampering(t *testing.T, infra *TestInfrastr
 }
 
 func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, workDir string) ed25519.PublicKey {
+	return startFileEditOperatorWithNotary(t, infra, operatorID, sessionID, workDir, nil)
+}
+
+func startFileEditOperatorWithNotary(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, workDir string, notary govsvc.L3Notary) ed25519.PublicKey {
+	return startFileEditOperatorWithGovernance(t, infra, operatorID, sessionID, workDir, notary, nil)
+}
+
+// startFileEditOperatorWithGovernance starts an outbound FILE_EDIT Operator whose
+// L4 verifies L3 through notary and L2 votes against infra.SignerStore and the
+// given consensus policy store. The Operator reads its posture per envelope; a
+// nil policy store leaves L2 unverifiable, which only suits postures that do not
+// enforce L2.
+func startFileEditOperatorWithGovernance(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, workDir string, notary govsvc.L3Notary, policies govsvc.L2ConsensusPolicyStore) ed25519.PublicKey {
 	t.Helper()
 	remoteCfg := *infra.Cfg
 	remoteCfg.OperatorID = operatorID
@@ -687,7 +705,8 @@ func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, 
 		TransactionAudit:  infra.AuditStore,
 		SignerStore:       infra.SignerStore,
 		Doctrine:          govsvc.NewL1Doctrine(),
-	}})
+		L3Notary:          notary,
+	}, ConsensusPolicyStore: policies})
 	require.NoError(t, err)
 	require.NoError(t, operatorSvc.Start(context.Background()))
 	t.Cleanup(func() { require.NoError(t, operatorSvc.Stop()) })
@@ -702,7 +721,7 @@ func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, 
 }
 
 func newInferenceBoundaryDispatchService(infra *TestInfrastructure, posture constants.Posture) *inferdispatch.DispatchService {
-	commandSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, posture, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	commandSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, posture, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil)
 	return inferdispatch.NewDispatchService(
 		&gatewayDispatcherAdapter{svc: commandSvc},
 		&gatewayOperatorListerAdapter{svc: infra.Reg},
@@ -764,7 +783,7 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 		NewContent:  seed + "\n" + marker,
 	})
 	require.NoError(t, err)
-	dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil)
 	result, err := dispatchSvc.Dispatch(context.Background(), DispatchRequest{
 		TargetOperatorSessionID: sessionID,
 		EventType:               string(constants.Event.Operator.FileEdit.Requested),
@@ -890,7 +909,7 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 		CreateIfMissing: true,
 	})
 	require.NoError(t, err)
-	dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	dispatchSvc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil)
 	result, dispatchErr := dispatchSvc.Dispatch(context.Background(), DispatchRequest{
 		TargetOperatorSessionID: sessionID,
 		EventType:               string(constants.Event.Operator.FileEdit.Requested),
@@ -964,7 +983,7 @@ func TestDispatch_EmbeddedFileEditRecordsLocalEvidence(t *testing.T) {
 		CreateIfMissing: true,
 	})
 	require.NoError(t, err)
-	dispatchSvc := NewDispatchService(logger, svc.pubsub, svc.stateRootSvc, svc.auth, constants.PostureDoctrine, svc.doctrine, nil, svc.signerStore, svc.envProc)
+	dispatchSvc := NewDispatchService(logger, svc.pubsub, svc.stateRootSvc, svc.auth, constants.PostureDoctrine, svc.doctrine, nil, svc.signerStore, svc.envProc, nil)
 	result, err := dispatchSvc.Dispatch(ctx, DispatchRequest{
 		TargetOperatorSessionID: sessionID,
 		EventType:               string(constants.Event.Operator.FileEdit.Requested),
@@ -1019,7 +1038,7 @@ func TestDispatch_FailedActionsProduceSignedFailures(t *testing.T) {
 	seedInferenceOperator(t, infra, userID, operatorID, sessionID, false)
 	workDir := testutil.OperatorDir(t)
 	pubKey := startFileEditOperator(t, infra, operatorID, sessionID, workDir)
-	svc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil)
+	svc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil)
 	missing := filepath.Join(workDir, "missing.txt")
 	for _, test := range []struct {
 		name      string
@@ -1061,7 +1080,7 @@ func TestDispatchController_HandleDispatch_DoctrineProhibitedRequestRejectedBefo
 
 	h, _, infra := setupTestHTTPHandler(t)
 	h.dispatchController = newDispatchController(DispatchControllerDeps{
-		DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil),
+		DispatchSvc: NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil),
 		Responder:   infra.Responder,
 		Logger:      infra.Logger,
 	})
@@ -1082,7 +1101,7 @@ func TestDispatchController_HandleDispatch_DoctrineProhibitedRequestRejectedBefo
 		Content:     "rm -rf /",
 	})
 	require.NoError(t, err)
-	body, err := json.Marshal(OperatorCommandRequest{
+	body, err := json.Marshal(models.OperatorCommandRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.FileEdit.Requested),
 		Payload:                 payload,

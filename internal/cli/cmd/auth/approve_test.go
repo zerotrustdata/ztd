@@ -33,6 +33,9 @@ func TestApproveCmdStructure(t *testing.T) {
 		assert.Contains(t, cmd.Use, "approve")
 		assert.Contains(t, cmd.Short, "Approve")
 		assert.Contains(t, cmd.Long, "suspended")
+		cliFlag := cmd.Flags().Lookup("cli")
+		require.NotNil(t, cliFlag)
+		assert.Contains(t, cliFlag.Usage, "enrolled CLI certificate")
 	})
 
 	t.Run("approve command requires exactly one argument", func(t *testing.T) {

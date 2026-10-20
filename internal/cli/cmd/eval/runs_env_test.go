@@ -10,38 +10,26 @@ package eval
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"log/slog"
-	"net/http"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
-	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 const (
-	testInferenceSession             = "infer-session"
-	testDataSession                  = "data-session"
-	testDataOperatorWorkingDirectory = "/home/operator"
-	testHost                         = "test-host"
-	testPID                          = 4242
+	testHost = "test-host"
+	testPID  = 4242
 )
 
 // fakeProcessControl is the run-control process boundary for tests. It makes
@@ -53,10 +41,12 @@ type fakeProcessControl struct {
 	host       string
 	alive      map[int]bool
 	interrupts []int
+	// exits holds, per PID, the channel that WaitExit blocks on until exit closes it.
+	exits map[int]chan struct{}
 }
 
 func newFakeProcessControl() *fakeProcessControl {
-	return &fakeProcessControl{pid: testPID, host: testHost, alive: map[int]bool{testPID: true}}
+	return &fakeProcessControl{pid: testPID, host: testHost, alive: map[int]bool{testPID: true}, exits: make(map[int]chan struct{})}
 }
 
 func (f *fakeProcessControl) PID() int { return f.pid }
@@ -88,10 +78,53 @@ func (f *fakeProcessControl) interrupted() []int {
 	return append([]int(nil), f.interrupts...)
 }
 
+// exitChan returns the channel that closes when pid exits. Callers hold f.mu.
+func (f *fakeProcessControl) exitChan(pid int) chan struct{} {
+	ch, ok := f.exits[pid]
+	if !ok {
+		ch = make(chan struct{})
+		f.exits[pid] = ch
+	}
+	return ch
+}
+
+// WaitExit blocks until exit is called for pid, or until ctx ends.
+func (f *fakeProcessControl) WaitExit(ctx context.Context, pid int) error {
+	f.mu.Lock()
+	exited := f.exitChan(pid)
+	f.mu.Unlock()
+	select {
+	case <-exited:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// exit makes pid die: it is no longer alive, and WaitExit returns for it. Nothing
+// is published on the run's stream, which is what a process that dies without
+// releasing its run looks like.
+func (f *fakeProcessControl) exit(pid int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.alive[pid] = false
+	if ch := f.exitChan(pid); !isClosed(ch) {
+		close(ch)
+	}
+}
+
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
 func testRunControl(control *fakeProcessControl) runControlDeps {
 	return runControlDeps{
 		processFactory: func(fs.RuntimeFileService) (processControl, error) { return control, nil },
-		pollInterval:   5 * time.Millisecond,
 	}
 }
 
@@ -104,70 +137,16 @@ func testQwenVariant() *evalv1.ModelVariant {
 	}
 }
 
-func testRunOperators() []*operatorv1.OperatorDocument {
-	return []*operatorv1.OperatorDocument{
-		{
-			Id:                "infer-op",
-			OperatorSessionId: testInferenceSession,
-			Status:            string(constants.OperatorStatusActive),
-			OperatorType:      string(constants.OperatorTypeRemote),
-			RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
-				Capabilities:            []string{string(constants.OperatorCapabilityInference)},
-				InferenceOllamaEndpoint: "http://provider.example:11434",
-			},
-			ActuatorPublicKey: testInferenceOperatorActuatorKey,
-			ActuatorKeyId:     testInferenceOperatorActuatorKey,
-		},
-		{
-			Id:                      "data-op",
-			OperatorSessionId:       testDataSession,
-			Status:                  string(constants.OperatorStatusActive),
-			OperatorType:            string(constants.OperatorTypeRemote),
-			RuntimeConfig:           &operatorv1.OperatorRuntimeConfig{},
-			LatestHeartbeatSnapshot: &operatorv1.HeartbeatResult{Environment: &operatorv1.EnvironmentDetails{Pwd: testDataOperatorWorkingDirectory}},
-			ActuatorPublicKey:       testDataOperatorActuatorKey,
-			ActuatorKeyId:           testDataOperatorActuatorKey,
-		},
-	}
-}
-
-func writePublicationProofResponse(w http.ResponseWriter, r *http.Request) bool {
-	switch r.URL.Path {
-	case constants.APIPaths.PublicFeedProofs, constants.APIPaths.PublicFeedProofsBatch, constants.APIPaths.PublicFeedProofsPush:
-		if r.Method != http.MethodPost {
-			return false
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"accepted":true}`))
-		return true
-	default:
-		return false
-	}
-}
-
-func writeWitnessPreflightResponse(w http.ResponseWriter, r *http.Request) bool {
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.SSEStream:
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.(http.Flusher).Flush()
-		<-r.Context().Done()
-		return true
-	case r.Method == http.MethodGet && r.URL.Path == constants.APIPaths.InferenceProviderObservations+"_preflight":
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ready"}`))
-		return true
-	default:
-		return false
-	}
-}
-
-// runEnv is one project root wired to a fake Gateway and a fake process
-// boundary, with testQwenVariant in its model registry.
+// runEnv is one project root with a frozen model registry and a deterministic
+// process-control boundary. Gateway tests install the real stack explicitly.
 type runEnv struct {
-	root    string
-	deps    nativeEvalDeps
-	cmd     *cobra.Command
-	control *fakeProcessControl
+	root             string
+	deps             nativeEvalDeps
+	cmd              *cobra.Command
+	control          *fakeProcessControl
+	dataOperatorID   string
+	dataSession      string
+	inferenceSession string
 }
 
 func (e *runEnv) fileSvc(t *testing.T) fs.RuntimeFileService {
@@ -232,12 +211,21 @@ func (e *runEnv) createCampaign(t *testing.T, campaignID string) {
 // default suite.
 func (e *runEnv) createSuiteCampaign(t *testing.T, campaignID, suiteID string) {
 	t.Helper()
+	var investigation *evalv1.EvaluationInvestigation
+	if e.dataOperatorID != "" {
+		investigation = &evalv1.EvaluationInvestigation{
+			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
+			InvestigationId: "test-investigation-" + campaignID,
+			DataOperatorId:  e.dataOperatorID,
+		}
+	}
 	_, err := createCampaign(context.Background(), e.deps, e.fileSvc(t), campaignCreateSpec{
-		Platform:    testPlatform,
-		CampaignID:  campaignID,
-		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
-		Repetitions: 1,
-		SuiteID:     suiteID,
+		Platform:      testPlatform,
+		CampaignID:    campaignID,
+		Variants:      []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions:   1,
+		SuiteID:       suiteID,
+		Investigation: investigation,
 	})
 	require.NoError(t, err)
 }
@@ -254,10 +242,10 @@ func testModelRoleCells(t *testing.T) int {
 
 // prepareRun creates a campaign and starts a prepared-only run of it: the run
 // and its assignment matrix are persisted and nothing executes.
-func (e *runEnv) prepareRun(t *testing.T, campaignID, runID string) string {
+func (e *runEnv) prepareRun(t *testing.T) string {
 	t.Helper()
-	e.createCampaign(t, campaignID)
-	return e.startPrepared(t, campaignID, runID)
+	e.createCampaign(t, "eval-a")
+	return e.startPrepared(t, "eval-a", "run-a-1")
 }
 
 func (e *runEnv) startPrepared(t *testing.T, campaignID, runID string) string {
@@ -267,72 +255,6 @@ func (e *runEnv) startPrepared(t *testing.T, campaignID, runID string) string {
 	require.NoError(t, err)
 	require.True(t, result.Prepared)
 	return result.RunID
-}
-
-func writeGatewayCredentials(t *testing.T, e *runEnv) {
-	t.Helper()
-	fileSvc := e.fileSvc(t)
-	cfg, err := e.deps.configLoader(e.root)
-	require.NoError(t, err)
-
-	_, priv, err := ed25519.GenerateKey(nil)
-	require.NoError(t, err)
-	keyDER, err := x509.MarshalPKCS8PrivateKey(priv)
-	require.NoError(t, err)
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
-	cmdtest.WriteSealedKey(t, fileSvc, cfg, cfg.CLIKeyFile(), keyPEM)
-
-	certDER := cmdtest.GenerateApproveTestCertDER(t, priv)
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	require.NoError(t, fileSvc.WriteFile(context.Background(), cmdtest.MustRel(t, fileSvc, cfg.CLICertFile()), certPEM, constants.PermFilePrivate))
-	require.NoError(t, fileSvc.WriteFile(context.Background(), cfg.DefaultTrustBundleRelPath(), certPEM, constants.PermFilePrivate))
-
-	require.NoError(t, auth.SaveCredentials(fileSvc, cfg, &auth.Credentials{
-		OperatorSessionID: testDataSession,
-		UserID:            "user-1",
-		OperatorID:        "data-op",
-		CLISessionID:      "cli-1",
-	}))
-}
-
-type recordingCampaignVerificationPublication struct {
-	completionRunIDs []string
-	reports          []*evalv1.EvaluationVerificationReport
-}
-
-func (p *recordingCampaignVerificationPublication) PublishRunCompletion(_ context.Context, runID string, _ time.Time) (int, error) {
-	p.completionRunIDs = append(p.completionRunIDs, runID)
-	return 1, nil
-}
-
-func (p *recordingCampaignVerificationPublication) PublishRunVerification(_ context.Context, _ string, report *evalv1.EvaluationVerificationReport) (int, error) {
-	p.reports = append(p.reports, report)
-	return 1, nil
-}
-
-// recordPublication routes verification publication to a recorder.
-func (e *runEnv) recordPublication() *recordingCampaignVerificationPublication {
-	publication := &recordingCampaignVerificationPublication{}
-	e.deps.campaignPublicationFactory = func(*cobra.Command, fs.RuntimeFileService, *config.Config) (campaignVerificationPublication, error) {
-		return publication, nil
-	}
-	return publication
-}
-
-func assertPopulationBoundCampaignReport(t *testing.T, report *evalv1.EvaluationVerificationReport) {
-	t.Helper()
-	require.NotNil(t, report)
-	assert.Equal(t, constants.CampaignVerifierVersion, report.GetSchemaVersion())
-	assert.Equal(t, constants.CampaignVerifierVersion, report.GetVerifierContractVersion())
-	assert.Equal(t, constants.EvaluationSourceVersion, report.GetVerifierReleaseVersion())
-	assert.Equal(t, uint32(testModelRoleCells(t)), report.GetExpectedAssignmentCount())
-	assert.Equal(t, uint32(1), report.GetVerifiedAssignmentCount())
-	assert.NotEmpty(t, report.GetVerifiedPopulationDigest())
-	assert.NotEmpty(t, report.GetCampaignDigest())
-	assert.NotEmpty(t, report.GetCatalogDigest())
-	assert.NotEmpty(t, report.GetModelRegistryDigest())
-	require.NotNil(t, report.GetReportDigestRef())
-	assert.Len(t, report.GetReportDigestRef().GetSha256(), 64)
 }
 
 func repeatTestHex(ch byte) string {
@@ -353,3 +275,13 @@ func testVersionContext() context.Context {
 
 // testPlatform is the build identity campaign fixtures freeze under.
 var testPlatform = evaluation.PlatformIdentity{Release: testReleaseVersion}
+
+// firstQueuedAssignment is the assignment a run executes next.
+func (e *runEnv) firstQueuedAssignment(t *testing.T, runID string) *evalv1.EvaluationAssignment {
+	t.Helper()
+	controller := evaluation.NewCampaignController(e.store(t), nil, e.deps.now, adaptNewID(e.deps.newID))
+	assignment, ok, err := controller.ResumeNextAssignment(context.Background(), runID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	return assignment
+}

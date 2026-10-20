@@ -16,7 +16,8 @@ import (
 )
 
 // DecodeCLIBindResponse validates the typed response shared by the CLI bind
-// command and the TUI. A replacement session is required on every response.
+// command and the TUI. The response names the caller's CLI session, which is
+// unchanged by a bind.
 func DecodeCLIBindResponse(body []byte, requested []string) (CLISessionBind, error) {
 	var resp models.CLIBindResponse
 	if err := json.Unmarshal(body, &resp); err != nil {

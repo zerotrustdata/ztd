@@ -9,7 +9,6 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,7 +19,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
-	"github.com/zerotrustdata/ztd/internal/uuid"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -38,20 +36,22 @@ type CLIRefreshControllerDeps struct {
 }
 
 // CLIRefreshController handles the mTLS-protected CLI session refresh
-// endpoint. It issues a new CLI session bound to the same user as the
-// caller's authenticated cert, deactivating the old session if it still
-// exists. The cert is NOT rotated — the cert is the proof of identity, and
-// the cert's URI SAN binds the new session to the same user.
+// endpoint. It extends the caller's own CLI session in place: the same session
+// ID, the same certificate binding, a new expiry, and the operator binding
+// resolved for the user. The certificate is NOT rotated and no session is
+// minted, so the certificate's URI SAN keeps naming the session it signs
+// approvals against.
 //
 // Auth classification (enforced by the unified auth middleware via
 // NewRouteAuthRegistry):
 //   - refresh (POST /api/v1/auth/cli/refresh): RouteAuthMTLS
-//     (requires a verified CLI client certificate whose URI SAN matches a
-//     CLI session; the caller can only refresh their own session)
+//     (requires a verified CLI client certificate whose URI SAN names the
+//     session in the X-ZTD-CLI-Session-ID header; the caller can only refresh
+//     its own session)
 //
 // This is the recovery path for an expired CLI session with a still-valid
-// cert. An expired cert cannot authenticate via mTLS, so it can never
-// reach this endpoint — the caller must use the recovery flow instead.
+// cert. An expired cert cannot authenticate via mTLS, so it can never reach
+// this endpoint; the caller must use the recovery flow instead.
 type CLIRefreshController struct {
 	cfg                *config.Config
 	logger             *slog.Logger
@@ -78,18 +78,19 @@ func newCLIRefreshController(deps CLIRefreshControllerDeps) *CLIRefreshControlle
 	}
 }
 
-// handleRefresh issues a new CLI session for the caller's authenticated
-// identity. The user ID and CLI session ID are read from the request
-// context (stamped by the auth middleware from the verified certificate
-// URI SAN). The request body is empty — the cert is the proof of identity.
+// handleRefresh extends the caller's CLI session in place. The user ID and CLI
+// session ID are read from the request context (stamped by the auth middleware
+// from the verified certificate URI SAN). The request body is empty — the cert
+// is the proof of identity.
 //
 // Order of operations:
-//  1. Extract user ID and old CLI session ID from the mTLS context.
+//  1. Read the user ID and CLI session ID from the mTLS context.
 //  2. Verify the user is still active.
-//  3. Pre-generate the new CLI session ID.
-//  4. RefreshCLISession: deactivate the old session (if it exists and is
-//     active), persist the new session bound to the same user and cert.
-//  5. Return the new session ID and user ID.
+//  3. Load the session. A missing session is 401 (there is nothing to extend);
+//     a deactivated session is 409 (a logged-out session is never revived).
+//  4. Resolve the operator binding for the refreshed session.
+//  5. RefreshCLISession: guarded in-place write of the new expiry and binding.
+//  6. Return the unchanged session ID, the user ID, and the binding.
 //
 // POST /api/v1/auth/cli/refresh  (RouteAuthMTLS)
 func (c *CLIRefreshController) handleRefresh(w http.ResponseWriter, r *http.Request) {
@@ -105,19 +106,14 @@ func (c *CLIRefreshController) handleRefresh(w http.ResponseWriter, r *http.Requ
 		c.responder.Error(w, http.StatusUnauthorized, "mTLS authentication required")
 		return
 	}
-	oldCLISessionID, _ := r.Context().Value(constants.ContextKeyCLISessionID).(string)
+	cliSessionID, _ := r.Context().Value(constants.ContextKeyCLISessionID).(string)
 
-	// Read and discard the body (the request body is empty, but we must
-	// consume it for connection reuse). A non-empty body is not an error —
-	// the body is simply ignored.
+	// The request body is empty. Read and discard it so the connection can be
+	// reused; a non-empty body is ignored.
 	if _, err := readRequestBody(r, c.cfg.Gateway.MaxPayloadBytes); err != nil {
 		c.responder.Error(w, http.StatusBadRequest, "failed to read body")
 		return
 	}
-
-	var req models.CLIRefreshRequest
-	_ = req // request body is empty; decode is a no-op but keeps the contract explicit
-	_ = json.Unmarshal([]byte{}, &req)
 
 	// Verify the user is still active. The auth middleware does this on
 	// every request, but a race between middleware and refresh could leave
@@ -134,52 +130,60 @@ func (c *CLIRefreshController) handleRefresh(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Load the old session if it exists, to inherit the operator binding
-	// and cert fingerprint. If the old session is missing (e.g., after a
-	// gateway volume reset), we still issue a new session — the cert is
-	// the proof of identity, not the old session's state.
-	var oldSession *models.CLISession
-	if oldCLISessionID != "" {
-		oldSession, err = c.cliSessionSvc.loadCLISession(r.Context(), oldCLISessionID)
-		if err != nil && !errors.Is(err, constants.ErrCLISessionNotFound) {
-			c.logger.Error("CLI refresh: failed to load old session",
-				"error", err,
-				"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
+	// The session the certificate names must exist: refresh extends it in place,
+	// so a missing session leaves nothing to extend. An expired session is the
+	// recovery case and is extended; a deactivated session is never revived.
+	if cliSessionID == "" {
+		c.logger.Warn("CLI refresh: no CLI session in the authenticated context", "user_id", userID)
+		c.responder.Error(w, http.StatusUnauthorized, constants.ErrCLISessionInvalid.Error())
+		return
+	}
+	session, err := c.cliSessionSvc.loadCLISession(r.Context(), cliSessionID)
+	if err != nil {
+		if errors.Is(err, constants.ErrCLISessionNotFound) {
+			c.logger.Warn("CLI refresh: CLI session not found; re-enroll to recover",
+				"user_id", userID,
+				"cli_session_id_prefix", safeTruncateID(cliSessionID),
 			)
-			c.responder.Error(w, http.StatusInternalServerError, "failed to load old session")
+			c.responder.Error(w, http.StatusUnauthorized, constants.ErrCLISessionInvalid.Error())
 			return
 		}
+		c.logger.Error("CLI refresh: failed to load CLI session",
+			"error", err,
+			"cli_session_id_prefix", safeTruncateID(cliSessionID),
+		)
+		c.responder.Error(w, http.StatusInternalServerError, "failed to load CLI session")
+		return
+	}
+	if !session.IsActive {
+		c.logger.Warn("CLI refresh: CLI session is deactivated and cannot be revived",
+			"user_id", userID,
+			"cli_session_id_prefix", safeTruncateID(cliSessionID),
+		)
+		c.writeRefreshError(w, constants.ErrCLISessionAlreadyDeactivated)
+		return
 	}
 
-	// Derive the operator binding and cert fingerprint for the new session.
-	// When the old session exists and has an operator session ID, inherit its
-	// binding — but only if that operator session is still active. When the
-	// inherited binding is stale (e.g., the operator was terminated and a new
-	// one enrolled), or when the old session has no operator session ID
-	// (e.g., initial CLI bootstrap before operator enrollment, or after a
-	// gateway volume reset that wiped CLI sessions but left operator sessions
-	// intact), look up the user's active operator session to inherit its
-	// binding. If no active operator session exists, return a clear actionable
-	// error — the caller must re-enroll to establish a fresh operator binding.
-	var operatorSessionID, operatorID, systemFingerprint, certFingerprint, certSerial, loginMethod string
-	if oldSession != nil {
-		systemFingerprint = oldSession.SystemFingerprint
-		certFingerprint = oldSession.CertFingerprint
-		certSerial = oldSession.CertSerial
-		loginMethod = oldSession.LoginMethod
-	}
-	if sessionID, opID, ok, regErr := c.registryOperatorBinding(r.Context(), userID); regErr != nil {
+	// Resolve the operator binding the refreshed session carries. The caller's
+	// registry-active Data operator is preferred, the embedded operator first.
+	// Otherwise the session keeps its own binding while that operator session is
+	// still active for the user, and failing that the user's active operator
+	// session is used. With none, the caller must re-enroll.
+	var operatorSessionID, operatorID string
+	registrySessionID, registryOperatorID, registryOK, regErr := c.registryOperatorBinding(r.Context(), userID)
+	if regErr != nil {
 		c.logger.Error("CLI refresh: failed to look up active data operator binding",
 			"error", regErr,
 			"user_id", userID,
 		)
 		c.responder.Error(w, http.StatusInternalServerError, "failed to look up operator session")
 		return
-	} else if ok {
-		operatorSessionID = sessionID
-		operatorID = opID
-	} else if oldSession != nil {
-		operatorSessionID = oldSession.OperatorSessionID
+	}
+	if registryOK {
+		operatorSessionID = registrySessionID
+		operatorID = registryOperatorID
+	} else {
+		operatorSessionID = session.OperatorSessionID
 	}
 	if operatorSessionID != "" && operatorID == "" && c.operatorSessionSvc != nil {
 		opSession, opErr := c.operatorSessionSvc.GetActiveSessionForUser(r.Context(), userID)
@@ -210,15 +214,12 @@ func (c *CLIRefreshController) handleRefresh(w http.ResponseWriter, r *http.Requ
 		if opSession != nil {
 			operatorSessionID = opSession.ID
 			operatorID = opSession.OperatorID
-			if loginMethod == "" {
-				loginMethod = opSession.LoginMethod
-			}
 		}
 	}
 	if operatorSessionID == "" {
 		c.logger.Warn("CLI refresh: no operator session binding available",
 			"user_id", userID,
-			"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
+			"cli_session_id_prefix", safeTruncateID(cliSessionID),
 		)
 		c.responder.Error(w, http.StatusConflict, "no active operator session found for user; re-enroll with 'auth enroll user' to establish a fresh operator binding")
 		return
@@ -226,49 +227,32 @@ func (c *CLIRefreshController) handleRefresh(w http.ResponseWriter, r *http.Requ
 
 	// Multi-bind survives a refresh only while the primary binding does.
 	var boundOperatorSessionIDs []string
-	if oldSession != nil && oldSession.OperatorSessionID == operatorSessionID {
-		boundOperatorSessionIDs = oldSession.BoundOperatorSessionIDs
+	if session.OperatorSessionID == operatorSessionID {
+		boundOperatorSessionIDs = session.BoundOperatorSessionIDs
 	}
 
-	newCLISessionID, err := uuid.NewString()
-	if err != nil {
-		c.responder.Error(w, http.StatusInternalServerError, "failed to generate session ID")
-		return
-	}
-	_, err = c.cliSessionSvc.RefreshCLISession(
-		r.Context(),
-		oldCLISessionID,
-		newCLISessionID,
-		CLISessionFields{
-			OperatorSessionID:       operatorSessionID,
-			BoundOperatorSessionIDs: boundOperatorSessionIDs,
-			UserID:                  userID,
-			SystemFingerprint:       systemFingerprint,
-			CertFingerprint:         certFingerprint,
-			CertSerial:              certSerial,
-			LoginMethod:             loginMethod,
-		},
-	)
-	if err != nil {
+	if _, err := c.cliSessionSvc.RefreshCLISession(r.Context(), cliSessionID, CLISessionRefreshFields{
+		UserID:                  userID,
+		OperatorSessionID:       operatorSessionID,
+		BoundOperatorSessionIDs: boundOperatorSessionIDs,
+	}); err != nil {
 		c.logger.Warn("CLI refresh: RefreshCLISession failed",
 			"error", err,
 			"user_id", userID,
-			"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
-			"new_cli_session_id_prefix", safeTruncateID(newCLISessionID),
+			"cli_session_id_prefix", safeTruncateID(cliSessionID),
 		)
 		c.writeRefreshError(w, err)
 		return
 	}
 
-	c.logger.Info("CLI session refreshed via controller",
+	c.logger.Info("CLI session refreshed in place via controller",
 		"user_id", userID,
-		"old_cli_session_id_prefix", safeTruncateID(oldCLISessionID),
-		"new_cli_session_id_prefix", safeTruncateID(newCLISessionID),
+		"cli_session_id_prefix", safeTruncateID(cliSessionID),
 	)
 
 	c.responder.JSON(w, http.StatusCreated, models.CLIRefreshResponse{
 		Success:           true,
-		CLISessionID:      newCLISessionID,
+		CLISessionID:      cliSessionID,
 		UserID:            userID,
 		OperatorSessionID: operatorSessionID,
 		OperatorID:        operatorID,

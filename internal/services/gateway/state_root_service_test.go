@@ -298,11 +298,12 @@ func TestStateRootService_MetadataOnlyUpdateIsNotDirty(t *testing.T) {
 }
 
 // TestStateRootService_OneWriteWorkIsIndependentOfHistory is the bounded-work
-// gate: with 10,000 committed history rows, the root read after one write
-// rehashes exactly one leaf.
+// gate: with 1,000 committed history rows, the root read after one write
+// rehashes exactly one leaf. The leaf counter is exact, so a larger history
+// adds runtime, not coverage.
 func TestStateRootService_OneWriteWorkIsIndependentOfHistory(t *testing.T) {
 	db := newTestDB(t)
-	seedHistoryDocuments(t, db, 10000)
+	seedHistoryDocuments(t, db, 1000)
 	svc := db.GetStateRootSvc()
 	_, err := svc.GetCurrentStateRoot(t.Context())
 	require.NoError(t, err)

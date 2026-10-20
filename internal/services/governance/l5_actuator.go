@@ -110,6 +110,8 @@ type L5Actuator struct {
 // It dispatches to the registered handler, captures status, signs and persists an ActionReceipt, and returns it.
 //
 // Fail-closed: if receipt signing or initial audit logging fails, the handler is NOT executed.
+// If the payload cannot be rehydrated, the handler is NOT executed either, and the receipt
+// finalizes FAILED with the rehydration error as its cause.
 func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMsg CommandMessage) (*operatorv1.ActionReceipt, error) {
 	w.wg.Add(1)
 	defer w.wg.Done()
@@ -193,24 +195,30 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 		receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, commitmentStage)
 	}
 
-	if err := w.rehydratePayload(ctx, vt, cmdMsg); err != nil {
-		return nil, err
-	}
-
-	cap, err := MintCapability(vt, w.SigningKey, w.KeyID)
-	if err != nil {
-		w.Logger.Error("Fail-closed: Failed to mint execution capability", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
-		return nil, fmt.Errorf("%w: %w", constants.ErrL5ActuatorCapabilityMint, err)
-	}
-	w.Logger.Info("Minted JIT capability",
-		"message_id", vt.Envelope.Id,
-		"action_type", vt.ActionType,
-		"expires_at", cap.ExpiresAt.UTC().Format(time.RFC3339))
-
-	execCtx := ContextWithCapability(ctx, cap)
-
+	// A payload that cannot be rehydrated is never dispatched. The failure is the
+	// execution result: the handler does not run and the receipt finalizes FAILED,
+	// the same as a handler failure.
 	executionStart := governanceMonotonicNow()
-	summary, execErr := w.ExecutionHandler.ExecuteVerifiedTransaction(execCtx, eventType, cmdMsg)
+	var summary string
+	var execErr error
+	if rehydrateErr := w.rehydratePayload(ctx, vt, cmdMsg); rehydrateErr != nil {
+		execErr = rehydrateErr
+	} else {
+		cap, err := MintCapability(vt, w.SigningKey, w.KeyID)
+		if err != nil {
+			w.Logger.Error("Fail-closed: Failed to mint execution capability", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
+			return nil, fmt.Errorf("%w: %w", constants.ErrL5ActuatorCapabilityMint, err)
+		}
+		w.Logger.Info("Minted JIT capability",
+			"message_id", vt.Envelope.Id,
+			"action_type", vt.ActionType,
+			"expires_at", cap.ExpiresAt.UTC().Format(time.RFC3339))
+
+		execCtx := ContextWithCapability(ctx, cap)
+		summary, execErr = w.ExecutionHandler.ExecuteVerifiedTransaction(execCtx, eventType, cmdMsg)
+		cap.Dissolve()
+		w.Logger.Info("Dissolved JIT capability", "message_id", vt.Envelope.Id, "action_type", vt.ActionType)
+	}
 	executionOutcome := operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED
 	if execErr != nil {
 		executionOutcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
@@ -235,10 +243,7 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 	}
 	receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, executionStage)
 
-	cap.Dissolve()
-	w.Logger.Info("Dissolved JIT capability", "message_id", vt.Envelope.Id, "action_type", vt.ActionType)
-
-	w.finalizeReceipt(ctx, receipt, summary, w.inferenceResultDigest(vt, cmdMsg), execErr)
+	w.finalizeReceipt(ctx, receipt, summary, w.inferenceResultDigest(vt, cmdMsg), w.auditReceiptListSummary(vt, cmdMsg, summary), execErr)
 	executionStage.StateRootAfter = receipt.StateRootAfter
 
 	if err := w.signAndLogFinalReceipt(context.WithoutCancel(ctx), signed, audit, receipt); err != nil {
@@ -502,13 +507,22 @@ func SignatureDigest(signatures []string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// rehydratePayload rehydrates the command message payload in place. Fail-closed: returns error on rehydration failure.
+// rehydratePayload rehydrates the command message payload in place. Fail-closed:
+// returns an error on rehydration failure, and an Actuator with no
+// ScrubbingService refuses a payload that holds a token it cannot rehydrate.
 func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransaction, cmdMsg CommandMessage) error {
-	if w.Scrubbing == nil || cmdMsg == nil {
+	if cmdMsg == nil {
 		return nil
 	}
 	p := cmdMsg.GetPayload()
 	if len(p) == 0 {
+		return nil
+	}
+	if w.Scrubbing == nil {
+		if scrubbing.ContainsToken(p) {
+			w.Logger.Error("Fail-closed: payload holds a UEI token and no scrubbing service is configured", string(constants.ConnectionStateError), constants.ErrScrubbingTokenUnresolved, "message_id", vt.Envelope.Id)
+			return fmt.Errorf("%w: no scrubbing service: %w", constants.ErrL5ActuatorRehydrate, constants.ErrScrubbingTokenUnresolved)
+		}
 		return nil
 	}
 	rehydrated, err := w.Scrubbing.RehydratePayload(ctx, p)
@@ -523,13 +537,13 @@ func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransacti
 // finalizeReceipt updates the receipt with execution result, state root after, and timestamp.
 // The mutation has already run, so the summary tokenization and the state root read ignore ctx
 // cancellation.
-func (w *L5Actuator) finalizeReceipt(ctx context.Context, receipt *operatorv1.ActionReceipt, summary, inferenceDigest string, execErr error) {
+func (w *L5Actuator) finalizeReceipt(ctx context.Context, receipt *operatorv1.ActionReceipt, summary, inferenceDigest, auditReceiptListSummary string, execErr error) {
 	status := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	if execErr != nil {
 		status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		receipt.ResultSummary = w.failedReceiptSummary(context.WithoutCancel(ctx), "failed", classifyReceiptFailure(execErr), execErr)
 	} else {
-		receipt.ResultSummary = w.completedReceiptSummary(context.WithoutCancel(ctx), summary, inferenceDigest)
+		receipt.ResultSummary = w.completedReceiptSummary(context.WithoutCancel(ctx), summary, inferenceDigest, auditReceiptListSummary)
 	}
 
 	stateAfter := ""
@@ -569,10 +583,12 @@ func (w *L5Actuator) inferenceResultDigest(vt *VerifiedTransaction, cmdMsg Comma
 // signed as is. Every other handler text is content: it is scrubbed when a scrubber is active
 // and replaced by fixed text otherwise. The text is never inspected for a digest shape, so a
 // hex-encoded secret returned by a tool is scrubbed like any other output.
-func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, inferenceDigest string) string {
+func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, inferenceDigest, auditReceiptListSummary string) string {
 	switch {
 	case inferenceDigest != "":
 		return inferenceDigest
+	case auditReceiptListSummary != "":
+		return auditReceiptListSummary
 	case summary == "":
 		return "completed"
 	case !w.scrubberActive():
@@ -580,6 +596,48 @@ func (w *L5Actuator) completedReceiptSummary(ctx context.Context, summary, infer
 	default:
 		return w.Scrubbing.ScrubText(ctx, summary)
 	}
+}
+
+// auditReceiptListSummary preserves only the allowlisted typed result for a
+// verified MCP_CALL(audit_receipt_list). That result contains canonical signed
+// receipts, already scrubbed before their original L5 signature, plus scope
+// metadata. Arbitrary text summaries continue through completedReceiptSummary's
+// normal scrub path.
+func (w *L5Actuator) auditReceiptListSummary(vt *VerifiedTransaction, cmdMsg CommandMessage, summary string) string {
+	if vt == nil || vt.ActionType != constants.ActionTypeMcpCall || cmdMsg == nil || summary == "" {
+		return ""
+	}
+	request := &operatorv1.McpCallRequested{}
+	if err := proto.Unmarshal(vt.Envelope.GetPayload(), request); err != nil || request.GetToolName() != constants.MCPToolAuditReceiptList {
+		return ""
+	}
+	provider, ok := cmdMsg.(interface {
+		AuditReceiptListSummary() *models.OperatorAuditReceiptListResult
+	})
+	if !ok {
+		return ""
+	}
+	result := provider.AuditReceiptListSummary()
+	if result == nil || result.OperatorID != vt.Envelope.GetOperatorId() || result.Authority != "operator_local_ledger" ||
+		result.InvestigationID == "" || result.InvestigationID != vt.Envelope.GetInvestigationId() ||
+		result.Count != len(result.Receipts) {
+		return ""
+	}
+	seen := make(map[string]struct{}, len(result.Receipts))
+	for _, receipt := range result.Receipts {
+		if receipt == nil || receipt.GetTransactionId() == "" || receipt.GetTransactionHash() == "" || receipt.GetSignature() == "" {
+			return ""
+		}
+		if _, exists := seen[receipt.GetTransactionId()]; exists {
+			return ""
+		}
+		seen[receipt.GetTransactionId()] = struct{}{}
+	}
+	wire, err := json.Marshal(result)
+	if err != nil || string(wire) != summary {
+		return ""
+	}
+	return summary
 }
 
 // failedReceiptSummary returns the signed ResultSummary of a failed execution or a rejection. The
@@ -657,6 +715,9 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID
 	case errors.Is(execErr, constants.ErrInferenceCampaignBindingInvalid):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
+	case errors.Is(execErr, constants.ErrScrubbingTokenUnresolved),
+		errors.Is(execErr, constants.ErrScrubbingKeyCollision):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED
 	default:
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
 	}

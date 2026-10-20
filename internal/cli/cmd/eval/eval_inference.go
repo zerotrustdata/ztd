@@ -16,24 +16,29 @@ import (
 	"io"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
-	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	inferdispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
+
+// governedInferenceDispatchDeadline bounds one governed inference dispatch: the
+// human approval wait plus the Inference Operator request deadline.
+const governedInferenceDispatchDeadline = mcp.ApprovalRequestTTL + inferdispatch.RequestDeadline
 
 type inferenceAcceptanceResultJSON struct {
 	Case            string `json:"case"`
@@ -120,7 +125,7 @@ func gatesInferenceEvalCmd(deps nativeEvalDeps) *cobra.Command {
 				}
 				probeReq.ProviderAttemptID = attemptID
 				probeReq.Stream = acceptanceCase.Stream
-				ctx, cancel := context.WithTimeout(cmd.Context(), 6*time.Minute)
+				ctx, cancel := context.WithTimeout(cmd.Context(), governedInferenceDispatchDeadline)
 				response, progress, runErr := inferenceEvalExecuteProbe(ctx, appClient, probeReq)
 				cancel()
 				entry := inferenceAcceptanceResultJSON{
@@ -240,7 +245,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 			if seed >= 0 {
 				probeReq.Seed = &seed
 			}
-			ctx, cancel := context.WithTimeout(cmd.Context(), 6*time.Minute)
+			ctx, cancel := context.WithTimeout(cmd.Context(), governedInferenceDispatchDeadline)
 			defer cancel()
 			response, progress, err := inferenceEvalExecuteProbe(ctx, appClient, probeReq)
 			if err != nil {
@@ -313,7 +318,7 @@ func enrollEvalAppIdentity(ctx context.Context, out io.Writer, fileSvc fs.Runtim
 		return fmt.Errorf("owner API client: %w", err)
 	}
 	enroller, err := auth.NewAppPlatformEnrollmentClient(constants.EvaluationAppName, fileSvc, cfg, slog.Default(), auth.AppEnrollmentOptions{
-		Approver: authcmd.OwnerAppEnrollmentApprover(ownerClient, "ztd eval: enrolled by the authenticated owner"),
+		Approver: auth.OwnerAppEnrollmentApprover(ownerClient, "ztd eval: enrolled by the authenticated owner"),
 	})
 	if err != nil {
 		return err
@@ -383,17 +388,36 @@ func resolveInferenceProbeAppCredentials(fileSvc fs.RuntimeFileService, cfg *con
 // governed Inference Operator path under the ztd-eval application identity.
 type governedInferenceDispatcher struct {
 	client *harnessclient.Client
+	// cliSessionID scopes a Tribunal intent's command to the campaign's
+	// CLISession, as the command lane scopes a direct command.
+	cliSessionID string
 }
 
 func (d *governedInferenceDispatcher) DispatchInference(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 	if d == nil || d.client == nil || req == nil {
 		return nil, fmt.Errorf("evaluation: governed inference dispatch: %w", constants.ErrMissingRequiredField)
 	}
+	ctx, cancel := context.WithTimeout(ctx, governedInferenceDispatchDeadline)
+	defer cancel()
 	response, _, err := d.client.DispatchInference(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: governed inference dispatch: %w", err)
 	}
 	return response, nil
+}
+
+// DispatchIntent submits one Tribunal intent; the client bounds it by every
+// member call's deadline plus the approved command's approval wait.
+func (d *governedInferenceDispatcher) DispatchIntent(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
+	if d == nil || d.client == nil || req == nil {
+		return nil, fmt.Errorf("evaluation: governed tribunal intent: %w", constants.ErrMissingRequiredField)
+	}
+	req.CliSessionId = d.cliSessionID
+	result, _, err := d.client.DispatchIntent(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: governed tribunal intent: %w", err)
+	}
+	return result, nil
 }
 
 func parseInferenceProbeRole(role string) (models.InferenceModelRole, error) {

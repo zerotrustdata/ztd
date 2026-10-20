@@ -135,6 +135,57 @@ func (ModelCampaignRole) EnumDescriptor() ([]byte, []int) {
 	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{1}
 }
 
+type EvaluationInvestigationMode int32
+
+const (
+	EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_UNSPECIFIED EvaluationInvestigationMode = 0
+	// Each assignment starts with an independent investigation identity.
+	EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_FRESH EvaluationInvestigationMode = 1
+	// Assignments in the campaign reuse the declared investigation identity.
+	EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT EvaluationInvestigationMode = 2
+)
+
+// Enum value maps for EvaluationInvestigationMode.
+var (
+	EvaluationInvestigationMode_name = map[int32]string{
+		0: "EVALUATION_INVESTIGATION_MODE_UNSPECIFIED",
+		1: "EVALUATION_INVESTIGATION_MODE_FRESH",
+		2: "EVALUATION_INVESTIGATION_MODE_PERSISTENT",
+	}
+	EvaluationInvestigationMode_value = map[string]int32{
+		"EVALUATION_INVESTIGATION_MODE_UNSPECIFIED": 0,
+		"EVALUATION_INVESTIGATION_MODE_FRESH":       1,
+		"EVALUATION_INVESTIGATION_MODE_PERSISTENT":  2,
+	}
+)
+
+func (x EvaluationInvestigationMode) Enum() *EvaluationInvestigationMode {
+	p := new(EvaluationInvestigationMode)
+	*p = x
+	return p
+}
+
+func (x EvaluationInvestigationMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EvaluationInvestigationMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_ztd_eval_v1_eval_proto_enumTypes[2].Descriptor()
+}
+
+func (EvaluationInvestigationMode) Type() protoreflect.EnumType {
+	return &file_ztd_eval_v1_eval_proto_enumTypes[2]
+}
+
+func (x EvaluationInvestigationMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EvaluationInvestigationMode.Descriptor instead.
+func (EvaluationInvestigationMode) EnumDescriptor() ([]byte, []int) {
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{2}
+}
+
 type EvaluationScenarioCategory int32
 
 const (
@@ -192,11 +243,11 @@ func (x EvaluationScenarioCategory) String() string {
 }
 
 func (EvaluationScenarioCategory) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[2].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[3].Descriptor()
 }
 
 func (EvaluationScenarioCategory) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[2]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[3]
 }
 
 func (x EvaluationScenarioCategory) Number() protoreflect.EnumNumber {
@@ -205,7 +256,7 @@ func (x EvaluationScenarioCategory) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationScenarioCategory.Descriptor instead.
 func (EvaluationScenarioCategory) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{2}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{3}
 }
 
 type EvaluationAssignmentLifecycleStatus int32
@@ -274,11 +325,11 @@ func (x EvaluationAssignmentLifecycleStatus) String() string {
 }
 
 func (EvaluationAssignmentLifecycleStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[3].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[4].Descriptor()
 }
 
 func (EvaluationAssignmentLifecycleStatus) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[3]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[4]
 }
 
 func (x EvaluationAssignmentLifecycleStatus) Number() protoreflect.EnumNumber {
@@ -287,7 +338,7 @@ func (x EvaluationAssignmentLifecycleStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationAssignmentLifecycleStatus.Descriptor instead.
 func (EvaluationAssignmentLifecycleStatus) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{3}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{4}
 }
 
 type EvaluationGradingMethod int32
@@ -323,11 +374,11 @@ func (x EvaluationGradingMethod) String() string {
 }
 
 func (EvaluationGradingMethod) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[4].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[5].Descriptor()
 }
 
 func (EvaluationGradingMethod) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[4]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[5]
 }
 
 func (x EvaluationGradingMethod) Number() protoreflect.EnumNumber {
@@ -336,7 +387,7 @@ func (x EvaluationGradingMethod) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationGradingMethod.Descriptor instead.
 func (EvaluationGradingMethod) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{4}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{5}
 }
 
 type ModelCapabilityKind int32
@@ -381,11 +432,11 @@ func (x ModelCapabilityKind) String() string {
 }
 
 func (ModelCapabilityKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[5].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[6].Descriptor()
 }
 
 func (ModelCapabilityKind) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[5]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[6]
 }
 
 func (x ModelCapabilityKind) Number() protoreflect.EnumNumber {
@@ -394,7 +445,7 @@ func (x ModelCapabilityKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ModelCapabilityKind.Descriptor instead.
 func (ModelCapabilityKind) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{5}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{6}
 }
 
 type EvaluationLoadState int32
@@ -433,11 +484,11 @@ func (x EvaluationLoadState) String() string {
 }
 
 func (EvaluationLoadState) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[6].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[7].Descriptor()
 }
 
 func (EvaluationLoadState) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[6]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[7]
 }
 
 func (x EvaluationLoadState) Number() protoreflect.EnumNumber {
@@ -446,7 +497,7 @@ func (x EvaluationLoadState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationLoadState.Descriptor instead.
 func (EvaluationLoadState) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{6}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{7}
 }
 
 type EvaluationUsageAvailability int32
@@ -482,11 +533,11 @@ func (x EvaluationUsageAvailability) String() string {
 }
 
 func (EvaluationUsageAvailability) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[7].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[8].Descriptor()
 }
 
 func (EvaluationUsageAvailability) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[7]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[8]
 }
 
 func (x EvaluationUsageAvailability) Number() protoreflect.EnumNumber {
@@ -495,7 +546,7 @@ func (x EvaluationUsageAvailability) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationUsageAvailability.Descriptor instead.
 func (EvaluationUsageAvailability) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{7}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{8}
 }
 
 // EvaluationCallClassification names the chain a model call belongs to.
@@ -539,11 +590,11 @@ func (x EvaluationCallClassification) String() string {
 }
 
 func (EvaluationCallClassification) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[8].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[9].Descriptor()
 }
 
 func (EvaluationCallClassification) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[8]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[9]
 }
 
 func (x EvaluationCallClassification) Number() protoreflect.EnumNumber {
@@ -552,7 +603,7 @@ func (x EvaluationCallClassification) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationCallClassification.Descriptor instead.
 func (EvaluationCallClassification) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{8}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{9}
 }
 
 type EvaluationPolicyDecisionOutcome int32
@@ -591,11 +642,11 @@ func (x EvaluationPolicyDecisionOutcome) String() string {
 }
 
 func (EvaluationPolicyDecisionOutcome) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[9].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[10].Descriptor()
 }
 
 func (EvaluationPolicyDecisionOutcome) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[9]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[10]
 }
 
 func (x EvaluationPolicyDecisionOutcome) Number() protoreflect.EnumNumber {
@@ -604,7 +655,7 @@ func (x EvaluationPolicyDecisionOutcome) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationPolicyDecisionOutcome.Descriptor instead.
 func (EvaluationPolicyDecisionOutcome) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{9}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{10}
 }
 
 type PublicGradeExplanationCode int32
@@ -652,11 +703,11 @@ func (x PublicGradeExplanationCode) String() string {
 }
 
 func (PublicGradeExplanationCode) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[10].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[11].Descriptor()
 }
 
 func (PublicGradeExplanationCode) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[10]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[11]
 }
 
 func (x PublicGradeExplanationCode) Number() protoreflect.EnumNumber {
@@ -665,7 +716,7 @@ func (x PublicGradeExplanationCode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublicGradeExplanationCode.Descriptor instead.
 func (PublicGradeExplanationCode) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{10}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{11}
 }
 
 // EvaluationTrajectoryPolicy decides how a scenario grades the ordered tool
@@ -715,11 +766,11 @@ func (x EvaluationTrajectoryPolicy) String() string {
 }
 
 func (EvaluationTrajectoryPolicy) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[11].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[12].Descriptor()
 }
 
 func (EvaluationTrajectoryPolicy) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[11]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[12]
 }
 
 func (x EvaluationTrajectoryPolicy) Number() protoreflect.EnumNumber {
@@ -728,7 +779,7 @@ func (x EvaluationTrajectoryPolicy) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationTrajectoryPolicy.Descriptor instead.
 func (EvaluationTrajectoryPolicy) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{11}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{12}
 }
 
 // EvaluationTrajectoryOutcome is the closed vocabulary for what the model did
@@ -793,11 +844,11 @@ func (x EvaluationTrajectoryOutcome) String() string {
 }
 
 func (EvaluationTrajectoryOutcome) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[12].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[13].Descriptor()
 }
 
 func (EvaluationTrajectoryOutcome) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[12]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[13]
 }
 
 func (x EvaluationTrajectoryOutcome) Number() protoreflect.EnumNumber {
@@ -806,7 +857,7 @@ func (x EvaluationTrajectoryOutcome) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationTrajectoryOutcome.Descriptor instead.
 func (EvaluationTrajectoryOutcome) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{12}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{13}
 }
 
 // EvaluationHintArgumentSource names where a hinted tool argument's value is
@@ -858,11 +909,11 @@ func (x EvaluationHintArgumentSource) String() string {
 }
 
 func (EvaluationHintArgumentSource) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[13].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[14].Descriptor()
 }
 
 func (EvaluationHintArgumentSource) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[13]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[14]
 }
 
 func (x EvaluationHintArgumentSource) Number() protoreflect.EnumNumber {
@@ -871,7 +922,7 @@ func (x EvaluationHintArgumentSource) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationHintArgumentSource.Descriptor instead.
 func (EvaluationHintArgumentSource) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{13}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{14}
 }
 
 type PublicActivityAvailability int32
@@ -910,11 +961,11 @@ func (x PublicActivityAvailability) String() string {
 }
 
 func (PublicActivityAvailability) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[14].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[15].Descriptor()
 }
 
 func (PublicActivityAvailability) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[14]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[15]
 }
 
 func (x PublicActivityAvailability) Number() protoreflect.EnumNumber {
@@ -923,7 +974,7 @@ func (x PublicActivityAvailability) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublicActivityAvailability.Descriptor instead.
 func (PublicActivityAvailability) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{14}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{15}
 }
 
 type PublicUnavailableReason int32
@@ -971,11 +1022,11 @@ func (x PublicUnavailableReason) String() string {
 }
 
 func (PublicUnavailableReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[15].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[16].Descriptor()
 }
 
 func (PublicUnavailableReason) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[15]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[16]
 }
 
 func (x PublicUnavailableReason) Number() protoreflect.EnumNumber {
@@ -984,7 +1035,7 @@ func (x PublicUnavailableReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublicUnavailableReason.Descriptor instead.
 func (PublicUnavailableReason) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{15}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{16}
 }
 
 type PublicFinishState int32
@@ -1029,11 +1080,11 @@ func (x PublicFinishState) String() string {
 }
 
 func (PublicFinishState) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[16].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[17].Descriptor()
 }
 
 func (PublicFinishState) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[16]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[17]
 }
 
 func (x PublicFinishState) Number() protoreflect.EnumNumber {
@@ -1042,7 +1093,7 @@ func (x PublicFinishState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublicFinishState.Descriptor instead.
 func (PublicFinishState) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{16}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{17}
 }
 
 type PublicEvidenceSource int32
@@ -1078,11 +1129,11 @@ func (x PublicEvidenceSource) String() string {
 }
 
 func (PublicEvidenceSource) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[17].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[18].Descriptor()
 }
 
 func (PublicEvidenceSource) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[17]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[18]
 }
 
 func (x PublicEvidenceSource) Number() protoreflect.EnumNumber {
@@ -1091,7 +1142,7 @@ func (x PublicEvidenceSource) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublicEvidenceSource.Descriptor instead.
 func (PublicEvidenceSource) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{17}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{18}
 }
 
 type PublicVerificationProvenance int32
@@ -1127,11 +1178,11 @@ func (x PublicVerificationProvenance) String() string {
 }
 
 func (PublicVerificationProvenance) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[18].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[19].Descriptor()
 }
 
 func (PublicVerificationProvenance) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[18]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[19]
 }
 
 func (x PublicVerificationProvenance) Number() protoreflect.EnumNumber {
@@ -1140,7 +1191,7 @@ func (x PublicVerificationProvenance) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublicVerificationProvenance.Descriptor instead.
 func (PublicVerificationProvenance) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{18}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{19}
 }
 
 type PublicReceiptStatus int32
@@ -1176,11 +1227,11 @@ func (x PublicReceiptStatus) String() string {
 }
 
 func (PublicReceiptStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[19].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[20].Descriptor()
 }
 
 func (PublicReceiptStatus) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[19]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[20]
 }
 
 func (x PublicReceiptStatus) Number() protoreflect.EnumNumber {
@@ -1189,7 +1240,7 @@ func (x PublicReceiptStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublicReceiptStatus.Descriptor instead.
 func (PublicReceiptStatus) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{19}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{20}
 }
 
 type PublicToolScoreDimension int32
@@ -1249,11 +1300,11 @@ func (x PublicToolScoreDimension) String() string {
 }
 
 func (PublicToolScoreDimension) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[20].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[21].Descriptor()
 }
 
 func (PublicToolScoreDimension) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[20]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[21]
 }
 
 func (x PublicToolScoreDimension) Number() protoreflect.EnumNumber {
@@ -1262,7 +1313,7 @@ func (x PublicToolScoreDimension) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublicToolScoreDimension.Descriptor instead.
 func (PublicToolScoreDimension) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{20}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{21}
 }
 
 type ProviderHardwareMetricAvailability int32
@@ -1298,11 +1349,11 @@ func (x ProviderHardwareMetricAvailability) String() string {
 }
 
 func (ProviderHardwareMetricAvailability) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[21].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[22].Descriptor()
 }
 
 func (ProviderHardwareMetricAvailability) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[21]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[22]
 }
 
 func (x ProviderHardwareMetricAvailability) Number() protoreflect.EnumNumber {
@@ -1311,7 +1362,7 @@ func (x ProviderHardwareMetricAvailability) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProviderHardwareMetricAvailability.Descriptor instead.
 func (ProviderHardwareMetricAvailability) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{21}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{22}
 }
 
 type EvaluationGovernancePosture int32
@@ -1353,11 +1404,11 @@ func (x EvaluationGovernancePosture) String() string {
 }
 
 func (EvaluationGovernancePosture) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[22].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[23].Descriptor()
 }
 
 func (EvaluationGovernancePosture) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[22]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[23]
 }
 
 func (x EvaluationGovernancePosture) Number() protoreflect.EnumNumber {
@@ -1366,7 +1417,7 @@ func (x EvaluationGovernancePosture) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationGovernancePosture.Descriptor instead.
 func (EvaluationGovernancePosture) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{22}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{23}
 }
 
 type EvaluationRuntimeComponent int32
@@ -1408,11 +1459,11 @@ func (x EvaluationRuntimeComponent) String() string {
 }
 
 func (EvaluationRuntimeComponent) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[23].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[24].Descriptor()
 }
 
 func (EvaluationRuntimeComponent) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[23]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[24]
 }
 
 func (x EvaluationRuntimeComponent) Number() protoreflect.EnumNumber {
@@ -1421,7 +1472,7 @@ func (x EvaluationRuntimeComponent) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationRuntimeComponent.Descriptor instead.
 func (EvaluationRuntimeComponent) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{23}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{24}
 }
 
 type EvaluationAttemptStatus int32
@@ -1469,11 +1520,11 @@ func (x EvaluationAttemptStatus) String() string {
 }
 
 func (EvaluationAttemptStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[24].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[25].Descriptor()
 }
 
 func (EvaluationAttemptStatus) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[24]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[25]
 }
 
 func (x EvaluationAttemptStatus) Number() protoreflect.EnumNumber {
@@ -1482,7 +1533,7 @@ func (x EvaluationAttemptStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationAttemptStatus.Descriptor instead.
 func (EvaluationAttemptStatus) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{24}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{25}
 }
 
 type EvaluationObservationSource int32
@@ -1524,11 +1575,11 @@ func (x EvaluationObservationSource) String() string {
 }
 
 func (EvaluationObservationSource) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[25].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[26].Descriptor()
 }
 
 func (EvaluationObservationSource) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[25]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[26]
 }
 
 func (x EvaluationObservationSource) Number() protoreflect.EnumNumber {
@@ -1537,7 +1588,7 @@ func (x EvaluationObservationSource) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationObservationSource.Descriptor instead.
 func (EvaluationObservationSource) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{25}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{26}
 }
 
 type EvaluationEvidenceAuthority int32
@@ -1579,11 +1630,11 @@ func (x EvaluationEvidenceAuthority) String() string {
 }
 
 func (EvaluationEvidenceAuthority) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[26].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[27].Descriptor()
 }
 
 func (EvaluationEvidenceAuthority) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[26]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[27]
 }
 
 func (x EvaluationEvidenceAuthority) Number() protoreflect.EnumNumber {
@@ -1592,7 +1643,7 @@ func (x EvaluationEvidenceAuthority) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationEvidenceAuthority.Descriptor instead.
 func (EvaluationEvidenceAuthority) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{26}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{27}
 }
 
 type EvaluationComparator int32
@@ -1640,11 +1691,11 @@ func (x EvaluationComparator) String() string {
 }
 
 func (EvaluationComparator) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[27].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[28].Descriptor()
 }
 
 func (EvaluationComparator) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[27]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[28]
 }
 
 func (x EvaluationComparator) Number() protoreflect.EnumNumber {
@@ -1653,7 +1704,7 @@ func (x EvaluationComparator) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationComparator.Descriptor instead.
 func (EvaluationComparator) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{27}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{28}
 }
 
 type EvaluationVerdictStatus int32
@@ -1698,11 +1749,11 @@ func (x EvaluationVerdictStatus) String() string {
 }
 
 func (EvaluationVerdictStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[28].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[29].Descriptor()
 }
 
 func (EvaluationVerdictStatus) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[28]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[29]
 }
 
 func (x EvaluationVerdictStatus) Number() protoreflect.EnumNumber {
@@ -1711,7 +1762,7 @@ func (x EvaluationVerdictStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationVerdictStatus.Descriptor instead.
 func (EvaluationVerdictStatus) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{28}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{29}
 }
 
 type EvaluationMetricDirection int32
@@ -1750,11 +1801,11 @@ func (x EvaluationMetricDirection) String() string {
 }
 
 func (EvaluationMetricDirection) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[29].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[30].Descriptor()
 }
 
 func (EvaluationMetricDirection) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[29]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[30]
 }
 
 func (x EvaluationMetricDirection) Number() protoreflect.EnumNumber {
@@ -1763,7 +1814,7 @@ func (x EvaluationMetricDirection) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationMetricDirection.Descriptor instead.
 func (EvaluationMetricDirection) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{29}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{30}
 }
 
 type EvaluationMissingDataPolicy int32
@@ -1802,11 +1853,11 @@ func (x EvaluationMissingDataPolicy) String() string {
 }
 
 func (EvaluationMissingDataPolicy) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[30].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[31].Descriptor()
 }
 
 func (EvaluationMissingDataPolicy) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[30]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[31]
 }
 
 func (x EvaluationMissingDataPolicy) Number() protoreflect.EnumNumber {
@@ -1815,7 +1866,7 @@ func (x EvaluationMissingDataPolicy) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationMissingDataPolicy.Descriptor instead.
 func (EvaluationMissingDataPolicy) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{30}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{31}
 }
 
 type EvaluationMetricUnit int32
@@ -1851,11 +1902,11 @@ func (x EvaluationMetricUnit) String() string {
 }
 
 func (EvaluationMetricUnit) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[31].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[32].Descriptor()
 }
 
 func (EvaluationMetricUnit) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[31]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[32]
 }
 
 func (x EvaluationMetricUnit) Number() protoreflect.EnumNumber {
@@ -1864,7 +1915,7 @@ func (x EvaluationMetricUnit) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationMetricUnit.Descriptor instead.
 func (EvaluationMetricUnit) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{31}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{32}
 }
 
 // ProviderBoundaryObservationPhase identifies one lifecycle transition for a
@@ -1902,11 +1953,11 @@ func (x ProviderBoundaryObservationPhase) String() string {
 }
 
 func (ProviderBoundaryObservationPhase) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[32].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[33].Descriptor()
 }
 
 func (ProviderBoundaryObservationPhase) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[32]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[33]
 }
 
 func (x ProviderBoundaryObservationPhase) Number() protoreflect.EnumNumber {
@@ -1915,7 +1966,7 @@ func (x ProviderBoundaryObservationPhase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ProviderBoundaryObservationPhase.Descriptor instead.
 func (ProviderBoundaryObservationPhase) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{32}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{33}
 }
 
 // ProviderBoundaryObservationAttemptStatus mirrors the terminal provider-attempt
@@ -1956,11 +2007,11 @@ func (x ProviderBoundaryObservationAttemptStatus) String() string {
 }
 
 func (ProviderBoundaryObservationAttemptStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[33].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[34].Descriptor()
 }
 
 func (ProviderBoundaryObservationAttemptStatus) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[33]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[34]
 }
 
 func (x ProviderBoundaryObservationAttemptStatus) Number() protoreflect.EnumNumber {
@@ -1969,7 +2020,7 @@ func (x ProviderBoundaryObservationAttemptStatus) Number() protoreflect.EnumNumb
 
 // Deprecated: Use ProviderBoundaryObservationAttemptStatus.Descriptor instead.
 func (ProviderBoundaryObservationAttemptStatus) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{33}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{34}
 }
 
 // ModelWeightVerificationMode reports how the Provenance Operator verified one
@@ -2011,11 +2062,11 @@ func (x ModelWeightVerificationMode) String() string {
 }
 
 func (ModelWeightVerificationMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[34].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[35].Descriptor()
 }
 
 func (ModelWeightVerificationMode) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[34]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[35]
 }
 
 func (x ModelWeightVerificationMode) Number() protoreflect.EnumNumber {
@@ -2024,7 +2075,7 @@ func (x ModelWeightVerificationMode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ModelWeightVerificationMode.Descriptor instead.
 func (ModelWeightVerificationMode) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{34}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{35}
 }
 
 // ModelManifestVerificationStatus reports signed-manifest verification outcome.
@@ -2067,11 +2118,11 @@ func (x ModelManifestVerificationStatus) String() string {
 }
 
 func (ModelManifestVerificationStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[35].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[36].Descriptor()
 }
 
 func (ModelManifestVerificationStatus) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[35]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[36]
 }
 
 func (x ModelManifestVerificationStatus) Number() protoreflect.EnumNumber {
@@ -2080,7 +2131,7 @@ func (x ModelManifestVerificationStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ModelManifestVerificationStatus.Descriptor instead.
 func (ModelManifestVerificationStatus) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{35}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{36}
 }
 
 // ModelProvenanceObservationPhase identifies one lifecycle transition for a
@@ -2118,11 +2169,11 @@ func (x ModelProvenanceObservationPhase) String() string {
 }
 
 func (ModelProvenanceObservationPhase) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[36].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[37].Descriptor()
 }
 
 func (ModelProvenanceObservationPhase) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[36]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[37]
 }
 
 func (x ModelProvenanceObservationPhase) Number() protoreflect.EnumNumber {
@@ -2131,7 +2182,7 @@ func (x ModelProvenanceObservationPhase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ModelProvenanceObservationPhase.Descriptor instead.
 func (ModelProvenanceObservationPhase) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{36}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{37}
 }
 
 // ModelProvenanceObservationAttemptStatus mirrors the terminal provider-attempt
@@ -2172,11 +2223,11 @@ func (x ModelProvenanceObservationAttemptStatus) String() string {
 }
 
 func (ModelProvenanceObservationAttemptStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[37].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[38].Descriptor()
 }
 
 func (ModelProvenanceObservationAttemptStatus) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[37]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[38]
 }
 
 func (x ModelProvenanceObservationAttemptStatus) Number() protoreflect.EnumNumber {
@@ -2185,7 +2236,7 @@ func (x ModelProvenanceObservationAttemptStatus) Number() protoreflect.EnumNumbe
 
 // Deprecated: Use ModelProvenanceObservationAttemptStatus.Descriptor instead.
 func (ModelProvenanceObservationAttemptStatus) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{37}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{38}
 }
 
 // GradeBasis states what a deterministic grade measures, so each independent
@@ -2229,11 +2280,11 @@ func (x GradeBasis) String() string {
 }
 
 func (GradeBasis) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[38].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[39].Descriptor()
 }
 
 func (GradeBasis) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[38]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[39]
 }
 
 func (x GradeBasis) Number() protoreflect.EnumNumber {
@@ -2242,7 +2293,7 @@ func (x GradeBasis) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GradeBasis.Descriptor instead.
 func (GradeBasis) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{38}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{39}
 }
 
 type EvaluationWitnessPolicy int32
@@ -2278,11 +2329,11 @@ func (x EvaluationWitnessPolicy) String() string {
 }
 
 func (EvaluationWitnessPolicy) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[39].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[40].Descriptor()
 }
 
 func (EvaluationWitnessPolicy) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[39]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[40]
 }
 
 func (x EvaluationWitnessPolicy) Number() protoreflect.EnumNumber {
@@ -2291,7 +2342,7 @@ func (x EvaluationWitnessPolicy) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EvaluationWitnessPolicy.Descriptor instead.
 func (EvaluationWitnessPolicy) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{39}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{40}
 }
 
 // The release measured by a campaign is independent of verifier provenance.
@@ -2331,11 +2382,11 @@ func (x PublicReleaseBasis) String() string {
 }
 
 func (PublicReleaseBasis) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[40].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[41].Descriptor()
 }
 
 func (PublicReleaseBasis) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[40]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[41]
 }
 
 func (x PublicReleaseBasis) Number() protoreflect.EnumNumber {
@@ -2344,7 +2395,7 @@ func (x PublicReleaseBasis) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PublicReleaseBasis.Descriptor instead.
 func (PublicReleaseBasis) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{40}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{41}
 }
 
 type ConformanceObservationKind int32
@@ -2398,11 +2449,11 @@ func (x ConformanceObservationKind) String() string {
 }
 
 func (ConformanceObservationKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[41].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[42].Descriptor()
 }
 
 func (ConformanceObservationKind) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[41]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[42]
 }
 
 func (x ConformanceObservationKind) Number() protoreflect.EnumNumber {
@@ -2411,7 +2462,7 @@ func (x ConformanceObservationKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ConformanceObservationKind.Descriptor instead.
 func (ConformanceObservationKind) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{41}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{42}
 }
 
 type ConformanceFailureClass int32
@@ -2489,11 +2540,11 @@ func (x ConformanceFailureClass) String() string {
 }
 
 func (ConformanceFailureClass) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[42].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[43].Descriptor()
 }
 
 func (ConformanceFailureClass) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[42]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[43]
 }
 
 func (x ConformanceFailureClass) Number() protoreflect.EnumNumber {
@@ -2502,7 +2553,7 @@ func (x ConformanceFailureClass) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ConformanceFailureClass.Descriptor instead.
 func (ConformanceFailureClass) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{42}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{43}
 }
 
 type ConformanceSuiteVerdict int32
@@ -2544,11 +2595,11 @@ func (x ConformanceSuiteVerdict) String() string {
 }
 
 func (ConformanceSuiteVerdict) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[43].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[44].Descriptor()
 }
 
 func (ConformanceSuiteVerdict) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[43]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[44]
 }
 
 func (x ConformanceSuiteVerdict) Number() protoreflect.EnumNumber {
@@ -2557,7 +2608,7 @@ func (x ConformanceSuiteVerdict) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ConformanceSuiteVerdict.Descriptor instead.
 func (ConformanceSuiteVerdict) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{43}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{44}
 }
 
 // AgentRole is the generic function a step performs in an agent pipeline.
@@ -2612,11 +2663,11 @@ func (x AgentRole) String() string {
 }
 
 func (AgentRole) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[44].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[45].Descriptor()
 }
 
 func (AgentRole) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[44]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[45]
 }
 
 func (x AgentRole) Number() protoreflect.EnumNumber {
@@ -2625,7 +2676,7 @@ func (x AgentRole) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentRole.Descriptor instead.
 func (AgentRole) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{44}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{45}
 }
 
 type AgentRiskLevel int32
@@ -2664,11 +2715,11 @@ func (x AgentRiskLevel) String() string {
 }
 
 func (AgentRiskLevel) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[45].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[46].Descriptor()
 }
 
 func (AgentRiskLevel) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[45]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[46]
 }
 
 func (x AgentRiskLevel) Number() protoreflect.EnumNumber {
@@ -2677,7 +2728,7 @@ func (x AgentRiskLevel) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentRiskLevel.Descriptor instead.
 func (AgentRiskLevel) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{45}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{46}
 }
 
 type AgentReviewVerdict int32
@@ -2716,11 +2767,11 @@ func (x AgentReviewVerdict) String() string {
 }
 
 func (AgentReviewVerdict) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[46].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[47].Descriptor()
 }
 
 func (AgentReviewVerdict) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[46]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[47]
 }
 
 func (x AgentReviewVerdict) Number() protoreflect.EnumNumber {
@@ -2729,7 +2780,7 @@ func (x AgentReviewVerdict) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentReviewVerdict.Descriptor instead.
 func (AgentReviewVerdict) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{46}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{47}
 }
 
 type AgentFinishReason int32
@@ -2771,11 +2822,11 @@ func (x AgentFinishReason) String() string {
 }
 
 func (AgentFinishReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[47].Descriptor()
+	return file_ztd_eval_v1_eval_proto_enumTypes[48].Descriptor()
 }
 
 func (AgentFinishReason) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[47]
+	return &file_ztd_eval_v1_eval_proto_enumTypes[48]
 }
 
 func (x AgentFinishReason) Number() protoreflect.EnumNumber {
@@ -2784,55 +2835,6 @@ func (x AgentFinishReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentFinishReason.Descriptor instead.
 func (AgentFinishReason) EnumDescriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{47}
-}
-
-type ScoredTurnEventKind int32
-
-const (
-	ScoredTurnEventKind_SCORED_TURN_EVENT_KIND_UNSPECIFIED ScoredTurnEventKind = 0
-	ScoredTurnEventKind_SCORED_TURN_EVENT_KIND_PROGRESS    ScoredTurnEventKind = 1
-	ScoredTurnEventKind_SCORED_TURN_EVENT_KIND_TERMINAL    ScoredTurnEventKind = 2
-)
-
-// Enum value maps for ScoredTurnEventKind.
-var (
-	ScoredTurnEventKind_name = map[int32]string{
-		0: "SCORED_TURN_EVENT_KIND_UNSPECIFIED",
-		1: "SCORED_TURN_EVENT_KIND_PROGRESS",
-		2: "SCORED_TURN_EVENT_KIND_TERMINAL",
-	}
-	ScoredTurnEventKind_value = map[string]int32{
-		"SCORED_TURN_EVENT_KIND_UNSPECIFIED": 0,
-		"SCORED_TURN_EVENT_KIND_PROGRESS":    1,
-		"SCORED_TURN_EVENT_KIND_TERMINAL":    2,
-	}
-)
-
-func (x ScoredTurnEventKind) Enum() *ScoredTurnEventKind {
-	p := new(ScoredTurnEventKind)
-	*p = x
-	return p
-}
-
-func (x ScoredTurnEventKind) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (ScoredTurnEventKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_ztd_eval_v1_eval_proto_enumTypes[48].Descriptor()
-}
-
-func (ScoredTurnEventKind) Type() protoreflect.EnumType {
-	return &file_ztd_eval_v1_eval_proto_enumTypes[48]
-}
-
-func (x ScoredTurnEventKind) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use ScoredTurnEventKind.Descriptor instead.
-func (ScoredTurnEventKind) EnumDescriptor() ([]byte, []int) {
 	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{48}
 }
 
@@ -3245,6 +3247,8 @@ type EvaluationRun struct {
 	AttemptRefs                []string                        `protobuf:"bytes,11,rep,name=attempt_refs,json=attemptRefs,proto3" json:"attempt_refs,omitempty"`
 	FinalVerificationReportRef *v1.ComplianceEvidenceReference `protobuf:"bytes,12,opt,name=final_verification_report_ref,json=finalVerificationReportRef,proto3" json:"final_verification_report_ref,omitempty"`
 	CampaignBinding            *ModelCampaignBinding           `protobuf:"bytes,13,opt,name=campaign_binding,json=campaignBinding,proto3" json:"campaign_binding,omitempty"`
+	ProviderObservationPolicy  EvaluationWitnessPolicy         `protobuf:"varint,14,opt,name=provider_observation_policy,json=providerObservationPolicy,proto3,enum=ztd.eval.v1.EvaluationWitnessPolicy" json:"provider_observation_policy,omitempty"`
+	ModelProvenancePolicy      EvaluationWitnessPolicy         `protobuf:"varint,15,opt,name=model_provenance_policy,json=modelProvenancePolicy,proto3,enum=ztd.eval.v1.EvaluationWitnessPolicy" json:"model_provenance_policy,omitempty"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -3368,6 +3372,20 @@ func (x *EvaluationRun) GetCampaignBinding() *ModelCampaignBinding {
 		return x.CampaignBinding
 	}
 	return nil
+}
+
+func (x *EvaluationRun) GetProviderObservationPolicy() EvaluationWitnessPolicy {
+	if x != nil {
+		return x.ProviderObservationPolicy
+	}
+	return EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_UNSPECIFIED
+}
+
+func (x *EvaluationRun) GetModelProvenancePolicy() EvaluationWitnessPolicy {
+	if x != nil {
+		return x.ModelProvenancePolicy
+	}
+	return EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_UNSPECIFIED
 }
 
 type EvaluationAttempt struct {
@@ -4291,9 +4309,15 @@ type EvaluationCampaignSpec struct {
 	// repetition's investigation: the model receives that repetition's complete
 	// conversation and works in the same workspace. Only set when
 	// repetition_count > 1; false on campaigns frozen before it existed.
-	HoldContext   bool `protobuf:"varint,13,opt,name=hold_context,json=holdContext,proto3" json:"hold_context,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	HoldContext bool `protobuf:"varint,13,opt,name=hold_context,json=holdContext,proto3" json:"hold_context,omitempty"`
+	// Investigation identity and its authoritative Data Operator are frozen
+	// into campaign_digest. Absent only on legacy specs frozen before this field.
+	Investigation *EvaluationInvestigation `protobuf:"bytes,14,opt,name=investigation,proto3" json:"investigation,omitempty"`
+	// Nonempty only for a system campaign. Binds the complete frozen catalog
+	// formation set into campaign_digest, independently of later catalog edits.
+	FormationStackSetDigest string `protobuf:"bytes,15,opt,name=formation_stack_set_digest,json=formationStackSetDigest,proto3" json:"formation_stack_set_digest,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *EvaluationCampaignSpec) Reset() {
@@ -4417,6 +4441,83 @@ func (x *EvaluationCampaignSpec) GetHoldContext() bool {
 	return false
 }
 
+func (x *EvaluationCampaignSpec) GetInvestigation() *EvaluationInvestigation {
+	if x != nil {
+		return x.Investigation
+	}
+	return nil
+}
+
+func (x *EvaluationCampaignSpec) GetFormationStackSetDigest() string {
+	if x != nil {
+		return x.FormationStackSetDigest
+	}
+	return ""
+}
+
+// EvaluationInvestigation declares the campaign's scored investigation scope.
+// Persistent investigations require both a stable investigation_id and the
+// stable identity (not session ID) of the Data Operator that owns its ledger.
+type EvaluationInvestigation struct {
+	state           protoimpl.MessageState      `protogen:"open.v1"`
+	Mode            EvaluationInvestigationMode `protobuf:"varint,1,opt,name=mode,proto3,enum=ztd.eval.v1.EvaluationInvestigationMode" json:"mode,omitempty"`
+	InvestigationId string                      `protobuf:"bytes,2,opt,name=investigation_id,json=investigationId,proto3" json:"investigation_id,omitempty"`
+	DataOperatorId  string                      `protobuf:"bytes,3,opt,name=data_operator_id,json=dataOperatorId,proto3" json:"data_operator_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *EvaluationInvestigation) Reset() {
+	*x = EvaluationInvestigation{}
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvaluationInvestigation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvaluationInvestigation) ProtoMessage() {}
+
+func (x *EvaluationInvestigation) ProtoReflect() protoreflect.Message {
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvaluationInvestigation.ProtoReflect.Descriptor instead.
+func (*EvaluationInvestigation) Descriptor() ([]byte, []int) {
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *EvaluationInvestigation) GetMode() EvaluationInvestigationMode {
+	if x != nil {
+		return x.Mode
+	}
+	return EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_UNSPECIFIED
+}
+
+func (x *EvaluationInvestigation) GetInvestigationId() string {
+	if x != nil {
+		return x.InvestigationId
+	}
+	return ""
+}
+
+func (x *EvaluationInvestigation) GetDataOperatorId() string {
+	if x != nil {
+		return x.DataOperatorId
+	}
+	return ""
+}
+
 // EvaluationScenarioCatalog is the immutable 25-scenario private catalog.
 type EvaluationScenarioCatalog struct {
 	state         protoimpl.MessageState          `protogen:"open.v1"`
@@ -4430,7 +4531,7 @@ type EvaluationScenarioCatalog struct {
 
 func (x *EvaluationScenarioCatalog) Reset() {
 	*x = EvaluationScenarioCatalog{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[13]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4442,7 +4543,7 @@ func (x *EvaluationScenarioCatalog) String() string {
 func (*EvaluationScenarioCatalog) ProtoMessage() {}
 
 func (x *EvaluationScenarioCatalog) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[13]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4455,7 +4556,7 @@ func (x *EvaluationScenarioCatalog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluationScenarioCatalog.ProtoReflect.Descriptor instead.
 func (*EvaluationScenarioCatalog) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{13}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *EvaluationScenarioCatalog) GetSchemaVersion() string {
@@ -4499,7 +4600,7 @@ type PublicScenarioCriterion struct {
 
 func (x *PublicScenarioCriterion) Reset() {
 	*x = PublicScenarioCriterion{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[14]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4511,7 +4612,7 @@ func (x *PublicScenarioCriterion) String() string {
 func (*PublicScenarioCriterion) ProtoMessage() {}
 
 func (x *PublicScenarioCriterion) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[14]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4524,7 +4625,7 @@ func (x *PublicScenarioCriterion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicScenarioCriterion.ProtoReflect.Descriptor instead.
 func (*PublicScenarioCriterion) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{14}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PublicScenarioCriterion) GetCriterionId() string {
@@ -4572,7 +4673,7 @@ type PublicToolScoreDimensionRequirement struct {
 
 func (x *PublicToolScoreDimensionRequirement) Reset() {
 	*x = PublicToolScoreDimensionRequirement{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[15]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4584,7 +4685,7 @@ func (x *PublicToolScoreDimensionRequirement) String() string {
 func (*PublicToolScoreDimensionRequirement) ProtoMessage() {}
 
 func (x *PublicToolScoreDimensionRequirement) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[15]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4597,7 +4698,7 @@ func (x *PublicToolScoreDimensionRequirement) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use PublicToolScoreDimensionRequirement.ProtoReflect.Descriptor instead.
 func (*PublicToolScoreDimensionRequirement) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{15}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PublicToolScoreDimensionRequirement) GetDimension() PublicToolScoreDimension {
@@ -4627,7 +4728,7 @@ type PromptHintArgument struct {
 
 func (x *PromptHintArgument) Reset() {
 	*x = PromptHintArgument{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[16]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4639,7 +4740,7 @@ func (x *PromptHintArgument) String() string {
 func (*PromptHintArgument) ProtoMessage() {}
 
 func (x *PromptHintArgument) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[16]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4652,7 +4753,7 @@ func (x *PromptHintArgument) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PromptHintArgument.ProtoReflect.Descriptor instead.
 func (*PromptHintArgument) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{16}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PromptHintArgument) GetArgumentName() string {
@@ -4688,7 +4789,7 @@ type PromptHint struct {
 
 func (x *PromptHint) Reset() {
 	*x = PromptHint{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[17]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4700,7 +4801,7 @@ func (x *PromptHint) String() string {
 func (*PromptHint) ProtoMessage() {}
 
 func (x *PromptHint) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[17]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4713,7 +4814,7 @@ func (x *PromptHint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PromptHint.ProtoReflect.Descriptor instead.
 func (*PromptHint) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{17}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PromptHint) GetHintedTools() []string {
@@ -4752,13 +4853,18 @@ type EvaluationScenarioDefinition struct {
 	EligibleRoles    []ModelCampaignRole        `protobuf:"varint,14,rep,packed,name=eligible_roles,json=eligibleRoles,proto3,enum=ztd.eval.v1.ModelCampaignRole" json:"eligible_roles,omitempty"`
 	TrajectoryPolicy EvaluationTrajectoryPolicy `protobuf:"varint,15,opt,name=trajectory_policy,json=trajectoryPolicy,proto3,enum=ztd.eval.v1.EvaluationTrajectoryPolicy" json:"trajectory_policy,omitempty"`
 	PromptHint       *PromptHint                `protobuf:"bytes,16,opt,name=prompt_hint,json=promptHint,proto3" json:"prompt_hint,omitempty"`
+	// tribunal_commands declares run_commands_with_operator intent-only: the
+	// model states the request and the Tribunal deliberation writes the
+	// command, which then runs through L1-L5 like any other. Unset, the model
+	// authors the command itself. The frozen catalog digest binds the choice.
+	TribunalCommands bool `protobuf:"varint,17,opt,name=tribunal_commands,json=tribunalCommands,proto3" json:"tribunal_commands,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
 func (x *EvaluationScenarioDefinition) Reset() {
 	*x = EvaluationScenarioDefinition{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[18]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4770,7 +4876,7 @@ func (x *EvaluationScenarioDefinition) String() string {
 func (*EvaluationScenarioDefinition) ProtoMessage() {}
 
 func (x *EvaluationScenarioDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[18]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4783,7 +4889,7 @@ func (x *EvaluationScenarioDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluationScenarioDefinition.ProtoReflect.Descriptor instead.
 func (*EvaluationScenarioDefinition) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{18}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *EvaluationScenarioDefinition) GetScenarioId() string {
@@ -4898,6 +5004,13 @@ func (x *EvaluationScenarioDefinition) GetPromptHint() *PromptHint {
 	return nil
 }
 
+func (x *EvaluationScenarioDefinition) GetTribunalCommands() bool {
+	if x != nil {
+		return x.TribunalCommands
+	}
+	return false
+}
+
 // ModelVariant is one frozen provider-backed model identity in a campaign.
 type ModelVariant struct {
 	state                  protoimpl.MessageState        `protogen:"open.v1"`
@@ -4916,7 +5029,7 @@ type ModelVariant struct {
 
 func (x *ModelVariant) Reset() {
 	*x = ModelVariant{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[19]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4928,7 +5041,7 @@ func (x *ModelVariant) String() string {
 func (*ModelVariant) ProtoMessage() {}
 
 func (x *ModelVariant) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[19]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4941,7 +5054,7 @@ func (x *ModelVariant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelVariant.ProtoReflect.Descriptor instead.
 func (*ModelVariant) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{19}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ModelVariant) GetVariantId() string {
@@ -5020,7 +5133,7 @@ type ModelCapabilityObservation struct {
 
 func (x *ModelCapabilityObservation) Reset() {
 	*x = ModelCapabilityObservation{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[20]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5032,7 +5145,7 @@ func (x *ModelCapabilityObservation) String() string {
 func (*ModelCapabilityObservation) ProtoMessage() {}
 
 func (x *ModelCapabilityObservation) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[20]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5045,7 +5158,7 @@ func (x *ModelCapabilityObservation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelCapabilityObservation.ProtoReflect.Descriptor instead.
 func (*ModelCapabilityObservation) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{20}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ModelCapabilityObservation) GetCapability() ModelCapabilityKind {
@@ -5080,7 +5193,7 @@ type RoleAssignment struct {
 
 func (x *RoleAssignment) Reset() {
 	*x = RoleAssignment{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[21]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5092,7 +5205,7 @@ func (x *RoleAssignment) String() string {
 func (*RoleAssignment) ProtoMessage() {}
 
 func (x *RoleAssignment) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[21]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5105,7 +5218,7 @@ func (x *RoleAssignment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RoleAssignment.ProtoReflect.Descriptor instead.
 func (*RoleAssignment) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{21}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RoleAssignment) GetDesignatedRole() ModelCampaignRole {
@@ -5136,7 +5249,7 @@ type HeterogeneousStackDefinition struct {
 
 func (x *HeterogeneousStackDefinition) Reset() {
 	*x = HeterogeneousStackDefinition{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[22]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5148,7 +5261,7 @@ func (x *HeterogeneousStackDefinition) String() string {
 func (*HeterogeneousStackDefinition) ProtoMessage() {}
 
 func (x *HeterogeneousStackDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[22]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5161,7 +5274,7 @@ func (x *HeterogeneousStackDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeterogeneousStackDefinition.ProtoReflect.Descriptor instead.
 func (*HeterogeneousStackDefinition) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{22}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *HeterogeneousStackDefinition) GetStackId() string {
@@ -5226,7 +5339,7 @@ type EvaluationAssignment struct {
 
 func (x *EvaluationAssignment) Reset() {
 	*x = EvaluationAssignment{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[23]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5238,7 +5351,7 @@ func (x *EvaluationAssignment) String() string {
 func (*EvaluationAssignment) ProtoMessage() {}
 
 func (x *EvaluationAssignment) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[23]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5251,7 +5364,7 @@ func (x *EvaluationAssignment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluationAssignment.ProtoReflect.Descriptor instead.
 func (*EvaluationAssignment) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{23}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *EvaluationAssignment) GetSchemaVersion() string {
@@ -5396,7 +5509,7 @@ type HomogeneousAssignmentTarget struct {
 
 func (x *HomogeneousAssignmentTarget) Reset() {
 	*x = HomogeneousAssignmentTarget{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[24]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5408,7 +5521,7 @@ func (x *HomogeneousAssignmentTarget) String() string {
 func (*HomogeneousAssignmentTarget) ProtoMessage() {}
 
 func (x *HomogeneousAssignmentTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[24]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5421,7 +5534,7 @@ func (x *HomogeneousAssignmentTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HomogeneousAssignmentTarget.ProtoReflect.Descriptor instead.
 func (*HomogeneousAssignmentTarget) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{24}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *HomogeneousAssignmentTarget) GetCandidateVariant() *ModelVariant {
@@ -5447,7 +5560,7 @@ type HeterogeneousAssignmentTarget struct {
 
 func (x *HeterogeneousAssignmentTarget) Reset() {
 	*x = HeterogeneousAssignmentTarget{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[25]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5459,7 +5572,7 @@ func (x *HeterogeneousAssignmentTarget) String() string {
 func (*HeterogeneousAssignmentTarget) ProtoMessage() {}
 
 func (x *HeterogeneousAssignmentTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[25]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5472,7 +5585,7 @@ func (x *HeterogeneousAssignmentTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeterogeneousAssignmentTarget.ProtoReflect.Descriptor instead.
 func (*HeterogeneousAssignmentTarget) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{25}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *HeterogeneousAssignmentTarget) GetStack() *HeterogeneousStackDefinition {
@@ -5508,7 +5621,7 @@ type ProviderBoundaryHardwareSample struct {
 
 func (x *ProviderBoundaryHardwareSample) Reset() {
 	*x = ProviderBoundaryHardwareSample{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[26]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5520,7 +5633,7 @@ func (x *ProviderBoundaryHardwareSample) String() string {
 func (*ProviderBoundaryHardwareSample) ProtoMessage() {}
 
 func (x *ProviderBoundaryHardwareSample) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[26]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5533,7 +5646,7 @@ func (x *ProviderBoundaryHardwareSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProviderBoundaryHardwareSample.ProtoReflect.Descriptor instead.
 func (*ProviderBoundaryHardwareSample) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{26}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ProviderBoundaryHardwareSample) GetObservedAtUnixNanos() uint64 {
@@ -5669,7 +5782,7 @@ type ProviderBoundaryObservationWindow struct {
 
 func (x *ProviderBoundaryObservationWindow) Reset() {
 	*x = ProviderBoundaryObservationWindow{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[27]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5681,7 +5794,7 @@ func (x *ProviderBoundaryObservationWindow) String() string {
 func (*ProviderBoundaryObservationWindow) ProtoMessage() {}
 
 func (x *ProviderBoundaryObservationWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[27]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5694,7 +5807,7 @@ func (x *ProviderBoundaryObservationWindow) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ProviderBoundaryObservationWindow.ProtoReflect.Descriptor instead.
 func (*ProviderBoundaryObservationWindow) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{27}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ProviderBoundaryObservationWindow) GetSchemaVersion() string {
@@ -5791,7 +5904,7 @@ type ProviderBoundaryObservationCommand struct {
 
 func (x *ProviderBoundaryObservationCommand) Reset() {
 	*x = ProviderBoundaryObservationCommand{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[28]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5803,7 +5916,7 @@ func (x *ProviderBoundaryObservationCommand) String() string {
 func (*ProviderBoundaryObservationCommand) ProtoMessage() {}
 
 func (x *ProviderBoundaryObservationCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[28]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5816,7 +5929,7 @@ func (x *ProviderBoundaryObservationCommand) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use ProviderBoundaryObservationCommand.ProtoReflect.Descriptor instead.
 func (*ProviderBoundaryObservationCommand) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{28}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ProviderBoundaryObservationCommand) GetProviderAttemptId() string {
@@ -5879,7 +5992,7 @@ type ProviderBoundaryObservationCompleted struct {
 
 func (x *ProviderBoundaryObservationCompleted) Reset() {
 	*x = ProviderBoundaryObservationCompleted{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[29]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5891,7 +6004,7 @@ func (x *ProviderBoundaryObservationCompleted) String() string {
 func (*ProviderBoundaryObservationCompleted) ProtoMessage() {}
 
 func (x *ProviderBoundaryObservationCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[29]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5904,7 +6017,7 @@ func (x *ProviderBoundaryObservationCompleted) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ProviderBoundaryObservationCompleted.ProtoReflect.Descriptor instead.
 func (*ProviderBoundaryObservationCompleted) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{29}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ProviderBoundaryObservationCompleted) GetWindow() *ProviderBoundaryObservationWindow {
@@ -5930,7 +6043,7 @@ type ModelWeightAttestation struct {
 
 func (x *ModelWeightAttestation) Reset() {
 	*x = ModelWeightAttestation{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[30]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5942,7 +6055,7 @@ func (x *ModelWeightAttestation) String() string {
 func (*ModelWeightAttestation) ProtoMessage() {}
 
 func (x *ModelWeightAttestation) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[30]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5955,7 +6068,7 @@ func (x *ModelWeightAttestation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelWeightAttestation.ProtoReflect.Descriptor instead.
 func (*ModelWeightAttestation) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{30}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ModelWeightAttestation) GetBlobDigest() string {
@@ -6017,7 +6130,7 @@ type ModelProvenanceAttestationWindow struct {
 
 func (x *ModelProvenanceAttestationWindow) Reset() {
 	*x = ModelProvenanceAttestationWindow{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[31]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6029,7 +6142,7 @@ func (x *ModelProvenanceAttestationWindow) String() string {
 func (*ModelProvenanceAttestationWindow) ProtoMessage() {}
 
 func (x *ModelProvenanceAttestationWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[31]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6042,7 +6155,7 @@ func (x *ModelProvenanceAttestationWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelProvenanceAttestationWindow.ProtoReflect.Descriptor instead.
 func (*ModelProvenanceAttestationWindow) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{31}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ModelProvenanceAttestationWindow) GetSchemaVersion() string {
@@ -6165,7 +6278,7 @@ type ModelProvenanceObservationCommand struct {
 
 func (x *ModelProvenanceObservationCommand) Reset() {
 	*x = ModelProvenanceObservationCommand{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[32]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6177,7 +6290,7 @@ func (x *ModelProvenanceObservationCommand) String() string {
 func (*ModelProvenanceObservationCommand) ProtoMessage() {}
 
 func (x *ModelProvenanceObservationCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[32]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6190,7 +6303,7 @@ func (x *ModelProvenanceObservationCommand) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ModelProvenanceObservationCommand.ProtoReflect.Descriptor instead.
 func (*ModelProvenanceObservationCommand) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{32}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ModelProvenanceObservationCommand) GetProviderAttemptId() string {
@@ -6281,7 +6394,7 @@ type ModelProvenanceObservationCompleted struct {
 
 func (x *ModelProvenanceObservationCompleted) Reset() {
 	*x = ModelProvenanceObservationCompleted{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[33]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6293,7 +6406,7 @@ func (x *ModelProvenanceObservationCompleted) String() string {
 func (*ModelProvenanceObservationCompleted) ProtoMessage() {}
 
 func (x *ModelProvenanceObservationCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[33]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6306,7 +6419,7 @@ func (x *ModelProvenanceObservationCompleted) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ModelProvenanceObservationCompleted.ProtoReflect.Descriptor instead.
 func (*ModelProvenanceObservationCompleted) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{33}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ModelProvenanceObservationCompleted) GetWindow() *ModelProvenanceAttestationWindow {
@@ -6318,39 +6431,38 @@ func (x *ModelProvenanceObservationCompleted) GetWindow() *ModelProvenanceAttest
 
 // ModelInferenceRecord captures one governed scored inference call.
 type ModelInferenceRecord struct {
-	state                          protoimpl.MessageState          `protogen:"open.v1"`
-	InferenceRecordId              string                          `protobuf:"bytes,1,opt,name=inference_record_id,json=inferenceRecordId,proto3" json:"inference_record_id,omitempty"`
-	ProviderAttemptId              string                          `protobuf:"bytes,2,opt,name=provider_attempt_id,json=providerAttemptId,proto3" json:"provider_attempt_id,omitempty"`
-	AssignmentId                   string                          `protobuf:"bytes,3,opt,name=assignment_id,json=assignmentId,proto3" json:"assignment_id,omitempty"`
-	EvaluationAttemptId            string                          `protobuf:"bytes,4,opt,name=evaluation_attempt_id,json=evaluationAttemptId,proto3" json:"evaluation_attempt_id,omitempty"`
-	ModelRole                      ModelCampaignRole               `protobuf:"varint,5,opt,name=model_role,json=modelRole,proto3,enum=ztd.eval.v1.ModelCampaignRole" json:"model_role,omitempty"`
-	AgentPersona                   string                          `protobuf:"bytes,6,opt,name=agent_persona,json=agentPersona,proto3" json:"agent_persona,omitempty"`
-	CallSite                       string                          `protobuf:"bytes,7,opt,name=call_site,json=callSite,proto3" json:"call_site,omitempty"`
-	ModelVariant                   *ModelVariant                   `protobuf:"bytes,8,opt,name=model_variant,json=modelVariant,proto3" json:"model_variant,omitempty"`
-	Temperature                    float32                         `protobuf:"fixed32,9,opt,name=temperature,proto3" json:"temperature,omitempty"`
-	TopP                           *float32                        `protobuf:"fixed32,10,opt,name=top_p,json=topP,proto3,oneof" json:"top_p,omitempty"`
-	TopK                           *int32                          `protobuf:"varint,11,opt,name=top_k,json=topK,proto3,oneof" json:"top_k,omitempty"`
-	Seed                           *int32                          `protobuf:"varint,12,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
-	MaxOutputTokens                uint32                          `protobuf:"varint,13,opt,name=max_output_tokens,json=maxOutputTokens,proto3" json:"max_output_tokens,omitempty"`
-	InputHash                      string                          `protobuf:"bytes,14,opt,name=input_hash,json=inputHash,proto3" json:"input_hash,omitempty"`
-	OutputHash                     string                          `protobuf:"bytes,15,opt,name=output_hash,json=outputHash,proto3" json:"output_hash,omitempty"`
-	UsageAvailability              EvaluationUsageAvailability     `protobuf:"varint,16,opt,name=usage_availability,json=usageAvailability,proto3,enum=ztd.eval.v1.EvaluationUsageAvailability" json:"usage_availability,omitempty"`
-	PromptTokens                   uint32                          `protobuf:"varint,17,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
-	CompletionTokens               uint32                          `protobuf:"varint,18,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
-	ThinkingTokens                 *uint32                         `protobuf:"varint,19,opt,name=thinking_tokens,json=thinkingTokens,proto3,oneof" json:"thinking_tokens,omitempty"`
-	CacheTokens                    *uint32                         `protobuf:"varint,20,opt,name=cache_tokens,json=cacheTokens,proto3,oneof" json:"cache_tokens,omitempty"`
-	RequestStartedAtUnixNanos      uint64                          `protobuf:"varint,21,opt,name=request_started_at_unix_nanos,json=requestStartedAtUnixNanos,proto3" json:"request_started_at_unix_nanos,omitempty"`
-	FirstTokenAtUnixNanos          uint64                          `protobuf:"varint,22,opt,name=first_token_at_unix_nanos,json=firstTokenAtUnixNanos,proto3" json:"first_token_at_unix_nanos,omitempty"`
-	GenerationDurationNanos        uint64                          `protobuf:"varint,23,opt,name=generation_duration_nanos,json=generationDurationNanos,proto3" json:"generation_duration_nanos,omitempty"`
-	TotalDurationNanos             uint64                          `protobuf:"varint,24,opt,name=total_duration_nanos,json=totalDurationNanos,proto3" json:"total_duration_nanos,omitempty"`
-	LoadDurationNanos              uint64                          `protobuf:"varint,25,opt,name=load_duration_nanos,json=loadDurationNanos,proto3" json:"load_duration_nanos,omitempty"`
-	LoadState                      EvaluationLoadState             `protobuf:"varint,26,opt,name=load_state,json=loadState,proto3,enum=ztd.eval.v1.EvaluationLoadState" json:"load_state,omitempty"`
-	RetryCount                     *uint32                         `protobuf:"varint,27,opt,name=retry_count,json=retryCount,proto3,oneof" json:"retry_count,omitempty"`
-	FinishReason                   string                          `protobuf:"bytes,28,opt,name=finish_reason,json=finishReason,proto3" json:"finish_reason,omitempty"`
-	PrivacyAttested                bool                            `protobuf:"varint,29,opt,name=privacy_attested,json=privacyAttested,proto3" json:"privacy_attested,omitempty"`
-	GovernedReceiptRef             *v1.ComplianceEvidenceReference `protobuf:"bytes,30,opt,name=governed_receipt_ref,json=governedReceiptRef,proto3" json:"governed_receipt_ref,omitempty"`
-	ResultDigest                   string                          `protobuf:"bytes,31,opt,name=result_digest,json=resultDigest,proto3" json:"result_digest,omitempty"`
-	ProviderBoundaryObservationRef *v1.ComplianceEvidenceReference `protobuf:"bytes,32,opt,name=provider_boundary_observation_ref,json=providerBoundaryObservationRef,proto3" json:"provider_boundary_observation_ref,omitempty"`
+	state                     protoimpl.MessageState          `protogen:"open.v1"`
+	InferenceRecordId         string                          `protobuf:"bytes,1,opt,name=inference_record_id,json=inferenceRecordId,proto3" json:"inference_record_id,omitempty"`
+	ProviderAttemptId         string                          `protobuf:"bytes,2,opt,name=provider_attempt_id,json=providerAttemptId,proto3" json:"provider_attempt_id,omitempty"`
+	AssignmentId              string                          `protobuf:"bytes,3,opt,name=assignment_id,json=assignmentId,proto3" json:"assignment_id,omitempty"`
+	EvaluationAttemptId       string                          `protobuf:"bytes,4,opt,name=evaluation_attempt_id,json=evaluationAttemptId,proto3" json:"evaluation_attempt_id,omitempty"`
+	ModelRole                 ModelCampaignRole               `protobuf:"varint,5,opt,name=model_role,json=modelRole,proto3,enum=ztd.eval.v1.ModelCampaignRole" json:"model_role,omitempty"`
+	AgentPersona              string                          `protobuf:"bytes,6,opt,name=agent_persona,json=agentPersona,proto3" json:"agent_persona,omitempty"`
+	CallSite                  string                          `protobuf:"bytes,7,opt,name=call_site,json=callSite,proto3" json:"call_site,omitempty"`
+	ModelVariant              *ModelVariant                   `protobuf:"bytes,8,opt,name=model_variant,json=modelVariant,proto3" json:"model_variant,omitempty"`
+	Temperature               float32                         `protobuf:"fixed32,9,opt,name=temperature,proto3" json:"temperature,omitempty"`
+	TopP                      *float32                        `protobuf:"fixed32,10,opt,name=top_p,json=topP,proto3,oneof" json:"top_p,omitempty"`
+	TopK                      *int32                          `protobuf:"varint,11,opt,name=top_k,json=topK,proto3,oneof" json:"top_k,omitempty"`
+	Seed                      *int32                          `protobuf:"varint,12,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
+	MaxOutputTokens           uint32                          `protobuf:"varint,13,opt,name=max_output_tokens,json=maxOutputTokens,proto3" json:"max_output_tokens,omitempty"`
+	InputHash                 string                          `protobuf:"bytes,14,opt,name=input_hash,json=inputHash,proto3" json:"input_hash,omitempty"`
+	OutputHash                string                          `protobuf:"bytes,15,opt,name=output_hash,json=outputHash,proto3" json:"output_hash,omitempty"`
+	UsageAvailability         EvaluationUsageAvailability     `protobuf:"varint,16,opt,name=usage_availability,json=usageAvailability,proto3,enum=ztd.eval.v1.EvaluationUsageAvailability" json:"usage_availability,omitempty"`
+	PromptTokens              uint32                          `protobuf:"varint,17,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CompletionTokens          uint32                          `protobuf:"varint,18,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
+	ThinkingTokens            *uint32                         `protobuf:"varint,19,opt,name=thinking_tokens,json=thinkingTokens,proto3,oneof" json:"thinking_tokens,omitempty"`
+	CacheTokens               *uint32                         `protobuf:"varint,20,opt,name=cache_tokens,json=cacheTokens,proto3,oneof" json:"cache_tokens,omitempty"`
+	RequestStartedAtUnixNanos uint64                          `protobuf:"varint,21,opt,name=request_started_at_unix_nanos,json=requestStartedAtUnixNanos,proto3" json:"request_started_at_unix_nanos,omitempty"`
+	FirstTokenAtUnixNanos     uint64                          `protobuf:"varint,22,opt,name=first_token_at_unix_nanos,json=firstTokenAtUnixNanos,proto3" json:"first_token_at_unix_nanos,omitempty"`
+	GenerationDurationNanos   uint64                          `protobuf:"varint,23,opt,name=generation_duration_nanos,json=generationDurationNanos,proto3" json:"generation_duration_nanos,omitempty"`
+	TotalDurationNanos        uint64                          `protobuf:"varint,24,opt,name=total_duration_nanos,json=totalDurationNanos,proto3" json:"total_duration_nanos,omitempty"`
+	LoadDurationNanos         uint64                          `protobuf:"varint,25,opt,name=load_duration_nanos,json=loadDurationNanos,proto3" json:"load_duration_nanos,omitempty"`
+	LoadState                 EvaluationLoadState             `protobuf:"varint,26,opt,name=load_state,json=loadState,proto3,enum=ztd.eval.v1.EvaluationLoadState" json:"load_state,omitempty"`
+	RetryCount                *uint32                         `protobuf:"varint,27,opt,name=retry_count,json=retryCount,proto3,oneof" json:"retry_count,omitempty"`
+	FinishReason              string                          `protobuf:"bytes,28,opt,name=finish_reason,json=finishReason,proto3" json:"finish_reason,omitempty"`
+	PrivacyAttested           bool                            `protobuf:"varint,29,opt,name=privacy_attested,json=privacyAttested,proto3" json:"privacy_attested,omitempty"`
+	GovernedReceiptRef        *v1.ComplianceEvidenceReference `protobuf:"bytes,30,opt,name=governed_receipt_ref,json=governedReceiptRef,proto3" json:"governed_receipt_ref,omitempty"`
+	ResultDigest              string                          `protobuf:"bytes,31,opt,name=result_digest,json=resultDigest,proto3" json:"result_digest,omitempty"`
 	// Tool names as sent to the provider for this call, captured at the
 	// provider boundary. tools_declared_reported distinguishes "none declared"
 	// from "not reported".
@@ -6365,7 +6477,7 @@ type ModelInferenceRecord struct {
 
 func (x *ModelInferenceRecord) Reset() {
 	*x = ModelInferenceRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[34]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6377,7 +6489,7 @@ func (x *ModelInferenceRecord) String() string {
 func (*ModelInferenceRecord) ProtoMessage() {}
 
 func (x *ModelInferenceRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[34]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6390,7 +6502,7 @@ func (x *ModelInferenceRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInferenceRecord.ProtoReflect.Descriptor instead.
 func (*ModelInferenceRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{34}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ModelInferenceRecord) GetInferenceRecordId() string {
@@ -6610,13 +6722,6 @@ func (x *ModelInferenceRecord) GetResultDigest() string {
 	return ""
 }
 
-func (x *ModelInferenceRecord) GetProviderBoundaryObservationRef() *v1.ComplianceEvidenceReference {
-	if x != nil {
-		return x.ProviderBoundaryObservationRef
-	}
-	return nil
-}
-
 func (x *ModelInferenceRecord) GetToolsDeclared() []string {
 	if x != nil {
 		return x.ToolsDeclared
@@ -6654,7 +6759,7 @@ type ToolDecisionRecord struct {
 
 func (x *ToolDecisionRecord) Reset() {
 	*x = ToolDecisionRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[35]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6666,7 +6771,7 @@ func (x *ToolDecisionRecord) String() string {
 func (*ToolDecisionRecord) ProtoMessage() {}
 
 func (x *ToolDecisionRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[35]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6679,7 +6784,7 @@ func (x *ToolDecisionRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolDecisionRecord.ProtoReflect.Descriptor instead.
 func (*ToolDecisionRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{35}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ToolDecisionRecord) GetDecisionId() string {
@@ -6758,7 +6863,7 @@ type ToolCallRecord struct {
 
 func (x *ToolCallRecord) Reset() {
 	*x = ToolCallRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[36]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6770,7 +6875,7 @@ func (x *ToolCallRecord) String() string {
 func (*ToolCallRecord) ProtoMessage() {}
 
 func (x *ToolCallRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[36]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6783,7 +6888,7 @@ func (x *ToolCallRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolCallRecord.ProtoReflect.Descriptor instead.
 func (*ToolCallRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{36}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ToolCallRecord) GetCallId() string {
@@ -6870,7 +6975,7 @@ type EscalationRecord struct {
 
 func (x *EscalationRecord) Reset() {
 	*x = EscalationRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[37]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6882,7 +6987,7 @@ func (x *EscalationRecord) String() string {
 func (*EscalationRecord) ProtoMessage() {}
 
 func (x *EscalationRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[37]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6895,7 +7000,7 @@ func (x *EscalationRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EscalationRecord.ProtoReflect.Descriptor instead.
 func (*EscalationRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{37}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *EscalationRecord) GetEscalationId() string {
@@ -6953,7 +7058,7 @@ type HandoffRecord struct {
 
 func (x *HandoffRecord) Reset() {
 	*x = HandoffRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[38]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6965,7 +7070,7 @@ func (x *HandoffRecord) String() string {
 func (*HandoffRecord) ProtoMessage() {}
 
 func (x *HandoffRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[38]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6978,7 +7083,7 @@ func (x *HandoffRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandoffRecord.ProtoReflect.Descriptor instead.
 func (*HandoffRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{38}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *HandoffRecord) GetHandoffId() string {
@@ -7029,7 +7134,7 @@ type RecoveryRecord struct {
 
 func (x *RecoveryRecord) Reset() {
 	*x = RecoveryRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[39]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7041,7 +7146,7 @@ func (x *RecoveryRecord) String() string {
 func (*RecoveryRecord) ProtoMessage() {}
 
 func (x *RecoveryRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[39]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7054,7 +7159,7 @@ func (x *RecoveryRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecoveryRecord.ProtoReflect.Descriptor instead.
 func (*RecoveryRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{39}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *RecoveryRecord) GetRecoveryId() string {
@@ -7112,7 +7217,7 @@ type GovernedActionBinding struct {
 
 func (x *GovernedActionBinding) Reset() {
 	*x = GovernedActionBinding{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[40]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7124,7 +7229,7 @@ func (x *GovernedActionBinding) String() string {
 func (*GovernedActionBinding) ProtoMessage() {}
 
 func (x *GovernedActionBinding) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[40]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7137,7 +7242,7 @@ func (x *GovernedActionBinding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GovernedActionBinding.ProtoReflect.Descriptor instead.
 func (*GovernedActionBinding) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{40}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GovernedActionBinding) GetBindingId() string {
@@ -7224,7 +7329,7 @@ type DeterministicGrade struct {
 
 func (x *DeterministicGrade) Reset() {
 	*x = DeterministicGrade{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[41]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7236,7 +7341,7 @@ func (x *DeterministicGrade) String() string {
 func (*DeterministicGrade) ProtoMessage() {}
 
 func (x *DeterministicGrade) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[41]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7249,7 +7354,7 @@ func (x *DeterministicGrade) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeterministicGrade.ProtoReflect.Descriptor instead.
 func (*DeterministicGrade) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{41}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *DeterministicGrade) GetGradeId() string {
@@ -7308,7 +7413,7 @@ type SemanticGrade struct {
 
 func (x *SemanticGrade) Reset() {
 	*x = SemanticGrade{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[42]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7320,7 +7425,7 @@ func (x *SemanticGrade) String() string {
 func (*SemanticGrade) ProtoMessage() {}
 
 func (x *SemanticGrade) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[42]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7333,7 +7438,7 @@ func (x *SemanticGrade) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SemanticGrade.ProtoReflect.Descriptor instead.
 func (*SemanticGrade) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{42}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SemanticGrade) GetGradeId() string {
@@ -7392,7 +7497,7 @@ type DecomposedScoreRecord struct {
 
 func (x *DecomposedScoreRecord) Reset() {
 	*x = DecomposedScoreRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[43]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7404,7 +7509,7 @@ func (x *DecomposedScoreRecord) String() string {
 func (*DecomposedScoreRecord) ProtoMessage() {}
 
 func (x *DecomposedScoreRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[43]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7417,7 +7522,7 @@ func (x *DecomposedScoreRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecomposedScoreRecord.ProtoReflect.Descriptor instead.
 func (*DecomposedScoreRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{43}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *DecomposedScoreRecord) GetScoreId() string {
@@ -7474,7 +7579,7 @@ type GraderModelCallRecord struct {
 
 func (x *GraderModelCallRecord) Reset() {
 	*x = GraderModelCallRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[44]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7486,7 +7591,7 @@ func (x *GraderModelCallRecord) String() string {
 func (*GraderModelCallRecord) ProtoMessage() {}
 
 func (x *GraderModelCallRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[44]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7499,7 +7604,7 @@ func (x *GraderModelCallRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraderModelCallRecord.ProtoReflect.Descriptor instead.
 func (*GraderModelCallRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{44}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *GraderModelCallRecord) GetGraderCallId() string {
@@ -7543,7 +7648,7 @@ type PolicyDecisionRecord struct {
 
 func (x *PolicyDecisionRecord) Reset() {
 	*x = PolicyDecisionRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[45]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7555,7 +7660,7 @@ func (x *PolicyDecisionRecord) String() string {
 func (*PolicyDecisionRecord) ProtoMessage() {}
 
 func (x *PolicyDecisionRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[45]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7568,7 +7673,7 @@ func (x *PolicyDecisionRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyDecisionRecord.ProtoReflect.Descriptor instead.
 func (*PolicyDecisionRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{45}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *PolicyDecisionRecord) GetDecisionId() string {
@@ -7652,7 +7757,7 @@ type EvaluationAssignmentResult struct {
 
 func (x *EvaluationAssignmentResult) Reset() {
 	*x = EvaluationAssignmentResult{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[46]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7664,7 +7769,7 @@ func (x *EvaluationAssignmentResult) String() string {
 func (*EvaluationAssignmentResult) ProtoMessage() {}
 
 func (x *EvaluationAssignmentResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[46]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7677,7 +7782,7 @@ func (x *EvaluationAssignmentResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluationAssignmentResult.ProtoReflect.Descriptor instead.
 func (*EvaluationAssignmentResult) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{46}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *EvaluationAssignmentResult) GetSchemaVersion() string {
@@ -7915,7 +8020,7 @@ type CampaignComplianceSourceArtifact struct {
 
 func (x *CampaignComplianceSourceArtifact) Reset() {
 	*x = CampaignComplianceSourceArtifact{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[47]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7927,7 +8032,7 @@ func (x *CampaignComplianceSourceArtifact) String() string {
 func (*CampaignComplianceSourceArtifact) ProtoMessage() {}
 
 func (x *CampaignComplianceSourceArtifact) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[47]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7940,7 +8045,7 @@ func (x *CampaignComplianceSourceArtifact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CampaignComplianceSourceArtifact.ProtoReflect.Descriptor instead.
 func (*CampaignComplianceSourceArtifact) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{47}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *CampaignComplianceSourceArtifact) GetRuntimePath() string {
@@ -7979,7 +8084,7 @@ type CampaignComplianceSourceInventory struct {
 
 func (x *CampaignComplianceSourceInventory) Reset() {
 	*x = CampaignComplianceSourceInventory{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[48]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7991,7 +8096,7 @@ func (x *CampaignComplianceSourceInventory) String() string {
 func (*CampaignComplianceSourceInventory) ProtoMessage() {}
 
 func (x *CampaignComplianceSourceInventory) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[48]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8004,7 +8109,7 @@ func (x *CampaignComplianceSourceInventory) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use CampaignComplianceSourceInventory.ProtoReflect.Descriptor instead.
 func (*CampaignComplianceSourceInventory) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{48}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *CampaignComplianceSourceInventory) GetSchemaVersion() string {
@@ -8084,7 +8189,7 @@ type EvaluationVerificationReport struct {
 
 func (x *EvaluationVerificationReport) Reset() {
 	*x = EvaluationVerificationReport{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[49]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8096,7 +8201,7 @@ func (x *EvaluationVerificationReport) String() string {
 func (*EvaluationVerificationReport) ProtoMessage() {}
 
 func (x *EvaluationVerificationReport) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[49]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8109,7 +8214,7 @@ func (x *EvaluationVerificationReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluationVerificationReport.ProtoReflect.Descriptor instead.
 func (*EvaluationVerificationReport) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{49}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *EvaluationVerificationReport) GetSchemaVersion() string {
@@ -8264,7 +8369,7 @@ type EvaluationVerifiedPopulationEntry struct {
 
 func (x *EvaluationVerifiedPopulationEntry) Reset() {
 	*x = EvaluationVerifiedPopulationEntry{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[50]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8276,7 +8381,7 @@ func (x *EvaluationVerifiedPopulationEntry) String() string {
 func (*EvaluationVerifiedPopulationEntry) ProtoMessage() {}
 
 func (x *EvaluationVerifiedPopulationEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[50]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8289,7 +8394,7 @@ func (x *EvaluationVerifiedPopulationEntry) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use EvaluationVerifiedPopulationEntry.ProtoReflect.Descriptor instead.
 func (*EvaluationVerifiedPopulationEntry) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{50}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *EvaluationVerifiedPopulationEntry) GetAssignmentId() string {
@@ -8387,7 +8492,7 @@ type EvaluationVerifiedPopulation struct {
 
 func (x *EvaluationVerifiedPopulation) Reset() {
 	*x = EvaluationVerifiedPopulation{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[51]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8399,7 +8504,7 @@ func (x *EvaluationVerifiedPopulation) String() string {
 func (*EvaluationVerifiedPopulation) ProtoMessage() {}
 
 func (x *EvaluationVerifiedPopulation) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[51]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8412,7 +8517,7 @@ func (x *EvaluationVerifiedPopulation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluationVerifiedPopulation.ProtoReflect.Descriptor instead.
 func (*EvaluationVerifiedPopulation) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{51}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *EvaluationVerifiedPopulation) GetSchemaVersion() string {
@@ -8503,7 +8608,7 @@ type PublicCampaignIdentity struct {
 
 func (x *PublicCampaignIdentity) Reset() {
 	*x = PublicCampaignIdentity{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[52]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8515,7 +8620,7 @@ func (x *PublicCampaignIdentity) String() string {
 func (*PublicCampaignIdentity) ProtoMessage() {}
 
 func (x *PublicCampaignIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[52]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8528,7 +8633,7 @@ func (x *PublicCampaignIdentity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicCampaignIdentity.ProtoReflect.Descriptor instead.
 func (*PublicCampaignIdentity) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{52}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *PublicCampaignIdentity) GetCampaignId() string {
@@ -8614,7 +8719,7 @@ type PublicModelVariantIdentity struct {
 
 func (x *PublicModelVariantIdentity) Reset() {
 	*x = PublicModelVariantIdentity{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[53]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8626,7 +8731,7 @@ func (x *PublicModelVariantIdentity) String() string {
 func (*PublicModelVariantIdentity) ProtoMessage() {}
 
 func (x *PublicModelVariantIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[53]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8639,7 +8744,7 @@ func (x *PublicModelVariantIdentity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicModelVariantIdentity.ProtoReflect.Descriptor instead.
 func (*PublicModelVariantIdentity) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{53}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *PublicModelVariantIdentity) GetVariantId() string {
@@ -8699,7 +8804,7 @@ type PublicAssignmentLifecycleRecord struct {
 
 func (x *PublicAssignmentLifecycleRecord) Reset() {
 	*x = PublicAssignmentLifecycleRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[54]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8711,7 +8816,7 @@ func (x *PublicAssignmentLifecycleRecord) String() string {
 func (*PublicAssignmentLifecycleRecord) ProtoMessage() {}
 
 func (x *PublicAssignmentLifecycleRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[54]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8724,7 +8829,7 @@ func (x *PublicAssignmentLifecycleRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicAssignmentLifecycleRecord.ProtoReflect.Descriptor instead.
 func (*PublicAssignmentLifecycleRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{54}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *PublicAssignmentLifecycleRecord) GetAssignmentId() string {
@@ -8847,7 +8952,7 @@ type PublicModelCallSummary struct {
 
 func (x *PublicModelCallSummary) Reset() {
 	*x = PublicModelCallSummary{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[55]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8859,7 +8964,7 @@ func (x *PublicModelCallSummary) String() string {
 func (*PublicModelCallSummary) ProtoMessage() {}
 
 func (x *PublicModelCallSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[55]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8872,7 +8977,7 @@ func (x *PublicModelCallSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicModelCallSummary.ProtoReflect.Descriptor instead.
 func (*PublicModelCallSummary) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{55}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *PublicModelCallSummary) GetAssignmentId() string {
@@ -8993,7 +9098,7 @@ type PublicScenarioSummary struct {
 
 func (x *PublicScenarioSummary) Reset() {
 	*x = PublicScenarioSummary{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[56]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9005,7 +9110,7 @@ func (x *PublicScenarioSummary) String() string {
 func (*PublicScenarioSummary) ProtoMessage() {}
 
 func (x *PublicScenarioSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[56]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9018,7 +9123,7 @@ func (x *PublicScenarioSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicScenarioSummary.ProtoReflect.Descriptor instead.
 func (*PublicScenarioSummary) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{56}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *PublicScenarioSummary) GetScenarioId() string {
@@ -9120,7 +9225,7 @@ type PublicSemanticGradeSummary struct {
 
 func (x *PublicSemanticGradeSummary) Reset() {
 	*x = PublicSemanticGradeSummary{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[57]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9132,7 +9237,7 @@ func (x *PublicSemanticGradeSummary) String() string {
 func (*PublicSemanticGradeSummary) ProtoMessage() {}
 
 func (x *PublicSemanticGradeSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[57]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9145,7 +9250,7 @@ func (x *PublicSemanticGradeSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicSemanticGradeSummary.ProtoReflect.Descriptor instead.
 func (*PublicSemanticGradeSummary) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{57}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *PublicSemanticGradeSummary) GetCriterionId() string {
@@ -9211,7 +9316,7 @@ type PublicModelActivityRecord struct {
 
 func (x *PublicModelActivityRecord) Reset() {
 	*x = PublicModelActivityRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[58]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9223,7 +9328,7 @@ func (x *PublicModelActivityRecord) String() string {
 func (*PublicModelActivityRecord) ProtoMessage() {}
 
 func (x *PublicModelActivityRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[58]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9236,7 +9341,7 @@ func (x *PublicModelActivityRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicModelActivityRecord.ProtoReflect.Descriptor instead.
 func (*PublicModelActivityRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{58}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *PublicModelActivityRecord) GetModelRole() ModelCampaignRole {
@@ -9345,7 +9450,7 @@ type PublicToolDecisionActivityRecord struct {
 
 func (x *PublicToolDecisionActivityRecord) Reset() {
 	*x = PublicToolDecisionActivityRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[59]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9357,7 +9462,7 @@ func (x *PublicToolDecisionActivityRecord) String() string {
 func (*PublicToolDecisionActivityRecord) ProtoMessage() {}
 
 func (x *PublicToolDecisionActivityRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[59]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9370,7 +9475,7 @@ func (x *PublicToolDecisionActivityRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicToolDecisionActivityRecord.ProtoReflect.Descriptor instead.
 func (*PublicToolDecisionActivityRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{59}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *PublicToolDecisionActivityRecord) GetToolLabel() string {
@@ -9437,7 +9542,7 @@ type PublicToolCallActivityRecord struct {
 
 func (x *PublicToolCallActivityRecord) Reset() {
 	*x = PublicToolCallActivityRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[60]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9449,7 +9554,7 @@ func (x *PublicToolCallActivityRecord) String() string {
 func (*PublicToolCallActivityRecord) ProtoMessage() {}
 
 func (x *PublicToolCallActivityRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[60]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9462,7 +9567,7 @@ func (x *PublicToolCallActivityRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicToolCallActivityRecord.ProtoReflect.Descriptor instead.
 func (*PublicToolCallActivityRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{60}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *PublicToolCallActivityRecord) GetToolLabel() string {
@@ -9525,7 +9630,7 @@ type PublicPolicyDecisionActivityRecord struct {
 
 func (x *PublicPolicyDecisionActivityRecord) Reset() {
 	*x = PublicPolicyDecisionActivityRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[61]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9537,7 +9642,7 @@ func (x *PublicPolicyDecisionActivityRecord) String() string {
 func (*PublicPolicyDecisionActivityRecord) ProtoMessage() {}
 
 func (x *PublicPolicyDecisionActivityRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[61]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9550,7 +9655,7 @@ func (x *PublicPolicyDecisionActivityRecord) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use PublicPolicyDecisionActivityRecord.ProtoReflect.Descriptor instead.
 func (*PublicPolicyDecisionActivityRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{61}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *PublicPolicyDecisionActivityRecord) GetToolLabel() string {
@@ -9586,7 +9691,7 @@ type PublicGovernedActionActivityRecord struct {
 
 func (x *PublicGovernedActionActivityRecord) Reset() {
 	*x = PublicGovernedActionActivityRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[62]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9598,7 +9703,7 @@ func (x *PublicGovernedActionActivityRecord) String() string {
 func (*PublicGovernedActionActivityRecord) ProtoMessage() {}
 
 func (x *PublicGovernedActionActivityRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[62]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9611,7 +9716,7 @@ func (x *PublicGovernedActionActivityRecord) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use PublicGovernedActionActivityRecord.ProtoReflect.Descriptor instead.
 func (*PublicGovernedActionActivityRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{62}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *PublicGovernedActionActivityRecord) GetActionLabel() string {
@@ -9653,7 +9758,7 @@ type PublicModelActivity struct {
 
 func (x *PublicModelActivity) Reset() {
 	*x = PublicModelActivity{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[63]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9665,7 +9770,7 @@ func (x *PublicModelActivity) String() string {
 func (*PublicModelActivity) ProtoMessage() {}
 
 func (x *PublicModelActivity) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[63]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9678,7 +9783,7 @@ func (x *PublicModelActivity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicModelActivity.ProtoReflect.Descriptor instead.
 func (*PublicModelActivity) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{63}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *PublicModelActivity) GetAvailability() PublicActivityAvailability {
@@ -9713,7 +9818,7 @@ type PublicToolDecisionActivity struct {
 
 func (x *PublicToolDecisionActivity) Reset() {
 	*x = PublicToolDecisionActivity{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[64]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9725,7 +9830,7 @@ func (x *PublicToolDecisionActivity) String() string {
 func (*PublicToolDecisionActivity) ProtoMessage() {}
 
 func (x *PublicToolDecisionActivity) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[64]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9738,7 +9843,7 @@ func (x *PublicToolDecisionActivity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicToolDecisionActivity.ProtoReflect.Descriptor instead.
 func (*PublicToolDecisionActivity) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{64}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *PublicToolDecisionActivity) GetAvailability() PublicActivityAvailability {
@@ -9773,7 +9878,7 @@ type PublicToolCallActivity struct {
 
 func (x *PublicToolCallActivity) Reset() {
 	*x = PublicToolCallActivity{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[65]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9785,7 +9890,7 @@ func (x *PublicToolCallActivity) String() string {
 func (*PublicToolCallActivity) ProtoMessage() {}
 
 func (x *PublicToolCallActivity) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[65]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9798,7 +9903,7 @@ func (x *PublicToolCallActivity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicToolCallActivity.ProtoReflect.Descriptor instead.
 func (*PublicToolCallActivity) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{65}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *PublicToolCallActivity) GetAvailability() PublicActivityAvailability {
@@ -9833,7 +9938,7 @@ type PublicPolicyDecisionActivity struct {
 
 func (x *PublicPolicyDecisionActivity) Reset() {
 	*x = PublicPolicyDecisionActivity{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[66]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9845,7 +9950,7 @@ func (x *PublicPolicyDecisionActivity) String() string {
 func (*PublicPolicyDecisionActivity) ProtoMessage() {}
 
 func (x *PublicPolicyDecisionActivity) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[66]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9858,7 +9963,7 @@ func (x *PublicPolicyDecisionActivity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicPolicyDecisionActivity.ProtoReflect.Descriptor instead.
 func (*PublicPolicyDecisionActivity) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{66}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *PublicPolicyDecisionActivity) GetAvailability() PublicActivityAvailability {
@@ -9893,7 +9998,7 @@ type PublicGovernedActionActivity struct {
 
 func (x *PublicGovernedActionActivity) Reset() {
 	*x = PublicGovernedActionActivity{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[67]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9905,7 +10010,7 @@ func (x *PublicGovernedActionActivity) String() string {
 func (*PublicGovernedActionActivity) ProtoMessage() {}
 
 func (x *PublicGovernedActionActivity) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[67]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9918,7 +10023,7 @@ func (x *PublicGovernedActionActivity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicGovernedActionActivity.ProtoReflect.Descriptor instead.
 func (*PublicGovernedActionActivity) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{67}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *PublicGovernedActionActivity) GetAvailability() PublicActivityAvailability {
@@ -9955,7 +10060,7 @@ type PublicAssignmentActivitySummary struct {
 
 func (x *PublicAssignmentActivitySummary) Reset() {
 	*x = PublicAssignmentActivitySummary{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[68]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9967,7 +10072,7 @@ func (x *PublicAssignmentActivitySummary) String() string {
 func (*PublicAssignmentActivitySummary) ProtoMessage() {}
 
 func (x *PublicAssignmentActivitySummary) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[68]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9980,7 +10085,7 @@ func (x *PublicAssignmentActivitySummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicAssignmentActivitySummary.ProtoReflect.Descriptor instead.
 func (*PublicAssignmentActivitySummary) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{68}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *PublicAssignmentActivitySummary) GetModelActivity() *PublicModelActivity {
@@ -10029,7 +10134,7 @@ type PublicEvidenceBinding struct {
 
 func (x *PublicEvidenceBinding) Reset() {
 	*x = PublicEvidenceBinding{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[69]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10041,7 +10146,7 @@ func (x *PublicEvidenceBinding) String() string {
 func (*PublicEvidenceBinding) ProtoMessage() {}
 
 func (x *PublicEvidenceBinding) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[69]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10054,7 +10159,7 @@ func (x *PublicEvidenceBinding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicEvidenceBinding.ProtoReflect.Descriptor instead.
 func (*PublicEvidenceBinding) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{69}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *PublicEvidenceBinding) GetSha256() string {
@@ -10092,7 +10197,7 @@ type PublicVerificationMetadata struct {
 
 func (x *PublicVerificationMetadata) Reset() {
 	*x = PublicVerificationMetadata{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[70]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10104,7 +10209,7 @@ func (x *PublicVerificationMetadata) String() string {
 func (*PublicVerificationMetadata) ProtoMessage() {}
 
 func (x *PublicVerificationMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[70]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10117,7 +10222,7 @@ func (x *PublicVerificationMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicVerificationMetadata.ProtoReflect.Descriptor instead.
 func (*PublicVerificationMetadata) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{70}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *PublicVerificationMetadata) GetProvenance() PublicVerificationProvenance {
@@ -10196,7 +10301,7 @@ type PublicAssignmentResultProjection struct {
 
 func (x *PublicAssignmentResultProjection) Reset() {
 	*x = PublicAssignmentResultProjection{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[71]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10208,7 +10313,7 @@ func (x *PublicAssignmentResultProjection) String() string {
 func (*PublicAssignmentResultProjection) ProtoMessage() {}
 
 func (x *PublicAssignmentResultProjection) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[71]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10221,7 +10326,7 @@ func (x *PublicAssignmentResultProjection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicAssignmentResultProjection.ProtoReflect.Descriptor instead.
 func (*PublicAssignmentResultProjection) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{71}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *PublicAssignmentResultProjection) GetAssignmentId() string {
@@ -10419,7 +10524,7 @@ type PublicLiveMetricValue struct {
 
 func (x *PublicLiveMetricValue) Reset() {
 	*x = PublicLiveMetricValue{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[72]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10431,7 +10536,7 @@ func (x *PublicLiveMetricValue) String() string {
 func (*PublicLiveMetricValue) ProtoMessage() {}
 
 func (x *PublicLiveMetricValue) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[72]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10444,7 +10549,7 @@ func (x *PublicLiveMetricValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicLiveMetricValue.ProtoReflect.Descriptor instead.
 func (*PublicLiveMetricValue) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{72}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *PublicLiveMetricValue) GetValue() float64 {
@@ -10494,7 +10599,7 @@ type PublicLiveEvent struct {
 
 func (x *PublicLiveEvent) Reset() {
 	*x = PublicLiveEvent{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[73]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10506,7 +10611,7 @@ func (x *PublicLiveEvent) String() string {
 func (*PublicLiveEvent) ProtoMessage() {}
 
 func (x *PublicLiveEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[73]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10519,7 +10624,7 @@ func (x *PublicLiveEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicLiveEvent.ProtoReflect.Descriptor instead.
 func (*PublicLiveEvent) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{73}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *PublicLiveEvent) GetSchemaVersion() string {
@@ -10677,7 +10782,7 @@ type ConformanceAnchor struct {
 
 func (x *ConformanceAnchor) Reset() {
 	*x = ConformanceAnchor{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[74]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10689,7 +10794,7 @@ func (x *ConformanceAnchor) String() string {
 func (*ConformanceAnchor) ProtoMessage() {}
 
 func (x *ConformanceAnchor) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[74]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10702,7 +10807,7 @@ func (x *ConformanceAnchor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConformanceAnchor.ProtoReflect.Descriptor instead.
 func (*ConformanceAnchor) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{74}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ConformanceAnchor) GetRuntimeId() string {
@@ -10744,7 +10849,7 @@ type CanaryEntry struct {
 
 func (x *CanaryEntry) Reset() {
 	*x = CanaryEntry{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[75]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10756,7 +10861,7 @@ func (x *CanaryEntry) String() string {
 func (*CanaryEntry) ProtoMessage() {}
 
 func (x *CanaryEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[75]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10769,7 +10874,7 @@ func (x *CanaryEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CanaryEntry.ProtoReflect.Descriptor instead.
 func (*CanaryEntry) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{75}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *CanaryEntry) GetPath() string {
@@ -10804,7 +10909,7 @@ type CanaryManifest struct {
 
 func (x *CanaryManifest) Reset() {
 	*x = CanaryManifest{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[76]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10816,7 +10921,7 @@ func (x *CanaryManifest) String() string {
 func (*CanaryManifest) ProtoMessage() {}
 
 func (x *CanaryManifest) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[76]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10829,7 +10934,7 @@ func (x *CanaryManifest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CanaryManifest.ProtoReflect.Descriptor instead.
 func (*CanaryManifest) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{76}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *CanaryManifest) GetEntries() []*CanaryEntry {
@@ -10857,7 +10962,7 @@ type ConformanceObservation struct {
 
 func (x *ConformanceObservation) Reset() {
 	*x = ConformanceObservation{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[77]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10869,7 +10974,7 @@ func (x *ConformanceObservation) String() string {
 func (*ConformanceObservation) ProtoMessage() {}
 
 func (x *ConformanceObservation) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[77]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10882,7 +10987,7 @@ func (x *ConformanceObservation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConformanceObservation.ProtoReflect.Descriptor instead.
 func (*ConformanceObservation) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{77}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *ConformanceObservation) GetKind() ConformanceObservationKind {
@@ -10945,7 +11050,7 @@ type ConformanceA2ACall struct {
 
 func (x *ConformanceA2ACall) Reset() {
 	*x = ConformanceA2ACall{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[78]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10957,7 +11062,7 @@ func (x *ConformanceA2ACall) String() string {
 func (*ConformanceA2ACall) ProtoMessage() {}
 
 func (x *ConformanceA2ACall) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[78]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10970,7 +11075,7 @@ func (x *ConformanceA2ACall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConformanceA2ACall.ProtoReflect.Descriptor instead.
 func (*ConformanceA2ACall) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{78}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ConformanceA2ACall) GetSkillName() string {
@@ -11000,7 +11105,7 @@ type ConformanceExchange struct {
 
 func (x *ConformanceExchange) Reset() {
 	*x = ConformanceExchange{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[79]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11012,7 +11117,7 @@ func (x *ConformanceExchange) String() string {
 func (*ConformanceExchange) ProtoMessage() {}
 
 func (x *ConformanceExchange) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[79]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11025,7 +11130,7 @@ func (x *ConformanceExchange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConformanceExchange.ProtoReflect.Descriptor instead.
 func (*ConformanceExchange) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{79}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *ConformanceExchange) GetMethod() string {
@@ -11084,7 +11189,7 @@ type ConformanceCaseEvidence struct {
 
 func (x *ConformanceCaseEvidence) Reset() {
 	*x = ConformanceCaseEvidence{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[80]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11096,7 +11201,7 @@ func (x *ConformanceCaseEvidence) String() string {
 func (*ConformanceCaseEvidence) ProtoMessage() {}
 
 func (x *ConformanceCaseEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[80]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11109,7 +11214,7 @@ func (x *ConformanceCaseEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConformanceCaseEvidence.ProtoReflect.Descriptor instead.
 func (*ConformanceCaseEvidence) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{80}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *ConformanceCaseEvidence) GetCaseId() string {
@@ -11209,7 +11314,7 @@ type ConformanceQuiescence struct {
 
 func (x *ConformanceQuiescence) Reset() {
 	*x = ConformanceQuiescence{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[81]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11221,7 +11326,7 @@ func (x *ConformanceQuiescence) String() string {
 func (*ConformanceQuiescence) ProtoMessage() {}
 
 func (x *ConformanceQuiescence) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[81]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11234,7 +11339,7 @@ func (x *ConformanceQuiescence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConformanceQuiescence.ProtoReflect.Descriptor instead.
 func (*ConformanceQuiescence) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{81}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *ConformanceQuiescence) GetExecutor() string {
@@ -11278,7 +11383,7 @@ type ConformanceRunRecord struct {
 
 func (x *ConformanceRunRecord) Reset() {
 	*x = ConformanceRunRecord{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[82]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11290,7 +11395,7 @@ func (x *ConformanceRunRecord) String() string {
 func (*ConformanceRunRecord) ProtoMessage() {}
 
 func (x *ConformanceRunRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[82]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11303,7 +11408,7 @@ func (x *ConformanceRunRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConformanceRunRecord.ProtoReflect.Descriptor instead.
 func (*ConformanceRunRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{82}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *ConformanceRunRecord) GetRunId() string {
@@ -11401,7 +11506,7 @@ type ConformanceVerdict struct {
 
 func (x *ConformanceVerdict) Reset() {
 	*x = ConformanceVerdict{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[83]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11413,7 +11518,7 @@ func (x *ConformanceVerdict) String() string {
 func (*ConformanceVerdict) ProtoMessage() {}
 
 func (x *ConformanceVerdict) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[83]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11426,7 +11531,7 @@ func (x *ConformanceVerdict) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConformanceVerdict.ProtoReflect.Descriptor instead.
 func (*ConformanceVerdict) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{83}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ConformanceVerdict) GetCaseId() string {
@@ -11462,7 +11567,7 @@ type ConformanceVerdictSet struct {
 
 func (x *ConformanceVerdictSet) Reset() {
 	*x = ConformanceVerdictSet{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[84]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11474,7 +11579,7 @@ func (x *ConformanceVerdictSet) String() string {
 func (*ConformanceVerdictSet) ProtoMessage() {}
 
 func (x *ConformanceVerdictSet) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[84]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11487,7 +11592,7 @@ func (x *ConformanceVerdictSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConformanceVerdictSet.ProtoReflect.Descriptor instead.
 func (*ConformanceVerdictSet) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{84}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *ConformanceVerdictSet) GetRunId() string {
@@ -11529,7 +11634,7 @@ type RouterOutput struct {
 
 func (x *RouterOutput) Reset() {
 	*x = RouterOutput{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[85]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11541,7 +11646,7 @@ func (x *RouterOutput) String() string {
 func (*RouterOutput) ProtoMessage() {}
 
 func (x *RouterOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[85]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11554,7 +11659,7 @@ func (x *RouterOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouterOutput.ProtoReflect.Descriptor instead.
 func (*RouterOutput) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{85}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *RouterOutput) GetComplexity() string {
@@ -11587,7 +11692,7 @@ type ResponderOutput struct {
 
 func (x *ResponderOutput) Reset() {
 	*x = ResponderOutput{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[86]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11599,7 +11704,7 @@ func (x *ResponderOutput) String() string {
 func (*ResponderOutput) ProtoMessage() {}
 
 func (x *ResponderOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[86]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11612,7 +11717,7 @@ func (x *ResponderOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponderOutput.ProtoReflect.Descriptor instead.
 func (*ResponderOutput) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{86}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *ResponderOutput) GetReply() string {
@@ -11631,7 +11736,7 @@ type CandidateOutput struct {
 
 func (x *CandidateOutput) Reset() {
 	*x = CandidateOutput{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[87]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11643,7 +11748,7 @@ func (x *CandidateOutput) String() string {
 func (*CandidateOutput) ProtoMessage() {}
 
 func (x *CandidateOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[87]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11656,7 +11761,7 @@ func (x *CandidateOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CandidateOutput.ProtoReflect.Descriptor instead.
 func (*CandidateOutput) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{87}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *CandidateOutput) GetCommand() string {
@@ -11676,7 +11781,7 @@ type CandidateVote struct {
 
 func (x *CandidateVote) Reset() {
 	*x = CandidateVote{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[88]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11688,7 +11793,7 @@ func (x *CandidateVote) String() string {
 func (*CandidateVote) ProtoMessage() {}
 
 func (x *CandidateVote) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[88]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11701,7 +11806,7 @@ func (x *CandidateVote) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CandidateVote.ProtoReflect.Descriptor instead.
 func (*CandidateVote) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{88}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *CandidateVote) GetVoterLabel() string {
@@ -11730,7 +11835,7 @@ type VoteOutput struct {
 
 func (x *VoteOutput) Reset() {
 	*x = VoteOutput{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[89]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11742,7 +11847,7 @@ func (x *VoteOutput) String() string {
 func (*VoteOutput) ProtoMessage() {}
 
 func (x *VoteOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[89]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11755,7 +11860,7 @@ func (x *VoteOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VoteOutput.ProtoReflect.Descriptor instead.
 func (*VoteOutput) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{89}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *VoteOutput) GetVotes() []*CandidateVote {
@@ -11798,7 +11903,7 @@ type RiskOutput struct {
 
 func (x *RiskOutput) Reset() {
 	*x = RiskOutput{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[90]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11810,7 +11915,7 @@ func (x *RiskOutput) String() string {
 func (*RiskOutput) ProtoMessage() {}
 
 func (x *RiskOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[90]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11823,7 +11928,7 @@ func (x *RiskOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RiskOutput.ProtoReflect.Descriptor instead.
 func (*RiskOutput) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{90}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *RiskOutput) GetSubjectKind() string {
@@ -11864,7 +11969,7 @@ type ReviewOutput struct {
 
 func (x *ReviewOutput) Reset() {
 	*x = ReviewOutput{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[91]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11876,7 +11981,7 @@ func (x *ReviewOutput) String() string {
 func (*ReviewOutput) ProtoMessage() {}
 
 func (x *ReviewOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[91]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11889,7 +11994,7 @@ func (x *ReviewOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewOutput.ProtoReflect.Descriptor instead.
 func (*ReviewOutput) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{91}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *ReviewOutput) GetVerdict() AgentReviewVerdict {
@@ -11915,7 +12020,7 @@ type MemoryOutput struct {
 
 func (x *MemoryOutput) Reset() {
 	*x = MemoryOutput{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[92]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11927,7 +12032,7 @@ func (x *MemoryOutput) String() string {
 func (*MemoryOutput) ProtoMessage() {}
 
 func (x *MemoryOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[92]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11940,7 +12045,7 @@ func (x *MemoryOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryOutput.ProtoReflect.Descriptor instead.
 func (*MemoryOutput) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{92}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *MemoryOutput) GetMemoryText() string {
@@ -11959,7 +12064,7 @@ type TitleOutput struct {
 
 func (x *TitleOutput) Reset() {
 	*x = TitleOutput{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[93]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11971,7 +12076,7 @@ func (x *TitleOutput) String() string {
 func (*TitleOutput) ProtoMessage() {}
 
 func (x *TitleOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[93]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11984,7 +12089,7 @@ func (x *TitleOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TitleOutput.ProtoReflect.Descriptor instead.
 func (*TitleOutput) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{93}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *TitleOutput) GetTitle() string {
@@ -12020,7 +12125,7 @@ type AgentStep struct {
 
 func (x *AgentStep) Reset() {
 	*x = AgentStep{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[94]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12032,7 +12137,7 @@ func (x *AgentStep) String() string {
 func (*AgentStep) ProtoMessage() {}
 
 func (x *AgentStep) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[94]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12045,7 +12150,7 @@ func (x *AgentStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentStep.ProtoReflect.Descriptor instead.
 func (*AgentStep) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{94}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *AgentStep) GetIndex() uint32 {
@@ -12228,398 +12333,6 @@ func (*AgentStep_Memory) isAgentStep_Output() {}
 
 func (*AgentStep_Title) isAgentStep_Output() {}
 
-type SeedTurn struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Role          string                 `protobuf:"bytes,1,opt,name=role,proto3" json:"role,omitempty"` // "user" or "assistant"
-	Text          string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SeedTurn) Reset() {
-	*x = SeedTurn{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[95]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SeedTurn) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SeedTurn) ProtoMessage() {}
-
-func (x *SeedTurn) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[95]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SeedTurn.ProtoReflect.Descriptor instead.
-func (*SeedTurn) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{95}
-}
-
-func (x *SeedTurn) GetRole() string {
-	if x != nil {
-		return x.Role
-	}
-	return ""
-}
-
-func (x *SeedTurn) GetText() string {
-	if x != nil {
-		return x.Text
-	}
-	return ""
-}
-
-type SeedHistoryEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	EventType     string                 `protobuf:"bytes,1,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"` // COMMAND_COMPLETED, COMMAND_FAILED or FILE_EDIT_COMPLETED; the SUT maps it to its own event types
-	Summary       string                 `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
-	Command       string                 `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
-	ExitCode      int32                  `protobuf:"varint,4,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SeedHistoryEvent) Reset() {
-	*x = SeedHistoryEvent{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[96]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SeedHistoryEvent) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SeedHistoryEvent) ProtoMessage() {}
-
-func (x *SeedHistoryEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[96]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SeedHistoryEvent.ProtoReflect.Descriptor instead.
-func (*SeedHistoryEvent) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{96}
-}
-
-func (x *SeedHistoryEvent) GetEventType() string {
-	if x != nil {
-		return x.EventType
-	}
-	return ""
-}
-
-func (x *SeedHistoryEvent) GetSummary() string {
-	if x != nil {
-		return x.Summary
-	}
-	return ""
-}
-
-func (x *SeedHistoryEvent) GetCommand() string {
-	if x != nil {
-		return x.Command
-	}
-	return ""
-}
-
-func (x *SeedHistoryEvent) GetExitCode() int32 {
-	if x != nil {
-		return x.ExitCode
-	}
-	return 0
-}
-
-// InvestigationSeed is the prior state of a case, applied by the SUT through
-// its own live services before the scored turn.
-type InvestigationSeed struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	CaseTitle       string                 `protobuf:"bytes,1,opt,name=case_title,json=caseTitle,proto3" json:"case_title,omitempty"`
-	CaseDescription string                 `protobuf:"bytes,2,opt,name=case_description,json=caseDescription,proto3" json:"case_description,omitempty"`
-	PriorTurns      []*SeedTurn            `protobuf:"bytes,3,rep,name=prior_turns,json=priorTurns,proto3" json:"prior_turns,omitempty"`
-	History         []*SeedHistoryEvent    `protobuf:"bytes,4,rep,name=history,proto3" json:"history,omitempty"`
-	CaseMemory      []string               `protobuf:"bytes,5,rep,name=case_memory,json=caseMemory,proto3" json:"case_memory,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *InvestigationSeed) Reset() {
-	*x = InvestigationSeed{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[97]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *InvestigationSeed) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*InvestigationSeed) ProtoMessage() {}
-
-func (x *InvestigationSeed) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[97]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use InvestigationSeed.ProtoReflect.Descriptor instead.
-func (*InvestigationSeed) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{97}
-}
-
-func (x *InvestigationSeed) GetCaseTitle() string {
-	if x != nil {
-		return x.CaseTitle
-	}
-	return ""
-}
-
-func (x *InvestigationSeed) GetCaseDescription() string {
-	if x != nil {
-		return x.CaseDescription
-	}
-	return ""
-}
-
-func (x *InvestigationSeed) GetPriorTurns() []*SeedTurn {
-	if x != nil {
-		return x.PriorTurns
-	}
-	return nil
-}
-
-func (x *InvestigationSeed) GetHistory() []*SeedHistoryEvent {
-	if x != nil {
-		return x.History
-	}
-	return nil
-}
-
-func (x *InvestigationSeed) GetCaseMemory() []string {
-	if x != nil {
-		return x.CaseMemory
-	}
-	return nil
-}
-
-type ScoredTurnRequest struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	CampaignId            string                 `protobuf:"bytes,1,opt,name=campaign_id,json=campaignId,proto3" json:"campaign_id,omitempty"`
-	RunId                 string                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	AttemptId             string                 `protobuf:"bytes,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
-	ModelRegistry         []*ModelVariant        `protobuf:"bytes,4,rep,name=model_registry,json=modelRegistry,proto3" json:"model_registry,omitempty"`
-	Lane                  EvaluationLane         `protobuf:"varint,5,opt,name=lane,proto3,enum=ztd.eval.v1.EvaluationLane" json:"lane,omitempty"`                                      // SYSTEM or MODEL_ROLE only
-	DesignatedRole        AgentRole              `protobuf:"varint,6,opt,name=designated_role,json=designatedRole,proto3,enum=ztd.eval.v1.AgentRole" json:"designated_role,omitempty"` // required when lane is MODEL_ROLE
-	Seed                  *InvestigationSeed     `protobuf:"bytes,7,opt,name=seed,proto3" json:"seed,omitempty"`
-	WorkspaceRoot         string                 `protobuf:"bytes,8,opt,name=workspace_root,json=workspaceRoot,proto3" json:"workspace_root,omitempty"`
-	DataOperatorSessionId string                 `protobuf:"bytes,9,opt,name=data_operator_session_id,json=dataOperatorSessionId,proto3" json:"data_operator_session_id,omitempty"`
-	UserMessage           string                 `protobuf:"bytes,10,opt,name=user_message,json=userMessage,proto3" json:"user_message,omitempty"`
-	ToolTurnLimit         uint32                 `protobuf:"varint,11,opt,name=tool_turn_limit,json=toolTurnLimit,proto3" json:"tool_turn_limit,omitempty"`
-	WallClockLimitMs      uint64                 `protobuf:"varint,12,opt,name=wall_clock_limit_ms,json=wallClockLimitMs,proto3" json:"wall_clock_limit_ms,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
-}
-
-func (x *ScoredTurnRequest) Reset() {
-	*x = ScoredTurnRequest{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[98]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ScoredTurnRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ScoredTurnRequest) ProtoMessage() {}
-
-func (x *ScoredTurnRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[98]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ScoredTurnRequest.ProtoReflect.Descriptor instead.
-func (*ScoredTurnRequest) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{98}
-}
-
-func (x *ScoredTurnRequest) GetCampaignId() string {
-	if x != nil {
-		return x.CampaignId
-	}
-	return ""
-}
-
-func (x *ScoredTurnRequest) GetRunId() string {
-	if x != nil {
-		return x.RunId
-	}
-	return ""
-}
-
-func (x *ScoredTurnRequest) GetAttemptId() string {
-	if x != nil {
-		return x.AttemptId
-	}
-	return ""
-}
-
-func (x *ScoredTurnRequest) GetModelRegistry() []*ModelVariant {
-	if x != nil {
-		return x.ModelRegistry
-	}
-	return nil
-}
-
-func (x *ScoredTurnRequest) GetLane() EvaluationLane {
-	if x != nil {
-		return x.Lane
-	}
-	return EvaluationLane_EVALUATION_LANE_UNSPECIFIED
-}
-
-func (x *ScoredTurnRequest) GetDesignatedRole() AgentRole {
-	if x != nil {
-		return x.DesignatedRole
-	}
-	return AgentRole_AGENT_ROLE_UNSPECIFIED
-}
-
-func (x *ScoredTurnRequest) GetSeed() *InvestigationSeed {
-	if x != nil {
-		return x.Seed
-	}
-	return nil
-}
-
-func (x *ScoredTurnRequest) GetWorkspaceRoot() string {
-	if x != nil {
-		return x.WorkspaceRoot
-	}
-	return ""
-}
-
-func (x *ScoredTurnRequest) GetDataOperatorSessionId() string {
-	if x != nil {
-		return x.DataOperatorSessionId
-	}
-	return ""
-}
-
-func (x *ScoredTurnRequest) GetUserMessage() string {
-	if x != nil {
-		return x.UserMessage
-	}
-	return ""
-}
-
-func (x *ScoredTurnRequest) GetToolTurnLimit() uint32 {
-	if x != nil {
-		return x.ToolTurnLimit
-	}
-	return 0
-}
-
-func (x *ScoredTurnRequest) GetWallClockLimitMs() uint64 {
-	if x != nil {
-		return x.WallClockLimitMs
-	}
-	return 0
-}
-
-// ScoredTurnEvent is one event on the turn's event stream. The client stops
-// reading at the first TERMINAL event and then fetches the AgentTrace once.
-type ScoredTurnEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AttemptId     string                 `protobuf:"bytes,1,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
-	Kind          ScoredTurnEventKind    `protobuf:"varint,2,opt,name=kind,proto3,enum=ztd.eval.v1.ScoredTurnEventKind" json:"kind,omitempty"`
-	Detail        string                 `protobuf:"bytes,3,opt,name=detail,proto3" json:"detail,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ScoredTurnEvent) Reset() {
-	*x = ScoredTurnEvent{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[99]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ScoredTurnEvent) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ScoredTurnEvent) ProtoMessage() {}
-
-func (x *ScoredTurnEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[99]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ScoredTurnEvent.ProtoReflect.Descriptor instead.
-func (*ScoredTurnEvent) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{99}
-}
-
-func (x *ScoredTurnEvent) GetAttemptId() string {
-	if x != nil {
-		return x.AttemptId
-	}
-	return ""
-}
-
-func (x *ScoredTurnEvent) GetKind() ScoredTurnEventKind {
-	if x != nil {
-		return x.Kind
-	}
-	return ScoredTurnEventKind_SCORED_TURN_EVENT_KIND_UNSPECIFIED
-}
-
-func (x *ScoredTurnEvent) GetDetail() string {
-	if x != nil {
-		return x.Detail
-	}
-	return ""
-}
-
 type AgentTrace struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	AttemptId             string                 `protobuf:"bytes,1,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
@@ -12634,7 +12347,7 @@ type AgentTrace struct {
 
 func (x *AgentTrace) Reset() {
 	*x = AgentTrace{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[100]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12646,7 +12359,7 @@ func (x *AgentTrace) String() string {
 func (*AgentTrace) ProtoMessage() {}
 
 func (x *AgentTrace) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[100]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12659,7 +12372,7 @@ func (x *AgentTrace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentTrace.ProtoReflect.Descriptor instead.
 func (*AgentTrace) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{100}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *AgentTrace) GetAttemptId() string {
@@ -12714,7 +12427,7 @@ type ContainmentBreach struct {
 
 func (x *ContainmentBreach) Reset() {
 	*x = ContainmentBreach{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[101]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12726,7 +12439,7 @@ func (x *ContainmentBreach) String() string {
 func (*ContainmentBreach) ProtoMessage() {}
 
 func (x *ContainmentBreach) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[101]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12739,7 +12452,7 @@ func (x *ContainmentBreach) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainmentBreach.ProtoReflect.Descriptor instead.
 func (*ContainmentBreach) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{101}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *ContainmentBreach) GetBreachClass() ContainmentBreachClass {
@@ -12770,7 +12483,7 @@ type ContainmentResult struct {
 
 func (x *ContainmentResult) Reset() {
 	*x = ContainmentResult{}
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[102]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12782,7 +12495,7 @@ func (x *ContainmentResult) String() string {
 func (*ContainmentResult) ProtoMessage() {}
 
 func (x *ContainmentResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_eval_v1_eval_proto_msgTypes[102]
+	mi := &file_ztd_eval_v1_eval_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12795,7 +12508,7 @@ func (x *ContainmentResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContainmentResult.ProtoReflect.Descriptor instead.
 func (*ContainmentResult) Descriptor() ([]byte, []int) {
-	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{102}
+	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *ContainmentResult) GetGoalId() string {
@@ -12851,7 +12564,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\rinteger_value\x18\x02 \x01(\x03H\x00R\fintegerValue\x12#\n" +
 	"\fstring_value\x18\x03 \x01(\tH\x00R\vstringValue\x12_\n" +
 	"\x12artifact_reference\x18\x04 \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceH\x00R\x11artifactReferenceB\a\n" +
-	"\x05value\"\xa7\x06\n" +
+	"\x05value\"\xeb\a\n" +
 	"\rEvaluationRun\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12B\n" +
@@ -12869,7 +12582,9 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12!\n" +
 	"\fattempt_refs\x18\v \x03(\tR\vattemptRefs\x12q\n" +
 	"\x1dfinal_verification_report_ref\x18\f \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x1afinalVerificationReportRef\x12L\n" +
-	"\x10campaign_binding\x18\r \x01(\v2!.ztd.eval.v1.ModelCampaignBindingR\x0fcampaignBinding\"\xb1\x04\n" +
+	"\x10campaign_binding\x18\r \x01(\v2!.ztd.eval.v1.ModelCampaignBindingR\x0fcampaignBinding\x12d\n" +
+	"\x1bprovider_observation_policy\x18\x0e \x01(\x0e2$.ztd.eval.v1.EvaluationWitnessPolicyR\x19providerObservationPolicy\x12\\\n" +
+	"\x17model_provenance_policy\x18\x0f \x01(\x0e2$.ztd.eval.v1.EvaluationWitnessPolicyR\x15modelProvenancePolicy\"\xb1\x04\n" +
 	"\x11EvaluationAttempt\x12\x1d\n" +
 	"\n" +
 	"attempt_id\x18\x01 \x01(\tR\tattemptId\x12\x15\n" +
@@ -12974,7 +12689,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x0ecatalog_digest\x18\x04 \x01(\tR\rcatalogDigest\x122\n" +
 	"\x15model_registry_digest\x18\x05 \x01(\tR\x13modelRegistryDigest\x12A\n" +
 	"\x1dinference_operator_session_id\x18\x06 \x01(\tR\x1ainferenceOperatorSessionId\x127\n" +
-	"\x18data_operator_session_id\x18\a \x01(\tR\x15dataOperatorSessionId\"\x90\x05\n" +
+	"\x18data_operator_session_id\x18\a \x01(\tR\x15dataOperatorSessionId\"\x99\x06\n" +
 	"\x16EvaluationCampaignSpec\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x1f\n" +
 	"\vcampaign_id\x18\x02 \x01(\tR\n" +
@@ -12991,7 +12706,13 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" \x01(\rR\x0frepetitionCount\x12)\n" +
 	"\x10platform_release\x18\v \x01(\tR\x0fplatformRelease\x12'\n" +
 	"\x0fsource_revision\x18\f \x01(\tR\x0esourceRevision\x12!\n" +
-	"\fhold_context\x18\r \x01(\bR\vholdContext\"\xfa\x01\n" +
+	"\fhold_context\x18\r \x01(\bR\vholdContext\x12J\n" +
+	"\rinvestigation\x18\x0e \x01(\v2$.ztd.eval.v1.EvaluationInvestigationR\rinvestigation\x12;\n" +
+	"\x1aformation_stack_set_digest\x18\x0f \x01(\tR\x17formationStackSetDigest\"\xac\x01\n" +
+	"\x17EvaluationInvestigation\x12<\n" +
+	"\x04mode\x18\x01 \x01(\x0e2(.ztd.eval.v1.EvaluationInvestigationModeR\x04mode\x12)\n" +
+	"\x10investigation_id\x18\x02 \x01(\tR\x0finvestigationId\x12(\n" +
+	"\x10data_operator_id\x18\x03 \x01(\tR\x0edataOperatorId\"\xfa\x01\n" +
 	"\x19EvaluationScenarioCatalog\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12F\n" +
 	"\vcatalog_ref\x18\x02 \x01(\v2%.ztd.compliance.v1.VersionedReferenceR\n" +
@@ -13014,7 +12735,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\n" +
 	"PromptHint\x12!\n" +
 	"\fhinted_tools\x18\x01 \x03(\tR\vhintedTools\x12=\n" +
-	"\targuments\x18\x02 \x03(\v2\x1f.ztd.eval.v1.PromptHintArgumentR\targuments\"\x9e\b\n" +
+	"\targuments\x18\x02 \x03(\v2\x1f.ztd.eval.v1.PromptHintArgumentR\targuments\"\xcb\b\n" +
 	"\x1cEvaluationScenarioDefinition\x12\x1f\n" +
 	"\vscenario_id\x18\x01 \x01(\tR\n" +
 	"scenarioId\x12)\n" +
@@ -13034,7 +12755,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x0eeligible_roles\x18\x0e \x03(\x0e2\x1e.ztd.eval.v1.ModelCampaignRoleR\religibleRoles\x12T\n" +
 	"\x11trajectory_policy\x18\x0f \x01(\x0e2'.ztd.eval.v1.EvaluationTrajectoryPolicyR\x10trajectoryPolicy\x128\n" +
 	"\vprompt_hint\x18\x10 \x01(\v2\x17.ztd.eval.v1.PromptHintR\n" +
-	"promptHint\"\x98\x03\n" +
+	"promptHint\x12+\n" +
+	"\x11tribunal_commands\x18\x11 \x01(\bR\x10tribunalCommands\"\x98\x03\n" +
 	"\fModelVariant\x12\x1d\n" +
 	"\n" +
 	"variant_id\x18\x01 \x01(\tR\tvariantId\x12%\n" +
@@ -13175,7 +12897,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\vcampaign_id\x18\v \x01(\tR\n" +
 	"campaignId\"l\n" +
 	"#ModelProvenanceObservationCompleted\x12E\n" +
-	"\x06window\x18\x01 \x01(\v2-.ztd.eval.v1.ModelProvenanceAttestationWindowR\x06window\"\xc3\x0e\n" +
+	"\x06window\x18\x01 \x01(\v2-.ztd.eval.v1.ModelProvenanceAttestationWindowR\x06window\"\xf1\r\n" +
 	"\x14ModelInferenceRecord\x12.\n" +
 	"\x13inference_record_id\x18\x01 \x01(\tR\x11inferenceRecordId\x12.\n" +
 	"\x13provider_attempt_id\x18\x02 \x01(\tR\x11providerAttemptId\x12#\n" +
@@ -13213,8 +12935,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\rfinish_reason\x18\x1c \x01(\tR\ffinishReason\x12)\n" +
 	"\x10privacy_attested\x18\x1d \x01(\bR\x0fprivacyAttested\x12`\n" +
 	"\x14governed_receipt_ref\x18\x1e \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x12governedReceiptRef\x12#\n" +
-	"\rresult_digest\x18\x1f \x01(\tR\fresultDigest\x12y\n" +
-	"!provider_boundary_observation_ref\x18  \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x1eproviderBoundaryObservationRef\x12%\n" +
+	"\rresult_digest\x18\x1f \x01(\tR\fresultDigest\x12%\n" +
 	"\x0etools_declared\x18! \x03(\tR\rtoolsDeclared\x126\n" +
 	"\x17tools_declared_reported\x18\" \x01(\bR\x15toolsDeclaredReported\x12Q\n" +
 	"\x0eclassification\x18# \x01(\x0e2).ztd.eval.v1.EvaluationCallClassificationR\x0eclassificationB\b\n" +
@@ -13223,7 +12944,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x05_seedB\x12\n" +
 	"\x10_thinking_tokensB\x0f\n" +
 	"\r_cache_tokensB\x0e\n" +
-	"\f_retry_count\"\xc8\x02\n" +
+	"\f_retry_countJ\x04\b \x10!R!provider_boundary_observation_ref\"\xc8\x02\n" +
 	"\x12ToolDecisionRecord\x12\x1f\n" +
 	"\vdecision_id\x18\x01 \x01(\tR\n" +
 	"decisionId\x12#\n" +
@@ -13804,46 +13525,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x06review\x18\x0f \x01(\v2\x19.ztd.eval.v1.ReviewOutputH\x00R\x06review\x123\n" +
 	"\x06memory\x18\x10 \x01(\v2\x19.ztd.eval.v1.MemoryOutputH\x00R\x06memory\x120\n" +
 	"\x05title\x18\x11 \x01(\v2\x18.ztd.eval.v1.TitleOutputH\x00R\x05titleB\b\n" +
-	"\x06output\"2\n" +
-	"\bSeedTurn\x12\x12\n" +
-	"\x04role\x18\x01 \x01(\tR\x04role\x12\x12\n" +
-	"\x04text\x18\x02 \x01(\tR\x04text\"\x82\x01\n" +
-	"\x10SeedHistoryEvent\x12\x1d\n" +
-	"\n" +
-	"event_type\x18\x01 \x01(\tR\teventType\x12\x18\n" +
-	"\asummary\x18\x02 \x01(\tR\asummary\x12\x18\n" +
-	"\acommand\x18\x03 \x01(\tR\acommand\x12\x1b\n" +
-	"\texit_code\x18\x04 \x01(\x05R\bexitCode\"\xef\x01\n" +
-	"\x11InvestigationSeed\x12\x1d\n" +
-	"\n" +
-	"case_title\x18\x01 \x01(\tR\tcaseTitle\x12)\n" +
-	"\x10case_description\x18\x02 \x01(\tR\x0fcaseDescription\x126\n" +
-	"\vprior_turns\x18\x03 \x03(\v2\x15.ztd.eval.v1.SeedTurnR\n" +
-	"priorTurns\x127\n" +
-	"\ahistory\x18\x04 \x03(\v2\x1d.ztd.eval.v1.SeedHistoryEventR\ahistory\x12\x1f\n" +
-	"\vcase_memory\x18\x05 \x03(\tR\n" +
-	"caseMemory\"\xac\x04\n" +
-	"\x11ScoredTurnRequest\x12\x1f\n" +
-	"\vcampaign_id\x18\x01 \x01(\tR\n" +
-	"campaignId\x12\x15\n" +
-	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x1d\n" +
-	"\n" +
-	"attempt_id\x18\x03 \x01(\tR\tattemptId\x12@\n" +
-	"\x0emodel_registry\x18\x04 \x03(\v2\x19.ztd.eval.v1.ModelVariantR\rmodelRegistry\x12/\n" +
-	"\x04lane\x18\x05 \x01(\x0e2\x1b.ztd.eval.v1.EvaluationLaneR\x04lane\x12?\n" +
-	"\x0fdesignated_role\x18\x06 \x01(\x0e2\x16.ztd.eval.v1.AgentRoleR\x0edesignatedRole\x122\n" +
-	"\x04seed\x18\a \x01(\v2\x1e.ztd.eval.v1.InvestigationSeedR\x04seed\x12%\n" +
-	"\x0eworkspace_root\x18\b \x01(\tR\rworkspaceRoot\x127\n" +
-	"\x18data_operator_session_id\x18\t \x01(\tR\x15dataOperatorSessionId\x12!\n" +
-	"\fuser_message\x18\n" +
-	" \x01(\tR\vuserMessage\x12&\n" +
-	"\x0ftool_turn_limit\x18\v \x01(\rR\rtoolTurnLimit\x12-\n" +
-	"\x13wall_clock_limit_ms\x18\f \x01(\x04R\x10wallClockLimitMs\"~\n" +
-	"\x0fScoredTurnEvent\x12\x1d\n" +
-	"\n" +
-	"attempt_id\x18\x01 \x01(\tR\tattemptId\x124\n" +
-	"\x04kind\x18\x02 \x01(\x0e2 .ztd.eval.v1.ScoredTurnEventKindR\x04kind\x12\x16\n" +
-	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xa2\x02\n" +
+	"\x06output\"\xa2\x02\n" +
 	"\n" +
 	"AgentTrace\x12\x1d\n" +
 	"\n" +
@@ -13871,7 +13553,11 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x1fMODEL_CAMPAIGN_ROLE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bMODEL_CAMPAIGN_ROLE_PRIMARY\x10\x01\x12!\n" +
 	"\x1dMODEL_CAMPAIGN_ROLE_ASSISTANT\x10\x02\x12\x1c\n" +
-	"\x18MODEL_CAMPAIGN_ROLE_LITE\x10\x03*\xb8\x04\n" +
+	"\x18MODEL_CAMPAIGN_ROLE_LITE\x10\x03*\xa3\x01\n" +
+	"\x1bEvaluationInvestigationMode\x12-\n" +
+	")EVALUATION_INVESTIGATION_MODE_UNSPECIFIED\x10\x00\x12'\n" +
+	"#EVALUATION_INVESTIGATION_MODE_FRESH\x10\x01\x12,\n" +
+	"(EVALUATION_INVESTIGATION_MODE_PERSISTENT\x10\x02*\xb8\x04\n" +
 	"\x1aEvaluationScenarioCategory\x12,\n" +
 	"(EVALUATION_SCENARIO_CATEGORY_UNSPECIFIED\x10\x00\x126\n" +
 	"2EVALUATION_SCENARIO_CATEGORY_INSTRUCTION_ADHERENCE\x10\x01\x12/\n" +
@@ -14178,11 +13864,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x1bAGENT_FINISH_REASON_STOPPED\x10\x01\x12'\n" +
 	"#AGENT_FINISH_REASON_TOOL_TURN_LIMIT\x10\x02\x12(\n" +
 	"$AGENT_FINISH_REASON_WALL_CLOCK_LIMIT\x10\x03\x12\x1d\n" +
-	"\x19AGENT_FINISH_REASON_ERROR\x10\x04*\x87\x01\n" +
-	"\x13ScoredTurnEventKind\x12&\n" +
-	"\"SCORED_TURN_EVENT_KIND_UNSPECIFIED\x10\x00\x12#\n" +
-	"\x1fSCORED_TURN_EVENT_KIND_PROGRESS\x10\x01\x12#\n" +
-	"\x1fSCORED_TURN_EVENT_KIND_TERMINAL\x10\x02*\xa8\x01\n" +
+	"\x19AGENT_FINISH_REASON_ERROR\x10\x04*\xa8\x01\n" +
 	"\x12ContainmentVerdict\x12#\n" +
 	"\x1fCONTAINMENT_VERDICT_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dCONTAINMENT_VERDICT_CONTAINED\x10\x01\x12 \n" +
@@ -14207,57 +13889,57 @@ func file_ztd_eval_v1_eval_proto_rawDescGZIP() []byte {
 }
 
 var file_ztd_eval_v1_eval_proto_enumTypes = make([]protoimpl.EnumInfo, 51)
-var file_ztd_eval_v1_eval_proto_msgTypes = make([]protoimpl.MessageInfo, 104)
+var file_ztd_eval_v1_eval_proto_msgTypes = make([]protoimpl.MessageInfo, 100)
 var file_ztd_eval_v1_eval_proto_goTypes = []any{
 	(EvaluationLane)(0),                           // 0: ztd.eval.v1.EvaluationLane
 	(ModelCampaignRole)(0),                        // 1: ztd.eval.v1.ModelCampaignRole
-	(EvaluationScenarioCategory)(0),               // 2: ztd.eval.v1.EvaluationScenarioCategory
-	(EvaluationAssignmentLifecycleStatus)(0),      // 3: ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	(EvaluationGradingMethod)(0),                  // 4: ztd.eval.v1.EvaluationGradingMethod
-	(ModelCapabilityKind)(0),                      // 5: ztd.eval.v1.ModelCapabilityKind
-	(EvaluationLoadState)(0),                      // 6: ztd.eval.v1.EvaluationLoadState
-	(EvaluationUsageAvailability)(0),              // 7: ztd.eval.v1.EvaluationUsageAvailability
-	(EvaluationCallClassification)(0),             // 8: ztd.eval.v1.EvaluationCallClassification
-	(EvaluationPolicyDecisionOutcome)(0),          // 9: ztd.eval.v1.EvaluationPolicyDecisionOutcome
-	(PublicGradeExplanationCode)(0),               // 10: ztd.eval.v1.PublicGradeExplanationCode
-	(EvaluationTrajectoryPolicy)(0),               // 11: ztd.eval.v1.EvaluationTrajectoryPolicy
-	(EvaluationTrajectoryOutcome)(0),              // 12: ztd.eval.v1.EvaluationTrajectoryOutcome
-	(EvaluationHintArgumentSource)(0),             // 13: ztd.eval.v1.EvaluationHintArgumentSource
-	(PublicActivityAvailability)(0),               // 14: ztd.eval.v1.PublicActivityAvailability
-	(PublicUnavailableReason)(0),                  // 15: ztd.eval.v1.PublicUnavailableReason
-	(PublicFinishState)(0),                        // 16: ztd.eval.v1.PublicFinishState
-	(PublicEvidenceSource)(0),                     // 17: ztd.eval.v1.PublicEvidenceSource
-	(PublicVerificationProvenance)(0),             // 18: ztd.eval.v1.PublicVerificationProvenance
-	(PublicReceiptStatus)(0),                      // 19: ztd.eval.v1.PublicReceiptStatus
-	(PublicToolScoreDimension)(0),                 // 20: ztd.eval.v1.PublicToolScoreDimension
-	(ProviderHardwareMetricAvailability)(0),       // 21: ztd.eval.v1.ProviderHardwareMetricAvailability
-	(EvaluationGovernancePosture)(0),              // 22: ztd.eval.v1.EvaluationGovernancePosture
-	(EvaluationRuntimeComponent)(0),               // 23: ztd.eval.v1.EvaluationRuntimeComponent
-	(EvaluationAttemptStatus)(0),                  // 24: ztd.eval.v1.EvaluationAttemptStatus
-	(EvaluationObservationSource)(0),              // 25: ztd.eval.v1.EvaluationObservationSource
-	(EvaluationEvidenceAuthority)(0),              // 26: ztd.eval.v1.EvaluationEvidenceAuthority
-	(EvaluationComparator)(0),                     // 27: ztd.eval.v1.EvaluationComparator
-	(EvaluationVerdictStatus)(0),                  // 28: ztd.eval.v1.EvaluationVerdictStatus
-	(EvaluationMetricDirection)(0),                // 29: ztd.eval.v1.EvaluationMetricDirection
-	(EvaluationMissingDataPolicy)(0),              // 30: ztd.eval.v1.EvaluationMissingDataPolicy
-	(EvaluationMetricUnit)(0),                     // 31: ztd.eval.v1.EvaluationMetricUnit
-	(ProviderBoundaryObservationPhase)(0),         // 32: ztd.eval.v1.ProviderBoundaryObservationPhase
-	(ProviderBoundaryObservationAttemptStatus)(0), // 33: ztd.eval.v1.ProviderBoundaryObservationAttemptStatus
-	(ModelWeightVerificationMode)(0),              // 34: ztd.eval.v1.ModelWeightVerificationMode
-	(ModelManifestVerificationStatus)(0),          // 35: ztd.eval.v1.ModelManifestVerificationStatus
-	(ModelProvenanceObservationPhase)(0),          // 36: ztd.eval.v1.ModelProvenanceObservationPhase
-	(ModelProvenanceObservationAttemptStatus)(0),  // 37: ztd.eval.v1.ModelProvenanceObservationAttemptStatus
-	(GradeBasis)(0),                               // 38: ztd.eval.v1.GradeBasis
-	(EvaluationWitnessPolicy)(0),                  // 39: ztd.eval.v1.EvaluationWitnessPolicy
-	(PublicReleaseBasis)(0),                       // 40: ztd.eval.v1.PublicReleaseBasis
-	(ConformanceObservationKind)(0),               // 41: ztd.eval.v1.ConformanceObservationKind
-	(ConformanceFailureClass)(0),                  // 42: ztd.eval.v1.ConformanceFailureClass
-	(ConformanceSuiteVerdict)(0),                  // 43: ztd.eval.v1.ConformanceSuiteVerdict
-	(AgentRole)(0),                                // 44: ztd.eval.v1.AgentRole
-	(AgentRiskLevel)(0),                           // 45: ztd.eval.v1.AgentRiskLevel
-	(AgentReviewVerdict)(0),                       // 46: ztd.eval.v1.AgentReviewVerdict
-	(AgentFinishReason)(0),                        // 47: ztd.eval.v1.AgentFinishReason
-	(ScoredTurnEventKind)(0),                      // 48: ztd.eval.v1.ScoredTurnEventKind
+	(EvaluationInvestigationMode)(0),              // 2: ztd.eval.v1.EvaluationInvestigationMode
+	(EvaluationScenarioCategory)(0),               // 3: ztd.eval.v1.EvaluationScenarioCategory
+	(EvaluationAssignmentLifecycleStatus)(0),      // 4: ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	(EvaluationGradingMethod)(0),                  // 5: ztd.eval.v1.EvaluationGradingMethod
+	(ModelCapabilityKind)(0),                      // 6: ztd.eval.v1.ModelCapabilityKind
+	(EvaluationLoadState)(0),                      // 7: ztd.eval.v1.EvaluationLoadState
+	(EvaluationUsageAvailability)(0),              // 8: ztd.eval.v1.EvaluationUsageAvailability
+	(EvaluationCallClassification)(0),             // 9: ztd.eval.v1.EvaluationCallClassification
+	(EvaluationPolicyDecisionOutcome)(0),          // 10: ztd.eval.v1.EvaluationPolicyDecisionOutcome
+	(PublicGradeExplanationCode)(0),               // 11: ztd.eval.v1.PublicGradeExplanationCode
+	(EvaluationTrajectoryPolicy)(0),               // 12: ztd.eval.v1.EvaluationTrajectoryPolicy
+	(EvaluationTrajectoryOutcome)(0),              // 13: ztd.eval.v1.EvaluationTrajectoryOutcome
+	(EvaluationHintArgumentSource)(0),             // 14: ztd.eval.v1.EvaluationHintArgumentSource
+	(PublicActivityAvailability)(0),               // 15: ztd.eval.v1.PublicActivityAvailability
+	(PublicUnavailableReason)(0),                  // 16: ztd.eval.v1.PublicUnavailableReason
+	(PublicFinishState)(0),                        // 17: ztd.eval.v1.PublicFinishState
+	(PublicEvidenceSource)(0),                     // 18: ztd.eval.v1.PublicEvidenceSource
+	(PublicVerificationProvenance)(0),             // 19: ztd.eval.v1.PublicVerificationProvenance
+	(PublicReceiptStatus)(0),                      // 20: ztd.eval.v1.PublicReceiptStatus
+	(PublicToolScoreDimension)(0),                 // 21: ztd.eval.v1.PublicToolScoreDimension
+	(ProviderHardwareMetricAvailability)(0),       // 22: ztd.eval.v1.ProviderHardwareMetricAvailability
+	(EvaluationGovernancePosture)(0),              // 23: ztd.eval.v1.EvaluationGovernancePosture
+	(EvaluationRuntimeComponent)(0),               // 24: ztd.eval.v1.EvaluationRuntimeComponent
+	(EvaluationAttemptStatus)(0),                  // 25: ztd.eval.v1.EvaluationAttemptStatus
+	(EvaluationObservationSource)(0),              // 26: ztd.eval.v1.EvaluationObservationSource
+	(EvaluationEvidenceAuthority)(0),              // 27: ztd.eval.v1.EvaluationEvidenceAuthority
+	(EvaluationComparator)(0),                     // 28: ztd.eval.v1.EvaluationComparator
+	(EvaluationVerdictStatus)(0),                  // 29: ztd.eval.v1.EvaluationVerdictStatus
+	(EvaluationMetricDirection)(0),                // 30: ztd.eval.v1.EvaluationMetricDirection
+	(EvaluationMissingDataPolicy)(0),              // 31: ztd.eval.v1.EvaluationMissingDataPolicy
+	(EvaluationMetricUnit)(0),                     // 32: ztd.eval.v1.EvaluationMetricUnit
+	(ProviderBoundaryObservationPhase)(0),         // 33: ztd.eval.v1.ProviderBoundaryObservationPhase
+	(ProviderBoundaryObservationAttemptStatus)(0), // 34: ztd.eval.v1.ProviderBoundaryObservationAttemptStatus
+	(ModelWeightVerificationMode)(0),              // 35: ztd.eval.v1.ModelWeightVerificationMode
+	(ModelManifestVerificationStatus)(0),          // 36: ztd.eval.v1.ModelManifestVerificationStatus
+	(ModelProvenanceObservationPhase)(0),          // 37: ztd.eval.v1.ModelProvenanceObservationPhase
+	(ModelProvenanceObservationAttemptStatus)(0),  // 38: ztd.eval.v1.ModelProvenanceObservationAttemptStatus
+	(GradeBasis)(0),                               // 39: ztd.eval.v1.GradeBasis
+	(EvaluationWitnessPolicy)(0),                  // 40: ztd.eval.v1.EvaluationWitnessPolicy
+	(PublicReleaseBasis)(0),                       // 41: ztd.eval.v1.PublicReleaseBasis
+	(ConformanceObservationKind)(0),               // 42: ztd.eval.v1.ConformanceObservationKind
+	(ConformanceFailureClass)(0),                  // 43: ztd.eval.v1.ConformanceFailureClass
+	(ConformanceSuiteVerdict)(0),                  // 44: ztd.eval.v1.ConformanceSuiteVerdict
+	(AgentRole)(0),                                // 45: ztd.eval.v1.AgentRole
+	(AgentRiskLevel)(0),                           // 46: ztd.eval.v1.AgentRiskLevel
+	(AgentReviewVerdict)(0),                       // 47: ztd.eval.v1.AgentReviewVerdict
+	(AgentFinishReason)(0),                        // 48: ztd.eval.v1.AgentFinishReason
 	(ContainmentVerdict)(0),                       // 49: ztd.eval.v1.ContainmentVerdict
 	(ContainmentBreachClass)(0),                   // 50: ztd.eval.v1.ContainmentBreachClass
 	(*EvaluationRuntimeBoundary)(nil),             // 51: ztd.eval.v1.EvaluationRuntimeBoundary
@@ -14273,393 +13955,385 @@ var file_ztd_eval_v1_eval_proto_goTypes = []any{
 	(*EvaluationReport)(nil),                      // 61: ztd.eval.v1.EvaluationReport
 	(*ModelCampaignBinding)(nil),                  // 62: ztd.eval.v1.ModelCampaignBinding
 	(*EvaluationCampaignSpec)(nil),                // 63: ztd.eval.v1.EvaluationCampaignSpec
-	(*EvaluationScenarioCatalog)(nil),             // 64: ztd.eval.v1.EvaluationScenarioCatalog
-	(*PublicScenarioCriterion)(nil),               // 65: ztd.eval.v1.PublicScenarioCriterion
-	(*PublicToolScoreDimensionRequirement)(nil),   // 66: ztd.eval.v1.PublicToolScoreDimensionRequirement
-	(*PromptHintArgument)(nil),                    // 67: ztd.eval.v1.PromptHintArgument
-	(*PromptHint)(nil),                            // 68: ztd.eval.v1.PromptHint
-	(*EvaluationScenarioDefinition)(nil),          // 69: ztd.eval.v1.EvaluationScenarioDefinition
-	(*ModelVariant)(nil),                          // 70: ztd.eval.v1.ModelVariant
-	(*ModelCapabilityObservation)(nil),            // 71: ztd.eval.v1.ModelCapabilityObservation
-	(*RoleAssignment)(nil),                        // 72: ztd.eval.v1.RoleAssignment
-	(*HeterogeneousStackDefinition)(nil),          // 73: ztd.eval.v1.HeterogeneousStackDefinition
-	(*EvaluationAssignment)(nil),                  // 74: ztd.eval.v1.EvaluationAssignment
-	(*HomogeneousAssignmentTarget)(nil),           // 75: ztd.eval.v1.HomogeneousAssignmentTarget
-	(*HeterogeneousAssignmentTarget)(nil),         // 76: ztd.eval.v1.HeterogeneousAssignmentTarget
-	(*ProviderBoundaryHardwareSample)(nil),        // 77: ztd.eval.v1.ProviderBoundaryHardwareSample
-	(*ProviderBoundaryObservationWindow)(nil),     // 78: ztd.eval.v1.ProviderBoundaryObservationWindow
-	(*ProviderBoundaryObservationCommand)(nil),    // 79: ztd.eval.v1.ProviderBoundaryObservationCommand
-	(*ProviderBoundaryObservationCompleted)(nil),  // 80: ztd.eval.v1.ProviderBoundaryObservationCompleted
-	(*ModelWeightAttestation)(nil),                // 81: ztd.eval.v1.ModelWeightAttestation
-	(*ModelProvenanceAttestationWindow)(nil),      // 82: ztd.eval.v1.ModelProvenanceAttestationWindow
-	(*ModelProvenanceObservationCommand)(nil),     // 83: ztd.eval.v1.ModelProvenanceObservationCommand
-	(*ModelProvenanceObservationCompleted)(nil),   // 84: ztd.eval.v1.ModelProvenanceObservationCompleted
-	(*ModelInferenceRecord)(nil),                  // 85: ztd.eval.v1.ModelInferenceRecord
-	(*ToolDecisionRecord)(nil),                    // 86: ztd.eval.v1.ToolDecisionRecord
-	(*ToolCallRecord)(nil),                        // 87: ztd.eval.v1.ToolCallRecord
-	(*EscalationRecord)(nil),                      // 88: ztd.eval.v1.EscalationRecord
-	(*HandoffRecord)(nil),                         // 89: ztd.eval.v1.HandoffRecord
-	(*RecoveryRecord)(nil),                        // 90: ztd.eval.v1.RecoveryRecord
-	(*GovernedActionBinding)(nil),                 // 91: ztd.eval.v1.GovernedActionBinding
-	(*DeterministicGrade)(nil),                    // 92: ztd.eval.v1.DeterministicGrade
-	(*SemanticGrade)(nil),                         // 93: ztd.eval.v1.SemanticGrade
-	(*DecomposedScoreRecord)(nil),                 // 94: ztd.eval.v1.DecomposedScoreRecord
-	(*GraderModelCallRecord)(nil),                 // 95: ztd.eval.v1.GraderModelCallRecord
-	(*PolicyDecisionRecord)(nil),                  // 96: ztd.eval.v1.PolicyDecisionRecord
-	(*EvaluationAssignmentResult)(nil),            // 97: ztd.eval.v1.EvaluationAssignmentResult
-	(*CampaignComplianceSourceArtifact)(nil),      // 98: ztd.eval.v1.CampaignComplianceSourceArtifact
-	(*CampaignComplianceSourceInventory)(nil),     // 99: ztd.eval.v1.CampaignComplianceSourceInventory
-	(*EvaluationVerificationReport)(nil),          // 100: ztd.eval.v1.EvaluationVerificationReport
-	(*EvaluationVerifiedPopulationEntry)(nil),     // 101: ztd.eval.v1.EvaluationVerifiedPopulationEntry
-	(*EvaluationVerifiedPopulation)(nil),          // 102: ztd.eval.v1.EvaluationVerifiedPopulation
-	(*PublicCampaignIdentity)(nil),                // 103: ztd.eval.v1.PublicCampaignIdentity
-	(*PublicModelVariantIdentity)(nil),            // 104: ztd.eval.v1.PublicModelVariantIdentity
-	(*PublicAssignmentLifecycleRecord)(nil),       // 105: ztd.eval.v1.PublicAssignmentLifecycleRecord
-	(*PublicModelCallSummary)(nil),                // 106: ztd.eval.v1.PublicModelCallSummary
-	(*PublicScenarioSummary)(nil),                 // 107: ztd.eval.v1.PublicScenarioSummary
-	(*PublicSemanticGradeSummary)(nil),            // 108: ztd.eval.v1.PublicSemanticGradeSummary
-	(*PublicModelActivityRecord)(nil),             // 109: ztd.eval.v1.PublicModelActivityRecord
-	(*PublicToolDecisionActivityRecord)(nil),      // 110: ztd.eval.v1.PublicToolDecisionActivityRecord
-	(*PublicToolCallActivityRecord)(nil),          // 111: ztd.eval.v1.PublicToolCallActivityRecord
-	(*PublicPolicyDecisionActivityRecord)(nil),    // 112: ztd.eval.v1.PublicPolicyDecisionActivityRecord
-	(*PublicGovernedActionActivityRecord)(nil),    // 113: ztd.eval.v1.PublicGovernedActionActivityRecord
-	(*PublicModelActivity)(nil),                   // 114: ztd.eval.v1.PublicModelActivity
-	(*PublicToolDecisionActivity)(nil),            // 115: ztd.eval.v1.PublicToolDecisionActivity
-	(*PublicToolCallActivity)(nil),                // 116: ztd.eval.v1.PublicToolCallActivity
-	(*PublicPolicyDecisionActivity)(nil),          // 117: ztd.eval.v1.PublicPolicyDecisionActivity
-	(*PublicGovernedActionActivity)(nil),          // 118: ztd.eval.v1.PublicGovernedActionActivity
-	(*PublicAssignmentActivitySummary)(nil),       // 119: ztd.eval.v1.PublicAssignmentActivitySummary
-	(*PublicEvidenceBinding)(nil),                 // 120: ztd.eval.v1.PublicEvidenceBinding
-	(*PublicVerificationMetadata)(nil),            // 121: ztd.eval.v1.PublicVerificationMetadata
-	(*PublicAssignmentResultProjection)(nil),      // 122: ztd.eval.v1.PublicAssignmentResultProjection
-	(*PublicLiveMetricValue)(nil),                 // 123: ztd.eval.v1.PublicLiveMetricValue
-	(*PublicLiveEvent)(nil),                       // 124: ztd.eval.v1.PublicLiveEvent
-	(*ConformanceAnchor)(nil),                     // 125: ztd.eval.v1.ConformanceAnchor
-	(*CanaryEntry)(nil),                           // 126: ztd.eval.v1.CanaryEntry
-	(*CanaryManifest)(nil),                        // 127: ztd.eval.v1.CanaryManifest
-	(*ConformanceObservation)(nil),                // 128: ztd.eval.v1.ConformanceObservation
-	(*ConformanceA2ACall)(nil),                    // 129: ztd.eval.v1.ConformanceA2ACall
-	(*ConformanceExchange)(nil),                   // 130: ztd.eval.v1.ConformanceExchange
-	(*ConformanceCaseEvidence)(nil),               // 131: ztd.eval.v1.ConformanceCaseEvidence
-	(*ConformanceQuiescence)(nil),                 // 132: ztd.eval.v1.ConformanceQuiescence
-	(*ConformanceRunRecord)(nil),                  // 133: ztd.eval.v1.ConformanceRunRecord
-	(*ConformanceVerdict)(nil),                    // 134: ztd.eval.v1.ConformanceVerdict
-	(*ConformanceVerdictSet)(nil),                 // 135: ztd.eval.v1.ConformanceVerdictSet
-	(*RouterOutput)(nil),                          // 136: ztd.eval.v1.RouterOutput
-	(*ResponderOutput)(nil),                       // 137: ztd.eval.v1.ResponderOutput
-	(*CandidateOutput)(nil),                       // 138: ztd.eval.v1.CandidateOutput
-	(*CandidateVote)(nil),                         // 139: ztd.eval.v1.CandidateVote
-	(*VoteOutput)(nil),                            // 140: ztd.eval.v1.VoteOutput
-	(*RiskOutput)(nil),                            // 141: ztd.eval.v1.RiskOutput
-	(*ReviewOutput)(nil),                          // 142: ztd.eval.v1.ReviewOutput
-	(*MemoryOutput)(nil),                          // 143: ztd.eval.v1.MemoryOutput
-	(*TitleOutput)(nil),                           // 144: ztd.eval.v1.TitleOutput
-	(*AgentStep)(nil),                             // 145: ztd.eval.v1.AgentStep
-	(*SeedTurn)(nil),                              // 146: ztd.eval.v1.SeedTurn
-	(*SeedHistoryEvent)(nil),                      // 147: ztd.eval.v1.SeedHistoryEvent
-	(*InvestigationSeed)(nil),                     // 148: ztd.eval.v1.InvestigationSeed
-	(*ScoredTurnRequest)(nil),                     // 149: ztd.eval.v1.ScoredTurnRequest
-	(*ScoredTurnEvent)(nil),                       // 150: ztd.eval.v1.ScoredTurnEvent
-	(*AgentTrace)(nil),                            // 151: ztd.eval.v1.AgentTrace
-	(*ContainmentBreach)(nil),                     // 152: ztd.eval.v1.ContainmentBreach
-	(*ContainmentResult)(nil),                     // 153: ztd.eval.v1.ContainmentResult
-	nil,                                           // 154: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry
-	(*v1.VersionedReference)(nil),                 // 155: ztd.compliance.v1.VersionedReference
-	(*v1.ComplianceEvidenceReference)(nil),        // 156: ztd.compliance.v1.ComplianceEvidenceReference
-	(*timestamppb.Timestamp)(nil),                 // 157: google.protobuf.Timestamp
-	(*v11.ActionReceipt)(nil),                     // 158: ztd.operator.v1.ActionReceipt
-	(*v11.GovernanceRejection)(nil),               // 159: ztd.operator.v1.GovernanceRejection
-	(*v11.IngressRefusal)(nil),                    // 160: ztd.operator.v1.IngressRefusal
+	(*EvaluationInvestigation)(nil),               // 64: ztd.eval.v1.EvaluationInvestigation
+	(*EvaluationScenarioCatalog)(nil),             // 65: ztd.eval.v1.EvaluationScenarioCatalog
+	(*PublicScenarioCriterion)(nil),               // 66: ztd.eval.v1.PublicScenarioCriterion
+	(*PublicToolScoreDimensionRequirement)(nil),   // 67: ztd.eval.v1.PublicToolScoreDimensionRequirement
+	(*PromptHintArgument)(nil),                    // 68: ztd.eval.v1.PromptHintArgument
+	(*PromptHint)(nil),                            // 69: ztd.eval.v1.PromptHint
+	(*EvaluationScenarioDefinition)(nil),          // 70: ztd.eval.v1.EvaluationScenarioDefinition
+	(*ModelVariant)(nil),                          // 71: ztd.eval.v1.ModelVariant
+	(*ModelCapabilityObservation)(nil),            // 72: ztd.eval.v1.ModelCapabilityObservation
+	(*RoleAssignment)(nil),                        // 73: ztd.eval.v1.RoleAssignment
+	(*HeterogeneousStackDefinition)(nil),          // 74: ztd.eval.v1.HeterogeneousStackDefinition
+	(*EvaluationAssignment)(nil),                  // 75: ztd.eval.v1.EvaluationAssignment
+	(*HomogeneousAssignmentTarget)(nil),           // 76: ztd.eval.v1.HomogeneousAssignmentTarget
+	(*HeterogeneousAssignmentTarget)(nil),         // 77: ztd.eval.v1.HeterogeneousAssignmentTarget
+	(*ProviderBoundaryHardwareSample)(nil),        // 78: ztd.eval.v1.ProviderBoundaryHardwareSample
+	(*ProviderBoundaryObservationWindow)(nil),     // 79: ztd.eval.v1.ProviderBoundaryObservationWindow
+	(*ProviderBoundaryObservationCommand)(nil),    // 80: ztd.eval.v1.ProviderBoundaryObservationCommand
+	(*ProviderBoundaryObservationCompleted)(nil),  // 81: ztd.eval.v1.ProviderBoundaryObservationCompleted
+	(*ModelWeightAttestation)(nil),                // 82: ztd.eval.v1.ModelWeightAttestation
+	(*ModelProvenanceAttestationWindow)(nil),      // 83: ztd.eval.v1.ModelProvenanceAttestationWindow
+	(*ModelProvenanceObservationCommand)(nil),     // 84: ztd.eval.v1.ModelProvenanceObservationCommand
+	(*ModelProvenanceObservationCompleted)(nil),   // 85: ztd.eval.v1.ModelProvenanceObservationCompleted
+	(*ModelInferenceRecord)(nil),                  // 86: ztd.eval.v1.ModelInferenceRecord
+	(*ToolDecisionRecord)(nil),                    // 87: ztd.eval.v1.ToolDecisionRecord
+	(*ToolCallRecord)(nil),                        // 88: ztd.eval.v1.ToolCallRecord
+	(*EscalationRecord)(nil),                      // 89: ztd.eval.v1.EscalationRecord
+	(*HandoffRecord)(nil),                         // 90: ztd.eval.v1.HandoffRecord
+	(*RecoveryRecord)(nil),                        // 91: ztd.eval.v1.RecoveryRecord
+	(*GovernedActionBinding)(nil),                 // 92: ztd.eval.v1.GovernedActionBinding
+	(*DeterministicGrade)(nil),                    // 93: ztd.eval.v1.DeterministicGrade
+	(*SemanticGrade)(nil),                         // 94: ztd.eval.v1.SemanticGrade
+	(*DecomposedScoreRecord)(nil),                 // 95: ztd.eval.v1.DecomposedScoreRecord
+	(*GraderModelCallRecord)(nil),                 // 96: ztd.eval.v1.GraderModelCallRecord
+	(*PolicyDecisionRecord)(nil),                  // 97: ztd.eval.v1.PolicyDecisionRecord
+	(*EvaluationAssignmentResult)(nil),            // 98: ztd.eval.v1.EvaluationAssignmentResult
+	(*CampaignComplianceSourceArtifact)(nil),      // 99: ztd.eval.v1.CampaignComplianceSourceArtifact
+	(*CampaignComplianceSourceInventory)(nil),     // 100: ztd.eval.v1.CampaignComplianceSourceInventory
+	(*EvaluationVerificationReport)(nil),          // 101: ztd.eval.v1.EvaluationVerificationReport
+	(*EvaluationVerifiedPopulationEntry)(nil),     // 102: ztd.eval.v1.EvaluationVerifiedPopulationEntry
+	(*EvaluationVerifiedPopulation)(nil),          // 103: ztd.eval.v1.EvaluationVerifiedPopulation
+	(*PublicCampaignIdentity)(nil),                // 104: ztd.eval.v1.PublicCampaignIdentity
+	(*PublicModelVariantIdentity)(nil),            // 105: ztd.eval.v1.PublicModelVariantIdentity
+	(*PublicAssignmentLifecycleRecord)(nil),       // 106: ztd.eval.v1.PublicAssignmentLifecycleRecord
+	(*PublicModelCallSummary)(nil),                // 107: ztd.eval.v1.PublicModelCallSummary
+	(*PublicScenarioSummary)(nil),                 // 108: ztd.eval.v1.PublicScenarioSummary
+	(*PublicSemanticGradeSummary)(nil),            // 109: ztd.eval.v1.PublicSemanticGradeSummary
+	(*PublicModelActivityRecord)(nil),             // 110: ztd.eval.v1.PublicModelActivityRecord
+	(*PublicToolDecisionActivityRecord)(nil),      // 111: ztd.eval.v1.PublicToolDecisionActivityRecord
+	(*PublicToolCallActivityRecord)(nil),          // 112: ztd.eval.v1.PublicToolCallActivityRecord
+	(*PublicPolicyDecisionActivityRecord)(nil),    // 113: ztd.eval.v1.PublicPolicyDecisionActivityRecord
+	(*PublicGovernedActionActivityRecord)(nil),    // 114: ztd.eval.v1.PublicGovernedActionActivityRecord
+	(*PublicModelActivity)(nil),                   // 115: ztd.eval.v1.PublicModelActivity
+	(*PublicToolDecisionActivity)(nil),            // 116: ztd.eval.v1.PublicToolDecisionActivity
+	(*PublicToolCallActivity)(nil),                // 117: ztd.eval.v1.PublicToolCallActivity
+	(*PublicPolicyDecisionActivity)(nil),          // 118: ztd.eval.v1.PublicPolicyDecisionActivity
+	(*PublicGovernedActionActivity)(nil),          // 119: ztd.eval.v1.PublicGovernedActionActivity
+	(*PublicAssignmentActivitySummary)(nil),       // 120: ztd.eval.v1.PublicAssignmentActivitySummary
+	(*PublicEvidenceBinding)(nil),                 // 121: ztd.eval.v1.PublicEvidenceBinding
+	(*PublicVerificationMetadata)(nil),            // 122: ztd.eval.v1.PublicVerificationMetadata
+	(*PublicAssignmentResultProjection)(nil),      // 123: ztd.eval.v1.PublicAssignmentResultProjection
+	(*PublicLiveMetricValue)(nil),                 // 124: ztd.eval.v1.PublicLiveMetricValue
+	(*PublicLiveEvent)(nil),                       // 125: ztd.eval.v1.PublicLiveEvent
+	(*ConformanceAnchor)(nil),                     // 126: ztd.eval.v1.ConformanceAnchor
+	(*CanaryEntry)(nil),                           // 127: ztd.eval.v1.CanaryEntry
+	(*CanaryManifest)(nil),                        // 128: ztd.eval.v1.CanaryManifest
+	(*ConformanceObservation)(nil),                // 129: ztd.eval.v1.ConformanceObservation
+	(*ConformanceA2ACall)(nil),                    // 130: ztd.eval.v1.ConformanceA2ACall
+	(*ConformanceExchange)(nil),                   // 131: ztd.eval.v1.ConformanceExchange
+	(*ConformanceCaseEvidence)(nil),               // 132: ztd.eval.v1.ConformanceCaseEvidence
+	(*ConformanceQuiescence)(nil),                 // 133: ztd.eval.v1.ConformanceQuiescence
+	(*ConformanceRunRecord)(nil),                  // 134: ztd.eval.v1.ConformanceRunRecord
+	(*ConformanceVerdict)(nil),                    // 135: ztd.eval.v1.ConformanceVerdict
+	(*ConformanceVerdictSet)(nil),                 // 136: ztd.eval.v1.ConformanceVerdictSet
+	(*RouterOutput)(nil),                          // 137: ztd.eval.v1.RouterOutput
+	(*ResponderOutput)(nil),                       // 138: ztd.eval.v1.ResponderOutput
+	(*CandidateOutput)(nil),                       // 139: ztd.eval.v1.CandidateOutput
+	(*CandidateVote)(nil),                         // 140: ztd.eval.v1.CandidateVote
+	(*VoteOutput)(nil),                            // 141: ztd.eval.v1.VoteOutput
+	(*RiskOutput)(nil),                            // 142: ztd.eval.v1.RiskOutput
+	(*ReviewOutput)(nil),                          // 143: ztd.eval.v1.ReviewOutput
+	(*MemoryOutput)(nil),                          // 144: ztd.eval.v1.MemoryOutput
+	(*TitleOutput)(nil),                           // 145: ztd.eval.v1.TitleOutput
+	(*AgentStep)(nil),                             // 146: ztd.eval.v1.AgentStep
+	(*AgentTrace)(nil),                            // 147: ztd.eval.v1.AgentTrace
+	(*ContainmentBreach)(nil),                     // 148: ztd.eval.v1.ContainmentBreach
+	(*ContainmentResult)(nil),                     // 149: ztd.eval.v1.ContainmentResult
+	nil,                                           // 150: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry
+	(*v1.VersionedReference)(nil),                 // 151: ztd.compliance.v1.VersionedReference
+	(*v1.ComplianceEvidenceReference)(nil),        // 152: ztd.compliance.v1.ComplianceEvidenceReference
+	(*timestamppb.Timestamp)(nil),                 // 153: google.protobuf.Timestamp
+	(*v11.ActionReceipt)(nil),                     // 154: ztd.operator.v1.ActionReceipt
+	(*v11.GovernanceRejection)(nil),               // 155: ztd.operator.v1.GovernanceRejection
+	(*v11.IngressRefusal)(nil),                    // 156: ztd.operator.v1.IngressRefusal
 }
 var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
-	23,  // 0: ztd.eval.v1.EvaluationRuntimeBoundary.component:type_name -> ztd.eval.v1.EvaluationRuntimeComponent
-	155, // 1: ztd.eval.v1.EvaluationDeploymentIdentity.topology_ref:type_name -> ztd.compliance.v1.VersionedReference
+	24,  // 0: ztd.eval.v1.EvaluationRuntimeBoundary.component:type_name -> ztd.eval.v1.EvaluationRuntimeComponent
+	151, // 1: ztd.eval.v1.EvaluationDeploymentIdentity.topology_ref:type_name -> ztd.compliance.v1.VersionedReference
 	51,  // 2: ztd.eval.v1.EvaluationDeploymentIdentity.runtime_boundaries:type_name -> ztd.eval.v1.EvaluationRuntimeBoundary
-	156, // 3: ztd.eval.v1.EvaluationValue.artifact_reference:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	155, // 4: ztd.eval.v1.EvaluationRun.suite_ref:type_name -> ztd.compliance.v1.VersionedReference
+	152, // 3: ztd.eval.v1.EvaluationValue.artifact_reference:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	151, // 4: ztd.eval.v1.EvaluationRun.suite_ref:type_name -> ztd.compliance.v1.VersionedReference
 	52,  // 5: ztd.eval.v1.EvaluationRun.deployment:type_name -> ztd.eval.v1.EvaluationDeploymentIdentity
-	22,  // 6: ztd.eval.v1.EvaluationRun.active_posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
+	23,  // 6: ztd.eval.v1.EvaluationRun.active_posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
 	0,   // 7: ztd.eval.v1.EvaluationRun.lane:type_name -> ztd.eval.v1.EvaluationLane
-	157, // 8: ztd.eval.v1.EvaluationRun.started_at:type_name -> google.protobuf.Timestamp
-	157, // 9: ztd.eval.v1.EvaluationRun.completed_at:type_name -> google.protobuf.Timestamp
-	156, // 10: ztd.eval.v1.EvaluationRun.final_verification_report_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	153, // 8: ztd.eval.v1.EvaluationRun.started_at:type_name -> google.protobuf.Timestamp
+	153, // 9: ztd.eval.v1.EvaluationRun.completed_at:type_name -> google.protobuf.Timestamp
+	152, // 10: ztd.eval.v1.EvaluationRun.final_verification_report_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
 	62,  // 11: ztd.eval.v1.EvaluationRun.campaign_binding:type_name -> ztd.eval.v1.ModelCampaignBinding
-	155, // 12: ztd.eval.v1.EvaluationAttempt.scenario_ref:type_name -> ztd.compliance.v1.VersionedReference
-	24,  // 13: ztd.eval.v1.EvaluationAttempt.status:type_name -> ztd.eval.v1.EvaluationAttemptStatus
-	157, // 14: ztd.eval.v1.EvaluationAttempt.started_at:type_name -> google.protobuf.Timestamp
-	157, // 15: ztd.eval.v1.EvaluationAttempt.completed_at:type_name -> google.protobuf.Timestamp
-	155, // 16: ztd.eval.v1.EvaluationObservation.observation_type:type_name -> ztd.compliance.v1.VersionedReference
-	25,  // 17: ztd.eval.v1.EvaluationObservation.source:type_name -> ztd.eval.v1.EvaluationObservationSource
-	157, // 18: ztd.eval.v1.EvaluationObservation.observed_at:type_name -> google.protobuf.Timestamp
-	26,  // 19: ztd.eval.v1.EvaluationObservation.authority:type_name -> ztd.eval.v1.EvaluationEvidenceAuthority
-	53,  // 20: ztd.eval.v1.EvaluationObservation.value:type_name -> ztd.eval.v1.EvaluationValue
-	156, // 21: ztd.eval.v1.EvaluationObservation.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	157, // 22: ztd.eval.v1.EvaluationTargetState.observed_at:type_name -> google.protobuf.Timestamp
-	27,  // 23: ztd.eval.v1.EvaluationAssertion.comparator:type_name -> ztd.eval.v1.EvaluationComparator
-	53,  // 24: ztd.eval.v1.EvaluationAssertion.expected:type_name -> ztd.eval.v1.EvaluationValue
-	155, // 25: ztd.eval.v1.EvaluationAssertion.required_observation_types:type_name -> ztd.compliance.v1.VersionedReference
-	26,  // 26: ztd.eval.v1.EvaluationAssertion.required_authorities:type_name -> ztd.eval.v1.EvaluationEvidenceAuthority
-	155, // 27: ztd.eval.v1.EvaluationVerdict.assertion_ref:type_name -> ztd.compliance.v1.VersionedReference
-	28,  // 28: ztd.eval.v1.EvaluationVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	156, // 29: ztd.eval.v1.EvaluationVerdict.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	155, // 30: ztd.eval.v1.EvaluationVerdict.grader_ref:type_name -> ztd.compliance.v1.VersionedReference
-	157, // 31: ztd.eval.v1.EvaluationVerdict.evaluated_at:type_name -> google.protobuf.Timestamp
-	31,  // 32: ztd.eval.v1.EvaluationMetric.unit:type_name -> ztd.eval.v1.EvaluationMetricUnit
-	29,  // 33: ztd.eval.v1.EvaluationMetric.direction:type_name -> ztd.eval.v1.EvaluationMetricDirection
-	155, // 34: ztd.eval.v1.EvaluationMetric.eligible_population_ref:type_name -> ztd.compliance.v1.VersionedReference
-	30,  // 35: ztd.eval.v1.EvaluationMetric.missing_data_policy:type_name -> ztd.eval.v1.EvaluationMissingDataPolicy
-	156, // 36: ztd.eval.v1.EvaluationMetric.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	54,  // 37: ztd.eval.v1.EvaluationReport.run:type_name -> ztd.eval.v1.EvaluationRun
-	55,  // 38: ztd.eval.v1.EvaluationReport.attempts:type_name -> ztd.eval.v1.EvaluationAttempt
-	56,  // 39: ztd.eval.v1.EvaluationReport.observations:type_name -> ztd.eval.v1.EvaluationObservation
-	58,  // 40: ztd.eval.v1.EvaluationReport.assertions:type_name -> ztd.eval.v1.EvaluationAssertion
-	59,  // 41: ztd.eval.v1.EvaluationReport.verdicts:type_name -> ztd.eval.v1.EvaluationVerdict
-	60,  // 42: ztd.eval.v1.EvaluationReport.metrics:type_name -> ztd.eval.v1.EvaluationMetric
-	156, // 43: ztd.eval.v1.EvaluationReport.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	28,  // 44: ztd.eval.v1.EvaluationReport.summary_status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	97,  // 45: ztd.eval.v1.EvaluationReport.assignment_results:type_name -> ztd.eval.v1.EvaluationAssignmentResult
-	100, // 46: ztd.eval.v1.EvaluationReport.campaign_verification_report:type_name -> ztd.eval.v1.EvaluationVerificationReport
-	155, // 47: ztd.eval.v1.ModelCampaignBinding.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
-	155, // 48: ztd.eval.v1.EvaluationCampaignSpec.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
-	70,  // 49: ztd.eval.v1.EvaluationCampaignSpec.model_registry:type_name -> ztd.eval.v1.ModelVariant
-	22,  // 50: ztd.eval.v1.EvaluationCampaignSpec.governance_posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
-	155, // 51: ztd.eval.v1.EvaluationScenarioCatalog.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
-	69,  // 52: ztd.eval.v1.EvaluationScenarioCatalog.scenarios:type_name -> ztd.eval.v1.EvaluationScenarioDefinition
-	4,   // 53: ztd.eval.v1.PublicScenarioCriterion.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
-	20,  // 54: ztd.eval.v1.PublicToolScoreDimensionRequirement.dimension:type_name -> ztd.eval.v1.PublicToolScoreDimension
-	13,  // 55: ztd.eval.v1.PromptHintArgument.source:type_name -> ztd.eval.v1.EvaluationHintArgumentSource
-	67,  // 56: ztd.eval.v1.PromptHint.arguments:type_name -> ztd.eval.v1.PromptHintArgument
-	2,   // 57: ztd.eval.v1.EvaluationScenarioDefinition.category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
-	4,   // 58: ztd.eval.v1.EvaluationScenarioDefinition.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
-	156, // 59: ztd.eval.v1.EvaluationScenarioDefinition.input_fixture_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	156, // 60: ztd.eval.v1.EvaluationScenarioDefinition.gold_criteria_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	65,  // 61: ztd.eval.v1.EvaluationScenarioDefinition.public_criteria:type_name -> ztd.eval.v1.PublicScenarioCriterion
-	66,  // 62: ztd.eval.v1.EvaluationScenarioDefinition.public_tool_score_dimensions:type_name -> ztd.eval.v1.PublicToolScoreDimensionRequirement
-	1,   // 63: ztd.eval.v1.EvaluationScenarioDefinition.eligible_roles:type_name -> ztd.eval.v1.ModelCampaignRole
-	11,  // 64: ztd.eval.v1.EvaluationScenarioDefinition.trajectory_policy:type_name -> ztd.eval.v1.EvaluationTrajectoryPolicy
-	68,  // 65: ztd.eval.v1.EvaluationScenarioDefinition.prompt_hint:type_name -> ztd.eval.v1.PromptHint
-	71,  // 66: ztd.eval.v1.ModelVariant.capability_observations:type_name -> ztd.eval.v1.ModelCapabilityObservation
-	5,   // 67: ztd.eval.v1.ModelCapabilityObservation.capability:type_name -> ztd.eval.v1.ModelCapabilityKind
-	28,  // 68: ztd.eval.v1.ModelCapabilityObservation.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	1,   // 69: ztd.eval.v1.RoleAssignment.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	72,  // 70: ztd.eval.v1.HeterogeneousStackDefinition.primary_slot:type_name -> ztd.eval.v1.RoleAssignment
-	72,  // 71: ztd.eval.v1.HeterogeneousStackDefinition.assistant_slot:type_name -> ztd.eval.v1.RoleAssignment
-	72,  // 72: ztd.eval.v1.HeterogeneousStackDefinition.lite_slot:type_name -> ztd.eval.v1.RoleAssignment
-	155, // 73: ztd.eval.v1.EvaluationAssignment.scenario_ref:type_name -> ztd.compliance.v1.VersionedReference
-	0,   // 74: ztd.eval.v1.EvaluationAssignment.lane:type_name -> ztd.eval.v1.EvaluationLane
-	3,   // 75: ztd.eval.v1.EvaluationAssignment.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	157, // 76: ztd.eval.v1.EvaluationAssignment.queued_at:type_name -> google.protobuf.Timestamp
-	157, // 77: ztd.eval.v1.EvaluationAssignment.started_at:type_name -> google.protobuf.Timestamp
-	157, // 78: ztd.eval.v1.EvaluationAssignment.completed_at:type_name -> google.protobuf.Timestamp
-	75,  // 79: ztd.eval.v1.EvaluationAssignment.homogeneous:type_name -> ztd.eval.v1.HomogeneousAssignmentTarget
-	76,  // 80: ztd.eval.v1.EvaluationAssignment.heterogeneous:type_name -> ztd.eval.v1.HeterogeneousAssignmentTarget
-	70,  // 81: ztd.eval.v1.HomogeneousAssignmentTarget.candidate_variant:type_name -> ztd.eval.v1.ModelVariant
-	1,   // 82: ztd.eval.v1.HomogeneousAssignmentTarget.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	73,  // 83: ztd.eval.v1.HeterogeneousAssignmentTarget.stack:type_name -> ztd.eval.v1.HeterogeneousStackDefinition
-	21,  // 84: ztd.eval.v1.ProviderBoundaryHardwareSample.vram_bytes_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	21,  // 85: ztd.eval.v1.ProviderBoundaryHardwareSample.gpu_utilization_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	21,  // 86: ztd.eval.v1.ProviderBoundaryHardwareSample.temperature_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	21,  // 87: ztd.eval.v1.ProviderBoundaryHardwareSample.power_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	21,  // 88: ztd.eval.v1.ProviderBoundaryHardwareSample.clock_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	21,  // 89: ztd.eval.v1.ProviderBoundaryHardwareSample.host_ram_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
-	77,  // 90: ztd.eval.v1.ProviderBoundaryObservationWindow.samples:type_name -> ztd.eval.v1.ProviderBoundaryHardwareSample
-	32,  // 91: ztd.eval.v1.ProviderBoundaryObservationCommand.phase:type_name -> ztd.eval.v1.ProviderBoundaryObservationPhase
-	33,  // 92: ztd.eval.v1.ProviderBoundaryObservationCommand.attempt_status:type_name -> ztd.eval.v1.ProviderBoundaryObservationAttemptStatus
-	78,  // 93: ztd.eval.v1.ProviderBoundaryObservationCompleted.window:type_name -> ztd.eval.v1.ProviderBoundaryObservationWindow
-	34,  // 94: ztd.eval.v1.ModelWeightAttestation.verification_mode:type_name -> ztd.eval.v1.ModelWeightVerificationMode
-	35,  // 95: ztd.eval.v1.ModelProvenanceAttestationWindow.manifest_verification_status:type_name -> ztd.eval.v1.ModelManifestVerificationStatus
-	81,  // 96: ztd.eval.v1.ModelProvenanceAttestationWindow.weight_attestations:type_name -> ztd.eval.v1.ModelWeightAttestation
-	36,  // 97: ztd.eval.v1.ModelProvenanceObservationCommand.phase:type_name -> ztd.eval.v1.ModelProvenanceObservationPhase
-	37,  // 98: ztd.eval.v1.ModelProvenanceObservationCommand.attempt_status:type_name -> ztd.eval.v1.ModelProvenanceObservationAttemptStatus
-	82,  // 99: ztd.eval.v1.ModelProvenanceObservationCompleted.window:type_name -> ztd.eval.v1.ModelProvenanceAttestationWindow
-	1,   // 100: ztd.eval.v1.ModelInferenceRecord.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	70,  // 101: ztd.eval.v1.ModelInferenceRecord.model_variant:type_name -> ztd.eval.v1.ModelVariant
-	7,   // 102: ztd.eval.v1.ModelInferenceRecord.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
-	6,   // 103: ztd.eval.v1.ModelInferenceRecord.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
-	156, // 104: ztd.eval.v1.ModelInferenceRecord.governed_receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	156, // 105: ztd.eval.v1.ModelInferenceRecord.provider_boundary_observation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	8,   // 106: ztd.eval.v1.ModelInferenceRecord.classification:type_name -> ztd.eval.v1.EvaluationCallClassification
-	28,  // 107: ztd.eval.v1.ToolDecisionRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	28,  // 108: ztd.eval.v1.ToolCallRecord.schema_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	28,  // 109: ztd.eval.v1.ToolCallRecord.semantic_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	156, // 110: ztd.eval.v1.ToolCallRecord.governed_binding_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	1,   // 111: ztd.eval.v1.EscalationRecord.from_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	1,   // 112: ztd.eval.v1.EscalationRecord.to_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	1,   // 113: ztd.eval.v1.HandoffRecord.from_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	1,   // 114: ztd.eval.v1.HandoffRecord.to_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	28,  // 115: ztd.eval.v1.RecoveryRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	156, // 116: ztd.eval.v1.GovernedActionBinding.receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	156, // 117: ztd.eval.v1.GovernedActionBinding.persistence_attestation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	156, // 118: ztd.eval.v1.GovernedActionBinding.effect_observation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	28,  // 119: ztd.eval.v1.DeterministicGrade.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	38,  // 120: ztd.eval.v1.DeterministicGrade.basis:type_name -> ztd.eval.v1.GradeBasis
-	28,  // 121: ztd.eval.v1.SemanticGrade.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	156, // 122: ztd.eval.v1.SemanticGrade.grader_call_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	31,  // 123: ztd.eval.v1.DecomposedScoreRecord.unit:type_name -> ztd.eval.v1.EvaluationMetricUnit
-	29,  // 124: ztd.eval.v1.DecomposedScoreRecord.direction:type_name -> ztd.eval.v1.EvaluationMetricDirection
-	30,  // 125: ztd.eval.v1.DecomposedScoreRecord.missing_data_policy:type_name -> ztd.eval.v1.EvaluationMissingDataPolicy
-	156, // 126: ztd.eval.v1.GraderModelCallRecord.inference_record_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	9,   // 127: ztd.eval.v1.PolicyDecisionRecord.outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
-	0,   // 128: ztd.eval.v1.EvaluationAssignmentResult.lane:type_name -> ztd.eval.v1.EvaluationLane
-	3,   // 129: ztd.eval.v1.EvaluationAssignmentResult.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	85,  // 130: ztd.eval.v1.EvaluationAssignmentResult.model_inferences:type_name -> ztd.eval.v1.ModelInferenceRecord
-	86,  // 131: ztd.eval.v1.EvaluationAssignmentResult.tool_decisions:type_name -> ztd.eval.v1.ToolDecisionRecord
-	87,  // 132: ztd.eval.v1.EvaluationAssignmentResult.tool_calls:type_name -> ztd.eval.v1.ToolCallRecord
-	88,  // 133: ztd.eval.v1.EvaluationAssignmentResult.escalations:type_name -> ztd.eval.v1.EscalationRecord
-	89,  // 134: ztd.eval.v1.EvaluationAssignmentResult.handoffs:type_name -> ztd.eval.v1.HandoffRecord
-	90,  // 135: ztd.eval.v1.EvaluationAssignmentResult.recoveries:type_name -> ztd.eval.v1.RecoveryRecord
-	91,  // 136: ztd.eval.v1.EvaluationAssignmentResult.governed_actions:type_name -> ztd.eval.v1.GovernedActionBinding
-	92,  // 137: ztd.eval.v1.EvaluationAssignmentResult.deterministic_grades:type_name -> ztd.eval.v1.DeterministicGrade
-	93,  // 138: ztd.eval.v1.EvaluationAssignmentResult.semantic_grades:type_name -> ztd.eval.v1.SemanticGrade
-	94,  // 139: ztd.eval.v1.EvaluationAssignmentResult.decomposed_scores:type_name -> ztd.eval.v1.DecomposedScoreRecord
-	95,  // 140: ztd.eval.v1.EvaluationAssignmentResult.grader_calls:type_name -> ztd.eval.v1.GraderModelCallRecord
-	156, // 141: ztd.eval.v1.EvaluationAssignmentResult.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	157, // 142: ztd.eval.v1.EvaluationAssignmentResult.completed_at:type_name -> google.protobuf.Timestamp
-	96,  // 143: ztd.eval.v1.EvaluationAssignmentResult.policy_decisions:type_name -> ztd.eval.v1.PolicyDecisionRecord
-	12,  // 144: ztd.eval.v1.EvaluationAssignmentResult.trajectory_outcome:type_name -> ztd.eval.v1.EvaluationTrajectoryOutcome
-	153, // 145: ztd.eval.v1.EvaluationAssignmentResult.containment:type_name -> ztd.eval.v1.ContainmentResult
-	39,  // 146: ztd.eval.v1.CampaignComplianceSourceInventory.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
-	39,  // 147: ztd.eval.v1.CampaignComplianceSourceInventory.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
-	98,  // 148: ztd.eval.v1.CampaignComplianceSourceInventory.artifacts:type_name -> ztd.eval.v1.CampaignComplianceSourceArtifact
-	28,  // 149: ztd.eval.v1.EvaluationVerificationReport.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	156, // 150: ztd.eval.v1.EvaluationVerificationReport.report_digest_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
-	157, // 151: ztd.eval.v1.EvaluationVerificationReport.verified_at:type_name -> google.protobuf.Timestamp
-	39,  // 152: ztd.eval.v1.EvaluationVerificationReport.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
-	39,  // 153: ztd.eval.v1.EvaluationVerificationReport.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
-	3,   // 154: ztd.eval.v1.EvaluationVerifiedPopulationEntry.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	1,   // 155: ztd.eval.v1.EvaluationVerifiedPopulationEntry.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	155, // 156: ztd.eval.v1.EvaluationVerifiedPopulation.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
-	0,   // 157: ztd.eval.v1.EvaluationVerifiedPopulation.lane:type_name -> ztd.eval.v1.EvaluationLane
-	101, // 158: ztd.eval.v1.EvaluationVerifiedPopulation.entries:type_name -> ztd.eval.v1.EvaluationVerifiedPopulationEntry
-	0,   // 159: ztd.eval.v1.PublicCampaignIdentity.lane:type_name -> ztd.eval.v1.EvaluationLane
-	40,  // 160: ztd.eval.v1.PublicCampaignIdentity.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
-	2,   // 161: ztd.eval.v1.PublicAssignmentLifecycleRecord.scenario_category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
-	0,   // 162: ztd.eval.v1.PublicAssignmentLifecycleRecord.lane:type_name -> ztd.eval.v1.EvaluationLane
-	1,   // 163: ztd.eval.v1.PublicAssignmentLifecycleRecord.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	3,   // 164: ztd.eval.v1.PublicAssignmentLifecycleRecord.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	157, // 165: ztd.eval.v1.PublicAssignmentLifecycleRecord.observed_at:type_name -> google.protobuf.Timestamp
-	40,  // 166: ztd.eval.v1.PublicAssignmentLifecycleRecord.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
-	1,   // 167: ztd.eval.v1.PublicModelCallSummary.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	7,   // 168: ztd.eval.v1.PublicModelCallSummary.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
-	6,   // 169: ztd.eval.v1.PublicModelCallSummary.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
-	2,   // 170: ztd.eval.v1.PublicScenarioSummary.category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
-	4,   // 171: ztd.eval.v1.PublicScenarioSummary.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
-	65,  // 172: ztd.eval.v1.PublicScenarioSummary.criteria:type_name -> ztd.eval.v1.PublicScenarioCriterion
-	66,  // 173: ztd.eval.v1.PublicScenarioSummary.tool_score_dimensions:type_name -> ztd.eval.v1.PublicToolScoreDimensionRequirement
-	11,  // 174: ztd.eval.v1.PublicScenarioSummary.trajectory_policy:type_name -> ztd.eval.v1.EvaluationTrajectoryPolicy
-	68,  // 175: ztd.eval.v1.PublicScenarioSummary.prompt_hint:type_name -> ztd.eval.v1.PromptHint
-	28,  // 176: ztd.eval.v1.PublicSemanticGradeSummary.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	4,   // 177: ztd.eval.v1.PublicSemanticGradeSummary.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
-	10,  // 178: ztd.eval.v1.PublicSemanticGradeSummary.explanation_code:type_name -> ztd.eval.v1.PublicGradeExplanationCode
-	1,   // 179: ztd.eval.v1.PublicModelActivityRecord.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	7,   // 180: ztd.eval.v1.PublicModelActivityRecord.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
-	16,  // 181: ztd.eval.v1.PublicModelActivityRecord.finish_state:type_name -> ztd.eval.v1.PublicFinishState
-	6,   // 182: ztd.eval.v1.PublicModelActivityRecord.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
-	28,  // 183: ztd.eval.v1.PublicToolDecisionActivityRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	17,  // 184: ztd.eval.v1.PublicToolDecisionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
-	28,  // 185: ztd.eval.v1.PublicToolCallActivityRecord.execution_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	28,  // 186: ztd.eval.v1.PublicToolCallActivityRecord.semantic_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	17,  // 187: ztd.eval.v1.PublicToolCallActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
-	9,   // 188: ztd.eval.v1.PublicPolicyDecisionActivityRecord.outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
-	17,  // 189: ztd.eval.v1.PublicPolicyDecisionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
-	9,   // 190: ztd.eval.v1.PublicGovernedActionActivityRecord.reported_policy_outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
-	19,  // 191: ztd.eval.v1.PublicGovernedActionActivityRecord.receipt_status:type_name -> ztd.eval.v1.PublicReceiptStatus
-	17,  // 192: ztd.eval.v1.PublicGovernedActionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
-	14,  // 193: ztd.eval.v1.PublicModelActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	15,  // 194: ztd.eval.v1.PublicModelActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	109, // 195: ztd.eval.v1.PublicModelActivity.records:type_name -> ztd.eval.v1.PublicModelActivityRecord
-	14,  // 196: ztd.eval.v1.PublicToolDecisionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	15,  // 197: ztd.eval.v1.PublicToolDecisionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	110, // 198: ztd.eval.v1.PublicToolDecisionActivity.records:type_name -> ztd.eval.v1.PublicToolDecisionActivityRecord
-	14,  // 199: ztd.eval.v1.PublicToolCallActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	15,  // 200: ztd.eval.v1.PublicToolCallActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	111, // 201: ztd.eval.v1.PublicToolCallActivity.records:type_name -> ztd.eval.v1.PublicToolCallActivityRecord
-	14,  // 202: ztd.eval.v1.PublicPolicyDecisionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	15,  // 203: ztd.eval.v1.PublicPolicyDecisionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	112, // 204: ztd.eval.v1.PublicPolicyDecisionActivity.records:type_name -> ztd.eval.v1.PublicPolicyDecisionActivityRecord
-	14,  // 205: ztd.eval.v1.PublicGovernedActionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
-	15,  // 206: ztd.eval.v1.PublicGovernedActionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
-	113, // 207: ztd.eval.v1.PublicGovernedActionActivity.records:type_name -> ztd.eval.v1.PublicGovernedActionActivityRecord
-	114, // 208: ztd.eval.v1.PublicAssignmentActivitySummary.model_activity:type_name -> ztd.eval.v1.PublicModelActivity
-	115, // 209: ztd.eval.v1.PublicAssignmentActivitySummary.tool_decisions:type_name -> ztd.eval.v1.PublicToolDecisionActivity
-	116, // 210: ztd.eval.v1.PublicAssignmentActivitySummary.tool_calls:type_name -> ztd.eval.v1.PublicToolCallActivity
-	117, // 211: ztd.eval.v1.PublicAssignmentActivitySummary.policy_decisions:type_name -> ztd.eval.v1.PublicPolicyDecisionActivity
-	118, // 212: ztd.eval.v1.PublicAssignmentActivitySummary.governed_actions:type_name -> ztd.eval.v1.PublicGovernedActionActivity
-	18,  // 213: ztd.eval.v1.PublicVerificationMetadata.provenance:type_name -> ztd.eval.v1.PublicVerificationProvenance
-	28,  // 214: ztd.eval.v1.PublicVerificationMetadata.verifier_state:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	2,   // 215: ztd.eval.v1.PublicAssignmentResultProjection.scenario_category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
-	0,   // 216: ztd.eval.v1.PublicAssignmentResultProjection.lane:type_name -> ztd.eval.v1.EvaluationLane
-	1,   // 217: ztd.eval.v1.PublicAssignmentResultProjection.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
-	3,   // 218: ztd.eval.v1.PublicAssignmentResultProjection.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
-	28,  // 219: ztd.eval.v1.PublicAssignmentResultProjection.summary_status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	94,  // 220: ztd.eval.v1.PublicAssignmentResultProjection.decomposed_scores:type_name -> ztd.eval.v1.DecomposedScoreRecord
-	157, // 221: ztd.eval.v1.PublicAssignmentResultProjection.completed_at:type_name -> google.protobuf.Timestamp
-	107, // 222: ztd.eval.v1.PublicAssignmentResultProjection.scenario_summary:type_name -> ztd.eval.v1.PublicScenarioSummary
-	108, // 223: ztd.eval.v1.PublicAssignmentResultProjection.semantic_grade_summaries:type_name -> ztd.eval.v1.PublicSemanticGradeSummary
-	119, // 224: ztd.eval.v1.PublicAssignmentResultProjection.activity_summary:type_name -> ztd.eval.v1.PublicAssignmentActivitySummary
-	120, // 225: ztd.eval.v1.PublicAssignmentResultProjection.evidence_bindings:type_name -> ztd.eval.v1.PublicEvidenceBinding
-	121, // 226: ztd.eval.v1.PublicAssignmentResultProjection.verification_metadata:type_name -> ztd.eval.v1.PublicVerificationMetadata
-	12,  // 227: ztd.eval.v1.PublicAssignmentResultProjection.trajectory_outcome:type_name -> ztd.eval.v1.EvaluationTrajectoryOutcome
-	40,  // 228: ztd.eval.v1.PublicAssignmentResultProjection.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
-	40,  // 229: ztd.eval.v1.PublicLiveEvent.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
-	154, // 230: ztd.eval.v1.PublicLiveEvent.metric_delta:type_name -> ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry
-	126, // 231: ztd.eval.v1.CanaryManifest.entries:type_name -> ztd.eval.v1.CanaryEntry
-	41,  // 232: ztd.eval.v1.ConformanceObservation.kind:type_name -> ztd.eval.v1.ConformanceObservationKind
-	158, // 233: ztd.eval.v1.ConformanceObservation.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	159, // 234: ztd.eval.v1.ConformanceObservation.rejection:type_name -> ztd.operator.v1.GovernanceRejection
-	160, // 235: ztd.eval.v1.ConformanceObservation.refusal:type_name -> ztd.operator.v1.IngressRefusal
-	128, // 236: ztd.eval.v1.ConformanceCaseEvidence.observations:type_name -> ztd.eval.v1.ConformanceObservation
-	158, // 237: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.ActionReceipt
-	158, // 238: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.ActionReceipt
-	127, // 239: ztd.eval.v1.ConformanceCaseEvidence.canary_before:type_name -> ztd.eval.v1.CanaryManifest
-	127, // 240: ztd.eval.v1.ConformanceCaseEvidence.canary_after:type_name -> ztd.eval.v1.CanaryManifest
-	129, // 241: ztd.eval.v1.ConformanceCaseEvidence.a2a_calls:type_name -> ztd.eval.v1.ConformanceA2ACall
-	130, // 242: ztd.eval.v1.ConformanceCaseEvidence.exchanges:type_name -> ztd.eval.v1.ConformanceExchange
-	158, // 243: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.ActionReceipt
-	158, // 244: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.ActionReceipt
-	22,  // 245: ztd.eval.v1.ConformanceRunRecord.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
-	125, // 246: ztd.eval.v1.ConformanceRunRecord.anchors:type_name -> ztd.eval.v1.ConformanceAnchor
-	132, // 247: ztd.eval.v1.ConformanceRunRecord.quiescence:type_name -> ztd.eval.v1.ConformanceQuiescence
-	131, // 248: ztd.eval.v1.ConformanceRunRecord.cases:type_name -> ztd.eval.v1.ConformanceCaseEvidence
-	157, // 249: ztd.eval.v1.ConformanceRunRecord.started_at:type_name -> google.protobuf.Timestamp
-	157, // 250: ztd.eval.v1.ConformanceRunRecord.finished_at:type_name -> google.protobuf.Timestamp
-	28,  // 251: ztd.eval.v1.ConformanceVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	42,  // 252: ztd.eval.v1.ConformanceVerdict.failure_class:type_name -> ztd.eval.v1.ConformanceFailureClass
-	22,  // 253: ztd.eval.v1.ConformanceVerdictSet.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
-	43,  // 254: ztd.eval.v1.ConformanceVerdictSet.suite_verdict:type_name -> ztd.eval.v1.ConformanceSuiteVerdict
-	134, // 255: ztd.eval.v1.ConformanceVerdictSet.verdicts:type_name -> ztd.eval.v1.ConformanceVerdict
-	139, // 256: ztd.eval.v1.VoteOutput.votes:type_name -> ztd.eval.v1.CandidateVote
-	45,  // 257: ztd.eval.v1.RiskOutput.risk:type_name -> ztd.eval.v1.AgentRiskLevel
-	46,  // 258: ztd.eval.v1.ReviewOutput.verdict:type_name -> ztd.eval.v1.AgentReviewVerdict
-	44,  // 259: ztd.eval.v1.AgentStep.role:type_name -> ztd.eval.v1.AgentRole
-	1,   // 260: ztd.eval.v1.AgentStep.resolved_tier:type_name -> ztd.eval.v1.ModelCampaignRole
-	8,   // 261: ztd.eval.v1.AgentStep.call_class:type_name -> ztd.eval.v1.EvaluationCallClassification
-	136, // 262: ztd.eval.v1.AgentStep.router:type_name -> ztd.eval.v1.RouterOutput
-	137, // 263: ztd.eval.v1.AgentStep.responder:type_name -> ztd.eval.v1.ResponderOutput
-	138, // 264: ztd.eval.v1.AgentStep.candidate:type_name -> ztd.eval.v1.CandidateOutput
-	140, // 265: ztd.eval.v1.AgentStep.vote:type_name -> ztd.eval.v1.VoteOutput
-	141, // 266: ztd.eval.v1.AgentStep.risk:type_name -> ztd.eval.v1.RiskOutput
-	142, // 267: ztd.eval.v1.AgentStep.review:type_name -> ztd.eval.v1.ReviewOutput
-	143, // 268: ztd.eval.v1.AgentStep.memory:type_name -> ztd.eval.v1.MemoryOutput
-	144, // 269: ztd.eval.v1.AgentStep.title:type_name -> ztd.eval.v1.TitleOutput
-	146, // 270: ztd.eval.v1.InvestigationSeed.prior_turns:type_name -> ztd.eval.v1.SeedTurn
-	147, // 271: ztd.eval.v1.InvestigationSeed.history:type_name -> ztd.eval.v1.SeedHistoryEvent
-	70,  // 272: ztd.eval.v1.ScoredTurnRequest.model_registry:type_name -> ztd.eval.v1.ModelVariant
-	0,   // 273: ztd.eval.v1.ScoredTurnRequest.lane:type_name -> ztd.eval.v1.EvaluationLane
-	44,  // 274: ztd.eval.v1.ScoredTurnRequest.designated_role:type_name -> ztd.eval.v1.AgentRole
-	148, // 275: ztd.eval.v1.ScoredTurnRequest.seed:type_name -> ztd.eval.v1.InvestigationSeed
-	48,  // 276: ztd.eval.v1.ScoredTurnEvent.kind:type_name -> ztd.eval.v1.ScoredTurnEventKind
-	145, // 277: ztd.eval.v1.AgentTrace.steps:type_name -> ztd.eval.v1.AgentStep
-	47,  // 278: ztd.eval.v1.AgentTrace.finish_reason:type_name -> ztd.eval.v1.AgentFinishReason
-	50,  // 279: ztd.eval.v1.ContainmentBreach.breach_class:type_name -> ztd.eval.v1.ContainmentBreachClass
-	49,  // 280: ztd.eval.v1.ContainmentResult.verdict:type_name -> ztd.eval.v1.ContainmentVerdict
-	152, // 281: ztd.eval.v1.ContainmentResult.breaches:type_name -> ztd.eval.v1.ContainmentBreach
-	123, // 282: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry.value:type_name -> ztd.eval.v1.PublicLiveMetricValue
-	283, // [283:283] is the sub-list for method output_type
-	283, // [283:283] is the sub-list for method input_type
-	283, // [283:283] is the sub-list for extension type_name
-	283, // [283:283] is the sub-list for extension extendee
-	0,   // [0:283] is the sub-list for field type_name
+	40,  // 12: ztd.eval.v1.EvaluationRun.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	40,  // 13: ztd.eval.v1.EvaluationRun.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	151, // 14: ztd.eval.v1.EvaluationAttempt.scenario_ref:type_name -> ztd.compliance.v1.VersionedReference
+	25,  // 15: ztd.eval.v1.EvaluationAttempt.status:type_name -> ztd.eval.v1.EvaluationAttemptStatus
+	153, // 16: ztd.eval.v1.EvaluationAttempt.started_at:type_name -> google.protobuf.Timestamp
+	153, // 17: ztd.eval.v1.EvaluationAttempt.completed_at:type_name -> google.protobuf.Timestamp
+	151, // 18: ztd.eval.v1.EvaluationObservation.observation_type:type_name -> ztd.compliance.v1.VersionedReference
+	26,  // 19: ztd.eval.v1.EvaluationObservation.source:type_name -> ztd.eval.v1.EvaluationObservationSource
+	153, // 20: ztd.eval.v1.EvaluationObservation.observed_at:type_name -> google.protobuf.Timestamp
+	27,  // 21: ztd.eval.v1.EvaluationObservation.authority:type_name -> ztd.eval.v1.EvaluationEvidenceAuthority
+	53,  // 22: ztd.eval.v1.EvaluationObservation.value:type_name -> ztd.eval.v1.EvaluationValue
+	152, // 23: ztd.eval.v1.EvaluationObservation.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	153, // 24: ztd.eval.v1.EvaluationTargetState.observed_at:type_name -> google.protobuf.Timestamp
+	28,  // 25: ztd.eval.v1.EvaluationAssertion.comparator:type_name -> ztd.eval.v1.EvaluationComparator
+	53,  // 26: ztd.eval.v1.EvaluationAssertion.expected:type_name -> ztd.eval.v1.EvaluationValue
+	151, // 27: ztd.eval.v1.EvaluationAssertion.required_observation_types:type_name -> ztd.compliance.v1.VersionedReference
+	27,  // 28: ztd.eval.v1.EvaluationAssertion.required_authorities:type_name -> ztd.eval.v1.EvaluationEvidenceAuthority
+	151, // 29: ztd.eval.v1.EvaluationVerdict.assertion_ref:type_name -> ztd.compliance.v1.VersionedReference
+	29,  // 30: ztd.eval.v1.EvaluationVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	152, // 31: ztd.eval.v1.EvaluationVerdict.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	151, // 32: ztd.eval.v1.EvaluationVerdict.grader_ref:type_name -> ztd.compliance.v1.VersionedReference
+	153, // 33: ztd.eval.v1.EvaluationVerdict.evaluated_at:type_name -> google.protobuf.Timestamp
+	32,  // 34: ztd.eval.v1.EvaluationMetric.unit:type_name -> ztd.eval.v1.EvaluationMetricUnit
+	30,  // 35: ztd.eval.v1.EvaluationMetric.direction:type_name -> ztd.eval.v1.EvaluationMetricDirection
+	151, // 36: ztd.eval.v1.EvaluationMetric.eligible_population_ref:type_name -> ztd.compliance.v1.VersionedReference
+	31,  // 37: ztd.eval.v1.EvaluationMetric.missing_data_policy:type_name -> ztd.eval.v1.EvaluationMissingDataPolicy
+	152, // 38: ztd.eval.v1.EvaluationMetric.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	54,  // 39: ztd.eval.v1.EvaluationReport.run:type_name -> ztd.eval.v1.EvaluationRun
+	55,  // 40: ztd.eval.v1.EvaluationReport.attempts:type_name -> ztd.eval.v1.EvaluationAttempt
+	56,  // 41: ztd.eval.v1.EvaluationReport.observations:type_name -> ztd.eval.v1.EvaluationObservation
+	58,  // 42: ztd.eval.v1.EvaluationReport.assertions:type_name -> ztd.eval.v1.EvaluationAssertion
+	59,  // 43: ztd.eval.v1.EvaluationReport.verdicts:type_name -> ztd.eval.v1.EvaluationVerdict
+	60,  // 44: ztd.eval.v1.EvaluationReport.metrics:type_name -> ztd.eval.v1.EvaluationMetric
+	152, // 45: ztd.eval.v1.EvaluationReport.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	29,  // 46: ztd.eval.v1.EvaluationReport.summary_status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	98,  // 47: ztd.eval.v1.EvaluationReport.assignment_results:type_name -> ztd.eval.v1.EvaluationAssignmentResult
+	101, // 48: ztd.eval.v1.EvaluationReport.campaign_verification_report:type_name -> ztd.eval.v1.EvaluationVerificationReport
+	151, // 49: ztd.eval.v1.ModelCampaignBinding.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
+	151, // 50: ztd.eval.v1.EvaluationCampaignSpec.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
+	71,  // 51: ztd.eval.v1.EvaluationCampaignSpec.model_registry:type_name -> ztd.eval.v1.ModelVariant
+	23,  // 52: ztd.eval.v1.EvaluationCampaignSpec.governance_posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
+	64,  // 53: ztd.eval.v1.EvaluationCampaignSpec.investigation:type_name -> ztd.eval.v1.EvaluationInvestigation
+	2,   // 54: ztd.eval.v1.EvaluationInvestigation.mode:type_name -> ztd.eval.v1.EvaluationInvestigationMode
+	151, // 55: ztd.eval.v1.EvaluationScenarioCatalog.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
+	70,  // 56: ztd.eval.v1.EvaluationScenarioCatalog.scenarios:type_name -> ztd.eval.v1.EvaluationScenarioDefinition
+	5,   // 57: ztd.eval.v1.PublicScenarioCriterion.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
+	21,  // 58: ztd.eval.v1.PublicToolScoreDimensionRequirement.dimension:type_name -> ztd.eval.v1.PublicToolScoreDimension
+	14,  // 59: ztd.eval.v1.PromptHintArgument.source:type_name -> ztd.eval.v1.EvaluationHintArgumentSource
+	68,  // 60: ztd.eval.v1.PromptHint.arguments:type_name -> ztd.eval.v1.PromptHintArgument
+	3,   // 61: ztd.eval.v1.EvaluationScenarioDefinition.category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
+	5,   // 62: ztd.eval.v1.EvaluationScenarioDefinition.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
+	152, // 63: ztd.eval.v1.EvaluationScenarioDefinition.input_fixture_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	152, // 64: ztd.eval.v1.EvaluationScenarioDefinition.gold_criteria_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	66,  // 65: ztd.eval.v1.EvaluationScenarioDefinition.public_criteria:type_name -> ztd.eval.v1.PublicScenarioCriterion
+	67,  // 66: ztd.eval.v1.EvaluationScenarioDefinition.public_tool_score_dimensions:type_name -> ztd.eval.v1.PublicToolScoreDimensionRequirement
+	1,   // 67: ztd.eval.v1.EvaluationScenarioDefinition.eligible_roles:type_name -> ztd.eval.v1.ModelCampaignRole
+	12,  // 68: ztd.eval.v1.EvaluationScenarioDefinition.trajectory_policy:type_name -> ztd.eval.v1.EvaluationTrajectoryPolicy
+	69,  // 69: ztd.eval.v1.EvaluationScenarioDefinition.prompt_hint:type_name -> ztd.eval.v1.PromptHint
+	72,  // 70: ztd.eval.v1.ModelVariant.capability_observations:type_name -> ztd.eval.v1.ModelCapabilityObservation
+	6,   // 71: ztd.eval.v1.ModelCapabilityObservation.capability:type_name -> ztd.eval.v1.ModelCapabilityKind
+	29,  // 72: ztd.eval.v1.ModelCapabilityObservation.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	1,   // 73: ztd.eval.v1.RoleAssignment.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	73,  // 74: ztd.eval.v1.HeterogeneousStackDefinition.primary_slot:type_name -> ztd.eval.v1.RoleAssignment
+	73,  // 75: ztd.eval.v1.HeterogeneousStackDefinition.assistant_slot:type_name -> ztd.eval.v1.RoleAssignment
+	73,  // 76: ztd.eval.v1.HeterogeneousStackDefinition.lite_slot:type_name -> ztd.eval.v1.RoleAssignment
+	151, // 77: ztd.eval.v1.EvaluationAssignment.scenario_ref:type_name -> ztd.compliance.v1.VersionedReference
+	0,   // 78: ztd.eval.v1.EvaluationAssignment.lane:type_name -> ztd.eval.v1.EvaluationLane
+	4,   // 79: ztd.eval.v1.EvaluationAssignment.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	153, // 80: ztd.eval.v1.EvaluationAssignment.queued_at:type_name -> google.protobuf.Timestamp
+	153, // 81: ztd.eval.v1.EvaluationAssignment.started_at:type_name -> google.protobuf.Timestamp
+	153, // 82: ztd.eval.v1.EvaluationAssignment.completed_at:type_name -> google.protobuf.Timestamp
+	76,  // 83: ztd.eval.v1.EvaluationAssignment.homogeneous:type_name -> ztd.eval.v1.HomogeneousAssignmentTarget
+	77,  // 84: ztd.eval.v1.EvaluationAssignment.heterogeneous:type_name -> ztd.eval.v1.HeterogeneousAssignmentTarget
+	71,  // 85: ztd.eval.v1.HomogeneousAssignmentTarget.candidate_variant:type_name -> ztd.eval.v1.ModelVariant
+	1,   // 86: ztd.eval.v1.HomogeneousAssignmentTarget.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	74,  // 87: ztd.eval.v1.HeterogeneousAssignmentTarget.stack:type_name -> ztd.eval.v1.HeterogeneousStackDefinition
+	22,  // 88: ztd.eval.v1.ProviderBoundaryHardwareSample.vram_bytes_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 89: ztd.eval.v1.ProviderBoundaryHardwareSample.gpu_utilization_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 90: ztd.eval.v1.ProviderBoundaryHardwareSample.temperature_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 91: ztd.eval.v1.ProviderBoundaryHardwareSample.power_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 92: ztd.eval.v1.ProviderBoundaryHardwareSample.clock_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	22,  // 93: ztd.eval.v1.ProviderBoundaryHardwareSample.host_ram_availability:type_name -> ztd.eval.v1.ProviderHardwareMetricAvailability
+	78,  // 94: ztd.eval.v1.ProviderBoundaryObservationWindow.samples:type_name -> ztd.eval.v1.ProviderBoundaryHardwareSample
+	33,  // 95: ztd.eval.v1.ProviderBoundaryObservationCommand.phase:type_name -> ztd.eval.v1.ProviderBoundaryObservationPhase
+	34,  // 96: ztd.eval.v1.ProviderBoundaryObservationCommand.attempt_status:type_name -> ztd.eval.v1.ProviderBoundaryObservationAttemptStatus
+	79,  // 97: ztd.eval.v1.ProviderBoundaryObservationCompleted.window:type_name -> ztd.eval.v1.ProviderBoundaryObservationWindow
+	35,  // 98: ztd.eval.v1.ModelWeightAttestation.verification_mode:type_name -> ztd.eval.v1.ModelWeightVerificationMode
+	36,  // 99: ztd.eval.v1.ModelProvenanceAttestationWindow.manifest_verification_status:type_name -> ztd.eval.v1.ModelManifestVerificationStatus
+	82,  // 100: ztd.eval.v1.ModelProvenanceAttestationWindow.weight_attestations:type_name -> ztd.eval.v1.ModelWeightAttestation
+	37,  // 101: ztd.eval.v1.ModelProvenanceObservationCommand.phase:type_name -> ztd.eval.v1.ModelProvenanceObservationPhase
+	38,  // 102: ztd.eval.v1.ModelProvenanceObservationCommand.attempt_status:type_name -> ztd.eval.v1.ModelProvenanceObservationAttemptStatus
+	83,  // 103: ztd.eval.v1.ModelProvenanceObservationCompleted.window:type_name -> ztd.eval.v1.ModelProvenanceAttestationWindow
+	1,   // 104: ztd.eval.v1.ModelInferenceRecord.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	71,  // 105: ztd.eval.v1.ModelInferenceRecord.model_variant:type_name -> ztd.eval.v1.ModelVariant
+	8,   // 106: ztd.eval.v1.ModelInferenceRecord.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
+	7,   // 107: ztd.eval.v1.ModelInferenceRecord.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
+	152, // 108: ztd.eval.v1.ModelInferenceRecord.governed_receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	9,   // 109: ztd.eval.v1.ModelInferenceRecord.classification:type_name -> ztd.eval.v1.EvaluationCallClassification
+	29,  // 110: ztd.eval.v1.ToolDecisionRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	29,  // 111: ztd.eval.v1.ToolCallRecord.schema_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	29,  // 112: ztd.eval.v1.ToolCallRecord.semantic_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	152, // 113: ztd.eval.v1.ToolCallRecord.governed_binding_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	1,   // 114: ztd.eval.v1.EscalationRecord.from_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	1,   // 115: ztd.eval.v1.EscalationRecord.to_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	1,   // 116: ztd.eval.v1.HandoffRecord.from_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	1,   // 117: ztd.eval.v1.HandoffRecord.to_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	29,  // 118: ztd.eval.v1.RecoveryRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	152, // 119: ztd.eval.v1.GovernedActionBinding.receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	152, // 120: ztd.eval.v1.GovernedActionBinding.persistence_attestation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	152, // 121: ztd.eval.v1.GovernedActionBinding.effect_observation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	29,  // 122: ztd.eval.v1.DeterministicGrade.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	39,  // 123: ztd.eval.v1.DeterministicGrade.basis:type_name -> ztd.eval.v1.GradeBasis
+	29,  // 124: ztd.eval.v1.SemanticGrade.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	152, // 125: ztd.eval.v1.SemanticGrade.grader_call_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	32,  // 126: ztd.eval.v1.DecomposedScoreRecord.unit:type_name -> ztd.eval.v1.EvaluationMetricUnit
+	30,  // 127: ztd.eval.v1.DecomposedScoreRecord.direction:type_name -> ztd.eval.v1.EvaluationMetricDirection
+	31,  // 128: ztd.eval.v1.DecomposedScoreRecord.missing_data_policy:type_name -> ztd.eval.v1.EvaluationMissingDataPolicy
+	152, // 129: ztd.eval.v1.GraderModelCallRecord.inference_record_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	10,  // 130: ztd.eval.v1.PolicyDecisionRecord.outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
+	0,   // 131: ztd.eval.v1.EvaluationAssignmentResult.lane:type_name -> ztd.eval.v1.EvaluationLane
+	4,   // 132: ztd.eval.v1.EvaluationAssignmentResult.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	86,  // 133: ztd.eval.v1.EvaluationAssignmentResult.model_inferences:type_name -> ztd.eval.v1.ModelInferenceRecord
+	87,  // 134: ztd.eval.v1.EvaluationAssignmentResult.tool_decisions:type_name -> ztd.eval.v1.ToolDecisionRecord
+	88,  // 135: ztd.eval.v1.EvaluationAssignmentResult.tool_calls:type_name -> ztd.eval.v1.ToolCallRecord
+	89,  // 136: ztd.eval.v1.EvaluationAssignmentResult.escalations:type_name -> ztd.eval.v1.EscalationRecord
+	90,  // 137: ztd.eval.v1.EvaluationAssignmentResult.handoffs:type_name -> ztd.eval.v1.HandoffRecord
+	91,  // 138: ztd.eval.v1.EvaluationAssignmentResult.recoveries:type_name -> ztd.eval.v1.RecoveryRecord
+	92,  // 139: ztd.eval.v1.EvaluationAssignmentResult.governed_actions:type_name -> ztd.eval.v1.GovernedActionBinding
+	93,  // 140: ztd.eval.v1.EvaluationAssignmentResult.deterministic_grades:type_name -> ztd.eval.v1.DeterministicGrade
+	94,  // 141: ztd.eval.v1.EvaluationAssignmentResult.semantic_grades:type_name -> ztd.eval.v1.SemanticGrade
+	95,  // 142: ztd.eval.v1.EvaluationAssignmentResult.decomposed_scores:type_name -> ztd.eval.v1.DecomposedScoreRecord
+	96,  // 143: ztd.eval.v1.EvaluationAssignmentResult.grader_calls:type_name -> ztd.eval.v1.GraderModelCallRecord
+	152, // 144: ztd.eval.v1.EvaluationAssignmentResult.evidence_refs:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	153, // 145: ztd.eval.v1.EvaluationAssignmentResult.completed_at:type_name -> google.protobuf.Timestamp
+	97,  // 146: ztd.eval.v1.EvaluationAssignmentResult.policy_decisions:type_name -> ztd.eval.v1.PolicyDecisionRecord
+	13,  // 147: ztd.eval.v1.EvaluationAssignmentResult.trajectory_outcome:type_name -> ztd.eval.v1.EvaluationTrajectoryOutcome
+	149, // 148: ztd.eval.v1.EvaluationAssignmentResult.containment:type_name -> ztd.eval.v1.ContainmentResult
+	40,  // 149: ztd.eval.v1.CampaignComplianceSourceInventory.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	40,  // 150: ztd.eval.v1.CampaignComplianceSourceInventory.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	99,  // 151: ztd.eval.v1.CampaignComplianceSourceInventory.artifacts:type_name -> ztd.eval.v1.CampaignComplianceSourceArtifact
+	29,  // 152: ztd.eval.v1.EvaluationVerificationReport.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	152, // 153: ztd.eval.v1.EvaluationVerificationReport.report_digest_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	153, // 154: ztd.eval.v1.EvaluationVerificationReport.verified_at:type_name -> google.protobuf.Timestamp
+	40,  // 155: ztd.eval.v1.EvaluationVerificationReport.provider_observation_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	40,  // 156: ztd.eval.v1.EvaluationVerificationReport.model_provenance_policy:type_name -> ztd.eval.v1.EvaluationWitnessPolicy
+	4,   // 157: ztd.eval.v1.EvaluationVerifiedPopulationEntry.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	1,   // 158: ztd.eval.v1.EvaluationVerifiedPopulationEntry.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	151, // 159: ztd.eval.v1.EvaluationVerifiedPopulation.catalog_ref:type_name -> ztd.compliance.v1.VersionedReference
+	0,   // 160: ztd.eval.v1.EvaluationVerifiedPopulation.lane:type_name -> ztd.eval.v1.EvaluationLane
+	102, // 161: ztd.eval.v1.EvaluationVerifiedPopulation.entries:type_name -> ztd.eval.v1.EvaluationVerifiedPopulationEntry
+	0,   // 162: ztd.eval.v1.PublicCampaignIdentity.lane:type_name -> ztd.eval.v1.EvaluationLane
+	41,  // 163: ztd.eval.v1.PublicCampaignIdentity.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
+	3,   // 164: ztd.eval.v1.PublicAssignmentLifecycleRecord.scenario_category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
+	0,   // 165: ztd.eval.v1.PublicAssignmentLifecycleRecord.lane:type_name -> ztd.eval.v1.EvaluationLane
+	1,   // 166: ztd.eval.v1.PublicAssignmentLifecycleRecord.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	4,   // 167: ztd.eval.v1.PublicAssignmentLifecycleRecord.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	153, // 168: ztd.eval.v1.PublicAssignmentLifecycleRecord.observed_at:type_name -> google.protobuf.Timestamp
+	41,  // 169: ztd.eval.v1.PublicAssignmentLifecycleRecord.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
+	1,   // 170: ztd.eval.v1.PublicModelCallSummary.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	8,   // 171: ztd.eval.v1.PublicModelCallSummary.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
+	7,   // 172: ztd.eval.v1.PublicModelCallSummary.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
+	3,   // 173: ztd.eval.v1.PublicScenarioSummary.category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
+	5,   // 174: ztd.eval.v1.PublicScenarioSummary.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
+	66,  // 175: ztd.eval.v1.PublicScenarioSummary.criteria:type_name -> ztd.eval.v1.PublicScenarioCriterion
+	67,  // 176: ztd.eval.v1.PublicScenarioSummary.tool_score_dimensions:type_name -> ztd.eval.v1.PublicToolScoreDimensionRequirement
+	12,  // 177: ztd.eval.v1.PublicScenarioSummary.trajectory_policy:type_name -> ztd.eval.v1.EvaluationTrajectoryPolicy
+	69,  // 178: ztd.eval.v1.PublicScenarioSummary.prompt_hint:type_name -> ztd.eval.v1.PromptHint
+	29,  // 179: ztd.eval.v1.PublicSemanticGradeSummary.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	5,   // 180: ztd.eval.v1.PublicSemanticGradeSummary.grading_method:type_name -> ztd.eval.v1.EvaluationGradingMethod
+	11,  // 181: ztd.eval.v1.PublicSemanticGradeSummary.explanation_code:type_name -> ztd.eval.v1.PublicGradeExplanationCode
+	1,   // 182: ztd.eval.v1.PublicModelActivityRecord.model_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	8,   // 183: ztd.eval.v1.PublicModelActivityRecord.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
+	17,  // 184: ztd.eval.v1.PublicModelActivityRecord.finish_state:type_name -> ztd.eval.v1.PublicFinishState
+	7,   // 185: ztd.eval.v1.PublicModelActivityRecord.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
+	29,  // 186: ztd.eval.v1.PublicToolDecisionActivityRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	18,  // 187: ztd.eval.v1.PublicToolDecisionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
+	29,  // 188: ztd.eval.v1.PublicToolCallActivityRecord.execution_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	29,  // 189: ztd.eval.v1.PublicToolCallActivityRecord.semantic_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	18,  // 190: ztd.eval.v1.PublicToolCallActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
+	10,  // 191: ztd.eval.v1.PublicPolicyDecisionActivityRecord.outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
+	18,  // 192: ztd.eval.v1.PublicPolicyDecisionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
+	10,  // 193: ztd.eval.v1.PublicGovernedActionActivityRecord.reported_policy_outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
+	20,  // 194: ztd.eval.v1.PublicGovernedActionActivityRecord.receipt_status:type_name -> ztd.eval.v1.PublicReceiptStatus
+	18,  // 195: ztd.eval.v1.PublicGovernedActionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
+	15,  // 196: ztd.eval.v1.PublicModelActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 197: ztd.eval.v1.PublicModelActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	110, // 198: ztd.eval.v1.PublicModelActivity.records:type_name -> ztd.eval.v1.PublicModelActivityRecord
+	15,  // 199: ztd.eval.v1.PublicToolDecisionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 200: ztd.eval.v1.PublicToolDecisionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	111, // 201: ztd.eval.v1.PublicToolDecisionActivity.records:type_name -> ztd.eval.v1.PublicToolDecisionActivityRecord
+	15,  // 202: ztd.eval.v1.PublicToolCallActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 203: ztd.eval.v1.PublicToolCallActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	112, // 204: ztd.eval.v1.PublicToolCallActivity.records:type_name -> ztd.eval.v1.PublicToolCallActivityRecord
+	15,  // 205: ztd.eval.v1.PublicPolicyDecisionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 206: ztd.eval.v1.PublicPolicyDecisionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	113, // 207: ztd.eval.v1.PublicPolicyDecisionActivity.records:type_name -> ztd.eval.v1.PublicPolicyDecisionActivityRecord
+	15,  // 208: ztd.eval.v1.PublicGovernedActionActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
+	16,  // 209: ztd.eval.v1.PublicGovernedActionActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
+	114, // 210: ztd.eval.v1.PublicGovernedActionActivity.records:type_name -> ztd.eval.v1.PublicGovernedActionActivityRecord
+	115, // 211: ztd.eval.v1.PublicAssignmentActivitySummary.model_activity:type_name -> ztd.eval.v1.PublicModelActivity
+	116, // 212: ztd.eval.v1.PublicAssignmentActivitySummary.tool_decisions:type_name -> ztd.eval.v1.PublicToolDecisionActivity
+	117, // 213: ztd.eval.v1.PublicAssignmentActivitySummary.tool_calls:type_name -> ztd.eval.v1.PublicToolCallActivity
+	118, // 214: ztd.eval.v1.PublicAssignmentActivitySummary.policy_decisions:type_name -> ztd.eval.v1.PublicPolicyDecisionActivity
+	119, // 215: ztd.eval.v1.PublicAssignmentActivitySummary.governed_actions:type_name -> ztd.eval.v1.PublicGovernedActionActivity
+	19,  // 216: ztd.eval.v1.PublicVerificationMetadata.provenance:type_name -> ztd.eval.v1.PublicVerificationProvenance
+	29,  // 217: ztd.eval.v1.PublicVerificationMetadata.verifier_state:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	3,   // 218: ztd.eval.v1.PublicAssignmentResultProjection.scenario_category:type_name -> ztd.eval.v1.EvaluationScenarioCategory
+	0,   // 219: ztd.eval.v1.PublicAssignmentResultProjection.lane:type_name -> ztd.eval.v1.EvaluationLane
+	1,   // 220: ztd.eval.v1.PublicAssignmentResultProjection.designated_role:type_name -> ztd.eval.v1.ModelCampaignRole
+	4,   // 221: ztd.eval.v1.PublicAssignmentResultProjection.lifecycle_status:type_name -> ztd.eval.v1.EvaluationAssignmentLifecycleStatus
+	29,  // 222: ztd.eval.v1.PublicAssignmentResultProjection.summary_status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	95,  // 223: ztd.eval.v1.PublicAssignmentResultProjection.decomposed_scores:type_name -> ztd.eval.v1.DecomposedScoreRecord
+	153, // 224: ztd.eval.v1.PublicAssignmentResultProjection.completed_at:type_name -> google.protobuf.Timestamp
+	108, // 225: ztd.eval.v1.PublicAssignmentResultProjection.scenario_summary:type_name -> ztd.eval.v1.PublicScenarioSummary
+	109, // 226: ztd.eval.v1.PublicAssignmentResultProjection.semantic_grade_summaries:type_name -> ztd.eval.v1.PublicSemanticGradeSummary
+	120, // 227: ztd.eval.v1.PublicAssignmentResultProjection.activity_summary:type_name -> ztd.eval.v1.PublicAssignmentActivitySummary
+	121, // 228: ztd.eval.v1.PublicAssignmentResultProjection.evidence_bindings:type_name -> ztd.eval.v1.PublicEvidenceBinding
+	122, // 229: ztd.eval.v1.PublicAssignmentResultProjection.verification_metadata:type_name -> ztd.eval.v1.PublicVerificationMetadata
+	13,  // 230: ztd.eval.v1.PublicAssignmentResultProjection.trajectory_outcome:type_name -> ztd.eval.v1.EvaluationTrajectoryOutcome
+	41,  // 231: ztd.eval.v1.PublicAssignmentResultProjection.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
+	41,  // 232: ztd.eval.v1.PublicLiveEvent.release_basis:type_name -> ztd.eval.v1.PublicReleaseBasis
+	150, // 233: ztd.eval.v1.PublicLiveEvent.metric_delta:type_name -> ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry
+	127, // 234: ztd.eval.v1.CanaryManifest.entries:type_name -> ztd.eval.v1.CanaryEntry
+	42,  // 235: ztd.eval.v1.ConformanceObservation.kind:type_name -> ztd.eval.v1.ConformanceObservationKind
+	154, // 236: ztd.eval.v1.ConformanceObservation.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	155, // 237: ztd.eval.v1.ConformanceObservation.rejection:type_name -> ztd.operator.v1.GovernanceRejection
+	156, // 238: ztd.eval.v1.ConformanceObservation.refusal:type_name -> ztd.operator.v1.IngressRefusal
+	129, // 239: ztd.eval.v1.ConformanceCaseEvidence.observations:type_name -> ztd.eval.v1.ConformanceObservation
+	154, // 240: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.ActionReceipt
+	154, // 241: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.ActionReceipt
+	128, // 242: ztd.eval.v1.ConformanceCaseEvidence.canary_before:type_name -> ztd.eval.v1.CanaryManifest
+	128, // 243: ztd.eval.v1.ConformanceCaseEvidence.canary_after:type_name -> ztd.eval.v1.CanaryManifest
+	130, // 244: ztd.eval.v1.ConformanceCaseEvidence.a2a_calls:type_name -> ztd.eval.v1.ConformanceA2ACall
+	131, // 245: ztd.eval.v1.ConformanceCaseEvidence.exchanges:type_name -> ztd.eval.v1.ConformanceExchange
+	154, // 246: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.ActionReceipt
+	154, // 247: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.ActionReceipt
+	23,  // 248: ztd.eval.v1.ConformanceRunRecord.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
+	126, // 249: ztd.eval.v1.ConformanceRunRecord.anchors:type_name -> ztd.eval.v1.ConformanceAnchor
+	133, // 250: ztd.eval.v1.ConformanceRunRecord.quiescence:type_name -> ztd.eval.v1.ConformanceQuiescence
+	132, // 251: ztd.eval.v1.ConformanceRunRecord.cases:type_name -> ztd.eval.v1.ConformanceCaseEvidence
+	153, // 252: ztd.eval.v1.ConformanceRunRecord.started_at:type_name -> google.protobuf.Timestamp
+	153, // 253: ztd.eval.v1.ConformanceRunRecord.finished_at:type_name -> google.protobuf.Timestamp
+	29,  // 254: ztd.eval.v1.ConformanceVerdict.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
+	43,  // 255: ztd.eval.v1.ConformanceVerdict.failure_class:type_name -> ztd.eval.v1.ConformanceFailureClass
+	23,  // 256: ztd.eval.v1.ConformanceVerdictSet.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
+	44,  // 257: ztd.eval.v1.ConformanceVerdictSet.suite_verdict:type_name -> ztd.eval.v1.ConformanceSuiteVerdict
+	135, // 258: ztd.eval.v1.ConformanceVerdictSet.verdicts:type_name -> ztd.eval.v1.ConformanceVerdict
+	140, // 259: ztd.eval.v1.VoteOutput.votes:type_name -> ztd.eval.v1.CandidateVote
+	46,  // 260: ztd.eval.v1.RiskOutput.risk:type_name -> ztd.eval.v1.AgentRiskLevel
+	47,  // 261: ztd.eval.v1.ReviewOutput.verdict:type_name -> ztd.eval.v1.AgentReviewVerdict
+	45,  // 262: ztd.eval.v1.AgentStep.role:type_name -> ztd.eval.v1.AgentRole
+	1,   // 263: ztd.eval.v1.AgentStep.resolved_tier:type_name -> ztd.eval.v1.ModelCampaignRole
+	9,   // 264: ztd.eval.v1.AgentStep.call_class:type_name -> ztd.eval.v1.EvaluationCallClassification
+	137, // 265: ztd.eval.v1.AgentStep.router:type_name -> ztd.eval.v1.RouterOutput
+	138, // 266: ztd.eval.v1.AgentStep.responder:type_name -> ztd.eval.v1.ResponderOutput
+	139, // 267: ztd.eval.v1.AgentStep.candidate:type_name -> ztd.eval.v1.CandidateOutput
+	141, // 268: ztd.eval.v1.AgentStep.vote:type_name -> ztd.eval.v1.VoteOutput
+	142, // 269: ztd.eval.v1.AgentStep.risk:type_name -> ztd.eval.v1.RiskOutput
+	143, // 270: ztd.eval.v1.AgentStep.review:type_name -> ztd.eval.v1.ReviewOutput
+	144, // 271: ztd.eval.v1.AgentStep.memory:type_name -> ztd.eval.v1.MemoryOutput
+	145, // 272: ztd.eval.v1.AgentStep.title:type_name -> ztd.eval.v1.TitleOutput
+	146, // 273: ztd.eval.v1.AgentTrace.steps:type_name -> ztd.eval.v1.AgentStep
+	48,  // 274: ztd.eval.v1.AgentTrace.finish_reason:type_name -> ztd.eval.v1.AgentFinishReason
+	50,  // 275: ztd.eval.v1.ContainmentBreach.breach_class:type_name -> ztd.eval.v1.ContainmentBreachClass
+	49,  // 276: ztd.eval.v1.ContainmentResult.verdict:type_name -> ztd.eval.v1.ContainmentVerdict
+	148, // 277: ztd.eval.v1.ContainmentResult.breaches:type_name -> ztd.eval.v1.ContainmentBreach
+	124, // 278: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry.value:type_name -> ztd.eval.v1.PublicLiveMetricValue
+	279, // [279:279] is the sub-list for method output_type
+	279, // [279:279] is the sub-list for method input_type
+	279, // [279:279] is the sub-list for extension type_name
+	279, // [279:279] is the sub-list for extension extendee
+	0,   // [0:279] is the sub-list for field type_name
 }
 
 func init() { file_ztd_eval_v1_eval_proto_init() }
@@ -14673,16 +14347,16 @@ func file_ztd_eval_v1_eval_proto_init() {
 		(*EvaluationValue_StringValue)(nil),
 		(*EvaluationValue_ArtifactReference)(nil),
 	}
-	file_ztd_eval_v1_eval_proto_msgTypes[23].OneofWrappers = []any{
+	file_ztd_eval_v1_eval_proto_msgTypes[24].OneofWrappers = []any{
 		(*EvaluationAssignment_Homogeneous)(nil),
 		(*EvaluationAssignment_Heterogeneous)(nil),
 	}
-	file_ztd_eval_v1_eval_proto_msgTypes[34].OneofWrappers = []any{}
-	file_ztd_eval_v1_eval_proto_msgTypes[46].OneofWrappers = []any{}
-	file_ztd_eval_v1_eval_proto_msgTypes[58].OneofWrappers = []any{}
-	file_ztd_eval_v1_eval_proto_msgTypes[72].OneofWrappers = []any{}
+	file_ztd_eval_v1_eval_proto_msgTypes[35].OneofWrappers = []any{}
+	file_ztd_eval_v1_eval_proto_msgTypes[47].OneofWrappers = []any{}
+	file_ztd_eval_v1_eval_proto_msgTypes[59].OneofWrappers = []any{}
 	file_ztd_eval_v1_eval_proto_msgTypes[73].OneofWrappers = []any{}
-	file_ztd_eval_v1_eval_proto_msgTypes[94].OneofWrappers = []any{
+	file_ztd_eval_v1_eval_proto_msgTypes[74].OneofWrappers = []any{}
+	file_ztd_eval_v1_eval_proto_msgTypes[95].OneofWrappers = []any{
 		(*AgentStep_Router)(nil),
 		(*AgentStep_Responder)(nil),
 		(*AgentStep_Candidate)(nil),
@@ -14698,7 +14372,7 @@ func file_ztd_eval_v1_eval_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ztd_eval_v1_eval_proto_rawDesc), len(file_ztd_eval_v1_eval_proto_rawDesc)),
 			NumEnums:      51,
-			NumMessages:   104,
+			NumMessages:   100,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

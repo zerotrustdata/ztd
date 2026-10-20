@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.1.3-green.svg)](docs/release_notes/v1.1.x/v1.1.3.md)
+[![Version](https://img.shields.io/badge/version-v1.2.0-green.svg)](docs/release_notes/v1.2.x/v1.2.0.md)
 
 **A model can ask, but it cannot directly act.**
 
@@ -33,7 +33,7 @@ Safety fine-tuning and system prompts are not security boundaries. You cannot pr
 
 ztd splits operations into two distinct protocol roles, packaged into a single static Go binary (`ztd`):
 
-```
+```text
                      ┌────────────────────────────────────────┐
                      │          AI Model / MCP Client         │
                      └───────────────────┬────────────────────┘
@@ -63,7 +63,7 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
 The Gateway is the front door and protocol coordinator. It ingests intent via MCP (`POST /mcp` or stdio), Agent-to-Agent (A2A), HTTP dispatch, or CLI. It checks technical bedrock rules, coordinates multi-agent consensus or human passkey authorizations, and packages admitted intent into a canonical, signed `GovernanceEnvelope`. It also serves the embedded browser console and hosts an in-process Operator substrate strictly for Gateway-local operations.
 
 ### The Policy Execution Point: Operator (`ztdo`)
-The Operator is a lightweight daemon that lives on the target machine owning the data. It connects **strictly outbound** over mTLS to the Gateway and listens on zero inbound network ports. It pulls transactions from its dedicated session channel, independently re-evaluates the envelope at Layer 4, mints a short-lived capability, dispatches the action locally, and records cryptographic receipts in its own local SQLite audit database and git file ledger.
+The Operator is a lightweight process that runs on the target machine that owns the data. It connects **strictly outbound** over mTLS to the Gateway and listens on zero inbound network ports. It pulls transactions from its dedicated session channel, independently re-evaluates the envelope at Layer 4, mints a short-lived capability, dispatches the action locally, and records cryptographic receipts in its own local SQLite audit database and git file ledger.
 
 Even if the Gateway is compromised, an Operator refuses to execute any envelope whose canonical transaction hash, state Merkle root, or cryptographic proofs fail its independent verification. Delivery from the Gateway does not equal authorization.
 
@@ -99,7 +99,7 @@ Universal integrity checks (L1, L4, and L5) are mandatory in every posture. Fail
 Most cloud-managed agent tools ship logs back to a vendor bucket. If the vendor goes down or credentials leak, your audit trail goes with it.
 
 ztd uses a **Local-First Audit Architecture**:
-- **Authoritative local store:** Each Operator maintains its own encrypted SQLite database (`audit.db`) and a git-backed file history ledger under its runtime directory.
+- **Authoritative local store:** Each Operator maintains its own encrypted SQLite audit records in `data/ztd.db` and a git-backed file history ledger under its runtime directory.
 - **Projections, not truth:** The Gateway mirrors receipts for the UI and CLI, but the local host remains the single authoritative root of truth for what ran.
 - **Incremental Merkle commitment:** State roots are computed incrementally across 65,536 buckets in a 16-ary tree. Proofs don't degrade into full-table scans as your audit history grows.
 - **Local secret rehydration:** Sensitive credentials and tokens never travel across the wire in plaintext. They are scrubbed to reversible placeholders (`{{UEI_N}}`) and rehydrated by the L5 Actuator inside the target host's memory immediately before execution.
@@ -108,7 +108,7 @@ ztd uses a **Local-First Audit Architecture**:
 
 ## Quickstart
 
-ztd runs natively as a static binary on Linux, macOS, and Windows. No Docker daemon, no background hypervisor, no sudo required.
+ztd runs natively as a static binary on Linux, macOS, and Windows. No Docker daemon, no background hypervisor, and no sudo for the one-line install.
 
 ### 1. One-line install
 
@@ -122,7 +122,7 @@ On **Windows** (PowerShell 7):
 irm https://zerotrustdata.io/start.ps1 | iex
 ```
 
-This downloads the checksum-verified binary to `~/ztd`, starts a local Gateway on `https://localhost:8443`, creates a CLI identity, and runs your first governed action through an embedded Operator.
+This installs the checksum-verified binary into `~/ztd`, starts a local Gateway on `https://localhost:8443`, creates a CLI identity, and runs your first governed action through an embedded Operator.
 
 ### 2. Build from source
 
@@ -168,8 +168,9 @@ Once the Gateway is running, here is how you drive it:
 # Run a governed command across all active Operators
 ./ztd operator run --all-active --cmd "uptime"
 
-# Inspect the cryptographic audit receipts for a session
-./ztd gw data audit list --operator-session-id <session_id>
+# List the audit events for one OperatorSession
+# (set OPERATOR_SESSION_ID to an ID printed by `./ztd operator list`)
+./ztd gw data audit list --operator-session-id "$OPERATOR_SESSION_ID"
 
 # Shut down the stack (preserves all local audit ledgers in .ztd/)
 make down
@@ -192,12 +193,12 @@ Mutations proposed by Claude flow through the Gateway's L1–L5 pipeline. If Cla
 
 We test ztd the way production infrastructure breaks.
 
-In October 2026, we drove **2,000 native Operator processes** against a single Gateway instance on a modest 12-core Linux machine:
+In October 2026, we drove **2,000 native Operator processes** against a single Gateway instance on a 12-CPU, 32 GiB Linux machine:
 
 - **2,000 Operators enrolled in 54.82 seconds.**
 - **Governed command fan-out to 2,001 targets completed in 3.89 seconds with 0 failures.**
 - Re-tested after bouncing the Gateway: all 2,000 resumed cleanly over mTLS without session rotation.
-- Gateway memory remained flat under continuous 30-second heartbeats over 6,000 concurrent TLS connections.
+- A five-minute idle soak kept all 2,000 Operators active with none stale under 30-second heartbeats.
 
 For the raw benchmarks, profiles, and the SQLite concurrency lessons learned during the test, read [From 936 to 2,000 Operators on one Gateway](https://zerotrustdata.io/build-in-public/enrolling-two-thousand-operators/).
 
@@ -212,13 +213,12 @@ internal/
   services/
     gateway/          PDP control plane, HTTP APIs, PKI CA, session routing
     governance/       The five-layer pipeline (L1 Doctrine, L2 Consensus, L3 Notary, L4 Warden, L5 Actuator)
-    consensus/        Ed25519 quorum deliberation engine
     fs/               RuntimeFileService (strictly isolated .ztd/ filesystem access)
     vault/            AES-256-GCM encrypted local secret & key storage
     mcp/              Native MCP server and tool registry
 protocol/             Canonical Protobuf schemas (proto/ztd/) and generated Go/TS bindings
 console/              React + TypeScript (Vite) web console (embedded into the Go binary)
-eval/                 Model evaluation fixtures, security gauntlets, and test datasets
+eval/                 Model evaluation fixtures, model catalogs, and rollout intake data
 docs/                 Complete platform architecture, developer invariants, and user guides
 ```
 
@@ -231,8 +231,8 @@ Always run test suites through `./ztd test <suite>` or the root `Makefile` (they
 ```bash
 ./ztd test unit          # Fast, in-memory, parallel-safe unit tests
 ./ztd test integration   # Real SQLite/PKI/mTLS integration tests (-race enabled)
-./ztd test lint          # golangci-lint, vulnerability audit, and doctrine verification
-./ztd test chaos         # Fault injection and network disruption tests
+./ztd test lint          # Go lint; make lint adds vulnerability and doctrine checks
+./ztd test chaos         # In-process synthetic governance fault injection
 
 make console-test        # Vitest suite for the browser console
 make proto-generate      # Regenerate Go and TypeScript protobuf bindings

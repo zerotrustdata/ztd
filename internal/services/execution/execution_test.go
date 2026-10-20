@@ -598,6 +598,11 @@ func TestExecutionService_CancelExecution_NoConcurrentDeadlock(t *testing.T) {
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := NewExecutionService(cfg, logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+		svc.Stop()
+	})
 
 	// Run multiple concurrent cancel+execute pairs to surface any deadlock from
 	// the previously double-locked CancelExecution.
@@ -611,21 +616,26 @@ func TestExecutionService_CancelExecution_NoConcurrentDeadlock(t *testing.T) {
 				ExecutionID:    id,
 				CaseID:         "test-case",
 				Command:        "sleep",
-				Args:           []string{"0.1"},
+				Args:           []string{"30"},
 				TimeoutSeconds: 60,
 				RequestedBy:    "test-user",
 			}
 			execDone := make(chan error, 1)
 			go func() {
 				defer close(execDone)
-				_, err := svc.ExecuteCommand(context.Background(), req)
+				_, err := svc.ExecuteCommand(ctx, req)
 				execDone <- err
 			}()
 			assert.Eventually(t, func() bool {
 				active := svc.GetActiveExecutions()
-				_, exists := active[id]
-				return exists
-			}, 1*time.Second, 10*time.Millisecond)
+				execCtx, exists := active[id]
+				if !exists {
+					return false
+				}
+				execCtx.mu.Lock()
+				defer execCtx.mu.Unlock()
+				return execCtx.Process != nil
+			}, 5*time.Second, 10*time.Millisecond)
 			err := svc.CancelExecution(id)
 			require.NoError(t, err, "CancelExecution should not fail")
 			select {

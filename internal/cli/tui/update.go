@@ -314,7 +314,7 @@ func (m Model) applySessionRotatedMsg(msg SessionRotatedMsg) (tea.Model, tea.Cmd
 	if m.sessionManager != nil {
 		m.sessionManager.replace(msg.Session, msg.Identity.UserID)
 	}
-	m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "CLI session rotated; reconnecting SSE"})
+	m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "CLI session updated; reconnecting SSE"})
 	return m, m.refreshCmd()
 }
 

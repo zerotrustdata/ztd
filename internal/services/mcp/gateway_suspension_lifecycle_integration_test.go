@@ -74,7 +74,7 @@ func (s lifecycleStores) store(t *testing.T, hash string, expiresIn time.Duratio
 	now := time.Now().UTC()
 	require.NoError(t, s.suspended.StoreSuspendedTransaction(context.Background(), &models.SuspendedTransaction{
 		TransactionHash:   hash,
-		Envelope:          []byte(`{"id":"` + hash + `","operatorSessionId":"` + lifecycleSession + `"}`),
+		Envelope:          []byte(`{"id":"` + hash + `","operatorId":"` + string(constants.DocIDEmbeddedOperator) + `","operatorSessionId":"` + lifecycleSession + `"}`),
 		ToolArguments:     []byte(`{"arg":"v"}`),
 		CreatedAt:         now.Add(-10 * time.Minute),
 		ExpiresAt:         now.Add(expiresIn),
@@ -254,7 +254,7 @@ func TestResumeWithL3Proof_ReleaseFailureIsJoined(t *testing.T) {
 	store := &fakeSuspendedStore{releaseErr: errors.New("release failed")}
 	require.NoError(t, store.StoreSuspendedTransaction(context.Background(), &models.SuspendedTransaction{
 		TransactionHash: "tx-1", OperatorSessionID: lifecycleSession,
-		Envelope:  []byte(`{"id":"tx-1"}`),
+		Envelope:  []byte(`{"id":"tx-1","operatorId":"` + string(constants.DocIDEmbeddedOperator) + `"}`),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}))
 	execFailure := errors.New("exec failed")

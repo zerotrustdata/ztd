@@ -10,14 +10,6 @@
         "text": "The settings check started failing after the last release moved the config. Can you make it pass?"
       }
     ],
-    "history": [
-      {
-        "kind": "COMMAND_FAILED",
-        "summary": "Settings check failed",
-        "command": "sh scripts/check.sh",
-        "exit_code": 1
-      }
-    ],
     "memory": [
       "The settings file moved to conf/ in the last release."
     ]

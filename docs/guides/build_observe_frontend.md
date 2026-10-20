@@ -3,8 +3,8 @@ doc_id: build_observe_frontend
 title: Generator-Neutral Builder Guide
 audience: SPA builders and frontend developers
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/build_observe_frontend.md
   - ztd-adapter/
@@ -71,7 +71,6 @@ The builder output is a browser SPA. Use Node.js 22.22.2+, 24.15+, or 26+ and th
 
 4. Connect the origin to the Gateway with `./ztd gw connect <frontend-origin>`, then open the built SPA in a top-level browser tab.
 5. In live mode, authenticate with WebAuthn, load the typed observe bootstrap snapshot, and start `SseStream`. On `onReconcile`, reload the bootstrap snapshot. On `onUnauthenticated`, redirect to sign-in.
-6. If EventSource is unavailable, fall back to `SsePollingFallback`.
 
 ## Architecture
 
@@ -91,14 +90,14 @@ The generated SPA wraps the audited `ztd-adapter` package. The adapter owns runt
 
 The `ztd-adapter/` package is the audited integration core. It exposes:
 
-- `parseRuntimeConfig`: Validates `FrontendRuntimeConfig` from a JSON script tag.
+- `parseRuntimeConfig`: Validates a parsed `FrontendRuntimeConfig` object, such as the JSON read from the `ztd-runtime-config` script tag.
 - `createCredentialedFetch`: Enforces allowlisted operations and sets `credentials: 'include'`.
 - `createObserveClient`: Typed client for the 7 observe endpoints (bootstrap, runs, run detail, evals, eval detail, downloads, download detail).
 - `registerPasskey`, `authenticatePasskey`, `enrollPasskey`: WebAuthn ceremonies.
 - `SseStream`: Manages EventSource on `/api/v1/sse/stream` with reconnect backoff and reconciliation signals.
-- `SsePollingFallback`: Polls `/api/v1/sse/events` when streaming is blocked.
 - `normalizeGatewayEvent`: Parses outer envelopes and validates recognized payloads.
 - `adapterReducer`: Pure reducers for auth, projections, narrative, transport, and runtime feature stores.
+- Error classes, for `instanceof` checks: `RuntimeConfigError` (invalid runtime config), `GatewayFetchError` (failed Gateway request), `EndpointNotAllowedError` (operation outside the allowlist), `ObserveResponseValidationError` (malformed observe response), `NormalizedEventError` (malformed SSE event).
 
 ## The contract pack
 
@@ -119,8 +118,8 @@ The `ztd-adapter/contract-pack/` directory contains deterministic, generator-neu
 | ID | Rule |
 | :--- | :--- |
 | INV-OBSERVE-BUILDER-01 | The adapter boundary is inviolate. Generated code MUST import from the audited adapter and call only its exported APIs. Generated code MUST NOT reimplement transport, auth, SSE parsing, or allowlist enforcement. |
-| INV-OBSERVE-BUILDER-02 | All Gateway requests MUST execute in the top-level browser context. Server-side proxies, service-worker relays, and iframe delegation are prohibited. |
-| INV-OBSERVE-BUILDER-03 | The configured Gateway origin from `FrontendRuntimeConfig` MUST be used for every request. Hardcoded origins and relative URLs are prohibited. |
+| INV-OBSERVE-BUILDER-02 | All Gateway requests MUST execute in the top-level browser context. Server-side proxies, service-worker relays, and iframe delegation MUST NOT be used. |
+| INV-OBSERVE-BUILDER-03 | The configured Gateway origin from `FrontendRuntimeConfig` MUST be used for every request. Hardcoded origins and relative URLs MUST NOT be used. |
 | INV-OBSERVE-BUILDER-04 | Credentials MUST be included on every fetch (`credentials: 'include'`) and EventSource (`withCredentials: true`). |
 | INV-OBSERVE-BUILDER-05 | Only allowlisted endpoints in the adapter are reachable. Routes for mutation, approval, tool execution, or evaluation launch MUST NOT be called. |
 
@@ -134,21 +133,24 @@ The `ztd-adapter/contract-pack/` directory contains deterministic, generator-neu
 
 ## Display requirements
 
-Populate UI sections strictly from typed stores:
+Generated UI MUST populate its sections strictly from typed stores:
 - Connection state: disconnected, connecting, connected, reconnecting, unauthenticated.
 - Auth state: unauthenticated, authenticating, enrolling, authenticated, or error.
-- Overview counters: agents running, queue length, observed throughput, and success rate.
+- Overview counters: agents running and queue length. Success rate appears only when a `success_rate` measurement is present.
+- Overview measurements: observed throughput appears only when a `total_throughput` measurement is present.
 - Agent roster: display name, role, status label, and freshness.
 - Active run and recent runs: run kind, status, completed/total tasks.
-- Latest evaluations: run ID, verification status, receipt count, metrics.
+- Latest evaluations: run ID, verification status, receipt count, metric count.
 - Downloads: filename, media type, size, SHA-256, and authenticated URL.
 - Live narrative: virtualized scrollable log of normalized safe events.
 
 ## Prohibited displays
 
-Do not display throughput, CPU, RAM, VRAM, disk, parameter counts, quantization, or verification claims unless corresponding typed observed sources exist in the store. Do not render raw event payloads or model chain-of-thought traces.
+Generated UI MUST NOT display throughput, CPU, RAM, VRAM, disk, parameter counts, quantization, or verification claims unless corresponding typed observed sources exist in the store. Generated UI MUST NOT render raw event payloads or model chain-of-thought traces.
 
 ## Accessibility and responsive behavior
+
+Generated UI MUST provide:
 
 - Keyboard navigation across all interactive controls with visible focus indicators.
 - Semantic HTML landmarks (`header`, `main`, `nav`, `section`).
@@ -163,8 +165,9 @@ Run verification from `ztd-adapter/`:
 ```bash
 npm run gen:contract-pack:check   # verify contract pack is current
 npm test                          # run adapter tests
-npm run lint                      # type-check adapter
+npm run lint                      # type-check adapter, host, and reference UI
 npm run build                     # build audited adapter
+npm run build:host                # build the minimal host
 ```
 
 ## Anti-patterns
@@ -180,5 +183,5 @@ npm run build                     # build audited adapter
 - [Build a ztd-Compatible Frontend](build_frontend.md) — Comprehensive frontend building reference.
 - [Connect a Lovable App](lovable.md) — Local Lovable setup with `gw connect`.
 - [Public Spectator Operations Guide](public_spectator.md) — Anonymous public mirror.
-- [SSE Architecture](../architecture/sse.md) — Event streaming and polling architecture.
+- [SSE Architecture](../architecture/sse.md) — Event streaming architecture.
 - [Contract Pack README](../../ztd-adapter/contract-pack/README.md) — Deterministic generation reference.

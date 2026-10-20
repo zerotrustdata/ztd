@@ -642,6 +642,8 @@ enum ReceiptFailureCode {
   RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED = 19;
   // The prompt filled the provider's context window, so the provider truncated it or left no room to generate.
   RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW = 20;
+  // A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch.
+  RECEIPT_FAILURE_CODE_REHYDRATION_FAILED = 21;
 }
 
 // GovernanceRejectionCode names the verification check that rejected a
@@ -684,6 +686,8 @@ enum GovernanceRejectionCode {
   GOVERNANCE_REJECTION_CODE_L2_CONSENSUS_SET_UNKNOWN = 23;
   // The human denied the suspended transaction at the L3 approval.
   GOVERNANCE_REJECTION_CODE_L3_DENIED = 24;
+  // An MCP_CALL's target_resource is not its payload's tool name.
+  GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH = 25;
 }
 
 // ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
@@ -1830,11 +1834,15 @@ enum InferenceDispatchFailureCode {
 // the executing Operator's verified signed FAILED receipt when the dispatch
 // reached it: a governance rejection, or a failed execution whose commitment
 // the Operator's ledger holds. It is absent for every failure that ended
-// before the Operator signed an outcome.
+// before the Operator signed an outcome. Observation_receipts are the
+// observers' verified signed BEGIN and FINALIZE receipts the failed attempt
+// produced, in dispatch order, so a trace bracket can claim their
+// commitments as it does for InferenceDispatchResponse.
 message InferenceDispatchFailure {
   string error = 1;
   InferenceDispatchFailureCode code = 2;
   ActionReceipt receipt = 3;
+  repeated ActionReceipt observation_receipts = 4;
 }
 
 // InferenceDispatchStreamFailure is the protocol-owned terminal failure
@@ -1875,4 +1883,10 @@ message InferenceDispatchResponse {
 
   // The verified final signed ActionReceipt for the transaction.
   ActionReceipt receipt = 3;
+
+  // The observers' verified final signed receipts for this attempt's
+  // provider-boundary and model provenance BEGIN and FINALIZE commands, in
+  // dispatch order. Each was signed before the response was returned, so a
+  // trace bracket closing after the dispatch can claim its commitment.
+  repeated ActionReceipt observation_receipts = 4;
 }

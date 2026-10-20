@@ -23,7 +23,7 @@ import (
 )
 
 func TestSuitesList_ShowsBuiltinSuites(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	out := env.mustRun(t, "suites", "list")
 	assert.Contains(t, out, evaluation.DefaultSuiteID)
@@ -32,14 +32,15 @@ func TestSuitesList_ShowsBuiltinSuites(t *testing.T) {
 
 	var payload suiteListJSON
 	require.NoError(t, env.runJSON(t, &payload, "suites", "list"))
-	require.Len(t, payload.Suites, 2)
+	require.Len(t, payload.Suites, 3)
 	assert.Equal(t, evaluation.DefaultSuiteID, payload.Suites[0].ID)
+	assert.Equal(t, evaluation.InvestigationsSuiteID, payload.Suites[2].ID)
 	assert.True(t, payload.Suites[0].Builtin)
 	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, payload.Suites[0].ScenarioCount)
 }
 
 func TestSuites_HasNoSingularAlias(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "suite", "list")
 	require.Error(t, err)
@@ -47,7 +48,7 @@ func TestSuites_HasNoSingularAlias(t *testing.T) {
 }
 
 func TestSuitesExport_WritesTheCreateFormat(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	out := env.mustRun(t, "suites", "export", evaluation.DefaultSuiteID)
 	def, err := evaluation.DecodeScenarioSuite([]byte(out))
@@ -57,7 +58,7 @@ func TestSuitesExport_WritesTheCreateFormat(t *testing.T) {
 }
 
 func TestSuitesCreate_ThenCampaignFreezesIt(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newGatewayRunEnv(t)
 	path := writeSuiteFile(t, "my-suite", "1.0.0", "instruction-exact-format", "tool-select-file-read")
 
 	out := env.mustRun(t, "suites", "create", path)
@@ -90,7 +91,7 @@ func TestSuitesCreate_ThenCampaignFreezesIt(t *testing.T) {
 }
 
 func TestCampaignsCreate_DefaultsToTheDefaultSuite(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	var created campaignCreateJSON
 	require.NoError(t, env.runJSON(t, &created, "campaigns", "create", "eval-a", "qwen3:4b"))
@@ -99,7 +100,7 @@ func TestCampaignsCreate_DefaultsToTheDefaultSuite(t *testing.T) {
 }
 
 func TestCampaignsCreate_UnknownSuiteFailsBeforeFreezing(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "campaigns", "create", "eval-a", "qwen3:4b", "--suite", "never-created")
 	require.ErrorIs(t, err, constants.ErrNotFound)
@@ -109,7 +110,7 @@ func TestCampaignsCreate_UnknownSuiteFailsBeforeFreezing(t *testing.T) {
 }
 
 func TestSuitesUpdate_RequiresANewVersionForChangedContent(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 	env.mustRun(t, "suites", "create", writeSuiteFile(t, "my-suite", "1.0.0", "instruction-exact-format"))
 
 	same := writeSuiteFile(t, "my-suite", "1.0.0", "instruction-exact-format")
@@ -126,7 +127,7 @@ func TestSuitesUpdate_RequiresANewVersionForChangedContent(t *testing.T) {
 }
 
 func TestSuites_BuiltinsAreProtectedAndBadFilesRejected(t *testing.T) {
-	env := setupRunEnv(t)
+	env := newStoreRunEnv(t)
 
 	_, err := env.run(t, "suites", "delete", evaluation.DefaultSuiteID)
 	require.ErrorIs(t, err, constants.ErrEvaluationSuiteBuiltin)

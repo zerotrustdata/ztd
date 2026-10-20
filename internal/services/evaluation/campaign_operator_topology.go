@@ -46,11 +46,41 @@ type CampaignOperatorTopology struct {
 // operator registry. inferenceSessionID pins the Inference session when set;
 // otherwise SelectInferenceOperator's default applies. Anchors are not bound.
 func ResolveCampaignOperatorTopology(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (CampaignOperatorTopology, error) {
+	return ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceSessionID, "")
+}
+
+// ResolveCampaignOperatorTopologyForDataOperator resolves the Inference and
+// Data roles from the operator registry. dataOperatorID pins the Data role to
+// a stable Operator identity while allowing its active session to change. An
+// empty ID keeps the default Data Operator selection used by fresh campaigns.
+func ResolveCampaignOperatorTopologyForDataOperator(operators []*operatorv1.OperatorDocument, inferenceSessionID, dataOperatorID string) (CampaignOperatorTopology, error) {
 	inference, err := SelectInferenceOperator(operators, inferenceSessionID)
 	if err != nil {
 		return CampaignOperatorTopology{}, fmt.Errorf("evaluation: resolve operator topology: %w", err)
 	}
-	data, err := operatorcapability.SelectDataOperator(operators)
+	var data *operatorcapability.DataOperatorStatus
+	if dataOperatorID == "" {
+		data, err = operatorcapability.SelectDataOperator(operators)
+	} else {
+		var matches []operatorcapability.DataOperatorStatus
+		for _, operator := range operators {
+			if operator == nil || operator.GetId() != dataOperatorID {
+				continue
+			}
+			// Filter by stable identity before using the normal active Data
+			// selector: its default preference for the embedded Operator omits
+			// dedicated Operators when an embedded one is active.
+			matches = append(matches, operatorcapability.ActiveDataOperators([]*operatorv1.OperatorDocument{operator})...)
+		}
+		switch len(matches) {
+		case 0:
+			err = constants.ErrDataOperatorNotFound
+		case 1:
+			data = &matches[0]
+		default:
+			err = fmt.Errorf("%w: operator %s has %d active sessions", constants.ErrDataOperatorAmbiguous, dataOperatorID, len(matches))
+		}
+	}
 	if err != nil {
 		return CampaignOperatorTopology{}, fmt.Errorf("evaluation: resolve operator topology: %w", err)
 	}

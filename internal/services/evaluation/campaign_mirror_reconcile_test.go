@@ -8,12 +8,10 @@
 package evaluation
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCampaignMirrorReconcileRunTimeout_ScalesWithAssignmentCount(t *testing.T) {
@@ -21,19 +19,4 @@ func TestCampaignMirrorReconcileRunTimeout_ScalesWithAssignmentCount(t *testing.
 	assert.Equal(t, base, CampaignMirrorReconcileRunTimeout(base, 0))
 	assert.Equal(t, 7*time.Minute, CampaignMirrorReconcileRunTimeout(base, 60))
 	assert.Equal(t, CampaignMirrorRunTimeoutMax, CampaignMirrorReconcileRunTimeout(base, 10_000))
-}
-
-func TestCampaignMirrorReconciler_ReconcileAllVerifiedRunsFromStorePresenceOnlyReportsMissing(t *testing.T) {
-	files := newCampaignRuntimeFileService(t)
-	store := NewStore(files)
-	exporter := &recordingCampaignFeedExporter{}
-	probe := &stubCampaignMirrorProbe{present: map[string]bool{}}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter, nil).WithMirrorProbe(probe)
-	run := completedVerifiedMirrorTestCampaign(t, store)
-
-	reconciler := NewCampaignMirrorReconciler(coordinator, store, probe)
-	result, err := reconciler.ReconcileAllVerifiedRunsFromStore(context.Background(), time.Minute, false, false, nil)
-	require.NoError(t, err)
-	assert.Equal(t, []string{run.GetRunId()}, result.MissingRunIDs)
-	assert.Empty(t, result.RestoredRunIDs)
 }

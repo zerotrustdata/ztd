@@ -239,15 +239,15 @@ type OperatorStopMsg struct {
 	Err               error
 }
 
-// OperatorBindMsg carries a replacement CLI session after binding to an
-// Operator, or the error that prevented binding.
+// OperatorBindMsg carries the CLI session after binding to an Operator, or the
+// error that prevented binding.
 type OperatorBindMsg struct {
 	Response auth.CLISessionBind
 	Err      error
 }
 
-// OperatorUnbindMsg carries a replacement CLI session after clearing the
-// Operator binding, or the error that prevented unbinding.
+// OperatorUnbindMsg carries the CLI session after clearing the Operator
+// binding, or the error that prevented unbinding.
 type OperatorUnbindMsg struct {
 	Response auth.CLISessionUnbind
 	Err      error

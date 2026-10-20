@@ -208,7 +208,7 @@ func operatorInstanceID(hostname string, capabilities constants.OperatorCapabili
 		dir = absolute
 	}
 	digest := sha256.Sum256([]byte(dir))
-	capabilityNames := capabilities.String()
+	capabilityNames := strings.ReplaceAll(capabilities.String(), ",", "_")
 	hostnameLimit := constants.PlatformEnrollmentMaxInstanceIDBytes - len("operator--") - len(capabilityNames) - 1 - 32
 	if hostnameLimit > 64 {
 		hostnameLimit = 64

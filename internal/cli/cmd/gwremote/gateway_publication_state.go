@@ -31,7 +31,7 @@ type remoteGatewayCampaignPublicationStateStore struct {
 // NewCampaignPublicationStateStore returns the Gateway-backed publication
 // state store. It requires a healthy Gateway.
 func NewCampaignPublicationStateStore(fileSvc fs.RuntimeFileService, cfg *config.Config) (evaluation.CampaignPublicationStateStore, error) {
-	if !IsGatewayHealthy() {
+	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return nil, fmt.Errorf("campaign publication: publication state: %w", constants.ErrGatewayUnhealthy)
 	}
 	client, err := campaignPublicationAPIClientFactory(fileSvc, cfg)
@@ -57,7 +57,6 @@ func (s *remoteGatewayCampaignPublicationStateStore) Load(_ context.Context, run
 	for assignmentID, artifacts := range remote.PublishedProofArtifacts {
 		proofArtifacts[assignmentID] = evaluation.CampaignPublishedProofArtifacts{
 			DatabaseSHA256:      artifacts.DatabaseSHA256,
-			VaultKeySHA256:      artifacts.VaultKeySHA256,
 			AgentTraceSHA256:    artifacts.AgentTraceSHA256,
 			ScenarioInputSHA256: artifacts.ScenarioInputSHA256,
 			ScenarioGoldSHA256:  artifacts.ScenarioGoldSHA256,
@@ -98,7 +97,6 @@ func (s *remoteGatewayCampaignPublicationStateStore) Save(_ context.Context, sta
 	for assignmentID, artifacts := range state.PublishedProofArtifacts {
 		proofArtifacts[assignmentID] = models.EvalCampaignPublishedProofArtifacts{
 			DatabaseSHA256:      artifacts.DatabaseSHA256,
-			VaultKeySHA256:      artifacts.VaultKeySHA256,
 			AgentTraceSHA256:    artifacts.AgentTraceSHA256,
 			ScenarioInputSHA256: artifacts.ScenarioInputSHA256,
 			ScenarioGoldSHA256:  artifacts.ScenarioGoldSHA256,

@@ -33,6 +33,8 @@ type approvalStream interface {
 // production subscriber; tests fake it.
 type approvalSubscriber interface {
 	Subscribe(ctx context.Context, p client.Persona) (approvalStream, error)
+	// Announce asks the human for decision on a transaction that does not exist yet.
+	Announce(decision client.ApprovalDecision)
 }
 
 // clientApprovals subscribes through the harness client's SubscribeApprovals.
@@ -47,6 +49,11 @@ func (ca clientApprovals) Subscribe(ctx context.Context, p client.Persona) (appr
 		return nil, err
 	}
 	return bannerStream{c: ca.c, sub: sub}, nil
+}
+
+// Announce prints the approval banner without a transaction.
+func (ca clientApprovals) Announce(decision client.ApprovalDecision) {
+	ca.c.AnnounceApproval("", decision)
 }
 
 // bannerStream is the harness approval stream. Its Wait prints the approval banner
@@ -66,12 +73,16 @@ func (s bannerStream) Close() {
 	s.sub.Close()
 }
 
-// Attended wraps the MCP or A2A driver. Cases with Attended=false pass through
-// unchanged. T23 wraps the drivers only for an attended run.
+// Attended wraps the MCP, A2A, governed dispatch or CLI driver. Cases with
+// Attended=false pass through unchanged. The run wraps the drivers only for an
+// attended run.
 //
 // The approve or deny decision is the human's. The driver never approves or denies
-// anything itself: the banner asks for the decision the case names, and the driver
-// waits for it over SSE and reports the signed receipt the decision produced.
+// anything itself: the banner asks for the decision the case names. MCP and A2A
+// answer with a suspension, so the driver waits for the decision over SSE and
+// reports the signed receipt it produced. Governed dispatch and the CLI hold the
+// request open until the decision, so the inner driver's answer already is the
+// signed receipt or L3_DENIED rejection and no second wait is needed.
 type Attended struct {
 	inner          cases.Driver
 	persona        client.Persona
@@ -90,13 +101,28 @@ func NewAttended(inner cases.Driver, c *client.Client, p client.Persona, approve
 }
 
 // Drive subscribes to approvals, then submits the attempt through the inner driver.
-// For an attended case whose submission is suspended, it waits for the human decision
-// and returns it in place of the suspension: the resumed receipt on approve (row 24),
-// or the Operator-signed L3_DENIED rejection on deny (row 25). Every other answer is
+// For an attended MCP or A2A case whose submission is suspended, it waits for the human decision
+// and returns it in place of the suspension: the resumed receipt on approve (row 23),
+// or the Operator-signed L3_DENIED rejection on deny (row 24). Every other answer is
 // returned as the inner driver gave it.
+//
+// A blocking ingress (governed dispatch, CLI) is announced before the call and
+// returns the inner answer: the Gateway answers it only after the human decides.
 func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) {
 	if !a.Case.Attended {
 		return d.inner.Drive(ctx, a)
+	}
+	decision := client.ApprovalDecisionApprove
+	if a.Case.Fault == cases.FaultAttendedDeny {
+		decision = client.ApprovalDecisionDeny
+	}
+	if blocksUntilDecision(a.Case.Ingress) {
+		d.approvals.Announce(decision)
+		driven, err := d.inner.Drive(ctx, a)
+		if err != nil {
+			return cases.Driven{}, fmt.Errorf("attended %s: drive: %w", a.Case.Fault, err)
+		}
+		return driven, nil
 	}
 	// The stream opens before the call is submitted. The Gateway publishes
 	// approval.completed as soon as the human decides, so a stream opened after the
@@ -123,10 +149,6 @@ func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 	if onA2A {
 		a2a.stub.Begin(a.AttemptID)
 	}
-	decision := client.ApprovalDecisionApprove
-	if a.Case.Fault == cases.FaultAttendedDeny {
-		decision = client.ApprovalDecisionDeny
-	}
 	receipt, waitErr := stream.Wait(ctx, txHash, d.approverUserID, decision)
 	var waitCalls []*evalv1.ConformanceA2ACall
 	if onA2A {
@@ -140,6 +162,18 @@ func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 		Observations: []*evalv1.ConformanceObservation{decisionObservation(receipt)},
 		A2ACalls:     append(append([]*evalv1.ConformanceA2ACall{}, driven.A2ACalls...), waitCalls...),
 	}, nil
+}
+
+// blocksUntilDecision reports whether the ingress holds a suspended mutation open
+// until a human decides, instead of answering with a suspension: governed HTTP
+// dispatch (both executors) and the CLI, which posts to the same route.
+func blocksUntilDecision(ingress cases.Ingress) bool {
+	switch ingress {
+	case cases.IngressDispatchEmbedded, cases.IngressDispatchOutbound, cases.IngressCLI:
+		return true
+	default:
+		return false
+	}
 }
 
 // decisionObservation records the signed receipt of a human decision. A governance

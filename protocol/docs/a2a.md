@@ -1,7 +1,7 @@
 # Agent-to-Agent (A2A) Protocol Specification
 
-Last Updated: 2026-10-12
-Version: v1.1.3
+Last Updated: 2026-10-20
+Version: v1.2.0
 
 The **Agent-to-Agent (A2A)** protocol defines a cryptographically governed mechanism for autonomous AI agents to discover, invoke, and delegate tasks to peer agent capabilities. The ztd Gateway terminates inbound A2A requests, translates them into the canonical `GovernanceEnvelope` wire format, executes the 5-layer governance sequence (L1 Doctrine, L2 Consensus, L3 Notary, L4 Warden, L5 Actuator), and securely dispatches verified skill payloads to configured downstream agent executors.
 
@@ -14,7 +14,7 @@ Autonomous workflows frequently require agents to collaborate across boundaries 
 - **Unified Governance**: Every skill call undergoes identical validation to host-native commands, requiring state Merkle root verification, policy evaluation, and cryptographic audit receipt generation.
 - **Fail-Closed Execution**: Downstream skill providers receive invocations only after all governance layers confirm validity.
 
-```
+```text
 ┌────────────────────────────────────────────────────────┐
 │ Originating Agent (A2A Client)                         │
 └───────────────────────────┬────────────────────────────┘
@@ -34,7 +34,7 @@ Autonomous workflows frequently require agents to collaborate across boundaries 
 │ ztd Operator Actuator (Policy Execution Point)         │
 │ 1. Reserve nonce & verify host state Merkle root       │
 │ 2. Mint ephemeral capability bound to skill & payload  │
-│ 3. Forward to downstream server (DispatchToA2A)        │
+│ 3. Forward to downstream (DispatchToA2ADownstream)     │
 │ 4. Apply output scrubbing & receipt summary truncation │
 │ 5. Produce signed ActionReceipt & commit to ledger     │
 └───────────────────────────┬────────────────────────────┘
@@ -49,13 +49,13 @@ Autonomous workflows frequently require agents to collaborate across boundaries 
 
 ## 2. Ingress & Wire Format
 
-A2A skill invocations enter the platform through two interchangeable HTTP interfaces:
+A2A skill invocations enter the platform through two interchangeable HTTPS interfaces:
 1. **Dedicated REST Route**: `POST /api/v1/a2a/call`
 2. **Unified MCP Router**: `POST /mcp` with method `"a2a/call"`
 
 ### 2.1 Transport & Authentication
-- **HTTPS Port (`8443`)**: Production ingress requiring mutual TLS with client certificate authentication (`RequireAndVerifyClientCert`).
-- **HTTP Port (`8080`)**: Plain HTTP ingress with loopback origin enforcement, designated for local inter-process communication.
+- **HTTPS Port (`8443`)**: The only listener that serves A2A routes. It requires mutual TLS with client certificate authentication (`RequireAndVerifyClientCert`). When JWKS is configured, JWT authentication wraps the route.
+- **HTTP Port (`8080`)**: Does not register `/api/v1/a2a/call` or `/mcp`. Its catch-all handler redirects other paths to the HTTPS listener with `301`.
 
 ### 2.2 Wire Request Schema
 Requests use standard JSON-RPC 2.0 framing:
@@ -162,7 +162,7 @@ message A2aCallRequested {
 
 Under postures enforcing L3 (`ratify`, `notary`), unauthenticated A2A requests enter the suspension workflow:
 
-```
+```text
 [ Inbound A2A Call ] ──▶ [ L3 Proof Missing ]
                                 │
                                 ▼
@@ -171,7 +171,7 @@ Under postures enforcing L3 (`ratify`, `notary`), unauthenticated A2A requests e
          │ • Stores envelope with 2-minute TTL          │
          │ • Scopes submitter_cli_session_id            │
          └──────────────────────┬───────────────────────┘
-                                │ Returns A2ASuspensionResponse
+                                │ Returns GovernedSuspension
                                 ▼
          ┌──────────────────────────────────────────────┐
          │ Calling Agent Receives Approval URL          │
@@ -190,16 +190,18 @@ Under postures enforcing L3 (`ratify`, `notary`), unauthenticated A2A requests e
          └──────────────────────────────────────────────┘
 ```
 
-### 5.1 Suspension Response Schema (`A2ASuspensionResponse`)
+### 5.1 Suspension Response Schema (`GovernedSuspension`)
+The `result` is the typed `GovernedSuspension` (`internal/services/mcp/models.go`). The approval URL is the public base URL (`--public-base-url`) joined with `/api/v1/approve/` and the transaction hash.
 ```json
 {
   "jsonrpc": "2.0",
   "id": 42,
   "result": {
+    "id": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "status": "suspended",
     "tx_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "approval_url": "https://ztd.local:8443/approve/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "message": "Execution paused: this is a state-changing action and the gateway is running in notary posture, which REQUIRES live human passkey (WebAuthn) authorization before it can run. A human must approve this exact change at https://ztd.local:8443/approve/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 within 2 minutes. Wait for the human to approve, then retry this identical tool call to proceed."
+    "approval_url": "https://ztd.local:8443/api/v1/approve/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "message": "Execution paused: this is a state-changing action. <posture-specific approval reason> A human must approve this exact change at https://ztd.local:8443/api/v1/approve/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 within 2 minutes. Wait for the human to approve, then retry this identical tool call to proceed. If it lapses before approval the request is voided for security; call this tool again to open a fresh approval request."
   }
 }
 ```
@@ -244,26 +246,28 @@ Downstream A2A egress shares the Gateway's stateful circuit breaker:
 
 ## 7. Execution Success Response
 
-When execution completes successfully, the Gateway returns `A2ASuccessResponse` enclosing the signed `ActionReceipt`:
+When execution completes successfully, the Gateway returns `A2ASuccessResponse` as the JSON-RPC `result`. Its `id` is the transaction hash and its `result` is the executing Operator's signed `ActionReceipt`, encoded as canonical protojson with proto field names:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 42,
   "result": {
-    "transactionId": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "transactionHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "status": "COMPLETED",
-    "resultSummary": "Pipeline executed successfully: 1,420,891 records processed across 8 partitions",
-    "stateRootBefore": "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
-    "stateRootAfter": "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
-    "executedAtUnixMs": 1774980012450,
-    "signerKeyId": "op-prod-01-actuator-key",
-    "signature": "8a4f91...b320cd",
-    "l2Status": "L2_STATUS_REQUIRED_VALID",
-    "l3Status": "L3_STATUS_REQUIRED_VALID",
-    "eventType": "ztd.v1.operator.a2a.call.requested",
-    "actionType": "A2A_CALL"
+    "id": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "result": {
+      "transaction_id": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "transaction_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "COMPLETED",
+      "result_summary": "Pipeline executed successfully: 1,420,891 records processed across 8 partitions",
+      "state_root_before": "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+      "state_root_after": "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+      "signer_key_id": "op-prod-01-actuator-key",
+      "signature": "8a4f91...b320cd",
+      "l2_status": "L2_STATUS_REQUIRED_VALID",
+      "l3_status": "L3_STATUS_REQUIRED_VALID",
+      "event_type": "ztd.v1.operator.a2a.call.requested",
+      "action_type": "A2A_CALL"
+    }
   }
 }
 ```
@@ -272,24 +276,25 @@ When execution completes successfully, the Gateway returns `A2ASuccessResponse` 
 
 ## 8. Protocol Error Codes
 
-A2A errors conform to standardized JSON-RPC 2.0 error specifications:
+A2A errors conform to JSON-RPC 2.0 error objects. Verification codes are defined in `internal/constants/rpc_errors.go`. The standard codes `-32600`, `-32601`, and `-32603` are emitted as literals in `internal/services/mcp/`; `-32700` is `JSONRPCErrorCodeParseError` and `-32603` is `JSONRPCErrorCodeInternal` in `internal/constants/auth.go`.
 
-| Code | Label | Cause |
+| Code | Constant | Cause |
 |:---|:---|:---|
-| `-32700` | `JSONRPCParseError` | Malformed JSON-RPC wire payload. |
-| `-32600` | `JSONRPCInvalidRequest` | Batch requests or oversized payloads. |
-| `-32602` | `JSONRPCInvalidParams` | Missing required `skill_name` parameter. |
-| `-32603` | `JSONRPCInternalError` | Downstream server error, unconfigured downstream URL, or open circuit breaker. |
+| `-32700` | `JSONRPCErrorCodeParseError` | Malformed JSON-RPC wire payload. |
+| `-32600` | literal | Batch requests, invalid `jsonrpc` version, missing `method`, or oversized payloads. |
+| `-32601` | literal | Method other than `a2a/call` on the `/mcp` router. |
+| `-32603` | `JSONRPCErrorCodeInternal` | Missing `skill_name`, Gateway not ready, downstream server error, unconfigured downstream URL, or open circuit breaker. |
 | `-32000` | `ErrCodeInvalidEnvelope` | Malformed envelope structure or missing identifier. |
 | `-32001` | `ErrCodeHashMismatch` | Transaction hash recomputation mismatch. |
 | `-32002` | `ErrCodeExpired` | Transaction validity deadline exceeded. |
 | `-32003` | `ErrCodeReplay` | Nonce already exists in replay store. |
 | `-32004` | `ErrCodeStateMismatch` | Host state Merkle root divergence. |
-| `-32005` | `ErrCodeL1ValidationFailed`| L1 Doctrine forbidden pattern match or MITRE threat indicator. |
-| `-32006` | `ErrCodeL2SignatureInvalid`| Consensus quorum not met or invalid Ed25519 signature. |
+| `-32005` | `ErrCodeL1ValidationFailed` | L1 Doctrine forbidden pattern match or MITRE threat indicator. |
+| `-32006` | `ErrCodeL2SignatureInvalid` | Consensus quorum not met or invalid Ed25519 signature. |
 | `-32007` | `ErrCodeL3ProofInvalid` | Human notary proof verification failure. |
-| `-32008` | `ErrCodePayloadDecodeFailed`| Protobuf unmarshaling failure. |
-| `-32101` | `ErrCodeGatewayNotReady` | Gateway initialization in progress. |
+| `-32008` | `ErrCodePayloadDecodeFailed` | Protobuf unmarshaling failure. |
+
+`ErrCodeGatewayNotReady` (`-32101`) and `ErrCodeResourceNotFound` (`-32100`) are reserved. The A2A path does not emit them; a Gateway that is not ready returns `-32603`.
 
 ---
 
@@ -298,7 +303,7 @@ A2A errors conform to standardized JSON-RPC 2.0 error specifications:
 A2A integration parameters are configured strictly through Gateway CLI flags:
 
 - **`--a2a-downstream-url <url>`**: Target HTTP endpoint of the downstream A2A executor (default: none; required for A2A dispatch).
-- **`--public-base-url <url>`**: Canonical public base URL utilized to generate human passkey approval links in `A2ASuspensionResponse` (e.g., `https://ztd.local:8443`).
+- **`--public-base-url <url>`**: Canonical public base URL utilized to generate human passkey approval links in `GovernedSuspension` (e.g., `https://ztd.local:8443`).
 - **`--posture <mode>`**: Gateway governance posture (`doctrine`, `consensus`, `ratify`, `notary`).
-- **`--http-port <port>`**: Plain HTTP port for loopback ingress (effective default: `8080`).
+- **`--http-port <port>`**: Plain HTTP port for bootstrap and enrollment routes (effective default: `8080`). It does not serve A2A or MCP routes.
 - **`--https-port <port>`**: HTTPS port for mTLS production ingress (effective default: `8443`).

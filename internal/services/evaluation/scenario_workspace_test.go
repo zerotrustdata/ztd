@@ -54,9 +54,6 @@ func TestScenarioWorkspaceResolveWindowsOperator(t *testing.T) {
 	} {
 		assert.Equal(t, want, ws.Resolve(value), value)
 	}
-	assert.True(t, ws.Contains(strings.ReplaceAll(file, "/", `\`)))
-	assert.False(t, ws.Contains(`D:\ztd\work`))
-	assert.False(t, ws.Contains(ws.Root+"-sibling/x"))
 }
 
 func TestScenarioWorkspaceResolvePOSIXOperator(t *testing.T) {
@@ -66,7 +63,6 @@ func TestScenarioWorkspaceResolvePOSIXOperator(t *testing.T) {
 	assert.Equal(t, "/etc/passwd", ws.Resolve("../../etc/passwd"))
 	// A backslash is an ordinary file-name byte on a POSIX operator.
 	assert.Equal(t, `/srv/ztd/sub\a.txt`, ws.Resolve(`sub\a.txt`))
-	assert.True(t, ws.Contains(ws.Root+"/x"))
 }
 
 func TestValidateAgentDataOperator(t *testing.T) {

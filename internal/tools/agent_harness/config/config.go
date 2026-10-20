@@ -12,7 +12,6 @@ package config
 
 import (
 	"crypto/tls"
-	"time"
 )
 
 // Auth selects how Agent Harness authenticates to the Gateway's mTLS surface.
@@ -56,11 +55,13 @@ type Config struct {
 	// UseCLIConfig uses the CLI credentials directory for all paths.
 	UseCLIConfig bool `json:"use_cli_config"`
 
-	// CLIAuth holds the host CLI mTLS material used for notary-scenario
-	// transaction submits. When populated, the harness client builds a
-	// second http.Client with this cert pair so handleCLIAuth stamps the
-	// host user's identity onto the suspended transaction. Non-notary MCP
-	// calls continue using the operator cert in Auth.
+	// CLIAuth holds the host CLI mTLS material: the identity that notary-scenario
+	// transaction submits and approval streams run as, so handleCLIAuth stamps the
+	// host user's identity onto the suspended transaction. When it differs from
+	// Auth, the harness client builds a second http.Client with this cert pair.
+	// When it names the same certificate as Auth, one client serves both. Requests
+	// made with Auth alone never carry the CLI session. Any material named here must
+	// load, or building the harness client fails.
 	CLIAuth Auth `json:"cli_auth"`
 
 	// OperatorSessionID scopes audit receipt queries to the real Operator that
@@ -77,13 +78,10 @@ type Config struct {
 	// the host user's identity.
 	UserID string `json:"user_id"`
 
-	// CLISessionID is the host CLI session id sent as X-CLI-Session-ID on
-	// notary submit so handleCLIAuth stamps the host user onto the suspended
-	// transaction.
+	// CLISessionID is the host CLI session id. It is sent as X-CLI-Session-ID only on
+	// requests made with the CLI identity, so handleCLIAuth stamps the host user onto
+	// the suspended transaction.
 	CLISessionID string `json:"cli_session_id"`
-
-	// EnvelopeTTL is how long a maximal envelope is valid before expiry.
-	EnvelopeTTL time.Duration `json:"envelope_ttl"`
 
 	// OutDir is where the auditor writes its detailed run report and receipt export.
 	OutDir string `json:"out_dir"`
