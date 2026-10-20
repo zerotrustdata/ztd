@@ -225,6 +225,11 @@ func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) 
 			if ok {
 				return approvalReceipt(event, txHash)
 			}
+			// A stream bound to the caller's context ends when that context
+			// does; both channels are then ready, and the deadline is the cause.
+			if waitCtx.Err() != nil {
+				return nil, constants.ErrApprovalSSETimeout
+			}
 			if s.dropErr != nil {
 				return nil, fmt.Errorf("L3 approval: stream dropped: %w", s.dropErr)
 			}

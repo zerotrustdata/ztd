@@ -30,8 +30,26 @@ var tokenPattern = regexp.MustCompile(`\{\{UEI_\d+\}\}`)
 
 // ContainsToken reports whether payload holds a {{UEI_N}} token. A dispatcher
 // with no ScrubbingService cannot rehydrate one and must withhold the payload.
+// A JSON payload is scanned as RehydratePayload reads it: every decoded string
+// and object key, so a JSON-escaped token is still found. Any other payload is
+// scanned as plain text.
 func ContainsToken(payload []byte) bool {
-	return tokenPattern.Match(payload)
+	if tokenPattern.Match(payload) {
+		return true
+	}
+	if !json.Valid(payload) {
+		return false
+	}
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		if s, ok := tok.(string); ok && tokenPattern.MatchString(s) {
+			return true
+		}
+	}
 }
 
 // Config holds configuration for the Sovereign Execution Boundary

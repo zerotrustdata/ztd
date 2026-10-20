@@ -50,7 +50,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-PROV-TOPO-01 | The Provenance Operator does not run inference, sample provider hardware, manage Ollama, or authorize execution. It attests model weight integrity only. |
-| INV-PROV-TOPO-02 | The Gateway selects exactly one active Provenance Operator whose runtime configuration `capabilities` includes `provenance`. Multiple matching sessions fail the BEGIN of every attempt. Zero matching sessions fail the BEGIN of a campaign attempt (one carrying campaign model-registry authority) before the provider call. A non-campaign attempt skips BEGIN and FINALIZE with a warning and proceeds without a window. |
+| INV-PROV-TOPO-02 | The Gateway selects exactly one active Provenance Operator whose runtime configuration `capabilities` includes `provenance`. Multiple matching sessions fail the BEGIN of every attempt. Provenance is optional: with zero matching sessions, campaign and non-campaign attempts skip BEGIN and FINALIZE with a warning and proceed without a window. The campaign's model provenance policy decides at verification whether a missing window is acceptable. |
 | INV-PROV-TOPO-03 | The Observer Operator and Provenance Operator can coexist on the same physical host only when they use separate `ztd operator start` processes and governed sessions. |
 | INV-PROV-TOPO-04 | A container on the campaign host cannot authoritatively attest files or hardware on a different provider host. The Provenance Operator remains the storage-side authority. |
 

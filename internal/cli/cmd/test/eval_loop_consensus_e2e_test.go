@@ -158,9 +158,14 @@ func (a *evalLoopConsensusApp) handleDeliberate(w http.ResponseWriter, r *http.R
 			SignerKeyId: signer.id, Decision: true, ConsensusSignature: fmt.Sprintf("%x", signature),
 		})
 	}
-	envelope.Governance = &commonv1.GovernanceMetadata{L2: &commonv1.L2Metadata{
+	// Add L2 votes only; the Gateway rejects a response that changes any other
+	// governance field, such as the L3 proof carried under notary.
+	if envelope.Governance == nil {
+		envelope.Governance = &commonv1.GovernanceMetadata{}
+	}
+	envelope.Governance.L2 = &commonv1.L2Metadata{
 		ConsensusSetId: string(constants.DocIDConsensusBinding), Votes: votes,
-	}}
+	}
 	response, err := proto.Marshal(&envelope)
 	if err != nil {
 		http.Error(w, "encode protobuf envelope", http.StatusInternalServerError)

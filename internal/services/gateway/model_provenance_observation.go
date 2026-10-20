@@ -161,8 +161,8 @@ func (c *ModelProvenanceObservationCoordinator) Stop() {
 // and returns the provenance Operator's verified final signed receipt. An
 // attempt without an attempt ID, served tag, or expected digest is not sent and
 // returns a nil receipt. A missing provenance Operator returns an error wrapping
-// constants.ErrProvenanceOperatorNotFound; the caller decides whether campaign
-// authority requires it.
+// constants.ErrProvenanceOperatorNotFound, which inference dispatch treats as
+// an unattested attempt.
 func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 	ctx context.Context,
 	_ string,

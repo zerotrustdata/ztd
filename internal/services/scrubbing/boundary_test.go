@@ -83,6 +83,27 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Empty(t, config.CustomScrubPatterns)
 }
 
+func TestContainsToken(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name    string
+		payload string
+		want    bool
+	}{
+		{name: "plain text token", payload: "cat {{UEI_1}}", want: true},
+		{name: "JSON value token", payload: `{"path":"{{UEI_2}}"}`, want: true},
+		{name: "JSON-escaped value token", payload: `{"path":"{{UEI_3}}"}`, want: true},
+		{name: "JSON-escaped key token", payload: `{"{{UEI_4}}":1}`, want: true},
+		{name: "JSON without token", payload: `{"path":"/tmp/x","n":[1,2]}`, want: false},
+		{name: "text without token", payload: "ls -la", want: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, ContainsToken([]byte(tt.payload)))
+		})
+	}
+}
+
 func TestNewScrubbingService(t *testing.T) {
 	t.Parallel()
 

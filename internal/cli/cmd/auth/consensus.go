@@ -113,13 +113,11 @@ func consensusBindCmd(newClient func() (APIClient, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(request.MemberAppIDs) == 0 {
-				request.MemberAppIDs = []string{request.AppID}
+			members, wantQuorum, err := models.ResolveConsensusMembership(request.AppID, request.MemberAppIDs, request.Quorum)
+			if err != nil {
+				return fmt.Errorf("consensus bind: %w", err)
 			}
-			if request.Quorum == 0 {
-				request.Quorum = 1
-			}
-			if (policy.AppID != "" && policy.AppID != request.AppID) || !sameStringList(policy.MemberAppIDs, request.MemberAppIDs) || policy.Quorum != request.Quorum || policy.EndpointURL != request.EndpointURL {
+			if (policy.AppID != "" && policy.AppID != request.AppID) || !sameStringList(policy.MemberAppIDs, members) || policy.Quorum != wantQuorum || policy.EndpointURL != request.EndpointURL {
 				return fmt.Errorf("consensus bind: binding does not match request: %w", constants.ErrInvalidJSONResponse)
 			}
 			return output.WriteJSON(cmd.OutOrStdout(), policy)

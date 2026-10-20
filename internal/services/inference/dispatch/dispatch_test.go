@@ -703,6 +703,24 @@ func TestDispatchInference_ObservationBeginFailureFailsClosedBeforeProviderCall(
 	assert.Equal(t, 0, dispatcher.calls, "inference must not dispatch when observation begin fails")
 }
 
+// Observation is optional: with no observer connected, a campaign attempt
+// reaches the provider unobserved and no FINALIZE is sent.
+func TestDispatchInference_NoObserverProceedsUnobserved(t *testing.T) {
+	req := baseRequest()
+	configureCampaignRequest(t, &req)
+	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}, testLogger())
+	notifier := &stubObservationNotifier{beginErr: fmt.Errorf("provider observation: %w", constants.ErrProviderBoundaryObserverNotFound)}
+	svc.SetProviderObservationNotifier(notifier)
+
+	result, err := svc.DispatchInference(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, 1, dispatcher.calls)
+	assert.Equal(t, 1, notifier.beginCalls)
+	assert.Zero(t, notifier.finalizeCalls)
+	assert.Empty(t, result.Response().GetObservationReceipts())
+}
+
 func TestDispatchInference_CampaignObservationFinalizeFailureFailsClosed(t *testing.T) {
 	req := baseRequest()
 	configureCampaignRequest(t, &req)
