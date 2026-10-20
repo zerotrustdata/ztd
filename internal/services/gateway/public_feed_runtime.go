@@ -193,13 +193,23 @@ func EnsureLocalPublicFeed(ctx context.Context, fileSvc fs.RuntimeFileService, k
 	if err := ValidatePublicMirrorOrigin(mirrorOrigin); err != nil {
 		return models.PublicExportConfig{}, err
 	}
-	for _, relPath := range []string{constants.PublicFeedExportConfigPath, constants.PublicFeedSigningKeyPath, constants.PublicFeedIngestTokenPath} {
-		exists, existsErr := fileSvc.FileExists(ctx, relPath)
+	// A new signing key starts a new feed generation. State signed under a
+	// previous generation's key (outbox, proof log, mirror checkpoint) can
+	// never verify under the new key, so genesis fails closed instead of
+	// adopting it; the operator archives or discards that generation first.
+	for _, generationPath := range archivePathPairs(PublicFeedArchivePathSet{}) {
+		exists, existsErr := fileSvc.FileExists(ctx, generationPath.active)
 		if existsErr != nil {
 			return models.PublicExportConfig{}, fmt.Errorf("public-feed: inspect initialization path: %w", existsErr)
 		}
-		if exists {
+		if !exists {
+			continue
+		}
+		switch generationPath.active {
+		case constants.PublicFeedExportConfigPath, constants.PublicFeedSigningKeyPath, constants.PublicFeedIngestTokenPath:
 			return models.PublicExportConfig{}, constants.ErrPublicFeedConfigExists
+		default:
+			return models.PublicExportConfig{}, fmt.Errorf("%w: %s", constants.ErrPublicFeedOrphanedGeneration, generationPath.active)
 		}
 	}
 	if err := fileSvc.MkdirAll(ctx, constants.PublicFeedDirname, constants.PermDirPrivate); err != nil {
@@ -237,17 +247,18 @@ type publicFeedArchivePath struct {
 }
 
 type PublicFeedArchivePathSet struct {
-	Root          string
-	ExportConfig  string
-	SigningKey    string
-	IngestToken   string
-	Outbox        string
-	Snapshot      string
-	KeyRotation   string
-	Proofs        string
-	ProofCatalog  string
-	ProofManifest string
-	ProofSegments string
+	Root            string
+	ExportConfig    string
+	SigningKey      string
+	IngestToken     string
+	Outbox          string
+	Snapshot        string
+	KeyRotation     string
+	Proofs          string
+	ProofCatalog    string
+	ProofManifest   string
+	ProofSegments   string
+	ProofMirrorSync string
 }
 
 func PublicFeedArchivePathsFor(sourceID string) (PublicFeedArchivePathSet, error) {
@@ -256,17 +267,18 @@ func PublicFeedArchivePathsFor(sourceID string) (PublicFeedArchivePathSet, error
 	}
 	root := path.Join(constants.PublicFeedArchiveGenerationsDirname, strings.TrimSpace(sourceID))
 	return PublicFeedArchivePathSet{
-		Root:          root,
-		ExportConfig:  path.Join(root, constants.PublicFeedExportConfigFilename),
-		SigningKey:    path.Join(root, constants.PublicFeedSigningKeyFilename),
-		IngestToken:   path.Join(root, constants.PublicFeedIngestTokenFilename),
-		Outbox:        path.Join(root, constants.PublicFeedOutboxFilename),
-		Snapshot:      path.Join(root, constants.PublicFeedSnapshotFilename),
-		KeyRotation:   path.Join(root, constants.PublicFeedKeyRotationFilename),
-		Proofs:        path.Join(root, constants.PublicProofsDirname),
-		ProofCatalog:  path.Join(root, constants.PublicProofCatalogFilename),
-		ProofManifest: path.Join(root, constants.PublicProofManifestFilename),
-		ProofSegments: path.Join(root, constants.PublicProofSegmentsFilename),
+		Root:            root,
+		ExportConfig:    path.Join(root, constants.PublicFeedExportConfigFilename),
+		SigningKey:      path.Join(root, constants.PublicFeedSigningKeyFilename),
+		IngestToken:     path.Join(root, constants.PublicFeedIngestTokenFilename),
+		Outbox:          path.Join(root, constants.PublicFeedOutboxFilename),
+		Snapshot:        path.Join(root, constants.PublicFeedSnapshotFilename),
+		KeyRotation:     path.Join(root, constants.PublicFeedKeyRotationFilename),
+		Proofs:          path.Join(root, constants.PublicProofsDirname),
+		ProofCatalog:    path.Join(root, constants.PublicProofCatalogFilename),
+		ProofManifest:   path.Join(root, constants.PublicProofManifestFilename),
+		ProofSegments:   path.Join(root, constants.PublicProofSegmentsFilename),
+		ProofMirrorSync: path.Join(root, constants.PublicProofMirrorSyncFilename),
 	}, nil
 }
 
@@ -282,6 +294,7 @@ func archivePathPairs(archive PublicFeedArchivePathSet) []publicFeedArchivePath 
 		{active: constants.PublicProofCatalogFilename, archive: archive.ProofCatalog},
 		{active: constants.PublicProofManifestFilename, archive: archive.ProofManifest},
 		{active: constants.PublicProofSegmentsFilename, archive: archive.ProofSegments},
+		{active: constants.PublicProofMirrorSyncFilename, archive: archive.ProofMirrorSync},
 	}
 }
 

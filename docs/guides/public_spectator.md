@@ -34,7 +34,7 @@ The Gateway-owned public spectator runs inside the Gateway process when started 
 - **Public read/SSE** (`--public-spectator-public-listen`, default `127.0.0.1:8082`): anonymous bootstrap, snapshot, history, SSE, proof catalog/manifest, content-addressed proof downloads.
 - **Evaluation explorer** (`--eval-explorer-listen`, default `127.0.0.1:5173`): dedicated explorer listener that reads the local public listener API. The public listener also serves the explorer assets (`GET` and `HEAD`), so the public origin hosts the explorer.
 
-Publisher configuration, signing key, ingest token, and outbox state live under `.ztd/public-feed/`. The mirror database and content-addressed proof artifacts live under `.ztd/public-mirror/`. Listeners bind loopback by default. Only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
+Publisher configuration, signing key, ingest token, and outbox state live under `.ztd/public-feed/`. The publisher's signed proof log and artifacts live under `.ztd/public-proofs/`, with its delivery checkpoint in `.ztd/proof-mirror-sync.json`. Together these form one feed generation. A new signing key never adopts a previous generation's state; startup fails closed with `ErrPublicFeedOrphanedGeneration`. The mirror database and content-addressed proof artifacts live under `.ztd/public-mirror/`. Listeners bind loopback by default. Only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
 
 Restarting the Gateway preserves mirror state and publisher outbox state.
 

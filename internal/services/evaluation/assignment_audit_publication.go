@@ -167,21 +167,24 @@ func (c *CampaignPublicationCoordinator) ingestAssignmentAuditProofs(ctx context
 	if len(answers) != len(inputs) {
 		return nil, fmt.Errorf("evaluation: ingest assignment audit proofs: %d answers for %d proofs: %w", len(answers), len(inputs), constants.ErrEvidenceArtifactMalformed)
 	}
+	runID := inputs[0].RunID
 	for index, input := range inputs {
 		answer := answers[index]
 		if answer.AssignmentID != input.AssignmentID || answer.DatabaseSHA256 == "" {
 			return nil, fmt.Errorf("evaluation: ingest assignment audit proofs: answer %d lacks the database digest of assignment %s: %w", index, input.AssignmentID, constants.ErrEvidenceArtifactMalformed)
 		}
-		artifacts := CampaignPublishedProofArtifacts{
+		if input.RunID != runID {
+			return nil, fmt.Errorf("evaluation: ingest assignment audit proofs: proof %d spans runs %s and %s: %w", index, runID, input.RunID, constants.ErrEvidenceScopeMismatch)
+		}
+		published[input.AssignmentID] = CampaignPublishedProofArtifacts{
 			DatabaseSHA256:      answer.DatabaseSHA256,
 			AgentTraceSHA256:    input.Artifacts.AgentTraceSHA256,
 			ScenarioInputSHA256: input.Artifacts.ScenarioInputSHA256,
 			ScenarioGoldSHA256:  input.Artifacts.ScenarioGoldSHA256,
 		}
-		if err := c.recordPublishedProofArtifacts(ctx, input, artifacts); err != nil {
-			return nil, err
-		}
-		published[input.AssignmentID] = artifacts
+	}
+	if err := c.recordPublishedProofArtifacts(ctx, runID, published); err != nil {
+		return nil, err
 	}
 	return published, nil
 }
@@ -221,22 +224,26 @@ func (c *CampaignPublicationCoordinator) catchUpAuditProofs(
 	publicationState *CampaignPublicationState,
 ) (map[string]CampaignPublishedProofArtifacts, error) {
 	proofs := make(map[string]CampaignPublishedProofArtifacts, len(assignments))
-	inputs := make([]AssignmentAuditProofInput, 0, len(assignments))
+	pending := make([]*evalv1.EvaluationAssignment, 0, len(assignments))
 	for _, assignment := range assignments {
+		if publicationState != nil && containsString(publicationState.PublishedIdempotency, AssignmentResultIdempotencyKey(runID, assignment.GetAssignmentId())) {
+			continue
+		}
+		pending = append(pending, assignment)
+	}
+	// The Gateway builds the audit proof from the live event records it
+	// retains, so every pending assignment's events are delivered before any
+	// proof is reused or requested.
+	liveRequests, err := c.publishAssignmentAuditEvents(ctx, runID, pending, results)
+	if err != nil {
+		return nil, err
+	}
+	inputs := make([]AssignmentAuditProofInput, 0, len(pending))
+	for _, assignment := range pending {
 		assignmentID := assignment.GetAssignmentId()
 		result := results[assignmentID]
 		if result == nil {
 			continue
-		}
-		if publicationState != nil && containsString(publicationState.PublishedIdempotency, AssignmentResultIdempotencyKey(runID, assignmentID)) {
-			continue
-		}
-		// The Gateway builds the audit proof from the live event records it
-		// retains, so this assignment's events are delivered before its proof is
-		// reused or requested.
-		liveRequests, err := c.publishAssignmentAuditEvents(ctx, assignment, result)
-		if err != nil {
-			return nil, err
 		}
 		if publicationState != nil && containsString(publicationState.PublishedIdempotency, AssignmentAuditProofIdempotencyKey(runID, assignmentID)) {
 			if stored, ok := publicationState.PublishedProofArtifacts[assignmentID]; ok {
@@ -255,7 +262,7 @@ func (c *CampaignPublicationCoordinator) catchUpAuditProofs(
 				}
 			}
 		}
-		input, ok, err := c.assignmentAuditProofInput(ctx, assignment, result, fixtures, liveRequests)
+		input, ok, err := c.assignmentAuditProofInput(ctx, assignment, result, fixtures, liveRequests[assignmentID])
 		if err != nil {
 			return nil, err
 		}
@@ -283,17 +290,20 @@ func (c *CampaignPublicationCoordinator) republishAuditProofs(
 	results map[string]*evalv1.EvaluationAssignmentResult,
 	fixtures map[string]ScenarioArtifacts,
 ) (map[string]CampaignPublishedProofArtifacts, error) {
+	if len(assignments) == 0 {
+		return map[string]CampaignPublishedProofArtifacts{}, nil
+	}
+	liveRequests, err := c.publishAssignmentAuditEvents(ctx, assignments[0].GetRunId(), assignments, results)
+	if err != nil {
+		return nil, err
+	}
 	inputs := make([]AssignmentAuditProofInput, 0, len(assignments))
 	for _, assignment := range assignments {
 		result := results[assignment.GetAssignmentId()]
 		if result == nil {
 			continue
 		}
-		liveRequests, err := c.publishAssignmentAuditEvents(ctx, assignment, result)
-		if err != nil {
-			return nil, err
-		}
-		input, ok, err := c.assignmentAuditProofInput(ctx, assignment, result, fixtures, liveRequests)
+		input, ok, err := c.assignmentAuditProofInput(ctx, assignment, result, fixtures, liveRequests[assignment.GetAssignmentId()])
 		if err != nil {
 			return nil, err
 		}
@@ -304,24 +314,36 @@ func (c *CampaignPublicationCoordinator) republishAuditProofs(
 	return c.ingestAssignmentAuditProofs(ctx, inputs)
 }
 
-// publishAssignmentAuditEvents builds one terminal assignment's live event
-// requests and exports them to the Gateway before its audit proof is requested.
-// The Gateway indexes only the event records it was sent, so an execution that
-// ran without publication never delivered them and the deferred publish must.
-// Records already published are skipped by their idempotency keys.
+// publishAssignmentAuditEvents builds the live event requests of every terminal
+// assignment in one run and exports them to the Gateway in one feed export
+// before any audit proof is requested. The Gateway indexes only the event
+// records it was sent, so an execution that ran without publication never
+// delivered them and the deferred publish must. Records already published are
+// skipped by their idempotency keys. The result is keyed by assignment ID.
 func (c *CampaignPublicationCoordinator) publishAssignmentAuditEvents(
 	ctx context.Context,
-	assignment *evalv1.EvaluationAssignment,
-	result *evalv1.EvaluationAssignmentResult,
-) ([]campaignFeedPublishRequest, error) {
-	requests, err := c.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
-	if err != nil {
+	runID string,
+	assignments []*evalv1.EvaluationAssignment,
+	results map[string]*evalv1.EvaluationAssignmentResult,
+) (map[string][]campaignFeedPublishRequest, error) {
+	byAssignment := make(map[string][]campaignFeedPublishRequest, len(assignments))
+	var all []campaignFeedPublishRequest
+	for _, assignment := range assignments {
+		result := results[assignment.GetAssignmentId()]
+		if result == nil {
+			continue
+		}
+		requests, err := c.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
+		if err != nil {
+			return nil, err
+		}
+		byAssignment[assignment.GetAssignmentId()] = requests
+		all = append(all, requests...)
+	}
+	if _, err := c.exportFeedRecords(ctx, runID, all); err != nil {
 		return nil, err
 	}
-	if _, err := c.exportFeedRecords(ctx, assignment.GetRunId(), requests); err != nil {
-		return nil, err
-	}
-	return requests, nil
+	return byAssignment, nil
 }
 
 // AssignmentAuditEvidenceBindingsFromHashes returns public evidence bindings

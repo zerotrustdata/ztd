@@ -705,24 +705,30 @@ func (c *CampaignPublicationCoordinator) clearPublicationStateCache() {
 }
 
 // recordPublishedProofArtifacts records the artifacts the Gateway answered for
-// one assignment's audit proof, under the proof's idempotency key.
-func (c *CampaignPublicationCoordinator) recordPublishedProofArtifacts(ctx context.Context, input AssignmentAuditProofInput, artifacts CampaignPublishedProofArtifacts) error {
-	if c == nil || c.publicationState == nil || input.RunID == "" || input.AssignmentID == "" {
+// one run's audit proofs, keyed by assignment ID, under each proof's
+// idempotency key in a single publication state save.
+func (c *CampaignPublicationCoordinator) recordPublishedProofArtifacts(ctx context.Context, runID string, published map[string]CampaignPublishedProofArtifacts) error {
+	if c == nil || c.publicationState == nil || runID == "" || len(published) == 0 {
 		return nil
 	}
-	state, err := c.loadPublicationState(ctx, input.RunID)
+	state, err := c.loadPublicationState(ctx, runID)
 	if err != nil {
 		return err
-	}
-	proofKey := AssignmentAuditProofIdempotencyKey(input.RunID, input.AssignmentID)
-	if !containsString(state.PublishedIdempotency, proofKey) {
-		state.PublishedIdempotency = append(state.PublishedIdempotency, proofKey)
-		sort.Strings(state.PublishedIdempotency)
 	}
 	if state.PublishedProofArtifacts == nil {
 		state.PublishedProofArtifacts = map[string]CampaignPublishedProofArtifacts{}
 	}
-	state.PublishedProofArtifacts[input.AssignmentID] = artifacts
+	for assignmentID, artifacts := range published {
+		if assignmentID == "" {
+			continue
+		}
+		proofKey := AssignmentAuditProofIdempotencyKey(runID, assignmentID)
+		if !containsString(state.PublishedIdempotency, proofKey) {
+			state.PublishedIdempotency = append(state.PublishedIdempotency, proofKey)
+		}
+		state.PublishedProofArtifacts[assignmentID] = artifacts
+	}
+	sort.Strings(state.PublishedIdempotency)
 	return c.savePublicationState(ctx, state)
 }
 

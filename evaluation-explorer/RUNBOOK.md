@@ -72,7 +72,7 @@ An agent-executor assignment also publishes its complete sealed agent trace as a
 
 ## Optional disposable public-feed reset
 
-This reset removes the gateway-owned `.ztd/public-feed` and `.ztd/public-mirror` state, creates a new local public signing chain, and republishes the selected seed. It does not remove evaluation report roots. Obtain explicit owner confirmation immediately before running it. Then stop the Gateway, remove those two directories, start `./ztd gw start --public-spectator`, and run:
+This reset removes the gateway-owned feed generation and mirror state, creates a new local public signing chain, and republishes the selected seed. It does not remove evaluation report roots. Obtain explicit owner confirmation immediately before running it. Then stop the Gateway and remove `.ztd/public-feed`, `.ztd/public-proofs`, `.ztd/proof-mirror-sync.json`, and `.ztd/public-mirror`. The proof log is signed by the feed key, so it must go with that key; Gateway startup fails closed with `ErrPublicFeedOrphanedGeneration` if any of it remains. Start `./ztd gw start --public-spectator` and run:
 
 ```bash
 cd evaluation-explorer

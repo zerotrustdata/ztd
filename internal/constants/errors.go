@@ -1256,6 +1256,7 @@ var (
 	ErrPublicFeedConfigExists                 = errors.New("public-feed: configuration already exists")
 	ErrPublicFeedSourceTransitionConfirmation = errors.New("public-feed: source transition requires explicit confirmation")
 	ErrPublicFeedArchiveGenerationExists      = errors.New("public-feed: archived source generation already exists")
+	ErrPublicFeedOrphanedGeneration           = errors.New("public-feed: feed generation state exists without its signing key")
 	ErrPublicFeedBatchEmpty                   = errors.New("public-feed: batch must contain at least one record")
 	ErrPublicFeedBatchOversized               = errors.New("public-feed: batch exceeds max records or bytes")
 	ErrPublicFeedRecordHashMismatch           = errors.New("public-feed: record hash does not match computed hash")
