@@ -84,7 +84,7 @@ func TestGatewayL3Notary_RejectsInvalidCLISignatureWithoutPasskeyFallback(t *tes
 	}
 
 	allowed, err := notary.VerifyL3Proof(context.Background(), userID, txHash, "cli-session", mtlsProof)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, constants.ErrCLIL3TransactionHashRequired)
 	assert.False(t, allowed)
 	assert.False(t, passkeyMock.called)
 }

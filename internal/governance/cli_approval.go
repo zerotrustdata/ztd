@@ -53,7 +53,7 @@ func SignCLIApproval(transactionHash string, cert *tls.Certificate) (*commonv1.L
 		return nil, fmt.Errorf("CLI approval private key must be ECDSA P-256: %w", constants.ErrCLIL3PublicKeyInvalid)
 	}
 	certificatePublic, ok := leaf.PublicKey.(*ecdsa.PublicKey)
-	if !ok || !isP256(certificatePublic) || privatePublic.X.Cmp(certificatePublic.X) != 0 || privatePublic.Y.Cmp(certificatePublic.Y) != 0 {
+	if !ok || !isP256(certificatePublic) || !privatePublic.Equal(certificatePublic) {
 		return nil, fmt.Errorf("CLI approval private key does not match an ECDSA P-256 certificate: %w", constants.ErrCLIL3PublicKeyInvalid)
 	}
 	digest := cliApprovalDigest(transactionHash)
@@ -159,7 +159,11 @@ func cliApprovalDigest(transactionHash string) [sha256.Size]byte {
 }
 
 func isP256(key *ecdsa.PublicKey) bool {
-	return key != nil && key.Curve == elliptic.P256() && key.X != nil && key.Y != nil
+	if key == nil || key.Curve != elliptic.P256() {
+		return false
+	}
+	_, err := key.Bytes()
+	return err == nil
 }
 
 func validateCLIApprovalCertificate(cert *x509.Certificate, now time.Time) error {

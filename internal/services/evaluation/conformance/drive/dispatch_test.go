@@ -21,11 +21,11 @@ func testDispatchTargets() map[cases.Executor]operator.Target {
 }
 
 // dispatchAttempt builds one attempt for the dispatch driver tests.
-func dispatchAttempt(ingress cases.Ingress, fault cases.Fault, action cases.Action) cases.Attempt {
+func dispatchAttempt(ingress cases.Ingress, fault cases.Fault) cases.Attempt {
 	return cases.Attempt{
 		RunID:     "run-1",
 		AttemptID: "attempt-1",
-		Case:      cases.Case{ID: "dispatch-test", Ingress: ingress, Fault: fault, Action: action, Command: "echo doctrine"},
+		Case:      cases.Case{ID: "dispatch-test", Ingress: ingress, Fault: fault, Action: cases.ActionMutation, Command: "echo doctrine"},
 		TargetAbs: "/tmp/conformance/target.txt",
 		ReadAbs:   "/tmp/conformance/read.txt",
 		Marker:    cases.Marker("run-1", "attempt-1"),

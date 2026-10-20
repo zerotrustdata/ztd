@@ -276,7 +276,7 @@ func TestRunsStart_PrepareOnlyPersistsRunAndSchedulesAssignments(t *testing.T) {
 
 func TestRunsStart_PrepareOnlyBindsTheOperatorSessions(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 
 	run, err := env.store(t).LoadRun(context.Background(), "run-a-1")
 	require.NoError(t, err)
@@ -446,7 +446,7 @@ func TestRunsStart_RejectsAnArchivedCampaign(t *testing.T) {
 
 func TestRunsResume_ExecutesOneAssignment(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	assignment := env.firstQueuedAssignment(t, runID)
 
 	var out bytes.Buffer
@@ -463,7 +463,7 @@ func TestRunsResume_ExecutesOneAssignment(t *testing.T) {
 
 func TestRunsResume_DefaultsLimitToOne(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 
 	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, NoAutoBind: true})
 	require.NoError(t, err)
@@ -472,7 +472,7 @@ func TestRunsResume_DefaultsLimitToOne(t *testing.T) {
 
 func TestRunsResume_StopWithQueuedAssignmentsIsAnError(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	handled := make(chan struct{}, 1)
 	env.deps.runControl.onSignalHandled = func() {
 		select {
@@ -514,7 +514,7 @@ func TestRunsResume_RejectsMissingRunWithoutLeavingALease(t *testing.T) {
 
 func TestRunsResume_GatewayOutageReleasesLeaseWithoutExecuting(t *testing.T) {
 	env, run := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 	gatewayEvalAppClient(t, env, run)
 	config.SetHTTPEndpointOverride("http://127.0.0.1:1")
 	config.SetHTTPSEndpointOverride("https://127.0.0.1:1")
@@ -531,7 +531,7 @@ func TestRunsResume_GatewayOutageReleasesLeaseWithoutExecuting(t *testing.T) {
 
 func TestRunsResume_ExecutesOneAssignmentViaCLI(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	assignment := env.firstQueuedAssignment(t, runID)
 
 	out := env.mustRun(t, "runs", "resume", runID)
@@ -541,7 +541,7 @@ func TestRunsResume_ExecutesOneAssignmentViaCLI(t *testing.T) {
 
 func TestRunsResume_JSONOutput(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 
 	var payload runResumeJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "resume", runID))
@@ -553,7 +553,7 @@ func TestRunsResume_JSONOutput(t *testing.T) {
 
 func TestRunsResume_WithPublishFlag(t *testing.T) {
 	env := newPublicationRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	assignment := env.firstQueuedAssignment(t, runID)
 
 	out := env.mustRun(t, "runs", "resume", runID, "--publish")
@@ -562,7 +562,7 @@ func TestRunsResume_WithPublishFlag(t *testing.T) {
 
 func TestRunsResume_RefusesARunHeldByALiveProcess(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	_, err := env.store(t).AcquireRunLease(context.Background(), evaluation.RunLease{RunID: runID, PID: 9999, Host: testHost, StartedAt: env.deps.now()}, nil)
 	require.NoError(t, err)
 	env.control.setAlive(9999, true)
@@ -575,7 +575,7 @@ func TestRunsResume_RefusesARunHeldByALiveProcess(t *testing.T) {
 
 func TestRunsResume_ReplacesAStaleLeaseAndReportsIt(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	_, err := env.store(t).AcquireRunLease(context.Background(), evaluation.RunLease{RunID: runID, PID: 9999, Host: testHost, StartedAt: env.deps.now()}, nil)
 	require.NoError(t, err)
 
@@ -656,21 +656,21 @@ func TestRunsVerify_ViaCLIPersistsAndPublishesPopulationBoundReport(t *testing.T
 
 func TestRunsPublish_PublishesScheduledRun(t *testing.T) {
 	env := newPublicationRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 
 	assert.Contains(t, env.mustRun(t, "runs", "publish", "run-a-1"), "Published")
 }
 
 func TestRunsPublish_ForceRepublish(t *testing.T) {
 	env := newPublicationRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 
 	assert.Contains(t, env.mustRun(t, "runs", "publish", "run-a-1", "--force"), "forced republish")
 }
 
 func TestRunsPublish_IgnoresLegacyFailedReport(t *testing.T) {
 	env := newPublicationRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 	require.NoError(t, env.store(t).SaveCampaignVerification(context.Background(), "run-a-1", &evalv1.EvaluationVerificationReport{
 		SchemaVersion: evaluation.CampaignSchemaVersion,
 		ReportId:      "run-a-1",
@@ -686,7 +686,7 @@ func TestRunsPublish_IgnoresLegacyFailedReport(t *testing.T) {
 // continues; the settled-run refusal is covered by the publication real-stack tests.
 func TestRunsPublish_IgnoresPersistedPassingReportThatDoesNotApplyToUnsettledRun(t *testing.T) {
 	env := newPublicationRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 	require.NoError(t, env.store(t).SaveCampaignVerification(context.Background(), "run-a-1", &evalv1.EvaluationVerificationReport{
 		SchemaVersion:            constants.CampaignVerifierVersion,
 		ReportId:                 "run-a-1",
@@ -704,7 +704,7 @@ func TestRunsPublish_IgnoresPersistedPassingReportThatDoesNotApplyToUnsettledRun
 
 func TestRunsPublish_RejectsWhenGatewayUnhealthy(t *testing.T) {
 	env := newPublicationRunEnv(t)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 	config.SetHTTPEndpointOverride("http://127.0.0.1:1")
 	config.SetHTTPSEndpointOverride("https://127.0.0.1:1")
 

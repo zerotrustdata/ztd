@@ -241,7 +241,7 @@ func realStackHeldRun(t *testing.T, suffix string, replies []fixtures.OllamaRepl
 }
 
 func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T) {
-	env := realStackHeldRun(t, "held-continue", shellRepliesFor(2))
+	env := realStackHeldRun(t, "held-continue", shellRepliesForTwoAssignments())
 	require.Equal(t, 2, env.scheduledCount, "both repetitions of the cell must be scheduled")
 
 	first := env.executeNext(t)
@@ -302,7 +302,7 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 
 func TestRealStackHeldRepetition_ReboundDataOperatorIsAHarnessFailure(t *testing.T) {
 	ctx := t.Context()
-	env := realStackHeldRun(t, "held-rebind", shellRepliesFor(2))
+	env := realStackHeldRun(t, "held-rebind", shellRepliesForTwoAssignments())
 
 	first := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, first.GetLifecycleStatus(), "invalid evidence: %s", first.GetInvalidEvidenceDetail())
@@ -346,7 +346,7 @@ func TestRealStackHeldRepetition_ReboundDataOperatorIsAHarnessFailure(t *testing
 
 func TestRealStackHeldRepetition_ControllerLoadsThePreviousRepetition(t *testing.T) {
 	ctx := t.Context()
-	env := realStackHeldRun(t, "held-controller", shellRepliesFor(2))
+	env := realStackHeldRun(t, "held-controller", shellRepliesForTwoAssignments())
 
 	assignments, err := env.store.ListAssignments(ctx, env.req.RunID)
 	require.NoError(t, err)
@@ -389,7 +389,7 @@ func TestRealStackHeldRepetition_ControllerLoadsThePreviousRepetition(t *testing
 // fixture was not written again.
 func TestRealStackHeldRepetition_SkipsWorkspaceMaterialization(t *testing.T) {
 	ctx := t.Context()
-	env := realStackHeldRun(t, "held-materialize", shellRepliesFor(2))
+	env := realStackHeldRun(t, "held-materialize", shellRepliesForTwoAssignments())
 
 	first := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, first.GetLifecycleStatus(), "invalid evidence: %s", first.GetInvalidEvidenceDetail())

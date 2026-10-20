@@ -25,7 +25,7 @@ func testModelVariant() *evalv1.ModelVariant {
 		VariantId:      "qwen3-4b",
 		ProviderClass:  "ollama",
 		ServedModelTag: "qwen3:4b",
-		ModelDigest:    repeatHex('b', 64),
+		ModelDigest:    repeatHex('b'),
 		ModelFamily:    "qwen3",
 	}
 }
@@ -35,9 +35,9 @@ func testCampaignSpec() *evalv1.EvaluationCampaignSpec {
 		SchemaVersion:       CampaignSchemaVersion,
 		CampaignId:          "phase1a-smoke",
 		CatalogRef:          &compliancev1.VersionedReference{Id: DefaultSuiteID, Version: "1.0.0"},
-		CatalogDigest:       repeatHex('a', 64),
+		CatalogDigest:       repeatHex('a'),
 		ModelRegistry:       []*evalv1.ModelVariant{testModelVariant()},
-		ModelRegistryDigest: repeatHex('c', 64),
+		ModelRegistryDigest: repeatHex('c'),
 		GovernancePosture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
 		ScenarioCount:       25,
 		RepetitionCount:     1,
@@ -92,7 +92,7 @@ func TestValidateCampaignSpecDigest_RejectsMismatch(t *testing.T) {
 	spec.CampaignDigest = digest
 	require.NoError(t, ValidateCampaignSpecDigest(spec))
 
-	spec.CampaignDigest = repeatHex('f', 64)
+	spec.CampaignDigest = repeatHex('f')
 	assert.Error(t, ValidateCampaignSpecDigest(spec))
 }
 
@@ -117,7 +117,7 @@ func TestComputeModelVariantRegistryDigest_MatchesInferenceRegistryDigest(t *tes
 
 	inferenceDigest, err := models.ComputeInferenceModelRegistryDigest("phase1a-smoke", []*operatorv1.InferenceModelVariant{{
 		Model:  "qwen3:4b",
-		Digest: repeatHex('b', 64),
+		Digest: repeatHex('b'),
 	}})
 	require.NoError(t, err)
 	assert.Equal(t, inferenceDigest, evalDigest)
@@ -169,7 +169,7 @@ func TestComputeAssignmentResultDigest_IsStableAndValidated(t *testing.T) {
 	require.NoError(t, err)
 	result.ResultDigest = digest
 	require.NoError(t, ValidateAssignmentResultDigest(result))
-	result.ResultDigest = repeatHex('0', 64)
+	result.ResultDigest = repeatHex('0')
 	assert.Error(t, ValidateAssignmentResultDigest(result))
 }
 

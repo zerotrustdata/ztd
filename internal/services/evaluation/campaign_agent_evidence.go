@@ -332,7 +332,7 @@ func verifyV7ModelCallIdentity(trace *AgentTrace, call AgentModelCall, outcome o
 	if err != nil {
 		return fmt.Errorf("compute signed inference result digest: %w", err)
 	}
-	if result.GetResultDigest() == "" || result.GetResultDigest() != resultDigest || call.ResultDigest != resultDigest || call.Receipt.ActionReceipt.GetResultSummary() != resultDigest {
+	if result.GetResultDigest() == "" || result.GetResultDigest() != resultDigest || call.ResultDigest != resultDigest || call.Receipt.GetResultSummary() != resultDigest {
 		return fmt.Errorf("signed inference result digest does not match the call and receipt: %w", constants.ErrInferenceResultDigest)
 	}
 	if err := verifyV7ModelCallTranscript(call, result); err != nil {

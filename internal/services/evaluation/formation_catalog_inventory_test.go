@@ -38,15 +38,15 @@ func TestFormationCatalogIntakeModels_ReturnsOneSovereignLibraryPullPerTag(t *te
 
 func TestMaterializeFormationCatalogVariants_SelectsAllSovereignCatalogTags(t *testing.T) {
 	partial := []*evalv1.ModelVariant{
-		{VariantId: "freeze-qwen35-4b", ProviderClass: "ollama", ServedModelTag: "qwen3.5:4b", ModelDigest: repeatHex('5', 64), ModelFamily: "Qwen 3.5", Quantization: "Q4_K_M"},
-		{VariantId: "freeze-gemma4-e2b", ProviderClass: "ollama", ServedModelTag: "gemma4:e2b", ModelDigest: repeatHex('2', 64), ModelFamily: "Gemma 4", Quantization: "Q4_K_M"},
-		{VariantId: "freeze-llama32-1b", ProviderClass: "ollama", ServedModelTag: "llama3.2:1b", ModelDigest: repeatHex('6', 64), ModelFamily: "Llama 3.2", Quantization: "Q8_0"},
+		{VariantId: "freeze-qwen35-4b", ProviderClass: "ollama", ServedModelTag: "qwen3.5:4b", ModelDigest: repeatHex('5'), ModelFamily: "Qwen 3.5", Quantization: "Q4_K_M"},
+		{VariantId: "freeze-gemma4-e2b", ProviderClass: "ollama", ServedModelTag: "gemma4:e2b", ModelDigest: repeatHex('2'), ModelFamily: "Gemma 4", Quantization: "Q4_K_M"},
+		{VariantId: "freeze-llama32-1b", ProviderClass: "ollama", ServedModelTag: "llama3.2:1b", ModelDigest: repeatHex('6'), ModelFamily: "Llama 3.2", Quantization: "Q8_0"},
 	}
 	_, err := MaterializeFormationVariants(partial, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
 
-	source := FormationCatalogFixtureVariants(func(string) string { return repeatHex('a', 64) })
+	source := FormationCatalogFixtureVariants(func(string) string { return repeatHex('a') })
 	selected, err := MaterializeFormationVariants(source, nil)
 	require.NoError(t, err)
 	require.Len(t, selected, 11)
@@ -63,7 +63,7 @@ func TestMaterializeFormationCatalogVariants_SelectsAllSovereignCatalogTags(t *t
 }
 
 func TestMaterializeFormationVariants_SelectsOnlyTheNamedFormationsModels(t *testing.T) {
-	source := FormationCatalogFixtureVariants(func(string) string { return repeatHex('a', 64) })
+	source := FormationCatalogFixtureVariants(func(string) string { return repeatHex('a') })
 
 	selected, err := MaterializeFormationVariants(source, []string{"qwen-powerhouse"})
 	require.NoError(t, err)
@@ -86,7 +86,7 @@ func TestMaterializeFormationVariants_SelectsOnlyTheNamedFormationsModels(t *tes
 }
 
 func TestFormationCatalogFixtureVariants_MatchesCatalogServedTags(t *testing.T) {
-	variants := FormationCatalogFixtureVariants(func(string) string { return repeatHex('b', 64) })
+	variants := FormationCatalogFixtureVariants(func(string) string { return repeatHex('b') })
 	require.Len(t, variants, 11)
 	tags := make([]string, 0, len(variants))
 	for _, variant := range variants {

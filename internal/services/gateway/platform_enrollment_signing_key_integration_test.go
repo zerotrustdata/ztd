@@ -146,7 +146,10 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 	require.NoError(t, err)
 	wrongIdentityRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, endpointURL, nil)
 	require.NoError(t, err)
-	_, err = wrongIdentityClient.Do(wrongIdentityRequest)
+	wrongIdentityResponse, err := wrongIdentityClient.Do(wrongIdentityRequest)
+	if wrongIdentityResponse != nil {
+		wrongIdentityResponse.Body.Close()
+	}
 	require.Error(t, err, "TLS peer with another enrolled app identity must be rejected")
 	wrongIdentityClient.CloseIdleConnections()
 	untrusted := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
@@ -155,7 +158,10 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 	require.NoError(t, err)
 	untrustedRequest, err := http.NewRequestWithContext(t.Context(), http.MethodGet, untrusted.URL, nil)
 	require.NoError(t, err)
-	_, err = untrustedClient.Do(untrustedRequest)
+	untrustedResponse, err := untrustedClient.Do(untrustedRequest)
+	if untrustedResponse != nil {
+		untrustedResponse.Body.Close()
+	}
 	require.Error(t, err, "certificate chain outside Gateway PKI must be rejected")
 	untrustedClient.CloseIdleConnections()
 	trust, err := env.svc.GetConsensusStore().OperatorL2Trust(t.Context())

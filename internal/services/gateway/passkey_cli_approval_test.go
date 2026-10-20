@@ -62,28 +62,28 @@ func newCLIApprovalTestCertificate(t *testing.T, userID, sessionID string) tls.C
 	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}
 }
 
-func signedCLIApprovalRequest(t *testing.T, approvalID, signedHash string, cert tls.Certificate, userID, sessionID string) *http.Request {
+func signedCLIApprovalRequest(t *testing.T, signedHash string, cert tls.Certificate, sessionID string) *http.Request {
 	t.Helper()
 	proof, err := governance.SignCLIApproval(signedHash, &cert)
 	require.NoError(t, err)
 	body, err := json.Marshal(models.ApprovalRespondRequest{
-		ApprovalID:   approvalID,
+		ApprovalID:   cliApprovalTestHash,
 		Approved:     true,
 		CLISignature: proof.GetCliSignature(),
 	})
 	require.NoError(t, err)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/approvals/respond", bytes.NewReader(body))
-	ctx := context.WithValue(req.Context(), constants.ContextKeyUserID, userID)
+	ctx := context.WithValue(req.Context(), constants.ContextKeyUserID, cliApprovalTestUser)
 	ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, sessionID)
 	req = req.WithContext(ctx)
 	req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert.Leaf}}
 	return req
 }
 
-func newCLIApprovalMCP(owner, txHash string) *approvalRespondMCP {
+func newCLIApprovalMCP(owner string) *approvalRespondMCP {
 	return &approvalRespondMCP{
 		suspended: &models.SuspendedTransaction{
-			TransactionHash:   txHash,
+			TransactionHash:   cliApprovalTestHash,
 			OperatorSessionID: "operator-session-cli-approval",
 			Envelope:          []byte("{}"),
 			UserID:            owner,
@@ -92,7 +92,7 @@ func newCLIApprovalMCP(owner, txHash string) *approvalRespondMCP {
 		found: true,
 		receipt: &operatorv1.ActionReceipt{
 			TransactionId:   "transaction-cli-approval-1",
-			TransactionHash: txHash,
+			TransactionHash: cliApprovalTestHash,
 			L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
 		},
 	}
@@ -101,13 +101,13 @@ func newCLIApprovalMCP(owner, txHash string) *approvalRespondMCP {
 func TestHandleSignedCLIApproval(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture)+" success", func(t *testing.T) {
-			mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+			mcp := newCLIApprovalMCP(cliApprovalTestUser)
 			h := newApprovalRespondHandler(mcp, &approvalRespondStore{})
 			h.posture = posture
 			cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 			rr := httptest.NewRecorder()
 
-			h.handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cliApprovalTestHash, cert, cliApprovalTestUser, cliApprovalTestSession))
+			h.handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
 
 			require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 			assert.Equal(t, 1, mcp.resumeCalls)
@@ -122,12 +122,12 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 
 	t.Run("tampered signature is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
-		req := signedCLIApprovalRequest(t, cliApprovalTestHash, cliApprovalTestHash, cert, cliApprovalTestUser, cliApprovalTestSession)
+		req := signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession)
 		var payload models.ApprovalRespondRequest
 		require.NoError(t, json.NewDecoder(req.Body).Decode(&payload))
 		payload.CLISignature = payload.CLISignature[:len(payload.CLISignature)-2] + "00"
 		req = approvalRespondRequestBody(t, payload, cliApprovalTestUser, cliApprovalTestSession, cert)
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		rr := httptest.NewRecorder()
 
 		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, req)
@@ -140,10 +140,10 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	t.Run("signature for another hash is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		otherHash := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		rr := httptest.NewRecorder()
 
-		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, otherHash, cert, cliApprovalTestUser, cliApprovalTestSession))
+		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, otherHash, cert, cliApprovalTestSession))
 
 		assert.Equal(t, http.StatusForbidden, rr.Code)
 		assert.Zero(t, mcp.resumeCalls)
@@ -151,10 +151,10 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 
 	t.Run("certificate for another owner is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, "user-other", cliApprovalTestSession)
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		rr := httptest.NewRecorder()
 
-		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cliApprovalTestHash, cert, cliApprovalTestUser, cliApprovalTestSession))
+		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
 
 		assert.Equal(t, http.StatusForbidden, rr.Code)
 		assert.Zero(t, mcp.resumeCalls)
@@ -162,10 +162,10 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 
 	t.Run("transaction owned by another user is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
-		mcp := newCLIApprovalMCP("user-other", cliApprovalTestHash)
+		mcp := newCLIApprovalMCP("user-other")
 		rr := httptest.NewRecorder()
 
-		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cliApprovalTestHash, cert, cliApprovalTestUser, cliApprovalTestSession))
+		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
 
 		assert.Equal(t, http.StatusForbidden, rr.Code)
 		assert.Contains(t, rr.Body.String(), constants.ErrCLIL3SessionUserMismatch.Error())
@@ -174,10 +174,10 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 
 	t.Run("wrong TLS session is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, "cli-session-other")
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		rr := httptest.NewRecorder()
 
-		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cliApprovalTestHash, cert, cliApprovalTestUser, cliApprovalTestSession))
+		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
 
 		assert.Equal(t, http.StatusForbidden, rr.Code)
 		assert.Contains(t, rr.Body.String(), constants.ErrTxL3ProofInvalid.Error())
@@ -191,7 +191,7 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 		require.NoError(t, err)
 		payload := models.ApprovalRespondRequest{ApprovalID: cliApprovalTestHash, Approved: true, CLISignature: proof.GetCliSignature()}
 		req := approvalRespondRequestBody(t, payload, cliApprovalTestUser, cliApprovalTestSession, peerCert)
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		rr := httptest.NewRecorder()
 
 		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, req)
@@ -201,7 +201,7 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 	})
 
 	t.Run("missing mTLS peer certificate is rejected", func(t *testing.T) {
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		req := approvalRespondRequest(`{"approval_id":"`+cliApprovalTestHash+`","approved":true,"cli_signature":"abcd"}`, cliApprovalTestUser)
 		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyCLISessionID, cliApprovalTestSession))
 		rr := httptest.NewRecorder()
@@ -215,8 +215,8 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 
 	t.Run("browser context cannot use CLI approval", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
-		req := signedCLIApprovalRequest(t, cliApprovalTestHash, cliApprovalTestHash, cert, cliApprovalTestUser, "")
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
+		req := signedCLIApprovalRequest(t, cliApprovalTestHash, cert, "")
 		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyCLISessionID, ""))
 		rr := httptest.NewRecorder()
 
@@ -228,11 +228,11 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 
 	t.Run("expired transaction is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		mcp.suspended.ExpiresAt = time.Now().Add(-time.Minute)
 		rr := httptest.NewRecorder()
 
-		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cliApprovalTestHash, cert, cliApprovalTestUser, cliApprovalTestSession))
+		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
 
 		assert.Equal(t, http.StatusNotFound, rr.Code)
 		assert.Zero(t, mcp.resumeCalls)
@@ -240,22 +240,22 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 
 	t.Run("receipt hash mismatch is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		mcp.receipt.TransactionHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 		rr := httptest.NewRecorder()
 
-		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cliApprovalTestHash, cert, cliApprovalTestUser, cliApprovalTestSession))
+		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
 
 		assert.Equal(t, http.StatusInternalServerError, rr.Code)
 	})
 
 	t.Run("receipt without valid L3 status is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
-		mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+		mcp := newCLIApprovalMCP(cliApprovalTestUser)
 		mcp.receipt.L3Status = operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
 		rr := httptest.NewRecorder()
 
-		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cliApprovalTestHash, cert, cliApprovalTestUser, cliApprovalTestSession))
+		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
 
 		assert.Equal(t, http.StatusInternalServerError, rr.Code)
 	})
@@ -273,7 +273,7 @@ func approvalRespondRequestBody(t *testing.T, payload models.ApprovalRespondRequ
 }
 
 func TestHandleApprovalRespond_ApprovedWithoutCLISignatureRequiresProof(t *testing.T) {
-	mcp := newCLIApprovalMCP(cliApprovalTestUser, cliApprovalTestHash)
+	mcp := newCLIApprovalMCP(cliApprovalTestUser)
 	h := newApprovalRespondHandler(mcp, &approvalRespondStore{})
 	req := approvalRespondRequest(`{"approval_id":"`+cliApprovalTestHash+`","approved":true}`, cliApprovalTestUser)
 	req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyCLISessionID, cliApprovalTestSession))

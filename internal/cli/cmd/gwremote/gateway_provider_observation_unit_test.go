@@ -21,7 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
-func useHealthyConfiguredGateway(t *testing.T, cfg *config.Config) {
+func useHealthyConfiguredGateway(t *testing.T) {
 	t.Helper()
 	original := ConfiguredGatewayHealthCheck
 	ConfiguredGatewayHealthCheck = func(_ fs.RuntimeFileService, _ *config.Config) bool { return true }
@@ -59,7 +59,7 @@ func TestNewCampaignWitnessCapture_ReturnsGatewayNotReachableWhenUnhealthy(t *te
 
 func TestNewCampaignWitnessCapture_WiresRemotesWhenHealthy(t *testing.T) {
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-	useHealthyConfiguredGateway(t, cfg)
+	useHealthyConfiguredGateway(t)
 
 	capture, err := NewCampaignWitnessCapture(fileSvc, evaluation.NewStore(fileSvc), cfg)
 	require.NoError(t, err)

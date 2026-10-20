@@ -36,7 +36,7 @@ func assessRisk(ctx context.Context, cfg Config, req Request, command string) (*
 	}
 	var answer marshalAnswer
 	if err := decodeAnswer(text, &answer); err != nil {
-		return &Risk{Level: RiskHigh, Invalid: true, Rationale: "Marshal gave no valid risk assessment: " + err.Error()}, nil
+		return &Risk{Level: RiskHigh, Invalid: true, Rationale: "Marshal gave no valid risk assessment: " + err.Error()}, nil //nolint:nilerr // Malformed model output is a fail-closed HIGH assessment; inference failures return errors.
 	}
 	level := RiskLevel(strings.ToUpper(strings.TrimSpace(answer.Risk)))
 	switch level {

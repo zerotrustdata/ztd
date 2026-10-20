@@ -31,7 +31,7 @@ import (
 func TestGatewayL3NotaryAcceptsEnrolledCLIApproval(t *testing.T) {
 	t.Parallel()
 	txHash := strings.Repeat("a", 64)
-	cert := newGatewayCLIApprovalCertificate(t, "user-1", "approver-session", time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
+	cert := newGatewayCLIApprovalCertificate(t, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
 	proof, err := approvals.SignCLIApproval(txHash, cert)
 	require.NoError(t, err)
 
@@ -50,7 +50,7 @@ func TestGatewayL3NotaryAcceptsEnrolledCLIApproval(t *testing.T) {
 func TestGatewayL3NotaryDeniesInvalidOrUnenrolledCLIApprovalWithoutFallback(t *testing.T) {
 	t.Parallel()
 	txHash := strings.Repeat("b", 64)
-	cert := newGatewayCLIApprovalCertificate(t, "user-1", "approver-session", time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
+	cert := newGatewayCLIApprovalCertificate(t, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
 	proof, err := approvals.SignCLIApproval(txHash, cert)
 	require.NoError(t, err)
 	proof.CliSignature = hex.EncodeToString([]byte("tampered"))
@@ -59,7 +59,7 @@ func TestGatewayL3NotaryDeniesInvalidOrUnenrolledCLIApprovalWithoutFallback(t *t
 	cliVerifier := &mockCLISessionVerifier{}
 	notary := NewGatewayL3Notary(cliVerifier, passkey, nil)
 	allowed, err := notary.VerifyL3Proof(context.Background(), "user-1", txHash, "submitter-session", proof)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, constants.ErrCLIL3SignatureVerificationFailed)
 	assert.False(t, allowed)
 	assert.False(t, passkey.called)
 	assert.False(t, cliVerifier.called, "cryptographically invalid proofs must not reach enrollment checks")
@@ -76,7 +76,7 @@ func TestGatewayL3NotaryDeniesInvalidOrUnenrolledCLIApprovalWithoutFallback(t *t
 func TestGatewayL3NotaryDeniesRevokedApproverSession(t *testing.T) {
 	t.Parallel()
 	txHash := strings.Repeat("c", 64)
-	cert := newGatewayCLIApprovalCertificate(t, "user-1", "approver-session", time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
+	cert := newGatewayCLIApprovalCertificate(t, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
 	proof, err := approvals.SignCLIApproval(txHash, cert)
 	require.NoError(t, err)
 
@@ -93,7 +93,7 @@ func TestGatewayL3NotaryDeniesRevokedApproverSession(t *testing.T) {
 func TestGatewayL3NotaryRejectsMixedCLIAndPasskeyProof(t *testing.T) {
 	t.Parallel()
 	txHash := strings.Repeat("d", 64)
-	cert := newGatewayCLIApprovalCertificate(t, "user-1", "approver-session", time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
+	cert := newGatewayCLIApprovalCertificate(t, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
 	proof, err := approvals.SignCLIApproval(txHash, cert)
 	require.NoError(t, err)
 	proof.CredentialId = "passkey-credential"
@@ -106,11 +106,11 @@ func TestGatewayL3NotaryRejectsMixedCLIAndPasskeyProof(t *testing.T) {
 	assert.False(t, passkey.called)
 }
 
-func newGatewayCLIApprovalCertificate(t *testing.T, userID, sessionID string, notBefore, notAfter time.Time) *tls.Certificate {
+func newGatewayCLIApprovalCertificate(t *testing.T, notBefore, notAfter time.Time) *tls.Certificate {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-	uri, err := url.Parse("spiffe://ztd.local/cli/" + userID + "/" + sessionID)
+	uri, err := url.Parse("spiffe://ztd.local/cli/user-1/approver-session")
 	require.NoError(t, err)
 	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test CLI"}, NotBefore: notBefore, NotAfter: notAfter, URIs: []*url.URL{uri}, KeyUsage: x509.KeyUsageDigitalSignature}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)

@@ -22,12 +22,12 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-func testModelProvenanceWindow(t *testing.T, providerAttemptID string) *evalv1.ModelProvenanceAttestationWindow {
+func testModelProvenanceWindow(t *testing.T) *evalv1.ModelProvenanceAttestationWindow {
 	t.Helper()
 	digest := strings.Repeat("a", 64)
 	window := &evalv1.ModelProvenanceAttestationWindow{
 		SchemaVersion:              model_provenance.SchemaVersion,
-		ProviderAttemptId:          providerAttemptID,
+		ProviderAttemptId:          "attempt-1",
 		ProvenanceOperatorId:       "test-provenance-operator",
 		ServedModelTag:             "probe-model:7b",
 		ExpectedModelDigest:        digest,
@@ -58,7 +58,7 @@ func TestVerifyModelProvenanceWindow_StrictPolicy_RequiresWindow(t *testing.T) {
 
 func TestVerifyModelProvenanceWindow_StrictPolicy_RequiresDigestMatch(t *testing.T) {
 	t.Parallel()
-	window := testModelProvenanceWindow(t, "attempt-1")
+	window := testModelProvenanceWindow(t)
 	window.DigestMatch = false
 	attestationDigest, err := model_provenance.ComputeAttestationDigest(window)
 	require.NoError(t, err)
@@ -71,7 +71,7 @@ func TestVerifyModelProvenanceWindow_StrictPolicy_RequiresDigestMatch(t *testing
 
 func TestVerifyModelProvenanceWindow_ExpectedDigestMismatch(t *testing.T) {
 	t.Parallel()
-	window := testModelProvenanceWindow(t, "attempt-1")
+	window := testModelProvenanceWindow(t)
 	err := VerifyModelProvenanceWindow(window, strings.Repeat("c", 64), ModelProvenancePolicyInterim)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrModelProvenanceDigestMismatch)
@@ -81,7 +81,7 @@ func TestStore_ModelProvenanceWindowRoundTrip(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
-	window := testModelProvenanceWindow(t, "attempt-1")
+	window := testModelProvenanceWindow(t)
 	require.NoError(t, store.SaveModelProvenanceWindow(ctx, "run-1", window))
 
 	loaded, err := store.LoadModelProvenanceWindow(ctx, "run-1", "attempt-1")
@@ -94,7 +94,7 @@ func TestStore_ModelProvenanceWindowRoundTrip(t *testing.T) {
 func TestStore_SaveModelProvenanceWindowRejectsInvalidWindow(t *testing.T) {
 	t.Parallel()
 	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
-	window := testModelProvenanceWindow(t, "attempt-1")
+	window := testModelProvenanceWindow(t)
 	window.AttestationDigest = "invalid"
 
 	err := store.SaveModelProvenanceWindow(t.Context(), "run-1", window)
@@ -133,7 +133,7 @@ func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictDig
 	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
-	window := testModelProvenanceWindow(t, "attempt-1")
+	window := testModelProvenanceWindow(t)
 	require.NoError(t, store.SaveModelProvenanceWindow(ctx, "run-1", window))
 	reader, err := NewCampaignModelProvenanceReader(store)
 	require.NoError(t, err)

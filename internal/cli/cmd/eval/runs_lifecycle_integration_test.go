@@ -26,7 +26,7 @@ import (
 
 func TestRunsCancel_StopsEveryAssignmentOfAnIdleRun(t *testing.T) {
 	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 
 	out := env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 	assert.Contains(t, out, fmt.Sprintf("Cancelled run run-a-1: stopped %d assignment(s)", testModelRoleCells(t)))
@@ -40,7 +40,7 @@ func TestRunsCancel_StopsEveryAssignmentOfAnIdleRun(t *testing.T) {
 
 func TestRunsCancel_JSONReportsWhatItStopped(t *testing.T) {
 	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 
 	var payload runCancelJSON
 	require.NoError(t, env.runJSON(t, &payload, "runs", "cancel", "run-a-1", "--publish=false"))
@@ -52,7 +52,7 @@ func TestRunsCancel_JSONReportsWhatItStopped(t *testing.T) {
 
 func TestRunsCancel_ClearsAStaleLeaseAndReportsIt(t *testing.T) {
 	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 	env.holdRun(t, "run-a-1")
 	env.control.setAlive(otherHostPID, false)
 
@@ -67,7 +67,7 @@ func TestRunsCancel_ClearsAStaleLeaseAndReportsIt(t *testing.T) {
 // cancelled status itself, under the CLI session, for a watcher to see.
 func TestRunsCancel_PostsCancelledForAnIdleRun(t *testing.T) {
 	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	events := observeGatewayRunEvents(t, env, runID)
 	env.mustRun(t, "runs", "cancel", runID, "--publish=false")
 	event := awaitGatewayRunEvent(t, events)
@@ -78,7 +78,7 @@ func TestRunsCancel_PostsCancelledForAnIdleRun(t *testing.T) {
 }
 func TestRunsCancel_OfASettledRunPostsNothing(t *testing.T) {
 	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	assignments, err := env.store(t).ListAssignments(context.Background(), runID)
 	require.NoError(t, err)
 	for _, assignment := range assignments {
@@ -94,7 +94,7 @@ func TestRunsCancel_OfASettledRunPostsNothing(t *testing.T) {
 }
 func TestRunsCancel_FailsClosedWhenGatewayRejectsTerminalTransition(t *testing.T) {
 	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	events := observeGatewayRunEvents(t, env, runID)
 	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusFailed)
 	seeded := awaitGatewayRunEvent(t, events)
@@ -109,7 +109,7 @@ func TestRunsCancel_FailsClosedWhenGatewayRejectsTerminalTransition(t *testing.T
 }
 func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	env.holdRun(t, runID)
 	events := observeGatewayRunEvents(t, env, runID)
 	type outcome struct {
@@ -144,7 +144,7 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 }
 func TestRunsCancel_ReturnsWhenTheHolderExitsWithoutReleasing(t *testing.T) {
 	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	env.holdRun(t, runID)
 	events := observeGatewayRunEvents(t, env, runID)
 	type outcome struct {
@@ -172,7 +172,7 @@ func TestRunsCancel_ReturnsWhenTheHolderExitsWithoutReleasing(t *testing.T) {
 }
 func TestRunsCancel_PostsCancelledWhenTheHolderExited(t *testing.T) {
 	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	env.holdRun(t, runID)
 	events := observeGatewayRunEvents(t, env, runID)
 	type outcome struct {
@@ -229,7 +229,7 @@ func TestRunsResume_DoesNotResumeAStoppedRun(t *testing.T) {
 
 func TestRunsResume_ReportsItsLifecycleToTheGateway(t *testing.T) {
 	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	events := observeGatewayRunEvents(t, env, runID)
 	out, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
 	require.NoError(t, err, out)
@@ -243,7 +243,7 @@ func TestRunsResume_ReportsItsLifecycleToTheGateway(t *testing.T) {
 }
 func TestRunsResume_OfACompletedRunIsRejectedByTheGateway(t *testing.T) {
 	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	events := observeGatewayRunEvents(t, env, runID)
 	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusCompleted)
 	seeded := awaitGatewayRunEvent(t, events)
@@ -259,7 +259,7 @@ func TestRunsResume_OfACompletedRunIsRejectedByTheGateway(t *testing.T) {
 }
 func TestRunsResume_FailsClosedWhenGatewayRejectsRunning(t *testing.T) {
 	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	events := observeGatewayRunEvents(t, env, runID)
 	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusFailed)
 	seeded := awaitGatewayRunEvent(t, events)
@@ -275,7 +275,7 @@ func TestRunsResume_FailsClosedWhenGatewayRejectsRunning(t *testing.T) {
 }
 func TestRunsShow_WatchReturnsForASettledRun(t *testing.T) {
 	env, _ := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	env.prepareRun(t, "eval-a", "run-a-1")
+	env.prepareRun(t)
 	env.mustRun(t, "runs", "cancel", "run-a-1", "--publish=false")
 
 	out := env.mustRun(t, "runs", "show", "run-a-1", "--watch")
@@ -284,7 +284,7 @@ func TestRunsShow_WatchReturnsForASettledRun(t *testing.T) {
 
 func TestRunsShow_WatchFollowsARunUntilItSettles(t *testing.T) {
 	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusRunning)
 	done := make(chan string, 1)
 	go func() {

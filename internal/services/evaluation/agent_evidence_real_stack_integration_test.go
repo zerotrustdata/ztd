@@ -129,11 +129,11 @@ func realStackReadFileReply(env *realStackAgentRun, relPath string) fixtures.Oll
 // shellReplies is the frozen provider script for one answer-free tool turn: the
 // model runs run_shell_command on the health fixture its prompt names, then
 // answers from the output.
-// shellRepliesFor scripts one shell turn pair for each scheduled assignment:
+// shellRepliesForTwoAssignments scripts a shell turn pair for two assignments:
 // every assignment consumes its own tool call and final answer.
-func shellRepliesFor(assignments int) []fixtures.OllamaReply {
+func shellRepliesForTwoAssignments() []fixtures.OllamaReply {
 	var replies []fixtures.OllamaReply
-	for range assignments {
+	for range 2 {
 		replies = append(replies, shellReplies()...)
 	}
 	return replies
@@ -430,7 +430,7 @@ func flipHexDigit(s string) string {
 
 func TestAgentEvidenceIntegration_SharedRuntimeEmbeddedOperator(t *testing.T) {
 	ctx := t.Context()
-	env := newRealStackAgentRun(t, realStackOptions{shared: true, suffix: "shared", replies: shellRepliesFor(2)})
+	env := newRealStackAgentRun(t, realStackOptions{shared: true, suffix: "shared", replies: shellRepliesForTwoAssignments()})
 	require.Equal(t, 2, env.scheduledCount, "both roles must be scheduled, one assignment each")
 
 	for i := 0; i < env.scheduledCount; i++ {
@@ -460,7 +460,7 @@ func TestAgentEvidenceIntegration_SharedRuntimeEmbeddedOperator(t *testing.T) {
 
 func TestAgentEvidenceIntegration_DistinctRuntimes(t *testing.T) {
 	ctx := t.Context()
-	env := newRealStackAgentRun(t, realStackOptions{suffix: "distinct", replies: shellRepliesFor(2)})
+	env := newRealStackAgentRun(t, realStackOptions{suffix: "distinct", replies: shellRepliesForTwoAssignments()})
 	require.Equal(t, 2, env.scheduledCount, "both roles must be scheduled, one assignment each")
 
 	for i := 0; i < env.scheduledCount; i++ {

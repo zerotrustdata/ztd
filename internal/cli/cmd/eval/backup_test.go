@@ -198,7 +198,7 @@ func TestAutoBackupEval_WarnsWithoutFailingWhenBackupIsImpossible(t *testing.T) 
 
 func TestRunsResume_BacksUpEvidenceWhenItFinishes(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 
 	out := env.mustRun(t, "runs", "resume", runID)
 
@@ -212,7 +212,7 @@ func TestRunsResume_BacksUpEvidenceWhenItFinishes(t *testing.T) {
 
 func TestRunsResume_NoBackupFlagSkipsTheBackup(t *testing.T) {
 	env := newGatewayRunEnv(t)
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
+	runID := env.prepareRun(t)
 
 	out := env.mustRun(t, "runs", "resume", runID, "--no-backup")
 

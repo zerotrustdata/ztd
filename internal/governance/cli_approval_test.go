@@ -29,7 +29,7 @@ import (
 
 func TestCLIApprovalSignAndVerify(t *testing.T) {
 	t.Parallel()
-	cert := newCLIApprovalTestCertificate(t, "user-1", "session-1", time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
+	cert := newCLIApprovalTestCertificate(t, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
 	txHash := strings.Repeat("a", 64)
 	proof, err := SignCLIApproval(txHash, cert)
 	require.NoError(t, err)
@@ -42,7 +42,7 @@ func TestCLIApprovalSignAndVerify(t *testing.T) {
 func TestCLIApprovalRejectsTamperingWrongUserAndExpiredCertificate(t *testing.T) {
 	t.Parallel()
 	txHash := strings.Repeat("b", 64)
-	valid := newCLIApprovalTestCertificate(t, "user-1", "session-1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	valid := newCLIApprovalTestCertificate(t, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	proof, err := SignCLIApproval(txHash, valid)
 	require.NoError(t, err)
 
@@ -56,7 +56,7 @@ func TestCLIApprovalRejectsTamperingWrongUserAndExpiredCertificate(t *testing.T)
 	_, err = VerifyCLIApproval("user-1", txHash, tampered)
 	require.Error(t, err)
 
-	expired := newCLIApprovalTestCertificate(t, "user-1", "session-1", time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour))
+	expired := newCLIApprovalTestCertificate(t, time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour))
 	_, err = SignCLIApproval(txHash, expired)
 	require.Error(t, err)
 
@@ -79,7 +79,7 @@ func TestCLIApprovalRejectsTamperingWrongUserAndExpiredCertificate(t *testing.T)
 
 func TestCLIApprovalRejectsMismatchedSigningKey(t *testing.T) {
 	t.Parallel()
-	cert := newCLIApprovalTestCertificate(t, "user-1", "session-1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	cert := newCLIApprovalTestCertificate(t, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	otherKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	cert.PrivateKey = otherKey
@@ -87,11 +87,11 @@ func TestCLIApprovalRejectsMismatchedSigningKey(t *testing.T) {
 	require.Error(t, err)
 }
 
-func newCLIApprovalTestCertificate(t *testing.T, userID, sessionID string, notBefore, notAfter time.Time) *tls.Certificate {
+func newCLIApprovalTestCertificate(t *testing.T, notBefore, notAfter time.Time) *tls.Certificate {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-	uri, err := url.Parse("spiffe://ztd.local/cli/" + userID + "/" + sessionID)
+	uri, err := url.Parse("spiffe://ztd.local/cli/user-1/session-1")
 	require.NoError(t, err)
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),

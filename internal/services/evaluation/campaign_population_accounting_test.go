@@ -169,7 +169,7 @@ func TestCampaignPopulationAccountant_SystemMatrixTamperingFailsClosed(t *testin
 				assignments[0].Target = &evalv1.EvaluationAssignment_Homogeneous{Homogeneous: &evalv1.HomogeneousAssignmentTarget{
 					DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 					CandidateVariant: &evalv1.ModelVariant{VariantId: stack.GetPrimarySlot().GetVariantId(),
-						ServedModelTag: "unbound:wrong-target", ModelDigest: repeatHex('f', 64)},
+						ServedModelTag: "unbound:wrong-target", ModelDigest: repeatHex('f')},
 				}}
 				assignments[0].DeterministicIdentity = ""
 			},

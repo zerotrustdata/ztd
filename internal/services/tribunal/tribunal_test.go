@@ -88,10 +88,10 @@ const (
 	testRequest = "list listening TCP ports"
 )
 
-func candidatesFor(commands map[Member]string, round uint32) []Candidate {
+func candidatesFor(commands map[Member]string) []Candidate {
 	var out []Candidate
 	for _, member := range AllMembers {
-		out = append(out, Candidate{Member: member, Round: round, Command: commands[member]})
+		out = append(out, Candidate{Member: member, Round: 1, Command: commands[member]})
 	}
 	return out
 }
@@ -133,7 +133,7 @@ func TestVote(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			v := vote(1, candidatesFor(tt.commands, 1))
+			v := vote(1, candidatesFor(tt.commands))
 			assert.Equal(t, tt.winner, v.Winner)
 			for i, cluster := range v.Clusters {
 				assert.Equal(t, clusterID(i), cluster.ID)
@@ -145,9 +145,9 @@ func TestVote(t *testing.T) {
 
 func TestVoteUnanimous(t *testing.T) {
 	all := map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "pwd", MemberPragma: "pwd", MemberNemesis: "pwd"}
-	assert.True(t, vote(1, candidatesFor(all, 1)).Unanimous())
+	assert.True(t, vote(1, candidatesFor(all)).Unanimous())
 	all[MemberNemesis] = "ls"
-	assert.False(t, vote(1, candidatesFor(all, 1)).Unanimous())
+	assert.False(t, vote(1, candidatesFor(all)).Unanimous())
 }
 
 func TestAssessRisk(t *testing.T) {
@@ -186,10 +186,10 @@ func TestDecodeAnswerSentinel(t *testing.T) {
 func TestAudit(t *testing.T) {
 	split := vote(1, candidatesFor(map[Member]string{
 		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
-	}, 1))
+	}))
 	unanimous := vote(1, candidatesFor(map[Member]string{
 		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "ss -tlpn", MemberNemesis: "ss -tlpn",
-	}, 1))
+	}))
 	tests := []struct {
 		name     string
 		vote     Vote
@@ -249,7 +249,7 @@ func TestAudit(t *testing.T) {
 func TestAuditClustersLabelWinnerFirst(t *testing.T) {
 	v := vote(1, candidatesFor(map[Member]string{
 		MemberAxiom: "lsof -i", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "ss -tlpn", MemberNemesis: "netstat",
-	}, 1))
+	}))
 	clusters := auditClusters(v)
 	require.Len(t, clusters, 3)
 	assert.Equal(t, Cluster{ID: "cluster_a", Command: "ss -tlpn", Members: []Member{MemberConcord, MemberVariance, MemberPragma}}, clusters[0])

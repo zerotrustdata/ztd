@@ -27,7 +27,7 @@ func secondTestModelVariant() *evalv1.ModelVariant {
 		VariantId:      "gemma3-4b",
 		ProviderClass:  "ollama",
 		ServedModelTag: "gemma3:4b",
-		ModelDigest:    repeatHex('c', 64),
+		ModelDigest:    repeatHex('c'),
 		ModelFamily:    "gemma3",
 	}
 }

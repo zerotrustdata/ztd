@@ -10,6 +10,7 @@ package governance
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -96,7 +97,10 @@ func (v *gatewayNotary) VerifyL3Proof(ctx context.Context, userID, transactionHa
 			return false, nil
 		}
 		approvingSessionID, err := approvals.VerifyCLIApproval(userID, transactionHash, proof)
-		if err != nil || v.cliVerifier == nil {
+		if err != nil {
+			return false, fmt.Errorf("verify CLI approval: %w", err)
+		}
+		if v.cliVerifier == nil {
 			return false, nil
 		}
 		if err := v.cliVerifier.VerifyCLISession(ctx, userID, approvingSessionID, proof.MtlsCertFingerprint); err != nil {

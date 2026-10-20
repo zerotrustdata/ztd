@@ -24,7 +24,7 @@ import (
 
 func TestOutboundL3Notary_VerifiesPinnedCLIProofWithoutSuspendedStore(t *testing.T) {
 	txHash := strings.Repeat("a", 64)
-	cert := newGatewayCLIApprovalCertificate(t, "user-1", "approver-session", time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
+	cert := newGatewayCLIApprovalCertificate(t, time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
 	leaf, err := x509.ParseCertificate(cert.Certificate[0])
 	require.NoError(t, err)
 	roots := x509.NewCertPool()

@@ -242,10 +242,10 @@ func testModelRoleCells(t *testing.T) int {
 
 // prepareRun creates a campaign and starts a prepared-only run of it: the run
 // and its assignment matrix are persisted and nothing executes.
-func (e *runEnv) prepareRun(t *testing.T, campaignID, runID string) string {
+func (e *runEnv) prepareRun(t *testing.T) string {
 	t.Helper()
-	e.createCampaign(t, campaignID)
-	return e.startPrepared(t, campaignID, runID)
+	e.createCampaign(t, "eval-a")
+	return e.startPrepared(t, "eval-a", "run-a-1")
 }
 
 func (e *runEnv) startPrepared(t *testing.T, campaignID, runID string) string {

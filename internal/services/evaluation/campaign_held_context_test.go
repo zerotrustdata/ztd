@@ -20,7 +20,7 @@ func TestImportAssignmentResultFromAgentTrace_HeldTraceMustRunInTheHeldWorkspace
 	const runID = "run-held-workspace"
 	held, err := NewScenarioWorkspace(agentTestWorkingDirectory, runID, "attempt-1")
 	require.NoError(t, err)
-	heldWorkspace := AgentTraceWorkspace{Root: held.Root, OperatorWorkingDirectory: held.OperatorWorkingDirectory}
+	heldWorkspace := AgentTraceWorkspace(held)
 	trace := &AgentTrace{
 		RunID: runID, EvaluationAttemptID: "attempt-2", Workspace: heldWorkspace,
 		HeldContext: &AgentTraceHeldContext{AssignmentID: "assignment-1", Repetition: 1, Workspace: heldWorkspace},
@@ -29,7 +29,7 @@ func TestImportAssignmentResultFromAgentTrace_HeldTraceMustRunInTheHeldWorkspace
 
 	own, err := NewScenarioWorkspace(agentTestWorkingDirectory, runID, trace.EvaluationAttemptID)
 	require.NoError(t, err)
-	trace.Workspace = AgentTraceWorkspace{Root: own.Root, OperatorWorkingDirectory: own.OperatorWorkingDirectory}
+	trace.Workspace = AgentTraceWorkspace(own)
 	require.ErrorIs(t, trace.validateWorkspace(), constants.ErrEvaluationWorkspaceUnavailable, "a held trace must run in the held workspace, not its own")
 
 	elsewhere := AgentTraceWorkspace{Root: agentTestWorkingDirectory + "/elsewhere", OperatorWorkingDirectory: agentTestWorkingDirectory}

@@ -92,7 +92,7 @@ func TestDispatchDriveRejectsUnsupportedCases(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := dispatchAttempt(tt.ingress, tt.fault, cases.ActionMutation)
+			a := dispatchAttempt(tt.ingress, tt.fault)
 
 			_, err := newTestDispatch(t, unreachableClient(t)).Drive(context.Background(), a)
 			require.Error(t, err)
@@ -110,7 +110,7 @@ func TestNewDispatchAcceptsOneExecutorAndRefusesMissingTargets(t *testing.T) {
 	}
 	dispatch, err := NewDispatch(c, persona, missingOutbound)
 	require.NoError(t, err)
-	_, err = dispatch.Drive(context.Background(), dispatchAttempt(cases.IngressDispatchOutbound, cases.FaultNone, cases.ActionMutation))
+	_, err = dispatch.Drive(context.Background(), dispatchAttempt(cases.IngressDispatchOutbound, cases.FaultNone))
 	require.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
 
 	missingEmbedded := map[cases.Executor]operator.Target{
@@ -128,7 +128,7 @@ func TestNewDispatchAcceptsOneExecutorAndRefusesMissingTargets(t *testing.T) {
 // TestDispatchDriveTransportFailureIsError checks that an unreachable Gateway
 // returns an error rather than an observation.
 func TestDispatchDriveTransportFailureIsError(t *testing.T) {
-	a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultNone, cases.ActionMutation)
+	a := dispatchAttempt(cases.IngressDispatchEmbedded, cases.FaultNone)
 
 	driven, err := newTestDispatch(t, unreachableClient(t)).Drive(context.Background(), a)
 	require.Error(t, err)

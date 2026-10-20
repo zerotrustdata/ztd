@@ -202,7 +202,7 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	return result, nil
 }
 
-func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequest, trace *AgentTrace) bool {
+func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequest) bool {
 	if req.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE {
 		return true
 	}
@@ -213,7 +213,7 @@ func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequ
 }
 
 func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) ([]*evalv1.SemanticGrade, []*evalv1.DecomposedScoreRecord) {
-	if !e.shouldScoreWithJudge(req, trace) || e.inference == nil || req.Assignment == nil {
+	if !e.shouldScoreWithJudge(req) || e.inference == nil || req.Assignment == nil {
 		return nil, nil
 	}
 	resolved, err := ResolveAssignmentModels(req)
@@ -469,8 +469,6 @@ func (r *agentRun) loop(ctx context.Context) error {
 		if isInterrogation {
 			// Interrogation hand-off drops pending execution, while the trace
 			// preserves the tool-call count covered by the signed result.
-			toolCalls = nil
-
 			var matchedFollowUp *ScenarioScriptedFollowUp
 			for i := range r.req.ScenarioInput.FollowUps {
 				fu := &r.req.ScenarioInput.FollowUps[i]
@@ -515,7 +513,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 
 		if len(toolCalls) == 0 {
 			r.trace.FinalOutput = text
-			r.trace.TerminalClassification = classifyTerminalState(r.trace, call)
+			r.trace.TerminalClassification = classifyTerminalState(r.trace)
 			return nil
 		}
 		assistant := &operatorv1.InferenceMessage{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT}
@@ -624,7 +622,7 @@ func matchesFollowUp(text string, questions []string, fu *ScenarioScriptedFollow
 	return true
 }
 
-func classifyTerminalState(trace *AgentTrace, lastCall *AgentModelCall) string {
+func classifyTerminalState(trace *AgentTrace) string {
 	if trace.ProviderFailure != "" {
 		return AgentTerminalClassificationHarnessFailure
 	}
@@ -965,8 +963,8 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, t
 	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(tool, dispatched)})
 	}
-	if record.Receipt != nil && record.Receipt.ActionReceipt != nil && record.Receipt.ActionReceipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
-		message := record.Receipt.ActionReceipt.GetResultSummary()
+	if record.Receipt != nil && record.Receipt.ActionReceipt != nil && record.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
+		message := record.Receipt.GetResultSummary()
 		if message == "" {
 			message = "tool execution failed"
 		}
@@ -988,7 +986,7 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, t
 	}
 	summary := ""
 	if record.Receipt != nil && record.Receipt.ActionReceipt != nil {
-		summary = record.Receipt.ActionReceipt.GetResultSummary()
+		summary = record.Receipt.GetResultSummary()
 	}
 	if summary == "" {
 		summary = "{}"

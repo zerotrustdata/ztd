@@ -143,7 +143,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 				require.NoError(t, err)
 				result.ResultDigest = digest
 				call.ResultDigest = digest
-				call.Receipt.ActionReceipt.ResultSummary = digest
+				call.Receipt.ResultSummary = digest
 				signer.Resign(t, call.Receipt.ActionReceipt)
 			},
 		},
@@ -159,7 +159,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 				digest, err := models.ComputeInferenceResultDigest(result)
 				require.NoError(t, err)
 				result.ResultDigest = digest
-				call.Receipt.ActionReceipt.ResultSummary = digest
+				call.Receipt.ResultSummary = digest
 				signer.Resign(t, call.Receipt.ActionReceipt)
 			},
 		},
@@ -197,14 +197,14 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 				require.NoError(t, err)
 				result.ResultDigest = digest
 				call.ResultDigest = digest
-				call.Receipt.ActionReceipt.ResultSummary = digest
+				call.Receipt.ResultSummary = digest
 				signer.Resign(t, call.Receipt.ActionReceipt)
 			},
 		},
 		{
 			name: "provider attempt swapped",
 			mutate: func(_ *testing.T, trace *AgentTrace, _ oracletest.Signer) {
-				trace.ModelCalls[0].InferenceResult.InferenceResult.ProviderAttemptId = "attempt-other"
+				trace.ModelCalls[0].InferenceResult.ProviderAttemptId = "attempt-other"
 			},
 		},
 	}

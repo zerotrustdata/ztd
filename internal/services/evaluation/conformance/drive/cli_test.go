@@ -99,7 +99,7 @@ func TestCLIObservationMapsEachRunResultKind(t *testing.T) {
 func TestCLIDriveCommandPerFault(t *testing.T) {
 	t.Run("doctrine sends the corpus command", func(t *testing.T) {
 		spy := &requestSpy{}
-		a := dispatchAttempt(cases.IngressCLI, cases.FaultDoctrine, cases.ActionMutation)
+		a := dispatchAttempt(cases.IngressCLI, cases.FaultDoctrine)
 
 		_, err := newTestCLI(t, spy).Drive(context.Background(), a)
 		require.ErrorIs(t, err, errNoAnswer)
@@ -109,7 +109,7 @@ func TestCLIDriveCommandPerFault(t *testing.T) {
 	for _, fault := range []cases.Fault{cases.FaultNone, cases.FaultAttendedApprove, cases.FaultAttendedDeny} {
 		t.Run("mutation "+string(fault)+" sends the marker command", func(t *testing.T) {
 			spy := &requestSpy{}
-			a := dispatchAttempt(cases.IngressCLI, fault, cases.ActionMutation)
+			a := dispatchAttempt(cases.IngressCLI, fault)
 
 			_, err := newTestCLI(t, spy).Drive(context.Background(), a)
 			require.ErrorIs(t, err, errNoAnswer)
@@ -132,7 +132,7 @@ func TestCLIDriveRejectsUnsupportedCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			spy := &requestSpy{}
-			a := dispatchAttempt(tt.ingress, tt.fault, cases.ActionMutation)
+			a := dispatchAttempt(tt.ingress, tt.fault)
 
 			_, err := newTestCLI(t, spy).Drive(context.Background(), a)
 			assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported), "got %v", err)

@@ -13,13 +13,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
 
-// resolveOperatorTopology asks the Gateway for active operator sessions and
-// resolves the Inference and Data runtimes a dispatching command targets. Only
-// commands that dispatch work call it.
-func resolveOperatorTopology(cmd *cobra.Command, deps nativeEvalDeps) (evaluation.CampaignOperatorTopology, error) {
-	return resolveOperatorTopologyForDataOperator(cmd, deps, "")
-}
-
 // resolveOperatorTopologyForDataOperator resolves the selected Inference
 // session and either the default Data Operator or a campaign's frozen stable
 // Data Operator identity.

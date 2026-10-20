@@ -40,7 +40,7 @@ func formationCatalogTestVariants() []*evalv1.ModelVariant {
 		if ch == 0 {
 			ch = 'a'
 		}
-		return repeatHex(ch, 64)
+		return repeatHex(ch)
 	})
 }
 
@@ -169,7 +169,7 @@ func TestGenerateFormationCatalogStackSet_SealsRegistryVariantIDs(t *testing.T) 
 	bound, err := BindFormation(FormationBindingRequest{Stack: set.Stacks[0], Variants: testFormationCatalogVariants()})
 	require.NoError(t, err)
 	assert.Equal(t, "deepseek-reasoning-tower", bound.ID)
-	assert.Equal(t, repeatHex('4', 64), bound.Primary.ModelDigest)
+	assert.Equal(t, repeatHex('4'), bound.Primary.ModelDigest)
 	assert.Equal(t, "freeze-deepseek-r1-7b", bound.Primary.VariantID)
 }
 
