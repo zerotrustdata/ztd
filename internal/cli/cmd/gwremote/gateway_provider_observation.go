@@ -140,15 +140,11 @@ func isConfiguredGatewayHealthy(fileSvc fs.RuntimeFileService, cfg *config.Confi
 	return health.Posture != ""
 }
 
-// PreflightAPIClientFactory creates the APIClient for provider observation preflight.
-// Tests can override this to test status handling without network listeners.
-var PreflightAPIClientFactory = authcmd.DefaultAPIClientFactory
-
 func PreflightProviderObservationDelivery(fileSvc fs.RuntimeFileService, cfg *config.Config) error {
 	if !isConfiguredGatewayHealthy(fileSvc, cfg) {
 		return constants.ErrEvaluationObservationUnavailable
 	}
-	client, err := PreflightAPIClientFactory(fileSvc, cfg)
+	client, err := authcmd.DefaultAPIClientFactory(fileSvc, cfg)
 	if err != nil {
 		return fmt.Errorf("provider observation preflight: create gateway client: %w", err)
 	}

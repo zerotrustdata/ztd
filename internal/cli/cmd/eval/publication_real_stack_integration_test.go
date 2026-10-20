@@ -895,7 +895,10 @@ func TestPublicationRealStack_ReleaseProvenanceReachesEveryPublicRecord(t *testi
 		{name: "asserted", legacy: true, tagged: "v2.2.7", platform: testPlatform, release: "v2.2.7", basis: "asserted"},
 		{name: "unknown", legacy: true, platform: testPlatform, basis: "unknown"},
 	}
-	requiredKinds := []string{"PublicAssignmentLifecycleRecord", "PublicAssignmentResultProjection", "catalog_snapshot", "evaluation_summary", "model_summary", "methodology_snapshot", "stage_updated", "metric_updated"}
+	// The bootstrap window serves projection records only. Live stage_updated and
+	// metric_updated events are not in it, and their release identity is covered by
+	// TestProjectLiveEvents_CarryTheCampaignReleaseIdentity.
+	requiredKinds := []string{"PublicAssignmentLifecycleRecord", "PublicAssignmentResultProjection", "catalog_snapshot", "evaluation_summary", "model_summary", "methodology_snapshot"}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			campaignID := "pub-release-" + tt.name
@@ -921,7 +924,15 @@ func TestPublicationRealStack_ReleaseProvenanceReachesEveryPublicRecord(t *testi
 					RecordType  models.PublicFeedRecordType `json:"record_type"`
 				}
 				require.NoError(t, json.Unmarshal([]byte(projection.raw), &envelope))
+				// Live events keep their kind in the record body, not the envelope.
+				var body struct {
+					Kind string `json:"kind"`
+				}
+				require.NoError(t, json.Unmarshal(projection.record, &body))
 				kind := envelope.Kind
+				if kind == "" {
+					kind = body.Kind
+				}
 				wantBasis := tt.basis
 				// Protobuf-owned records and live events carry the enum name of the basis.
 				if envelope.MessageType != "" {

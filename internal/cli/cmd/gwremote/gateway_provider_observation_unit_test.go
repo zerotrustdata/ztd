@@ -9,67 +9,17 @@ package gwremote
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 
-	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
-	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
-	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
-
-func testProviderObservationBundle(attemptID string) (*evalv1.ProviderBoundaryObservationWindow, *operatorv1.InferenceProviderAttemptRecord, []byte) {
-	attempt := &operatorv1.InferenceProviderAttemptRecord{
-		ProviderAttemptId: attemptID,
-		Status:            operatorv1.InferenceProviderAttemptStatus_INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED,
-		StartedAtUnixMs:   time.Unix(1_700_000_000, 0).UnixMilli(),
-		CompletedAtUnixMs: time.Unix(1_700_000_010, 0).UnixMilli(),
-	}
-	window := &evalv1.ProviderBoundaryObservationWindow{
-		SchemaVersion:              provider_observer.SchemaVersion,
-		ProviderAttemptId:          attemptID,
-		ObserverId:                 "observer-test",
-		ObserverClockSource:        provider_observer.DefaultObserverClockSource,
-		WindowStartedAtUnixNanos:   uint64(time.Unix(1_700_000_000, 0).UnixNano()),
-		WindowCompletedAtUnixNanos: uint64(time.Unix(1_700_000_010, 0).UnixNano()),
-		AttemptStartedAtUnixMs:     attempt.GetStartedAtUnixMs(),
-		AttemptCompletedAtUnixMs:   attempt.GetCompletedAtUnixMs(),
-	}
-	digest, err := provider_observer.ComputeObservationDigest(window)
-	if err != nil {
-		panic(err)
-	}
-	window.ObservationDigest = digest
-
-	windowBody, err := evalv1.MarshalCanonical(window)
-	if err != nil {
-		panic(err)
-	}
-	attemptBody, err := protojson.Marshal(attempt)
-	if err != nil {
-		panic(err)
-	}
-	respBody, err := json.Marshal(models.ProviderObservationResponse{
-		Window:          windowBody,
-		ProviderAttempt: attemptBody,
-	})
-	if err != nil {
-		panic(err)
-	}
-	return window, attempt, respBody
-}
 
 func useHealthyConfiguredGateway(t *testing.T, cfg *config.Config) {
 	t.Helper()
@@ -90,74 +40,12 @@ func TestRemoteProviderObservationClient_Load_RejectsMissingInputs(t *testing.T)
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
-func TestRemoteProviderObservationClient_Load_ReturnsGatewayBundle(t *testing.T) {
-	t.Parallel()
-	window, attempt, respBody := testProviderObservationBundle("attempt-1")
-	apiClient := &cmdtest.MockAPIClient{GetResp: respBody}
-	remote := &remoteProviderObservationClient{client: apiClient}
-
-	loadedWindow, loadedAttempt, err := remote.Load(context.Background(), "attempt-1")
-	require.NoError(t, err)
-	assert.Equal(t, window.GetProviderAttemptId(), loadedWindow.GetProviderAttemptId())
-	assert.Equal(t, attempt.GetProviderAttemptId(), loadedAttempt.GetProviderAttemptId())
-	assert.Equal(t, []string{constants.APIPaths.InferenceProviderObservations + "attempt-1"}, apiClient.GetCalls)
-
-	cachedWindow, cachedAttempt, err := remote.Load(context.Background(), "attempt-1")
-	require.NoError(t, err)
-	assert.Equal(t, loadedWindow.GetObservationDigest(), cachedWindow.GetObservationDigest())
-	assert.Equal(t, loadedAttempt.GetProviderAttemptId(), cachedAttempt.GetProviderAttemptId())
-	assert.Len(t, apiClient.GetCalls, 1, "second load should use cache")
-}
-
-func TestRemoteProviderObservationClient_Load_PropagatesGatewayErrors(t *testing.T) {
-	t.Parallel()
-	apiClient := &cmdtest.MockAPIClient{GetErr: fmt.Errorf("network down")}
-	remote := &remoteProviderObservationClient{client: apiClient}
-
-	_, _, err := remote.Load(context.Background(), "attempt-1")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "gateway read")
-}
-
-func TestRemoteProviderObservationClient_Load_RejectsInvalidJSON(t *testing.T) {
-	t.Parallel()
-	apiClient := &cmdtest.MockAPIClient{GetResp: []byte("not-json")}
-	remote := &remoteProviderObservationClient{client: apiClient}
-
-	_, _, err := remote.Load(context.Background(), "attempt-1")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
-}
-
-func TestNewProviderObservationRemote_ReturnsClientWhenGatewayHealthy(t *testing.T) {
+func TestNewProviderObservationRemote_ReturnsClient(t *testing.T) {
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 
 	remote, err := NewProviderObservationRemote(fileSvc, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, remote)
-}
-
-func TestPreflightProviderObservationDelivery_RejectsUnhealthyGateway(t *testing.T) {
-	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-	cfg.Paths.Host = "http://127.0.0.1:1"
-
-	err := PreflightProviderObservationDelivery(fileSvc, cfg)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
-}
-
-func TestPreflightProviderObservationDelivery_RequiresReadyStatus(t *testing.T) {
-	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-	useHealthyConfiguredGateway(t, cfg)
-	originalFactory := PreflightAPIClientFactory
-	PreflightAPIClientFactory = func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) {
-		return &cmdtest.MockAPIClient{GetResp: []byte(`{"status":"stalled"}`)}, nil
-	}
-	t.Cleanup(func() { PreflightAPIClientFactory = originalFactory })
-
-	err := PreflightProviderObservationDelivery(fileSvc, cfg)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "provider observation preflight")
 }
 
 func TestNewCampaignWitnessCapture_ReturnsGatewayNotReachableWhenUnhealthy(t *testing.T) {

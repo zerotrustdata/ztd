@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/api"
@@ -41,4 +42,18 @@ func TestProviderObservationGatewayRead_UnknownAttemptIsNotFound(t *testing.T) {
 	var statusErr *api.StatusError
 	require.ErrorAs(t, err, &statusErr)
 	require.Equal(t, http.StatusNotFound, statusErr.StatusCode)
+}
+
+// TestProviderObservationGatewayRead_UnreachableGatewayIsGatewayReadError points the
+// observation read at a loopback port with nothing listening. The transport failure
+// must surface as a gateway read.
+func TestProviderObservationGatewayRead_UnreachableGatewayIsGatewayReadError(t *testing.T) {
+	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
+	cmdtest.WithEndpointOverride(t, closedLoopbackURL(t))
+	remote, err := NewProviderObservationRemote(fileSvc, cfg)
+	require.NoError(t, err)
+
+	_, _, err = remote.Load(t.Context(), "attempt-unreachable")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "provider observation: gateway read")
 }

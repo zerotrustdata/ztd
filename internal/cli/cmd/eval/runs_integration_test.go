@@ -405,7 +405,7 @@ func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
 	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--verify", "--no-backup")
 	require.NoError(t, err, out)
 	assert.Contains(t, out, "Executed 1 assignment(s)")
-	assert.Contains(t, out, "verification: PASS")
+	assert.Contains(t, out, "verification: "+evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS.String())
 	assert.Equal(t, before, mirrorHighWater(t), "a run started with publication off appends nothing to the public mirror")
 
 	runID := onlyRunID(t, run)
