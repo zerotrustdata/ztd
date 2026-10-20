@@ -75,7 +75,7 @@ test('published field note preserves measurements, exposes no local sources, and
     assert.doesNotMatch(content, /g8e|\.local\.dev|\.\.\/\.\.\/|<script(?! src=)|\sstyle=|\sonclick=/i);
   }
   const source = await readFile(new URL('../src/index.html', import.meta.url), 'utf8');
-  assert.match(source, /class="journal-nav"><a href="\/build-in-public\/"/);
+  assert.match(source, /class="nav-keep"><a href="\/build-in-public\/"/);
   const config = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   assert.match(config, /"not_found_handling": "404-page"/);
 });

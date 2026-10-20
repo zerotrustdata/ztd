@@ -71,11 +71,9 @@ h3{font-size:20px;line-height:1.2}
 .brand:hover{text-decoration:none}
 .brand img{display:block;height:32px;width:auto}
 .brand small{display:block;font:500 10px/1 var(--mono);letter-spacing:.18em;color:var(--dim);margin-top:5px}
-.nav ul{display:flex;gap:18px;list-style:none;margin:0;padding:0;align-items:center}
+.nav ul{display:flex;gap:28px;list-style:none;margin:0;padding:0;align-items:center}
 .nav ul a{color:var(--muted);font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;display:inline-block}
 .nav ul a:hover{color:var(--cyan);text-decoration:none}
-.nav ul a.nav-hot{color:var(--acid);border:1px solid rgba(182,255,59,.35);padding:6px 10px;border-radius:2px;background:rgba(182,255,59,.06)}
-.nav ul a.nav-hot:hover{background:rgba(182,255,59,.16);box-shadow:0 0 16px rgba(182,255,59,.3)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;font:600 13px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:14px 20px;border:1px solid var(--cyan);color:var(--cyan);background:rgba(0,240,255,.06);border-radius:var(--r);transition:background .2s,box-shadow .2s,transform .2s;position:relative;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px));cursor:pointer;text-align:center}
 .btn:hover{text-decoration:none;background:rgba(0,240,255,.16);box-shadow:0 0 24px rgba(0,240,255,.35)}
 .btn.solid{background:var(--cyan);color:#001318;border-color:var(--cyan)}
@@ -343,13 +341,9 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 .no-js .rv{opacity:1;transform:none}
 
 /* ---------- responsive ---------- */
-@media (max-width:1320px){
-  .nav ul li.nav-opt{display:none}
-}
 @media (max-width:1080px){
-  .nav ul{display:none}
-  .nav ul:has(.journal-nav){display:flex}
-  .nav ul li:not(.journal-nav):not(.pricing-nav){display:none}
+  .nav ul{gap:18px}
+  .nav ul li:not(.nav-keep){display:none}
   .hero .wrap{grid-template-columns:1fr}
   .flow{grid-template-columns:1fr;gap:0}
   .link{height:52px}
@@ -385,7 +379,8 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   .status,.oem-box{padding:26px}
   .foot{grid-template-columns:1fr}
   .nav .btn{display:none}
-  .nav ul .journal-nav a,.nav ul .pricing-nav a{font-size:10px;letter-spacing:0;white-space:nowrap}
+  .nav ul{gap:12px}
+  .nav ul a{font-size:10px;letter-spacing:0}
   .nav .brand{font-size:12px;gap:6px;letter-spacing:.08em}
   .card{padding:22px}
   table.pm{font-size:11.5px}
@@ -417,14 +412,12 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     </a>
     <nav aria-label="Primary">
       <ul>
-        <li class="nav-opt"><a href="#problem">Problem</a></li>
-        <li><a href="#how">How it works</a></li>
-        <li class="nav-opt"><a href="#pipeline">Pipeline</a></li>
-        <li><a href="#start">Quick start</a></li>
-        <li class="pricing-nav"><a class="nav-hot" href="#licensing">Pricing</a></li>
-        <li><a href="#sprints">Architecture Sprints</a></li>
-        <li class="journal-nav"><a href="/releases/">Releases</a></li>
-        <li class="journal-nav"><a href="/build-in-public/">Build in Public</a></li>
+        <li><a href="#how">Platform</a></li>
+        <li><a href="#start">Install</a></li>
+        <li class="nav-keep"><a href="#licensing">Pricing</a></li>
+        <li><a href="#sprints">Consulting</a></li>
+        <li class="nav-keep"><a href="/releases/">Releases</a></li>
+        <li class="nav-keep"><a href="/build-in-public/" title="Build in Public">Journal</a></li>
       </ul>
     </nav>
     <a class="btn sm" href="https://github.com/zerotrustdata/ztd" rel="noopener">
