@@ -566,6 +566,8 @@ func publicVerifyAgentTraceCmd() *cobra.Command {
 // proof segment log is verified first. The database's SHA-256 must then be an
 // active artifact of that chain before the database's own live events are
 // checked against their record hashes and the header's run and assignment.
+// The database file is read once; the digest and the verified events both come
+// from those bytes.
 func publicVerifyAssignmentCmd() *cobra.Command {
 	var dbPath string
 	var segmentsPath string
@@ -599,7 +601,7 @@ func publicVerifyAssignmentCmd() *cobra.Command {
 			if _, active := chain.Active[digest]; !active {
 				return fmt.Errorf("%w: sha256 %s", constants.ErrPublicAssignmentAuditNotInProof, digest)
 			}
-			header, records, err := assignmentaudit.VerifyDatabase(shared.CommandContext(cmd), dbPath)
+			header, records, err := assignmentaudit.VerifyDatabase(shared.CommandContext(cmd), dbBytes)
 			if err != nil {
 				return fmt.Errorf("public-feed: verify assignment audit db: %w", err)
 			}

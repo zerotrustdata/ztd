@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"testing"
@@ -92,14 +93,14 @@ func TestEnrollDeployedOperatorsReportsEachWorkersAnnouncedSession(t *testing.T)
 
 	gateway := &windowedGateway{MockAPIClient: &cmdtest.MockAPIClient{}, pending: pending, watches: map[string]*deploymentWatch{"req-ready": ready}}
 	ops := []deployedOperator{{target: target, Dir: testutil.TempDir(t), RequestID: "req-ready", Fingerprints: testWorkerFingerprints, watch: ready}}
-	require.NoError(t, enrollDeployedOperators(context.Background(), gateway, ops, operatorDeployApprovalWindow))
+	require.NoError(t, enrollDeployedOperators(context.Background(), gateway, ops, operatorDeployApprovalWindow, io.Discard))
 	require.Equal(t, "session-req-ready", ops[0].SessionID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	silent := &silentGateway{MockAPIClient: &cmdtest.MockAPIClient{}, pending: pending}
 	ops = []deployedOperator{{target: target, Dir: testutil.TempDir(t), RequestID: "req-unannounced", Fingerprints: testWorkerFingerprints, watch: unannounced}}
-	require.ErrorIs(t, enrollDeployedOperators(ctx, silent, ops, operatorDeployApprovalWindow), constants.ErrOperatorDeployFailed)
+	require.ErrorIs(t, enrollDeployedOperators(ctx, silent, ops, operatorDeployApprovalWindow, io.Discard), constants.ErrOperatorDeployFailed)
 }
 
 // silentGateway approves every staged request but never announces readiness.

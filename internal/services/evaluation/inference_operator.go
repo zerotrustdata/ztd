@@ -17,7 +17,6 @@ import (
 	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 )
 
@@ -171,19 +170,6 @@ type GovernedInferenceDispatcher interface {
 type AgentInferenceDispatcher interface {
 	GovernedInferenceDispatcher
 	DispatchIntent(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error)
-}
-
-func campaignRoleToInferenceRole(role evalv1.ModelCampaignRole) (models.InferenceModelRole, error) {
-	switch role {
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY:
-		return models.InferenceModelRolePrimary, nil
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT:
-		return models.InferenceModelRoleAssistant, nil
-	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE:
-		return models.InferenceModelRoleLite, nil
-	default:
-		return models.InferenceModelRoleUnspecified, fmt.Errorf("evaluation: inference role %s: %w", role, constants.ErrInferenceRoleInvalid)
-	}
 }
 
 // operatorLoadStateToEvaluation maps the operator-layer model load

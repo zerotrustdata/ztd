@@ -118,36 +118,46 @@ func SmokeScenarioSuite() ScenarioSuite {
 		smokeSuiteBlueprints())
 }
 
-// BuiltinScenarioSuite returns the built-in suite with the given ID.
-func BuiltinScenarioSuite(id string) (ScenarioSuite, bool) {
+// BuiltinSuiteIDs lists the built-in suite IDs in display order.
+func BuiltinSuiteIDs() []string {
+	return []string{DefaultSuiteID, SmokeSuiteID, InvestigationsSuiteID}
+}
+
+// isBuiltinSuiteID reports whether id names a built-in suite. Membership comes
+// from the ID list alone, so a built-in whose build fails stays reserved.
+func isBuiltinSuiteID(id string) bool {
+	for _, builtinID := range BuiltinSuiteIDs() {
+		if id == builtinID {
+			return true
+		}
+	}
+	return false
+}
+
+// BuiltinScenarioSuite returns the built-in suite with the given ID. The second
+// result reports whether the ID names a built-in suite; a built-in whose build
+// fails returns that error rather than a zero suite.
+func BuiltinScenarioSuite(id string) (ScenarioSuite, bool, error) {
 	switch id {
 	case DefaultSuiteID:
-		return DefaultScenarioSuite(), true
+		return DefaultScenarioSuite(), true, nil
 	case SmokeSuiteID:
-		return SmokeScenarioSuite(), true
+		return SmokeScenarioSuite(), true, nil
 	case InvestigationsSuiteID:
 		suite, err := InvestigationsScenarioSuite()
 		if err != nil {
-			return ScenarioSuite{}, false
+			return ScenarioSuite{}, true, fmt.Errorf("evaluation: build built-in suite %s: %w", id, err)
 		}
-		return suite, true
+		return suite, true, nil
 	default:
-		return ScenarioSuite{}, false
+		return ScenarioSuite{}, false, nil
 	}
 }
 
 // reservedSuiteID reports whether a custom suite may not use the ID: the
 // built-in suites and the default suite's pre-rename ID.
 func reservedSuiteID(id string) bool {
-	if _, builtin := BuiltinScenarioSuite(id); builtin {
-		return true
-	}
-	return id == LegacyDefaultSuiteID
-}
-
-// BuiltinSuiteIDs lists the built-in suite IDs in display order.
-func BuiltinSuiteIDs() []string {
-	return []string{DefaultSuiteID, SmokeSuiteID}
+	return isBuiltinSuiteID(id) || id == LegacyDefaultSuiteID
 }
 
 // CatalogRecomputesGrades reports whether verification regrades the stored

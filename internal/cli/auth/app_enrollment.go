@@ -30,7 +30,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -845,33 +844,10 @@ func parseRetryAfter(value string) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+// validateAppName applies the shared Gateway rule so the CLI rejects a name
+// before it signs or submits an enrollment.
 func validateAppName(appName string) error {
-	if appName == "" {
-		return constants.ErrPlatformEnrollmentAppNameRequired
-	}
-	if len(appName) > constants.PlatformEnrollmentMaxAppNameBytes {
-		return constants.ErrPlatformEnrollmentInvalidAppName
-	}
-	if !isValidAppNameFormat(appName) || isReservedPlatformName(appName) {
-		return constants.ErrPlatformEnrollmentInvalidAppName
-	}
-	return nil
-}
-
-func isValidAppNameFormat(name string) bool {
-	matched, err := regexp.MatchString(`^[a-z0-9][a-z0-9._-]*$`, name)
-	return err == nil && matched
-}
-
-func isReservedPlatformName(name string) bool {
-	switch name {
-	case "ztd", "ztdg", "ztdo", "ztde", "ztdd",
-		"ztd-gateway", "ztd-operator", "ztd-ensemble", "ztd-dashboard", "ztd-cli",
-		"operator", "ensemble", "dashboard", "gateway", "cli", "admin", "system":
-		return true
-	default:
-		return false
-	}
+	return models.ValidateAppName(appName)
 }
 
 func isGatewayRequiresBootstrap(body []byte) bool {

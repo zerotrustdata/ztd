@@ -371,6 +371,17 @@ func TestNew_CLIAuthBuildsSecondClient(t *testing.T) {
 		assert.NotNil(t, c.cliTLS, "cliTLS should be built when CLIAuth differs from Auth")
 		assert.NotSame(t, c.http, c.cliHTTP, "the Operator identity is not the CLI identity when they differ")
 	})
+
+	t.Run("the CLI identity keeps its own trust anchors when only its CA bundle differs", func(t *testing.T) {
+		operator := writeIdentity(t, "shared")
+		cli := operator
+		cli.CABundle = operator.ClientCert
+		c, err := New(config.Config{Auth: operator, CLIAuth: cli})
+		require.NoError(t, err)
+		assert.NotSame(t, c.http, c.cliHTTP, "a pinned CLI bundle is not replaced by the Operator trust anchors")
+		require.NotNil(t, c.cliTLS)
+		assert.NotNil(t, c.cliTLS.RootCAs, "the CLI client verifies the Gateway against its configured bundle")
+	})
 }
 
 func TestClient_SubscribeApprovalsRequiresCLISession(t *testing.T) {

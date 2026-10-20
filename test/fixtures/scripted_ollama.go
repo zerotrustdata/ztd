@@ -194,6 +194,15 @@ func (p *ScriptedOllama) isServed(tag string) bool {
 	return ok
 }
 
+// ServedDigest reports the digest the provider serves for tag, and whether it
+// serves tag at all. A test compares a governed freeze against it.
+func (p *ScriptedOllama) ServedDigest(tag string) (string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	digest, ok := p.served[tag]
+	return digest, ok
+}
+
 // ChatCount reports the number of scripted chat turns consumed.
 func (p *ScriptedOllama) ChatCount() int {
 	p.mu.Lock()

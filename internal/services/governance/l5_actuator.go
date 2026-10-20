@@ -110,6 +110,8 @@ type L5Actuator struct {
 // It dispatches to the registered handler, captures status, signs and persists an ActionReceipt, and returns it.
 //
 // Fail-closed: if receipt signing or initial audit logging fails, the handler is NOT executed.
+// If the payload cannot be rehydrated, the handler is NOT executed either, and the receipt
+// finalizes FAILED with the rehydration error as its cause.
 func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMsg CommandMessage) (*operatorv1.ActionReceipt, error) {
 	w.wg.Add(1)
 	defer w.wg.Done()
@@ -193,24 +195,30 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 		receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, commitmentStage)
 	}
 
-	if err := w.rehydratePayload(ctx, vt, cmdMsg); err != nil {
-		return nil, err
-	}
-
-	cap, err := MintCapability(vt, w.SigningKey, w.KeyID)
-	if err != nil {
-		w.Logger.Error("Fail-closed: Failed to mint execution capability", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
-		return nil, fmt.Errorf("%w: %w", constants.ErrL5ActuatorCapabilityMint, err)
-	}
-	w.Logger.Info("Minted JIT capability",
-		"message_id", vt.Envelope.Id,
-		"action_type", vt.ActionType,
-		"expires_at", cap.ExpiresAt.UTC().Format(time.RFC3339))
-
-	execCtx := ContextWithCapability(ctx, cap)
-
+	// A payload that cannot be rehydrated is never dispatched. The failure is the
+	// execution result: the handler does not run and the receipt finalizes FAILED,
+	// the same as a handler failure.
 	executionStart := governanceMonotonicNow()
-	summary, execErr := w.ExecutionHandler.ExecuteVerifiedTransaction(execCtx, eventType, cmdMsg)
+	var summary string
+	var execErr error
+	if rehydrateErr := w.rehydratePayload(ctx, vt, cmdMsg); rehydrateErr != nil {
+		execErr = rehydrateErr
+	} else {
+		cap, err := MintCapability(vt, w.SigningKey, w.KeyID)
+		if err != nil {
+			w.Logger.Error("Fail-closed: Failed to mint execution capability", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
+			return nil, fmt.Errorf("%w: %w", constants.ErrL5ActuatorCapabilityMint, err)
+		}
+		w.Logger.Info("Minted JIT capability",
+			"message_id", vt.Envelope.Id,
+			"action_type", vt.ActionType,
+			"expires_at", cap.ExpiresAt.UTC().Format(time.RFC3339))
+
+		execCtx := ContextWithCapability(ctx, cap)
+		summary, execErr = w.ExecutionHandler.ExecuteVerifiedTransaction(execCtx, eventType, cmdMsg)
+		cap.Dissolve()
+		w.Logger.Info("Dissolved JIT capability", "message_id", vt.Envelope.Id, "action_type", vt.ActionType)
+	}
 	executionOutcome := operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED
 	if execErr != nil {
 		executionOutcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
@@ -234,9 +242,6 @@ func (w *L5Actuator) Execute(ctx context.Context, vt *VerifiedTransaction, cmdMs
 		}
 	}
 	receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, executionStage)
-
-	cap.Dissolve()
-	w.Logger.Info("Dissolved JIT capability", "message_id", vt.Envelope.Id, "action_type", vt.ActionType)
 
 	w.finalizeReceipt(ctx, receipt, summary, w.inferenceResultDigest(vt, cmdMsg), w.auditReceiptListSummary(vt, cmdMsg, summary), execErr)
 	executionStage.StateRootAfter = receipt.StateRootAfter

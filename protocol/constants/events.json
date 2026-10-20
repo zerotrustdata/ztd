@@ -2072,28 +2072,7 @@
       "producers": [
         "gateway"
       ],
-      "persistence": "gateway.operator_docs",
-      "transport": [
-        "sse"
-      ]
-    },
-    "OperatorStatusUpdatedAvailable": {
-      "_go_const": "EventOperatorStatusUpdatedAvailable",
-      "value": "ztd.v1.operator.status.updated.available",
-      "kind": "fact",
-      "producers": [
-        "gateway"
-      ],
-      "persistence": "gateway.operator_docs"
-    },
-    "OperatorStatusUpdatedBound": {
-      "_go_const": "EventOperatorStatusUpdatedBound",
-      "value": "ztd.v1.operator.status.updated.bound",
-      "kind": "fact",
-      "producers": [
-        "gateway"
-      ],
-      "persistence": "gateway.operator_docs",
+      "persistence": "gateway.sse_store",
       "transport": [
         "sse"
       ]
@@ -2105,7 +2084,10 @@
       "producers": [
         "gateway"
       ],
-      "persistence": "gateway.operator_docs"
+      "persistence": "gateway.sse_store",
+      "transport": [
+        "sse"
+      ]
     },
     "OperatorStatusUpdatedStale": {
       "_go_const": "EventOperatorStatusUpdatedStale",
@@ -2114,7 +2096,10 @@
       "producers": [
         "gateway"
       ],
-      "persistence": "gateway.operator_docs"
+      "persistence": "gateway.sse_store",
+      "transport": [
+        "sse"
+      ]
     },
     "OperatorStatusUpdatedStopped": {
       "_go_const": "EventOperatorStatusUpdatedStopped",
@@ -2123,7 +2108,10 @@
       "producers": [
         "gateway"
       ],
-      "persistence": "gateway.operator_docs"
+      "persistence": "gateway.sse_store",
+      "transport": [
+        "sse"
+      ]
     },
     "OperatorStatusUpdatedTerminated": {
       "_go_const": "EventOperatorStatusUpdatedTerminated",
@@ -2132,16 +2120,10 @@
       "producers": [
         "gateway"
       ],
-      "persistence": "gateway.operator_docs"
-    },
-    "OperatorStatusUpdatedUnavailable": {
-      "_go_const": "EventOperatorStatusUpdatedUnavailable",
-      "value": "ztd.v1.operator.status.updated.unavailable",
-      "kind": "fact",
-      "producers": [
-        "gateway"
-      ],
-      "persistence": "gateway.operator_docs"
+      "persistence": "gateway.sse_store",
+      "transport": [
+        "sse"
+      ]
     },
     "OperatorTerminalApprovalDenied": {
       "_go_const": "EventOperatorTerminalApprovalDenied",

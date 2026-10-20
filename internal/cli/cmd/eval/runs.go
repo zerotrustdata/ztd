@@ -289,6 +289,10 @@ func followRun(ctx context.Context, stream *runEventStream, reconnects <-chan st
 		case <-ctx.Done():
 			return nil
 		case <-stream.Done():
+			// Ending ctx also stops the stream; that stop is the ctx case.
+			if ctx.Err() != nil {
+				return nil
+			}
 			return stream.StoppedError()
 		case <-reconnects:
 		case <-events:

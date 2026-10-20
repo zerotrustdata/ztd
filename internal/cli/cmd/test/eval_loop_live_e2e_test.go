@@ -22,7 +22,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // Test-binary flags for the live Tier 4 loop. ztd test eval-loop passes them
@@ -74,7 +73,7 @@ func (r *releaseSmokeRun) executeLiveEvalLoop(ctx context.Context, t *testing.T,
 	if err != nil {
 		return err
 	}
-	digest, err := r.freezeLiveModel(ctx, files, model)
+	digest, err := r.freezeEvalModel(ctx, files, model)
 	if err != nil {
 		return err
 	}
@@ -92,29 +91,6 @@ func (r *releaseSmokeRun) executeLiveEvalLoop(ctx context.Context, t *testing.T,
 		}
 	}
 	return nil
-}
-
-// freezeLiveModel freezes the provider's inventory through the governed CLI and
-// returns the frozen digest of model. The freeze replaces the Gateway's registry,
-// which the campaign then binds, so the digest is the provider's own.
-func (r *releaseSmokeRun) freezeLiveModel(ctx context.Context, files fs.RuntimeFileService, model string) (string, error) {
-	if _, err := r.ztdGateway(ctx, "freeze-eval-models", "eval", "models", "freeze"); err != nil {
-		return "", err
-	}
-	freeze, err := evaluation.LoadModelInventoryFreezeFromRuntime(ctx, files, constants.EvaluationModelInventoryPath)
-	if err != nil {
-		return "", err
-	}
-	for _, variant := range freeze.Variants {
-		if variant.GetServedModelTag() != model {
-			continue
-		}
-		if variant.GetModelDigest() == "" {
-			return "", fmt.Errorf("frozen model %s has no digest: %w", model, constants.ErrMissingRequiredField)
-		}
-		return variant.GetModelDigest(), nil
-	}
-	return "", fmt.Errorf("provider inventory has no model %s: %w", model, constants.ErrNotFound)
 }
 
 // verifyLiveEvalRun checks one live run's evidence. It asserts nothing about the

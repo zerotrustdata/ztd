@@ -245,16 +245,14 @@ func (s agentToolScope) Spec(name string) (agentToolSpec, bool) {
 	return spec, ok
 }
 
-// agentToolArguments is one decoded model tool call.
+// agentToolArguments is one decoded model tool call. parseAgentToolArguments
+// is its only constructor and always returns a non-nil values map.
 type agentToolArguments struct {
 	tool   string
 	values map[string]any
 }
 
 func (a agentToolArguments) Set(name string, value any) {
-	if a.values == nil {
-		a.values = make(map[string]any)
-	}
 	a.values[name] = value
 }
 
@@ -358,6 +356,9 @@ func parseAgentToolArguments(spec agentToolSpec, raw string) (agentToolArguments
 		decoder.UseNumber()
 		if err := decoder.Decode(&values); err != nil {
 			return agentToolArguments{}, agentToolValidationFailure(spec.Name, []string{fmt.Sprintf("arguments\n  Invalid JSON object: %v", err)})
+		}
+		if values == nil {
+			return agentToolArguments{}, agentToolValidationFailure(spec.Name, []string{"arguments\n  Invalid JSON object: null"})
 		}
 	}
 	var problems []string

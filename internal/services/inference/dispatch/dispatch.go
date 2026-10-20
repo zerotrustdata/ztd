@@ -356,13 +356,11 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 		}
 		observationReceipts = appendObservationReceipt(observationReceipts, receipt)
 	}
-	if s.provenanceNotifier != nil && req.Model != "" && req.ModelDigest != "" {
-		receipt, err := s.provenanceNotifier.NotifyAttemptBegin(ctx, req.RequestorUserID, req.ProviderAttemptID, req.Model, req.ModelDigest, req.ModelRegistryDigest, req.CampaignID, attemptStartedAt, req.RetryCount)
-		if err != nil {
-			return nil, WithObservationReceipts(observationReceipts, fmt.Errorf("inference dispatch: %w", err))
-		}
-		observationReceipts = appendObservationReceipt(observationReceipts, receipt)
+	provenanceBegin, err := s.notifyProvenanceBegin(ctx, req, attemptStartedAt)
+	if err != nil {
+		return nil, WithObservationReceipts(observationReceipts, err)
 	}
+	observationReceipts = appendObservationReceipt(observationReceipts, provenanceBegin)
 
 	// Dispatch through the gateway's CommandDispatcher. The dispatcher
 	// constructs the GovernanceEnvelope with the gateway's state root and
@@ -501,6 +499,31 @@ func (s *DispatchService) notifyObservationFinalize(
 		"provider_attempt_id", req.ProviderAttemptID,
 		"error", err)
 	return nil, nil
+}
+
+// notifyProvenanceBegin dispatches the provenance BEGIN for an attempt. When no
+// provenance Operator is connected, a campaign attempt fails closed before the
+// provider call; a non-campaign attempt is not attested and proceeds. Other
+// errors fail closed in every mode.
+func (s *DispatchService) notifyProvenanceBegin(
+	ctx context.Context,
+	req DispatchInferenceRequest,
+	startedAtUnixMs int64,
+) (*operatorv1.ActionReceipt, error) {
+	if s.provenanceNotifier == nil || req.Model == "" || req.ModelDigest == "" {
+		return nil, nil
+	}
+	receipt, err := s.provenanceNotifier.NotifyAttemptBegin(ctx, req.RequestorUserID, req.ProviderAttemptID, req.Model, req.ModelDigest, req.ModelRegistryDigest, req.CampaignID, startedAtUnixMs, req.RetryCount)
+	if err == nil {
+		return receipt, nil
+	}
+	if !req.hasCampaignAuthority() && errors.Is(err, constants.ErrProvenanceOperatorNotFound) {
+		s.logger.Warn("inference dispatch: model provenance observation begin skipped; no provenance operator",
+			"provider_attempt_id", req.ProviderAttemptID,
+			"error", err)
+		return nil, nil
+	}
+	return nil, fmt.Errorf("inference dispatch: %w", err)
 }
 
 func (s *DispatchService) notifyProvenanceFinalize(

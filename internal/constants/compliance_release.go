@@ -53,6 +53,11 @@ const (
 	ComplianceReleaseEvidenceTrustValidity   = 30 * 24 * time.Hour
 )
 
+// ComplianceComponentScopes is the closed vocabulary of components that a
+// control assertion may scope to and that an assessment may select for
+// applicability. Catalog validation rejects any other component value.
+var ComplianceComponentScopes = []string{ComplianceReleaseComponentGateway, ComplianceReleaseComponentOperator}
+
 // Reasons recorded for assessment context that release preparation does not
 // capture as a content-addressed artifact. Omission would be invalid, and an
 // unavailable declaration limits, rather than inflates, the release claim.

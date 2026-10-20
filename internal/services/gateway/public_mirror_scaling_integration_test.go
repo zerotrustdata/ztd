@@ -53,6 +53,7 @@ func sendProofIngestToHandler(t *testing.T, handler http.Handler, req models.Pub
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodPost, "/proof-ingest", bytes.NewReader(bodyBytes))
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+mirrorTestIngestToken)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	var resp models.PublicProofIngestResponse

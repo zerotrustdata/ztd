@@ -15,18 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
-	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
-
-func useHealthyConfiguredGateway(t *testing.T) {
-	t.Helper()
-	original := ConfiguredGatewayHealthCheck
-	ConfiguredGatewayHealthCheck = func(_ fs.RuntimeFileService, _ *config.Config) bool { return true }
-	t.Cleanup(func() { ConfiguredGatewayHealthCheck = original })
-}
 
 func TestRemoteProviderObservationClient_Load_RejectsMissingInputs(t *testing.T) {
 	t.Parallel()
@@ -59,7 +50,7 @@ func TestNewCampaignWitnessCapture_ReturnsGatewayNotReachableWhenUnhealthy(t *te
 
 func TestNewCampaignWitnessCapture_WiresRemotesWhenHealthy(t *testing.T) {
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
-	useHealthyConfiguredGateway(t)
+	WithConfiguredGatewayHealthCheck(t, true)
 
 	capture, err := NewCampaignWitnessCapture(fileSvc, evaluation.NewStore(fileSvc), cfg)
 	require.NoError(t, err)

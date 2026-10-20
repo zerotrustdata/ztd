@@ -64,11 +64,6 @@ const (
 	// whole 2000-wide cohort at once let the tail read as stale before its
 	// first heartbeat. The window is refilled from readiness events only.
 	operatorDeployApprovalWindow = 256
-
-	// operatorDeployStartLog is written by the started worker in its working
-	// directory for human diagnostics. Discovery uses structured runtime state.
-	operatorDeployStartLog = "start.log"
-	operatorDeployPIDFile  = "operator.pid"
 )
 
 // operatorDeployEnrollTimeout bounds how long deploy waits for the Gateway to
@@ -464,9 +459,9 @@ func explainDeployWait(target deployTarget, dir string, waitErr error) error {
 	state, err := target.readDeploymentState(ctx, dir)
 	switch {
 	case err != nil:
-		return fmt.Errorf("%w; worker state: %w", waitErr, err)
+		return fmt.Errorf("%w; Operator state: %w", waitErr, err)
 	case state != nil && state.Phase == models.OperatorDeploymentPhaseFailed:
-		return fmt.Errorf("%w; worker reported: %s", waitErr, state.Error)
+		return fmt.Errorf("%w; Operator reported: %s", waitErr, state.Error)
 	}
 	return waitErr
 }
@@ -515,15 +510,15 @@ The binary is installed once per host and hard-linked into each directory.
 Capability flags and capability-specific settings use the same flags as operator start.
 Capability IDs default to unique, stable values per host/directory. Flag values support
 {name} (directory basename), {dir} (absolute directory), and {host} substitutions.
---background starts workers; --endpoint or --operator-endpoint is required.
---operator-endpoint selects the worker-facing Gateway host and defaults to --endpoint.
-Workers dialing a non-loopback host need a Gateway started with --listen-host 0.0.0.0.
+--background starts Operators; --endpoint or --operator-endpoint is required.
+--operator-endpoint selects the Operator-facing Gateway host and defaults to --endpoint.
+Operators dialing a non-loopback host need a Gateway started with --listen-host 0.0.0.0.
 --approve approves enrollment as
-the authenticated owner after every worker is staged, in waves that keep a bounded number
-of workers between approval and an established command subscription, refilled as workers
-come online, and verifies every worker has established its command subscription. Without --approve, workers remain pending. Repeating a deployment replaces only its own workers.
---approve requires --trust-bundle, the Gateway CA path on each worker host. Workers then enroll over wss:// on the
-Gateway HTTPS port, and deploy approves only requests carrying the keys each worker recorded.`,
+the authenticated owner after every Operator is staged, in waves that keep a bounded number
+of Operators between approval and an established command subscription, refilled as Operators
+come online, and verifies every Operator has established its command subscription. Without --approve, Operators remain pending. Repeating a deployment replaces only its own Operators.
+--approve requires --trust-bundle, the Gateway CA path on each Operator host. Operators then enroll over wss:// on the
+Gateway HTTPS port, and deploy approves only requests carrying the keys each Operator recorded.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := configLoader("")
 			if err != nil {
@@ -631,7 +626,7 @@ Gateway HTTPS port, and deploy approves only requests carrying the keys each wor
 
 			if approve && len(deployed) > 0 {
 				cmd.Printf("Approving %d operator(s), at most %d coming online at once...\n", len(deployed), operatorDeployApprovalWindow)
-				if err := enrollDeployedOperators(ctx, opts.client, deployed, operatorDeployApprovalWindow); err != nil {
+				if err := enrollDeployedOperators(ctx, opts.client, deployed, operatorDeployApprovalWindow, cmd.OutOrStdout()); err != nil {
 					return err
 				}
 				for _, op := range deployed {
@@ -646,7 +641,7 @@ Gateway HTTPS port, and deploy approves only requests carrying the keys each wor
 
 	cmd.Flags().StringVar(&hosts, "hosts", "", "Comma-separated SSH hosts (required unless --local)")
 	cmd.Flags().StringVar(&operatorEndpoint, "operator-endpoint", "", "Gateway address used by deployed Operators (defaults to --endpoint)")
-	cmd.Flags().IntVar(&parallel, "parallel", operatorDeployMaxParallel, fmt.Sprintf("Maximum concurrent staging workers (1..%d)", operatorDeployMaxParallel))
+	cmd.Flags().IntVar(&parallel, "parallel", operatorDeployMaxParallel, fmt.Sprintf("Maximum Operators staged concurrently (1..%d)", operatorDeployMaxParallel))
 	cmd.Flags().IntVarP(&port, "port", "P", 0, "SSH port to connect to on remote hosts")
 	cmd.Flags().StringVarP(&identityFile, "identity", "i", "", "SSH identity file (private key)")
 	cmd.Flags().BoolVar(&background, "background", false, "Start operator in background after deployment (requires --endpoint)")
@@ -740,7 +735,7 @@ func stagedDecisionTargets(client authcmd.APIClient, ops []deployedOperator) (ma
 	for _, target := range pending.Requests {
 		if want, ok := ids[target.RequestID]; ok {
 			if target.Fingerprints.Operator != want.Operator || target.Fingerprints.CLI != want.CLI {
-				return nil, fmt.Errorf("%w: enrollment request %s does not carry the keys the worker generated; another process announced this launch ID", constants.ErrOperatorDeployFailed, target.RequestID)
+				return nil, fmt.Errorf("%w: enrollment request %s does not carry the keys the Operator generated; another process announced this launch ID", constants.ErrOperatorDeployFailed, target.RequestID)
 			}
 			targets[target.RequestID] = models.PlatformEnrollmentDecisionTarget{RequestID: target.RequestID, Fingerprints: target.Fingerprints}
 			delete(ids, target.RequestID)
@@ -768,7 +763,12 @@ type operatorReadiness struct {
 // rate the fleet actually comes online. A refill waits until half the window
 // is free (or the rest of the queue fits), which bounds the cohort to about
 // 2N/window fingerprint-bound decisions instead of one per worker.
-func enrollDeployedOperators(ctx context.Context, client authcmd.APIClient, ops []deployedOperator, window int) error {
+//
+// When the Gateway answers a wave with an L3 suspension, the wave is not
+// approved: its approval instructions are written to out, and the wave is
+// awaited like any other, since its workers can only come online after a human
+// approves it. A wave that never comes online fails the deploy at the timeout.
+func enrollDeployedOperators(ctx context.Context, client authcmd.APIClient, ops []deployedOperator, window int, out io.Writer) error {
 	targets, err := stagedDecisionTargets(client, ops)
 	if err != nil {
 		return err
@@ -805,8 +805,12 @@ func enrollDeployedOperators(ctx context.Context, client authcmd.APIClient, ops 
 				if !errors.As(err, &l3Err) {
 					return fmt.Errorf("operator deploy: approve staged cohort (%d of %d approved): %w", approved, len(targets), err)
 				}
+				if err := auth.WritePlatformEnrollmentSuspension(out, l3Err.Suspension); err != nil {
+					return fmt.Errorf("operator deploy: write L3 approval instructions: %w", err)
+				}
+			} else {
+				approved += len(wave)
 			}
-			approved += len(wave)
 			inFlight += len(wave)
 			for _, i := range wave {
 				await(i)
@@ -1174,7 +1178,7 @@ func validateOperatorDeployFlags(
 		return "", "", fmt.Errorf("%w: --operator-endpoint or --endpoint is required with --background", constants.ErrMissingRequiredField)
 	}
 	if background && !operatorDeployEndpointPattern.MatchString(workerEndpoint) {
-		return "", "", fmt.Errorf("%w: worker endpoint %q must match %s", constants.ErrPathValidation, workerEndpoint, operatorDeployEndpointPattern)
+		return "", "", fmt.Errorf("%w: Operator endpoint %q must match %s", constants.ErrPathValidation, workerEndpoint, operatorDeployEndpointPattern)
 	}
 	if approve && !background {
 		return "", "", fmt.Errorf("%w: --approve requires --background", constants.ErrMissingRequiredField)
@@ -1182,7 +1186,7 @@ func validateOperatorDeployFlags(
 	// Approving by launch ID is safe only when workers authenticate the
 	// Gateway before announcing a request (wss:// against the pinned CA).
 	if trustBundle, _ := cmd.Flags().GetString("trust-bundle"); approve && strings.TrimSpace(trustBundle) == "" {
-		return "", "", fmt.Errorf("%w: --approve requires --trust-bundle (the Gateway CA on each worker host)", constants.ErrMissingRequiredField)
+		return "", "", fmt.Errorf("%w: --approve requires --trust-bundle (the Gateway CA on each Operator host)", constants.ErrMissingRequiredField)
 	}
 
 	return effectiveHosts, workerEndpoint, nil

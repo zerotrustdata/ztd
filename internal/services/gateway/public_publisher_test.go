@@ -1285,8 +1285,10 @@ func TestAssignmentAuditProof_BuiltDatabasePassesVerifyDatabase(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "assignment-1", response.AssignmentID)
 
-	path := publisher.fileSvc.Resolve(filepath.Join(constants.PublicProofsDirname, response.DatabaseSHA256))
-	header, records, err := assignmentaudit.VerifyDatabase(ctx, path)
+	image, err := publisher.fileSvc.ReadFile(ctx, filepath.Join(constants.PublicProofsDirname, response.DatabaseSHA256))
+	require.NoError(t, err)
+	assert.Equal(t, response.DatabaseSHA256, models.SHA256Hex(image))
+	header, records, err := assignmentaudit.VerifyDatabase(ctx, image)
 	require.NoError(t, err)
 	assert.Equal(t, assignmentaudit.Header{
 		SourceID:         publisher.cfg.SourceID,

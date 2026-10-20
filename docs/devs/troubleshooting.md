@@ -3,8 +3,8 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.1.3
-last_updated: 2026-10-18
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/
@@ -64,19 +64,19 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TROUBLE-ENV-01 | CLI commands MUST be run from the checkout root. Running from a subdirectory resolves a different `.ztd/` runtime tree. |
 | INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.27.2). |
 | INV-TROUBLE-ENV-03 | A newly built binary MUST be produced with `make build`, which compiles `cmd/ztd` and places the runnable executable at `./ztd`. |
-| INV-TROUBLE-ENV-04 | Every `./ztd` command loads `.env` from the working directory before it runs (`config.LoadEnvFile`). When every command exits before running with an `.env` error, fix the file rather than the command: on Linux and macOS it MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`, fix with `chmod 600 .env`), and every line MUST be `KEY=VALUE` (`ErrEnvFileMalformed`) naming a `secret` or `user_endpoint` key from `protocol/constants/env_vars.json` (`ErrEnvFileUnknownKey`). Platform configuration goes in command flags, never `.env`. |
+| INV-TROUBLE-ENV-04 | Every `./ztd` command loads `.env` from the working directory before it runs (`config.LoadEnvFile`). When every command exits before running with an `.env` error, fix the file rather than the command: on Linux and macOS it MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`, fix with `chmod 600 .env`), and every line MUST be `KEY=VALUE` (`ErrEnvFileMalformed`) naming a `secret` or `user_endpoint` key from `protocol/constants/env_vars.json` (`ErrEnvFileUnknownKey`). Platform configuration MUST go in command flags, never `.env`. |
 
 ### Gateway startup and vault (`INV-TROUBLE-GW`)
 
 | ID | Rule |
 | :--- | :--- |
 | INV-TROUBLE-GW-01 | The Gateway requires an unlocked vault during startup. On first initialization, `.ztd/vault/vault.header` and the sealed key `.ztd/secrets/vault_key` are generated. Lost vault keys make data unrecoverable; MUST NOT overwrite or delete vault keys without explicit data disposal intent. |
-| INV-TROUBLE-GW-02 | `gw restart` reads the launch profile at `.ztd/pids/operator-launch-profile.json`. If missing or invalid, restart fails closed; start with explicit flags to generate a new launch profile. |
-| INV-TROUBLE-GW-03 | `gw reset` and `gw clean` are destructive commands that move the local `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>`; the gateway starts over without it. MUST NOT use either command to repair retained state. `make clean` removes only build artifacts and the Go build cache; it does not reset Gateway runtime state. |
-| INV-TROUBLE-GW-04 | `gw start` against a running Gateway succeeds only when every explicitly set startup flag (capabilities, posture, listen host, ports, model storage root, Ollama endpoint, public base URL, CORS and passkey origins) matches the running launch profile. Otherwise it prints the differences and fails with `ErrGatewayAlreadyRunning`; stop the Gateway (`./ztd gw stop` or `make down`), then rerun the start command. Runtime state in `.ztd/` is kept. |
-| INV-TROUBLE-GW-05 | On macOS a rebuilt or upgraded `ztd` must be approved once for the `ztd-platform` Keychain item. While the dialog is open the Gateway logs `[Keystore] Waiting for approval to read the master key from the OS key store`, and a background `gw start` prints the remedy and waits up to five minutes. Approve with the login password and **Always Allow**; a denied or unanswered prompt fails with `ErrKeyStoreLocked` or `OS key store access was not approved`. Over SSH, start once from the desktop session. |
+| INV-TROUBLE-GW-02 | `gw restart` reads the launch profile at `.ztd/pids/operator-launch-profile.json`. If missing or invalid, `gw restart` fails closed; run `gw start` with the intended flags to write a new launch profile. |
+| INV-TROUBLE-GW-03 | `gw clean` and `gw reset` are destructive commands that move the local `.ztd/` runtime tree aside to `.ztd-<MMDDHHMM>`; `gw reset` then starts a new Gateway without it. MUST NOT use either command to repair retained state. `make clean` removes build artifacts, harness and test temp directories, and the Go build cache; it does not reset Gateway runtime state. |
+| INV-TROUBLE-GW-04 | `gw start` against a running Gateway succeeds only when every explicitly set startup flag (capabilities, posture, listen host, ports, model storage root, Ollama endpoint, public base URL, CORS origins, passkey RP ID, RP name, and origins, pprof listen) matches the running launch profile. Otherwise it prints the differences and fails with `ErrGatewayAlreadyRunning`; stop the Gateway (`./ztd gw stop` or `make down`), then rerun the start command. Runtime state in `.ztd/` is kept. |
+| INV-TROUBLE-GW-05 | On macOS a rebuilt or upgraded `ztd` MUST be approved once for the `ztd-platform` Keychain item. While the dialog is open the Gateway logs `[Keystore] Waiting for approval to read the master key from the OS key store`, and a background `gw start` prints the remedy and waits up to five minutes. Approve with the login password and **Always Allow**; a denied or unanswered prompt fails with `ErrKeyStoreLocked` or `OS key store access was not approved`. Over SSH, start once from the desktop session. |
 | INV-TROUBLE-GW-06 | `gw start --pprof-listen` accepts only `localhost` or a loopback IP (`ErrProfilingListenAddress`); profiles expose command lines, heap contents, and goroutine stacks. Profiling is off when the flag is unset, and it is a startup flag covered by `INV-TROUBLE-GW-04`. |
-| INV-TROUBLE-GW-07 | The public spectator mirror verifies `.ztd/public-mirror/mirror.db` and its proof files on every open; a tampered or truncated store fails startup with `ErrPublicFeedMirrorStoreCorrupt` and MUST NOT be hand-edited back into shape. Restore `.ztd/public-mirror/` from backup. On the first start after upgrading from the JSON store, `state.json` is imported once and removed; if both `state.json` and `mirror.db` exist, startup fails with `ErrPublicFeedMirrorLegacyStateConflict`; remove whichever one is stale. |
+| INV-TROUBLE-GW-07 | The public spectator mirror verifies `.ztd/public-mirror/mirror.db` and its proof files on every open; a tampered or truncated store fails startup with `ErrPublicFeedMirrorStoreCorrupt` and MUST NOT be hand-edited back into shape. Restore `.ztd/public-mirror/` from backup. |
 
 ### Authentication and trust (`INV-TROUBLE-AUTH`)
 
@@ -104,7 +104,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Gateway launch profile | `internal/cli/serve/launch_profile.go` | `.ztd/pids/operator-launch-profile.json` |
 | Vault key path | `internal/constants/paths.go` | `SecretsDirname`/`SecretsFileVaultKey` (`secrets/vault_key`) |
 | CA trust bundle | `internal/constants/paths.go` | `PkiDirname`/`PkiSubdirTrust`/`PkiFileGatewayBundle` (`pki/trust/ztdg-ca-bundle.pem`) |
-| CLI session credentials | `internal/cli/auth/`, `.ztd/auth/` | `ztd auth refresh`, `ztd login cli` |
+| CLI session credentials | `internal/cli/config/config.go`, `internal/constants/paths.go` | `CredentialsFilename`, `CliCertFilename`, `CliKeyFilename` (`.ztd/credentials`, `.ztd/cli.crt`, `.ztd/cli.key`) |
 | Operator enrollment state | `internal/cli/serve/operator.go` | `ztd operator list`, `ztd operator show` |
 
 ## Procedures
@@ -200,29 +200,27 @@ eval "$(ssh-agent)" && ssh-add   # or connect with ssh -A; run ssh-keygen -t ed2
 ### Operator Connectivity and Enrollment Triage
 
 ```bash
-# Check enrolled Operator inventory from Gateway
+# List Operators connected to the Gateway
 ./ztd operator list
-
-# Inspect detailed status, heartbeat, and capabilities of an Operator
-./ztd operator show <operator-id>
 
 # If an Operator fails to connect, verify mTLS reachability to the Gateway's resolved HTTPS port.
 # The default is 8443; use the bound port from the Gateway startup guidance or launch profile.
 nc -zv 127.0.0.1 8443
-
-# Reset local Operator identity credentials if certificates or keys are corrupted:
-./ztd operator reset-identity --working-dir <operator-dir> --yes
 ```
+
+Run `./ztd operator show` with an operator ID or operator session ID from the `list` output to inspect status, heartbeat, and capabilities. When certificates or keys are corrupted, run `ztd operator reset-identity` with `--working-dir` set to the Operator's working directory and `--yes`; the command stops the local Operator and removes its enrollment identity.
 
 ### Governance Pipeline Diagnosis
 
 ```bash
 # Query recent audit receipts to identify rejection layers (L1-L4):
-./ztd audit receipts --session <operator-session-id>
+./ztd audit receipts
 
-# Inspect specific transaction details and state-root commitments:
+# List the most recent raw audit events:
 ./ztd audit events --limit 20
 ```
+
+Filter receipts with `--session` set to the Operator session ID, or fetch one canonical receipt with `--tx-id`.
 
 ## Anti-patterns
 

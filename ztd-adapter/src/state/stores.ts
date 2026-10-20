@@ -16,10 +16,10 @@ import type {
   OverviewCounters,
   OverviewMeasurements,
   RunSummary,
-} from '../types/observe';
-import type { NormalizedGatewayEvent } from '../sse/normalizer';
-import type { SseConnectionState } from '../sse/stream';
-import type { FrontendRuntimeConfig } from '../config/runtime_config';
+} from '../types/observe.js';
+import type { NormalizedGatewayEvent } from '../sse/normalizer.js';
+import type { SseConnectionState } from '../sse/stream.js';
+import type { FrontendRuntimeConfig } from '../config/runtime_config.js';
 
 // --- Auth store ---
 

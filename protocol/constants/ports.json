@@ -4,7 +4,7 @@
     "OperatorHttp": {
       "_go_const": "Ports.OperatorHttp",
       "value": 8080,
-      "description": "Gateway HTTP port (plaintext, for health checks and redirects)"
+      "description": "Gateway HTTP port (plaintext): health, PKI bootstrap and discovery, CLI recovery and platform enrollment discovery, and deploy script distribution; all other paths redirect to HTTPS"
     },
     "OperatorHttps": {
       "_go_const": "Ports.OperatorHttps",

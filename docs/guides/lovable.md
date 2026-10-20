@@ -3,8 +3,8 @@ doc_id: lovable
 title: Connect a Lovable App to the Gateway
 audience: frontend builders and developers
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/lovable.md
   - internal/cli/cmd/gw/gateway_connect.go
@@ -41,8 +41,8 @@ For the complete browser API, WebAuthn, SSE, and frontend reference, see [Build 
   - [Observe Frontend Contract Pack](#observe-frontend-contract-pack)
   - [Browser Limitations](#browser-limitations)
   - [Troubleshooting](#troubleshooting)
-  - [Advanced Configuration](#advanced-configuration)
   - [When You Need a Tunnel](#when-you-need-a-tunnel)
+  - [Advanced Configuration](#advanced-configuration)
 - [Anti-patterns](#anti-patterns)
 - [Links out](#links-out)
 
@@ -53,7 +53,7 @@ For the complete browser API, WebAuthn, SSE, and frontend reference, see [Build 
 | INV-LOVABLE-01 | `./ztd gw connect <origin>` MUST validate and canonicalize the frontend origin before any Gateway start or restart. Non-loopback origins MUST use HTTPS; HTTP is accepted only for loopback development origins (e.g., `http://localhost:3003`). |
 | INV-LOVABLE-02 | The WebAuthn RP ID MUST default to the exact host extracted from the frontend origin (e.g. `your-app.lovable.app` from `https://your-app.lovable.app`). Loopback IP origins MUST use `localhost` as the RP ID. |
 | INV-LOVABLE-03 | The browser MUST call the Gateway directly from the top-level page context, not from an embedded editor preview, edge function, or server proxy. Every `fetch` request MUST use `credentials: "include"`; every `EventSource` connection MUST use `withCredentials: true`. |
-| INV-LOVABLE-04 | Browser restrictions (local-network access prompts, top-level context requirements, third-party cookie blocking, certificate trust) are enforced by the browser and outside the CLI's control. |
+| INV-LOVABLE-04 | Browser restrictions (local-network access prompts, top-level context requirements, third-party cookie blocking) are enforced by the browser and outside the CLI's control. `gw connect` MUST NOT change OS trust state without explicit consent; `--yes` MUST NOT suppress trust or stale-anchor consent, and `--no-system-trust` selects manual browser trust. |
 
 ## Owned surfaces
 
@@ -61,7 +61,7 @@ For the complete browser API, WebAuthn, SSE, and frontend reference, see [Build 
 | :--- | :--- | :--- |
 | gw connect command | `internal/cli/cmd/gw/gateway_connect.go` | `./ztd gw connect --help` |
 | gw start flags | `internal/cli/cmd/gw/gateway.go` | `./ztd gw start --help` |
-| Contract pack generator | `ztd-adapter/` | `npm run gen:contract-pack` |
+| Contract pack generator | `ztd-adapter/generator/gen-contract-pack.mjs` | `npm run gen:contract-pack` |
 | Contract pack README | `ztd-adapter/contract-pack/README.md` | Contract pack documentation |
 
 ## Procedures
@@ -72,7 +72,7 @@ For the complete browser API, WebAuthn, SSE, and frontend reference, see [Build 
 - Ensure the Lovable app is deployed or previewed at a top-level browser origin (e.g. `https://your-app.lovable.app`). Extract the origin from the address bar of a standalone browser tab, not from an embedded preview or editor URL.
 - Use a browser supporting WebAuthn.
 
-The CLI accepts only canonical origins: scheme + hostname + optional non-default port, with no path, query, fragment, or trailing slash.
+The CLI canonicalizes the origin (lowercase scheme and hostname, default port omitted, no trailing slash) and rejects user information, paths other than `/`, query strings, and fragments.
 
 ### 1. Connect the Frontend
 
@@ -86,7 +86,7 @@ The command:
 1. Validates the frontend origin.
 2. Derives the WebAuthn RP ID (`your-app.lovable.app`).
 3. Starts the Gateway with matching CORS and passkey RP origins, or restarts it with confirmation if configuration changed.
-4. Discovers the CA bundle and checks OS certificate trust. Installs root CA with consent.
+4. Discovers the CA bundle, checks OS certificate trust, and installs the root CA with consent. When trust state changes, the command waits for Enter after all browser windows are closed.
 5. Runs HTTPS health and CORS preflight verification against the running Gateway.
 6. Emits the Gateway HTTPS URL and frontend prompt upon success.
 
@@ -106,7 +106,7 @@ After verification succeeds, `gw connect` prints a prompt:
 Connect this app to the ztd Gateway at https://localhost:8443. Make all Gateway requests directly from the browser, not from an edge function or server. Include credentials: "include" on every fetch request and withCredentials: true on every EventSource connection.
 ```
 
-Paste that exact prompt into Lovable. Do not substitute server-side or edge-function implementations.
+Paste that exact prompt into Lovable. The app MUST NOT substitute server-side or edge-function implementations.
 
 Open the resulting app in a standalone, top-level browser tab, not embedded inside an iframe. If prompted for local-network access, select **Allow**.
 
@@ -118,7 +118,7 @@ For a read-only observe dashboard (lifecycle projections, evaluation summaries, 
    ```bash
    npm run gen:contract-pack:check --prefix ztd-adapter
    ```
-2. Pass `contract-pack/builder-prompt.md`, `models.ts`, `observe.openapi.json`, and `event-schemas.json` to Lovable.
+2. Pass `contract-pack/builder-prompt.md`, `models.ts`, `observe.openapi.json`, `event-schemas.json`, and `fixtures/` to Lovable.
 3. Deploy the resulting SPA at a top-level browser origin and connect it:
    ```bash
    ./ztd gw connect <deployed-spa-origin>

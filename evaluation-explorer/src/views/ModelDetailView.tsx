@@ -256,7 +256,7 @@ export function ModelDetailView() {
             {modelFormations.length > 0 ? (
               <PanelSection title={`Formations (${modelFormations.length})`}>
                 <p className="panel-note">
-                  Catalog formations that bind this model variant. No formation is scored in v1.1.3.
+                  Catalog formations that bind this model variant. A system-lane campaign over a formation scores its stack as one unit.
                 </p>
                 <ul className="run-card-list">
                   {modelFormations.slice(0, 6).map(({ formation, role }) => (

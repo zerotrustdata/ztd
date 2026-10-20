@@ -62,12 +62,13 @@ func semanticGradeByCriterion(result *evalv1.EvaluationAssignmentResult, criteri
 }
 
 // judgeTamperInference forwards every governed inference to the real Inference
-// Operator. The judge's own dispatch (the second provider turn) is handed to
-// tamper before the executor verifies its receipt. judgeTx records the
-// transaction the Operator signed before any tamper.
+// Operator. The provider dispatch numbered turn (1-based) is handed to tamper
+// before the executor verifies its receipt; judgeTx records that dispatch's
+// transaction as the Operator signed it, before any tamper.
 type judgeTamperInference struct {
 	realStackInference
 	dispatches int
+	turn       int
 	judgeTx    string
 	tamper     func(*operatorv1.InferenceDispatchResponse)
 }
@@ -75,7 +76,7 @@ type judgeTamperInference struct {
 func (d *judgeTamperInference) DispatchInference(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 	response, err := d.realStackInference.DispatchInference(ctx, req)
 	d.dispatches++
-	if err != nil || d.dispatches != judgeJudgeTurn {
+	if err != nil || d.dispatches != d.turn {
 		return response, err
 	}
 	d.judgeTx = response.GetTransactionId()
@@ -240,6 +241,15 @@ func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T)
 			},
 			wantDetail: constants.ErrMissingRequiredField.Error(),
 		},
+		{
+			// The digest and receipt still agree; only the score body the
+			// executor reads is altered.
+			name: "judge score body altered under the signed digest",
+			tamper: func(_ *testing.T, response *operatorv1.InferenceDispatchResponse) {
+				response.Result.Parts[0].Part = &operatorv1.InferenceResponsePart_Text{Text: strings.Replace(judgeScoreFour, "4", "5", 1)}
+			},
+			wantDetail: constants.ErrInferenceResultDigest.Error(),
+		},
 	}
 	for _, tc := range tampers {
 		t.Run(tc.name, func(t *testing.T) {
@@ -247,7 +257,7 @@ func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T)
 				singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-tamper",
 				replies: judgeReplies(fixtures.OllamaReply{Content: judgeScoreFour}),
 			})
-			inference := &judgeTamperInference{realStackInference: env.inference}
+			inference := &judgeTamperInference{realStackInference: env.inference, turn: judgeJudgeTurn}
 			inference.tamper = func(response *operatorv1.InferenceDispatchResponse) {
 				tc.tamper(t, response)
 			}
@@ -279,6 +289,57 @@ func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T)
 			assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus())
 		})
 	}
+}
+
+// TestRealStackJudge_InvalidEvidenceIsNeverJudged proves a trace the signed
+// evidence does not back imports INVALID_EVIDENCE and is never sent to the
+// judge, so no judge grade, score, or promotion can attach to it. The agent's
+// own inference receipt is altered in flight, so the trace fails verification.
+func TestRealStackJudge_InvalidEvidenceIsNeverJudged(t *testing.T) {
+	ctx := t.Context()
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-invalid",
+		replies: judgeReplies(fixtures.OllamaReply{Content: judgeScoreFour}),
+	})
+	inference := &judgeTamperInference{realStackInference: env.inference, turn: 1}
+	inference.tamper = func(response *operatorv1.InferenceDispatchResponse) {
+		response.Receipt.Signature = flipHexDigit(response.Receipt.Signature)
+	}
+
+	res := executeNextWithInference(t, env, inference)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, res.GetLifecycleStatus())
+	assert.Nil(t, semanticGradeByCriterion(res, "diagnosis-quality"), "an unbacked answer is not judged")
+	assert.Empty(t, res.GetSemanticGrades())
+	assert.Empty(t, res.GetGraderCalls())
+	for _, ds := range res.GetDecomposedScores() {
+		assert.NotEqual(t, "diagnosis_quality", ds.GetDimension(), "an unbacked answer records no judge score")
+	}
+
+	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
+	require.NoError(t, err)
+	require.Len(t, trace.ModelCalls, 1)
+	assert.Equal(t, len(trace.ModelCalls), inference.dispatches, "every provider dispatch is the agent turn; the judge was not dispatched")
+}
+
+// TestRealStackJudge_ProviderFailedIsNeverJudged proves a trace whose provider
+// produced no answer imports PROVIDER_FAILED and is never sent to the judge or
+// promoted to COMPLETED.
+func TestRealStackJudge_ProviderFailedIsNeverJudged(t *testing.T) {
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-provider-failed",
+		// The agent's own turn is the one that fails: no answer, so no judge turn.
+		replies: []fixtures.OllamaReply{{Failure: "provider unreachable"}},
+	})
+	inference := &judgeTamperInference{realStackInference: env.inference}
+
+	res := executeNextWithInference(t, env, inference)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus())
+	assert.Nil(t, semanticGradeByCriterion(res, "diagnosis-quality"), "a provider failure is not judged")
+	assert.Empty(t, res.GetGraderCalls())
+
+	assert.Equal(t, 1, inference.dispatches, "the failed agent turn is the only provider dispatch; the judge was not dispatched")
 }
 
 // judgeRunCompletedShell runs one shell-command assignment to completion and

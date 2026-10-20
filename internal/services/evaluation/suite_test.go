@@ -178,11 +178,13 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 
 	summaries, err := store.ListSuites(ctx)
 	require.NoError(t, err)
-	require.Len(t, summaries, 2)
+	require.Len(t, summaries, 3)
 	assert.Equal(t, DefaultSuiteID, summaries[0].ID)
 	assert.True(t, summaries[0].Builtin)
 	assert.Equal(t, DefaultSuiteScenarioCount, summaries[0].ScenarioCount)
 	assert.Equal(t, SmokeSuiteID, summaries[1].ID)
+	assert.Equal(t, InvestigationsSuiteID, summaries[2].ID)
+	assert.True(t, summaries[2].Builtin)
 
 	v1 := customSuite(t, "my-suite", "1.0.0", "instruction-exact-format")
 	require.NoError(t, store.CreateSuite(ctx, v1))
@@ -190,9 +192,9 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 
 	summaries, err = store.ListSuites(ctx)
 	require.NoError(t, err)
-	require.Len(t, summaries, 3)
-	assert.Equal(t, "my-suite", summaries[2].ID)
-	assert.False(t, summaries[2].Builtin)
+	require.Len(t, summaries, 4)
+	assert.Equal(t, "my-suite", summaries[3].ID)
+	assert.False(t, summaries[3].Builtin)
 
 	resolved, builtin, err := store.ResolveSuite(ctx, "my-suite")
 	require.NoError(t, err)
@@ -240,6 +242,30 @@ func TestSuiteStore_BuiltinSuitesAreReadOnlyAndReserved(t *testing.T) {
 	legacy := customSuite(t, LegacyDefaultSuiteID, "1.0.0", "instruction-exact-format")
 	assert.ErrorIs(t, store.CreateSuite(ctx, legacy), constants.ErrEvaluationSuiteBuiltin)
 	assert.ErrorIs(t, store.UpdateSuite(ctx, legacy), constants.ErrEvaluationSuiteBuiltin)
+
+	// The investigations built-in is reserved and read-only like the others.
+	investigations := customSuite(t, InvestigationsSuiteID, "9.9.9", "instruction-exact-format")
+	assert.ErrorIs(t, store.CreateSuite(ctx, investigations), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.UpdateSuite(ctx, investigations), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.DeleteSuite(ctx, InvestigationsSuiteID), constants.ErrEvaluationSuiteBuiltin)
+	def, builtin, err := store.ResolveSuite(ctx, InvestigationsSuiteID)
+	require.NoError(t, err)
+	assert.True(t, builtin)
+	assert.Equal(t, InvestigationsSuiteID, def.ID)
+}
+
+func TestBuiltinSuiteIDs_EveryBuiltinBuildsAndIsReserved(t *testing.T) {
+	for _, id := range BuiltinSuiteIDs() {
+		def, builtin, err := BuiltinScenarioSuite(id)
+		require.NoError(t, err, id)
+		require.True(t, builtin, id)
+		assert.Equal(t, id, def.ID)
+		assert.True(t, reservedSuiteID(id), id)
+	}
+	_, builtin, err := BuiltinScenarioSuite("never-created")
+	require.NoError(t, err)
+	assert.False(t, builtin)
+	assert.False(t, reservedSuiteID("never-created"))
 }
 
 func TestSuiteStore_InvalidSuiteIsNeverStored(t *testing.T) {

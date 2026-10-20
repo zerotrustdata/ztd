@@ -116,8 +116,9 @@ func (c *Client) DispatchInference(ctx context.Context, req *operatorv1.Inferenc
 // platform-enrolled application identity, as DispatchInference does: the
 // Gateway's Tribunal dispatches every member call as governed inference under
 // that identity, then the approved command as a governed EXECUTE_BASH. A
-// deliberated intent is always a TribunalIntentResult; a request refused before
-// deliberation is an error carrying the typed IngressRefusal sentinel.
+// deliberated intent is always a TribunalIntentResult. A request refused before
+// deliberation is an ErrHTTPStatusError whose text names the IngressRefusal's
+// error and code; the typed IngressRefusal is in the returned response body.
 func (c *Client) DispatchIntent(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, []byte, error) {
 	if req == nil {
 		return nil, nil, constants.ErrMissingRequiredField

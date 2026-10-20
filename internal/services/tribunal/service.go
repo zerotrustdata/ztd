@@ -17,6 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
@@ -85,8 +86,10 @@ func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntent
 	return result, nil
 }
 
-// ValidateIntentRequest checks the fields the Tribunal needs and rejects a
-// member template that sets what the Gateway owns per call.
+// ValidateIntentRequest checks the fields the Tribunal needs, rejects a member
+// template that sets what the Gateway owns per call, and requires the member
+// template's role to be the inference role of the requested tier, so every
+// recorded step is attributed to the role its calls actually run under.
 func ValidateIntentRequest(req *tribunalv1.TribunalIntentRequest) error {
 	switch {
 	case strings.TrimSpace(req.GetRequest()) == "":
@@ -95,6 +98,8 @@ func ValidateIntentRequest(req *tribunalv1.TribunalIntentRequest) error {
 		return fmt.Errorf("tribunal: target_operator_session_id: %w", constants.ErrMissingRequiredField)
 	case req.GetProviderAttemptPrefix() == "":
 		return fmt.Errorf("tribunal: provider_attempt_prefix: %w", constants.ErrMissingRequiredField)
+	case req.GetTier() == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED:
+		return fmt.Errorf("tribunal: tier: %w", constants.ErrMissingRequiredField)
 	case req.GetMemberInference() == nil:
 		return fmt.Errorf("tribunal: member_inference: %w", constants.ErrMissingRequiredField)
 	case models.InferenceModelRoleFromProto(req.GetMemberInference().GetRole()) == models.InferenceModelRoleUnspecified:
@@ -113,7 +118,30 @@ func ValidateIntentRequest(req *tribunalv1.TribunalIntentRequest) error {
 	case template.GetStream():
 		return fmt.Errorf("tribunal: member_inference.stream must be false: %w", constants.ErrTribunalTemplateInvalid)
 	}
+	tierRole, err := InferenceRoleForTier(req.GetTier())
+	if err != nil {
+		return fmt.Errorf("tribunal: tier: %w", err)
+	}
+	if models.InferenceModelRoleFromProto(template.GetRole()) != tierRole {
+		return fmt.Errorf("tribunal: member_inference.role %s does not run tier %s: %w", template.GetRole(), req.GetTier(), constants.ErrTribunalTierMismatch)
+	}
 	return nil
+}
+
+// InferenceRoleForTier maps a campaign tier to the chat-tier inference role
+// its governed calls run under. An unspecified or unknown tier is
+// constants.ErrInferenceRoleInvalid.
+func InferenceRoleForTier(tier evalv1.ModelCampaignRole) (models.InferenceModelRole, error) {
+	switch tier {
+	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY:
+		return models.InferenceModelRolePrimary, nil
+	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT:
+		return models.InferenceModelRoleAssistant, nil
+	case evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE:
+		return models.InferenceModelRoleLite, nil
+	default:
+		return models.InferenceModelRoleUnspecified, fmt.Errorf("tribunal: inference role for tier %s: %w", tier, constants.ErrInferenceRoleInvalid)
+	}
 }
 
 // Proto converts the outcome to its wire form.

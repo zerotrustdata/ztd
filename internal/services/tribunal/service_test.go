@@ -298,6 +298,33 @@ func TestValidateIntentRequest(t *testing.T) {
 			},
 			want: constants.ErrTribunalTemplateInvalid,
 		},
+		{
+			name: "unspecified tier",
+			mutate: func(req *tribunalv1.TribunalIntentRequest) {
+				req.Tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED
+			},
+			want: constants.ErrMissingRequiredField,
+		},
+		{
+			name:   "tier is not a campaign role",
+			mutate: func(req *tribunalv1.TribunalIntentRequest) { req.Tier = evalv1.ModelCampaignRole(99) },
+			want:   constants.ErrInferenceRoleInvalid,
+		},
+		{
+			name: "member role runs a different tier",
+			mutate: func(req *tribunalv1.TribunalIntentRequest) {
+				req.Tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+			},
+			want: constants.ErrTribunalTierMismatch,
+		},
+		{
+			name: "assistant tier with assistant member role",
+			mutate: func(req *tribunalv1.TribunalIntentRequest) {
+				req.Tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
+				req.MemberInference.Role = operatorv1.ModelRole_MODEL_ROLE_ASSISTANT
+			},
+			want: nil,
+		},
 		{name: "valid request", mutate: func(*tribunalv1.TribunalIntentRequest) {}, want: nil},
 	}
 	for _, tt := range tests {

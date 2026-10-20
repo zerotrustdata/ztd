@@ -3,8 +3,8 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.1.2
-last_updated: 2026-10-16
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -114,7 +114,7 @@ $EDITOR .env
 make gw
 ```
 
-`.env` must stay owner-only (`chmod 600 .env`). On Linux and macOS, `./ztd` refuses to start unless `.env` is a regular file (not a symlink) owned by you or root with mode `0600` or `0400`. On every platform it refuses a line that is not `KEY=VALUE` and any key that `.env.example` does not list (only the secret and user_endpoint keys in `protocol/constants/env_vars.json`). A variable exported in your shell and an explicit flag both take precedence over `.env`. Every other setting is a flag: run `./ztd <command> --help`.
+`.env` must stay owner-only (`chmod 600 .env`). On Linux and macOS, `./ztd` refuses to start unless `.env` is a regular file (not a symlink) owned by you or root with mode `0600` or `0400`. On every platform it refuses a line that is not `KEY=VALUE` and any key outside the secret and user_endpoint categories of `protocol/constants/env_vars.json`. A variable exported in your shell and an explicit flag both take precedence over `.env`. Every other setting is a flag: run `./ztd <command> --help`.
 
 ### Step by step
 
@@ -140,12 +140,13 @@ make operator OPERATOR_ARGS='--endpoint localhost --capabilities inference --wor
 
 ### Approve workload enrollments
 
-List pending enrollment requests and approve them:
+List pending enrollment requests:
 
 ```bash
 ./ztd auth enroll pending
-./ztd auth enroll approve <request-id> --yes
 ```
+
+Approve one request with `./ztd auth enroll approve <request-id> --yes`, replacing `<request-id>` with an ID from that list.
 
 Or approve all pending requests simultaneously:
 
@@ -247,20 +248,23 @@ The bootstrap endpoint serves the binary without a signature bundle on trusted n
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.1.2`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.2.0`, then run both checks there.
 
-Run the checksum check:
+Run the checksum check on Linux:
 
 ```bash
-# Linux
 sha256sum -c ztd-linux-amd64.sha256
+```
 
-# macOS
+On macOS, run:
+
+```bash
 shasum -a 256 -c ztd-darwin-arm64.sha256
 ```
 
+On Windows, from PowerShell:
+
 ```powershell
-# Windows (PowerShell)
 $expected = (Get-Content .\ztd-windows-amd64.exe.sha256).Split(' ')[0]
 $actual = (Get-FileHash -Algorithm SHA256 .\ztd-windows-amd64.exe).Hash
 if ($expected -ne $actual) { throw 'checksum mismatch: do not run this binary' }
@@ -271,7 +275,7 @@ Then verify the signer identity with `cosign` 3.0 or later:
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.1.2' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.2.0' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
@@ -341,13 +345,19 @@ The `-public` targets pass `--listen-host 0.0.0.0` to `./ztd gw start` and other
 
 ### Gateway configuration
 
-The Gateway starts in Doctrine posture by default (L1 enforced, L2/L3 audited). To specify a different security posture:
+The Gateway starts in Doctrine posture by default (L1 enforced, L2/L3 audited). Posture is fixed at startup; pass exactly one `--posture` value to `./ztd gw start`:
+
+| Posture | Enforced | Audited only |
+| --- | --- | --- |
+| `doctrine` (default) | L1 | L2, L3 |
+| `consensus` | L1, L2 | L3 |
+| `ratify` | L1, L3 | L2 |
+| `notary` | L1, L2, L3 | — |
+
+For example, to require human authorization:
 
 ```bash
-./ztd gw start --posture doctrine    # default: L1 enforced, L2/L3 audited
-./ztd gw start --posture consensus   # L1/L2 enforced, L3 audited
-./ztd gw start --posture ratify      # L1/L3 enforced, L2 audited
-./ztd gw start --posture notary      # L1/L2/L3 strictly enforced
+./ztd gw start --posture ratify
 ```
 
 The default plain-HTTP port is `8080` (bootstrap and PKI discovery). The default HTTPS port is `8443` (authenticated APIs, MCP, and Web Console).
@@ -391,7 +401,7 @@ make down
 To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services, add the module from inside your own Go module (`go mod init` first if you have none):
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.1.2
+go get github.com/zerotrustdata/ztd@v1.2.0
 ```
 
 Import in Go code, then run `go mod tidy` to record the protobuf runtime dependencies:
@@ -420,11 +430,7 @@ The first sign-in on a fresh Gateway claims ownership and claims the embedded Op
 
 ### Start a remote operator
 
-To connect an Operator on a remote host to the Gateway, start the Gateway with `make up-public` or `make gw-public` (a Gateway started with `make up` or `make gw` refuses remote connections), then run on the remote host:
-
-```bash
-./ztd operator start -e <gateway-hostname>
-```
+To connect an Operator on a remote host to the Gateway, start the Gateway with `make up-public` or `make gw-public` (a Gateway started with `make up` or `make gw` refuses remote connections), then run `./ztd operator start -e <gateway-hostname>` on the remote host, replacing `<gateway-hostname>` with the Gateway's hostname.
 
 The Operator initiates platform enrollment automatically. The Gateway holds the request in `pending_approval` until an enrolled owner approves it with `./ztd auth enroll approve <request-id> --yes`.
 
@@ -449,9 +455,10 @@ ztd integrates with AI agent binaries to provide governed MCP tool access.
 ./ztd gw status           # Gateway health, Operators, and enrollment counts
 ./ztd gw data operators   # List enrolled operators
 ./ztd gw data users       # List users
-./ztd gw data audit list --operator-session-id <id>  # Audit events for one Operator session
 ./ztd --help              # Full command reference
 ```
+
+List the audit events for one Operator session with `./ztd gw data audit list --operator-session-id <id>`, replacing `<id>` with the session ID.
 
 ---
 
@@ -472,7 +479,7 @@ Universal checks (transaction hash integrity, nonce reservation, expiry, state-r
 
 - [Unified Stack Guide](unified_stack.md) — Operate the host-native single-host stack and evaluation campaigns.
 - [Build Gateway](build_gateway.md) — Gateway build reference, configuration, and custom implementations.
-- [Build Operator](build_operator.md) — Build and deploy custom Operator workers.
+- [Build Operator](build_operator.md) — Build and deploy custom Operators.
 - [Connect Operator to Gateway](connect_operator_to_gateway.md) — Enrollment, mTLS configuration, and multi-operator deployment.
 - [Connect Applications to Gateway](connect_apps_to_gateway.md) — Integrate application-layer adapters and SDKs.
 - [Gateway Architecture](../architecture/gateway.md) — Platform architecture and verification sequence.

@@ -419,43 +419,63 @@ func (s *ScrubbingService) isLikelySensitiveKey(key string) bool {
 	return false
 }
 
-// RehydrateText replaces placeholders like {{UEI_N}} with their original values.
-// This is used right before dispatch to restore sensitive data that was hidden from the cloud.
-// Falls back to TokenStore if token is not in memory (for persistence across restarts).
-func (s *ScrubbingService) RehydrateText(ctx context.Context, input string) string {
+// RehydrateText replaces every {{UEI_N}} placeholder with its original value.
+// It runs right before dispatch to restore sensitive data hidden from the cloud,
+// so it fails closed: a placeholder that cannot be resolved is an error, and the
+// text is never returned with the placeholder left in it. A token resolves from
+// memory first and then from the TokenStore, so tokens minted by another service
+// on the same store, or before a restart, still rehydrate.
+func (s *ScrubbingService) RehydrateText(ctx context.Context, input string) (string, error) {
 	if input == "" {
-		return input
+		return input, nil
 	}
 
 	// One pass over the input: a restored value is never rescanned, so the
 	// result does not depend on substitution order.
-	return tokenPattern.ReplaceAllStringFunc(input, func(token string) string {
-		s.tokenMu.RLock()
-		value, ok := s.tokenMap[token]
-		s.tokenMu.RUnlock()
-		if ok {
-			return value
-		}
-		if s.tokenStore == nil {
-			return token
-		}
-
-		value, err := s.tokenStore.KVGet(ctx, constants.ScrubbingTokenKeyPrefix+token)
+	var out strings.Builder
+	last := 0
+	for _, loc := range tokenPattern.FindAllStringIndex(input, -1) {
+		value, err := s.resolveToken(ctx, input[loc[0]:loc[1]])
 		if err != nil {
-			s.logger.Warn("scrubbing: failed to load token from store", "token", token, "error", err)
-			return token
+			return "", fmt.Errorf("scrubbing: rehydrate text: %w", err)
 		}
-		s.tokenMu.Lock()
-		s.tokenMap[token] = value
-		s.reverseMap[value] = token
-		s.tokenMu.Unlock()
-		return value
-	})
+		out.WriteString(input[last:loc[0]])
+		out.WriteString(value)
+		last = loc[1]
+	}
+	out.WriteString(input[last:])
+	return out.String(), nil
 }
 
-// RehydratePayload recursively rehydrates all string values in a JSON payload.
+// resolveToken returns the sensitive value behind one {{UEI_N}} token. A token that
+// is in neither memory nor the TokenStore, or whose store lookup fails, returns an
+// error wrapping ErrScrubbingTokenUnresolved.
+func (s *ScrubbingService) resolveToken(ctx context.Context, token string) (string, error) {
+	s.tokenMu.RLock()
+	value, ok := s.tokenMap[token]
+	s.tokenMu.RUnlock()
+	if ok {
+		return value, nil
+	}
+	if s.tokenStore == nil {
+		return "", fmt.Errorf("scrubbing: resolve %s: %w: no TokenStore", token, constants.ErrScrubbingTokenUnresolved)
+	}
+
+	value, err := s.tokenStore.KVGet(ctx, constants.ScrubbingTokenKeyPrefix+token)
+	if err != nil {
+		return "", fmt.Errorf("scrubbing: resolve %s: %w: %w", token, constants.ErrScrubbingTokenUnresolved, err)
+	}
+	s.tokenMu.Lock()
+	s.tokenMap[token] = value
+	s.reverseMap[value] = token
+	s.tokenMu.Unlock()
+	return value, nil
+}
+
+// RehydratePayload recursively rehydrates all string values and object keys in a JSON payload.
 // json.RawMessage preserves arbitrary JSON shapes without introducing an
-// untyped object model at this serialization boundary.
+// untyped object model at this serialization boundary. Any unresolvable
+// placeholder fails the whole payload: no partially rehydrated payload is returned.
 func (s *ScrubbingService) RehydratePayload(ctx context.Context, payload []byte) ([]byte, error) {
 	if len(payload) == 0 {
 		return payload, nil
@@ -463,8 +483,13 @@ func (s *ScrubbingService) RehydratePayload(ctx context.Context, payload []byte)
 
 	var data json.RawMessage
 	if err := json.Unmarshal(payload, &data); err != nil {
-		//nolint:nilerr // intentional fallback: non-JSON payload rehydrated as plain text
-		return []byte(s.RehydrateText(ctx, string(payload))), nil
+		// A payload that is not JSON is rehydrated as plain text.
+		text, rehydrateErr := s.RehydrateText(ctx, string(payload))
+		if rehydrateErr != nil {
+			return nil, fmt.Errorf("scrubbing: rehydrate text payload: %w", rehydrateErr)
+		}
+		//nolint:nilerr // intentional fallback: the JSON decode error means plain text, not a failure
+		return []byte(text), nil
 	}
 
 	return s.rehydrateJSONValue(ctx, data)
@@ -477,19 +502,34 @@ func (s *ScrubbingService) rehydrateJSONValue(ctx context.Context, value json.Ra
 
 	var text string
 	if err := json.Unmarshal(value, &text); err == nil {
-		return json.Marshal(s.RehydrateText(ctx, text))
+		rehydrated, rehydrateErr := s.RehydrateText(ctx, text)
+		if rehydrateErr != nil {
+			return nil, fmt.Errorf("scrubbing: rehydrate string value: %w", rehydrateErr)
+		}
+		return json.Marshal(rehydrated)
 	}
 
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(value, &object); err == nil {
+		fields := make(map[string]json.RawMessage, len(object))
 		for key, child := range object {
+			restoredKey, err := s.RehydrateText(ctx, key)
+			if err != nil {
+				return nil, fmt.Errorf("scrubbing: rehydrate object key: %w", err)
+			}
+			// Two distinct keys that restore to the same name would silently
+			// overwrite one field with the other, so the payload is withheld.
+			// The key text stays out of the error: a restored key is plaintext.
+			if _, exists := fields[restoredKey]; exists {
+				return nil, fmt.Errorf("scrubbing: rehydrate object key: %w", constants.ErrScrubbingKeyCollision)
+			}
 			rehydrated, err := s.rehydrateJSONValue(ctx, child)
 			if err != nil {
 				return nil, fmt.Errorf("scrubbing: rehydrate object field %q: %w", key, err)
 			}
-			object[key] = rehydrated
+			fields[restoredKey] = rehydrated
 		}
-		return json.Marshal(object)
+		return json.Marshal(fields)
 	}
 
 	var array []json.RawMessage

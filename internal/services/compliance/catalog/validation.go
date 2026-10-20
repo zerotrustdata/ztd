@@ -73,6 +73,11 @@ func ValidateAssertionCatalog(catalog *compliancev1.ControlAssertionCatalog) err
 				return fmt.Errorf("%w: assertion %s %s: %v", constants.ErrInvalidEvidenceGraph, key, list.label, err)
 			}
 		}
+		for _, component := range assertion.ComponentScope {
+			if !contains(constants.ComplianceComponentScopes, component) {
+				return fmt.Errorf("%w: assertion %s has unsupported component scope %q", constants.ErrInvalidEvidenceGraph, key, component)
+			}
+		}
 		for _, evidenceType := range assertion.RequiredEvidenceTypes {
 			if !contains(assertionEvidenceTypes, evidenceType) {
 				return fmt.Errorf("%w: assertion %s has unsupported evidence type %s", constants.ErrInvalidEvidenceGraph, key, evidenceType)

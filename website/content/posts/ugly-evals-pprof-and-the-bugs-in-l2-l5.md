@@ -65,4 +65,3 @@ I'm continuing to build, research, and consult. If you are looking for someone t
 - Added `pprof` and profiled Gateway lock contention under load ✅
 - Fixed bugs in L2, L3, L4, and L5 across v1.1.2–v1.2.0 ✅
 - Put the core thesis on trial: let the evals prove if ztd is worth building ✅
-

@@ -305,6 +305,42 @@ func removeSealedWitnessBody(t *testing.T, files fs.RuntimeFileService, attemptI
 	require.NoError(t, files.Remove(ctx, path.Join(evidenceDir, reference.GetSha256()+constants.FileExtJSON)))
 }
 
+// removeSealedWitnesses removes every sealed witness that one attempt's evidence
+// references, bodies and references alike, so the copy holds no witness capture
+// for that attempt.
+func removeSealedWitnesses(t *testing.T, files fs.RuntimeFileService, attemptID string) {
+	t.Helper()
+	ctx := t.Context()
+	evidenceDir := path.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, complianceRealRunID, constants.EvaluationEvidenceDirname)
+	for _, witness := range []struct{ dirname, refFilename string }{
+		{constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderAttemptRefFilename},
+		{constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderWindowRefFilename},
+		{constants.EvaluationModelProvenanceDirname, constants.EvaluationModelProvenanceWindowRefFilename},
+	} {
+		removeSealedWitnessBody(t, files, attemptID, witness.dirname, witness.refFilename)
+		require.NoError(t, files.Remove(ctx, path.Join(evidenceDir, witness.dirname, attemptID, witness.refFilename)))
+	}
+}
+
+// importStrictCampaignVerificationForTest runs the campaign importer that the
+// compliance source builder seals into a bundle, under strict witness policy,
+// over files, and returns the verification report it produces.
+func importStrictCampaignVerificationForTest(t *testing.T, files fs.RuntimeFileService) *evalv1.EvaluationVerificationReport {
+	t.Helper()
+	policy := evaluation.CampaignVerificationPolicy{
+		VerifierReleaseVersion: constants.EvaluationSourceVersion,
+		ProviderObservation:    evaluation.ProviderObservationPolicyStrict,
+		ModelProvenance:        evaluation.ModelProvenancePolicyStrict,
+		AssessmentTime:         time.Now,
+	}
+	nodes, err := evaluation.NewCampaignImporter(files, complianceRealRunID, policy).Import(t.Context())
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	report := &evalv1.EvaluationVerificationReport{}
+	require.NoError(t, evalv1.UnmarshalCanonical(nodes[0].CanonicalBytes, report))
+	return report
+}
+
 type campaignComplianceBundleFixture struct {
 	fileSvc      fs.RuntimeFileService
 	bundle       *compliancev1.ComplianceReportBundle
@@ -478,4 +514,26 @@ func TestComplianceReportGenerateCmdWithConfig_SealedRunWitnessMutations(t *test
 			assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
 		})
 	}
+
+	// A strict campaign with no witness captured at all: generation fails closed,
+	// and the campaign verifier reports each absent strict window as a FAIL reason.
+	t.Run("strict campaign without witnesses fails generation closed", func(t *testing.T) {
+		files := run.copyFiles(t)
+		removeSealedWitnesses(t, files, run.attemptID)
+
+		_, err := generateComplianceRealBundle(t, files, run)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+	})
+
+	t.Run("strict campaign without witnesses verifies FAIL with missing-window reasons", func(t *testing.T) {
+		files := run.copyFiles(t)
+		removeSealedWitnesses(t, files, run.attemptID)
+
+		verification := importStrictCampaignVerificationForTest(t, files)
+		assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, verification.GetStatus())
+		reasons := strings.Join(verification.GetFailureReasons(), "\n")
+		assert.Contains(t, reasons, "missing provider-boundary observation window")
+		assert.Contains(t, reasons, "missing model provenance attestation window")
+	})
 }

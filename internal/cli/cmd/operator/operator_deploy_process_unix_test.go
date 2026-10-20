@@ -19,6 +19,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -28,7 +29,7 @@ func TestOperatorDeployLocalWorkerDetachesFromLaunchingProcess(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "ztd"), []byte("#!/bin/sh\nexec sleep 30\n"), 0o700))
 	host := deploySSH{local: true}
 	require.NoError(t, host.startOperator(context.Background(), dir, "localhost"))
-	data, err := os.ReadFile(filepath.Join(dir, "operator.pid"))
+	data, err := os.ReadFile(filepath.Join(dir, constants.OperatorPIDFilename))
 	require.NoError(t, err)
 	var pid int
 	_, err = fmt.Sscanf(string(data), "%d", &pid)

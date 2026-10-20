@@ -98,9 +98,10 @@ func New(cfg config.Config) (*Client, error) {
 	// The CLI identity carries notary-scenario submits and approval streams, so
 	// handleCLIAuth can stamp the host user onto the suspended transaction. Its
 	// material is loaded even when it names no certificate, so a broken CA bundle
-	// fails New either way. When CLIAuth names the Operator certificate, the
-	// Operator client already presents the CLI identity and serves both. Otherwise
-	// CLIAuth gets its own client, and only when it names a certificate.
+	// fails New either way. When CLIAuth names the Operator certificate and trust
+	// anchors, the Operator client already presents the CLI identity and serves
+	// both. Otherwise CLIAuth gets its own client, and only when it names a
+	// certificate.
 	cliTLS, err := loadTLS(cfg.CLIAuth)
 	if err != nil {
 		return nil, fmt.Errorf("agent harness: CLI identity: %w", err)
@@ -108,7 +109,7 @@ func New(cfg config.Config) (*Client, error) {
 	if cfg.CLIAuth.Certificate == nil && cfg.CLIAuth.ClientCert == "" && cfg.CLIAuth.ClientKey == "" {
 		return c, nil
 	}
-	if cfg.CLIAuth.Certificate == cfg.Auth.Certificate && cfg.CLIAuth.ClientCert == cfg.Auth.ClientCert && cfg.CLIAuth.ClientKey == cfg.Auth.ClientKey {
+	if cfg.CLIAuth == cfg.Auth {
 		c.cliHTTP = c.http
 		c.cliTLS = tlsCfg
 		return c, nil

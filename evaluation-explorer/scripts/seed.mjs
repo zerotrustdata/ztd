@@ -27,7 +27,6 @@
 //   ZTD_PUBLIC_PORT  public read-only listener port (default: 8082)
 
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
@@ -44,6 +43,9 @@ const SOURCE_ID = 'opendevops-local';
 // Fallback limits; the actual limits are read from the export config.
 const DEFAULT_BATCH_MAX_RECORDS = 100;
 const DEFAULT_BATCH_MAX_BYTES = 4 << 20;
+const HISTORY_PAGE_LIMIT = 100;
+const HISTORY_TIMEOUT_MS = 5000;
+const SNAPSHOT_TIMEOUT_MS = 3000;
 
 function ztdBin() {
   const env = process.env.ZTD_BIN;
@@ -71,16 +73,28 @@ function runZtd(args) {
   return result.stdout ?? '';
 }
 
+// ztdStatus returns the publisher's feed status. Any failure throws: a missing
+// status must never read as high-water 0, which would look like a stale mirror
+// and reach the reset path.
 function ztdStatus() {
   const result = spawnSync(ztdBin(), ['public', 'status'], {
     cwd: ztdCwd(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
   });
-  if (result.status !== 0 || !result.stdout || !result.stdout.trim()) return null;
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    return null;
+  if (result.error) {
+    throw new Error(`ztd public status could not run: ${result.error.message}`, { cause: result.error });
   }
+  if (result.status !== 0) throw new Error(`ztd public status exited with code ${result.status}`);
+  if (!result.stdout || !result.stdout.trim()) throw new Error('ztd public status returned no output');
+  let status;
+  try {
+    status = JSON.parse(result.stdout);
+  } catch (err) {
+    throw new Error(`ztd public status returned invalid JSON: ${err.message}`, { cause: err });
+  }
+  if (!Number.isInteger(status?.high_water_sequence)) {
+    throw new Error('ztd public status output has no high_water_sequence');
+  }
+  return status;
 }
 
 function checkPort(port) {
@@ -159,10 +173,6 @@ function feedDir() {
   return resolve(ztdCwd(), '.ztd/public-feed');
 }
 
-function mirrorStatePath() {
-  return resolve(ztdCwd(), '.ztd/public-mirror/state.json');
-}
-
 function hostExportConfigExists() {
   return existsSync(resolve(feedDir(), 'export-config.json'));
 }
@@ -197,16 +207,36 @@ async function generateFixtureRecords() {
   return outPath;
 }
 
-// Load publish-input lines and index the dataset identities plus the
-// per-dataset catalog_snapshot record hash. The record hash is what the
-// mirror stores per record, so its presence in mirror state proves the
-// identical record was already accepted.
+// canonicalJson serializes a parsed JSON value with object keys sorted, so two
+// records with identical content compare equal regardless of key order.
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+// recordContent returns the canonical content of a seeded record. The mirror
+// stores each published record verbatim, and the public history API returns it
+// with only the server-assigned `sequence` and `record_type` added, so those
+// two keys are dropped before comparing.
+function recordContent(record) {
+  const content = { ...record };
+  delete content.sequence;
+  delete content.record_type;
+  return canonicalJson(content);
+}
+
+// Load publish-input lines and index the dataset identities plus each
+// dataset's catalog_snapshot content. A catalog already present in the mirror
+// with identical content proves the dataset was accepted unchanged.
 function loadRecords(recordsPath) {
   const content = readFileSync(recordsPath, 'utf8');
   const lines = content.split('\n').filter((line) => line.trim().length > 0);
   if (lines.length === 0) throw new Error(`records file is empty: ${recordsPath}`);
   const datasetIds = new Set();
-  const catalogHashes = new Map();
+  const catalogContents = new Map();
   const schemaVersions = new Set();
   const entries = lines.map((line, index) => {
     let parsed;
@@ -229,66 +259,66 @@ function loadRecords(recordsPath) {
     if (record && typeof record.dataset_id === 'string') {
       datasetId = record.dataset_id;
       datasetIds.add(datasetId);
-      if (record.kind === 'catalog_snapshot' && !catalogHashes.has(datasetId)) {
-        const hash = createHash('sha256').update(parsed.record_bytes, 'utf8').digest('hex');
-        catalogHashes.set(datasetId, hash);
+      if (record.kind === 'catalog_snapshot' && !catalogContents.has(datasetId)) {
+        catalogContents.set(datasetId, recordContent(record));
       }
     }
     return { line, bytes: Buffer.byteLength(parsed.record_bytes, 'utf8'), datasetId };
   });
-  return { entries, datasetIds, catalogHashes, schemaVersions };
+  return { entries, datasetIds, catalogContents, schemaVersions };
 }
 
-// Read mirror records for this source. Gateway-owned mirrors are queried from
-// the public history API; legacy host mirrors read .ztd/public-mirror/state.json.
-async function mirrorSourceRecords() {
-  if (isGatewayOwnedMirror()) {
-    const records = [];
-    let cursor = '0';
-    for (let page = 0; page < 100; page++) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000);
-      const response = await fetch(`${PUBLIC_ORIGIN}/history?source=${SOURCE_ID}&cursor=${cursor}&limit=100`, {
-        credentials: 'omit',
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!response.ok) return records;
-      const body = await response.json();
-      const items = Array.isArray(body?.items) ? body.items : [];
-      for (const item of items) {
-        records.push({
-          record_hash: item.record_hash,
-          record_bytes: item.record_bytes,
-        });
-      }
-      if (!body?.has_more || items.length === 0) break;
-      cursor = String(body.cursor ?? items[items.length - 1].sequence);
+// Read every mirror record for this source through the anonymous public history
+// API. Gateway-owned and host mirrors serve the same routes. Any transport or
+// HTTP failure throws: an empty result would make every dataset look absent and
+// republish it.
+async function fetchMirrorHistory() {
+  const records = [];
+  let cursor = '0';
+  for (;;) {
+    const url = `${PUBLIC_ORIGIN}/history?source=${SOURCE_ID}&cursor=${cursor}&limit=${HISTORY_PAGE_LIMIT}`;
+    let response;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(HISTORY_TIMEOUT_MS) });
+    } catch (err) {
+      throw new Error(`mirror history unavailable at ${url}: ${err.message}`, { cause: err });
     }
-    return records;
-  }
-  try {
-    const state = JSON.parse(readFileSync(mirrorStatePath(), 'utf8'));
-    const records = state?.sources?.[SOURCE_ID]?.records;
-    return Array.isArray(records) ? records : [];
-  } catch {
-    return [];
+    if (!response.ok) {
+      throw new Error(`mirror history request failed at ${url}: HTTP ${response.status}`);
+    }
+    let body;
+    try {
+      body = await response.json();
+    } catch (err) {
+      throw new Error(`mirror history at ${url} returned invalid JSON: ${err.message}`, { cause: err });
+    }
+    if (!Array.isArray(body?.items)) {
+      throw new Error(`mirror history at ${url} returned no items array`);
+    }
+    records.push(...body.items);
+    if (!body.has_more) return records;
+    const next = String(body.cursor ?? body.items.at(-1)?.sequence ?? '');
+    if (body.items.length === 0 || next === cursor) {
+      throw new Error(`mirror history at ${url} reports more records without advancing the cursor`);
+    }
+    cursor = next;
   }
 }
 
-// Classify each dataset in the records file against the mirror state:
-//   seeded  - every record present and the catalog content hash matches
+// Classify each dataset in the records file against the mirror history:
+//   seeded  - every record present and the catalog content matches
 //   absent  - no records present
 //   drifted - partially present, or present with different catalog content
-function classifyDatasets(mirrorRecords, entries, datasetIds, catalogHashes) {
+function classifyDatasets(mirrorRecords, entries, datasetIds, catalogContents) {
   const result = { seeded: [], absent: [], drifted: [] };
-  const mirrorHashes = new Set(mirrorRecords.map((r) => r.record_hash));
+  const mirrorCatalogs = new Set(
+    mirrorRecords.filter((r) => r.kind === 'catalog_snapshot').map((r) => recordContent(r)),
+  );
   for (const id of datasetIds) {
     const expected = entries.filter((e) => e.datasetId === id).length;
-    const needle = `"dataset_id":"${id}"`;
-    const present = mirrorRecords.filter((r) => typeof r.record_bytes === 'string' && r.record_bytes.includes(needle)).length;
-    const catalogHash = catalogHashes.get(id);
-    const catalogVerified = catalogHash !== undefined ? mirrorHashes.has(catalogHash) : true;
+    const present = mirrorRecords.filter((r) => r.dataset_id === id).length;
+    const catalog = catalogContents.get(id);
+    const catalogVerified = catalog !== undefined ? mirrorCatalogs.has(catalog) : true;
     if (present === 0) {
       result.absent.push(id);
     } else if (present === expected && catalogVerified) {
@@ -332,19 +362,41 @@ function chunkEntries(entries, maxRecords, maxBytes) {
   return chunks;
 }
 
+// fetchSnapshot returns the mirror's snapshot for this source, or null only when
+// the mirror positively reports it holds nothing for the source yet (the
+// handler's offline answer: zero high-water, zero batches, source_offline).
+// Transport errors, non-2xx statuses, invalid JSON, and missing required fields
+// all throw, so a failed read can never look like an empty mirror.
 async function fetchSnapshot() {
+  const url = `${PUBLIC_ORIGIN}/snapshot?source=${SOURCE_ID}`;
+  let response;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    const response = await fetch(`${PUBLIC_ORIGIN}/snapshot?source=${SOURCE_ID}`, {
-      credentials: 'omit', signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!response.ok) return null;
-    return await response.json();
-  } catch {
+    response = await fetch(url, { credentials: 'omit', signal: AbortSignal.timeout(SNAPSHOT_TIMEOUT_MS) });
+  } catch (err) {
+    throw new Error(`mirror snapshot unavailable at ${url}: ${err.message}`, { cause: err });
+  }
+  if (!response.ok) {
+    throw new Error(`mirror snapshot request failed at ${url}: HTTP ${response.status}`);
+  }
+  let body;
+  try {
+    body = await response.json();
+  } catch (err) {
+    throw new Error(`mirror snapshot at ${url} returned invalid JSON: ${err.message}`, { cause: err });
+  }
+  const wellFormed = body !== null && typeof body === 'object'
+    && body.source_id === SOURCE_ID
+    && Number.isInteger(body.high_water_sequence) && body.high_water_sequence >= 0
+    && typeof body.feed_chain_hash === 'string'
+    && Number.isInteger(body.batch_count) && body.batch_count >= 0
+    && typeof body.freshness === 'string';
+  if (!wellFormed) {
+    throw new Error(`mirror snapshot at ${url} is missing required snapshot fields`);
+  }
+  if (body.high_water_sequence === 0 && body.batch_count === 0 && body.freshness === 'source_offline') {
     return null;
   }
+  return body;
 }
 
 function publishChunks(entries) {
@@ -397,7 +449,7 @@ async function main() {
   if (!existsSync(recordsPath)) {
     throw new Error(`records file not found: ${recordsPath}`);
   }
-  const { entries, datasetIds, catalogHashes, schemaVersions } = loadRecords(recordsPath);
+  const { entries, datasetIds, catalogContents, schemaVersions } = loadRecords(recordsPath);
   console.log(`Loaded ${entries.length} records from ${recordsPath}`);
   console.log(`Datasets: ${[...datasetIds].join(', ')}`);
 
@@ -408,7 +460,7 @@ async function main() {
     await ensureMirror();
     const status = ztdStatus();
     const mirrorSnap = await fetchSnapshot();
-    if (!status || !mirrorSnap || status.high_water_sequence !== mirrorSnap.high_water_sequence) {
+    if (status.high_water_sequence !== (mirrorSnap?.high_water_sequence ?? 0)) {
       throw new Error('publisher and mirror must be synchronized before appending a schema revision');
     }
     publishChunks(entries);
@@ -416,9 +468,7 @@ async function main() {
     await resetFeedState();
   } else {
     await ensureMirror();
-    const status = ztdStatus();
-    const publisherHighWater = status?.high_water_sequence ?? 0;
-    const classified = classifyDatasets(await mirrorSourceRecords(), entries, datasetIds, catalogHashes);
+    const classified = classifyDatasets(await fetchMirrorHistory(), entries, datasetIds, catalogContents);
 
     if (classified.drifted.length > 0) {
       for (const d of classified.drifted) {
@@ -429,15 +479,12 @@ async function main() {
       console.log('All seed datasets are already present with identical catalog content; skipping publish.');
       runZtd(['public', 'push']);
     } else {
+      const publisherHighWater = ztdStatus().high_water_sequence;
       const mirrorSnap = await fetchSnapshot();
       const mirrorHighWater = mirrorSnap?.high_water_sequence ?? 0;
       if (publisherHighWater !== mirrorHighWater) {
         console.log(`Publisher high-water (${publisherHighWater}) differs from mirror (${mirrorHighWater}); retrying outbox.`);
-        try {
-          runZtd(['public', 'push']);
-        } catch (err) {
-          console.error(`push failed: ${err.message}`);
-        }
+        runZtd(['public', 'push']);
         const retrySnap = await fetchSnapshot();
         if ((retrySnap?.high_water_sequence ?? 0) !== publisherHighWater) {
           console.log('Mirror could not be reconciled from the outbox; resetting disposable feed state.');
@@ -447,7 +494,7 @@ async function main() {
     }
   }
 
-  const absentNow = classifyDatasets(await mirrorSourceRecords(), entries, datasetIds, catalogHashes).absent;
+  const absentNow = classifyDatasets(await fetchMirrorHistory(), entries, datasetIds, catalogContents).absent;
   const absentSet = new Set(absentNow);
   const entriesToPublish = entries.filter((e) => e.datasetId === undefined || absentSet.has(e.datasetId));
   if (entriesToPublish.length > 0) {
@@ -460,8 +507,9 @@ async function main() {
   runZtd(['public', 'status']);
   const snap = await fetchSnapshot();
   const status = ztdStatus();
-  if (snap && status && snap.high_water_sequence !== status.high_water_sequence) {
-    console.warn(`WARNING: mirror high-water ${snap.high_water_sequence} != publisher high-water ${status.high_water_sequence}; run ./ztd public push`);
+  const mirrorHighWater = snap?.high_water_sequence ?? 0;
+  if (mirrorHighWater !== status.high_water_sequence) {
+    console.warn(`WARNING: mirror high-water ${mirrorHighWater} != publisher high-water ${status.high_water_sequence}; run ./ztd public push`);
   }
   console.log('Seed complete.');
 }

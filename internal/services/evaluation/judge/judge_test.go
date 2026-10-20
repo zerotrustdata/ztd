@@ -152,8 +152,11 @@ func TestScoreTrace_FinalReplyAndMemoryAreScoredThroughCampaignAuthorizedDispatc
 		JudgeModelDigest: strings.Repeat("d", 64),
 		TransactionID:    "tx-judge-final_reply",
 		Receipt:          &operatorv1.ActionReceipt{ResultSummary: "digest"},
+		Result:           scores[0].Result,
 		RubricVersion:    RubricVersion,
 	}, scores[0])
+	require.NotNil(t, scores[0].Result, "a scored judge carries the result its receipt binds")
+	assert.Equal(t, `{"score": 4, "rationale": "answers the objective"}`, models.InferenceResultText(scores[0].Result))
 	assert.Equal(t, SubjectMemory, scores[1].Subject)
 	assert.Equal(t, StatusScored, scores[1].Status)
 	assert.Equal(t, 3, scores[1].Value)

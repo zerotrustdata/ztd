@@ -3,8 +3,8 @@ doc_id: connect_operator_to_gateway
 title: Connect Operator to Gateway
 audience: platform operators and deployment engineers
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/connect_operator_to_gateway.md
   - internal/cli/cmd/operator
@@ -28,12 +28,13 @@ do_not_use_for:
 
 The ztd Operator is the Policy Execution Point (PEP) for the runtime environment visible to its process. It opens an outbound mTLS WebSocket connection to the Gateway, subscribes to its identity- and session-scoped command channel, verifies governed transactions, executes approved actions in its local runtime, and publishes signed receipts and heartbeats. The Operator exposes no inbound application listener.
 
-Connecting a new Operator follows four steps:
+Connecting a new Operator follows five steps:
 
 1. Start the Gateway.
 2. Enroll the first Gateway owner if not already bootstrapped.
 3. Start the Operator with the Gateway endpoint. The Operator submits a platform enrollment request and waits for approval.
-4. Approve the request from an enrolled owner CLI. The Operator receives its issued credentials and connects to the pub/sub channel automatically.
+4. Approve the request from an enrolled owner CLI.
+5. The Operator receives its issued credentials and connects to the pub/sub channel automatically.
 
 The reference Gateway and Operator are subcommands in the same static `ztd` binary. See [Build Operator](build_operator.md) for build details and [Operator Architecture](../architecture/operator.md) for service design.
 
@@ -44,7 +45,7 @@ The reference Gateway and Operator are subcommands in the same static `ztd` bina
 **Gateway host requirements:**
 
 - A running `ztd` Gateway, started with `./ztd gw start`.
-- TCP ports 8080 and 8443 reachable from the Operator host. Port 8080 serves the Operator bootstrap websocket (`/ws/operator/bootstrap`) for enrollment. Port 8443 serves authenticated APIs and the mTLS WebSocket pub/sub connection for active Operators.
+- TCP ports 8080 and 8443 (the defaults) reachable from the Operator host; see [Endpoint Requirements](#endpoint-requirements) for the bind host and shifted ports. Port 8080 serves the Operator bootstrap websocket (`/ws/operator/bootstrap`) for enrollment. Port 8443 serves authenticated APIs and the mTLS WebSocket pub/sub connection for active Operators.
 - A certificate identity that matches the hostname the Operator uses to reach it. The default certificate mode detects hostnames and IP addresses at Gateway startup.
 - An enrolled owner CLI identity to approve Operator enrollment requests.
 
@@ -58,9 +59,9 @@ No inbound port is required on the Operator host.
 
 ### Endpoint Requirements
 
-Use a hostname with `ztd operator start --endpoint`, without an `http://` or `https://` scheme. The worker uses Gateway port 8080 for enrollment and port 8443 for mTLS WebSocket pub/sub channels carrying commands, heartbeats, results, and receipts. A `host:port` endpoint sets the enrollment port; set the pub/sub port with `--gateway-https-port`. The Operator uses WebSocket connections for bootstrap and active pub/sub; it does not call the Gateway's ordinary HTTP APIs. Command verification uses the admission snapshot already bound into the envelope; receipt state roots come from the Operator's local store.
+Use a hostname with `ztd operator start --endpoint`, without an `http://` or `https://` scheme. The Operator uses Gateway port 8080 for enrollment and port 8443 for mTLS WebSocket pub/sub channels carrying commands, heartbeats, results, and receipts. A `host:port` endpoint sets the enrollment port; set the pub/sub port with `--gateway-https-port`. The Operator uses WebSocket connections for bootstrap and active pub/sub; it does not call the Gateway's ordinary HTTP APIs. Command verification uses the admission snapshot already bound into the envelope; receipt state roots come from the Operator's local store.
 
-The Gateway HTTP and HTTPS listeners bind `127.0.0.1` by default. Start the Gateway with `make up-public` or `make gw-public` (or `./ztd gw start --listen-host 0.0.0.0`) before connecting Operators from other hosts.
+The Gateway HTTP and HTTPS listeners bind `127.0.0.1` by default. Start the Gateway with `make up-public` or `make gw-public` (or `./ztd gw start --listen-host 0.0.0.0`) before connecting Operators from other hosts. If a default port is busy, background `./ztd gw start` moves both listeners to the next free pair and prints the bound ports; give the Operator `--endpoint <gateway-host>:<http-port> --port <https-port>` with those ports.
 
 ---
 
@@ -84,20 +85,20 @@ Verify the Gateway process is running:
 
 ### 2. Enroll the Gateway Owner
 
-On the Gateway host or on an owner workstation with network access:
+On the Gateway host or on an owner workstation with network access, set the shell variable `GATEWAY_HOST` to the Gateway hostname (for example, `export GATEWAY_HOST=gw.example.internal`), then run:
 
 ```bash
-./ztd auth enroll user --endpoint <gateway-host>
+./ztd auth enroll user --endpoint "$GATEWAY_HOST"
 ```
 
 Enrollment creates the first user and CLI session on an unbootstrapped Gateway, installs the Gateway root CA into the operating system trust store, and runs the browser passkey ceremony. Use `--no-system-trust` if an administrator has installed the root CA separately. Use `--headless` for an mTLS-only CLI identity.
 
 ### 3. Start the Operator
 
-On the Operator host, start the worker in the foreground:
+On the Operator host, set `GATEWAY_HOST` to the Gateway hostname as in step 2, then start the Operator in the foreground:
 
 ```bash
-./ztd operator start --endpoint <gateway-host>
+./ztd operator start --endpoint "$GATEWAY_HOST"
 ```
 
 For a same-host deployment, give the Operator its own working directory so it does not share the Gateway's `.ztd/`:
@@ -113,16 +114,16 @@ The Operator executes:
 
 ### 4. Inspect and Approve the Request
 
-From the enrolled owner CLI:
+From the enrolled owner CLI, with `GATEWAY_HOST` still set from step 2:
 
 ```bash
-./ztd auth enroll pending --endpoint <gateway-host>
+./ztd auth enroll pending --endpoint "$GATEWAY_HOST"
 ```
 
-Compare the component name, hostname, system fingerprint, and key fingerprints with the Operator's console output, then approve:
+Compare the component, hostname, system fingerprint, and key fingerprints with the values the Operator logs on submission (`operator_fingerprint` and `cli_fingerprint`). Then set the shell variable `REQUEST_ID` to the request ID the Operator printed in step 3, and approve:
 
 ```bash
-./ztd auth enroll approve <request-id> --endpoint <gateway-host> --yes
+./ztd auth enroll approve "$REQUEST_ID" --endpoint "$GATEWAY_HOST" --yes
 ```
 
 ### 5. Wait for the Connection
@@ -139,15 +140,15 @@ A successful connection logs `Channel established - Ready to receive`. The Opera
 
 ## Pin the Gateway CA
 
-To pin the Gateway CA explicitly:
+To pin the Gateway CA explicitly, with `GATEWAY_HOST` set as in step 2 and `ztdg-ca-bundle.pem` copied to this host:
 
 ```bash
 ./ztd operator start \
-  --endpoint <gateway-host> \
-  --trust-bundle /path/to/ztdg-ca-bundle.pem
+  --endpoint "$GATEWAY_HOST" \
+  --trust-bundle "$PWD/.ztd/pki/trust/ztdg-ca-bundle.pem"
 ```
 
-With `--trust-bundle`, the Operator enrolls over `wss://` on Gateway HTTPS port 8443, verifying the Gateway certificate against this CA before sending its request.
+With `--trust-bundle`, the Operator enrolls over `wss://` on the Gateway HTTPS port (8443 by default), verifying the Gateway certificate against this CA before sending its request.
 
 ---
 
@@ -165,10 +166,10 @@ Copy the binary via SCP:
 ./ztd operator scp user@192.0.2.10:/opt/ztd
 ```
 
-Deploy and start workers over SSH:
+Deploy and start Operators over SSH, with `GATEWAY_HOST` set as in step 2:
 
 ```bash
-./ztd operator deploy --hosts user@192.0.2.10 --dest-dir /opt/ztd-operator --background --endpoint <gateway-host>
+./ztd operator deploy --hosts user@192.0.2.10 --dest-dir /opt/ztd-operator --background --endpoint "$GATEWAY_HOST"
 ```
 
 ### Connect Many Operators
@@ -180,7 +181,7 @@ Deploy up to 5000 Operators per host with `--count`. With `--local` alone, the O
   --capabilities data --trust-bundle "$PWD/.ztd/pki/trust/ztdg-ca-bundle.pem" --background --approve
 ```
 
-Add more workers without replacing existing instances:
+Add more Operators without replacing existing instances:
 
 ```bash
 ./ztd operator deploy --local --endpoint localhost --start-index 11 --count 100 \
@@ -199,42 +200,48 @@ Add more workers without replacing existing instances:
 
 ### List Connected Operators
 
+With `GATEWAY_HOST` set as in step 2:
+
 ```bash
-./ztd operator list --endpoint <gateway-host>
+./ztd operator list --endpoint "$GATEWAY_HOST"
 ```
 
-Displays operator ID, type, hostname, session ID, and status (`active` or `stale`).
+Displays operator ID, type, capabilities, hostname, session ID, and status.
 
 ### Bind the CLI to Operators and Run Commands
 
-Bind CLI session to target Operators:
+Set the shell variable `OPERATOR_SESSION_ID` to the session ID of a target Operator from `./ztd operator list`, then bind the CLI session to it. Pass additional session IDs after the first to bind several Operators at once:
 
 ```bash
-./ztd operator bind <operator-session-id> [<operator-session-id>...]
+./ztd operator bind "$OPERATOR_SESSION_ID"
 ./ztd operator bind list
 ./ztd operator bind unbind
 ```
 
-Execute a governed shell command on active Operators in parallel:
+Execute a governed shell command on active Operators in parallel. The single-Operator form uses the `OPERATOR_SESSION_ID` set above:
 
 ```bash
-./ztd operator run <operator-session-id> --cmd "uname -a"
+./ztd operator run "$OPERATOR_SESSION_ID" --cmd "uname -a"
 ./ztd operator run --all-active --concurrency 64 --cmd "uname -a"
 ```
 
 ### Stop the Operator
 
+Stop the Operator whose session ID is in `OPERATOR_SESSION_ID`:
+
 ```bash
-./ztd operator stop <operator-session-id> --reason "maintenance"
+./ztd operator stop "$OPERATOR_SESSION_ID" --reason "maintenance"
 ```
 
-To stop all local workers running under the current user (Linux, macOS, and Windows):
+To stop all local Operators running under the current user (Linux, macOS, and Windows):
 
 ```bash
 ./ztd operator stop
 ```
 
-This discovers `ztd operator start` processes owned by the current user and targets only those workers; it does not stop the Gateway or unrelated `ztd` commands. It first requests governed shutdown where an active Gateway connection is available, then waits for exit and escalates to the platform process termination mechanism if needed. On Windows, both escalation signals terminate the process because Windows has no catchable `TERM` signal. Processes owned by another user, or that cannot be inspected due to permissions or bitness, are skipped. Local stop does not revoke enrollment; because Operator credentials are memory-only, the next start performs enrollment again and needs owner approval.
+This discovers `ztd operator start` processes owned by the current user and targets only those Operators; it does not stop the Gateway or unrelated `ztd` commands. It first requests governed shutdown where an active Gateway connection is available, then waits for exit and escalates to the platform process termination mechanism if needed. On Windows, both escalation signals terminate the process because Windows has no catchable `TERM` signal. Processes owned by another user, or that cannot be inspected due to permissions or bitness, are skipped. Local stop does not revoke enrollment; because Operator credentials are memory-only, the next start performs enrollment again and needs owner approval.
+
+Enrolling again with the same system fingerprint supersedes the prior lease. The fingerprint covers the host, working directory, account, port, and capabilities. The Gateway terminates the earlier Operator record and deactivates its session, so a role that must resolve to one Operator stays unambiguous.
 
 ---
 
@@ -250,7 +257,7 @@ Confirm port 8080 is reachable. `connection refused` from a remote host means th
 
 ### Pub/Sub Connection Fails After Enrollment
 
-Verify port 8443 is reachable, the endpoint contains no scheme or port suffix, and the hostname matches the Gateway certificate SAN.
+Verify port 8443 is reachable, the endpoint contains no URL scheme, and the hostname matches the Gateway certificate SAN.
 
 ### Operator Cannot Start from Its Model Store
 
@@ -263,7 +270,8 @@ Keep `--working-dir` outside `--model-storage-root`. Startup refuses a runtime `
 - **Owner-approved enrollment**: Platform certificates require explicit owner approval via authenticated CLI or Console.
 - **Proof of key possession**: The Operator signs the enrollment completion transcript with both private keys before certificate issuance.
 - **Memory-only identity**: Operator private keys, certificates, and session credentials live only in process memory and never touch disk.
-- **Outbound-only worker**: Operators initiate all connections and expose zero inbound ports.
+- **Bounded identity lifetime**: Operator leaf certificates are valid for at most 7 days (`constants.MaxWorkloadLeafCertTTL`). The Operator renews its leaf two thirds into its lifetime over its own renewal channel. Renewal failures are retried until the leaf expires. A Gateway refusal is final, and the Operator enrolls again with owner approval once the leaf expires.
+- **Outbound-only Operator**: Operators initiate all connections and expose zero inbound ports.
 - **Fail-closed verification**: L4 Warden re-verifies transactions, hashes, nonces, state roots, and posture proofs locally before L5 execution.
 
 ---

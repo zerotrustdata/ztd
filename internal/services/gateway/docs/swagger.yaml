@@ -246,13 +246,10 @@ definitions:
     - ztd.v1.operator.shutdown.requested
     - ztd.v1.operator.slot.initialization.failed
     - ztd.v1.operator.status.updated.active
-    - ztd.v1.operator.status.updated.available
-    - ztd.v1.operator.status.updated.bound
     - ztd.v1.operator.status.updated.offline
     - ztd.v1.operator.status.updated.stale
     - ztd.v1.operator.status.updated.stopped
     - ztd.v1.operator.status.updated.terminated
-    - ztd.v1.operator.status.updated.unavailable
     - ztd.v1.operator.terminal.approval.denied
     - ztd.v1.operator.terminal.auth.state.changed
     - ztd.v1.operator.unbound
@@ -471,13 +468,10 @@ definitions:
     - EventOperatorShutdownRequested
     - EventOperatorSlotInitializationFailed
     - EventOperatorStatusUpdatedActive
-    - EventOperatorStatusUpdatedAvailable
-    - EventOperatorStatusUpdatedBound
     - EventOperatorStatusUpdatedOffline
     - EventOperatorStatusUpdatedStale
     - EventOperatorStatusUpdatedStopped
     - EventOperatorStatusUpdatedTerminated
-    - EventOperatorStatusUpdatedUnavailable
     - EventOperatorTerminalApprovalDenied
     - EventOperatorTerminalAuthStateChanged
     - EventOperatorUnbound
@@ -4481,8 +4475,9 @@ paths:
           schema:
             $ref: '#/definitions/tribunalv1.TribunalIntentResult'
         "400":
-          description: Bad Request — malformed body, missing field, or a member template
-            that sets a Gateway-owned field
+          description: Bad Request — malformed body, missing field, a member template
+            that sets a Gateway-owned field, or a member template role that does not
+            run the requested tier
           schema:
             $ref: '#/definitions/operatorv1.IngressRefusal'
         "401":
@@ -4940,7 +4935,7 @@ paths:
       consumes:
       - text/html
       description: 'Serves the ztd Console: passkey authentication, approvals, Operator
-        inventory and binding, cases, investigations, and chat.'
+        inventory, binding, deploy, and stop, and the native API reference.'
       produces:
       - text/html
       responses:

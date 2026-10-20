@@ -166,6 +166,15 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
 	defer stream.Close()
+	// A stream that stops on its own can no longer deliver a stop request, so the
+	// run stops before its next assignment.
+	go func() {
+		<-stream.Done()
+		if err := stream.Err(); err != nil {
+			slog.Default().Warn("evaluation: run execute: run event stream stopped; stopping before the next assignment", "run_id", opts.RunID, "error", err)
+			watcher.requestStop()
+		}
+	}()
 	if err := lifecycle.reportRunning(cmd.Context()); err != nil {
 		return 0, err
 	}
@@ -532,12 +541,14 @@ func resolveCampaignOllamaEndpoint(operators []*operatorv1.OperatorDocument, inf
 
 // reconcileStopRequest reads the run's lease and marks the watcher requested when
 // a cancel is recorded there. The stream runs it on every connection, so a stop
-// sent while the stream was down is still seen.
+// sent while the stream was down is still seen. A lease that cannot be read may
+// hold such a stop, so the watcher is marked requested then too.
 func reconcileStopRequest(ctx context.Context, store *evaluation.Store, runID string, watcher *runStopWatcher) {
 	lease, err := store.LoadRunLease(ctx, runID)
 	if err != nil {
 		if !isMissingRecord(err) {
-			slog.Default().Warn("evaluation: run execute: read run lease on stream connect", "run_id", runID, "error", err)
+			slog.Default().Warn("evaluation: run execute: read run lease on stream connect; stopping before the next assignment", "run_id", runID, "error", err)
+			watcher.requestStop()
 		}
 		return
 	}

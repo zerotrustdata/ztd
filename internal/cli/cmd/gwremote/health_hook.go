@@ -7,7 +7,12 @@
 
 package gwremote
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
+)
 
 // WithGatewayHealthCheck stubs gateway publication health checks for t.
 func WithGatewayHealthCheck(t *testing.T, healthy bool) {
@@ -15,4 +20,13 @@ func WithGatewayHealthCheck(t *testing.T, healthy bool) {
 	original := GatewayHealthCheck
 	GatewayHealthCheck = func() bool { return healthy }
 	t.Cleanup(func() { GatewayHealthCheck = original })
+}
+
+// WithConfiguredGatewayHealthCheck stubs the configured-Gateway health check
+// used by provider observation and campaign witness capture for t.
+func WithConfiguredGatewayHealthCheck(t *testing.T, healthy bool) {
+	t.Helper()
+	original := ConfiguredGatewayHealthCheck
+	ConfiguredGatewayHealthCheck = func(fs.RuntimeFileService, *config.Config) bool { return healthy }
+	t.Cleanup(func() { ConfiguredGatewayHealthCheck = original })
 }

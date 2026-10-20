@@ -312,7 +312,7 @@ func TestReviewedCampaignAssertionMappingsExcludeApplicationEvidence(t *testing.
 	assert.ElementsMatch(t, []string{
 		"ZTD-AU-PERSIST-001@2.0.0",
 		"ZTD-AU-RECEIPT-001@2.0.0",
-		"ZTD-CM-STATE-001@2.0.0",
+		"ZTD-CM-STATE-001@2.1.0",
 		"ZTD-GOV-ALLOW-001@2.0.0",
 		"ZTD-GOV-BLOCK-001@2.0.0",
 	}, assertionRefs)

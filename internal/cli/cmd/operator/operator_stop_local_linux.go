@@ -28,7 +28,7 @@ import (
 func discoverLocalOperators() ([]localOperatorProcess, error) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
-		return nil, fmt.Errorf("operator stop: discover local workers: %w", err)
+		return nil, fmt.Errorf("operator stop: discover local Operators: %w", err)
 	}
 	var processes []localOperatorProcess
 	for _, entry := range entries {

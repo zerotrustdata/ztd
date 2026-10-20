@@ -675,6 +675,12 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 	}
 	quorum := req.Quorum
 	if quorum == 0 {
+		// A single application defaults to a 1-of-1 binding. A multi-member
+		// set must state its quorum so a K-of-N policy is never written by
+		// omission.
+		if len(members) > 1 {
+			return nil, fmt.Errorf("platform enrollment: consensus quorum must be explicit for %d members: %w", len(members), constants.ErrConsensusQuorumInvalid)
+		}
 		quorum = 1
 	}
 	if quorum < 1 || quorum > len(members) {

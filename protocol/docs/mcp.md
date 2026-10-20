@@ -1,6 +1,6 @@
 # Model Context Protocol (MCP) Integration
 
-Last Updated: 2026-10-18
+Last Updated: 2026-10-20
 Version: v1.2.0
 
 The ztd Gateway implements native support for the **Model Context Protocol (MCP)**. Autonomous AI agents and coding assistants connect to the Gateway via standardized JSON-RPC 2.0 interfaces. The Gateway acts as a Policy Decision Point (PDP), intercepting every tool invocation, encapsulating it into a strongly typed `GovernanceEnvelope`, subjecting it to the 5-layer governance sequence (L1–L5), and executing it either via host-native tools or by proxying to an authorized downstream MCP server.
@@ -13,8 +13,8 @@ The ztd Gateway implements native support for the **Model Context Protocol (MCP)
 
 ### 1.1 Ingress Topology
 The Gateway exposes a unified MCP interface at `/mcp`:
-- **HTTPS Port (`8443`)**: Production surface requiring mutual TLS (`RequireAndVerifyClientCert`). External agent runtimes authenticate with client certificates featuring SPIFFE URI SANs.
-- **HTTP Port (`8080`)**: Plain HTTP listener protected by loopback origin validation, designated for local CLI agents and developer tools operating on the same host.
+- **HTTPS Port (`8443`)**: The only listener that serves `/mcp`. It requires mutual TLS (`RequireAndVerifyClientCert`); clients authenticate with certificates issued by the Gateway PKI. When JWKS is configured, JWT authentication wraps the endpoint.
+- **HTTP Port (`8080`)**: Does not register `/mcp`. Its catch-all handler redirects other paths to the HTTPS listener with `301`.
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -33,7 +33,7 @@ The Gateway exposes a unified MCP interface at `/mcp`:
                             ▼
 ┌────────────────────────────────────────────────────────┐
 │ ztd Operator Execution Boundary (L5 Actuator)          │
-│ ├── Native Tool Handlers (32 In-Process Tools)         │
+│ ├── Native Tool Handlers (In-Process Tools)            │
 │ └── Governed Downstream Proxy (HTTP / Stdio Subprocess)│
 └───────────────────────────┬────────────────────────────┘
                             │ Output Scrubbing & Signing
@@ -48,7 +48,7 @@ The Gateway exposes a unified MCP interface at `/mcp`:
 ### 1.2 Protocol Capabilities
 The `/mcp` endpoint implements the MCP Streamable HTTP specification:
 - **Protocol Negotiation**: Negotiates protocol versions during `initialize` (default: `2025-06-18`).
-- **Method Dispatch**: Supports `tools/list`, `tools/call`, `resources/list`, `resources/read`, `resources/templates/list`, `prompts/list`, `prompts/get`, and `a2a/call`.
+- **Method Dispatch**: Supports `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `resources/templates/list`, `prompts/list`, `prompts/get`, and `a2a/call`.
 - **Batch Rejection**: In accordance with zero-trust envelope binding, JSON-RPC batch requests (array payloads) are rejected fail-closed with code `-32600`.
 - **Payload Size Limits**: Strict byte limits (`maxPayloadBytes`) are enforced on inbound requests before parsing.
 - **Request-Response Correlation**: Preserves and echoes client `id` values across all responses and errors.
@@ -76,7 +76,7 @@ When an MCP client requests a tool execution or resource access, the Gateway tra
 #### McpCallRequested (`protocol/proto/ztd/operator/v1/operator.proto`)
 ```protobuf
 message McpCallRequested {
-  string tool_name = 1 [(ztd.common.v1.forbidden_patterns) = "(?i)^(sudo|su)$"];
+  string tool_name = 1 [(ztd.common.v1.forbidden_patterns) = "(?i)^(sudo|su)$,(?i)^rm[ _-]?rf[ _-]?root$,(?i)^drop[ _-]?database$"];
   string arguments_json = 2;
   string execution_id = 3;
 }
@@ -162,16 +162,25 @@ Every MCP tool call undergoes strict 5-layer verification prior to invocation:
 When an MCP tool call requires human authorization under `ratify` or `notary` postures and no pre-existing L3 proof is attached, the Gateway suspends the call:
 1. The transaction is saved in the `SuspendedTransactionStore` with an immutable 2-minute deadline (`ApprovalRequestTTL`).
 2. The Gateway records the caller's session ID (`submitter_cli_session_id`) to ensure isolation.
-3. The Gateway responds to the MCP client with a suspension directive containing an approval URL:
+3. The Gateway responds to the MCP client with a `CallToolResult` whose `suspension` field holds the typed `GovernedSuspension` (`internal/services/mcp/models.go`). The approval URL is the public base URL joined with `/api/v1/approve/` and the transaction hash:
    ```json
    {
      "jsonrpc": "2.0",
      "id": 1,
      "result": {
-       "status": "suspended",
-       "tx_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-       "approval_url": "https://ztd.local:8443/approve/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-       "message": "Execution paused: this is a state-changing action and the gateway is running in notary posture, which REQUIRES live human passkey (WebAuthn) authorization before it can run. A human must approve this exact change at https://ztd.local:8443/approve/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 within 2 minutes. Wait for the human to approve, then retry this identical tool call to proceed."
+       "content": [
+         {
+           "type": "text",
+           "text": "Execution paused: this is a state-changing action. <posture-specific approval reason> A human must approve this exact change at https://ztd.local:8443/api/v1/approve/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 within 2 minutes. Wait for the human to approve, then retry this identical tool call to proceed."
+         }
+       ],
+       "suspension": {
+         "id": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+         "status": "suspended",
+         "tx_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+         "approval_url": "https://ztd.local:8443/api/v1/approve/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+         "message": "Execution paused: this is a state-changing action. <posture-specific approval reason> A human must approve this exact change at https://ztd.local:8443/api/v1/approve/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 within 2 minutes. Wait for the human to approve, then retry this identical tool call to proceed."
+       }
      }
    }
    ```
@@ -179,53 +188,13 @@ When an MCP tool call requires human authorization under `ratify` or `notary` po
 
 ---
 
-## 4. The 32 Native Tools Inventory
+## 4. Native Tools
 
-The Operator ships with **32 native tools** registered explicitly in `RegisterNativeTools()` (`internal/services/mcp/native_tool_registry.go`). These tools execute directly within the sovereign host boundary without downstream dependencies:
+Native tools are registered explicitly in `RegisterNativeTools()` (`internal/services/mcp/native_tool_registry.go`). They execute inside the Operator's host boundary without downstream dependencies. The `tools/list` method returns the registered set; this document does not enumerate it.
 
-### 4.1 Database Tools
-1. **`db_discover_topology`**: Scans database schemas, tables, and column data types, returning a compressed JSON topology map.
-2. **`db_query_validate`**: Analyzes SQL queries using `EXPLAIN QUERY PLAN` to detect full table scans, performance hazards, and structural defects before execution.
-3. **`db_isolated_read`**: Executes read-only `SELECT` statements against a SQLite database with strict injection validation.
-4. **`db_index_triage`**: Inspects database fragmentation, index utilization, and schema efficiency statistics.
-
-### 4.2 System Diagnostics & Telemetry
-5. **`sys_info`**: Retrieves comprehensive host information including hostname, operating system, kernel version, uptime, and load averages.
-6. **`sys_env_vars`**: Inspects allowlisted host environment variables for configuration debugging.
-7. **`sys_time_clock`**: Reports NTP synchronization status, local system time, and clock drift metrics.
-8. **`sys_oom_detect`**: Analyzes system logs to detect and parse Linux Out-Of-Memory (OOM) killer events.
-9. **`sys_service_status`**: Queries systemd service units for operational state and active status.
-10. **`sys_container_status`**: Queries local container runtimes (e.g., Podman) for container health and lifecycle state.
-11. **`proc_metric_top`**: Parses `/proc` to report top resource-consuming processes sorted by CPU and memory.
-12. **`proc_tree`**: Generates a structured process tree detailing parent-child PID hierarchies.
-13. **`proc_signal_safe`**: Dispatches POSIX signals to processes, enforcing an absolute denylist against protected system PIDs.
-
-### 4.3 Filesystem & Storage Tools
-14. **`fs_disk_profile`**: Recursively computes directory sizes, file counts, and disk utilization breakdowns.
-15. **`fs_disk_usage`**: Reports filesystem mount point utilization, total capacity, and available free space (`df` equivalent).
-16. **`fs_file_checksum`**: Computes SHA-256 digests of files for integrity and tamper verification.
-17. **`read_file`**: Reads file contents with optional line-based pagination (`offset`, `limit`). Enforces strict path denylists on sensitive system files (`/etc/shadow`, SSH private keys).
-18. **`config_diff_mask`**: Compares configuration files side-by-side with automated secret redaction.
-19. **`log_stream_filter`**: Reads and filters log files using regular expressions, applying sovereign data scrubbing to matched outputs.
-
-### 4.4 Network & Transport Tools
-20. **`net_socket_audit`**: Inspects open network sockets (TCP/UDP) directly from `/proc/net`.
-21. **`net_endpoint_ping`**: Conducts TCP handshakes to target endpoints to confirm network reachability and measure round-trip latency.
-22. **`net_http_probe`**: Executes lightweight HTTP requests to test web endpoints, enforcing SSRF protections and private subnet restrictions.
-23. **`net_dns_resolve`**: Performs DNS resolution for hostnames, providing diagnostic records.
-24. **`net_ssh_known_hosts`**: Parses and enumerates configured SSH known hosts across system and user configurations.
-25. **`tls_cert_inspect`**: Inspects TLS certificates, verifies certificate trust chains, and reports expiration deadlines.
-
-### 4.5 Execution & Infrastructure Tools
-26. **`run_shell_command`**: Executes governed shell commands with strict safety denylists and timeouts. Supports multi-host SSH dispatch via the `hostnames` parameter.
-27. **`git_ops`**: Performs governed Git version control operations (status, log, branch verification, remotes).
-28. **`k8s_inspect`**: Inspects Kubernetes cluster status, pod states, service endpoints, and deployment rollouts.
-29. **`cloud_metadata`**: Queries cloud provider instance metadata services (AWS, Azure, GCP) to retrieve instance type, region, and zone details.
-30. **`operator_deploy`**: Deploys the ztd operator binary to remote hosts over SSH using verified deploy scripts.
-
-### 4.6 Audit & Forensics Tools
-31. **`audit_receipt_list`**: Lists signed `ActionReceipt` records. The Gateway-native query reads the Gateway's local audit store and requires `operator_session_id`; optional `investigation_id` intersects that scope. Remote Operator records there remain best-effort projections. A governed `MCP_CALL` dispatched to the selected Data Operator with `investigation_id` and `exclude_audit_reads: true` uses that Operator's authoritative local ledger. Its session filter is optional, so one investigation can retrieve receipts across reconnects of the same Operator. SQL applies the Operator identity, investigation, and session filters; the audit-read exclusion drops only the `audit_receipt_list` and `audit_receipt_get` receipts themselves, after decryption and before pagination. Excluding those reads prevents recursive history responses; every other native-tool `MCP_CALL`, including `run_shell_command`, is investigation context. The Operator result contains only signed receipt messages and the `operator_id`, `investigation_id`, `authority: "operator_local_ledger"`, and `count` metadata, preserved in the query's signed receipt summary. Each original receipt's content was scrubbed before its original L5 signature; arbitrary handler text still passes through normal egress scrubbing. The query never falls back to the Gateway mirror. Both routes remain read-only and governed; posture-required L2/L3 proofs still apply. Optional action-type and execution-time filters further narrow results.
-32. **`audit_receipt_get`**: Retrieves a single, complete signed `ActionReceipt` by its `transaction_id`.
+### 4.1 Audit Receipt Queries
+- **`audit_receipt_list`**: Lists signed `ActionReceipt` records. The Gateway-native query reads the Gateway's local audit store and requires `operator_session_id`; optional `investigation_id` intersects that scope. Remote Operator records there remain best-effort projections. A governed `MCP_CALL` dispatched to the selected Data Operator with `investigation_id` and `exclude_audit_reads: true` uses that Operator's authoritative local ledger. Its session filter is optional, so one investigation can retrieve receipts across reconnects of the same Operator. SQL applies the Operator identity, investigation, and session filters; the audit-read exclusion drops only the `audit_receipt_list` and `audit_receipt_get` receipts themselves, after decryption and before pagination. Excluding those reads prevents recursive history responses; every other native-tool `MCP_CALL`, including `run_shell_command`, is investigation context. The Operator result contains only signed receipt messages and the `operator_id`, `investigation_id`, `authority: "operator_local_ledger"`, and `count` metadata, preserved in the query's signed receipt summary. Each original receipt's content was scrubbed before its original L5 signature; arbitrary handler text still passes through normal egress scrubbing. The query never falls back to the Gateway mirror. Both routes remain read-only and governed; posture-required L2/L3 proofs still apply. Optional action-type and execution-time filters further narrow results.
+- **`audit_receipt_get`**: Retrieves a single, complete signed `ActionReceipt` by its `transaction_id`.
 
 ---
 
@@ -273,62 +242,34 @@ Downstream connections are protected by a stateful circuit breaker:
 
 | Transport Mode | Execution Command | Governance Level | Use Case |
 |:---|:---|:---:|:---|
-| **Stdio Bridge** | `ztd mcp stdio` | Full L1–L5 | Connects local agents to running Gateway |
-| **Agent Launcher** | `ztd mcp agent run <agent>` | Full L1–L5 | Launches agent with governed environment |
-| **HTTP Custom Connector**| `http://localhost:8080/mcp` | Full L1–L5 | IDE plugins and native HTTP clients |
+| **Stdio Bridge** | `ztd mcp stdio` | Full L1–L5 | Connects local agents to the running Gateway |
+| **Agent Launcher** | `ztd mcp agent run <agent>` | Full L1–L5 | Launches a supported agent with a governed configuration |
+| **HTTPS Endpoint** | `https://<gateway-host>:8443/mcp` | Full L1–L5 | Direct clients; requires mTLS client certificates or JWT when JWKS is configured |
 
-### 7.2 Connecting AI Agents
+### 7.2 Client Configuration
 
-#### Claude Code (HTTP Transport)
-```bash
-claude mcp add --transport http ztd http://localhost:8080/mcp
-```
-
-#### Claude Code (Stdio Transport)
-```bash
-claude mcp add ztd-stdio ztd mcp stdio
-```
-
-#### OpenAI Codex CLI
-```bash
-codex mcp add --transport http ztd http://localhost:8080/mcp
-```
-
-#### Goose AI
-```yaml
-# Add to ~/.config/goose/config.yaml
-extensions:
-  ztd:
-    type: stdio
-    cmd: ztd
-    args: ["mcp", "stdio"]
-```
-
-#### Gemini CLI
-```bash
-gemini mcp register --url http://localhost:8080/mcp ztd
-```
+Print the client configuration for a supported agent with `ztd mcp agent show <agent>`, and list supported agents with `ztd mcp agent list`. Client configuration MUST point at the HTTPS endpoint or the stdio bridge; the plain HTTP listener does not serve `/mcp`.
 
 ---
 
 ## 8. Protocol Error Mapping
 
-Verification failures map to standardized JSON-RPC 2.0 error codes:
+Verification failures map to JSON-RPC 2.0 error codes. Verification codes are defined in `internal/constants/rpc_errors.go`. The standard codes `-32600`, `-32601`, and `-32603` are emitted as literals in `internal/services/mcp/`; `-32700` is `JSONRPCErrorCodeParseError` and `-32603` is `JSONRPCErrorCodeInternal` in `internal/constants/auth.go`.
 
-| JSON-RPC Code | Constant Identifier | Cause |
+| JSON-RPC Code | Constant | Cause |
 |:---|:---|:---|
-| `-32700` | `JSONRPCParseError` | Malformed JSON received on ingress |
-| `-32600` | `JSONRPCInvalidRequest` | Batch requests or payload exceeding size limit |
-| `-32601` | `JSONRPCMethodNotFound` | Unrecognized MCP method |
-| `-32602` | `JSONRPCInvalidParams` | Missing required parameters (e.g. `tool_name`) |
-| `-32603` | `JSONRPCInternalError` | Internal error or circuit breaker open |
-| `-32000` | `ErrCodeInvalidEnvelope`| Malformed envelope or unregistered action |
+| `-32700` | `JSONRPCErrorCodeParseError` | Malformed JSON received on ingress |
+| `-32600` | literal | Batch requests, invalid `jsonrpc` version, or payload exceeding size limit |
+| `-32601` | literal | Unrecognized MCP method |
+| `-32603` | `JSONRPCErrorCodeInternal` | Missing `tool_name`, Gateway not ready, internal error, or circuit breaker open |
+| `-32000` | `ErrCodeInvalidEnvelope` | Malformed envelope or unregistered action |
 | `-32001` | `ErrCodeHashMismatch` | Transaction hash recomputation failed |
 | `-32002` | `ErrCodeExpired` | Transaction expired |
 | `-32003` | `ErrCodeReplay` | Transaction nonce already processed |
 | `-32004` | `ErrCodeStateMismatch` | State Merkle root stale |
-| `-32005` | `ErrCodeL1ValidationFailed`| L1 Doctrine regex violation or MITRE threat detected |
-| `-32006` | `ErrCodeL2SignatureInvalid`| L2 Consensus signature missing or quorum failed |
+| `-32005` | `ErrCodeL1ValidationFailed` | L1 Doctrine regex violation or MITRE threat detected |
+| `-32006` | `ErrCodeL2SignatureInvalid` | L2 Consensus signature missing or quorum failed |
 | `-32007` | `ErrCodeL3ProofInvalid` | L3 Notary human verification failed |
-| `-32008` | `ErrCodePayloadDecodeFailed`| Failed to decode protobuf payload |
-| `-32101` | `ErrCodeGatewayNotReady`| Gateway initializing or offline |
+| `-32008` | `ErrCodePayloadDecodeFailed` | Failed to decode protobuf payload |
+
+`ErrCodeGatewayNotReady` (`-32101`) and `ErrCodeResourceNotFound` (`-32100`) are reserved. The MCP path does not emit them; a Gateway that is not ready returns `-32603`.

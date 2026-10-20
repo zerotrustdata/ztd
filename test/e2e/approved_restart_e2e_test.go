@@ -143,14 +143,11 @@ const e2eEventWaitTimeout = 180 * time.Second
 
 // e2eOperatorStatusUpdated is the set of typed operator.status.updated.* events.
 var e2eOperatorStatusUpdated = map[string]bool{
-	string(constants.EventOperatorStatusUpdatedActive):      true,
-	string(constants.EventOperatorStatusUpdatedAvailable):   true,
-	string(constants.EventOperatorStatusUpdatedBound):       true,
-	string(constants.EventOperatorStatusUpdatedOffline):     true,
-	string(constants.EventOperatorStatusUpdatedStale):       true,
-	string(constants.EventOperatorStatusUpdatedStopped):     true,
-	string(constants.EventOperatorStatusUpdatedTerminated):  true,
-	string(constants.EventOperatorStatusUpdatedUnavailable): true,
+	string(constants.EventOperatorStatusUpdatedActive):     true,
+	string(constants.EventOperatorStatusUpdatedOffline):    true,
+	string(constants.EventOperatorStatusUpdatedStale):      true,
+	string(constants.EventOperatorStatusUpdatedStopped):    true,
+	string(constants.EventOperatorStatusUpdatedTerminated): true,
 }
 
 func newE2EEventWaiters() *e2eEventWaiters {

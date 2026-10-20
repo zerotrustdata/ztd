@@ -10,6 +10,7 @@ package scrubbing
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -41,8 +42,16 @@ func assertTokenized(t *testing.T, service *ScrubbingService, input string, secr
 	for _, secret := range secrets {
 		assert.NotContains(t, result, secret, "input: %s", input)
 	}
-	assert.Equal(t, input, service.RehydrateText(ctx, result), "rehydration must restore input: %s", input)
+	assert.Equal(t, input, mustRehydrateText(t, service, result), "rehydration must restore input: %s", input)
 	return result
+}
+
+// mustRehydrateText rehydrates text and fails the test when any placeholder does not resolve.
+func mustRehydrateText(t *testing.T, service *ScrubbingService, text string) string {
+	t.Helper()
+	rehydrated, err := service.RehydrateText(context.Background(), text)
+	require.NoError(t, err)
+	return rehydrated
 }
 
 // assertPreserved asserts that input passes through scrubbing unchanged.
@@ -331,7 +340,7 @@ func TestScrubbingService_TokenPersistence(t *testing.T) {
 	token, err := service.GetTokenForValue(ctx, sensitiveValue)
 	require.NoError(t, err)
 	assert.Regexp(t, `^\{\{UEI_\d+\}\}$`, token)
-	assert.Equal(t, sensitiveValue, service.RehydrateText(ctx, token))
+	assert.Equal(t, sensitiveValue, mustRehydrateText(t, service, token))
 
 	storedValue, err := tokenStore.KVGet(ctx, constants.ScrubbingTokenKeyPrefix+token)
 	require.NoError(t, err)
@@ -341,7 +350,7 @@ func TestScrubbingService_TokenPersistence(t *testing.T) {
 	// continues the token sequence instead of reusing a persisted token.
 	service2, err := NewScrubbingService(ctx, lenientConfig(), logger, tokenStore)
 	require.NoError(t, err)
-	assert.Equal(t, sensitiveValue, service2.RehydrateText(ctx, token))
+	assert.Equal(t, sensitiveValue, mustRehydrateText(t, service2, token))
 	token2, err := service2.GetTokenForValue(ctx, "another-secret")
 	require.NoError(t, err)
 	assert.NotEqual(t, token, token2)
@@ -360,7 +369,7 @@ func TestScrubbingService_RehydrateText_LoadsFromStore(t *testing.T) {
 	require.NoError(t, err)
 
 	scrubbed := writer.ScrubText(ctx, "password=late-secret")
-	assert.Equal(t, "password=late-secret", reader.RehydrateText(ctx, scrubbed))
+	assert.Equal(t, "password=late-secret", mustRehydrateText(t, reader, scrubbed))
 }
 
 func TestScrubbingService_IsEnabled(t *testing.T) {
@@ -379,24 +388,21 @@ func TestScrubbingService_RehydrateText(t *testing.T) {
 
 	t.Run("empty input returns empty", func(t *testing.T) {
 		t.Parallel()
-		assert.Empty(t, service.RehydrateText(ctx, ""))
+		rehydrated, err := service.RehydrateText(ctx, "")
+		require.NoError(t, err)
+		assert.Empty(t, rehydrated)
 	})
 
 	t.Run("no tokens returns original", func(t *testing.T) {
 		t.Parallel()
-		assert.Equal(t, "This is normal text", service.RehydrateText(ctx, "This is normal text"))
-	})
-
-	t.Run("unknown token is left in place", func(t *testing.T) {
-		t.Parallel()
-		assert.Equal(t, "run {{UEI_999999}}", service.RehydrateText(ctx, "run {{UEI_999999}}"))
+		assert.Equal(t, "This is normal text", mustRehydrateText(t, service, "This is normal text"))
 	})
 
 	t.Run("rehydrates known token", func(t *testing.T) {
 		t.Parallel()
 		token, err := service.GetTokenForValue(ctx, "secret-value")
 		require.NoError(t, err)
-		assert.Equal(t, "Command with secret-value", service.RehydrateText(ctx, "Command with "+token))
+		assert.Equal(t, "Command with secret-value", mustRehydrateText(t, service, "Command with "+token))
 	})
 
 	t.Run("restored values are not rescanned", func(t *testing.T) {
@@ -405,8 +411,50 @@ func TestScrubbingService_RehydrateText(t *testing.T) {
 		require.NoError(t, err)
 		outer, err := service.GetTokenForValue(ctx, "literal "+inner)
 		require.NoError(t, err)
-		assert.Equal(t, "literal "+inner, service.RehydrateText(ctx, outer))
+		assert.Equal(t, "literal "+inner, mustRehydrateText(t, service, outer))
 	})
+
+	// A placeholder that cannot be resolved must never reach dispatch as text, so the
+	// whole call fails and returns no text.
+	t.Run("unknown token fails closed", func(t *testing.T) {
+		t.Parallel()
+		rehydrated, err := service.RehydrateText(ctx, "run {{UEI_999999}}")
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+		assert.Empty(t, rehydrated)
+	})
+
+	t.Run("token store lookup failure fails closed", func(t *testing.T) {
+		t.Parallel()
+		storeErr := errors.New("vault is locked")
+		failing, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), unreadableTokenStore{err: storeErr})
+		require.NoError(t, err)
+
+		rehydrated, err := failing.RehydrateText(ctx, "password={{UEI_1}}")
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+		require.ErrorIs(t, err, storeErr, "the store failure stays in the error chain")
+		assert.Empty(t, rehydrated)
+	})
+
+	t.Run("token outside memory without a token store fails closed", func(t *testing.T) {
+		t.Parallel()
+		unpersisted, err := NewScrubbingService(ctx, &Config{Enabled: true}, testutil.NewTestLogger(), nil)
+		require.NoError(t, err)
+
+		rehydrated, err := unpersisted.RehydrateText(ctx, "{{UEI_1}}")
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+		assert.Empty(t, rehydrated)
+	})
+}
+
+// unreadableTokenStore is a TokenStore whose lookups fail, as a locked vault makes them.
+type unreadableTokenStore struct{ err error }
+
+func (f unreadableTokenStore) KVSet(context.Context, string, string, int) error { return nil }
+
+func (f unreadableTokenStore) KVGet(context.Context, string) (string, error) { return "", f.err }
+
+func (f unreadableTokenStore) KVScanPrefix(context.Context, string) (map[string]string, error) {
+	return map[string]string{}, nil
 }
 
 func TestScrubbingService_RehydratePayload(t *testing.T) {
@@ -455,6 +503,49 @@ func TestScrubbingService_RehydratePayload(t *testing.T) {
 		result, err := service.RehydratePayload(ctx, payload)
 		require.NoError(t, err)
 		assert.JSONEq(t, string(payload), string(result))
+	})
+
+	t.Run("unresolvable token fails the whole payload", func(t *testing.T) {
+		t.Parallel()
+		for _, payload := range [][]byte{
+			[]byte("Text with {{UEI_999999}}"),
+			[]byte(`{"ok":"fine","bad":"{{UEI_999999}}"}`),
+			[]byte(`["fine",{"bad":["{{UEI_999999}}"]}]`),
+		} {
+			result, err := service.RehydratePayload(ctx, payload)
+			require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved, "payload: %s", payload)
+			assert.Nil(t, result, "no partially rehydrated payload is returned: %s", payload)
+		}
+	})
+
+	// A sensitive key is tokenized by ScrubText along with the rest of the text, so
+	// rehydration must restore the key too, or the handler receives a placeholder name.
+	t.Run("object key restored", func(t *testing.T) {
+		t.Parallel()
+		scrubbed := service.ScrubText(ctx, `{"bob@x.io":1,"nested":{"bob@x.io":"v"}}`)
+		require.NotContains(t, scrubbed, "bob@x.io")
+
+		result, err := service.RehydratePayload(ctx, []byte(scrubbed))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"bob@x.io":1,"nested":{"bob@x.io":"v"}}`, string(result))
+	})
+
+	t.Run("unresolvable object key fails the whole payload", func(t *testing.T) {
+		t.Parallel()
+		result, err := service.RehydratePayload(ctx, []byte(`{"ok":1,"{{UEI_999999}}":2}`))
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+		assert.Nil(t, result, "no partially rehydrated payload is returned")
+	})
+
+	// Two keys that restore to the same name would overwrite one field with the other.
+	t.Run("colliding object keys fail the whole payload", func(t *testing.T) {
+		t.Parallel()
+		token, err := service.GetTokenForValue(ctx, "bob@x.io")
+		require.NoError(t, err)
+
+		result, err := service.RehydratePayload(ctx, []byte(`{"bob@x.io":1,"`+token+`":2}`))
+		require.ErrorIs(t, err, constants.ErrScrubbingKeyCollision)
+		assert.Nil(t, result, "no payload with a dropped field is returned")
 	})
 }
 

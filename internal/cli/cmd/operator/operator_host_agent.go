@@ -362,14 +362,14 @@ func ExecuteDeployHostStart(ctx context.Context, workingDir, binary string, args
 		binPath = filepath.Join(workingDir, binPath)
 	}
 	if !isZtdExecutable(filepath.Base(binPath)) {
-		return 0, fmt.Errorf("operator deploy-host start: %w: worker executable must be named ztd", constants.ErrOperatorDeployFailed)
+		return 0, fmt.Errorf("operator deploy-host start: %w: Operator executable must be named ztd", constants.ErrOperatorDeployFailed)
 	}
 	if _, err := os.Stat(binPath); err != nil {
-		return 0, fmt.Errorf("worker binary %s not found: %w", binPath, err)
+		return 0, fmt.Errorf("Operator binary %s not found: %w", binPath, err)
 	}
 
 	if _, err := ExecuteDeployHostStop(ctx, "", workingDir); err != nil {
-		return 0, fmt.Errorf("stop previous worker in %s: %w", workingDir, err)
+		return 0, fmt.Errorf("stop previous Operator in %s: %w", workingDir, err)
 	}
 
 	logPath := filepath.Join(workingDir, constants.DeployStartLogFilename)
@@ -411,7 +411,7 @@ func ExecuteDeployHostStart(ctx context.Context, workingDir, binary string, args
 	detachDeployedOperator(worker)
 
 	if err := worker.Start(); err != nil {
-		return 0, fmt.Errorf("start worker process: %w", err)
+		return 0, fmt.Errorf("start Operator process: %w", err)
 	}
 
 	pid := worker.Process.Pid
@@ -490,7 +490,7 @@ func ExecuteDeployHostStop(ctx context.Context, destDir, workingDir string) ([]i
 	// bound to verified local Operator identities and is the sole stop authority.
 	locals, err := defaultLocalOperatorDiscoverer()
 	if err != nil {
-		return nil, fmt.Errorf("operator deploy-host stop: discover local workers: %w", err)
+		return nil, fmt.Errorf("operator deploy-host stop: discover local Operators: %w", err)
 	}
 	var matched []localOperatorProcess
 	for _, p := range locals {

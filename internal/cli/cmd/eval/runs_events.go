@@ -47,7 +47,8 @@ type runEventStream struct {
 //
 // A first connection that fails is returned and not retried. Once connected, the
 // SSE client reconnects with backoff. The stream stops only when ctx is
-// cancelled or the Gateway refuses the CLI session. httpClient must carry the CLI
+// cancelled, the Gateway refuses the CLI session, or a stop or status payload
+// does not decode. httpClient must carry the CLI
 // mTLS identity that owns cliSessionID.
 func subscribeRunEvents(ctx context.Context, httpClient *http.Client, baseURL, cliSessionID, runID string, events chan<- runEvent, onConnect func()) (*runEventStream, error) {
 	sseURL := baseURL + constants.APIPaths.SSEStream + "?since_id=0"
@@ -80,10 +81,19 @@ func subscribeRunEvents(ctx context.Context, httpClient *http.Client, baseURL, c
 			cancel()
 		}
 	})
+	// decodeErr is the first stop or status payload that did not decode. It ends
+	// the stream, because the frame may have been this run's stop.
+	var decodeErr error
 	go func() {
 		defer close(stream.done)
 		sseClient.Run(subCtx, func(eventType, data string) {
-			deliverRunEvent(subCtx, events, runID, eventType, data)
+			if decodeErr != nil {
+				return
+			}
+			if err := deliverRunEvent(subCtx, events, runID, eventType, data); err != nil {
+				decodeErr = err
+				cancel()
+			}
 		})
 		if !established {
 			connectErr := lastErr
@@ -96,7 +106,10 @@ func subscribeRunEvents(ctx context.Context, httpClient *http.Client, baseURL, c
 			ready <- connectErr
 			return
 		}
-		if subCtx.Err() == nil {
+		switch {
+		case decodeErr != nil:
+			stream.err = decodeErr
+		case subCtx.Err() == nil:
 			// Run stopped retrying, so the Gateway refused the CLI session.
 			stream.err = lastErr
 		}
@@ -110,33 +123,42 @@ func subscribeRunEvents(ctx context.Context, httpClient *http.Client, baseURL, c
 }
 
 // deliverRunEvent decodes one SSE frame and sends it on events when it is a stop
-// or status event for runID. Any other frame is ignored.
-func deliverRunEvent(ctx context.Context, events chan<- runEvent, runID, eventType, data string) {
+// or status event for runID. Any other frame is ignored. A stop or status payload
+// that does not decode is returned as an error: it may be this run's stop, so it
+// is never dropped as another run's event.
+func deliverRunEvent(ctx context.Context, events chan<- runEvent, runID, eventType, data string) error {
 	ev, ok := sse.DecodeEvent(eventType, data)
 	if !ok {
-		return
+		return nil
 	}
 	var out runEvent
 	switch ev.Type {
 	case string(constants.EventAiEvalStopRequested):
 		var payload models.EvalStopRequestedPayload
-		if err := json.Unmarshal(ev.Data, &payload); err != nil || payload.RunID != runID {
-			return
+		if err := json.Unmarshal(ev.Data, &payload); err != nil {
+			return fmt.Errorf("decode %s: %w", ev.Type, err)
+		}
+		if payload.RunID != runID {
+			return nil
 		}
 		out.Stop = &payload
 	case string(constants.EventAppRunStatusUpdated):
 		var payload models.RunStatusUpdatedPayload
-		if err := json.Unmarshal(ev.Data, &payload); err != nil || payload.RunID != runID {
-			return
+		if err := json.Unmarshal(ev.Data, &payload); err != nil {
+			return fmt.Errorf("decode %s: %w", ev.Type, err)
+		}
+		if payload.RunID != runID {
+			return nil
 		}
 		out.Status = &payload
 	default:
-		return
+		return nil
 	}
 	select {
 	case events <- out:
 	case <-ctx.Done():
 	}
+	return nil
 }
 
 // Done is closed when the stream has stopped, whether its owner closed it or it

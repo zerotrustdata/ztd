@@ -827,16 +827,23 @@ func (m *PublicMirrorServer) withCORS(h http.Handler) http.Handler {
 	})
 }
 
-func (m *PublicMirrorServer) ingestAuthorized(r *http.Request) bool {
+// ingestAuthorized checks the request's bearer token against the configured
+// ingest token. An unconfigured token rejects every request: the mirror never
+// admits ingest or proof traffic without a shared secret.
+func (m *PublicMirrorServer) ingestAuthorized(r *http.Request) error {
 	m.mu.RLock()
 	token := m.ingestAuthToken
 	m.mu.RUnlock()
 	if token == "" {
-		return true
+		m.logger.Warn("mirror: ingest token is not configured; rejecting request", "path", r.URL.Path)
+		return fmt.Errorf("mirror ingest: %w", constants.ErrPublicFeedIngestTokenRequired)
 	}
 	provided := r.Header.Get("Authorization")
 	expected := "Bearer " + token
-	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+		return constants.ErrPublicFeedIngestUnauthorized
+	}
+	return nil
 }
 
 func (m *PublicMirrorServer) handleKeyRegistration(w http.ResponseWriter, r *http.Request) {
@@ -844,7 +851,7 @@ func (m *PublicMirrorServer) handleKeyRegistration(w http.ResponseWriter, r *htt
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !m.ingestAuthorized(r) {
+	if err := m.ingestAuthorized(r); err != nil {
 		m.writeJSON(w, http.StatusUnauthorized, models.PublicKeyRegistrationResponse{Accepted: false})
 		return
 	}
@@ -939,7 +946,7 @@ func (m *PublicMirrorServer) handleIngest(w http.ResponseWriter, r *http.Request
 	}
 
 	// Authenticate.
-	if !m.ingestAuthorized(r) {
+	if err := m.ingestAuthorized(r); err != nil {
 		resp := models.PublicIngestResponse{Accepted: false, RejectionReason: models.PublicFeedIngestRejectionSignatureInvalid}
 		m.writeJSON(w, http.StatusUnauthorized, resp)
 		return
@@ -975,7 +982,7 @@ func (m *PublicMirrorServer) handleProofIngest(w http.ResponseWriter, r *http.Re
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !m.ingestAuthorized(r) {
+	if err := m.ingestAuthorized(r); err != nil {
 		m.writeJSON(w, http.StatusUnauthorized, models.PublicProofIngestResponse{Accepted: false})
 		return
 	}
@@ -1612,7 +1619,7 @@ func (m *PublicMirrorServer) handleProofRoot(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !m.ingestAuthorized(r) {
+	if err := m.ingestAuthorized(r); err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

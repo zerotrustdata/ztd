@@ -109,13 +109,18 @@ func validRecords(t *testing.T) []models.PublicFeedRecord {
 	}
 }
 
-// writeDatabaseFile stores built bytes under the runtime root and returns the
-// absolute path VerifyDatabase reads.
-func writeDatabaseFile(t *testing.T, files fs.RuntimeFileService, data []byte) string {
+// mutateDatabase stages built bytes under the runtime root, runs one statement
+// against that file, and returns the file's bytes after the change. The returned
+// bytes are what a verifier would digest and load.
+func mutateDatabase(t *testing.T, files fs.RuntimeFileService, data []byte, statement string, args ...any) []byte {
 	t.Helper()
+	ctx := context.Background()
 	rel := filepath.Join("exports", databaseFilename)
-	require.NoError(t, files.WriteFile(context.Background(), rel, data, constants.PermFilePrivate))
-	return files.Resolve(rel)
+	require.NoError(t, files.WriteFile(ctx, rel, data, constants.PermFilePrivate))
+	execOnDatabaseFile(t, files.Resolve(rel), statement, args...)
+	mutated, err := files.ReadFile(ctx, rel)
+	require.NoError(t, err)
+	return mutated
 }
 
 // execOnDatabaseFile runs one statement against the file through a plain SQLite
@@ -148,7 +153,38 @@ func TestBuildAndVerifyDatabaseRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	requireScratchRemoved(t, files)
 
-	gotHeader, gotRecords, err := VerifyDatabase(ctx, writeDatabaseFile(t, files, data))
+	gotHeader, gotRecords, err := VerifyDatabase(ctx, data)
+	require.NoError(t, err)
+	assert.Equal(t, header, gotHeader)
+	assert.Equal(t, records, gotRecords)
+}
+
+func TestVerifyDatabaseRequiresImage(t *testing.T) {
+	_, _, err := VerifyDatabase(context.Background(), nil)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+}
+
+func TestVerifyDatabaseRejectsBytesThatAreNotSQLite(t *testing.T) {
+	_, _, err := VerifyDatabase(context.Background(), []byte("audit bytes of another assignment, not a database"))
+	require.Error(t, err)
+}
+
+// TestVerifyDatabaseReadsOnlyTheGivenImage pins the single-read contract: the
+// verified records are the records in the image passed in, whatever else is on
+// disk at the database's location.
+func TestVerifyDatabaseReadsOnlyTheGivenImage(t *testing.T) {
+	ctx := context.Background()
+	files := newTestFiles(t)
+	header := testHeader()
+	records := validRecords(t)
+	data, err := BuildDatabase(ctx, files, header, records)
+	require.NoError(t, err)
+
+	other := eventRecord(t, 4, testRunID, "other-assignment")
+	otherData := mutateDatabase(t, files, data, `UPDATE events SET record_bytes = ?, record_hash = ? WHERE sequence = ?`, other.RecordBytes, other.RecordHash, 4)
+	require.NotEqual(t, data, otherData)
+
+	gotHeader, gotRecords, err := VerifyDatabase(ctx, data)
 	require.NoError(t, err)
 	assert.Equal(t, header, gotHeader)
 	assert.Equal(t, records, gotRecords)
@@ -213,12 +249,11 @@ func TestVerifyDatabaseDetectsTamperedRecordBytes(t *testing.T) {
 	files := newTestFiles(t)
 	data, err := BuildDatabase(ctx, files, testHeader(), validRecords(t))
 	require.NoError(t, err)
-	path := writeDatabaseFile(t, files, data)
 
 	forged := eventBody(t, "event-forged", testRunID, testAssignmentID)
-	execOnDatabaseFile(t, path, `UPDATE events SET record_bytes = ? WHERE sequence = ?`, string(forged), 4)
+	tampered := mutateDatabase(t, files, data, `UPDATE events SET record_bytes = ? WHERE sequence = ?`, string(forged), 4)
 
-	_, _, err = VerifyDatabase(ctx, path)
+	_, _, err = VerifyDatabase(ctx, tampered)
 	require.ErrorIs(t, err, constants.ErrPublicFeedRecordHashMismatch)
 }
 
@@ -227,13 +262,12 @@ func TestVerifyDatabaseRejectsEventOutsideAssignment(t *testing.T) {
 	files := newTestFiles(t)
 	data, err := BuildDatabase(ctx, files, testHeader(), validRecords(t))
 	require.NoError(t, err)
-	path := writeDatabaseFile(t, files, data)
 
 	// Re-hash the replaced body so only the scope check can reject it.
 	outside := eventRecord(t, 4, testRunID, "other-assignment")
-	execOnDatabaseFile(t, path, `UPDATE events SET record_bytes = ?, record_hash = ? WHERE sequence = ?`, outside.RecordBytes, outside.RecordHash, 4)
+	tampered := mutateDatabase(t, files, data, `UPDATE events SET record_bytes = ?, record_hash = ? WHERE sequence = ?`, outside.RecordBytes, outside.RecordHash, 4)
 
-	_, _, err = VerifyDatabase(ctx, path)
+	_, _, err = VerifyDatabase(ctx, tampered)
 	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 }
 
@@ -242,10 +276,9 @@ func TestVerifyDatabaseRejectsMissingAssignmentRow(t *testing.T) {
 	files := newTestFiles(t)
 	data, err := BuildDatabase(ctx, files, testHeader(), validRecords(t))
 	require.NoError(t, err)
-	path := writeDatabaseFile(t, files, data)
 
-	execOnDatabaseFile(t, path, `DELETE FROM assignment`)
+	tampered := mutateDatabase(t, files, data, `DELETE FROM assignment`)
 
-	_, _, err = VerifyDatabase(ctx, path)
+	_, _, err = VerifyDatabase(ctx, tampered)
 	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }

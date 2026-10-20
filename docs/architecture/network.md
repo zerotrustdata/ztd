@@ -3,8 +3,8 @@ doc_id: network
 title: Network Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.0.6
-last_updated: 2026-10-13
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - internal/services/gateway/
   - internal/services/network/
@@ -59,7 +59,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | --- | --- |
 | INV-NET-PKI-01 | All platform certificates (Root CA, intermediate CAs, serving certificate, and leaf certificates) MUST use ECDSA with the NIST P-256 curve (`elliptic.P256()`). Non-P-256 CSRs MUST be rejected. |
 | INV-NET-PKI-02 | The PKI hierarchy MUST separate serving issuance from workload issuance: the Hub Intermediate CA signs only the Gateway serving certificate (`operator-gateway`), while the Operator Intermediate CA signs all workload leaf certificates (`operator`, `cli`, `app`). |
-| INV-NET-PKI-03 | Workload leaf certificates MUST have a maximum validity of 7 days. Serving and peer certificates MUST have a maximum validity of 90 days. Root and intermediate CAs MUST have a validity of 3650 days. |
+| INV-NET-PKI-03 | CLI and application leaf certificates MUST have a validity of 7 days. Operator leaf certificates MUST have the lifetime set by `OperatorLeafCertTTL` (default 7 days, enforced maximum 7 days = `constants.MaxWorkloadLeafCertTTL`). A non-positive or longer `OperatorLeafCertTTL` MUST be rejected with `ErrConfigLeafCertTTLInvalid` at Gateway config load and again when the Gateway constructs its PKI, so no leaf is ever issued outside the 7-day workload maximum. Serving and peer certificates MUST have a maximum validity of 90 days. Root and intermediate CAs MUST have a validity of 3650 days. |
 | INV-NET-PKI-04 | Certificate revocation MUST be verified on every mTLS request and WebSocket handshake. An X.509 CRL DER binary signed by the Operator Intermediate CA MUST be exposed at `/.well-known/ztd/pki/crl`. |
 | INV-NET-PKI-05 | Platform workload revocation via `POST /api/v1/auth/platform-enrollments/revoke` MUST revoke the issued certificate in persistent storage and immediately disconnect all active pub/sub connections matching the authenticated SPIFFE identity. |
 
@@ -83,8 +83,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-NET-PORT-01 | The Gateway MUST expose a consolidated two-port topology: HTTP Discovery/Bootstrap (`8080` default) and HTTPS Merged API/Console (`8443` default). Startup MUST fail if multiple logical surfaces are assigned to the same port. |
-| INV-NET-PORT-02 | The plain HTTP router (`buildHTTPRouter`) MUST serve only health, state root, CA bundle discovery, and token-scoped bootstrap/recovery initiation. All unhandled paths MUST redirect with HTTP 301 to HTTPS, validating the `Host` header against `isSafeHost`. |
+| INV-NET-PORT-01 | The Gateway MUST expose a consolidated two-port topology: HTTP Discovery/Bootstrap (`8080` default) and HTTPS Merged API/Console (`8443` default). Startup MUST fail when the HTTP and HTTPS listeners share a port, and the evaluation explorer listener MUST NOT duplicate the authenticated public mirror ingest address. |
+| INV-NET-PORT-02 | The plain HTTP router (`buildHTTPRouter`) MUST serve only health, state root, token-scoped bootstrap, PKI discovery (CA bundle and fingerprint), CLI recovery and platform enrollment initiation (request, status, complete), the Operator bootstrap WebSocket, and binary and deploy script downloads. All unhandled paths MUST redirect with HTTP 301 to HTTPS, validating the `Host` header against `isSafeHost`. |
 | INV-NET-PORT-03 | Privileged CSR signing (`/api/v1/pki/csr/sign`), CLI rotation, CLI refresh, CLI session query, and enrollment approval routes MUST NOT be registered on the plain HTTP router. |
 | INV-NET-PORT-04 | Gateway port selection MUST reject wildcard and loopback conflicts in either available TCP address family. Probes MUST release their sockets before returning; availability is a check, not a reservation for the eventual listener. |
 
@@ -103,7 +103,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Default port constants | `internal/constants/ports.go` | `protocol/constants/ports.json` and `internal/config/config.go` |
 | TCP port availability | `internal/netutil/port_probe.go`, `internal/netutil/port_probe_other.go`, `internal/netutil/port_probe_windows.go` | `./ztd test integration --pkg ./internal/netutil --run TestTCPPortProbe` |
 | SSH deployment transport | `internal/pkg/ssh/dialer.go` | `./ztd test integration --pkg ./internal/pkg/ssh` and `./ztd test integration --pkg ./internal/cli/stream` |
-| HTTP & HTTPS route muxing | `internal/services/gateway/gateway_http_router.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestGatewayHTTPRouter` |
+| HTTP & HTTPS route muxing | `internal/services/gateway/gateway_http_router.go` | `./ztd test unit --pkg ./internal/services/gateway --run TestCatchAllRedirect` |
 | SPIFFE identity formatting | `protocol/workload_identity.go` | `./ztd test unit --pkg ./protocol --run TestWorkloadIdentity` |
 | Network identity detection | `internal/services/network/identity.go` | `./ztd test unit --pkg ./internal/services/network` |
 | Operator pub/sub transport | `internal/services/pubsub/ztdg_pubsub_client.go` | `./ztd test integration --pkg ./internal/services/gateway --run PubSub` |
@@ -129,7 +129,7 @@ The platform PKI (`internal/services/gateway/gateway_certs.go`) isolates certifi
         ▼                                ▼                                ▼
 +--------------------+        +--------------------+           +--------------------+
 | Serving Cert       |        | Workload Leaves    |           | Peer Certs         |
-| (operator-gateway) |        | (operator, cli, app)           | (gateway-peer)     |
+| (operator-gateway) |        | (operator,cli,app) |           | (gateway-peer)     |
 | (90-day validity)  |        | (7-day validity)   |           | (90-day validity)  |
 +--------------------+        +--------------------+           +--------------------+
 ```
@@ -193,11 +193,15 @@ The Gateway exposes a strict two-port topology:
                  +---------------------+         +------------------------+
 ```
 
-1. **HTTP Listener (`8080` default)**: Plain HTTP router (`buildHTTPRouter`) serves health checks, state discovery, CA bundles, deploy scripts, and token-scoped enrollment initiation. All other paths return an HTTP 301 redirect to HTTPS, validating the host header against `isSafeHost`.
+1. **HTTP Listener (`8080` default)**: Plain HTTP router (`buildHTTPRouter`) serves health checks, state discovery, token-scoped bootstrap, PKI discovery, binary and deploy script downloads, and CLI and platform enrollment initiation. All other paths return an HTTP 301 redirect to HTTPS, validating the host header against `isSafeHost`.
 2. **HTTPS Listener (`8443` default)**: Primary authenticated surface. Negotiates HTTP/2 (`GatewayHTTP2MaxConcurrentStreams = 8192`) via ALPN while supporting HTTP/1.1 for WebSocket connections.
-3. **Loopback Auxiliary Ports**: `8081` (Evaluation spectator), `8082` (Public mirror read listener), `5173` (Vite dev). These are auxiliary loopback listeners and never exposed as core protocol surfaces.
+3. **Loopback Auxiliary Ports**: `8081` (authenticated public mirror ingest), `8082` (anonymous public mirror reads and SSE), `5173` (evaluation explorer SPA). Defaults are `127.0.0.1:8081`, `127.0.0.1:8082`, and `127.0.0.1:5173`, overridden with `--public-spectator-private-listen`, `--public-spectator-public-listen`, and `--eval-explorer-listen`. `--public-spectator=false` disables all three. Gateway startup accepts only loopback hosts for these listeners, plus `0.0.0.0` when `--public-spectator-allow-container-bind` is set (`internal/services/gateway/public_feed_runtime.go`). They are never core protocol surfaces.
 
-Gateway startup resolves occupied ports through `netutil.CheckTCPPortAvailable`. On Unix, it probes IPv4 and IPv6 wildcard sockets separately with address reuse disabled, so macOS/BSD cannot report a loopback listener's port as free. An unavailable IPv6 stack leaves the IPv4 probe authoritative. Windows uses an exclusive bind without listening to avoid firewall prompts. Every probe releases the port before returning, so another process can still claim it before Gateway startup.
+Both the HTTP and HTTPS listeners bind `127.0.0.1` by default. `--listen-host` (default `127.0.0.1`) sets the bind host for both, and `0.0.0.0` binds every IPv4 interface (`internal/cli/cmd/gw/gateway.go`, `listenHostOrDefault` in `internal/config/config.go`).
+
+Gateway startup resolves occupied ports through `netutil.CheckTCPPortAvailable`. On Unix, it probes IPv4 and IPv6 wildcard sockets separately. Outside Linux, the probe disables address reuse, so macOS and BSD cannot report a loopback listener's port as free. Linux keeps Go's default address reuse, so `TIME_WAIT` sockets from a stopped Gateway do not block a restart. An unavailable IPv6 stack leaves the IPv4 probe authoritative. Windows uses an exclusive bind without listening to avoid firewall prompts. Every probe releases the port before returning, so another process can still claim it before Gateway startup.
+
+Background `ztd gw start` (the default) finds the HTTP port occupied, scans upward for an available HTTP port, up to `MaxPortAttempts` (100) candidates, skips the reserved auxiliary ports, and shifts the HTTPS port by the same offset. Startup fails if the shifted HTTPS port is also occupied (`findAvailablePort` in `internal/cli/platform/process.go`). It prints `[ztd] Port N is held by ...; the Gateway listens on HTTP X and HTTPS Y instead.` Background `gw start` and `gw restart` then print the Console URL and the Operator `--endpoint <host>:<http> --port <https>` command on the bound ports (`internal/cli/cmd/gw/gwstdout.go`). Foreground `--follow` instead calls `config.ResolveGatewayPorts` (`internal/config/config.go`), which tests the HTTP and HTTPS pair together over offsets 0 to 99, skips the reserved ports, and prints no shift notice.
 
 ## Listener Isolation: Outbound-Only Operators
 
@@ -218,7 +222,7 @@ SSH deployment and streaming use `internal/pkg/ssh.DialSSH`. Its dial timeout co
 
 ## Network Identity Detection and SAN Drift
 
-At startup, the Gateway runs `network.Detector` (`internal/services/network/identity.go`) to discover local network identities:
+At startup, the Gateway runs `network.Detector` (`internal/services/network/identity.go`) to discover local network identities when no pre-detected identity file is supplied. In full certificate mode, `ztd gw start` detects the identity once and passes the file to the Gateway process. The detector runs these discovery steps:
 
 1. Gathers non-loopback network interface IPs.
 2. Reads OS hostnames, `/etc/hosts` aliases, and mDNS/Bonjour names.
@@ -261,6 +265,7 @@ curl -s http://localhost:8080/.well-known/ztd/pki/fingerprint
 
 ## Links out
 
+- [System Architecture Overview](overview.md): Platform architecture and component boundaries.
 - [Authentication & Authorization Architecture](auth.md): Route classification, identity extraction, and session lifecycle.
 - [Gateway Architecture](gateway.md): Gateway admission control, operational modes, and policy decision points.
 - [Operator Architecture](operator.md): Remote operator execution, L4 Warden verification, and L5 Actuator receipts.

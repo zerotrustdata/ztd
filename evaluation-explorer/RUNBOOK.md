@@ -28,7 +28,7 @@ cd evaluation-explorer
 npm run dev:mock
 ```
 
-Open `http://127.0.0.1:5173`. This command starts or reuses the host mirror on private `127.0.0.1:8081` and public read-only `127.0.0.1:8082`, publishes deterministic fixture history, replays a scripted lifecycle through the real publisher and mirror, and starts Vite. The browser connects only to `127.0.0.1:8082` with credentials omitted.
+Open `http://127.0.0.1:5173`. This command requires the gateway-owned mirror on public read-only `127.0.0.1:8082` (start it with `./ztd gw start --public-spectator`; the command exits if the port is not listening). It publishes deterministic fixture history through `scripts/seed.mjs --fixtures`, which decides what is already present by reading the mirror's anonymous public history API on `8082`; if that API is unavailable, the seed fails with an error and publishes nothing. It then replays a scripted lifecycle through the real publisher and mirror, and starts Vite. The browser connects only to `127.0.0.1:8082` with credentials omitted.
 
 ## Start the real native evaluation experience
 
@@ -69,12 +69,14 @@ An agent-executor assignment also publishes its complete sealed agent trace as a
 
 ## Optional disposable public-feed reset
 
-This reset removes the host `.ztd/public-feed` and `.ztd/public-mirror` state, creates a new local public signing chain, and republishes the selected seed. It does not remove evaluation report roots. Obtain explicit owner confirmation immediately before running it, then use one of:
+This reset removes the gateway-owned `.ztd/public-feed` and `.ztd/public-mirror` state, creates a new local public signing chain, and republishes the selected seed. It does not remove evaluation report roots. Obtain explicit owner confirmation immediately before running it. Then stop the Gateway, remove those two directories, start `./ztd gw start --public-spectator`, and run:
 
 ```bash
 cd evaluation-explorer
-npm run dev:mock -- --reset
+npm run dev:mock
 ```
+
+`npm run dev:mock -- --reset` is no longer supported; `dev.mjs` refuses it.
 
 Do not use `./ztd gw clean` for a public-feed problem.
 
@@ -92,7 +94,7 @@ All runs in the selected release remain visible, including events that precede s
 
 The overview first reconstructs bootstrap, complete paginated history, and the sealed snapshot, then connects SSE. A live run appears as queued, running, provisional assignment and metric updates, and finally completed, failed, or stopped without a refresh. Reload reconstructs the same state before SSE resumes. In Runs, model names link to their model definitions for the dataset and role; the run ID directly beneath the heading links to that run's evaluation details. Verified, not fully verified, legacy unverified, in-progress, failed, unavailable, and not-evaluated states remain distinct.
 
-The Evaluations page defaults to all quality states for the selected release, keeping active runs and failures visible beside verified history. Its tab counts reflect the active filters. Campaigns, evaluation runs, and the formation catalog use detailed tables with sortable column headers, column visibility controls, and pagination. Tables scroll horizontally on smaller screens and remain keyboard accessible. Campaign rows include run status counts, assignment progress, verifier counts, median pass rate, and the latest run time; their titles open the latest run details. Governance conformance and model runs remain in separate tables, with sortable status, progress, outcomes, timing, pass rate, and quality columns. Formation rows retain model links for Lite → Assistant → Primary, served tags, family, parameter count, quantization, provider, trust, per-role weights and KV cache, combined VRAM utilization, and diversity counts. The formation catalog is reference data: the system lane has no executor in v1.1.3, so no formation is scored; formations return in v1.1.4 inside the investigation loop. Formation search and kind filters apply before sorting. Framework reference details are available in an expandable table above the summaries. Use its quality filter to inspect verified runs only.
+The Evaluations page defaults to all quality states for the selected release, keeping active runs and failures visible beside verified history. Its tab counts reflect the active filters. Campaigns, evaluation runs, and the formation catalog use detailed tables with sortable column headers, column visibility controls, and pagination. Tables scroll horizontally on smaller screens and remain keyboard accessible. Campaign rows include run status counts, assignment progress, verifier counts, median pass rate, and the latest run time; their titles open the latest run details. Governance conformance and model runs remain in separate tables, with sortable status, progress, outcomes, timing, pass rate, and quality columns. Formation rows retain model links for Lite → Assistant → Primary, served tags, family, parameter count, quantization, provider, trust, per-role weights and KV cache, combined VRAM utilization, and diversity counts. The formation catalog is reference data for system-lane campaigns: `ztd eval campaigns create --formations` freezes the selected formations, and `runs execute` scores each one as a single unit against every scenario. Formation search and kind filters apply before sorting. Framework reference details are available in an expandable table above the summaries. Use its quality filter to inspect verified runs only.
 
 Run detail follows the evidence from the run to assignments or conformance scenarios, verification, and the evidence bundle. Conformance scenario cards expand to versioned assertion verdicts; a rejected scenario is a correct refusal. Native metrics retain their published count or ratio units and numerator/denominator. Model verdicts (`completed`, `model_failed`) remain separate from infrastructure and evidence outcomes that are not counted for or against the model. Model and task detail link back to the assignments that supply their evidence; an unmeasured model says “Not evaluated.” Missing evidence is never rendered as a measured zero.
 

@@ -3,8 +3,8 @@ doc_id: unified_stack
 title: Unified Stack Guide
 audience: platform operators and evaluators
 status: current
-version: v1.1.2
-last_updated: 2026-10-16
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - Makefile
   - docs/guides/
@@ -72,7 +72,7 @@ This guide covers the unified evaluation stack on one host: how to start it, enr
 - Host ports available: **8080** (HTTP discovery) and **8443** (HTTPS/mTLS API and console). The public spectator and evaluation explorer listen on loopback **8081**, **8082**, and **5173** by default.
 - A browser with WebAuthn support for the owner passkey, or headless enrollment.
 
-`./ztd` loads `.env` from the working directory (the repo root; template: `.env.example`, mode `0600`) at startup; it accepts only the secret and user_endpoint keys in `protocol/constants/env_vars.json`. Pass every other start flag through the `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
+`./ztd` loads `.env` from the working directory (the repo root; template: `.env.example`; the file must be owned by the user or root with mode `0600` or `0400`) at startup; it accepts only the secret and user_endpoint keys in `protocol/constants/env_vars.json`. Pass every other start flag through the `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
 
 Use `ZTD_ARGS` for global CLI flags shared by `make up`, `make gw`, `make operator`, `make status`, and `make down`. On Linux hosts that seal the master key with an ssh-agent key, run these targets from a shell that reaches the same agent: the same key seals the CLI identity that `make status` and `make down` unseal. See [Getting Started](getting_started.md).
 
@@ -88,10 +88,15 @@ The campaign topology uses separate Operator sessions: a Data Operator and an In
 make up
 ```
 
-Start each Operator in its own terminal because `make operator` runs in the foreground (Ctrl+C stops it):
+Start each Operator in its own terminal because `make operator` runs in the foreground (Ctrl+C stops it). Data Operator terminal:
 
 ```bash
 make operator OPERATOR_ARGS='--endpoint localhost --capabilities data --working-dir ~/.ztd-data'
+```
+
+Inference Operator terminal:
+
+```bash
 make operator OPERATOR_ARGS='--endpoint localhost --capabilities inference --inference-ollama-endpoint http://192.168.1.2:11434 --working-dir ~/.ztd-inference'
 ```
 
@@ -126,19 +131,9 @@ Each Operator submits a platform enrollment request and waits for owner approval
 ./ztd auth enroll pending
 ```
 
-Approve the Data Operator request first, then the Inference Operator request, or deny any request that should not be admitted:
+Approve the Data Operator request first, then the Inference Operator request, by request ID, instance ID, or hostname: `./ztd auth enroll approve <selector> --yes`. Deny a request that should not be admitted with `./ztd auth enroll deny <selector>`.
 
-```bash
-./ztd auth enroll approve <data-operator-request-id> --yes
-./ztd auth enroll approve <inference-operator-request-id> --yes
-```
-
-The evaluation CLI dispatches inference with a separate host application identity, `ztd-eval`. When that identity is
-missing, expired, or untrusted, the first eval command that needs it enrolls it: it submits the platform enrollment
-request and approves that exact request (matched by request ID and app CSR fingerprint) with the authenticated owner's
-CLI identity. The Gateway still enforces owner authority, so a CLI that is not the owner fails closed. To enroll it
-ahead of time instead, run `./ztd auth enroll app ztd-eval` and approve the request with `./ztd auth enroll approve
-<request-id> --yes`.
+The evaluation CLI dispatches inference with a separate host application identity, `ztd-eval`. When that identity is missing, expired, or untrusted, the first eval command that needs it enrolls it: it submits the platform enrollment request and approves that exact request (matched by request ID and app CSR fingerprint) with the authenticated owner's CLI identity. The Gateway still enforces owner authority, so a CLI that is not the owner fails closed. To enroll it ahead of time instead, run `./ztd auth enroll app ztd-eval` and approve the request with `./ztd auth enroll approve <request-id> --yes`.
 
 ### 3. Verify readiness
 
@@ -152,21 +147,9 @@ Expect two remote Operators (data and inference) plus the embedded Gateway Opera
 
 ### Stop or revoke an enrolled workload
 
-Use the Operator session ID from `operator list` for a reversible process stop:
+Use the Operator session ID from `operator list` for a reversible process stop: `./ztd operator stop <operator-session-id> --reason "planned maintenance"`. The command targets one active remote Operator owned by the authenticated user. It waits for the Operator's governed shutdown acknowledgement before the Gateway records `stopped`; the embedded Gateway Operator is never a valid target. The enrollment is not revoked, but the Operator identity is held in memory only, so the next `./ztd operator start` submits a new enrollment request that needs owner approval.
 
-```bash
-./ztd operator stop <operator-session-id> --reason "planned maintenance"
-```
-
-The command targets one active remote Operator owned by the authenticated user. It waits for the Operator's governed shutdown acknowledgement before the Gateway records `stopped`; the embedded Gateway Operator is never a valid target. The enrollment is not revoked, but the Operator identity is held in memory only, so the next `./ztd operator start` submits a new enrollment request that needs owner approval.
-
-Use the completed platform enrollment request ID for permanent identity revocation:
-
-```bash
-./ztd auth enroll revoke <request-id> --reason "host retired" --yes
-```
-
-Operator revocation invalidates the Operator and companion CLI certificates, deactivates their sessions, marks the Operator `terminated`, and disconnects established pub/sub connections. The workload must submit a new enrollment request and receive owner approval before it can authenticate again.
+Use the completed platform enrollment request ID for permanent identity revocation: `./ztd auth enroll revoke <request-id> --reason "host retired" --yes`. Operator revocation invalidates the Operator and companion CLI certificates, deactivates their sessions, marks the Operator `terminated`, and disconnects established pub/sub connections. The workload must submit a new enrollment request and receive owner approval before it can authenticate again.
 
 ### Provider-boundary Observer Operator (provider host; Windows example)
 
@@ -192,12 +175,13 @@ In a dedicated working directory on the Windows provider host:
 
 Do not add `inference` to `--capabilities`; this Operator is read-only hardware observation only.
 
-From the campaign host owner CLI:
+From the campaign host owner CLI, list the pending request and approve the observer request by its request ID, instance ID, or hostname:
 
 ```bash
 ./ztd auth enroll pending
-./ztd auth enroll approve <observer-request-id> --yes
 ```
+
+Then run `./ztd auth enroll approve <selector> --yes` with the observer selector.
 
 After approval, confirm the observer appears in `./ztd operator list` with `observer` in its runtime config `capabilities`. The observer is a read-only witness and must not receive generic command execution.
 
@@ -222,25 +206,26 @@ In a second dedicated working directory on the provider host:
   --model-storage-root "$env:USERPROFILE\.ollama\models"
 ```
 
-From the campaign host owner CLI:
+From the campaign host owner CLI, list the pending request and approve the provenance request by its request ID, instance ID, or hostname:
 
 ```bash
 ./ztd auth enroll pending
-./ztd auth enroll approve <provenance-request-id> --yes
 ```
+
+Then run `./ztd auth enroll approve <selector> --yes` with the provenance selector.
 
 After approval, confirm the provenance operator appears in `./ztd operator list` with `provenance` in its runtime config `capabilities` and the correct `provenance_operator_model_storage_root`.
 
 ### Formation catalog
 
-The formation catalog (`./ztd eval formations list`) holds three-role Lite, Assistant, and Primary model stacks. Pull and freeze the catalog models:
+The formation catalog (`./ztd eval formations list`) holds Lite, Assistant, and Primary model stacks: each formation binds one model to each of the three roles. Pull and freeze the catalog models:
 
 ```bash
 ./ztd eval models pull --formations
 ./ztd eval models freeze
 ```
 
-The system lane has no executor in v1.1.3, so no formation is scored; formations return in v1.1.4 inside the investigation loop. Every campaign scores one registry model: validate the witness path with the [mini smoke campaign workflow](#mini-smoke-campaign-workflow) after the Inference Operator and both witness Operators (Observer + Provenance) are enrolled.
+A formation campaign (`./ztd eval campaigns create <campaign> --formations <formation-id>`) freezes the registered models that the formation requires and runs on the system lane. Formation campaigns support one repetition without held context. A model-role campaign scores one registry model. Validate the witness path with the [mini smoke campaign workflow](#mini-smoke-campaign-workflow) after the Inference Operator and both witness Operators (Observer + Provenance) are enrolled.
 
 ### Campaign and run naming
 
@@ -283,10 +268,10 @@ The Gateway owns the public feed, mirror (`8081` private ingest, `8082` public r
 
 #### Phase C — Monitor execution
 
-`runs start` prints the run ID (`eval-smoke-mini-<unix>`); `./ztd eval runs list --campaign eval-smoke-mini` lists it again. Set `RUN_ID` to it:
+`runs start` prints the run ID (`eval-smoke-mini-<unix>`); `./ztd eval runs list --campaign eval-smoke-mini` lists it again. Set the `RUN_ID` shell variable to that run ID before running the block:
 
 ```bash
-RUN_ID=eval-smoke-mini-<unix>
+./ztd eval runs list --campaign eval-smoke-mini
 ./ztd eval runs show "$RUN_ID"
 ./ztd eval runs assignments "$RUN_ID" --failed
 ./ztd eval runs verify "$RUN_ID" --coverage
@@ -304,7 +289,7 @@ RUN_ID=eval-smoke-mini-<unix>
 | `make status` | Prints `ztd gw status`: Gateway health, the Operator inventory, and pending enrollments. |
 | `make down` | Stops Operators, then the Gateway (`ztd gw stop`). Runtime state in `.ztd/` is preserved. |
 
-`make clean` removes build and test artifacts and the Go build cache while preserving `.ztd/` and the repository-root `ztd` binary. `./ztd gw clean` archives `.ztd/` to `.ztd-<MMDDHHMM>` and requires fresh owner and workload enrollment.
+`make clean` removes build and test artifacts and the Go build cache while preserving `.ztd/` and the repository-root `ztd` binary. `./ztd gw clean` renames `.ztd/` to `.ztd-<MMDDHHMM>`, invalidates CLI credentials, and requires fresh owner and workload enrollment.
 
 ## Anti-patterns
 

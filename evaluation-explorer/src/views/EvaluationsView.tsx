@@ -3,7 +3,8 @@
 
 // Evaluations view — one tab at a time: evaluation Runs, Campaigns that group
 // them, and the 3-role Formations catalog (Lite, Assistant, Primary). The
-// catalog is reference data: no formation executes or scores in v1.1.3.
+// catalog is reference data for system-lane campaigns, which execute and score
+// each selected formation as one unit.
 // Scores are never averaged across suites.
 
 import { useEffect, useMemo, useState } from 'react';
@@ -383,7 +384,7 @@ export function EvaluationsView() {
       {activeTab === 'formations' ? (
         <PanelSection
           title="Formations"
-          note={`Catalog of Lite, Assistant, and Primary model stacks within a ${formatNumber(EVALUATION_FRAMEWORK_VALUES.maxVramBudgetMib)} MiB combined VRAM budget. Showing ${formatNumber(FORMATION_CATALOG.length)} of ${formatNumber(EVALUATION_FRAMEWORK_VALUES.totalFormationsCount)} catalogued stacks. The system lane has no executor in v1.1.3, so no formation is scored; formations return in v1.1.4 inside the investigation loop.`}
+          note={`Catalog of Lite, Assistant, and Primary model stacks within a ${formatNumber(EVALUATION_FRAMEWORK_VALUES.maxVramBudgetMib)} MiB combined VRAM budget. Showing ${formatNumber(FORMATION_CATALOG.length)} of ${formatNumber(EVALUATION_FRAMEWORK_VALUES.totalFormationsCount)} catalogued stacks. Formations run in system-lane campaigns, which score each selected stack as one unit against every scenario.`}
         >
           <DataTable data={filteredFormations} columns={formationColumns} pageSize={25} enableColumnVisibility={false}
             caption="Formation catalog" empty={<p className="table-empty">No formations match these filters.</p>} />

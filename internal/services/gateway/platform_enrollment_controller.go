@@ -540,6 +540,11 @@ var platformEnrollmentPublicErrors = []struct {
 	{constants.ErrConsensusAppMissingSignerKey, http.StatusBadRequest},
 	{constants.ErrConsensusEndpointInvalid, http.StatusBadRequest},
 	{constants.ErrConsensusBindingNotFound, http.StatusNotFound},
+	// Reserved before invalid: a reserved name wraps both, and the more
+	// specific sentinel is the one a peer should see.
+	{constants.ErrPlatformEnrollmentReservedIdentity, http.StatusBadRequest},
+	{constants.ErrPlatformEnrollmentInvalidAppName, http.StatusBadRequest},
+	{constants.ErrPlatformEnrollmentAppNameRequired, http.StatusBadRequest},
 	{constants.ErrPlatformEnrollmentRequiresBootstrap, http.StatusForbidden},
 	{constants.ErrPlatformEnrollmentInvalidComponent, http.StatusBadRequest},
 	{constants.ErrPlatformEnrollmentInstanceIDRequired, http.StatusBadRequest},

@@ -64,7 +64,7 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
 	case errors.Is(err, constants.ErrFormationRegistryBinding), errors.Is(err, constants.ErrFormationStackMismatch), errors.Is(err, constants.ErrFormationInvalid),
-		errors.Is(err, constants.ErrFormationAttestationRequired), errors.Is(err, constants.ErrEvaluationSystemLaneUnavailable):
+		errors.Is(err, constants.ErrFormationAttestationRequired):
 		return ExecutionFailureInvalidInput
 	default:
 		return ExecutionFailureInternal
@@ -286,7 +286,9 @@ func (c *CampaignController) importPersistedAgentTrace(ctx context.Context, req 
 	if err != nil {
 		return nil, false
 	}
-	result, err := ImportAssignmentResultFromAgentTrace(req, trace, ref, c.now().UTC(), c.newID)
+	// Recovery imports a persisted trace at whatever version sealed it, so the
+	// live executor's schema pin does not apply here.
+	result, err := ImportAssignmentResultFromAgentTrace(req, trace, ref, c.now().UTC(), c.newID, "")
 	if err != nil {
 		return nil, false
 	}

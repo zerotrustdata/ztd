@@ -163,7 +163,8 @@ func TestOperatorNativeToolRoute_OutboundExecutesRegistryLocally(t *testing.T) {
 	var got mcp.AuditReceiptGetResult
 	// Native tool summaries are scrubbed text; random receipt signatures can
 	// match sensitive-value patterns. Rehydrate locally before decoding JSON.
-	summary := svc.scrubbing.RehydrateText(ctx, getReceipt.GetResultSummary())
+	summary, err := svc.scrubbing.RehydrateText(ctx, getReceipt.GetResultSummary())
+	require.NoError(t, err, "every token in the signed summary must resolve")
 	require.NoError(t, json.Unmarshal([]byte(summary), &got))
 	require.NotNil(t, got.Receipt)
 	require.Equal(t, commandReceipt.GetTransactionId(), got.Receipt.TransactionID)

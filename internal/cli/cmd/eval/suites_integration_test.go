@@ -32,8 +32,9 @@ func TestSuitesList_ShowsBuiltinSuites(t *testing.T) {
 
 	var payload suiteListJSON
 	require.NoError(t, env.runJSON(t, &payload, "suites", "list"))
-	require.Len(t, payload.Suites, 2)
+	require.Len(t, payload.Suites, 3)
 	assert.Equal(t, evaluation.DefaultSuiteID, payload.Suites[0].ID)
+	assert.Equal(t, evaluation.InvestigationsSuiteID, payload.Suites[2].ID)
 	assert.True(t, payload.Suites[0].Builtin)
 	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, payload.Suites[0].ScenarioCount)
 }

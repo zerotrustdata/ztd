@@ -60,6 +60,7 @@ func newCapacityMirrorEnv(t *testing.T, recordCount int) *capacityMirrorEnv {
 		TrustedProxyCIDRs: []string{capacityTrustedProxyCIDR},
 	})
 	require.NoError(t, err)
+	mirror.SetIngestAuthToken(mirrorTestIngestToken)
 
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -162,6 +163,7 @@ func sendIngestToHandler(t *testing.T, handler http.Handler, batch models.Public
 	require.NoError(t, err)
 	request := httptest.NewRequest(http.MethodPost, "/ingest", bytes.NewReader(bodyBytes))
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+mirrorTestIngestToken)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	var ingestResp models.PublicIngestResponse

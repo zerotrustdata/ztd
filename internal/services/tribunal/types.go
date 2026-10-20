@@ -73,8 +73,9 @@ var AllMembers = []Member{MemberAxiom, MemberConcord, MemberVariance, MemberPrag
 const generationRounds = 2
 
 // MaxMemberCalls bounds the member inferences of one deliberation: every
-// member in both generation rounds, Marshal once, and each Auditor attempt.
-var MaxMemberCalls = generationRounds*len(AllMembers) + 1 + auditorMaxAttempts
+// member in both generation rounds, Marshal on the vote winner and again on a
+// command the Auditor changed, and each Auditor attempt.
+var MaxMemberCalls = generationRounds*len(AllMembers) + 2 + auditorMaxAttempts
 
 // RiskLevel is Marshal's classification of a command.
 type RiskLevel string
@@ -108,7 +109,8 @@ const (
 	// OutcomeNoConsensus: no command reached the minimum consensus after the
 	// regeneration round.
 	OutcomeNoConsensus Outcome = "no_consensus"
-	// OutcomeBlocked: Marshal classified the vote winner HIGH risk.
+	// OutcomeBlocked: Marshal classified the command that would run HIGH risk:
+	// the vote winner, or the Auditor's command when the Auditor changed it.
 	OutcomeBlocked Outcome = "blocked"
 	// OutcomeAuditFailed: the Auditor gave no valid verdict; the deliberation
 	// fails closed and nothing runs.
@@ -116,8 +118,9 @@ const (
 )
 
 // Config binds one deliberation to the frozen model it runs on. Tier is the
-// campaign role every Tribunal call dispatches under; ModelTag and
-// ModelDigest identify the variant on each recorded step.
+// campaign role every Tribunal call dispatches under: Service.Deliberate
+// requires the member template's role to be Tier's inference role. ModelTag
+// and ModelDigest identify the variant on each recorded step.
 type Config struct {
 	Inferer     Inferer
 	Tier        evalv1.ModelCampaignRole
@@ -198,8 +201,11 @@ type Result struct {
 	Command    string
 	Candidates []Candidate
 	Vote       Vote
-	Risk       *Risk
-	Audit      *Audit
+	// Risk is Marshal's latest assessment: of the vote winner, or of the
+	// Auditor's command when the Auditor changed it. Nil when no command was
+	// assessed.
+	Risk  *Risk
+	Audit *Audit
 	// Steps are the deliberation's persona steps in order.
 	Steps []*evalv1.AgentStep
 }

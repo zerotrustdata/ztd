@@ -270,6 +270,62 @@ func OpenReadOnlyDB(cfg DBConfig, logger *slog.Logger) (*DB, error) {
 	return &DB{DB: sqlDB, logger: logger, path: cfg.Path, config: cfg}, nil
 }
 
+// OpenReadOnlyDBFromBytes opens a read-only in-memory copy of a SQLite database
+// image. The driver copies the image into SQLite-owned memory before this
+// returns, so later changes to the caller's slice do not reach the handle, and
+// no file is written. The handle keeps one connection because an in-memory
+// database exists only on the connection that loaded it.
+func OpenReadOnlyDBFromBytes(ctx context.Context, image []byte, logger *slog.Logger) (*DB, error) {
+	if len(image) == 0 {
+		return nil, fmt.Errorf("sqliteutil: read-only database image is empty: %w", constants.ErrMissingRequiredField)
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		return nil, fmt.Errorf("sqliteutil: open in-memory database: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetConnMaxLifetime(0)
+	sqlDB.SetConnMaxIdleTime(0)
+	if err := loadDatabaseImage(ctx, sqlDB, image); err != nil {
+		if closeErr := sqlDB.Close(); closeErr != nil {
+			return nil, fmt.Errorf("sqliteutil: load read-only database image: %w", errors.Join(err, fmt.Errorf("close database: %w", closeErr)))
+		}
+		return nil, fmt.Errorf("sqliteutil: load read-only database image: %w", err)
+	}
+	return &DB{DB: sqlDB, logger: logger}, nil
+}
+
+// loadDatabaseImage deserializes image into the pool's only connection and then
+// marks that connection query-only. The modernc driver exposes Deserialize on
+// its connection type, so the image is loaded through a raw driver connection.
+func loadDatabaseImage(ctx context.Context, sqlDB *sql.DB, image []byte) error {
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire connection: %w", err)
+	}
+	loadErr := conn.Raw(func(driverConn any) error {
+		loader, ok := driverConn.(interface{ Deserialize([]byte) error })
+		if !ok {
+			return fmt.Errorf("driver %T cannot load database images", driverConn)
+		}
+		return loader.Deserialize(image)
+	})
+	if closeErr := conn.Close(); closeErr != nil {
+		loadErr = errors.Join(loadErr, fmt.Errorf("release connection: %w", closeErr))
+	}
+	if loadErr != nil {
+		return fmt.Errorf("deserialize image: %w", loadErr)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `PRAGMA query_only = ON`); err != nil {
+		return fmt.Errorf("set query only: %w", err)
+	}
+	return nil
+}
+
 // GetPath returns the filesystem path to the database file.
 func (db *DB) GetPath() string {
 	return db.path

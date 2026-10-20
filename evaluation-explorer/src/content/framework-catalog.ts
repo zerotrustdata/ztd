@@ -3,7 +3,7 @@
 
 // Enriched catalog metadata for the Models and Evaluations views:
 // - Model hardware specs, clean served tags, family/provider taxonomy, and the 5 governed capability probes
-// - The formation catalog: 3-role Lite / Assistant / Primary model stacks and VRAM budgets (catalog only; no formation executes in v1.1.3)
+// - The formation catalog: 3-role Lite / Assistant / Primary model stacks and VRAM budgets (catalog reference; system-lane campaigns execute the formations they freeze)
 // - Campaign aggregation and Evaluation Framework reference values
 
 import type { EvaluationSummary, ModelRole, ModelSummary } from "../contract/types";

@@ -442,10 +442,10 @@
       "type": "object"
     },
     "A2ACallResult": {
-      "description": "The result of an A2A skill execution. Returns A2ASuspensionResponse when L3 (WebAuthn) authorization is required, or A2ASuccessResponse on completion.",
+      "description": "The result of an A2A skill execution. Returns GovernedSuspension when L3 (WebAuthn) authorization is required, or A2ASuccessResponse on completion.",
       "oneOf": [
         { "$ref": "#/$defs/A2ASuccessResponse" },
-        { "$ref": "#/$defs/A2ASuspensionResponse" }
+        { "$ref": "#/$defs/GovernedSuspension" }
       ]
     },
     "A2ASuccessResponse": {
@@ -472,7 +472,7 @@
       "required": ["skill_name"],
       "type": "object"
     },
-    "A2ASuspensionResponse": {
+    "GovernedSuspension": {
       "description": "A2A skill execution suspended for L3 (WebAuthn) authorization. The client should direct the user to the approval_url to complete out-of-band authorization. The transaction resumes automatically once the proof is verified.",
       "properties": {
         "id": { "type": "string", "description": "The transaction hash." },

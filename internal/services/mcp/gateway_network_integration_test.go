@@ -566,7 +566,9 @@ func TestGatewayService_DispatchToDownstream_Scrubbing(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotContains(t, result, "123-45-6789")
 		assert.Contains(t, result, "{{UEI_")
-		assert.Contains(t, scrubSvc.RehydrateText(context.Background(), result), "123-45-6789")
+		rehydrated, err := scrubSvc.RehydrateText(context.Background(), result)
+		require.NoError(t, err)
+		assert.Contains(t, rehydrated, "123-45-6789")
 	})
 
 	t.Run("clean downstream response passes through", func(t *testing.T) {

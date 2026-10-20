@@ -77,6 +77,7 @@ type Score struct {
 	JudgeModelDigest string
 	TransactionID    string // the governed inference transaction
 	Receipt          *operatorv1.ActionReceipt
+	Result           *operatorv1.InferenceResult // the result the receipt's result summary binds
 	RubricVersion    string
 	Detail           string
 }
@@ -162,6 +163,7 @@ func (j *Judge) score(ctx context.Context, subject Subject, userText string) Sco
 	if resp != nil {
 		result.TransactionID = resp.GetTransactionId()
 		result.Receipt = resp.GetReceipt()
+		result.Result = resp.GetResult()
 	}
 	if err != nil {
 		return failedScore(result, err)

@@ -600,18 +600,17 @@ func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, f
 	}
 
 	events := make(chan runEvent)
-	// released receives the first settled outcome: nil once the run's process has
-	// released it, or the error that kept the answer from being known.
-	released := make(chan error, 1)
+	// released receives the first settled outcome of a connect reconcile.
+	released := make(chan runRelease, 1)
 	var releaseOnce sync.Once
-	release := func(err error) { releaseOnce.Do(func() { released <- err }) }
+	release := func(r runRelease) { releaseOnce.Do(func() { released <- r }) }
 	stream, err := subscribeRunEvents(ctx, httpClient, cfg.OperatorPublicURL(), authContext.CLISessionID, runID, events, func() {
-		done, _, err := settleRunLease(ctx, store, live, runID)
+		done, cleared, err := settleRunLease(ctx, store, live, runID)
 		switch {
 		case err != nil:
-			release(err)
+			release(runRelease{err: err})
 		case done:
-			release(nil)
+			release(runRelease{cleared: cleared})
 		}
 	})
 	if err != nil {
@@ -619,9 +618,9 @@ func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, f
 	}
 	defer stream.Close()
 	select {
-	case err := <-released:
+	case r := <-released:
 		// The lease was already gone or stale when the stream connected.
-		return false, err
+		return r.cleared, r.err
 	default:
 	}
 
@@ -662,17 +661,25 @@ func awaitRunStop(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, f
 	return cleared, nil
 }
 
+// runRelease is the outcome of a connect reconcile that settled a run's lease:
+// cleared reports that the reconcile cleared a stale lease, and err is the error
+// that kept the answer from being known.
+type runRelease struct {
+	cleared bool
+	err     error
+}
+
 // awaitRunRelease waits for the holder of a run to release it. It returns when
 // the stream reports a settled status, when released delivers the connect
 // reconcile's outcome, or when the holder's process exits and settle finds its
-// lease gone or stale. The exit case reports whether settle cleared the lease. The
-// wait also ends when the stream stops on its own, with the stream's error, or
-// when ctx ends.
-func awaitRunRelease(ctx context.Context, released <-chan error, events <-chan runEvent, stream *runEventStream, holderExit <-chan error, settle func() (bool, bool, error)) (bool, error) {
+// lease gone or stale. The reconcile and exit cases report whether the lease was
+// cleared. The wait also ends when the stream stops on its own, with the stream's
+// error, or when ctx ends.
+func awaitRunRelease(ctx context.Context, released <-chan runRelease, events <-chan runEvent, stream *runEventStream, holderExit <-chan error, settle func() (bool, bool, error)) (bool, error) {
 	for {
 		select {
-		case err := <-released:
-			return false, err
+		case r := <-released:
+			return r.cleared, r.err
 		case ev := <-events:
 			if ev.Status != nil && runStatusSettled(ev.Status.Status) {
 				return false, nil

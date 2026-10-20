@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -152,15 +153,21 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: trace evidence", err)
 	}
-	result, err := ImportAssignmentResultFromAgentTrace(req, run.trace, ref, now, e.newID)
+	result, err := ImportAssignmentResultFromAgentTrace(req, run.trace, ref, now, e.newID, agentTraceSchemaVersion)
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: import homogeneous assignment result", err)
 	}
+	// A trace the Data Operator's evidence does not back, and a trace whose
+	// provider produced no answer, are never judged and never promoted: their
+	// imported lifecycle and grades stand as they are.
+	switch result.GetLifecycleStatus() {
+	case evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE,
+		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED:
+		return result, nil
+	}
 	if semanticGrades, judgeScores := e.scoreWithJudge(ctx, req, run.trace); len(semanticGrades) > 0 {
 		result.SemanticGrades = semanticGrades
-		if len(result.DecomposedScores) > 0 {
-			result.DecomposedScores = append(result.DecomposedScores, judgeScores...)
-		}
+		result.DecomposedScores = append(result.DecomposedScores, judgeScores...)
 		for _, sg := range semanticGrades {
 			if sg.GraderCallRef != nil {
 				result.GraderCalls = append(result.GraderCalls, &evalv1.GraderModelCallRecord{
@@ -181,7 +188,9 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 				})
 			}
 		}
-		if req.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE {
+		// Only a GRADER_FAILED trace waits on the judge; a verified judge grade is
+		// the evidence that releases it.
+		if result.GetLifecycleStatus() == evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED {
 			hasEvidence := false
 			for _, sg := range semanticGrades {
 				if sg.GraderCallRef != nil {
@@ -298,7 +307,7 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 		} else if sc.TransactionID != "" {
 			receiptErr = anchorsErr
 			if receiptErr == nil {
-				receiptErr = verifyJudgeReceipt(anchors, trace.Inference.OperatorID, sc.TransactionID, sc.Receipt)
+				receiptErr = verifyJudgeReceipt(anchors, trace.Inference.OperatorID, sc)
 			}
 			if receiptErr == nil {
 				graderCallRef = &compliancev1.ComplianceEvidenceReference{
@@ -793,7 +802,7 @@ func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, m
 // returns the probe request its response is verified against.
 func (r *agentRun) bindInference(call *AgentModelCall, modelRole evalv1.ModelCampaignRole, attemptID string, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (InferenceProbeRequest, error) {
 	variant := r.variants[modelRole]
-	inferenceRole, err := campaignRoleToInferenceRole(modelRole)
+	inferenceRole, err := tribunal.InferenceRoleForTier(modelRole)
 	if err != nil || variant == nil {
 		return InferenceProbeRequest{}, fmt.Errorf("evaluation: dispatch agent inference: role %s: %w", modelRole, constants.ErrFormationRegistryBinding)
 	}
@@ -1184,11 +1193,52 @@ func agentTraceLifecycle(req AssignmentExecutionRequest, trace *AgentTrace) eval
 	return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
 }
 
+// agentTraceSchemaPinError is the live import's schema pin. An empty
+// expectedSchemaVersion imports a persisted trace at whatever version sealed it,
+// so it pins nothing. Otherwise the trace must carry that version: an earlier
+// version skips the bindings the executor seals, so a relabelled trace is
+// INVALID_EVIDENCE rather than graded.
+func agentTraceSchemaPinError(trace *AgentTrace, expectedSchemaVersion string) error {
+	if expectedSchemaVersion == "" || trace.SchemaVersion == expectedSchemaVersion {
+		return nil
+	}
+	return fmt.Errorf("evaluation: agent trace schema version %q is not the version the campaign executor seals (%q): %w", trace.SchemaVersion, expectedSchemaVersion, constants.ErrEvidenceArtifactMalformed)
+}
+
+// agentTraceAssessment is the INVALID_EVIDENCE verdict on one agent trace.
+// invalid is nil when the trace is graded, and grading is nil when it is not.
+type agentTraceAssessment struct {
+	grading *ScenarioGradingResult
+	invalid error
+}
+
+// assessAgentTrace applies the campaign's INVALID_EVIDENCE rules to one agent
+// trace. A trace with an evidence verdict (from evidence verification or the
+// schema pin) is not graded and takes that verdict. Otherwise it is graded, and
+// a grader error that is a verdict on the trace or the gold players is the
+// verdict. Any other grader error is returned as an executor failure. The live
+// import and the offline verifier both apply this rule.
+func assessAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, lifecycle evalv1.EvaluationAssignmentLifecycleStatus, evidenceErr error) (agentTraceAssessment, error) {
+	if evidenceErr != nil {
+		return agentTraceAssessment{invalid: evidenceErr}, nil
+	}
+	graded, gradeErr := GradeHomogeneousScenario(req, trace, lifecycle)
+	switch {
+	case gradeErr == nil:
+		return agentTraceAssessment{grading: graded}, nil
+	case isEvidenceGradingError(gradeErr):
+		return agentTraceAssessment{invalid: gradeErr}, nil
+	default:
+		return agentTraceAssessment{}, gradeErr
+	}
+}
+
 // ImportAssignmentResultFromAgentTrace materializes one terminal homogeneous
 // assignment result from a sealed agent trace. A trace whose tool calls the
 // Data Operator's signed evidence does not back is INVALID_EVIDENCE: it carries
-// no grades and the model is not graded on it.
-func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, traceEvidence *compliancev1.ComplianceEvidenceReference, now time.Time, newID func(string) string) (*evalv1.EvaluationAssignmentResult, error) {
+// no grades and the model is not graded on it. expectedSchemaVersion is the
+// live schema pin (see agentTraceSchemaPinError); persisted recovery passes "".
+func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, traceEvidence *compliancev1.ComplianceEvidenceReference, now time.Time, newID func(string) string, expectedSchemaVersion string) (*evalv1.EvaluationAssignmentResult, error) {
 	if req.Assignment == nil || trace == nil {
 		return nil, fmt.Errorf("evaluation: import agent trace: %w", constants.ErrMissingRequiredField)
 	}
@@ -1212,10 +1262,20 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	}
 	// Verification comes before grading: a trace the Data Operator's signed
 	// evidence does not back is never graded against the model.
-	evidenceErr := VerifyAgentTraceEvidence(trace)
+	evidenceErr := errors.Join(agentTraceSchemaPinError(trace, expectedSchemaVersion), VerifyAgentTraceEvidence(trace))
 	if modelErr := verifyAssignmentTraceModels(req, trace); modelErr != nil {
 		evidenceErr = errors.Join(evidenceErr, modelErr)
 	}
+	// Grading reads only verified evidence. A grader error that is a verdict on
+	// the trace or the gold players is INVALID_EVIDENCE; any other grader error
+	// is an executor failure and stays recoverable.
+	lifecycle := agentTraceLifecycle(req, trace)
+	assessment, err := assessAgentTrace(req, trace, lifecycle, evidenceErr)
+	if err != nil {
+		return nil, err
+	}
+	invalidErr := assessment.invalid
+	grading := assessment.grading
 	modelInferences, scoredSpan := modelInferenceRecordsFromAgentTrace(req, trace, newID)
 	assignmentID := req.Assignment.GetAssignmentId()
 	result := &evalv1.EvaluationAssignmentResult{
@@ -1234,15 +1294,10 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 		ScoredInferenceSpanNanos: scoredSpan,
 		CompletedAt:              timestamppb.New(now),
 	}
-	if evidenceErr != nil {
+	if invalidErr != nil {
 		result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
-		result.InvalidEvidenceDetail = evidenceErr.Error()
+		result.InvalidEvidenceDetail = invalidErr.Error()
 	} else {
-		lifecycle := agentTraceLifecycle(req, trace)
-		grading, err := GradeHomogeneousScenario(req, trace, lifecycle)
-		if err != nil {
-			return nil, err
-		}
 		result.LifecycleStatus = lifecycle
 		result.DeterministicGrades = grading.DeterministicGrades
 		result.SemanticGrades = grading.SemanticGrades

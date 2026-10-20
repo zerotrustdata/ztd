@@ -3,8 +3,8 @@ doc_id: build_apps
 title: Build ztd-Compatible Applications
 audience: application developers and agent framework authors
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/build_apps.md
   - internal/services/mcp/
@@ -33,7 +33,7 @@ The Gateway supports four application integration patterns:
 | :--- | :--- | :--- | :--- |
 | **MCP or A2A** | JSON-RPC tool or skill intent | Builds `GovernanceEnvelope`, binds state Merkle root, runs L2 deliberation, manages L3 suspension, dispatches action | Enrolled app or CLI mTLS certificate; JWT when JWKS configured |
 | **Gateway HTTP dispatch** | Registered request `event_type` and base64 protobuf payload at `POST /api/v1/operators/commands` | Derives `action_type`, binds state root and posture, constructs envelope, dispatches to Operator | Enrolled app mTLS certificate and `AppPolicy` |
-| **Direct envelope** | Complete canonical protojson `GovernanceEnvelope` | Verifies envelope structure, hash, state root, nonces, and proofs; dispatches synchronously | CLI or Operator mTLS certificate |
+| **Direct envelope** | Complete canonical protojson `GovernanceEnvelope` | Verifies envelope structure, hash, state root, nonces, and proofs; dispatches synchronously | CLI or Operator mTLS certificate; app mTLS certificate for platform document writes only |
 | **Audit ingest** | Registered audit request `event_type` at `POST /api/v1/audit/records` | Validates session binding, publishes to operator `audit:` channel, waits for append acknowledgement | Enrolled app mTLS certificate |
 
 MCP and A2A are the standard application-facing surfaces. Direct envelope submission is a privileged integration for clients that already possess an authorized transport identity and can construct all required proofs.
@@ -128,13 +128,33 @@ External applications enroll using platform enrollment:
 ./ztd auth enroll app etl-service
 ```
 
-The platform owner approves the request:
+The platform owner sets `REQUEST_ID` to the request ID printed by the enrollment step, then approves the request:
 
 ```bash
-./ztd auth enroll approve <request-id> --yes
+./ztd auth enroll approve "$REQUEST_ID" --yes
 ```
 
 The issued certificate carries SPIFFE ID `spiffe://ztd.local/app/etl-service`. The application's private key is sealed under the keystore master key and is never written as PEM. It is used only through `ztd` or the `ztd mcp stdio --app etl-service` bridge, which unseal it in process.
+
+`auth enroll app` waits for the owner decision. An authenticated owner CLI approves inline under `doctrine` and `consensus` postures. Under `ratify` and `notary`, the owner approves with a passkey at the printed URL. Without an owner CLI identity, approve from an owner CLI with `./ztd auth enroll approve <request-id> --yes`.
+
+Application names MUST match `^[a-z0-9][a-z0-9._-]*$` and MUST NOT exceed 64 bytes. The Gateway enforces this rule on every platform enrollment request, and the CLI applies the same check before it submits one. Reserved platform names, including `ztd-ensemble` and `ensemble`, are rejected by the Gateway as well. Use `./ztd auth enroll app --help` for the enrollment flags.
+
+### Consensus Member Applications
+
+An application that serves as an L2 consensus member MUST enroll with an independent Ed25519 signing identity:
+
+```bash
+./ztd auth enroll app etl-service --signing-key
+```
+
+Bind the member set through governance. The primary application MUST appear in the member list, and a set of more than one member MUST state `--quorum` explicitly:
+
+```bash
+./ztd auth enroll consensus bind etl-service https://etl.example.com:9443 --member-app etl-service --member-app risk-service --quorum 2
+```
+
+The Gateway stores one bound consensus policy. Under `ratify` and `notary`, the binding requires passkey approval at the printed URL. `./ztd auth enroll consensus show` prints the bound policy. The member lifecycle, deliberation endpoint, and vote verification are defined in [Consensus Architecture](../architecture/consensus.md).
 
 ---
 
@@ -143,20 +163,19 @@ The issued certificate carries SPIFFE ID `spiffe://ztd.local/app/etl-service`. T
 When constructing a `GovernanceEnvelope` directly:
 
 1. **Fetch State Merkle Root**: `GET /api/v1/state` returns `state_merkle_root`.
-2. **Serialize Typed Payload**: Create the protobuf message (e.g. `ztd.operator.v1.CommandRequested`), serialize to binary, and base64-encode.
-3. **Compute Transaction Hash**: Compute lowercase hexadecimal SHA-256 over canonical fields:
-   `action_type|target_resource|payload|state_merkle_root|nonce|expires_at|intent_data|requestor_user_id|acting_app_id|operator_id|operator_session_id|case_id|investigation_id|task_id|web_session_id|cli_session_id|`
-4. **Attach Posture-Required Proofs**: Attach L2 consensus signatures (`<transaction_hash>|<decision>` signed with Ed25519) and L3 authorization if required by posture.
+2. **Serialize Typed Payload**: Create the protobuf message (e.g. `ztd.operator.v1.CommandRequested`), serialize to binary, and base64-encode. Set `event_type` to a registered request event type and `protocol_version` to `"2"`; protocol version 2 is required for new ingress.
+3. **Compute Transaction Hash**: Compute the lowercase hexadecimal SHA-256 of `ztd-tx-v2|<action_type>|<event_type>|<canonical_v1>`. `<canonical_v1>` appends each populated field, followed by `|`, in this order: `action_type`, `target_resource`, `payload`, `state_merkle_root`, `nonce`, `expires_at`, `intent_data`, `requestor_user_id`, `acting_app_id`, `operator_id`, `operator_session_id`, `case_id`, `investigation_id`, `task_id`, `web_session_id`, `cli_session_id`. Absent optional fields are omitted. The canonical encoding is defined in [Governance Architecture](../architecture/governance.md).
+4. **Attach Posture-Required Proofs**: Under `consensus` and `notary` postures, set `governance.l2.consensus_set_id` and include `votes` from at least K distinct bound members. Each vote carries `signer_key_id`, `decision`, and a hex-encoded Ed25519 `consensus_signature` over `<transaction_hash>|<decision>`. Attach L3 authorization when the posture requires it. Direct submission does not synthesize missing L2 or L3 proofs; the envelope fails closed at L4.
 5. **Submit**: `POST /api/v1/governance/envelopes` returns HTTP 200 with `ActionReceipt`.
 
 ---
 
 ## Verifying Action Receipts
 
-An `ActionReceipt` contains execution status, state roots, stage evidence, and signatures. Verify both signatures before trusting the outcome:
+An `ActionReceipt` contains execution status, state roots, stage evidence, and signatures. Verify both signatures before trusting the outcome, using the Ed25519 Actuator public key bound to the receipt's `signer_key_id`:
 
-1. `receipt_signature`: Verified against the Operator or Gateway actuator Ed25519 public key.
-2. `persistence_attestation.signature`: Verified against the local auditor key.
+1. `signature`: Signs the canonical receipt fields and deterministic stage evidence.
+2. `final_persistence_attestation.signature`: Signs the persistence attestation. Its `signer_key_id` MUST equal the receipt's `signer_key_id`, and its `receipt_signature_digest` MUST match `signature`.
 
 Use the reference verifiers `VerifyActionReceiptSignature` and `VerifyReceiptPersistenceAttestation` from `internal/services/governance/l5_actuator.go`.
 
@@ -164,10 +183,10 @@ Use the reference verifiers `VerifyActionReceiptSignature` and `VerifyReceiptPer
 
 ## Security Requirements
 
-- Send all mutations through a governed Gateway ingress; never bypass the PEP execution boundary.
-- Validate Gateway TLS certificates; never disable verification.
-- Rebuild envelopes on state-root mismatches (`TX_STATE_MISMATCH`) with fresh nonces and signatures.
-- Verify receipt signatures against trusted actuator keys before consuming execution output.
+- Applications MUST send all mutations through a governed Gateway ingress and MUST NOT bypass the PEP execution boundary.
+- Applications MUST validate Gateway TLS certificates and MUST NOT disable verification.
+- Applications MUST rebuild envelopes on state-root mismatches (`TX_STATE_MISMATCH`) with fresh nonces and signatures.
+- Applications MUST verify receipt signatures against trusted actuator keys before consuming execution output.
 
 ---
 

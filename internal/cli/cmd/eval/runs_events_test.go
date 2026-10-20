@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 )
 
@@ -71,5 +73,37 @@ func TestRunStatusSettled_OnlyQueuedAndRunningAreStillInFlight(t *testing.T) {
 		models.RunLifecycleStatusCancelled,
 	} {
 		assert.True(t, runStatusSettled(status), string(status))
+	}
+}
+
+func TestDeliverRunEvent_UndecodableStopIsAnErrorAndOtherRunsAreIgnored(t *testing.T) {
+	stopType := string(constants.EventAiEvalStopRequested)
+	events := make(chan runEvent, 1)
+
+	err := deliverRunEvent(context.Background(), events, "run-a", stopType, `{"type":"`+stopType+`","data":{"run_id":7}}`)
+	require.Error(t, err)
+	assert.Empty(t, events)
+
+	require.NoError(t, deliverRunEvent(context.Background(), events, "run-a", stopType, `{"type":"`+stopType+`","data":{"run_id":"run-b"}}`))
+	assert.Empty(t, events)
+
+	require.NoError(t, deliverRunEvent(context.Background(), events, "run-a", stopType, `{"type":"`+stopType+`","data":{"run_id":"run-a"}}`))
+	ev := <-events
+	require.NotNil(t, ev.Stop)
+	assert.Equal(t, "run-a", ev.Stop.RunID)
+}
+
+func TestFollowRun_CancelledContextReturnsNil(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := &runEventStream{cancel: func() {}, done: make(chan struct{})}
+	// Ending ctx closes the stream as well, so both select cases are ready.
+	cancel()
+	close(stream.done)
+	for range 50 {
+		err := followRun(ctx, stream, nil, nil, func() (*runShowJSON, error) {
+			t.Fatal("reload after cancel")
+			return nil, nil
+		}, func(*runShowJSON) error { return nil })
+		require.NoError(t, err)
 	}
 }

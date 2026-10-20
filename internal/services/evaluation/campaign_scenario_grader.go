@@ -8,6 +8,7 @@
 package evaluation
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -37,6 +38,14 @@ type ScenarioTrajectoryGradingResult struct {
 	GuidedRetryCount    uint32
 	FailureReason       string
 	PublicFailureReason string
+}
+
+// isEvidenceGradingError reports whether a GradeHomogeneousScenario error is a
+// verdict on the evidence or the gold criteria it was graded against: a trace
+// step that persona grading rejects, or a Gold.Players label it does not accept.
+// Any other grader error is an executor failure, not a finding about the trace.
+func isEvidenceGradingError(err error) bool {
+	return errors.Is(err, constants.ErrSUTTraceInvalid) || errors.Is(err, constants.ErrInvestigationScenarioInvalid)
 }
 
 // GradeHomogeneousScenario evaluates one homogeneous model-role assignment
@@ -123,7 +132,11 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	grades = append(grades, g.gradeRoleCriteria(traj.Passed, contentPassed)...)
 	grades = append(grades, g.gradePipelineCriteria(invoked)...)
 	grades = append(grades, g.gradeRequiredEvidenceTypes(traj, contentPassed)...)
-	grades = append(grades, g.gradePlayerCriteria()...)
+	playerGrades, err := g.gradePlayerCriteria()
+	if err != nil {
+		return nil, err
+	}
+	grades = append(grades, playerGrades...)
 
 	scores, err := deriveScenarioDecomposedScores(g.assignmentID, grades)
 	if err != nil {
@@ -334,19 +347,20 @@ func playersToPersonaLabels(players *ScenarioPlayerExpectations) persona.Labels 
 
 // gradePlayerCriteria evaluates Gold.Players against the roles that actually ran
 // in the trace using persona/ deterministically. Absent roles remain ungraded,
-// not failed (D11).
-func (g homogeneousGrader) gradePlayerCriteria() []*evalv1.DeterministicGrade {
+// not failed (D11). A label or persona grading error fails the scenario grade
+// rather than dropping its player criteria from the verdict.
+func (g homogeneousGrader) gradePlayerCriteria() ([]*evalv1.DeterministicGrade, error) {
 	players := g.req.ScenarioGold.Players
 	if players == nil {
-		return nil
+		return nil, nil
 	}
 	protoTrace := g.view.Trace.ToProto()
 	if protoTrace == nil || len(protoTrace.GetSteps()) == 0 {
-		return nil
+		return nil, nil
 	}
 	labels := playersToPersonaLabels(players)
 	if err := labels.Validate(); err != nil {
-		return nil
+		return nil, fmt.Errorf("evaluation: grade player criteria: labels: %w", err)
 	}
 	input := persona.Input{
 		Trace:  protoTrace,
@@ -355,7 +369,7 @@ func (g homogeneousGrader) gradePlayerCriteria() []*evalv1.DeterministicGrade {
 	}
 	stepGrades, err := persona.Grade(input)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("evaluation: grade player criteria: %w", err)
 	}
 	roleCounts := make(map[evalv1.AgentRole]int, len(stepGrades))
 	for _, sg := range stepGrades {
@@ -381,7 +395,7 @@ func (g homogeneousGrader) gradePlayerCriteria() []*evalv1.DeterministicGrade {
 		}
 		grades = append(grades, g.newGrade(criterionID, basisObservation, passed, passDetail, failDetail))
 	}
-	return grades
+	return grades, nil
 }
 
 // requiredEvidenceBasis states what a required-evidence grade measures. Most

@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -176,21 +177,30 @@ func (g *liveGateway) pendingTransactions(approver *http.Client) ([]string, erro
 	return hashes, nil
 }
 
-// awaitPendingApproval waits for the one transaction the blocked call suspended and
-// returns its hash. The approver learns of it the way a human does, from the Gateway's
-// pending approval list.
-func (g *liveGateway) awaitPendingApproval(t *testing.T, approver *http.Client) string {
+// watchPendingApprovals opens the approver's approval stream. Open it before the blocked
+// call is submitted, so the Gateway's announcement for the suspension cannot be missed.
+func (g *liveGateway) watchPendingApprovals(t *testing.T) *auth.ApprovalSubscription {
 	t.Helper()
-	var txHash string
-	require.Eventually(t, func() bool {
-		hashes, err := g.pendingTransactions(approver)
-		if err != nil || len(hashes) != 1 {
-			return false
-		}
-		txHash = hashes[0]
-		return true
-	}, 10*time.Second, 25*time.Millisecond, "the blocked call must suspend one transaction for the human")
-	return txHash
+	watch, err := g.client.SubscribeApprovals(t.Context(), g.persona)
+	require.NoError(t, err)
+	t.Cleanup(watch.Close)
+	return watch
+}
+
+// awaitPendingApproval waits for the one transaction the blocked call suspended and
+// returns its hash. The Gateway announces the suspension on the approver's stream as
+// ztd.v1.platform.approvals.changed (subject transactions). That announcement names no
+// transaction, so the helper wakes on it and re-lists the pending transactions once,
+// the way the console and the TUI do. Nothing polls.
+func (g *liveGateway) awaitPendingApproval(t *testing.T, approver *http.Client, watch *auth.ApprovalSubscription) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	require.NoError(t, watch.WaitTransactionsChanged(ctx), "the blocked call must announce its suspended transaction")
+	hashes, err := g.pendingTransactions(approver)
+	require.NoError(t, err)
+	require.Len(t, hashes, 1, "the blocked call must suspend one transaction for the human")
+	return hashes[0]
 }
 
 // denyWithCLI denies txHash the way `ztd auth approve --deny` does.
@@ -238,13 +248,14 @@ func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
 					driven cases.Driven
 					err    error
 				}
+				watch := g.watchPendingApprovals(t)
 				answered := make(chan answer, 1)
 				go func() {
 					driven, err := NewAttended(inner, g.client, g.persona, g.ident.UserID).Drive(t.Context(), a)
 					answered <- answer{driven, err}
 				}()
 
-				txHash := g.awaitPendingApproval(t, approver)
+				txHash := g.awaitPendingApproval(t, approver, watch)
 				select {
 				case early := <-answered:
 					t.Fatalf("the call answered before the human decided: %+v, %v", early.driven, early.err)
@@ -316,6 +327,7 @@ func TestAttendedRatifyA2AApprovalAttributesDownstreamCallToAttempt(t *testing.T
 	session := fixtures.ConsoleSignIn(t, g.f, approver, g.ident)
 	a2a := NewA2A(g.client, g.persona, stub)
 	a := gatewayAttempt(t, g.f, row23)
+	watch := g.watchPendingApprovals(t)
 
 	type answer struct {
 		driven cases.Driven
@@ -327,7 +339,7 @@ func TestAttendedRatifyA2AApprovalAttributesDownstreamCallToAttempt(t *testing.T
 		answered <- answer{driven, err}
 	}()
 
-	txHash := g.awaitPendingApproval(t, approver)
+	txHash := g.awaitPendingApproval(t, approver, watch)
 	status, body := fixtures.ApproveWithPasskey(t, g.f, approver, session, g.ident, txHash)
 	require.Equal(t, http.StatusOK, status, "passkey approval must resume the call: %s", body)
 
@@ -565,6 +577,7 @@ func TestAttendedBlockingDispatchAnnouncesBeforeTheCallWithoutOpeningAStream(t *
 	require.NoError(t, err)
 	a := gatewayAttempt(t, g.f, c)
 	stderr := redirectStderr(t)
+	watch := g.watchPendingApprovals(t)
 
 	type answer struct {
 		driven cases.Driven
@@ -576,7 +589,7 @@ func TestAttendedBlockingDispatchAnnouncesBeforeTheCallWithoutOpeningAStream(t *
 		answered <- answer{driven, err}
 	}()
 
-	txHash := g.awaitPendingApproval(t, approver)
+	txHash := g.awaitPendingApproval(t, approver, watch)
 	banner, err := os.ReadFile(stderr)
 	require.NoError(t, err)
 	assert.Contains(t, string(banner), "HUMAN APPROVAL REQUIRED", "the banner must be printed before the blocking request reaches the Gateway")

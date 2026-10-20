@@ -52,7 +52,6 @@ const (
 	realStackCampaignID = "smoke-campaign"
 	realStackScenarioID = "tool-arg-shell-command"
 	realStackModelTag   = "qwen3:4b"
-	realStackModelHash  = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 )
 
 // realStackRenderedHealthPath matches the absolute health fixture path the
@@ -231,6 +230,7 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	ctx := t.Context()
 	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{
 		Posture: opts.posture, Replies: opts.replies, SharedRuntime: opts.shared,
+		Provenance: true,
 	})
 
 	logger := testutil.NewTestLogger()
@@ -377,7 +377,9 @@ func (env *realStackAgentRun) startRun(t *testing.T, plan realStackRunPlan) {
 	if repetitions == 0 {
 		repetitions = 1
 	}
-	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: realStackModelTag, ModelDigest: realStackModelHash}
+	// The variant declares the digest the Provenance Operator attests for the
+	// served model, so the campaign's BEGIN observation is a digest match.
+	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: realStackModelTag, ModelDigest: env.stack.ModelStore.ModelDigest}
 	inventory, err := evaluation.MaterializeModelRegistry(plan.campaignID, []*evalv1.ModelVariant{variant})
 	require.NoError(t, err)
 	req := evaluation.CampaignInitRequest{

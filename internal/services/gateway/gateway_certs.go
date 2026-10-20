@@ -40,7 +40,7 @@ const (
 	rootValidityDays         = 3650
 	intermediateValidityDays = 3650
 	servingCertValidityDays  = 90 // 90-day TTL for gateway serving certificate
-	leafCertValidityDays     = 7  // 7-day TTL for operator/cli leaf certificates
+	leafCertValidityDays     = int(constants.MaxWorkloadLeafCertTTL / (24 * time.Hour))
 	peerCertValidityDays     = 90 // 90-day TTL for gateway peer certificates
 
 	hubCommonName         = "ztd Hub Intermediate CA"
@@ -105,7 +105,7 @@ func newPKIAuthority(fileSvc fs.RuntimeFileService, docStore *DocumentStoreServi
 		db:              docStore,
 		secretManager:   secretManager,
 		logger:          logger,
-		operatorLeafTTL: leafCertValidityDays * 24 * time.Hour,
+		operatorLeafTTL: time.Duration(leafCertValidityDays) * 24 * time.Hour,
 	}
 }
 
@@ -717,7 +717,7 @@ func (pki *PKIAuthority) SignCSR(csrPEM string, leafType string, organizationID,
 		}
 		caCert = pki.operatorCert
 		caType = constants.CATypeOperator
-		validity = leafCertValidityDays * 24 * time.Hour
+		validity = time.Duration(leafCertValidityDays) * 24 * time.Hour
 		if leafType == constants.LeafTypeOperator {
 			validity = pki.operatorLeafTTL
 		}
@@ -1089,7 +1089,7 @@ func (pki *PKIAuthority) generateServiceCertWithNames(extraIPs []net.IP, extraDN
 		return fmt.Errorf("%s: %w", constants.ErrPKIGenerateSerial, err)
 	}
 
-	dnsNames := []string{"localhost", "ztd.local", string(constants.SessionTypeOperator)}
+	dnsNames := []string{"localhost", constants.GatewayInternalHostname, string(constants.SessionTypeOperator)}
 	// Add extra DNS names from network identity detection
 	if extraDNSNames != nil {
 		dnsNames = append(dnsNames, extraDNSNames...)

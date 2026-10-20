@@ -416,7 +416,6 @@ func TestRouteAuthRegistry_GenericRoutesRemainMTLS(t *testing.T) {
 		constants.APIPaths.OperatorsValidate,
 		constants.APIPaths.OperatorsStop,
 		// Admin routes
-		constants.APIPaths.AdminConsensus,
 		constants.APIPaths.AdminAppsRevoke,
 		constants.APIPaths.AdminAppPoliciesBySigner + "some-signer",
 	}

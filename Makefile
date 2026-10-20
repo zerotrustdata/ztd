@@ -1039,7 +1039,7 @@ _ci-test:
 	@$(MAKE) test-coverage
 
 # Release-shape checks GitHub Actions runs on the built binaries: the Windows
-# cross-compile, then (on a Linux host, the FIPS tested OE) the FIPS self-check
+# cross-compile, then (on a Linux host; the affirmed FIPS OE is Debian GNU/Linux 12) the FIPS self-check
 # and fully static standard and FIPS binaries.
 .PHONY: _ci-binaries
 _ci-binaries:

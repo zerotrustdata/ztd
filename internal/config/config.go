@@ -322,6 +322,11 @@ type GatewayOptions struct {
 
 	DoctrineDir string
 
+	// OperatorLeafCertTTL is the lifetime of every Operator identity certificate.
+	// Zero selects constants.MaxWorkloadLeafCertTTL (7 days); any other value must
+	// be positive and no longer than that maximum (see ValidateOperatorLeafCertTTL).
+	OperatorLeafCertTTL time.Duration
+
 	// AllowTestPortZero should be true only when called from Go tests; when false,
 	// port 0 is rejected to prevent dynamic port assignment in production.
 	AllowTestPortZero bool
@@ -381,6 +386,17 @@ func validateGatewayPorts(httpPort, httpsPort int, allowTestPortZero bool) (int,
 	}
 
 	return httpPort, httpsPort, nil
+}
+
+// ValidateOperatorLeafCertTTL fails closed unless ttl is positive and no longer
+// than the platform workload leaf maximum (constants.MaxWorkloadLeafCertTTL).
+// Gateway start and PKI construction both apply it, so an out-of-range lifetime
+// cannot reach certificate issuance.
+func ValidateOperatorLeafCertTTL(ttl time.Duration) error {
+	if ttl <= 0 || ttl > constants.MaxWorkloadLeafCertTTL {
+		return fmt.Errorf("%w: got %s, allowed range is (0, %s]", constants.ErrConfigLeafCertTTLInvalid, ttl, constants.MaxWorkloadLeafCertTTL)
+	}
+	return nil
 }
 
 // LoadGateway creates configuration for gateway mode.
@@ -472,6 +488,14 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 	jwtIssuer := opts.JWTIssuer
 	jwtAudience := opts.JWTAudience
 
+	operatorLeafCertTTL := opts.OperatorLeafCertTTL
+	if operatorLeafCertTTL == 0 {
+		operatorLeafCertTTL = constants.MaxWorkloadLeafCertTTL
+	}
+	if err := ValidateOperatorLeafCertTTL(operatorLeafCertTTL); err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		OperatorCapabilities: capabilities,
 		// The embedded Operator executes in its own runtime directory, never in
@@ -526,7 +550,7 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 			// Certificate mode
 			CertMode:            opts.CertMode,
 			NetworkIdentityFile: opts.NetworkIdentityFile,
-			OperatorLeafCertTTL: 7 * 24 * time.Hour,
+			OperatorLeafCertTTL: operatorLeafCertTTL,
 
 			AllowedOrigins: opts.AllowedOrigins,
 			DoctrineDir:    opts.DoctrineDir,

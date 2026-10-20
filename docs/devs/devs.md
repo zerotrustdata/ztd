@@ -3,8 +3,8 @@ doc_id: devs
 title: Developer Guidelines
 audience: maintainers and coding agents
 status: current
-version: v1.1.3
-last_updated: 2026-10-18
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - go.mod
   - Makefile
@@ -102,7 +102,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CLI-01 | A new Cobra group MUST be a package under `internal/cli/cmd/<group>/`. The root command stays in `internal/cli/cmd/main.go`. Shared non-group helpers stay in `internal/cli/cmd/shared/`. The group inventory lives in [Code Map](codemap.md#cli-packages). |
+| INV-CLI-01 | A new Cobra group MUST be a package under `internal/cli/cmd/<group>/`. The root command stays in `internal/cli/cmd/main.go`. Shared non-group helpers stay in `internal/cli/cmd/shared/`. The group inventory lives in `docs/devs/codemap.md` under CLI packages. |
 
 ### Code (`INV-CODE`)
 
@@ -163,7 +163,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-FS-10 | A command that clears the runtime root MUST call `fileSvc.ArchiveRuntime`, which renames `.ztd/` to `.ztd-<MMDDHHMM>`. MUST NOT call `RemoveAll("")` on the runtime root. Destructive `clean` or `reset` commands MUST gate on `shared.ConfirmDestructive` before mutating state. |
 | INV-FS-11 | Every scratch directory or file MUST live under `.ztd/tmp/` (`constants.TmpDirname`), created with `fileSvc.MkdirTemp`. Throwaway local Operators live under `.ztd/operators/<name>` (`constants.OperatorsDirname`), the `ztd operator deploy --local` default. Remote staging over SSH uses `.ztd/tmp/` under the login directory (`ssh.MkdirRemoteScratch`). MUST NOT stage anything in the OS temp directory (`/tmp`, `%TEMP%`, `os.TempDir`, `os.MkdirTemp("")`) or the user's home directory. Tests use `testutil.TempDir(t)`; `make lint` rejects `os.TempDir`, `t.TempDir`, and empty-dir `os.MkdirTemp`/`os.CreateTemp`. |
 
-Consumers pass relative paths from `internal/constants/paths.go` into `ReadFile`, `WriteFile`, `Stat`, `FileExists`, `ReadDir`, `Rename`, `Remove`, `RemoveAll`, and other `RuntimeFileService` methods. Startup constructs the service and calls `CreateRuntimeTree` (`internal/cli/serve/gateway.go`, `internal/cli/serve/operator.go`).
+Consumers pass relative paths from `internal/constants/paths.go` into `ReadFile`, `WriteFile`, `Stat`, `FileExists`, `ReadDir`, `Rename`, `Remove`, `RemoveAll`, and other `RuntimeFileService` methods. Startup constructs the service and calls `CreateRuntimeTree` (`internal/cli/serve/gateway.go`, `internal/cli/serve/operator_runtime.go`).
 
 ### Stores (`INV-STOR`)
 
@@ -180,12 +180,12 @@ Store invariants are owned by [Storage Architecture](../architecture/storage.md#
 
 | ID | Rule |
 | :--- | :--- |
-| INV-DEP-01 | Shared governance dependencies MUST be `pubsub.GovernanceCoreDeps`. Gateway-only document, consensus, field-read, platform-enrollment, and posture dependencies MUST be added on `pubsub.GatewayModeDeps`. Outbound mode MUST use `pubsub.OutboundModeDeps`, which embeds only the shared fields. |
+| INV-DEP-01 | Shared governance dependencies MUST be `pubsub.GovernanceCoreDeps`. Gateway-only document, field-read, platform-enrollment, and posture dependencies MUST be added on `pubsub.GatewayModeDeps`. Outbound mode MUST use `pubsub.OutboundModeDeps`, which embeds the shared core and adds only `ConsensusPolicyStore`, the L2 policy the Operator verifies votes against. |
 | INV-DEP-02 | `ZtdoService` MUST build outbound dependencies with `NewOutboundModeDeps`. That constructor validates the outbound core before `OperatorPubSubService` is constructed. |
 | INV-DEP-03 | The production Gateway builder MUST construct `GatewayModeDeps` directly and pass it to `NewGatewayOperatorPubSubService`. `NewGatewayModeDeps` validates a bundle when called. Code on the production builder path MUST NOT assume that validating constructor ran. Keep the builder's explicit non-nil wiring and command-service constructor checks. |
 | INV-DEP-04 | `OperatorPubSubService.BindMCPGateway` MUST run once, before either service starts. It MUST reject nil (`constants.ErrPubSubMCPGatewayNil`), duplicate (`constants.ErrPubSubMCPGatewayAlreadyBound`), and post-start (`constants.ErrPubSubMCPGatewayBindAfterStart`) binding. MUST NOT reintroduce a construction-time setter for audit, consensus, or session validation. |
 | INV-DEP-05 | Posture-dependent L2 MUST stay optional only where posture does not require it. A required posture dependency MUST fail closed. |
-| INV-DEP-06 | Gateway governance wiring MUST follow the order in [Gateway governance construction](#gateway-governance-construction). |
+| INV-DEP-06 | Gateway governance wiring MUST follow the order in the Procedures section `Gateway governance construction`. |
 | INV-DEP-07 | `CommandService`, `FileOpsService`, `PortService`, `HistoryService`, and `OllamaMaintenanceService` MUST take their collaborators (results publisher, audit store, active scrubber, ledger, history handler) as required constructor arguments and fail closed on nil or disabled input (`ErrPubSubResultsPublisher`, `ErrAuditStoreRequired`, `ErrEgressScrubberUnavailable`, `ErrLedgerRequired`, `ErrHistoryHandlerRequired`). MUST NOT add a setter or assign their fields after construction. |
 
 ### Testing (`INV-TEST`)
@@ -234,7 +234,7 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 | ID | Rule |
 | :--- | :--- |
 | INV-MCP-01 | A native MCP tool MUST implement `mcp.NativeTool` and MUST execute only for a verified `MCP_CALL` envelope, on the executing runtime's own native tool host: the Gateway's embedded Operator, or an outbound Operator's `mcp.NewOperatorNativeToolHandler`. Tool names referenced outside the tool's own file MUST come from the `constants.MCPTool*` names. |
-| INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the audit-receipt reads (`INV-OP-CAP-01` in [Operator Architecture](../architecture/operator.md)). |
+| INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the audit-receipt reads (`INV-OP-CAP-01` in `docs/architecture/operator.md`). |
 | INV-MCP-03 | `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go` is the inventory. Documentation MUST NOT duplicate the tool list. |
 | INV-MCP-04 | Registration MUST be explicit in `RegisterNativeTools`. MUST NOT register a native tool from `init`. Registry construction MUST return errors. |
 
@@ -242,9 +242,9 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CONTRIB-01 | Documentation changes MUST follow [Documentation Guide](docs.md). Front matter `last_updated` and `version` MUST change only after completing the full audit workflow. `version` MUST match `VERSION`. |
+| INV-CONTRIB-01 | Documentation changes MUST follow `docs/devs/docs.md`. Front matter `last_updated` and `version` MUST change only after completing the full audit workflow. `version` MUST match `VERSION`. |
 | INV-CONTRIB-02 | A contribution MUST be one coherent change and MUST include tests for a fix or feature. |
-| INV-CONTRIB-03 | Contribution guidelines and issue processes reside in the [Contributing Guide](../../.github/CONTRIBUTING.md). Distribution terms are governed by the [Business Source License 1.1](../../LICENSE). |
+| INV-CONTRIB-03 | Contribution guidelines and issue processes reside in `.github/CONTRIBUTING.md`. Distribution terms are governed by the Business Source License 1.1 in `LICENSE`. |
 
 ## Owned surfaces
 
@@ -261,7 +261,7 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 | Repo-root `.env` loader | `internal/cli/config/env_file.go`, `internal/cli/cmd/main.go` | `config.LoadEnvFile(constants.EnvFilename)` in `ExecuteWithVersionInfo`; accepted keys are `constants.SecretEnvVars` and `constants.UserEndpointEnvVars` |
 | Mode dependency types | `internal/services/pubsub/mode_deps.go` | `GovernanceCoreDeps`, `GatewayModeDeps`, `OutboundModeDeps`, `NewOutboundModeDeps`, `NewGatewayModeDeps` |
 | Outbound construction | `internal/services/ztdo.go` | Calls `pubsub.NewOutboundModeDeps` |
-| Gateway builder | `internal/services/gateway/gateway_service.go` | Direct `GatewayModeDeps` composite, then `NewGatewayOperatorPubSubService`, `NewPlatformEnrollmentService`, `mcp.NewGatewayService`, `BindMCPGateway`, `initHTTPHandler` |
+| Gateway builder | `internal/services/gateway/gateway_service.go` | Direct `GatewayModeDeps` composite, then `NewGatewayOperatorPubSubService`, `mcp.NewGatewayService`, `BindMCPGateway`, `NewPlatformEnrollmentService`, `initHTTPHandler` |
 | MCP bind errors | `internal/services/pubsub/pubsub_commands.go` | `BindMCPGateway` |
 | In-process Operator substrate | `internal/services/gateway/embedded/operator.go` | `embedded.New`, `RegisterPending`; outbound runtime is not this package |
 | L1 doctrine loader | `internal/services/governance/l1_doctrine.go` | `NewL1DoctrineFromDir` |
@@ -299,7 +299,7 @@ make lint
 ./ztd test public-loop --candidate candidate.json --output evidence.json
 ```
 
-2. `./ztd test unit` delegates to `make test-unit` by default, or accepts `--pkg` and `--run` for targeted unit testing. Other suites keep their package and timeout flags inside the CLI.
+2. `./ztd test unit` delegates to `make test-unit` by default, or accepts `--pkg` and `--run` for targeted unit testing. Other suites define their selection and time-limit flags in the CLI; read them from `./ztd test <suite> --help`.
 3. Makefile entry points: `make test`, `make test-unit`, `make test-integration`, `make test-coverage`, `make console-test`. Lifecycle and fixture rules reside in [Testing Guide](tests.md).
 
 ### Add a runtime-file CLI command
@@ -317,9 +317,9 @@ make lint
 2. After stores exist, and before `InitializePKI` or `InitializePKIWithNames`, construct in-process substrate with `embedded.New` and `RegisterPending`.
 3. Load L1 doctrine with `NewL1DoctrineFromDir`, then configure posture-required L2 consensus store.
 4. Construct gateway-mode `OperatorPubSubService` with governance and platform-enrollment dependencies. The builder assigns `GatewayModeDeps` directly (`INV-DEP-03`).
-5. Construct `PlatformEnrollmentService` with command service as envelope processor.
-6. Construct `mcp.GatewayService` with command service as envelope processor and session validator, supplying audit and L2 dependencies at construction.
-7. Call `OperatorPubSubService.BindMCPGateway` once before either service starts (`INV-DEP-04`).
+5. Construct `mcp.GatewayService` with command service as envelope processor and session validator, supplying audit and L2 dependencies at construction.
+6. Call `OperatorPubSubService.BindMCPGateway` once before either service starts (`INV-DEP-04`).
+7. Construct `PlatformEnrollmentService` with command service as envelope processor and the MCP gateway, which it requires at construction.
 8. Build HTTP handler and servers after all controller dependencies exist.
 
 ### Add a native MCP tool

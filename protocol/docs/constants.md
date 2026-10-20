@@ -1,6 +1,6 @@
 # Protocol Constants System
 
-Last Updated: 2026-10-12
+Last Updated: 2026-10-20
 Version: v1.2.0
 
 The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the absolute **Single Source of Truth (SSOT)** for all platform contracts, collection definitions, action types, event registries, route paths, and configuration identifiers.
@@ -14,7 +14,7 @@ Code generators synthesize Go types (`internal/constants/*_gen.go`) and TypeScri
 ### 1.1 The Generation Pipeline
 The platform utilizes `internal/tools/constgen` to enforce schema validation and drive code generation across the polyglot monorepo:
 
-```
+```text
 protocol/constants/events.json ─────────────────┐
 protocol/constants/status.json ─────────────────┼──▶ [ constgen ] ──┬──▶ internal/constants/events_gen.go
 internal/tools/constgen/operator_hierarchy.json ┘                   ├──▶ internal/constants/action_types_gen.go
@@ -26,8 +26,8 @@ Before generating, `constgen` validates `protocol/constants/env_vars.json` (cate
 Action classifications in `status.action_type` generate `ActionType.IsMutation()`, `IsBootstrapAction()`, and `AuthorizedByDecision()` from `_mutation`, `_bootstrap`, and `_authorized_by_decision`, respectively. Each predicate matches only explicitly flagged actions and returns false for other values. Empty registries and classifications with no matching actions produce valid Go predicates that always return false; the generator omits the matching case entirely.
 
 ### 1.2 Build Automation Targets
-- **`make constants-generate`**: Executes `go run ./internal/tools/constgen -write`. Validates the registry syntax, grammar, and taxonomy, then writes out the formatted Go and TypeScript artifacts.
-- **`make constants-check`**: Executes `go run ./internal/tools/constgen -check`. Runs within CI to validate the env registry and ensure committed generated files are byte-for-byte identical to the output derived from the registry JSON files.
+- **`make constants-generate`**: Executes `go run ./internal/tools/constgen -write`. Validates the registry syntax, grammar, and taxonomy, then writes the generated Go artifacts (gofmt-formatted) and the TypeScript artifact.
+- **`make constants-check`**: Executes `go run ./internal/tools/constgen -check`. Validates the env registry and verifies that committed generated files match the output derived from the registry JSON files, ignoring CRLF line endings. Runs as a prerequisite of `make test-unit` and `make ci-platform`.
 
 ---
 
@@ -69,6 +69,8 @@ The storage architecture defines canonical collection identifiers used across th
 | `cli_recovery_requests` | `CollectionCLIRecoveryRequests` | `"cli_recovery_requests"` | No | Gateway Auth |
 | `platform_enrollments` | `CollectionPlatformEnrollments` | `"platform_enrollments"` | No | Workload PKI Enrollment |
 
+The `observe_*` projections and `eval_campaign_publication_state` (section 2.3) are also `CollectionName` constants in `collections.json`; none carries `_governed`.
+
 ### 2.2 Governed Collection Access Control (INV-GOV-WARD-06)
 Collections marked `_governed: true` in `collections.json` are the **only** collections that external application workloads may mutate via `DOCUMENT_UPDATE` and `DOCUMENT_DELETE` actions:
 - `cases`
@@ -80,7 +82,7 @@ Collections marked `_governed: true` in `collections.json` are the **only** coll
 - `reputation_commitments`
 - `stake_resolutions`
 
-The L4 Warden verifies `collection.IsGovernedDocument()` prior to dispatch. Any envelope targeting non-governed collections (such as `users`, `trusted_signers`, or `app_policies`) from an external workload is rejected fail-closed. Platform collections may only be mutated by their authoritative internal Gateway services.
+The L4 Warden verifies `collection.IsGovernedDocument()` prior to dispatch. Any `DOCUMENT_UPDATE` or `DOCUMENT_DELETE` envelope targeting a non-governed collection (such as `users`, `trusted_signers`, or `app_policies`) is rejected fail-closed. Platform collections may only be written by their authoritative internal Gateway services.
 
 ### 2.3 Observe Projections
 Read-only projections for dashboard and telemetry consumers query dedicated un-governed collections:
@@ -124,7 +126,7 @@ Each entry in `events.json` adheres to a strict schema validated by `constgen`:
 ```
 
 - **`kind`**: Must be one of `request`, `outcome`, `fact`, `stream`.
-- **`transport`**: Allowed values include `governed`, `pubsub`, `sse`. Any `governance` request must include `governed`.
+- **`transport`**: Allowed values are `governed`, `pubsub`, and `sse`. Any `governance` request must include `governed`.
 - **`producers`**: Components authorized to emit the event (`gateway`, `operator`, `cli`, `mcp`).
 - **`persistence`**: Storage target (`operator.audit_log`, `gateway.audit_log`, `gateway.sse_store`, `gateway.operator_docs`, `gateway.docstore`, `ephemeral`).
 - **`governance`**: Links request events directly to their `action_type` and Protobuf payload type.
@@ -136,17 +138,13 @@ $$\texttt{ztd.v1.} \langle\text{domain}\rangle \texttt{.} \langle\text{entity}\r
 
 Permitted terminals come from the closed `allowedTerminals` list in `internal/tools/constgen/main.go` and represent lifecycle states, including (`requested`, `started`, `received`, `completed`, `failed`, `cancelled`, `timeout`, `recorded`, `granted`, `rejected`, `denied`, `revoked`, `expired`, `acknowledged`, `sent`, `missed`, `bound`, `unbound`, `opened`, `closed`, `established`, `checkpointed`, `exported`, `published`, `rotated`).
 
+`checkGrammar` accepts a terminal outside that list only for `.status.updated.` values and stream-shaped segments (`.stream.`, `.chunk.`, `.delta.`, `.keepalive.`, `.thinking.`).
+
 ### 3.3 Dynamic Action Resolution
 The governance engine determines the action class of any governed request via `constants.Registry.ActionFor(event)`. Hand-coded mapping tables are strictly prohibited.
 
 ### 3.4 Hierarchical Go Accessors
-The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`; every other event is referenced by its flat `Event<Name>` constant:
-- `Event.Operator.Command.*`
-- `Event.Operator.FileEdit.*`
-- `Event.Operator.FsList.*`, `Event.Operator.FsRead.*`, `Event.Operator.FsGrep.*`
-- `Event.Operator.Mcp.*`, `Event.Operator.A2a.*`
-- `Event.Operator.NetworkPing.*`, `Event.Operator.PortCheck.*`
-- `Event.Operator.Intent.*`
+The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`. Every other event is referenced by its flat `Event<Name>` constant. The nested groups under `Event.Operator` are `A2a`, `Audit`, `Bootstrap`, `Command` (including `Command.StatusUpdated`), `Eval`, `FetchFileDiff`, `FetchFileHistory`, `FetchHistory`, `FetchLogs`, `FileEdit`, `FsGrep`, `FsList`, `FsRead`, `Inference`, `Intent`, `Mcp`, `ModelProvenanceObservation`, `NetworkPing`, `Notary`, `OllamaModelInventory`, `OllamaModelResidency`, `PortCheck`, `ProviderBoundaryObservation`, `Receipt`, `RestoreFile`, and `StatusUpdated`. Ungrouped operator events, such as `Event.Operator.Bound`, are `EventType` fields.
 
 ---
 
@@ -173,6 +171,7 @@ Action types define the coarse-grained operational classes evaluated by L1 Doctr
 | `ActionTypePlatformEnrollmentPersistPolicy` | `"PLATFORM_ENROLLMENT_PERSIST_POLICY"` | **Yes** | **Yes** | Persisting app policy for enrolled node |
 | `ActionTypePlatformEnrollmentCreateSession` | `"PLATFORM_ENROLLMENT_CREATE_SESSION"` | **Yes** | **Yes** | Initial session creation post-enrollment |
 | `ActionTypePlatformEnrollmentRevoke` | `"PLATFORM_ENROLLMENT_REVOKE"` | **Yes** | **Yes** | Platform enrollment revocation |
+| `ActionTypePlatformEnrollmentBindConsensus` | `"PLATFORM_ENROLLMENT_BIND_CONSENSUS"` | **Yes** | **Yes** | Binds an enrolled application as the Gateway consensus application |
 | `ActionTypePlatformEnrollmentCreate` | `"PLATFORM_ENROLLMENT_CREATE"` | No | **Yes** | Inbound enrollment CSR submission |
 | `ActionTypeEvalAnswer` | `"EVAL_ANSWER"` | No | No | Evaluation answer submission |
 | `ActionTypeFetchFileDiff` | `"FETCH_FILE_DIFF"` | No | No | Ledger diff inspection |
@@ -194,7 +193,7 @@ Action types define the coarse-grained operational classes evaluated by L1 Doctr
 | `ActionTypeProviderBoundaryObservation` | `"PROVIDER_BOUNDARY_OBSERVATION"` | No | No | Provider boundary observation |
 
 ### 4.2 Mutation Gating
-Actions where `IsMutation() == true` require full L4 Warden state Merkle root validation, JIT capability minting, git ledger tracking, and L5 signed action receipt generation. Read-only actions bypass ledger attestation and state root mutation checks.
+`IsMutation()` is consumed only by `governance.L3Required`. Under postures that require L3 (`ratify`, `notary`), a mutation action that is not `AuthorizedByDecision()` MUST carry an L3 notary proof. The L4 state-root check (`verifyStateful`), JIT capability minting, and L5 signed receipts do not depend on the mutation flag.
 
 ---
 
@@ -209,13 +208,14 @@ HTTP route paths for Gateway REST, mTLS, and control-plane controllers are expos
   - `A2ACall`: `/api/v1/a2a/call`
   - `GovernanceEnvelopes`: `/api/v1/governance/envelopes`
   - `OperatorsCommands`: `/api/v1/operators/commands`
+  - `OperatorsIntents`: `/api/v1/operators/intents`
 - **Session & Identity**:
   - `AuthPasskeys*`: Passkey registration, verification, and authentication routes
   - `AuthCLISession`: `/api/v1/auth/cli/session`
   - `AuthPlatformEnrollment*`: Workload PKI enrollment routes
   - `Approvals`: `/api/v1/approvals`
   - `ApprovePage`: `/api/v1/approve/`
-- **Observe Read Models (User-Scoped, Browser Cookie Authenticated)**:
+- **Observe Read Models (User-Scoped, WebSession Authenticated)**:
   - `ObservePrefix`: `/api/v1/observe/`
   - `ObserveBootstrap`: `/api/v1/observe/bootstrap`
   - `ObserveRuns`, `ObserveEvals`, `ObserveDownloads`
@@ -239,8 +239,8 @@ HTTP route paths for Gateway REST, mTLS, and control-plane controllers are expos
 
 The platform explicitly declares all recognized environment variables in `protocol/constants/env_vars.json`. Each entry defines a `category` of `host`, `secret`, `test`, or `user_endpoint`.
 
-### 6.1 Invariant INV-ENV-04: No Runtime Configuration via Environment
-Platform operational configuration is **never** loaded from environment variables. All parameters (ports, postures, directory locations, downstream endpoints, timeouts) must be supplied via explicit CLI command flags or strongly typed code defaults.
+### 6.1 Invariant INV-ENV-04: Environment Access Through the Registry
+Environment variables MUST be read only through typed keys in `protocol/constants/env_vars.json`, each declared with one `category`: `host`, `secret`, `test`, or `user_endpoint`. Platform configuration (ports, postures, directory locations, and timeouts) MUST NOT be read from environment variables. It is supplied by explicit CLI command flags or strongly typed code defaults.
 
 Production Go code accesses the environment solely via typed constants defined on `constants.EnvVar`:
 - **Host Facts**: `EnvVar.Shell` (`SHELL`), `EnvVar.Lang` (`LANG`), `EnvVar.Term` (`TERM`), `EnvVar.TZ` (`TZ`), `EnvVar.Home` (`HOME`), `EnvVar.User` (`USER`), `EnvVar.SSHAuthSock` (`SSH_AUTH_SOCK`), `EnvVar.XDGRuntimeDir` (`XDG_RUNTIME_DIR`), `EnvVar.DBusSessionBusAddress` (`DBUS_SESSION_BUS_ADDRESS`).
@@ -259,10 +259,11 @@ Pub/Sub channels enforce structured naming conventions:
 - **Command Channels**: `cmd:{operator_id}:{operator_session_id}` (`ChannelPrefixCmd = "cmd"`)
 - **Result Channels**: `results:{operator_id}:{operator_session_id}` (`ChannelPrefixResults = "results"`)
 - **Heartbeat Channels**: `heartbeat:{operator_id}:{operator_session_id}` (`ChannelPrefixHeartbeat = "heartbeat"`)
-- **System Channels**: `ChannelStorageDocument`, `ChannelStorageKv`, `ChannelStorageBlob`, `ChannelGovernance`
+- **System Channels**: `ChannelStorageDocument`, `ChannelStorageKv`, `ChannelStorageBlob`, `ChannelGovernance`, `ChannelOperatorIntent`, `ChannelOperatorDevice`, `ChannelSseEvent`
+- **Additional Prefixes**: `receipts`, `audit`, and `renewal` (`ChannelPrefixReceipts`, `ChannelPrefixAudit`, `ChannelPrefixRenewal`); SSE channels `sse:cli` and `sse:web` (`ChannelPrefixSSECLI`, `ChannelPrefixSSEWeb`)
 
 ### 7.2 Network Ports (`ports.json` / `ports.go`)
-- `OperatorHttp` (`8080`): Bootstrap discovery, CLI recovery, deploy script distribution, and loopback MCP ingress.
+- `OperatorHttp` (`8080`): Plain HTTP listener for health, PKI discovery and bootstrap, CLI recovery and platform enrollment discovery, and deploy script distribution. All other paths redirect to HTTPS.
 - `OperatorHttps` (`8443`): Production mTLS surface, public API routes, authenticated console SPA, and external MCP/A2A ingress.
 
 ### 7.3 Message Senders (`senders.json` / `senders.go`)

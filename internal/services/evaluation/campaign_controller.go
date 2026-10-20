@@ -600,6 +600,9 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 		campaignSpec.GetCatalogDigest() != run.GetCampaignBinding().GetCatalogDigest() {
 		return nil, false, fmt.Errorf("evaluation: execute next assignment: campaign spec does not match run binding: %w", constants.ErrChecksumMismatch)
 	}
+	if binding.ModelRegistryDigest != campaignSpec.GetModelRegistryDigest() {
+		return nil, false, fmt.Errorf("evaluation: execute next assignment: execution binding registry does not match frozen campaign: %w", constants.ErrChecksumMismatch)
+	}
 	var formationStackSet *HeterogeneousStackSet
 	if run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM {
 		formationStackSet, err = c.store.LoadHeterogeneousStackSet(ctx, campaignSpec.GetCampaignId())
@@ -677,6 +680,7 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 		Binding:           binding,
 	}
 	execReq.Binding.ModelVariants = campaignSpec.GetModelRegistry()
+	execReq.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(campaignSpec.GetModelRegistry())
 	execReq.Binding.FormationStackSetDigest = campaignSpec.GetFormationStackSetDigest()
 	var result *evalv1.EvaluationAssignmentResult
 	execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)

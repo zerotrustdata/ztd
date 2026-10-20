@@ -8,7 +8,7 @@
 // validation so a malformed or disclosure-violating response cannot reach the
 // state stores.
 
-import type { CredentialedFetch, GatewayResponse } from './fetch';
+import type { CredentialedFetch, GatewayResponse } from './fetch.js';
 import {
   isAgentLifecycleStatus,
   isDownloadPrivacyClassification,
@@ -17,7 +17,7 @@ import {
   isRunKind,
   isRunLifecycleStatus,
   isSnapshotFreshness,
-} from '../types/enums';
+} from '../types/enums.js';
 import type {
   AgentStateProjection,
   DownloadArtifact,
@@ -34,7 +34,7 @@ import type {
   RunSummary,
   RunTask,
   SuccessRateMeasurement,
-} from '../types/observe';
+} from '../types/observe.js';
 
 export class ObserveResponseValidationError extends Error {
   constructor(

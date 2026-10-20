@@ -3,8 +3,8 @@ doc_id: release_process
 title: Release Process
 audience: maintainers and coding agents
 status: current
-version: v1.1.3
-last_updated: 2026-10-18
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - VERSION
   - Makefile
@@ -102,10 +102,10 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-REL-SMOKE-01 | Release PR preparation MUST run `./ztd test release-smoke --root .ztd/operators/release-smoke-<unique-name>` against the built candidate binary and retain its complete output. The maintained smoke does not require Python, Ensemble, an LLM, or provider credentials. |
-| INV-REL-SMOKE-02 | The runner MUST create and own an isolated Gateway and dedicated data Operator through the supported enrollment/deployment lifecycle. It MUST exercise governed `FILE_EDIT` with exact worker-local receipt verification and read-back, and embedded governed document create/merge preserving fields not included in the merge. |
-| INV-REL-SMOKE-03 | The data worker MUST run in its dedicated runtime, and `report all` MUST read that worker's populated `.ztd` stores. A report against Gateway state, an empty runtime, or stores combined from different runtime roots is not release evidence. |
-| INV-REL-SMOKE-04 | Release smoke acceptance requires non-empty local receipts, commitments, and file mutations in both worker and Gateway runtimes; `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, and `receipt_commitment_crosslink` MUST be `PASS` in each runtime report; and all verification rows MUST contain zero `FAIL` and zero `SKIPPED`. |
+| INV-REL-SMOKE-01 | Release PR preparation MUST run `./ztd test release-smoke` (default root `.ztd/operators/release-smoke-<UTC timestamp>`) against the built candidate binary and retain its complete output. The maintained smoke does not require Python, an LLM, or provider credentials. |
+| INV-REL-SMOKE-02 | The runner MUST create and own an isolated Gateway and dedicated data Operator through the supported enrollment/deployment lifecycle. It MUST exercise governed `FILE_EDIT` with exact Operator-local receipt verification and read-back, and embedded governed document create/merge preserving fields not included in the merge. |
+| INV-REL-SMOKE-03 | The data Operator MUST run in its dedicated runtime, and `report all` MUST read that Operator's populated `.ztd` stores. A report against Gateway state, an empty runtime, or stores combined from different runtime roots is not release evidence. |
+| INV-REL-SMOKE-04 | Release smoke acceptance requires non-empty local receipts, commitments, and file mutations in both Operator and Gateway runtimes; `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, and `receipt_commitment_crosslink` MUST be `PASS` in each runtime report; every `verification_summary.csv` row MUST be `PASS` (any `FAIL`, `SKIPPED`, or unrecognized result rejects the run); and the scenario receipts listed in `docs/guides/ux_smoke_test.md` MUST be present and completed. |
 | INV-REL-SMOKE-05 | Smoke artifacts are engineering acceptance evidence, not the signed public compliance bundle required by `INV-REL-COMP-01`. A passing smoke run does not replace release compliance preparation or expand claims of tested `doctrine` posture. |
 | INV-REL-SMOKE-06 | The runner MUST retain command logs, metadata, per-runtime reports, and a summary identifying binary SHA-256, source revision and dirty state, platform, posture, ingress, runtime roots, local signed receipts, and start/end times. `make ci` is not a substitute for runtime smoke acceptance. |
 
@@ -120,7 +120,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Protocol spec headers | `protocol/docs/a2a.md`, `constants.md`, `mcp.md`, `spec.md` | `Version: vX.Y.Z` header |
 | Explorer embed | `internal/services/gateway/explorer/static/` | `make explorer-embed`; `grep -l "$(cat VERSION)" internal/services/gateway/explorer/static/assets/*.js` lists the current bundle |
 | Console embed | `internal/services/gateway/console/static/` | `make console-embed-check` |
-| Core-platform smoke runbook | `docs/guides/ux_smoke_test.md` | `./ztd test release-smoke --root .ztd/operators/release-smoke-<unique-name>` |
+| Core-platform smoke runbook | `docs/guides/ux_smoke_test.md` | `./ztd test release-smoke` |
 | Cross-process evaluation loop qualification | `internal/cli/cmd/test/eval_loop_e2e_test.go` | `./ztd test eval-loop` |
 | Live Tier 4 evaluation loop (explicit provider run) | `internal/cli/cmd/test/eval_loop_live_e2e_test.go` | `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` |
 | Smoke evidence artifacts | `<root>/` | `evidence/smoke-summary.json`, `reports/{gateway,worker}/`, and logs under `logs/` |
@@ -137,13 +137,13 @@ To refresh published runs after correcting asserted tags, execute `ztd public re
 
 1. **Determine change inventory:** Review `git diff --name-status v<prev-tag>..HEAD` and the full diff to identify all added, changed, removed, fixed, and security-sensitive behavior. Group changes by affected contract or user journey (for example CLI and Operator lifecycle, protocol, evaluation, installation, website downloads, or release automation) so tests and documentation are traced across layers rather than file-by-file alone.
 2. **Reconcile documentation:** Walk the documentation catalog in `docs/devs/docs.md`; map changed code, schemas, configuration, and workflows to their canonical documents; then audit each affected document end-to-end against those sources. Review linked guides and entry points for stale commands, claims, and cross-links. Include root README, contributor guide, and agent instructions; confirm fresh-clone prerequisites, lifecycle targets, and removal claims against Makefile and CLI. Documents assessed and left unchanged retain their metadata.
-3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with the heading `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`), then follow the template with Overview, Added, Changed, Removed (when anything is removed), Fixed, Tests, Documentation, Compliance Evidence, and Deferred sections.
+3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with the heading `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`), then include the sections Overview, Added, Changed, Removed (when anything is removed), Fixed, Tests, Documentation, Compliance Evidence, and Deferred sections.
 4. **Set version:** Update `VERSION` to `vX.Y.Z\n`.
 5. **Sync protocol specs and npm versions:** Run `make version-sync`, which updates `Version: vX.Y.Z` headers in `protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, and `protocol/docs/spec.md` and npm versions, then run `make version-sync-check`. Synchronize Go installation examples in `README.md` and `.github/CONTRIBUTING.md` (`INV-REL-VER-08`).
 6. **Regenerate protocol bindings:** When `protocol/proto/ztd/` changed, run `make proto-generate` so generated Go and TypeScript output is current.
 7. **Update CHANGELOG:** Add the release table row under `## vX.Y.x` in `CHANGELOG.md`. When the release adds a new minor-version section, add the `## vX.Y.x` section with table headers above existing minor-version sections and create `docs/release_notes/vX.Y.x/`.
 8. **Refresh embedded frontends:** Run `make explorer-embed` (`INV-REL-VER-06`) and `make console-embed-check` (`INV-REL-VER-07`); refresh stale console embeds with `make console-embed`. `make build` compiles using committed embeds without building frontends.
-9. **Run the core-platform smoke gate:** Build the candidate with `make build`, then run `./ztd test release-smoke --root .ztd/operators/release-smoke-<unique-name>`. Require exit status 0 and `result: PASS` in `<root>/evidence/smoke-summary.json`; retain the entire root as review evidence. The runner owns and cleans up its isolated Gateway and worker.
+9. **Run the core-platform smoke gate:** Build the candidate with `make build`, then run `./ztd test release-smoke`. Require exit status 0 and `result: PASS` in `<root>/evidence/smoke-summary.json`; retain the entire root as review evidence. The runner owns and cleans up its isolated Gateway and data Operator.
 10. **Generate and verify compliance evidence:** Run `./ztd compliance release-prepare` with the candidate `./ztd` binary and the intended Gateway runtime database. From the repository root, defaults apply only when that checkout also owns the assessment runtime; otherwise pass `--project-root <gateway-runtime-root>` (or an explicit `--db`) and the matching `--repo-root`. Add `--new-key` only when creating the report-signing key. The command reads `ztd.db` read-only, derives protected scope from `VERSION`, git, the running binary digest, and the assessment window, builds external trust policies, generates and seals the public bundle under the runtime root, exports it under `release-evidence/<version>/report-bundle/`, verifies the export offline, and projects the verified bundle into `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md` and `vX.Y.Z-compliance-evidence.csv`. Keep smoke artifacts as separate engineering acceptance evidence; they do not replace this bundle.
 11. **Finalize document metadata:** Update `last_updated` and `version` on every audited document.
 12. **Verification checks:** Run `./ztd test lint`, `./ztd test unit`, the relevant `./ztd test integration --pkg <package>` packages, and `./ztd test eval-loop` for cross-process evaluation loop qualification under ratify and notary. Run `make console-lint console-test console-embed-check`, `make explorer-lint explorer-test`, and `make constants-check`. When API annotations changed, run `make swagger-generate` and commit the generated OpenAPI diff. Run checks required by affected surfaces, including `make website-test website-build` for website changes. Record the exact commands and outcomes in release notes.
@@ -197,8 +197,8 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 - Release notes headed with a bare version number or `Unreleased` instead of a release date and title (`INV-REL-VER-09`).
 - Adding release rows to non-existent `## vX.Y.x` sections instead of creating new minor sections (`INV-REL-VER-04`).
 - Treating `make ci` as release smoke acceptance, or failing to retain maintained runner evidence roots (`INV-REL-SMOKE-01`, `INV-REL-SMOKE-06`).
-- Treating scenario exit status alone as smoke acceptance without verifying signed receipts, governed read-back, and populated worker stores (`INV-REL-SMOKE-02`, `INV-REL-SMOKE-04`).
-- Generating release smoke reports from Gateway `.ztd` trees when mutations executed in dedicated data worker runtimes (`INV-REL-SMOKE-03`).
+- Treating scenario exit status alone as smoke acceptance without verifying signed receipts, governed read-back, and populated data Operator stores (`INV-REL-SMOKE-02`, `INV-REL-SMOKE-04`).
+- Generating release smoke reports from Gateway `.ztd` trees when mutations executed in dedicated data Operator runtimes (`INV-REL-SMOKE-03`).
 - Substituting smoke CSVs for signed and offline-verified public compliance bundles (`INV-REL-SMOKE-05`, `INV-REL-COMP-01`).
 - Adding `CLOUDFLARE_*` secrets to the `release` or `production` environment; they shadow the repository secrets that rehearsals verify.
 - Writing `latest.json` before GitHub release publication, or without verifying versioned prefix completeness.

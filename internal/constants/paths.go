@@ -879,13 +879,9 @@ const (
 	PublicFeedArchiveGenerationsDirname = "public-feed-archive/generations"
 	PublicMirrorDirname                 = "public-mirror"
 	PublicMirrorDBPath                  = "public-mirror/mirror.db"
-	PublicMirrorImportDBPath            = "public-mirror/mirror-import.db"
 	PublicMirrorProofsDir               = "public-mirror/proofs"
-	// PublicMirrorStatePath is the legacy JSON mirror store, read only by the
-	// one-time import into PublicMirrorDBPath. Remove after v1.1.3.
-	PublicMirrorStatePath       = "public-mirror/state.json"
-	PublicProofsDirname         = "public-proofs"
-	PublicProofSegmentsFilename = "public-proofs/proof-segments.jsonl"
+	PublicProofsDirname                 = "public-proofs"
+	PublicProofSegmentsFilename         = "public-proofs/proof-segments.jsonl"
 	// PublicProofSegmentsLockFilename serializes appends to
 	// PublicProofSegmentsFilename across processes.
 	PublicProofSegmentsLockFilename = "public-proofs/proof-segments.lock"

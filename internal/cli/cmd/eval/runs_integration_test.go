@@ -27,6 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -801,4 +802,18 @@ func TestResolveRunWitnessPoliciesRejectsUnspecifiedStoredPolicies(t *testing.T)
 		ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 	}, false, false)
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+}
+
+func TestRunsResume_RejectsPreflightWhenGatewayUnhealthy(t *testing.T) {
+	env, run := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t)
+	gwremote.WithConfiguredGatewayHealthCheck(t, false)
+
+	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+	assert.Zero(t, run.stack.Provider.ChatCount(), "the preflight refuses before any model turn")
+
+	_, leaseErr := env.store(t).LoadRunLease(context.Background(), runID)
+	assert.True(t, isMissingRecord(leaseErr), "a failed resume releases its lease")
 }

@@ -9,6 +9,8 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -89,4 +91,45 @@ func TestDispatchInference_PerAttemptProvenanceWithoutPreflight(t *testing.T) {
 			}
 		})
 	}
+}
+
+// With no provenance Operator connected, a campaign attempt fails closed before
+// the provider call, while a non-campaign attempt proceeds without a BEGIN
+// receipt. Its FINALIZE still records a receipt, so only that one is returned.
+func TestDispatchInference_ZeroProvenanceOperatorFailsClosedOnlyInCampaignMode(t *testing.T) {
+	notFound := fmt.Errorf("provenance observation: %w", constants.ErrProvenanceOperatorNotFound)
+	lister := &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}
+
+	t.Run("campaign fails closed", func(t *testing.T) {
+		req := baseRequest()
+		configureCampaignRequest(t, &req)
+		dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+		svc := NewDispatchService(dispatcher, lister, testLogger())
+		svc.SetProvenanceObservationNotifier(&recordingProvenanceNotifier{beginErr: notFound})
+
+		_, err := svc.DispatchInference(t.Context(), req)
+		require.ErrorIs(t, err, constants.ErrProvenanceOperatorNotFound)
+		require.Zero(t, dispatcher.calls, "campaign attempt without provenance must not reach the provider")
+	})
+
+	t.Run("non-campaign proceeds unattested", func(t *testing.T) {
+		req := baseRequest()
+		req.ModelDigest = strings.Repeat("a", 64)
+		dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+		svc := NewDispatchService(dispatcher, lister, testLogger())
+		notifier := &recordingProvenanceNotifier{beginErr: notFound}
+		svc.SetProvenanceObservationNotifier(notifier)
+
+		result, err := svc.DispatchInference(t.Context(), req)
+		require.NoError(t, err)
+		require.Equal(t, 1, dispatcher.calls)
+		require.Len(t, notifier.commands, 2)
+		require.Equal(t, evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_BEGIN, notifier.commands[0].GetPhase())
+		require.Equal(t, evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_FINALIZE, notifier.commands[1].GetPhase())
+		var got []string
+		for _, receipt := range result.Response().GetObservationReceipts() {
+			got = append(got, receipt.GetTransactionId())
+		}
+		require.Equal(t, []string{"provenance-finalize"}, got)
+	})
 }

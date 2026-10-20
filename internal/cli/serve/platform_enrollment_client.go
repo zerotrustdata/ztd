@@ -112,7 +112,7 @@ func NewOperatorBootstrapClient(cfg OperatorBootstrapClientConfig) (*OperatorBoo
 		if !pool.AppendCertsFromPEM(cfg.TrustBundlePEM) {
 			return nil, fmt.Errorf("%w: operator bootstrap trust bundle", constants.ErrCAParseFailed)
 		}
-		tlsCfg = &tls.Config{RootCAs: pool, ServerName: cfg.TLSServerName, MinVersion: tls.VersionTLS12}
+		tlsCfg = &tls.Config{RootCAs: pool, ServerName: cfg.TLSServerName, MinVersion: tls.VersionTLS13}
 	}
 	return &OperatorBootstrapClient{cfg: cfg, dialer: httpclient.WebSocketDialerWithTLS(tlsCfg)}, nil
 }

@@ -38,7 +38,7 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 	}
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
-		return nil, fmt.Errorf("operator stop: discover local workers: %w", err)
+		return nil, fmt.Errorf("operator stop: discover local Operators: %w", err)
 	}
 	defer func() { _ = windows.CloseHandle(snapshot) }()
 
@@ -78,7 +78,7 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 		for _, p := range processes {
 			p.close()
 		}
-		return nil, fmt.Errorf("operator stop: discover local workers: %w", err)
+		return nil, fmt.Errorf("operator stop: discover local Operators: %w", err)
 	}
 	return processes, nil
 }

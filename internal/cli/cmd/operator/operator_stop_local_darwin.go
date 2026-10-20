@@ -70,7 +70,7 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 	}
 	procs, err := unix.SysctlKinfoProcSlice("kern.proc.uid", os.Geteuid())
 	if err != nil {
-		return nil, fmt.Errorf("operator stop: discover local workers: %w", err)
+		return nil, fmt.Errorf("operator stop: discover local Operators: %w", err)
 	}
 	var processes []localOperatorProcess
 	for i := range procs {

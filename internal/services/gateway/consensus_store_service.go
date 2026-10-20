@@ -165,14 +165,24 @@ func (s *ConsensusStoreService) NewConsensusAppDeliberator(httpClient *http.Clie
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
-	appClient := *httpClient
-	appClient.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return constants.ErrConsensusEndpointInvalid
-	}
 	return &ConsensusAppDeliberator{
 		store:      s,
-		httpClient: &appClient,
+		httpClient: httpClient,
 	}
+}
+
+// rejectConsensusAppRedirects returns a copy of client that refuses every
+// redirect. The bound endpoint is the identity the Operator trusts; following a
+// Location header would send the envelope to a host nobody bound. This is the
+// single enforcement point for every client the deliberator uses, including
+// factory-built clients, so no client source can re-enable redirects. The
+// caller's client is not mutated.
+func rejectConsensusAppRedirects(client *http.Client) *http.Client {
+	pinned := *client
+	pinned.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return constants.ErrConsensusEndpointInvalid
+	}
+	return &pinned
 }
 
 // NewConsensusAppDeliberatorWithClientFactory creates a deliberator whose
@@ -221,6 +231,7 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 	if httpClient == nil {
 		return nil, constants.ErrInternal
 	}
+	httpClient = rejectConsensusAppRedirects(httpClient)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bound.EndpointURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create consensus deliberation request: %w", err)
@@ -250,12 +261,34 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 	if updated.GetGovernance() == nil || updated.GetGovernance().GetL2() == nil || len(updated.GetGovernance().GetL2().GetVotes()) == 0 {
 		return nil, constants.ErrTxL2SignatureMissing
 	}
+	// Dispatch publishes this response while keying screening and the receipt
+	// wait on the envelope it sent, so the application may add L2 votes only.
+	if !sameEnvelopeExceptL2(&outgoing, &updated) {
+		return nil, constants.ErrTxL2EnvelopeAltered
+	}
 
 	deliberated, err := protojson.Marshal(&updated)
 	if err != nil {
 		return nil, fmt.Errorf("encode deliberated envelope: %w", err)
 	}
 	return deliberated, nil
+}
+
+// sameEnvelopeExceptL2 reports whether two envelopes are equal once their L2
+// metadata is removed.
+func sameEnvelopeExceptL2(sent, returned *commonv1.GovernanceEnvelope) bool {
+	return proto.Equal(withoutL2(sent), withoutL2(returned))
+}
+
+func withoutL2(env *commonv1.GovernanceEnvelope) *commonv1.GovernanceEnvelope {
+	stripped := proto.Clone(env).(*commonv1.GovernanceEnvelope)
+	if gov := stripped.GetGovernance(); gov != nil {
+		gov.L2 = nil
+		if proto.Size(gov) == 0 {
+			stripped.Governance = nil
+		}
+	}
+	return stripped
 }
 
 // AddConsensus adds or updates a ConsensusPolicy in the database.

@@ -156,9 +156,6 @@ var APIPaths = struct {
 	AdminAppPoliciesBySigner string `json:"admin_app_policies_by_signer"`
 	AdminAppsRevoke          string `json:"admin_apps_revoke"`
 	AdminAppPoliciesPrefix   string `json:"admin_app_policies_prefix"`
-	AdminConsensus           string `json:"admin_consensus"`
-	AdminConsensusByID       string `json:"admin_consensus_by_id"`
-	AdminConsensusPrefix     string `json:"admin_consensus_prefix"`
 	// Consensus routes
 	// Well-known routes
 	WellKnownPKICABundle    string `json:"well_known_pki_ca_bundle"`
@@ -333,9 +330,6 @@ var APIPaths = struct {
 	AdminAppPoliciesBySigner: "/api/v1/admin/app-policies/",
 	AdminAppsRevoke:          "/api/v1/admin/apps/revoke",
 	AdminAppPoliciesPrefix:   "/api/v1/admin/app-policies/",
-	AdminConsensus:           "/api/v1/admin/consensus",
-	AdminConsensusByID:       "/api/v1/admin/consensus/",
-	AdminConsensusPrefix:     "/api/v1/admin/consensus/",
 	// Consensus routes
 	// Well-known routes
 	WellKnownPKICABundle:    "/.well-known/ztd/pki/ca-bundle",

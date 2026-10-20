@@ -120,6 +120,9 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	t.Cleanup(func() { _ = mirrorStore.Close() })
 	mirror, err := gateway.NewPublicMirrorServer(testutil.NewTestLogger(), mirrorStore, gateway.PublicMirrorConfig{})
 	require.NoError(t, err)
+	const ingestToken = "campaign-projection-token"
+	mirror.SetIngestAuthToken(ingestToken)
+	publisher.SetIngestAuthToken(ingestToken)
 	require.NoError(t, mirror.RegisterSourceKey(ctx, exportConfig.SourceID, exportConfig.SigningKeyID, publicKey))
 	server := httptest.NewServer(mirror.Handler())
 	t.Cleanup(server.Close)

@@ -46,9 +46,11 @@ func TestNormaliseCommand(t *testing.T) {
 type fakeInferer struct {
 	generate func(round uint32, member Member) string
 	marshal  string
-	audit    []string
-	fail     Stage
-	calls    []Call
+	// marshalFinal, when set, answers every Marshal call after the first.
+	marshalFinal string
+	audit        []string
+	fail         Stage
+	calls        []Call
 }
 
 var errFakeInference = errors.New("fake inference failure")
@@ -62,6 +64,15 @@ func (f *fakeInferer) Infer(_ context.Context, call Call) (string, error) {
 	case StageGenerate:
 		return f.generate(call.Round, Member(call.Persona)), nil
 	case StageMarshal:
+		marshalCalls := 0
+		for _, c := range f.calls {
+			if c.Stage == StageMarshal {
+				marshalCalls++
+			}
+		}
+		if f.marshalFinal != "" && marshalCalls > 1 {
+			return f.marshalFinal, nil
+		}
 		return f.marshal, nil
 	case StageAudit:
 		return f.audit[min(int(call.Round), len(f.audit))-1], nil
@@ -345,6 +356,87 @@ func TestRunBlocked(t *testing.T) {
 	assert.Equal(t, evalv1.AgentRole_AGENT_ROLE_RISK_ANALYST, risk.GetRole())
 	assert.True(t, risk.GetRisk().GetBlocked())
 	assert.Equal(t, "rm -rf /", risk.GetRisk().GetSubject())
+}
+
+// TestRunAssessesCommandTheAuditorChanged pins CNN-1: a command the Auditor
+// changed is assessed by Marshal before it can be approved, and a changed
+// command that Marshal blocks is never approved.
+func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
+	const highRisk = `{"risk": "HIGH", "rationale": "deletes /", "feedback": "scope the path"}`
+	tests := []struct {
+		name         string
+		audit        string
+		marshalFinal string
+		outcome      Outcome
+		command      string
+		subject      string
+		riskLevel    RiskLevel
+		marshalCalls int
+	}{
+		{
+			name:    "revision back to the winner is not reassessed",
+			audit:   `{"verdict": "REVISE", "revised_command": "ss -tlpn;"}`,
+			outcome: OutcomeApproved, command: "ss -tlpn", subject: "ss -tlpn", riskLevel: RiskLow, marshalCalls: 1,
+		},
+		{
+			name:         "revision Marshal rates LOW is approved",
+			audit:        `{"verdict": "REVISE", "revised_command": "ss -tlpn -p"}`,
+			marshalFinal: lowRisk,
+			outcome:      OutcomeApproved, command: "ss -tlpn -p", subject: "ss -tlpn -p", riskLevel: RiskLow, marshalCalls: 2,
+		},
+		{
+			name:         "revision Marshal rates HIGH is blocked",
+			audit:        `{"verdict": "REVISE", "revised_command": "rm -rf /"}`,
+			marshalFinal: highRisk,
+			outcome:      OutcomeBlocked, subject: "rm -rf /", riskLevel: RiskHigh, marshalCalls: 2,
+		},
+		{
+			name:         "swap to another cluster Marshal rates HIGH is blocked",
+			audit:        `{"verdict": "SWAP", "swap_to_cluster": "cluster_c"}`,
+			marshalFinal: highRisk,
+			outcome:      OutcomeBlocked, subject: "lsof -i", riskLevel: RiskHigh, marshalCalls: 2,
+		},
+		{
+			name:    "swap to another cluster Marshal rates LOW is approved",
+			audit:   `{"verdict": "SWAP", "swap_to_cluster": "cluster_c"}`,
+			outcome: OutcomeApproved, command: "lsof -i", subject: "lsof -i", riskLevel: RiskLow, marshalCalls: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inferer := &fakeInferer{
+				generate: proposals(map[Member]string{
+					MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
+				}),
+				marshal:      lowRisk,
+				marshalFinal: tt.marshalFinal,
+				audit:        []string{tt.audit},
+			}
+			result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
+			require.NoError(t, err)
+			assert.Equal(t, tt.outcome, result.Outcome)
+			assert.Equal(t, tt.command, result.Command)
+			require.NotNil(t, result.Risk)
+			assert.Equal(t, tt.riskLevel, result.Risk.Level)
+
+			marshalCalls := 0
+			var riskSteps []*evalv1.AgentStep
+			for _, call := range inferer.calls {
+				if call.Stage == StageMarshal {
+					marshalCalls++
+				}
+			}
+			for _, step := range result.Steps {
+				if step.GetRisk() != nil {
+					riskSteps = append(riskSteps, step)
+				}
+			}
+			assert.Equal(t, tt.marshalCalls, marshalCalls)
+			require.Len(t, riskSteps, tt.marshalCalls)
+			assert.Equal(t, tt.subject, riskSteps[len(riskSteps)-1].GetRisk().GetSubject())
+			assert.Equal(t, tt.outcome == OutcomeBlocked, riskSteps[len(riskSteps)-1].GetRisk().GetBlocked())
+		})
+	}
 }
 
 func TestRunAuditFailed(t *testing.T) {

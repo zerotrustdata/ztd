@@ -48,9 +48,11 @@ func TestEvalLoopCrossProcess(t *testing.T) {
 			defer cancel()
 			replies := evalLoopReplies()
 			provider := fixtures.NewScriptedOllama(t, replies)
+			servedDigest, ok := provider.ServedDigest(evalLoopScriptedModel)
+			require.True(t, ok, "scripted provider must serve %s", evalLoopScriptedModel)
 			st := &evalLoopState{}
 			phases := evalLoopPhases(t, r, provider.Endpoint(), st, func(ctx context.Context) error {
-				return r.executeEvalLoop(ctx, st.inferenceRoot, st.inferenceID, st.inferenceSession)
+				return r.executeEvalLoop(ctx, servedDigest, st.inferenceRoot, st.inferenceID, st.inferenceSession)
 			})
 			require.NoError(t, runEvalLoopPhases(ctx, t, r, phases))
 			assert.Equal(t, len(replies), provider.ChatCount(), "every scripted chat turn must be consumed")
@@ -198,24 +200,20 @@ func (r *releaseSmokeRun) deployEvalInference(ctx context.Context, root, endpoin
 	return "", "", fmt.Errorf("inference session %s: %w", session, constants.ErrNotFound)
 }
 
-func (r *releaseSmokeRun) executeEvalLoop(ctx context.Context, inferenceRoot, inferenceID, inferenceSession string) error {
+// executeEvalLoop freezes the scripted provider's inventory through the governed
+// CLI, requires the frozen digest to be the one the provider serves, then runs
+// the campaigns and verifies their evidence.
+func (r *releaseSmokeRun) executeEvalLoop(ctx context.Context, servedDigest, inferenceRoot, inferenceID, inferenceSession string) error {
 	files, store, err := r.newEvalLoopStore()
 	if err != nil {
 		return err
 	}
-	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ServedModelTag: evalLoopScriptedModel, ModelDigest: strings.Repeat("0123456789abcdef", 4), ProviderClass: "ollama"}
-	wire, err := evalv1.MarshalCanonical(variant)
+	digest, err := r.freezeEvalModel(ctx, files, evalLoopScriptedModel)
 	if err != nil {
 		return err
 	}
-	inventory, err := json.Marshal(struct {
-		Variants []json.RawMessage `json:"variants"`
-	}{Variants: []json.RawMessage{wire}})
-	if err != nil {
-		return err
-	}
-	if err := files.WriteFile(ctx, constants.EvaluationModelInventoryPath, inventory, constants.PermFileReadOnly); err != nil {
-		return err
+	if digest != servedDigest {
+		return fmt.Errorf("frozen %s digest %s, want the scripted provider's %s: %w", evalLoopScriptedModel, digest, servedDigest, constants.ErrValidationFailed)
 	}
 	campaigns, err := evalLoopCampaigns()
 	if err != nil {
@@ -231,6 +229,29 @@ func (r *releaseSmokeRun) executeEvalLoop(ctx context.Context, inferenceRoot, in
 		}
 	}
 	return nil
+}
+
+// freezeEvalModel freezes the provider's inventory through the governed CLI and
+// returns the frozen digest of model. The freeze replaces the Gateway's registry,
+// which the campaign then binds, so the digest is the provider's own.
+func (r *releaseSmokeRun) freezeEvalModel(ctx context.Context, files fs.RuntimeFileService, model string) (string, error) {
+	if _, err := r.ztdGateway(ctx, "freeze-eval-models", "eval", "models", "freeze"); err != nil {
+		return "", err
+	}
+	freeze, err := evaluation.LoadModelInventoryFreezeFromRuntime(ctx, files, constants.EvaluationModelInventoryPath)
+	if err != nil {
+		return "", err
+	}
+	for _, variant := range freeze.Variants {
+		if variant.GetServedModelTag() != model {
+			continue
+		}
+		if variant.GetModelDigest() == "" {
+			return "", fmt.Errorf("frozen model %s has no digest: %w", model, constants.ErrMissingRequiredField)
+		}
+		return variant.GetModelDigest(), nil
+	}
+	return "", fmt.Errorf("provider inventory has no model %s: %w", model, constants.ErrNotFound)
 }
 
 // newEvalLoopStore returns the Gateway runtime files and the evaluation store

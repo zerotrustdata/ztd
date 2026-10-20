@@ -3,8 +3,8 @@ doc_id: compliance-evidence
 title: Proof-Backed Compliance Evidence
 audience: compliance officers, auditors, security architects, and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - protocol/constants/compliance/
   - internal/services/compliance/
@@ -26,7 +26,7 @@ do_not_use_for:
 
 ## Purpose
 
-This document provides the technical evidence specification for the [Compliance Alignment](compliance-alignment.md) framework. It documents the proof-backed compliance engine in `ztd` v1.0.0, which binds reviewed regulatory controls to immutable, cryptographically verifiable evidence rather than subjective prose attestations.
+This document provides the technical evidence specification for the [Compliance Alignment](compliance-alignment.md) framework. It documents the proof-backed compliance engine in `ztd`, which binds reviewed regulatory controls to immutable, cryptographically verifiable evidence rather than subjective prose attestations.
 
 The compliance engine resolves five foundational inquiries for every evaluated control:
 
@@ -43,7 +43,7 @@ The compliance engine resolves five foundational inquiries for every evaluated c
 The pipeline maintains strict separation between platform-operated technical behavior and customer-operated organizational processes:
 - Platform tests and evaluation scenarios prove technical control operation for an explicit point-in-time run and scope; they do not establish organizational compliance across an extended operational period.
 - Customer, shared, inherited, and external assessor responsibilities are represented explicitly in catalog crosswalks and never inherit passing status from platform evidence alone.
-- Missing, expired, malformed, or untrusted evidence fails closed, recording an `unverifiable` outcome rather than synthesizing an assumed pass or fail.
+- Missing or stale evidence records the assertion's `missing_evidence_policy` outcome (`unverifiable` or `customer_attestation_required`) rather than synthesizing an assumed pass or fail. Malformed or untrusted source evidence fails evidence graph validation.
 
 ## Compliance Engine Architecture
 
@@ -82,33 +82,35 @@ flowchart TD
 ### Protected Assessment Scope
 
 Every compliance evaluation binds to an immutable, canonical `AssessmentScope` document (`ztd.compliance.v1.AssessmentScope`). The scope defines:
-- **Product and Build Identity**: Product version (`v1.0.0`), source revision (`git` commit HEAD), and binary SHA-256 digest.
-- **Environment Context**: Operating system, CPU architecture, host fingerprints, and network topology.
-- **Evidence Time Window**: Microsecond-precision Unix timestamps defining the evaluation period (`evidence_window_start_unix_ms` to `evidence_window_end_unix_ms`).
-- **Policy Configuration**: Active governance posture, doctrine bundle SHA-256 digests, and consensus policy hashes.
+- **Product and Build Identity**: Product version (from `VERSION`), source revision (`git` commit HEAD), and build identity SHA-256 digest (defaults to the assessed binary digest).
+- **Environment Context**: Image digests, component inventory, network topology hash, and cryptographic mode.
+- **Evidence Time Window**: Protobuf timestamps `assessment_window_start` and `assessment_window_end` bounding the evaluation period, and `assessment_as_of`, which must fall inside that window.
+- **Policy Configuration**: Active governance posture (`active_posture`), doctrine bundle SHA-256 digests, and consensus policy hashes.
 - **Admitted Sources**: Content-addressed manifests declaring all evaluation runs, audit databases, and operational stores admitted into the assessment.
 
 Context that cannot be captured as a content-addressed artifact (e.g. physical perimeter security) is recorded as a typed `UnavailableAssessmentContext` record with an explicit rationale. The generator reflects these declarations as `assessment_context_unavailable` diagnostics, bounding the scope's claims.
 
+`ztd compliance report generate` fails closed: a scope with a missing or invalid assessment window is rejected, and an invalid evidence graph returns an error. In both cases no report bundle is persisted.
+
 ## Atomic Control Assertions
 
-The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, catalog `ztd-control-assertions` v2.0.0, SHA-256 `8287a8c4aa39a9c049938297b4884696d1a0e7b9627ca9254ca400e15c00e069`) defines 13 atomic, framework-neutral assertions:
+The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, catalog `ztd-control-assertions` v2.1.0, declared SHA-256 `995bf5fe2176706c7a8d329b1a3495b99a0a77fe110bb2afb47ed1e792ba22a1`) defines 13 atomic, framework-neutral assertions:
 
-| Assertion ID | Assertion Title | Minimum Evidence Level | Core Operational Verification |
-| :--- | :--- | :--- | :--- |
-| **`ZTD-GOV-ALLOW-001`** | Governed Allow Outcome | L3 (Demonstrated) | Confirms that valid mutations clearing L1–L5 execute and emit terminal receipts. |
-| **`ZTD-GOV-BLOCK-001`** | Governed Block Outcome | L3 (Demonstrated) | Confirms that policy-violating mutations fail closed at the exact gating layer. |
-| **`ZTD-AU-RECEIPT-001`** | Receipt Integrity | L2 (Evaluated) | Validates Ed25519 signatures, Merkle state roots, and execution digests on `ActionReceipt`. |
-| **`ZTD-AU-PERSIST-001`** | Receipt Persistence | L2 (Evaluated) | Validates atomic SQLite audit persistence and signed `ReceiptPersistenceAttestation`. |
-| **`ZTD-AU-CHAIN-001`** | Protocol Chain Integrity | L2 (Evaluated) | Validates unbroken cryptographic hash chains across sequential deterministic stage events. |
-| **`ZTD-AU-COMMIT-001`** | Commitment Integrity | L2 (Evaluated) | Verifies append-only hash chains and signatures within the SQLite `commitment_ledger`. |
-| **`ZTD-CM-STATE-001`** | Independently Observed State | L3 (Demonstrated) | Compares execution receipts against independent third-party witness observations. |
-| **`ZTD-DLP-DETECT-001`** | Sensitive Data Detection | L2 (Evaluated) | Evaluates pattern-matching accuracy and token masking across outbound tool outputs. |
-| **`ZTD-DLP-BOUNDARY-001`** | Model Boundary Leakage | L2 (Evaluated) | Verifies that masked tokens (`{{UEI_N}}`) prevent raw credential leakage across inference paths. |
-| **`ZTD-DLP-REHYDRATE-001`** | Local Rehydration | L2 (Evaluated) | Verifies exact, host-local token rehydration at L5 Actuator immediately prior to dispatch. |
-| **`ZTD-IA-MTLS-001`** | Workload mTLS | L3 (Demonstrated) | Validates mutual TLS 1.3 enforcement and SPIFFE URI SAN identity verification. |
-| **`ZTD-IA-NOTARY-001`** | Notary Authorization | L2 (Evaluated) | Validates WebAuthn passkey assertion signatures and CLI cryptographic approval proofs. |
-| **`ZTD-CRYPTO-FIPS-001`** | Declared Cryptographic Mode | L2 (Evaluated) | Validates active linkage to FIPS 140-3 validated Go Cryptographic Module v1.0.0. |
+| Assertion ID | Assertion Title | Version | Component Scope | Minimum Evidence Level | Core Operational Verification |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`ZTD-GOV-ALLOW-001`** | Governed Allow Outcome | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Confirms that valid mutations clearing L1–L5 execute and emit terminal receipts. |
+| **`ZTD-GOV-BLOCK-001`** | Governed Block Outcome | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Confirms that prohibited mutations fail closed at the expected layer and that the prohibited terminal state is independently observed absent. |
+| **`ZTD-AU-RECEIPT-001`** | Receipt Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates Ed25519 signatures on `ActionReceipt` records bound to action, identity, transaction, and state-root fields. |
+| **`ZTD-AU-PERSIST-001`** | Receipt Persistence | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates atomic SQLite audit persistence and signed `ReceiptPersistenceAttestation`. |
+| **`ZTD-AU-CHAIN-001`** | Protocol Chain Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates unbroken cryptographic hash chains across sequential deterministic stage events. |
+| **`ZTD-AU-COMMIT-001`** | Commitment Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates signatures and canonical bindings, including the declared predecessor hash, for `commitment_ledger` records. |
+| **`ZTD-CM-STATE-001`** | Independently Observed State | 2.1.0 | `gateway`, `operator` | L3 (Demonstrated) | Verifies a subject-bound independent observation and deterministic measurement of the declared terminal state for governed configuration or file mutations. |
+| **`ZTD-DLP-DETECT-001`** | Sensitive Data Detection | 2.0.0 | `gateway` | L2 (Evaluated) | Measures scanner precision and recall against declared synthetic sensitive occurrences in the supported scanner population. |
+| **`ZTD-DLP-BOUNDARY-001`** | Model Boundary Leakage | 2.1.0 | `gateway`, `operator` | L2 (Evaluated) | Measures the raw occurrence rate of declared synthetic sensitive values in the structured model-boundary population; masked `{{UEI_N}}` tokens replace them at the boundary. |
+| **`ZTD-DLP-REHYDRATE-001`** | Local Rehydration | 2.1.0 | `gateway`, `operator` | L2 (Evaluated) | Verifies exact, host-local token rehydration at L5 Actuator immediately prior to dispatch. |
+| **`ZTD-IA-MTLS-001`** | Workload mTLS | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Verifies assessed workload identity evidence and a reproduced measurement that unauthenticated transport is rejected. The Gateway enforces TLS 1.3 with SPIFFE URI SAN identities. |
+| **`ZTD-IA-NOTARY-001`** | Notary Authorization | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Verifies that notary-required mutations carry an independently verified human authorization proof (WebAuthn assertion or CLI approval proof) bound to the exact transaction and active posture. |
+| **`ZTD-CRYPTO-FIPS-001`** | Declared Cryptographic Mode | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Verifies build provenance and runtime evidence that the assessed binary links the declared approved cryptographic module, Go Cryptographic Module v1.0.0. |
 
 ## Evidence Level Hierarchy
 
@@ -127,19 +129,19 @@ The automated `ztd` platform pipeline produces evidence up to **L3 (Demonstrated
 
 ## Framework Crosswalk Mappings
 
-The canonical crosswalk (`protocol/constants/compliance/fedramp-nist-crosswalk.json`, SHA-256 `f29489b373b64afae0bd1242e9f9dfd521b60a0d2f0c0172ccec3bf23ccd5208`) maps the 13 atomic assertions to external regulatory controls:
+The canonical crosswalk (`protocol/constants/compliance/fedramp-nist-crosswalk.json`, declared SHA-256 `9a3435d4b6bd84416f608889325fbcc4fd4aac91dbce9d0c8b875baba0975df9`) maps the 13 atomic assertions to external regulatory controls:
 
 | Framework | Revision | Total Controls | Mapped Controls | Unsupported Controls | Reviewed Mappings |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **FedRAMP 20x** | CR26-2026-06-24 | 31 KSIs | 14 | 17 | 25 supporting mappings |
-| **NIST SP 800-53** | Rev. 5 | 100 controls | 20 | 80 | 35 supporting mappings |
+| **FedRAMP 20x** | CR26-2026-06-24 | 31 KSIs | 14 | 17 | 30 supporting mappings |
+| **NIST SP 800-53** | Rev. 5 | 100 controls | 20 | 80 | 30 supporting mappings |
 | **Total** | | **131** | **34** | **97** | **60 supporting mappings** |
 
 Each framework control in `protocol/constants/compliance/framework-catalog.json` contains explicit `support_status` (`mapped` or `unsupported`) and `support_rationale` fields. Customer responsibilities are declared explicitly; unsupported controls are never omitted or masked.
 
 ## Platform Capabilities and Operational Boundaries
 
-The v1.0.0 compliance engine delivers full production support for:
+The compliance engine provides:
 - **Canonical Compliance Analysis**: Deterministic cross-framework analysis generated via `BuildComplianceAnalysis`.
 - **Signed Report Bundles**: Content-addressed bundle directories containing signed manifests, protected raw evidence, and multi-format projections. A generated bundle is sealed at rest under `.ztd/reports/<report-id>/` with the runtime vault; `ztd compliance report export` writes the plaintext copy an owner chooses to disclose.
 - **Offline Independent Verification**: Complete verification of bundles without network connectivity or ambient credentials.
@@ -155,13 +157,13 @@ The following activities remain external to the automated platform pipeline:
 Offline verification (`ztd compliance report verify`) runs on an exported bundle and operates with strict cryptographic independence:
 - **Decoupled Trust Policies**: Report-signing trust (`--trust-policy`) and evidence-signer trust (`--evidence-trust`) are provided as external JSON files. In-bundle trust definitions are rejected.
 - **Deterministic Replay**: The verifier reads raw source bodies from the bundle, re-executes all registered importers, re-grades assertion rules, and verifies that the generated analysis matches the signed analysis record.
-- **Renderer Reproduction**: The verifier re-executes the rendering engines (OSCAL, Markdown, CSV, HTML, JSON) to confirm bit-for-bit rendering parity.
+- **Renderer Reproduction**: The verifier re-executes the rendering engines (JSON, OSCAL, Markdown, HTML, CSV, CLI) to confirm bit-for-bit rendering parity.
 - **Fail-Closed Semantics**: Any missing artifact, signature mismatch, revoked key, or scope variance immediately terminates verification with a non-zero exit code.
 - **Sealed at Rest, Exported to Disclose**: A bundle carries the raw sources the verifier replays, including decrypted evaluation traces. `generate` therefore persists it through the evidence file service, sealed with the runtime vault under the `ztd-compliance-report-v1` associated-data label, and refuses a file service that does not seal. `export` is the only path that writes it in the clear: the destination must not exist and must lie outside the runtime root, and every body is checked against its descriptor before it is written.
 
 ## Compliance CLI Reference
 
-The `ztd compliance` command suite manages the complete compliance lifecycle:
+The `ztd compliance` command suite manages the compliance lifecycle. Run `./ztd compliance <command> --help` for the authoritative flag set of each command:
 
 ```bash
 # Evaluate FedRAMP Key Security Indicators (KSIs)
@@ -220,7 +222,7 @@ ztd compliance release-prepare --new-key
 
 | Catalog Surface | Repository Location | Version & Identity |
 | :--- | :--- | :--- |
-| **Assertion Catalog** | `protocol/constants/compliance/assertion-catalog.json` | `ztd-control-assertions` v2.0.0 |
+| **Assertion Catalog** | `protocol/constants/compliance/assertion-catalog.json` | `ztd-control-assertions` v2.1.0 |
 | **Framework Catalog** | `protocol/constants/compliance/framework-catalog.json` | FedRAMP 20x CR26, NIST SP 800-53 rev5 |
 | **Crosswalk Catalog** | `protocol/constants/compliance/fedramp-nist-crosswalk.json` | 60 supporting mappings |
 | **KSI Catalog** | `docs/reference/ksi-catalog.json` | 31 FedRAMP 20x KSIs |

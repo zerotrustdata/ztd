@@ -3,13 +3,14 @@ doc_id: agents
 title: AI Agents and the ztd Governance Boundary
 audience: maintainers and coding agents
 status: current
-version: v1.1.0
-last_updated: 2026-10-14
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - internal/cli/agent/
   - internal/cli/cmd/mcp/
   - internal/services/mcp/
   - internal/tools/agent_harness/
+  - internal/services/tribunal/
 related:
   - gateway.md
   - operator.md
@@ -50,6 +51,7 @@ Defines how AI agents and agentic applications interface with the ztd zero-trust
   - [MCP Stdio Bridge and Credential Hierarchy](#mcp-stdio-bridge-and-credential-hierarchy)
   - [Five-Layer Governance Enforcement for Agents](#five-layer-governance-enforcement-for-agents)
   - [Audit Evidence, Receipts, and Attestation](#audit-evidence-receipts-and-attestation)
+  - [Production Tribunal (Intent Deliberation Pipeline)](#production-tribunal-intent-deliberation-pipeline)
 - [Anti-patterns](#anti-patterns)
 - [Links out](#links-out)
 
@@ -68,7 +70,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-AGT-05 | Agents retain native tools (shell, filesystem, network access) outside their configured MCP server unless the agent launcher or configuration actively disables them. Governance covers ONLY operations traversing ztd ingress; side channels remain agent-native. |
 | INV-AGT-06 | Governed HTTP dispatch (`POST /api/v1/operators/commands`) cannot mint human L3 proofs. Under `ratify` or `notary`, when L3 proof is required, it suspends the envelope and keeps the original request open for human approval up to `mcp.ApprovalRequestTTL` (`DispatchApprovalCoordinator`), then delivers the approved envelope with the human's own proof; it never synthesizes proof and never executes standalone after the waiting request is gone. MCP/A2A submission paths suspend and return an approval response; direct envelope submission does not suspend. Direct envelopes MUST supply posture-required L2/L3 proofs and fail closed at L4 when they are missing. A doctrine violation on dispatch is refused as L1 (`ErrTxL1ValidationFailed`) in every posture, before any suspension. MCP and A2A suspend only on a missing L3 proof (`ErrTxL3ProofMissing`); an invalid proof is a rejection. Every other L4 rejection is a JSON-RPC error whose `error.data` is a `GovernanceRejection` carrying the signed rejection receipt (`INV-GOV-ACT-10`). |
 | INV-AGT-07 | Third-party MCP servers (subprocess or HTTP) are governed exclusively through Gateway downstream egress with full L1–L5 governance, envelope construction, and signed receipts. `ztd mcp agent run` is a launcher only and MUST NOT serve as an external MCP reverse proxy. |
-| INV-AGT-08 | The Go agent harness (`internal/tools/agent_harness/`) is a typed governed client used by evaluation and integration workflows. It contains no model, consensus, or reasoning loop and is not an agent. The production Tribunal service (`internal/services/tribunal/`) runs on the Gateway behind `POST /api/v1/operators/intents` (`INV-GW-GOV-07`) and turns an intent-only `run_commands_with_operator` request into an audited command through multi-model deliberation, voting, risk analysis, and audit. Every member call is a receipted governed `INFERENCE`; it acts in front of envelope construction and is neither an L2 quorum proof nor an L3 approval. Its audited command crosses L1–L5 as an ordinary governed `EXECUTE_BASH` action. The scored campaign system lane binds Primary turns and Assistant Tribunal calls to frozen formation slots; Lite remains frozen but unused, and Triage, Dash, and Codex are not scored. See the [evaluation campaign architecture](evals.md#model-campaign-architecture-system-lane-and-model-role-lane). |
+| INV-AGT-08 | The Go agent harness (`internal/tools/agent_harness/`) is a typed governed client used by evaluation and integration workflows. It contains no model, consensus, or reasoning loop and is not an agent. The production Tribunal service (`internal/services/tribunal/`) runs on the Gateway behind `POST /api/v1/operators/intents` (`INV-GW-GOV-07`) and turns an intent-only `run_commands_with_operator` request into an audited command through multi-model deliberation, voting, risk analysis, and audit. Every member call is a receipted governed `INFERENCE`; it acts in front of envelope construction and is neither an L2 quorum proof nor an L3 approval. Its audited command crosses L1–L5 as an ordinary governed `EXECUTE_BASH` action. The scored campaign system lane binds Primary turns and Assistant Tribunal calls to frozen formation slots; Lite remains frozen but unused, and Triage, Dash, and Codex are not scored. See `evals.md`, Model Campaign Architecture: System Lane and Model-Role Lane. |
 | INV-AGT-09 | Every agent supported by the launcher MUST correspond to exactly one `agent.Integration` entry in `internal/cli/agent/registry.go`. An unrecognized agent name MUST fail closed with `ErrAgentNotFound` before Gateway startup, posture discovery, or enrollment. |
 
 ## Owned surfaces
@@ -77,12 +79,13 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- | :--- |
 | Agent integration registry | `internal/cli/agent/registry.go`, `config.go`, `verify.go` | `ztd mcp agent list`, unit tests in `internal/cli/agent/` |
 | Agent verification harness | `ztd mcp agent verify <agent>`, `internal/cli/agent/verify.go` | CI verification of lockdown without launching binaries |
-| Agent launcher and stdio bridge | `internal/cli/cmd/mcp/mcp.go`, `internal/cli/cmd/mcp/mcp_agent_proxy.go` | `ztd mcp agent run --help`, stdio proxy tests |
+| Agent launcher and stdio bridge | `internal/cli/cmd/mcp/mcp.go` | `ztd mcp agent run --help`, `internal/cli/cmd/mcp/mcp_agent_proxy_test.go` |
 | MCP client configuration templates | `internal/services/mcp/config.go`, `ztd mcp agent show <agent>` | Stdio template inspection (no key paths) |
 | Claude Code plugin | `claude-plugin/`, `.claude-plugin/marketplace.json` | `make claude-plugin-test` |
-| MCP native tool registry | `internal/services/mcp/native_tool_registry.go` | 32 native tools registered explicitly in `RegisterNativeTools` |
+| MCP native tool registry | `internal/services/mcp/native_tool_registry.go` | Native tools registered explicitly in `RegisterNativeTools` |
 | Tool lockdown configurations | `internal/cli/agent/config.go` (`Integration.WriteConfig`) | Per-agent tool disabling: Claude/Codex (flags), Goose (extensions), Gemini (settings), Devin (server list) |
 | Go agent harness | `internal/tools/agent_harness/` | Typed Gateway client for integration and evaluation tests |
+| Production Tribunal | `internal/services/tribunal/`, `internal/services/gateway/tribunal_intent.go` | `POST /api/v1/operators/intents` route registration, `internal/services/tribunal/` tests |
 
 ## Procedures
 
@@ -90,12 +93,12 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 ztd provides the following integration paths for agents:
 
-- **`ztd mcp agent run <agent>`**: Dedicated launcher providing full L1–L5 governance, automatic tool lockdown, posture-aware CLI login (under `doctrine` and `consensus` the same headless session as `ztd login`, with no browser, OS trust installation, or passkey ceremony; under `ratify` and `notary`, first-time L3-gated application enrollment retains its passkey flow), and an enrolled application identity. For pending transactions, an authorized human may use the existing browser/passkey approval or `ztd auth approve <transaction-hash> --cli` with an enrolled CLI certificate. The Gateway constructs canonical `GovernanceEnvelope` transactions, coordinates L2/L3 when required, and produces signed receipts. Recommended for Claude Code, OpenAI Codex, Devin CLI, Gemini CLI, and Goose.
+- **`ztd mcp agent run <agent>`**: Dedicated launcher providing full L1–L5 governance, automatic tool lockdown, posture-aware CLI login (under `doctrine` and `consensus` the same headless session as `ztd login`, with no browser, OS trust installation, or passkey ceremony; under `ratify` and `notary`, the launcher stays headless when the user already holds a passkey and otherwise installs OS trust and runs the passkey ceremony once, like `ztd login web`; application enrollment under those postures needs a passkey approval at the printed URL), and an enrolled application identity. For pending transactions, an authorized human may use the existing browser/passkey approval or `ztd auth approve <transaction-hash> --cli` with an enrolled CLI certificate. The Gateway constructs canonical `GovernanceEnvelope` transactions, coordinates L2/L3 when required, and produces signed receipts. Recommended for Claude Code, OpenAI Codex, Devin CLI, Gemini CLI, and Goose.
 - **Claude Code Plugin (`claude-plugin/`)**: For Claude Code running inside IDEs or external shells. The plugin wires `ztd mcp stdio --app <name>` as the sole MCP server and uses a `PreToolUse` hook to deny all native tools except conversation-only utilities. Provides identical L1–L5 enforcement.
-- **Gateway Downstream Egress (`--mcp-downstream-cmd` / `--mcp-downstream-url`)**: Connects third-party MCP servers as downstream targets of the Gateway. Every `tools/call` traverses the complete L1–L5 pipeline, produces signed receipts in the audit vault, and enforces LFAA.
+- **Gateway Downstream Egress (`--mcp-downstream-cmd` / `--mcp-downstream-url`)**: Connects third-party MCP servers as downstream targets of the Gateway. Every `tools/call` traverses the complete L1–L5 pipeline and produces signed receipts in the embedded Operator's local audit store under LFAA.
 - **Direct MCP Client (`POST /mcp`)**: External MCP clients connect directly to the Gateway using enrolled mTLS credentials. The Gateway constructs envelopes, enforces L1 Doctrine, initiates L2 deliberation if required, and suspends mutations when L3 is missing. A human resolves a suspension through the existing browser/passkey flow or an enrolled CLI signature; the agent does not create either proof.
 - **Agent-to-Agent (`POST /api/v1/a2a/call`)**: Inter-agent communication where skill calls are wrapped in `A2A_CALL` envelopes and governed according to the active posture.
-- **Governed HTTP Dispatch (`POST /api/v1/operators/commands`)**: Enrolled applications dispatch commands directly. Does not synthesize L2 votes or suspend for L3 approvals; fails closed if the active posture requires L3 proofs.
+- **Governed HTTP Dispatch (`POST /api/v1/operators/commands`)**: Enrolled applications dispatch commands directly. Does not synthesize L2 votes or L3 proofs. Under `ratify` and `notary`, a mutation that requires L3 holds the request open for a human decision up to `mcp.ApprovalRequestTTL` (INV-AGT-06).
 
 ### Launching Agents with Governed MCP
 
@@ -126,6 +129,8 @@ ztd gw start --mcp-downstream-url http://localhost:3000/mcp
 
 ### Querying Agent Audit Trails
 
+Set `OPERATOR_SESSION_ID` to the operator session ID before running the operator-scoped commands below.
+
 ```bash
 # Query audit events filtered by acting agent application SPIFFE identity:
 ztd audit events --app spiffe://ztd.local/app/claude
@@ -134,10 +139,10 @@ ztd audit events --app spiffe://ztd.local/app/claude
 ztd audit receipts --app spiffe://ztd.local/app/claude
 
 # List audit events scoped by operator session:
-ztd gw data audit list --operator-session-id <operator-session-id>
+ztd gw data audit list --operator-session-id "$OPERATOR_SESSION_ID"
 
 # Display audit summary statistics for an operator session:
-ztd gw data audit summary --operator-session-id <operator-session-id>
+ztd gw data audit summary --operator-session-id "$OPERATOR_SESSION_ID"
 ```
 
 ### Trust Boundaries and Model Memory Limits
@@ -190,7 +195,7 @@ flowchart LR
 | **Gateway Downstream Egress** | Upstream MCP `tools/call` | Full L1–L5 pipeline; posture enforcement; produces signed receipts | Downstream subprocess or HTTP MCP server |
 | **Direct Gateway `/mcp`** | JSON-RPC over HTTP with mTLS | Gateway constructs `GovernanceEnvelope`; screens L1–L3; dispatches L4–L5 | Embedded Operator or downstream service |
 | **A2A Ingress (`/api/v1/a2a/call`)** | JSON-RPC `a2a/call` with mTLS | Gateway constructs `A2A_CALL` envelope; screens L1–L3; dispatches L4–L5 | Registered downstream A2A service |
-| **Governed HTTP Dispatch** | Serialized protobuf at `POST /api/v1/operators/commands` | Derives `action_type`; validates session; no L2/L3 synthesis; fails closed if L3 required | Bound remote Operator PEP |
+| **Governed HTTP Dispatch** | Serialized protobuf at `POST /api/v1/operators/commands` | Derives `action_type`; validates session; no L2/L3 synthesis; holds the request for a human L3 decision when required | Bound remote Operator PEP |
 | **Direct Envelope** | Canonical `GovernanceEnvelope` at `/api/v1/governance/envelopes` | Validates envelope; verifies pre-existing L2/L3 proofs; no synthesis | Embedded Operator (or remote via dispatch) |
 
 ### Agent Launcher Architecture and Tool Lockdown
@@ -216,7 +221,7 @@ The launcher defines exact tool lockdown levels across registered agents (INV-AG
 
 Every agent tool call crossing the boundary is subject to the five-layer pipeline:
 1. **L1 Doctrine**: Scans tool arguments and payloads against regex patterns and MITRE threat rules.
-2. **L2 Consensus**: Evaluates the bound consensus application's Ed25519 machine signature under `consensus` and `notary` postures.
+2. **L2 Consensus**: Evaluates K-of-N Ed25519 machine signatures from the bound consensus members under `consensus` and `notary` postures.
 3. **L3 Notary**: Suspends mutation actions for human approval under `ratify` and `notary` postures. Gateway L3 accepts a passkey assertion or an enrolled CLI P-256 signature; neither proof can come from model output. An outbound Operator re-verifies the same human proof itself ([Governance Architecture](governance.md#layer-3-l3-notary-human-authorization)).
 4. **L4 Warden**: Reserves the transaction nonce in SQLite, verifies expiration, recomputes the transaction hash, and validates state Merkle root.
 5. **L5 Actuator**: Logs an initial `EXECUTING` receipt, mints a single-action capability, dispatches the tool call, dissolves the capability, captures the final state root, and signs the `COMPLETED` or `FAILED` receipt.
@@ -232,7 +237,7 @@ Every admitted tool execution produces a signed `ActionReceipt` containing:
 
 Receipts are persisted authoritatively in the executing Operator's local SQLite database. Mirrored receipts at the Gateway provide query access via `ztd audit receipts --app <spiffe-id>`.
 
-The `audit_receipt_list` and `audit_receipt_get` tools read the executing runtime's own audit store. Through the Gateway's MCP endpoint, `audit_receipt_list`'s optional `investigation_id` filter intersects the required `operator_session_id` scope, and remote Operator records there remain best-effort projections. Dispatched to an outbound Operator as `MCP_CALL`, both return that Operator's authoritative local receipts. Evaluation's built-in model-role executor has a separate governed route to the selected Data Operator's own `audit_receipt_list` handler. That route requires an investigation ID and `exclude_audit_reads`, which drops only the audit-read tools' own receipts so that `run_shell_command` and other native-tool receipts stay investigation context; it returns only the Operator's authoritative local receipts and does not fall back to Gateway projections. See the [evaluation architecture](evals.md#model-campaign-architecture-system-lane-and-model-role-lane) for its campaign binding and trace evidence.
+The `audit_receipt_list` and `audit_receipt_get` tools read the executing runtime's own audit store. Through the Gateway's MCP endpoint, `audit_receipt_list`'s optional `investigation_id` filter intersects the required `operator_session_id` scope, and remote Operator records there remain best-effort projections. Dispatched to an outbound Operator as `MCP_CALL`, both return that Operator's authoritative local receipts. Evaluation's built-in model-role executor has a separate governed route to the selected Operator's own `audit_receipt_list` handler. That route requires an investigation ID and `exclude_audit_reads`, which drops only the audit-read tools' own receipts so that `run_shell_command` and other native-tool receipts stay investigation context; it returns only the Operator's authoritative local receipts and does not fall back to Gateway projections. See the [evaluation architecture](evals.md#model-campaign-architecture-system-lane-and-model-role-lane) for its campaign binding and trace evidence.
 
 MCP `tools/call` and A2A `a2a/call` return that signed `ActionReceipt` as canonical protojson, not as a reference. The execution and investigation IDs are inside the receipt's envelope and payload. A suspended call returns one `GovernedSuspension` (`id`, `status`, `tx_hash`, `approval_url`, `message`) on both ingresses. Only a missing L3 proof suspends. An invalid L3 proof returns a signed `L3_PROOF_INVALID` rejection (`INV-GOV-ACT-13`).
 
@@ -243,8 +248,8 @@ Every JSON-RPC error from `POST /mcp` and `POST /api/v1/a2a/call` carries a type
 The production Tribunal service (`internal/services/tribunal/`) runs on the Gateway behind `POST /api/v1/operators/intents` (`INV-GW-GOV-07`). It translates high-level model intent (`run_commands_with_operator`) into concrete shell commands before envelope construction and governed dispatch. Clients, including evaluation campaigns, send the intent and a member inference template; they never run the Tribunal in-process:
 1. **Sealed Candidate Generation**: Five sealed member personas (Axiom, Concord, Variance, Pragma, Nemesis) independently propose candidate commands via governed `INFERENCE` dispatches on the assigned model variant, with each call recording its own signed receipt.
 2. **Consensus Voting**: Normalizes and clusters proposed candidate commands. A cluster is selected if it achieves `MinConsensus` (at least 2 matching members). If no cluster achieves consensus, a second anonymized deliberation and revote round is conducted.
-3. **Marshal Risk Assessment**: Evaluates the consensus command against operation risk criteria (`LOW`, `MEDIUM`, or `HIGH`). `HIGH` risk blocks execution as a typed `pipeline.outcome` / `pipeline_outcome`, providing structured feedback. A second consecutive block is classified as an agent conflict.
-4. **Technical Audit**: The Auditor persona reviews the approved command (`APPROVE`, `REVISE`, or `SWAP`).
+3. **Marshal Risk Assessment**: Evaluates the consensus command against operation risk criteria (`LOW`, `MEDIUM`, or `HIGH`). `HIGH` risk returns outcome `TRIBUNAL_OUTCOME_BLOCKED` with the risk rationale and feedback, and dispatches nothing. Evaluation campaign clients classify a second consecutive block as an agent conflict (`internal/services/evaluation/campaign_tribunal_commands.go`).
+4. **Technical Audit**: The Auditor persona reviews the consensus command (`APPROVE`, `REVISE`, or `SWAP`). When a `REVISE` or `SWAP` changes the command, Marshal assesses the changed command before it can be approved, and a `HIGH` assessment blocks it the same way.
 5. **Governed Dispatch**: Only the approved, audited command is dispatched by the Gateway through `DispatchService.Dispatch` as an ordinary governed `EXECUTE_BASH` under the caller's identity, so posture-required L2 quorum and L3 human approval apply unchanged. The Tribunal acts in front of envelope construction and does NOT substitute for or impersonate L2 consensus quorum proofs or L3 approvals. The `TribunalIntentResult` returns the persona steps, every member call with its receipt, and the command's governed outcome.
 
 ## Anti-patterns
@@ -261,8 +266,8 @@ The production Tribunal service (`internal/services/tribunal/`) runs on the Gate
 - [Gateway Architecture](gateway.md): Policy Decision Point, operational modes, MCP endpoint, and HTTP routing.
 - [Operator Architecture](operator.md): Policy Execution Point, outbound mTLS transport, native tools, and L4/L5 execution.
 - [Governance Architecture](governance.md): Five-layer verification pipeline, posture enforcement rules, and receipt attestation.
-- [Consensus Architecture](consensus.md): Protocol L2 machine consensus, bound application Ed25519 deliberation, and verification mechanics.
-- [Authentication Architecture](auth.md): mTLS identities, platform application enrollments, CLI sessions, and WebAuthn ceremonies.
+- [Consensus Architecture](consensus.md): Protocol L2 machine consensus, bound-member Ed25519 deliberation, and verification mechanics.
+- [Authentication Architecture](auth.md): mTLS identities, platform application enrollments, CLISession records, and WebAuthn ceremonies.
 - [Network Architecture](network.md): PKI hierarchy, TLS 1.3/mTLS configurations, and pub/sub transport channels.
 - [Storage Architecture](storage.md): SQLite persistence, audit vaults, evidence chains, and commitment ledgers.
 - [SSE Streaming](sse.md): Server-Sent Events architecture for approval notifications and live telemetry.

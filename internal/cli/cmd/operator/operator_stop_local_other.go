@@ -16,5 +16,5 @@ import (
 )
 
 func discoverLocalOperators() ([]localOperatorProcess, error) {
-	return nil, fmt.Errorf("operator stop: discover local workers: %w", constants.ErrUnsupportedPlatform)
+	return nil, fmt.Errorf("operator stop: discover local Operators: %w", constants.ErrUnsupportedPlatform)
 }

@@ -203,9 +203,10 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 
 	// --- PKI ---
 	pki := newPKIAuthority(b.fileSvc, docStore, sm, logger)
-	if cfg.Gateway.OperatorLeafCertTTL > 0 {
-		pki.operatorLeafTTL = cfg.Gateway.OperatorLeafCertTTL
+	if err := config.ValidateOperatorLeafCertTTL(cfg.Gateway.OperatorLeafCertTTL); err != nil {
+		return nil, fmt.Errorf("gateway: operator leaf cert TTL: %w", err)
 	}
+	pki.operatorLeafTTL = cfg.Gateway.OperatorLeafCertTTL
 
 	// --- Core services ---
 	userSvc := NewUserService(docStore, logger)

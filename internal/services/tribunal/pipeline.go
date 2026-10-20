@@ -18,9 +18,11 @@ import (
 // Run deliberates one intent-only command request: a sealed generation round
 // and vote, one anonymized regeneration round and revote when the first has
 // no winner, Marshal's risk assessment of the winner, and the Auditor's
-// review. Steps are indexed from startIndex+1. A deliberation that ends
-// without an approved command is a Result with its Outcome, not an error;
-// only an inference failure returns an error.
+// review. When the Auditor changes the command, Marshal assesses the changed
+// command before it is approved, so an approved command is always one Marshal
+// has classified. Steps are indexed from startIndex+1. A deliberation that
+// ends without an approved command is a Result with its Outcome, not an
+// error; only an inference failure returns an error.
 func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Result, error) {
 	if cfg.Inferer == nil {
 		return nil, fmt.Errorf("tribunal: inferer: %w", constants.ErrMissingRequiredField)
@@ -67,11 +69,24 @@ func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Resu
 		return nil, err
 	}
 	steps.review(result.Audit)
-	result.Steps = steps.steps
 	if result.Audit.Failure != "" {
 		result.Outcome = OutcomeAuditFailed
+		result.Steps = steps.steps
 		return result, nil
 	}
+	if result.Audit.Command != result.Vote.Winner {
+		result.Risk, err = assessRisk(ctx, cfg, req, result.Audit.Command)
+		if err != nil {
+			return nil, err
+		}
+		steps.risk(result.Audit.Command, result.Risk)
+		if result.Risk.Blocked() {
+			result.Outcome = OutcomeBlocked
+			result.Steps = steps.steps
+			return result, nil
+		}
+	}
+	result.Steps = steps.steps
 	result.Outcome = OutcomeApproved
 	result.Command = result.Audit.Command
 	return result, nil

@@ -37,6 +37,26 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
+// mirrorTestIngestToken is the ingest bearer token every test mirror is
+// configured with. The mirror rejects ingest traffic without one.
+const mirrorTestIngestToken = "test-ingest-token"
+
+// mirrorTestAuthTransport adds the ingest bearer token to requests that do not
+// set Authorization, so fixtures that post ingest traffic authenticate by
+// default. Tests that probe missing credentials use a client without it.
+type mirrorTestAuthTransport struct {
+	base  http.RoundTripper
+	token string
+}
+
+func (t mirrorTestAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("Authorization") == "" {
+		req = req.Clone(req.Context())
+		req.Header.Set("Authorization", "Bearer "+t.token)
+	}
+	return t.base.RoundTrip(req)
+}
+
 // mirrorTestEnv builds a reference mirror server with a registered source
 // key, a test HTTP server, and helper functions for building and sending
 // signed batches.
@@ -71,6 +91,7 @@ func (e *mirrorTestEnv) reopenMirror() *PublicMirrorServer {
 	e.store = openTestPublicMirrorStore(e.t, e.fileSvc)
 	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), e.store, PublicMirrorConfig{})
 	require.NoError(e.t, err)
+	mirror.SetIngestAuthToken(mirrorTestIngestToken)
 	return mirror
 }
 
@@ -109,6 +130,7 @@ func newMirrorTestEnv(t *testing.T) *mirrorTestEnv {
 	store := openTestPublicMirrorStore(t, fileSvc)
 	mirror, err := NewPublicMirrorServer(testutil.NewTestLogger(), store, PublicMirrorConfig{})
 	require.NoError(t, err)
+	mirror.SetIngestAuthToken(mirrorTestIngestToken)
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "test-key-1"
@@ -126,7 +148,7 @@ func newMirrorTestEnv(t *testing.T) *mirrorTestEnv {
 		priv:     priv,
 		keyID:    keyID,
 		sourceID: sourceID,
-		client:   server.Client(),
+		client:   &http.Client{Transport: mirrorTestAuthTransport{base: server.Client().Transport, token: mirrorTestIngestToken}},
 		fileSvc:  fileSvc,
 		store:    store,
 	}
@@ -273,7 +295,7 @@ func TestMirror_IngestAuth_RejectsMissingToken(t *testing.T) {
 	reqBody := models.PublicIngestRequest{Batch: batch}
 	bodyBytes, err := json.Marshal(reqBody)
 	require.NoError(t, err)
-	resp, err := env.client.Post(env.server.URL+"/ingest", "application/json", bytes.NewReader(bodyBytes))
+	resp, err := env.server.Client().Post(env.server.URL+"/ingest", "application/json", bytes.NewReader(bodyBytes))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -533,7 +555,7 @@ func TestMirror_RestartRecoversAcceptedStateAndContinuesHashChain(t *testing.T) 
 
 	requestBody, err := json.Marshal(models.PublicIngestRequest{Batch: batch1})
 	require.NoError(t, err)
-	response, err = server2.Client().Post(server2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
+	response, err = env.client.Post(server2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
 	require.NoError(t, err)
 	var replayResponse models.PublicIngestResponse
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&replayResponse))
@@ -547,7 +569,7 @@ func TestMirror_RestartRecoversAcceptedStateAndContinuesHashChain(t *testing.T) 
 	batch2 := env.buildBatch(records2, batch1.ContentHash)
 	requestBody, err = json.Marshal(models.PublicIngestRequest{Batch: batch2})
 	require.NoError(t, err)
-	response, err = server2.Client().Post(server2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
+	response, err = env.client.Post(server2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
 	require.NoError(t, err)
 	var resp2 models.PublicIngestResponse
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&resp2))
@@ -1405,7 +1427,11 @@ func TestMirror_KeyRegistration_RequiresAuthenticationStrictPayloadAndCurrentKey
 			if testCase.authenticate {
 				httpRequest.Header.Set("Authorization", "Bearer registration-token")
 			}
-			response, err := env.client.Do(httpRequest)
+			client := env.client
+			if !testCase.authenticate {
+				client = env.server.Client()
+			}
+			response, err := client.Do(httpRequest)
 			require.NoError(t, err)
 			require.NoError(t, response.Body.Close())
 			assert.Equal(t, testCase.expectedStatus, response.StatusCode)
@@ -1833,7 +1859,11 @@ func TestMirror_ProofRoot_AuthenticatesAndReportsStoredRoot(t *testing.T) {
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
-		response, err := env.client.Do(req)
+		client := env.client
+		if token == "" {
+			client = env.server.Client()
+		}
+		response, err := client.Do(req)
 		require.NoError(t, err)
 		defer response.Body.Close()
 		var root models.PublicProofRootResponse
@@ -1910,7 +1940,7 @@ func TestMirror_RestartRecoversProofCatalogArtifactAndKeyRevocation(t *testing.T
 	batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"v": "1"}))}, constants.PublicFeedZeroHashHex)
 	requestBody, err := json.Marshal(models.PublicIngestRequest{Batch: batch})
 	require.NoError(t, err)
-	response, err = server2.Client().Post(server2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
+	response, err = env.client.Post(server2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
 	require.NoError(t, err)
 	var ingestResponse models.PublicIngestResponse
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&ingestResponse))

@@ -336,6 +336,42 @@ func TestL5ActuatorExecuteMissingExecutionHandler(t *testing.T) {
 	require.Nil(t, receipt)
 }
 
+// rehydrationCommandMessage is a CommandMessage whose payload carries UEI placeholders.
+type rehydrationCommandMessage struct{ payload []byte }
+
+func (m *rehydrationCommandMessage) GetPayload() []byte          { return m.payload }
+func (m *rehydrationCommandMessage) SetPayload(p []byte)         { m.payload = p }
+func (*rehydrationCommandMessage) InferenceResultDigest() string { return "" }
+
+func rehydrationTestVT() *VerifiedTransaction {
+	return &VerifiedTransaction{Envelope: &govtypes.GovernanceEnvelope{Id: "test-rehydrate-message"}}
+}
+
+func TestL5RehydratePayloadRestoresResolvableTokens(t *testing.T) {
+	t.Parallel()
+	actuator, _ := newTestActuator(t)
+	token, err := actuator.Scrubbing.GetTokenForValue(context.Background(), "s3cret-value")
+	require.NoError(t, err)
+
+	msg := &rehydrationCommandMessage{payload: []byte(`{"command":"login --password ` + token + `"}`)}
+	require.NoError(t, actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg))
+	assert.JSONEq(t, `{"command":"login --password s3cret-value"}`, string(msg.GetPayload()))
+}
+
+// A payload with a placeholder that cannot be resolved fails rehydration and is left untouched,
+// so the caller has nothing to dispatch.
+func TestL5RehydratePayloadFailsClosedOnUnresolvableToken(t *testing.T) {
+	t.Parallel()
+	actuator, _ := newTestActuator(t)
+	original := []byte(`{"command":"login --password {{UEI_999999}}"}`)
+
+	msg := &rehydrationCommandMessage{payload: original}
+	err := actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg)
+	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
+	require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+	assert.Equal(t, original, msg.GetPayload(), "an unrehydrated payload is never handed back as dispatchable")
+}
+
 func TestCanonicalizeActionReceipt(t *testing.T) {
 	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{

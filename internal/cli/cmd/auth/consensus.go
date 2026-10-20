@@ -72,10 +72,20 @@ func consensusBindCmd(newClient func() (APIClient, error)) *cobra.Command {
 			if cmd.Flags().Changed("quorum") && quorum == 0 {
 				return constants.ErrConsensusQuorumInvalid
 			}
+			// Normalize member IDs exactly as the Gateway does so the
+			// post-bind comparison matches the stored policy.
+			var normalizedMemberAppIDs []string
+			for _, id := range memberAppIDs {
+				id = strings.TrimSpace(id)
+				if id == "" {
+					return fmt.Errorf("consensus binding member app: %w", constants.ErrMissingRequiredField)
+				}
+				normalizedMemberAppIDs = append(normalizedMemberAppIDs, id)
+			}
 			request := models.PlatformEnrollmentBindConsensusRequest{
 				AppID:        strings.TrimSpace(args[0]),
 				EndpointURL:  strings.TrimSpace(args[1]),
-				MemberAppIDs: memberAppIDs,
+				MemberAppIDs: normalizedMemberAppIDs,
 				Quorum:       int(quorum),
 			}
 			if request.AppID == "" {
@@ -116,7 +126,7 @@ func consensusBindCmd(newClient func() (APIClient, error)) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringArrayVar(&memberAppIDs, "member-app", nil, "Consensus member application ID (repeat for each member; primary app must be included)")
-	cmd.Flags().Uint32Var(&quorum, "quorum", 0, "Required affirmative signature count (defaults to 1)")
+	cmd.Flags().Uint32Var(&quorum, "quorum", 0, "Required affirmative signature count; required when more than one --member-app is given, defaults to 1 for a single application")
 	return cmd
 }
 

@@ -437,6 +437,47 @@ func TestL5Actuator_WithoutScrubberSignsFixedSummary(t *testing.T) {
 	assert.Equal(t, "rejected: "+operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED.String(), rejected.ResultSummary)
 }
 
+// A payload whose UEI token cannot be resolved is never dispatched. Rehydration runs after the
+// EXECUTING receipt is committed, so the receipt finalizes FAILED with the rehydration cause, the
+// execution stage records the failure, and the handler never sees the placeholder.
+func TestL5ActuatorExecuteFailsClosedWhenRehydrationFails(t *testing.T) {
+	actuator, auditStore := newCommitmentTestActuator(t)
+	publicKey := actuator.SigningKey.Public().(ed25519.PublicKey)
+
+	original := []byte(`{"command":"login --password {{UEI_999999}}"}`)
+	msg := &rehydrationCommandMessage{payload: original}
+	vt := newFailureTestVT(t, "test-hash-rehydrate-fail")
+
+	receipt, err := actuator.Execute(context.Background(), vt, msg)
+	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
+	require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+	require.NotNil(t, receipt)
+
+	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed, "the handler must not run with an unrehydrated payload")
+	assert.Equal(t, original, msg.GetPayload(), "the payload is not replaced by a partial rehydration")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
+	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, receipt.FailureCode)
+	assert.Contains(t, receipt.ResultSummary, "failed: ")
+
+	var executionStage *operatorv1.DeterministicStageEvidence
+	for _, stage := range receipt.DeterministicStageEvidence {
+		if stage.GetKind() == operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION {
+			executionStage = stage
+		}
+	}
+	require.NotNil(t, executionStage, "the execution stage is recorded")
+	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, executionStage.GetOutcome())
+
+	require.NoError(t, VerifyActionReceiptSignature(receipt, publicKey))
+	require.NotNil(t, receipt.FinalPersistenceAttestation)
+	assert.NoError(t, VerifyReceiptPersistenceAttestation(receipt, publicKey))
+
+	persisted, err := auditStore.GetActionReceipt(receipt.TransactionId)
+	require.NoError(t, err)
+	require.NotNil(t, persisted)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, persisted.Status)
+}
+
 // digestCommandMessage is a CommandMessage that carries an inference result digest on the typed channel.
 type digestCommandMessage struct {
 	payload []byte

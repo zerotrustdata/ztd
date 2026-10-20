@@ -151,8 +151,12 @@ func (c *SSEController) authorizeSSERoute(route SSERoute, r *http.Request) (stri
 		if cliSess.UserID != route.UserID {
 			return "", &sseAuthError{status: http.StatusForbidden, message: "user does not own this cli session"}
 		}
-		// For operator mTLS, also verify operator session ownership.
-		if operatorSessionID != "" && cliSess.OperatorSessionID != operatorSessionID {
+		// For operator mTLS, also verify operator session ownership. The
+		// stamped operator session may be the primary binding or any other
+		// session bound to this CLI session (handleCLIAuth admits a bound
+		// secondary named by X-ZTD-Operator-Session-ID); cliSessionBindsOperator
+		// is the same binding-record check handleCLIAuth uses.
+		if operatorSessionID != "" && !cliSessionBindsOperator(&cliSess, operatorSessionID) {
 			return "", &sseAuthError{status: http.StatusForbidden, message: "operator session does not own this cli session"}
 		}
 		return pubsub.SSECLIChannel(route.CLISessionID), nil

@@ -148,10 +148,10 @@ type PublicMirrorStore struct {
 	logger  *slog.Logger
 }
 
-// OpenPublicMirrorStore opens the mirror store, imports a legacy state.json
-// once when no database exists yet, and verifies every retained signature,
-// hash chain, record, revocation, proof manifest, and proof artifact before
-// returning. Any inconsistency fails closed with ErrPublicFeedMirrorStoreCorrupt.
+// OpenPublicMirrorStore opens the mirror store at constants.PublicMirrorDBPath
+// and verifies every retained signature, hash chain, record, revocation, proof
+// manifest, and proof artifact before returning. Any inconsistency fails closed
+// with ErrPublicFeedMirrorStoreCorrupt.
 func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, logger *slog.Logger) (*PublicMirrorStore, error) {
 	if fileSvc == nil {
 		return nil, fmt.Errorf("public mirror store: %w: runtime file service", constants.ErrMissingRequiredField)
@@ -162,10 +162,7 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 	if err := fileSvc.MkdirAll(ctx, constants.PublicMirrorProofsDir, constants.PermDirPrivate); err != nil {
 		return nil, fmt.Errorf("public mirror store: create proofs dir: %w", err)
 	}
-	if err := importLegacyPublicMirrorState(ctx, fileSvc, logger); err != nil {
-		return nil, err
-	}
-	store, err := openPublicMirrorStoreAt(ctx, fileSvc, logger, constants.PublicMirrorDBPath)
+	store, err := openPublicMirrorStoreAt(ctx, fileSvc, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -176,10 +173,10 @@ func OpenPublicMirrorStore(ctx context.Context, fileSvc fs.RuntimeFileService, l
 	return store, nil
 }
 
-func openPublicMirrorStoreAt(ctx context.Context, fileSvc fs.RuntimeFileService, logger *slog.Logger, relPath string) (*PublicMirrorStore, error) {
-	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(relPath)), logger)
+func openPublicMirrorStoreAt(ctx context.Context, fileSvc fs.RuntimeFileService, logger *slog.Logger) (*PublicMirrorStore, error) {
+	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.PublicMirrorDBPath)), logger)
 	if err != nil {
-		return nil, fmt.Errorf("public mirror store: open %s: %w", relPath, err)
+		return nil, fmt.Errorf("public mirror store: open %s: %w", constants.PublicMirrorDBPath, err)
 	}
 	if _, err := db.ExecWithRetry(ctx, publicMirrorSchema); err != nil {
 		_ = db.Close()

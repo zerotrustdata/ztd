@@ -19,6 +19,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -163,17 +164,25 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 			}
 		}
 	}
+	// Campaign assignments carry the live schema pin, and the same grader verdict
+	// the live import applies, so a stored INVALID_EVIDENCE from either rule is
+	// recomputed and accepted here. The verdict is recomputed under any catalog:
+	// only the grade comparison depends on CatalogRecomputesGrades.
 	lifecycle := agentTraceLifecycle(execReq, trace)
+	assessment, gradeErr := assessAgentTrace(execReq, trace, lifecycle, agentTraceSchemaPinError(trace, agentTraceSchemaVersion))
+	if assessment.invalid != nil {
+		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+	}
 	if req.Result.GetLifecycleStatus() != lifecycle {
 		failures = append(failures, fmt.Sprintf("stored lifecycle %s does not match agent trace lifecycle %s", req.Result.GetLifecycleStatus(), lifecycle))
 	}
-	if !CatalogRecomputesGrades(req.CatalogRef) {
+	if assessment.invalid != nil || !CatalogRecomputesGrades(req.CatalogRef) {
 		return failures
 	}
-	grading, err := GradeHomogeneousScenario(execReq, trace, lifecycle)
-	if err != nil {
-		return append(failures, "homogeneous grade recomputation failed: "+err.Error())
+	if gradeErr != nil {
+		return append(failures, "homogeneous grade recomputation failed: "+gradeErr.Error())
 	}
+	grading := assessment.grading
 	if !gradesEquivalent(req.Result.GetDeterministicGrades(), grading.DeterministicGrades) {
 		failures = append(failures, "stored deterministic grades do not match agent trace recomputation")
 	}
@@ -237,7 +246,7 @@ func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTra
 			}
 		}
 		model := resolved[role]
-		inferenceRole, err := campaignRoleToInferenceRole(role)
+		inferenceRole, err := tribunal.InferenceRoleForTier(role)
 		if err != nil || model == nil || call.ModelVariantID != model.GetVariantId() || call.ModelRole != inferenceRole.ToProto().String() || call.ServedModelTag != model.GetServedModelTag() || call.ModelDigest != model.GetModelDigest() {
 			return fmt.Errorf("model call %q differs from frozen role %s: %w", call.ProviderAttemptID, role, constants.ErrFormationRegistryBinding)
 		}

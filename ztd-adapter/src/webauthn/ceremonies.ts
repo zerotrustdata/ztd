@@ -13,9 +13,9 @@
 // The ceremonies use the credentialed fetch helper so every request goes
 // through the endpoint allowlist with credentials: 'include'.
 
-import type { CredentialedFetch } from '../api/fetch';
+import type { CredentialedFetch } from '../api/fetch.js';
 
-import { bufferToBase64url, preparePublicKeyOptions } from './encoding';
+import { bufferToBase64url, preparePublicKeyOptions } from './encoding.js';
 
 // ---- Wire types matching the console contract ----
 

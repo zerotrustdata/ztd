@@ -777,8 +777,8 @@ AUDIT TRAIL:
   trails separate from human operator activity.
 
   Query audit events for a specific agent:
-    ztd gw data audit list --operator-session-id spiffe://ztd.local/app/claude
-    ztd gw data audit summary --operator-session-id spiffe://ztd.local/app/claude
+    ztd audit events --app spiffe://ztd.local/app/claude
+    ztd audit summary --app spiffe://ztd.local/app/claude
 
 APPLICATION ENROLLMENT MODEL:
   Each agent is an application enrolled through the owner-approved platform

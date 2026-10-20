@@ -10,8 +10,8 @@
 // (from the observe API) is the source of truth; SSE provides incremental
 // change notifications.
 
-import type { FrontendRuntimeConfig } from '../config/runtime_config';
-import { EventDeduplicator, normalizeGatewayEvent, type NormalizedGatewayEvent } from './normalizer';
+import type { FrontendRuntimeConfig } from '../config/runtime_config.js';
+import { EventDeduplicator, normalizeGatewayEvent, type NormalizedGatewayEvent } from './normalizer.js';
 
 export type SseConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'unauthenticated';
 

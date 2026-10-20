@@ -192,7 +192,7 @@ runs the Tier 3 scenarios:
 
 Gateway and fleet resources are sampled every --sample-interval (Linux /proc;
 other platforms record database sizes only). Teardown always stops all of this
-run's workers at once by their recorded PIDs, then stops the Gateway. It never
+run's Operators at once by their recorded PIDs, then stops the Gateway. It never
 touches processes outside the scratch root.
 
 The Gateway listens on two free ports chosen for the run, never the defaults,
@@ -212,7 +212,7 @@ restart-report.json, scale-summary.json) is kept under <root>/out.`,
 
 	cmd.Flags().IntVar(&cfg.Count, "count", 100, fmt.Sprintf("Remote Operators to deploy (1..%d)", scaleMaxCount))
 	cmd.Flags().IntVar(&cfg.BatchSize, "batch-size", 0, "Operators per operator deploy invocation; later batches append with --start-index (default: the whole fleet)")
-	cmd.Flags().IntVar(&cfg.Parallel, "parallel", scaleMaxParallel, fmt.Sprintf("Concurrent staging workers per batch (1..%d, the Gateway live Operator request quota)", scaleMaxParallel))
+	cmd.Flags().IntVar(&cfg.Parallel, "parallel", scaleMaxParallel, fmt.Sprintf("Operators staged concurrently per batch (1..%d, the Gateway live Operator request quota)", scaleMaxParallel))
 	cmd.Flags().DurationVar(&cfg.Soak, "soak", 5*time.Minute, "Idle steady-state soak before fan-out")
 	cmd.Flags().StringVar(&cfg.FanOutConcurrency, "fan-out-concurrency", scaleFanOutAll, `Comma-separated governed fan-out concurrency levels; "all" dispatches to every target at once`)
 	cmd.Flags().IntVar(&cfg.Rounds, "rounds", 1, "Fan-out rounds per concurrency level")
@@ -223,7 +223,7 @@ restart-report.json, scale-summary.json) is kept under <root>/out.`,
 	cmd.Flags().BoolVar(&cfg.Clean, "clean", false, "Remove an existing non-empty --root before the run")
 	cmd.Flags().BoolVar(&cfg.SkipRestart, "skip-restart", false, "Skip the Gateway restart recovery scenario")
 	cmd.Flags().StringVar(&cfg.Hosts, "hosts", "local", "Comma-separated target hosts for operator deployment (local or SSH hosts)")
-	cmd.Flags().StringVar(&cfg.OperatorEndpoint, "operator-endpoint", "", "Worker-facing Gateway address for remote Operators")
+	cmd.Flags().StringVar(&cfg.OperatorEndpoint, "operator-endpoint", "", "Operator-facing Gateway address for remote Operators")
 
 	return cmd
 }
@@ -703,11 +703,11 @@ func scaleWorkerPIDs(fleetDir string) ([]int, error) {
 			continue
 		}
 		if err != nil {
-			return pids, fmt.Errorf("read worker PID in %s: %w", dir, err)
+			return pids, fmt.Errorf("read Operator PID in %s: %w", dir, err)
 		}
 		pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 		if err != nil || pid <= 0 {
-			return pids, fmt.Errorf("invalid worker PID in %s: %q", dir, strings.TrimSpace(string(data)))
+			return pids, fmt.Errorf("invalid Operator PID in %s: %q", dir, strings.TrimSpace(string(data)))
 		}
 		pids = append(pids, pid)
 	}
@@ -962,7 +962,7 @@ func printScaleSummary(w io.Writer, layout scaleLayout, summary *scaleSummary) {
 		}
 		fmt.Fprintf(w, "  %-34s %9.1fs  %s\n", p.Name, p.Seconds, status)
 	}
-	fmt.Fprintf(w, "  workers stopped: %d\n", summary.StoppedPIDs)
+	fmt.Fprintf(w, "  Operators stopped: %d\n", summary.StoppedPIDs)
 	fmt.Fprintf(w, "Evidence: %s\n", layout.Out)
 }
 

@@ -76,6 +76,15 @@ func (l *evidenceLedger) executed(txID, actionType string) *operatorv1.ActionRec
 	return l.signer.Executed(l.t, l.opts(txID, actionType), prior, hash)
 }
 
+// executedInSession appends one commitment for txID, signed as if an Operator
+// session other than the ledger's own had executed it on the same runtime.
+func (l *evidenceLedger) executedInSession(txID, actionType, sessionID string) *operatorv1.ActionReceipt {
+	prior, hash := l.advance()
+	opts := l.opts(txID, actionType)
+	opts.SessionID = sessionID
+	return l.signer.Executed(l.t, opts, prior, hash)
+}
+
 // rejected returns a signed governance rejection for txID.
 func (l *evidenceLedger) rejected(txID, actionType string) *operatorv1.ActionReceipt {
 	return l.signer.Rejected(l.t, l.opts(txID, actionType), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED)
@@ -210,6 +219,14 @@ func TestVerifyAgentTraceEvidence_AcceptsConnectedBracketWithExecutedAndRejected
 	require.NoError(t, VerifyAgentTraceEvidence(trace))
 }
 
+// Published legacy traces stay verifiable directly: the live import's schema pin
+// is the gate that stops an earlier-version trace from being graded live.
+func TestVerifyAgentTraceEvidence_AcceptsLegacyV6Trace(t *testing.T) {
+	trace, _ := validEvidenceTrace(t)
+	require.Equal(t, agentTraceSchemaVersionV6, trace.SchemaVersion)
+	require.NoError(t, VerifyAgentTraceEvidence(trace))
+}
+
 func TestVerifyAgentTraceEvidence_RejectsFlippedSignatureByteInCallReceipt(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
 	receipt := trace.ToolCalls[0].Receipt.ActionReceipt
@@ -264,6 +281,36 @@ func TestVerifyAgentTraceEvidence_RejectsAdmittedCallWithNoReceipt(t *testing.T)
 func TestVerifyAgentTraceEvidence_RejectsExecutedReceiptOnCallRecordedAsDeny(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
 	trace.ToolCalls[0].PolicyDecision = agentPolicyDecisionDeny
+
+	requireEvidenceError(t, trace, constants.ErrEvaluationEvidenceTraceMismatch)
+}
+
+// A foreign-session receipt on the Data runtime's ledger still connects the
+// bracket, so only the session comparison can reject it.
+func TestVerifyAgentTraceEvidence_RejectsClaimedToolReceiptFromAnotherSession(t *testing.T) {
+	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
+	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
+	foreign := ledger.executedInSession("tx-1", string(constants.ActionTypeExecuteBash), "session-other")
+	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
+	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
+	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", foreign)}
+	trace.Bracket = bracketOf(before, after)
+
+	requireEvidenceError(t, trace, constants.ErrEvaluationEvidenceTraceMismatch)
+}
+
+func TestVerifyAgentTraceEvidence_RejectsClaimedInferenceReceiptFromAnotherSession(t *testing.T) {
+	signer := oracletest.NewSigner(t)
+	data := newEvidenceLedger(t, signer)
+	inference := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
+	model := inference.executedInSession("tx-m1", string(constants.ActionTypeInference), "session-other")
+	model.ResultSummary = evidenceResultDigest("tx-m1")
+	inference.signer.Resign(t, model)
+	before := data.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
+	after := data.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
+	trace := evidenceTrace(inference.runtime(), data.runtime())
+	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", model)}
+	trace.Bracket = bracketOf(before, after)
 
 	requireEvidenceError(t, trace, constants.ErrEvaluationEvidenceTraceMismatch)
 }

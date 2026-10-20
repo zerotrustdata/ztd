@@ -82,11 +82,13 @@ func BuildDatabase(ctx context.Context, fileSvc fs.RuntimeFileService, header He
 	return data, nil
 }
 
-// VerifyDatabase opens the database at path read-only and checks it fully:
-// the assignment row, then every event against the rules BuildDatabase
-// enforces. It returns the header and the records ordered by sequence.
-func VerifyDatabase(ctx context.Context, path string) (Header, []models.PublicFeedRecord, error) {
-	db, err := sqliteutil.OpenReadOnlyDB(sqliteutil.DefaultDBConfig(path), slog.Default())
+// VerifyDatabase checks a database image fully: the assignment row, then every
+// event against the rules BuildDatabase enforces. It returns the header and the
+// records ordered by sequence. The image is loaded into a private in-memory
+// database, so the caller passes the same bytes it digested and the verified
+// records always come from those bytes, never from a second read of a file.
+func VerifyDatabase(ctx context.Context, image []byte) (Header, []models.PublicFeedRecord, error) {
+	db, err := sqliteutil.OpenReadOnlyDBFromBytes(ctx, image, slog.Default())
 	if err != nil {
 		return Header{}, nil, fmt.Errorf("assignmentaudit: verify database: open: %w", err)
 	}

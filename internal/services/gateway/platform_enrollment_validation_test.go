@@ -85,6 +85,21 @@ func TestValidatePlatformEnrollmentRequestRejectsInvalidSigningKeys(t *testing.T
 	}
 }
 
+func TestValidatePlatformEnrollmentRequestRejectsReservedAppNames(t *testing.T) {
+	csr, _ := newPlatformEnrollmentCSR(t)
+	for _, name := range []string{"ztdo", "ztdd", "ztd-ensemble", "ensemble", "admin"} {
+		t.Run(name, func(t *testing.T) {
+			_, err := validatePlatformEnrollmentRequest(models.PlatformEnrollmentCreateRequest{
+				TokenHash: models.PlatformEnrollmentTokenHash("reserved"), ComponentKind: models.PlatformComponentApplication,
+				AppName: name, InstanceID: "app-1", Hostname: "app.local",
+				App: &models.PlatformAppCSRPayload{CSRPEM: csr},
+			})
+			require.ErrorIs(t, err, constants.ErrPlatformEnrollmentReservedIdentity)
+			require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidAppName)
+		})
+	}
+}
+
 func TestVerifyPlatformEnrollmentProofsRequiresEverySubmittedKey(t *testing.T) {
 	operatorCSR, operatorKey := newPlatformEnrollmentCSR(t)
 	cliCSR, cliKey := newPlatformEnrollmentCSR(t)

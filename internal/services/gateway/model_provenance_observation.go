@@ -158,8 +158,11 @@ func (c *ModelProvenanceObservationCoordinator) Stop() {
 }
 
 // NotifyAttemptBegin dispatches a BEGIN command with the expected model binding
-// and returns the provenance Operator's verified final signed receipt. A
-// skipped attempt (no binding or no provenance Operator) returns a nil receipt.
+// and returns the provenance Operator's verified final signed receipt. An
+// attempt without an attempt ID, served tag, or expected digest is not sent and
+// returns a nil receipt. A missing provenance Operator returns an error wrapping
+// constants.ErrProvenanceOperatorNotFound; the caller decides whether campaign
+// authority requires it.
 func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 	ctx context.Context,
 	_ string,
@@ -175,9 +178,6 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 		return nil, nil
 	}
 	if err := c.synchronizeOperatorSubscription(ctx); err != nil {
-		if errors.Is(err, constants.ErrProvenanceOperatorNotFound) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("model provenance observation begin: %w", err)
 	}
 	command := &evalv1.ModelProvenanceObservationCommand{
@@ -194,7 +194,8 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 }
 
 // NotifyAttemptFinalize dispatches a FINALIZE command to the provenance
-// Operator and returns its verified final signed receipt.
+// Operator and returns its verified final signed receipt. A missing provenance
+// Operator returns an error wrapping constants.ErrProvenanceOperatorNotFound.
 func (c *ModelProvenanceObservationCoordinator) NotifyAttemptFinalize(
 	ctx context.Context,
 	_ string,
@@ -213,9 +214,6 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptFinalize(
 		return nil, nil
 	}
 	if err := c.synchronizeOperatorSubscription(ctx); err != nil {
-		if errors.Is(err, constants.ErrProvenanceOperatorNotFound) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("model provenance observation finalize: %w", err)
 	}
 	status := evalv1.ModelProvenanceObservationAttemptStatus_MODEL_PROVENANCE_OBSERVATION_ATTEMPT_STATUS_COMPLETED

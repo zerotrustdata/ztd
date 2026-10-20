@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -79,7 +80,7 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		if err := verifyContextRetrieval(trace, call); err != nil {
 			return agentEvidenceError("context retrieval "+call.CallID, err)
 		}
-		outcome, err := verifyToolCallEvidence(anchors, trace.Data.OperatorID, call)
+		outcome, err := verifyToolCallEvidence(anchors, trace.Data, call)
 		if err != nil {
 			return agentEvidenceError("tool call "+call.CallID, err)
 		}
@@ -242,6 +243,9 @@ func verifyModelCallEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, call 
 	if err != nil {
 		return oracle.Outcome{}, err
 	}
+	if err := verifyReceiptSession(receipt, trace.Inference.SessionID); err != nil {
+		return oracle.Outcome{}, err
+	}
 	if call.TransactionID == "" || receipt.GetTransactionId() != call.TransactionID {
 		return oracle.Outcome{}, fmt.Errorf("receipt transaction %q is not the call transaction %q: %w", receipt.GetTransactionId(), call.TransactionID, constants.ErrEvaluationEvidenceTraceMismatch)
 	}
@@ -390,10 +394,10 @@ func verifyV7ModelCallTranscript(call AgentModelCall, result *operatorv1.Inferen
 }
 
 // verifyToolCallEvidence checks one tool call against its receipt. A call the
-// Gateway admitted must carry a verified receipt for its own transaction. A
-// refusal carries none. It returns the verified outcome, or nil when the call
-// has no receipt.
-func verifyToolCallEvidence(anchors *oracle.AnchorSet, runtimeID string, call AgentToolCall) (*oracle.Outcome, error) {
+// Gateway admitted must carry a verified receipt for its own transaction, from
+// the Data session the trace records. A refusal carries none. It returns the
+// verified outcome, or nil when the call has no receipt.
+func verifyToolCallEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, call AgentToolCall) (*oracle.Outcome, error) {
 	if call.Receipt == nil || call.Receipt.ActionReceipt == nil {
 		if call.TransactionID != "" || call.PolicyDecision == agentPolicyDecisionAllow {
 			return nil, fmt.Errorf("admitted call has no signed receipt: %w", constants.ErrActionReceiptMissing)
@@ -401,8 +405,11 @@ func verifyToolCallEvidence(anchors *oracle.AnchorSet, runtimeID string, call Ag
 		return nil, nil
 	}
 	receipt := call.Receipt.ActionReceipt
-	outcome, err := verifiedOutcome(anchors, runtimeID, receipt)
+	outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt)
 	if err != nil {
+		return nil, err
+	}
+	if err := verifyReceiptSession(receipt, data.SessionID); err != nil {
 		return nil, err
 	}
 	if receipt.GetTransactionId() != call.TransactionID {
@@ -421,6 +428,20 @@ func verifyToolCallEvidence(anchors *oracle.AnchorSet, runtimeID string, call Ag
 		return nil, fmt.Errorf("receipt outcome %d is not a tool call outcome: %w", outcome.Kind, constants.ErrConformanceReceiptUnclassifiable)
 	}
 	return &outcome, nil
+}
+
+// verifyReceiptSession requires every stage that names an Operator session to
+// name the session the trace records for the role that claimed the receipt. The
+// bracket cannot make this check: a receipt from another session on the same
+// runtime commits to the same ledger and still connects. A receipt that names no
+// session is not checked here.
+func verifyReceiptSession(receipt *operatorv1.ActionReceipt, sessionID string) error {
+	for _, stage := range receipt.GetDeterministicStageEvidence() {
+		if named := stage.GetOperatorSessionId(); named != "" && named != sessionID {
+			return fmt.Errorf("receipt names operator session %q, want %q: %w", named, sessionID, constants.ErrEvaluationEvidenceTraceMismatch)
+		}
+	}
+	return nil
 }
 
 // verifiedSentinelOutcome verifies one harness sentinel receipt. A sentinel
@@ -451,13 +472,30 @@ func verifiedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *opera
 // verifyJudgeReceipt proves a judge score's governed inference receipt was
 // signed by the Inference runtime's pinned key and is the transaction the score
 // names. The judge's response checks do not verify the signature, so a judge
-// score is labelled verified only through this check.
-func verifyJudgeReceipt(anchors *oracle.AnchorSet, runtimeID, transactionID string, receipt *operatorv1.ActionReceipt) error {
-	if _, err := oracle.VerifyReceipt(anchors, runtimeID, receipt); err != nil {
+// score is labelled verified only through this check. The receipt's result
+// summary binds the result digest, so the result the score was read from is
+// recomputed and must match it: an altered score body under an intact digest is
+// never verified. A failed judge has no scored body to bind, so it keeps only
+// the receipt check when it carries no result.
+func verifyJudgeReceipt(anchors *oracle.AnchorSet, runtimeID string, sc judge.Score) error {
+	if _, err := oracle.VerifyReceipt(anchors, runtimeID, sc.Receipt); err != nil {
 		return err
 	}
-	if receipt.GetTransactionId() != transactionID {
-		return fmt.Errorf("receipt transaction %q is not the judge transaction %q: %w", receipt.GetTransactionId(), transactionID, constants.ErrEvaluationEvidenceTraceMismatch)
+	if sc.Receipt.GetTransactionId() != sc.TransactionID {
+		return fmt.Errorf("receipt transaction %q is not the judge transaction %q: %w", sc.Receipt.GetTransactionId(), sc.TransactionID, constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	if sc.Result == nil {
+		if sc.Status == judge.StatusScored {
+			return fmt.Errorf("scored judge response has no inference result: %w", constants.ErrMissingRequiredField)
+		}
+		return nil
+	}
+	resultDigest, err := models.ComputeInferenceResultDigest(sc.Result)
+	if err != nil {
+		return fmt.Errorf("compute judge inference result digest: %w", err)
+	}
+	if sc.Result.GetResultDigest() != resultDigest || sc.Receipt.GetResultSummary() != resultDigest {
+		return fmt.Errorf("judge inference result digest does not match the result and receipt: %w", constants.ErrInferenceResultDigest)
 	}
 	return nil
 }

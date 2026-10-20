@@ -450,3 +450,10 @@ func TestAgentRunPostureHelp(t *testing.T) {
 		assert.Contains(t, help, p.Description())
 	}
 }
+
+func TestAgentRunAuditHelpUsesAppFilter(t *testing.T) {
+	long := agentRunCmd().Long
+	assert.Contains(t, long, "ztd audit events --app spiffe://ztd.local/app/claude")
+	assert.Contains(t, long, "ztd audit summary --app spiffe://ztd.local/app/claude")
+	assert.NotContains(t, long, "--operator-session-id spiffe://")
+}

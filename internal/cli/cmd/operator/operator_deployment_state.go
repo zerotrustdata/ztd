@@ -101,10 +101,10 @@ func awaitStaged(ctx context.Context, watch *deploymentWatch, target deployTarge
 func workerFingerprints(ctx context.Context, target deployTarget, dir string) (models.PlatformEnrollmentCSRFingerprints, error) {
 	state, err := target.readDeploymentState(ctx, dir)
 	if err != nil {
-		return models.PlatformEnrollmentCSRFingerprints{}, fmt.Errorf("read worker keys in %s: %w", dir, err)
+		return models.PlatformEnrollmentCSRFingerprints{}, fmt.Errorf("read Operator keys in %s: %w", dir, err)
 	}
 	if state == nil || state.Fingerprints.Operator == "" || state.Fingerprints.CLI == "" {
-		return models.PlatformEnrollmentCSRFingerprints{}, fmt.Errorf("%w: worker in %s recorded no enrollment keys for this launch", constants.ErrOperatorDeployFailed, dir)
+		return models.PlatformEnrollmentCSRFingerprints{}, fmt.Errorf("%w: Operator in %s recorded no enrollment keys for this launch", constants.ErrOperatorDeployFailed, dir)
 	}
 	return state.Fingerprints, nil
 }

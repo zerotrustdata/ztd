@@ -1,6 +1,6 @@
 # ztd Protocol Specification
 
-Last Updated: 2026-10-12
+Last Updated: 2026-10-20
 Version: v1.2.0
 
 The **ztd Protocol** is a zero-trust execution and evidence platform for autonomous AI agents, human operators, and distributed target runtimes. It establishes a cryptographically enforced, typed wire contract that binds identity, intent, state, and governance proofs into an immutable transaction envelope (`GovernanceEnvelope`). Every mutation passing through the platform is subjected to an uncompromising 5-layer interlock sequence before execution.
@@ -17,8 +17,8 @@ The **ztd Protocol** is a zero-trust execution and evidence platform for autonom
 - **Fail-Closed Principle**: Any structural invalidity, missing required field, unsupported field type, expired timestamp, reused nonce, stale state root, or failed cryptographic verification immediately rejects the envelope prior to dispatch.
 
 ### 1.2 Canonical Hostname and Peer Addressing
-- **Canonical Mesh Alias**: `ztd.local` is the canonical internal hostname and TLS ServerName for mesh communication between Gateways, Operators, and CLI clients.
-- **Peer Translation**: The Gateway translates `ztd.local` to environment-specific IP addresses and peer identifiers via internal identity resolution without relying on external DNS.
+- **Canonical Internal Hostname**: `ztd.local` is the Gateway's internal hostname. Its certificate is issued to this name. Operators and CLI clients that dial a Gateway by IP address use `ztd.local` as the TLS ServerName.
+- **Dial Fallback**: A client resolves `ztd.local` through the system resolver. When it does not resolve, the client dials loopback. The TLS ServerName stays `ztd.local`.
 
 ### 1.3 Execution Sovereignty
 - **Policy Decision Point (PDP)**: The ztd Gateway receives typed requests from clients and tools, verifies session credentials, coordinates consensus deliberation, brokers notary approvals, and prepares the canonical transaction envelope.
@@ -81,17 +81,22 @@ message GovernanceMetadata {
 #### L2Metadata
 - `consensus_set_id` (`string`): Unique identifier of the deliberating consensus set.
 - `votes` (`repeated L2Vote`): Collection of member votes, where each vote contains:
-  - `signer_key_id` (`string`): Public key identifier of the consensus member.
+  - `signer_key_id` (`string`): Identifier of the consensus member. It matches the trusted signer ID in the Operator SignerStore.
   - `consensus_signature` (`string`): Hex-encoded Ed25519 signature over `<transaction_hash>|<decision>`.
   - `decision` (`bool`): Member evaluation verdict (`true` = approve, `false` = reject).
 
-#### L3Metadata (L3Proof)
-- `client_data_json` (`string`): WebAuthn client data JSON payload.
-- `authenticator_data` (`string`): WebAuthn authenticator data bytes.
-- `signature` (`string`): WebAuthn signature over challenge.
-- `credential_id` (`string`): Enrolled WebAuthn credential identifier.
-- `mtls_cert_fingerprint` (`string`): SHA-256 fingerprint of the caller's mTLS leaf certificate (CLI sessions).
-- `cli_signature` (`string`): Hex-encoded Ed25519 signature over `transaction_hash` (CLI sessions).
+#### L3Metadata and L3Proof
+- `proof` (`L3Proof`): WebAuthn or CLI/mTLS proof. Exactly one proof type is populated per instance. Its fields are:
+  - `client_data_json` (`string`): WebAuthn client data JSON payload.
+  - `authenticator_data` (`string`): WebAuthn authenticator data bytes.
+  - `signature` (`string`): WebAuthn signature over challenge.
+  - `credential_id` (`string`): Enrolled WebAuthn credential identifier.
+  - `mtls_cert_fingerprint` (`string`): SHA-256 fingerprint of the caller's mTLS leaf certificate (CLI proofs).
+  - `cli_signature` (`string`): Hex-encoded ECDSA P-256 signature over the SHA-256 digest of `ztd:l3:cli:v1|` followed by `transaction_hash` (CLI proofs).
+  - `cli_certificate_der` (`bytes`): DER-encoded enrolled CLI leaf certificate. It is not a trust chain.
+  - `passkey_context` and `cli_intermediates_der`: Gateway-sourced verification context and untrusted chain-building hints. The Operator trusts only its pinned CA pool.
+- `denied` (`bool`): The human declined the suspended transaction. L4 rejects a denied envelope in every posture.
+- `pending_dispatch` (`bool`): Gateway-owned suspension provenance for a waiting dispatch.
 
 ---
 
@@ -103,9 +108,11 @@ $$\text{id} == \text{transaction\_hash} == \text{SHA256}(\text{canonical\_repres
 
 ### 3.1 Hash Construction
 
-For protocol version `"2"`, the canonical string input begins with the version prefix `ztd-tx-v2|`, appends the action and event types, and chains the canonical V1 field sequence:
+For protocol version `"2"`, the canonical string input begins with the version prefix `ztd-tx-v2|`, appends the action and event types, and chains the canonical V1 field sequence. `event_type` MUST be non-empty for protocol version `"2"`:
 
 $$\text{canonical\_v2} = \texttt{"ztd-tx-v2|"} \,\|\, \text{action\_type} \,\|\, \texttt{"|"} \,\|\, \text{event\_type} \,\|\, \texttt{"|"} \,\|\, \text{canonical\_v1}$$
+
+Protocol version `"1.0"` hashes `canonical_v1` alone. The Operator retains this path only to verify historical records.
 
 ### 3.2 Canonical Field Ordering Rules
 
@@ -116,7 +123,7 @@ $$\text{canonical\_v2} = \texttt{"ztd-tx-v2|"} \,\|\, \text{action\_type} \,\|\,
 3. `payload`: Standard Base64 encoded string (`base64.StdEncoding`).
 4. `state_merkle_root`: UTF-8 hex string.
 5. `nonce`: UTF-8 string.
-6. `expires_at`: UTC timestamp formatted with fixed microsecond precision: `YYYY-MM-DDTHH:MM:SS.000000Z`.
+6. `expires_at`: UTC timestamp formatted with fixed microsecond precision, `YYYY-MM-DDTHH:MM:SS.ffffffZ`, where `ffffff` is six fractional-second digits.
 7. `intent_data`: Recursively normalized struct string (see §3.3).
 8. `requestor_user_id`: UTF-8 string.
 9. `acting_app_id`: UTF-8 string.
@@ -134,8 +141,9 @@ When `intent_data` (`google.protobuf.Struct`) is populated, it is canonicalized 
 - Key-value pairs are formatted as `key=value`, delimited by commas: `key1=val1,key2=val2`.
 - Primitive values:
   - Strings: rendered directly.
-  - Numbers: rendered via standard decimal formatting.
+  - Numbers: rendered with six fractional digits (`%f`, for example `1.500000`).
   - Booleans: rendered as `true` or `false`.
+  - Nulls: rendered as an empty string.
   - Lists: rendered as `[elem1,elem2]`.
   - Nested structs: recursively normalized using these same rules.
 
@@ -151,7 +159,7 @@ The `governance` metadata field (L1 status, L2 votes, L3 proof) and runtime post
 
 Every mutation must pass through five sequential, non-bypassable layers before execution. Failure at any layer results in immediate rejection.
 
-```
+```text
                       [ Inbound Mutation Request ]
                                    │
                                    ▼
@@ -159,7 +167,7 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 │ Layer 1: Doctrine Gate (Gateway & Operator)                         │
 │ • Heuristic & static regex analysis via reflected protobuf options │
 │ • MITRE ATT&CK detection (reverse shells, privilege escalation)     │
-│ • Critical filesystem path lockdown (/etc, /bin, /sbin, /usr)       │
+│ • Critical filesystem path lockdown (/etc/shadow, /bin, /usr/bin)   │
 └──────────────────────────────────┬──────────────────────────────────┘
                                    │ PASS
                                    ▼
@@ -174,7 +182,7 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Layer 3: Notary Authorization (Human-in-the-Loop)                   │
 │ • WebAuthn / FIDO2 cryptographic assertion challenge = tx_hash      │
-│ • mTLS client certificate fingerprint + Ed25519 CLI signature       │
+│ • mTLS client certificate fingerprint + ECDSA P-256 CLI signature   │
 │ • Suspended transaction approval lifecycle (Enforced: ratify, notary│
 └──────────────────────────────────┬──────────────────────────────────┘
                                    │ PASS
@@ -208,7 +216,7 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 - Enforces static constraints prior to execution logic.
 - Evaluates string fields decorated with the custom protobuf option `(ztd.common.v1.forbidden_patterns)` (e.g., regex `(?i)^(sudo|su)$`).
 - Analyzes commands and arguments against active doctrine files from `protocol/constants/doctrine/` (MITRE ATT&CK patterns, injection vectors, reverse shells).
-- Enforces absolute path denylists on critical system resources (`/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/etc/ssh/`, `/bin/`, `/sbin/`, `/usr/bin/`).
+- Enforces absolute path denylists on critical system resources for file-path payloads. Examples include `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/etc/ssh/sshd_config`, and the directories `/bin/`, `/sbin/`, `/usr/bin/`, and `/usr/sbin/`.
 
 #### L2 Consensus: Enrolled Application Deliberation
 - Under `consensus` and `notary` postures, requires the bound enrolled consensus application to evaluate envelope safety.
@@ -219,7 +227,7 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 #### L3 Notary: Hardware-Bound Human Presence
 - Under `ratify` and `notary` postures, enforces cryptographic proof that an authorized human explicitly sanctioned the mutation.
 - **Web Sessions**: FIDO2/WebAuthn assertion where `challenge == transaction_hash`.
-- **CLI Sessions**: Verification of caller's mTLS certificate SHA-256 fingerprint (`mtls_cert_fingerprint`) combined with an Ed25519 signature over `transaction_hash`.
+- **CLI Sessions**: Verification of caller's mTLS certificate SHA-256 fingerprint (`mtls_cert_fingerprint`) combined with an ECDSA P-256 signature over the domain-separated `transaction_hash` digest (`cli_signature`).
 - **Suspension Lifecycle**: Inbound mutations lacking L3 proof are held in `SuspendedTransactionStore` with a 2-minute TTL. The Gateway returns an approval directive with a direct URL. Human authorization completes the transaction out-of-band and triggers an `approval.completed` SSE event scoped to the submitter session.
 
 #### L4 Warden: Pre-Dispatch Verification
@@ -236,7 +244,7 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 - **Initial Receipt**: Signs an `EXECUTING` receipt and records it to `SQLAuditStore`.
 - **Ledger Commitment**: Atomically appends a `CommitmentAttestation` to the local commitment chain.
 - **JIT Capability**: Mints an ephemeral execution token restricted strictly to the verified `action_type` and `target_resource`, revoked immediately upon handler return.
-- **Sovereign Scrubbing**: Redacts secrets, tokens, and PII from execution outputs before data egress.
+- **Sovereign Scrubbing**: When a scrubber is active, redacts secrets, tokens, and PII from execution outputs before they are signed into the receipt. Without a scrubber, the signed summary is fixed text.
 - **Final Receipt**: Updates receipt status (`COMPLETED` or `FAILED`), records post-execution state root, signs canonical receipt bytes, and persists a `ReceiptPersistenceAttestation`.
 
 ### 4.2 Governance Postures
@@ -262,8 +270,8 @@ Execution produces an immutable cryptographic receipt defined in `protocol/proto
 |:---|:---|:---|
 | `transaction_id` | `string` | Transaction identifier from the originating envelope. |
 | `transaction_hash` | `string` | Canonical transaction hash from the envelope. |
-| `status` | `ExecutionStatus` (enum) | Status: `PENDING`, `EXECUTING`, `COMPLETED`, `FAILED`, `CANCELLED`, `DENIED`, `TIMEOUT`. |
-| `result_summary` | `string` | Concise execution summary (capped at 4096 bytes). |
+| `status` | `ExecutionStatus` (enum) | Status: `EXECUTION_STATUS_EXECUTING`, `EXECUTION_STATUS_COMPLETED`, `EXECUTION_STATUS_FAILED`, `EXECUTION_STATUS_CANCELLED`, `EXECUTION_STATUS_TIMEOUT`. |
+| `result_summary` | `string` | Concise execution summary. Handler output is scrubbed before signing when a scrubber is active. |
 | `state_root_before` | `string` | State Merkle root immediately prior to execution. |
 | `state_root_after` | `string` | State Merkle root immediately after execution. |
 | `executed_at_unix_ms` | `int64` | Millisecond Unix timestamp of completion. |
@@ -274,6 +282,7 @@ Execution produces an immutable cryptographic receipt defined in `protocol/proto
 | `deterministic_stage_evidence`| `repeated DeterministicStageEvidence` | Ordered stage proofs emitted by L1, L2, L3, and L4. |
 | `final_persistence_attestation`| `ReceiptPersistenceAttestation` | Cryptographic proof binding receipt to audit storage. |
 | `failure_code` | `ReceiptFailureCode` (enum) | Failure classification (UNSPECIFIED on success). |
+| `rejection_code` | `GovernanceRejectionCode` (enum) | Verification check that rejected the transaction. Set exactly when `failure_code` is `RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`. |
 | `event_type` | `string` | Originating request event name. |
 | `action_type` | `string` | Originating governance action class. |
 
@@ -287,7 +296,7 @@ The receipt signature is generated over a canonical JSON serialization of the re
   "transaction_hash": "<tx_hash>",
   "event_type": "<event_type>",
   "action_type": "<action_type>",
-  "status": 3,
+  "status": 2,
   "result_summary": "<summary>",
   "state_root_before": "<root_before>",
   "state_root_after": "<root_after>",
@@ -295,28 +304,27 @@ The receipt signature is generated over a canonical JSON serialization of the re
   "signer_key_id": "<key_id>",
   "l2_status": 2,
   "l3_status": 2,
-  "deterministic_stage_evidence_hash": "<evidence_sha256>",
-  "failure_code": 0
+  "deterministic_stage_evidence_hash": "<evidence_sha256>"
 }
 ```
 
-The Actuator signs these canonical bytes using its private Ed25519 key, ensuring full cryptographic binding over the lifecycle evidence and state transitions.
+The Actuator signs these canonical bytes using its private Ed25519 key, ensuring full cryptographic binding over the lifecycle evidence and state transitions. The `event_type`, `action_type`, `deterministic_stage_evidence_hash`, `failure_code`, and `rejection_code` fields are omitted when empty or zero. The `status`, `l2_status`, and `l3_status` fields are always present as enum numbers.
 
 ### 5.3 Cryptographic Commitment Ledger
 
 The Operator maintains an append-only commitment chain:
-- **`CommitmentAttestation`**: Signed by the local authority before handler execution. Binds `transaction_id`, `transaction_hash`, `prior_commitment_hash`, `state_root_at_commit`, and signature digests (`l2_signature_digest`, `warden_intent_signature_digest`, `human_signature_digest`).
+- **`CommitmentAttestation`**: Signed by the Operator auditor key before handler execution. Binds `transaction_id`, `transaction_hash`, `prior_commitment_hash`, `state_root_at_commit`, and signature digests (`l2_signature_digest`, `warden_intent_signature_digest`, `human_signature_digest`).
 - **Chain Continuity**: Every commitment references the hash of the preceding attestation, forming an immutable hash chain rooted in the local SQLite ledger.
 
 ---
 
 ## 6. Canonical Event Taxonomy
 
-All operations in the ztd platform correspond to typed events defined in `protocol/constants/events.json`. Every event follows the canonical dot-delimited grammar:
+All operations in the ztd platform correspond to typed events defined in `protocol/constants/events.json`. Every event follows the canonical dot-delimited grammar with the `ztd.v1` prefix. The entity segment may span several dot-delimited parts:
 
 $$\texttt{ztd.v1.} \langle\text{domain}\rangle \texttt{.} \langle\text{entity}\rangle \texttt{.} \langle\text{terminal}\rangle$$
 
-Terminals indicate lifecycle stage: `requested`, `started`, `received`, `completed`, `failed`, `cancelled`, `timeout`, `recorded`, `granted`, `denied`, `revoked`.
+The terminal segment indicates lifecycle stage. Requests end in `requested`, and completions end in `completed` or `failed`. Other stages use terminals such as `started`, `received`, `recorded`, `granted`, `denied`, `revoked`, `updated`, and `timeout`. The registry defines the complete set.
 
 ### 6.1 Major Event Domains
 
@@ -329,7 +337,7 @@ Terminals indicate lifecycle stage: `requested`, `started`, `received`, `complet
 | **Operator Lifecycle** | Heartbeats, shutdown, status | `ztd.v1.operator.heartbeat.requested` | `HEARTBEAT` |
 | **Application Docs** | Case, investigation, task updates | `ztd.v1.app.document.update.requested` | `DOCUMENT_UPDATE` |
 | **Platform Enrollment**| Workload credential enrollment | `ztd.v1.platform.enrollment.create.requested` | `PLATFORM_ENROLLMENT_CREATE` |
-| **AI LLM** | Model chats, tool calls, thinking | `ztd.v1.ai.llm.chat.submitted` | *(stream / fact)* |
+| **AI Evaluation** | Evaluation campaigns, cycles, and assignments | `ztd.v1.ai.eval.assignment.started` | *(fact)* |
 | **Observe & Feed** | Projections & public mirrors | `ztd.v1.public.feed.proof.published` | *(fact)* |
 
 ---
@@ -358,11 +366,11 @@ Broadcasting to `user_id` without an explicit session target is disallowed. Appr
 
 ## 8. Protocol Error Codes
 
-Standardized JSON-RPC error codes are returned on validation and governance failures (`internal/constants/rpc_errors.go`):
+JSON-RPC error codes are returned on validation and governance failures. The `-32000` to `-32101` protocol identifiers are defined in `internal/constants/rpc_errors.go`. The standard JSON-RPC identifiers are defined in `internal/constants/auth.go`, except where the table shows a literal:
 
 | Code | Constant Identifier | Failure Reason |
 |:---|:---|:---|
-| `-32000` | `ErrCodeInvalidEnvelope` | Malformed JSON, missing ID, or unknown action type. |
+| `-32000` | `ErrCodeInvalidEnvelope` | Invalid envelope: missing transaction ID, missing payload, or unknown action type. |
 | `-32001` | `ErrCodeHashMismatch` | Transaction hash does not match computed SHA-256 digest. |
 | `-32002` | `ErrCodeExpired` | `expires_at` timestamp is in the past. |
 | `-32003` | `ErrCodeReplay` | Nonce already exists in durable replay store. |
@@ -371,11 +379,11 @@ Standardized JSON-RPC error codes are returned on validation and governance fail
 | `-32006` | `ErrCodeL2SignatureInvalid`| L2 Consensus signature missing, invalid, or quorum unmet. |
 | `-32007` | `ErrCodeL3ProofInvalid` | L3 Notary human proof missing or invalid. |
 | `-32008` | `ErrCodePayloadDecodeFailed`| Base64 payload cannot be decoded to expected protobuf message. |
-| `-32100` | `ErrCodeResourceNotFound` | Referenced resource (file, session, entity) not found. |
-| `-32101` | `ErrCodeGatewayNotReady` | Gateway initialization or bootstrapping in progress. |
-| `-32600` | `JSONRPCInvalidRequest` | JSON-RPC batch request received (batches explicitly rejected). |
-| `-32603` | `JSONRPCInternalError` | Internal execution or downstream service error. |
-| `-32700` | `JSONRPCParseError` | Malformed JSON-RPC wire payload. |
+| `-32100` | `ErrCodeResourceNotFound` | Reserved. Defined but not emitted by the Gateway. |
+| `-32101` | `ErrCodeGatewayNotReady` | Reserved. Defined but not emitted. The Gateway returns `-32603` while not ready. |
+| `-32600` | literal in `internal/services/mcp/mcp_endpoint.go` | JSON-RPC batch request received (batches explicitly rejected), or request body over the read limit. |
+| `-32603` | `JSONRPCErrorCodeInternal` | Internal execution, downstream service error, or Gateway not ready. |
+| `-32700` | `JSONRPCErrorCodeParseError` | Malformed JSON-RPC wire payload. |
 
 ---
 
@@ -429,8 +437,10 @@ Standardized JSON-RPC error codes are returned on validation and governance fail
       ]
     },
     "l3": {
-      "mtlsCertFingerprint": "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca7",
-      "cliSignature": "5c92e71...bb0291"
+      "proof": {
+        "mtlsCertFingerprint": "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca7",
+        "cliSignature": "5c92e71...bb0291"
+      }
     }
   }
 }
@@ -442,7 +452,7 @@ Standardized JSON-RPC error codes are returned on validation and governance fail
 {
   "transactionId": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "transactionHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "status": "COMPLETED",
+  "status": "EXECUTION_STATUS_COMPLETED",
   "resultSummary": "exit code 0: backup completed successfully (42 files archived)",
   "stateRootBefore": "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
   "stateRootAfter": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",

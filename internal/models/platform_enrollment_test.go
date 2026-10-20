@@ -234,3 +234,55 @@ func TestPlatformEnrollmentComponentCanonicalName(t *testing.T) {
 		assert.ErrorIs(t, err, tt.err)
 	}
 }
+
+func TestValidateAppNameRejectsReservedPlatformNames(t *testing.T) {
+	reserved := []string{
+		"ztd", "ztdg", "ztdo", "ztde", "ztdd",
+		"ztd-gateway", "ztd-operator", "ztd-ensemble", "ztd-dashboard", "ztd-cli",
+		"operator", "ensemble", "dashboard", "gateway", "cli", "admin", "system",
+	}
+	for _, name := range reserved {
+		t.Run(name, func(t *testing.T) {
+			err := ValidateAppName(name)
+			assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidAppName)
+			assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentReservedIdentity)
+
+			request := PlatformEnrollmentCreateRequest{
+				TokenHash:     PlatformEnrollmentTokenHash("token"),
+				ComponentKind: PlatformComponentApplication,
+				AppName:       name,
+				InstanceID:    "app-1",
+				Hostname:      "app.local",
+				App:           &PlatformAppCSRPayload{CSRPEM: "csr"},
+			}
+			assert.ErrorIs(t, request.ValidateShape(), constants.ErrPlatformEnrollmentReservedIdentity)
+		})
+	}
+}
+
+func TestValidateAppNameEnforcesFormatAndLength(t *testing.T) {
+	tests := []struct {
+		name string
+		app  string
+		err  error
+	}{
+		{name: "empty", app: "", err: constants.ErrPlatformEnrollmentAppNameRequired},
+		{name: "lowercase with dash", app: "my-agent-1"},
+		{name: "dotted", app: "custom.app"},
+		{name: "eval identity", app: constants.EvaluationAppName},
+		{name: "max length", app: strings.Repeat("a", constants.PlatformEnrollmentMaxAppNameBytes)},
+		{name: "over max length", app: strings.Repeat("a", constants.PlatformEnrollmentMaxAppNameBytes+1), err: constants.ErrPlatformEnrollmentInvalidAppName},
+		{name: "uppercase", app: "INVALID-UPPER", err: constants.ErrPlatformEnrollmentInvalidAppName},
+		{name: "slash", app: "app/slash", err: constants.ErrPlatformEnrollmentInvalidAppName},
+		{name: "leading dash", app: "-leading", err: constants.ErrPlatformEnrollmentInvalidAppName},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.err == nil {
+				assert.NoError(t, ValidateAppName(tt.app))
+				return
+			}
+			assert.ErrorIs(t, ValidateAppName(tt.app), tt.err)
+		})
+	}
+}

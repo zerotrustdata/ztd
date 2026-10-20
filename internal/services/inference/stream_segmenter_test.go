@@ -100,7 +100,9 @@ func TestStreamSegmenter_SecretSplitAcrossDeltasIsNeverEmittedRaw(t *testing.T) 
 	assert.NotContains(t, streamed, segmenterSecretKey)
 	assert.NotContains(t, streamed, segmenterSecretEmail)
 	assert.Equal(t, s.ScrubText(context.Background(), strings.Join(deltas, "")), streamed, "secrets are scrubbed whole, not in fragments")
-	assert.Equal(t, strings.Join(deltas, ""), s.RehydrateText(context.Background(), streamed), "the streamed tokens rehydrate to the provider output")
+	rehydrated, err := s.RehydrateText(context.Background(), streamed)
+	require.NoError(t, err, "every streamed token must resolve")
+	assert.Equal(t, strings.Join(deltas, ""), rehydrated, "the streamed tokens rehydrate to the provider output")
 	// The terminal parts are exactly the emitted segments, so the hashes match by construction.
 	require.NoError(t, models.ReconcileInferenceProgress(published, terminalResult(t, terminal)))
 }
@@ -176,7 +178,9 @@ func TestStreamSegmenter_ToolCallIsScrubbedWholeAfterTheTextBeforeIt(t *testing.
 	call := terminal[1].GetToolCall()
 	assert.Equal(t, "call-1", call.GetCallId())
 	assert.Regexp(t, `^\{"to":"\{\{UEI_\d+\}\}"\}$`, call.GetArgumentsJson())
-	assert.Equal(t, `{"to":"`+segmenterSecretEmail+`"}`, s.RehydrateText(context.Background(), call.GetArgumentsJson()))
+	arguments, err := s.RehydrateText(context.Background(), call.GetArgumentsJson())
+	require.NoError(t, err)
+	assert.Equal(t, `{"to":"`+segmenterSecretEmail+`"}`, arguments)
 	for _, event := range published {
 		for _, part := range event.GetParts() {
 			assert.NotContains(t, part.GetToolCall().GetArgumentsJson(), segmenterSecretEmail)

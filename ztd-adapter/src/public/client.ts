@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { createPublicFetch, type PublicEndpoint, type PublicFetch } from './fetch';
-import type { PublicRuntimeConfig } from './runtime_config';
-import type { PublicBootstrap, PublicHistory, PublicItem, PublicProofCatalog, PublicSnapshot } from './state';
+import { createPublicFetch, type PublicEndpoint, type PublicFetch } from './fetch.js';
+import type { PublicRuntimeConfig } from './runtime_config.js';
+import type { PublicBootstrap, PublicHistory, PublicItem, PublicProofCatalog, PublicSnapshot } from './state.js';
 
 export class PublicClientError extends Error {
   constructor(public readonly operation: string, public readonly status: number, message: string) {

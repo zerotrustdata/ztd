@@ -19,16 +19,19 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 type stubCampaignExecutor struct {
 	calls         int
 	investigation *evalv1.EvaluationInvestigation
+	binding       CampaignExecutionBinding
 }
 
 func (s *stubCampaignExecutor) ExecuteAssignment(_ context.Context, req AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error) {
 	s.calls++
 	s.investigation = req.Investigation
+	s.binding = req.Binding
 	result := &evalv1.EvaluationAssignmentResult{
 		SchemaVersion:   CampaignSchemaVersion,
 		AssignmentId:    req.Assignment.GetAssignmentId(),
@@ -122,6 +125,48 @@ func TestCampaignControllerInitializeScheduleAndResume(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.NotEqual(t, first.GetAssignmentId(), resumed.GetAssignmentId())
+}
+
+func TestCampaignControllerExecuteBindsOnlyTheFrozenModelRegistry(t *testing.T) {
+	ctx := context.Background()
+	store := NewStore(newCampaignMemoryFileService())
+	executor := &stubCampaignExecutor{}
+	controller := NewCampaignController(store, executor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
+	req := testCampaignInitRequest(t)
+	_, err := controller.InitializeCampaign(ctx, req)
+	require.NoError(t, err)
+	_, err = controller.ScheduleRun(ctx, req.RunID)
+	require.NoError(t, err)
+	frozenRegistry := InferenceVariantsFromEvalRegistry(req.Inventory.Variants)
+
+	t.Run("registry digest that differs from the frozen spec fails before execution", func(t *testing.T) {
+		_, executed, err := controller.ExecuteNextAssignment(ctx, req.RunID, CampaignExecutionBinding{
+			Topology:            testOperatorTopology("inf-session", "data-session"),
+			ModelRegistryDigest: "sha256:not-the-frozen-registry",
+			ModelRegistry:       frozenRegistry,
+		}, req.ScenarioArtifacts)
+		require.ErrorIs(t, err, constants.ErrChecksumMismatch)
+		assert.False(t, executed)
+		assert.Zero(t, executor.calls, "a mismatched registry digest must fail before the executor runs")
+	})
+
+	t.Run("caller registry entries are replaced by the frozen registry", func(t *testing.T) {
+		rogue := append(append([]*operatorv1.InferenceModelVariant(nil), frozenRegistry...),
+			&operatorv1.InferenceModelVariant{Model: "rogue-model", Digest: "sha256:rogue"})
+		_, executed, err := controller.ExecuteNextAssignment(ctx, req.RunID, CampaignExecutionBinding{
+			Topology:            testOperatorTopology("inf-session", "data-session"),
+			ModelRegistryDigest: req.Inventory.RegistryDigest,
+			ModelRegistry:       rogue,
+		}, req.ScenarioArtifacts)
+		require.NoError(t, err)
+		require.True(t, executed)
+		assert.Equal(t, 1, executor.calls)
+		assert.Equal(t, req.Inventory.RegistryDigest, executor.binding.ModelRegistryDigest)
+		require.Len(t, executor.binding.ModelRegistry, len(frozenRegistry))
+		for i := range frozenRegistry {
+			assert.True(t, proto.Equal(frozenRegistry[i], executor.binding.ModelRegistry[i]), "registry entry %d", i)
+		}
+	})
 }
 
 func TestCampaignControllerResumeNextAssignmentFailsOnUnresolvedRunningAssignment(t *testing.T) {

@@ -3,8 +3,8 @@ doc_id: connect_frontend_to_gateway
 title: Connect Frontend to Gateway
 audience: frontend developers integrating with ztd
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/connect_frontend_to_gateway.md
   - internal/services/gateway/
@@ -45,9 +45,9 @@ For single-origin local development, the `./ztd gw connect <frontend-origin>` wo
 
 | ID | Rule |
 | :--- | :--- |
-| INV-FE-AUTH-01 | Browser-accessible routes requiring web sessions MUST use `GET /api/v1/users/me`, `GET /api/v1/auth/sessions/me`, `GET /api/v1/auth/passkeys`, `DELETE /api/v1/auth/passkeys/{credentialId}`, `GET /api/v1/approvals`, `GET /api/v1/approvals/{txHash}/challenge`, `POST /api/v1/approvals/{txHash}/verify`, `GET /api/v1/sse/stream`, and `GET /api/v1/sse/events`. |
-| INV-FE-AUTH-02 | Public endpoints (no auth required) MUST include passkey registration and authentication challenges, bootstrap status, enrollment token validation, logout, and CLI recovery approval routes. |
-| INV-FE-AUTH-03 | Every session-authenticated call MUST include `credentials: 'include'` in the fetch options so the Gateway's `ztd_web_session_cookie` is sent. |
+| INV-FE-AUTH-01 | Browser-accessible routes requiring web sessions MUST use `GET /api/v1/users/me`, `GET /api/v1/auth/sessions/me`, `GET /api/v1/auth/passkeys`, `DELETE /api/v1/auth/passkeys/{credentialId}`, `GET /api/v1/approvals`, `GET /api/v1/approvals/{txHash}/challenge`, `POST /api/v1/approvals/{txHash}/verify`, `GET /api/v1/sse/stream`, and `GET /api/v1/sse/events`. The SSE routes also accept mTLS for CLI and Operator callers (`RouteAuthDual`). |
+| INV-FE-AUTH-02 | Public endpoints (no auth required) MUST include console and enrollment passkey registration and authentication challenges and verifies, bootstrap status, enrollment token validation, logout, and the CLI recovery request, status, and complete routes. The CLI recovery approve route requires a web session. |
+| INV-FE-AUTH-03 | Every WebSession-authenticated call MUST include `credentials: 'include'` in the fetch options so the Gateway's `ztd_web_session_cookie` is sent. |
 | INV-FE-AUTH-04 | API responses MUST be interpreted through HTTP status codes: 200 (success), 401 (not authenticated, redirect to login), 403 (forbidden by policy), 404 (not found), 409 (conflict), 410 (expired token), 5xx (server error). |
 
 ### Cookie and CORS behavior (`INV-FE-CORS`)
@@ -66,16 +66,16 @@ For single-origin local development, the `./ztd gw connect <frontend-origin>` wo
 | INV-FE-WA-01 | WebAuthn challenges are base64url-encoded by the Gateway; the frontend MUST decode them to `ArrayBuffer` before calling browser credential APIs. Responses MUST be re-encoded before sending to Gateway verify endpoints. |
 | INV-FE-WA-02 | The RP ID MUST match the registrable domain of the frontend page's origin, or browser ceremonies fail. |
 | INV-FE-WA-03 | The console registration route permits only the first credential per user. Subsequent credentials MUST be added via the CLI token-gated enrollment flow (`ztd auth enroll user`). |
-| INV-FE-WA-04 | Approval WebAuthn ceremonies (for suspended transactions) do NOT create a new session; they issue an `ActionReceipt` that resumes execution. |
+| INV-FE-WA-04 | Approval WebAuthn ceremonies (for suspended transactions) do NOT create a new WebSession; they issue an `ActionReceipt` that resumes execution. |
 
 ## Owned surfaces
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
 | Browser credential flows | `internal/services/gateway/passkey_service_http.go` | Register and authenticate challenges, WebAuthn verification |
-| CORS and session cookie behavior | `internal/services/gateway/passkey_service_http.go` | Cookie attributes and headers |
-| Web session routes | `internal/services/gateway/gateway_http_router.go` | Route classification and middleware |
-| SSE endpoints | `internal/services/gateway/gateway_http_router.go` | Live stream and backfill delivery |
+| CORS and session cookie behavior | `internal/services/gateway/gateway_http_cors.go`, `internal/services/gateway/passkey_service_http.go` | CORS headers, cookie attributes, and SameSite mode |
+| Web session routes | `internal/services/gateway/gateway_http_router.go`, `internal/services/gateway/gateway_auth.go` | Route registration and route classification |
+| SSE endpoints | `internal/services/gateway/gateway_http_router.go`, `internal/services/gateway/sse_controller.go` | Live stream and backfill delivery |
 
 ## Procedures
 
@@ -150,15 +150,15 @@ async function initAuth() {
 1. Verify `GET /api/v1/auth/bootstrap/status` returns `{ "bootstrapped": false }`.
 2. POST `/api/v1/auth/passkeys/console/register/challenge` with `{ "user_name": "Admin", "cli_session_id": "browser" }`.
 3. Decode `options.publicKey` and invoke `navigator.credentials.create({ publicKey })`.
-4. POST `/api/v1/auth/passkeys/console/register/verify` with flat encoded attestation response.
-5. On success (200), the Gateway sets `ztd_web_session_cookie`.
+4. POST `/api/v1/auth/passkeys/console/register/verify` with `{ "user_id": "<user_id from step 2>", "attestation_response": <flat encoded attestation> }`.
+5. On `success: true` in the response body, the Gateway sets `ztd_web_session_cookie`. Verify failures also return HTTP 200, so check `success` before treating registration as complete.
 
 ### WebAuthn Authentication (Returning User)
 
 1. POST `/api/v1/auth/passkeys/console/authenticate/challenge` with `{ "user_id": <user_id> }`.
 2. Decode `options.publicKey` and invoke `navigator.credentials.get({ publicKey })`.
-3. POST `/api/v1/auth/passkeys/console/authenticate/verify` with flat encoded assertion response.
-4. On success (200), the Gateway sets `ztd_web_session_cookie`.
+3. POST `/api/v1/auth/passkeys/console/authenticate/verify` with `{ "user_id": <user_id>, "assertion_response": <flat encoded assertion> }`.
+4. On `success: true` in the response body, the Gateway sets `ztd_web_session_cookie`. Verify failures also return HTTP 200, so check `success` before treating sign-in as complete.
 
 ### SSE Live Audit Stream
 
@@ -177,7 +177,7 @@ source.addEventListener('error', () => {
 });
 ```
 
-The Gateway derives `user_id` and session routes from the cookie; do not pass them in URL query parameters.
+The Gateway derives the user and WebSession from the cookie; the query string carries only `since_id`. Do not pass `user_id` or WebSession IDs in URL query parameters.
 
 ### Approvals for Suspended Transactions
 
@@ -193,7 +193,7 @@ Fetch pending transactions via `GET /api/v1/approvals`. To approve:
 - Omitting `credentials: 'include'` on authenticated fetch requests, causing 401 Unauthorized responses.
 - Hard-coding Gateway URLs as relative paths (`/api/`) instead of the absolute HTTPS origin.
 - Reusing one-time enrollment tokens across multiple failed registration attempts.
-- Passing `user_id` or session IDs in SSE stream query parameters instead of relying on the authenticated cookie.
+- Passing `user_id` or WebSession IDs in SSE stream query parameters instead of relying on the authenticated cookie.
 - Dismissing certificate warnings instead of installing local root CA trust.
 
 ## Links out

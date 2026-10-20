@@ -213,6 +213,50 @@ func TestLoadGateway_SucceedsWithAllDefaults(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestLoadGateway_OperatorLeafCertTTL(t *testing.T) {
+	t.Run("zero selects the 7-day workload maximum", func(t *testing.T) {
+		cfg, err := LoadGateway(GatewayOptions{AllowTestPortZero: true})
+		require.NoError(t, err)
+		assert.Equal(t, constants.MaxWorkloadLeafCertTTL, cfg.Gateway.OperatorLeafCertTTL)
+		assert.Equal(t, 7*24*time.Hour, cfg.Gateway.OperatorLeafCertTTL)
+	})
+
+	t.Run("accepts a shorter explicit lifetime", func(t *testing.T) {
+		cfg, err := LoadGateway(GatewayOptions{OperatorLeafCertTTL: 45 * time.Second, AllowTestPortZero: true})
+		require.NoError(t, err)
+		assert.Equal(t, 45*time.Second, cfg.Gateway.OperatorLeafCertTTL)
+	})
+
+	t.Run("accepts exactly the maximum", func(t *testing.T) {
+		cfg, err := LoadGateway(GatewayOptions{OperatorLeafCertTTL: constants.MaxWorkloadLeafCertTTL, AllowTestPortZero: true})
+		require.NoError(t, err)
+		assert.Equal(t, constants.MaxWorkloadLeafCertTTL, cfg.Gateway.OperatorLeafCertTTL)
+	})
+
+	t.Run("rejects a lifetime above the maximum", func(t *testing.T) {
+		_, err := LoadGateway(GatewayOptions{OperatorLeafCertTTL: constants.MaxWorkloadLeafCertTTL + time.Nanosecond, AllowTestPortZero: true})
+		require.ErrorIs(t, err, constants.ErrConfigLeafCertTTLInvalid)
+	})
+
+	t.Run("rejects a negative lifetime", func(t *testing.T) {
+		_, err := LoadGateway(GatewayOptions{OperatorLeafCertTTL: -time.Hour, AllowTestPortZero: true})
+		require.ErrorIs(t, err, constants.ErrConfigLeafCertTTLInvalid)
+	})
+}
+
+func TestValidateOperatorLeafCertTTL(t *testing.T) {
+	valid := []time.Duration{time.Nanosecond, time.Minute, 24 * time.Hour, constants.MaxWorkloadLeafCertTTL}
+	for _, ttl := range valid {
+		require.NoError(t, ValidateOperatorLeafCertTTL(ttl), "ttl %s", ttl)
+	}
+
+	invalid := []time.Duration{0, -time.Nanosecond, -time.Hour, constants.MaxWorkloadLeafCertTTL + time.Nanosecond, 8 * 24 * time.Hour, 365 * 24 * time.Hour}
+	for _, ttl := range invalid {
+		err := ValidateOperatorLeafCertTTL(ttl)
+		require.ErrorIs(t, err, constants.ErrConfigLeafCertTTLInvalid, "ttl %s", ttl)
+	}
+}
+
 func TestLoadGateway_RejectsPortZeroInProduction(t *testing.T) {
 
 	t.Run("reject httpPort 0", func(t *testing.T) {

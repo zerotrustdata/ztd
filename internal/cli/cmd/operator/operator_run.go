@@ -194,12 +194,12 @@ func operatorStopCmdWithLocal(
 	var grace time.Duration
 	cmd := &cobra.Command{
 		Use:          "stop [operator-session-id]",
-		Short:        "Stop operators, terminating local workers if governed shutdown stalls",
+		Short:        "Stop Operators, terminating local Operators if governed shutdown stalls",
 		SilenceUsage: true,
-		Long: `Request governed shutdown, then wait briefly for local workers to exit.
-Local workers that remain running receive TERM, then KILL. Bulk stops process at most
-64 workers concurrently and report each outcome. With no session ID,
-stop all local ztd operator workers owned by the current user, including workers
+		Long: `Request governed shutdown, then wait briefly for local Operators to exit.
+Local Operators that remain running receive TERM, then KILL. Bulk stops process at most
+64 Operators concurrently and report each outcome. With no session ID,
+stop all local ztd Operators owned by the current user, including Operators
 missing from the gateway registry. Remote-only targets receive governed shutdown.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -226,7 +226,7 @@ missing from the gateway registry. Remote-only targets receive governed shutdown
 				if output.JSONEnabled(cmd) {
 					return output.WriteJSON(cmd.OutOrStdout(), []operatorStopResult{})
 				}
-				cmd.Println("No local operator workers running.")
+				cmd.Println("No local Operators running.")
 				return nil
 			}
 			var client authcmd.APIClient
@@ -275,7 +275,7 @@ missing from the gateway registry. Remote-only targets receive governed shutdown
 					}
 				}
 				if len(matched) > 1 {
-					return fmt.Errorf("operator stop: ambiguous local workers for session %s\nStop all local workers with:\nztd operator stop", sessionID)
+					return fmt.Errorf("operator stop: ambiguous local Operators for session %s\nStop all local Operators with:\nztd operator stop", sessionID)
 				}
 				response, err := requestOperatorStop(client, sessionID, reason)
 				if len(matched) == 0 {

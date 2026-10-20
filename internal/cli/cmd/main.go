@@ -114,7 +114,7 @@ ztd tui`,
 			} else if port > 0 {
 				config.SetHTTPEndpointOverride("localhost")
 				config.SetHTTPSEndpointOverride(fmt.Sprintf("localhost:%d", port))
-			} else {
+			} else if shared.NeedsLaunchProfile(cmd) {
 				recordLocalGatewayPorts()
 			}
 			return nil

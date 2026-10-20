@@ -6,8 +6,8 @@
 // request helper. Every fetch uses credentials: 'include' against the absolute
 // configured Gateway origin.
 
-import type { FrontendRuntimeConfig } from '../config/runtime_config';
-import { EndpointNotAllowedError, resolveEndpoint } from './allowlist';
+import type { FrontendRuntimeConfig } from '../config/runtime_config.js';
+import { EndpointNotAllowedError, resolveEndpoint } from './allowlist.js';
 
 export interface GatewayResponse<T> {
   readonly status: number;
