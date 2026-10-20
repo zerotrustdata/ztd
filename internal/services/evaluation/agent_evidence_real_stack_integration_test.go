@@ -91,6 +91,7 @@ func (d realStackInference) DispatchIntent(ctx context.Context, req *tribunalv1.
 }
 
 type realStackOptions struct {
+	posture    constants.Posture
 	shared     bool
 	singleRole bool
 	suffix     string
@@ -117,7 +118,7 @@ type realStackAgentRun struct {
 func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRun {
 	t.Helper()
 	ctx := t.Context()
-	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{Replies: opts.replies, SharedRuntime: opts.shared})
+	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{Posture: opts.posture, Replies: opts.replies, SharedRuntime: opts.shared})
 
 	logger := testutil.NewTestLogger()
 	root := testutil.TempDir(t)

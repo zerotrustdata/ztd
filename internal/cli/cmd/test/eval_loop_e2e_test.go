@@ -78,6 +78,9 @@ func newEvalLoopRun(t *testing.T, prefix string, posture constants.Posture, time
 	require.NoError(t, err, "run make build before test eval-loop")
 	id, err := uuid.NewString()
 	require.NoError(t, err)
+	// Keep the full UUID entropy without separators: the root also contains
+	// the isolated key agent socket, whose Unix path length is bounded.
+	id = strings.ReplaceAll(id, "-", "")
 	root := files.Resolve(evalLoopRunRelPath(prefix + string(posture) + "-" + id))
 	t.Logf("eval loop evidence: %s", root)
 	return newReleaseSmokeRun(releaseSmokeOptions{RunDir: root, ZtdBin: binary, Timeout: timeout, Posture: posture})

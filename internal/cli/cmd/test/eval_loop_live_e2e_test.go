@@ -42,7 +42,7 @@ func TestEvalLoopLive(t *testing.T) {
 	}
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
-			r := newEvalLoopRun(t, "eval-loop-live-", posture, evalLoopLiveBudget(t))
+			r := newEvalLoopRun(t, "eval-live-", posture, evalLoopLiveBudget(t))
 			// Registered before the emergency owner that runEvalLoopPhases adds,
 			// so this removal runs after the stack has stopped.
 			t.Cleanup(func() {

@@ -44,6 +44,17 @@ type OllamaReply struct {
 	BeforeReply func() `json:"-"`
 }
 
+type scriptedOllamaShow struct {
+	Parameters string `json:"parameters"`
+	Details    struct {
+		Format            string `json:"format"`
+		Family            string `json:"family"`
+		ParameterSize     string `json:"parameter_size"`
+		QuantizationLevel string `json:"quantization_level"`
+	} `json:"details"`
+	Capabilities []string `json:"capabilities"`
+}
+
 type scriptedOllamaMessage struct {
 	Role      string             `json:"role"`
 	Content   string             `json:"content"`
@@ -155,6 +166,20 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				Name   string `json:"name"`
 				Digest string `json:"digest"`
 			}{{Name: evalModelTag, Digest: evalModelDigest}}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/show":
+			var request struct {
+				Name string `json:"name"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Name != evalModelTag {
+				http.Error(w, "unexpected model metadata request", http.StatusBadRequest)
+				return
+			}
+			show := scriptedOllamaShow{Parameters: "num_ctx 8192\n", Capabilities: []string{"completion", "tools"}}
+			show.Details.Format = "gguf"
+			show.Details.Family = "qwen3"
+			show.Details.ParameterSize = "4.0B"
+			show.Details.QuantizationLevel = "Q4_K_M"
+			_ = json.NewEncoder(w).Encode(show)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/ps":
 			p.mu.Lock()
 			resident := p.resident

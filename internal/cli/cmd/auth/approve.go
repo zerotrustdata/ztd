@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -41,8 +42,14 @@ func DefaultAPIClientFactory(fileSvc fs.RuntimeFileService, cfg *config.Config) 
 	return api.NewClient(fileSvc, cfg)
 }
 
+// approvalAPIClientFactory waits for the resumed execution's final receipt.
+// Inference can take the full governed provider deadline after L3 approval.
+func approvalAPIClientFactory(fileSvc fs.RuntimeFileService, cfg *config.Config) (APIClient, error) {
+	return api.NewClientWithTimeout(fileSvc, cfg, inferencedispatch.RequestDeadline)
+}
+
 func approveCmd() *cobra.Command {
-	return approveCmdWithConfig(shared.LoadConfig, DefaultAPIClientFactory, shared.NewFileSvc, platform.OpenBrowser)
+	return approveCmdWithConfig(shared.LoadConfig, approvalAPIClientFactory, shared.NewFileSvc, platform.OpenBrowser)
 }
 
 func approveCmdWithConfig(
@@ -59,7 +66,8 @@ CLI certificate signature with --cli.
 
 By default, the CLI opens the Gateway approval page and waits for its completion event. With
 --cli, it signs the transaction hash using the enrolled CLI certificate and submits the signature
-over mTLS. Both flows require enrolled CLI credentials.`,
+over mTLS. Both flows require enrolled CLI credentials. The --cli flow waits for the final
+execution receipt and allows the governed inference request deadline for that response.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			txHash := args[0]
