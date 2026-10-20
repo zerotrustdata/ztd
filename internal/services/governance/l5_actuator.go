@@ -715,6 +715,9 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID
 	case errors.Is(execErr, constants.ErrInferenceCampaignBindingInvalid):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
+	case errors.Is(execErr, constants.ErrScrubbingTokenUnresolved),
+		errors.Is(execErr, constants.ErrScrubbingKeyCollision):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED
 	default:
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
 	}

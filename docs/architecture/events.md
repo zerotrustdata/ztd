@@ -60,14 +60,14 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-EVT-REG-01 | `protocol/constants/events.json` is the sole authoritative registry for protocol events. All Go and TypeScript mirrors (`internal/constants/events_gen.go`, `action_types_gen.go`, `console/src/generated/events.ts`) MUST be generated via `make constants-generate` and validated via `make constants-check`. Hand-editing generated outputs is prohibited. |
-| INV-EVT-REG-02 | The code generator in `internal/tools/constgen/` MUST validate every entry before generating output. It MUST reject unknown `kind`, `transport`, `producers`, and `persistence` values; `governance` on a non-request event; a `governance` block without the `governed` transport; an `action_type` absent from `protocol/constants/status.json`; stream events outside `sse` transport or `ephemeral` persistence; outcome references to missing events; and wire values whose terminal segment violates the closed terminal grammar. `protocol/models/event_registry.schema.json` describes the entry shape and is not loaded by the generator. |
+| INV-EVT-REG-02 | The code generator in `internal/tools/constgen/` MUST validate every entry before generating output. It MUST reject entries missing required fields (`_go_const`, `value`, `producers`, `persistence`); unknown `kind`, `transport`, `producers`, and `persistence` values; `governance` on a non-request event; a `governance` block without the `governed` transport; an `action_type` absent from `protocol/constants/status.json`; a non-governed `request` event whose wire value does not end in `.requested` (`constants.ErrEventRequestWireValue`); stream events whose `transport` is absent or contains anything other than `sse` (`constants.ErrEventStreamTransport`); stream events without `ephemeral` persistence; outcome references to missing events; and wire values whose terminal segment violates the closed terminal grammar; and any key outside the declared shape at entry level or inside `governance` (decode-time, `constants.ErrEventRegistryUnknownField`). Rule failures wrap their sentinel with `%w` and are returned together as one aggregate that supports `errors.Is`. `protocol/models/event_registry.schema.json` is the declared shape: constgen enforces it in Go (no JSON-schema library is a dependency and the generator does not load the schema), and `TestEventRegistrySchema_PinsConstgenChecks` pins the schema's enums, required fields and patterns to constgen's checks. `transport` is not required for non-stream events. |
 
 ### Event Kinds and Taxonomy (`INV-EVT-KIND`)
 
 | ID | Rule |
 | :--- | :--- |
 | INV-EVT-KIND-01 | Every event MUST declare exactly one of four canonical kinds: `request` (wire value ending in `.requested`), `outcome` (reporting result or progress), `fact` (recording an independent occurrence), or `stream` (carrying ephemeral UI fragments). |
-| INV-EVT-KIND-02 | Events with kind `stream` MUST use transport `sse` only and MUST specify persistence `ephemeral`. Stream events MUST NOT be persisted to durable audit ledgers. |
+| INV-EVT-KIND-02 | Events with kind `stream` MUST declare transport `sse` only (an absent `transport` is rejected by constgen, INV-EVT-REG-02) and MUST specify persistence `ephemeral`. Stream events MUST NOT be persisted to durable audit ledgers. |
 
 ### Governance Envelopes and Actions (`INV-EVT-GOV`)
 
@@ -102,7 +102,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
 | Event registry definition | `protocol/constants/events.json` | `make constants-check` |
-| Event entry shape reference | `protocol/models/event_registry.schema.json` | Not loaded by `constgen`; shape reference only |
+| Event entry shape reference | `protocol/models/event_registry.schema.json` | Enforced in Go by `constgen`; pinned by `TestEventRegistrySchema_PinsConstgenChecks` |
 | Code generator tool | `internal/tools/constgen/` | `go run ./internal/tools/constgen -check` |
 | Generated Go event constants | `internal/constants/events_gen.go` | `make constants-check` |
 | Generated Go action type constants | `internal/constants/action_types_gen.go` | `make constants-check` |

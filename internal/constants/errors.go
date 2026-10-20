@@ -1515,4 +1515,9 @@ var (
 
 	// Secondary judge errors
 	ErrJudgeResponseInvalid = errors.New("evaluation judge response invalid")
+
+	// Event registry errors (constgen validation)
+	ErrEventRequestWireValue     = errors.New("non-governed request event wire value must end in .requested")
+	ErrEventStreamTransport      = errors.New("stream events must use sse transport only")
+	ErrEventRegistryUnknownField = errors.New("event registry entry has a field outside the declared shape")
 )

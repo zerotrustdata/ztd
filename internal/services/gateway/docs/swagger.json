@@ -6006,7 +6006,8 @@
                 17,
                 18,
                 19,
-                20
+                20,
+                21
             ],
             "x-enum-varnames": [
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED",
@@ -6029,7 +6030,8 @@
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED",
-                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW"
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED"
             ]
         },
         "operatorv1.ReceiptPersistenceAttestation": {

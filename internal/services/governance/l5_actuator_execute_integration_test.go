@@ -456,7 +456,7 @@ func TestL5ActuatorExecuteFailsClosedWhenRehydrationFails(t *testing.T) {
 	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed, "the handler must not run with an unrehydrated payload")
 	assert.Equal(t, original, msg.GetPayload(), "the payload is not replaced by a partial rehydration")
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
-	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, receipt.FailureCode)
+	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, receipt.FailureCode, "the signed failure code classifies the rehydration cause")
 	assert.True(t, strings.HasPrefix(receipt.ResultSummary, "failed: "), receipt.ResultSummary)
 	assert.Contains(t, receipt.ResultSummary, constants.ErrScrubbingTokenUnresolved.Error(), "the signed summary records the rehydration cause")
 

@@ -359,7 +359,7 @@ export const EventRegistry = Object.freeze({
         producers: ['cli', 'mcp'],
         persistence: 'ephemeral',
         actionType: 'A2A_CALL',
-        payload: 'ztd.operator.v1.A2ACallRequested',
+        payload: 'ztd.operator.v1.A2aCallRequested',
     }),
     OPERATOR_AUDIT_AI_RECORD_REQUESTED: Object.freeze({
         kind: 'request',

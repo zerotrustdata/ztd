@@ -455,7 +455,7 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Producers:         []string{"cli", "mcp"},
 		Persistence:       "ephemeral",
 		GovernanceAction:  ActionTypeA2aCall,
-		GovernancePayload: "ztd.operator.v1.A2ACallRequested",
+		GovernancePayload: "ztd.operator.v1.A2aCallRequested",
 	},
 	EventOperatorAuditAiRecordRequested: {
 		Key:         "OperatorAuditAiRecordRequested",

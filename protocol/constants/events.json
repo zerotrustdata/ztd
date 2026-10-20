@@ -230,7 +230,7 @@
       ],
       "governance": {
         "action_type": "A2A_CALL",
-        "payload": "ztd.operator.v1.A2ACallRequested"
+        "payload": "ztd.operator.v1.A2aCallRequested"
       },
       "producers": [
         "cli",

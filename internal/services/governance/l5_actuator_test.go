@@ -392,6 +392,16 @@ func TestL5RehydratePayloadWithoutScrubberRefusesTokens(t *testing.T) {
 	assert.Equal(t, plain, msg.GetPayload())
 }
 
+// Both rehydration sentinels, wrapped the way rehydratePayload wraps them, classify as
+// REHYDRATION_FAILED so the signed receipt names the cause.
+func TestClassifyReceiptFailureRehydration(t *testing.T) {
+	t.Parallel()
+	for _, sentinel := range []error{constants.ErrScrubbingTokenUnresolved, constants.ErrScrubbingKeyCollision} {
+		wrapped := fmt.Errorf("%w: %w", constants.ErrL5ActuatorRehydrate, sentinel)
+		assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, classifyReceiptFailure(wrapped), sentinel.Error())
+	}
+}
+
 func TestCanonicalizeActionReceipt(t *testing.T) {
 	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{

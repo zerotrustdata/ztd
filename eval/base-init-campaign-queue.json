@@ -363,22 +363,6 @@
       "inventory_file": ".ztd/eval/inventories/eval-init-gemma2-9b.json",
       "homogeneous_cell_count": 41,
       "status": "pending"
-    },
-    {
-      "variant_id": "pdevine-qwen3-6-27b-mtp-q4-k-m",
-      "served_model_tag": "pdevine/qwen3.6:27b-mtp-q4_K_M",
-      "campaign_id": "eval-init-pdevine-qwen3-6-27b-mtp-q4-k-m",
-      "inventory_file": ".ztd/eval/inventories/eval-init-pdevine-qwen3-6-27b-mtp-q4-k-m.json",
-      "homogeneous_cell_count": 41,
-      "status": "pending"
-    },
-    {
-      "variant_id": "qwen3-30b",
-      "served_model_tag": "qwen3:30b",
-      "campaign_id": "eval-init-qwen3-30b",
-      "inventory_file": ".ztd/eval/inventories/eval-init-qwen3-30b.json",
-      "homogeneous_cell_count": 41,
-      "status": "pending"
     }
   ]
 }

@@ -3,7 +3,7 @@
   "$id": "https://zerotrustdata.io/schema/event-registry-entry.json",
   "title": "ztd event registry entry",
   "type": "object",
-  "required": ["_go_const", "value"],
+  "required": ["_go_const", "value", "producers", "persistence"],
   "properties": {
     "_go_const": {
       "type": "string",
@@ -11,7 +11,7 @@
     },
     "value": {
       "type": "string",
-      "pattern": "^ztd\\.v1\\.[a-z]+\\.[a-z0-9]+(?:\\.[a-z0-9]+)*$"
+      "pattern": "^ztd\\.v1\\.[a-z]+(?:\\.[a-z0-9_]+)+$"
     },
     "kind": {
       "enum": ["request", "outcome", "fact", "stream"]

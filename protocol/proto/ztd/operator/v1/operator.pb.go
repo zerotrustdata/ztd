@@ -407,6 +407,8 @@ const (
 	ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED          ReceiptFailureCode = 19
 	// The prompt filled the provider's context window, so the provider truncated it or left no room to generate.
 	ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW ReceiptFailureCode = 20
+	// A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch.
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED ReceiptFailureCode = 21
 )
 
 // Enum value maps for ReceiptFailureCode.
@@ -433,6 +435,7 @@ var (
 		18: "RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID",
 		19: "RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED",
 		20: "RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW",
+		21: "RECEIPT_FAILURE_CODE_REHYDRATION_FAILED",
 	}
 	ReceiptFailureCode_value = map[string]int32{
 		"RECEIPT_FAILURE_CODE_UNSPECIFIED":                0,
@@ -456,6 +459,7 @@ var (
 		"RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID":   18,
 		"RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED":          19,
 		"RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW":           20,
+		"RECEIPT_FAILURE_CODE_REHYDRATION_FAILED":         21,
 	}
 )
 
@@ -13704,7 +13708,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"$DETERMINISTIC_STAGE_OUTCOME_VERIFIED\x10\x01\x12,\n" +
 	"(DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED\x10\x02\x12)\n" +
 	"%DETERMINISTIC_STAGE_OUTCOME_COMPLETED\x10\x03\x12&\n" +
-	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\xd7\a\n" +
+	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\x84\b\n" +
 	"\x12ReceiptFailureCode\x12$\n" +
 	" RECEIPT_FAILURE_CODE_UNSPECIFIED\x10\x00\x12,\n" +
 	"(RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED\x10\x01\x12.\n" +
@@ -13727,7 +13731,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"+RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID\x10\x11\x121\n" +
 	"-RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID\x10\x12\x12*\n" +
 	"&RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED\x10\x13\x12)\n" +
-	"%RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW\x10\x14*\xb2\n" +
+	"%RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW\x10\x14\x12+\n" +
+	"'RECEIPT_FAILURE_CODE_REHYDRATION_FAILED\x10\x15*\xb2\n" +
 	"\n" +
 	"\x17GovernanceRejectionCode\x12)\n" +
 	"%GOVERNANCE_REJECTION_CODE_UNSPECIFIED\x10\x00\x12*\n" +

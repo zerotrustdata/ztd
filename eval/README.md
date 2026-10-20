@@ -7,7 +7,7 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 | Path | Purpose |
 | --- | --- |
 | `eval/base-model-inventory.json` | **Default genesis program inventory** — 94 init-campaign models (41 scored assignments per model under `default-suite`: 27 scenarios, each under only the roles that perform it; 3,854 cells total) |
-| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 47 entries at 41 cells each (`cells_per_run: 41`). It lists 45 of the 94 `base-model-inventory.json` models, so 49 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are HF intake entries (`rollout-intake-hf.json`) that are not in the base inventory. Two queue entries, `pdevine/qwen3.6:27b-mtp-q4_K_M` and `qwen3:30b`, are not in the base inventory. |
+| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 45 entries at 41 cells each (`cells_per_run: 41`). Every entry is a model in `base-model-inventory.json`; the other 49 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are HF intake entries (`rollout-intake-hf.json`) that are not in the base inventory. |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
 | `eval/formation-catalog.json` | Formation catalog for system-lane campaigns (`--formations`); loaded when present, otherwise built-in defaults apply |
 | `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations add` |

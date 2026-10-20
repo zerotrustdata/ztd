@@ -177,7 +177,7 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	// audit databases are built from the rows it holds.
 	publisher.SetAssignmentEventSource(store)
 
-	runtime.privateServer = newPublicMirrorHTTPServer(runtime.cfg.PrivateListenAddress, mirror.Handler(), runtime.logger.With("server", "mirror-private"))
+	runtime.privateServer = newPublicMirrorHTTPServer(runtime.cfg.PrivateListenAddress, mirror.IngestHandler(), runtime.logger.With("server", "mirror-private"))
 	mirrorOrigin := resolveEvalExplorerMirrorOrigin(runtime.cfg.PublicBaseURL, runtime.cfg.PublicListenAddress)
 	publicHandler := mirror.PublicHandler()
 	explorerHandler, explorerErr := NewEvalExplorerHandler(runtime.cfg.ExplorerRoot, mirrorOrigin, false)

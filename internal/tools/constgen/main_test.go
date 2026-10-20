@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -178,6 +179,30 @@ func TestValidateRegistry_AcceptsStreamEventOnSSEWithEphemeralPersistence(t *tes
 	require.NoError(t, validateRegistry(reg, map[string]struct{}{}))
 }
 
+func TestValidateRegistry_AcceptsNonGovernedRequestEndingInRequested(t *testing.T) {
+	request := validOutcome()
+	request.Kind = "request"
+	request.Value = "ztd.v1.app.case.requested"
+	reg := registryFile{Events: map[string]eventEntry{"Case": request}}
+
+	require.NoError(t, validateRegistry(reg, map[string]struct{}{}))
+}
+
+func TestValidateRegistry_WrapsRuleSentinelsForErrorsIs(t *testing.T) {
+	request := validOutcome()
+	request.Kind = "request"
+	request.Value = "ztd.v1.app.case.created"
+	err := validateRegistry(registryFile{Events: map[string]eventEntry{"Case": request}}, map[string]struct{}{})
+	require.ErrorIs(t, err, constants.ErrEventRequestWireValue)
+
+	stream := validOutcome()
+	stream.Kind = "stream"
+	stream.Transport = []string{"pubsub"}
+	stream.Value = "ztd.v1.llm.chat.delta.received"
+	err = validateRegistry(registryFile{Events: map[string]eventEntry{"Stream": stream}}, map[string]struct{}{})
+	require.ErrorIs(t, err, constants.ErrEventStreamTransport)
+}
+
 func TestValidateRegistry_RejectsEmptyRegistry(t *testing.T) {
 	err := validateRegistry(registryFile{}, map[string]struct{}{})
 
@@ -211,11 +236,20 @@ func TestValidateRegistry_RejectsEntriesThatBreakASingleRule(t *testing.T) {
 			e.Kind = "stream"
 			e.Transport = []string{"pubsub"}
 		}, want: "A: stream events must use sse transport only"},
+		{name: "stream event with absent transport", mutate: func(e *eventEntry) {
+			e.Kind = "stream"
+			e.Transport = nil
+			e.Persistence = "ephemeral"
+		}, want: "A: stream events must use sse transport only: transport absent"},
 		{name: "stream event with durable persistence", mutate: func(e *eventEntry) {
 			e.Kind = "stream"
 			e.Transport = []string{"sse"}
 			e.Persistence = "gateway.sse_store"
 		}, want: "A: stream events must use ephemeral persistence"},
+		{name: "non-governed request without requested suffix", mutate: func(e *eventEntry) {
+			e.Kind = "request"
+			e.Value = "ztd.v1.app.case.created"
+		}, want: `A: non-governed request event wire value must end in .requested: "ztd.v1.app.case.created"`},
 		{name: "outcome references missing event", mutate: func(e *eventEntry) { e.Outcomes = []string{"Ghost"} }, want: `A: outcomes references missing event "Ghost"`},
 		{name: "outcome references a request event", mutate: func(e *eventEntry) { e.Outcomes = []string{"B"} }, want: `A: outcomes entry "B" must be kind outcome or fact, got "request"`},
 	}
@@ -375,6 +409,27 @@ func TestFindRepoRoot_FailsWhenNoAncestorHoldsTheEventsRegistry(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "could not find protocol/constants/events.json")
+}
+
+func TestLoadRegistry_RejectsFieldsOutsideDeclaredShape(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+	}{
+		{name: "unknown top-level key", json: `{"events":{},"stray":1}`},
+		{name: "unknown entry key", json: `{"events":{"A":{"_go_const":"EventA","value":"ztd.v1.a.b.requested","typo":true}}}`},
+		{name: "unknown governance key", json: `{"events":{"A":{"_go_const":"EventA","value":"ztd.v1.a.b.requested","governance":{"action_type":"X","payload":"P","extra":1}}}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(testutil.TempDir(t), "events.json")
+			writeFile(t, path, tt.json)
+
+			_, err := loadRegistry(path)
+
+			require.ErrorIs(t, err, constants.ErrEventRegistryUnknownField)
+		})
+	}
 }
 
 func TestLoadRegistry_ReportsMissingAndMalformedFiles(t *testing.T) {

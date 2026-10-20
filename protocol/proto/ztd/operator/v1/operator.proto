@@ -642,6 +642,8 @@ enum ReceiptFailureCode {
   RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED = 19;
   // The prompt filled the provider's context window, so the provider truncated it or left no room to generate.
   RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW = 20;
+  // A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch.
+  RECEIPT_FAILURE_CODE_REHYDRATION_FAILED = 21;
 }
 
 // GovernanceRejectionCode names the verification check that rejected a

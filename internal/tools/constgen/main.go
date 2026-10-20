@@ -10,6 +10,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -19,6 +20,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 type registryFile struct {
@@ -87,6 +90,12 @@ var (
 		"gateway.docstore":      {},
 		"ephemeral":             {},
 	}
+
+	// requiredEventFields and requiredGovernanceFields are the required-field
+	// sets validateRegistry enforces (missing values fail with "missing <field>"
+	// or "governance requires ..."). The parity test pins them to the schema.
+	requiredEventFields      = []string{"_go_const", "value", "producers", "persistence"}
+	requiredGovernanceFields = []string{"action_type", "payload"}
 )
 
 func main() {
@@ -173,24 +182,47 @@ func findRepoRoot() (string, error) {
 	}
 }
 
+// loadRegistry decodes the registry strictly: any key outside the declared
+// shape (entry level or inside governance) fails with ErrEventRegistryUnknownField.
 func loadRegistry(path string) (registryFile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return registryFile{}, err
 	}
 	var reg registryFile
-	if err := json.Unmarshal(data, &reg); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&reg); err != nil {
+		// encoding/json exposes no typed error for unknown fields; its message
+		// prefix is the only signal, so match it here and nowhere else.
+		if strings.HasPrefix(err.Error(), "json: unknown field ") {
+			return registryFile{}, fmt.Errorf("decode %s: %w: %v", path, constants.ErrEventRegistryUnknownField, err)
+		}
 		return registryFile{}, fmt.Errorf("decode %s: %w", path, err)
 	}
 	return reg, nil
 }
+
+// registryIssues is the aggregate returned by validateRegistry. Unwrap exposes
+// every issue so callers can match rule sentinels with errors.Is.
+type registryIssues []error
+
+func (r registryIssues) Error() string {
+	msgs := make([]string, len(r))
+	for i, err := range r {
+		msgs[i] = err.Error()
+	}
+	return fmt.Sprintf("event registry validation failed (%d issues):\n  %s", len(r), strings.Join(msgs, "\n  "))
+}
+
+func (r registryIssues) Unwrap() []error { return r }
 
 func validateRegistry(reg registryFile, actionTypes map[string]struct{}) error {
 	if len(reg.Events) == 0 {
 		return fmt.Errorf("events registry is empty")
 	}
 
-	var errs []string
+	var errs []error
 	seenValue := map[string]string{}
 	seenGoConst := map[string]string{}
 
@@ -203,51 +235,51 @@ func validateRegistry(reg registryFile, actionTypes map[string]struct{}) error {
 	for _, key := range keys {
 		entry := reg.Events[key]
 		if entry.GoConst == "" {
-			errs = append(errs, fmt.Sprintf("%s: missing _go_const", key))
+			errs = append(errs, fmt.Errorf("%s: missing _go_const", key))
 		} else if !goConstPat.MatchString(entry.GoConst) {
-			errs = append(errs, fmt.Sprintf("%s: invalid _go_const %q", key, entry.GoConst))
+			errs = append(errs, fmt.Errorf("%s: invalid _go_const %q", key, entry.GoConst))
 		} else if owner, exists := seenGoConst[entry.GoConst]; exists {
-			errs = append(errs, fmt.Sprintf("%s: duplicate _go_const %q (also %s)", key, entry.GoConst, owner))
+			errs = append(errs, fmt.Errorf("%s: duplicate _go_const %q (also %s)", key, entry.GoConst, owner))
 		} else {
 			seenGoConst[entry.GoConst] = key
 		}
 
 		if entry.Value == "" {
-			errs = append(errs, fmt.Sprintf("%s: missing value", key))
+			errs = append(errs, fmt.Errorf("%s: missing value", key))
 			continue
 		}
 		if !wirePattern.MatchString(entry.Value) {
-			errs = append(errs, fmt.Sprintf("%s: invalid wire value %q", key, entry.Value))
+			errs = append(errs, fmt.Errorf("%s: invalid wire value %q", key, entry.Value))
 		}
 		if owner, exists := seenValue[entry.Value]; exists {
-			errs = append(errs, fmt.Sprintf("%s: duplicate wire value %q (also %s)", key, entry.Value, owner))
+			errs = append(errs, fmt.Errorf("%s: duplicate wire value %q (also %s)", key, entry.Value, owner))
 		} else {
 			seenValue[entry.Value] = key
 		}
 
 		if entry.Kind != "" {
 			if _, ok := allowedKinds[entry.Kind]; !ok {
-				errs = append(errs, fmt.Sprintf("%s: unknown kind %q", key, entry.Kind))
+				errs = append(errs, fmt.Errorf("%s: unknown kind %q", key, entry.Kind))
 			}
 		}
 
 		for _, t := range entry.Transport {
 			if _, ok := allowedTransport[t]; !ok {
-				errs = append(errs, fmt.Sprintf("%s: unknown transport %q", key, t))
+				errs = append(errs, fmt.Errorf("%s: unknown transport %q", key, t))
 			}
 		}
 
 		if entry.Governance != nil {
 			if entry.Kind != "request" {
-				errs = append(errs, fmt.Sprintf("%s: governance requires kind=request", key))
+				errs = append(errs, fmt.Errorf("%s: governance requires kind=request", key))
 			}
 			if !strings.HasSuffix(entry.Value, ".requested") {
-				errs = append(errs, fmt.Sprintf("%s: governance requires .requested wire value", key))
+				errs = append(errs, fmt.Errorf("%s: governance requires .requested wire value", key))
 			}
 			if entry.Governance.ActionType == "" || entry.Governance.Payload == "" {
-				errs = append(errs, fmt.Sprintf("%s: governance requires action_type and payload", key))
+				errs = append(errs, fmt.Errorf("%s: governance requires action_type and payload", key))
 			} else if _, ok := actionTypes[entry.Governance.ActionType]; !ok {
-				errs = append(errs, fmt.Sprintf("%s: unknown governance.action_type %q", key, entry.Governance.ActionType))
+				errs = append(errs, fmt.Errorf("%s: unknown governance.action_type %q", key, entry.Governance.ActionType))
 			}
 			hasGoverned := false
 			for _, t := range entry.Transport {
@@ -257,52 +289,59 @@ func validateRegistry(reg registryFile, actionTypes map[string]struct{}) error {
 				}
 			}
 			if !hasGoverned {
-				errs = append(errs, fmt.Sprintf("%s: governed request missing transport governed", key))
+				errs = append(errs, fmt.Errorf("%s: governed request missing transport governed", key))
 			}
 		}
 
 		if entry.GrammarAllowlistOwner != "" {
-			errs = append(errs, fmt.Sprintf("%s: grammar allowlist is closed; rename the wire value instead of grammar_allowlist_owner", key))
+			errs = append(errs, fmt.Errorf("%s: grammar allowlist is closed; rename the wire value instead of grammar_allowlist_owner", key))
 		}
 		if err := checkGrammar(entry.Value); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", key, err))
+			errs = append(errs, fmt.Errorf("%s: %v", key, err))
 		}
 
-		if entry.Kind == "stream" && entry.Transport != nil {
+		if entry.Kind == "request" && entry.Governance == nil && !strings.HasSuffix(entry.Value, ".requested") {
+			errs = append(errs, fmt.Errorf("%s: %w: %q", key, constants.ErrEventRequestWireValue, entry.Value))
+		}
+
+		if entry.Kind == "stream" {
+			if len(entry.Transport) == 0 {
+				errs = append(errs, fmt.Errorf("%s: %w: transport absent", key, constants.ErrEventStreamTransport))
+			}
 			for _, t := range entry.Transport {
 				if t != "sse" {
-					errs = append(errs, fmt.Sprintf("%s: stream events must use sse transport only", key))
+					errs = append(errs, fmt.Errorf("%s: %w: transport %q", key, constants.ErrEventStreamTransport, t))
 				}
 			}
 		}
 
 		if len(entry.Producers) == 0 {
-			errs = append(errs, fmt.Sprintf("%s: missing producers", key))
+			errs = append(errs, fmt.Errorf("%s: missing producers", key))
 		}
 		for _, producer := range entry.Producers {
 			if _, ok := allowedProducers[producer]; !ok {
-				errs = append(errs, fmt.Sprintf("%s: unknown producer %q", key, producer))
+				errs = append(errs, fmt.Errorf("%s: unknown producer %q", key, producer))
 			}
 		}
 
 		if entry.Persistence == "" {
-			errs = append(errs, fmt.Sprintf("%s: missing persistence", key))
+			errs = append(errs, fmt.Errorf("%s: missing persistence", key))
 		} else if _, ok := allowedPersistence[entry.Persistence]; !ok {
-			errs = append(errs, fmt.Sprintf("%s: unknown persistence %q", key, entry.Persistence))
+			errs = append(errs, fmt.Errorf("%s: unknown persistence %q", key, entry.Persistence))
 		}
 
 		if entry.Kind == "stream" && entry.Persistence != "ephemeral" {
-			errs = append(errs, fmt.Sprintf("%s: stream events must use ephemeral persistence", key))
+			errs = append(errs, fmt.Errorf("%s: stream events must use ephemeral persistence", key))
 		}
 
 		for _, outcomeKey := range entry.Outcomes {
 			outcomeEntry, ok := reg.Events[outcomeKey]
 			if !ok {
-				errs = append(errs, fmt.Sprintf("%s: outcomes references missing event %q", key, outcomeKey))
+				errs = append(errs, fmt.Errorf("%s: outcomes references missing event %q", key, outcomeKey))
 				continue
 			}
 			if outcomeEntry.Kind != "outcome" && outcomeEntry.Kind != "fact" {
-				errs = append(errs, fmt.Sprintf("%s: outcomes entry %q must be kind outcome or fact, got %q", key, outcomeKey, outcomeEntry.Kind))
+				errs = append(errs, fmt.Errorf("%s: outcomes entry %q must be kind outcome or fact, got %q", key, outcomeKey, outcomeEntry.Kind))
 			}
 		}
 	}
@@ -328,12 +367,12 @@ func validateRegistry(reg registryFile, actionTypes map[string]struct{}) error {
 		if actionTypesWithRequest[actionType] {
 			continue
 		}
-		errs = append(errs, fmt.Sprintf("action type %q has no governed request event in registry", actionType))
+		errs = append(errs, fmt.Errorf("action type %q has no governed request event in registry", actionType))
 	}
 
 	if len(errs) > 0 {
-		sort.Strings(errs)
-		return fmt.Errorf("event registry validation failed (%d issues):\n  %s", len(errs), strings.Join(errs, "\n  "))
+		sort.Slice(errs, func(i, j int) bool { return errs[i].Error() < errs[j].Error() })
+		return registryIssues(errs)
 	}
 	return nil
 }

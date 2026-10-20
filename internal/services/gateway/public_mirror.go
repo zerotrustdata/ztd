@@ -644,17 +644,22 @@ func (m *PublicMirrorServer) acceptBatch(ctx context.Context, batch models.Publi
 	return nil
 }
 
-// Handler returns the http.Handler for the mirror server. Mount at the
-// mirror root path.
-func (m *PublicMirrorServer) Handler() http.Handler {
-	mux := m.publicReadMux()
+// IngestHandler returns the handler for the private ingest listener. It serves
+// only the token-authenticated publisher routes: batch ingest, source key
+// registration, proof ingest, and the proof root lookup. No anonymous read
+// route is mounted here, and ingest routes never carry CORS headers.
+func (m *PublicMirrorServer) IngestHandler() http.Handler {
+	mux := http.NewServeMux()
 	mux.HandleFunc("/ingest", m.handleIngest)
 	mux.HandleFunc("/keys/register", m.handleKeyRegistration)
 	mux.HandleFunc("/proof-ingest", m.handleProofIngest)
 	mux.HandleFunc("/proof-root", m.handleProofRoot)
-	return m.withCORS(mux)
+	return mux
 }
 
+// PublicHandler returns the handler for the public read listener. It serves
+// only the anonymous read routes (rate limited, CORS enabled); no ingest or
+// mutation route is mounted here.
 func (m *PublicMirrorServer) PublicHandler() http.Handler {
 	return m.withCORS(m.publicReadMux())
 }

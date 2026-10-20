@@ -2685,6 +2685,7 @@ definitions:
     - 18
     - 19
     - 20
+    - 21
     format: int32
     type: integer
     x-enum-varnames:
@@ -2709,6 +2710,7 @@ definitions:
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED
   operatorv1.ReceiptPersistenceAttestation:
     properties:
       audit_record_id:

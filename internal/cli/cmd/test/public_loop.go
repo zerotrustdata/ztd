@@ -167,7 +167,7 @@ func runPublicLoop(ctx context.Context, candidatePath, outputPath string) error 
 	if err := mirror.RegisterSourceKey(ctx, sourceID, oldKeyID, oldPublic); err != nil {
 		return err
 	}
-	privateServer := httptest.NewServer(mirror.Handler())
+	privateServer := httptest.NewServer(mirror.IngestHandler())
 	publicServer := httptest.NewServer(mirror.PublicHandler())
 	defer privateServer.Close()
 	defer publicServer.Close()
@@ -216,7 +216,7 @@ func runPublicLoop(ctx context.Context, candidatePath, outputPath string) error 
 		return err
 	}
 	restartedMirror.SetIngestAuthToken(ingestToken)
-	restartedPrivateServer := httptest.NewServer(restartedMirror.Handler())
+	restartedPrivateServer := httptest.NewServer(restartedMirror.IngestHandler())
 	restartedPublicServer := httptest.NewServer(restartedMirror.PublicHandler())
 	defer restartedPrivateServer.Close()
 	defer restartedPublicServer.Close()
@@ -239,7 +239,7 @@ func runPublicLoop(ctx context.Context, candidatePath, outputPath string) error 
 		return err
 	}
 	finalMirror.SetIngestAuthToken(ingestToken)
-	finalPrivateServer := httptest.NewServer(finalMirror.Handler())
+	finalPrivateServer := httptest.NewServer(finalMirror.IngestHandler())
 	finalPublicServer := httptest.NewServer(finalMirror.PublicHandler())
 	defer finalPrivateServer.Close()
 	defer finalPublicServer.Close()

@@ -61,6 +61,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-SPEC-ISO-01 | Owner-local observe mode and anonymous public spectator mode MUST NOT share state, configuration, credentials, or endpoints. Public visitors MUST NOT connect directly to the private Gateway API. |
 | INV-SPEC-ISO-02 | The public mirror listener MUST expose only read-only endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proof-segments`, and `GET /proofs/<artifact-id>`), plus the read-only evaluation explorer static host (`GET` and `HEAD`, from embedded assets or the `--eval-explorer-root` directory). It MUST NOT mount mutation, producer, governance, audit, or runtime-state filesystem routes. |
 | INV-SPEC-ISO-03 | Private ingest operations (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`) MUST be served on an isolated loopback listener and MUST require the ingest bearer token. |
+| INV-SPEC-ISO-04 | The private ingest listener (`PublicMirrorServer.IngestHandler()`) MUST NOT mount anonymous read routes, and the public read listener (`PublicMirrorServer.PublicHandler()`) MUST NOT mount ingest routes. |
 
 ### Data Classification and Projection (`INV-SPEC-DATA`)
 
@@ -134,8 +135,10 @@ POST /api/v1/public-feed/batches ──► PublicSpectatorRuntime
                                                                              Public Browser
 ```
 
-1. **Private Ingest Listener**: Accepts batch submissions from the publisher (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`), each of which requires the ingest bearer token. The same loopback listener also mounts the public read routes from item 2 without credentials; no external path reaches it because `cloudflared` dials only the Public Read Listener.
-2. **Public Read Listener**: Exposes anonymous read endpoints (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proofs/<id>`). Unknown paths and mutation methods are rejected. When explorer assets are available, the same listener also serves the explorer static host for `GET` and `HEAD`; other methods on those paths return HTTP 404.
+1. **Private Ingest Listener**: Serves ingest routes only (`POST /ingest`, `POST /keys/register`, `POST /proof-ingest`, `GET /proof-root`), each of which requires the ingest bearer token. It is built from `PublicMirrorServer.IngestHandler()` and mounts no anonymous read route: a read path such as `GET /snapshot` returns 404 here. No external path reaches it because `cloudflared` dials only the Public Read Listener.
+2. **Public Read Listener**: Serves anonymous read endpoints only (`GET /bootstrap`, `GET /snapshot`, `GET /history`, `GET /stream`, `GET /proof-catalog`, `GET /proof-manifest`, `GET /proof-segments`, `GET /proofs/<id>`). It is built from `PublicMirrorServer.PublicHandler()` and mounts no ingest or mutation route: `POST /ingest` and the other ingest paths return 404 here, regardless of credentials. Unknown paths and mutation methods are rejected. When explorer assets are available, the same listener also serves the explorer static host for `GET` and `HEAD`; other methods on those paths return HTTP 404.
+
+The two handlers are separate by construction; there is no combined mirror handler. The publisher's mirror origin is the private ingest listener, and Gateway-side read probes (`gwremote` publication status and history/bootstrap reads) resolve against the public read listener on `127.0.0.1:8082`.
 3. **Explorer Listener**: When explorer assets are available and `ExplorerListenAddress` differs from the public listener, the runtime binds it as a dedicated listener for the same explorer host. The default address is `127.0.0.1:5173`; `--eval-explorer-listen` overrides it.
 4. **Loopback Binding**: Listeners bind only to loopback interfaces unless the explicit `--public-spectator-allow-container-bind` gateway flag is set. External visitors reach the public listener solely via `cloudflared` tunnel configured with trusted proxy CIDRs.
 

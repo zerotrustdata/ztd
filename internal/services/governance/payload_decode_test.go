@@ -8,6 +8,8 @@
 package governance
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -68,6 +70,44 @@ func TestDecodePayloadForAction_MissingDecoderFailsClosed(t *testing.T) {
 	_, err := DecodePayloadForAction(constants.ActionType("UNKNOWN_DECODER"), []byte{0x01})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrTxPayloadDecoderMissing)
+}
+
+// TestDecodePayloadForAction_MatchesRegistryPayloadDeclaration asserts that every
+// governed event in protocol/constants/events.json declares the protobuf message
+// name that DecodePayloadForAction actually produces for its action class. The
+// decoder is keyed by action class, so an empty payload (which unmarshals to an
+// all-default message) is enough to recover the decoded message type.
+func TestDecodePayloadForAction_MatchesRegistryPayloadDeclaration(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile("../../../protocol/constants/events.json")
+	require.NoError(t, err)
+	var raw struct {
+		Events map[string]struct {
+			Governance *struct {
+				ActionType string `json:"action_type"`
+				Payload    string `json:"payload"`
+			} `json:"governance"`
+		} `json:"events"`
+	}
+	require.NoError(t, json.Unmarshal(data, &raw))
+
+	governed := 0
+	for event, entry := range raw.Events {
+		if entry.Governance == nil {
+			continue
+		}
+		governed++
+		gov := entry.Governance
+		t.Run(event, func(t *testing.T) {
+			require.NotEmpty(t, gov.Payload, "governed event %s must declare a payload message", event)
+			decoded, err := DecodePayloadForAction(constants.ActionType(gov.ActionType), nil)
+			require.NoError(t, err, "action %s must have a payload decoder", gov.ActionType)
+			assert.Equal(t, gov.Payload, string(proto.MessageName(decoded)),
+				"registry payload for %s must match the message DecodePayloadForAction produces", gov.ActionType)
+		})
+	}
+	require.NotZero(t, governed, "events.json must declare at least one governed event")
 }
 
 func TestDecodePayloadForAction_KnownActionsDecode(t *testing.T) {

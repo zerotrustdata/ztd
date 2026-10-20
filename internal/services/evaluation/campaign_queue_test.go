@@ -184,6 +184,29 @@ func TestBaseInitCampaignQueueCellCountsMatchSuite(t *testing.T) {
 	}
 }
 
+// TestBaseInitCampaignQueueEntriesAreBaseInventoryModels guards that the
+// checked-in rollout template only lists models from the base model inventory
+// it is curated from.
+func TestBaseInitCampaignQueueEntriesAreBaseInventoryModels(t *testing.T) {
+	inventory, err := LoadFrozenVariantsFromExternalSource(filepath.Join(constants.TestPathRepoRootFromCompliancePackage, DefaultBaseModelInventoryRelPath))
+	require.NoError(t, err)
+	require.NotEmpty(t, inventory)
+	inventoryTags := make(map[string]struct{}, len(inventory))
+	for _, variant := range inventory {
+		inventoryTags[variant.GetServedModelTag()] = struct{}{}
+	}
+
+	body, err := os.ReadFile(filepath.Join(constants.TestPathRepoRootFromCompliancePackage, DefaultBaseInitCampaignQueueRelPath))
+	require.NoError(t, err)
+	var queue CampaignQueue
+	require.NoError(t, json.Unmarshal(body, &queue))
+	require.NotEmpty(t, queue.Models)
+	for _, entry := range queue.Models {
+		_, ok := inventoryTags[entry.ServedModelTag]
+		assert.True(t, ok, "queue entry %s (served_model_tag %s) is not a base inventory model", entry.VariantID, entry.ServedModelTag)
+	}
+}
+
 func servedModelTags(variants []*evalv1.ModelVariant) []string {
 	tags := make([]string, 0, len(variants))
 	for _, variant := range variants {
