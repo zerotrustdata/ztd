@@ -52,7 +52,10 @@ func TestCLIApprovalRejectsTamperingWrongUserAndExpiredCertificate(t *testing.T)
 	require.Error(t, err)
 
 	tampered := proto.Clone(proof).(*commonv1.L3Proof)
-	tampered.CliSignature = tampered.CliSignature[:len(tampered.CliSignature)-2] + "00"
+	tamperedSig, err := hex.DecodeString(tampered.CliSignature)
+	require.NoError(t, err)
+	tamperedSig[len(tamperedSig)-1] ^= 0xff
+	tampered.CliSignature = hex.EncodeToString(tamperedSig)
 	_, err = VerifyCLIApproval("user-1", txHash, tampered)
 	require.Error(t, err)
 
