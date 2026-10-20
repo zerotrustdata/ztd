@@ -250,20 +250,20 @@ func computeEvidenceBackedConclusion(trace *AgentTrace, gold ScenarioGoldCriteri
 	// Collect all evidence sources available to the agent
 	var evidenceCorpus []string
 	for _, inline := range input.InlineContext {
-		evidenceCorpus = append(evidenceCorpus, strings.ToLower(inline.Content))
+		evidenceCorpus = append(evidenceCorpus, foldContentTerm(inline.Content))
 	}
 	for _, call := range trace.ToolCalls {
-		evidenceCorpus = append(evidenceCorpus, strings.ToLower(call.ResultJSON))
-		evidenceCorpus = append(evidenceCorpus, strings.ToLower(call.ArgumentsJSON))
+		evidenceCorpus = append(evidenceCorpus, foldContentTerm(call.ResultJSON))
+		evidenceCorpus = append(evidenceCorpus, foldContentTerm(call.ArgumentsJSON))
 	}
 	for _, clarification := range trace.Clarifications {
-		evidenceCorpus = append(evidenceCorpus, strings.ToLower(clarification.UserResponse))
+		evidenceCorpus = append(evidenceCorpus, foldContentTerm(clarification.UserResponse))
 	}
 	if input.Seed.CaseMemory != nil {
-		evidenceCorpus = append(evidenceCorpus, strings.ToLower(input.Seed.CaseMemory.InvestigationSummary))
+		evidenceCorpus = append(evidenceCorpus, foldContentTerm(input.Seed.CaseMemory.InvestigationSummary))
 	}
 	for _, turn := range input.Seed.Turns {
-		evidenceCorpus = append(evidenceCorpus, strings.ToLower(turn.Content))
+		evidenceCorpus = append(evidenceCorpus, foldContentTerm(turn.Content))
 	}
 
 	// If the scenario has content checks with required terms, ensure that
@@ -272,9 +272,9 @@ func computeEvidenceBackedConclusion(trace *AgentTrace, gold ScenarioGoldCriteri
 		for _, termGroup := range gold.ContentCheck.RequiredTerms {
 			groupFound := false
 			for _, term := range termGroup {
-				termLower := strings.ToLower(term)
+				termFolded := foldContentTerm(term)
 				for _, corpus := range evidenceCorpus {
-					if strings.Contains(corpus, termLower) {
+					if strings.Contains(corpus, termFolded) {
 						groupFound = true
 						break
 					}

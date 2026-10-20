@@ -73,7 +73,7 @@ func TestCanonicalDBService_SSEEventsListAllSince(t *testing.T) {
 	assert.Len(t, rows, 2, "Should return 2 events after ID 3")
 }
 
-func newTestDB(t *testing.T) *CanonicalDBService {
+func newTestDB(t testing.TB) *CanonicalDBService {
 	t.Helper()
 	fileSvc := newTestFileSvc(t)
 	logger := testutil.NewTestLogger()

@@ -16,6 +16,29 @@ import (
 	"unicode"
 )
 
+// foldContentTerm lowercases s and collapses every run of whitespace, '-' and
+// '_' to one space, so a term naming an identifier ("checkout-api") matches its
+// prose spelling ("checkout API") in a final response.
+func foldContentTerm(s string) string {
+	var b strings.Builder
+	separator := false
+	for _, r := range strings.ToLower(s) {
+		if unicode.IsSpace(r) || r == '-' || r == '_' {
+			separator = true
+			continue
+		}
+		if separator {
+			b.WriteByte(' ')
+			separator = false
+		}
+		b.WriteRune(r)
+	}
+	if separator {
+		b.WriteByte(' ')
+	}
+	return b.String()
+}
+
 // evaluateContentCheck evaluates the designated role's final response against
 // the scenario's typed content check. Returns whether the output passed and the
 // detail of the first failing constraint rule.
@@ -70,13 +93,13 @@ func evaluateContentCheck(output string, check ScenarioContentCheck, ws Scenario
 		}
 	}
 
-	// RequiredTerms check (case-insensitive; each group needs at least one hit)
+	// RequiredTerms check (term-folded; each group needs at least one hit)
 	if len(check.RequiredTerms) > 0 {
-		outputLower := strings.ToLower(trimmed)
+		outputFolded := foldContentTerm(trimmed)
 		for _, group := range check.RequiredTerms {
 			hit := false
 			for _, term := range group {
-				if strings.Contains(outputLower, strings.ToLower(ws.Render(term))) {
+				if strings.Contains(outputFolded, foldContentTerm(ws.Render(term))) {
 					hit = true
 					break
 				}
@@ -87,12 +110,12 @@ func evaluateContentCheck(output string, check ScenarioContentCheck, ws Scenario
 		}
 	}
 
-	// ForbiddenTerms check (case-insensitive)
+	// ForbiddenTerms check (term-folded)
 	if len(check.ForbiddenTerms) > 0 {
-		outputLower := strings.ToLower(trimmed)
+		outputFolded := foldContentTerm(trimmed)
 		for _, term := range check.ForbiddenTerms {
 			rendered := ws.Render(term)
-			if strings.Contains(outputLower, strings.ToLower(rendered)) {
+			if strings.Contains(outputFolded, foldContentTerm(rendered)) {
 				return false, fmt.Sprintf("contains forbidden term %q", rendered)
 			}
 		}

@@ -220,6 +220,8 @@ var (
 	ErrMCPReadMounts         = errors.New("read /proc/mounts")
 	ErrMCPHostPortRequired   = errors.New("host and port required")
 	ErrMCPGetAbsolutePath    = errors.New("get absolute path")
+	ErrMCPReadFile           = errors.New("failed to read file")
+	ErrMCPSensitiveFile      = errors.New("access denied: sensitive file")
 
 	// MCP registry errors
 	ErrMCPSchemaNil             = errors.New("schema cannot be nil")
@@ -295,6 +297,7 @@ var (
 	// Run shell command errors
 	ErrMCPRunShellCommandRequired              = errors.New("command is required")
 	ErrMCPRunShellCommandSafetyRejected        = errors.New("command rejected by safety policy")
+	ErrMCPRunShellCommandNotExecutable         = errors.New("command must be one executable name with each argument in args")
 	ErrMCPRunShellCommandTimeoutExceeded       = errors.New("timeout cannot exceed 300 seconds")
 	ErrOperatorRunInvalidConcurrency           = errors.New("operator run concurrency must be at least 1")
 	ErrOperatorRunTargetSelection              = errors.New("operator run requires either session ids or --all-active, not both")

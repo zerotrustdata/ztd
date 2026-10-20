@@ -153,7 +153,8 @@ type ScenarioPipelineCriteria struct {
 
 // ScenarioContentCheck is a typed, conjunctive check of the designated role's
 // final output. Every set constraint must hold. Term matching is
-// case-insensitive; each RequiredTerms group must match at least one term.
+// case-insensitive and treats whitespace, '-' and '_' as one separator
+// (foldContentTerm); each RequiredTerms group must match at least one term.
 type ScenarioContentCheck struct {
 	ExactToken        string                  `json:"exact_token,omitempty"`
 	ExactLabels       []string                `json:"exact_labels,omitempty"`

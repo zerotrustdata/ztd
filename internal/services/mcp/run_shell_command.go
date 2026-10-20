@@ -47,11 +47,11 @@ func (t *RunShellCommandTool) InputSchema() *InputSchema {
 		Properties: map[string]*PropertySchema{
 			"command": {
 				Type:        "string",
-				Description: "Command to execute (e.g., 'ls', 'echo')",
+				Description: "One executable name only, without arguments (e.g., 'cat'). The command is not run through a shell.",
 			},
 			"args": {
 				Type:        "array",
-				Description: "Command arguments (optional)",
+				Description: "Every argument of the command as its own string, e.g. [\"-n\", \"5\", \"/var/log/app.log\"] (optional)",
 			},
 			"timeout": {
 				Type:        "integer",
@@ -187,6 +187,16 @@ func validateCommandSafety(command string, args []string, workingDir string) err
 		if strings.Contains(lowerCmd, pattern) {
 			return fmt.Errorf("run_shell_command: %w", constants.ErrMCPRunShellCommandShellInjection)
 		}
+	}
+
+	// The command is exec'd without a shell, so a command line in command
+	// can never resolve; name the argv form the caller must send instead.
+	if fields := strings.Fields(command); len(fields) > 1 {
+		argv, err := json.Marshal(map[string]any{"command": fields[0], "args": append(fields[1:], args...)})
+		if err != nil {
+			return fmt.Errorf("run_shell_command: %w", constants.ErrMCPRunShellCommandMarshalResult)
+		}
+		return fmt.Errorf("run_shell_command: %w: send %s", constants.ErrMCPRunShellCommandNotExecutable, argv)
 	}
 
 	// Validate working directory if specified

@@ -145,12 +145,15 @@ func (c *TribunalIntentController) dispatchCommand(ctx context.Context, req *tri
 	}
 	// As on POST /api/v1/operators/commands, the caller receives the signed
 	// rejection receipt or the typed sentinel, never the wrapped chain.
-	c.logger.Error("tribunal intent: command dispatch failed", logging.ErrorKind(err))
+	// The typed code and receipt ID name the failure without the command text
+	// the wrapped chain carries (INV-STOR-ENC-01).
 	if rejection := governance.RejectionResponse(err); rejection != nil {
+		c.logger.Error("tribunal intent: command dispatch rejected", slog.String("transaction_id", rejection.GetReceipt().GetTransactionId()), logging.ErrorKind(err))
 		result.CommandOutcome = &tribunalv1.TribunalIntentResult_Rejection{Rejection: rejection}
 		return
 	}
 	_, refusal := dispatchErrorCode(err)
+	c.logger.Error("tribunal intent: command dispatch refused", slog.String("refusal_code", refusal.GetCode().String()), logging.ErrorKind(err))
 	result.CommandOutcome = &tribunalv1.TribunalIntentResult_Refusal{Refusal: refusal}
 }
 
