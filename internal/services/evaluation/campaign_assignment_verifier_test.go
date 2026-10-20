@@ -66,16 +66,16 @@ func TestCampaignAssignmentVerifier_FailsClosedOnModelRoleAssignment(t *testing.
 	assert.Contains(t, report.GetFailureReasons(), "agent trace is required for homogeneous verification")
 }
 
-// storedHomogeneousResult imports a trace with the given schema pin and seals
-// the result against the persisted trace body, as a stored result is.
-func storedHomogeneousResult(t *testing.T, req AssignmentExecutionRequest, trace *AgentTrace, expectedSchemaVersion string) *evalv1.EvaluationAssignmentResult {
+// storedHomogeneousResult imports a trace and seals the result against the
+// persisted trace body, as a stored result is.
+func storedHomogeneousResult(t *testing.T, req AssignmentExecutionRequest, trace *AgentTrace) *evalv1.EvaluationAssignmentResult {
 	t.Helper()
 	body, err := MarshalCanonicalJSONObject(trace)
 	require.NoError(t, err)
 	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 	ref, err := BuildAssignmentAgentTraceEvidenceReference(trace.RunID, trace.EvaluationAttemptID, body, now)
 	require.NoError(t, err)
-	result, err := ImportAssignmentResultFromAgentTrace(req, trace, ref, now, nil, expectedSchemaVersion)
+	result, err := ImportAssignmentResultFromAgentTrace(req, trace, ref, now, nil)
 	require.NoError(t, err)
 	digest, err := ComputeAssignmentResultDigest(result)
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestCampaignAssignmentVerifier_AcceptsStoredInvalidEvidenceFromGraderVerdic
 		Triage:  triage,
 		Marshal: &MarshalExpectation{Risk: []MarshalRisk{""}},
 	})
-	result := storedHomogeneousResult(t, req, trace, agentTraceSchemaVersion)
+	result := storedHomogeneousResult(t, req, trace)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, result.GetLifecycleStatus(), "premise: the grader verdict makes the import INVALID_EVIDENCE")
 	require.Empty(t, result.GetDeterministicGrades())
 
@@ -136,7 +136,7 @@ func TestCampaignAssignmentVerifier_AcceptsStoredInvalidEvidenceFromSchemaPin(t 
 	trace := verifiedGradingTrace(t, evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
 	req := verifiedGradingRequest(trace, &ScenarioPlayerExpectations{Triage: triage})
 	relabelAgentTrace(t, trace, agentTraceSchemaVersionV6)
-	result := storedHomogeneousResult(t, req, trace, agentTraceSchemaVersion)
+	result := storedHomogeneousResult(t, req, trace)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, result.GetLifecycleStatus(), "premise: the live pin makes the import INVALID_EVIDENCE")
 
 	report := verifyStoredHomogeneous(t, req, trace, result, nil)
@@ -154,10 +154,22 @@ func TestCampaignAssignmentVerifier_FlagsStoredCompletedForRelabelledEarlierVers
 	}
 	trace := verifiedGradingTrace(t, evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
 	req := verifiedGradingRequest(trace, &ScenarioPlayerExpectations{Triage: triage})
-	relabelAgentTrace(t, trace, agentTraceSchemaVersionV6)
-	result := storedHomogeneousResult(t, req, trace, "")
+	// The v7 trace imports COMPLETED while it is the sealed version.
+	result := storedHomogeneousResult(t, req, trace)
 	completed := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
-	require.Equal(t, completed, result.GetLifecycleStatus(), "premise: the unpinned import grades the relabelled trace")
+	require.Equal(t, completed, result.GetLifecycleStatus(), "premise: the v7 trace imports COMPLETED")
+
+	// Relabel the persisted trace and re-bind the stored result to its relabelled body,
+	// as a stored result is sealed against the persisted body.
+	relabelAgentTrace(t, trace, agentTraceSchemaVersionV6)
+	body, err := MarshalCanonicalJSONObject(trace)
+	require.NoError(t, err)
+	ref, err := BuildAssignmentAgentTraceEvidenceReference(trace.RunID, trace.EvaluationAttemptID, body, time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	result.EvidenceRefs = []*compliancev1.ComplianceEvidenceReference{ref}
+	digest, err := ComputeAssignmentResultDigest(result)
+	require.NoError(t, err)
+	result.ResultDigest = digest
 
 	report := verifyStoredHomogeneous(t, req, trace, result, nil)
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, report.GetStatus())

@@ -164,12 +164,12 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 			}
 		}
 	}
-	// Campaign assignments carry the live schema pin, and the same grader verdict
+	// Campaign assignments carry the current sealed schema pin, and the same grader verdict
 	// the live import applies, so a stored INVALID_EVIDENCE from either rule is
 	// recomputed and accepted here. The verdict is recomputed under any catalog:
 	// only the grade comparison depends on CatalogRecomputesGrades.
 	lifecycle := agentTraceLifecycle(execReq, trace)
-	assessment, gradeErr := assessAgentTrace(execReq, trace, lifecycle, agentTraceSchemaPinError(trace, agentTraceSchemaVersion))
+	assessment := assessAgentTrace(execReq, trace, lifecycle, agentTraceSchemaPinError(trace))
 	if assessment.invalid != nil {
 		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
 	}
@@ -179,8 +179,8 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 	if assessment.invalid != nil || !CatalogRecomputesGrades(req.CatalogRef) {
 		return failures
 	}
-	if gradeErr != nil {
-		return append(failures, "homogeneous grade recomputation failed: "+gradeErr.Error())
+	if assessment.failed != nil {
+		return append(failures, "homogeneous grade recomputation failed: "+assessment.failed.Error())
 	}
 	grading := assessment.grading
 	if !gradesEquivalent(req.Result.GetDeterministicGrades(), grading.DeterministicGrades) {

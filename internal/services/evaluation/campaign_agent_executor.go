@@ -153,7 +153,7 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: trace evidence", err)
 	}
-	result, err := ImportAssignmentResultFromAgentTrace(req, run.trace, ref, now, e.newID, agentTraceSchemaVersion)
+	result, err := ImportAssignmentResultFromAgentTrace(req, run.trace, ref, now, e.newID)
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: import homogeneous assignment result", err)
 	}
@@ -1193,52 +1193,54 @@ func agentTraceLifecycle(req AssignmentExecutionRequest, trace *AgentTrace) eval
 	return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
 }
 
-// agentTraceSchemaPinError is the live import's schema pin. An empty
-// expectedSchemaVersion imports a persisted trace at whatever version sealed it,
-// so it pins nothing. Otherwise the trace must carry that version: an earlier
-// version skips the bindings the executor seals, so a relabelled trace is
-// INVALID_EVIDENCE rather than graded.
-func agentTraceSchemaPinError(trace *AgentTrace, expectedSchemaVersion string) error {
-	if expectedSchemaVersion == "" || trace.SchemaVersion == expectedSchemaVersion {
+// agentTraceSchemaPinError is the campaign import's schema pin. The trace must
+// carry the current sealed version: an earlier version skips the bindings the
+// executor seals, so a relabelled trace is INVALID_EVIDENCE rather than graded.
+func agentTraceSchemaPinError(trace *AgentTrace) error {
+	if trace.SchemaVersion == agentTraceSchemaVersion {
 		return nil
 	}
-	return fmt.Errorf("evaluation: agent trace schema version %q is not the version the campaign executor seals (%q): %w", trace.SchemaVersion, expectedSchemaVersion, constants.ErrEvidenceArtifactMalformed)
+	return fmt.Errorf("evaluation: agent trace schema version %q is not the version the campaign executor seals (%q): %w", trace.SchemaVersion, agentTraceSchemaVersion, constants.ErrEvidenceArtifactMalformed)
 }
 
 // agentTraceAssessment is the INVALID_EVIDENCE verdict on one agent trace.
-// invalid is nil when the trace is graded, and grading is nil when it is not.
+// Exactly one field is set: grading when the trace is graded, invalid when it
+// is INVALID_EVIDENCE, and failed when grading failed for a reason that is not
+// a verdict on the trace (an executor failure that stays recoverable).
 type agentTraceAssessment struct {
 	grading *ScenarioGradingResult
 	invalid error
+	failed  error
 }
 
 // assessAgentTrace applies the campaign's INVALID_EVIDENCE rules to one agent
 // trace. A trace with an evidence verdict (from evidence verification or the
 // schema pin) is not graded and takes that verdict. Otherwise it is graded, and
 // a grader error that is a verdict on the trace or the gold players is the
-// verdict. Any other grader error is returned as an executor failure. The live
-// import and the offline verifier both apply this rule.
-func assessAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, lifecycle evalv1.EvaluationAssignmentLifecycleStatus, evidenceErr error) (agentTraceAssessment, error) {
+// verdict. Any other grader error is an executor failure. The live import and
+// the offline verifier both apply this rule.
+func assessAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, lifecycle evalv1.EvaluationAssignmentLifecycleStatus, evidenceErr error) agentTraceAssessment {
 	if evidenceErr != nil {
-		return agentTraceAssessment{invalid: evidenceErr}, nil
+		return agentTraceAssessment{invalid: evidenceErr}
 	}
 	graded, gradeErr := GradeHomogeneousScenario(req, trace, lifecycle)
 	switch {
 	case gradeErr == nil:
-		return agentTraceAssessment{grading: graded}, nil
+		return agentTraceAssessment{grading: graded}
 	case isEvidenceGradingError(gradeErr):
-		return agentTraceAssessment{invalid: gradeErr}, nil
+		return agentTraceAssessment{invalid: gradeErr}
 	default:
-		return agentTraceAssessment{}, gradeErr
+		return agentTraceAssessment{failed: gradeErr}
 	}
 }
 
 // ImportAssignmentResultFromAgentTrace materializes one terminal homogeneous
 // assignment result from a sealed agent trace. A trace whose tool calls the
 // Data Operator's signed evidence does not back is INVALID_EVIDENCE: it carries
-// no grades and the model is not graded on it. expectedSchemaVersion is the
-// live schema pin (see agentTraceSchemaPinError); persisted recovery passes "".
-func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, traceEvidence *compliancev1.ComplianceEvidenceReference, now time.Time, newID func(string) string, expectedSchemaVersion string) (*evalv1.EvaluationAssignmentResult, error) {
+// no grades and the model is not graded on it. The trace must carry the current
+// sealed schema version (see agentTraceSchemaPinError), for live and recovered
+// imports alike.
+func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, traceEvidence *compliancev1.ComplianceEvidenceReference, now time.Time, newID func(string) string) (*evalv1.EvaluationAssignmentResult, error) {
 	if req.Assignment == nil || trace == nil {
 		return nil, fmt.Errorf("evaluation: import agent trace: %w", constants.ErrMissingRequiredField)
 	}
@@ -1262,7 +1264,7 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	}
 	// Verification comes before grading: a trace the Data Operator's signed
 	// evidence does not back is never graded against the model.
-	evidenceErr := errors.Join(agentTraceSchemaPinError(trace, expectedSchemaVersion), VerifyAgentTraceEvidence(trace))
+	evidenceErr := errors.Join(agentTraceSchemaPinError(trace), VerifyAgentTraceEvidence(trace))
 	if modelErr := verifyAssignmentTraceModels(req, trace); modelErr != nil {
 		evidenceErr = errors.Join(evidenceErr, modelErr)
 	}
@@ -1270,9 +1272,9 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	// the trace or the gold players is INVALID_EVIDENCE; any other grader error
 	// is an executor failure and stays recoverable.
 	lifecycle := agentTraceLifecycle(req, trace)
-	assessment, err := assessAgentTrace(req, trace, lifecycle, evidenceErr)
-	if err != nil {
-		return nil, err
+	assessment := assessAgentTrace(req, trace, lifecycle, evidenceErr)
+	if assessment.failed != nil {
+		return nil, assessment.failed
 	}
 	invalidErr := assessment.invalid
 	grading := assessment.grading

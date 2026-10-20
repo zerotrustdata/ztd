@@ -163,9 +163,9 @@ Offline verification (`ztd compliance report verify`) runs on an exported bundle
 
 ## Compliance CLI Reference
 
-The `ztd compliance` command suite manages the compliance lifecycle. Run `./ztd compliance <command> --help` for the authoritative flag set of each command:
+The `ztd compliance` command suite manages the compliance lifecycle. Run `./ztd compliance <command> --help` for the authoritative flag set of each command. The synopsis below is a syntax reference, not a copy-paste script; angle-bracket values stand for operator-supplied inputs:
 
-```bash
+```text
 # Evaluate FedRAMP Key Security Indicators (KSIs)
 ztd compliance ksi \
   --class C \

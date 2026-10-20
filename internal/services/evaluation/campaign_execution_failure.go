@@ -286,9 +286,9 @@ func (c *CampaignController) importPersistedAgentTrace(ctx context.Context, req 
 	if err != nil {
 		return nil, false
 	}
-	// Recovery imports a persisted trace at whatever version sealed it, so the
-	// live executor's schema pin does not apply here.
-	result, err := ImportAssignmentResultFromAgentTrace(req, trace, ref, c.now().UTC(), c.newID, "")
+	// Recovery is pinned to the current sealed version like the live path, so an
+	// earlier-version persisted trace is INVALID_EVIDENCE.
+	result, err := ImportAssignmentResultFromAgentTrace(req, trace, ref, c.now().UTC(), c.newID)
 	if err != nil {
 		return nil, false
 	}

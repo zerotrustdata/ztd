@@ -69,11 +69,11 @@ The application uses `BrowserRouter` for client-side routing, which relies on se
 - `/evaluations` evaluations: campaign list and filters.
 - `/evaluations/:datasetId?/:runId` evaluation detail: progress, verification, resources, and assignments.
 - `/evaluations/:datasetId?/:runId/assignments/:assignmentId` assignment detail: identity, verdict, metrics, and diagnostics.
-- `/compare` redirects to `/models`, preserving query parameters; model comparison lives on the model list.
+- `/failures` redirects to `/evaluations`.
 - `/tasks` and `/tasks/:taskId` show the generated scenario catalog.
 - `/methodology` explains metrics and limitations; `/about` describes the platform.
 
-`src/App.tsx` owns route definitions. Comparisons across datasets require matching observed provider environments and suite sets; see [Evaluation Architecture](../../../docs/architecture/evals.md#evidence-and-verification) for the producer contract. Each value stays attributed to its run; nothing is pooled or averaged.
+`src/App.tsx` owns route definitions. Comparisons across datasets require matching observed provider environments and suite sets; see [Evaluation Architecture](../../../docs/architecture/evals.md#evidence-storage-inv-eval-evid) for the producer contract. Each value stays attributed to its run; nothing is pooled or averaged.
 
 ## Record and event shapes
 
@@ -99,7 +99,7 @@ The campaign-wire validator checks the version-specific allowlist, canonical pro
 
 The closed public unavailable reasons are `historical_not_captured`, `source_not_captured`, `source_unavailable`, `scenario_not_applicable`, `incomplete_contributor_evidence`, and `no_scored_calls`. `observed` activity with zero records is distinct from `unavailable`; `not_applicable` is reserved for a scenario that does not define the activity family. `no_scored_calls` means resource observations are unavailable, not observed zero. The adapter maps the canonical wire spellings to the lowercase view enums without widening the vocabulary or replacing missingness with zero.
 
-The public boundary permits approved scenario descriptions and criterion labels, closed grade explanation codes, grouped reported activity outcomes, bounded scored-inference resources, verification metadata, and content bindings. The optional `model_response`, `failure_output`, and `role_transcripts` extensions carry model and tool text verbatim, held only to the byte bounds described in [Public Spectator Architecture](../../../docs/architecture/public_spectator.md#public-live-projections); nothing is screened or redacted. Each deterministic `benchmark_observations.grade_summaries[].detail` and semantic `semantic_grade_summaries[].detail` carries the grader's own output verbatim under the same model-text bound; the explorer shows it in the criterion badge and the failure diagnosis. Artifact locations have no public field. A content binding identifies an approved artifact reference; it does not prove public accessibility or independent verification.
+The public boundary permits approved scenario descriptions and criterion labels, closed grade explanation codes, grouped reported activity outcomes, bounded scored-inference resources, verification metadata, and content bindings. The optional `model_response`, `failure_output`, and `role_transcripts` extensions carry model and tool text verbatim, held only to the byte bounds described in [Public Spectator Architecture](../../../docs/architecture/public_spectator.md#permitted-projections); nothing is screened or redacted. Each deterministic `benchmark_observations.grade_summaries[].detail` and semantic `semantic_grade_summaries[].detail` carries the grader's own output verbatim under the same model-text bound; the explorer shows it in the criterion badge and the failure diagnosis. Artifact locations have no public field. A content binding identifies an approved artifact reference; it does not prove public accessibility or independent verification.
 
 ### Agent trace artifact
 

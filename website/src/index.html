@@ -440,7 +440,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <div>
       <div class="status-line">
-        <span class="chip"><span class="dot"></span>ztd <b>v1.1</b></span>
+        <span class="chip"><span class="dot"></span>ztd <b>v1.2.0</b></span>
         <span class="chip">Zero-trust execution layer</span>
         <span class="chip">Source available · BSL 1.1</span>
       </div>
@@ -739,27 +739,30 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <button class="btn sm ghost copy" type="button" data-copy="irm https://zerotrustdata.io/start.ps1 | iex">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-1" aria-labelledby="tb-1" hidden>
-<pre><span class="p">$ </span>git clone --depth 1 https://github.com/zerotrustdata/ztd.git
+<pre><span class="p">$ </span>git clone https://github.com/zerotrustdata/ztd.git
 <span class="p">$ </span>cd ztd
 <span class="p">$ </span>bash scripts/linux-setup.sh --build-only
 <span class="p">$ </span>make quickstart
-<span class="c"># macOS: bash scripts/macos-setup.sh --build-only</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="git clone --depth 1 https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;bash scripts/linux-setup.sh --build-only&#10;make quickstart">Copy</button>
+<span class="c"># macOS: bash scripts/macos-setup.sh --build-only</span>
+<span class="c"># Windows (PowerShell 7): pwsh scripts/windows-setup.ps1 --build-only</span></pre>
+        <button class="btn sm ghost copy" type="button" data-copy="git clone https://github.com/zerotrustdata/ztd.git&#10;cd ztd&#10;bash scripts/linux-setup.sh --build-only&#10;make quickstart">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-2" aria-labelledby="tb-2" hidden>
 <pre><span class="c"># sign in as the owner with a passkey, then approve workloads</span>
 <span class="p">$ </span>./ztd login web
 <span class="p">$ </span>./ztd auth enroll pending
-<span class="p">$ </span>./ztd auth enroll approve &lt;request-id&gt; --yes
+<span class="c"># set REQUEST_ID to a request ID listed by pending</span>
+<span class="p">$ </span>./ztd auth enroll approve "$REQUEST_ID" --yes
 <span class="c"># headless: ./ztd login for a CLI-only mTLS identity</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="./ztd login web&#10;./ztd auth enroll pending&#10;./ztd auth enroll approve <request-id> --yes">Copy</button>
+        <button class="btn sm ghost copy" type="button" data-copy="./ztd login web&#10;./ztd auth enroll pending&#10;./ztd auth enroll approve &quot;$REQUEST_ID&quot; --yes">Copy</button>
       </div>
       <div class="code" role="tabpanel" id="tp-3" aria-labelledby="tb-3" hidden>
 <pre><span class="c"># Gateway + embedded Operator with data, inference, and observer capabilities</span>
-<span class="p">$ </span>make gw GW_ARGS='--inference-ollama-endpoint http://&lt;ollama-host&gt;:11434'
+<span class="c"># set OLLAMA_HOST to your Ollama host name or address</span>
+<span class="p">$ </span>make gw GW_ARGS="--inference-ollama-endpoint http://${OLLAMA_HOST}:11434"
 <span class="p">$ </span>make status
 <span class="c"># then sign in at https://localhost:8443/console/</span></pre>
-        <button class="btn sm ghost copy" type="button" data-copy="make gw GW_ARGS='--inference-ollama-endpoint http://&lt;ollama-host&gt;:11434'&#10;make status">Copy</button>
+        <button class="btn sm ghost copy" type="button" data-copy="make gw GW_ARGS=&quot;--inference-ollama-endpoint http://${OLLAMA_HOST}:11434&quot;&#10;make status">Copy</button>
       </div>
     </div>
   </div>

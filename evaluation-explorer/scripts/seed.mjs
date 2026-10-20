@@ -1,21 +1,26 @@
-// Seed the local public mirror with projection records for local development.
+// Seed the Gateway-owned public mirror with projection records for local development.
+//
+// The public mirror is owned by the Gateway (`./ztd gw start --public-spectator`).
+// This script requires that Gateway-owned mirror to be listening on the public
+// port and fails closed otherwise; it never starts a mirror process.
 //
 // Real campaign and native evaluation data is published by the Go evaluation
-// service through `ztd eval campaign execute --publish` or
-// `ztd eval campaign publish`. This script only loads pre-generated JSONL
-// (fixtures or an explicit --records file) and publishes it through the real
-// `ztd public publish` CLI in batches that fit the configured feed limits
-// (max 100 records / 4 MiB of record bytes per batch), followed by
-// `ztd public push` and `ztd public status`.
+// service: `./ztd eval runs start` publishes by default, `./ztd eval runs resume
+// --publish` publishes on resume, and `./ztd eval runs publish <run-id>` catches
+// up an existing run. This script only loads pre-generated JSONL (fixtures or an
+// explicit --records file) and publishes it through the real `ztd public publish`
+// CLI in batches that fit the configured feed limits (max 100 records / 4 MiB of
+// record bytes per batch), followed by `ztd public push` and `ztd public status`.
 //
 // Reseeding is idempotent: if the mirror already holds every dataset with the
 // identical catalog_snapshot content, publishing is skipped. If the mirror
-// holds a stale or partial copy of a seeded dataset, the disposable local
-// feed state is reset (mirror restart + `ztd public init`) before publishing,
-// so duplicate or conflicting logical identities are never produced.
+// holds a stale or partial copy of a seeded dataset, or the outbox cannot be
+// reconciled, the script refuses to publish: resetting the Gateway-owned feed
+// is a manual step (stop the Gateway, remove .ztd/public-feed and
+// .ztd/public-mirror, then start it with --public-spectator).
 //
 // Usage:  node scripts/seed.mjs [--reset] [--records <path>] [--fixtures] [--append-revision <version>]
-//   --reset      force reset of disposable local public-feed state first
+//   --reset      refused by this script; the error explains the manual feed reset
 //   --records    publish a pre-generated JSONL file
 //   --fixtures   publish the deterministic TypeScript fixtures (mock dev only)
 //   --append-revision appends one exact schema revision without resetting prior history
@@ -23,10 +28,9 @@
 // Environment:
 //   ZTD_BIN          path to the ztd binary (auto-detected if unset)
 //   ZTD_CWD          working directory for ztd commands (default: repo root)
-//   ZTD_PRIVATE_PORT private ingest listener port (default: 8081)
-//   ZTD_PUBLIC_PORT  public read-only listener port (default: 8082)
+//   ZTD_PUBLIC_PORT  public read-only listener port of the Gateway-owned mirror (default: 8082)
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
@@ -36,7 +40,6 @@ import { fixturePublishLines } from './fixture-lines.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
 
-const PRIVATE_PORT = process.env.ZTD_PRIVATE_PORT ?? '8081';
 const PUBLIC_PORT = process.env.ZTD_PUBLIC_PORT ?? '8082';
 const PUBLIC_ORIGIN = `http://127.0.0.1:${PUBLIC_PORT}`;
 const SOURCE_ID = 'opendevops-local';
@@ -103,99 +106,23 @@ function checkPort(port) {
   return result.stdout.includes(`:${port}`);
 }
 
-function waitForPort(port, label, timeoutMs) {
-  return new Promise((resolvePromise, reject) => {
-    const deadline = Date.now() + timeoutMs;
-    const check = () => {
-      if (checkPort(port)) return resolvePromise();
-      if (Date.now() > deadline) return reject(new Error(`${label} on port ${port} did not start within ${timeoutMs}ms`));
-      setTimeout(check, 200);
-    };
-    check();
-  });
-}
-
-function waitForPortFree(port, timeoutMs) {
-  return new Promise((resolvePromise, reject) => {
-    const deadline = Date.now() + timeoutMs;
-    const check = () => {
-      if (!checkPort(port)) return resolvePromise();
-      if (Date.now() > deadline) return reject(new Error(`port ${port} still in use after ${timeoutMs}ms`));
-      setTimeout(check, 200);
-    };
-    check();
-  });
-}
-
-function mirrorRunning() {
-  return checkPort(PRIVATE_PORT) && checkPort(PUBLIC_PORT);
-}
-
-function stopMirror() {
-}
-
-function startMirrorDetached() {
-  const proc = spawn(ztdBin(), [
-    'public', 'mirror', 'run',
-    '--listen', `127.0.0.1:${PRIVATE_PORT}`,
-    '--public-listen', `127.0.0.1:${PUBLIC_PORT}`,
-  ], { cwd: ztdCwd(), detached: true, stdio: 'ignore' });
-  proc.unref();
-}
-
-async function ensureMirror() {
-  if (isGatewayOwnedMirror()) {
-    if (!checkPort(PUBLIC_PORT)) {
-      throw new Error(`gateway-owned public mirror is not listening on port ${PUBLIC_PORT}; start ztd-gateway with --public-spectator`);
-    }
-    console.log(`Gateway-owned mirror detected on ${PUBLIC_ORIGIN}.`);
-    return;
+// The public mirror is served only by the Gateway (`--public-spectator`). Any
+// other state fails closed: nothing is started, stopped, or re-initialized here.
+function requireGatewayOwnedMirror() {
+  if (!checkPort(PUBLIC_PORT)) {
+    throw new Error(`gateway-owned public mirror is not listening on port ${PUBLIC_PORT}; start ztd-gateway with --public-spectator`);
   }
-  if (mirrorRunning()) return;
-  console.log('Mirror not running; starting it detached...');
-  startMirrorDetached();
-  await waitForPort(PUBLIC_PORT, 'mirror public listener', 10000);
-  if (!checkPort(PRIVATE_PORT)) {
-    throw new Error(`mirror private listener on port ${PRIVATE_PORT} did not start`);
-  }
-  console.log(`Mirror is up on ${PRIVATE_PORT} (private) and ${PUBLIC_PORT} (public).`);
-}
-
-async function stopMirrorAndWait() {
-  if (!checkPort(PRIVATE_PORT) && !checkPort(PUBLIC_PORT)) return;
-  console.log('Stopping running mirror so feed state can be reset...');
-  stopMirror();
-  await waitForPortFree(PRIVATE_PORT, 10000);
-  await waitForPortFree(PUBLIC_PORT, 10000);
+  console.log(`Gateway-owned mirror detected on ${PUBLIC_ORIGIN}.`);
 }
 
 function feedDir() {
   return resolve(ztdCwd(), '.ztd/public-feed');
 }
 
-function hostExportConfigExists() {
-  return existsSync(resolve(feedDir(), 'export-config.json'));
-}
-
-function isGatewayOwnedMirror() {
-  return checkPort(PUBLIC_PORT) && !hostExportConfigExists();
-}
-
-function initFeed() {
-  runZtd(['public', 'init', '--source-id', SOURCE_ID, '--mirror-origin', `http://127.0.0.1:${PRIVATE_PORT}`]);
-}
-
-async function resetFeedState() {
-  if (isGatewayOwnedMirror()) {
-    throw new Error('--reset with a gateway-owned mirror requires stopping the Gateway and removing .ztd/public-feed and .ztd/public-mirror first (then ./ztd gw start --public-spectator)');
-  }
-  await stopMirrorAndWait();
-  for (const dir of [feedDir(), resolve(ztdCwd(), '.ztd/public-mirror')]) {
-    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
-  }
-  console.log('Reset disposable local public-feed and mirror state.');
-  initFeed();
-  await ensureMirror();
+// Resetting the feed would delete the Gateway's signing chain and mirror state,
+// so it is never performed by this script. The reset is a manual step.
+function resetFeedState() {
+  throw new Error('--reset with a gateway-owned mirror requires stopping the Gateway and removing .ztd/public-feed and .ztd/public-mirror first (then ./ztd gw start --public-spectator)');
 }
 
 async function generateFixtureRecords() {
@@ -443,8 +370,9 @@ async function main() {
   }
 
   if (!records && !fixtures) {
-    throw new Error('Specify --fixtures for mock fixture seeding or --records <path> for a pre-generated JSONL file. Real evaluations publish through ztd eval campaign publish.');
+    throw new Error('Specify --fixtures for mock fixture seeding or --records <path> for a pre-generated JSONL file. Real evaluations publish through ./ztd eval runs start or ./ztd eval runs publish <run-id>.');
   }
+  requireGatewayOwnedMirror();
   const recordsPath = records ?? await generateFixtureRecords();
   if (!existsSync(recordsPath)) {
     throw new Error(`records file not found: ${recordsPath}`);
@@ -457,7 +385,6 @@ async function main() {
     if (schemaVersions.size !== 1 || !schemaVersions.has(appendRevision)) {
       throw new Error(`--append-revision ${appendRevision} requires every record to carry that exact schema version`);
     }
-    await ensureMirror();
     const status = ztdStatus();
     const mirrorSnap = await fetchSnapshot();
     if (status.high_water_sequence !== (mirrorSnap?.high_water_sequence ?? 0)) {
@@ -465,16 +392,15 @@ async function main() {
     }
     publishChunks(entries);
   } else if (reset) {
-    await resetFeedState();
+    resetFeedState();
   } else {
-    await ensureMirror();
     const classified = classifyDatasets(await fetchMirrorHistory(), entries, datasetIds, catalogContents);
 
     if (classified.drifted.length > 0) {
       for (const d of classified.drifted) {
-        console.log(`Dataset ${d.id} is stale or partial in the mirror (${d.present}/${d.expected} records or changed catalog); resetting disposable feed state.`);
+        console.log(`Dataset ${d.id} is stale or partial in the mirror (${d.present}/${d.expected} records or changed catalog); a feed reset is required.`);
       }
-      await resetFeedState();
+      resetFeedState();
     } else if (classified.seeded.length === datasetIds.size) {
       console.log('All seed datasets are already present with identical catalog content; skipping publish.');
       runZtd(['public', 'push']);
@@ -487,8 +413,8 @@ async function main() {
         runZtd(['public', 'push']);
         const retrySnap = await fetchSnapshot();
         if ((retrySnap?.high_water_sequence ?? 0) !== publisherHighWater) {
-          console.log('Mirror could not be reconciled from the outbox; resetting disposable feed state.');
-          await resetFeedState();
+          console.log('Mirror could not be reconciled from the outbox; a feed reset is required.');
+          resetFeedState();
         }
       }
     }

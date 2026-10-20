@@ -190,7 +190,7 @@ func TestImportAssignmentResultFromAgentTrace_GradingEvidenceErrorIsInvalidEvide
 			_, gradeErr := GradeHomogeneousScenario(req, trace, completed)
 			require.ErrorIs(t, gradeErr, tc.sentinel, "premise: the grader rejects this evidence")
 
-			result, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil, agentTraceSchemaVersion)
+			result, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil)
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, result.GetLifecycleStatus())
@@ -205,7 +205,7 @@ func TestImportAssignmentResultFromAgentTrace_GradingEvidenceErrorIsInvalidEvide
 		req := verifiedGradingRequest(trace, &ScenarioPlayerExpectations{Triage: triage})
 		req.ScenarioInput.ScenarioID = ""
 
-		result, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil, agentTraceSchemaVersion)
+		result, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil)
 		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 		require.Nil(t, result)
 	})
@@ -223,10 +223,11 @@ func relabelAgentTrace(t *testing.T, trace *AgentTrace, version string) {
 	require.NoError(t, ValidateAgentTraceDigest(trace))
 }
 
-// A v7 trace relabelled as an earlier version skips the v7 bindings. The live
-// campaign executor seals and imports only the current version, so a relabelled
-// trace on that path is INVALID_EVIDENCE with no grades, and the detail names
-// the expected and actual versions. Recovery of a persisted trace is not pinned.
+// A v7 trace relabelled as an earlier version skips the v7 bindings. The campaign
+// import always pins to the current sealed version, for the live executor and for
+// persisted recovery alike, so a relabelled trace on either path is
+// INVALID_EVIDENCE with no grades, and the detail names the expected and actual
+// versions.
 func TestImportAssignmentResultFromAgentTrace_RelabelledEarlierVersionIsInvalidEvidence(t *testing.T) {
 	triage := &TriageExpectation{
 		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
@@ -243,17 +244,11 @@ func TestImportAssignmentResultFromAgentTrace_RelabelledEarlierVersionIsInvalidE
 	require.NoError(t, err, "premise: the v7 trace grades")
 
 	relabelAgentTrace(t, trace, agentTraceSchemaVersionV6)
-	result, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil, agentTraceSchemaVersion)
+	result, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, result.GetLifecycleStatus())
 	require.Contains(t, result.GetInvalidEvidenceDetail(), agentTraceSchemaVersionV6, "detail names the actual version")
 	require.Contains(t, result.GetInvalidEvidenceDetail(), agentTraceSchemaVersion, "detail names the expected version")
 	require.Empty(t, result.GetDeterministicGrades(), "an invalid-evidence assignment carries no grades")
-
-	t.Run("persisted recovery imports an earlier version at its sealed version", func(t *testing.T) {
-		recovered, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil, "")
-		require.NoError(t, err)
-		require.Equal(t, completed, recovered.GetLifecycleStatus())
-	})
 }

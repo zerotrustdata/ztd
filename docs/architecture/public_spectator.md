@@ -277,10 +277,10 @@ jq -r '.entries[].artifact_id' proof-catalog.json | while IFS= read -r artifact_
 done
 ```
 
-Alternatively, copy the publisher's local `public-proofs/proof-segments.jsonl` and its content-addressed artifact files. Disconnect network connectivity, then verify using a public key pinned through a trusted channel:
+Alternatively, copy the publisher's local `public-proofs/proof-segments.jsonl` and its content-addressed artifact files. Disconnect network connectivity, then set `PUBLIC_KEY_HEX` to the publisher's Ed25519 public key (hex), pinned through a trusted channel, and verify:
 
 ```bash
-./ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs --public-key <ed25519-public-key-hex>
+./ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs --public-key "$PUBLIC_KEY_HEX"
 ```
 
 For a log spanning key rotations, replace `--public-key` with `--key-registry trusted-keys.json`, where the JSON object maps each signing key ID to a public key hex value pinned through a trusted channel.

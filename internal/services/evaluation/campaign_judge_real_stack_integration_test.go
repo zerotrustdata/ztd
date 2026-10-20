@@ -51,10 +51,10 @@ func judgeReplies(judgeReply fixtures.OllamaReply) []fixtures.OllamaReply {
 	return []fixtures.OllamaReply{{Content: judgeDiagnosis}, judgeReply}
 }
 
-// semanticGradeByCriterion returns the semantic grade for criterionID, or nil.
-func semanticGradeByCriterion(result *evalv1.EvaluationAssignmentResult, criterionID string) *evalv1.SemanticGrade {
+// diagnosisQualityGrade returns the diagnosis-quality semantic grade, or nil.
+func diagnosisQualityGrade(result *evalv1.EvaluationAssignmentResult) *evalv1.SemanticGrade {
 	for _, sg := range result.GetSemanticGrades() {
-		if sg.GetCriterionId() == criterionID {
+		if sg.GetCriterionId() == "diagnosis-quality" {
 			return sg
 		}
 	}
@@ -122,7 +122,7 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	agentTx := trace.ModelCalls[0].TransactionID
 
 	// 1. The secondary diagnosis-quality score is attached.
-	diagGrade := semanticGradeByCriterion(res, "diagnosis-quality")
+	diagGrade := diagnosisQualityGrade(res)
 	require.NotNil(t, diagGrade, "diagnosis-quality grade should be present in SemanticGrades")
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, diagGrade.GetStatus(), diagGrade.GetDetail())
 	assert.Contains(t, diagGrade.GetDetail(), "score: 4/5")
@@ -191,7 +191,7 @@ func TestRealStackJudge_FailureReportedSeparately(t *testing.T) {
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
 
 	// Judge failure is reported in SemanticGrades.
-	diagGrade := semanticGradeByCriterion(res, "diagnosis-quality")
+	diagGrade := diagnosisQualityGrade(res)
 	require.NotNil(t, diagGrade, "diagnosis-quality grade should be present in SemanticGrades")
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, diagGrade.GetStatus())
 	assert.Contains(t, diagGrade.GetDetail(), "judge failed:")
@@ -266,7 +266,7 @@ func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T)
 			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
 			require.NotEmpty(t, inference.judgeTx, "the judge dispatch must have run")
 
-			diagGrade := semanticGradeByCriterion(res, "diagnosis-quality")
+			diagGrade := diagnosisQualityGrade(res)
 			require.NotNil(t, diagGrade, "diagnosis-quality grade should be present in SemanticGrades")
 			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, diagGrade.GetStatus())
 			assert.True(t, strings.HasPrefix(diagGrade.GetDetail(), "judge receipt verification failed: "), "detail: %s", diagGrade.GetDetail())
@@ -309,7 +309,7 @@ func TestRealStackJudge_InvalidEvidenceIsNeverJudged(t *testing.T) {
 	res := executeNextWithInference(t, env, inference)
 
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, res.GetLifecycleStatus())
-	assert.Nil(t, semanticGradeByCriterion(res, "diagnosis-quality"), "an unbacked answer is not judged")
+	assert.Nil(t, diagnosisQualityGrade(res), "an unbacked answer is not judged")
 	assert.Empty(t, res.GetSemanticGrades())
 	assert.Empty(t, res.GetGraderCalls())
 	for _, ds := range res.GetDecomposedScores() {
@@ -336,7 +336,7 @@ func TestRealStackJudge_ProviderFailedIsNeverJudged(t *testing.T) {
 	res := executeNextWithInference(t, env, inference)
 
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus())
-	assert.Nil(t, semanticGradeByCriterion(res, "diagnosis-quality"), "a provider failure is not judged")
+	assert.Nil(t, diagnosisQualityGrade(res), "a provider failure is not judged")
 	assert.Empty(t, res.GetGraderCalls())
 
 	assert.Equal(t, 1, inference.dispatches, "the failed agent turn is the only provider dispatch; the judge was not dispatched")

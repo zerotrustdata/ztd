@@ -164,8 +164,10 @@ Set `OPERATOR_SESSION_ID` to the Operator session to bind. Pass additional sessi
 
 #### Run a governed shell command on operators
 
+With `OPERATOR_SESSION_ID` set as above, run on one Operator, or on every active Operator:
+
 ```bash
-./ztd operator run <operator-session-id> --cmd 'echo hello from $(hostname)'
+./ztd operator run "$OPERATOR_SESSION_ID" --cmd 'echo hello from $(hostname)'
 ./ztd operator run --all-active --concurrency 64 --cmd 'uname -a' --json
 ```
 

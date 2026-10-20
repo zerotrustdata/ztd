@@ -365,7 +365,7 @@ func ExecuteDeployHostStart(ctx context.Context, workingDir, binary string, args
 		return 0, fmt.Errorf("operator deploy-host start: %w: Operator executable must be named ztd", constants.ErrOperatorDeployFailed)
 	}
 	if _, err := os.Stat(binPath); err != nil {
-		return 0, fmt.Errorf("Operator binary %s not found: %w", binPath, err)
+		return 0, fmt.Errorf("operator binary %s not found: %w", binPath, err)
 	}
 
 	if _, err := ExecuteDeployHostStop(ctx, "", workingDir); err != nil {

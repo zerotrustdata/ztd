@@ -290,10 +290,12 @@ func followRun(ctx context.Context, stream *runEventStream, reconnects <-chan st
 			return nil
 		case <-stream.Done():
 			// Ending ctx also stops the stream; that stop is the ctx case.
-			if ctx.Err() != nil {
+			select {
+			case <-ctx.Done():
 				return nil
+			default:
+				return stream.StoppedError()
 			}
-			return stream.StoppedError()
 		case <-reconnects:
 		case <-events:
 		}

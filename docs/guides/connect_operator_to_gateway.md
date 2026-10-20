@@ -140,12 +140,12 @@ A successful connection logs `Channel established - Ready to receive`. The Opera
 
 ## Pin the Gateway CA
 
-To pin the Gateway CA explicitly, with `GATEWAY_HOST` set as in step 2 and `ztdg-ca-bundle.pem` copied to this host:
+To pin the Gateway CA explicitly, with `GATEWAY_HOST` set as in step 2, copy the Gateway's `.ztd/pki/trust/ztdg-ca-bundle.pem` to this host and set `TRUST_BUNDLE` to the copied file's path:
 
 ```bash
 ./ztd operator start \
   --endpoint "$GATEWAY_HOST" \
-  --trust-bundle "$PWD/.ztd/pki/trust/ztdg-ca-bundle.pem"
+  --trust-bundle "$TRUST_BUNDLE"
 ```
 
 With `--trust-bundle`, the Operator enrolls over `wss://` on the Gateway HTTPS port (8443 by default), verifying the Gateway certificate against this CA before sending its request.

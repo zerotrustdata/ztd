@@ -57,58 +57,22 @@ For project context and the current architecture, see the [repository overview](
 
 ## Releases and one-command onboarding
 
-`/releases/` lists every published ztd version and `/releases/v<version>/` shows one version's downloads, pinned
-install commands, verification steps, and release notes; `/releases/latest/` redirects to the version named by
-`latest.json`. The Worker renders these pages per request (`src/releases.js`) from the `ztd-releases` R2 bucket, so
-a release appears without a website deploy. A version is listed only when its `v<version>/ztd-binaries.json` manifest
-exists and it is not newer than `latest.json`: `scripts/release-r2.sh` uploads the manifest last, so an incomplete
-or unpromoted set never appears. The download table comes from the validated manifest; a malformed manifest is a
-503, never a partial page. Release notes are rendered at build time from `docs/release_notes/vX.Y.x/vX.Y.Z.md` into
-`dist/_release-notes/<version>.html` fragments (`src/release-notes.js`), which the Worker composes into the version
-page and does not serve on their own. Relative links in a note resolve to that file at the release tag on GitHub, or
-to the Releases page for links to another note.
+`/releases/` lists every published ztd version and `/releases/v<version>/` shows one version's downloads, pinned install commands, verification steps, and release notes; `/releases/latest/` redirects to the version named by `latest.json`. The Worker renders these pages per request (`src/releases.js`) from the `ztd-releases` R2 bucket, so a release appears without a website deploy. A version is listed only when its `v<version>/ztd-binaries.json` manifest exists and it is not newer than `latest.json`: `scripts/release-r2.sh` uploads the manifest last, so an incomplete or unpromoted set never appears. The download table comes from the validated manifest; a malformed manifest is a 503, never a partial page. Release notes are rendered at build time from `docs/release_notes/vX.Y.x/vX.Y.Z.md` into `dist/_release-notes/<version>.html` fragments (`src/release-notes.js`), which the Worker composes into the version page and does not serve on their own. Relative links in a note resolve to that file at the release tag on GitHub, or to the Releases page for links to another note.
 
-`static/start.sh` is the one-command onboarding script, `curl -fsSL https://zerotrustdata.io/start.sh | sh`. It
-downloads `ztd.sh`, installs the checksum-verified binary into `$ZTD_DIR` (default `~/ztd`), and then runs the
-`make quickstart` steps: start or reuse a Gateway, sign in or reuse the CLI identity, and run a first governed
-action. `static/start.ps1` is the Windows equivalent, `irm https://zerotrustdata.io/start.ps1 | iex`: it runs `ztd.ps1`
-into `$Env:ZTD_DIR` (default `~\ztd`) and the same four steps. Because `iex` runs it inside the caller's session, all
-its work sits in one script block: it never calls `exit`, restores the caller's location, and a truncated download
-fails to parse instead of running. `static/ztd.sh` and `static/ztd.ps1` install only the binary. Both shell scripts run entirely from a `main`
-function called on the last line, so a truncated download executes nothing, and every child reads `/dev/null` so
-none can consume the piped script.
+`static/start.sh` is the one-command onboarding script, `curl -fsSL https://zerotrustdata.io/start.sh | sh`. It downloads `ztd.sh`, installs the checksum-verified binary into `$ZTD_DIR` (default `~/ztd`), and then runs the same steps as `make quickstart` (`scripts/quickstart.sh`): start or reuse a Gateway, sign in or reuse the CLI identity, and run a first governed action. `static/start.ps1` is the Windows equivalent, `irm https://zerotrustdata.io/start.ps1 | iex`: it runs `ztd.ps1` into `$Env:ZTD_DIR` (default `~\ztd`) and the same four steps. Because `iex` runs it inside the caller's session, all its work sits in one script block: it never calls `exit`, restores the caller's location, and a truncated download fails to parse instead of running. `static/ztd.sh` and `static/ztd.ps1` install only the binary. Both shell scripts run entirely from a `main` function called on the last line, so a truncated download executes nothing, and every child reads `/dev/null` so none can consume the piped script.
 
-`test/start.test.js` and `test/install.test.js` run the scripts offline against stub `curl`, `uname`, and `sudo`
-commands and a fake `ztd` that records its invocations and stdin. The start tests pipe the script into every
-available POSIX shell (`sh`, `dash`, `busybox sh`, `bash --posix`), cover reuse, every environment variable, each
-failure remedy, truncated downloads, and run `shellcheck` when it is installed. `test/start-ps1.test.js` runs
-`irm https://zerotrustdata.io/start.ps1 | iex` in a real `pwsh` session with `Invoke-RestMethod`/`Invoke-WebRequest`
-replaced by a stub release host, covering the same cases; it is skipped when `pwsh` is not on `PATH` (or named by
-`ZTD_TEST_PWSH`).
+`test/start.test.js` and `test/install.test.js` run the scripts offline against stub `curl`, `uname`, and `sudo` commands and a fake `ztd` that records its invocations and stdin. The start tests pipe the script into every available POSIX shell (`sh`, `dash`, `busybox sh`, `bash --posix`), cover reuse, every environment variable, each failure remedy, truncated downloads, and run `shellcheck` when it is installed. `test/start-ps1.test.js` runs `irm https://zerotrustdata.io/start.ps1 | iex` in a real `pwsh` session with `Invoke-RestMethod`/`Invoke-WebRequest` replaced by a stub release host, covering the same cases; it is skipped when `pwsh` is not on `PATH` (or named by `ZTD_TEST_PWSH`).
 
 ## Production deployment
 
-`wrangler.jsonc` declares both hostnames as Cloudflare Worker Custom Domains. On the first authenticated deployment,
-Cloudflare creates the required DNS records and manages their TLS certificates. Porkbun remains the registrar; its
-nameserver delegation must match the two nameservers assigned to the `zerotrustdata.io` zone in Cloudflare.
-The Worker also keeps its `workers.dev` hostname enabled as a deployment preview while DNS changes propagate.
+`wrangler.jsonc` declares both hostnames as Cloudflare Worker Custom Domains. On the first authenticated deployment, Cloudflare creates the required DNS records and manages their TLS certificates. Porkbun remains the registrar; its nameserver delegation must match the two nameservers assigned to the `zerotrustdata.io` zone in Cloudflare. The Worker also keeps its `workers.dev` hostname enabled as a deployment preview while DNS changes propagate.
 
-The GitHub Actions workflow validates website changes on pull requests and deploys changes from `main`. Both this
-workflow and the binary release workflow read one pair of repository-level secrets; do not add copies to the
-`production` or `release` environments, because an environment secret shadows the repository one and drifts from it:
+The GitHub Actions workflow validates website changes on pull requests and deploys changes from `main`. Both this workflow and the binary release workflow read one pair of repository-level secrets; do not add copies to the `production` or `release` environments, because an environment secret shadows the repository one and drifts from it:
 
-- `CLOUDFLARE_ACCOUNT_API_TOKEN` — a scoped token that can deploy Workers, manage Worker routes/custom domains,
-  read the zone, and read/write objects in the `ztd-releases` R2 bucket.
+- `CLOUDFLARE_ACCOUNT_API_TOKEN` — a scoped token that can deploy Workers, manage Worker routes/custom domains, read the zone, and read/write objects in the `ztd-releases` R2 bucket.
 - `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account ID that owns the zone and Worker.
 
-The binary release workflow publishes its binaries, signatures, and per-file checksums to the same R2 bucket before
-it makes a GitHub release public. Each release is written under an immutable `v<version>/` prefix, and the bucket-root
-`latest.json` (`{"version": "X.Y.Z"}`) is promoted last. `/v/<version>/<file>` serves one pinned version, `/latest.json`
-serves the pointer, and unversioned routes such as `/ztd-linux-amd64` resolve through the pointer per request. The
-install scripts read `latest.json` once and fetch the binary and its checksum from that single version (or from
-`ZTD_VERSION` when it is set). The workflow writes through this package's wrangler (`scripts/release-r2.sh`), so
-its `release` environment needs `CLOUDFLARE_ACCOUNT_API_TOKEN` (with R2 object read/write on `ztd-releases`) and
-`CLOUDFLARE_ACCOUNT_ID`.
+The binary release workflow publishes its binaries, signatures, and per-file checksums to the same R2 bucket before it makes a GitHub release public. Each release is written under an immutable `v<version>/` prefix, and the bucket-root `latest.json` (`{"version": "X.Y.Z"}`) is promoted last. `/v/<version>/<file>` serves one pinned version, `/latest.json` serves the pointer, and unversioned routes such as `/ztd-linux-amd64` resolve through the pointer per request. The install scripts read `latest.json` once and fetch the binary and its checksum from that single version (or from `ZTD_VERSION` when it is set). The release workflow's `release` environment job reads the same two repository-level secrets, and `scripts/release-r2.sh` (repository root) writes through this package's wrangler.
 
 For an initial deployment from a trusted workstation:
 
@@ -117,5 +81,4 @@ npx wrangler login
 npm run deploy
 ```
 
-Do not redirect `g8e.ai` until `https://zerotrustdata.io`, its install scripts, and release endpoints have been
-validated in production.
+Do not redirect `g8e.ai` until `https://zerotrustdata.io`, its install scripts, and release endpoints have been validated in production.

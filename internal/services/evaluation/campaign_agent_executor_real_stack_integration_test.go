@@ -527,7 +527,7 @@ func TestCampaignAgentExecutorIntegration_TamperedReceiptImportsAsInvalidEvidenc
 	req := executorImportRequest(t, env, res.GetAssignmentId(), trace)
 	// This test is about receipt tampering, not the schema pin, so the import
 	// runs without a version pin.
-	result, err := evaluation.ImportAssignmentResultFromAgentTrace(req, trace, ref, env.clock(), func(prefix string) string { return prefix }, "")
+	result, err := evaluation.ImportAssignmentResultFromAgentTrace(req, trace, ref, env.clock(), func(prefix string) string { return prefix })
 
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, result.GetLifecycleStatus())
