@@ -276,6 +276,8 @@ This catalog provides the authoritative inventory of all first-party documentati
 
 #### Release notes and evidence projections (`docs/release_notes/`)
 
+- [v1.2.0 Release Notes](../release_notes/v1.2.x/v1.2.0.md): Release preparation draft; final qualification and signed compliance evidence pending.
+
 - [Release Notes Directory](../release_notes/): Immutable per-release notes organized by minor version directory (`vX.Y.x/`), alongside scoped release compliance evidence projections (`*-compliance-evidence.md` and `.csv`).
 - [v1.0.0 Release Notes](../release_notes/v1.0.x/v1.0.0.md): Canonical v1.0.0 release notes, scope, architectural invariants, and verified release evidence.
 - [v1.0.1 Release Notes](../release_notes/v1.0.x/v1.0.1.md): v1.0.1 release scope and changes.

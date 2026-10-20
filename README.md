@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.1.3-green.svg)](docs/release_notes/v1.1.x/v1.1.3.md)
+[![Version](https://img.shields.io/badge/version-v1.2.0-green.svg)](docs/release_notes/v1.2.x/v1.2.0.md)
 
 **A model can ask, but it cannot directly act.**
 
@@ -99,7 +99,7 @@ Universal integrity checks (L1, L4, and L5) are mandatory in every posture. Fail
 Most cloud-managed agent tools ship logs back to a vendor bucket. If the vendor goes down or credentials leak, your audit trail goes with it.
 
 ztd uses a **Local-First Audit Architecture**:
-- **Authoritative local store:** Each Operator maintains its own encrypted SQLite database (`audit.db`) and a git-backed file history ledger under its runtime directory.
+- **Authoritative local store:** Each Operator maintains its own encrypted SQLite audit records in `data/ztd.db` and a git-backed file history ledger under its runtime directory.
 - **Projections, not truth:** The Gateway mirrors receipts for the UI and CLI, but the local host remains the single authoritative root of truth for what ran.
 - **Incremental Merkle commitment:** State roots are computed incrementally across 65,536 buckets in a 16-ary tree. Proofs don't degrade into full-table scans as your audit history grows.
 - **Local secret rehydration:** Sensitive credentials and tokens never travel across the wire in plaintext. They are scrubbed to reversible placeholders (`{{UEI_N}}`) and rehydrated by the L5 Actuator inside the target host's memory immediately before execution.
@@ -231,8 +231,8 @@ Always run test suites through `./ztd test <suite>` or the root `Makefile` (they
 ```bash
 ./ztd test unit          # Fast, in-memory, parallel-safe unit tests
 ./ztd test integration   # Real SQLite/PKI/mTLS integration tests (-race enabled)
-./ztd test lint          # golangci-lint, vulnerability audit, and doctrine verification
-./ztd test chaos         # Fault injection and network disruption tests
+./ztd test lint          # Go lint; make lint adds vulnerability and doctrine checks
+./ztd test chaos         # In-process synthetic governance fault injection
 
 make console-test        # Vitest suite for the browser console
 make proto-generate      # Regenerate Go and TypeScript protobuf bindings

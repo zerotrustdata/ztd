@@ -18,18 +18,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
-	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -355,17 +351,6 @@ func ExecuteDeployHostStart(ctx context.Context, workingDir, binary string, args
 	}
 	workingDir = filepath.Clean(absWorkingDir)
 
-	if _, err := ExecuteDeployHostStop(ctx, "", workingDir); err != nil {
-		return 0, fmt.Errorf("stop previous worker in %s: %w", workingDir, err)
-	}
-
-	logPath := filepath.Join(workingDir, constants.DeployStartLogFilename)
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, constants.PermFilePrivate)
-	if err != nil {
-		return 0, fmt.Errorf("open start log %s: %w", logPath, err)
-	}
-	defer logFile.Close()
-
 	binName := "ztd"
 	if runtime.GOOS == "windows" {
 		binName = "ztd.exe"
@@ -376,9 +361,23 @@ func ExecuteDeployHostStart(ctx context.Context, workingDir, binary string, args
 	} else if !filepath.IsAbs(binPath) {
 		binPath = filepath.Join(workingDir, binPath)
 	}
+	if !isZtdExecutable(filepath.Base(binPath)) {
+		return 0, fmt.Errorf("operator deploy-host start: %w: worker executable must be named ztd", constants.ErrOperatorDeployFailed)
+	}
 	if _, err := os.Stat(binPath); err != nil {
 		return 0, fmt.Errorf("worker binary %s not found: %w", binPath, err)
 	}
+
+	if _, err := ExecuteDeployHostStop(ctx, "", workingDir); err != nil {
+		return 0, fmt.Errorf("stop previous worker in %s: %w", workingDir, err)
+	}
+
+	logPath := filepath.Join(workingDir, constants.DeployStartLogFilename)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, constants.PermFilePrivate)
+	if err != nil {
+		return 0, fmt.Errorf("open start log %s: %w", logPath, err)
+	}
+	defer logFile.Close()
 
 	var cmdArgs []string
 	if len(args) >= 2 && (args[0] == "operator" || args[0] == "operators") && args[1] == "start" {
@@ -481,149 +480,97 @@ func ExecuteDeployHostStop(ctx context.Context, destDir, workingDir string) ([]i
 		return false
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var stoppedPIDs []int
 	var mu sync.Mutex
 
-	// 1. Try discovery (on Linux via pidfd).
+	// PID files are metadata only. Platform discovery returns process handles
+	// bound to verified local Operator identities and is the sole stop authority.
 	locals, err := defaultLocalOperatorDiscoverer()
-	if err == nil {
-		var matched []localOperatorProcess
-		for _, p := range locals {
-			if matchesDir(p.dir) {
-				matched = append(matched, p)
-			} else if p.close != nil {
-				p.close()
-			}
-		}
-
-		if len(matched) > 0 {
-			var wg sync.WaitGroup
-			sem := make(chan struct{}, 64)
-			for _, p := range matched {
-				wg.Add(1)
-				go func(proc localOperatorProcess) {
-					defer wg.Done()
-					sem <- struct{}{}
-					defer func() { <-sem }()
-
-					_ = proc.signal(false)
-					exited, _ := proc.wait(2 * time.Second)
-					if !exited {
-						_ = proc.signal(true)
-						_, _ = proc.wait(2 * time.Second)
-					}
-					if proc.close != nil {
-						proc.close()
-					}
-					_ = os.Remove(filepath.Join(proc.dir, constants.OperatorPIDFilename))
-
-					mu.Lock()
-					stoppedPIDs = append(stoppedPIDs, proc.pid)
-					mu.Unlock()
-				}(p)
-			}
-			wg.Wait()
+	if err != nil {
+		return nil, fmt.Errorf("operator deploy-host stop: discover local workers: %w", err)
+	}
+	var matched []localOperatorProcess
+	for _, p := range locals {
+		if matchesDir(p.dir) {
+			matched = append(matched, p)
+		} else if p.close != nil {
+			p.close()
 		}
 	}
 
-	// 2. Also check recorded PID files under destDir and/or workingDir (for non-Linux or script/fallback workers).
-	fallbackPIDs := stopWorkersFromPIDFiles(cleanDest, cleanWork, matchesDir)
-	for _, pid := range fallbackPIDs {
-		if !slices.Contains(stoppedPIDs, pid) {
-			stoppedPIDs = append(stoppedPIDs, pid)
-		}
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 64)
+	errCh := make(chan error, len(matched))
+	for _, p := range matched {
+		wg.Add(1)
+		go func(proc localOperatorProcess) {
+			defer wg.Done()
+			defer func() {
+				if proc.close != nil {
+					proc.close()
+				}
+			}()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				errCh <- ctx.Err()
+				return
+			}
+			if err := ctx.Err(); err != nil {
+				errCh <- err
+				return
+			}
+			if err := proc.signal(false); err != nil {
+				errCh <- fmt.Errorf("send TERM to Operator PID %d: %w", proc.pid, err)
+				return
+			}
+			exited, err := proc.wait(2 * time.Second)
+			if err != nil {
+				errCh <- fmt.Errorf("wait for Operator PID %d after TERM: %w", proc.pid, err)
+				return
+			}
+			if !exited {
+				if err := ctx.Err(); err != nil {
+					errCh <- err
+					return
+				}
+				if err := proc.signal(true); err != nil {
+					errCh <- fmt.Errorf("send KILL to Operator PID %d: %w", proc.pid, err)
+					return
+				}
+				exited, err = proc.wait(2 * time.Second)
+				if err != nil {
+					errCh <- fmt.Errorf("wait for Operator PID %d after KILL: %w", proc.pid, err)
+					return
+				}
+				if !exited {
+					errCh <- fmt.Errorf("%w: Operator PID %d did not exit after KILL", constants.ErrProcessStopFailed, proc.pid)
+					return
+				}
+			}
+			if err := os.Remove(filepath.Join(proc.dir, constants.OperatorPIDFilename)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				errCh <- fmt.Errorf("remove Operator PID metadata for PID %d: %w", proc.pid, err)
+				return
+			}
+			mu.Lock()
+			stoppedPIDs = append(stoppedPIDs, proc.pid)
+			mu.Unlock()
+		}(p)
+	}
+	wg.Wait()
+	close(errCh)
+	var stopErr error
+	for err := range errCh {
+		stopErr = errors.Join(stopErr, err)
+	}
+	if stopErr != nil {
+		return nil, stopErr
 	}
 
 	sort.Ints(stoppedPIDs)
 	return stoppedPIDs, nil
-}
-
-func stopWorkersFromPIDFiles(destDir, workingDir string, matchesDir func(string) bool) []int {
-	var pidFiles []string
-	if workingDir != "" {
-		p := filepath.Join(workingDir, constants.OperatorPIDFilename)
-		if _, err := os.Stat(p); err == nil {
-			pidFiles = append(pidFiles, p)
-		}
-	}
-	if destDir != "" {
-		_ = filepath.WalkDir(destDir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if !d.IsDir() && d.Name() == constants.OperatorPIDFilename {
-				dir := filepath.Dir(path)
-				if matchesDir(dir) {
-					pidFiles = append(pidFiles, path)
-				}
-			}
-			return nil
-		})
-	}
-
-	var stopped []int
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 64)
-
-	for _, pf := range pidFiles {
-		data, err := os.ReadFile(pf)
-		if err != nil {
-			continue
-		}
-		pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-		if err != nil || pid <= 1 || pid == os.Getpid() {
-			_ = os.Remove(pf)
-			continue
-		}
-
-		proc, err := os.FindProcess(pid)
-		if err != nil {
-			_ = os.Remove(pf)
-			continue
-		}
-
-		wg.Add(1)
-		go func(p *os.Process, pid int, file string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			defer func() { _ = p.Release() }()
-
-			if runtime.GOOS == "windows" {
-				_ = p.Kill()
-				_ = os.Remove(file)
-				mu.Lock()
-				stopped = append(stopped, pid)
-				mu.Unlock()
-				return
-			}
-
-			if err := p.Signal(syscall.Signal(0)); err != nil {
-				_ = os.Remove(file)
-				return
-			}
-
-			if err := p.Signal(syscall.SIGTERM); err != nil {
-				_ = os.Remove(file)
-				return
-			}
-			exitCtx, cancelExit := context.WithTimeout(context.Background(), 2*time.Second)
-			exited := platform.WaitForProcessExit(exitCtx, pid) == nil
-			cancelExit()
-			if !exited {
-				_ = p.Kill()
-				killCtx, cancelKill := context.WithTimeout(context.Background(), 2*time.Second)
-				_ = platform.WaitForProcessExit(killCtx, pid)
-				cancelKill()
-			}
-			_ = os.Remove(file)
-
-			mu.Lock()
-			stopped = append(stopped, pid)
-			mu.Unlock()
-		}(proc, pid, pf)
-	}
-	wg.Wait()
-	return stopped
 }

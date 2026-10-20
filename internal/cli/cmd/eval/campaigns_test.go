@@ -14,8 +14,53 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
+
+func TestLongitudinalConditionFreezesPersistentInvestigation(t *testing.T) {
+	mode, holdContext, err := applyCampaignCondition("longitudinal", "campaign-a", "fresh", "operator-a", false)
+	require.NoError(t, err)
+	assert.False(t, holdContext)
+	investigation, err := parseCampaignInvestigation(mode, "operator-a")
+	require.NoError(t, err)
+
+	catalog, _, err := evaluation.LoadScenarioCatalog()
+	require.NoError(t, err)
+	inventory, err := evaluation.MaterializeModelRegistry("campaign-a", []*evalv1.ModelVariant{{
+		VariantId: "model-a", ServedModelTag: "model:a", ModelDigest: repeatTestHex('a'), ProviderClass: "ollama",
+	}})
+	require.NoError(t, err)
+	spec, err := evaluation.MaterializeCampaignSpecWithInvestigation("campaign-a", catalog, inventory, 3, holdContext, evaluation.PlatformIdentity{Release: "test"}, investigation)
+	require.NoError(t, err)
+	assert.Equal(t, "longitudinal", evaluation.CampaignCondition(spec))
+	assert.Equal(t, "campaign-a-inv", spec.GetInvestigation().GetInvestigationId())
+	assert.Equal(t, "operator-a", spec.GetInvestigation().GetDataOperatorId())
+}
+
+func TestLongitudinalConditionRequiresDataOperator(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		condition         string
+		investigationMode string
+		dataOperatorID    string
+	}{
+		{name: "longitudinal", condition: "longitudinal", investigationMode: "fresh"},
+		{name: "persistent alias", condition: "persistent", investigationMode: "fresh"},
+		{name: "whitespace data operator", condition: "longitudinal", investigationMode: "fresh", dataOperatorID: "  "},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := applyCampaignCondition(test.condition, "campaign-a", test.investigationMode, test.dataOperatorID, false)
+			require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+		})
+	}
+}
+
+func TestLongitudinalConditionTrimsInvestigationMode(t *testing.T) {
+	mode, _, err := applyCampaignCondition("longitudinal", "campaign-a", " fresh ", "operator-a", false)
+	require.NoError(t, err)
+	assert.Equal(t, "persistent:campaign-a-inv", mode)
+}
 
 func TestParseCampaignInvestigation(t *testing.T) {
 	tests := []struct {

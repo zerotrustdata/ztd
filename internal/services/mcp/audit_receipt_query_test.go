@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/jsonschema"
 	"github.com/zerotrustdata/ztd/internal/models"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -106,9 +107,21 @@ func TestAuditReceiptListTool_Name_Description_Schema(t *testing.T) {
 	assert.Equal(t, "object", schema.Type)
 	assert.Contains(t, schema.Properties, "operator_session_id")
 	assert.Contains(t, schema.Properties, "investigation_id")
-	assert.Contains(t, schema.Required, "operator_session_id")
+	assert.NotContains(t, schema.Required, "operator_session_id", "the shared schema must allow Operator-local queries to span sessions")
+	assert.Contains(t, schema.Properties["operator_session_id"].Description, "required there")
+	assert.Contains(t, schema.Properties["investigation_id"].Description, "required for Operator-local queries")
 	assert.Contains(t, schema.Properties["investigation_id"].Description, "Optional")
 	assert.NotContains(t, schema.Required, "investigation_id")
+}
+
+func TestAuditReceiptListTool_InputSchemaAcceptsOperatorLocalSessionlessQuery(t *testing.T) {
+	schemaWire, err := json.Marshal((&AuditReceiptListTool{}).InputSchema())
+	require.NoError(t, err)
+	compiled, err := jsonschema.NewCompiler().Compile(schemaWire)
+	require.NoError(t, err)
+
+	localQuery := []byte(`{"investigation_id":"investigation-1","exclude_audit_reads":true}`)
+	assert.Empty(t, jsonschema.NewValidator().Validate(compiled, localQuery), "the declared schema must admit the Operator-local query shape")
 }
 
 func TestAuditReceiptListTool_Execute_Success(t *testing.T) {

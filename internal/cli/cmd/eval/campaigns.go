@@ -590,7 +590,9 @@ editing or deleting it later never changes the campaign.
 default) to give each assignment its own investigation, or
 "persistent:<investigation-id>" to reuse one investigation across runs. A
 persistent investigation requires --data-operator to name the stable Operator
-identity whose authoritative ledger owns that investigation.
+identity whose authoritative ledger owns that investigation. The longitudinal
+condition selects a persistent investigation and therefore also requires
+--data-operator.
 
 With --reps greater than 1, repetitions run sequentially. Pass --hold-context
 to carry the previous repetition's conversation into the prompt.
@@ -634,21 +636,9 @@ Examples:
 				return fmt.Errorf("evaluation: campaigns create: --formations requires at least one catalog ID: %w", constants.ErrEvaluationSelectionEmpty)
 			}
 			condition = strings.ToLower(strings.TrimSpace(condition))
-			switch condition {
-			case "":
-				// Keep investigationMode and holdContext from flags
-			case "longitudinal", "persistent":
-				if investigationMode == "fresh" && dataOperatorID != "" {
-					investigationMode = "persistent:" + campaignID + "-inv"
-				}
-				holdContext = false
-			case "control", "fresh":
-				investigationMode = "fresh"
-				holdContext = false
-			case "held-context", "held_context":
-				holdContext = true
-			default:
-				return fmt.Errorf("evaluation: campaigns create: unknown --condition %q (expected longitudinal, control, or held-context): %w", condition, constants.ErrEvaluationFlagsInvalid)
+			investigationMode, holdContext, err = applyCampaignCondition(condition, campaignID, investigationMode, dataOperatorID, holdContext)
+			if err != nil {
+				return err
 			}
 			investigation, err := parseCampaignInvestigation(investigationMode, dataOperatorID)
 			if err != nil {
@@ -728,6 +718,30 @@ Examples:
 	cmd.Flags().StringSliceVar(&formationIDs, "formations", nil, "Create a system-lane campaign from catalog formation IDs (comma-separated or repeat the flag)")
 	selector.bindFlags(cmd)
 	return cmd
+}
+
+func applyCampaignCondition(condition, campaignID, investigationMode, dataOperatorID string, holdContext bool) (string, bool, error) {
+	investigationMode = strings.TrimSpace(investigationMode)
+	switch condition {
+	case "":
+		// Keep investigationMode and holdContext from flags.
+	case "longitudinal", "persistent":
+		if investigationMode == "fresh" {
+			if strings.TrimSpace(dataOperatorID) == "" {
+				return "", false, fmt.Errorf("evaluation: campaigns create: longitudinal condition requires --data-operator: %w", constants.ErrEvaluationFlagsInvalid)
+			}
+			investigationMode = "persistent:" + campaignID + "-inv"
+		}
+		holdContext = false
+	case "control", "fresh":
+		investigationMode = "fresh"
+		holdContext = false
+	case "held-context", "held_context":
+		holdContext = true
+	default:
+		return "", false, fmt.Errorf("evaluation: campaigns create: unknown --condition %q (expected longitudinal, control, or held-context): %w", condition, constants.ErrEvaluationFlagsInvalid)
+	}
+	return investigationMode, holdContext, nil
 }
 
 func normalizeFormationIDs(ids []string) []string {

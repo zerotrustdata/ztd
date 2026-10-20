@@ -43,6 +43,9 @@ make build
 ./ztd test chaos
 ./ztd test summary
 ./ztd test public-loop --candidate candidate.json --output evidence.json
+./ztd test eval-loop     # Cross-process eval qualification under ratify and notary
+./ztd test release-smoke # Isolated governed execution and local evidence smoke
+./ztd test scale         # Real Operator fleet scale qualification
 
 # Narrow integration tests by package/name
 ./ztd test integration --pkg ./internal/cli/cmd/gw --run TestGatewayConnect

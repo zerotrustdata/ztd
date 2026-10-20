@@ -3,8 +3,8 @@ doc_id: protocol
 title: Protocol Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.1.1
-last_updated: 2026-10-15
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - protocol/
   - internal/constants/
@@ -147,7 +147,7 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - `GovernanceRejection` (`error`, `receipt`) is the client body for an L4 rejection on every ingress. Ingresses render it with `protojson` proto names, and clients verify `receipt` with `VerifyActionReceiptSignature`.
    - `IngressRefusalCode` and `IngressRefusal` (`code`, `error`) are the pre-envelope refusal body on the direct and dispatch ingresses, and JSON-RPC `error.data` on MCP and A2A. A refusal carries no receipt.
    - `GovernedDispatchResult` (`transaction_id`, `event_type`, `action_type`, `result_payload`, `inference_result`, `receipt`) is the HTTP 200 body of governed dispatch.
-   - `InferenceDispatchFailure` (`error`, `code`, `receipt`) is the client body for a non-2xx failure on `POST /api/v1/inference/dispatch`. When dispatch reaches the executing Operator and the provider subsequently fails or governance rejects the execution, `receipt` carries the executing Operator's verified signed `FAILED` receipt (a governance rejection, or a failed execution whose commitment the Operator's ledger holds).
+   - `InferenceDispatchFailure` (`error`, `code`, `receipt`, `observation_receipts`) is the client body for a non-2xx failure on `POST /api/v1/inference/dispatch`. When dispatch reaches the executing Operator and the provider subsequently fails or governance rejects the execution, `receipt` carries the executing Operator's verified signed `FAILED` receipt (a governance rejection, or a failed execution whose commitment the Operator's ledger holds). `observation_receipts` carries the verified signed observer receipts for the attempt in dispatch order.
    - `VerifyActionReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
    - `VerifyReceiptPersistenceAttestation` canonicalizes and verifies persistence attestations.
 2. **Evaluation Protojson Canonicalization**:

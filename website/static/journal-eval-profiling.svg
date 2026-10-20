@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 480" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Ugly evals, pprof, and the bugs in L2–L5</title>
+  <desc id="desc">A loopback pprof profiling trace and flame graph revealing performance bottlenecks and bugs across governance layers L2 through L5 under evaluation stress.</desc>
+  <defs>
+    <radialGradient id="glow">
+      <stop stop-color="#72f6de" stop-opacity=".12"/>
+      <stop offset="1" stop-color="#72f6de" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r=".7" fill="#608d89" opacity=".28"/>
+    </pattern>
+    <linearGradient id="panel-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#142627"/>
+      <stop offset="1" stop-color="#0e1a1d"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background and Grid -->
+  <path fill="#0b171a" d="M0 0h560v480H0z"/>
+  <path fill="url(#grid)" d="M0 0h560v480H0z"/>
+  <circle cx="280" cy="220" r="230" fill="url(#glow)"/>
+
+  <!-- Corner framing accents -->
+  <path d="M20 40V20h20M520 20h20v20M20 440v20h20M520 460h20v-20" stroke="#41645f"/>
+
+  <!-- Header metadata -->
+  <g font-family="monospace" font-size="9" letter-spacing="2" fill="#91b6b0">
+    <text x="35" y="49">04 / PROFILING &amp; EVALS</text>
+    <text x="525" y="49" text-anchor="end">EXPOSING THE CRACKS</text>
+  </g>
+
+  <!-- Profiler Terminal Window -->
+  <rect x="35" y="68" width="490" height="154" rx="8" fill="url(#panel-bg)" stroke="#345d54"/>
+  <path d="M35 94h490" stroke="#345d54" stroke-opacity=".6"/>
+  <circle cx="50" cy="81" r="3" fill="#d99b88"/>
+  <circle cx="60" cy="81" r="3" fill="#e5b19c"/>
+  <circle cx="70" cy="81" r="3" fill="#72f6de"/>
+  <text x="85" y="84" font-family="monospace" font-size="8" letter-spacing="1" fill="#789e96">127.0.0.1:6060 /debug/pprof/profile?seconds=30</text>
+  <text x="510" y="84" text-anchor="end" font-family="monospace" font-size="7.5" letter-spacing="1" fill="#72f6de">SAMPLING: ACTIVE</text>
+
+  <!-- Flame Graph / Profiling Bars -->
+  <!-- Level 1: Root Harness Dispatch -->
+  <rect x="50" y="104" width="460" height="19" rx="3" fill="#122d2b" stroke="#436c68"/>
+  <text x="60" y="117" font-family="monospace" font-size="8" fill="#a9e5d8">harness.RunEvaluationLoop / native_dispatch</text>
+  <text x="495" y="117" text-anchor="end" font-family="monospace" font-size="7.5" fill="#789e96">100%</text>
+
+  <!-- Level 2: Subsystem Stack Breakdown -->
+  <rect x="50" y="128" width="105" height="19" rx="3" fill="#1b3d36" stroke="#72f6de" stroke-opacity=".7"/>
+  <text x="58" y="141" font-family="monospace" font-size="7.5" fill="#72f6de">L1 Doctrine [OK]</text>
+
+  <rect x="160" y="128" width="110" height="19" rx="3" fill="#361f1d" stroke="#d99b88" stroke-dasharray="2 2"/>
+  <text x="168" y="141" font-family="monospace" font-size="7.5" fill="#fca5a5">L2 Consensus [BUG]</text>
+
+  <rect x="275" y="128" width="95" height="19" rx="3" fill="#361f1d" stroke="#d99b88" stroke-dasharray="2 2"/>
+  <text x="283" y="141" font-family="monospace" font-size="7.5" fill="#fca5a5">L3 Notary [BUG]</text>
+
+  <rect x="375" y="128" width="135" height="19" rx="3" fill="#361f1d" stroke="#d99b88" stroke-dasharray="2 2"/>
+  <text x="383" y="141" font-family="monospace" font-size="7.5" fill="#fca5a5">L4/L5 Actuator [RACE]</text>
+
+  <!-- Level 3: Call Details / Memory Churn -->
+  <rect x="50" y="152" width="220" height="19" rx="3" fill="#122626" stroke="#345d54"/>
+  <text x="60" y="165" font-family="monospace" font-size="7.5" fill="#91b6b0">pprof: mutex contention &amp; allocs</text>
+
+  <rect x="275" y="152" width="235" height="19" rx="3" fill="#2b1a18" stroke="#d99b88"/>
+  <text x="285" y="165" font-family="monospace" font-size="7.5" fill="#fca5a5">root locks + signed FAILED receipts</text>
+
+  <!-- CLI Command Output In Profiler -->
+  <rect x="50" y="178" width="460" height="34" rx="4" fill="#091316" stroke="#23423d"/>
+  <path d="m58 190 4 4-4 4m6 0h5" stroke="#72f6de" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="75" y="194" font-family="monospace" font-size="8" fill="#c8fff1">claude-code review: found posture race &amp; unpropagated handler errors</text>
+  <text x="75" y="206" font-family="monospace" font-size="7.5" fill="#789e96">fixes staged in v1.1.2 → v1.2.0: synchronous outcome, root verification</text>
+
+  <!-- Mid connector -->
+  <path d="M280 222v26m-5-6 5 6 5-6" stroke="#72f6de" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="180" y="254" width="200" height="24" rx="12" fill="#102421" stroke="#345d54"/>
+  <text x="280" y="270" text-anchor="middle" font-family="monospace" font-size="8.5" letter-spacing="1.5" fill="#a9e5d8">GOVERNANCE HARDENING</text>
+
+  <!-- Five Governance Layers -->
+  <path d="M78 335h404" stroke="#436c68" stroke-dasharray="3 5"/>
+
+  <!-- L1 Box -->
+  <g transform="translate(38, 295)">
+    <rect width="84" height="80" rx="6" fill="#102421" stroke="#72f6de" stroke-opacity=".8"/>
+    <text x="42" y="26" text-anchor="middle" font-family="monospace" font-size="14" font-weight="bold" fill="#72f6de">L1</text>
+    <text x="42" y="42" text-anchor="middle" font-family="monospace" font-size="7" letter-spacing=".6" fill="#91b6b0">DOCTRINE</text>
+    <rect x="16" y="52" width="52" height="18" rx="4" fill="#163832"/>
+    <text x="42" y="64" text-anchor="middle" font-family="monospace" font-size="7.5" font-weight="bold" fill="#72f6de">VERIFIED</text>
+  </g>
+
+  <!-- L2 Box -->
+  <g transform="translate(138, 295)">
+    <rect width="84" height="80" rx="6" fill="#241716" stroke="#d99b88" stroke-opacity=".8"/>
+    <text x="42" y="26" text-anchor="middle" font-family="monospace" font-size="14" font-weight="bold" fill="#e5b19c">L2</text>
+    <text x="42" y="42" text-anchor="middle" font-family="monospace" font-size="7" letter-spacing=".6" fill="#b69c8d">CONSENSUS</text>
+    <rect x="16" y="52" width="52" height="18" rx="4" fill="#3a1f1d"/>
+    <text x="42" y="64" text-anchor="middle" font-family="monospace" font-size="7.5" font-weight="bold" fill="#fca5a5">HARDENED</text>
+  </g>
+
+  <!-- L3 Box -->
+  <g transform="translate(238, 295)">
+    <rect width="84" height="80" rx="6" fill="#241716" stroke="#d99b88" stroke-opacity=".8"/>
+    <text x="42" y="26" text-anchor="middle" font-family="monospace" font-size="14" font-weight="bold" fill="#e5b19c">L3</text>
+    <text x="42" y="42" text-anchor="middle" font-family="monospace" font-size="7" letter-spacing=".6" fill="#b69c8d">NOTARY</text>
+    <rect x="16" y="52" width="52" height="18" rx="4" fill="#3a1f1d"/>
+    <text x="42" y="64" text-anchor="middle" font-family="monospace" font-size="7.5" font-weight="bold" fill="#fca5a5">HARDENED</text>
+  </g>
+
+  <!-- L4 Box -->
+  <g transform="translate(338, 295)">
+    <rect width="84" height="80" rx="6" fill="#241716" stroke="#d99b88" stroke-opacity=".8"/>
+    <text x="42" y="26" text-anchor="middle" font-family="monospace" font-size="14" font-weight="bold" fill="#e5b19c">L4</text>
+    <text x="42" y="42" text-anchor="middle" font-family="monospace" font-size="7" letter-spacing=".6" fill="#b69c8d">WARDEN</text>
+    <rect x="16" y="52" width="52" height="18" rx="4" fill="#3a1f1d"/>
+    <text x="42" y="64" text-anchor="middle" font-family="monospace" font-size="7.5" font-weight="bold" fill="#fca5a5">HARDENED</text>
+  </g>
+
+  <!-- L5 Box -->
+  <g transform="translate(438, 295)">
+    <rect width="84" height="80" rx="6" fill="#241716" stroke="#d99b88" stroke-opacity=".8"/>
+    <text x="42" y="26" text-anchor="middle" font-family="monospace" font-size="14" font-weight="bold" fill="#e5b19c">L5</text>
+    <text x="42" y="42" text-anchor="middle" font-family="monospace" font-size="7" letter-spacing=".6" fill="#b69c8d">ACTUATOR</text>
+    <rect x="16" y="52" width="52" height="18" rx="4" fill="#3a1f1d"/>
+    <text x="42" y="64" text-anchor="middle" font-family="monospace" font-size="7.5" font-weight="bold" fill="#fca5a5">HARDENED</text>
+  </g>
+
+  <!-- Bottom Summary / Thesis Banner -->
+  <rect x="70" y="398" width="420" height="34" rx="6" fill="#0f1f22" stroke="#2e524b"/>
+  <text x="280" y="413" text-anchor="middle" font-family="monospace" font-size="8" letter-spacing="1.2" fill="#c8e6df">CORE THESIS: VERIFIABLE LOCAL OPEN SOURCE AI</text>
+  <text x="280" y="425" text-anchor="middle" font-family="monospace" font-size="7" letter-spacing=".8" fill="#789e96">CAN SMALL CONSUMER MODELS BE SAFER &amp; MORE ACCURATE UNDER GOVERNANCE?</text>
+</svg>
+

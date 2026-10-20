@@ -1,5 +1,18 @@
 [
   {
+    "slug": "ugly-evals-pprof-and-the-bugs-in-l2-l5",
+    "title": "Ugly evals, pprof, and the bugs in L2–L5",
+    "date": "2026-10-20",
+    "description": "Anthropic gave me a $1,000 grant, and I burned it on Claude Code reviewing ztd. The evaluations started bolted-on and ugly, but they broke production code and exposed bugs across L2–L5.",
+    "author": "Danny",
+    "tags": ["Engineering", "Evaluations", "Profiling"],
+    "artwork": {
+      "src": "/journal-eval-profiling.svg",
+      "alt": "A pprof profiling trace and flame graph revealing performance bottlenecks and bugs across governance layers L2 through L5 under evaluation stress.",
+      "caption": "EVALS → PPROF → L2–L5 HARDENING"
+    }
+  },
+  {
     "slug": "the-day-my-evals-deleted-the-repo",
     "title": "The day my evals deleted the repo",
     "date": "2026-10-14",

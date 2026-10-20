@@ -53,6 +53,9 @@ Run the narrowest check that covers your changes, then the broader owning suite 
 | Change | Command |
 |---|---|
 | Go unit tests | `./ztd test unit` |
+| Cross-process evaluation qualification | `./ztd test eval-loop` |
+| Isolated governed release smoke | `./ztd test release-smoke` |
+| Operator fleet scale qualification | `./ztd test scale` |
 | Repository tools (`internal/tools/*`) | `./ztd test unit --pkg ./internal/tools/<tool>` |
 | Setup and CI helper scripts | `bash -n` and `shellcheck` on the changed script |
 

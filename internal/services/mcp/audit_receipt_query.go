@@ -84,11 +84,11 @@ func (t *AuditReceiptListTool) InputSchema() *InputSchema {
 		Properties: map[string]*PropertySchema{
 			"operator_session_id": {
 				Type:        "string",
-				Description: "Operator session ID to scope the receipt query (required).",
+				Description: "Operator session ID to scope Gateway-native queries (required there); omit for Operator-local queries to span reconnects.",
 			},
 			"investigation_id": {
 				Type:        "string",
-				Description: "Optional investigation ID to further scope receipts within the operator session.",
+				Description: "Optional for Gateway-native queries; required for Operator-local queries.",
 			},
 			"action_type": {
 				Type:        "string",
@@ -96,7 +96,7 @@ func (t *AuditReceiptListTool) InputSchema() *InputSchema {
 			},
 			"exclude_audit_reads": {
 				Type:        "boolean",
-				Description: "Exclude the audit_receipt_list and audit_receipt_get receipts themselves before pagination.",
+				Description: "Exclude audit receipt read receipts before pagination. Operator-local queries require true.",
 			},
 			"not_before": {
 				Type:        "string",
@@ -111,7 +111,7 @@ func (t *AuditReceiptListTool) InputSchema() *InputSchema {
 				Description: "Pagination offset (default 0).",
 			},
 		},
-		Required: []string{"operator_session_id"},
+		Required: []string{},
 	}
 }
 

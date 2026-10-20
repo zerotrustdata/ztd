@@ -765,8 +765,8 @@ LAUNCH AN AGENT (one command does everything):
 EXTERNAL MCP SERVERS:
   To govern external third-party MCP servers (stdio subprocess or HTTP), attach
   them directly to the gateway via downstream egress flags:
-    ztd serve gateway --mcp-downstream-cmd npx --mcp-downstream-args '-y,@modelcontextprotocol/server-filesystem,/path'
-    ztd serve gateway --mcp-downstream-url http://localhost:3000
+    ztd gw start --mcp-downstream-cmd npx --mcp-downstream-args '-y,@modelcontextprotocol/server-filesystem,/path'
+    ztd gw start --mcp-downstream-url http://localhost:3000
 
 ` + agentRunPostureHelp() + `
 

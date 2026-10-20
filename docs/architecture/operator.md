@@ -150,6 +150,8 @@ The platform supports two distinct Operator deployments:
 1. **Remote Governed Operator (`operator_type: remote`)**: An outbound daemon started via `ztd operator start`. It enrolls with the Gateway over WebSocket, runs with dedicated local state in `.ztd/`, maintains an in-memory mTLS identity, and executes tasks on target servers, virtual machines, or developer workstations.
 2. **Embedded Operator (`operator_type: embedded`)**: An in-process substrate running inside the Gateway daemon (`ztd gw start`). It always carries the `data` and `inference` capabilities (`WithEmbeddedBaseline()`), is the default Data and Inference Operator, shares the Gateway's local runtime tree, and executes tasks targeting the Gateway host itself from its disposable working directory `.ztd/operators/embedded-operator`, never the ztd project root. Every Operator heartbeat reports its configured execution directory (`WorkDir`) as `pwd`, not the host process cwd, so Data Operator binding sees where commands actually run.
 
+Local deployment stop operations discover workers by executable identity, startup arguments, owner, and working directory. Linux signals through a held pidfd and Windows signals through a held process handle. Darwin rechecks process identity before signalling by PID; a narrow check-to-signal PID reuse race remains pending native qualification. The deployed executable must be named `ztd` (`ztd.exe` on Windows) so discovery can identify it. The recorded `operator.pid` file is deployment metadata only and never authorizes a signal; if discovery fails, stop returns an error and leaves the recorded PID untouched.
+
 ### Capabilities Model and Enforcement Boundaries
 
 Each Operator process declares its functional roles through startup flags:

@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## v1.2.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.2.0 | 2026-10-20 | Governed evaluation execution, approval and identity handling, and sealed campaign evidence. Release qualification in progress. | [v1.2.0](docs/release_notes/v1.2.x/v1.2.0.md) |
+
 ## v1.1.x
 
 | Version | Date | Description | Notes |
