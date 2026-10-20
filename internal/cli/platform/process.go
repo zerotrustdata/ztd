@@ -634,13 +634,20 @@ func (pm *ProcessManager) StartOperator(opts *OperatorStartOptions) error {
 	return fmt.Errorf("%w: %s, check %s", constants.ErrProcessStartFailed, reason, logPath)
 }
 
-// checkSpectatorListenersFree fails before the child is spawned when a fixed
-// public spectator listener is already bound. Those ports sit outside the HTTP
-// fallback search, so a conflict otherwise surfaces only as a bind error inside
-// the child's log, and the holder is never named.
-func (pm *ProcessManager) checkSpectatorListenersFree(cfg serve.GatewayConfig) error {
+// spectatorListenerPort is one fixed loopback listener the Gateway child binds
+// when the public spectator is enabled.
+type spectatorListenerPort struct {
+	name string
+	port int
+}
+
+// spectatorListenerPorts resolves the ports of the public spectator listeners:
+// the mirror ingest, the mirror read, and the dedicated evaluation explorer
+// (default 5173). It returns none when the spectator is disabled. A malformed
+// listen address is rejected here, before any socket is probed.
+func spectatorListenerPorts(cfg serve.GatewayConfig) ([]spectatorListenerPort, error) {
 	if !cfg.PublicSpectatorEnabled {
-		return nil
+		return nil, nil
 	}
 	listeners := []struct {
 		addr        string
@@ -649,24 +656,41 @@ func (pm *ProcessManager) checkSpectatorListenersFree(cfg serve.GatewayConfig) e
 	}{
 		{cfg.PublicSpectatorPrivateAddr, constants.PublicSpectatorPrivatePort, "public spectator ingest"},
 		{cfg.PublicSpectatorPublicAddr, constants.PublicSpectatorPublicPort, "public spectator"},
+		{cfg.EvalExplorerAddr, constants.EvalExplorerDefaultPort, "evaluation explorer"},
 	}
+	ports := make([]spectatorListenerPort, 0, len(listeners))
 	for _, l := range listeners {
 		port := l.defaultPort
 		if l.addr != "" {
 			_, portStr, err := net.SplitHostPort(l.addr)
 			if err != nil {
-				return fmt.Errorf("%w: %s listen address %q: %w", constants.ErrPortUnavailable, l.name, l.addr, err)
+				return nil, fmt.Errorf("%w: %s listen address %q: %w", constants.ErrPortUnavailable, l.name, l.addr, err)
 			}
 			if port, err = strconv.Atoi(portStr); err != nil {
-				return fmt.Errorf("%w: %s listen address %q: %w", constants.ErrPortUnavailable, l.name, l.addr, err)
+				return nil, fmt.Errorf("%w: %s listen address %q: %w", constants.ErrPortUnavailable, l.name, l.addr, err)
 			}
 		}
-		if err := netutil.CheckTCPPortAvailable(port); err != nil {
-			if holder := pm.findProcessOnPort(port); holder > 0 {
+		ports = append(ports, spectatorListenerPort{name: l.name, port: port})
+	}
+	return ports, nil
+}
+
+// checkSpectatorListenersFree fails before the child is spawned when a fixed
+// public spectator listener is already bound. Those ports sit outside the HTTP
+// fallback search, so a conflict otherwise surfaces only as a bind error inside
+// the child's log, and the holder is never named.
+func (pm *ProcessManager) checkSpectatorListenersFree(cfg serve.GatewayConfig) error {
+	ports, err := spectatorListenerPorts(cfg)
+	if err != nil {
+		return err
+	}
+	for _, l := range ports {
+		if err := netutil.CheckTCPPortAvailable(l.port); err != nil {
+			if holder := pm.findProcessOnPort(l.port); holder > 0 {
 				return fmt.Errorf("%w: port %d (%s) is held by process %d; stop it or choose another listen address: %w",
-					constants.ErrPortUnavailable, port, l.name, holder, err)
+					constants.ErrPortUnavailable, l.port, l.name, holder, err)
 			}
-			return fmt.Errorf("port %d (%s): %w", port, l.name, err)
+			return fmt.Errorf("port %d (%s): %w", l.port, l.name, err)
 		}
 	}
 	return nil

@@ -114,7 +114,7 @@ $EDITOR .env
 make gw
 ```
 
-`.env` must stay owner-only (`chmod 600 .env`). On Linux and macOS, `./ztd` refuses to start unless `.env` is a regular file (not a symlink) owned by you or root with mode `0600` or `0400`. On every platform it refuses a line that is not `KEY=VALUE` and any key outside the secret and user_endpoint categories of `protocol/constants/env_vars.json`. A variable exported in your shell and an explicit flag both take precedence over `.env`. Every other setting is a flag: run `./ztd <command> --help`.
+`.env` must stay owner-only (`chmod 600 .env`). On Linux and macOS, `./ztd` refuses to run a command unless `.env` is a regular file (not a symlink) owned by you or root with mode `0600` or `0400`. On every platform it refuses a line that is not `KEY=VALUE` and any key outside the secret and user_endpoint categories of `protocol/constants/env_vars.json`. A variable exported in your shell and an explicit flag both take precedence over `.env`. Every other setting is a flag: run `./ztd <command> --help`.
 
 ### Step by step
 

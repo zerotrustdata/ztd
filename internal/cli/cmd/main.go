@@ -117,6 +117,11 @@ ztd tui`,
 			} else if shared.NeedsLaunchProfile(cmd) {
 				recordLocalGatewayPorts()
 			}
+			// Load the working-directory .env only after every pre-run gate has
+			// passed, so a refused command never has its environment populated.
+			if err := config.LoadEnvFile(constants.EnvFilename); err != nil {
+				return fmt.Errorf("root: load env file: %w", err)
+			}
 			return nil
 		},
 	}
@@ -160,11 +165,6 @@ func ExecuteWithVersionInfo(vi serve.VersionInfo) {
 	rootCmd.SetOut(os.Stdout)
 	rootCmd.SetErr(os.Stderr)
 
-	if err := config.LoadEnvFile(constants.EnvFilename); err != nil {
-		fmt.Fprintf(rootCmd.ErrOrStderr(), "Error: %v\n", err)
-		osExit(1)
-		return
-	}
 	if err := executeRootCmd(rootCmd); err != nil {
 		osExit(1)
 	}

@@ -558,7 +558,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <article class="feat rv">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg></div>
         <h3>Humans approve mutations</h3>
-        <p>Under human-approval postures, mutating actions suspend until someone approves with a WebAuthn passkey. Read-only actions don't need that step.</p>
+        <p>Under human-approval postures, mutating actions suspend until someone approves with a WebAuthn passkey or the enrolled CLI certificate (<code>ztd auth approve --cli</code>). Read-only actions don't need that step.</p>
       </article>
       <article class="feat rv">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.6 10.5 15.4 7.5M8.6 13.5l6.8 3"/></svg></div>
@@ -585,7 +585,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
     <div class="pipe">
       <div class="layer rv"><span class="lv">L1</span><h3>Doctrine</h3><p>Forbidden-pattern matching, MITRE ATT&amp;CK heuristics, and command safety analysis for things like reverse shells, privilege escalation, destructive disk operations, and credential theft.</p><span class="own">Owner<b>Gateway + Operator</b></span></div>
       <div class="layer rv"><span class="lv">L2</span><h3>Consensus</h3><p>K-of-N multi-signature Ed25519 authorization from enrolled member keys, each signing the transaction hash and its decision.</p><span class="own">Owner<b>Gateway + Operator</b></span></div>
-      <div class="layer rv"><span class="lv">L3</span><h3>Notary</h3><p>Human authorization for mutations: the transaction suspends until a person approves it with a WebAuthn passkey. An outbound Operator re-verifies the recorded approval and its Ed25519 signature over the transaction hash.</p><span class="own">Owner<b>Gateway + Operator</b></span></div>
+      <div class="layer rv"><span class="lv">L3</span><h3>Notary</h3><p>Human authorization for mutations: the transaction suspends until a person approves it with a WebAuthn passkey or, via <code>ztd auth approve --cli</code>, the enrolled CLI certificate. An outbound Operator re-verifies the recorded approval and its Ed25519 signature over the transaction hash.</p><span class="own">Owner<b>Gateway + Operator</b></span></div>
       <div class="layer rv"><span class="lv">L4</span><h3>Warden</h3><p>Pre-dispatch gate on the target host: durable nonce reservation, expiry, typed payload decode, local doctrine, hash recomputation, state Merkle root, and posture-required proofs.</p><span class="own">Owner<b>Executing Operator</b></span></div>
       <div class="layer rv"><span class="lv">L5</span><h3>Actuator</h3><p>The single execution boundary. Signs an EXECUTING receipt, appends a signed commitment, mints a short-lived capability bound to the transaction hash, runs the typed handler, dissolves the capability, and signs the final receipt.</p><span class="own">Owner<b>Executing Operator</b></span></div>
     </div>
@@ -661,7 +661,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div><dt>Topology</dt><dd>Outbound-only Operators<small>No inbound management ports into target environments.</small></dd></div>
       <div><dt>Signatures</dt><dd>Ed25519<small>Consensus votes and approval proofs over the transaction hash.</small></dd></div>
       <div><dt>At rest</dt><dd>AES-256-GCM vault<small>Three-tier keys: master key, HKDF-derived KEK, wrapped DEK.</small></dd></div>
-      <div><dt>Human auth</dt><dd>WebAuthn passkeys<small>For the console and for L3 approvals.</small></dd></div>
+      <div><dt>Human auth</dt><dd>WebAuthn passkeys, CLI certificates<small>Passkeys for the console; the enrolled CLI certificate for <code>ztd auth approve --cli</code>.</small></dd></div>
       <div><dt>Revocation</dt><dd>Immediate cut-off<small>Revoking an enrollment adds it to the CRL and drops live sockets.</small></dd></div>
     </dl>
   </div>
@@ -685,9 +685,10 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <h3>Ways in · all governed</h3>
       <div class="ing">
         <code>POST /mcp</code><span>Model Context Protocol over HTTP, or stdio via <code>ztd mcp stdio</code></span>
-        <code>POST /a2a</code><span>Agent-to-agent skill calls</span>
-        <code>/operators/commands</code><span>Governed HTTP dispatch for enrolled apps</span>
-        <code>/governance/envelopes</code><span>Pre-built envelopes; missing proofs are never synthesized</span>
+        <code>POST /api/v1/a2a/call</code><span>Agent-to-agent skill calls</span>
+        <code>POST /api/v1/operators/commands</code><span>Governed HTTP dispatch for enrolled apps</span>
+        <code>POST /api/v1/operators/intents</code><span>Plain-language intent; the Gateway Tribunal writes the command, then it runs as an ordinary governed EXECUTE_BASH</span>
+        <code>POST /api/v1/governance/envelopes</code><span>Pre-built envelopes; missing proofs are never synthesized</span>
         <code>ztd operator run</code><span>CLI dispatch to bound Operators</span>
       </div>
       <div class="clients" aria-label="MCP clients named in the docs">

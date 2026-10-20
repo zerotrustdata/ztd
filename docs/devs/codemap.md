@@ -159,7 +159,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 ### Process entry
 
-The executable starts in `cmd/ztd/main.go`. Command registration and process-level error handling reside in `internal/cli/cmd/main.go`. `ExecuteWithVersionInfo` loads the working-directory `.env` through `config.LoadEnvFile` before executing any command and exits on a load error (`INV-ENV-04`). `NewRootCmd` registers public command groups; confirm current inventory with `./ztd --help` rather than duplicating ordering here.
+The executable starts in `cmd/ztd/main.go`. Command registration and process-level error handling reside in `internal/cli/cmd/main.go`. The root `PersistentPreRunE` loads the working-directory `.env` through `config.LoadEnvFile` after its own gates pass and before any command runs; a load error fails that command (`INV-ENV-04`). `NewRootCmd` registers public command groups; confirm current inventory with `./ztd --help` rather than duplicating ordering here.
 
 | Path | Owns |
 | :--- | :--- |

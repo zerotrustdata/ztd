@@ -203,6 +203,8 @@ Gateway startup resolves occupied ports through `netutil.CheckTCPPortAvailable`.
 
 Background `ztd gw start` (the default) finds the HTTP port occupied, scans upward for an available HTTP port, up to `MaxPortAttempts` (100) candidates, skips the reserved auxiliary ports, and shifts the HTTPS port by the same offset. Startup fails if the shifted HTTPS port is also occupied (`findAvailablePort` in `internal/cli/platform/process.go`). It prints `[ztd] Port N is held by ...; the Gateway listens on HTTP X and HTTPS Y instead.` Background `gw start` and `gw restart` then print the Console URL and the Operator `--endpoint <host>:<http> --port <https>` command on the bound ports (`internal/cli/cmd/gw/gwstdout.go`). Foreground `--follow` instead calls `config.ResolveGatewayPorts` (`internal/config/config.go`), which tests the HTTP and HTTPS pair together over offsets 0 to 99, skips the reserved ports, and prints no shift notice.
 
+Before the background child is spawned, `checkSpectatorListenersFree` (`internal/cli/platform/process.go`) probes every fixed spectator listener when the public spectator is enabled: the mirror ingest, the mirror read, and the evaluation explorer (default `127.0.0.1:5173`, or `--eval-explorer-listen`). A bound listener fails the start and names its holder. The explorer port is outside the HTTP fallback search, so this pre-check is the only place a conflict on it is named before the child runs.
+
 ## Listener Isolation: Outbound-Only Operators
 
 Governed Operators enforce strict listener isolation:

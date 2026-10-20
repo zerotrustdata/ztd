@@ -72,7 +72,7 @@ This guide covers the unified evaluation stack on one host: how to start it, enr
 - Host ports available: **8080** (HTTP discovery) and **8443** (HTTPS/mTLS API and console). The public spectator and evaluation explorer listen on loopback **8081**, **8082**, and **5173** by default.
 - A browser with WebAuthn support for the owner passkey, or headless enrollment.
 
-`./ztd` loads `.env` from the working directory (the repo root; template: `.env.example`; the file must be owned by the user or root with mode `0600` or `0400`) at startup; it accepts only the secret and user_endpoint keys in `protocol/constants/env_vars.json`. Pass every other start flag through the `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
+`./ztd` loads `.env` from the working directory (the repo root; template: `.env.example`; the file must be owned by the user or root with mode `0600` or `0400`) before each command runs; it accepts only the secret and user_endpoint keys in `protocol/constants/env_vars.json`. Pass every other start flag through the `GW_ARGS` and `OPERATOR_ARGS` make variables, or directly to `./ztd`.
 
 Use `ZTD_ARGS` for global CLI flags shared by `make up`, `make gw`, `make operator`, `make status`, and `make down`. On Linux hosts that seal the master key with an ssh-agent key, run these targets from a shell that reaches the same agent: the same key seals the CLI identity that `make status` and `make down` unseal. See [Getting Started](getting_started.md).
 
