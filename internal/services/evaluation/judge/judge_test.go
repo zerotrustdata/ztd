@@ -9,6 +9,7 @@ package judge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -437,6 +438,16 @@ func TestDecodeJudgment_AcceptsOnlyTheDeclaredShape(t *testing.T) {
 			assert.Equal(t, tc.wantValue, value)
 		})
 	}
+}
+
+// TestJudgmentJSONSchema_IsCanonical guards the response schema against the
+// Inference Operator's canonical-JSON check, which refuses the whole dispatch.
+func TestJudgmentJSONSchema_IsCanonical(t *testing.T) {
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal([]byte(judgmentJSONSchema), &decoded))
+	canonical, err := json.Marshal(decoded)
+	require.NoError(t, err)
+	assert.Equal(t, string(canonical), judgmentJSONSchema)
 }
 
 func TestNew_RejectsEachMissingRequiredField(t *testing.T) {

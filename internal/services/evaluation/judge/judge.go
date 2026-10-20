@@ -96,8 +96,10 @@ const memoryRubric = "You grade the quality of an agent's memory write, against 
 	"(excellent). Judge quality only: do not decide pass or fail. " +
 	`Respond only with JSON: {"score": <integer 1-5>, "rationale": "<one short sentence>"}.`
 
-const judgmentJSONSchema = `{"additionalProperties":false,"properties":{"score":{"type":"integer","minimum":1,"maximum":5},` +
-	`"rationale":{"type":"string"}},"required":["score","rationale"],"type":"object"}`
+// judgmentJSONSchema is canonical JSON (sorted keys, no whitespace): the
+// Inference Operator refuses a non-canonical response schema.
+const judgmentJSONSchema = `{"additionalProperties":false,"properties":{"rationale":{"type":"string"},` +
+	`"score":{"maximum":5,"minimum":1,"type":"integer"}},"required":["score","rationale"],"type":"object"}`
 
 // New validates the judge configuration. Every field is required, so a judge that
 // cannot dispatch is never constructed.

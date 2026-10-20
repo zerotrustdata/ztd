@@ -1362,7 +1362,10 @@ handler rejects before dispatch (method, identity, body size). Receipt is
 the executing Operator&#39;s verified signed FAILED receipt when the dispatch
 reached it: a governance rejection, or a failed execution whose commitment
 the Operator&#39;s ledger holds. It is absent for every failure that ended
-before the Operator signed an outcome.
+before the Operator signed an outcome. Observation_receipts are the
+observers&#39; verified signed BEGIN and FINALIZE receipts the failed attempt
+produced, in dispatch order, so a trace bracket can claim their
+commitments as it does for InferenceDispatchResponse.
 
 
 | Field | Type | Label | Description |
@@ -1370,6 +1373,7 @@ before the Operator signed an outcome.
 | error | [string](#string) |  |  |
 | code | [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode) |  |  |
 | receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| observation_receipts | [ActionReceipt](#ztd-operator-v1-ActionReceipt) | repeated |  |
 
 
 

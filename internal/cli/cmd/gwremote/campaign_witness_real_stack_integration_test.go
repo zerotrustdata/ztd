@@ -296,25 +296,24 @@ func TestCampaignWitnessCaptureRealStack_WaitForProvenanceReconcilesOnConnect(t 
 	require.NoError(t, err)
 }
 
-// TestCampaignWitnessCaptureRealStack_WaitForProvenanceFailsWhenStreamEnds revokes
-// the owner's CLI sessions while a witness watch on a never-run attempt is open.
-// The Gateway rejects the reconnect, and the wait must end with the session error.
+// TestCampaignWitnessCaptureRealStack_WaitForProvenanceFailsWhenStreamEnds ends the
+// witness watch through the Gateway's session check. The owner's CLI sessions are
+// revoked before the wait, so the Gateway rejects the stream at connect and the wait
+// must end with the session error, not at its deadline.
+//
+// Revoking a session while its watch is already open is not used: the Gateway keeps
+// an established CLI stream open after logout, so that variant only ends at deadline.
 func TestCampaignWitnessCaptureRealStack_WaitForProvenanceFailsWhenStreamEnds(t *testing.T) {
 	e := newEvalRunStack(t, evalRunOptions{posture: constants.PostureDoctrine})
 	saveRunAssignmentNaming(t, e.store, "run-orphaned", "assignment-1", "attempt-orphaned")
+	// Build the capture while the session is still valid: the health gate would
+	// fail once the session is revoked.
 	capture := newEvalWitnessCapture(t, e)
+	require.NoError(t, logoutCLISession(t.Context(), e), "revoking the CLI session")
+
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-
-	// The watch has to be open before the session is revoked; a one-second head
-	// start is the only timing this test relies on.
-	revoked := make(chan error, 1)
-	go func() {
-		time.Sleep(time.Second)
-		revoked <- logoutCLISession(t.Context(), e)
-	}()
 	err := capture.WaitForRunModelProvenanceEvidence(ctx, "run-orphaned")
-	require.NoError(t, <-revoked, "revoking the CLI session")
 	require.ErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
 	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
 	assert.ErrorContains(t, err, "attempt-orphaned")

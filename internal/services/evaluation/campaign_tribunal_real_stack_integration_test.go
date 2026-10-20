@@ -1,0 +1,424 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+// External package: the Tribunal runs through the production Gateway, Tribunal
+// service, and Inference Operator. Only the model provider is scripted.
+package evaluation_test
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"github.com/zerotrustdata/ztd/test/fixtures"
+)
+
+const (
+	tribunalRealTool       = "run_commands_with_operator"
+	tribunalRealRequest    = "print the health file"
+	tribunalRealGuidelines = "read-only; no writes outside the workspace"
+	tribunalRealCommand    = "echo HEALTHY"
+	tribunalRealLowRisk    = `{"risk": "LOW", "rationale": "read-only file read", "feedback": ""}`
+	tribunalRealHighRisk   = `{"risk": "HIGH", "rationale": "deletes the workspace", "feedback": "read the file instead"}`
+	tribunalRealApprove    = `{"verdict": "APPROVE", "swap_to_cluster": "", "revised_command": "", "rationale": "correct"}`
+)
+
+// tribunalTurn is one scripted provider reply with plain text.
+func tribunalTurn(text string) []fixtures.OllamaReply {
+	return []fixtures.OllamaReply{{Content: text}}
+}
+
+// tribunalIntent is one primary turn that asks for a command by intent.
+func tribunalIntent(callID string) []fixtures.OllamaReply {
+	arguments := fmt.Sprintf(`{"request":%q,"guidelines":%q}`, tribunalRealRequest, tribunalRealGuidelines)
+	return []fixtures.OllamaReply{{ToolCalls: []fixtures.OllamaToolCall{{ID: callID, Name: tribunalRealTool, Arguments: json.RawMessage(arguments)}}}}
+}
+
+// tribunalPanel is one generation round: each member's answer in canonical
+// member order.
+func tribunalPanel(commands ...string) []fixtures.OllamaReply {
+	replies := make([]fixtures.OllamaReply, 0, len(commands))
+	for _, command := range commands {
+		replies = append(replies, fixtures.OllamaReply{Content: command})
+	}
+	return replies
+}
+
+func tribunalUnanimous(command string) []fixtures.OllamaReply {
+	return tribunalPanel(command, command, command, command, command)
+}
+
+// tribunalScenario scopes the scenario to the intent-only run_commands_with_operator.
+func tribunalScenario(scenario *evalv1.EvaluationScenarioDefinition) {
+	scenario.AllowedTools = []string{tribunalRealTool}
+	scenario.ForbiddenTools = nil
+	scenario.TribunalCommands = true
+	scenario.ExpectedTools = nil
+}
+
+// tribunalRun initializes a one-assignment campaign on the real stack whose
+// provider script is the concatenation of the given rounds, in order.
+func tribunalRun(t *testing.T, suffix string, rounds ...[]fixtures.OllamaReply) *realStackAgentRun {
+	t.Helper()
+	var replies []fixtures.OllamaReply
+	for _, round := range rounds {
+		replies = append(replies, round...)
+	}
+	return newRealStackAgentRun(t, realStackOptions{singleRole: true, suffix: suffix, replies: replies, scenario: tribunalScenario})
+}
+
+// tribunalWireModels lists the model each /api/chat body named, in arrival order.
+func tribunalWireModels(t *testing.T, env *realStackAgentRun) []string {
+	t.Helper()
+	var models []string
+	for _, raw := range env.stack.Provider.ChatRequests() {
+		var body struct {
+			Model string `json:"model"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &body))
+		models = append(models, body.Model)
+	}
+	return models
+}
+
+func TestCampaignTribunalIntegration_DeclaresIntentOnlyRunCommands(t *testing.T) {
+	env := tribunalRun(t, "declares", tribunalTurn("HEALTHY"))
+
+	res := env.executeNext(t)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+	bodies := executorChatBodies(t, env)
+	require.Len(t, bodies, 1)
+	require.Len(t, bodies[0].Tools, 1)
+	assert.Equal(t, tribunalRealTool, bodies[0].Tools[0].Function.Name)
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Required   []string                   `json:"required"`
+	}
+	require.NoError(t, json.Unmarshal(bodies[0].Tools[0].Function.Parameters, &schema))
+	assert.NotContains(t, schema.Properties, "command", "the agent states intent; the Tribunal writes the command")
+	assert.Contains(t, schema.Properties, "request")
+	assert.Contains(t, schema.Properties, "guidelines")
+	assert.Equal(t, []string{"request"}, schema.Required)
+}
+
+func TestCampaignTribunalIntegration_TribunalCommandsWithoutRunCommandsFailsClosed(t *testing.T) {
+	ctx := t.Context()
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, suffix: "tribunal-no-run", replies: tribunalTurn("unused"),
+		scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
+			scenario.AllowedTools = []string{"read_file"}
+			scenario.ForbiddenTools = nil
+			scenario.TribunalCommands = true
+			scenario.ExpectedTools = nil
+		},
+	})
+
+	_, _, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
+
+	require.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
+	assert.Zero(t, env.stack.Provider.ChatCount(), "no model call before the tool surface resolves")
+}
+
+func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDeliberation(t *testing.T) {
+	env := tribunalRun(t, "approved",
+		tribunalIntent("call-1"),
+		tribunalUnanimous(tribunalRealCommand),
+		tribunalTurn(tribunalRealLowRisk),
+		tribunalTurn(tribunalRealApprove),
+		tribunalTurn("HEALTHY"),
+	)
+
+	res := env.executeNext(t)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+	assert.Empty(t, res.GetInvalidEvidenceDetail())
+	bodies := executorChatBodies(t, env)
+	require.Len(t, bodies, 9)
+	for _, body := range bodies[1:8] {
+		assert.Empty(t, body.Tools, "a Tribunal call declares no tools")
+	}
+
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ToolCalls, 1)
+	tool := trace.ToolCalls[0]
+	assert.True(t, tool.Success, "tool error: %s", tool.Error)
+	assert.Equal(t, tribunalRealCommand, tool.Command)
+	require.NotNil(t, tool.Receipt, "the dispatched command keeps its signed receipt")
+	assert.Equal(t, tool.TransactionID, tool.Receipt.GetTransactionId())
+
+	// Each member call's attempt id is the intent's prefix numbered in
+	// deliberation order.
+	require.Len(t, trace.ModelCalls, 9)
+	assert.True(t, trace.ModelCalls[0].IsTurn())
+	assert.True(t, trace.ModelCalls[8].IsTurn())
+	wantPersonas := []string{"axiom", "concord", "variance", "pragma", "nemesis", tribunal.PersonaMarshal, tribunal.PersonaAuditor}
+	wantPurposes := []string{"tribunal_generate", "tribunal_generate", "tribunal_generate", "tribunal_generate", "tribunal_generate", "tribunal_marshal", "tribunal_audit"}
+	prefix := trace.ModelCalls[1].ProviderAttemptID
+	require.NotEmpty(t, prefix)
+	prefix = prefix[:len(prefix)-len("-1")]
+	for i, call := range trace.ModelCalls[1:8] {
+		assert.False(t, call.IsTurn())
+		assert.Equal(t, wantPurposes[i], call.Purpose)
+		assert.Equal(t, wantPersonas[i], call.Persona)
+		assert.Equal(t, tool.CallID, call.ToolCallID, "every Tribunal call hangs off its tool call")
+		assert.Equal(t, 1, call.LoopTurn)
+		assert.Empty(t, call.ToolsDeclared)
+		assert.Equal(t, fmt.Sprintf("%s-%d", prefix, i+1), call.ProviderAttemptID, "each member call is numbered in deliberation order")
+		require.NotNil(t, call.Receipt, "every Tribunal call keeps its signed receipt")
+		assert.True(t, call.Completed())
+	}
+	assert.Equal(t, tribunalRealCommand, trace.ModelCalls[1].Text)
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace), "Tribunal commitments are claimed in ledger order")
+	require.NoError(t, evaluation.ValidateAgentTraceDigest(trace))
+
+	require.Len(t, trace.Steps, 8)
+	wantRoles := []evalv1.AgentRole{
+		evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR, evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR,
+		evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR, evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR,
+		evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR, evalv1.AgentRole_AGENT_ROLE_CANDIDATE_VOTER,
+		evalv1.AgentRole_AGENT_ROLE_RISK_ANALYST, evalv1.AgentRole_AGENT_ROLE_REVIEWER,
+	}
+	for i, step := range trace.Steps {
+		assert.Equal(t, uint32(i+1), step.GetIndex())
+		assert.Equal(t, wantRoles[i], step.GetRole())
+		assert.Equal(t, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, step.GetResolvedTier())
+		assert.Equal(t, realStackModelTag, step.GetModelTag())
+	}
+	vote := trace.Steps[5].GetVote()
+	require.NotNil(t, vote)
+	assert.True(t, vote.GetConsensusReached())
+	assert.Equal(t, tribunalRealCommand, vote.GetSelectedCommand())
+	assert.Equal(t, evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, trace.Steps[7].GetReview().GetVerdict())
+
+	conversation, err := trace.Conversation()
+	require.NoError(t, err)
+	for _, message := range conversation {
+		assert.NotContains(t, message.Text, "Tribunal", "Tribunal calls are not conversation turns")
+	}
+
+	actions := res.GetGovernedActions()
+	require.Len(t, actions, 10, "the turn, its tool call's Tribunal inferences, the tool call, then the next turn")
+	assert.Equal(t, trace.ModelCalls[0].TransactionID, actions[0].GetTransactionId())
+	for i := 1; i <= 7; i++ {
+		assert.Equal(t, trace.ModelCalls[i].TransactionID, actions[i].GetTransactionId())
+		assert.Equal(t, string(constants.ActionTypeInference), actions[i].GetActionType())
+	}
+	assert.Equal(t, tool.TransactionID, actions[8].GetTransactionId())
+	assert.Equal(t, trace.ModelCalls[8].TransactionID, actions[9].GetTransactionId())
+
+	inferences := res.GetModelInferences()
+	require.Len(t, inferences, 9)
+	assert.Equal(t, "axiom", inferences[1].GetAgentPersona())
+	assert.Equal(t, "tribunal:generate", inferences[1].GetCallSite())
+	assert.Equal(t, "tribunal:marshal", inferences[6].GetCallSite())
+	assert.Equal(t, "tribunal:audit", inferences[7].GetCallSite())
+}
+
+func TestCampaignTribunalIntegration_MarshalBlockFailsCallAndSecondBlockIsConflict(t *testing.T) {
+	const destructive = "rm -rf ."
+	env := tribunalRun(t, "marshal-block",
+		tribunalIntent("call-1"),
+		tribunalUnanimous(destructive),
+		tribunalTurn(tribunalRealHighRisk),
+		tribunalIntent("call-2"),
+		tribunalUnanimous(destructive),
+		tribunalTurn(tribunalRealHighRisk),
+		tribunalTurn("I could not read the file safely."),
+	)
+
+	res := env.executeNext(t)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "a blocked command is a scored answer, not a harness failure")
+	assert.Empty(t, res.GetInvalidEvidenceDetail())
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ToolCalls, 2)
+	first, second := trace.ToolCalls[0], trace.ToolCalls[1]
+	assert.False(t, first.Success)
+	assert.Equal(t, evaluation.ExportedAgentToolErrorPipeline, first.ErrorType)
+	assert.Equal(t, "MARSHAL BLOCKED: deletes the workspace (feedback: read the file instead)", first.Error)
+	assert.False(t, second.Success)
+	assert.Equal(t, evaluation.ExportedAgentToolErrorPipeline, second.ErrorType)
+	assert.Equal(t, evaluation.ExportedTribunalMarshalConflict, second.Error)
+	for _, call := range []evaluation.AgentToolCall{first, second} {
+		assert.Empty(t, call.TransactionID, "a blocked command never dispatches")
+		assert.Nil(t, call.Receipt, "a blocked command never dispatches, so there is no receipt")
+	}
+	assert.Equal(t, evaluation.AgentTerminalClassificationPipelineOutcome, trace.TerminalClassification)
+	require.Len(t, trace.Steps, 14, "two deliberations of five candidates, a vote, and a risk step each")
+	risk := trace.Steps[6].GetRisk()
+	require.NotNil(t, risk)
+	assert.True(t, risk.GetBlocked())
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+	_, err := trace.Conversation()
+	require.NoError(t, err)
+}
+
+func TestCampaignTribunalIntegration_NoConsensusFailsCallWithoutDispatch(t *testing.T) {
+	env := tribunalRun(t, "no-consensus",
+		tribunalIntent("call-1"),
+		tribunalPanel("cat a", "cat b", "cat c", "cat d", "cat e"),
+		tribunalPanel("cat f", "cat g", "cat h", "cat i", "cat j"),
+		tribunalTurn("No command was agreed."),
+	)
+
+	res := env.executeNext(t)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ToolCalls, 1)
+	assert.Equal(t, evaluation.ExportedAgentToolErrorExecution, trace.ToolCalls[0].ErrorType)
+	assert.Equal(t, evaluation.ExportedTribunalNoConsensusError, trace.ToolCalls[0].Error)
+	assert.Empty(t, trace.ToolCalls[0].TransactionID, "no command was agreed, so nothing dispatches")
+	require.Len(t, trace.ModelCalls, 12, "two turns and two generation rounds")
+	require.Len(t, trace.Steps, 11, "two rounds of candidates and the deciding vote")
+	vote := trace.Steps[10].GetVote()
+	require.NotNil(t, vote)
+	assert.False(t, vote.GetConsensusReached())
+	assert.Equal(t, uint32(2), vote.GetRounds())
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+}
+
+func TestCampaignTribunalIntegration_AuditFailureFailsCallWithoutDispatch(t *testing.T) {
+	const unknownVerdict = `{"verdict": "MAYBE", "swap_to_cluster": "", "revised_command": "", "rationale": "unsure"}`
+	env := tribunalRun(t, "audit-failure",
+		tribunalIntent("call-1"),
+		tribunalUnanimous(tribunalRealCommand),
+		tribunalTurn(tribunalRealLowRisk),
+		tribunalTurn(unknownVerdict),
+		tribunalTurn(unknownVerdict),
+		tribunalTurn("I could not get a review of that command."),
+	)
+
+	res := env.executeNext(t)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "an audit that fails closed is a scored answer, not a harness failure")
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ToolCalls, 1)
+	tool := trace.ToolCalls[0]
+	assert.False(t, tool.Success)
+	assert.Equal(t, evaluation.ExportedAgentToolErrorExecution, tool.ErrorType)
+	assert.Equal(t, fmt.Sprintf(evaluation.ExportedTribunalAuditFailedError, `unknown verdict "MAYBE"`), tool.Error)
+	assert.Empty(t, tool.TransactionID, "an unreviewed command never dispatches")
+	require.Len(t, trace.ModelCalls, 10, "the turn, five candidates, the risk check, two Auditor answers, and the closing turn")
+	assert.Equal(t, "tribunal_audit", trace.ModelCalls[7].Purpose)
+	assert.Equal(t, "tribunal_audit", trace.ModelCalls[8].Purpose)
+	require.Len(t, trace.Steps, 8, "five candidates, the vote, the risk check, and the review")
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+}
+
+func TestCampaignTribunalIntegration_TribunalProviderFailureEndsLoopAndVerifies(t *testing.T) {
+	env := tribunalRun(t, "tribunal-provider-fail",
+		tribunalIntent("call-1"),
+		tribunalTurn(tribunalRealCommand),
+		[]fixtures.OllamaReply{{Failure: "provider unreachable"}},
+	)
+
+	res := env.executeNext(t)
+
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus(), "a provider failure is a scored outcome, not a harness failure")
+	assert.Empty(t, res.GetInvalidEvidenceDetail())
+	require.Len(t, env.stack.Provider.ChatRequests(), 3, "the deliberation stops at the failed call")
+	trace := executorLoadTrace(t, env, res)
+	assert.NotEmpty(t, trace.ProviderFailure)
+	assert.Equal(t, string(inference.AttemptFailureGenerateFailed), trace.ProviderFailureClass, "the member's typed failure code classifies the provider failure")
+	assert.Equal(t, evaluation.AgentTerminalClassificationHarnessFailure, trace.TerminalClassification)
+	require.Len(t, trace.ModelCalls, 3, "the failed Tribunal call is recorded because its runtime committed it")
+	failed := trace.ModelCalls[2]
+	assert.Equal(t, "tribunal_generate", failed.Purpose)
+	assert.False(t, failed.Completed())
+	require.NotNil(t, failed.Receipt)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.Receipt.GetStatus())
+	require.Len(t, trace.ToolCalls, 1)
+	assert.Equal(t, fmt.Sprintf(evaluation.ExportedTribunalInferenceFailedMsg, trace.ProviderFailure), trace.ToolCalls[0].Error)
+	assert.Empty(t, trace.Steps, "an interrupted deliberation records no steps")
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+	_, err := trace.Conversation()
+	require.NoError(t, err, "the interrupted turn ends the conversation")
+}
+
+// tribunalFormationVariants is the formation catalog's variant registry, with a
+// digest derived from each served tag.
+func tribunalFormationVariants() []*evalv1.ModelVariant {
+	return evaluation.FormationCatalogFixtureVariants(func(tag string) string {
+		sum := sha256.Sum256([]byte(tag))
+		return hex.EncodeToString(sum[:])
+	})
+}
+
+func tribunalVariantByID(t *testing.T, variants []*evalv1.ModelVariant, id string) *evalv1.ModelVariant {
+	t.Helper()
+	for _, variant := range variants {
+		if variant.GetVariantId() == id {
+			return variant
+		}
+	}
+	t.Fatalf("formation variant %q not found", id)
+	return nil
+}
+
+// The system lane runs the primary turn on the stack's primary model and the
+// Tribunal on the assistant tier. The member calls go to the assistant tag, and
+// the second member fails, so the deliberation stops with one answer recorded.
+func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRoles(t *testing.T) {
+	variants := tribunalFormationVariants()
+	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
+		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"qwen-powerhouse"},
+	})
+	require.NoError(t, err)
+	require.Len(t, set.Stacks, 1)
+	stack := set.Stacks[0]
+	primary := tribunalVariantByID(t, variants, stack.GetPrimarySlot().GetVariantId())
+	assistant := tribunalVariantByID(t, variants, stack.GetAssistantSlot().GetVariantId())
+
+	env := newRealStackAgentRun(t, realStackOptions{
+		suffix: "system-lane",
+		replies: append(append(tribunalIntent("call-1"), tribunalTurn("assistant tribunal answer")...),
+			fixtures.OllamaReply{Failure: "provider unreachable"}),
+		scenario: tribunalScenario,
+		request: func(req *evaluation.CampaignInitRequest) {
+			inventory, err := evaluation.MaterializeModelRegistry(realStackCampaignID, variants)
+			require.NoError(t, err)
+			req.Inventory = inventory
+			req.FormationStackSet = set
+			req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
+		},
+	})
+	for _, variant := range variants {
+		env.stack.Provider.ServeModel(variant.GetServedModelTag(), variant.GetModelDigest())
+	}
+
+	res := env.executeNext(t)
+
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus())
+	assert.Equal(t, []string{primary.GetServedModelTag(), assistant.GetServedModelTag(), assistant.GetServedModelTag()}, tribunalWireModels(t, env),
+		"the turn runs on the primary tag; every Tribunal member runs on the assistant tag")
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ModelCalls, 3)
+	assert.Equal(t, primary.GetVariantId(), trace.ModelCalls[0].ModelVariantID)
+	assert.Equal(t, primary.GetServedModelTag(), trace.ModelCalls[0].ServedModelTag)
+	assert.Equal(t, "MODEL_ROLE_PRIMARY", trace.ModelCalls[0].ModelRole)
+	assert.Equal(t, assistant.GetVariantId(), trace.ModelCalls[1].ModelVariantID)
+	assert.Equal(t, assistant.GetServedModelTag(), trace.ModelCalls[1].ServedModelTag)
+	assert.Equal(t, assistant.GetModelDigest(), trace.ModelCalls[1].ModelDigest)
+	assert.Equal(t, "MODEL_ROLE_ASSISTANT", trace.ModelCalls[1].ModelRole)
+	assert.Equal(t, "assistant tribunal answer", trace.ModelCalls[1].Text)
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+}

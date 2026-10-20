@@ -21,6 +21,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -658,6 +659,27 @@ func TestDispatchInference_ReturnsObservationReceiptsInDispatchOrder(t *testing.
 	require.NoError(t, err)
 	var got []string
 	for _, receipt := range result.Response().GetObservationReceipts() {
+		got = append(got, receipt.GetTransactionId())
+	}
+	assert.Equal(t, []string{"observe-begin", "provenance-begin", "observe-finalize", "provenance-finalize"}, got)
+}
+
+// A failed attempt keeps its observers' BEGIN and FINALIZE receipts on the
+// error, in dispatch order, alongside the Operator's signed FAILED receipt.
+func TestDispatchInference_FailedAttemptCarriesObservationReceipts(t *testing.T) {
+	req := baseRequest()
+	configureCampaignRequest(t, &req)
+	failedReceipt := &operatorv1.ActionReceipt{TransactionId: "tx-failed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+	dispatcher := &stubCommandDispatcher{err: governance.WithFailedReceipt(failedReceipt, constants.ErrInferenceReceiptFailed)}
+	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}, testLogger())
+	svc.SetProviderObservationNotifier(&stubObservationNotifier{})
+	svc.SetProvenanceObservationNotifier(&recordingProvenanceNotifier{})
+
+	_, err := svc.DispatchInference(t.Context(), req)
+	require.ErrorIs(t, err, constants.ErrInferenceReceiptFailed)
+	assert.Same(t, failedReceipt, governance.FailedReceipt(err))
+	var got []string
+	for _, receipt := range ObservationReceipts(err) {
 		got = append(got, receipt.GetTransactionId())
 	}
 	assert.Equal(t, []string{"observe-begin", "provenance-begin", "observe-finalize", "provenance-finalize"}, got)

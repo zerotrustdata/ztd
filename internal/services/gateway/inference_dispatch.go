@@ -296,14 +296,16 @@ func newDispatchInferenceRequest(req *operatorv1.InferenceDispatchRequest, appID
 }
 
 // inferenceDispatchFailure renders a dispatched inference failure as its HTTP
-// status and typed body: the public sentinel's code and text, and the
-// Operator's signed FAILED receipt when one was produced.
+// status and typed body: the public sentinel's code and text, the Operator's
+// signed FAILED receipt when one was produced, and the observers' signed
+// receipts for the attempt.
 func inferenceDispatchFailure(err error) (int, *operatorv1.InferenceDispatchFailure) {
 	status, publicErr := classifyInferenceDispatchError(err)
 	return status, &operatorv1.InferenceDispatchFailure{
-		Error:   publicErr.Error(),
-		Code:    dispatch.FailureCode(publicErr),
-		Receipt: governance.FailedReceipt(err),
+		Error:               publicErr.Error(),
+		Code:                dispatch.FailureCode(publicErr),
+		Receipt:             governance.FailedReceipt(err),
+		ObservationReceipts: dispatch.ObservationReceipts(err),
 	}
 }
 

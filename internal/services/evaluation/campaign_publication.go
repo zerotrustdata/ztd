@@ -568,9 +568,13 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUpWithVerification(ctx c
 		return 0, fmt.Errorf("evaluation: publish run catch-up with verification: report run mismatch: %w", constants.ErrEvidenceScopeMismatch)
 	}
 	if report != nil && report.GetStatus() != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSPECIFIED {
-		if err := c.validateRunVerificationApplicability(ctx, runID, report); err != nil {
-			return 0, err
+		// Same binding rule as the aggregate path: a stale partial report is not
+		// applied to an unsettled run and fails closed once the run settles.
+		bound, err := c.boundRunVerification(ctx, runID, report)
+		if err != nil {
+			return 0, fmt.Errorf("evaluation: publish run catch-up with verification: %w", err)
 		}
+		report = bound
 	}
 	published, err := c.PublishRunCatchUp(ctx, runID)
 	if err != nil {
@@ -603,9 +607,6 @@ func (c *CampaignPublicationCoordinator) loadBoundRunVerification(ctx context.Co
 	if report == nil || report.GetSchemaVersion() != campaignVerificationSchemaVersion {
 		return nil, nil
 	}
-	if !boundVerificationMetadataComplete(report) {
-		return nil, fmt.Errorf("evaluation: load bound run verification: persisted report is malformed: %w", constants.ErrEvidenceArtifactMalformed)
-	}
 	spec, err := c.store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: load bound run verification: load campaign spec: %w", err)
@@ -613,6 +614,48 @@ func (c *CampaignPublicationCoordinator) loadBoundRunVerification(ctx context.Co
 	catalog, err := c.store.LoadScenarioCatalog(ctx, run.GetCampaignBinding().GetCampaignId())
 	if err != nil {
 		return nil, err
+	}
+	bound, err := bindRunVerification(run, spec, catalog, assignments, results, report)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: load bound run verification: %w", err)
+	}
+	return bound, nil
+}
+
+// boundRunVerification resolves a caller-supplied run verification report against
+// the run's persisted evidence with the same rule as loadBoundRunVerification.
+func (c *CampaignPublicationCoordinator) boundRunVerification(ctx context.Context, runID string, report *evalv1.EvaluationVerificationReport) (*evalv1.EvaluationVerificationReport, error) {
+	run, assignments, results, _, err := c.loadRunAggregateState(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	spec, err := c.store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: bound run verification: load campaign spec: %w", err)
+	}
+	catalog, err := c.store.LoadScenarioCatalog(ctx, run.GetCampaignBinding().GetCampaignId())
+	if err != nil {
+		return nil, err
+	}
+	return bindRunVerification(run, spec, catalog, assignments, results, report)
+}
+
+// bindRunVerification returns the report when it applies to the run's persisted
+// evidence. A report that does not apply while the run still has unsettled
+// assignments is not bound (nil), so a stale partial verification never blocks
+// continued execute or publish. Once every scheduled assignment is settled, a
+// non-applicable report fails closed with ErrEvidenceScopeMismatch rather than
+// producing a downgrade.
+func bindRunVerification(
+	run *evalv1.EvaluationRun,
+	spec *evalv1.EvaluationCampaignSpec,
+	catalog *evalv1.EvaluationScenarioCatalog,
+	assignments []*evalv1.EvaluationAssignment,
+	results map[string]*evalv1.EvaluationAssignmentResult,
+	report *evalv1.EvaluationVerificationReport,
+) (*evalv1.EvaluationVerificationReport, error) {
+	if !boundVerificationMetadataComplete(report) {
+		return nil, fmt.Errorf("persisted report is malformed: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, report)
 	if err != nil {
@@ -628,30 +671,7 @@ func (c *CampaignPublicationCoordinator) loadBoundRunVerification(ctx context.Co
 	if !RunAggregateComplete(assignments, results, state) {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("evaluation: load bound run verification: persisted report does not apply to run evidence: %w", constants.ErrEvidenceScopeMismatch)
-}
-
-func (c *CampaignPublicationCoordinator) validateRunVerificationApplicability(ctx context.Context, runID string, report *evalv1.EvaluationVerificationReport) error {
-	run, assignments, results, _, err := c.loadRunAggregateState(ctx, runID)
-	if err != nil {
-		return err
-	}
-	spec, err := c.store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
-	if err != nil {
-		return fmt.Errorf("evaluation: validate run verification applicability: load campaign spec: %w", err)
-	}
-	catalog, err := c.store.LoadScenarioCatalog(ctx, run.GetCampaignBinding().GetCampaignId())
-	if err != nil {
-		return err
-	}
-	applicability, err := BuildRunVerificationApplicability(run, spec, catalog, assignments, results, report)
-	if err != nil {
-		return err
-	}
-	if !applicability.Applicable {
-		return fmt.Errorf("evaluation: validate run verification applicability: %w", constants.ErrEvidenceScopeMismatch)
-	}
-	return nil
+	return nil, fmt.Errorf("persisted report does not apply to run evidence: %w", constants.ErrEvidenceScopeMismatch)
 }
 
 func (c *CampaignPublicationCoordinator) PruneRunProofCatalog(ctx context.Context, runID string) error {

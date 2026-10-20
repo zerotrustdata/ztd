@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -74,14 +75,23 @@ func (r *recordingCampaignProofPublisher) log(event string) {
 }
 
 // orderedCampaignFeedExporter logs each export into the shared order log, so a
-// test can check that the proofs were ingested before any record was exported.
+// test can check the order of live events, proof ingest, and result records.
+// A batch of only live event records logs "export-events"; any other batch
+// logs "export".
 type orderedCampaignFeedExporter struct {
 	recordingCampaignFeedExporter
 	order *[]string
 }
 
 func (e *orderedCampaignFeedExporter) ExportBatch(ctx context.Context, records []CampaignPublicFeedRecord) error {
-	*e.order = append(*e.order, "export")
+	event := "export-events"
+	for _, record := range records {
+		if record.RecordType != models.PublicFeedRecordTypeEvent {
+			event = "export"
+			break
+		}
+	}
+	*e.order = append(*e.order, event)
 	return e.recordingCampaignFeedExporter.ExportBatch(ctx, records)
 }
 
@@ -364,8 +374,9 @@ func TestIngestAssignmentAuditProofsRejectsMalformedAnswers(t *testing.T) {
 	}
 }
 
-// The catch-up path ingests every needed proof in one request before it exports
-// any result record, and each record binds the digest the Gateway answered.
+// The catch-up path exports the live event records the Gateway's proof requires,
+// then ingests every needed proof in one request before it exports any result
+// record, and each record binds the digest the Gateway answered.
 func TestPublishRunCatchUpIngestsProofsBeforeExportingResults(t *testing.T) {
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
@@ -381,8 +392,12 @@ func TestPublishRunCatchUpIngestsProofsBeforeExportingResults(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotEmpty(t, proofPublisher.inputs)
-	require.NotEmpty(t, order)
-	assert.Equal(t, "ingest", order[0], "the proofs are ingested before the first export")
+	ingest := slices.Index(order, "ingest")
+	require.Positive(t, ingest, "live events are exported before the proofs are ingested")
+	for _, event := range order[:ingest] {
+		assert.Equal(t, "export-events", event, "only live events are exported before the proofs are ingested")
+	}
+	assert.Contains(t, order[ingest:], "export", "the result records are exported after the ingest")
 	assert.Equal(t, 1, countEvents(order, "ingest"), "catch-up ingests in one batch")
 	assert.Equal(t, 1, proofPublisher.flushes, "the mirror push is deferred to the end of catch-up")
 	for _, deferred := range proofPublisher.deferred {

@@ -53,7 +53,7 @@ func TestCampaignMirrorReconcilerRealStack_ReconcileAllVerifiedRunsFromStoreRepo
 	runID := e.req.RunID
 
 	hung := hungHTTPListener(t)
-	setPublicMirrorURLs(t, hung+"/bootstrap", hung+"/history")
+	setPublicMirrorOrigin(t, hung)
 	probe := NewHTTPCampaignMirrorProbe(t.Context())
 	reconciler := evaluation.NewCampaignMirrorReconciler(newEvalRunPublication(t, e, probe), e.store, probe)
 	var progress []evaluation.CampaignMirrorReconcileProgress

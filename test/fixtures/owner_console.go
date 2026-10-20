@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -68,6 +69,9 @@ type OwnerConsole struct {
 	decisions        sync.WaitGroup
 	l3Responder      bool
 	closed           bool
+	// deniedTool names the tool whose transactions the CLI responder denies;
+	// every other transaction is still approved. It is set after setup.
+	deniedTool atomic.Pointer[string]
 }
 
 // NewOwnerConsole creates the owner and opens their session stream. It must

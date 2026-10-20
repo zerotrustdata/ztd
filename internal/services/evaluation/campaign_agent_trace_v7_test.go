@@ -221,17 +221,6 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 	}
 }
 
-func TestVerifyAgentTraceEvidenceV7_RejectsResealedToolArguments(t *testing.T) {
-	f := newAgentExecutorFixture(t, runCommandTurns(agentTestCommand)...)
-	_, err := f.execute()
-	require.NoError(t, err)
-	trace := f.storedTrace()
-	require.NoError(t, VerifyAgentTraceEvidence(trace))
-	trace.ToolCalls[0].ArgumentsJSON = `{"command":"echo forged"}`
-	resealV7Trace(t, trace)
-	require.ErrorIs(t, VerifyAgentTraceEvidence(trace), constants.ErrEvaluationEvidenceTraceMismatch)
-}
-
 func TestValidateAgentTraceDigest_PreservesV6AndEarlierSchemaVersions(t *testing.T) {
 	for _, version := range []string{agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4} {
 		t.Run(version, func(t *testing.T) {

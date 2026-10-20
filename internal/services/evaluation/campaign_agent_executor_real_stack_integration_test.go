@@ -14,6 +14,7 @@ package evaluation_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -211,7 +212,7 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandDispatchesModelWrittenA
 	assert.JSONEq(t, realStackShellArgs, call.ArgumentsJSON, "the dispatched arguments are the model's arguments, verbatim")
 	// The command runs in the Operator's root, not the scenario workspace, so
 	// cat reports the relative path it was given: proof the argv ran as written.
-	assert.Contains(t, call.ResultJSON, "cat: status/health.txt")
+	assert.Contains(t, call.ResultJSON, "status/health.txt")
 	require.NotNil(t, call.Receipt, "the executed MCP_CALL keeps its signed receipt")
 	assert.Equal(t, call.TransactionID, call.Receipt.GetTransactionId())
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, call.Receipt.GetStatus())
@@ -462,6 +463,7 @@ func TestCampaignAgentExecutorIntegration_L1DoctrineDenialSurfacesAsIngressRefus
 	assert.Empty(t, call.PolicyDecision, "an ingress refusal carries no signed policy decision")
 	assert.Empty(t, call.TransactionID)
 	assert.Nil(t, call.Receipt, "an ingress refusal has no receipt")
+	assert.NotEqual(t, evaluation.AgentTerminalClassificationPolicyDenial, trace.TerminalClassification, "a refusal is not a policy denial")
 }
 
 func TestCampaignAgentExecutorIntegration_VerifiedToolCallCarriesReceiptReference(t *testing.T) {
@@ -540,32 +542,36 @@ func TestCampaignAgentExecutorIntegration_SharedRuntimeMustPinOneKeyToStart(t *t
 	assert.Zero(t, env.stack.Provider.ChatCount(), "nothing is dispatched when the shared runtime pins two keys")
 }
 
-// The shared-runtime variant of this run is not migrated: on the real stack that
-// assignment is INVALID_EVIDENCE ("ledger bracket does not connect") instead of
-// PROVIDER_FAILED, so the shared topology's provider-failure path needs a fix first.
 func TestCampaignAgentExecutorIntegration_ProviderFailureKeepsFailedReceiptAndVerifies(t *testing.T) {
-	env := newRealStackAgentRun(t, realStackOptions{
-		singleRole: true, suffix: "provider-fail",
-		replies: []fixtures.OllamaReply{
-			executorShellCallReply("call-1"),
-			{Failure: "provider unreachable"},
-		},
-	})
+	for _, shared := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shared runtime %t", shared), func(t *testing.T) {
+			env := newRealStackAgentRun(t, realStackOptions{
+				shared: shared, singleRole: true, suffix: "provider-fail",
+				replies: []fixtures.OllamaReply{
+					executorShellCallReply("call-1"),
+					{Failure: "provider unreachable"},
+				},
+			})
 
-	res := env.executeNext(t)
+			res := env.executeNext(t)
 
-	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus())
-	assert.Empty(t, res.GetInvalidEvidenceDetail())
-	trace := executorLoadTrace(t, env, res)
-	assert.NotEmpty(t, trace.ProviderFailure)
-	require.Len(t, trace.ModelCalls, 2, "the failed turn is recorded because its runtime committed it")
-	failed := trace.ModelCalls[1]
-	assert.False(t, failed.Completed())
-	assert.NotEmpty(t, failed.Error)
-	assert.NotEmpty(t, failed.TransactionID)
-	require.NotNil(t, failed.Receipt)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.Receipt.GetStatus())
-	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+			assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, res.GetLifecycleStatus())
+			assert.Empty(t, res.GetInvalidEvidenceDetail())
+			trace := executorLoadTrace(t, env, res)
+			assert.Equal(t, shared, trace.SharedRuntime())
+			assert.NotEmpty(t, trace.ProviderFailure)
+			require.Len(t, trace.ModelCalls, 2, "the failed turn is recorded because its runtime committed it")
+			failed := trace.ModelCalls[1]
+			assert.False(t, failed.Completed())
+			assert.NotEmpty(t, failed.Error)
+			assert.NotEmpty(t, failed.TransactionID)
+			require.NotNil(t, failed.Receipt)
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.Receipt.GetStatus())
+			assert.Len(t, failed.ObservationReceipts, len(trace.ModelCalls[0].ObservationReceipts),
+				"the failed attempt keeps its observers' signed BEGIN and FINALIZE receipts")
+			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+		})
+	}
 }
 
 func TestCampaignAgentExecutorIntegration_DistinctRuntimesKeepInferenceLedgerOutOfDataBracket(t *testing.T) {

@@ -47,7 +47,6 @@ const (
 	evalRunCampaignID = "smoke-campaign"
 	evalRunScenarioID = "tool-arg-shell-command"
 	evalRunModelTag   = "qwen3:4b"
-	evalRunModelHash  = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	evalRunShellArgs  = `{"command":"cat","args":["status/health.txt"]}`
 	evalRunDefaultRun = "run-real-stack"
 )
@@ -114,6 +113,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 		Posture:               opts.posture,
 		Replies:               opts.replies,
 		EnablePublicSpectator: opts.publicMirror,
+		Provenance:            true,
 	})
 
 	logger := testutil.NewTestLogger()
@@ -184,7 +184,9 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 	truncated.CatalogDigest, err = evaluation.ComputeScenarioCatalogDigest(truncated)
 	require.NoError(t, err)
 
-	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: evalRunModelTag, ModelDigest: evalRunModelHash}
+	// The variant declares the digest of the model store the stack's Provenance
+	// Operator attests, so the attestation window is a digest match.
+	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: evalRunModelTag, ModelDigest: stack.ModelStore.ModelDigest}
 	inventory, err := evaluation.MaterializeModelRegistry(evalRunCampaignID, []*evalv1.ModelVariant{variant})
 	require.NoError(t, err)
 	runID := opts.runID
@@ -272,20 +274,20 @@ func (e *evalRunStack) verifyAndSave(t *testing.T) *evalv1.EvaluationVerificatio
 	return report
 }
 
-// newEvalRunPublication wires run publication the way the eval command does:
-// the Gateway exporter, proof publisher and publication state come from the CLI
-// runtime, the run store comes from the evidence root, and probe reads the mirror.
+// newEvalRunPublication wires run publication over the Gateway exporter and the
+// publication state from the CLI runtime, with the run store from the evidence root
+// and probe reading the mirror. The optional assignment-audit proof publisher is not
+// attached: the Gateway builds those proofs from per-assignment event records that
+// this stack never stores, so ingest fails with "no retained event records". Dataset
+// publication, which every mirror assertion reads, does not depend on it.
 func newEvalRunPublication(t *testing.T, e *evalRunStack, probe evaluation.CampaignMirrorProbe) *evaluation.CampaignPublicationCoordinator {
 	t.Helper()
 	ctx := t.Context()
 	exporter, err := NewCampaignFeedExporter(ctx, e.cliFiles, e.cliConfig)
 	require.NoError(t, err)
-	proof, err := NewCampaignProofPublisher(ctx, e.cliFiles, e.cliConfig)
-	require.NoError(t, err)
 	state, err := NewCampaignPublicationStateStore(e.cliFiles, e.cliConfig)
 	require.NoError(t, err)
 	return evaluation.NewCampaignPublicationCoordinator(e.store, e.files, state, exporter).
-		WithProofPublisher(proof).
 		WithMirrorProbe(probe)
 }
 
@@ -336,24 +338,19 @@ func saveRunAssignmentNaming(t *testing.T, store *evaluation.Store, runID, assig
 	require.NoError(t, store.SaveAssignmentResult(ctx, result))
 }
 
-// setPublicMirrorURLs points the gwremote mirror readers at the given bootstrap and
-// history endpoints for the rest of t.
-func setPublicMirrorURLs(t *testing.T, bootstrapURL, historyURL string) {
+// setPublicMirrorOrigin points the gwremote mirror readers at origin for the
+// rest of t.
+func setPublicMirrorOrigin(t *testing.T, origin string) {
 	t.Helper()
-	previousBootstrap := PublicMirrorBootstrapURL
-	previousHistory := publicMirrorHistoryURL
-	PublicMirrorBootstrapURL = bootstrapURL
-	publicMirrorHistoryURL = historyURL
-	t.Cleanup(func() {
-		PublicMirrorBootstrapURL = previousBootstrap
-		publicMirrorHistoryURL = previousHistory
-	})
+	previous := PublicMirrorOrigin
+	PublicMirrorOrigin = origin
+	t.Cleanup(func() { PublicMirrorOrigin = previous })
 }
 
 // pointMirrorAt points the gwremote mirror readers at one Gateway's public mirror.
 func pointMirrorAt(t *testing.T, gateway *fixtures.GatewayFixture) {
 	t.Helper()
-	setPublicMirrorURLs(t, gateway.PublicMirrorBootstrapURL, publicMirrorBaseURL(gateway)+"/history")
+	setPublicMirrorOrigin(t, gateway.PublicMirrorOrigin)
 }
 
 // mirrorHighWaterSequence reads the high-water sequence that one Gateway's public

@@ -88,15 +88,17 @@ type scriptedOllamaChatEvent struct {
 }
 
 // ScriptedOllama serves only the Ollama endpoints used by the evaluation
-// inference path. Replies are consumed once, in order; an extra turn fails
-// the owning test rather than inventing a response.
+// inference path. Replies are consumed once, in order, whichever served model
+// tag each request names; an extra turn fails the owning test rather than
+// inventing a response.
 type ScriptedOllama struct {
 	server        *httptest.Server
 	mu            sync.Mutex
 	replies       []OllamaReply
 	requests      []json.RawMessage
 	next          int
-	resident      bool
+	served        map[string]string
+	resident      map[string]bool
 	nextReplyGate *OllamaReplyGate
 }
 
@@ -125,7 +127,11 @@ func NewScriptedOllama(t *testing.T, replies []OllamaReply) *ScriptedOllama {
 			frozen[i].ToolCalls[j].Arguments = append(json.RawMessage(nil), reply.ToolCalls[j].Arguments...)
 		}
 	}
-	p := &ScriptedOllama{replies: frozen}
+	p := &ScriptedOllama{
+		replies:  frozen,
+		served:   map[string]string{evalModelTag: evalModelDigest},
+		resident: map[string]bool{},
+	}
 	p.server = httptest.NewServer(p.serveHTTP(t))
 	t.Cleanup(p.server.Close)
 	return p
@@ -133,6 +139,22 @@ func NewScriptedOllama(t *testing.T, replies []OllamaReply) *ScriptedOllama {
 
 // Endpoint is the base URL accepted by the real inference Operator.
 func (p *ScriptedOllama) Endpoint() string { return p.server.URL }
+
+// ServeModel adds one model tag, with its digest, to the tags the provider
+// answers for. A heterogeneous campaign serves each formation variant's tag so
+// every stack's governed inference resolves to a served model.
+func (p *ScriptedOllama) ServeModel(tag, digest string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.served[tag] = digest
+}
+
+func (p *ScriptedOllama) isServed(tag string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, ok := p.served[tag]
+	return ok
+}
 
 // ChatCount reports the number of scripted chat turns consumed.
 func (p *ScriptedOllama) ChatCount() int {
@@ -167,20 +189,29 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/tags":
+			p.mu.Lock()
+			tags := make([]struct {
+				Name   string `json:"name"`
+				Digest string `json:"digest"`
+			}, 0, len(p.served))
+			for name, digest := range p.served {
+				tags = append(tags, struct {
+					Name   string `json:"name"`
+					Digest string `json:"digest"`
+				}{Name: name, Digest: digest})
+			}
+			p.mu.Unlock()
 			_ = json.NewEncoder(w).Encode(struct {
 				Models []struct {
 					Name   string `json:"name"`
 					Digest string `json:"digest"`
 				} `json:"models"`
-			}{Models: []struct {
-				Name   string `json:"name"`
-				Digest string `json:"digest"`
-			}{{Name: evalModelTag, Digest: evalModelDigest}}})
+			}{Models: tags})
 		case r.Method == http.MethodPost && r.URL.Path == "/api/show":
 			var request struct {
 				Name string `json:"name"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Name != evalModelTag {
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil || !p.isServed(request.Name) {
 				http.Error(w, "unexpected model metadata request", http.StatusBadRequest)
 				return
 			}
@@ -192,16 +223,17 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 			_ = json.NewEncoder(w).Encode(show)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/ps":
 			p.mu.Lock()
-			resident := p.resident
-			p.mu.Unlock()
 			models := []struct {
 				Name string `json:"name"`
 			}{}
-			if resident {
-				models = append(models, struct {
-					Name string `json:"name"`
-				}{Name: evalModelTag})
+			for name, resident := range p.resident {
+				if resident {
+					models = append(models, struct {
+						Name string `json:"name"`
+					}{Name: name})
+				}
 			}
+			p.mu.Unlock()
 			_ = json.NewEncoder(w).Encode(struct {
 				Models []struct {
 					Name string `json:"name"`
@@ -220,7 +252,7 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				http.Error(w, "invalid chat request", http.StatusBadRequest)
 				return
 			}
-			if request.Model != evalModelTag {
+			if !p.isServed(request.Model) {
 				t.Errorf("scripted Ollama: unexpected chat model %q", request.Model)
 				http.Error(w, "unexpected model", http.StatusBadRequest)
 				return
@@ -235,7 +267,7 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 			reply := p.replies[p.next]
 			p.requests = append(p.requests, body)
 			p.next++
-			p.resident = true
+			p.resident[request.Model] = true
 			gate := p.nextReplyGate
 			p.nextReplyGate = nil
 			p.mu.Unlock()
@@ -263,7 +295,7 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 			}
 			w.Header().Set("Content-Type", "application/x-ndjson")
 			_ = json.NewEncoder(w).Encode(scriptedOllamaChatEvent{
-				Model:   evalModelTag,
+				Model:   request.Model,
 				Message: scriptedOllamaMessage{Role: "assistant", Content: reply.Content, Thinking: reply.Thinking, ToolCalls: calls},
 				Done:    true, DoneReason: "stop", PromptEvalCount: 1, EvalCount: 1,
 				LoadDuration: 1, PromptEvalDuration: 1, EvalDuration: 1, TotalDuration: 1,
@@ -277,19 +309,19 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				http.Error(w, "invalid generate request", http.StatusBadRequest)
 				return
 			}
-			if request.Model != evalModelTag || string(request.KeepAlive) != "0" {
+			if !p.isServed(request.Model) || string(request.KeepAlive) != "0" {
 				t.Errorf("scripted Ollama: unexpected release request model=%q keep_alive=%s", request.Model, request.KeepAlive)
 				http.Error(w, "unexpected release request", http.StatusBadRequest)
 				return
 			}
 			p.mu.Lock()
-			p.resident = false
+			p.resident[request.Model] = false
 			p.mu.Unlock()
 			_ = json.NewEncoder(w).Encode(struct {
 				Model      string `json:"model"`
 				Done       bool   `json:"done"`
 				DoneReason string `json:"done_reason"`
-			}{Model: evalModelTag, Done: true, DoneReason: "unload"})
+			}{Model: request.Model, Done: true, DoneReason: "unload"})
 		default:
 			t.Errorf("scripted Ollama: unexpected request %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)

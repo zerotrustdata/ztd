@@ -84,9 +84,9 @@ func newPublicationEnv(t *testing.T, replies []fixtures.OllamaReply) (*runEnv, *
 	_, err = evalBindSessions(cmd, run.cfg, run.fileSvc, defaultEvalBindClient(run.cfg), authContext, []string{data.OperatorSessionID})
 	require.NoError(t, err)
 
-	previous := gwremote.PublicMirrorBootstrapURL
-	gwremote.PublicMirrorBootstrapURL = run.stack.Gateway.PublicMirrorBootstrapURL
-	t.Cleanup(func() { gwremote.PublicMirrorBootstrapURL = previous })
+	previous := gwremote.PublicMirrorOrigin
+	gwremote.PublicMirrorOrigin = run.stack.Gateway.PublicMirrorOrigin
+	t.Cleanup(func() { gwremote.PublicMirrorOrigin = previous })
 	// Every projection of a test run must fit in the bootstrap window the
 	// assertions read.
 	run.stack.Gateway.Service.GetPublicMirror().SetMaxBootstrapProjections(1000)
@@ -156,13 +156,26 @@ func runAssignments(t *testing.T, run *realStackRun, runID string) []*evalv1.Eva
 	return assignments
 }
 
-// executeCampaign starts the campaign and executes every assignment without
-// publishing, so publication is driven by the publish commands under test.
+// executeCampaign starts the campaign and executes every assignment with live
+// publication, as production runs do. The Gateway builds each assignment's audit
+// proof from the live event records it retains.
 func executeCampaign(t *testing.T, env *runEnv, campaignID string) string {
 	t.Helper()
-	out, err := env.run(t, "runs", "start", campaignID, "--publish=false", "--no-backup")
+	out, err := env.run(t, "runs", "start", campaignID, "--no-backup")
 	require.NoError(t, err, out)
 	return out
+}
+
+// verifyCLI runs runs verify and fails on any publication warning: verify
+// reports a failed mirror publication as a warning and still succeeds, so a
+// silent publication failure would otherwise look like a pass.
+func verifyCLI(t *testing.T, env *runEnv, runID string) (string, error) {
+	t.Helper()
+	out, err := env.run(t, "runs", "verify", runID)
+	if err == nil {
+		require.NotContains(t, out, "warning:", "verify published without warnings")
+	}
+	return out, err
 }
 
 // mirrorProjections reads the projections the real public mirror serves, oldest
@@ -308,15 +321,16 @@ func TestPublicationRealStack_ScheduledLifecyclesAreExportedOnce(t *testing.T) {
 
 	out, err = env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
-	settled := mirrorHighWater(t)
+	before := mirrorProjections(t)
 	out, err = env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
-	assert.Zero(t, publishedCount(t, out), "a republish of an already-published run exports nothing")
-	assert.Equal(t, settled, mirrorHighWater(t), "the mirror high-water does not move on an idempotent publish")
+	// A republish appends the live summary revision it reports and no lifecycle.
+	assert.Equal(t, len(before)+publishedCount(t, out), len(mirrorProjections(t)), "the count printed matches the projections the mirror served")
+	assertOnceEach(t, mirrorProjections(t), queued, "idempotent publish keeps each lifecycle single")
 	assertOnceEach(t, mirrorProjections(t), queued, "idempotent publish keeps each lifecycle single")
 }
 
-func TestPublicationRealStack_CatchUpExportsEveryCompletedAssignment(t *testing.T) {
+func TestPublicationRealStack_CatchUpAfterLiveExecutionKeepsEveryResultOnce(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-catchup", 3)
 	executeCampaign(t, env, "pub-catchup")
@@ -326,10 +340,10 @@ func TestPublicationRealStack_CatchUpExportsEveryCompletedAssignment(t *testing.
 
 	out, err := env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
-	assert.Positive(t, publishedCount(t, out), "catch-up exports the results that were never published")
+	t.Logf("catch-up after live execution published %d record(s)", publishedCount(t, out))
 
 	projections := mirrorProjections(t)
-	assertOnceEach(t, projections, resultKeys(runID, assignments), "catch-up exports each result once")
+	assertOnceEach(t, projections, resultKeys(runID, assignments), "catch-up leaves each result served once")
 	// The feed sequence is contiguous per served projection: no batch was
 	// reordered or dropped on the way to the mirror.
 	for index := 1; index < len(projections); index++ {
@@ -338,22 +352,25 @@ func TestPublicationRealStack_CatchUpExportsEveryCompletedAssignment(t *testing.
 	assert.GreaterOrEqual(t, mirrorHighWater(t), int64(len(projections)))
 }
 
-func TestPublicationRealStack_CompletionIsNotRepublishedOnRepeat(t *testing.T) {
+// Completion publishes the run's summary; a repeated verify re-exports summary
+// revisions but never a second copy of a lifecycle or result record.
+func TestPublicationRealStack_CompletionAndRepeatVerifyKeepEachResultSingle(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-completion", 3)
 	executeCampaign(t, env, "pub-completion")
 	runID := onlyRunID(t, run)
+	assignments := runAssignments(t, run, runID)
 
-	out, err := env.run(t, "runs", "verify", runID)
+	out, err := verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
 	assert.Contains(t, out, "PASS")
-	completed := latestSummary(t)
-	assert.NotEmpty(t, completed.RunStatus)
-	settled := mirrorHighWater(t)
+	assert.NotEmpty(t, latestSummary(t).RunStatus)
+	assertOnceEach(t, mirrorProjections(t), resultKeys(runID, assignments), "completion leaves each result served once")
 
-	_, err = env.run(t, "runs", "verify", runID)
+	_, err = verifyCLI(t, env, runID)
 	require.NoError(t, err)
-	assert.Equal(t, settled, mirrorHighWater(t), "a repeated completion and verification exports nothing new")
+	assertOnceEach(t, mirrorProjections(t), resultKeys(runID, assignments), "a repeated verify does not duplicate a result")
+	assert.Equal(t, "passed", latestSummary(t).VerifierState)
 }
 
 func TestPublicationRealStack_ForceRepublishAppendsEveryProjectionAgain(t *testing.T) {
@@ -365,9 +382,12 @@ func TestPublicationRealStack_ForceRepublishAppendsEveryProjectionAgain(t *testi
 	require.NoError(t, err, out)
 	caughtUp := mirrorHighWater(t)
 
+	// Each publish re-exports the run's live summary revision, so the high-water
+	// moves; the result records themselves stay single.
 	out, err = env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
-	assert.Equal(t, caughtUp, mirrorHighWater(t), "catch-up with nothing missing exports nothing")
+	assert.Greater(t, mirrorHighWater(t), caughtUp, "a publish re-exports the live summary revision")
+	assertOnceEach(t, mirrorProjections(t), resultKeys(runID, runAssignments(t, run, runID)), "a plain publish keeps each result single")
 
 	out, err = env.run(t, "runs", "publish", runID, "--force")
 	require.NoError(t, err, out)
@@ -384,7 +404,7 @@ func TestPublicationRealStack_VerificationRevisionPublishesSummariesAndTranscrip
 	executeCampaign(t, env, "pub-verify")
 	runID := onlyRunID(t, run)
 
-	out, err := env.run(t, "runs", "verify", runID)
+	out, err := verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
 	assert.Contains(t, out, "PASS")
 	report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
@@ -398,6 +418,7 @@ func TestPublicationRealStack_VerificationRevisionPublishesSummariesAndTranscrip
 	assert.Equal(t, report.GetVerifiedPopulationDigest(), summary.Metadata.PopulationDigest)
 
 	models := 0
+	lastModelQuality := ""
 	for _, projection := range mirrorProjections(t) {
 		var payload struct {
 			Kind         string `json:"kind"`
@@ -406,10 +427,11 @@ func TestPublicationRealStack_VerificationRevisionPublishesSummariesAndTranscrip
 		require.NoError(t, json.Unmarshal(projection.record, &payload))
 		if payload.Kind == "model_summary" {
 			models++
-			assert.Equal(t, "exploratory_verified", payload.QualityState)
+			lastModelQuality = payload.QualityState
 		}
 	}
 	assert.Positive(t, models, "verification publishes model summaries")
+	assert.Equal(t, "exploratory_verified", lastModelQuality, "the verified revision is the latest model summary")
 
 	projections := mirrorProjections(t)
 	for _, assignment := range runAssignments(t, run, runID) {
@@ -427,7 +449,7 @@ func TestPublicationRealStack_BoundVerificationSurvivesForcedCatchUp(t *testing.
 	createPublicationCampaign(t, run, "pub-survive", 3)
 	executeCampaign(t, env, "pub-survive")
 	runID := onlyRunID(t, run)
-	out, err := env.run(t, "runs", "verify", runID)
+	out, err := verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
 	report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
 	require.NoError(t, err)
@@ -450,16 +472,15 @@ func TestPublicationRealStack_StalePartialVerificationDoesNotBindAnInProgressRun
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
 
-	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish=false")
+	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish")
 	require.NoError(t, err, out)
 	// The partial verification binds only the one settled assignment.
-	out, err = env.run(t, "runs", "verify", runID)
+	out, err = verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
-	require.Equal(t, "passed", latestSummary(t).VerifierState)
 
-	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish=false")
-	require.NoError(t, err, out)
-	out, err = env.run(t, "runs", "publish", runID)
+	// Execution publishes the aggregate after the grown population settles; the
+	// stale partial report must not block it.
+	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish")
 	require.NoError(t, err, out)
 
 	latest := latestSummary(t)
@@ -467,12 +488,62 @@ func TestPublicationRealStack_StalePartialVerificationDoesNotBindAnInProgressRun
 	assert.Nil(t, latest.Metadata)
 }
 
+// runs publish of an unsettled run follows the aggregate path: a stale partial
+// verification is not bound, so the publish continues instead of failing closed.
+func TestPublicationRealStack_RunsPublishIgnoresStalePartialVerificationOnUnsettledRun(t *testing.T) {
+	env, run := newPublicationEnv(t, readyReplies(3))
+	createPublicationCampaign(t, run, "pub-stale-publish", 3)
+	out, err := env.run(t, "runs", "start", "pub-stale-publish", "--prepare-only", "--no-backup")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
+
+	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish")
+	require.NoError(t, err, out)
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+	out, err = env.run(t, "runs", "resume", runID, "--limit", "1", "--publish")
+	require.NoError(t, err, out)
+
+	out, err = env.run(t, "runs", "publish", runID)
+	require.NoError(t, err, out)
+	latest := latestSummary(t)
+	assert.Equal(t, "not_run", latest.VerifierState, "a stale partial verification is not bound to the grown population")
+	assert.Nil(t, latest.Metadata)
+}
+
+// A run executed with publication off never sent its live event records to the
+// Gateway. The deferred publish must deliver them before it requests each
+// assignment's audit proof, or the Gateway has no records to build the database
+// from.
+func TestPublicationRealStack_DeferredPublishDeliversEventsBeforeAuditProof(t *testing.T) {
+	env, run := newPublicationEnv(t, readyReplies(3))
+	createPublicationCampaign(t, run, "pub-deferred", 3)
+	out, err := env.run(t, "runs", "start", "pub-deferred", "--publish=false", "--no-backup")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
+
+	out, err = env.run(t, "runs", "publish", runID)
+	require.NoError(t, err, out)
+
+	bootstrap, err := gwremote.FetchPublicMirrorBootstrap(t.Context())
+	require.NoError(t, err)
+	assert.Positive(t, bootstrap.ProofCatalogSummary.ArtifactCount, "the deferred publish ingests the audit proofs")
+	state := loadPublicationState(t, run, runID)
+	for _, assignment := range runAssignments(t, run, runID) {
+		assert.NotEmpty(t, state.PublishedProofArtifacts[assignment.GetAssignmentId()].DatabaseSHA256,
+			"the gateway database digest is recorded for assignment %s", assignment.GetAssignmentId())
+	}
+
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+}
+
 func TestPublicationRealStack_MismatchedPersistedReportFailsClosedWithoutPublishing(t *testing.T) {
 	env, run := newPublicationEnv(t, readyReplies(3))
 	createPublicationCampaign(t, run, "pub-mismatch", 3)
 	executeCampaign(t, env, "pub-mismatch")
 	runID := onlyRunID(t, run)
-	out, err := env.run(t, "runs", "verify", runID)
+	out, err := verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
 	before := latestSummary(t)
 	settled := mirrorHighWater(t)
@@ -494,7 +565,7 @@ func TestPublicationRealStack_BoundFailureIsProjected(t *testing.T) {
 	createPublicationCampaign(t, run, "pub-failure", 3)
 	executeCampaign(t, env, "pub-failure")
 	runID := onlyRunID(t, run)
-	out, err := env.run(t, "runs", "verify", runID)
+	out, err := verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
 
 	store := evaluation.NewStore(run.fileSvc)
@@ -513,12 +584,12 @@ func TestPublicationRealStack_BoundFailureIsProjected(t *testing.T) {
 	assert.Equal(t, report.GetReportDigestRef().GetSha256(), latest.Metadata.ReportDigest)
 }
 
-func TestPublicationRealStack_FailedAssignmentWithoutInferencesIsPublished(t *testing.T) {
+func TestPublicationRealStack_ProviderFailedAssignmentIsPublishedOnce(t *testing.T) {
 	env, run := newPublicationEnv(t, []fixtures.OllamaReply{{Failure: "provider unavailable"}})
 	createPublicationCampaign(t, run, "pub-failed", 1)
-	// A failed assignment is the subject of this test, so the start command's
-	// outcome is not the assertion; the persisted result is.
-	_, _ = env.run(t, "runs", "start", "pub-failed", "--publish=false", "--no-backup")
+	// The failed turn is the subject of this test, so the start command's exit
+	// status is not the assertion; the persisted result is.
+	_, _ = env.run(t, "runs", "start", "pub-failed", "--no-backup")
 	runID := onlyRunID(t, run)
 	assignments := runAssignments(t, run, runID)
 	require.Len(t, assignments, 1)
@@ -526,12 +597,15 @@ func TestPublicationRealStack_FailedAssignmentWithoutInferencesIsPublished(t *te
 
 	result, err := evaluation.NewStore(run.fileSvc).LoadAssignmentResult(run.ctx, runID, assignmentID)
 	require.NoError(t, err)
-	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, result.GetLifecycleStatus())
-	assert.Empty(t, result.GetModelInferences())
+	// A ScriptedOllama Failure is recorded as PROVIDER_FAILED with the failed
+	// turn as an inference, so the real path never yields a result without
+	// inferences; that shape stays with the typed unit test.
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, result.GetLifecycleStatus())
+	require.NotEmpty(t, result.GetModelInferences())
 
 	out, err := env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
-	assertOnceEach(t, mirrorProjections(t), []string{evaluation.AssignmentResultIdempotencyKey(runID, assignmentID)}, "the failed assignment's result is exported once")
+	assertOnceEach(t, mirrorProjections(t), []string{evaluation.AssignmentResultIdempotencyKey(runID, assignmentID)}, "the provider-failed assignment's result is exported once")
 }
 
 func TestPublicationRealStack_AssignmentResultBindsSealedObservationWindow(t *testing.T) {
@@ -545,12 +619,20 @@ func TestPublicationRealStack_AssignmentResultBindsSealedObservationWindow(t *te
 	require.NoError(t, err)
 	require.Len(t, trace.ModelCalls, 1)
 
+	attemptID := trace.ModelCalls[0].ProviderAttemptID
+	require.NotEmpty(t, attemptID)
+	window, err := evaluation.NewStore(run.fileSvc).LoadProviderObservationWindow(run.ctx, runID, attemptID)
+	require.NoError(t, err, "the real Inference observer seals a window for the provider attempt")
+	require.NotNil(t, window)
+	require.NotEmpty(t, window.GetObservationDigest())
+
 	out, err := env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
 	projections := projectionsWithKey(mirrorProjections(t), evaluation.AssignmentResultIdempotencyKey(runID, assignments[0].GetAssignmentId()))
 	require.Len(t, projections, 1)
-	t.Logf("assignment result record: %s", string(projections[0].record))
-	assert.Contains(t, string(projections[0].record), "benchmark_observations")
+	// The public record carries the derived benchmark observations, not the
+	// window digest, so the window itself is asserted on the local store above.
+	assert.Contains(t, string(projections[0].record), "benchmark_observations", "the result publishes its sealed observation")
 }
 
 func TestPublicationRealStack_CatchUpSkipsProofRebuildWhenHashesAreRecorded(t *testing.T) {
@@ -613,10 +695,23 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 			require.NotNil(t, bootstrap.ProofCatalogSummary.LastGeneratedAt)
 			before := *bootstrap.ProofCatalogSummary.LastGeneratedAt
 
-			state := loadPublicationState(t, run, runID)
-			assignmentID := runAssignments(t, run, runID)[0].GetAssignmentId()
-			require.NotEmpty(t, state.PublishedProofArtifacts[assignmentID].DatabaseSHA256)
+			assignments := runAssignments(t, run, runID)
+			assignmentID := assignments[0].GetAssignmentId()
+			require.NotEmpty(t, loadPublicationState(t, run, runID).PublishedProofArtifacts[assignmentID].DatabaseSHA256)
+			// Drop the feed idempotency keys and keep the proof keys, as a feed
+			// reset does, so only the recorded hashes decide what is rebuilt.
+			proofKeys := make(map[string]bool, len(assignments))
+			for _, assignment := range assignments {
+				proofKeys[evaluation.AssignmentAuditProofIdempotencyKey(runID, assignment.GetAssignmentId())] = true
+			}
 			editPublicationState(t, run, runID, func(state *evaluation.CampaignPublicationState) {
+				kept := make([]string, 0, len(proofKeys))
+				for _, key := range state.PublishedIdempotency {
+					if proofKeys[key] {
+						kept = append(kept, key)
+					}
+				}
+				state.PublishedIdempotency = kept
 				artifacts := state.PublishedProofArtifacts[assignmentID]
 				tt.forget(&artifacts)
 				state.PublishedProofArtifacts[assignmentID] = artifacts
@@ -673,14 +768,18 @@ func TestPublicationRealStack_VerifiedRepublishBindsTheSameGatewayDigest(t *test
 		published[assignment.GetAssignmentId()] = digestsIn(results[0].record)
 	}
 
-	out, err = env.run(t, "runs", "verify", runID)
+	out, err = verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
 	for _, assignment := range assignments {
 		verified := projectionsWithKey(mirrorProjections(t), evaluation.AssignmentVerifiedResultIdempotencyKey(runID, assignment.GetAssignmentId()))
 		require.Len(t, verified, 1)
-		// The Gateway reuses an assignment's database by digest, so the
-		// verified record cites the digest the catch-up published.
-		assert.Equal(t, published[assignment.GetAssignmentId()], digestsIn(verified[0].record))
+		// The verified record still cites every digest the catch-up published for
+		// the assignment's audit database; it also carries the verification's own
+		// digests, so containment is the invariant.
+		verifiedDigests := digestsIn(verified[0].record)
+		for _, digest := range published[assignment.GetAssignmentId()] {
+			assert.Contains(t, verifiedDigests, digest, "the verified record binds the gateway database digest")
+		}
 	}
 }
 

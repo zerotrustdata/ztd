@@ -231,6 +231,13 @@ func (c *CampaignPublicationCoordinator) catchUpAuditProofs(
 		if publicationState != nil && containsString(publicationState.PublishedIdempotency, AssignmentResultIdempotencyKey(runID, assignmentID)) {
 			continue
 		}
+		// The Gateway builds the audit proof from the live event records it
+		// retains, so this assignment's events are delivered before its proof is
+		// reused or requested.
+		liveRequests, err := c.publishAssignmentAuditEvents(ctx, assignment, result)
+		if err != nil {
+			return nil, err
+		}
 		if publicationState != nil && containsString(publicationState.PublishedIdempotency, AssignmentAuditProofIdempotencyKey(runID, assignmentID)) {
 			if stored, ok := publicationState.PublishedProofArtifacts[assignmentID]; ok {
 				// Reuse the published package only when it already carries the
@@ -247,10 +254,6 @@ func (c *CampaignPublicationCoordinator) catchUpAuditProofs(
 					continue
 				}
 			}
-		}
-		liveRequests, err := c.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
-		if err != nil {
-			return nil, err
 		}
 		input, ok, err := c.assignmentAuditProofInput(ctx, assignment, result, fixtures, liveRequests)
 		if err != nil {
@@ -286,7 +289,7 @@ func (c *CampaignPublicationCoordinator) republishAuditProofs(
 		if result == nil {
 			continue
 		}
-		liveRequests, err := c.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
+		liveRequests, err := c.publishAssignmentAuditEvents(ctx, assignment, result)
 		if err != nil {
 			return nil, err
 		}
@@ -299,6 +302,26 @@ func (c *CampaignPublicationCoordinator) republishAuditProofs(
 		}
 	}
 	return c.ingestAssignmentAuditProofs(ctx, inputs)
+}
+
+// publishAssignmentAuditEvents builds one terminal assignment's live event
+// requests and exports them to the Gateway before its audit proof is requested.
+// The Gateway indexes only the event records it was sent, so an execution that
+// ran without publication never delivered them and the deferred publish must.
+// Records already published are skipped by their idempotency keys.
+func (c *CampaignPublicationCoordinator) publishAssignmentAuditEvents(
+	ctx context.Context,
+	assignment *evalv1.EvaluationAssignment,
+	result *evalv1.EvaluationAssignmentResult,
+) ([]campaignFeedPublishRequest, error) {
+	requests, err := c.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.exportFeedRecords(ctx, assignment.GetRunId(), requests); err != nil {
+		return nil, err
+	}
+	return requests, nil
 }
 
 // AssignmentAuditEvidenceBindingsFromHashes returns public evidence bindings

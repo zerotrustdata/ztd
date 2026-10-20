@@ -72,6 +72,7 @@ type GatewayFixture struct {
 	Keystore                 *keystore.Keystore
 	A2ADownstreamURL         string           // URL used for A2A (same as DownstreamURL if not overridden)
 	ConsensusServer          *httptest.Server // External HTTPS protobuf deliberation endpoint, when configured
+	PublicMirrorOrigin       string           // Anonymous public mirror origin, when enabled
 	PublicMirrorBootstrapURL string           // Anonymous public mirror bootstrap endpoint, when enabled
 }
 
@@ -394,6 +395,10 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		t.Fatal("gateway service did not become ready")
 	}
 
+	mirrorOrigin, mirrorBootstrapURL := publicMirrorOrigin(cfg), ""
+	if mirrorOrigin != "" {
+		mirrorBootstrapURL = mirrorOrigin + "/bootstrap"
+	}
 	return &GatewayFixture{
 		FileService:              fileSvc,
 		Config:                   cfg,
@@ -411,15 +416,18 @@ func NewGatewayFixture(t *testing.T, opts GatewayFixtureOptions) *GatewayFixture
 		Keystore:                 ks,
 		A2ADownstreamURL:         a2aURL,
 		ConsensusServer:          consensusServer,
-		PublicMirrorBootstrapURL: publicMirrorBootstrapURL(cfg),
+		PublicMirrorOrigin:       mirrorOrigin,
+		PublicMirrorBootstrapURL: mirrorBootstrapURL,
 	}
 }
 
-func publicMirrorBootstrapURL(cfg *config.Config) string {
+// publicMirrorOrigin returns the Gateway's anonymous mirror origin, or "" when
+// the public spectator is disabled.
+func publicMirrorOrigin(cfg *config.Config) string {
 	if cfg == nil || !cfg.Gateway.PublicSpectatorEnabled || cfg.Gateway.PublicSpectatorPublicAddr == "" {
 		return ""
 	}
-	return "http://" + cfg.Gateway.PublicSpectatorPublicAddr + "/bootstrap"
+	return "http://" + cfg.Gateway.PublicSpectatorPublicAddr
 }
 
 // WaitForReady waits for the Gateway's listener signal, then verifies the

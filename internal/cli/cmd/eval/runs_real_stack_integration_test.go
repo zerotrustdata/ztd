@@ -169,9 +169,9 @@ func newGatewayRunEnvWithPosture(t *testing.T, posture constants.Posture) (*runE
 func newPublicationRunEnv(t *testing.T) *runEnv {
 	t.Helper()
 	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{Posture: constants.PostureDoctrine, EnablePublicSpectator: true})
-	previous := gwremote.PublicMirrorBootstrapURL
-	gwremote.PublicMirrorBootstrapURL = run.stack.Gateway.PublicMirrorBootstrapURL
-	t.Cleanup(func() { gwremote.PublicMirrorBootstrapURL = previous })
+	previous := gwremote.PublicMirrorOrigin
+	gwremote.PublicMirrorOrigin = run.stack.Gateway.PublicMirrorOrigin
+	t.Cleanup(func() { gwremote.PublicMirrorOrigin = previous })
 	return env
 }
 

@@ -5304,6 +5304,12 @@
                 "error": {
                     "type": "string"
                 },
+                "observation_receipts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ActionReceipt"
+                    }
+                },
                 "receipt": {
                     "$ref": "#/definitions/operatorv1.ActionReceipt"
                 }

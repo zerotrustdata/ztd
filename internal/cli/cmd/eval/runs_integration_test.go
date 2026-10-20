@@ -31,6 +31,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
@@ -695,7 +696,9 @@ func TestRunsPublish_IgnoresLegacyFailedReport(t *testing.T) {
 	env.mustRun(t, "runs", "publish", "run-a-1")
 }
 
-func TestRunsPublish_RejectsPersistedPassingReportThatDoesNotApply(t *testing.T) {
+// A non-applicable passing report on an unsettled run is not bound, so publish
+// continues; the settled-run refusal is covered by the publication real-stack tests.
+func TestRunsPublish_IgnoresPersistedPassingReportThatDoesNotApplyToUnsettledRun(t *testing.T) {
 	env := newPublicationRunEnv(t)
 	env.prepareRun(t, "eval-a", "run-a-1")
 	require.NoError(t, env.store(t).SaveCampaignVerification(context.Background(), "run-a-1", &evalv1.EvaluationVerificationReport{
@@ -705,11 +708,12 @@ func TestRunsPublish_RejectsPersistedPassingReportThatDoesNotApply(t *testing.T)
 		Status:                   evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
 		VerifiedAt:               timestamppb.New(time.Unix(1_700_000_200, 0).UTC()),
 		VerifiedPopulationDigest: strings.Repeat("9", 64),
+		VerifierReleaseVersion:   constants.EvaluationSourceVersion,
+		VerifierContractVersion:  constants.CampaignVerifierVersion,
+		ReportDigestRef:          &compliancev1.ComplianceEvidenceReference{Sha256: strings.Repeat("a", 64)},
 	}))
 
-	_, err := env.run(t, "runs", "publish", "run-a-1")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	env.mustRun(t, "runs", "publish", "run-a-1")
 }
 
 func TestRunsPublish_RejectsWhenGatewayUnhealthy(t *testing.T) {

@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
@@ -781,6 +782,7 @@ func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, m
 			call.TransactionID = receipt.GetTransactionId()
 			call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
 		}
+		recordObservationReceipts(&call, inferencedispatch.ObservationReceipts(err))
 		return nil, call, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
 	}
 	if err := recordInferenceResponse(&call, probe, response); err != nil {
@@ -838,6 +840,14 @@ func (r *agentRun) inferenceDispatchRequest(probe InferenceProbeRequest) (*opera
 	return dispatch, nil
 }
 
+// recordObservationReceipts records the observers' signed receipts a dispatch
+// returned, on success or failure, so the bracket claims their commitments.
+func recordObservationReceipts(call *AgentModelCall, receipts []*operatorv1.ActionReceipt) {
+	for _, receipt := range receipts {
+		call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{ActionReceipt: receipt})
+	}
+}
+
 // recordInferenceResponse verifies a governed inference response against probe
 // and records its receipt and telemetry on call. The receipt is recorded before
 // verification so a response that fails it still claims its ledger commitment.
@@ -847,9 +857,7 @@ func recordInferenceResponse(call *AgentModelCall, probe InferenceProbeRequest, 
 	if receipt := response.GetReceipt(); receipt != nil {
 		call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
 	}
-	for _, receipt := range response.GetObservationReceipts() {
-		call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{ActionReceipt: receipt})
-	}
+	recordObservationReceipts(call, response.GetObservationReceipts())
 	call.ResultDigest = result.GetResultDigest()
 	if err := ValidateInferenceProbeResponse(probe, response); err != nil {
 		return err

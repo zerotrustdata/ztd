@@ -15,7 +15,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -163,8 +162,7 @@ func TestEvalStackPublishesGatewayFeedToAnonymousMirror(t *testing.T) {
 	defer response.Body.Close()
 	require.Equal(t, http.StatusOK, response.StatusCode)
 
-	publicBaseURL := strings.TrimSuffix(stack.Gateway.PublicMirrorBootstrapURL, "/bootstrap")
-	historyResp, err := http.Get(publicBaseURL + "/history?cursor=0&limit=10")
+	historyResp, err := http.Get(stack.Gateway.PublicMirrorOrigin + "/history?cursor=0&limit=10")
 	require.NoError(t, err)
 	defer historyResp.Body.Close()
 	require.Equal(t, http.StatusOK, historyResp.StatusCode)

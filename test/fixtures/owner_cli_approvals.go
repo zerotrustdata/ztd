@@ -78,7 +78,7 @@ func (c *OwnerConsole) ApproveTransactionsWithCLI(t *testing.T, identity *Client
 				return
 			case <-wakeups:
 				approvalCtx, approvalCancel := context.WithTimeout(ctx, 5*time.Minute)
-				err := approveSuspendedTransactions(approvalCtx, client, baseURL, identity, c)
+				err := respondSuspendedTransactions(approvalCtx, client, baseURL, identity, c)
 				approvalCancel()
 				if err != nil && ctx.Err() == nil {
 					c.faults.append(fmt.Errorf("CLI transaction approver: %w", err))
@@ -93,6 +93,20 @@ func (c *OwnerConsole) ApproveTransactionsWithCLI(t *testing.T, identity *Client
 		unregister()
 		client.CloseIdleConnections()
 	})
+}
+
+// DenyToolTransactions makes the installed CLI responder deny every
+// transaction for toolName it answers from now on, through the same production
+// route; the signed rejection is what the blocked request gets. Every other
+// transaction, such as the inference calls an eval agent turn needs, is still
+// approved.
+func (c *OwnerConsole) DenyToolTransactions(toolName string) {
+	c.deniedTool.Store(&toolName)
+}
+
+func (c *OwnerConsole) approvesTool(toolName string) bool {
+	denied := c.deniedTool.Load()
+	return denied == nil || *denied != toolName
 }
 
 // ApprovalReceipts returns the validated receipts produced by the
@@ -145,7 +159,9 @@ func transactionApprovalNotification(data []byte, userID, cliSessionID string) b
 	return payload.Subject == models.ApprovalsChangedTransactions
 }
 
-func approveSuspendedTransactions(ctx context.Context, client *http.Client, baseURL string, identity *ClientIdentity, owner *OwnerConsole) error {
+// respondSuspendedTransactions answers every pending transaction with the
+// owner's decision for its tool: an approval, or a denial for a denied tool.
+func respondSuspendedTransactions(ctx context.Context, client *http.Client, baseURL string, identity *ClientIdentity, owner *OwnerConsole) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+constants.APIPaths.ApprovalsCLIList, nil)
 	if err != nil {
 		return fmt.Errorf("create pending approvals request: %w", err)
@@ -178,15 +194,20 @@ func approveSuspendedTransactions(ctx context.Context, client *http.Client, base
 		return fmt.Errorf("load enrolled CLI approval identity: %w", err)
 	}
 	for _, transaction := range pending.Transactions {
+		approved := owner.approvesTool(transaction.ToolName)
 		proof, err := governance.SignCLIApproval(transaction.TransactionHash, &cliCert)
 		if err != nil {
 			return fmt.Errorf("sign transaction %s: %w", transaction.TransactionHash, err)
 		}
-		approvalBody, err := json.Marshal(models.ApprovalRespondRequest{
+		respond := models.ApprovalRespondRequest{
 			ApprovalID:   transaction.TransactionHash,
-			Approved:     true,
+			Approved:     approved,
 			CLISignature: proof.GetCliSignature(),
-		})
+		}
+		if !approved {
+			respond.Reason = "eval stack: denied by the authenticated owner"
+		}
+		approvalBody, err := json.Marshal(respond)
 		if err != nil {
 			return fmt.Errorf("encode transaction %s approval: %w", transaction.TransactionHash, err)
 		}
@@ -215,10 +236,15 @@ func approveSuspendedTransactions(ctx context.Context, client *http.Client, base
 		if err := protojson.Unmarshal(approvalWire, &receipt); err != nil {
 			return fmt.Errorf("decode transaction %s receipt: %w", transaction.TransactionHash, err)
 		}
-		if receipt.GetTransactionHash() != transaction.TransactionHash ||
-			receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED ||
-			receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
-			return fmt.Errorf("transaction %s approval returned an invalid completed L3 receipt", transaction.TransactionHash)
+		if approved {
+			if receipt.GetTransactionHash() != transaction.TransactionHash ||
+				receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED ||
+				receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+				return fmt.Errorf("transaction %s approval returned an invalid completed L3 receipt", transaction.TransactionHash)
+			}
+		} else if receipt.GetTransactionHash() != transaction.TransactionHash ||
+			receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+			return fmt.Errorf("transaction %s denial returned a receipt that is not a signed rejection", transaction.TransactionHash)
 		}
 		owner.approvalReceipts.append(&receipt)
 	}

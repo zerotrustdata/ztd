@@ -17,7 +17,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -50,17 +49,8 @@ func newPublicMirrorGateway(t *testing.T) (*fixtures.GatewayFixture, fs.RuntimeF
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	identity.InstallCLIRuntime(t, gateway, fileSvc, cfg)
 
-	previousBootstrap := PublicMirrorBootstrapURL
-	PublicMirrorBootstrapURL = gateway.PublicMirrorBootstrapURL
-	t.Cleanup(func() { PublicMirrorBootstrapURL = previousBootstrap })
-	previousHistory := publicMirrorHistoryURL
-	publicMirrorHistoryURL = publicMirrorBaseURL(gateway) + "/history"
-	t.Cleanup(func() { publicMirrorHistoryURL = previousHistory })
+	setPublicMirrorOrigin(t, gateway.PublicMirrorOrigin)
 	return gateway, fileSvc, cfg
-}
-
-func publicMirrorBaseURL(gateway *fixtures.GatewayFixture) string {
-	return strings.TrimSuffix(gateway.PublicMirrorBootstrapURL, "/bootstrap")
 }
 
 // writeCatalogSnapshotJSONL writes one catalog-snapshot projection per dataset
@@ -160,9 +150,8 @@ func TestHTTPCampaignMirrorProbe_IndexesMirrorOnceForMultipleDatasets(t *testing
 	publishCatalogSnapshots(t, fileSvc, cfg, "eval-run-history", "eval-run-recent")
 
 	var bootstrapRequests, historyRequests atomic.Int32
-	proxyURL := countingMirrorProxy(t, publicMirrorBaseURL(gateway), &bootstrapRequests, &historyRequests)
-	PublicMirrorBootstrapURL = proxyURL + "/bootstrap"
-	publicMirrorHistoryURL = proxyURL + "/history"
+	proxyURL := countingMirrorProxy(t, gateway.PublicMirrorOrigin, &bootstrapRequests, &historyRequests)
+	PublicMirrorOrigin = proxyURL
 
 	probe := NewHTTPCampaignMirrorProbe(t.Context())
 	for datasetID, expected := range map[string]bool{
@@ -248,7 +237,7 @@ func TestFetchPublicMirrorBootstrap_RetriesRateLimit(t *testing.T) {
 	_, err := FetchPublicMirrorBootstrap(t.Context())
 	require.NoError(t, err)
 
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, PublicMirrorBootstrapURL, nil)
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, gateway.PublicMirrorBootstrapURL, nil)
 	require.NoError(t, err)
 	limited, err := http.DefaultClient.Do(request)
 	require.NoError(t, err)

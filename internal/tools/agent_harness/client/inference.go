@@ -154,9 +154,10 @@ func (c *Client) DispatchIntent(ctx context.Context, req *tribunalv1.TribunalInt
 // sentinel through the typed failure code, keeping ErrHTTPStatusError in the
 // chain. A body without a known code yields the status error alone. The
 // Operator's signed FAILED receipt, when the body carries one, rides with the
-// error (governance.FailedReceipt) so evidence verification can claim its
-// ledger commitment; it is unverified here and must be checked against the
-// executing Operator's anchor before use.
+// error (governance.FailedReceipt), as do the observers' signed receipts for
+// the attempt (dispatch.ObservationReceipts), so evidence verification can
+// claim their ledger commitments; they are unverified here and must be
+// checked against the signing runtime's anchor before use.
 func inferenceDispatchFailure(status int, body []byte) error {
 	failure := &operatorv1.InferenceDispatchFailure{}
 	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, failure); err != nil {
@@ -166,7 +167,7 @@ func inferenceDispatchFailure(status int, body []byte) error {
 	if sentinel := dispatch.FailureSentinel(failure.GetCode()); sentinel != nil {
 		err = fmt.Errorf("%w: inference dispatch returned status %d: %w", constants.ErrHTTPStatusError, status, sentinel)
 	}
-	return governance.WithFailedReceipt(failure.GetReceipt(), err)
+	return dispatch.WithObservationReceipts(failure.GetObservationReceipts(), governance.WithFailedReceipt(failure.GetReceipt(), err))
 }
 
 // InferenceDispatchStreamResult carries the terminal governed response and any

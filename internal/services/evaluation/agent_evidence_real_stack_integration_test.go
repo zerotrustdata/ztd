@@ -109,6 +109,8 @@ type realStackOptions struct {
 	repetitions uint32
 	// request edits the init request after the catalog is frozen into it.
 	request func(*evaluation.CampaignInitRequest)
+	// denyHumanApprovals makes the owner deny every suspended L3 transaction.
+	denyHumanApprovals bool
 }
 
 // realStackAgentRun is a campaign initialized on the real eval stack, with the
@@ -134,7 +136,9 @@ type realStackAgentRun struct {
 func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRun {
 	t.Helper()
 	ctx := t.Context()
-	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{Posture: opts.posture, Replies: opts.replies, SharedRuntime: opts.shared})
+	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{
+		Posture: opts.posture, Replies: opts.replies, SharedRuntime: opts.shared,
+	})
 
 	logger := testutil.NewTestLogger()
 	root := testutil.TempDir(t)
@@ -267,6 +271,11 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	require.Positive(t, scheduled)
 	if opts.singleRole {
 		require.Equal(t, int(repetitions), scheduled)
+	}
+	// The owner denies only the agent's governed shell command; enrollment and
+	// the inference calls of each agent turn are L3 transactions too.
+	if opts.denyHumanApprovals {
+		stack.Owner.DenyToolTransactions(constants.MCPToolRunShellCommand)
 	}
 
 	return &realStackAgentRun{

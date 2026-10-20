@@ -78,6 +78,38 @@ func FailureCode(sentinel error) operatorv1.InferenceDispatchFailureCode {
 	return operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED
 }
 
+// ObservedFailureError carries the observers' signed BEGIN and FINALIZE
+// receipts for a failed attempt alongside the error that ended it. Each
+// receipt is an executed commitment on its observing runtime's ledger, so a
+// trace bracket that claims the failed call must claim them as well. It
+// unwraps to the error, keeping any governance.ReceiptError in the chain.
+type ObservedFailureError struct {
+	ObservationReceipts []*operatorv1.ActionReceipt
+	Err                 error
+}
+
+func (e *ObservedFailureError) Error() string { return e.Err.Error() }
+func (e *ObservedFailureError) Unwrap() error { return e.Err }
+
+// WithObservationReceipts wraps err in an *ObservedFailureError when receipts
+// is non-empty; otherwise it returns err unchanged.
+func WithObservationReceipts(receipts []*operatorv1.ActionReceipt, err error) error {
+	if err == nil || len(receipts) == 0 {
+		return err
+	}
+	return &ObservedFailureError{ObservationReceipts: receipts, Err: err}
+}
+
+// ObservationReceipts returns the signed observation receipts err carries,
+// or nil.
+func ObservationReceipts(err error) []*operatorv1.ActionReceipt {
+	var observed *ObservedFailureError
+	if !errors.As(err, &observed) {
+		return nil
+	}
+	return observed.ObservationReceipts
+}
+
 // FailureSentinel returns the public sentinel a wire code names, or nil for
 // UNSPECIFIED and unknown codes.
 func FailureSentinel(code operatorv1.InferenceDispatchFailureCode) error {

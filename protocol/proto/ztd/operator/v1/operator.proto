@@ -1832,11 +1832,15 @@ enum InferenceDispatchFailureCode {
 // the executing Operator's verified signed FAILED receipt when the dispatch
 // reached it: a governance rejection, or a failed execution whose commitment
 // the Operator's ledger holds. It is absent for every failure that ended
-// before the Operator signed an outcome.
+// before the Operator signed an outcome. Observation_receipts are the
+// observers' verified signed BEGIN and FINALIZE receipts the failed attempt
+// produced, in dispatch order, so a trace bracket can claim their
+// commitments as it does for InferenceDispatchResponse.
 message InferenceDispatchFailure {
   string error = 1;
   InferenceDispatchFailureCode code = 2;
   ActionReceipt receipt = 3;
+  repeated ActionReceipt observation_receipts = 4;
 }
 
 // InferenceDispatchStreamFailure is the protocol-owned terminal failure

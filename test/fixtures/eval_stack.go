@@ -33,6 +33,10 @@ type EvalStackOptions struct {
 	// SharedRuntime serves the Data and Inference roles from one Operator
 	// process, so both roles append to one commitment ledger.
 	SharedRuntime bool
+	// Provenance launches a Provenance Operator over a model store holding the
+	// served model. The Gateway records attestation windows only through that
+	// Operator, and the provider serves the store's digest for the model.
+	Provenance bool
 }
 
 // EvalStack holds the real Gateway and outbound Operators used by eval
@@ -47,6 +51,12 @@ type EvalStack struct {
 	DataHost      *OperatorHost
 	InferenceHost *OperatorHost
 	Provider      *ScriptedOllama
+	// Provenance is the Provenance Operator, nil unless EvalStackOptions.Provenance.
+	Provenance *OperatorProcess
+	// ModelStore is the store the Provenance Operator attests, zero unless
+	// EvalStackOptions.Provenance. ModelStore.ModelDigest is the digest a campaign
+	// variant for the served model must declare to be a digest match.
+	ModelStore OllamaModelStore
 }
 
 // NewEvalStack builds an isolated Gateway, bootstrap owner, wire witness, and
@@ -102,6 +112,17 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 			InferenceOllamaEndpoint: provider.Endpoint(),
 		})
 	}
+	var provenance *OperatorProcess
+	var modelStore OllamaModelStore
+	if opts.Provenance {
+		modelStore = NewOllamaModelStore(t, evalModelTag)
+		provider.ServeModel(evalModelTag, modelStore.ModelDigest)
+		provenance = witness.LaunchOperator(t, NewOperatorHost(t), OperatorProcessOptions{
+			Capabilities:               constants.OperatorCapabilities{constants.OperatorCapabilityProvenance},
+			ProvenanceModelStorageRoot: modelStore.Root,
+		})
+	}
+
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	t.Cleanup(cancel)
 	require.NoError(t, data.AwaitStarted(ctx))
@@ -112,11 +133,17 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 		_, err = inference.AwaitHeartbeat(ctx)
 		require.NoError(t, err)
 	}
+	if provenance != nil {
+		require.NoError(t, provenance.AwaitStarted(ctx))
+		_, err = provenance.AwaitHeartbeat(ctx)
+		require.NoError(t, err)
+	}
 
 	return &EvalStack{
 		Gateway: gateway, Identity: identity, Owner: owner, Witness: witness,
 		Data: data, Inference: inference, DataHost: dataHost,
 		InferenceHost: inferenceHost, Provider: provider,
+		Provenance: provenance, ModelStore: modelStore,
 	}
 }
 

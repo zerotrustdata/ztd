@@ -56,6 +56,9 @@ type OperatorProcessOptions struct {
 	// InferenceOllamaEndpoint is the provider an Operator with the inference
 	// capability calls.
 	InferenceOllamaEndpoint string
+	// ProvenanceModelStorageRoot is the model store an Operator with the
+	// provenance capability attests. The capability requires it.
+	ProvenanceModelStorageRoot string
 }
 
 // OperatorHeartbeat is one heartbeat the Gateway received from an Operator.
@@ -120,15 +123,16 @@ func (w *OperatorWireWitness) LaunchOperator(t *testing.T, host *OperatorHost, o
 	}
 
 	serveOpts := serve.ServeOperatorOptions{
-		OperatorCapabilities:    opts.Capabilities,
-		Endpoint:                constants.LocalhostIP,
-		HTTPPort:                w.PlainPort(),
-		HTTPSPort:               w.TLSPort(),
-		WorkingDir:              host.WorkingDir,
-		LaunchDir:               host.WorkingDir,
-		HeartbeatInterval:       opts.HeartbeatInterval,
-		Keyring:                 host.Keyring,
-		InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint,
+		OperatorCapabilities:               opts.Capabilities,
+		Endpoint:                           constants.LocalhostIP,
+		HTTPPort:                           w.PlainPort(),
+		HTTPSPort:                          w.TLSPort(),
+		WorkingDir:                         host.WorkingDir,
+		LaunchDir:                          host.WorkingDir,
+		HeartbeatInterval:                  opts.HeartbeatInterval,
+		Keyring:                            host.Keyring,
+		InferenceOllamaEndpoint:            opts.InferenceOllamaEndpoint,
+		ProvenanceOperatorModelStorageRoot: opts.ProvenanceModelStorageRoot,
 	}
 	deps := serve.OperatorRuntimeDeps{Logger: testutil.NewTestLogger(), ClientIdentity: identity}
 

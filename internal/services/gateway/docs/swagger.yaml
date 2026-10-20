@@ -2125,6 +2125,10 @@ definitions:
         $ref: '#/definitions/operatorv1.InferenceDispatchFailureCode'
       error:
         type: string
+      observation_receipts:
+        items:
+          $ref: '#/definitions/operatorv1.ActionReceipt'
+        type: array
       receipt:
         $ref: '#/definitions/operatorv1.ActionReceipt'
     type: object

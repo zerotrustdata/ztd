@@ -163,11 +163,17 @@ func IsGatewayHealthy() bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-// publicMirrorBootstrapURL overrides the default mirror bootstrap URL in tests.
-var PublicMirrorBootstrapURL string
+// PublicMirrorOrigin overrides the default public mirror origin in tests.
+var PublicMirrorOrigin string
 
-// publicMirrorHistoryURL overrides the default mirror history URL in tests.
-var publicMirrorHistoryURL string
+// publicMirrorOrigin is the single origin every mirror read and the publisher
+// status resolve: the override, or the Gateway's default loopback listener.
+func publicMirrorOrigin() string {
+	if PublicMirrorOrigin != "" {
+		return PublicMirrorOrigin
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d", constants.PublicSpectatorPublicPort)
+}
 
 // gatewayHealthCheck overrides isGatewayHealthy in tests.
 var GatewayHealthCheck func() bool
@@ -243,11 +249,7 @@ func indexMirrorDatasets(datasetIDs map[string]struct{}, projections []models.Pu
 }
 
 func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID, cursor string, limit int) (models.PublicFeedCursorPage, error) {
-	historyURL := publicMirrorHistoryURL
-	if historyURL == "" {
-		historyURL = fmt.Sprintf("http://127.0.0.1:%d/history", constants.PublicSpectatorPublicPort)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, historyURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicMirrorOrigin()+"/history", nil)
 	if err != nil {
 		return models.PublicFeedCursorPage{}, err
 	}
@@ -286,11 +288,7 @@ func FetchPublicMirrorBootstrap(ctx context.Context) (models.PublicFeedBootstrap
 }
 
 func fetchPublicMirrorBootstrapWithClient(ctx context.Context, client *http.Client) (models.PublicFeedBootstrap, error) {
-	bootstrapURL := PublicMirrorBootstrapURL
-	if bootstrapURL == "" {
-		bootstrapURL = fmt.Sprintf("http://127.0.0.1:%d/bootstrap", constants.PublicSpectatorPublicPort)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, bootstrapURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicMirrorOrigin()+"/bootstrap", nil)
 	if err != nil {
 		return models.PublicFeedBootstrap{}, err
 	}
@@ -519,7 +517,7 @@ func GatewayPublisherStatus(ctx context.Context, fileSvc fs.RuntimeFileService, 
 	}
 	return models.PublicPublisherStatus{
 		Enabled:           true,
-		MirrorOrigin:      fmt.Sprintf("http://127.0.0.1:%d", constants.PublicSpectatorPublicPort),
+		MirrorOrigin:      publicMirrorOrigin(),
 		SourceID:          bootstrap.Snapshot.SourceID,
 		HighWaterSequence: highWater,
 		FeedChainHash:     bootstrap.Snapshot.FeedChainHash,

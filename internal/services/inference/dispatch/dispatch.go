@@ -359,7 +359,7 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	if s.provenanceNotifier != nil && req.Model != "" && req.ModelDigest != "" {
 		receipt, err := s.provenanceNotifier.NotifyAttemptBegin(ctx, req.RequestorUserID, req.ProviderAttemptID, req.Model, req.ModelDigest, req.ModelRegistryDigest, req.CampaignID, attemptStartedAt, req.RetryCount)
 		if err != nil {
-			return nil, fmt.Errorf("inference dispatch: %w", err)
+			return nil, WithObservationReceipts(observationReceipts, fmt.Errorf("inference dispatch: %w", err))
 		}
 		observationReceipts = appendObservationReceipt(observationReceipts, receipt)
 	}
@@ -386,7 +386,6 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 		OnInferenceProgress:     req.OnProgress,
 	})
 	if err != nil {
-		s.finalizeFailedAttempt(ctx, req, "", attemptStartedAt)
 		if errors.Is(err, constants.ErrDispatchResultTimeout) {
 			// The dispatch deadline expired while the provider call may
 			// still be running remotely. Record the unknown outcome and
@@ -397,30 +396,27 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 				"role", req.Role,
 				"model", req.Model,
 				"error", err)
-			return nil, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceOutcomeUnknown)
+			return nil, s.finalizeFailedAttempt(ctx, req, "", attemptStartedAt, observationReceipts, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceOutcomeUnknown))
 		}
-		return nil, fmt.Errorf("inference dispatch: %w", err)
+		return nil, s.finalizeFailedAttempt(ctx, req, "", attemptStartedAt, observationReceipts, fmt.Errorf("inference dispatch: %w", err))
 	}
 
 	// Decode the InferenceResult from the result envelope's payload.
 	if len(result.ResultPayload) == 0 {
-		s.finalizeFailedAttempt(ctx, req, result.TransactionID, attemptStartedAt)
-		return nil, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceResultDecode)
+		return nil, s.finalizeFailedAttempt(ctx, req, result.TransactionID, attemptStartedAt, observationReceipts, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceResultDecode))
 	}
 	infResult := &operatorv1.InferenceResult{}
 	if err := proto.Unmarshal(result.ResultPayload, infResult); err != nil {
-		s.finalizeFailedAttempt(ctx, req, result.TransactionID, attemptStartedAt)
-		return nil, fmt.Errorf("inference dispatch: %w: %w", constants.ErrInferenceResultDecode, err)
+		return nil, s.finalizeFailedAttempt(ctx, req, result.TransactionID, attemptStartedAt, observationReceipts, fmt.Errorf("inference dispatch: %w: %w", constants.ErrInferenceResultDecode, err))
 	}
 	if err := validateInferenceResult(infResult, req); err != nil {
-		s.finalizeFailedAttempt(ctx, req, result.TransactionID, attemptStartedAt)
-		return nil, fmt.Errorf("inference dispatch: %w", err)
+		return nil, s.finalizeFailedAttempt(ctx, req, result.TransactionID, attemptStartedAt, observationReceipts, fmt.Errorf("inference dispatch: %w", err))
 	}
 
 	failed := result.Receipt != nil && result.Receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	finalized, err := s.finalizeAttempt(ctx, req, result.TransactionID, attemptStartedAt, failed)
 	if err != nil {
-		return nil, err
+		return nil, WithObservationReceipts(append(observationReceipts, finalized...), err)
 	}
 	observationReceipts = append(observationReceipts, finalized...)
 
@@ -448,28 +444,30 @@ func appendObservationReceipt(receipts []*operatorv1.ActionReceipt, receipt *ope
 }
 
 // finalizeAttempt reports the attempt outcome to both observation
-// coordinators and returns their FINALIZE receipts. Each coordinator is
-// attempted even when the other fails; campaign-bound requests fail closed on
-// an undelivered finalize.
+// coordinators and returns the FINALIZE receipts they signed. Each
+// coordinator is attempted even when the other fails, and a delivered receipt
+// is returned even when the other was not, because its commitment is already
+// on the observing runtime's ledger; campaign-bound requests fail closed on an
+// undelivered finalize.
 func (s *DispatchService) finalizeAttempt(ctx context.Context, req DispatchInferenceRequest, inferenceTransactionID string, startedAtUnixMs int64, failed bool) ([]*operatorv1.ActionReceipt, error) {
 	completedAtUnixMs := time.Now().UTC().UnixMilli()
 	observed, observedErr := s.notifyObservationFinalize(ctx, req, inferenceTransactionID, startedAtUnixMs, completedAtUnixMs, failed)
 	provenance, provenanceErr := s.notifyProvenanceFinalize(ctx, req, inferenceTransactionID, startedAtUnixMs, completedAtUnixMs, failed)
-	if err := errors.Join(observedErr, provenanceErr); err != nil {
-		return nil, err
-	}
-	return appendObservationReceipt(appendObservationReceipt(nil, observed), provenance), nil
+	return appendObservationReceipt(appendObservationReceipt(nil, observed), provenance), errors.Join(observedErr, provenanceErr)
 }
 
-// finalizeFailedAttempt finalizes an attempt that already failed. The caller
-// returns the original failure, so an undelivered finalize is logged rather
-// than replacing it.
-func (s *DispatchService) finalizeFailedAttempt(ctx context.Context, req DispatchInferenceRequest, inferenceTransactionID string, startedAtUnixMs int64) {
-	if _, err := s.finalizeAttempt(ctx, req, inferenceTransactionID, startedAtUnixMs, true); err != nil {
+// finalizeFailedAttempt finalizes an attempt that already failed and returns
+// cause carrying every observation receipt the attempt produced, BEGIN and
+// FINALIZE. The original failure is kept, so an undelivered finalize is
+// logged rather than replacing it.
+func (s *DispatchService) finalizeFailedAttempt(ctx context.Context, req DispatchInferenceRequest, inferenceTransactionID string, startedAtUnixMs int64, began []*operatorv1.ActionReceipt, cause error) error {
+	finalized, err := s.finalizeAttempt(ctx, req, inferenceTransactionID, startedAtUnixMs, true)
+	if err != nil {
 		s.logger.Warn("inference dispatch: observation finalize undelivered for failed attempt",
 			"provider_attempt_id", req.ProviderAttemptID,
 			"error", err)
 	}
+	return WithObservationReceipts(append(began, finalized...), cause)
 }
 
 func (s *DispatchService) notifyObservationFinalize(
