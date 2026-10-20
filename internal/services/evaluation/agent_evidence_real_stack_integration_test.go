@@ -186,6 +186,9 @@ type realStackOptions struct {
 	request func(req *evaluation.CampaignInitRequest, dataOperatorID string)
 	// denyHumanApprovals makes the owner deny every suspended L3 transaction.
 	denyHumanApprovals bool
+	// modelTags are the extra tags the stack serves and attests, each at
+	// fixtures.ScriptedModelDigest(tag).
+	modelTags []string
 }
 
 // realStackAgentRun is a campaign initialized on the real eval stack, with the
@@ -230,7 +233,7 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	ctx := t.Context()
 	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{
 		Posture: opts.posture, Replies: opts.replies, SharedRuntime: opts.shared,
-		Provenance: true,
+		Provenance: true, ModelTags: opts.modelTags,
 	})
 
 	logger := testutil.NewTestLogger()
@@ -379,7 +382,7 @@ func (env *realStackAgentRun) startRun(t *testing.T, plan realStackRunPlan) {
 	}
 	// The variant declares the digest the Provenance Operator attests for the
 	// served model, so the campaign's BEGIN observation is a digest match.
-	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: realStackModelTag, ModelDigest: env.stack.ModelStore.ModelDigest}
+	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: realStackModelTag, ModelDigest: fixtures.ScriptedModelDigest(t, realStackModelTag)}
 	inventory, err := evaluation.MaterializeModelRegistry(plan.campaignID, []*evalv1.ModelVariant{variant})
 	require.NoError(t, err)
 	req := evaluation.CampaignInitRequest{

@@ -457,7 +457,8 @@ func TestL5ActuatorExecuteFailsClosedWhenRehydrationFails(t *testing.T) {
 	assert.Equal(t, original, msg.GetPayload(), "the payload is not replaced by a partial rehydration")
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
 	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, receipt.FailureCode)
-	assert.Contains(t, receipt.ResultSummary, "failed: ")
+	assert.True(t, strings.HasPrefix(receipt.ResultSummary, "failed: "), receipt.ResultSummary)
+	assert.Contains(t, receipt.ResultSummary, constants.ErrScrubbingTokenUnresolved.Error(), "the signed summary records the rehydration cause")
 
 	var executionStage *operatorv1.DeterministicStageEvidence
 	for _, stage := range receipt.DeterministicStageEvidence {

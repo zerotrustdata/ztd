@@ -372,6 +372,26 @@ func TestL5RehydratePayloadFailsClosedOnUnresolvableToken(t *testing.T) {
 	assert.Equal(t, original, msg.GetPayload(), "an unrehydrated payload is never handed back as dispatchable")
 }
 
+// An Actuator with no scrubbing service cannot rehydrate a token, so a payload that holds one is
+// refused; a payload with no token passes unchanged.
+func TestL5RehydratePayloadWithoutScrubberRefusesTokens(t *testing.T) {
+	t.Parallel()
+	actuator, _ := newTestActuator(t)
+	actuator.Scrubbing = nil
+
+	tokenized := []byte(`{"command":"login --password {{UEI_1}}"}`)
+	msg := &rehydrationCommandMessage{payload: tokenized}
+	err := actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg)
+	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
+	require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+	assert.Equal(t, tokenized, msg.GetPayload())
+
+	plain := []byte(`{"command":"uptime"}`)
+	msg = &rehydrationCommandMessage{payload: plain}
+	require.NoError(t, actuator.rehydratePayload(context.Background(), rehydrationTestVT(), msg))
+	assert.Equal(t, plain, msg.GetPayload())
+}
+
 func TestCanonicalizeActionReceipt(t *testing.T) {
 	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{

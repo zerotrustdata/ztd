@@ -108,7 +108,7 @@ type AppPlatformEnrollmentClient struct {
 
 // NewAppPlatformEnrollmentClient constructs an app platform enrollment client.
 func NewAppPlatformEnrollmentClient(appName string, fileSvc fs.RuntimeFileService, cfg *config.Config, logger *slog.Logger, opts ...AppEnrollmentOptions) (*AppPlatformEnrollmentClient, error) {
-	if err := validateAppName(appName); err != nil {
+	if err := models.ValidateAppName(appName); err != nil {
 		return nil, err
 	}
 	if fileSvc == nil {
@@ -392,7 +392,7 @@ func (c *AppPlatformEnrollmentClient) HasValidIdentity() bool {
 
 // LoadAppIdentity loads and verifies the installed TLS certificate for the given appName.
 func LoadAppIdentity(fileSvc fs.RuntimeFileService, cfg *config.Config, appName string) (*tls.Certificate, error) {
-	if err := validateAppName(appName); err != nil {
+	if err := models.ValidateAppName(appName); err != nil {
 		return nil, err
 	}
 	if fileSvc == nil || cfg == nil {
@@ -842,12 +842,6 @@ func parseRetryAfter(value string) time.Duration {
 		return 0
 	}
 	return time.Duration(seconds) * time.Second
-}
-
-// validateAppName applies the shared Gateway rule so the CLI rejects a name
-// before it signs or submits an enrollment.
-func validateAppName(appName string) error {
-	return models.ValidateAppName(appName)
 }
 
 func isGatewayRequiresBootstrap(body []byte) bool {

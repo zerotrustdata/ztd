@@ -14,7 +14,7 @@ Autonomous workflows frequently require agents to collaborate across boundaries 
 - **Unified Governance**: Every skill call undergoes identical validation to host-native commands, requiring state Merkle root verification, policy evaluation, and cryptographic audit receipt generation.
 - **Fail-Closed Execution**: Downstream skill providers receive invocations only after all governance layers confirm validity.
 
-```
+```text
 ┌────────────────────────────────────────────────────────┐
 │ Originating Agent (A2A Client)                         │
 └───────────────────────────┬────────────────────────────┘
@@ -162,7 +162,7 @@ message A2aCallRequested {
 
 Under postures enforcing L3 (`ratify`, `notary`), unauthenticated A2A requests enter the suspension workflow:
 
-```
+```text
 [ Inbound A2A Call ] ──▶ [ L3 Proof Missing ]
                                 │
                                 ▼

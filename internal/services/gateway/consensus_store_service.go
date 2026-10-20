@@ -21,6 +21,7 @@ import (
 	"unicode"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -171,20 +172,6 @@ func (s *ConsensusStoreService) NewConsensusAppDeliberator(httpClient *http.Clie
 	}
 }
 
-// rejectConsensusAppRedirects returns a copy of client that refuses every
-// redirect. The bound endpoint is the identity the Operator trusts; following a
-// Location header would send the envelope to a host nobody bound. This is the
-// single enforcement point for every client the deliberator uses, including
-// factory-built clients, so no client source can re-enable redirects. The
-// caller's client is not mutated.
-func rejectConsensusAppRedirects(client *http.Client) *http.Client {
-	pinned := *client
-	pinned.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return constants.ErrConsensusEndpointInvalid
-	}
-	return &pinned
-}
-
 // NewConsensusAppDeliberatorWithClientFactory creates a deliberator whose
 // client is selected from the bound primary application identity. The factory
 // is called after the current binding is loaded for each request.
@@ -231,7 +218,10 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 	if httpClient == nil {
 		return nil, constants.ErrInternal
 	}
-	httpClient = rejectConsensusAppRedirects(httpClient)
+	// The bound endpoint is the identity the Operator trusts. Every client
+	// source, including factory-built clients, is pinned here so none can
+	// re-enable redirects.
+	httpClient = httpclient.WithoutRedirects(httpClient, constants.ErrConsensusEndpointInvalid)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bound.EndpointURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create consensus deliberation request: %w", err)

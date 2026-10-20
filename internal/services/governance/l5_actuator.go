@@ -507,13 +507,22 @@ func SignatureDigest(signatures []string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// rehydratePayload rehydrates the command message payload in place. Fail-closed: returns error on rehydration failure.
+// rehydratePayload rehydrates the command message payload in place. Fail-closed:
+// returns an error on rehydration failure, and an Actuator with no
+// ScrubbingService refuses a payload that holds a token it cannot rehydrate.
 func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransaction, cmdMsg CommandMessage) error {
-	if w.Scrubbing == nil || cmdMsg == nil {
+	if cmdMsg == nil {
 		return nil
 	}
 	p := cmdMsg.GetPayload()
 	if len(p) == 0 {
+		return nil
+	}
+	if w.Scrubbing == nil {
+		if scrubbing.ContainsToken(p) {
+			w.Logger.Error("Fail-closed: payload holds a UEI token and no scrubbing service is configured", string(constants.ConnectionStateError), constants.ErrScrubbingTokenUnresolved, "message_id", vt.Envelope.Id)
+			return fmt.Errorf("%w: no scrubbing service: %w", constants.ErrL5ActuatorRehydrate, constants.ErrScrubbingTokenUnresolved)
+		}
 		return nil
 	}
 	rehydrated, err := w.Scrubbing.RehydratePayload(ctx, p)

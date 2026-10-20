@@ -186,7 +186,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 
 	// The variant declares the digest of the model store the stack's Provenance
 	// Operator attests, so the attestation window is a digest match.
-	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: evalRunModelTag, ModelDigest: stack.ModelStore.ModelDigest}
+	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: evalRunModelTag, ModelDigest: fixtures.ScriptedModelDigest(t, evalRunModelTag)}
 	inventory, err := evaluation.MaterializeModelRegistry(evalRunCampaignID, []*evalv1.ModelVariant{variant})
 	require.NoError(t, err)
 	runID := opts.runID

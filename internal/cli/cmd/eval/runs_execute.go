@@ -165,10 +165,16 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
-	defer stream.Close()
 	// A stream that stops on its own can no longer deliver a stop request, so the
-	// run stops before its next assignment.
+	// run stops before its next assignment. The relay is joined before the
+	// watcher stops, so it never signals a stopped watcher.
+	streamRelayed := make(chan struct{})
+	defer func() {
+		stream.Close()
+		<-streamRelayed
+	}()
 	go func() {
+		defer close(streamRelayed)
 		<-stream.Done()
 		if err := stream.Err(); err != nil {
 			slog.Default().Warn("evaluation: run execute: run event stream stopped; stopping before the next assignment", "run_id", opts.RunID, "error", err)

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -118,40 +119,46 @@ func SmokeScenarioSuite() ScenarioSuite {
 		smokeSuiteBlueprints())
 }
 
+// builtinSuites is the one table of built-in suites, in display order.
+var builtinSuites = []struct {
+	id    string
+	build func() (ScenarioSuite, error)
+}{
+	{DefaultSuiteID, func() (ScenarioSuite, error) { return DefaultScenarioSuite(), nil }},
+	{SmokeSuiteID, func() (ScenarioSuite, error) { return SmokeScenarioSuite(), nil }},
+	{InvestigationsSuiteID, InvestigationsScenarioSuite},
+}
+
 // BuiltinSuiteIDs lists the built-in suite IDs in display order.
 func BuiltinSuiteIDs() []string {
-	return []string{DefaultSuiteID, SmokeSuiteID, InvestigationsSuiteID}
+	ids := make([]string, 0, len(builtinSuites))
+	for _, builtin := range builtinSuites {
+		ids = append(ids, builtin.id)
+	}
+	return ids
 }
 
 // isBuiltinSuiteID reports whether id names a built-in suite. Membership comes
-// from the ID list alone, so a built-in whose build fails stays reserved.
+// from the table alone, so a built-in whose build fails stays reserved.
 func isBuiltinSuiteID(id string) bool {
-	for _, builtinID := range BuiltinSuiteIDs() {
-		if id == builtinID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(BuiltinSuiteIDs(), id)
 }
 
 // BuiltinScenarioSuite returns the built-in suite with the given ID. The second
 // result reports whether the ID names a built-in suite; a built-in whose build
 // fails returns that error rather than a zero suite.
 func BuiltinScenarioSuite(id string) (ScenarioSuite, bool, error) {
-	switch id {
-	case DefaultSuiteID:
-		return DefaultScenarioSuite(), true, nil
-	case SmokeSuiteID:
-		return SmokeScenarioSuite(), true, nil
-	case InvestigationsSuiteID:
-		suite, err := InvestigationsScenarioSuite()
+	for _, builtin := range builtinSuites {
+		if builtin.id != id {
+			continue
+		}
+		suite, err := builtin.build()
 		if err != nil {
 			return ScenarioSuite{}, true, fmt.Errorf("evaluation: build built-in suite %s: %w", id, err)
 		}
 		return suite, true, nil
-	default:
-		return ScenarioSuite{}, false, nil
 	}
+	return ScenarioSuite{}, false, nil
 }
 
 // reservedSuiteID reports whether a custom suite may not use the ID: the

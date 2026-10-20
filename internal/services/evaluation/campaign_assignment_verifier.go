@@ -110,9 +110,6 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 	if trace.RunID != req.Assignment.GetRunId() || trace.AssignmentID != req.Assignment.GetAssignmentId() {
 		return append(failures, fmt.Sprintf("agent trace binding mismatch: %v", constants.ErrEvaluationEvidenceTraceMismatch))
 	}
-	if err := VerifyAgentTraceEvidence(trace); err != nil {
-		failures = append(failures, "agent trace evidence validation failed: "+err.Error())
-	}
 	body, err := MarshalCanonicalJSONObject(trace)
 	if err != nil {
 		return append(failures, "agent trace canonicalization failed: "+err.Error())
@@ -140,9 +137,6 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 		Binding:           req.Binding,
 		FormationStackSet: req.FormationStackSet,
 	}
-	if err := verifyAssignmentTraceModels(execReq, trace); err != nil {
-		failures = append(failures, "agent trace model binding failed: "+err.Error())
-	}
 	if trace.SchemaVersion == agentTraceSchemaVersion {
 		expected, _ := modelInferenceRecordsFromAgentTrace(execReq, trace, func(string) string { return "" })
 		if len(expected) != len(req.Result.GetModelInferences()) {
@@ -164,12 +158,13 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 			}
 		}
 	}
-	// Campaign assignments carry the current sealed schema pin, and the same grader verdict
-	// the live import applies, so a stored INVALID_EVIDENCE from either rule is
-	// recomputed and accepted here. The verdict is recomputed under any catalog:
-	// only the grade comparison depends on CatalogRecomputesGrades.
+	// The lifecycle is recomputed from the evidence rules and grader verdict the
+	// live import applies, so a stored INVALID_EVIDENCE from any of them is
+	// recomputed and accepted here, and a trace that fails them under any other
+	// stored lifecycle does not verify. The verdict is recomputed under any
+	// catalog: only the grade comparison depends on CatalogRecomputesGrades.
 	lifecycle := agentTraceLifecycle(execReq, trace)
-	assessment := assessAgentTrace(execReq, trace, lifecycle, agentTraceSchemaPinError(trace))
+	assessment := assessAgentTrace(execReq, trace, lifecycle, agentTraceEvidenceError(execReq, trace))
 	if assessment.invalid != nil {
 		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
 	}

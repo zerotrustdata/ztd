@@ -188,20 +188,6 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 				})
 			}
 		}
-		// Only a GRADER_FAILED trace waits on the judge; a verified judge grade is
-		// the evidence that releases it.
-		if result.GetLifecycleStatus() == evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED {
-			hasEvidence := false
-			for _, sg := range semanticGrades {
-				if sg.GraderCallRef != nil {
-					hasEvidence = true
-					break
-				}
-			}
-			if hasEvidence {
-				result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
-			}
-		}
 		digest, err := ComputeAssignmentResultDigest(result)
 		if err != nil {
 			return nil, assignmentExecutionError("evaluation: recompute assignment result digest", err)
@@ -307,7 +293,7 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 		} else if sc.TransactionID != "" {
 			receiptErr = anchorsErr
 			if receiptErr == nil {
-				receiptErr = verifyJudgeReceipt(anchors, trace.Inference.OperatorID, sc)
+				receiptErr = verifyJudgeReceipt(anchors, trace.Inference, sc)
 			}
 			if receiptErr == nil {
 				graderCallRef = &compliancev1.ComplianceEvidenceReference{
@@ -1203,6 +1189,15 @@ func agentTraceSchemaPinError(trace *AgentTrace) error {
 	return fmt.Errorf("evaluation: agent trace schema version %q is not the version the campaign executor seals (%q): %w", trace.SchemaVersion, agentTraceSchemaVersion, constants.ErrEvidenceArtifactMalformed)
 }
 
+// agentTraceEvidenceError is every evidence rule an agent trace must pass
+// before it is graded: the sealed schema pin, the signed receipt evidence, and
+// the binding of each inference to the frozen campaign models. Live import and
+// the assignment verifier both apply it, so a stored INVALID_EVIDENCE verdict is
+// recomputed from the same rules.
+func agentTraceEvidenceError(req AssignmentExecutionRequest, trace *AgentTrace) error {
+	return errors.Join(agentTraceSchemaPinError(trace), VerifyAgentTraceEvidence(trace), verifyAssignmentTraceModels(req, trace))
+}
+
 // agentTraceAssessment is the INVALID_EVIDENCE verdict on one agent trace.
 // Exactly one field is set: grading when the trace is graded, invalid when it
 // is INVALID_EVIDENCE, and failed when grading failed for a reason that is not
@@ -1264,10 +1259,7 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	}
 	// Verification comes before grading: a trace the Data Operator's signed
 	// evidence does not back is never graded against the model.
-	evidenceErr := errors.Join(agentTraceSchemaPinError(trace), VerifyAgentTraceEvidence(trace))
-	if modelErr := verifyAssignmentTraceModels(req, trace); modelErr != nil {
-		evidenceErr = errors.Join(evidenceErr, modelErr)
-	}
+	evidenceErr := agentTraceEvidenceError(req, trace)
 	// Grading reads only verified evidence. A grader error that is a verdict on
 	// the trace or the gold players is INVALID_EVIDENCE; any other grader error
 	// is an executor failure and stays recoverable.

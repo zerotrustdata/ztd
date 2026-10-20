@@ -16,7 +16,7 @@ The Gateway exposes a unified MCP interface at `/mcp`:
 - **HTTPS Port (`8443`)**: The only listener that serves `/mcp`. It requires mutual TLS (`RequireAndVerifyClientCert`); clients authenticate with certificates issued by the Gateway PKI. When JWKS is configured, JWT authentication wraps the endpoint.
 - **HTTP Port (`8080`)**: Does not register `/mcp`. Its catch-all handler redirects other paths to the HTTPS listener with `301`.
 
-```
+```text
 ┌────────────────────────────────────────────────────────┐
 │ MCP Client (Claude Code, OpenAI Codex, Goose, Gemini)  │
 └───────────────────────────┬────────────────────────────┘
@@ -112,7 +112,7 @@ message McpPromptGetRequested {
 
 Every MCP tool call undergoes strict 5-layer verification prior to invocation:
 
-```
+```text
 [ tools/call Request ]
          │
          ▼
@@ -190,11 +190,7 @@ When an MCP tool call requires human authorization under `ratify` or `notary` po
 
 ## 4. Native Tools
 
-Native tools are registered explicitly in `RegisterNativeTools()` (`internal/services/mcp/native_tool_registry.go`). They execute inside the Operator's host boundary without downstream dependencies. The `tools/list` method returns the registered set; this document does not enumerate it.
-
-### 4.1 Audit Receipt Queries
-- **`audit_receipt_list`**: Lists signed `ActionReceipt` records. The Gateway-native query reads the Gateway's local audit store and requires `operator_session_id`; optional `investigation_id` intersects that scope. Remote Operator records there remain best-effort projections. A governed `MCP_CALL` dispatched to the selected Data Operator with `investigation_id` and `exclude_audit_reads: true` uses that Operator's authoritative local ledger. Its session filter is optional, so one investigation can retrieve receipts across reconnects of the same Operator. SQL applies the Operator identity, investigation, and session filters; the audit-read exclusion drops only the `audit_receipt_list` and `audit_receipt_get` receipts themselves, after decryption and before pagination. Excluding those reads prevents recursive history responses; every other native-tool `MCP_CALL`, including `run_shell_command`, is investigation context. The Operator result contains only signed receipt messages and the `operator_id`, `investigation_id`, `authority: "operator_local_ledger"`, and `count` metadata, preserved in the query's signed receipt summary. Each original receipt's content was scrubbed before its original L5 signature; arbitrary handler text still passes through normal egress scrubbing. The query never falls back to the Gateway mirror. Both routes remain read-only and governed; posture-required L2/L3 proofs still apply. Optional action-type and execution-time filters further narrow results.
-- **`audit_receipt_get`**: Retrieves a single, complete signed `ActionReceipt` by its `transaction_id`.
+Native tools are registered explicitly in `RegisterNativeTools()` (`internal/services/mcp/native_tool_registry.go`). They execute inside the Operator's host boundary without downstream dependencies. To list the live set, call the MCP `tools/list` method on `/mcp` from any MCP client; no `ztd mcp` subcommand lists tools. Audit-read tool semantics are documented in the [AI Agents and Governance Boundary](../../docs/architecture/agents.md) architecture document.
 
 ---
 

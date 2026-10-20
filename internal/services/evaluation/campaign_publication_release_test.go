@@ -25,12 +25,14 @@ import (
 // release provenance alike.
 func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testing.T) {
 	for _, tc := range []struct {
-		name, release, basis, revision string
-		legacy                         bool
+		name, release, revision string
+		basis                   ReleaseBasis
+		publicBasis             evalv1.PublicReleaseBasis
+		legacy                  bool
 	}{
-		{name: "recorded", release: testPlatform.Release, basis: "recorded", revision: testPlatform.SourceRevision},
-		{name: "asserted", release: "v2.2.7", basis: "asserted", legacy: true},
-		{name: "unknown", basis: "unknown", legacy: true},
+		{name: "recorded", release: testPlatform.Release, basis: ReleaseBasisRecorded, publicBasis: evalv1.PublicReleaseBasis_PUBLIC_RELEASE_BASIS_RECORDED, revision: testPlatform.SourceRevision},
+		{name: "asserted", release: "v2.2.7", basis: ReleaseBasisAsserted, publicBasis: evalv1.PublicReleaseBasis_PUBLIC_RELEASE_BASIS_ASSERTED, legacy: true},
+		{name: "unknown", basis: ReleaseBasisUnknown, publicBasis: evalv1.PublicReleaseBasis_PUBLIC_RELEASE_BASIS_UNKNOWN, legacy: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -58,13 +60,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 			f.controller.WithPublication(coordinator)
 			_, err := coordinator.PublishRunCatchUp(ctx, runID)
 			require.NoError(t, err)
-			for range 3 {
-				_, _, err = f.controller.ExecuteNextAssignment(ctx, runID, CampaignExecutionBinding{
-					Topology:            testOperatorTopology("inf-session", "data-session"),
-					ModelRegistryDigest: f.req.Inventory.RegistryDigest, ModelRegistry: InferenceVariantsFromEvalRegistry(f.req.Inventory.Variants),
-				}, f.req.ScenarioArtifacts)
-				require.NoError(t, err)
-			}
+			executeTestAssignments(t, f.controller, f.req, runID, 3)
 			_, err = coordinator.PublishRunCompletion(ctx, runID, archiveTestNow)
 			require.NoError(t, err)
 			run, err := f.store.LoadRun(ctx, runID)
@@ -82,7 +78,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 				}
 				require.NoError(t, json.Unmarshal([]byte(published.RecordBytes), &body))
 				payload := []byte(published.RecordBytes)
-				basis := tc.basis
+				basis := string(tc.basis)
 				// Protobuf-owned records (assignment messages and live events)
 				// carry the enum name; only the view snapshots keep the lowercase form.
 				if body.MessageType != "" {
@@ -90,7 +86,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 					body.Kind = body.MessageType
 				}
 				if body.MessageType != "" || published.RecordType == models.PublicFeedRecordTypeEvent {
-					basis = "PUBLIC_RELEASE_BASIS_" + map[string]string{"recorded": "RECORDED", "asserted": "ASSERTED", "unknown": "UNKNOWN"}[tc.basis]
+					basis = evalv1.PublicReleaseBasis_name[int32(tc.publicBasis)]
 				}
 				var identity struct {
 					Release        string `json:"release"`

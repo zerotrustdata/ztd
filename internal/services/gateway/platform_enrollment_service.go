@@ -647,44 +647,9 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 	if err := models.ValidateConsensusEndpoint(endpointURL); err != nil {
 		return nil, fmt.Errorf("platform enrollment: consensus endpoint: %w", err)
 	}
-	members := make([]string, 0, len(req.MemberAppIDs)+1)
-	if len(req.MemberAppIDs) == 0 {
-		members = append(members, appID)
-	} else {
-		for _, id := range req.MemberAppIDs {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				return nil, fmt.Errorf("platform enrollment: consensus members: %w", constants.ErrConsensusAppNotEnrolled)
-			}
-			members = append(members, id)
-		}
-	}
-	seenMembers := make(map[string]struct{}, len(members))
-	primaryIncluded := false
-	for _, id := range members {
-		if _, exists := seenMembers[id]; exists {
-			return nil, constants.ErrConsensusMemberDuplicate
-		}
-		seenMembers[id] = struct{}{}
-		if id == appID {
-			primaryIncluded = true
-		}
-	}
-	if !primaryIncluded {
-		return nil, constants.ErrConsensusAppNotEnrolled
-	}
-	quorum := req.Quorum
-	if quorum == 0 {
-		// A single application defaults to a 1-of-1 binding. A multi-member
-		// set must state its quorum so a K-of-N policy is never written by
-		// omission.
-		if len(members) > 1 {
-			return nil, fmt.Errorf("platform enrollment: consensus quorum must be explicit for %d members: %w", len(members), constants.ErrConsensusQuorumInvalid)
-		}
-		quorum = 1
-	}
-	if quorum < 1 || quorum > len(members) {
-		return nil, constants.ErrConsensusQuorumInvalid
+	members, quorum, err := models.ResolveConsensusMembership(appID, req.MemberAppIDs, req.Quorum)
+	if err != nil {
+		return nil, fmt.Errorf("platform enrollment: %w", err)
 	}
 	user, err := s.userSvc.GetByID(ctx, actorUserID)
 	if err != nil {

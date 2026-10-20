@@ -12,8 +12,6 @@
 package evaluation_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -354,12 +352,13 @@ func TestCampaignTribunalIntegration_TribunalProviderFailureEndsLoopAndVerifies(
 	require.NoError(t, err, "the interrupted turn ends the conversation")
 }
 
-// tribunalFormationVariants is the formation catalog's variant registry, with a
-// digest derived from each served tag.
-func tribunalFormationVariants() []*evalv1.ModelVariant {
+// tribunalFormationVariants is the formation catalog's variant registry. Each
+// variant declares the digest the stack's Provenance Operator attests for its
+// tag when the run serves evaluation.FormationCatalogServedTags().
+func tribunalFormationVariants(t *testing.T) []*evalv1.ModelVariant {
+	t.Helper()
 	return evaluation.FormationCatalogFixtureVariants(func(tag string) string {
-		sum := sha256.Sum256([]byte(tag))
-		return hex.EncodeToString(sum[:])
+		return fixtures.ScriptedModelDigest(t, tag)
 	})
 }
 
@@ -378,7 +377,7 @@ func tribunalVariantByID(t *testing.T, variants []*evalv1.ModelVariant, id strin
 // Tribunal on the assistant tier. The member calls go to the assistant tag, and
 // the second member fails, so the deliberation stops with one answer recorded.
 func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRoles(t *testing.T) {
-	variants := tribunalFormationVariants()
+	variants := tribunalFormationVariants(t)
 	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
 		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"qwen-powerhouse"},
 	})
@@ -392,7 +391,8 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRole
 		suffix: "system-lane",
 		replies: append(append(tribunalIntent("call-1"), tribunalTurn("assistant tribunal answer")...),
 			fixtures.OllamaReply{Failure: "provider unreachable"}),
-		scenario: tribunalScenario,
+		scenario:  tribunalScenario,
+		modelTags: evaluation.FormationCatalogServedTags(),
 		request: func(req *evaluation.CampaignInitRequest, _ string) {
 			inventory, err := evaluation.MaterializeModelRegistry(realStackCampaignID, variants)
 			require.NoError(t, err)
@@ -401,9 +401,6 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRole
 			req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
 		},
 	})
-	for _, variant := range variants {
-		env.stack.Provider.ServeModel(variant.GetServedModelTag(), variant.GetModelDigest())
-	}
 
 	res := env.executeNext(t)
 

@@ -50,7 +50,7 @@ func ValidateAppName(name string) error {
 // identities are issued only through the owner-approved enrollment protocol.
 func isReservedPlatformAppName(name string) bool {
 	switch name {
-	case "ztd", "ztdg", "ztdo", "ztde", "ztdd",
+	case "ztd", "ztdg", PlatformOperatorName, "ztde", PlatformDashboardName,
 		"ztd-gateway", "ztd-operator", "ztd-ensemble", "ztd-dashboard", "ztd-cli",
 		"operator", "ensemble", "dashboard", "gateway", "cli", "admin", "system":
 		return true

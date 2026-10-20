@@ -124,16 +124,16 @@ func writeTestCLICert(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.C
 }
 
 func TestValidateAppName(t *testing.T) {
-	assert.ErrorIs(t, validateAppName(""), constants.ErrPlatformEnrollmentAppNameRequired)
-	assert.ErrorIs(t, validateAppName("ztd"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("ztdo"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("ztde"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("operator"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("INVALID-UPPER"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.ErrorIs(t, validateAppName("app/slash"), constants.ErrPlatformEnrollmentInvalidAppName)
-	assert.NoError(t, validateAppName("ztd-eval"))
-	assert.NoError(t, validateAppName("my-agent-1"))
-	assert.NoError(t, validateAppName("custom.app"))
+	assert.ErrorIs(t, models.ValidateAppName(""), constants.ErrPlatformEnrollmentAppNameRequired)
+	assert.ErrorIs(t, models.ValidateAppName("ztd"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("ztdo"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("ztde"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("operator"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("INVALID-UPPER"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("app/slash"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.NoError(t, models.ValidateAppName("ztd-eval"))
+	assert.NoError(t, models.ValidateAppName("my-agent-1"))
+	assert.NoError(t, models.ValidateAppName("custom.app"))
 }
 
 func TestLoadAppIdentity_Missing(t *testing.T) {

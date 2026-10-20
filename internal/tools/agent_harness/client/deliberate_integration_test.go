@@ -199,5 +199,6 @@ func TestDeliberate_ApplicationRedirectIsRejected(t *testing.T) {
 	})
 	proof, err := c.Deliberate(context.Background(), Persona{}, deliberateEnvelope("tx-1"))
 	require.ErrorIs(t, err, constants.ErrIngressL2DeliberationFailed)
+	require.ErrorIs(t, err, constants.ErrConsensusEndpointInvalid)
 	assert.Nil(t, proof)
 }

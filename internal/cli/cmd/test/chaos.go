@@ -28,13 +28,14 @@ func chaosCmd() *cobra.Command {
 		Short: "Generate realistic governance events against the local ztd audit stack",
 		Long: `chaos generates a realistic distribution of governance events against
 the local ztd audit stack. It bypasses network/TLS by driving the
-TransactionVerifier + Actuator stack directly in-process, which is the same
+L4Warden + L5Actuator stack directly in-process, which is the same
 path exercised by the live Operator when payloads arrive over pub/sub.
 
 Distribution:
-  70%  Good Actor  – valid sig, safe intent (FS_LIST)       → EXECUTED
+  60%  Good Actor  – valid sig, safe intent (FS_LIST)       → EXECUTED
   20%  Prompt Inj  – valid sig, L1 forbidden cmd (sudo/rm)  → REJECTED (L1)
-  10%  MitM        – corrupted transaction hash              → REJECTED (hash mismatch)`,
+  10%  MitM        – corrupted transaction hash              → REJECTED (hash mismatch)
+  10%  File Mut.   – valid sig, FILE_EDIT with L3 proof      → EXECUTED`,
 		RunE: runChaos,
 	}
 

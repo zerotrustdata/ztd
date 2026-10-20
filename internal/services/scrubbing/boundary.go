@@ -28,6 +28,12 @@ import (
 // tokenPattern matches {{UEI_N}} placeholders in rehydration.
 var tokenPattern = regexp.MustCompile(`\{\{UEI_\d+\}\}`)
 
+// ContainsToken reports whether payload holds a {{UEI_N}} token. A dispatcher
+// with no ScrubbingService cannot rehydrate one and must withhold the payload.
+func ContainsToken(payload []byte) bool {
+	return tokenPattern.Match(payload)
+}
+
 // Config holds configuration for the Sovereign Execution Boundary
 type Config struct {
 	// Enabled controls whether scrubbing is active

@@ -962,38 +962,9 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 	if actorUserID == "" {
 		return "", constants.ErrPlatformEnrollmentInvalidDecision
 	}
-	memberAppIDs := payload.GetConsensusMemberAppIds()
-	hasExplicitMembers := len(memberAppIDs) > 0
-	if !hasExplicitMembers {
-		memberAppIDs = []string{appID}
-	}
-	quorum := int(payload.GetConsensusQuorum())
-	if quorum == 0 && !hasExplicitMembers {
-		quorum = 1
-	}
-	if quorum < 1 || quorum > len(memberAppIDs) {
-		return "", constants.ErrConsensusQuorumInvalid
-	}
-	seenMembers := make(map[string]struct{}, len(memberAppIDs))
-	normalizedMembers := make([]string, 0, len(memberAppIDs))
-	primaryIncluded := false
-	for _, memberID := range memberAppIDs {
-		memberID = strings.TrimSpace(memberID)
-		if memberID == "" {
-			return "", constants.ErrConsensusAppNotEnrolled
-		}
-		if _, exists := seenMembers[memberID]; exists {
-			return "", constants.ErrConsensusMemberDuplicate
-		}
-		seenMembers[memberID] = struct{}{}
-		normalizedMembers = append(normalizedMembers, memberID)
-		if memberID == appID {
-			primaryIncluded = true
-		}
-	}
-	memberAppIDs = normalizedMembers
-	if !primaryIncluded {
-		return "", constants.ErrConsensusAppNotEnrolled
+	memberAppIDs, quorum, err := models.ResolveConsensusMembership(appID, payload.GetConsensusMemberAppIds(), int(payload.GetConsensusQuorum()))
+	if err != nil {
+		return "", fmt.Errorf("platform enrollment: %w", err)
 	}
 
 	// Validate ownership, active enrollment policy, and signing key for every

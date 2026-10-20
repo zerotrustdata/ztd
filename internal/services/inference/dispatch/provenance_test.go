@@ -132,4 +132,30 @@ func TestDispatchInference_ZeroProvenanceOperatorFailsClosedOnlyInCampaignMode(t
 		}
 		require.Equal(t, []string{"provenance-finalize"}, got)
 	})
+
+	t.Run("non-campaign finalize skipped with no provenance operator", func(t *testing.T) {
+		req := baseRequest()
+		req.ModelDigest = strings.Repeat("a", 64)
+		dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+		svc := NewDispatchService(dispatcher, lister, testLogger())
+		svc.SetProvenanceObservationNotifier(&recordingProvenanceNotifier{beginErr: notFound, finalizeErr: notFound})
+
+		result, err := svc.DispatchInference(t.Context(), req)
+		require.NoError(t, err)
+		require.Empty(t, result.Response().GetObservationReceipts())
+	})
+
+	// A provenance Operator that is connected but fails FINALIZE is not an absent
+	// one: the failure surfaces for a non-campaign attempt too.
+	t.Run("non-campaign finalize failure surfaces", func(t *testing.T) {
+		req := baseRequest()
+		req.ModelDigest = strings.Repeat("a", 64)
+		dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+		svc := NewDispatchService(dispatcher, lister, testLogger())
+		svc.SetProvenanceObservationNotifier(&recordingProvenanceNotifier{finalizeErr: constants.ErrDispatchNoDelivery})
+
+		_, err := svc.DispatchInference(t.Context(), req)
+		require.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
+		require.Equal(t, 1, dispatcher.calls)
+	})
 }

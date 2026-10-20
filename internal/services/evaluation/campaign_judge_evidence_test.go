@@ -109,11 +109,28 @@ func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 			},
 		},
 		{
-			name: "receipt not signed by the pinned key",
+			name: "receipt signature stripped",
 			mutate: func(_ *testing.T, _ oracletest.Signer, sc *judge.Score) {
 				sc.Receipt.Signature = ""
 			},
 			wantFail: true,
+		},
+		{
+			name: "receipt signed by a key the anchors do not pin",
+			mutate: func(t *testing.T, _ oracletest.Signer, sc *judge.Score) {
+				oracletest.NewSigner(t).Resign(t, sc.Receipt)
+			},
+			wantFail: true,
+		},
+		{
+			name: "receipt from another operator session",
+			mutate: func(t *testing.T, s oracletest.Signer, sc *judge.Score) {
+				for _, stage := range sc.Receipt.GetDeterministicStageEvidence() {
+					stage.OperatorSessionId = "session-other"
+				}
+				s.Resign(t, sc.Receipt)
+			},
+			wantErr: constants.ErrEvaluationEvidenceTraceMismatch,
 		},
 	}
 	for _, tc := range tests {
@@ -121,7 +138,8 @@ func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 			anchors, signer, sc := judgeScoreFixture(t)
 			tc.mutate(t, signer, &sc)
 
-			err := verifyJudgeReceipt(anchors, evidenceInferenceOperatorID, sc)
+			inference := AgentTraceRuntime{OperatorID: evidenceInferenceOperatorID, SessionID: evidenceInferenceSessionID}
+			err := verifyJudgeReceipt(anchors, inference, sc)
 			switch {
 			case tc.wantErr != nil:
 				require.ErrorIs(t, err, tc.wantErr)

@@ -543,12 +543,7 @@ func TestCampaignPublicationCoordinatorPublishRunAggregates(t *testing.T) {
 	require.NoError(t, err)
 	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
 	require.NoError(t, err)
-	_, _, err = controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
-		Topology:            testOperatorTopology("inf-session", "data-session"),
-		ModelRegistryDigest: req.Inventory.RegistryDigest,
-		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
-	}, req.ScenarioArtifacts)
-	require.NoError(t, err)
+	executeTestAssignments(t, controller, req, run.GetRunId(), 1)
 
 	var aggregateKinds []string
 	for _, record := range exporter.records {

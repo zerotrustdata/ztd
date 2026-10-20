@@ -282,7 +282,7 @@ func OpenReadOnlyDBFromBytes(ctx context.Context, image []byte, logger *slog.Log
 	if logger == nil {
 		logger = slog.Default()
 	}
-	sqlDB, err := sql.Open("sqlite", ":memory:")
+	sqlDB, err := sql.Open("sqlite", memoryDatabasePath)
 	if err != nil {
 		return nil, fmt.Errorf("sqliteutil: open in-memory database: %w", err)
 	}

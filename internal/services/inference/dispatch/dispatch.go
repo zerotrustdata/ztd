@@ -554,13 +554,13 @@ func (s *DispatchService) notifyProvenanceFinalize(
 	if err == nil {
 		return receipt, nil
 	}
-	if req.hasCampaignAuthority() {
-		return nil, fmt.Errorf("inference dispatch: %w", err)
+	if !req.hasCampaignAuthority() && errors.Is(err, constants.ErrProvenanceOperatorNotFound) {
+		s.logger.Warn("inference dispatch: model provenance observation finalize skipped; no provenance operator",
+			"provider_attempt_id", req.ProviderAttemptID,
+			"error", err)
+		return nil, nil
 	}
-	s.logger.Warn("inference dispatch: model provenance observation finalize undelivered",
-		"provider_attempt_id", req.ProviderAttemptID,
-		"error", err)
-	return nil, nil
+	return nil, fmt.Errorf("inference dispatch: %w", err)
 }
 
 func validateCampaignModelRegistry(req DispatchInferenceRequest) error {

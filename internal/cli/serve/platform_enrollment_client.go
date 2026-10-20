@@ -106,13 +106,14 @@ func NewOperatorBootstrapClient(cfg OperatorBootstrapClientConfig) (*OperatorBoo
 	if _, err := models.DecodeActuatorPublicKey(cfg.ActuatorPublicKey); err != nil {
 		return nil, fmt.Errorf("operator bootstrap: actuator key: %w", err)
 	}
-	var tlsCfg *tls.Config
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
 	if len(cfg.TrustBundlePEM) > 0 {
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(cfg.TrustBundlePEM) {
 			return nil, fmt.Errorf("%w: operator bootstrap trust bundle", constants.ErrCAParseFailed)
 		}
-		tlsCfg = &tls.Config{RootCAs: pool, ServerName: cfg.TLSServerName, MinVersion: tls.VersionTLS13}
+		tlsCfg.RootCAs = pool
+		tlsCfg.ServerName = cfg.TLSServerName
 	}
 	return &OperatorBootstrapClient{cfg: cfg, dialer: httpclient.WebSocketDialerWithTLS(tlsCfg)}, nil
 }

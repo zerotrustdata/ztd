@@ -205,7 +205,7 @@ make test-scale SCALE_COUNT=1000 SCALE_ARGS='--soak 10m --fan-out-concurrency 64
 
 `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` is the dedicated Tier 4 gate under `INV-TEST-RUN-05`. It builds with the `e2e,live` tags, runs `TestEvalLoopLive` under a default timeout of 40m per selected posture (each posture's run takes what remains of that deadline, less the cleanup margin), and replaces only the provider: the Inference Operator reaches that endpoint through the governed Inference Operator, and no provider is scripted. Each posture freezes the provider's real model digest with `ztd eval models freeze` and runs one Tribunal campaign. The gate proves the loop and its evidence, not model quality, so a FAIL verdict passes. A subtest that fails has its run root under `.ztd/operators/` deleted; a passing run root is kept.
 
-`./ztd test chaos` generates synthetic governance events (70% valid intent, 20% L1 forbidden command injection, 10% corrupted transaction hash MitM) directly in-process through `TransactionVerifier` and `Actuator`, bypassing network and TLS layers. Results persist to SQLite databases under `.ztd/test-vault/<timestamp>-chaos-test/`. `./ztd test summary` aggregates outcomes across runs in the test vault directory.
+`./ztd test chaos` generates synthetic governance events (60% `GOOD_ACTOR` safe `FS_LIST`, 20% `PROMPT_INJECTION` forbidden `EXECUTE_BASH` rejected at L1, 10% `MITM` corrupted transaction hash, 10% `FILE_MUTATION` `FILE_EDIT` carrying an L3 proof) directly in-process through `L4Warden` and `L5Actuator`, bypassing network and TLS layers. Results persist to SQLite databases under `.ztd/test-vault/<timestamp>-chaos-test/`. `./ztd test summary` aggregates outcomes across runs in the test vault directory.
 
 `./ztd test scale` runs fleet scale tests in an isolated Gateway listening on reserved ephemeral ports, avoiding conflicts with running production Gateways. The runner:
 1. Starts a doctrine Gateway in `<root>/run` with public spectator and evaluation explorer disabled.
@@ -274,25 +274,7 @@ On Linux, `bash scripts/ci/operator-deploy-lifecycle.sh --count 3` starts a fres
 
 ### Run the Release Smoke
 
-Build candidate binaries, then run the smoke with its default root:
-
-```bash
-make build
-./ztd test release-smoke
-```
-
-Without `--root`, the run directory is `.ztd/operators/release-smoke-<UTC timestamp>`. Pass `--root <path>` to name the run directory explicitly; the path MUST NOT exist, and every run MUST use a new root. The runner rejects a root whose `gateway/smoke-target` path falls inside a protected `.ztd` runtime path, such as `.ztd/tmp/`, because governed file edits would fail there; a root under `.ztd/operators/` is accepted. Pass `--binary <path>` to run a different built `ztd` for the Gateway and Operator; the default is the running binary.
-
-The runner owns an isolated Gateway and data Operator, exercises governed `FILE_EDIT` mutations with exact local read-back and receipts, tests embedded governed document create and merge, and exports `report all` for both runtime roots. It stops every process it started (process groups on Unix-like hosts, Job Objects on Windows).
-
-Accept the run only when the command exits with code 0 and `evidence/smoke-summary.json` under `--root` records `"result": "PASS"`. A failed phase, cleanup, or evidence check records `"result": "FAIL"` with each cause in `errors`. The PASS verdict requires all of these gating checks:
-
-- Nonempty exports: `reports/gateway/` and `reports/worker/` each contain nonempty `receipts.csv`, `commitments.csv`, and `file_mutations.csv`.
-- Verification rows: every row of each `verification_summary.csv` MUST be `PASS`. A `FAIL`, `SKIPPED`, or unrecognized result rejects the run.
-- Required checks: `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, and `receipt_commitment_crosslink` MUST each appear with `PASS`.
-- Scenario receipts: the worker export holds a completed `FILE_EDIT` receipt for the governed file create. The Gateway export holds a completed `DOCUMENT_UPDATE` receipt for the document create and for the document merge, and a completed `FILE_EDIT` receipt for the embedded file create.
-
-Retained artifacts and the evidence layout are documented in [Host-Native Headless UX Smoke Test](../guides/ux_smoke_test.md).
+Build `ztd` with `make build`, then run `./ztd test release-smoke`; the runner's options, scenarios, PASS gating checks, and retained artifacts are documented in [Host-Native Headless UX Smoke Test](../guides/ux_smoke_test.md).
 
 ### Profile Integration Tests
 

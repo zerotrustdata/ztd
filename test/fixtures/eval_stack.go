@@ -37,6 +37,10 @@ type EvalStackOptions struct {
 	// served model. The Gateway records attestation windows only through that
 	// Operator, and the provider serves the store's digest for the model.
 	Provenance bool
+	// ModelTags are the tags the Provenance Operator's store holds and the
+	// provider serves, each at ScriptedModelDigest(tag). The default model tag
+	// is always included.
+	ModelTags []string
 }
 
 // EvalStack holds the real Gateway and outbound Operators used by eval
@@ -53,10 +57,6 @@ type EvalStack struct {
 	Provider      *ScriptedOllama
 	// Provenance is the Provenance Operator, nil unless EvalStackOptions.Provenance.
 	Provenance *OperatorProcess
-	// ModelStore is the store the Provenance Operator attests, zero unless
-	// EvalStackOptions.Provenance. ModelStore.ModelDigest is the digest a campaign
-	// variant for the served model must declare to be a digest match.
-	ModelStore OllamaModelStore
 }
 
 // NewEvalStack builds an isolated Gateway, bootstrap owner, wire witness, and
@@ -113,13 +113,14 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 		})
 	}
 	var provenance *OperatorProcess
-	var modelStore OllamaModelStore
 	if opts.Provenance {
-		modelStore = NewOllamaModelStore(t, evalModelTag)
-		provider.ServeModel(evalModelTag, modelStore.ModelDigest)
+		tags := append([]string{evalModelTag}, opts.ModelTags...)
+		for _, tag := range tags {
+			provider.ServeModel(tag, ScriptedModelDigest(t, tag))
+		}
 		provenance = witness.LaunchOperator(t, NewOperatorHost(t), OperatorProcessOptions{
 			Capabilities:               constants.OperatorCapabilities{constants.OperatorCapabilityProvenance},
-			ProvenanceModelStorageRoot: modelStore.Root,
+			ProvenanceModelStorageRoot: NewOllamaModelStore(t, tags),
 		})
 	}
 
@@ -143,7 +144,7 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 		Gateway: gateway, Identity: identity, Owner: owner, Witness: witness,
 		Data: data, Inference: inference, DataHost: dataHost,
 		InferenceHost: inferenceHost, Provider: provider,
-		Provenance: provenance, ModelStore: modelStore,
+		Provenance: provenance,
 	}
 }
 

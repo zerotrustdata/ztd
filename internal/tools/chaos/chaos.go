@@ -7,14 +7,15 @@
 
 // chaos generates a realistic distribution of governance events against
 // the local ztd audit stack.  It bypasses network/TLS by driving the
-// TransactionVerifier + Actuator stack directly in-process, which is the same
+// L4Warden + L5Actuator stack directly in-process, which is the same
 // path exercised by the live Operator when payloads arrive over pub/sub.
 //
 // Distribution:
 //
-//	70%  Good Actor  – valid sig, safe intent (FS_LIST)       → EXECUTED
+//	60%  Good Actor  – valid sig, safe intent (FS_LIST)       → EXECUTED
 //	20%  Prompt Inj  – valid sig, L1 forbidden cmd (sudo/rm)  → REJECTED (L1)
 //	10%  MitM        – corrupted transaction hash              → REJECTED (hash mismatch)
+//	10%  File Mut.   – valid sig, FILE_EDIT with L3 proof      → EXECUTED
 //
 // This is a TEST-ONLY package for chaos testing of the governance stack.
 // It writes through the production audit store (storage.SQLAuditStore) over the
@@ -75,7 +76,7 @@ type Config struct {
 type category int
 
 const (
-	catGoodActor    category = iota // 70 % – FS_LIST, safe
+	catGoodActor    category = iota // 60 % – FS_LIST, safe
 	catPromptInj                    // 20 % – EXECUTE_BASH, forbidden cmd
 	catMitM                         // 10 % – corrupted hash
 	catFileMutation                 // 10 % – FILE_EDIT, safe

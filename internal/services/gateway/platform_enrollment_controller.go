@@ -539,6 +539,9 @@ var platformEnrollmentPublicErrors = []struct {
 	{constants.ErrConsensusAppNotEnrolled, http.StatusBadRequest},
 	{constants.ErrConsensusAppMissingSignerKey, http.StatusBadRequest},
 	{constants.ErrConsensusEndpointInvalid, http.StatusBadRequest},
+	{constants.ErrConsensusQuorumInvalid, http.StatusBadRequest},
+	{constants.ErrConsensusMemberDuplicate, http.StatusBadRequest},
+	{constants.ErrConsensusMemberNotOwned, http.StatusForbidden},
 	{constants.ErrConsensusBindingNotFound, http.StatusNotFound},
 	// Reserved before invalid: a reserved name wraps both, and the more
 	// specific sentinel is the one a peer should see.
@@ -557,9 +560,6 @@ var platformEnrollmentPublicErrors = []struct {
 	{constants.ErrPlatformEnrollmentInvalidCSR, http.StatusBadRequest},
 	{constants.ErrPlatformEnrollmentUnsupportedKey, http.StatusBadRequest},
 	{constants.ErrPlatformEnrollmentSigningKeyInvalid, http.StatusBadRequest},
-	{constants.ErrConsensusEndpointInvalid, http.StatusBadRequest},
-	{constants.ErrConsensusAppNotEnrolled, http.StatusConflict},
-	{constants.ErrConsensusAppMissingSignerKey, http.StatusConflict},
 	{constants.ErrPlatformEnrollmentDuplicateKey, http.StatusBadRequest},
 	{constants.ErrPlatformEnrollmentRequestIDRequired, http.StatusBadRequest},
 	{constants.ErrPlatformEnrollmentTokenRequired, http.StatusBadRequest},

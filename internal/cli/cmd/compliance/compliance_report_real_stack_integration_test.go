@@ -174,7 +174,7 @@ func newComplianceRealRun(t *testing.T) *complianceRealRun {
 
 	// The variant declares the digest of the model store the Provenance Operator
 	// attests, so the attestation window is a digest match.
-	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: complianceRealModelTag, ModelDigest: stack.ModelStore.ModelDigest}
+	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: complianceRealModelTag, ModelDigest: fixtures.ScriptedModelDigest(t, complianceRealModelTag)}
 	inventory, err := evaluation.MaterializeModelRegistry(complianceRealCampaignID, []*evalv1.ModelVariant{variant})
 	require.NoError(t, err)
 	req := evaluation.CampaignInitRequest{

@@ -30,7 +30,7 @@ import (
 // The untouched evidence passes; each tampered copy of it fails.
 func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 	ctx := t.Context()
-	variants := tribunalFormationVariants()
+	variants := tribunalFormationVariants(t)
 	set, err := evaluation.GenerateFormationCatalogStackSet(evaluation.FormationCatalogStackGenerationRequest{
 		CampaignID: realStackCampaignID, Variants: variants, FormationIDs: []string{"qwen-powerhouse"},
 	})
@@ -47,9 +47,10 @@ func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 		tribunalTurn("HEALTHY"),
 	)
 	env := newRealStackAgentRun(t, realStackOptions{
-		suffix:   "verifier-formation",
-		replies:  replies,
-		scenario: tribunalScenario,
+		suffix:    "verifier-formation",
+		replies:   replies,
+		scenario:  tribunalScenario,
+		modelTags: evaluation.FormationCatalogServedTags(),
 		request: func(req *evaluation.CampaignInitRequest, _ string) {
 			inventory, err := evaluation.MaterializeModelRegistry(realStackCampaignID, variants)
 			require.NoError(t, err)
@@ -58,9 +59,6 @@ func TestRealStackAssignmentVerifier_FormationBindsExecutedRoles(t *testing.T) {
 			req.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
 		},
 	})
-	for _, variant := range variants {
-		env.stack.Provider.ServeModel(variant.GetServedModelTag(), variant.GetModelDigest())
-	}
 
 	res := env.executeNext(t)
 

@@ -24,43 +24,57 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-// OllamaModelStore is an on-disk Ollama model storage root holding one served
-// model in Ollama's layout: manifests/<host>/<namespace>/<model>/<tag> and
-// content-addressed blobs/sha256-<hex>.
-type OllamaModelStore struct {
-	Root string
-	// ModelDigest is the SHA-256 of the model's manifest. A campaign variant
-	// that declares this digest is verified as a digest match by the Provenance
-	// Operator.
-	ModelDigest string
-}
-
-// NewOllamaModelStore writes a fully verifiable model store for servedModelTag
-// under testutil.TempDir. Every blob holds exactly the content its digest names,
-// and the manifest is named by its own digest, so the attestor reads and hashes
-// the store without error.
-func NewOllamaModelStore(t *testing.T, servedModelTag string) OllamaModelStore {
+// NewOllamaModelStore writes a fully verifiable model store for every tag in
+// servedModelTags under testutil.TempDir and returns its root, laid out as
+// Ollama stores models: manifests/<host>/<namespace>/<model>/<tag> and
+// content-addressed blobs/sha256-<hex>. Every blob holds exactly the content its
+// digest names, so the attestor reads and hashes the store without error, and
+// each tag's manifest digest is ScriptedModelDigest(tag).
+func NewOllamaModelStore(t *testing.T, servedModelTags []string) string {
 	t.Helper()
-	name := ollama.ParseName(servedModelTag)
-	require.True(t, name.IsFullyQualified(), "model store: served model tag %q", servedModelTag)
-
+	require.NotEmpty(t, servedModelTags, "model store: no served model tags")
 	root := filepath.Join(testutil.TempDir(t), "models")
 	blobsDir := filepath.Join(root, "blobs")
-	manifestDir := filepath.Join(root, "manifests", filepath.Dir(name.ManifestFilepath()))
 	require.NoError(t, os.MkdirAll(blobsDir, constants.PermDirPrivate))
-	require.NoError(t, os.MkdirAll(manifestDir, constants.PermDirPrivate))
+	for _, tag := range servedModelTags {
+		name := ollama.ParseName(tag)
+		require.True(t, name.IsFullyQualified(), "model store: served model tag %q", tag)
+		model := newScriptedModel(t, tag)
+		for _, blob := range model.blobs {
+			require.NoError(t, os.WriteFile(filepath.Join(blobsDir, "sha256-"+sha256Hex(blob)), blob, constants.PermFilePrivate))
+		}
+		manifestPath := filepath.Join(root, "manifests", name.ManifestFilepath())
+		require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), constants.PermDirPrivate))
+		require.NoError(t, os.WriteFile(manifestPath, model.manifest, constants.PermFilePrivate))
+	}
+	return root
+}
 
-	config := writeModelBlob(t, blobsDir, []byte(`{"model_format":"gguf","model_family":"qwen3"}`))
-	weights := writeModelBlob(t, blobsDir, []byte("scripted weights for "+servedModelTag))
+// ScriptedModelDigest is the manifest digest NewOllamaModelStore writes for tag.
+// A campaign variant that declares it is verified as a digest match by the
+// Provenance Operator.
+func ScriptedModelDigest(t *testing.T, tag string) string {
+	t.Helper()
+	return sha256Hex(newScriptedModel(t, tag).manifest)
+}
 
+// scriptedModel is one tag's manifest and the blobs it names. Its content
+// depends only on the tag, so its digest is known before the store is written.
+type scriptedModel struct {
+	manifest []byte
+	blobs    [][]byte
+}
+
+func newScriptedModel(t *testing.T, tag string) scriptedModel {
+	t.Helper()
+	config := []byte(`{"model_format":"gguf","model_family":"qwen3"}`)
+	weights := []byte("scripted weights for " + tag)
 	manifest := ollamaModelManifest{SchemaVersion: 2, MediaType: "application/vnd.docker.distribution.manifest.v2+json"}
-	manifest.Config = ollamaModelDescriptor{Digest: "sha256:" + config.hex, MediaType: "application/vnd.docker.container.image.v1+json", Size: config.size}
-	manifest.Layers = []ollamaModelDescriptor{{Digest: "sha256:" + weights.hex, MediaType: "application/vnd.ollama.image.model", Size: weights.size}}
+	manifest.Config = ollamaModelDescriptor{Digest: "sha256:" + sha256Hex(config), MediaType: "application/vnd.docker.container.image.v1+json", Size: int64(len(config))}
+	manifest.Layers = []ollamaModelDescriptor{{Digest: "sha256:" + sha256Hex(weights), MediaType: "application/vnd.ollama.image.model", Size: int64(len(weights))}}
 	manifestBytes, err := json.Marshal(manifest)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(root, "manifests", name.ManifestFilepath()), manifestBytes, constants.PermFilePrivate))
-
-	return OllamaModelStore{Root: root, ModelDigest: sha256Hex(manifestBytes)}
+	return scriptedModel{manifest: manifestBytes, blobs: [][]byte{config, weights}}
 }
 
 type ollamaModelManifest struct {
@@ -74,19 +88,6 @@ type ollamaModelDescriptor struct {
 	Digest    string `json:"digest"`
 	MediaType string `json:"mediaType"`
 	Size      int64  `json:"size"`
-}
-
-type modelBlob struct {
-	hex  string
-	size int64
-}
-
-// writeModelBlob stores content under its own SHA-256 name.
-func writeModelBlob(t *testing.T, blobsDir string, content []byte) modelBlob {
-	t.Helper()
-	digest := sha256Hex(content)
-	require.NoError(t, os.WriteFile(filepath.Join(blobsDir, "sha256-"+digest), content, constants.PermFilePrivate))
-	return modelBlob{hex: digest, size: int64(len(content))}
 }
 
 func sha256Hex(content []byte) string {

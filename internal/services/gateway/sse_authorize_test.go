@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 )
 
 // ---------------------------------------------------------------------------
@@ -79,7 +80,7 @@ func TestAuthorizeSSERoute_CLISession_OperatorMTLSAuth_Success(t *testing.T) {
 
 	channel, err := h.sseController.authorizeSSERoute(route, req)
 	require.NoError(t, err)
-	assert.Equal(t, "sse:cli:"+cliSessionID, channel)
+	assert.Equal(t, pubsub.SSECLIChannel(cliSessionID), channel)
 }
 
 func TestAuthorizeSSERoute_CLISession_OperatorMTLSAuth_WrongOperator(t *testing.T) {
@@ -134,7 +135,7 @@ func TestAuthorizeSSERoute_CLISession_SecondaryBoundOperator_Success(t *testing.
 
 	channel, err := h.sseController.authorizeSSERoute(route, req)
 	require.NoError(t, err)
-	assert.Equal(t, "sse:cli:"+cliSessionID, channel)
+	assert.Equal(t, pubsub.SSECLIChannel(cliSessionID), channel)
 }
 
 // An operator session that is not in the CLI session's bound list fails
@@ -172,7 +173,7 @@ func TestAuthorizeSSERoute_CLISession_CLIMTLSAuth_Success(t *testing.T) {
 
 	channel, err := h.sseController.authorizeSSERoute(route, req)
 	require.NoError(t, err)
-	assert.Equal(t, "sse:cli:"+cliSessionID, channel)
+	assert.Equal(t, pubsub.SSECLIChannel(cliSessionID), channel)
 }
 
 func TestAuthorizeSSERoute_CLISession_CLIMTLSAuth_WrongUser(t *testing.T) {
@@ -208,7 +209,7 @@ func TestAuthorizeSSERoute_CLISession_CookieAuth_Success(t *testing.T) {
 
 	channel, err := h.sseController.authorizeSSERoute(route, req)
 	require.NoError(t, err)
-	assert.Equal(t, "sse:cli:"+cliSessionID, channel)
+	assert.Equal(t, pubsub.SSECLIChannel(cliSessionID), channel)
 }
 
 func TestAuthorizeSSERoute_CLISession_CookieAuth_WrongUser(t *testing.T) {

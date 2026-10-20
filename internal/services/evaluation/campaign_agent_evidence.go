@@ -48,11 +48,11 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	if trace.Bracket == nil {
 		return agentEvidenceError("ledger bracket", constants.ErrMissingRequiredField)
 	}
-	before, err := verifiedSentinelOutcome(anchors, trace.Data.OperatorID, trace.Bracket.Before.ActionReceipt)
+	before, err := verifiedSentinelOutcome(anchors, trace.Data, trace.Bracket.Before.ActionReceipt)
 	if err != nil {
 		return agentEvidenceError("ledger bracket before", err)
 	}
-	after, err := verifiedSentinelOutcome(anchors, trace.Data.OperatorID, trace.Bracket.After.ActionReceipt)
+	after, err := verifiedSentinelOutcome(anchors, trace.Data, trace.Bracket.After.ActionReceipt)
 	if err != nil {
 		return agentEvidenceError("ledger bracket after", err)
 	}
@@ -175,6 +175,9 @@ func verifyObservationEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime
 		}
 		outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt.ActionReceipt)
 		if err != nil {
+			return nil, err
+		}
+		if err := verifyReceiptSession(receipt.ActionReceipt, data.SessionID); err != nil {
 			return nil, err
 		}
 		if outcome.Kind != oracle.OutcomeExecuted || outcome.Commitment == nil {
@@ -430,14 +433,22 @@ func verifyToolCallEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, c
 	return &outcome, nil
 }
 
-// verifyReceiptSession requires every stage that names an Operator session to
-// name the session the trace records for the role that claimed the receipt. The
-// bracket cannot make this check: a receipt from another session on the same
-// runtime commits to the same ledger and still connects. A receipt that names no
-// session is not checked here.
+// verifyReceiptSession requires every stage of the receipt to name the Operator
+// session the trace records for the role that claimed it. The ledger bracket
+// cannot make this check: a receipt from another session on the same runtime
+// commits to the same ledger and still connects. The Warden stamps every stage
+// from the envelope and rejects an envelope with no session, so a receipt with
+// no stages, or a stage that names no session, is never a governed execution.
 func verifyReceiptSession(receipt *operatorv1.ActionReceipt, sessionID string) error {
-	for _, stage := range receipt.GetDeterministicStageEvidence() {
-		if named := stage.GetOperatorSessionId(); named != "" && named != sessionID {
+	if sessionID == "" {
+		return fmt.Errorf("trace records no operator session: %w", constants.ErrMissingRequiredField)
+	}
+	stages := receipt.GetDeterministicStageEvidence()
+	if len(stages) == 0 {
+		return fmt.Errorf("receipt has no deterministic stage evidence: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	for _, stage := range stages {
+		if named := stage.GetOperatorSessionId(); named != sessionID {
 			return fmt.Errorf("receipt names operator session %q, want %q: %w", named, sessionID, constants.ErrEvaluationEvidenceTraceMismatch)
 		}
 	}
@@ -445,13 +456,17 @@ func verifyReceiptSession(receipt *operatorv1.ActionReceipt, sessionID string) e
 }
 
 // verifiedSentinelOutcome verifies one harness sentinel receipt. A sentinel
-// must be an executed read: anything else leaves the bracket unconnected.
-func verifiedSentinelOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
+// must be an executed read in the Data session: anything else leaves the
+// bracket unconnected.
+func verifiedSentinelOutcome(anchors *oracle.AnchorSet, data AgentTraceRuntime, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
 	if receipt == nil {
 		return oracle.Outcome{}, fmt.Errorf("sentinel receipt is missing: %w", constants.ErrActionReceiptMissing)
 	}
-	outcome, err := verifiedOutcome(anchors, runtimeID, receipt)
+	outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt)
 	if err != nil {
+		return oracle.Outcome{}, err
+	}
+	if err := verifyReceiptSession(receipt, data.SessionID); err != nil {
 		return oracle.Outcome{}, err
 	}
 	if outcome.Kind != oracle.OutcomeExecuted {
@@ -470,15 +485,18 @@ func verifiedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *opera
 }
 
 // verifyJudgeReceipt proves a judge score's governed inference receipt was
-// signed by the Inference runtime's pinned key and is the transaction the score
-// names. The judge's response checks do not verify the signature, so a judge
+// signed by the Inference runtime's pinned key in the Inference session and is
+// the transaction the score names. The judge's response checks do not verify the signature, so a judge
 // score is labelled verified only through this check. The receipt's result
 // summary binds the result digest, so the result the score was read from is
 // recomputed and must match it: an altered score body under an intact digest is
 // never verified. A failed judge has no scored body to bind, so it keeps only
 // the receipt check when it carries no result.
-func verifyJudgeReceipt(anchors *oracle.AnchorSet, runtimeID string, sc judge.Score) error {
-	if _, err := oracle.VerifyReceipt(anchors, runtimeID, sc.Receipt); err != nil {
+func verifyJudgeReceipt(anchors *oracle.AnchorSet, inference AgentTraceRuntime, sc judge.Score) error {
+	if _, err := oracle.VerifyReceipt(anchors, inference.OperatorID, sc.Receipt); err != nil {
+		return err
+	}
+	if err := verifyReceiptSession(sc.Receipt, inference.SessionID); err != nil {
 		return err
 	}
 	if sc.Receipt.GetTransactionId() != sc.TransactionID {

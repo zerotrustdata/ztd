@@ -45,6 +45,9 @@ func TestPlatformEnrollmentPublicError_SendsOnlyTheSentinel(t *testing.T) {
 		{"wrapped sentinel drops its detail", fmt.Errorf("%w: approving user user-7 is not active", constants.ErrPlatformEnrollmentInvalidDecision), http.StatusForbidden, constants.ErrPlatformEnrollmentInvalidDecision},
 		{"store contention", fmt.Errorf("decide: %w", constants.ErrSQLiteBusy), http.StatusServiceUnavailable, constants.ErrServiceUnavailable},
 		{"heartbeat interval", fmt.Errorf("%w: 10m exceeds 1m", constants.ErrOperatorHeartbeatIntervalInvalid), http.StatusBadRequest, constants.ErrOperatorHeartbeatIntervalInvalid},
+		{"implicit multi-member quorum", fmt.Errorf("platform enrollment: consensus quorum must be explicit for 3 members: %w", constants.ErrConsensusQuorumInvalid), http.StatusBadRequest, constants.ErrConsensusQuorumInvalid},
+		{"duplicate consensus member", fmt.Errorf("platform enrollment: %w", constants.ErrConsensusMemberDuplicate), http.StatusBadRequest, constants.ErrConsensusMemberDuplicate},
+		{"consensus primary not a member", fmt.Errorf("platform enrollment: %w", constants.ErrConsensusAppNotEnrolled), http.StatusBadRequest, constants.ErrConsensusAppNotEnrolled},
 		{"unmatched failure", errors.New("open /var/lib/ztd/gateway.db: permission denied"), http.StatusInternalServerError, constants.ErrInternal},
 	}
 	for _, tc := range cases {
