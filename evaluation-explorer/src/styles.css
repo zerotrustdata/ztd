@@ -2316,7 +2316,8 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
   align-items: start;
 }
 .evidence-layout-single { grid-template-columns: minmax(0, 1fr); }
-.evidence-main, .evidence-aside, .assignment-anchor, .assignment-proof { display: grid; gap: 16px; min-width: 0; }
+.evidence-main, .evidence-aside, .evidence-full, .assignment-anchor, .assignment-proof { display: grid; gap: 16px; min-width: 0; }
+.evidence-full { grid-column: 1 / -1; }
 .assignment-proof:empty { display: none; }
 .evidence-panel,
 .evidence-main .task-detail-section,
@@ -2354,6 +2355,7 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
 .outcome-bar { display: flex; gap: 2px; height: 6px; border-radius: 4px; overflow: hidden; margin: 6px 0; }
 .outcome-segment-ok { background: var(--tone-ok); }
 .outcome-segment-critical { background: var(--tone-critical); }
+.outcome-segment-warn { background: var(--tone-warn); }
 .outcome-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 6px 0; padding: 0; list-style: none; font-size: var(--fs-label); }
 .outcome-legend li { display: flex; gap: 6px; align-items: center; }
 

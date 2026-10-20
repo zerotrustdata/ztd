@@ -25,6 +25,7 @@ describe('ModelDetailView', () => {
     expect(hero).toHaveTextContent(`n=${model.pass_rate!.denominator}`);
     const outcomes = within(screen.getByRole('region', { name: 'Terminal outcomes' }));
     expect(outcomes.getByTestId('outcome-breakdown')).toBeInTheDocument();
+    expect(outcomes.getByTitle('grader failed: 1')).toHaveClass('outcome-segment-warn');
     expect(outcomes.getByText(/not counted for or against it/)).toBeInTheDocument();
     const assignment = screen.getByRole('link', { name: /model-assignment/ });
     expect(assignment).toHaveAttribute('href', `/evaluations/${model.dataset_id}/${run.run_id}/assignments/model-assignment`);
