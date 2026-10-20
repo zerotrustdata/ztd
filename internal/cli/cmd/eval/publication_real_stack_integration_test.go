@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -109,6 +111,13 @@ func readyReplies(n int) []fixtures.OllamaReply {
 // scripted provider answers, repeated repetitions times.
 func createPublicationCampaign(t *testing.T, run *realStackRun, campaignID string, repetitions uint32) {
 	t.Helper()
+	createPublicationCampaignOn(t, run, campaignID, repetitions, testPlatform)
+}
+
+// createPublicationCampaignOn is createPublicationCampaign frozen under the
+// given platform identity.
+func createPublicationCampaignOn(t *testing.T, run *realStackRun, campaignID string, repetitions uint32, platform evaluation.PlatformIdentity) {
+	t.Helper()
 	governancePosture, err := cases.WirePosture(constants.PostureDoctrine)
 	require.NoError(t, err)
 	dataWorkload, err := run.stack.Data.Workload()
@@ -126,7 +135,7 @@ func createPublicationCampaign(t *testing.T, run *realStackRun, campaignID strin
 	require.NoError(t, evaluation.NewStore(run.fileSvc).CreateSuite(run.ctx, suite))
 	_, err = createCampaign(run.ctx, run.deps, run.fileSvc, campaignCreateSpec{
 		GovernancePosture: governancePosture,
-		Platform:          testPlatform,
+		Platform:          platform,
 		CampaignID:        campaignID,
 		Variants:          []*evalv1.ModelVariant{testQwenVariant()},
 		Repetitions:       repetitions,
@@ -789,22 +798,222 @@ func TestPublicationRealStack_RunAggregatesFollowTheRunLeaseStatus(t *testing.T)
 	out, err := env.run(t, "runs", "start", "pub-lease", "--prepare-only", "--no-backup")
 	require.NoError(t, err, out)
 	runID := onlyRunID(t, run)
-	out, err = env.run(t, "runs", "publish", runID)
-	require.NoError(t, err, out)
-	assert.Equal(t, "scheduled", latestSummary(t).RunStatus)
+	store := evaluation.NewStore(run.fileSvc)
+
+	// Each publish appends exactly one aggregate revision, so a status change is
+	// never deduplicated against an unchanged assignment count.
+	assertStatus := func(want string) {
+		t.Helper()
+		before := len(mirrorSummaries(t))
+		out, err := env.run(t, "runs", "publish", runID)
+		require.NoError(t, err, out)
+		summaries := mirrorSummaries(t)
+		require.Len(t, summaries, before+1, "a publish appends one aggregate revision")
+		assert.Equal(t, want, summaries[len(summaries)-1].RunStatus)
+	}
+	assertStatus("scheduled")
 
 	host, err := os.Hostname()
 	require.NoError(t, err)
-	store := evaluation.NewStore(run.fileSvc)
 	lease := evaluation.RunLease{RunID: runID, PID: os.Getpid(), Host: host, StartedAt: time.Now().UTC()}
 	_, err = store.AcquireRunLease(run.ctx, lease, nil)
 	require.NoError(t, err)
-	out, err = env.run(t, "runs", "publish", runID)
-	require.NoError(t, err, out)
-	assert.Equal(t, "running", latestSummary(t).RunStatus, "a live lease holder makes the run running without any progress change")
+	assertStatus("running")
 
 	require.NoError(t, store.ReleaseRunLease(run.ctx, runID, lease.PID))
-	out, err = env.run(t, "runs", "publish", runID)
+	assertStatus("scheduled")
+
+	// An assignment left running with no live lease holder, as after a crash, is
+	// interrupted.
+	assignments := runAssignments(t, run, runID)
+	require.NotEmpty(t, assignments)
+	assignments[0].LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING
+	require.NoError(t, store.SaveAssignment(run.ctx, assignments[0]))
+	assertStatus("interrupted")
+
+	// Cancel stops every assignment that has not settled, so the run reports cancelled.
+	out, err = env.run(t, "runs", "cancel", runID)
 	require.NoError(t, err, out)
-	assert.Equal(t, "scheduled", latestSummary(t).RunStatus, "releasing the lease publishes the scheduled status again")
+	assertStatus("cancelled")
+}
+
+// The backfill republishes the model-verification revisions whose idempotency
+// keys were lost, and only those, and a second republish appends nothing.
+func TestPublicationRealStack_VerificationBackfillRepublishesModelSummariesAfterKeysAreLost(t *testing.T) {
+	env, run := newPublicationEnv(t, readyReplies(3))
+	createPublicationCampaign(t, run, "pub-backfill", 3)
+	executeCampaign(t, env, "pub-backfill")
+	runID := onlyRunID(t, run)
+	out, err := verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+	report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
+	require.NoError(t, err)
+	verifiedBefore := verifiedModelSummaries(t)
+	require.Positive(t, verifiedBefore, "verification publishes the verified model summaries")
+
+	// Drop the model-verification keys and keep the run-level keys, as a lost
+	// publication state would.
+	editPublicationState(t, run, runID, func(state *evaluation.CampaignPublicationState) {
+		kept := make([]string, 0, len(state.PublishedIdempotency))
+		for _, key := range state.PublishedIdempotency {
+			if !strings.Contains(key, ":verification:model:") {
+				kept = append(kept, key)
+			}
+		}
+		state.PublishedIdempotency = kept
+	})
+
+	publication, err := NewCampaignPublicationCoordinator(env.cmd, run.fileSvc, run.cfg)
+	require.NoError(t, err)
+	backfilled, err := publication.PublishRunVerification(run.ctx, runID, report)
+	require.NoError(t, err)
+	assert.Equal(t, verifiedBefore, backfilled, "the backfill republishes each verified model summary once")
+	assert.Equal(t, verifiedBefore+backfilled, verifiedModelSummaries(t), "the mirror serves the backfilled revisions")
+
+	retried, err := publication.PublishRunVerification(run.ctx, runID, report)
+	require.NoError(t, err)
+	assert.Zero(t, retried, "a second republish finds every key recorded")
+	assert.Equal(t, verifiedBefore+backfilled, verifiedModelSummaries(t))
+}
+
+// Release provenance on the real stack: a campaign frozen with a recorded release,
+// one frozen before releases were recorded and then asserted by an operator, and
+// one with no release at all. Every projection the mirror serves carries the
+// campaign's release, basis and source revision.
+func TestPublicationRealStack_ReleaseProvenanceReachesEveryPublicRecord(t *testing.T) {
+	recordedPlatform := evaluation.PlatformIdentity{Release: testReleaseVersion, SourceRevision: "3f9c2a1b0d4e5f60718293a4b5c6d7e8f9012345"}
+	tests := []struct {
+		name     string
+		legacy   bool
+		tagged   string
+		platform evaluation.PlatformIdentity
+		release  string
+		basis    string
+		revision string
+	}{
+		{name: "recorded", platform: recordedPlatform, release: testReleaseVersion, basis: "recorded", revision: recordedPlatform.SourceRevision},
+		{name: "asserted", legacy: true, tagged: "v2.2.7", platform: testPlatform, release: "v2.2.7", basis: "asserted"},
+		{name: "unknown", legacy: true, platform: testPlatform, basis: "unknown"},
+	}
+	requiredKinds := []string{"PublicAssignmentLifecycleRecord", "PublicAssignmentResultProjection", "catalog_snapshot", "evaluation_summary", "model_summary", "methodology_snapshot", "stage_updated", "metric_updated"}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			campaignID := "pub-release-" + tt.name
+			env, run := newPublicationEnv(t, readyReplies(3))
+			createPublicationCampaignOn(t, run, campaignID, 3, tt.platform)
+			if tt.legacy {
+				markCampaignPreRelease(t, run, campaignID)
+			}
+			if tt.tagged != "" {
+				out, err := env.run(t, "campaigns", "tag", "--release", tt.tagged, campaignID)
+				require.NoError(t, err, out)
+			}
+			executeCampaign(t, env, campaignID)
+			runID := onlyRunID(t, run)
+			out, err := verifyCLI(t, env, runID)
+			require.NoError(t, err, out)
+
+			kinds := map[string]bool{}
+			for _, projection := range mirrorProjections(t) {
+				var envelope struct {
+					Kind        string                      `json:"kind"`
+					MessageType string                      `json:"message_type"`
+					RecordType  models.PublicFeedRecordType `json:"record_type"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(projection.raw), &envelope))
+				kind := envelope.Kind
+				wantBasis := tt.basis
+				// Protobuf-owned records and live events carry the enum name of the basis.
+				if envelope.MessageType != "" {
+					kind = envelope.MessageType
+				}
+				if envelope.MessageType != "" || envelope.RecordType == models.PublicFeedRecordTypeEvent {
+					wantBasis = "PUBLIC_RELEASE_BASIS_" + strings.ToUpper(tt.basis)
+				}
+				var identity struct {
+					Release        string `json:"release"`
+					Basis          string `json:"release_basis"`
+					SourceRevision string `json:"source_revision"`
+				}
+				require.NoError(t, json.Unmarshal(projection.record, &identity))
+				assert.Equal(t, tt.release, identity.Release, kind)
+				assert.Equal(t, wantBasis, identity.Basis, kind)
+				assert.Equal(t, tt.revision, identity.SourceRevision, kind)
+				kinds[kind] = true
+			}
+			for _, kind := range requiredKinds {
+				assert.True(t, kinds[kind], "the mirror serves a public %s record", kind)
+			}
+		})
+	}
+}
+
+// A release tag file that does not name its campaign fails publication closed:
+// nothing reaches the mirror.
+func TestPublicationRealStack_MalformedReleaseTagFailsPublishClosed(t *testing.T) {
+	env, run := newPublicationEnv(t, readyReplies(3))
+	createPublicationCampaignOn(t, run, "pub-bad-tag", 3, testPlatform)
+	markCampaignPreRelease(t, run, "pub-bad-tag")
+	out, err := env.run(t, "runs", "start", "pub-bad-tag", "--prepare-only", "--no-backup")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
+	before := mirrorHighWater(t)
+
+	tagPath := path.Join(constants.EvaluationDataPath, constants.EvaluationCampaignsDirname, "pub-bad-tag", constants.EvaluationCampaignReleaseTagFilename)
+	require.NoError(t, run.fileSvc.WriteFile(run.ctx, tagPath, []byte(`{"campaign_id":"another","release":"v2.2.7"}`), constants.PermFilePrivate))
+
+	out, err = env.run(t, "runs", "publish", runID)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed, out)
+	assert.Equal(t, before, mirrorHighWater(t), "a malformed release tag publishes nothing")
+}
+
+// markCampaignPreRelease stores a frozen campaign the way a campaign frozen before
+// releases were recorded is stored: no platform release or source revision, with
+// the digest recomputed over the rest.
+func markCampaignPreRelease(t *testing.T, run *realStackRun, campaignID string) {
+	t.Helper()
+	store := evaluation.NewStore(run.fileSvc)
+	spec, err := store.LoadCampaignSpec(run.ctx, campaignID)
+	require.NoError(t, err)
+	spec.PlatformRelease, spec.SourceRevision = "", ""
+	spec.CampaignDigest, err = evaluation.ComputeCampaignSpecDigest(spec)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveCampaignSpec(run.ctx, spec))
+}
+
+// assertPopulationBoundReport checks a persisted verification report that binds
+// the run's assignment population: expected assignments in the population, of
+// which verified settled.
+func assertPopulationBoundReport(t *testing.T, report *evalv1.EvaluationVerificationReport, expected, verified uint32) {
+	t.Helper()
+	require.NotNil(t, report)
+	assert.Equal(t, constants.CampaignVerifierVersion, report.GetSchemaVersion())
+	assert.Equal(t, constants.CampaignVerifierVersion, report.GetVerifierContractVersion())
+	assert.Equal(t, constants.EvaluationSourceVersion, report.GetVerifierReleaseVersion())
+	assert.Equal(t, expected, report.GetExpectedAssignmentCount())
+	assert.Equal(t, verified, report.GetVerifiedAssignmentCount())
+	assert.NotEmpty(t, report.GetVerifiedPopulationDigest())
+	assert.NotEmpty(t, report.GetCampaignDigest())
+	assert.NotEmpty(t, report.GetCatalogDigest())
+	assert.NotEmpty(t, report.GetModelRegistryDigest())
+	require.NotNil(t, report.GetReportDigestRef())
+	assert.Len(t, report.GetReportDigestRef().GetSha256(), 64)
+}
+
+// verifiedModelSummaries counts the model summary revisions the mirror serves in
+// a verified quality state.
+func verifiedModelSummaries(t *testing.T) int {
+	t.Helper()
+	count := 0
+	for _, projection := range mirrorProjections(t) {
+		var payload struct {
+			Kind         string `json:"kind"`
+			QualityState string `json:"quality_state"`
+		}
+		require.NoError(t, json.Unmarshal(projection.record, &payload))
+		if payload.Kind == "model_summary" && payload.QualityState == "exploratory_verified" {
+			count++
+		}
+	}
+	return count
 }

@@ -9,7 +9,6 @@ package evaluation
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -33,24 +32,14 @@ func fakeGatewayDatabaseDigest(assignmentID string) string {
 }
 
 // recordingCampaignProofPublisher stands in for the Gateway proof catalog. It
-// answers each input with the Gateway's database digest unless answer is set,
-// records the requests it receives, and logs each ingest and flush into the
-// shared order log when one is attached.
+// answers each ingested input with the Gateway's database digest and records the
+// inputs it receives.
 type recordingCampaignProofPublisher struct {
-	order    *[]string
-	inputs   []AssignmentAuditProofInput
-	deferred []bool
-	flushes  int
-	answer   func(inputs []AssignmentAuditProofInput) []models.PublicAssignmentAuditProofPublishResponse
+	inputs []AssignmentAuditProofInput
 }
 
-func (r *recordingCampaignProofPublisher) IngestAssignmentAuditSlices(_ context.Context, inputs []AssignmentAuditProofInput, deferMirrorPush bool) ([]models.PublicAssignmentAuditProofPublishResponse, error) {
-	r.log("ingest")
+func (r *recordingCampaignProofPublisher) IngestAssignmentAuditSlices(_ context.Context, inputs []AssignmentAuditProofInput, _ bool) ([]models.PublicAssignmentAuditProofPublishResponse, error) {
 	r.inputs = append(r.inputs, inputs...)
-	r.deferred = append(r.deferred, deferMirrorPush)
-	if r.answer != nil {
-		return r.answer(inputs), nil
-	}
 	answers := make([]models.PublicAssignmentAuditProofPublishResponse, 0, len(inputs))
 	for _, input := range inputs {
 		answers = append(answers, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: input.AssignmentID, DatabaseSHA256: fakeGatewayDatabaseDigest(input.AssignmentID)})
@@ -63,51 +52,7 @@ func (r *recordingCampaignProofPublisher) PruneRunProofCatalog(context.Context, 
 }
 
 func (r *recordingCampaignProofPublisher) FlushProofCatalog(context.Context) error {
-	r.flushes++
-	r.log("flush")
 	return nil
-}
-
-func (r *recordingCampaignProofPublisher) log(event string) {
-	if r.order != nil {
-		*r.order = append(*r.order, event)
-	}
-}
-
-// orderedCampaignFeedExporter logs each export into the shared order log, so a
-// test can check the order of live events, proof ingest, and result records.
-// A batch of only live event records logs "export-events"; any other batch
-// logs "export".
-type orderedCampaignFeedExporter struct {
-	recordingCampaignFeedExporter
-	order *[]string
-}
-
-func (e *orderedCampaignFeedExporter) ExportBatch(ctx context.Context, records []CampaignPublicFeedRecord) error {
-	event := "export-events"
-	for _, record := range records {
-		if record.RecordType != models.PublicFeedRecordTypeEvent {
-			event = "export"
-			break
-		}
-	}
-	*e.order = append(*e.order, event)
-	return e.recordingCampaignFeedExporter.ExportBatch(ctx, records)
-}
-
-// digestlessCampaignSpecStore serves campaign specs with an empty revision digest.
-// The store never persists such a spec, so the test wraps it.
-type digestlessCampaignSpecStore struct {
-	*Store
-}
-
-func (s digestlessCampaignSpecStore) LoadCampaignSpec(ctx context.Context, campaignID string) (*evalv1.EvaluationCampaignSpec, error) {
-	spec, err := s.Store.LoadCampaignSpec(ctx, campaignID)
-	if err != nil {
-		return nil, err
-	}
-	spec.CampaignDigest = ""
-	return spec, nil
 }
 
 // saveAuditProofAssignment saves one completed assignment with a result under
@@ -165,66 +110,6 @@ func saveAuditProofAssignment(t *testing.T, store *Store, runID, assignmentID st
 	return assignment, result
 }
 
-// findExportedRecord returns the one exported record whose envelope carries the
-// idempotency key.
-func findExportedRecord(t *testing.T, records []CampaignPublicFeedRecord, idempotencyKey string) CampaignPublicFeedRecord {
-	t.Helper()
-	needle := `"idempotency_key":"` + idempotencyKey + `"`
-	var found []CampaignPublicFeedRecord
-	for _, record := range records {
-		if strings.Contains(record.RecordBytes, needle) {
-			found = append(found, record)
-		}
-	}
-	require.Len(t, found, 1, "exactly one record carries %s", idempotencyKey)
-	return found[0]
-}
-
-func TestCampaignPublicationCoordinator_IngestAssignmentAuditBindings(t *testing.T) {
-	ctx := context.Background()
-	files := newCampaignRuntimeFileService(t)
-	store := NewStore(files)
-	proofPublisher := &recordingCampaignProofPublisher{}
-	publicationState := NewMemoryCampaignPublicationStateStore()
-	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, &recordingCampaignFeedExporter{}).
-		WithProofPublisher(proofPublisher)
-	assignment, result := saveAuditProofAssignment(t, store, "run-audit-1", "assign-audit-1")
-	liveRequests, err := coordinator.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
-	require.NoError(t, err)
-	require.NotEmpty(t, liveRequests)
-	fixtures := testScenarioFixtures(t)
-
-	bindings, err := coordinator.ingestAssignmentAuditBindings(ctx, assignment, result, fixtures, liveRequests)
-	require.NoError(t, err)
-
-	digest := fakeGatewayDatabaseDigest("assign-audit-1")
-	require.Len(t, bindings, 3)
-	assert.Equal(t, AssignmentAuditSliceKind, bindings[0].GetKind())
-	assert.Equal(t, digest, bindings[0].GetSha256(), "the database binding carries the digest the gateway answered")
-	assert.Equal(t, ScenarioInputFixtureKind, bindings[1].GetKind())
-	assert.Equal(t, ScenarioGoldCriteriaKind, bindings[2].GetKind())
-
-	require.Len(t, proofPublisher.inputs, 1)
-	input := proofPublisher.inputs[0]
-	spec, err := store.LoadCampaignSpec(ctx, "campaign-1")
-	require.NoError(t, err)
-	assert.Equal(t, spec.GetCampaignDigest(), input.CampaignRevision)
-	assert.Equal(t, result.GetResultDigest(), input.IndexDigest)
-	assert.Equal(t, "scenario-1", input.Artifacts.ScenarioID)
-	assert.Equal(t, fixtures["scenario-1"].Input.Body, input.Artifacts.ScenarioInput)
-	assert.Equal(t, fixtures["scenario-1"].Gold.Body, input.Artifacts.ScenarioGold)
-	assert.Equal(t, []bool{false}, proofPublisher.deferred, "live publication pushes the mirror at once")
-
-	state, err := coordinator.loadPublicationState(ctx, "run-audit-1")
-	require.NoError(t, err)
-	assert.Equal(t, CampaignPublishedProofArtifacts{
-		DatabaseSHA256:      digest,
-		ScenarioInputSHA256: input.Artifacts.ScenarioInputSHA256,
-		ScenarioGoldSHA256:  input.Artifacts.ScenarioGoldSHA256,
-	}, state.PublishedProofArtifacts["assign-audit-1"], "publication state records the gateway digest for reuse")
-	assert.Contains(t, state.PublishedIdempotency, AssignmentAuditProofIdempotencyKey("run-audit-1", "assign-audit-1"))
-}
-
 func TestCampaignPublicationCoordinator_AuditBindingsWithoutProofPublisherBindNothing(t *testing.T) {
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
@@ -238,45 +123,6 @@ func TestCampaignPublicationCoordinator_AuditBindingsWithoutProofPublisherBindNo
 
 	require.NoError(t, err)
 	assert.Nil(t, bindings, "without a proof publisher the gateway never answers a database digest, so no audit binding is cited")
-}
-
-func TestCampaignPublicationCoordinator_AuditProofInputRequiresRevisionAndIndexDigest(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("empty campaign revision", func(t *testing.T) {
-		files := newCampaignRuntimeFileService(t)
-		store := NewStore(files)
-		assignment, result := saveAuditProofAssignment(t, store, "run-revision-1", "assign-revision-1")
-		proofPublisher := &recordingCampaignProofPublisher{}
-		coordinator := NewCampaignPublicationCoordinator(digestlessCampaignSpecStore{Store: store}, files, NewMemoryCampaignPublicationStateStore(), &recordingCampaignFeedExporter{}).
-			WithProofPublisher(proofPublisher)
-		liveRequests, err := coordinator.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
-		require.NoError(t, err)
-
-		_, ok, err := coordinator.assignmentAuditProofInput(ctx, assignment, result, testScenarioFixtures(t), liveRequests)
-
-		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
-		assert.False(t, ok)
-		assert.Empty(t, proofPublisher.inputs, "no request is sent without a revision")
-	})
-
-	t.Run("empty index digest", func(t *testing.T) {
-		files := newCampaignRuntimeFileService(t)
-		store := NewStore(files)
-		assignment, result := saveAuditProofAssignment(t, store, "run-index-1", "assign-index-1")
-		proofPublisher := &recordingCampaignProofPublisher{}
-		coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), &recordingCampaignFeedExporter{}).
-			WithProofPublisher(proofPublisher)
-		liveRequests, err := coordinator.buildAssignmentLiveEventPublishRequests(ctx, assignment, result)
-		require.NoError(t, err)
-		result.ResultDigest = ""
-
-		_, ok, err := coordinator.assignmentAuditProofInput(ctx, assignment, result, testScenarioFixtures(t), liveRequests)
-
-		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
-		assert.False(t, ok)
-		assert.Empty(t, proofPublisher.inputs, "no request is sent without an index digest")
-	})
 }
 
 func TestCampaignPublicationCoordinator_IngestAssignmentAuditBindings_EmptyLiveRequests(t *testing.T) {
@@ -317,163 +163,14 @@ func TestHasAssignmentAuditEvents_SkipsProjections(t *testing.T) {
 	}))
 }
 
-func TestCampaignPublicationCoordinator_DefersMirrorPushUntilFlush(t *testing.T) {
-	ctx := context.Background()
-	files := newCampaignRuntimeFileService(t)
-	proofPublisher := &recordingCampaignProofPublisher{}
-	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), &recordingCampaignFeedExporter{}).
-		WithProofPublisher(proofPublisher)
-	coordinator.deferProofMirrorPush = true
-
-	published, err := coordinator.ingestAssignmentAuditProofs(ctx, []AssignmentAuditProofInput{
-		{RunID: "run-deferred", AssignmentID: "assignment-1"},
-		{RunID: "run-deferred", AssignmentID: "assignment-2"},
-	})
+// testScenarioFixtures returns one frozen built-in scenario's fixture bodies
+// keyed under "scenario-1".
+func testScenarioFixtures(t *testing.T) map[string]ScenarioArtifacts {
+	t.Helper()
+	catalog, artifacts, err := BuildSmokeGateScenarioCatalog()
 	require.NoError(t, err)
-	require.Len(t, published, 2)
-	assert.Equal(t, []bool{true}, proofPublisher.deferred, "one batch, with the mirror push deferred")
-	assert.Equal(t, 0, proofPublisher.flushes, "nothing is pushed before the flush")
-
-	require.NoError(t, coordinator.flushProofCatalog(ctx))
-	assert.Equal(t, 1, proofPublisher.flushes)
-	require.NoError(t, coordinator.flushProofCatalog(ctx))
-	assert.Equal(t, 1, proofPublisher.flushes, "a flush with nothing deferred does not push again")
-}
-
-func TestIngestAssignmentAuditProofsRejectsMalformedAnswers(t *testing.T) {
-	cases := []struct {
-		name   string
-		answer func(inputs []AssignmentAuditProofInput) []models.PublicAssignmentAuditProofPublishResponse
-	}{
-		{name: "no answer for the request", answer: func([]AssignmentAuditProofInput) []models.PublicAssignmentAuditProofPublishResponse {
-			return nil
-		}},
-		{name: "answer for another assignment", answer: func(inputs []AssignmentAuditProofInput) []models.PublicAssignmentAuditProofPublishResponse {
-			return []models.PublicAssignmentAuditProofPublishResponse{{Accepted: true, AssignmentID: "assignment-other", DatabaseSHA256: strings.Repeat("a", 64)}}
-		}},
-		{name: "answer without a database digest", answer: func(inputs []AssignmentAuditProofInput) []models.PublicAssignmentAuditProofPublishResponse {
-			return []models.PublicAssignmentAuditProofPublishResponse{{Accepted: true, AssignmentID: inputs[0].AssignmentID}}
-		}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
-			files := newCampaignRuntimeFileService(t)
-			publicationState := NewMemoryCampaignPublicationStateStore()
-			proofPublisher := &recordingCampaignProofPublisher{answer: tc.answer}
-			coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, publicationState, &recordingCampaignFeedExporter{}).
-				WithProofPublisher(proofPublisher)
-
-			_, err := coordinator.ingestAssignmentAuditProofs(ctx, []AssignmentAuditProofInput{{RunID: "run-malformed", AssignmentID: "assignment-1"}})
-
-			require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
-			state, err := publicationState.Load(ctx, "run-malformed")
-			require.NoError(t, err)
-			assert.Empty(t, state.PublishedProofArtifacts, "a malformed answer records nothing")
-		})
-	}
-}
-
-// The catch-up path exports the live event records the Gateway's proof requires,
-// then ingests every needed proof in one request before it exports any result
-// record, and each record binds the digest the Gateway answered.
-func TestPublishRunCatchUpIngestsProofsBeforeExportingResults(t *testing.T) {
-	ctx := context.Background()
-	files := newCampaignRuntimeFileService(t)
-	store := NewStore(files)
-	var order []string
-	exporter := &orderedCampaignFeedExporter{order: &order}
-	proofPublisher := &recordingCampaignProofPublisher{order: &order}
-	publicationState := NewMemoryCampaignPublicationStateStore()
-	coordinator := NewCampaignPublicationCoordinator(store, files, publicationState, exporter).WithProofPublisher(proofPublisher)
-	run := completedTestCampaign(t, store)
-
-	_, err := coordinator.PublishRunCatchUp(ctx, run.GetRunId())
-	require.NoError(t, err)
-
-	require.NotEmpty(t, proofPublisher.inputs)
-	ingest := slices.Index(order, "ingest")
-	require.Positive(t, ingest, "live events are exported before the proofs are ingested")
-	for _, event := range order[:ingest] {
-		assert.Equal(t, "export-events", event, "only live events are exported before the proofs are ingested")
-	}
-	assert.Contains(t, order[ingest:], "export", "the result records are exported after the ingest")
-	assert.Equal(t, 1, countEvents(order, "ingest"), "catch-up ingests in one batch")
-	assert.Equal(t, 1, proofPublisher.flushes, "the mirror push is deferred to the end of catch-up")
-	for _, deferred := range proofPublisher.deferred {
-		assert.True(t, deferred, "catch-up defers the mirror push")
-	}
-
-	state, err := publicationState.Load(ctx, run.GetRunId())
-	require.NoError(t, err)
-	for _, input := range proofPublisher.inputs {
-		digest := fakeGatewayDatabaseDigest(input.AssignmentID)
-		assert.Equal(t, digest, state.PublishedProofArtifacts[input.AssignmentID].DatabaseSHA256)
-		record := findExportedRecord(t, exporter.records, AssignmentResultIdempotencyKey(run.GetRunId(), input.AssignmentID))
-		assert.Contains(t, record.RecordBytes, digest, "the result record binds the gateway digest")
-	}
-}
-
-// The verified republish sends the same proof request the assignment was
-// published with, and its records bind whatever digest the Gateway answers.
-func TestPublishRunVerificationRepublishesProofAndBindsReturnedDigest(t *testing.T) {
-	ctx := context.Background()
-	files := newCampaignRuntimeFileService(t)
-	store := NewStore(files)
-	var order []string
-	exporter := &orderedCampaignFeedExporter{order: &order}
-	proofPublisher := &recordingCampaignProofPublisher{order: &order}
-	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).WithProofPublisher(proofPublisher)
-	run := completedTestCampaign(t, store)
-	_, err := coordinator.PublishRunCatchUp(ctx, run.GetRunId())
-	require.NoError(t, err)
-	published := append([]AssignmentAuditProofInput(nil), proofPublisher.inputs...)
-	require.NotEmpty(t, published)
-	order = order[:0]
-	proofPublisher.inputs = nil
-	proofPublisher.deferred = nil
-
-	// The Gateway's reused database answers with a digest distinct from the one
-	// catch-up recorded, so a record citing the old digest is detectable.
-	republishedDigest := func(assignmentID string) string {
-		return hashBytes([]byte("gateway-reused-database:" + assignmentID))
-	}
-	proofPublisher.answer = func(inputs []AssignmentAuditProofInput) []models.PublicAssignmentAuditProofPublishResponse {
-		answers := make([]models.PublicAssignmentAuditProofPublishResponse, 0, len(inputs))
-		for _, input := range inputs {
-			answers = append(answers, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: input.AssignmentID, DatabaseSHA256: republishedDigest(input.AssignmentID)})
-		}
-		return answers
-	}
-	report := bindPersistedVerificationReport(t, store, run, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
-	exporterBefore := len(exporter.records)
-
-	_, err = coordinator.PublishRunVerification(ctx, run.GetRunId(), report)
-	require.NoError(t, err)
-
-	require.Len(t, proofPublisher.inputs, len(published))
-	for index, input := range proofPublisher.inputs {
-		assert.Equal(t, published[index].CampaignRevision, input.CampaignRevision, "the republish sends the request it was published with")
-		assert.Equal(t, published[index].IndexDigest, input.IndexDigest)
-		assert.Equal(t, published[index].Artifacts, input.Artifacts)
-	}
-	assert.Equal(t, []bool{true}, proofPublisher.deferred, "the republish defers the mirror push")
-	assert.Equal(t, "ingest", order[0], "the republish ingests before it exports the verified records")
-	for _, input := range proofPublisher.inputs {
-		record := findExportedRecord(t, exporter.records[exporterBefore:], AssignmentVerifiedResultIdempotencyKey(run.GetRunId(), input.AssignmentID))
-		assert.Contains(t, record.RecordBytes, republishedDigest(input.AssignmentID), "the verified record binds the digest the gateway returned")
-		assert.NotContains(t, record.RecordBytes, fakeGatewayDatabaseDigest(input.AssignmentID), "the earlier digest is not reused")
-	}
-}
-
-func countEvents(events []string, event string) int {
-	count := 0
-	for _, got := range events {
-		if got == event {
-			count++
-		}
-	}
-	return count
+	require.NotEmpty(t, catalog.GetScenarios())
+	return map[string]ScenarioArtifacts{"scenario-1": artifacts[catalog.GetScenarios()[0].GetScenarioId()]}
 }
 
 // saveAgentTraceForAuditProof seals and persists one trace and returns the
@@ -502,16 +199,6 @@ func TestAssignmentAgentTraceArtifact_PublishesExactPersistedBodyAndBindsIt(t *t
 	require.Len(t, bindings, 2)
 	assert.Equal(t, AssignmentAgentTraceKind, bindings[1].GetKind())
 	assert.Len(t, AssignmentAuditEvidenceBindingsFromHashes(CampaignPublishedProofArtifacts{DatabaseSHA256: strings.Repeat("a", 64)}), 1, "no trace, no trace binding")
-}
-
-// testScenarioFixtures returns one frozen built-in scenario's fixture bodies
-// keyed under "scenario-1".
-func testScenarioFixtures(t *testing.T) map[string]ScenarioArtifacts {
-	t.Helper()
-	catalog, artifacts, err := BuildSmokeGateScenarioCatalog()
-	require.NoError(t, err)
-	require.NotEmpty(t, catalog.GetScenarios())
-	return map[string]ScenarioArtifacts{"scenario-1": artifacts[catalog.GetScenarios()[0].GetScenarioId()]}
 }
 
 func TestAttachScenarioFixture_PublishesFrozenBodiesAndBindsThem(t *testing.T) {

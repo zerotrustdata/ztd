@@ -56,12 +56,6 @@ func (l *evidenceLedger) runtime() AgentTraceRuntime {
 	}
 }
 
-// campaignRuntime is the topology record of this ledger's runtime, with the
-// anchor enrollment binds to its key.
-func (l *evidenceLedger) campaignRuntime() CampaignOperatorRuntime {
-	return CampaignOperatorRuntime{OperatorID: l.operatorID, OperatorSessionID: l.sessionID, Anchor: l.signer.Anchor(l.operatorID)}
-}
-
 func (l *evidenceLedger) opts(txID, actionType string) oracletest.ReceiptOpts {
 	return oracletest.ReceiptOpts{
 		TransactionID: txID, OperatorID: l.operatorID, SessionID: l.sessionID, ActionType: actionType,
@@ -94,15 +88,6 @@ func (l *evidenceLedger) inference(txID string) *operatorv1.ActionReceipt {
 	receipt.ResultSummary = evidenceResultDigest(txID)
 	l.signer.Resign(l.t, receipt)
 	return receipt
-}
-
-// inferenceWithResultDigest appends and signs a completed inference receipt
-// with the digest already present in its signed payload.
-func (l *evidenceLedger) inferenceWithResultDigest(txID, resultDigest string) *operatorv1.ActionReceipt {
-	prior, hash := l.advance()
-	opts := l.opts(txID, string(constants.ActionTypeInference))
-	opts.ResultSummary = resultDigest
-	return l.signer.Executed(l.t, opts, prior, hash)
 }
 
 // inferenceFailed appends one inference whose provider failed. The handler

@@ -398,36 +398,21 @@ func TestRunsStart_RequiresACampaignArgument(t *testing.T) {
 }
 
 func TestRunsStart_ExecutesAndVerifiesWithoutPublication(t *testing.T) {
-	env := newGatewayRunEnv(t)
-	publication := env.recordPublication()
-	env.createCampaign(t, "eval-a")
+	env, run := newPublicationEnv(t, readyReplies(1))
+	createPublicationCampaign(t, run, "eval-a", 3)
+	before := mirrorHighWater(t)
 
-	var out bytes.Buffer
-	env.cmd.SetOut(&out)
-	result, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{
-		CampaignID: "eval-a",
-		RunID:      "run-a-1",
-		NoAutoBind: true,
-		Verify:     true,
-	})
-	if err != nil {
-		if loaded, loadErr := env.store(t).LoadCampaignVerification(context.Background(), "run-a-1"); loadErr == nil {
-			t.Logf("verification status=%s failure_count=%d reasons=%v", loaded.GetStatus(), loaded.GetFailureCount(), loaded.GetFailureReasons())
-		}
-	}
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Equal(t, 1, result.Executed)
-	require.NotNil(t, result.Report)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, result.Report.GetStatus())
-	assertPopulationBoundCampaignReport(t, result.Report)
-	assert.Contains(t, out.String(), "verification")
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--verify", "--no-backup")
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "Executed 1 assignment(s)")
+	assert.Contains(t, out, "verification: PASS")
+	assert.Equal(t, before, mirrorHighWater(t), "a run started with publication off appends nothing to the public mirror")
 
-	loaded, err := env.store(t).LoadCampaignVerification(context.Background(), "run-a-1")
+	runID := onlyRunID(t, run)
+	report, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
 	require.NoError(t, err)
-	assertPopulationBoundCampaignReport(t, loaded)
-	assert.Empty(t, publication.completionRunIDs)
-	assert.Empty(t, publication.reports)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus())
+	assertPopulationBoundReport(t, report, uint32(len(runAssignments(t, run, runID))), 1)
 }
 
 func TestRunsStart_ReleasesTheLeaseAndWritesNoLogFileAfterExecution(t *testing.T) {
@@ -603,36 +588,37 @@ func TestRunsResume_ReplacesAStaleLeaseAndReportsIt(t *testing.T) {
 }
 
 func TestVerifyRun_PersistsAndPublishesPopulationBoundReport(t *testing.T) {
-	env := newGatewayRunEnv(t)
-	publication := env.recordPublication()
-	runID := env.prepareRun(t, "eval-a", "run-a-1")
-	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, Limit: 1, NoAutoBind: true})
-	require.NoError(t, err)
-	require.Equal(t, 1, executed)
+	env, run := newPublicationEnv(t, readyReplies(1))
+	createPublicationCampaign(t, run, "eval-a", 3)
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--no-backup")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
+	before := len(mirrorSummaries(t))
 
-	store := env.store(t)
-	spec, err := store.LoadCampaignSpec(context.Background(), "eval-a")
-	require.NoError(t, err)
-	var out bytes.Buffer
-	env.cmd.SetOut(&out)
-	report, err := verifyRun(env.cmd, env.deps, store, runID, false, false, true, false)
-	require.NoError(t, err)
-	require.NotNil(t, report)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus())
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "PASS")
 
-	loaded, err := store.LoadCampaignVerification(context.Background(), runID)
+	store := evaluation.NewStore(run.fileSvc)
+	spec, err := store.LoadCampaignSpec(run.ctx, "eval-a")
 	require.NoError(t, err)
-	assert.Equal(t, report.GetStatus(), loaded.GetStatus())
-	assertPopulationBoundCampaignReport(t, loaded)
+	loaded, err := store.LoadCampaignVerification(run.ctx, runID)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, loaded.GetStatus())
+	assertPopulationBoundReport(t, loaded, 3, 1)
 	assert.Equal(t, evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, loaded.GetProviderObservationPolicy())
 	assert.Equal(t, evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, loaded.GetModelProvenancePolicy())
 	assert.Equal(t, spec.GetCampaignDigest(), loaded.GetCampaignDigest())
 	assert.Equal(t, spec.GetCatalogDigest(), loaded.GetCatalogDigest())
 	assert.Equal(t, spec.GetModelRegistryDigest(), loaded.GetModelRegistryDigest())
-	assert.Equal(t, []string{runID}, publication.completionRunIDs)
-	require.Len(t, publication.reports, 1)
-	assertPopulationBoundCampaignReport(t, publication.reports[0])
-	assert.Equal(t, loaded.GetReportDigestRef().GetSha256(), publication.reports[0].GetReportDigestRef().GetSha256())
+
+	// The verify publishes the completion summary and the bound verification revision.
+	require.Greater(t, len(mirrorSummaries(t)), before)
+	latest := latestSummary(t)
+	require.NotNil(t, latest.Metadata)
+	assert.Equal(t, "bound", latest.Metadata.Provenance)
+	assert.Equal(t, loaded.GetReportDigestRef().GetSha256(), latest.Metadata.ReportDigest)
+	assert.Equal(t, loaded.GetVerifiedPopulationDigest(), latest.Metadata.PopulationDigest)
 }
 
 func TestVerifyRun_RejectsMissingRun(t *testing.T) {
@@ -645,26 +631,26 @@ func TestVerifyRun_RejectsMissingRun(t *testing.T) {
 }
 
 func TestRunsVerify_ViaCLIPersistsAndPublishesPopulationBoundReport(t *testing.T) {
-	env := newGatewayRunEnv(t)
-	publication := env.recordPublication()
-	env.createCampaign(t, "eval-a")
-	env.cmd.SetOut(&bytes.Buffer{})
-	_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{CampaignID: "eval-a", RunID: "run-a-1", NoAutoBind: true})
-	require.NoError(t, err)
+	env, run := newPublicationEnv(t, readyReplies(1))
+	createPublicationCampaign(t, run, "eval-a", 3)
+	out, err := env.run(t, "runs", "start", "eval-a", "--daemon=false", "--publish=false", "--no-backup")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
 
-	out := env.mustRun(t, "runs", "verify", "run-a-1")
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
 	assert.Contains(t, out, "PASS")
 
-	loaded, err := env.store(t).LoadCampaignVerification(context.Background(), "run-a-1")
+	loaded, err := evaluation.NewStore(run.fileSvc).LoadCampaignVerification(run.ctx, runID)
 	require.NoError(t, err)
-	assertPopulationBoundCampaignReport(t, loaded)
-	assert.Equal(t, []string{"run-a-1"}, publication.completionRunIDs)
-	require.Len(t, publication.reports, 1)
-	assert.Equal(t, loaded.GetReportDigestRef().GetSha256(), publication.reports[0].GetReportDigestRef().GetSha256())
+	assertPopulationBoundReport(t, loaded, 3, 1)
+	latest := latestSummary(t)
+	require.NotNil(t, latest.Metadata)
+	assert.Equal(t, loaded.GetReportDigestRef().GetSha256(), latest.Metadata.ReportDigest, "the mirror serves the persisted report")
 
 	var payload runVerifyJSON
-	require.NoError(t, env.runJSON(t, &payload, "runs", "verify", "run-a-1"))
-	assert.Equal(t, "run-a-1", payload.RunID)
+	require.NoError(t, env.runJSON(t, &payload, "runs", "verify", runID))
+	assert.Equal(t, runID, payload.RunID)
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS.String(), payload.Status)
 }
 

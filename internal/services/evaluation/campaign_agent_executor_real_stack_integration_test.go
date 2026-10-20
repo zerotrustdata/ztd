@@ -191,9 +191,16 @@ func executorImportRequest(t *testing.T, env *realStackAgentRun, assignmentID st
 	}
 }
 
-// executorShellCallReply scripts one run_shell_command call with the rig's arguments.
+// executorShellCallReply scripts one run_shell_command call on the health fixture
+// the prompt names, with the given provider call ID.
 func executorShellCallReply(id string) fixtures.OllamaReply {
-	return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{ID: id, Name: constants.MCPToolRunShellCommand, Arguments: json.RawMessage(realStackShellArgs)}}}
+	return fixtures.OllamaReply{Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+		reply := realStackHealthCatReply(request)
+		for i := range reply.ToolCalls {
+			reply.ToolCalls[i].ID = id
+		}
+		return reply
+	}}
 }
 
 func TestCampaignAgentExecutorIntegration_RunShellCommandDispatchesModelWrittenArgumentsVerbatim(t *testing.T) {
@@ -209,10 +216,11 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandDispatchesModelWrittenA
 	assert.True(t, call.Success)
 	assert.Equal(t, constants.MCPToolRunShellCommand, call.ToolName)
 	assert.Equal(t, string(constants.ActionTypeMcpCall), call.ActionType)
-	assert.JSONEq(t, realStackShellArgs, call.ArgumentsJSON, "the dispatched arguments are the model's arguments, verbatim")
-	// The command runs in the Operator's root, not the scenario workspace, so
-	// cat reports the relative path it was given: proof the argv ran as written.
-	assert.Contains(t, call.ResultJSON, "status/health.txt")
+	healthPath := trace.Workspace.Root + "/status/health.txt"
+	assert.JSONEq(t, string(realStackShellArguments("cat", healthPath)), call.ArgumentsJSON, "the dispatched arguments are the model's arguments, verbatim")
+	// cat reads the absolute path the prompt rendered, so the result is the
+	// workspace fixture's own content as the Data Operator returned it.
+	assert.Contains(t, call.ResultJSON, "HEALTHY")
 	require.NotNil(t, call.Receipt, "the executed MCP_CALL keeps its signed receipt")
 	assert.Equal(t, call.TransactionID, call.Receipt.GetTransactionId())
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, call.Receipt.GetStatus())
@@ -297,8 +305,8 @@ func TestCampaignAgentExecutorIntegration_UndeclaredToolCallFailsWithoutDispatch
 
 func TestCampaignAgentExecutorIntegration_TraceRecordsExactInputThinkingAndProviderCallIDs(t *testing.T) {
 	replies := shellReplies()
+	replies[0] = executorShellCallReply("call-1")
 	replies[0].Thinking = "  Read the health file first.\n"
-	replies[0].ToolCalls[0].ID = "call-1"
 	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, suffix: "exact-input", replies: replies})
 
 	res := env.executeNext(t)
@@ -600,7 +608,7 @@ func TestCampaignAgentExecutorIntegration_DistinctRuntimesKeepInferenceLedgerOut
 func TestCampaignAgentExecutorIntegration_DispatchesToolsDespiteRecordedProbeRejection(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, suffix: "probe-rejected", replies: shellReplies(),
-		request: func(req *evaluation.CampaignInitRequest) {
+		request: func(req *evaluation.CampaignInitRequest, _ string) {
 			req.Inventory.Variants[0].CapabilityObservations = []*evalv1.ModelCapabilityObservation{{
 				Capability:        evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING,
 				Outcome:           evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED,

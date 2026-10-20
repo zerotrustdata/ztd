@@ -14,15 +14,12 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
-	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -258,46 +255,6 @@ func (e *runEnv) startPrepared(t *testing.T, campaignID, runID string) string {
 	require.NoError(t, err)
 	require.True(t, result.Prepared)
 	return result.RunID
-}
-
-type recordingCampaignVerificationPublication struct {
-	completionRunIDs []string
-	reports          []*evalv1.EvaluationVerificationReport
-}
-
-func (p *recordingCampaignVerificationPublication) PublishRunCompletion(_ context.Context, runID string, _ time.Time) (int, error) {
-	p.completionRunIDs = append(p.completionRunIDs, runID)
-	return 1, nil
-}
-
-func (p *recordingCampaignVerificationPublication) PublishRunVerification(_ context.Context, _ string, report *evalv1.EvaluationVerificationReport) (int, error) {
-	p.reports = append(p.reports, report)
-	return 1, nil
-}
-
-// recordPublication routes verification publication to a recorder.
-func (e *runEnv) recordPublication() *recordingCampaignVerificationPublication {
-	publication := &recordingCampaignVerificationPublication{}
-	e.deps.campaignPublicationFactory = func(*cobra.Command, fs.RuntimeFileService, *config.Config) (campaignVerificationPublication, error) {
-		return publication, nil
-	}
-	return publication
-}
-
-func assertPopulationBoundCampaignReport(t *testing.T, report *evalv1.EvaluationVerificationReport) {
-	t.Helper()
-	require.NotNil(t, report)
-	assert.Equal(t, constants.CampaignVerifierVersion, report.GetSchemaVersion())
-	assert.Equal(t, constants.CampaignVerifierVersion, report.GetVerifierContractVersion())
-	assert.Equal(t, constants.EvaluationSourceVersion, report.GetVerifierReleaseVersion())
-	assert.Equal(t, uint32(testModelRoleCells(t)), report.GetExpectedAssignmentCount())
-	assert.Equal(t, uint32(1), report.GetVerifiedAssignmentCount())
-	assert.NotEmpty(t, report.GetVerifiedPopulationDigest())
-	assert.NotEmpty(t, report.GetCampaignDigest())
-	assert.NotEmpty(t, report.GetCatalogDigest())
-	assert.NotEmpty(t, report.GetModelRegistryDigest())
-	require.NotNil(t, report.GetReportDigestRef())
-	assert.Len(t, report.GetReportDigestRef().GetSha256(), 64)
 }
 
 func repeatTestHex(ch byte) string {

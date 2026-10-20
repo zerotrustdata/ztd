@@ -62,7 +62,9 @@ func TestRealStackEpisode_InterrogationClarificationFollowUpContinuity(t *testin
 		singleRole: true, scenarioID: realStackFollowUpScenarioID, suffix: "clarify",
 		replies: []fixtures.OllamaReply{
 			// The interrogation hand-off drops the pending tool call.
-			{Content: realStackInterrogation, ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: json.RawMessage(realStackShellArgs)}}},
+			// The hand-off drops this pending call, so the call names no fixture: its
+			// prompt renders no workspace path.
+			{Content: realStackInterrogation, ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("echo", "pending")}}},
 			{Content: realStackDiagnosis},
 			// The scenario's diagnosis rubric has the judge score the final reply.
 			{Content: judgeScoreFour},
@@ -182,7 +184,7 @@ func TestRealStackEpisode_TerminalClassifications(t *testing.T) {
 		ctx := t.Context()
 		var replies []fixtures.OllamaReply
 		for range 8 {
-			replies = append(replies, fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: json.RawMessage(realStackShellArgs)}}})
+			replies = append(replies, fixtures.OllamaReply{Respond: realStackHealthCatReply})
 		}
 		env := newRealStackAgentRun(t, realStackOptions{singleRole: true, suffix: "budget", replies: replies})
 
@@ -206,7 +208,7 @@ func TestRealStackEpisode_HumanDenialIsPolicyDenial(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{
 		posture: constants.PostureRatify, denyHumanApprovals: true, singleRole: true, suffix: "human-denial",
 		replies: []fixtures.OllamaReply{
-			{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: json.RawMessage(realStackShellArgs)}}},
+			{Respond: realStackHealthCatReply},
 			{Content: "Understood, the owner denied the command."},
 		},
 	})
@@ -234,7 +236,7 @@ func realStackHeldRun(t *testing.T, suffix string, replies []fixtures.OllamaRepl
 	t.Helper()
 	return newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, repetitions: 2, suffix: suffix, replies: replies,
-		request: func(req *evaluation.CampaignInitRequest) { req.HoldContext = true },
+		request: func(req *evaluation.CampaignInitRequest, _ string) { req.HoldContext = true },
 	})
 }
 
@@ -249,6 +251,13 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 	second := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, second.GetLifecycleStatus(), "invalid evidence: %s", second.GetInvalidEvidenceDetail())
 	secondTrace := executorLoadTrace(t, env, second)
+
+	// Each repetition cats the health fixture at the absolute path its prompt
+	// rendered; repetition 2 reads the held workspace repetition 1 materialized.
+	require.Len(t, firstTrace.ToolCalls, 1)
+	assert.Contains(t, firstTrace.ToolCalls[0].ResultJSON, "HEALTHY", "repetition 1 returns the materialized fixture")
+	require.Len(t, secondTrace.ToolCalls, 1)
+	assert.Contains(t, secondTrace.ToolCalls[0].ResultJSON, "HEALTHY", "repetition 2 returns the held workspace's fixture")
 
 	held, err := firstTrace.Conversation()
 	require.NoError(t, err)

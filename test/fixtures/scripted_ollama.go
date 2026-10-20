@@ -32,6 +32,18 @@ type OllamaToolCall struct {
 	Arguments json.RawMessage `json:"arguments,omitempty"`
 }
 
+// OllamaChatMessage is one message of a decoded /api/chat request.
+type OllamaChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// OllamaChatRequest is the decoded /api/chat body the Inference Operator sent.
+type OllamaChatRequest struct {
+	Model    string              `json:"model"`
+	Messages []OllamaChatMessage `json:"messages"`
+}
+
 // OllamaReply is one complete response to an Ollama /api/chat request.
 type OllamaReply struct {
 	Content   string           `json:"content,omitempty"`
@@ -43,6 +55,32 @@ type OllamaReply struct {
 	// BeforeReply runs in the request handler before the reply is served, so a
 	// test can drive governed work while the model turn is in flight.
 	BeforeReply func() `json:"-"`
+	// Respond, when set, supplies the parts of this turn that depend on the
+	// decoded request, such as tool arguments naming a path only known once the
+	// run has started. Whatever it leaves unset keeps this reply's scripted value,
+	// including Thinking, Content, and the BeforeReply and Failure hooks.
+	Respond func(request OllamaChatRequest) OllamaReply `json:"-"`
+}
+
+// withResponse fills the parts a Respond hook returned into this scripted turn.
+func (r OllamaReply) withResponse(responded OllamaReply) OllamaReply {
+	if responded.Content == "" {
+		responded.Content = r.Content
+	}
+	if responded.Thinking == "" {
+		responded.Thinking = r.Thinking
+	}
+	if len(responded.ToolCalls) == 0 {
+		responded.ToolCalls = r.ToolCalls
+	}
+	if responded.Failure == "" {
+		responded.Failure = r.Failure
+	}
+	if responded.BeforeReply == nil {
+		responded.BeforeReply = r.BeforeReply
+	}
+	responded.Respond = nil
+	return responded
 }
 
 type scriptedOllamaShow struct {
@@ -245,9 +283,7 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				http.Error(w, "unreadable chat request", http.StatusBadRequest)
 				return
 			}
-			var request struct {
-				Model string `json:"model"`
-			}
+			var request OllamaChatRequest
 			if err := json.Unmarshal(body, &request); err != nil {
 				http.Error(w, "invalid chat request", http.StatusBadRequest)
 				return
@@ -271,6 +307,9 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 			gate := p.nextReplyGate
 			p.nextReplyGate = nil
 			p.mu.Unlock()
+			if reply.Respond != nil {
+				reply = reply.withResponse(reply.Respond(request))
+			}
 			if gate != nil {
 				close(gate.requested)
 				select {

@@ -11,6 +11,7 @@ package gwremote
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -296,4 +297,47 @@ func TestCampaignMirrorReconcilerRealStack_EligibilityUsesCanonicalCampaignState
 			assert.False(t, mirrorHasDataset(t, runID), "an ineligible run must not reach the mirror")
 		})
 	}
+}
+
+// corruptCampaignVerificationReport overwrites one run's persisted verification report
+// with bytes that do not decode. The write goes through the evidence file service the
+// run store seals into, at the run's campaign-verification path.
+func corruptCampaignVerificationReport(t *testing.T, e *evalRunStack, runID string) {
+	t.Helper()
+	path := filepath.Join(constants.DataDirname, constants.EvaluationDirname, constants.EvaluationRunsDirname, runID, constants.CampaignVerificationFilename)
+	require.NoError(t, e.files.WriteFile(t.Context(), path, []byte("invalid"), constants.PermFilePrivate))
+}
+
+// TestCampaignMirrorReconcilerRealStack_ForceRejectsCorruptVerificationReport publishes
+// nothing for a verified run whose persisted verification report cannot be decoded.
+// Even with force, the run is reported failed with the malformed-artifact error, the
+// mirror does not advance, and a single-run reconcile rejects it the same way.
+func TestCampaignMirrorReconcilerRealStack_ForceRejectsCorruptVerificationReport(t *testing.T) {
+	ctx := t.Context()
+	e := newEvalRunStack(t, evalRunOptions{posture: constants.PostureDoctrine, publicMirror: true, replies: evalRunShellReplies()})
+	e.initialize(t)
+	e.executeOnce(t)
+	e.verifyAndSave(t)
+	runID := e.req.RunID
+	corruptCampaignVerificationReport(t, e, runID)
+	pointMirrorAt(t, e.stack.Gateway)
+	require.False(t, mirrorHasDataset(t, runID), "a fresh mirror must not hold the dataset")
+	highWater := mirrorHighWaterSequence(t, e.stack.Gateway)
+
+	var updates []evaluation.CampaignMirrorReconcileProgress
+	result, err := newMirrorRunReconciler(t, e).ReconcileAllVerifiedRunsFromStore(ctx, time.Minute, true, true, func(update evaluation.CampaignMirrorReconcileProgress) {
+		updates = append(updates, update)
+	})
+
+	require.NoError(t, err)
+	require.Len(t, updates, 2)
+	assert.ErrorIs(t, updates[1].Err, constants.ErrEvidenceArtifactMalformed)
+	assert.Contains(t, result.FailedRuns, runID)
+	assert.Empty(t, result.RestoredRunIDs)
+	assert.False(t, mirrorHasDataset(t, runID), "force must preserve eligibility requirements")
+	assert.Equal(t, highWater, mirrorHighWaterSequence(t, e.stack.Gateway), "a rejected run must publish nothing")
+
+	_, err = newMirrorRunReconciler(t, e).ReconcileRun(ctx, runID, true)
+	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	assert.False(t, mirrorHasDataset(t, runID), "a rejected run must not reach the mirror")
 }

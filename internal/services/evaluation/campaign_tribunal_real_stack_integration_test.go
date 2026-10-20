@@ -393,7 +393,7 @@ func TestCampaignTribunalIntegration_SystemLaneRoutesTurnAndTribunalToFrozenRole
 		replies: append(append(tribunalIntent("call-1"), tribunalTurn("assistant tribunal answer")...),
 			fixtures.OllamaReply{Failure: "provider unreachable"}),
 		scenario: tribunalScenario,
-		request: func(req *evaluation.CampaignInitRequest) {
+		request: func(req *evaluation.CampaignInitRequest, _ string) {
 			inventory, err := evaluation.MaterializeModelRegistry(realStackCampaignID, variants)
 			require.NoError(t, err)
 			req.Inventory = inventory

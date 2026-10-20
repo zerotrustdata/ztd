@@ -21,7 +21,6 @@ import (
 // campaign_tribunal_real_stack_integration_test.go.
 
 func TestResolveAssignmentModels_RejectsStackOutsideFrozenFormationSet(t *testing.T) {
-	f := newAgentExecutorFixture(t, tribunalTextTurn("unused"))
 	variants := testFormationCatalogVariants()
 	set, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID:   agentTestCampaignID,
@@ -35,17 +34,24 @@ func TestResolveAssignmentModels_RejectsStackOutsideFrozenFormationSet(t *testin
 		FormationIDs: []string{"gemma-cascade"},
 	})
 	require.NoError(t, err)
-	stack := otherSet.Stacks[0]
-	f.req.Binding.ModelVariants = variants
-	f.req.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(variants)
-	f.req.FormationStackSet = set
-	f.req.Binding.FormationStackSetDigest = set.SetDigest
-	f.req.Assignment.Lane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-	f.req.Assignment.Target = &evalv1.EvaluationAssignment_Heterogeneous{
-		Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack},
+	req := AssignmentExecutionRequest{
+		Assignment: &evalv1.EvaluationAssignment{
+			AssignmentId: "assignment-1",
+			CampaignId:   agentTestCampaignID,
+			Lane:         evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
+			Target: &evalv1.EvaluationAssignment_Heterogeneous{
+				Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: otherSet.Stacks[0]},
+			},
+		},
+		FormationStackSet: set,
+		Binding: CampaignExecutionBinding{
+			FormationStackSetDigest: set.SetDigest,
+			ModelVariants:           variants,
+			ModelRegistry:           InferenceVariantsFromEvalRegistry(variants),
+		},
 	}
 
-	_, err = ResolveAssignmentModels(f.req)
+	_, err = ResolveAssignmentModels(req)
 
 	require.ErrorIs(t, err, constants.ErrFormationStackMismatch)
 }

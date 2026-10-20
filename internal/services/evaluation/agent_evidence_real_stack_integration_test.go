@@ -16,7 +16,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,6 +30,7 @@ import (
 	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
 	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
@@ -50,11 +53,82 @@ const (
 	realStackScenarioID = "tool-arg-shell-command"
 	realStackModelTag   = "qwen3:4b"
 	realStackModelHash  = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	realStackShellArgs  = `{"command":"cat","args":["status/health.txt"]}`
 )
 
+// realStackRenderedHealthPath matches the absolute health fixture path the
+// scenario prompt renders for one attempt's workspace.
+var realStackRenderedHealthPath = regexp.MustCompile(`/\S+?/workspaces/ws-[0-9a-f]{16}/status/health\.txt`)
+
+// realStackShellArguments is the run_shell_command argument body for one command
+// and its arguments. A struct of strings cannot fail to marshal.
+func realStackShellArguments(command string, args ...string) json.RawMessage {
+	body, _ := json.Marshal(models.RunShellCommandRequest{Command: command, Args: args})
+	return body
+}
+
+// realStackHealthCatReply cats the health fixture at the absolute path the
+// decoded request's prompt names. The path is the one the Data Operator
+// materialized for this attempt, so the shell reads the real workspace file.
+func realStackHealthCatReply(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+	for _, message := range request.Messages {
+		if path := realStackRenderedHealthPath.FindString(message.Content); path != "" {
+			return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("cat", path)}}}
+		}
+	}
+	return fixtures.OllamaReply{Failure: "scripted provider: the prompt names no workspace health fixture"}
+}
+
+// realStackAttempts records the attempt IDs the controller mints, in order. The
+// provider hook reads it from the Inference Operator's request goroutine.
+type realStackAttempts struct {
+	mu  sync.Mutex
+	ids []string
+}
+
+func (a *realStackAttempts) add(id string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ids = append(a.ids, id)
+}
+
+func (a *realStackAttempts) latest() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.ids) == 0 {
+		return ""
+	}
+	return a.ids[len(a.ids)-1]
+}
+
+// inFlightWorkspaceFile returns the absolute path of one workspace-relative
+// fixture in the workspace of the attempt the Operator is executing. Investigation
+// prompts do not render the workspace root, so the root is derived from the
+// attempt the controller minted for the run in flight.
+func (env *realStackAgentRun) inFlightWorkspaceFile(relPath string) (string, error) {
+	workspace, err := evaluation.NewScenarioWorkspace(env.workingDirectory, env.req.RunID, env.attempts.latest())
+	if err != nil {
+		return "", err
+	}
+	return workspace.FilePath(relPath)
+}
+
+// realStackReadFileReply is one read_file call on a workspace-relative fixture of
+// the attempt in flight.
+func realStackReadFileReply(env *realStackAgentRun, relPath string) fixtures.OllamaReply {
+	path, err := env.inFlightWorkspaceFile(relPath)
+	if err != nil {
+		return fixtures.OllamaReply{Failure: err.Error()}
+	}
+	// A struct of one string cannot fail to marshal.
+	args, _ := json.Marshal(struct {
+		Path string `json:"path"`
+	}{Path: path})
+	return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: "read_file", Arguments: args}}}
+}
+
 // shellReplies is the frozen provider script for one answer-free tool turn: the
-// model calls run_shell_command, then answers from the output.
+// model runs run_shell_command on the health fixture its prompt names, then
+// answers from the output.
 // shellRepliesFor scripts one shell turn pair for each scheduled assignment:
 // every assignment consumes its own tool call and final answer.
 func shellRepliesFor(assignments int) []fixtures.OllamaReply {
@@ -67,7 +141,7 @@ func shellRepliesFor(assignments int) []fixtures.OllamaReply {
 
 func shellReplies() []fixtures.OllamaReply {
 	return []fixtures.OllamaReply{
-		{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: json.RawMessage(realStackShellArgs)}}},
+		{Respond: realStackHealthCatReply},
 		{Content: "HEALTHY"},
 	}
 }
@@ -107,8 +181,10 @@ type realStackOptions struct {
 	scenario func(*evalv1.EvaluationScenarioDefinition)
 	// repetitions is the campaign RepetitionCount; zero means 1.
 	repetitions uint32
-	// request edits the init request after the catalog is frozen into it.
-	request func(*evaluation.CampaignInitRequest)
+	// request edits the init request after the catalog is frozen into it. It
+	// receives the Data Operator ID, so a persistent investigation can name the
+	// ledger it runs against before InitializeCampaign freezes the spec.
+	request func(req *evaluation.CampaignInitRequest, dataOperatorID string)
 	// denyHumanApprovals makes the owner deny every suspended L3 transaction.
 	denyHumanApprovals bool
 }
@@ -131,6 +207,23 @@ type realStackAgentRun struct {
 	persona        harnessclient.Persona
 	dataOperatorID string
 	dataSessionID  string
+	// catalog and artifacts are the frozen scenario inputs every run on this rig shares.
+	catalog   *evalv1.EvaluationScenarioCatalog
+	artifacts map[string]evaluation.ScenarioArtifacts
+	// topology is the Inference and Data binding every run on this rig uses.
+	topology           evaluation.CampaignOperatorTopology
+	inferenceSessionID string
+	workingDirectory   string
+	attempts           *realStackAttempts
+}
+
+// realStackRunPlan names one campaign run started on an existing rig.
+type realStackRunPlan struct {
+	campaignID  string
+	runID       string
+	repetitions uint32
+	singleRole  bool
+	request     func(req *evaluation.CampaignInitRequest, dataOperatorID string)
 }
 
 func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRun {
@@ -197,27 +290,6 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	if scenarioID == "" {
 		scenarioID = realStackScenarioID
 	}
-	repetitions := opts.repetitions
-	if repetitions == 0 {
-		repetitions = 1
-	}
-	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: realStackModelTag, ModelDigest: realStackModelHash}
-	inventory, err := evaluation.MaterializeModelRegistry(realStackCampaignID, []*evalv1.ModelVariant{variant})
-	require.NoError(t, err)
-	req := evaluation.CampaignInitRequest{
-		Platform:                   evaluation.PlatformIdentity{Release: "v2.3.0", SourceRevision: "0123abc"},
-		CampaignID:                 realStackCampaignID,
-		RunID:                      "run-smoke-1",
-		Catalog:                    catalog,
-		Inventory:                  inventory,
-		ScenarioArtifacts:          artifacts,
-		RepetitionCount:            repetitions,
-		InferenceOperatorSessionID: inferenceWorkload.OperatorSessionID,
-		DataOperatorSessionID:      dataWorkload.OperatorSessionID,
-	}
-	if opts.suffix != "" {
-		req.RunID += "-" + opts.suffix
-	}
 	// Keep the run to the one scenario under test; the catalog digest is
 	// recomputed over the truncated catalog.
 	var target *evalv1.EvaluationScenarioDefinition
@@ -241,16 +313,17 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	}
 	truncated.CatalogDigest, err = evaluation.ComputeScenarioCatalogDigest(truncated)
 	require.NoError(t, err)
-	req.Catalog = truncated
-	if opts.request != nil {
-		opts.request(&req)
-	}
 
 	clock := func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }
+	attempts := &realStackAttempts{}
 	seq := 0
 	newID := func(prefix string) string {
 		seq++
-		return fmt.Sprintf("%s-%d", prefix, seq)
+		id := fmt.Sprintf("%s-%d", prefix, seq)
+		if prefix == "attempt" {
+			attempts.add(id)
+		}
+		return id
 	}
 	store := evaluation.NewStore(evidenceFiles)
 	persona := harnessclient.Persona{ID: realStackPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}
@@ -264,30 +337,77 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	require.NoError(t, err)
 	controller := evaluation.NewCampaignController(store, executor, clock, newID)
 
-	_, err = controller.InitializeCampaign(ctx, req)
-	require.NoError(t, err)
-	scheduled, err := controller.ScheduleRun(ctx, req.RunID)
-	require.NoError(t, err)
-	require.Positive(t, scheduled)
-	if opts.singleRole {
-		require.Equal(t, int(repetitions), scheduled)
+	env := &realStackAgentRun{
+		stack: stack, store: store, files: evidenceFiles, controller: controller,
+		clock: clock, gateway: gateway, appClient: appClient,
+		inference: inference, sentinel: sentinel, persona: persona,
+		dataOperatorID: dataWorkload.OperatorID, dataSessionID: dataWorkload.OperatorSessionID,
+		catalog: truncated, artifacts: artifacts, topology: topology,
+		inferenceSessionID: inferenceWorkload.OperatorSessionID,
+		workingDirectory:   topology.DataWorkingDirectory,
+		attempts:           attempts,
 	}
+	repetitions := opts.repetitions
+	if repetitions == 0 {
+		repetitions = 1
+	}
+	runID := "run-smoke-1"
+	if opts.suffix != "" {
+		runID += "-" + opts.suffix
+	}
+	env.startRun(t, realStackRunPlan{
+		campaignID: realStackCampaignID, runID: runID, repetitions: repetitions,
+		singleRole: opts.singleRole, request: opts.request,
+	})
 	// The owner denies only the agent's governed shell command; enrollment and
 	// the inference calls of each agent turn are L3 transactions too.
 	if opts.denyHumanApprovals {
 		stack.Owner.DenyToolTransactions(constants.MCPToolRunShellCommand)
 	}
+	return env
+}
 
-	return &realStackAgentRun{
-		stack: stack, store: store, files: evidenceFiles, controller: controller, req: req,
-		binding: evaluation.CampaignExecutionBinding{
-			Topology:            topology,
-			ModelRegistryDigest: req.Inventory.RegistryDigest,
-			ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
-		},
-		scheduledCount: scheduled, clock: clock, gateway: gateway, appClient: appClient,
-		inference: inference, sentinel: sentinel, persona: persona,
-		dataOperatorID: dataWorkload.OperatorID, dataSessionID: dataWorkload.OperatorSessionID,
+// startRun initializes one campaign run on the rig's stack, schedules it, and
+// makes it the run executeNext drives. Runs that share a campaign ID must freeze
+// the same spec, so a sequential run repeats the campaign's investigation.
+func (env *realStackAgentRun) startRun(t *testing.T, plan realStackRunPlan) {
+	t.Helper()
+	ctx := t.Context()
+	repetitions := plan.repetitions
+	if repetitions == 0 {
+		repetitions = 1
+	}
+	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: realStackModelTag, ModelDigest: realStackModelHash}
+	inventory, err := evaluation.MaterializeModelRegistry(plan.campaignID, []*evalv1.ModelVariant{variant})
+	require.NoError(t, err)
+	req := evaluation.CampaignInitRequest{
+		Platform:                   evaluation.PlatformIdentity{Release: "v2.3.0", SourceRevision: "0123abc"},
+		CampaignID:                 plan.campaignID,
+		RunID:                      plan.runID,
+		Catalog:                    env.catalog,
+		Inventory:                  inventory,
+		ScenarioArtifacts:          env.artifacts,
+		RepetitionCount:            repetitions,
+		InferenceOperatorSessionID: env.inferenceSessionID,
+		DataOperatorSessionID:      env.dataSessionID,
+	}
+	if plan.request != nil {
+		plan.request(&req, env.dataOperatorID)
+	}
+	_, err = env.controller.InitializeCampaign(ctx, req)
+	require.NoError(t, err)
+	scheduled, err := env.controller.ScheduleRun(ctx, req.RunID)
+	require.NoError(t, err)
+	require.Positive(t, scheduled)
+	if plan.singleRole {
+		require.Equal(t, int(repetitions), scheduled)
+	}
+	env.req = req
+	env.scheduledCount = scheduled
+	env.binding = evaluation.CampaignExecutionBinding{
+		Topology:            env.topology,
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       req.Inventory.ToModelRegistryFreeze().Variants,
 	}
 }
 

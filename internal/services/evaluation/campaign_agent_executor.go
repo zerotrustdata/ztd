@@ -993,6 +993,15 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, t
 	if summary == "" {
 		summary = "{}"
 	}
+	if tool == constants.MCPToolRunShellCommand {
+		failure, err := shellCommandFailure(summary)
+		if err != nil {
+			return AgentToolCall{}, err
+		}
+		if failure != nil {
+			return r.fail(record, *failure)
+		}
+	}
 	canonical, err := canonicalizeToolJSON(summary)
 	if err == nil {
 		record.Success = true
@@ -1092,6 +1101,28 @@ type agentCommandResult struct {
 	ReturnCode int32  `json:"return_code"`
 	Stdout     string `json:"stdout"`
 	Stderr     string `json:"stderr"`
+}
+
+// shellCommandFailure returns the model-visible failure for a run_shell_command
+// result that did not run to a zero exit, or nil. The receipt is COMPLETED
+// either way: it records that the command ran, and the exit code is the
+// command's outcome, as for run_commands.
+func shellCommandFailure(summary string) (*agentToolFailure, error) {
+	var result mcp.RunShellCommandResult
+	if err := json.Unmarshal([]byte(summary), &result); err != nil {
+		return nil, fmt.Errorf("%w: decode %s result: %w", constants.ErrEvaluationDispatchFailed, constants.MCPToolRunShellCommand, err)
+	}
+	if result.ExitCode == 0 && !result.TimedOut {
+		return nil, nil
+	}
+	message := strings.TrimSpace(result.Error)
+	if stderr := strings.TrimSpace(result.Stderr); stderr != "" {
+		message = stderr
+	}
+	if message == "" {
+		message = fmt.Sprintf("command exited with status %d", result.ExitCode)
+	}
+	return &agentToolFailure{ErrorType: agentToolErrorExecution, Error: truncateToolText(message)}, nil
 }
 
 // commandAnswer completes record with an admitted command's result: its
