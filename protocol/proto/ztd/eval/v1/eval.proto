@@ -1439,6 +1439,9 @@ message ConformanceRunRecord {
   bool attended = 10;
   google.protobuf.Timestamp started_at = 11;
   google.protobuf.Timestamp finished_at = 12;
+  // Gateway health reported no A2A ingress (no downstream configured). A2A is
+  // opt-in, so its cases are not applicable to this run.
+  bool a2a_ingress_absent = 13;
 }
 
 enum ConformanceFailureClass {

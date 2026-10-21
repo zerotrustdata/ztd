@@ -79,6 +79,7 @@ type HealthResponse struct {
 	PID             int                   `json:"pid"`
 	GovernanceReady bool                  `json:"governance_ready"`
 	Posture         constants.Posture     `json:"posture"`
+	A2AIngress      bool                  `json:"a2a_ingress"` // A2A ingress is mounted (a downstream is configured)
 	StateMerkleRoot string                `json:"state_merkle_root,omitempty"`
 }
 

@@ -53,7 +53,7 @@ func Verify(record *evalv1.ConformanceRunRecord) (*evalv1.ConformanceVerdictSet,
 	if !isRealPosture(record.GetPosture()) {
 		return invalidSet(record), nil
 	}
-	applicable, err := cases.Applicable(record.GetPosture())
+	applicable, err := cases.Applicable(record.GetPosture(), !record.GetA2AIngressAbsent())
 	if err != nil {
 		return nil, fmt.Errorf("conformance verify: load applicable cases: %w", err)
 	}

@@ -207,7 +207,7 @@ func TestRowSeventeenMissingFieldPinsDirectRejectionAndDispatchRefusal(t *testin
 }
 
 func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
-	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
+	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true)
 	if err != nil {
 		t.Fatalf("Applicable(DOCTRINE): %v", err)
 	}
@@ -223,13 +223,43 @@ func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
 }
 
 func TestApplicableRatifyExcludesRowOne(t *testing.T) {
-	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY)
+	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, true)
 	if err != nil {
 		t.Fatalf("Applicable(RATIFY): %v", err)
 	}
 	for _, c := range cs {
 		if c.Row == 1 {
 			t.Errorf("Applicable(RATIFY) contains row 1 case %s", c.ID)
+		}
+	}
+}
+
+func TestApplicableWithoutA2AIngressDropsOnlyA2ACases(t *testing.T) {
+	for _, binding := range Postures {
+		with, err := Applicable(binding.Wire, true)
+		if err != nil {
+			t.Fatalf("Applicable(%s, true): %v", binding.Posture, err)
+		}
+		without, err := Applicable(binding.Wire, false)
+		if err != nil {
+			t.Fatalf("Applicable(%s, false): %v", binding.Posture, err)
+		}
+		var want []Case
+		for _, c := range with {
+			if c.Ingress != IngressA2A {
+				want = append(want, c)
+			}
+		}
+		if len(want) == len(with) {
+			t.Fatalf("Applicable(%s, true) has no A2A case", binding.Posture)
+		}
+		if len(without) != len(want) {
+			t.Fatalf("Applicable(%s, false) = %d cases, want %d", binding.Posture, len(without), len(want))
+		}
+		for i := range want {
+			if without[i].ID != want[i].ID {
+				t.Fatalf("Applicable(%s, false)[%d] = %s, want %s", binding.Posture, i, without[i].ID, want[i].ID)
+			}
 		}
 	}
 }
@@ -265,7 +295,7 @@ func TestPostureMappingRejectsUnknown(t *testing.T) {
 }
 
 func TestApplicableRejectsUnknownPosture(t *testing.T) {
-	_, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED)
+	_, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, true)
 	if !errors.Is(err, constants.ErrConformancePostureUnknown) {
 		t.Fatalf("Applicable(UNSPECIFIED) = %v, want ErrConformancePostureUnknown", err)
 	}

@@ -3620,6 +3620,10 @@
         "models.HealthResponse": {
             "type": "object",
             "properties": {
+                "a2a_ingress": {
+                    "description": "A2A ingress is mounted (a downstream is configured)",
+                    "type": "boolean"
+                },
                 "governance_ready": {
                     "type": "boolean"
                 },

@@ -203,9 +203,10 @@ func (h *harness) config(posture evalv1.EvaluationGovernancePosture, attended bo
 		Posture: func(context.Context) (evalv1.EvaluationGovernancePosture, error) {
 			return posture, nil
 		},
-		Recorder: func(sink *[]client.Exchange) { h.sink = sink },
-		Attended: attended,
-		Now:      fixedClock(),
+		A2AIngress: true,
+		Recorder:   func(sink *[]client.Exchange) { h.sink = sink },
+		Attended:   attended,
+		Now:        fixedClock(),
 	}
 }
 
@@ -420,7 +421,7 @@ func TestRunAbortsWhenSentinelReceiptIsForged(t *testing.T) {
 
 func TestRunRecordsAttendedCaseAsNotRunInUnattendedRun(t *testing.T) {
 	h := newHarness(t)
-	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY)
+	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, true)
 	require.NoError(t, err)
 	var attended int
 	for _, c := range applicable {
@@ -465,7 +466,7 @@ func TestRunRecordsUnavailableCoverageWithoutTouchingAbsentRuntime(t *testing.T)
 	require.Len(t, record.GetAnchors(), 1)
 	require.Len(t, record.GetQuiescence(), 1)
 	assert.Zero(t, h.reads[cases.ExecutorOutbound])
-	applicable, err := cases.Applicable(record.GetPosture())
+	applicable, err := cases.Applicable(record.GetPosture(), !record.GetA2AIngressAbsent())
 	require.NoError(t, err)
 	require.Len(t, record.GetCases(), len(applicable))
 	for i, c := range applicable {

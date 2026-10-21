@@ -113,8 +113,10 @@ Operator. When several are available, choose one from the list. --operator-id pi
 target for scripts. Outbound runtime roots are discovered from enrollment metadata;
 --operator-root overrides the local path when needed.
 
-Outbound and CLI cases need an outbound Data Operator. A2A cases need a Gateway started
-with --a2a-downstream-url http://<address> and this command's --a2a-stub-listen <address>.
+Outbound and CLI cases need an outbound Data Operator. A2A ingress is opt-in: a Gateway
+without --a2a-downstream-url exposes none, and its A2A cases are not applicable. A Gateway
+started with --a2a-downstream-url http://<address> needs this command's
+--a2a-stub-listen <address> for A2A coverage.
 Missing optional setup is recorded as unavailable coverage, yielding INCOMPLETE.
 Unattended INCOMPLETE runs exit zero; failures and invalid evidence always exit non-zero.`,
 		Args: cobra.NoArgs,
@@ -151,11 +153,14 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		opts.approverUserID = authContext.UserID
 	}
 
-	// The posture is read once. Drivers and the run must agree on it, and the
-	// posture is immutable at runtime, so one read is the whole truth.
-	posture, err := gatewayPosture(ctx, gatewayClient)
+	// The posture and A2A ingress are read once. Drivers and the run must agree
+	// on them, and both are immutable at runtime, so one read is the whole truth.
+	posture, a2aIngress, err := gatewayStack(ctx, gatewayClient)
 	if err != nil {
 		return err
+	}
+	if opts.a2aStubListen != "" && !a2aIngress {
+		return fmt.Errorf("evaluation: --a2a-stub-listen needs a Gateway started with --a2a-downstream-url; this Gateway exposes no A2A ingress: %w", constants.ErrEvaluationFlagsInvalid)
 	}
 	embedded, outbound, outboundDoc, err := conformanceTargets(cmd, gatewayClient, opts.operatorID)
 	if err != nil {
@@ -211,6 +216,9 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 	}
 	unavailable := make(map[cases.Ingress]evalv1.ConformanceObservationKind)
 	for _, ingress := range []cases.Ingress{cases.IngressDispatchOutbound, cases.IngressCLI, cases.IngressA2A} {
+		if ingress == cases.IngressA2A && !a2aIngress {
+			continue // not applicable, not unavailable
+		}
 		if drivers[ingress] == nil {
 			unavailable[ingress] = ingress.UnavailableObservation()
 		}
@@ -232,6 +240,7 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		Sentinel:    sentinel,
 		Roots:       roots,
 		Posture:     func(context.Context) (evalv1.EvaluationGovernancePosture, error) { return posture, nil },
+		A2AIngress:  a2aIngress,
 		Recorder:    gatewayClient.Record,
 		Attended:    opts.attended,
 		Now:         deps.now,
@@ -328,15 +337,22 @@ Each run is verified from its stored bytes before it enters the report. At most 
 // gatewayPosture reads the Gateway's governance posture from its health. An
 // unknown posture is ErrConformancePostureUnknown.
 func gatewayPosture(ctx context.Context, client *harnessclient.Client) (evalv1.EvaluationGovernancePosture, error) {
+	posture, _, err := gatewayStack(ctx, client)
+	return posture, err
+}
+
+// gatewayStack reads the Gateway's governance posture and whether it exposes
+// A2A ingress from one health read.
+func gatewayStack(ctx context.Context, client *harnessclient.Client) (evalv1.EvaluationGovernancePosture, bool, error) {
 	health, _, err := client.Health(ctx)
 	if err != nil {
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fmt.Errorf("evaluation: read gateway health: %w", err)
+		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, false, fmt.Errorf("evaluation: read gateway health: %w", err)
 	}
 	posture, err := cases.WirePosture(health.Posture)
 	if err != nil {
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fmt.Errorf("evaluation: gateway posture: %w", err)
+		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, false, fmt.Errorf("evaluation: gateway posture: %w", err)
 	}
-	return posture, nil
+	return posture, health.A2AIngress, nil
 }
 
 // conformanceTargets selects the Gateway's embedded session and, when selected,

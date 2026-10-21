@@ -85,6 +85,13 @@ type runView struct {
 	// bundleHash is the doctrine bundle hash of every signed L1 rejection in the posture.
 	bundleHash    string
 	signedIngress map[cases.Ingress]bool
+	// a2aAbsent is the record's a2a_ingress_absent: the stack exposed no A2A ingress.
+	a2aAbsent bool
+}
+
+// excludes reports whether a catalogue case is not applicable to this run's stack.
+func (v *runView) excludes(c cases.Case) bool {
+	return v.a2aAbsent && c.Ingress == cases.IngressA2A
 }
 
 // Build fails with ErrConformanceRecordInvalid if two runs share a posture, a
@@ -163,6 +170,7 @@ func indexRun(run VerifiedRun, all []cases.Case) (constants.Posture, *runView, e
 		},
 		evidence:      make(map[string]*evalv1.ConformanceCaseEvidence, len(record.GetCases())),
 		signedIngress: make(map[cases.Ingress]bool),
+		a2aAbsent:     record.GetA2AIngressAbsent(),
 	}
 	for _, ev := range record.GetCases() {
 		if ev == nil {
@@ -179,7 +187,7 @@ func indexRun(run VerifiedRun, all []cases.Case) (constants.Posture, *runView, e
 	}
 	applicable := make(map[string]bool)
 	for _, c := range all {
-		if c.Posture == record.GetPosture() {
+		if c.Posture == record.GetPosture() && !view.excludes(c) {
 			applicable[c.ID] = true
 		}
 	}
@@ -322,6 +330,10 @@ func cellFor(k cellKey, col cases.PostureBinding, all []cases.Case, gaps []cases
 		cell.Status, cell.Reason = CellMissing, "no verified run for posture"
 		return cell, nil
 	}
+	if view.excludes(inCell[0]) {
+		cell.Status, cell.Reason = CellNotApplicable, "A2A ingress not configured"
+		return cell, nil
+	}
 	if view.summary.SuiteVerdict == evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE {
 		cell.Status, cell.Reason = CellMissing, "suite verdict INVALID_EVIDENCE"
 		return cell, nil
@@ -378,6 +390,9 @@ func buildRecall(all []cases.Case, categoryOf map[string]doctrinecorpus.Category
 		name, err := cases.GovernancePosture(c.Posture)
 		if err != nil {
 			return nil, fmt.Errorf("conformance report: case %s: %w", c.ID, err)
+		}
+		if view := views[name]; view != nil && view.excludes(c) {
+			continue
 		}
 		ingressSet[c.Ingress] = true
 		key := recallKey{category: category, posture: name, ingress: c.Ingress}

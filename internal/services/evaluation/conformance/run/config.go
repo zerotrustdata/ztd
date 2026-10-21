@@ -34,7 +34,9 @@ type Config struct {
 	Sentinel    cases.Sentinel
 	Roots       map[cases.Executor]Root
 	Posture     func(ctx context.Context) (evalv1.EvaluationGovernancePosture, error) // from the Gateway health
-	Recorder    func(sink *[]client.Exchange)                                         // client.Record
-	Attended    bool
-	Now         func() time.Time
+	// A2AIngress is the Gateway health's a2a_ingress; false makes A2A cases not applicable.
+	A2AIngress bool
+	Recorder   func(sink *[]client.Exchange) // client.Record
+	Attended   bool
+	Now        func() time.Time
 }

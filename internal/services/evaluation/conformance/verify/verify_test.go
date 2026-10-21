@@ -280,7 +280,7 @@ func TestVerifyPersisted_EmbeddedCoverageIsIncompleteAndTamperingStillFails(t *t
 	raw, _ := conformancetest.DoctrineRecord(t)
 	record := new(evalv1.ConformanceRunRecord)
 	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
-	applicable, err := cases.Applicable(record.GetPosture())
+	applicable, err := cases.Applicable(record.GetPosture(), !record.GetA2AIngressAbsent())
 	require.NoError(t, err)
 	byID := make(map[string]cases.Case, len(applicable))
 	for _, c := range applicable {
@@ -978,7 +978,7 @@ func assertOnlyCaseNotPass(t *testing.T, set *evalv1.ConformanceVerdictSet, case
 
 func TestVerifyPersistedPinnedDoctrineRecordIsPass(t *testing.T) {
 	record, raw, digest := pinnedDoctrineRecord(t)
-	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
+	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true)
 	require.NoError(t, err)
 	reencoded, err := evalv1.MarshalCanonical(record)
 	require.NoError(t, err)

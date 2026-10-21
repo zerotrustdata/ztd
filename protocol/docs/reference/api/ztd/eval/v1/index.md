@@ -461,6 +461,7 @@ executor whose commitment links must be adjacent.
 | attended | [bool](#bool) |  |  |
 | started_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | finished_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| a2a_ingress_absent | [bool](#bool) |  | Gateway health reported no A2A ingress (no downstream configured). A2A is opt-in, so its cases are not applicable to this run. |
 
 
 

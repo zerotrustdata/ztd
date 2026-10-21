@@ -368,7 +368,7 @@ func TestGatewayService_RejectionReceiptIsErrorData(t *testing.T) {
 			}
 			verifyErr := fmt.Errorf("%w: destroy_rm_recursive_wide_target", governance.ErrL1ValidationFailed)
 			proc := &fakeEnvelopeProcessor{receipt: receipt, err: governance.WithRejectionReceipt(receipt, verifyErr)}
-			g := newTestGatewayService(t, withEnvProc(proc))
+			g := newTestGatewayService(t, withEnvProc(proc), withA2ADownstreamURL("http://a2a.invalid"))
 			w := httptest.NewRecorder()
 
 			tc.handle(g, w, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.reqBody)))
@@ -2212,6 +2212,21 @@ func TestGatewayService_HandleA2aCall(t *testing.T) {
 			require.Equal(t, "operator-session-1", tx.OperatorSessionID)
 		}
 	})
+}
+
+func TestGatewayService_MCPA2ACallWithoutDownstreamIsMethodNotFound(t *testing.T) {
+	proc := &fakeEnvelopeProcessor{}
+	g := newTestGatewayService(t, withEnvProc(proc))
+
+	reqBody := `{"jsonrpc":"2.0","id":1,"method":"a2a/call","params":{"skill_name":"test-skill","payload":{}}}`
+	w := httptest.NewRecorder()
+	g.HandleMCP(w, httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(reqBody)))
+
+	var resp JSONRPCResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Error)
+	require.Equal(t, -32601, resp.Error.Code)
+	require.Nil(t, proc.gotPayload)
 }
 
 func TestGatewayService_SuspendGovernanceEnvelope(t *testing.T) {

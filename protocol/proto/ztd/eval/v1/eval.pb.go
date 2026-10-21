@@ -11377,8 +11377,11 @@ type ConformanceRunRecord struct {
 	Attended             bool                        `protobuf:"varint,10,opt,name=attended,proto3" json:"attended,omitempty"`
 	StartedAt            *timestamppb.Timestamp      `protobuf:"bytes,11,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	FinishedAt           *timestamppb.Timestamp      `protobuf:"bytes,12,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Gateway health reported no A2A ingress (no downstream configured). A2A is
+	// opt-in, so its cases are not applicable to this run.
+	A2AIngressAbsent bool `protobuf:"varint,13,opt,name=a2a_ingress_absent,json=a2aIngressAbsent,proto3" json:"a2a_ingress_absent,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ConformanceRunRecord) Reset() {
@@ -11493,6 +11496,13 @@ func (x *ConformanceRunRecord) GetFinishedAt() *timestamppb.Timestamp {
 		return x.FinishedAt
 	}
 	return nil
+}
+
+func (x *ConformanceRunRecord) GetA2AIngressAbsent() bool {
+	if x != nil {
+		return x.A2AIngressAbsent
+	}
+	return false
 }
 
 type ConformanceVerdict struct {
@@ -13444,7 +13454,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x15ConformanceQuiescence\x12\x1a\n" +
 	"\bexecutor\x18\x01 \x01(\tR\bexecutor\x124\n" +
 	"\x05first\x18\x02 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x05first\x126\n" +
-	"\x06second\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x06second\"\xd6\x04\n" +
+	"\x06second\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x06second\"\x84\x05\n" +
 	"\x14ConformanceRunRecord\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x19\n" +
 	"\bsuite_id\x18\x02 \x01(\tR\asuiteId\x12#\n" +
@@ -13463,7 +13473,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
 	"\vfinished_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"finishedAt\"\xb6\x01\n" +
+	"finishedAt\x12,\n" +
+	"\x12a2a_ingress_absent\x18\r \x01(\bR\x10a2aIngressAbsent\"\xb6\x01\n" +
 	"\x12ConformanceVerdict\x12\x17\n" +
 	"\acase_id\x18\x01 \x01(\tR\x06caseId\x12<\n" +
 	"\x06status\x18\x02 \x01(\x0e2$.ztd.eval.v1.EvaluationVerdictStatusR\x06status\x12I\n" +

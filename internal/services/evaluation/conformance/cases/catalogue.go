@@ -360,8 +360,9 @@ func Catalogue() ([]Case, []Gap, error) {
 	return cases, gaps, nil
 }
 
-// Applicable returns the cases for one posture, in catalogue order.
-func Applicable(posture evalv1.EvaluationGovernancePosture) ([]Case, error) {
+// Applicable returns the cases for one posture, in catalogue order. A2A is
+// opt-in at the Gateway: without A2A ingress its cases are not applicable.
+func Applicable(posture evalv1.EvaluationGovernancePosture, a2aIngress bool) ([]Case, error) {
 	if _, err := GovernancePosture(posture); err != nil {
 		return nil, fmt.Errorf("catalogue: applicable: %w", err)
 	}
@@ -371,9 +372,10 @@ func Applicable(posture evalv1.EvaluationGovernancePosture) ([]Case, error) {
 	}
 	var out []Case
 	for _, c := range all {
-		if c.Posture == posture {
-			out = append(out, c)
+		if c.Posture != posture || (c.Ingress == IngressA2A && !a2aIngress) {
+			continue
 		}
+		out = append(out, c)
 	}
 	return out, nil
 }

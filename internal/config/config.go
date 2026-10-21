@@ -93,7 +93,7 @@ type GatewayConfig struct {
 	MCPDownstreamURL  string          // URL of the downstream MCP server to proxy discovery and execution to
 	MCPDownstreamCmd  string          // Command of the downstream MCP subprocess (mutually exclusive with MCPDownstreamURL)
 	MCPDownstreamArgs []string        // Arguments for the downstream MCP subprocess
-	A2ADownstreamURL  string          // URL of the downstream A2A server to proxy execution to
+	A2ADownstreamURL  string          // URL of the downstream A2A server to proxy execution to; empty leaves A2A ingress unmounted
 	PublicBaseURL     string          // Public base URL for L3 approval links (e.g., https://localhost:8443)
 	JWKSURL           string          // URL to fetch JWKS for JWT validation
 	JWTRoleClaim      string          // The claim in JWT that contains roles (default: "roles")
@@ -149,6 +149,13 @@ type GatewayConfig struct {
 	// Distributed lock retry configuration
 	LockMaxRetries int           // Maximum retry attempts for distributed lock acquisition (default: 30)
 	LockRetryDelay time.Duration // Base delay for lock retry backoff (default: 50ms)
+}
+
+// A2AIngressEnabled reports whether the Gateway exposes A2A ingress. A2A is
+// opt-in: an A2A call's only effect is the downstream dispatch, so without a
+// downstream the ingress is not mounted.
+func (c GatewayConfig) A2AIngressEnabled() bool {
+	return c.A2ADownstreamURL != ""
 }
 
 // InferenceConfig holds configuration for the inference backend

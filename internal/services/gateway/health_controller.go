@@ -108,6 +108,7 @@ func (c *HealthController) handleHealth(w http.ResponseWriter, r *http.Request) 
 		PID:             os.Getpid(),
 		GovernanceReady: c.isGovernanceReady != nil && c.isGovernanceReady(r.Context()),
 		Posture:         c.cfg.Gateway.Posture,
+		A2AIngress:      c.cfg.Gateway.A2AIngressEnabled(),
 		StateMerkleRoot: root,
 	})
 }
@@ -132,6 +133,7 @@ func (c *HealthController) handleBootstrapHealth(w http.ResponseWriter, r *http.
 		PID:             os.Getpid(),
 		GovernanceReady: c.isGovernanceReady != nil && c.isGovernanceReady(r.Context()),
 		Posture:         c.cfg.Gateway.Posture,
+		A2AIngress:      c.cfg.Gateway.A2AIngressEnabled(),
 	})
 }
 
