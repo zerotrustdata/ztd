@@ -27,7 +27,9 @@ type PropertySchema struct {
 type InputSchema struct {
 	Type       string                     `json:"type"`
 	Properties map[string]*PropertySchema `json:"properties"`
-	Required   []string                   `json:"required"`
+	// Required is omitted when empty: JSON Schema requires an array, and MCP
+	// clients that validate tools/list reject a null.
+	Required []string `json:"required,omitempty"`
 }
 
 // NativeTool defines the interface that all native tools must implement.

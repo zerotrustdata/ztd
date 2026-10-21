@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -40,6 +41,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/gateway"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 )
@@ -149,6 +152,11 @@ Cert and key must be supplied as a pair per tier; supplying only one half fails 
 }
 
 // ─── stdio: governed proxy, full mTLS + CLI session to gateway ────────────────
+
+// gatewayCallTimeout bounds one proxied request. A tools/call answers only after
+// the Gateway's own dispatch wait, so the bridge must outlast it or it reports a
+// transport error for a call the Operator went on to sign.
+const gatewayCallTimeout = gateway.DispatchTimeout + 10*time.Second
 
 // gatewayConn is the mTLS connection to the gateway established at startup.
 // For platform-enrolled application credentials, identity is cryptographically
@@ -276,17 +284,18 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 		return nil, fmt.Errorf("%w: %w", constants.ErrFailedToReadTrustBundle, err)
 	}
 
+	// The default is the Gateway this CLI addresses: -e/--port overrides, else the
+	// ports the local Gateway bound, the same URL every other CLI command uses.
 	gatewayURL := flags.GatewayURL
 	if gatewayURL == "" {
-		gatewayURL = fmt.Sprintf("https://%s:%d/mcp", constants.GatewayInternalHostname, constants.Ports.OperatorHttps)
-	} else {
-		if u, perr := url.Parse(gatewayURL); perr != nil {
-			return nil, fmt.Errorf("%w: %s", constants.ErrMCPConfigGatewayURLInvalidScheme, gatewayURL)
-		} else if u.Scheme != "https" {
-			return nil, fmt.Errorf("%w: %s", constants.ErrMCPConfigGatewayURLInvalidScheme, gatewayURL)
-		} else if u.Host == "" {
-			return nil, fmt.Errorf("%w: %s", constants.ErrMCPConfigGatewayURLHostEmpty, gatewayURL)
-		}
+		gatewayURL = strings.TrimSuffix(cfg.OperatorHTTPURL(), "/") + "/mcp"
+	}
+	gatewayAddr, err := url.Parse(gatewayURL)
+	switch {
+	case err != nil, gatewayAddr.Scheme != "https":
+		return nil, fmt.Errorf("%w: %s", constants.ErrMCPConfigGatewayURLInvalidScheme, gatewayURL)
+	case gatewayAddr.Host == "":
+		return nil, fmt.Errorf("%w: %s", constants.ErrMCPConfigGatewayURLHostEmpty, gatewayURL)
 	}
 
 	var cert tls.Certificate
@@ -315,7 +324,7 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 		openBrowser: platform.OpenBrowser,
 		client: &http.Client{
 			Transport: &http.Transport{TLSClientConfig: tlsCfg},
-			Timeout:   30 * time.Second,
+			Timeout:   gatewayCallTimeout,
 		},
 		gatewayURL: gatewayURL,
 	}
@@ -338,7 +347,7 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 		}
 	}
 
-	if !strings.Contains(gatewayURL, constants.GatewayInternalHostname) {
+	if gatewayAddr.Hostname() != constants.GatewayInternalHostname {
 		return session, nil
 	}
 
@@ -346,10 +355,13 @@ func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags s
 		return session, nil
 	}
 
-	// tlsCfg pins ServerName to ztd.local, so dialing the loopback IP still
-	// verifies the Gateway certificate.
-	gatewayURL = fmt.Sprintf("https://%s:%d/mcp", constants.LocalhostIP, constants.Ports.OperatorHttps)
-	session.gatewayURL = gatewayURL
+	// tlsCfg pins ServerName to ztd.local, so dialing the loopback IP on the same
+	// port still verifies the Gateway certificate.
+	gatewayAddr.Host = constants.LocalhostIP
+	if port := gatewayAddr.Port(); port != "" {
+		gatewayAddr.Host = net.JoinHostPort(constants.LocalhostIP, port)
+	}
+	session.gatewayURL = gatewayAddr.String()
 	slog.Info("ztd.local DNS resolution failed, falling back to loopback", "ip", constants.LocalhostIP)
 
 	return session, nil
@@ -383,7 +395,19 @@ func runMCPStdioProxy(cmd *cobra.Command, _ []string, fileSvcFactory func(string
 	if err != nil {
 		return err
 	}
+	return serveStdioBridge(cmd.Context(), fileSvc, cfg, credFlags, os.Stdin, os.Stdout, logger)
+}
 
+// ServeStdioBridge runs the governed stdio bridge over in and out with the
+// enrolled CLI identity, as `ztd mcp stdio` with no credential flags runs it. It
+// returns when in ends or ctx is done.
+func ServeStdioBridge(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config, in io.Reader, out io.Writer, logger *slog.Logger) error {
+	return serveStdioBridge(ctx, fileSvc, cfg, stdioCredentialFlags{}, in, out, logger)
+}
+
+// serveStdioBridge connects to the Gateway with the resolved credentials and
+// proxies every request read from in, writing each answer to out.
+func serveStdioBridge(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config, credFlags stdioCredentialFlags, in io.Reader, out io.Writer, logger *slog.Logger) error {
 	// Build the mTLS gateway connection once. Identity is in the application cert's
 	// URI SANs — no session object or headers. All proxy calls reuse this connection.
 	conn, err := buildGatewayConn(fileSvc, cfg, credFlags)
@@ -410,15 +434,14 @@ func runMCPStdioProxy(cmd *cobra.Command, _ []string, fileSvcFactory func(string
 		}
 	}
 
+	// Every request, initialize included, is the Gateway's to answer: it
+	// negotiates the protocol version and advertises the served capabilities.
 	handler := mcptransport.HandlerFunc(func(ctx context.Context, req mcptransport.JSONRPCRequest) (mcptransport.JSONRPCResponse, error) {
-		if req.Method == "initialize" {
-			return mcptransport.NewInitializeResponse(req.ID, "ztd", "dev"), nil
-		}
 		logger.Info("Proxying MCP request", "method", req.Method, "id", req.ID)
 		return proxySessionToGatewayWithRetryContext(ctx, conn, req, logger)
 	})
 
-	if err := mcptransport.ServeStdio(cmd.Context(), os.Stdin, os.Stdout, logger, handler); err != nil {
+	if err := mcptransport.ServeStdio(ctx, in, out, logger, handler); err != nil {
 		logger.Error("MCP stdio proxy terminated with error", "error", err)
 		return fmt.Errorf("mcp: serve stdio: %w", err)
 	}
@@ -461,11 +484,45 @@ func proxySessionToGateway(session *gatewayConn, req JSONRPCRequest) (JSONRPCRes
 		return JSONRPCResponse{}, fmt.Errorf("%w: HTTP %d: %s", constants.ErrHTTPStatusError, httpResp.StatusCode, string(body))
 	}
 
-	var resp JSONRPCResponse
-	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
+	var wire gatewayRPCResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&wire); err != nil {
 		return JSONRPCResponse{}, fmt.Errorf("mcp: decode response: %w", err)
 	}
-	return resp, nil
+	return wire.response(), nil
+}
+
+// gatewayRPCResponse is the Gateway's JSON-RPC answer with result and error.data
+// kept as bytes. The proxy relays the signed receipt and the typed governance
+// failure exactly as the Gateway encoded them; decoding them into interface{}
+// would reorder keys and turn numbers into float64.
+type gatewayRPCResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *struct {
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data,omitempty"`
+	} `json:"error,omitempty"`
+}
+
+// response is the relayed answer. An absent result or data stays absent: a nil
+// RawMessage stored in an interface field would encode as null.
+func (w gatewayRPCResponse) response() JSONRPCResponse {
+	resp := JSONRPCResponse{JSONRPC: w.JSONRPC}
+	if len(w.ID) > 0 {
+		resp.ID = w.ID
+	}
+	if len(w.Result) > 0 {
+		resp.Result = w.Result
+	}
+	if w.Error != nil {
+		resp.Error = &mcptransport.JSONRPCError{Code: w.Error.Code, Message: w.Error.Message}
+		if len(w.Error.Data) > 0 {
+			resp.Error.Data = w.Error.Data
+		}
+	}
+	return resp
 }
 
 // proxySessionToGatewayWithRetryContext handles L3 approval responses by opening
@@ -528,6 +585,24 @@ func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gateway
 			logger.Warn("L3 approval SSE wait ended", "error", err)
 		}
 		return resp, err
+	}
+
+	// A deny is the Operator-signed L3_DENIED rejection. It is answered as the
+	// Gateway answers every signed rejection: a JSON-RPC error whose data is the
+	// typed GovernanceRejection, never a tool result.
+	if rejection := governance.ReceiptRejection(receipt); rejection != nil {
+		data, err := response.MarshalProtoJSONCanonical(rejection)
+		if err != nil {
+			return resp, fmt.Errorf("L3 approval: encode rejection: %w", err)
+		}
+		if logger != nil {
+			logger.Info("L3 approval completed with a signed rejection", "rejection_code", receipt.GetRejectionCode().String())
+		}
+		return JSONRPCResponse{
+			JSONRPC: constants.JSONRPCVersion,
+			ID:      resp.ID,
+			Error:   &mcptransport.JSONRPCError{Code: constants.ErrCodeL3ProofInvalid, Message: rejection.GetError(), Data: json.RawMessage(data)},
+		}, nil
 	}
 
 	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)

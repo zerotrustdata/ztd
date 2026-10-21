@@ -21,7 +21,7 @@ import (
 const catalogueRows = 25
 
 // doctrineIngresses are the ingresses that must carry every attack category.
-var doctrineIngresses = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI}
+var doctrineIngresses = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressMCPStdio, IngressA2A, IngressCLI}
 
 // cellKey is one (ingress, fault) cell of the catalogue.
 type cellKey struct {
@@ -238,7 +238,7 @@ func definedRefusal(code operatorv1.IngressRefusalCode) bool {
 	return ok
 }
 
-// knownIngress reports whether i is one of the six ingresses.
+// knownIngress reports whether i is one of the catalogue's ingresses.
 func knownIngress(i Ingress) bool {
 	for _, known := range ingressAll {
 		if i == known {

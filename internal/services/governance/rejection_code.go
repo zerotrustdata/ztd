@@ -161,3 +161,13 @@ func RejectionResponse(err error) *operatorv1.GovernanceRejection {
 	}
 	return &operatorv1.GovernanceRejection{Error: text, Receipt: rejection.Receipt}
 }
+
+// ReceiptRejection returns the typed client body for a signed rejection receipt
+// that arrives without its error, such as the L3_DENIED receipt of an approval
+// decision, and nil for any other receipt. error renders the rejection code.
+func ReceiptRejection(receipt *operatorv1.ActionReceipt) *operatorv1.GovernanceRejection {
+	if !IsGovernanceRejectionReceipt(receipt) {
+		return nil
+	}
+	return &operatorv1.GovernanceRejection{Error: receipt.GetRejectionCode().String(), Receipt: receipt}
+}

@@ -4557,9 +4557,8 @@ export type ConformanceRunRecord = Message<"ztd.eval.v1.ConformanceRunRecord"> &
   a2aIngressAbsent: boolean;
 
   /**
-   * The selected Data Operator was the Gateway's embedded Operator. Outbound
-   * dispatch and CLI cases need an outbound Operator, so they are not
-   * applicable to this run.
+   * The selected Data Operator was the Gateway's embedded Operator, which also
+   * executed this run's outbound dispatch and CLI cases.
    *
    * @generated from field: bool outbound_absent = 14;
    */

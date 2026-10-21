@@ -220,7 +220,7 @@ func TestBuildUnrunAttendedCaseMarksCellPartial(t *testing.T) {
 	}
 }
 
-func TestBuildMinimalStackRunMarksOptionalIngressCellsNotApplicable(t *testing.T) {
+func TestBuildMinimalStackRunMarksOnlyA2ACellsNotApplicable(t *testing.T) {
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
 	run := passingRun(t, doctrine)
 	run.Record.A2AIngressAbsent = true
@@ -250,15 +250,16 @@ func TestBuildMinimalStackRunMarksOptionalIngressCellsNotApplicable(t *testing.T
 	run.Verdicts.Verdicts = verdicts
 
 	rep := buildOK(t, []VerifiedRun{run})
-	for _, ingress := range []cases.Ingress{cases.IngressA2A, cases.IngressDispatchOutbound, cases.IngressCLI} {
-		c := findCase(t, doctrine, func(c cases.Case) bool { return c.Ingress == ingress })
-		if cell := cellAt(t, rep, c.Row, ingress, constants.PostureDoctrine); cell.Status != CellNotApplicable {
-			t.Fatalf("%s cell status = %s, want %s", ingress, cell.Status, CellNotApplicable)
-		}
+	a2a := findCase(t, doctrine, func(c cases.Case) bool { return c.Ingress == cases.IngressA2A })
+	if cell := cellAt(t, rep, a2a.Row, cases.IngressA2A, constants.PostureDoctrine); cell.Status != CellNotApplicable {
+		t.Fatalf("A2A cell status = %s, want %s", cell.Status, CellNotApplicable)
 	}
-	direct := findCase(t, doctrine, func(c cases.Case) bool { return c.Ingress == cases.IngressDirect })
-	if cell := cellAt(t, rep, direct.Row, cases.IngressDirect, constants.PostureDoctrine); cell.Status != CellCovered {
-		t.Fatalf("DIRECT cell status = %s, want %s", cell.Status, CellCovered)
+	// The embedded Data Operator executes the outbound-role ingresses too.
+	for _, ingress := range []cases.Ingress{cases.IngressDirect, cases.IngressDispatchOutbound, cases.IngressCLI} {
+		c := findCase(t, doctrine, func(c cases.Case) bool { return c.Ingress == ingress })
+		if cell := cellAt(t, rep, c.Row, ingress, constants.PostureDoctrine); cell.Status != CellCovered {
+			t.Fatalf("%s cell status = %s, want %s", ingress, cell.Status, CellCovered)
+		}
 	}
 }
 
@@ -476,7 +477,7 @@ func TestBuildRecallCountsMatchCatalogue(t *testing.T) {
 
 func TestBuildRecallHashIsEmptyOnRefusalOnlyIngresses(t *testing.T) {
 	rep := buildOK(t, fourRuns(t))
-	signed := map[cases.Ingress]bool{cases.IngressDirect: true, cases.IngressMCP: true, cases.IngressA2A: true}
+	signed := map[cases.Ingress]bool{cases.IngressDirect: true, cases.IngressMCP: true, cases.IngressMCPStdio: true, cases.IngressA2A: true}
 	var checked int
 	for _, line := range rep.Recall {
 		checked++

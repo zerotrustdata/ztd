@@ -119,6 +119,13 @@ func IntentCommandOutcome(result *tribunalv1.TribunalIntentResult) *GovernedOutc
 	}
 }
 
+// MCPStdioOutcome classifies one tools/call response line read from the
+// `ztd mcp stdio` bridge exactly as an MCP route answer is classified. A stdio
+// answer has no HTTP status, so http_status stays 0.
+func MCPStdioOutcome(raw []byte) *GovernedOutcome {
+	return decodeRPCOutcome(0, raw, decodeMCPResult)
+}
+
 // decodeRPCOutcome classifies a JSON-RPC answer from an MCP or A2A route. The
 // envelope is decoded strictly; error.data is a governance failure body and
 // result is handed to the per-ingress result decoder.

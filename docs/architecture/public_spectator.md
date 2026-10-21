@@ -140,6 +140,8 @@ POST /api/v1/public-feed/batches ──► PublicSpectatorRuntime
 
 The two handlers are separate by construction; there is no combined mirror handler. The publisher's mirror origin is the private ingest listener, and Gateway-side read probes (`gwremote` publication status and history/bootstrap reads) resolve against the public read listener on `127.0.0.1:8082`.
 3. **Explorer Listener**: When explorer assets are available and `ExplorerListenAddress` differs from the public listener, the runtime binds it as a dedicated listener for the same explorer host. The default address is `127.0.0.1:5173`; `--eval-explorer-listen` overrides it.
+
+The evaluation run detail page uses the full available page width for progress, metrics, and assignment or scenario results. Run identity, model-role mapping, verification, and evidence follow in a responsive context grid that stacks as the viewport narrows. Assignment tables retain all columns in a keyboard-focusable horizontal scroll container on smaller screens.
 4. **Loopback Binding**: Listeners bind only to loopback interfaces unless the explicit `--public-spectator-allow-container-bind` gateway flag is set. External visitors reach the public listener solely via `cloudflared` tunnel configured with trusted proxy CIDRs.
 
 ## Closed Allowlist and Data Classification

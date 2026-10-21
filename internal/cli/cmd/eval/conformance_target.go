@@ -133,11 +133,6 @@ func writeConformanceSetup(out io.Writer, outboundDoc *operatorv1.OperatorDocume
 	if _, err := fmt.Fprintf(out, "Data Operator: %s\n", label); err != nil {
 		return err
 	}
-	if outboundDoc == nil {
-		if _, err := fmt.Fprintln(out, "Not applicable: outbound dispatch and CLI coverage (embedded Data Operator selected)."); err != nil {
-			return err
-		}
-	}
 	if _, ok := unavailable[cases.IngressA2A]; ok {
 		if _, err := fmt.Fprintln(out, "Unavailable: A2A coverage (the Gateway exposes A2A ingress; pass --a2a-stub-listen matching its --a2a-downstream-url to include it)."); err != nil {
 			return err

@@ -18,7 +18,7 @@ import (
 
 const (
 	SuiteID      = "governance-conformance"
-	SuiteVersion = "1.0.0"
+	SuiteVersion = "1.1.0"
 )
 
 // Ingress names the path a case enters the platform through.
@@ -29,6 +29,7 @@ const (
 	IngressDispatchEmbedded Ingress = "DISPATCH_EMBEDDED"
 	IngressDispatchOutbound Ingress = "DISPATCH_OUTBOUND"
 	IngressMCP              Ingress = "MCP"
+	IngressMCPStdio         Ingress = "MCP_STDIO" // `ztd mcp stdio`, the bridge an agent spawns
 	IngressA2A              Ingress = "A2A"
 	IngressCLI              Ingress = "CLI"
 )
@@ -41,7 +42,9 @@ const (
 	ExecutorOutbound Executor = "outbound"
 )
 
-// Executor: DIRECT, DISPATCH_EMBEDDED, MCP, A2A -> embedded; DISPATCH_OUTBOUND, CLI -> outbound.
+// Executor is the ingress's executor role: DIRECT, DISPATCH_EMBEDDED, MCP,
+// MCP_STDIO, A2A -> embedded; DISPATCH_OUTBOUND, CLI -> outbound, the selected
+// Data Operator. Stack.Executor resolves the role for one run.
 func (i Ingress) Executor() Executor {
 	switch i {
 	case IngressDispatchOutbound, IngressCLI:

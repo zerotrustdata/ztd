@@ -339,6 +339,9 @@ const (
 	SwaggerFilename          = "swagger.json"
 	ComplianceReportFilename = "compliance-report.json"
 	ZtdLogFilename           = "ztd.log"
+	// ConformanceMCPStdioLogFilename receives the stderr of the `ztd mcp stdio`
+	// child the conformance MCP_STDIO driver spawns.
+	ConformanceMCPStdioLogFilename = "conformance-mcp-stdio.log"
 
 	// Gateway-specific filenames
 	GatewayIDFilename       = "gateway-id"

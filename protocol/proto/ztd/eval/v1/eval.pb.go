@@ -11377,9 +11377,8 @@ type ConformanceRunRecord struct {
 	// Gateway health reported no A2A ingress (no downstream configured). A2A is
 	// opt-in, so its cases are not applicable to this run.
 	A2AIngressAbsent bool `protobuf:"varint,13,opt,name=a2a_ingress_absent,json=a2aIngressAbsent,proto3" json:"a2a_ingress_absent,omitempty"`
-	// The selected Data Operator was the Gateway's embedded Operator. Outbound
-	// dispatch and CLI cases need an outbound Operator, so they are not
-	// applicable to this run.
+	// The selected Data Operator was the Gateway's embedded Operator, which also
+	// executed this run's outbound dispatch and CLI cases.
 	OutboundAbsent bool `protobuf:"varint,14,opt,name=outbound_absent,json=outboundAbsent,proto3" json:"outbound_absent,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache

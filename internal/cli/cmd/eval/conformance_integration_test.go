@@ -12,16 +12,20 @@ package eval
 import (
 	"context"
 	"crypto/ed25519"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	mcpcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/mcp"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
@@ -68,6 +72,7 @@ func newConformanceStackRig(t *testing.T) (conformanceRig, *realStackRun) {
 	deps := env.deps
 	deps.fileSvcFactory = conformanceRootFactory(gatewayRoot, env.stack.Gateway.Keystore, env.stack.DataHost.Keyring)
 	deps.newID = func() (string, error) { return conformanceTestRunID, nil }
+	deps.conformance.stdio = inProcessStdio
 	rig := conformanceRig{gwRoot: gatewayRoot, opRoot: env.stack.DataHost.WorkingDir, operatorID: data.OperatorID, deps: deps}
 	return rig, env
 }
@@ -89,6 +94,21 @@ func conformanceRootFactory(gatewayRoot string, gatewayKeys *keystore.Keystore, 
 			return gatewayKeys.OpenVault()
 		})
 	}
+}
+
+// inProcessStdio runs the production `ztd mcp stdio` bridge in this process over
+// pipes, with the CLI identity the rig installed under the Gateway root. The test
+// binary is not ztd, so the command's spawn is the one part replaced.
+func inProcessStdio(ctx context.Context, _ *cobra.Command, cfg *config.Config, gwFiles fs.RuntimeFileService) (*drive.MCPStdio, error) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	served := make(chan error, 1)
+	go func() {
+		err := mcpcmd.ServeStdioBridge(ctx, gwFiles, cfg, inR, outW, testutil.NewTestLogger())
+		_ = outW.Close()
+		served <- err
+	}()
+	return drive.ConnectMCPStdio(ctx, inW, outR, func() error { return <-served })
 }
 
 // capturingRun records the config the suite runs with, then runs the production
@@ -137,7 +157,7 @@ func TestConformanceRun_EmbeddedDataOperatorByIDRunsGatewayLocalCases(t *testing
 	assert.Contains(t, out, "Suite: ", "the suite ran to a verdict")
 	require.Len(t, captured.Roots, 1)
 	assert.Equal(t, oracle.GatewayRuntimeID, captured.Roots[cases.ExecutorEmbedded].RuntimeID)
-	require.Len(t, captured.Drivers, 3)
+	require.Len(t, captured.Drivers, 4)
 	require.Len(t, captured.Unavailable, 3)
 	assert.Equal(t, cases.IngressCLI.UnavailableObservation(), captured.Unavailable[cases.IngressCLI])
 }
@@ -158,13 +178,13 @@ func TestConformanceRun_PromptsForTheDataOperatorAndRunsTheChosenOne(t *testing.
 	if conformanceMenuSession(t, out, 1) == data.OperatorSessionID {
 		require.Len(t, captured.Roots, 2)
 		assert.Equal(t, rig.operatorID, captured.Roots[cases.ExecutorOutbound].RuntimeID)
-		require.Len(t, captured.Drivers, 5)
+		require.Len(t, captured.Drivers, 6)
 		require.Len(t, captured.Unavailable, 1)
 		return
 	}
 	require.Len(t, captured.Roots, 1)
 	assert.Equal(t, oracle.GatewayRuntimeID, captured.Roots[cases.ExecutorEmbedded].RuntimeID)
-	require.Len(t, captured.Drivers, 3)
+	require.Len(t, captured.Drivers, 4)
 }
 
 func TestConformanceRun_PassesConfiguredDriversAndRootsToRun(t *testing.T) {
@@ -176,12 +196,13 @@ func TestConformanceRun_PassesConfiguredDriversAndRootsToRun(t *testing.T) {
 	require.NotErrorIs(t, err, constants.ErrEvaluationTargetAmbiguous)
 	assert.Contains(t, out, "Suite: ", "the suite ran to a verdict")
 
-	require.Len(t, captured.Drivers, 6, "one driver per ingress")
+	require.Len(t, captured.Drivers, 7, "one driver per ingress")
 	assert.IsType(t, &drive.Direct{}, captured.Drivers[cases.IngressDirect])
 	assert.IsType(t, &drive.Dispatch{}, captured.Drivers[cases.IngressDispatchEmbedded])
 	assert.IsType(t, &drive.Dispatch{}, captured.Drivers[cases.IngressDispatchOutbound])
 	assert.IsType(t, &drive.CLI{}, captured.Drivers[cases.IngressCLI])
 	assert.IsType(t, &drive.MCP{}, captured.Drivers[cases.IngressMCP], "unattended MCP is not wrapped")
+	assert.IsType(t, &drive.MCPStdio{}, captured.Drivers[cases.IngressMCPStdio], "unattended MCP stdio is not wrapped")
 	assert.IsType(t, &drive.A2A{}, captured.Drivers[cases.IngressA2A], "unattended A2A is not wrapped")
 	assert.NotNil(t, captured.Sentinel)
 	assert.False(t, captured.Attended)
@@ -218,6 +239,7 @@ func TestConformanceRun_AttendedWrapsEveryApprovalIngress(t *testing.T) {
 
 	assert.True(t, captured.Attended)
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressMCP])
+	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressMCPStdio])
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressA2A])
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressDispatchEmbedded])
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressDispatchOutbound])

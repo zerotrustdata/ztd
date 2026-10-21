@@ -50,6 +50,7 @@ func TestAttendedBlocksUntilDecisionOnlyForHeldIngresses(t *testing.T) {
 		{cases.IngressDispatchEmbedded, true},
 		{cases.IngressDispatchOutbound, true},
 		{cases.IngressCLI, true},
+		{cases.IngressMCPStdio, true},
 		{cases.IngressMCP, false},
 		{cases.IngressA2A, false},
 	}

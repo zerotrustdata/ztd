@@ -91,6 +91,11 @@ func TestCatalogueCountsPerRowAndIngress(t *testing.T) {
 			t.Errorf("row 2 %s: got %d cases, want 0 (gap)", ing, got)
 		}
 	}
+	// MCP_STDIO reads under doctrine and consensus only: under ratify and notary the
+	// read suspends and the bridge holds the call for a human.
+	if got := countCases(cs, row(2), ingress(IngressMCPStdio)); got != 2 {
+		t.Errorf("row 2 %s: got %d cases, want 2", IngressMCPStdio, got)
+	}
 
 	// Row 13: 49 attack entries on DIRECT in each of four postures.
 	if got := countCases(cs, row(13)); got != 49*4 {
@@ -102,8 +107,8 @@ func TestCatalogueCountsPerRowAndIngress(t *testing.T) {
 		}
 	}
 
-	// Row 14: one case per category (5) on each of five ingresses in four postures.
-	for _, ing := range []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressCLI, IngressMCP, IngressA2A} {
+	// Row 14: one case per category (5) on each of six ingresses in four postures.
+	for _, ing := range []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressCLI, IngressMCP, IngressMCPStdio, IngressA2A} {
 		if got := countCases(cs, row(14), ingress(ing)); got != 5*4 {
 			t.Errorf("row 14 %s: got %d cases, want %d", ing, got, 5*4)
 		}
@@ -119,7 +124,7 @@ func TestApprovalRowsPinTheHumanDecisionPerIngress(t *testing.T) {
 	cs, _ := mustCatalogue(t)
 
 	suspending := map[Ingress]bool{IngressMCP: true, IngressA2A: true}
-	for _, ing := range []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI} {
+	for _, ing := range []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressMCPStdio, IngressA2A, IngressCLI} {
 		wantSuspended := 0
 		if suspending[ing] {
 			wantSuspended = 2
@@ -244,8 +249,8 @@ func TestApplicableDropsOnlyIngressesTheStackLacks(t *testing.T) {
 		dropped []Ingress
 	}{
 		{"no A2A ingress", Stack{Outbound: true}, []Ingress{IngressA2A}},
-		{"embedded Operator only", Stack{A2AIngress: true}, []Ingress{IngressDispatchOutbound, IngressCLI}},
-		{"minimal stack", Stack{}, []Ingress{IngressA2A, IngressDispatchOutbound, IngressCLI}},
+		{"embedded Operator only", Stack{A2AIngress: true}, nil},
+		{"minimal stack", Stack{}, []Ingress{IngressA2A}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, binding := range Postures {
@@ -263,7 +268,7 @@ func TestApplicableDropsOnlyIngressesTheStackLacks(t *testing.T) {
 						want = append(want, c)
 					}
 				}
-				if len(want) == len(with) {
+				if len(tc.dropped) > 0 && len(want) == len(with) {
 					t.Fatalf("Applicable(%s, full) has no %v case", binding.Posture, tc.dropped)
 				}
 				if len(without) != len(want) {
@@ -286,6 +291,17 @@ func TestRecordStackReadsAbsenceFlags(t *testing.T) {
 	got := RecordStack(&evalv1.ConformanceRunRecord{A2AIngressAbsent: true, OutboundAbsent: true})
 	if got != (Stack{}) {
 		t.Fatalf("RecordStack(absent) = %+v, want empty stack", got)
+	}
+}
+
+func TestStackExecutorRunsOutboundRoleOnEmbeddedWhenOutboundAbsent(t *testing.T) {
+	for _, i := range ingressAll {
+		if got, want := fullStack.Executor(i), i.Executor(); got != want {
+			t.Errorf("full stack Executor(%s) = %s, want %s", i, got, want)
+		}
+		if got := (Stack{A2AIngress: true}).Executor(i); got != ExecutorEmbedded {
+			t.Errorf("embedded-only Executor(%s) = %s, want %s", i, got, ExecutorEmbedded)
+		}
 	}
 }
 

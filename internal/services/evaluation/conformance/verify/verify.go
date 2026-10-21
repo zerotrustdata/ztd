@@ -218,8 +218,9 @@ func checkAnchors(record *evalv1.ConformanceRunRecord) (map[string]string, *orac
 }
 
 // checkCaseSet requires the record's cases to be exactly the applicable cases,
-// each once, each run on the executor its ingress names.
+// each once, each run on the executor the record's stack resolves its ingress to.
 func checkCaseSet(record *evalv1.ConformanceRunRecord, applicable []cases.Case, runtimes map[string]string) error {
+	stack := cases.RecordStack(record)
 	if _, pinned := runtimes[executorOutbound]; pinned && record.GetOutboundAbsent() {
 		return fmt.Errorf("conformance verify: record pins outbound runtime %s but declares it absent: %w", runtimes[executorOutbound], constants.ErrConformanceRecordInvalid)
 	}
@@ -241,7 +242,7 @@ func checkCaseSet(record *evalv1.ConformanceRunRecord, applicable []cases.Case, 
 		if !ok {
 			return fmt.Errorf("conformance verify: case %s missing: %w", c.ID, constants.ErrConformanceRecordInvalid)
 		}
-		executor := string(c.Ingress.Executor())
+		executor := string(stack.Executor(c.Ingress))
 		if ev.GetExecutor() != executor {
 			return fmt.Errorf("conformance verify: case %s ran on %q, want %q: %w", c.ID, ev.GetExecutor(), executor, constants.ErrConformanceRecordInvalid)
 		}
@@ -259,6 +260,7 @@ func checkCaseSet(record *evalv1.ConformanceRunRecord, applicable []cases.Case, 
 // case. Each pair must hold two executed sentinels on that executor's runtime
 // whose ledger links are adjacent.
 func checkQuiescence(record *evalv1.ConformanceRunRecord, applicable []cases.Case, runtimes map[string]string, anchors *oracle.AnchorSet) error {
+	stack := cases.RecordStack(record)
 	required := make(map[string]bool)
 	evidence := make(map[string]*evalv1.ConformanceCaseEvidence, len(record.GetCases()))
 	for _, ev := range record.GetCases() {
@@ -268,7 +270,7 @@ func checkQuiescence(record *evalv1.ConformanceRunRecord, applicable []cases.Cas
 		if setupUnavailable(c, evidence[c.ID]) {
 			continue
 		}
-		required[string(c.Ingress.Executor())] = true
+		required[string(stack.Executor(c.Ingress))] = true
 	}
 	seen := make(map[string]bool, len(required))
 	for _, q := range record.GetQuiescence() {

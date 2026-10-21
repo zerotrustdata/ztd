@@ -18,25 +18,25 @@ import (
 )
 
 // CLI submits attempts through `ztd operator run`, using the same RunOnce the
-// command uses. It drives the outbound executor only (CLI to outbound).
+// command uses. It drives the selected Data Operator, outbound or embedded.
 type CLI struct {
 	poster       operator.CommandPoster
 	target       operator.Target
 	cliSessionID string
 }
 
-// NewCLI requires a poster, an outbound target session and a CLI session.
-func NewCLI(poster operator.CommandPoster, outbound operator.Target, cliSessionID string) (*CLI, error) {
+// NewCLI requires a poster, the Data Operator's target session and a CLI session.
+func NewCLI(poster operator.CommandPoster, data operator.Target, cliSessionID string) (*CLI, error) {
 	if poster == nil {
 		return nil, fmt.Errorf("cli: poster: %w", constants.ErrMissingRequiredField)
 	}
-	if outbound.OperatorSessionID == "" {
-		return nil, fmt.Errorf("cli: outbound target session: %w", constants.ErrMissingRequiredField)
+	if data.OperatorSessionID == "" {
+		return nil, fmt.Errorf("cli: Data Operator target session: %w", constants.ErrMissingRequiredField)
 	}
 	if cliSessionID == "" {
 		return nil, fmt.Errorf("cli: cli session: %w", constants.ErrMissingRequiredField)
 	}
-	return &CLI{poster: poster, target: outbound, cliSessionID: cliSessionID}, nil
+	return &CLI{poster: poster, target: data, cliSessionID: cliSessionID}, nil
 }
 
 // Drive runs one command through RunOnce and maps its answer to one observation.

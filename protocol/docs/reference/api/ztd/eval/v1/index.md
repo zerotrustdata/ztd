@@ -462,7 +462,7 @@ executor whose commitment links must be adjacent.
 | started_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | finished_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | a2a_ingress_absent | [bool](#bool) |  | Gateway health reported no A2A ingress (no downstream configured). A2A is opt-in, so its cases are not applicable to this run. |
-| outbound_absent | [bool](#bool) |  | The selected Data Operator was the Gateway&#39;s embedded Operator. Outbound dispatch and CLI cases need an outbound Operator, so they are not applicable to this run. |
+| outbound_absent | [bool](#bool) |  | The selected Data Operator was the Gateway&#39;s embedded Operator, which also executed this run&#39;s outbound dispatch and CLI cases. |
 
 
 

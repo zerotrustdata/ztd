@@ -82,6 +82,24 @@ func TestBuildGatewayConn_ErrorPaths(t *testing.T) {
 		assert.NotNil(t, conn)
 		assert.Equal(t, "https://127.0.0.1:9999/mcp", conn.gatewayURL)
 	})
+
+	// Without --gateway-url the proxy addresses the Gateway every other CLI
+	// command addresses: the ports the local Gateway bound, not the protocol default.
+	t.Run("default gateway URL follows the local Gateway ports", func(t *testing.T) {
+		config.SetEndpointOverride("")
+		config.SetLocalGatewayPorts(8087, 8450)
+		t.Cleanup(func() { config.SetLocalGatewayPorts(0, 0) })
+
+		certPath, keyPath, caPath := generateTestCerts(t)
+		tempDir := testutil.TempDir(t)
+		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
+		require.NoError(t, err)
+		cfg := &config.Config{ProjectRoot: tempDir, RuntimeDir: filepath.Dir(certPath), Paths: &config.PathsConfig{}}
+
+		conn, err := buildGatewayConn(fileSvc, cfg, stdioCredentialFlags{ClientCert: certPath, ClientKey: keyPath, CABundle: caPath})
+		require.NoError(t, err)
+		assert.Equal(t, "https://localhost:8450/mcp", conn.gatewayURL)
+	})
 }
 
 // ─── runMCPStdioProxy config load error ──────────────────────────────────────

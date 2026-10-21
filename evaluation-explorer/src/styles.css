@@ -593,7 +593,7 @@ button { font-family: inherit; cursor: pointer; }
 /* Main */
 .app-main { flex: 1; padding: 24px 24px 72px; max-width: 1400px; width: 100%; margin: 0 auto; }
 /* Data-dense views (Live, Models, Evaluations) span the full viewport width. */
-.app-main:has(> .overview, > .models-view, > .evaluations-view) { max-width: none; }
+.app-main:has(> .overview, > .models-view, > .evaluations-view, > .evaluation-detail) { max-width: none; }
 .app-footer {
   position: fixed;
   bottom: 0;
@@ -3497,3 +3497,42 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
 .eval-progress-cell .progress, .eval-progress-cell .formation-vram-track { width: 100%; }
 .evaluations-view .progress-label { gap: 10px; }
 .evaluations-view .progress-label > span:first-child { display: none; }
+
+
+/* Run details flow in full-width sections; context never holds results below a sidebar. */
+.evaluation-detail { min-width: 0; }
+.evaluation-sections { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.evaluation-context {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.evaluation-context .detail-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.evaluation-context .role-mapping { flex-direction: column; gap: 12px; }
+.evaluation-context .role-mapping li { flex-wrap: wrap; overflow-wrap: anywhere; }
+.evaluation-context .role-mapping a { min-width: 0; }
+.evaluation-detail .breadcrumb { flex-wrap: wrap; overflow-wrap: anywhere; }
+.evaluation-detail .breadcrumb > span:last-child { min-width: 0; }
+.evaluation-detail .evidence-meta > * { min-width: 0; }
+.evaluation-detail .stat-tile-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  margin-bottom: 0;
+}
+.evaluation-assignment-filters > input { flex: 1 1 260px; min-width: 0; }
+.evaluation-assignment-filters > select { max-width: 100%; }
+.evaluation-detail .data-table-wrap { max-width: 100%; }
+.evaluation-detail .data-table { min-width: 1120px; }
+.evaluation-detail .data-table th { white-space: nowrap; }
+.evaluation-detail .data-table td { overflow-wrap: anywhere; line-height: 1.45; }
+.evaluation-detail .data-table td:nth-child(5),
+.evaluation-detail .data-table td:nth-child(6),
+.evaluation-detail .data-table td:last-child { white-space: nowrap; }
+.evaluation-detail .data-table th:first-child { width: 22%; }
+.evaluation-detail .data-table th:nth-child(4) { width: 14%; }
+.evaluation-detail .data-table-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 640px) {
+  .evaluation-detail .evidence-panel { padding: 14px; }
+  .evaluation-detail .evidence-hero { padding: 18px; }
+  .evaluation-assignment-filters > select { flex: 1 1 100%; }
+}

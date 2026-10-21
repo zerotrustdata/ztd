@@ -166,10 +166,11 @@ func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 
 // blocksUntilDecision reports whether the ingress holds a suspended mutation open
 // until a human decides, instead of answering with a suspension: governed HTTP
-// dispatch (both executors) and the CLI, which posts to the same route.
+// dispatch (both executors), the CLI, which posts to the same route, and the MCP
+// stdio bridge, which waits for the decision itself before it answers the call.
 func blocksUntilDecision(ingress cases.Ingress) bool {
 	switch ingress {
-	case cases.IngressDispatchEmbedded, cases.IngressDispatchOutbound, cases.IngressCLI:
+	case cases.IngressDispatchEmbedded, cases.IngressDispatchOutbound, cases.IngressCLI, cases.IngressMCPStdio:
 		return true
 	default:
 		return false
@@ -180,10 +181,10 @@ func blocksUntilDecision(ingress cases.Ingress) bool {
 // rejection (the L3_DENIED deny) is a REJECTION, as every ingress reports one; any
 // other receipt is a RECEIPT.
 func decisionObservation(receipt *operatorv1.ActionReceipt) *evalv1.ConformanceObservation {
-	if governance.IsGovernanceRejectionReceipt(receipt) {
+	if rejection := governance.ReceiptRejection(receipt); rejection != nil {
 		return &evalv1.ConformanceObservation{
 			Kind:      evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
-			Rejection: &operatorv1.GovernanceRejection{Error: receipt.GetRejectionCode().String(), Receipt: receipt},
+			Rejection: rejection,
 		}
 	}
 	return &evalv1.ConformanceObservation{

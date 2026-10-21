@@ -1443,9 +1443,8 @@ message ConformanceRunRecord {
   // Gateway health reported no A2A ingress (no downstream configured). A2A is
   // opt-in, so its cases are not applicable to this run.
   bool a2a_ingress_absent = 13;
-  // The selected Data Operator was the Gateway's embedded Operator. Outbound
-  // dispatch and CLI cases need an outbound Operator, so they are not
-  // applicable to this run.
+  // The selected Data Operator was the Gateway's embedded Operator, which also
+  // executed this run's outbound dispatch and CLI cases.
   bool outbound_absent = 14;
 }
 

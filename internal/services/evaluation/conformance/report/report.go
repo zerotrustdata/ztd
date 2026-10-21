@@ -94,14 +94,6 @@ func (v *runView) excludes(c cases.Case) bool {
 	return !v.stack.Includes(c.Ingress)
 }
 
-// exclusionReason names the missing optional stack part behind an excluded cell.
-func exclusionReason(ingress cases.Ingress) string {
-	if ingress == cases.IngressA2A {
-		return "A2A ingress not configured"
-	}
-	return "embedded Operator selected; no outbound Operator"
-}
-
 // Build fails with ErrConformanceRecordInvalid if two runs share a posture, a
 // run's verdict set does not belong to its record, or L1 stages in one posture
 // disagree on the doctrine bundle hash.
@@ -339,7 +331,7 @@ func cellFor(k cellKey, col cases.PostureBinding, all []cases.Case, gaps []cases
 		return cell, nil
 	}
 	if view.excludes(inCell[0]) {
-		cell.Status, cell.Reason = CellNotApplicable, exclusionReason(inCell[0].Ingress)
+		cell.Status, cell.Reason = CellNotApplicable, "A2A ingress not configured"
 		return cell, nil
 	}
 	if view.summary.SuiteVerdict == evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE {
