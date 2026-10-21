@@ -288,7 +288,14 @@ describe('campaign projection wire contract', () => {
       expect((decoded.record as CampaignResultRecord).role_transcripts).toHaveLength(3);
     });
 
+    it('accepts Tribunal-approved tool call arguments', () => {
+      const approved = '{"args":["/tmp/retry.conf"],"command":"cat"}';
+      const decoded = decodeCampaignProjectionEnvelope(withTranscripts([{ ...transcript, tool_calls: [{ ...toolCall, tool_name: 'run_shell_command', approved_arguments_json: approved }] }]));
+      expect((decoded.record as CampaignResultRecord).role_transcripts?.[0]?.tool_calls?.[0]?.approved_arguments_json).toBe(approved);
+    });
+
     it.each([
+      ['a non-string approved_arguments_json', [{ ...transcript, tool_calls: [{ ...toolCall, approved_arguments_json: 7 }] }]],
       ['an unknown transcript field', [{ ...transcript, prompt: 'secret' }]],
       ['an unknown tool call field', [{ ...transcript, tool_calls: [{ ...toolCall, operator_id: 'op-1' }] }]],
       ['an unknown role', [{ ...transcript, role: 'judge' }]],

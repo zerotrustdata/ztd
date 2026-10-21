@@ -54,13 +54,14 @@ func BuildPublicAssignmentTranscripts(ctx context.Context, store CampaignStore, 
 	}
 	for _, call := range trace.ToolCalls {
 		transcript.ToolCalls = append(transcript.ToolCalls, publicdisclosure.RoleTranscriptToolCall{
-			ToolName:      call.ToolName,
-			ArgumentsJSON: call.ArgumentsJSON,
-			ArgumentsHash: models.SHA256Hex([]byte(call.ArgumentsJSON)),
-			Command:       call.Command,
-			ResultJSON:    call.ResultJSON,
-			Success:       call.Success,
-			ErrorType:     call.ErrorType,
+			ToolName:              call.ToolName,
+			ArgumentsJSON:         call.ArgumentsJSON,
+			ArgumentsHash:         models.SHA256Hex([]byte(call.ArgumentsJSON)),
+			ApprovedArgumentsJSON: call.ApprovedArgumentsJSON,
+			Command:               call.Command,
+			ResultJSON:            call.ResultJSON,
+			Success:               call.Success,
+			ErrorType:             call.ErrorType,
 		})
 	}
 	transcripts := []publicdisclosure.RoleTranscript{transcript}

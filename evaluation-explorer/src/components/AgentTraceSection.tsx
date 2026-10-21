@@ -113,6 +113,9 @@ function ToolCall({ call }: { call: AgentTraceToolCall }) {
         {call.is_operator_tool ? <span className="agent-trace-chip">Governed</span> : <span className="agent-trace-chip">Local</span>}
       </div>
       <TextBlock title="Arguments" text={call.arguments_json} copyLabel={`${call.tool_name} arguments`} json />
+      {call.approved_arguments_json && call.approved_arguments_json !== call.arguments_json ? (
+        <TextBlock title="Approved arguments" text={call.approved_arguments_json} copyLabel={`${call.tool_name} approved arguments`} json />
+      ) : null}
       {call.command ? <TextBlock title="Resolved command" text={call.command} copyLabel={`${call.tool_name} command`} /> : null}
       {call.result_json ? <TextBlock title="Tool result" text={call.result_json} copyLabel={`${call.tool_name} result`} json /> : null}
       {call.error ? <TextBlock title="Error" text={call.error} copyLabel={`${call.tool_name} error`} /> : null}

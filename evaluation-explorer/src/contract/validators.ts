@@ -829,10 +829,11 @@ export function assertRoleTranscripts(value: unknown, path: string): asserts val
       const callPath = `${transcriptPath}.tool_calls[${callIndex}]`;
       const call: unknown = transcript.tool_calls[callIndex];
       assertObject(call, callPath);
-      rejectUnknown(call, ['tool_name', 'arguments_json', 'arguments_hash', 'command', 'success', 'error_type', 'result_json'], callPath);
+      rejectUnknown(call, ['tool_name', 'arguments_json', 'arguments_hash', 'approved_arguments_json', 'command', 'success', 'error_type', 'result_json'], callPath);
       assertString(call.tool_name, `${callPath}.tool_name`);
       assertOptional(call.arguments_json, `${callPath}.arguments_json`, assertString);
       assertOptionalHash(call.arguments_hash, `${callPath}.arguments_hash`);
+      assertOptional(call.approved_arguments_json, `${callPath}.approved_arguments_json`, assertString);
       assertOptional(call.command, `${callPath}.command`, assertString);
       assertBoolean(call.success, `${callPath}.success`);
       assertOptional(call.error_type, `${callPath}.error_type`, assertString);

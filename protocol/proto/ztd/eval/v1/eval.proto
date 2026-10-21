@@ -1536,7 +1536,10 @@ message ResponderOutput {
 }
 
 message CandidateOutput {
-  reserved 1;
+  // command is the shell text an agent-trace.v7 or earlier candidate step
+  // recorded. It is decoded only so historical traces stay verifiable; new
+  // steps never set it and agent-trace.v8 rejects it.
+  string command = 1;
   ztd.operator.v1.RunShellCommandArguments arguments = 2;
 }
 
@@ -1561,7 +1564,9 @@ message RiskOutput {
 
 message ReviewOutput {
   AgentReviewVerdict verdict = 1;
-  reserved 2;
+  // command is the reviewed shell text of an agent-trace.v7 or earlier step,
+  // decoded only for historical traces; agent-trace.v8 rejects it.
+  string command = 2;
   ztd.operator.v1.RunShellCommandArguments arguments = 3;
 }
 

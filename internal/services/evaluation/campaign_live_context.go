@@ -142,7 +142,7 @@ func investigationReceiptContext(dataType, investigationID string, result mcp.Op
 // signed query answer, so a resealed trace cannot invent retrieved evidence.
 func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 	if call.Retrieval == nil {
-		if (trace.SchemaVersion == agentTraceSchemaVersion || trace.SchemaVersion == agentTraceSchemaVersionV6) && (call.ToolName == agentToolInvestigationCtx || call.ToolName == constants.MCPToolAuditReceiptList) {
+		if (trace.CarriesModelIdentity() || trace.SchemaVersion == agentTraceSchemaVersionV6) && (call.ToolName == agentToolInvestigationCtx || call.ToolName == constants.MCPToolAuditReceiptList) {
 			// A completed query cannot suppress its evidence by changing the
 			// unsigned Success flag. Denied and failed calls have no retrieval.
 			if call.Receipt != nil && call.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {

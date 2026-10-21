@@ -394,10 +394,12 @@ type RoleTranscriptToolCall struct {
 	ToolName      string `json:"tool_name"`
 	ArgumentsJSON string `json:"arguments_json,omitempty"`
 	ArgumentsHash string `json:"arguments_hash,omitempty"`
-	Command       string `json:"command,omitempty"`
-	Success       bool   `json:"success"`
-	ErrorType     string `json:"error_type,omitempty"`
-	ResultJSON    string `json:"result_json,omitempty"`
+	// ApprovedArgumentsJSON is the Tribunal-approved arguments the call executed.
+	ApprovedArgumentsJSON string `json:"approved_arguments_json,omitempty"`
+	Command               string `json:"command,omitempty"`
+	Success               bool   `json:"success"`
+	ErrorType             string `json:"error_type,omitempty"`
+	ResultJSON            string `json:"result_json,omitempty"`
 }
 
 // ValidateRoleTranscripts enforces the closed role_transcripts schema: known
@@ -435,7 +437,7 @@ func ValidateRoleTranscripts(raw json.RawMessage) error {
 			if call.ArgumentsHash != "" && !hashPattern.MatchString(call.ArgumentsHash) {
 				return fmt.Errorf("invalid transcript arguments hash: %w", constants.ErrEvidenceArtifactMalformed)
 			}
-			texts = append(texts, call.ArgumentsJSON, call.Command, call.ResultJSON)
+			texts = append(texts, call.ArgumentsJSON, call.ApprovedArgumentsJSON, call.Command, call.ResultJSON)
 		}
 		for _, text := range texts {
 			if len(text) > maxRecordBytes {

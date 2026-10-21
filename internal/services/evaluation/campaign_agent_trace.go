@@ -28,7 +28,8 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v7
+// agentTraceSchemaVersion is the version every new trace is sealed with. v8
+// records the Tribunal-approved arguments a run_shell_command call executed; v7
 // carries each complete signed inference result and its per-call model identity;
 // v6 binds scored investigation identity and authoritative context retrievals; v5
 // added the held context a repetition continued; v4 added the exact model
@@ -36,7 +37,8 @@ import (
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion   = "agent-trace.v7"
+	agentTraceSchemaVersion   = "agent-trace.v8"
+	agentTraceSchemaVersionV7 = "agent-trace.v7"
 	agentTraceSchemaVersionV6 = "agent-trace.v6"
 	agentTraceSchemaVersionV5 = "agent-trace.v5"
 	agentTraceSchemaVersionV4 = "agent-trace.v4"
@@ -441,6 +443,12 @@ func agentTraceRuntime(runtime CampaignOperatorRuntime) AgentTraceRuntime {
 	return traced
 }
 
+// CarriesModelIdentity reports whether the trace's schema seals each model
+// call's signed inference result and model identity (v7 and later).
+func (t *AgentTrace) CarriesModelIdentity() bool {
+	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV7)
+}
+
 // SharedRuntime reports whether both roles executed on one runtime.
 func (t *AgentTrace) SharedRuntime() bool {
 	return t != nil && t.Inference.OperatorID == t.Data.OperatorID
@@ -654,6 +662,9 @@ func SealAgentTrace(trace *AgentTrace) ([]byte, error) {
 	if trace.Input == nil || len(trace.Input.Messages) == 0 {
 		return nil, fmt.Errorf("evaluation: seal agent trace: input: %w", constants.ErrMissingRequiredField)
 	}
+	if err := rejectShellTextSteps(trace.Steps); err != nil {
+		return nil, fmt.Errorf("evaluation: seal agent trace: %w", err)
+	}
 	trace.SchemaVersion = agentTraceSchemaVersion
 	digest, err := ComputeAgentTraceDigest(trace)
 	if err != nil {
@@ -661,6 +672,17 @@ func SealAgentTrace(trace *AgentTrace) ([]byte, error) {
 	}
 	trace.EvidenceDigest = digest
 	return MarshalCanonicalJSONObject(trace)
+}
+
+// rejectShellTextSteps refuses v8 steps that carry shell text: those step
+// fields exist only to decode agent-trace.v7 and earlier history.
+func rejectShellTextSteps(steps AgentTraceSteps) error {
+	for i, step := range steps {
+		if step.GetCandidate().GetCommand() != "" || step.GetReview().GetCommand() != "" {
+			return fmt.Errorf("step %d carries shell text: %w", i, constants.ErrEvidenceArtifactMalformed)
+		}
+	}
+	return nil
 }
 
 // ComputeAgentTraceDigest returns the SHA-256 digest of one trace with
@@ -684,7 +706,7 @@ func ValidateAgentTraceDigest(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}
@@ -700,6 +722,17 @@ func ValidateAgentTraceDigest(trace *AgentTrace) error {
 		}
 	default:
 		return fmt.Errorf("evaluation: validate agent trace: schema version %q: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
+	}
+	if trace.SchemaVersion == agentTraceSchemaVersion {
+		if err := rejectShellTextSteps(trace.Steps); err != nil {
+			return fmt.Errorf("evaluation: validate agent trace: %w", err)
+		}
+	} else {
+		for _, call := range trace.ToolCalls {
+			if call.ApprovedArgumentsJSON != "" {
+				return fmt.Errorf("evaluation: validate agent trace: %s carries approved arguments: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
+			}
+		}
 	}
 	expected, err := ComputeAgentTraceDigest(trace)
 	if err != nil {

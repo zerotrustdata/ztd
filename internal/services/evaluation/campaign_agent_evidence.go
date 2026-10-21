@@ -72,7 +72,7 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		}
 		observationClaims = append(observationClaims, observed...)
 	}
-	if trace.SchemaVersion == agentTraceSchemaVersion {
+	if trace.CarriesModelIdentity() {
 		if err := verifyV7EpisodeOutputs(trace); err != nil {
 			return agentEvidenceError("episode output", err)
 		}
@@ -291,7 +291,7 @@ func verifyModelCallEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, call 
 	if call.TransactionID == "" || receipt.GetTransactionId() != call.TransactionID {
 		return oracle.Outcome{}, fmt.Errorf("receipt transaction %q is not the call transaction %q: %w", receipt.GetTransactionId(), call.TransactionID, constants.ErrEvaluationEvidenceTraceMismatch)
 	}
-	if trace.SchemaVersion == agentTraceSchemaVersion {
+	if trace.CarriesModelIdentity() {
 		if err := verifyV7ModelCallIdentity(trace, call, outcome); err != nil {
 			return oracle.Outcome{}, err
 		}

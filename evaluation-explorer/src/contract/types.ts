@@ -747,6 +747,8 @@ export interface RoleTranscriptToolCall {
   tool_name: string;
   arguments_json?: string;
   arguments_hash?: string;
+  /** Tribunal-approved arguments the call executed, when they differ from the proposal. */
+  approved_arguments_json?: string;
   command?: string;
   success: boolean;
   error_type?: string;

@@ -137,7 +137,7 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 		Binding:           req.Binding,
 		FormationStackSet: req.FormationStackSet,
 	}
-	if trace.SchemaVersion == agentTraceSchemaVersion {
+	if trace.CarriesModelIdentity() {
 		expected, _ := modelInferenceRecordsFromAgentTrace(execReq, trace, func(string) string { return "" })
 		if len(expected) != len(req.Result.GetModelInferences()) {
 			failures = append(failures, "result inference count does not match agent trace")
@@ -198,7 +198,7 @@ func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTra
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
 	system := IsHeterogeneousAssignment(req.Assignment)
-	if trace.SchemaVersion != agentTraceSchemaVersion {
+	if !trace.CarriesModelIdentity() {
 		if system {
 			return fmt.Errorf("formation requires per-call model evidence: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 		}

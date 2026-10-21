@@ -133,6 +133,29 @@ describe('verifyAgentTraceArtifact', () => {
     }
   });
 
+  const toolCallWith = (fields: Record<string, unknown>) => ({ ...(traceTail('agent-trace.v8').tool_calls as Record<string, unknown>[])[0], ...fields });
+
+  it('decodes approved_arguments_json on a v8 tool call and rejects it when empty', async () => {
+    const approved = '{"args":["app/service.conf"],"command":"cat"}';
+    const body = sealedBody('agent-trace.v8', { model_calls: [v7Call()], tool_calls: [toolCallWith({ approved_arguments_json: approved })] });
+    const empty = sealedBody('agent-trace.v8', { model_calls: [v7Call()], tool_calls: [toolCallWith({ approved_arguments_json: '' })] });
+
+    const trace = await verifyAgentTraceArtifact(body, scope(body));
+
+    expect(trace.tool_calls[0]?.approved_arguments_json).toBe(approved);
+    await expect(verifyAgentTraceArtifact(empty, scope(empty))).rejects.toMatchObject({ path: 'agent_trace.tool_calls[0].approved_arguments_json' });
+  });
+
+  it('rejects approved_arguments_json on v3 through v7 tool calls', async () => {
+    for (const schemaVersion of ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7']) {
+      const body = sealedBody(schemaVersion, {
+        ...(schemaVersion === 'agent-trace.v7' ? { model_calls: [v7Call()] } : {}),
+        tool_calls: [toolCallWith({ approved_arguments_json: '{"args":[],"command":"cat"}' })],
+      });
+      await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toThrow(/approved_arguments_json/u);
+    }
+  });
+
   it('verifies a sealed v4 trace and decodes it', async () => {
     const body = sealedBody();
 
@@ -315,6 +338,36 @@ describe('AgentTraceSection', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/verification failed \(agent_trace: body does not match its published SHA-256 binding\)/u);
     expect(screen.queryByText(/Why is checkout failing\?/u)).not.toBeInTheDocument();
+  });
+
+  it('shows approved arguments only when they differ from the proposed arguments', async () => {
+    const toolCall = (approved?: string) => ({
+      ...(traceTail('agent-trace.v8').tool_calls as Record<string, unknown>[])[0],
+      ...(approved === undefined ? {} : { approved_arguments_json: approved }),
+    });
+    const renderTrace = (tool: Record<string, unknown>) => {
+      const modelCall = {
+        ...(traceTail('agent-trace.v8').model_calls as Record<string, unknown>[])[0],
+        model_variant_id: 'variant-primary', model_role: 'MODEL_ROLE_PRIMARY', served_model_tag: 'qwen3:8b', model_digest: 'a'.repeat(64),
+        inference_result: { requested_model: 'qwen3:8b', served_model_digest: 'a'.repeat(64) },
+      };
+      const sealed = sealedBody('agent-trace.v8', { model_calls: [modelCall], tool_calls: [tool] });
+      evalStore.loadProofCatalog([entry(sha256(sealed))]);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(sealed.slice())));
+      return render(<AgentTraceSection id="trace" bindings={[{ ...bindings[0]!, sha256: sha256(sealed) }]} runId="run-1" assignmentId="assignment-1" />);
+    };
+
+    const differing = renderTrace(toolCall('{"path":"app.log","tail":50}'));
+    expect(await screen.findByText(/Why is checkout failing\?/u)).toBeInTheDocument();
+    expect(screen.getByText('Approved arguments')).toBeInTheDocument();
+    differing.unmount();
+
+    for (const tool of [toolCall('{"path":"app.log"}'), toolCall()]) {
+      const rendered = renderTrace(tool);
+      expect(await screen.findByText(/Why is checkout failing\?/u)).toBeInTheDocument();
+      expect(screen.queryByText('Approved arguments')).not.toBeInTheDocument();
+      rendered.unmount();
+    }
   });
 
   it('is absent without a catalog entry', () => {

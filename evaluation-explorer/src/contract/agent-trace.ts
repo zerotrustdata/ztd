@@ -11,7 +11,7 @@
 
 import { ValidationError, assert, assertBoolean, assertInteger, assertObject, assertString, rejectUnknown } from './validators';
 
-export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7'] as const;
+export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7', 'agent-trace.v8'] as const;
 export type AgentTraceSchemaVersion = (typeof AGENT_TRACE_SCHEMA_VERSIONS)[number];
 
 /** One canonical protojson message (ActionReceipt or ConformanceAnchor). */
@@ -105,6 +105,7 @@ export interface AgentTraceToolCall {
   action_type?: string;
   transaction_id?: string;
   policy_decision?: string;
+  approved_arguments_json?: string;
   receipt?: AgentTraceProto;
   retrieval?: AgentTraceRetrieval;
 }
@@ -161,6 +162,9 @@ export interface AgentTrace {
 }
 
 const SHA256 = /^[0-9a-f]{64}$/u;
+
+const isV7OrV8 = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v7' || schemaVersion === 'agent-trace.v8';
+const isLiveContext = (schemaVersion: string): boolean => schemaVersion === 'agent-trace.v6' || isV7OrV8(schemaVersion);
 
 function optionalString(value: Record<string, unknown>, key: string, path: string): void {
   if (value[key] !== undefined) assertString(value[key], `${path}.${key}`);
@@ -276,7 +280,7 @@ const MODEL_CALL_FIELDS = [
 function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion): AgentTraceModelCall {
   assertObject(value, path);
   const identity = ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest', 'inference_result'];
-  rejectUnknown(value, schemaVersion === 'agent-trace.v7' ? [...MODEL_CALL_FIELDS, ...identity] : MODEL_CALL_FIELDS, path);
+  rejectUnknown(value, isV7OrV8(schemaVersion) ? [...MODEL_CALL_FIELDS, ...identity] : MODEL_CALL_FIELDS, path);
   requiredStrings(value, ['provider_attempt_id', 'transaction_id', 'purpose', 'result_digest'], path);
   for (const key of ['loop_turn', 'prompt_tokens', 'completion_tokens', 'retry_count', 'tool_call_count']) {
     assertInteger(value[key], `${path}.${key}`);
@@ -293,7 +297,7 @@ function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceS
   }
   optionalString(value, 'tool_call_id', path);
   optionalString(value, 'persona', path);
-  if (schemaVersion === 'agent-trace.v7') {
+  if (isV7OrV8(schemaVersion)) {
     requiredStrings(value, identity.filter((key) => key !== 'inference_result'), path);
     for (const key of ['model_variant_id', 'model_role', 'served_model_tag', 'model_digest']) {
       assert((value[key] as string).length > 0, `${path}.${key}`, 'expected non-empty model identity');
@@ -346,11 +350,16 @@ function parseRetrieval(value: unknown, path: string, investigationId: string | 
 
 function parseToolCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion, investigationId?: string): AgentTraceToolCall {
   assertObject(value, path);
-  const fields = schemaVersion === 'agent-trace.v6' || schemaVersion === 'agent-trace.v7' ? [...TOOL_CALL_FIELDS, 'retrieval'] : TOOL_CALL_FIELDS;
+  const liveFields = isLiveContext(schemaVersion) ? [...TOOL_CALL_FIELDS, 'retrieval'] : TOOL_CALL_FIELDS;
+  const fields = schemaVersion === 'agent-trace.v8' ? [...liveFields, 'approved_arguments_json'] : liveFields;
   rejectUnknown(value, fields, path);
   requiredStrings(value, ['call_id', 'model_call_id', 'tool_name', 'arguments_json'], path);
   for (const key of ['provider_call_id', 'command', 'result_json', 'error_type', 'error', 'action_type', 'transaction_id', 'policy_decision']) {
     optionalString(value, key, path);
+  }
+  optionalString(value, 'approved_arguments_json', path);
+  if (value.approved_arguments_json !== undefined) {
+    assert((value.approved_arguments_json as string).length > 0, `${path}.approved_arguments_json`, 'expected non-empty approved arguments');
   }
   assertBoolean(value.success, `${path}.success`);
   assertBoolean(value.is_operator_tool, `${path}.is_operator_tool`);
@@ -431,7 +440,7 @@ export function parseAgentTrace(value: unknown): AgentTrace {
   const schemaVersion = value.schema_version as AgentTraceSchemaVersion;
   assertString(value.evidence_digest, `${path}.evidence_digest`);
   assert(SHA256.test(value.evidence_digest), `${path}.evidence_digest`, 'expected lowercase SHA-256');
-  const liveContext = schemaVersion === 'agent-trace.v6' || schemaVersion === 'agent-trace.v7';
+  const liveContext = isLiveContext(schemaVersion);
   if (liveContext) {
     optionalString(value, 'investigation_id', path);
     if (value.investigation_id !== undefined) {

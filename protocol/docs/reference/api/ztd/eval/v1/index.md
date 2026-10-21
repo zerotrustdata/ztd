@@ -296,6 +296,7 @@ directory is listed with an empty sha256 and size -1.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
+| command | [string](#string) |  | command is the shell text an agent-trace.v7 or earlier candidate step recorded. It is decoded only so historical traces stay verifiable; new steps never set it and agent-trace.v8 rejects it. |
 | arguments | [ztd.operator.v1.RunShellCommandArguments](#ztd-operator-v1-RunShellCommandArguments) |  |  |
 
 
@@ -2165,6 +2166,7 @@ exactly one of value and unavailable_reason is set.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | verdict | [AgentReviewVerdict](#ztd-eval-v1-AgentReviewVerdict) |  |  |
+| command | [string](#string) |  | command is the reviewed shell text of an agent-trace.v7 or earlier step, decoded only for historical traces; agent-trace.v8 rejects it. |
 | arguments | [ztd.operator.v1.RunShellCommandArguments](#ztd-operator-v1-RunShellCommandArguments) |  |  |
 
 

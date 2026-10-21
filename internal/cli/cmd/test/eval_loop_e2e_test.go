@@ -295,7 +295,7 @@ const (
 	evalLoopPurposeGenerate  = "tribunal_generate"
 	evalLoopPurposeMarshal   = "tribunal_marshal"
 	evalLoopPurposeAudit     = "tribunal_audit"
-	evalLoopTribunalProposal = `{"command":"cat","args":["app/service.conf"]}`
+	evalLoopTribunalProposal = `{"args":["app/service.conf"],"command":"cat"}`
 	evalLoopTribunalCommand  = `{"command":"cat","args":["app/service.conf"]}`
 	evalLoopTribunalAnswer   = "inventory-api listens on port 8081 in app/service.conf, but the upstream health check expects port 8080. Set listen_port = 8080 in the service configuration."
 )

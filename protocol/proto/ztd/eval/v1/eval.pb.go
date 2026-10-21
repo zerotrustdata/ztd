@@ -11744,7 +11744,11 @@ func (x *ResponderOutput) GetReply() string {
 }
 
 type CandidateOutput struct {
-	state         protoimpl.MessageState        `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// command is the shell text an agent-trace.v7 or earlier candidate step
+	// recorded. It is decoded only so historical traces stay verifiable; new
+	// steps never set it and agent-trace.v8 rejects it.
+	Command       string                        `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
 	Arguments     *v11.RunShellCommandArguments `protobuf:"bytes,2,opt,name=arguments,proto3" json:"arguments,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -11778,6 +11782,13 @@ func (x *CandidateOutput) ProtoReflect() protoreflect.Message {
 // Deprecated: Use CandidateOutput.ProtoReflect.Descriptor instead.
 func (*CandidateOutput) Descriptor() ([]byte, []int) {
 	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{88}
+}
+
+func (x *CandidateOutput) GetCommand() string {
+	if x != nil {
+		return x.Command
+	}
+	return ""
 }
 
 func (x *CandidateOutput) GetArguments() *v11.RunShellCommandArguments {
@@ -11976,8 +11987,11 @@ func (x *RiskOutput) GetBlocked() bool {
 }
 
 type ReviewOutput struct {
-	state         protoimpl.MessageState        `protogen:"open.v1"`
-	Verdict       AgentReviewVerdict            `protobuf:"varint,1,opt,name=verdict,proto3,enum=ztd.eval.v1.AgentReviewVerdict" json:"verdict,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Verdict AgentReviewVerdict     `protobuf:"varint,1,opt,name=verdict,proto3,enum=ztd.eval.v1.AgentReviewVerdict" json:"verdict,omitempty"`
+	// command is the reviewed shell text of an agent-trace.v7 or earlier step,
+	// decoded only for historical traces; agent-trace.v8 rejects it.
+	Command       string                        `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
 	Arguments     *v11.RunShellCommandArguments `protobuf:"bytes,3,opt,name=arguments,proto3" json:"arguments,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -12018,6 +12032,13 @@ func (x *ReviewOutput) GetVerdict() AgentReviewVerdict {
 		return x.Verdict
 	}
 	return AgentReviewVerdict_AGENT_REVIEW_VERDICT_UNSPECIFIED
+}
+
+func (x *ReviewOutput) GetCommand() string {
+	if x != nil {
+		return x.Command
+	}
+	return ""
 }
 
 func (x *ReviewOutput) GetArguments() *v11.RunShellCommandArguments {
@@ -13498,9 +13519,10 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x18\n" +
 	"\aposture\x18\x03 \x01(\tR\aposture\"'\n" +
 	"\x0fResponderOutput\x12\x14\n" +
-	"\x05reply\x18\x01 \x01(\tR\x05reply\"`\n" +
-	"\x0fCandidateOutput\x12G\n" +
-	"\targuments\x18\x02 \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targumentsJ\x04\b\x01\x10\x02\"Y\n" +
+	"\x05reply\x18\x01 \x01(\tR\x05reply\"t\n" +
+	"\x0fCandidateOutput\x12\x18\n" +
+	"\acommand\x18\x01 \x01(\tR\acommand\x12G\n" +
+	"\targuments\x18\x02 \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targuments\"Y\n" +
 	"\rCandidateVote\x12\x1f\n" +
 	"\vvoter_label\x18\x01 \x01(\tR\n" +
 	"voterLabel\x12'\n" +
@@ -13516,10 +13538,11 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\fsubject_kind\x18\x01 \x01(\tR\vsubjectKind\x12\x18\n" +
 	"\asubject\x18\x02 \x01(\tR\asubject\x12/\n" +
 	"\x04risk\x18\x03 \x01(\x0e2\x1b.ztd.eval.v1.AgentRiskLevelR\x04risk\x12\x18\n" +
-	"\ablocked\x18\x04 \x01(\bR\ablocked\"\x98\x01\n" +
+	"\ablocked\x18\x04 \x01(\bR\ablocked\"\xac\x01\n" +
 	"\fReviewOutput\x129\n" +
-	"\averdict\x18\x01 \x01(\x0e2\x1f.ztd.eval.v1.AgentReviewVerdictR\averdict\x12G\n" +
-	"\targuments\x18\x03 \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targumentsJ\x04\b\x02\x10\x03\"/\n" +
+	"\averdict\x18\x01 \x01(\x0e2\x1f.ztd.eval.v1.AgentReviewVerdictR\averdict\x12\x18\n" +
+	"\acommand\x18\x02 \x01(\tR\acommand\x12G\n" +
+	"\targuments\x18\x03 \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targuments\"/\n" +
 	"\fMemoryOutput\x12\x1f\n" +
 	"\vmemory_text\x18\x01 \x01(\tR\n" +
 	"memoryText\"#\n" +
