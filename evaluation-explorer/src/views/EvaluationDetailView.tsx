@@ -7,15 +7,12 @@
 // per-model results, task/assignment table, verification summary, resource
 // summary, and public-safe methodology links.
 
-import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { releaseLabel } from '../content/release';
 import { recordKey, useStoreState } from '../state/store';
-import { DataTable, type DataTableColumn } from '../components/DataTable';
-import { RunFailuresSection } from '../components/RunFailuresSection';
-import { EvidenceChain, NON_VERDICT_NOTE, OutcomeBreakdown, PageHero, PanelSection, TonePill } from '../components/evidence';
-import { UnifiedGradeBadges } from '../components/UnifiedGradeBadges';
+import { AssignmentTable } from '../components/AssignmentTable';
+import { EvidenceChain, OutcomeBreakdown, PageHero, PanelSection, TonePill } from '../components/evidence';
 import {
   DetailRow,
   EmptyState,
@@ -33,9 +30,8 @@ import {
   formatThroughput,
   formatNumber,
 } from '../components/shared';
-import type { AssignmentResult, VerifierState } from '../contract/types';
-import { isCapabilityQualificationScenario } from '../content/scenario-task';
-import { assignmentVerdictTone, campaignTerminalProgress, isNonVerdictOutcome, lifecycleStateTone, nativeResultTone, nativeScenarioTone, roleLabel, verifierStateTone } from './derived';
+import type { VerifierState } from '../contract/types';
+import { campaignTerminalProgress, lifecycleStateTone, nativeResultTone, nativeScenarioTone, roleLabel, verifierStateTone } from './derived';
 
 const verifierStateLabels: Record<VerifierState, string> = {
   not_run: 'Not yet verified',
@@ -64,66 +60,6 @@ export function EvaluationDetailView() {
       : [],
   );
   const connection = useStoreState((state) => state.connection);
-  const [assignmentSearch, setAssignmentSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-
-  const filteredAssignments = useMemo(() => {
-    const needle = assignmentSearch.toLowerCase();
-    return assignments.filter(
-      (a) => {
-        const verdict = a.terminal_status === 'completed' || a.terminal_status === 'model_failed';
-        if (statusFilter === 'verdict' && !verdict) return false;
-        if (statusFilter === 'non-verdict' && (verdict || a.terminal_status === 'running' || a.terminal_status === 'queued')) return false;
-        return a.assignment_id.toLowerCase().includes(needle) ||
-        a.task_id.toLowerCase().includes(needle) ||
-        a.variant_id.toLowerCase().includes(needle);
-      },
-    );
-  }, [assignments, assignmentSearch, statusFilter]);
-
-  const assignmentColumns = useMemo<DataTableColumn<AssignmentResult>[]>(
-    () => [
-      {
-        id: 'assignment',
-        header: 'Assignment',
-        accessorKey: 'assignment_id',
-        cell: ({ row }) => (
-          <Link to={`/evaluations/${row.original.dataset_id}/${row.original.run_id}/assignments/${row.original.assignment_id}`}>
-            {row.original.assignment_id}
-          </Link>
-        ),
-      },
-      { id: 'task', header: 'Task', accessorKey: 'task_id' },
-      {
-        id: 'scope',
-        header: 'Scope',
-        accessorFn: (row: AssignmentResult) => isCapabilityQualificationScenario(row.scenario_summary?.expected_tools) ? 'capability qualification' : '',
-        cell: ({ row }) => isCapabilityQualificationScenario(row.original.scenario_summary?.expected_tools)
-          ? <TonePill tone="warn" title="This result measures direct command handling, not investigation context retrieval or continuity.">Capability qualification</TonePill>
-          : '—',
-      },
-      { id: 'variant', header: 'Variant', accessorKey: 'variant_id' },
-      {
-        id: 'role',
-        header: 'Role',
-        accessorKey: 'role',
-        cell: ({ row }) => roleLabel(row.original.role),
-      },
-      { id: 'rep', header: 'Rep', accessorKey: 'repetition' },
-      { id: 'status', header: 'Status', accessorKey: 'terminal_status', cell: ({ row }) => <TonePill tone={assignmentVerdictTone(row.original.terminal_status, row.original.verification_disposition)} title={isNonVerdictOutcome(row.original.terminal_status) ? NON_VERDICT_NOTE : undefined}>{row.original.terminal_status.replace(/_/g, ' ')}</TonePill> },
-      {
-        id: 'verification',
-        header: 'Verification',
-        accessorFn: (row: AssignmentResult) => row.verification_disposition ?? '',
-        cell: ({ row }) =>
-          row.original.verification_disposition ? <TonePill tone={verifierStateTone(row.original.verification_disposition)}>{verifierStateLabels[row.original.verification_disposition]}</TonePill> : <UnavailableValue reason="verification not published" />,
-      },
-      { id: 'criteria', header: 'Criteria', cell: ({ row }) => <UnifiedGradeBadges assignment={row.original} />, enableSorting: false },
-      { id: 'duration', header: 'Duration', cell: ({ row }) => row.original.resource_summary?.latency_ms?.value !== undefined ? formatLatency(row.original.resource_summary.latency_ms.value) : <UnavailableValue reason="duration not published" />, enableSorting: false },
-    ],
-    [],
-  );
-
   if (!runId) return <ErrorState message="No run selected." />;
   if (!run) return <EmptyState hasRecords={false} hasFilters={false} connection={connection} />;
 
@@ -217,33 +153,8 @@ export function EvaluationDetailView() {
 
       {!run.native_result ? <>
         <PanelSection id="run-results" title={`Assignments (${formatNumber(assignments.length)})`}>
-          {assignments.length === 0 ? (
-            <p>No assignment results for this run.</p>
-          ) : (
-            <>
-              <div className="table-toolbar evaluation-assignment-filters">
-                <input
-                  type="search"
-                  placeholder="Search assignments..."
-                  value={assignmentSearch}
-                  aria-label="Search assignments"
-                  onChange={(e) => setAssignmentSearch(e.target.value)}
-                />
-                <select aria-label="Filter assignments by verdict" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                  <option value="all">All statuses</option><option value="verdict">Model verdicts</option><option value="non-verdict">Non-verdict outcomes</option>
-                </select>
-              </div>
-              <DataTable
-                data={filteredAssignments}
-                columns={assignmentColumns}
-                pageSize={50}
-                caption={`Assignments for ${run.run_id}`}
-                empty={<p>No assignments match the search or status filter.</p>}
-              />
-            </>
-          )}
+          <AssignmentTable assignments={assignments} runId={run.run_id} />
         </PanelSection>
-        <RunFailuresSection assignments={assignments} connection={connection} />
       </> : null}
       <div className="evaluation-context">
       <PanelSection id="run-identity" title="Run identity">

@@ -41,6 +41,9 @@ type EvalStackOptions struct {
 	// provider serves, each at ScriptedModelDigest(tag). The default model tag
 	// is always included.
 	ModelTags []string
+	// A2ADownstreamURL opts the Gateway into A2A ingress, forwarding to this
+	// downstream. Empty leaves the Gateway with no A2A ingress.
+	A2ADownstreamURL string
 }
 
 // EvalStack holds the real Gateway and outbound Operators used by eval
@@ -76,6 +79,7 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 		TestName: "eval-stack", Posture: posture, ProductionConsensus: true,
 		EnablePublicSpectator: opts.EnablePublicSpectator,
 		NoDownstream:          true,
+		A2ADownstreamURL:      opts.A2ADownstreamURL,
 	}
 	if posture == constants.PostureNotary {
 		gatewayOpts.ConsensusID = "eval-stack-consensus"

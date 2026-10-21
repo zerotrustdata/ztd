@@ -460,3 +460,61 @@ test('evaluation detail fills the page and stacks context without pushing assign
   await results.getByRole('searchbox', { name: 'Search assignments' }).fill(assignments[0]!.assignment_id);
   await expect(table.locator('tbody tr')).toHaveCount(1);
 });
+
+test('assignment analysis offers sortable grading and performance without wide IDs or badge piles', async ({ page }, testInfo) => {
+  const tasks = ['final-response-diagnosis', 'instruction-bounded-count', 'instruction-classify-severity', 'instruction-constrain-json', 'instruction-exact-format', 'recovery-error-guided-retry', 'recovery-malformed-resource', 'recovery-tool-failure'];
+  const criteria = ['Answer content', 'Tool trajectory', 'Role invoked', 'Declared tools', 'Governed inference', 'Homogeneous pipeline', 'Required evidence'];
+  const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: 'ds-table-analysis', run_id: 'assignment-analysis-run' };
+  const assignments = tasks.map((task, index) => ({
+    ...fixtureEnrichedAssignmentResult, dataset_id: run.dataset_id, run_id: run.run_id,
+    assignment_id: `${index}${'abcdef0123456789'.repeat(4)}`.slice(0, 64), task_id: task, scenario_id: task,
+    variant_id: 'qwen3-6-35b-a3b-q4-k-m', role: index % 2 === 0 ? 'primary' : 'assistant',
+    terminal_status: index === 0 ? 'model_failed' : 'completed',
+    failure_reason: index === 0 ? 'The final response did not identify the failed service or cite the observed error.' : undefined,
+    scenario_summary: { ...fixtureEnrichedAssignmentResult.scenario_summary!, scenario_id: task,
+      criteria: criteria.map((label) => ({ criterion_id: label.toLowerCase().replaceAll(' ', '-'), public_label: label, public_description: label, required: true, grading_method: 'deterministic' })),
+    },
+    semantic_grade_summaries: criteria.map((label, criterionIndex) => ({
+      criterion_id: label.toLowerCase().replaceAll(' ', '-'), status: index === 0 && criterionIndex === 0 ? 'fail' : 'pass',
+      grading_method: 'deterministic', explanation_code: index === 0 && criterionIndex === 0 ? 'criterion_failed' : 'criterion_passed',
+    })),
+    resource_summary: { latency_ms: { value: 900 + index * 3000 }, input_tokens: { value: 1000 + index * 400 }, output_tokens: { value: 120 + index * 240 }, retries: { value: index % 2 } },
+    benchmark_observations: { timing: { generation_ms: { value: 2000 } }, unavailable_reasons: [] },
+  }));
+  await installMirror(page, [run, ...assignments]);
+  await page.goto(`/evaluations/${run.dataset_id}/${run.run_id}?release=all`);
+  const panel = page.getByRole('region', { name: 'Assignments (8)', exact: true });
+  const table = panel.getByRole('table');
+  await expect(table.locator('tbody tr')).toHaveCount(8);
+  await expect(table.locator('.assignment-short-id').first()).toHaveText('0abcde…');
+  await expect(table.getByRole('columnheader', { name: /Scope|Criteria/ })).toHaveCount(0);
+  await expect(table.locator('.grade-badge-details')).toHaveCount(0);
+  for (const width of [1920, 1280, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    for (const view of ['Results', 'Grading', 'Performance']) {
+      await panel.getByRole('button', { name: view, exact: true }).click();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      if (view === 'Grading') {
+        await table.getByRole('button', { name: 'Sort by Answer content', exact: true }).click();
+        await expect(table.locator('tbody tr').first().locator('.assignment-short-id')).toHaveAttribute('aria-label', assignments[0]!.assignment_id);
+        await expect(table.locator('tbody tr').first().getByRole('link', { name: 'Fail', exact: true })).toBeVisible();
+      }
+      if (view === 'Performance') {
+        await table.getByRole('button', { name: 'Sort by Duration', exact: true }).click();
+        await expect(table.locator('tbody tr').first().locator('.assignment-short-id')).toHaveAttribute('aria-label', assignments[7]!.assignment_id);
+      }
+      // Reset scroll after sortable columns are brought into view, then capture the table itself.
+      await panel.locator('.data-table-wrap').evaluate((element) => { element.scrollLeft = 0; });
+      await panel.screenshot({ path: testInfo.outputPath(`assignments-${view.toLowerCase()}-${width}.png`) });
+    }
+  }
+  await panel.getByRole('combobox', { name: 'Filter assignments by verdict' }).selectOption('model_failed');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await panel.getByRole('button', { name: 'Grading', exact: true }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(table.getByRole('button', { name: 'Sort by Answer content', exact: true })).toBeVisible();
+  await table.getByRole('link', { name: 'Fail', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: tasks[0]! })).toBeVisible();
+  await expect.poll(() => page.locator('#assignment-grades').evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(200);
+});

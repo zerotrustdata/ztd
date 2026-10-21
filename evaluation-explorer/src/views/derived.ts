@@ -376,6 +376,15 @@ export function assignmentPass(assignment: AssignmentResult): number | undefined
   return assignment.metric_values.pass?.value;
 }
 
+/** Output throughput uses observed generation time, not whole-task latency. */
+export function assignmentOutputThroughput(assignment: AssignmentResult): number | undefined {
+  const outputTokens = assignment.resource_summary?.output_tokens?.value;
+  const generationMs = assignment.benchmark_observations?.timing?.generation_ms?.value;
+  return outputTokens !== undefined && generationMs !== undefined && generationMs > 0
+    ? outputTokens / (generationMs / 1000)
+    : undefined;
+}
+
 const ASSIGNMENT_METRIC_LABELS: Record<string, string> = {
   pass: 'Pass',
   task_score: 'Task score',

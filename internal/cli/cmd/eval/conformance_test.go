@@ -64,7 +64,9 @@ type conformanceRig struct {
 	gwRoot     string
 	opRoot     string
 	operatorID string
-	deps       nativeEvalDeps
+	// a2aListen is the A2A stub address; the stack rig's Gateway forwards A2A there.
+	a2aListen string
+	deps      nativeEvalDeps
 }
 
 // execute runs the command tree with args against the rig's Gateway root and
@@ -87,7 +89,11 @@ func (r conformanceRig) executeInput(t *testing.T, input string, args ...string)
 
 // runArgs is a complete `conformance run` invocation for this rig.
 func (r conformanceRig) runArgs(extra ...string) []string {
-	args := []string{"conformance", "run", "--a2a-stub-listen", "127.0.0.1:0", "--operator-id", r.operatorID, "--operator-root", r.opRoot}
+	listen := r.a2aListen
+	if listen == "" {
+		listen = "127.0.0.1:0"
+	}
+	args := []string{"conformance", "run", "--a2a-stub-listen", listen, "--operator-id", r.operatorID, "--operator-root", r.opRoot}
 	return append(args, extra...)
 }
 

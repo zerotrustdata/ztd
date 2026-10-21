@@ -2100,7 +2100,8 @@ section h2 { font-size: 18px; margin: 0 0 12px; }
 .assignment-anchor,
 .evidence-panel[id],
 .evidence-main .task-detail-section,
-.assignment-proof {
+.assignment-proof,
+#assignment-grades {
   scroll-margin-top: calc(var(--header-sticky-offset, 58px) + 16px);
 }
 
@@ -3525,14 +3526,51 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
 .evaluation-detail .data-table { min-width: 1120px; }
 .evaluation-detail .data-table th { white-space: nowrap; }
 .evaluation-detail .data-table td { overflow-wrap: anywhere; line-height: 1.45; }
-.evaluation-detail .data-table td:nth-child(5),
-.evaluation-detail .data-table td:nth-child(6),
-.evaluation-detail .data-table td:last-child { white-space: nowrap; }
-.evaluation-detail .data-table th:first-child { width: 22%; }
-.evaluation-detail .data-table th:nth-child(4) { width: 14%; }
 .evaluation-detail .data-table-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (max-width: 640px) {
   .evaluation-detail .evidence-panel { padding: 14px; }
   .evaluation-detail .evidence-hero { padding: 18px; }
   .evaluation-assignment-filters > select { flex: 1 1 100%; }
+}
+
+
+/* Assignment analysis: compact results, a criterion matrix, and measured performance. */
+.assignment-table { min-width: 0; }
+.assignment-table-controls { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.assignment-table-views { display: flex; gap: 4px; padding: 3px; background: var(--bg-elev2); border: 1px solid var(--border); border-radius: 8px; }
+.assignment-table-views button, .assignment-reset { border: 1px solid transparent; border-radius: 5px; padding: 7px 12px; color: var(--fg-muted); background: transparent; cursor: pointer; font: inherit; font-size: var(--fs-body); }
+.assignment-table-views button:hover, .assignment-reset:hover { color: var(--fg); background: var(--bg-elev); }
+.assignment-table-views button[aria-pressed="true"] { background: var(--bg-elev); color: var(--accent); border-color: var(--border); font-weight: 600; }
+.assignment-result-count, .assignment-table-note { color: var(--fg-muted); font-size: var(--fs-body); }
+.assignment-table-note { margin: 0 0 12px; }
+.assignment-table .data-table { min-width: 1050px; font-variant-numeric: tabular-nums; }
+.assignment-table .data-table :is(th, td) { padding: 10px 12px; vertical-align: top; }
+.assignment-table .data-table th { white-space: normal; min-width: 90px; }
+.assignment-table .data-table td { white-space: nowrap; }
+.assignment-table .data-table [data-column="task"] { min-width: 220px; width: 260px; max-width: 300px; white-space: normal; }
+.assignment-table .data-table [data-column="model"] { min-width: 160px; max-width: 220px; white-space: normal; }
+.assignment-table .data-table [data-column="assignment"] { width: 100px; min-width: 100px; }
+.assignment-table .data-table [data-column^="criterion:"] { min-width: 130px; max-width: 180px; white-space: normal; }
+.assignment-table .data-table :is([data-column="failure"], [data-column="description"]) { min-width: 280px; max-width: 380px; white-space: normal; }
+.assignment-table .data-table :is([data-column="duration"], [data-column="generation"], [data-column="throughput"], [data-column="input"], [data-column="output"], [data-column="thinking"], [data-column="calls"], [data-column="retries"], [data-column="guidedRetries"], [data-column="rep"], [data-column="checks"]) { text-align: right; }
+.assignment-table .data-table th .th-sort { text-align: inherit; }
+.assignment-task-cell { display: grid; gap: 5px; }
+.assignment-task-cell > a { font-weight: 600; }
+.assignment-failure-reason { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--fg-muted); font-size: 12px; line-height: 1.4; }
+.assignment-short-id { font-family: var(--mono); white-space: nowrap; }
+.assignment-model { color: var(--fg-muted); }
+.assignment-number { font-family: var(--mono); white-space: nowrap; }
+.assignment-missing { color: var(--fg-dim); }
+.assignment-checks { display: grid; gap: 3px; }
+.assignment-checks small { color: var(--fg-muted); font-size: 11px; }
+.assignment-result, .assignment-grade { display: inline-flex; align-items: baseline; gap: 6px; }
+.assignment-result::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; align-self: center; flex-shrink: 0; }
+.assignment-result[data-tone="ok"], .assignment-grade[data-grade="pass"] { color: var(--tone-ok); }
+.assignment-result[data-tone="critical"], .assignment-grade[data-grade="fail"] { color: var(--tone-critical); }
+.assignment-result[data-tone="warn"], .assignment-grade[data-grade="invalid_evidence"] { color: var(--tone-warn); }
+.assignment-grade[data-grade="unavailable"], .assignment-grade[data-grade="unsupported"] { color: var(--fg-muted); }
+.assignment-grade { font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; }
+@media (min-width: 700px) {
+  .assignment-table-grading .data-table [data-column="task"], .assignment-table-performance .data-table [data-column="task"] { position: sticky; left: 0; background: var(--bg-elev); z-index: 1; border-right: 1px solid var(--border); }
+  .assignment-table-grading .data-table th[data-column="task"], .assignment-table-performance .data-table th[data-column="task"] { background: var(--bg-elev2); z-index: 2; }
 }

@@ -72,8 +72,8 @@ describe('native evaluation detail', () => {
     }))] as unknown as SnapshotRecord[], []);
     render(<MemoryRouter initialEntries={['/evaluations/native-core-execution-boundary/native-run-1']}><Routes><Route path="/evaluations/:datasetId/:runId" element={<EvaluationDetailView />} /></Routes></MemoryRouter>);
     const assignments = within(screen.getByRole('region', { name: 'Assignments (4)' }));
-    expect(assignments.getByText('grader failed')).toHaveAttribute('data-tone', 'warn');
-    expect(assignments.getByText('grader failed')).toHaveAttribute('title', expect.stringContaining('not counted for or against it'));
+    expect(within(assignments.getByRole('table')).getByText('grader failed')).toHaveAttribute('data-tone', 'warn');
+    expect(within(assignments.getByRole('table')).getByText('grader failed')).toHaveAttribute('title', expect.stringContaining('not counted for or against it'));
     fireEvent.change(assignments.getByRole('combobox', { name: 'Filter assignments by verdict' }), { target: { value: 'verdict' } });
     expect(assignments.getByRole('link', { name: 'assignment-completed' })).toBeInTheDocument();
     expect(assignments.getByRole('link', { name: 'assignment-model_failed' })).toBeInTheDocument();
