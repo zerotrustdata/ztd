@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -575,7 +576,9 @@ func (c *CampaignController) ResumeNextAssignment(ctx context.Context, runID str
 }
 
 // ExecuteNextAssignment resumes one assignment through the configured executor,
-// persists the terminal result, and updates assignment lifecycle state.
+// persists the terminal result, and updates assignment lifecycle state. A
+// publication failure after the result is persisted returns the result with an
+// ErrEvaluationPublicationFailed error, so the caller can continue the run.
 func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID string, binding CampaignExecutionBinding, artifacts map[string]ScenarioArtifacts) (*evalv1.EvaluationAssignmentResult, bool, error) {
 	if c == nil || c.executor == nil {
 		return nil, false, fmt.Errorf("evaluation: execute next assignment: executor: %w", constants.ErrMissingRequiredField)
@@ -630,13 +633,14 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	if err := c.store.SaveAssignment(ctx, assignment); err != nil {
 		return nil, false, err
 	}
-	if err := c.publishAssignmentLifecycle(ctx, assignment); err != nil {
-		return nil, false, err
+	// The assignment is RUNNING once saved; a start publication failure must not
+	// strand it there, so it is carried to the terminal result instead.
+	startPublishErr := c.publishAssignmentLifecycle(ctx, assignment)
+	if startPublishErr == nil && !IsHeterogeneousAssignment(assignment) {
+		startPublishErr = c.publishAssignmentInvocationLiveEvents(ctx, assignment)
 	}
-	if !IsHeterogeneousAssignment(assignment) {
-		if err := c.publishAssignmentInvocationLiveEvents(ctx, assignment); err != nil {
-			return nil, false, err
-		}
+	if startPublishErr != nil {
+		startPublishErr = fmt.Errorf("%w: assignment %s start: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), startPublishErr)
 	}
 	artifact, found := artifacts[assignment.GetScenarioId()]
 	if !found {
@@ -695,18 +699,21 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 		if buildErr != nil {
 			return nil, false, fmt.Errorf("evaluation: execute next assignment: %w", buildErr)
 		}
-		if err := c.persistTerminalAssignment(ctx, assignment, failureResult); err != nil {
-			return nil, false, err
-		}
-		return failureResult, true, nil
+		return persistedTerminalResult(failureResult, startPublishErr, c.persistTerminalAssignment(ctx, assignment, failureResult))
 	}
 	if result == nil {
 		return nil, false, fmt.Errorf("evaluation: execute next assignment: executor returned nil result: %w", constants.ErrEvaluationAssignmentExecutionFailed)
 	}
-	if err := c.persistTerminalAssignment(ctx, assignment, result); err != nil {
-		return nil, false, err
+	return persistedTerminalResult(result, startPublishErr, c.persistTerminalAssignment(ctx, assignment, result))
+}
+
+// persistedTerminalResult reports a persisted result as executed even when its
+// publication failed; only a persistence failure withholds it.
+func persistedTerminalResult(result *evalv1.EvaluationAssignmentResult, startPublishErr, persistErr error) (*evalv1.EvaluationAssignmentResult, bool, error) {
+	if persistErr != nil && !errors.Is(persistErr, constants.ErrEvaluationPublicationFailed) {
+		return nil, false, persistErr
 	}
-	return result, true, nil
+	return result, true, errors.Join(startPublishErr, persistErr)
 }
 
 func scenarioGradingMethodForAssignment(catalog *evalv1.EvaluationScenarioCatalog, assignment *evalv1.EvaluationAssignment) (evalv1.EvaluationGradingMethod, error) {

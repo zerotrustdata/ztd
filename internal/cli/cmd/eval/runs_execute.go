@@ -311,9 +311,13 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: witness capture: %w", err)
 	}
+	// Publication failures never stop the run: each is reported as it happens
+	// and joined into the returned error once the run has finished normally.
+	var publicationErrs []error
+	finished := false
 	if strictObservation {
 		defer func() {
-			if runErr == nil {
+			if runErr == nil || finished {
 				return
 			}
 			cleanupErr := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, topology.Inference.OperatorSessionID, spec)
@@ -340,7 +344,9 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		ctx, cancel := context.WithTimeout(cmd.Context(), assignmentTimeout)
 		result, ok, err := controller.ExecuteNextAssignment(ctx, opts.RunID, executionBinding, artifacts)
 		cancel()
-		if err != nil {
+		if ok && errors.Is(err, constants.ErrEvaluationPublicationFailed) {
+			publicationErrs = append(publicationErrs, warnPublicationFailure(cmd, opts.RunID, err))
+		} else if err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 		if !ok {
@@ -401,14 +407,21 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		if publication != nil {
 			completionCount, publishErr := publication.PublishRunCompletion(cmd.Context(), opts.RunID, deps.now().UTC())
 			if publishErr != nil {
-				return executed, fmt.Errorf("evaluation: run execute: %w", publishErr)
-			}
-			if completionCount > 0 && !opts.JSONOutput {
+				publicationErrs = append(publicationErrs, warnPublicationFailure(cmd, opts.RunID, fmt.Errorf("%w: run completion: %w", constants.ErrEvaluationPublicationFailed, publishErr)))
+			} else if completionCount > 0 && !opts.JSONOutput {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Published %d completion projection record(s) for run %s\n", completionCount, opts.RunID)
 			}
 		}
 	}
-	return executed, nil
+	finished = true
+	return executed, errors.Join(publicationErrs...)
+}
+
+// warnPublicationFailure reports a publication failure on stderr as it happens
+// and returns it wrapped for the run's joined result.
+func warnPublicationFailure(cmd *cobra.Command, runID string, err error) error {
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: run %s: %v\n", runID, err)
+	return fmt.Errorf("evaluation: run execute: %w", err)
 }
 
 // waitForRunEvidence holds a strict run's completion until the Gateway records the

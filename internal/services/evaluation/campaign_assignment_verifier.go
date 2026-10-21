@@ -101,7 +101,7 @@ func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAss
 func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAssignmentVerificationRequest) []string {
 	trace := req.AgentTrace
 	if trace == nil {
-		return []string{"agent trace is required for homogeneous verification"}
+		return verifyExecutorFailureResult(req.Assignment, req.Result)
 	}
 	failures := make([]string, 0)
 	if err := ValidateAgentTraceDigest(trace); err != nil {

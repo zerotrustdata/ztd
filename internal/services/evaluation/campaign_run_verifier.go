@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -152,8 +153,12 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 			failures = append(failures, fmt.Sprintf("assignment %s result load failed: %v", assignment.GetAssignmentId(), err))
 			continue
 		}
+		// An executor failure before trace sealing persists no trace; the
+		// assignment verifier checks that result structurally instead.
 		agentTrace, err := store.LoadAssignmentAgentTrace(ctx, runID, assignment.GetAssignmentId())
-		if err != nil {
+		if errors.Is(err, constants.ErrNotFound) {
+			agentTrace = nil
+		} else if err != nil {
 			failures = append(failures, fmt.Sprintf("assignment %s agent trace load failed: %v", assignment.GetAssignmentId(), err))
 			continue
 		}

@@ -15,9 +15,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -76,6 +79,54 @@ func TestExecuteNextAssignment_PersistsResultOnRecoverableExecutorFailure(t *tes
 	require.NotNil(t, result)
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, result.GetLifecycleStatus())
 
+	exists, err := store.AssignmentResultExists(context.Background(), run.GetRunId(), result.GetAssignmentId())
+	require.NoError(t, err)
+	assert.True(t, exists)
+}
+
+type rejectingCampaignFeedExporter struct {
+	reject bool
+}
+
+func (*rejectingCampaignFeedExporter) HighWaterSequence(context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (r *rejectingCampaignFeedExporter) ExportBatch(context.Context, []CampaignPublicFeedRecord) error {
+	if r.reject {
+		return constants.ErrEvidenceArtifactTooLarge
+	}
+	return nil
+}
+
+// A publication failure after the terminal result is persisted returns that
+// result as executed, so the run continues past it.
+func TestExecuteNextAssignment_PublicationFailureKeepsPersistedResult(t *testing.T) {
+	files := newCampaignMemoryFileService()
+	store := NewStore(files)
+	executor := &failingCampaignExecutor{message: "evaluation: execute assignment"}
+	exporter := &rejectingCampaignFeedExporter{}
+	controller := NewCampaignController(store, executor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" }).
+		WithPublication(NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter))
+	req := testCampaignInitRequest(t)
+	run, err := controller.InitializeCampaign(context.Background(), req)
+	require.NoError(t, err)
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
+	require.NoError(t, err)
+	exporter.reject = true
+
+	result, executed, err := controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+	}, req.ScenarioArtifacts)
+	require.ErrorIs(t, err, constants.ErrEvaluationPublicationFailed)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactTooLarge)
+	require.True(t, executed)
+	require.NotNil(t, result)
+	assignment, err := store.LoadAssignment(context.Background(), run.GetRunId(), result.GetAssignmentId())
+	require.NoError(t, err)
+	assert.Equal(t, result.GetLifecycleStatus(), assignment.GetLifecycleStatus())
 	exists, err := store.AssignmentResultExists(context.Background(), run.GetRunId(), result.GetAssignmentId())
 	require.NoError(t, err)
 	assert.True(t, exists)
@@ -151,4 +202,62 @@ func TestBuildExecutorFailureAssignmentResult_PersistsClassNotErrorText(t *testi
 	require.Len(t, result.GetDeterministicGrades(), 1)
 	assert.Equal(t, "assignment execution failed: dispatch_failure", result.GetDeterministicGrades()[0].GetDetail())
 	assert.NotContains(t, result.String(), marker)
+}
+
+// A traceless executor-failure result verifies structurally; any departure
+// from the shape the builder produces does not.
+func TestCampaignAssignmentVerifier_VerifiesTracelessExecutorFailure(t *testing.T) {
+	t.Parallel()
+	verifier := NewCampaignAssignmentVerifier(func() time.Time { return time.Unix(1_700_000_100, 0).UTC() })
+	verify := func(req AssignmentExecutionRequest, result *evalv1.EvaluationAssignmentResult) *evalv1.EvaluationVerificationReport {
+		t.Helper()
+		digest, err := ComputeAssignmentResultDigest(result)
+		require.NoError(t, err)
+		result.ResultDigest = digest
+		assignment := proto.Clone(req.Assignment).(*evalv1.EvaluationAssignment)
+		assignment.LifecycleStatus = result.GetLifecycleStatus()
+		report, err := verifier.Verify(context.Background(), CampaignAssignmentVerificationRequest{Assignment: assignment, Result: result})
+		require.NoError(t, err)
+		return report
+	}
+	build := func(t *testing.T, execErr error) (AssignmentExecutionRequest, *evalv1.EvaluationAssignmentResult) {
+		t.Helper()
+		req := heterogeneousAssignmentExecutionRequest(t, mustHeterogeneousStack(t), testHeterogeneousVariants())
+		result, err := BuildExecutorFailureAssignmentResult(req, execErr, time.Unix(1_700_000_000, 0).UTC())
+		require.NoError(t, err)
+		return req, result
+	}
+	providerErr := fmt.Errorf("dispatch inference: %w", constants.ErrInferenceBackendTimeout)
+	invalidErr := fmt.Errorf("build formation initial state: %w", constants.ErrMissingRequiredField)
+
+	for _, execErr := range []error{providerErr, invalidErr} {
+		req, result := build(t, execErr)
+		report := verify(req, result)
+		assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+	}
+
+	tampers := map[string]func(*evalv1.EvaluationAssignmentResult){
+		"unknown class": func(r *evalv1.EvaluationAssignmentResult) {
+			r.DeterministicGrades[0].Detail = executionFailureDetailPrefix + "made_up"
+		},
+		"passing grade": func(r *evalv1.EvaluationAssignmentResult) {
+			r.DeterministicGrades[0].Status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
+		},
+		"free-text reason": func(r *evalv1.EvaluationAssignmentResult) {
+			r.FailureReason, r.PublicFailureReason = "provider said: secret", "provider said: secret"
+		},
+		"wrong lifecycle": func(r *evalv1.EvaluationAssignmentResult) {
+			r.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
+		},
+		"tool call recorded": func(r *evalv1.EvaluationAssignmentResult) { r.ToolCalls = []*evalv1.ToolCallRecord{{CallId: "c1"}} },
+		"dangling trace ref": func(r *evalv1.EvaluationAssignmentResult) {
+			r.EvidenceRefs = []*compliancev1.ComplianceEvidenceReference{{ArtifactType: string(complianceevidence.ArtifactTypeEvaluationAssignmentTrace)}}
+		},
+	}
+	for name, tamper := range tampers {
+		req, result := build(t, providerErr)
+		tamper(result)
+		report := verify(req, result)
+		assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, report.GetStatus(), name)
+	}
 }

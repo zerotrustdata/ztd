@@ -11,11 +11,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -92,38 +96,107 @@ func BuildExecutorFailureAssignmentResult(req AssignmentExecutionRequest, execEr
 		now = time.Now().UTC()
 	}
 	class := ClassifyExecutionFailure(execErr)
-	lifecycle := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
+	failureReason := ""
 	if class == ExecutionFailureProvider {
-		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED
+		failureReason = providerFailureReason(ProviderFailureClass(execErr))
 	}
-	result := &evalv1.EvaluationAssignmentResult{
-		SchemaVersion:   CampaignSchemaVersion,
-		AssignmentId:    req.Assignment.GetAssignmentId(),
-		RunId:           req.Assignment.GetRunId(),
-		CampaignId:      req.Assignment.GetCampaignId(),
-		Lane:            req.Assignment.GetLane(),
-		LifecycleStatus: lifecycle,
-		DeterministicGrades: []*evalv1.DeterministicGrade{
-			{
-				GradeId:     req.Assignment.GetAssignmentId() + ":execution-failure",
-				CriterionId: "execution-failure",
-				Status:      evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
-				Detail:      "assignment execution failed: " + string(class),
-				Basis:       basisStructural,
-			},
-		},
-		CompletedAt: timestamppb.New(now),
-	}
-	if class == ExecutionFailureProvider {
-		result.FailureReason = providerFailureReason(ProviderFailureClass(execErr))
-		result.PublicFailureReason = result.FailureReason
-	}
+	result := executorFailureAssignmentResult(req.Assignment, class, failureReason, timestamppb.New(now))
 	digest, err := ComputeAssignmentResultDigest(result)
 	if err != nil {
 		return nil, err
 	}
 	result.ResultDigest = digest
 	return result, nil
+}
+
+// executorFailureAssignmentResult is the undigested traceless failure result
+// for one failure class. The builder and the run verifier share it, so a
+// traceless result verifies only in exactly this shape.
+func executorFailureAssignmentResult(assignment *evalv1.EvaluationAssignment, class ExecutionFailureClass, failureReason string, completedAt *timestamppb.Timestamp) *evalv1.EvaluationAssignmentResult {
+	lifecycle := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
+	if class == ExecutionFailureProvider {
+		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED
+	}
+	return &evalv1.EvaluationAssignmentResult{
+		SchemaVersion:   CampaignSchemaVersion,
+		AssignmentId:    assignment.GetAssignmentId(),
+		RunId:           assignment.GetRunId(),
+		CampaignId:      assignment.GetCampaignId(),
+		Lane:            assignment.GetLane(),
+		LifecycleStatus: lifecycle,
+		DeterministicGrades: []*evalv1.DeterministicGrade{
+			{
+				GradeId:     assignment.GetAssignmentId() + ":" + executionFailureCriterion,
+				CriterionId: executionFailureCriterion,
+				Status:      evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
+				Detail:      executionFailureDetailPrefix + string(class),
+				Basis:       basisStructural,
+			},
+		},
+		CompletedAt:         completedAt,
+		FailureReason:       failureReason,
+		PublicFailureReason: failureReason,
+	}
+}
+
+const (
+	executionFailureCriterion    = "execution-failure"
+	executionFailureDetailPrefix = "assignment execution failed: "
+)
+
+// executionFailureClasses is every class ClassifyExecutionFailure can return.
+var executionFailureClasses = []ExecutionFailureClass{
+	ExecutionFailureProvider, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureVerification,
+	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureCanceled, ExecutionFailureTimeout, ExecutionFailureInternal,
+}
+
+// verifyExecutorFailureResult structurally verifies a result the executor
+// materialized before any trace was sealed: it carries no trace evidence, no
+// inference or tool records, and must equal the shape
+// BuildExecutorFailureAssignmentResult produces for its recorded class.
+func verifyExecutorFailureResult(assignment *evalv1.EvaluationAssignment, result *evalv1.EvaluationAssignmentResult) []string {
+	for _, ref := range result.GetEvidenceRefs() {
+		if ref.GetArtifactType() == string(complianceevidence.ArtifactTypeEvaluationAssignmentTrace) {
+			return []string{"result references an agent trace that is not persisted"}
+		}
+	}
+	grades := result.GetDeterministicGrades()
+	if len(grades) != 1 || grades[0].GetCriterionId() != executionFailureCriterion {
+		return []string{"agent trace is required for homogeneous verification"}
+	}
+	detail := grades[0].GetDetail()
+	class := ExecutionFailureClass(strings.TrimPrefix(detail, executionFailureDetailPrefix))
+	if !strings.HasPrefix(detail, executionFailureDetailPrefix) || !slices.Contains(executionFailureClasses, class) {
+		return []string{fmt.Sprintf("execution failure grade records unknown class %q", detail)}
+	}
+	failures := make([]string, 0)
+	if class == ExecutionFailureProvider && !isProviderFailureReason(result.GetFailureReason()) {
+		failures = append(failures, "provider failure result records a non-categorical failure reason")
+	}
+	expected := executorFailureAssignmentResult(assignment, class, result.GetFailureReason(), result.GetCompletedAt())
+	expected.ResultDigest = result.GetResultDigest()
+	if !proto.Equal(expected, result) {
+		failures = append(failures, "traceless result does not match the executor failure shape for class "+string(class))
+	}
+	if assignment.GetLifecycleStatus() != result.GetLifecycleStatus() {
+		failures = append(failures, fmt.Sprintf("assignment lifecycle %s does not match result lifecycle %s", assignment.GetLifecycleStatus(), result.GetLifecycleStatus()))
+	}
+	return failures
+}
+
+// isProviderFailureReason reports whether reason is one of the fixed
+// providerFailureReason sentences.
+func isProviderFailureReason(reason string) bool {
+	for _, class := range []inference.AttemptFailureClass{
+		"", inference.AttemptFailureCapabilityRejected, inference.AttemptFailureContextOverflow, inference.AttemptFailureBackendTimeout,
+		inference.AttemptFailureBackendUnavailable, inference.AttemptFailureModelNotFound, inference.AttemptFailureResponseInvalid,
+		inference.AttemptFailureGenerateFailed, inference.AttemptFailureCanceled,
+	} {
+		if reason == providerFailureReason(class) {
+			return true
+		}
+	}
+	return false
 }
 
 // BuildRecoveredTerminalAssignmentResult materializes one terminal result for
@@ -202,7 +275,12 @@ func (c *CampaignController) persistTerminalAssignment(ctx context.Context, assi
 	if err := c.store.SaveAssignment(persistCtx, assignment); err != nil {
 		return err
 	}
-	return c.publishAssignmentTerminal(persistCtx, assignment, result)
+	// The result is durable here; a publication failure is reported but never
+	// undoes or blocks the persisted terminal state.
+	if err := c.publishAssignmentTerminal(persistCtx, assignment, result); err != nil {
+		return fmt.Errorf("%w: assignment %s: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), err)
+	}
+	return nil
 }
 
 // assignmentPersistContext keeps terminal writes alive when the assignment

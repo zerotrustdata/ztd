@@ -74,7 +74,6 @@ func TestPublicAssignmentTranscriptFailsClosed(t *testing.T) {
 		tamper         bool
 		want           error
 	}{
-		{name: "oversized", response: strings.Repeat("a", 256*1024), want: constants.ErrEvidenceArtifactTooLarge},
 		{name: "tampered", response: "captured response", tamper: true, want: constants.ErrChecksumMismatch},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -94,6 +93,54 @@ func TestPublicAssignmentTranscriptFailsClosed(t *testing.T) {
 			transcripts, err := BuildPublicAssignmentTranscripts(ctx, store, assignment, result)
 			require.ErrorIs(t, err, tc.want)
 			require.Nil(t, transcripts)
+		})
+	}
+}
+
+// A transcript past the transcript or record bounds is omitted from the feed
+// record, which still publishes; the agent trace proof artifact carries it.
+func TestAssignmentPublicationOmitsOversizedTranscript(t *testing.T) {
+	manyCalls := make([]AgentToolCall, 129)
+	for i := range manyCalls {
+		manyCalls[i] = AgentToolCall{ToolName: "inspect", ArgumentsJSON: `{}`, ResultJSON: `{}`, Success: true, LoopTurn: 1}
+	}
+	for _, tc := range []struct {
+		name     string
+		response string
+		calls    []AgentToolCall
+	}{
+		{name: "transcript over bound", response: strings.Repeat("a", 256*1024)},
+		{name: "too many tool calls", response: "done", calls: manyCalls},
+		{name: "record over bound", response: strings.Repeat("a", 255*1024)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			files := newCampaignRuntimeFileService(t)
+			store := NewStore(files)
+			coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), &recordingCampaignFeedExporter{})
+			controller := NewCampaignController(store, &stubCampaignExecutor{}, nil, nil)
+			req := testCampaignInitRequest(t)
+			run, err := controller.InitializeCampaign(ctx, req)
+			require.NoError(t, err)
+			_, err = controller.ScheduleRun(ctx, run.GetRunId())
+			require.NoError(t, err)
+			assignments, err := store.ListAssignments(ctx, run.GetRunId())
+			require.NoError(t, err)
+			assignment := assignments[0]
+			trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: tc.response, ToolCalls: tc.calls}
+			body, err := SealAgentTrace(trace)
+			require.NoError(t, err)
+			require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), assignment.GetAssignmentId(), body))
+			result := &evalv1.EvaluationAssignmentResult{RunId: run.GetRunId(), AssignmentId: assignment.GetAssignmentId(), LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED}
+			category, err := ScenarioCategoryForAssignment(req.Catalog, assignment)
+			require.NoError(t, err)
+			request, err := coordinator.buildAssignmentResultPublishRequest(ctx, run, req.Catalog, req.ScenarioArtifacts, assignment, result, category, "unverified", "transcript-oversized", nil)
+			require.NoError(t, err)
+			var envelope struct {
+				Record map[string]json.RawMessage `json:"record"`
+			}
+			require.NoError(t, json.Unmarshal(request.Body, &envelope))
+			require.NotContains(t, envelope.Record, "role_transcripts")
 		})
 	}
 }

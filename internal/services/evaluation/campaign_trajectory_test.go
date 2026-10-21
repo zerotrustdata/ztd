@@ -8,6 +8,7 @@
 package evaluation
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -62,4 +63,15 @@ func TestValidateToolCall_ShellCommandScreensTheWholeCommandLine(t *testing.T) {
 	ok, detail = validateToolCall(call, validators, ws)
 	assert.False(t, ok)
 	assert.Contains(t, detail, `forbidden term ">"`)
+}
+
+// The content-check rule quotes grader detail of unbounded length, so only the
+// private sentence carries it; the public sentence stays within the 512-byte
+// public failure_reason bound.
+func TestFailureSentences_PublicContentCheckOmitsRuleDetail(t *testing.T) {
+	rule := strings.Repeat("missing required term \"severity\"; ", 40)
+	view := agentGradingView{Trace: &AgentTrace{FinalOutput: "classified"}}
+	private, public := failureSentences(ScenarioToolExpectations{}, ScenarioGoldCriteria{}, trajectoryResult{Passed: true}, false, rule, view)
+	assert.Contains(t, private, rule)
+	assert.Equal(t, "The answer failed the content check.", public)
 }

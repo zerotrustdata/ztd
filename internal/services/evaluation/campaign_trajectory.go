@@ -593,9 +593,11 @@ func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria,
 			pubMid = privMid
 		}
 	} else if !contentCheckPassed {
-		s := fmt.Sprintf("The answer failed the content check: %s.", contentFailingRule)
-		privMid = s
-		pubMid = s
+		// The failing rule quotes grader detail of unbounded length; the public
+		// grade summary already carries it verbatim, so the bounded public
+		// sentence names only the failed check.
+		privMid = fmt.Sprintf("The answer failed the content check: %s.", contentFailingRule)
+		pubMid = "The answer failed the content check."
 	}
 
 	privateReason = privOpening + privMid

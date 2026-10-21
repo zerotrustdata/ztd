@@ -9,6 +9,7 @@ package eval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -244,7 +245,10 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		NoAutoBind: opts.NoAutoBind,
 		JSONOutput: opts.JSONOutput,
 	})
-	if err != nil {
+	// A publication failure leaves every result persisted, so the run still
+	// verifies; the failure is returned once verification has run.
+	publicationErr := err
+	if err != nil && !errors.Is(err, constants.ErrEvaluationPublicationFailed) {
 		return result, err
 	}
 	result.Executed = executed
@@ -252,11 +256,11 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Executed %d assignment(s) for run %s\n", executed, runID)
 	}
 	if !opts.Verify {
-		return result, nil
+		return result, publicationErr
 	}
 	report, err := verifyRun(cmd, deps, store, runID, opts.RequireObservation, opts.RequireProvenance, opts.Publish, opts.JSONOutput)
 	if err != nil {
-		return result, err
+		return result, errors.Join(err, publicationErr)
 	}
 	result.Report = report
 	if !opts.JSONOutput {
@@ -266,9 +270,9 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		}
 	}
 	if report.GetFailureCount() > 0 {
-		return result, constants.ErrEvalRunVerificationFailed
+		return result, errors.Join(constants.ErrEvalRunVerificationFailed, publicationErr)
 	}
-	return result, nil
+	return result, publicationErr
 }
 
 func witnessPolicy(strict bool) evalv1.EvaluationWitnessPolicy {
@@ -419,12 +423,13 @@ An archived run cannot be resumed.`,
 					}
 				},
 			})
-			if err != nil {
+			publicationErr := err
+			if err != nil && !errors.Is(err, constants.ErrEvaluationPublicationFailed) {
 				return err
 			}
 			if !jsonOutput {
 				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Executed %d assignment(s) for run %s\n", executed, runID)
-				return err
+				return errors.Join(err, publicationErr)
 			}
 			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
@@ -438,7 +443,7 @@ An archived run cannot be resumed.`,
 			if remaining < 0 {
 				remaining = 0
 			}
-			return output.WriteJSON(cmd.OutOrStdout(), runResumeJSON{RunID: runID, Executed: executed, Remaining: remaining, Results: results})
+			return errors.Join(output.WriteJSON(cmd.OutOrStdout(), runResumeJSON{RunID: runID, Executed: executed, Remaining: remaining, Results: results}), publicationErr)
 		},
 	}
 	cmd.Flags().Uint32Var(&limit, "limit", 1, "Maximum queued assignments to execute in this invocation")
