@@ -26,17 +26,17 @@
 
 ### TribunalIntentRequest
 TribunalIntentRequest is the body of POST /api/v1/operators/intents. The
-Gateway&#39;s Tribunal turns one plain-language command intent into an audited
-shell command through governed INFERENCE dispatches, then dispatches that
-command to the target Operator as an ordinary governed EXECUTE_BASH. The
+Gateway&#39;s Tribunal reviews typed run_shell_command arguments through governed
+INFERENCE dispatches, then dispatches the approved bytes to the target
+Operator as an ordinary governed MCP_CALL. The
 Tribunal acts in front of envelope construction; it never supplies or
 replaces an L2 quorum proof or an L3 approval.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| request | [string](#string) |  | Plain-language description of the single command to run. Required. |
-| guidelines | [string](#string) |  | Constraints the command must satisfy. |
+| request | [string](#string) |  | Canonical JSON proposed run_shell_command arguments. Required. |
+| guidelines | [string](#string) |  | Orchestration constraints that each member must follow. |
 | working_directory | [string](#string) |  | Execution context shown to the panel. Empty os and shell use the Tribunal defaults. |
 | os | [string](#string) |  |  |
 | shell | [string](#string) |  |  |
@@ -45,7 +45,7 @@ replaces an L2 quorum proof or an L3 approval.
 | investigation_id | [string](#string) |  |  |
 | task_id | [string](#string) |  |  |
 | cli_session_id | [string](#string) |  |  |
-| execution_id | [string](#string) |  | execution_id and timeout_seconds become the CommandRequested fields of the dispatched EXECUTE_BASH. |
+| execution_id | [string](#string) |  | execution_id is carried by the dispatched McpCallRequested. The Gateway merges timeout_seconds into the reviewed RunShellCommandArguments. |
 | timeout_seconds | [int32](#int32) |  |  |
 | member_inference | [ztd.operator.v1.InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest) |  | member_inference is the template for every member call. The Gateway sets messages and provider_attempt_id per call; the template must leave messages, tools, provider_attempt_id, acting_app_id and stream empty. |
 | provider_attempt_prefix | [string](#string) |  | provider_attempt_prefix names the member calls: call n (from 1, in deliberation order) uses provider_attempt_id &#34;&lt;prefix&gt;-&lt;n&gt;&#34;. Required and unique per intent, so the caller can bind each result to its request. |
@@ -66,7 +66,8 @@ TribunalIntentResult is the HTTP 200 body of POST /api/v1/operators/intents.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | outcome | [TribunalOutcome](#ztd-tribunal-v1-TribunalOutcome) |  |  |
-| command | [string](#string) |  | command is the audited command; set only when outcome is APPROVED. |
+| arguments | [ztd.operator.v1.RunShellCommandArguments](#ztd-operator-v1-RunShellCommandArguments) |  | arguments are the approved typed run_shell_command arguments. |
+| arguments_json | [string](#string) |  | arguments_json are the exact canonical bytes dispatched to the Operator. |
 | steps | [ztd.eval.v1.AgentStep](#ztd-eval-v1-AgentStep) | repeated | steps are the persona steps of the deliberation, in order. |
 | member_calls | [TribunalMemberCall](#ztd-tribunal-v1-TribunalMemberCall) | repeated | member_calls are the governed member inferences, in order. |
 | risk_rationale | [string](#string) |  | Marshal&#39;s rationale and feedback for a BLOCKED outcome. |

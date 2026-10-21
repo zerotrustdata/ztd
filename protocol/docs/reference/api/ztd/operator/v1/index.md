@@ -127,6 +127,7 @@
     - [RevokeCertificateResult](#ztd-operator-v1-RevokeCertificateResult)
     - [RevokePasskeyCredentialRequested](#ztd-operator-v1-RevokePasskeyCredentialRequested)
     - [RevokePasskeyCredentialResult](#ztd-operator-v1-RevokePasskeyCredentialResult)
+    - [RunShellCommandArguments](#ztd-operator-v1-RunShellCommandArguments)
     - [SetTargetContextRequested](#ztd-operator-v1-SetTargetContextRequested)
     - [SetTargetContextResult](#ztd-operator-v1-SetTargetContextResult)
     - [ShutdownRequested](#ztd-operator-v1-ShutdownRequested)
@@ -2659,6 +2660,25 @@ ReceiptPersistenceAttestation is the signed proof that a receipt signature was d
 | error | [string](#string) |  |  |
 | found | [bool](#bool) |  |  |
 | remaining | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-RunShellCommandArguments"></a>
+
+### RunShellCommandArguments
+RunShellCommandArguments is the shared typed argument contract for the
+run_shell_command MCP tool and Tribunal-authored commands.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| command | [string](#string) |  |  |
+| args | [string](#string) | repeated |  |
+| timeout | [int32](#int32) |  |  |
+| working_dir | [string](#string) |  |  |
 
 
 

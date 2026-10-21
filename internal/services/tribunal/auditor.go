@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -19,17 +20,20 @@ import (
 // fails closed.
 const auditorMaxAttempts = 2
 
-const auditorSystemPrompt = "You are the Auditor, the Tribunal's final technical gate. Check the selected shell command for correctness against the request, safe quoting, error handling, and portability.\n" +
-	"- APPROVE: the selected command (cluster_a) is correct as written.\n" +
-	"- REVISE: fix a flaw; put the complete corrected command in revised_command.\n" +
+const auditorSystemPrompt = "You are the Auditor, the Tribunal's final technical gate. Check the selected run_shell_command arguments for correctness against the request, safe argv construction, error handling, and portability. The executable runs directly without a shell; no pipes, &&, redirects, globs, or substitutions.\n" +
+	"- APPROVE: the selected arguments (cluster_a) are correct as written.\n" +
+	"- REVISE: fix a flaw; put the complete corrected argument object in revised_arguments.\n" +
 	"- SWAP: another cluster is better; name it in swap_to_cluster. Not allowed when the panel was unanimous.\n\n" +
-	`Answer with exactly one JSON object and nothing else: {"verdict": "APPROVE"|"REVISE"|"SWAP", "swap_to_cluster": "<cluster id for SWAP>", "revised_command": "<command for REVISE>", "rationale": "<why>"}`
+	`Answer with exactly one JSON object and nothing else: {"verdict": "APPROVE"|"REVISE"|"SWAP", "swap_to_cluster": "<cluster id for SWAP>", "revised_arguments": {"command": "...", "args": [...]}, "rationale": "<why>"}`
 
 type auditorAnswer struct {
-	Verdict        string `json:"verdict"`
-	SwapToCluster  string `json:"swap_to_cluster"`
-	RevisedCommand string `json:"revised_command"`
-	Rationale      string `json:"rationale"`
+	Verdict          string `json:"verdict"`
+	SwapToCluster    string `json:"swap_to_cluster"`
+	RevisedArguments *struct {
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
+	} `json:"revised_arguments"`
+	Rationale string `json:"rationale"`
 }
 
 // auditClusters labels the winner cluster_a and every other cluster after it
@@ -37,12 +41,12 @@ type auditorAnswer struct {
 func auditClusters(v Vote) []Cluster {
 	clusters := make([]Cluster, 0, len(v.Clusters))
 	for _, cluster := range v.Clusters {
-		if cluster.Command == v.Winner {
+		if cluster.Arguments.CanonicalJSON() == v.Winner.CanonicalJSON() {
 			clusters = append(clusters, cluster)
 		}
 	}
 	for _, cluster := range v.Clusters {
-		if cluster.Command != v.Winner {
+		if cluster.Arguments.CanonicalJSON() != v.Winner.CanonicalJSON() {
 			clusters = append(clusters, cluster)
 		}
 	}
@@ -61,7 +65,7 @@ func auditorPrompt(req Request, v Vote, clusters []Cluster) string {
 	}
 	fmt.Fprintf(&b, "\nVoting mode: %s\n\n<clusters>\n", mode)
 	for _, cluster := range clusters {
-		fmt.Fprintf(&b, "[%s] (support: %d)\n%s\n", cluster.ID, len(cluster.Members), cluster.Command)
+		fmt.Fprintf(&b, "[%s] (support: %d)\n%s\n", cluster.ID, len(cluster.Members), cluster.Arguments.CanonicalJSON())
 	}
 	b.WriteString("</clusters>\n\nGive your verdict on cluster_a.")
 	return b.String()
@@ -81,7 +85,7 @@ func audit(ctx context.Context, cfg Config, req Request, v Vote) (*Audit, error)
 		if err != nil {
 			return nil, fmt.Errorf("tribunal: auditor attempt %d: %w", attempt, err)
 		}
-		result, reason := auditVerdict(text, v, clusters)
+		result, reason := auditVerdict(text, v, clusters, req)
 		if result != nil {
 			return result, nil
 		}
@@ -92,38 +96,42 @@ func audit(ctx context.Context, cfg Config, req Request, v Vote) (*Audit, error)
 
 // auditVerdict validates one Auditor answer, returning the reason it is
 // invalid when it does not fit the vote.
-func auditVerdict(text string, v Vote, clusters []Cluster) (*Audit, string) {
+func auditVerdict(text string, v Vote, clusters []Cluster, req Request) (*Audit, string) {
 	var answer auditorAnswer
 	if err := decodeAnswer(text, &answer); err != nil {
 		return nil, err.Error()
 	}
 	rationale := strings.TrimSpace(answer.Rationale)
 	swap := strings.ToLower(strings.TrimSpace(answer.SwapToCluster))
-	revised := NormaliseCommand(answer.RevisedCommand)
+	var revised models.RunShellCommandRequest
+	if answer.RevisedArguments != nil && validCommandName(answer.RevisedArguments.Command) {
+		revised = models.RunShellCommandRequest{Command: answer.RevisedArguments.Command, Args: answer.RevisedArguments.Args, Timeout: req.TimeoutSeconds, WorkingDir: req.WorkingDirectory}
+	}
+	hasRevision := answer.RevisedArguments != nil
 	switch strings.ToUpper(strings.TrimSpace(answer.Verdict)) {
 	case "APPROVE":
-		if swap != "" || revised != "" {
+		if swap != "" || hasRevision {
 			return nil, "APPROVE carries a swap or revision"
 		}
-		return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, Command: v.Winner, Rationale: rationale}, ""
+		return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, Arguments: v.Winner, Rationale: rationale}, ""
 	case "REVISE":
-		if revised == "" {
-			return nil, "REVISE carries no revised_command"
+		if !hasRevision || revised.Command == "" {
+			return nil, "REVISE carries no valid revised_arguments"
 		}
 		if swap != "" {
 			return nil, "REVISE carries a swap_to_cluster"
 		}
-		return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_REVISE, Command: revised, Rationale: rationale}, ""
+		return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_REVISE, Arguments: revised, Rationale: rationale}, ""
 	case "SWAP":
 		if v.Unanimous() {
 			return nil, "SWAP is not allowed for a unanimous panel"
 		}
-		if revised != "" {
-			return nil, "SWAP carries a revised_command"
+		if hasRevision {
+			return nil, "SWAP carries revised_arguments"
 		}
 		for _, cluster := range clusters[1:] {
 			if cluster.ID == swap {
-				return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_SWAP, Command: cluster.Command, Rationale: rationale}, ""
+				return &Audit{Verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_SWAP, Arguments: cluster.Arguments, Rationale: rationale}, ""
 			}
 		}
 		return nil, fmt.Sprintf("SWAP names no alternative cluster %q", answer.SwapToCluster)

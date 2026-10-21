@@ -302,6 +302,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.1.3 Release Notes](../release_notes/v1.1.x/v1.1.3.md): v1.1.3 release scope and changes.
 - [v1.1.3 Compliance Evidence](../release_notes/v1.1.x/v1.1.3-compliance-evidence.md): Generated compliance evidence projection for v1.1.3.
 - [v1.1.3 Compliance Evidence CSV](../release_notes/v1.1.x/v1.1.3-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.1.3.
+- [v1.2.1 Release Notes](../release_notes/v1.2.x/v1.2.1.md): Unreleased single shell execution contract and evidence compatibility changes.
 - [v1.2.0 Release Notes](../release_notes/v1.2.x/v1.2.0.md): Release preparation draft; final qualification and signed compliance evidence pending.
 
 ## Procedures

@@ -1646,7 +1646,7 @@
         },
         "/api/v1/operators/intents": {
             "post": {
-                "description": "Platform-internal endpoint (mTLS, app workload). The Gateway's Tribunal turns a\nplain-language command intent into one audited shell command through governed\ninference, then dispatches it to the target Operator as an ordinary governed\nEXECUTE_BASH. Under ratify or notary posture the command dispatch is suspended\nuntil a human approves or denies it. The Gateway never mints the approval proof.",
+                "description": "Platform-internal endpoint (mTLS, app workload). The Gateway's Tribunal turns a\nplain-language command intent into one audited shell command through governed\ninference, then dispatches it to the target Operator as an ordinary governed\nMCP_CALL run_shell_command. Under ratify or notary posture the command dispatch is suspended\nuntil a human approves or denies it. The Gateway never mints the approval proof.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6061,6 +6061,26 @@
                 }
             }
         },
+        "operatorv1.RunShellCommandArguments": {
+            "type": "object",
+            "properties": {
+                "args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "command": {
+                    "type": "string"
+                },
+                "timeout": {
+                    "type": "integer"
+                },
+                "working_dir": {
+                    "type": "string"
+                }
+            }
+        },
         "protocol.AttestationFormat": {
             "type": "string",
             "enum": [
@@ -6591,11 +6611,11 @@
                     "type": "string"
                 },
                 "execution_id": {
-                    "description": "execution_id and timeout_seconds become the CommandRequested fields of the\ndispatched EXECUTE_BASH.",
+                    "description": "execution_id is carried by the dispatched McpCallRequested. The Gateway\nmerges timeout_seconds into the reviewed RunShellCommandArguments.",
                     "type": "string"
                 },
                 "guidelines": {
-                    "description": "Constraints the command must satisfy.",
+                    "description": "Orchestration constraints that each member must follow.",
                     "type": "string"
                 },
                 "investigation_id": {
@@ -6617,7 +6637,7 @@
                     "type": "string"
                 },
                 "request": {
-                    "description": "Plain-language description of the single command to run. Required.",
+                    "description": "Canonical JSON proposed run_shell_command arguments. Required.",
                     "type": "string"
                 },
                 "shell": {
@@ -6654,16 +6674,24 @@
         "tribunalv1.TribunalIntentResult": {
             "type": "object",
             "properties": {
+                "arguments": {
+                    "description": "arguments are the approved typed run_shell_command arguments.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.RunShellCommandArguments"
+                        }
+                    ]
+                },
+                "arguments_json": {
+                    "description": "arguments_json are the exact canonical bytes dispatched to the Operator.",
+                    "type": "string"
+                },
                 "audit_failure": {
                     "description": "audit_failure explains an AUDIT_FAILED outcome.",
                     "type": "string"
                 },
-                "command": {
-                    "description": "command is the audited command; set only when outcome is APPROVED.",
-                    "type": "string"
-                },
                 "commandOutcome": {
-                    "description": "The governed EXECUTE_BASH outcome of an approved command.\n\nTypes that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
+                    "description": "The governed MCP_CALL outcome of an approved run_shell_command.\n\nTypes that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
                 },
                 "member_calls": {
                     "description": "member_calls are the governed member inferences, in order.",

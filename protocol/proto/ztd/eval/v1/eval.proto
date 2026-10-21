@@ -568,10 +568,9 @@ message EvaluationScenarioDefinition {
   repeated ModelCampaignRole eligible_roles = 14;
   EvaluationTrajectoryPolicy trajectory_policy = 15;
   PromptHint prompt_hint = 16;
-  // tribunal_commands declares run_commands_with_operator intent-only: the
-  // model states the request and the Tribunal deliberation writes the
-  // command, which then runs through L1-L5 like any other. Unset, the model
-  // authors the command itself. The frozen catalog digest binds the choice.
+  // tribunal_commands routes run_shell_command through Tribunal authoring.
+  // Unset, the model calls the native tool directly. The frozen catalog digest
+  // binds the choice.
   bool tribunal_commands = 17;
 }
 
@@ -1537,7 +1536,8 @@ message ResponderOutput {
 }
 
 message CandidateOutput {
-  string command = 1;
+  reserved 1;
+  ztd.operator.v1.RunShellCommandArguments arguments = 2;
 }
 
 message CandidateVote {
@@ -1561,7 +1561,8 @@ message RiskOutput {
 
 message ReviewOutput {
   AgentReviewVerdict verdict = 1;
-  string command = 2;        // the command after review
+  reserved 2;
+  ztd.operator.v1.RunShellCommandArguments arguments = 3;
 }
 
 message MemoryOutput {

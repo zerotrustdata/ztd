@@ -4850,10 +4850,9 @@ type EvaluationScenarioDefinition struct {
 	EligibleRoles    []ModelCampaignRole        `protobuf:"varint,14,rep,packed,name=eligible_roles,json=eligibleRoles,proto3,enum=ztd.eval.v1.ModelCampaignRole" json:"eligible_roles,omitempty"`
 	TrajectoryPolicy EvaluationTrajectoryPolicy `protobuf:"varint,15,opt,name=trajectory_policy,json=trajectoryPolicy,proto3,enum=ztd.eval.v1.EvaluationTrajectoryPolicy" json:"trajectory_policy,omitempty"`
 	PromptHint       *PromptHint                `protobuf:"bytes,16,opt,name=prompt_hint,json=promptHint,proto3" json:"prompt_hint,omitempty"`
-	// tribunal_commands declares run_commands_with_operator intent-only: the
-	// model states the request and the Tribunal deliberation writes the
-	// command, which then runs through L1-L5 like any other. Unset, the model
-	// authors the command itself. The frozen catalog digest binds the choice.
+	// tribunal_commands routes run_shell_command through Tribunal authoring.
+	// Unset, the model calls the native tool directly. The frozen catalog digest
+	// binds the choice.
 	TribunalCommands bool `protobuf:"varint,17,opt,name=tribunal_commands,json=tribunalCommands,proto3" json:"tribunal_commands,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -11745,8 +11744,8 @@ func (x *ResponderOutput) GetReply() string {
 }
 
 type CandidateOutput struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Command       string                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
+	state         protoimpl.MessageState        `protogen:"open.v1"`
+	Arguments     *v11.RunShellCommandArguments `protobuf:"bytes,2,opt,name=arguments,proto3" json:"arguments,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11781,11 +11780,11 @@ func (*CandidateOutput) Descriptor() ([]byte, []int) {
 	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{88}
 }
 
-func (x *CandidateOutput) GetCommand() string {
+func (x *CandidateOutput) GetArguments() *v11.RunShellCommandArguments {
 	if x != nil {
-		return x.Command
+		return x.Arguments
 	}
-	return ""
+	return nil
 }
 
 type CandidateVote struct {
@@ -11977,9 +11976,9 @@ func (x *RiskOutput) GetBlocked() bool {
 }
 
 type ReviewOutput struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Verdict       AgentReviewVerdict     `protobuf:"varint,1,opt,name=verdict,proto3,enum=ztd.eval.v1.AgentReviewVerdict" json:"verdict,omitempty"`
-	Command       string                 `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"` // the command after review
+	state         protoimpl.MessageState        `protogen:"open.v1"`
+	Verdict       AgentReviewVerdict            `protobuf:"varint,1,opt,name=verdict,proto3,enum=ztd.eval.v1.AgentReviewVerdict" json:"verdict,omitempty"`
+	Arguments     *v11.RunShellCommandArguments `protobuf:"bytes,3,opt,name=arguments,proto3" json:"arguments,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12021,11 +12020,11 @@ func (x *ReviewOutput) GetVerdict() AgentReviewVerdict {
 	return AgentReviewVerdict_AGENT_REVIEW_VERDICT_UNSPECIFIED
 }
 
-func (x *ReviewOutput) GetCommand() string {
+func (x *ReviewOutput) GetArguments() *v11.RunShellCommandArguments {
 	if x != nil {
-		return x.Command
+		return x.Arguments
 	}
-	return ""
+	return nil
 }
 
 type MemoryOutput struct {
@@ -13499,9 +13498,9 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x18\n" +
 	"\aposture\x18\x03 \x01(\tR\aposture\"'\n" +
 	"\x0fResponderOutput\x12\x14\n" +
-	"\x05reply\x18\x01 \x01(\tR\x05reply\"+\n" +
-	"\x0fCandidateOutput\x12\x18\n" +
-	"\acommand\x18\x01 \x01(\tR\acommand\"Y\n" +
+	"\x05reply\x18\x01 \x01(\tR\x05reply\"`\n" +
+	"\x0fCandidateOutput\x12G\n" +
+	"\targuments\x18\x02 \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targumentsJ\x04\b\x01\x10\x02\"Y\n" +
 	"\rCandidateVote\x12\x1f\n" +
 	"\vvoter_label\x18\x01 \x01(\tR\n" +
 	"voterLabel\x12'\n" +
@@ -13517,10 +13516,10 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\fsubject_kind\x18\x01 \x01(\tR\vsubjectKind\x12\x18\n" +
 	"\asubject\x18\x02 \x01(\tR\asubject\x12/\n" +
 	"\x04risk\x18\x03 \x01(\x0e2\x1b.ztd.eval.v1.AgentRiskLevelR\x04risk\x12\x18\n" +
-	"\ablocked\x18\x04 \x01(\bR\ablocked\"c\n" +
+	"\ablocked\x18\x04 \x01(\bR\ablocked\"\x98\x01\n" +
 	"\fReviewOutput\x129\n" +
-	"\averdict\x18\x01 \x01(\x0e2\x1f.ztd.eval.v1.AgentReviewVerdictR\averdict\x12\x18\n" +
-	"\acommand\x18\x02 \x01(\tR\acommand\"/\n" +
+	"\averdict\x18\x01 \x01(\x0e2\x1f.ztd.eval.v1.AgentReviewVerdictR\averdict\x12G\n" +
+	"\targuments\x18\x03 \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targumentsJ\x04\b\x02\x10\x03\"/\n" +
 	"\fMemoryOutput\x12\x1f\n" +
 	"\vmemory_text\x18\x01 \x01(\tR\n" +
 	"memoryText\"#\n" +
@@ -14066,6 +14065,7 @@ var file_ztd_eval_v1_eval_proto_goTypes = []any{
 	(*v11.ActionReceipt)(nil),                     // 154: ztd.operator.v1.ActionReceipt
 	(*v11.GovernanceRejection)(nil),               // 155: ztd.operator.v1.GovernanceRejection
 	(*v11.IngressRefusal)(nil),                    // 156: ztd.operator.v1.IngressRefusal
+	(*v11.RunShellCommandArguments)(nil),          // 157: ztd.operator.v1.RunShellCommandArguments
 }
 var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	24,  // 0: ztd.eval.v1.EvaluationRuntimeBoundary.component:type_name -> ztd.eval.v1.EvaluationRuntimeComponent
@@ -14327,31 +14327,33 @@ var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	23,  // 256: ztd.eval.v1.ConformanceVerdictSet.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
 	44,  // 257: ztd.eval.v1.ConformanceVerdictSet.suite_verdict:type_name -> ztd.eval.v1.ConformanceSuiteVerdict
 	135, // 258: ztd.eval.v1.ConformanceVerdictSet.verdicts:type_name -> ztd.eval.v1.ConformanceVerdict
-	140, // 259: ztd.eval.v1.VoteOutput.votes:type_name -> ztd.eval.v1.CandidateVote
-	46,  // 260: ztd.eval.v1.RiskOutput.risk:type_name -> ztd.eval.v1.AgentRiskLevel
-	47,  // 261: ztd.eval.v1.ReviewOutput.verdict:type_name -> ztd.eval.v1.AgentReviewVerdict
-	45,  // 262: ztd.eval.v1.AgentStep.role:type_name -> ztd.eval.v1.AgentRole
-	1,   // 263: ztd.eval.v1.AgentStep.resolved_tier:type_name -> ztd.eval.v1.ModelCampaignRole
-	9,   // 264: ztd.eval.v1.AgentStep.call_class:type_name -> ztd.eval.v1.EvaluationCallClassification
-	137, // 265: ztd.eval.v1.AgentStep.router:type_name -> ztd.eval.v1.RouterOutput
-	138, // 266: ztd.eval.v1.AgentStep.responder:type_name -> ztd.eval.v1.ResponderOutput
-	139, // 267: ztd.eval.v1.AgentStep.candidate:type_name -> ztd.eval.v1.CandidateOutput
-	141, // 268: ztd.eval.v1.AgentStep.vote:type_name -> ztd.eval.v1.VoteOutput
-	142, // 269: ztd.eval.v1.AgentStep.risk:type_name -> ztd.eval.v1.RiskOutput
-	143, // 270: ztd.eval.v1.AgentStep.review:type_name -> ztd.eval.v1.ReviewOutput
-	144, // 271: ztd.eval.v1.AgentStep.memory:type_name -> ztd.eval.v1.MemoryOutput
-	145, // 272: ztd.eval.v1.AgentStep.title:type_name -> ztd.eval.v1.TitleOutput
-	146, // 273: ztd.eval.v1.AgentTrace.steps:type_name -> ztd.eval.v1.AgentStep
-	48,  // 274: ztd.eval.v1.AgentTrace.finish_reason:type_name -> ztd.eval.v1.AgentFinishReason
-	50,  // 275: ztd.eval.v1.ContainmentBreach.breach_class:type_name -> ztd.eval.v1.ContainmentBreachClass
-	49,  // 276: ztd.eval.v1.ContainmentResult.verdict:type_name -> ztd.eval.v1.ContainmentVerdict
-	148, // 277: ztd.eval.v1.ContainmentResult.breaches:type_name -> ztd.eval.v1.ContainmentBreach
-	124, // 278: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry.value:type_name -> ztd.eval.v1.PublicLiveMetricValue
-	279, // [279:279] is the sub-list for method output_type
-	279, // [279:279] is the sub-list for method input_type
-	279, // [279:279] is the sub-list for extension type_name
-	279, // [279:279] is the sub-list for extension extendee
-	0,   // [0:279] is the sub-list for field type_name
+	157, // 259: ztd.eval.v1.CandidateOutput.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
+	140, // 260: ztd.eval.v1.VoteOutput.votes:type_name -> ztd.eval.v1.CandidateVote
+	46,  // 261: ztd.eval.v1.RiskOutput.risk:type_name -> ztd.eval.v1.AgentRiskLevel
+	47,  // 262: ztd.eval.v1.ReviewOutput.verdict:type_name -> ztd.eval.v1.AgentReviewVerdict
+	157, // 263: ztd.eval.v1.ReviewOutput.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
+	45,  // 264: ztd.eval.v1.AgentStep.role:type_name -> ztd.eval.v1.AgentRole
+	1,   // 265: ztd.eval.v1.AgentStep.resolved_tier:type_name -> ztd.eval.v1.ModelCampaignRole
+	9,   // 266: ztd.eval.v1.AgentStep.call_class:type_name -> ztd.eval.v1.EvaluationCallClassification
+	137, // 267: ztd.eval.v1.AgentStep.router:type_name -> ztd.eval.v1.RouterOutput
+	138, // 268: ztd.eval.v1.AgentStep.responder:type_name -> ztd.eval.v1.ResponderOutput
+	139, // 269: ztd.eval.v1.AgentStep.candidate:type_name -> ztd.eval.v1.CandidateOutput
+	141, // 270: ztd.eval.v1.AgentStep.vote:type_name -> ztd.eval.v1.VoteOutput
+	142, // 271: ztd.eval.v1.AgentStep.risk:type_name -> ztd.eval.v1.RiskOutput
+	143, // 272: ztd.eval.v1.AgentStep.review:type_name -> ztd.eval.v1.ReviewOutput
+	144, // 273: ztd.eval.v1.AgentStep.memory:type_name -> ztd.eval.v1.MemoryOutput
+	145, // 274: ztd.eval.v1.AgentStep.title:type_name -> ztd.eval.v1.TitleOutput
+	146, // 275: ztd.eval.v1.AgentTrace.steps:type_name -> ztd.eval.v1.AgentStep
+	48,  // 276: ztd.eval.v1.AgentTrace.finish_reason:type_name -> ztd.eval.v1.AgentFinishReason
+	50,  // 277: ztd.eval.v1.ContainmentBreach.breach_class:type_name -> ztd.eval.v1.ContainmentBreachClass
+	49,  // 278: ztd.eval.v1.ContainmentResult.verdict:type_name -> ztd.eval.v1.ContainmentVerdict
+	148, // 279: ztd.eval.v1.ContainmentResult.breaches:type_name -> ztd.eval.v1.ContainmentBreach
+	124, // 280: ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry.value:type_name -> ztd.eval.v1.PublicLiveMetricValue
+	281, // [281:281] is the sub-list for method output_type
+	281, // [281:281] is the sub-list for method input_type
+	281, // [281:281] is the sub-list for extension type_name
+	281, // [281:281] is the sub-list for extension extendee
+	0,   // [0:281] is the sub-list for field type_name
 }
 
 func init() { file_ztd_eval_v1_eval_proto_init() }

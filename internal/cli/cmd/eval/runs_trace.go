@@ -190,8 +190,8 @@ func writeRunTrace(out io.Writer, view runTraceView, full bool) {
 	_, _ = fmt.Fprintln(out)
 }
 
-// writeTribunalCalls prints the Tribunal inferences one intent-only
-// run_commands_with_operator call dispatched before its command ran.
+// writeTribunalCalls prints the Tribunal inferences for one authored
+// run_shell_command call.
 func writeTribunalCalls(out io.Writer, trace *evaluation.AgentTrace, toolCallID string) {
 	for _, call := range trace.ModelCalls {
 		if call.IsTurn() || call.ToolCallID != toolCallID {

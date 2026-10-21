@@ -12,6 +12,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/investigation"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -157,7 +158,7 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 		"read_file",
 		"fs_disk_profile",
 		"log_stream_filter",
-		agentToolRunCommands,
+		constants.MCPToolRunShellCommand,
 		"audit_receipt_list",
 	}
 

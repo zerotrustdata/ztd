@@ -1360,10 +1360,6 @@
       "revoke_intent_permission": {
         "_go_const": "ZtdToolNameRevokeIntent",
         "value": "revoke_intent_permission"
-      },
-      "run_commands_with_operator": {
-        "_go_const": "ZtdToolNameRunCommands",
-        "value": "run_commands_with_operator"
       }
     },
     "operator_type": {

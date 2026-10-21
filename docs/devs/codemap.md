@@ -266,7 +266,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | :--- | :--- |
 | Identity and enrollment | PKI, bootstrap, CLI recovery, CLI rotation, CLI refresh, CLI session, enrollment token, user, session, passkey, platform enrollment |
 | Data and audit | Data, signer, audit |
-| Operators and dispatch | Operator, dispatch, inference dispatch, tribunal intent |
+| Operators and dispatch | Operator, dispatch, inference dispatch, Tribunal authoring of typed `run_shell_command` arguments for governed `MCP_CALL` |
 | Streams and ingress | SSE, MCP, pub/sub |
 | Governance and admin | Governance, health, admin |
 | Observation and publication | Observe, observe producer, public feed, eval campaign publication, provider observation, model provenance |

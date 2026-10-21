@@ -296,7 +296,7 @@ describe('AssignmentDetailView', () => {
             availability: 'observed',
             records: [
               {
-                tool_label: 'run_commands_with_operator',
+                tool_label: 'run_shell_command',
                 recognized: true,
                 selected: false,
                 permission_compliant: true,
@@ -315,7 +315,7 @@ describe('AssignmentDetailView', () => {
 
     expect(screen.getByRole('heading', { name: 'What the model did' })).toBeInTheDocument();
     expect(screen.getByText('Tool activity was published; the response transcript is unavailable')).toBeInTheDocument();
-    expect(screen.getByText(/Considered but did not select run_commands_with_operator — Pass/)).toBeInTheDocument();
+    expect(screen.getByText(/Considered but did not select run_shell_command — Pass/)).toBeInTheDocument();
     expect(screen.getByText(/Result: Completed · not verified/)).toBeInTheDocument();
     expect(screen.queryByText(/No free-text response or tool activity was captured/)).not.toBeInTheDocument();
   });

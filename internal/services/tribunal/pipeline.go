@@ -12,16 +12,17 @@ import (
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-// Run deliberates one intent-only command request: a sealed generation round
+// Run deliberates one intent-only run_shell_command request: a sealed generation round
 // and vote, one anonymized regeneration round and revote when the first has
 // no winner, Marshal's risk assessment of the winner, and the Auditor's
-// review. When the Auditor changes the command, Marshal assesses the changed
-// command before it is approved, so an approved command is always one Marshal
+// review. When the Auditor changes the arguments, Marshal assesses the changed
+// arguments before approval, so the approved set is always one Marshal
 // has classified. Steps are indexed from startIndex+1. A deliberation that
-// ends without an approved command is a Result with its Outcome, not an
+// ends without approved arguments is a Result with its Outcome, not an
 // error; only an inference failure returns an error.
 func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Result, error) {
 	if cfg.Inferer == nil {
@@ -37,7 +38,7 @@ func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Resu
 	result.Candidates = candidates
 	steps.candidates(candidates)
 	result.Vote = vote(1, candidates)
-	if result.Vote.Winner == "" {
+	if result.Vote.Winner.Command == "" {
 		candidates, err = generate(ctx, cfg, req, 2, result.Vote.Clusters)
 		if err != nil {
 			return nil, err
@@ -47,7 +48,7 @@ func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Resu
 		result.Vote = vote(2, candidates)
 	}
 	steps.vote(result.Vote, candidates)
-	if result.Vote.Winner == "" {
+	if result.Vote.Winner.Command == "" {
 		result.Outcome = OutcomeNoConsensus
 		result.Steps = steps.steps
 		return result, nil
@@ -74,12 +75,12 @@ func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Resu
 		result.Steps = steps.steps
 		return result, nil
 	}
-	if result.Audit.Command != result.Vote.Winner {
-		result.Risk, err = assessRisk(ctx, cfg, req, result.Audit.Command)
+	if result.Audit.Arguments.CanonicalJSON() != result.Vote.Winner.CanonicalJSON() {
+		result.Risk, err = assessRisk(ctx, cfg, req, result.Audit.Arguments)
 		if err != nil {
 			return nil, err
 		}
-		steps.risk(result.Audit.Command, result.Risk)
+		steps.risk(result.Audit.Arguments, result.Risk)
 		if result.Risk.Blocked() {
 			result.Outcome = OutcomeBlocked
 			result.Steps = steps.steps
@@ -88,7 +89,8 @@ func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Resu
 	}
 	result.Steps = steps.steps
 	result.Outcome = OutcomeApproved
-	result.Command = result.Audit.Command
+	result.Arguments = result.Audit.Arguments
+	result.ArgumentsJSON = result.Arguments.CanonicalJSON()
 	return result, nil
 }
 
@@ -118,7 +120,7 @@ func (s *stepRecorder) add(role evalv1.AgentRole, persona string, output func(*e
 func (s *stepRecorder) candidates(candidates []Candidate) {
 	for _, candidate := range candidates {
 		s.add(evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR, string(candidate.Member), func(step *evalv1.AgentStep) {
-			step.Output = &evalv1.AgentStep_Candidate{Candidate: &evalv1.CandidateOutput{Command: candidate.Command}}
+			step.Output = &evalv1.AgentStep_Candidate{Candidate: &evalv1.CandidateOutput{Arguments: candidate.Arguments.Proto()}}
 		})
 	}
 }
@@ -128,23 +130,23 @@ func (s *stepRecorder) candidates(candidates []Candidate) {
 func (s *stepRecorder) vote(v Vote, candidates []Candidate) {
 	votes := make([]*evalv1.CandidateVote, 0, len(candidates))
 	for _, candidate := range candidates {
-		votes = append(votes, &evalv1.CandidateVote{VoterLabel: string(candidate.Member), CandidateLabel: candidate.Command})
+		votes = append(votes, &evalv1.CandidateVote{VoterLabel: string(candidate.Member), CandidateLabel: candidate.Arguments.CanonicalJSON()})
 	}
 	s.add(evalv1.AgentRole_AGENT_ROLE_CANDIDATE_VOTER, PersonaVoter, func(step *evalv1.AgentStep) {
 		step.Output = &evalv1.AgentStep_Vote{Vote: &evalv1.VoteOutput{
 			Votes:            votes,
 			Rounds:           v.Round,
-			ConsensusReached: v.Winner != "",
-			SelectedCommand:  v.Winner,
+			ConsensusReached: v.Winner.Command != "",
+			SelectedCommand:  v.Winner.CanonicalJSON(),
 		}}
 	})
 }
 
-func (s *stepRecorder) risk(command string, risk *Risk) {
+func (s *stepRecorder) risk(arguments models.RunShellCommandRequest, risk *Risk) {
 	s.add(evalv1.AgentRole_AGENT_ROLE_RISK_ANALYST, PersonaMarshal, func(step *evalv1.AgentStep) {
 		step.Output = &evalv1.AgentStep_Risk{Risk: &evalv1.RiskOutput{
 			SubjectKind: "command",
-			Subject:     command,
+			Subject:     arguments.CanonicalJSON(),
 			Risk:        risk.Level.Proto(),
 			Blocked:     risk.Blocked(),
 		}}
@@ -153,6 +155,6 @@ func (s *stepRecorder) risk(command string, risk *Risk) {
 
 func (s *stepRecorder) review(audit *Audit) {
 	s.add(evalv1.AgentRole_AGENT_ROLE_REVIEWER, PersonaAuditor, func(step *evalv1.AgentStep) {
-		step.Output = &evalv1.AgentStep_Review{Review: &evalv1.ReviewOutput{Verdict: audit.Verdict, Command: audit.Command}}
+		step.Output = &evalv1.AgentStep_Review{Review: &evalv1.ReviewOutput{Verdict: audit.Verdict, Arguments: audit.Arguments.Proto()}}
 	})
 }

@@ -10,6 +10,7 @@ package evaluation
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -136,7 +137,7 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 		_, _, calls := agentResponseParts(turn.InferenceResult.InferenceResult)
 		found := false
 		for _, requested := range calls {
-			arguments, err := canonicalizeToolJSON(requested.GetArgumentsJson())
+			arguments, err := canonicalAgentToolArguments(requested.GetName(), requested.GetArgumentsJson())
 			if err != nil {
 				arguments = "{}" // The executor records malformed arguments as an empty object.
 			}
@@ -148,8 +149,46 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 		if !found {
 			return fmt.Errorf("tool call differs from the signed model request: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 		}
+		if tool.ApprovedArgumentsJSON != "" {
+			var approved models.RunShellCommandRequest
+			if err := json.Unmarshal([]byte(tool.ApprovedArgumentsJSON), &approved); err != nil || approved.Command == "" || approved.CanonicalJSON() != tool.ApprovedArgumentsJSON {
+				return fmt.Errorf("approved shell arguments are not canonical typed JSON: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+			}
+			matchedReview := false
+			for _, step := range trace.Steps {
+				if review := step.GetReview(); review != nil && models.RunShellCommandRequestFromProto(review.GetArguments()).CanonicalJSON() == tool.ApprovedArgumentsJSON {
+					matchedReview = true
+					break
+				}
+			}
+			if !matchedReview {
+				return fmt.Errorf("approved shell arguments differ from every typed Tribunal review: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+			}
+		}
 	}
 	return nil
+}
+
+func canonicalAgentToolArguments(tool, raw string) (string, error) {
+	if tool != constants.MCPToolRunShellCommand {
+		return canonicalizeToolJSON(raw)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil || fields == nil {
+		return canonicalizeToolJSON(raw)
+	}
+	for name := range fields {
+		switch name {
+		case "command", "args", "timeout", "working_dir", "hostnames":
+		default:
+			return canonicalizeToolJSON(raw)
+		}
+	}
+	var request models.RunShellCommandRequest
+	if err := json.Unmarshal([]byte(raw), &request); err != nil {
+		return canonicalizeToolJSON(raw)
+	}
+	return request.CanonicalJSON(), nil
 }
 
 // verifyObservationEvidence returns the ledger claims for the observer receipts
@@ -408,6 +447,9 @@ func verifyToolCallEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, c
 		return nil, nil
 	}
 	receipt := call.Receipt.ActionReceipt
+	if call.ApprovedArgumentsJSON != "" && (call.ActionType != string(constants.ActionTypeMcpCall) || receipt.GetActionType() != string(constants.ActionTypeMcpCall)) {
+		return nil, fmt.Errorf("approved Tribunal arguments are not bound to an MCP_CALL receipt: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
 	outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt)
 	if err != nil {
 		return nil, err

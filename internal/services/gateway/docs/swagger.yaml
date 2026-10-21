@@ -2729,6 +2729,19 @@ definitions:
       transaction_id:
         type: string
     type: object
+  operatorv1.RunShellCommandArguments:
+    properties:
+      args:
+        items:
+          type: string
+        type: array
+      command:
+        type: string
+      timeout:
+        type: integer
+      working_dir:
+        type: string
+    type: object
   protocol.AttestationFormat:
     enum:
     - packed
@@ -3146,11 +3159,11 @@ definitions:
         type: string
       execution_id:
         description: |-
-          execution_id and timeout_seconds become the CommandRequested fields of the
-          dispatched EXECUTE_BASH.
+          execution_id is carried by the dispatched McpCallRequested. The Gateway
+          merges timeout_seconds into the reviewed RunShellCommandArguments.
         type: string
       guidelines:
-        description: Constraints the command must satisfy.
+        description: Orchestration constraints that each member must follow.
         type: string
       investigation_id:
         type: string
@@ -3170,7 +3183,7 @@ definitions:
           unique per intent, so the caller can bind each result to its request.
         type: string
       request:
-        description: Plain-language description of the single command to run. Required.
+        description: Canonical JSON proposed run_shell_command arguments. Required.
         type: string
       shell:
         type: string
@@ -3197,14 +3210,19 @@ definitions:
     type: object
   tribunalv1.TribunalIntentResult:
     properties:
+      arguments:
+        allOf:
+        - $ref: '#/definitions/operatorv1.RunShellCommandArguments'
+        description: arguments are the approved typed run_shell_command arguments.
+      arguments_json:
+        description: arguments_json are the exact canonical bytes dispatched to the
+          Operator.
+        type: string
       audit_failure:
         description: audit_failure explains an AUDIT_FAILED outcome.
         type: string
-      command:
-        description: command is the audited command; set only when outcome is APPROVED.
-        type: string
       commandOutcome:
-        description: "The governed EXECUTE_BASH outcome of an approved command.\n\nTypes
+        description: "The governed MCP_CALL outcome of an approved run_shell_command.\n\nTypes
           that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
       member_calls:
         description: member_calls are the governed member inferences, in order.
@@ -4462,7 +4480,7 @@ paths:
         Platform-internal endpoint (mTLS, app workload). The Gateway's Tribunal turns a
         plain-language command intent into one audited shell command through governed
         inference, then dispatches it to the target Operator as an ordinary governed
-        EXECUTE_BASH. Under ratify or notary posture the command dispatch is suspended
+        MCP_CALL run_shell_command. Under ratify or notary posture the command dispatch is suspended
         until a human approves or denies it. The Gateway never mints the approval proof.
       parameters:
       - description: Command intent and member inference template

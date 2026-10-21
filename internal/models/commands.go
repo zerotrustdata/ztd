@@ -8,6 +8,7 @@
 package models
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -48,6 +49,37 @@ type RunShellCommandRequest struct {
 // space-joined line that safety and doctrine checks screen.
 func (r RunShellCommandRequest) CommandLine() string {
 	return strings.Join(append([]string{r.Command}, r.Args...), " ")
+}
+
+// CanonicalJSON returns the stable JSON representation of this request.
+// Hostnames are retained when supplied; Tribunal authoring rejects them
+// because the shared typed protocol contract intentionally excludes hosts.
+func (r RunShellCommandRequest) CanonicalJSON() string {
+	// This fixed struct contains only JSON-safe scalar and slice types, so
+	// json.Marshal cannot fail.
+	b, _ := json.Marshal(r)
+	return string(b)
+}
+
+// Proto converts the native request to the shared execution argument type.
+// Hostnames are intentionally not represented in that shared contract.
+func (r RunShellCommandRequest) Proto() *operatorv1.RunShellCommandArguments {
+	return &operatorv1.RunShellCommandArguments{
+		Command: r.Command, Args: append([]string(nil), r.Args...),
+		Timeout: int32(r.Timeout), WorkingDir: r.WorkingDir,
+	}
+}
+
+// RunShellCommandRequestFromProto converts shared typed arguments to the
+// native tool request.
+func RunShellCommandRequestFromProto(p *operatorv1.RunShellCommandArguments) RunShellCommandRequest {
+	if p == nil {
+		return RunShellCommandRequest{}
+	}
+	return RunShellCommandRequest{
+		Command: p.Command, Args: append([]string(nil), p.Args...),
+		Timeout: int(p.Timeout), WorkingDir: p.WorkingDir,
+	}
 }
 
 // ExecutionResult is the domain type for command execution results.

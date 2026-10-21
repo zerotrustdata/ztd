@@ -178,8 +178,10 @@ func validateScenarioToolNames(blueprint ScenarioBlueprint, catalog *agentToolCa
 
 func validateScenarioToolSets(blueprint ScenarioBlueprint) error {
 	allowed := stringSet(blueprint.AllowedTools)
-	if _, ok := allowed[agentToolRunCommands]; blueprint.TribunalCommands != ok {
-		return scenarioContractError(blueprint, "%q is allowed exactly when tribunal commands are declared", agentToolRunCommands)
+	if blueprint.TribunalCommands {
+		if _, ok := allowed[constants.MCPToolRunShellCommand]; !ok {
+			return scenarioContractError(blueprint, "tribunal commands require allowed tool %q", constants.MCPToolRunShellCommand)
+		}
 	}
 	for _, name := range blueprint.ExpectedTools {
 		if _, ok := allowed[name]; !ok {

@@ -15,6 +15,15 @@ import "ztd/common/v1/common.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
+// RunShellCommandArguments is the shared typed argument contract for the
+// run_shell_command MCP tool and Tribunal-authored commands.
+message RunShellCommandArguments {
+  string command = 1;
+  repeated string args = 2;
+  int32 timeout = 3;
+  string working_dir = 4;
+}
+
 // Execution status enum for command and operation results
 enum ExecutionStatus {
   EXECUTION_STATUS_UNSPECIFIED = 0;

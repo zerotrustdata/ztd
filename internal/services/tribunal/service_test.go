@@ -76,7 +76,7 @@ func (f *fakeMemberDispatcher) answer(req *operatorv1.InferenceDispatchRequest) 
 			if strings.Contains(user, "did not agree in round 1") {
 				round = 2
 			}
-			return StageGenerate, f.generate(round, member)
+			return StageGenerate, proposalAnswer(f.generate(round, member))
 		}
 	}
 	return "", ""
@@ -131,7 +131,7 @@ func TestDeliberateApproved(t *testing.T) {
 	result, err := NewService(dispatcher).Deliberate(context.Background(), intentRequest(template))
 	require.NoError(t, err)
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED, result.GetOutcome())
-	assert.Equal(t, "ss -tlpn", result.GetCommand())
+	assert.Equal(t, "ss -tlpn", result.GetArguments().GetCommand()+" "+strings.Join(result.GetArguments().GetArgs(), " "))
 	assert.NotEmpty(t, result.GetSteps())
 
 	// Five generations, one marshal call, one audit call.
@@ -189,7 +189,7 @@ func TestDeliberateMemberFailure(t *testing.T) {
 			result, err := NewService(dispatcher).Deliberate(context.Background(), intentRequest(memberTemplate()))
 			require.NoError(t, err)
 			assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_INFERENCE_FAILED, result.GetOutcome())
-			assert.Empty(t, result.GetCommand())
+			assert.Empty(t, result.GetArguments().GetCommand())
 
 			calls := result.GetMemberCalls()
 			require.Len(t, calls, len(dispatcher.requests))
@@ -212,7 +212,7 @@ func TestDeliberateBlocked(t *testing.T) {
 	result, err := NewService(dispatcher).Deliberate(context.Background(), intentRequest(memberTemplate()))
 	require.NoError(t, err)
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_BLOCKED, result.GetOutcome())
-	assert.Empty(t, result.GetCommand())
+	assert.Empty(t, result.GetArguments().GetCommand())
 	assert.Equal(t, "deletes /", result.GetRiskRationale())
 	assert.Equal(t, "scope the path", result.GetRiskFeedback())
 	assert.Empty(t, result.GetAuditFailure())
@@ -229,7 +229,7 @@ func TestDeliberateAuditFailed(t *testing.T) {
 	result, err := NewService(dispatcher).Deliberate(context.Background(), intentRequest(memberTemplate()))
 	require.NoError(t, err)
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED, result.GetOutcome())
-	assert.Empty(t, result.GetCommand())
+	assert.Empty(t, result.GetArguments().GetCommand())
 	assert.NotEmpty(t, result.GetAuditFailure())
 	assert.Empty(t, result.GetRiskRationale())
 	// The Auditor gets auditorMaxAttempts answers before the audit fails closed.

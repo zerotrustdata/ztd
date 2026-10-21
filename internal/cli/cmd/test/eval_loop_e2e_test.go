@@ -288,15 +288,16 @@ func (r *releaseSmokeRun) runEvalCampaigns(ctx context.Context, files fs.Runtime
 
 // Model-call purposes, the intent tool, and the scripted answers of the loop.
 const (
-	evalLoopScriptedModel   = "qwen3:4b"
-	evalLoopDirectAnswer    = "READY"
-	evalLoopIntentTool      = "run_commands_with_operator"
-	evalLoopPurposeTurn     = "agent_turn"
-	evalLoopPurposeGenerate = "tribunal_generate"
-	evalLoopPurposeMarshal  = "tribunal_marshal"
-	evalLoopPurposeAudit    = "tribunal_audit"
-	evalLoopTribunalCommand = "cat app/service.conf"
-	evalLoopTribunalAnswer  = "inventory-api listens on port 8081 in app/service.conf, but the upstream health check expects port 8080. Set listen_port = 8080 in the service configuration."
+	evalLoopScriptedModel    = "qwen3:4b"
+	evalLoopDirectAnswer     = "READY"
+	evalLoopIntentTool       = "run_shell_command"
+	evalLoopPurposeTurn      = "agent_turn"
+	evalLoopPurposeGenerate  = "tribunal_generate"
+	evalLoopPurposeMarshal   = "tribunal_marshal"
+	evalLoopPurposeAudit     = "tribunal_audit"
+	evalLoopTribunalProposal = `{"command":"cat","args":["app/service.conf"]}`
+	evalLoopTribunalCommand  = `{"command":"cat","args":["app/service.conf"]}`
+	evalLoopTribunalAnswer   = "inventory-api listens on port 8081 in app/service.conf, but the upstream health check expects port 8080. Set listen_port = 8080 in the service configuration."
 )
 
 // evalLoopReplies is the scripted provider's answer sequence for the whole loop,
@@ -306,7 +307,7 @@ const (
 func evalLoopReplies() []fixtures.OllamaReply {
 	replies := []fixtures.OllamaReply{
 		{Content: evalLoopDirectAnswer},
-		{ToolCalls: []fixtures.OllamaToolCall{{Name: evalLoopIntentTool, Arguments: json.RawMessage(`{"request": "print the configured port in the service config"}`)}}},
+		{ToolCalls: []fixtures.OllamaToolCall{{Name: evalLoopIntentTool, Arguments: json.RawMessage(evalLoopTribunalProposal)}}},
 	}
 	for range 5 {
 		replies = append(replies, fixtures.OllamaReply{Content: evalLoopTribunalCommand})
@@ -551,7 +552,7 @@ func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluat
 
 // verifyTribunalTrace checks the Tribunal campaign's trace: two agent turns, and
 // one intent tool call whose deliberation made five generations, one marshal
-// call and one audit call. The approved command ran as one governed EXECUTE_BASH.
+// call and one audit call. The approved arguments ran as one governed MCP_CALL.
 func verifyTribunalTrace(trace *evaluation.AgentTrace) error {
 	counts := make(map[string]int, len(trace.ModelCalls))
 	for _, call := range trace.ModelCalls {
@@ -571,8 +572,16 @@ func verifyTribunalTrace(trace *evaluation.AgentTrace) error {
 	if len(trace.ToolCalls) != 1 {
 		return fmt.Errorf("tribunal trace has %d tool calls, want 1: %w", len(trace.ToolCalls), constants.ErrValidationFailed)
 	}
-	if call := trace.ToolCalls[0]; call.ToolName != evalLoopIntentTool || call.ActionType != string(constants.ActionTypeExecuteBash) || call.Command != evalLoopTribunalCommand {
-		return fmt.Errorf("tribunal tool call %s %s %q: %w", call.ToolName, call.ActionType, call.Command, constants.ErrValidationFailed)
+	if call := trace.ToolCalls[0]; call.ToolName != evalLoopIntentTool || call.ActionType != string(constants.ActionTypeMcpCall) || call.ArgumentsJSON != evalLoopTribunalProposal {
+		return fmt.Errorf("tribunal tool call %s %s %q: %w", call.ToolName, call.ActionType, call.ArgumentsJSON, constants.ErrValidationFailed)
+	} else {
+		var approved struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		}
+		if err := json.Unmarshal([]byte(call.ApprovedArgumentsJSON), &approved); err != nil || approved.Command != "cat" || len(approved.Args) != 1 || approved.Args[0] != "app/service.conf" {
+			return fmt.Errorf("approved Tribunal arguments %q: %w", call.ApprovedArgumentsJSON, constants.ErrValidationFailed)
+		}
 	}
 	if trace.FinalOutput != evalLoopTribunalAnswer || len(trace.Steps) == 0 {
 		return fmt.Errorf("tribunal trace answer or steps: %w", constants.ErrValidationFailed)

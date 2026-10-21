@@ -9,11 +9,13 @@ package evaluation
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -23,23 +25,26 @@ import (
 
 // Model-visible answers for a deliberation that wrote no approved command.
 const (
-	tribunalNoConsensusError   = "ZTD-1607: Tool execution failed for run_commands_with_operator: the Tribunal reached no consensus on a command for this request; restate the request more specifically"
-	tribunalAuditFailedError   = "ZTD-1607: Tool execution failed for run_commands_with_operator: the Auditor could not review the Tribunal's command (%s)"
+	tribunalNoConsensusError   = "ZTD-1607: Tool execution failed for run_shell_command: the Tribunal reached no consensus on a command for this request; restate the request more specifically"
+	tribunalAuditFailedError   = "ZTD-1607: Tool execution failed for run_shell_command: the Auditor could not review the Tribunal's command (%s)"
 	tribunalMarshalBlocked     = "MARSHAL BLOCKED: %s (feedback: %s)"
 	tribunalMarshalConflict    = "AGENT CONFLICT: Marshal blocked command twice. Human intervention required."
-	tribunalInferenceFailedMsg = "ZTD-1607: Tool execution failed for run_commands_with_operator: Tribunal inference failed (%s)"
+	tribunalInferenceFailedMsg = "ZTD-1607: Tool execution failed for run_shell_command: Tribunal inference failed (%s)"
 )
 
-// runIntent runs one intent-only run_commands_with_operator call as a Tribunal
-// intent on the Gateway (POST /api/v1/operators/intents). The Gateway
+// runTribunal routes one run_shell_command proposal through Tribunal authoring
+// on the Gateway (POST /api/v1/operators/intents). The Gateway
 // deliberates over governed member inferences and dispatches only an approved
-// command, as an ordinary governed EXECUTE_BASH. Every member inference joins
+// command, as an ordinary governed MCP_CALL. Every member inference joins
 // the trace in deliberation order under the tool call that owns it, every
 // persona step joins the trace, and the command's governed answer is recorded
 // as a direct command's is. A deliberation that approves no command is a
 // model-visible failure; a member inference failure is also recorded as the
 // trace's provider failure, which ends the loop.
-func (r *agentRun) runIntent(ctx context.Context, record AgentToolCall, args agentToolArguments) (AgentToolCall, error) {
+func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, args agentToolArguments) (AgentToolCall, error) {
+	if len(args.Strings("hostnames")) > 0 {
+		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "run_shell_command Tribunal authoring does not accept hostnames"})
+	}
 	tier := r.designated
 	if IsHeterogeneousAssignment(r.req.Assignment) {
 		tier = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
@@ -57,9 +62,10 @@ func (r *agentRun) runIntent(ctx context.Context, record AgentToolCall, args age
 	// the acting app from the intent's mTLS identity.
 	template.Messages, template.ProviderAttemptId, template.ActingAppId = nil, "", ""
 	result, err := r.executor.inference.DispatchIntent(ctx, &tribunalv1.TribunalIntentRequest{
-		Request:                 strings.TrimSpace(args.String(agentToolArgRequest)),
-		Guidelines:              strings.TrimSpace(args.String(agentToolArgGuidelines)),
+		Request:                 record.ArgumentsJSON,
+		Guidelines:              "The agent proposed this run_shell_command call. Use one executable and argv only; no shell operators, pipelines, redirects, globs, or substitutions.",
 		WorkingDirectory:        r.workspace.OperatorWorkingDirectory,
+		TimeoutSeconds:          constants.DefaultShellCommandTimeout,
 		TargetOperatorSessionId: r.target.SessionID,
 		InvestigationId:         r.trace.InvestigationID,
 		TaskId:                  r.req.AttemptID,
@@ -79,7 +85,7 @@ func (r *agentRun) runIntent(ctx context.Context, record AgentToolCall, args age
 	switch result.GetOutcome() {
 	case tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED:
 		r.marshalStrikeCount = 0
-		return r.runApprovedCommand(record, result)
+		return r.runApprovedShellCommand(record, result)
 	case tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_BLOCKED:
 		r.marshalStrikeCount++
 		if r.marshalStrikeCount >= 2 {
@@ -97,20 +103,57 @@ func (r *agentRun) runIntent(ctx context.Context, record AgentToolCall, args age
 	}
 }
 
-// runApprovedCommand records the governed answer to the Tribunal's approved
+// runApprovedShellCommand records the governed answer to the Tribunal's approved
 // command on record, exactly as a direct command's answer is recorded.
-func (r *agentRun) runApprovedCommand(record AgentToolCall, result *tribunalv1.TribunalIntentResult) (AgentToolCall, error) {
-	record.Command = result.GetCommand()
-	record.ActionType = string(constants.ActionTypeExecuteBash)
-	dispatched, err := classifyToolDispatch(constants.ActionTypeExecuteBash, client.IntentCommandOutcome(result))
+func (r *agentRun) runApprovedShellCommand(record AgentToolCall, result *tribunalv1.TribunalIntentResult) (AgentToolCall, error) {
+	record.ApprovedArgumentsJSON = result.GetArgumentsJson()
+	record.ActionType = string(constants.ActionTypeMcpCall)
+	dispatched, err := classifyToolDispatch(constants.ActionTypeMcpCall, client.IntentCommandOutcome(result))
 	if err != nil {
 		return AgentToolCall{}, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
 	denied, err := r.recordDispatch(&record, dispatched)
-	if err != nil || denied {
+	if err != nil {
 		return record, err
 	}
-	return r.commandAnswer(record, record.Command, dispatched)
+	if denied {
+		if record.ArgumentsJSON != record.ApprovedArgumentsJSON {
+			return r.fail(record, agentToolFailure{ErrorType: record.ErrorType, Error: record.Error + "\nApproved arguments: " + record.ApprovedArgumentsJSON})
+		}
+		return record, nil
+	}
+	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
+		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(constants.MCPToolRunShellCommand, dispatched)})
+	}
+	summary := "{}"
+	if record.Receipt != nil && record.Receipt.ActionReceipt != nil && record.Receipt.GetResultSummary() != "" {
+		summary = record.Receipt.GetResultSummary()
+	}
+	failure, err := shellCommandFailure(summary)
+	if err != nil {
+		return AgentToolCall{}, err
+	}
+	if failure != nil {
+		if record.ArgumentsJSON != record.ApprovedArgumentsJSON {
+			failure.Error += "\nApproved arguments: " + record.ApprovedArgumentsJSON
+		}
+		return r.fail(record, *failure)
+	}
+	var resultValue mcp.RunShellCommandResult
+	if err := json.Unmarshal([]byte(summary), &resultValue); err != nil {
+		return AgentToolCall{}, fmt.Errorf("%w: decode %s result: %w", constants.ErrEvaluationDispatchFailed, constants.MCPToolRunShellCommand, err)
+	}
+	if record.ArgumentsJSON != record.ApprovedArgumentsJSON {
+		var approved models.RunShellCommandRequest
+		if err := json.Unmarshal([]byte(record.ApprovedArgumentsJSON), &approved); err != nil {
+			return AgentToolCall{}, fmt.Errorf("%w: decode approved %s arguments: %w", constants.ErrEvaluationDispatchFailed, constants.MCPToolRunShellCommand, err)
+		}
+		return r.succeed(record, struct {
+			ApprovedArguments models.RunShellCommandRequest `json:"approved_arguments"`
+			Result            mcp.RunShellCommandResult     `json:"result"`
+		}{ApprovedArguments: approved, Result: resultValue})
+	}
+	return r.succeed(record, resultValue)
 }
 
 // recordMemberCalls records each Tribunal member inference on the trace, as

@@ -21,7 +21,6 @@ import (
 
 // Agent tool names and error constants.
 const (
-	agentToolRunCommands         = "run_commands_with_operator"
 	agentToolErrorExecution      = "execution.error"
 	agentToolErrorSecurity       = "security.violation"
 	agentToolErrorPipeline       = "pipeline.outcome"
@@ -33,9 +32,7 @@ const (
 	investigationDataOperatorActions = "operator_actions"
 	investigationOperatorActor       = "ztdo"
 
-	agentToolArgCommand    = "command"
-	agentToolArgRequest    = "request"
-	agentToolArgGuidelines = "guidelines"
+	agentToolArgCommand = "command"
 )
 
 // agentToolSpec represents the contract of one tool declared to the model.
@@ -68,8 +65,7 @@ type agentToolCatalog struct {
 	declarations []*operatorv1.InferenceToolDeclaration
 }
 
-// newAgentToolCatalog initializes the catalog from production MCP native tools
-// and registers the intent-only deliberation tool.
+// newAgentToolCatalog initializes the catalog from production MCP native tools.
 func newAgentToolCatalog() (*agentToolCatalog, error) {
 	registry := mcp.NewToolRegistry()
 	if err := mcp.RegisterNativeTools(registry); err != nil {
@@ -113,28 +109,6 @@ func newAgentToolCatalog() (*agentToolCatalog, error) {
 		catalog.specs[name] = spec
 		catalog.declarations = append(catalog.declarations, decl)
 	}
-
-	// 2. Register the intent-only run_commands_with_operator; the Gateway's
-	// Tribunal writes the command. Model-written commands use the native
-	// run_shell_command tool.
-	intentProps := map[string]*mcp.PropertySchema{
-		agentToolArgRequest:    {Type: "string", Description: "Plain-language description of the single command to run."},
-		agentToolArgGuidelines: {Type: "string", Description: "Constraints the command must satisfy, for example no writes outside /srv."},
-	}
-	intentRequired := []string{agentToolArgRequest}
-	intentSpec := agentToolSpec{
-		Name:        agentToolRunCommands,
-		Description: "Run one shell command on an operator host under governance. Describe in request the single command you need and in guidelines any constraints it must satisfy; the Tribunal writes the command and it runs like any other governed command.",
-		Operator:    true,
-		Properties:  intentProps,
-		Required:    intentRequired,
-	}
-	intentDecl, err := buildInferenceToolDeclaration(agentToolRunCommands, intentSpec.Description, intentProps, intentRequired)
-	if err != nil {
-		return nil, fmt.Errorf("evaluation: agent tool catalog: build %s declaration: %w", agentToolRunCommands, err)
-	}
-	catalog.specs[agentToolRunCommands] = intentSpec
-	catalog.declarations = append(catalog.declarations, intentDecl)
 
 	// Sort declarations alphabetically by name for deterministic order
 	sort.Slice(catalog.declarations, func(i, j int) bool {
@@ -196,8 +170,10 @@ func (c *agentToolCatalog) ToolNames() []string {
 // Scope creates an agentToolScope matching scenario expectations.
 func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope, error) {
 	surface := stringSet(tools.AllowedTools)
-	if _, ok := surface[agentToolRunCommands]; tools.TribunalCommands != ok {
-		return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tribunal commands require exactly allowed tool %s: %w", agentToolRunCommands, constants.ErrEvaluationScenarioContractInvalid)
+	if tools.TribunalCommands {
+		if _, ok := surface[constants.MCPToolRunShellCommand]; !ok {
+			return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tribunal commands require allowed tool %s: %w", constants.MCPToolRunShellCommand, constants.ErrEvaluationScenarioContractInvalid)
+		}
 	}
 	for _, name := range tools.ForbiddenTools {
 		surface[name] = struct{}{}

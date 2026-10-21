@@ -5,12 +5,12 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-// Package tribunal turns one intent-only command request into one concrete
-// shell command by deliberation: a sealed five-member generation, a
+// Package tribunal turns one intent-only request into one typed
+// run_shell_command argument set by deliberation: a sealed five-member generation, a
 // deterministic vote with one anonymized regeneration round, Marshal's risk
 // block, and the Auditor's review. It owns no dispatch: every model call goes
 // through the caller's Inferer, which runs it as governed inference and
-// records its receipt. The chosen command then runs through real L1-L5
+// records its receipt. The chosen arguments then run through real L1-L5
 // governance like any other; the deliberation never stands in for an L2
 // quorum proof.
 package tribunal
@@ -18,6 +18,7 @@ package tribunal
 import (
 	"context"
 
+	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -134,23 +135,24 @@ type Request struct {
 	Request          string
 	Guidelines       string
 	WorkingDirectory string
+	TimeoutSeconds   int
 	OS               string
 	Shell            string
 }
 
-// Candidate is one member's proposal in one generation round.
+// Candidate is one member's typed proposal in one generation round.
 type Candidate struct {
-	Member  Member
-	Round   uint32
-	Command string
+	Member    Member
+	Round     uint32
+	Arguments models.RunShellCommandRequest
 }
 
-// Cluster is every member that proposed one normalized command, in member
+// Cluster is every member that proposed one canonical argument set, in member
 // order. ID is the anonymized label the cluster is shown under.
 type Cluster struct {
-	ID      string
-	Command string
-	Members []Member
+	ID        string
+	Arguments models.RunShellCommandRequest
+	Members   []Member
 }
 
 // Vote is the deterministic vote over one round's candidates.
@@ -159,13 +161,13 @@ type Vote struct {
 	Clusters []Cluster
 	// Winner is the selected command; empty when no cluster reached the
 	// minimum consensus or the tie-break ladder left a tie.
-	Winner string
+	Winner models.RunShellCommandRequest
 }
 
 // Unanimous reports whether every panel member proposed the winner.
 func (v Vote) Unanimous() bool {
 	for _, cluster := range v.Clusters {
-		if cluster.Command == v.Winner {
+		if cluster.Arguments.CanonicalJSON() == v.Winner.CanonicalJSON() {
 			return len(cluster.Members) == len(AllMembers)
 		}
 	}
@@ -188,7 +190,7 @@ func (r Risk) Blocked() bool { return r.Level == RiskHigh }
 // Audit is the Auditor's review of the vote winner.
 type Audit struct {
 	Verdict   evalv1.AgentReviewVerdict
-	Command   string
+	Arguments models.RunShellCommandRequest
 	Rationale string
 	// Failure explains why no valid verdict was given.
 	Failure string
@@ -198,9 +200,10 @@ type Audit struct {
 type Result struct {
 	Outcome Outcome
 	// Command is the command to dispatch; set only when Outcome is approved.
-	Command    string
-	Candidates []Candidate
-	Vote       Vote
+	Arguments     models.RunShellCommandRequest
+	ArgumentsJSON string
+	Candidates    []Candidate
+	Vote          Vote
 	// Risk is Marshal's latest assessment: of the vote winner, or of the
 	// Auditor's command when the Auditor changed it. Nil when no command was
 	// assessed.

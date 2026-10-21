@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -903,9 +904,26 @@ func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, to
 	if failure != nil {
 		return r.fail(record, *failure)
 	}
+	if spec.Name == constants.MCPToolRunShellCommand && r.req.ScenarioTools.TribunalCommands {
+		if _, hasHostnames := args.Values()["hostnames"]; hasHostnames {
+			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "run_shell_command Tribunal authoring does not accept hostnames"})
+		}
+		encoded, err := json.Marshal(args.Values())
+		if err != nil {
+			return AgentToolCall{}, fmt.Errorf("evaluation: encode proposed %s arguments: %w", spec.Name, err)
+		}
+		var proposal models.RunShellCommandRequest
+		if err := json.Unmarshal(encoded, &proposal); err != nil {
+			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("invalid %s proposal: %v", spec.Name, err)})
+		}
+		record.ArgumentsJSON = proposal.CanonicalJSON()
+	}
 	switch spec.Name {
-	case agentToolRunCommands:
-		return r.runIntent(ctx, record, args)
+	case constants.MCPToolRunShellCommand:
+		if r.req.ScenarioTools.TribunalCommands {
+			return r.runTribunal(ctx, record, args)
+		}
+		return r.runNativeMCPTool(ctx, record, spec.Name, args)
 	default:
 		return r.runNativeMCPTool(ctx, record, spec.Name, args)
 	}
@@ -938,9 +956,24 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, t
 	if tool == constants.MCPToolAuditReceiptList {
 		r.injectAuditReceiptListDefaults(args)
 	}
-	argsJSON, err := json.Marshal(args.Values())
-	if err != nil {
-		return AgentToolCall{}, fmt.Errorf("evaluation: encode %s arguments: %w", tool, err)
+	var argsJSON []byte
+	if tool == constants.MCPToolRunShellCommand {
+		encoded, err := json.Marshal(args.Values())
+		if err != nil {
+			return AgentToolCall{}, fmt.Errorf("evaluation: encode %s arguments: %w", tool, err)
+		}
+		var request models.RunShellCommandRequest
+		if err := json.Unmarshal(encoded, &request); err != nil {
+			return AgentToolCall{}, fmt.Errorf("evaluation: decode %s arguments: %w", tool, err)
+		}
+		argsJSON = []byte(request.CanonicalJSON())
+		record.ArgumentsJSON = string(argsJSON)
+	} else {
+		var err error
+		argsJSON, err = json.Marshal(args.Values())
+		if err != nil {
+			return AgentToolCall{}, fmt.Errorf("evaluation: encode %s arguments: %w", tool, err)
+		}
 	}
 	payload, err := proto.Marshal(&operatorv1.McpCallRequested{
 		ToolName:      tool,
@@ -994,6 +1027,11 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, t
 		if failure != nil {
 			return r.fail(record, *failure)
 		}
+		var result mcp.RunShellCommandResult
+		if err := json.Unmarshal([]byte(summary), &result); err != nil {
+			return AgentToolCall{}, fmt.Errorf("%w: decode %s result: %w", constants.ErrEvaluationDispatchFailed, tool, err)
+		}
+		return r.succeed(record, result)
 	}
 	canonical, err := canonicalizeToolJSON(summary)
 	if err == nil {
@@ -1088,14 +1126,6 @@ func agentDispatchErrorText(tool string, dispatched GovernedToolDispatch) string
 	return fmt.Sprintf("ZTD-1607: Tool execution failed for %s: %s", tool, reason)
 }
 
-type agentCommandResult struct {
-	Success    bool   `json:"success"`
-	Command    string `json:"command"`
-	ReturnCode int32  `json:"return_code"`
-	Stdout     string `json:"stdout"`
-	Stderr     string `json:"stderr"`
-}
-
 // shellCommandFailure returns the model-visible failure for a run_shell_command
 // result that did not run to a zero exit, or nil. The receipt is COMPLETED
 // either way: it records that the command ran, and the exit code is the
@@ -1116,38 +1146,6 @@ func shellCommandFailure(summary string) (*agentToolFailure, error) {
 		message = fmt.Sprintf("command exited with status %d", result.ExitCode)
 	}
 	return &agentToolFailure{ErrorType: agentToolErrorExecution, Error: truncateToolText(message)}, nil
-}
-
-// commandAnswer completes record with an admitted command's result: its
-// decoded output, or a model-visible failure when it did not run to a zero
-// exit.
-func (r *agentRun) commandAnswer(record AgentToolCall, command string, dispatched GovernedToolDispatch) (AgentToolCall, error) {
-	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
-		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(agentToolRunCommands, dispatched)})
-	}
-	result := &operatorv1.CommandResult{}
-	if len(dispatched.ResultPayload) == 0 {
-		return AgentToolCall{}, fmt.Errorf("%w: governed command response carries no result", constants.ErrEvaluationDispatchFailed)
-	}
-	if err := proto.Unmarshal(dispatched.ResultPayload, result); err != nil {
-		return AgentToolCall{}, fmt.Errorf("%w: decode command result: %v", constants.ErrEvaluationDispatchFailed, err)
-	}
-	answer := agentCommandResult{
-		Success: result.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED && result.GetReturnCode() == 0,
-		Command: command, ReturnCode: result.GetReturnCode(),
-		Stdout: truncateToolText(result.GetStdout()), Stderr: truncateToolText(result.GetStderr()),
-	}
-	if !answer.Success {
-		message := strings.TrimSpace(result.GetError())
-		if message == "" {
-			message = strings.TrimSpace(result.GetStderr())
-		}
-		if message == "" {
-			message = fmt.Sprintf("command exited with status %d", result.GetReturnCode())
-		}
-		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: truncateToolText(message)})
-	}
-	return r.succeed(record, answer)
 }
 
 func truncateToolText(text string) string {

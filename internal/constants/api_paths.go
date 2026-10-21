@@ -43,7 +43,7 @@ var APIPaths = struct {
 	OperatorsCommands string `json:"operators_commands"`
 	// OperatorsIntents is the Tribunal intent ingress: the Gateway deliberates
 	// a command intent through governed inference, then dispatches the audited
-	// command as an ordinary governed EXECUTE_BASH.
+	// arguments as a governed MCP_CALL run_shell_command.
 	OperatorsIntents string `json:"operators_intents"`
 	OperatorsStop    string `json:"operators_stop"`
 	// Inference dispatch route (ztdllama). Platform-internal endpoint on the

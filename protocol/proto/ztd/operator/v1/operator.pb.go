@@ -1266,6 +1266,76 @@ func (InferenceDispatchFailureCode) EnumDescriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{16}
 }
 
+// RunShellCommandArguments is the shared typed argument contract for the
+// run_shell_command MCP tool and Tribunal-authored commands.
+type RunShellCommandArguments struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Command       string                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
+	Args          []string               `protobuf:"bytes,2,rep,name=args,proto3" json:"args,omitempty"`
+	Timeout       int32                  `protobuf:"varint,3,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	WorkingDir    string                 `protobuf:"bytes,4,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunShellCommandArguments) Reset() {
+	*x = RunShellCommandArguments{}
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunShellCommandArguments) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunShellCommandArguments) ProtoMessage() {}
+
+func (x *RunShellCommandArguments) ProtoReflect() protoreflect.Message {
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunShellCommandArguments.ProtoReflect.Descriptor instead.
+func (*RunShellCommandArguments) Descriptor() ([]byte, []int) {
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *RunShellCommandArguments) GetCommand() string {
+	if x != nil {
+		return x.Command
+	}
+	return ""
+}
+
+func (x *RunShellCommandArguments) GetArgs() []string {
+	if x != nil {
+		return x.Args
+	}
+	return nil
+}
+
+func (x *RunShellCommandArguments) GetTimeout() int32 {
+	if x != nil {
+		return x.Timeout
+	}
+	return 0
+}
+
+func (x *RunShellCommandArguments) GetWorkingDir() string {
+	if x != nil {
+		return x.WorkingDir
+	}
+	return ""
+}
+
 // Payload for ztd.v1.operator.command.requested
 type CommandRequested struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1289,7 +1359,7 @@ type CommandRequested struct {
 
 func (x *CommandRequested) Reset() {
 	*x = CommandRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[0]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1301,7 +1371,7 @@ func (x *CommandRequested) String() string {
 func (*CommandRequested) ProtoMessage() {}
 
 func (x *CommandRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[0]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1314,7 +1384,7 @@ func (x *CommandRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandRequested.ProtoReflect.Descriptor instead.
 func (*CommandRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{0}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CommandRequested) GetCommand() string {
@@ -1375,7 +1445,7 @@ type CommandCancelRequested struct {
 
 func (x *CommandCancelRequested) Reset() {
 	*x = CommandCancelRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[1]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1387,7 +1457,7 @@ func (x *CommandCancelRequested) String() string {
 func (*CommandCancelRequested) ProtoMessage() {}
 
 func (x *CommandCancelRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[1]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1400,7 +1470,7 @@ func (x *CommandCancelRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandCancelRequested.ProtoReflect.Descriptor instead.
 func (*CommandCancelRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{1}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CommandCancelRequested) GetExecutionId() string {
@@ -1432,7 +1502,7 @@ type FileEditRequested struct {
 
 func (x *FileEditRequested) Reset() {
 	*x = FileEditRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[2]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1444,7 +1514,7 @@ func (x *FileEditRequested) String() string {
 func (*FileEditRequested) ProtoMessage() {}
 
 func (x *FileEditRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[2]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1457,7 +1527,7 @@ func (x *FileEditRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileEditRequested.ProtoReflect.Descriptor instead.
 func (*FileEditRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{2}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *FileEditRequested) GetFilePath() string {
@@ -1570,7 +1640,7 @@ type FsListRequested struct {
 
 func (x *FsListRequested) Reset() {
 	*x = FsListRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[3]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1582,7 +1652,7 @@ func (x *FsListRequested) String() string {
 func (*FsListRequested) ProtoMessage() {}
 
 func (x *FsListRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[3]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1595,7 +1665,7 @@ func (x *FsListRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FsListRequested.ProtoReflect.Descriptor instead.
 func (*FsListRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{3}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *FsListRequested) GetPath() string {
@@ -1637,7 +1707,7 @@ type FsReadRequested struct {
 
 func (x *FsReadRequested) Reset() {
 	*x = FsReadRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[4]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1649,7 +1719,7 @@ func (x *FsReadRequested) String() string {
 func (*FsReadRequested) ProtoMessage() {}
 
 func (x *FsReadRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[4]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1662,7 +1732,7 @@ func (x *FsReadRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FsReadRequested.ProtoReflect.Descriptor instead.
 func (*FsReadRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{4}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *FsReadRequested) GetPath() string {
@@ -1694,7 +1764,7 @@ type HeartbeatRequested struct {
 
 func (x *HeartbeatRequested) Reset() {
 	*x = HeartbeatRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[5]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1706,7 +1776,7 @@ func (x *HeartbeatRequested) String() string {
 func (*HeartbeatRequested) ProtoMessage() {}
 
 func (x *HeartbeatRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[5]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1719,7 +1789,7 @@ func (x *HeartbeatRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequested.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{5}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{6}
 }
 
 type FsGrepRequested struct {
@@ -1735,7 +1805,7 @@ type FsGrepRequested struct {
 
 func (x *FsGrepRequested) Reset() {
 	*x = FsGrepRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[6]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1747,7 +1817,7 @@ func (x *FsGrepRequested) String() string {
 func (*FsGrepRequested) ProtoMessage() {}
 
 func (x *FsGrepRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[6]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1760,7 +1830,7 @@ func (x *FsGrepRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FsGrepRequested.ProtoReflect.Descriptor instead.
 func (*FsGrepRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{6}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *FsGrepRequested) GetPath() string {
@@ -1810,7 +1880,7 @@ type CheckPortRequested struct {
 
 func (x *CheckPortRequested) Reset() {
 	*x = CheckPortRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[7]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1822,7 +1892,7 @@ func (x *CheckPortRequested) String() string {
 func (*CheckPortRequested) ProtoMessage() {}
 
 func (x *CheckPortRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[7]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1835,7 +1905,7 @@ func (x *CheckPortRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckPortRequested.ProtoReflect.Descriptor instead.
 func (*CheckPortRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{7}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CheckPortRequested) GetExecutionId() string {
@@ -1875,7 +1945,7 @@ type FetchLogsRequested struct {
 
 func (x *FetchLogsRequested) Reset() {
 	*x = FetchLogsRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[8]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1887,7 +1957,7 @@ func (x *FetchLogsRequested) String() string {
 func (*FetchLogsRequested) ProtoMessage() {}
 
 func (x *FetchLogsRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[8]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1900,7 +1970,7 @@ func (x *FetchLogsRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchLogsRequested.ProtoReflect.Descriptor instead.
 func (*FetchLogsRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{8}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *FetchLogsRequested) GetExecutionId() string {
@@ -1924,7 +1994,7 @@ type FetchHistoryRequested struct {
 
 func (x *FetchHistoryRequested) Reset() {
 	*x = FetchHistoryRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[9]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1936,7 +2006,7 @@ func (x *FetchHistoryRequested) String() string {
 func (*FetchHistoryRequested) ProtoMessage() {}
 
 func (x *FetchHistoryRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[9]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1949,7 +2019,7 @@ func (x *FetchHistoryRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchHistoryRequested.ProtoReflect.Descriptor instead.
 func (*FetchHistoryRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{9}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *FetchHistoryRequested) GetExecutionId() string {
@@ -2006,7 +2076,7 @@ type FetchFileHistoryRequested struct {
 
 func (x *FetchFileHistoryRequested) Reset() {
 	*x = FetchFileHistoryRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[10]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2018,7 +2088,7 @@ func (x *FetchFileHistoryRequested) String() string {
 func (*FetchFileHistoryRequested) ProtoMessage() {}
 
 func (x *FetchFileHistoryRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[10]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2031,7 +2101,7 @@ func (x *FetchFileHistoryRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchFileHistoryRequested.ProtoReflect.Descriptor instead.
 func (*FetchFileHistoryRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{10}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *FetchFileHistoryRequested) GetExecutionId() string {
@@ -2075,7 +2145,7 @@ type FetchFileDiffRequested struct {
 
 func (x *FetchFileDiffRequested) Reset() {
 	*x = FetchFileDiffRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[11]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2087,7 +2157,7 @@ func (x *FetchFileDiffRequested) String() string {
 func (*FetchFileDiffRequested) ProtoMessage() {}
 
 func (x *FetchFileDiffRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[11]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2100,7 +2170,7 @@ func (x *FetchFileDiffRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchFileDiffRequested.ProtoReflect.Descriptor instead.
 func (*FetchFileDiffRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{11}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *FetchFileDiffRequested) GetExecutionId() string {
@@ -2150,7 +2220,7 @@ type RestoreFileRequested struct {
 
 func (x *RestoreFileRequested) Reset() {
 	*x = RestoreFileRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[12]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2162,7 +2232,7 @@ func (x *RestoreFileRequested) String() string {
 func (*RestoreFileRequested) ProtoMessage() {}
 
 func (x *RestoreFileRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[12]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2175,7 +2245,7 @@ func (x *RestoreFileRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreFileRequested.ProtoReflect.Descriptor instead.
 func (*RestoreFileRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{12}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RestoreFileRequested) GetExecutionId() string {
@@ -2218,7 +2288,7 @@ type DirectCommandAuditRequested struct {
 
 func (x *DirectCommandAuditRequested) Reset() {
 	*x = DirectCommandAuditRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[13]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2230,7 +2300,7 @@ func (x *DirectCommandAuditRequested) String() string {
 func (*DirectCommandAuditRequested) ProtoMessage() {}
 
 func (x *DirectCommandAuditRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[13]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2243,7 +2313,7 @@ func (x *DirectCommandAuditRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirectCommandAuditRequested.ProtoReflect.Descriptor instead.
 func (*DirectCommandAuditRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{13}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DirectCommandAuditRequested) GetCommand() string {
@@ -2288,7 +2358,7 @@ type DirectCommandResultAuditRequested struct {
 
 func (x *DirectCommandResultAuditRequested) Reset() {
 	*x = DirectCommandResultAuditRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[14]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2300,7 +2370,7 @@ func (x *DirectCommandResultAuditRequested) String() string {
 func (*DirectCommandResultAuditRequested) ProtoMessage() {}
 
 func (x *DirectCommandResultAuditRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[14]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2313,7 +2383,7 @@ func (x *DirectCommandResultAuditRequested) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use DirectCommandResultAuditRequested.ProtoReflect.Descriptor instead.
 func (*DirectCommandResultAuditRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{14}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DirectCommandResultAuditRequested) GetCommand() string {
@@ -2367,7 +2437,7 @@ type AuditMsgRequested struct {
 
 func (x *AuditMsgRequested) Reset() {
 	*x = AuditMsgRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[15]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2379,7 +2449,7 @@ func (x *AuditMsgRequested) String() string {
 func (*AuditMsgRequested) ProtoMessage() {}
 
 func (x *AuditMsgRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[15]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2392,7 +2462,7 @@ func (x *AuditMsgRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditMsgRequested.ProtoReflect.Descriptor instead.
 func (*AuditMsgRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{15}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *AuditMsgRequested) GetContent() string {
@@ -2423,7 +2493,7 @@ type DocumentUpdateRequested struct {
 
 func (x *DocumentUpdateRequested) Reset() {
 	*x = DocumentUpdateRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[16]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2435,7 +2505,7 @@ func (x *DocumentUpdateRequested) String() string {
 func (*DocumentUpdateRequested) ProtoMessage() {}
 
 func (x *DocumentUpdateRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[16]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2448,7 +2518,7 @@ func (x *DocumentUpdateRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DocumentUpdateRequested.ProtoReflect.Descriptor instead.
 func (*DocumentUpdateRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{16}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DocumentUpdateRequested) GetCollection() string {
@@ -2495,7 +2565,7 @@ type DocumentDeleteRequested struct {
 
 func (x *DocumentDeleteRequested) Reset() {
 	*x = DocumentDeleteRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[17]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2507,7 +2577,7 @@ func (x *DocumentDeleteRequested) String() string {
 func (*DocumentDeleteRequested) ProtoMessage() {}
 
 func (x *DocumentDeleteRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[17]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2520,7 +2590,7 @@ func (x *DocumentDeleteRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DocumentDeleteRequested.ProtoReflect.Descriptor instead.
 func (*DocumentDeleteRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{17}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DocumentDeleteRequested) GetCollection() string {
@@ -2549,7 +2619,7 @@ type SignCertificateRequested struct {
 
 func (x *SignCertificateRequested) Reset() {
 	*x = SignCertificateRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[18]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2561,7 +2631,7 @@ func (x *SignCertificateRequested) String() string {
 func (*SignCertificateRequested) ProtoMessage() {}
 
 func (x *SignCertificateRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[18]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2574,7 +2644,7 @@ func (x *SignCertificateRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignCertificateRequested.ProtoReflect.Descriptor instead.
 func (*SignCertificateRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{18}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SignCertificateRequested) GetPublicKeyPem() string {
@@ -2617,7 +2687,7 @@ type SignCertificateResult struct {
 
 func (x *SignCertificateResult) Reset() {
 	*x = SignCertificateResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[19]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2629,7 +2699,7 @@ func (x *SignCertificateResult) String() string {
 func (*SignCertificateResult) ProtoMessage() {}
 
 func (x *SignCertificateResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[19]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2642,7 +2712,7 @@ func (x *SignCertificateResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignCertificateResult.ProtoReflect.Descriptor instead.
 func (*SignCertificateResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{19}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SignCertificateResult) GetSuccess() bool {
@@ -2683,7 +2753,7 @@ type RevokeCertificateRequested struct {
 
 func (x *RevokeCertificateRequested) Reset() {
 	*x = RevokeCertificateRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[20]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2695,7 +2765,7 @@ func (x *RevokeCertificateRequested) String() string {
 func (*RevokeCertificateRequested) ProtoMessage() {}
 
 func (x *RevokeCertificateRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[20]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2708,7 +2778,7 @@ func (x *RevokeCertificateRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeCertificateRequested.ProtoReflect.Descriptor instead.
 func (*RevokeCertificateRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{20}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *RevokeCertificateRequested) GetSerial() string {
@@ -2735,7 +2805,7 @@ type RevokeCertificateResult struct {
 
 func (x *RevokeCertificateResult) Reset() {
 	*x = RevokeCertificateResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[21]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2747,7 +2817,7 @@ func (x *RevokeCertificateResult) String() string {
 func (*RevokeCertificateResult) ProtoMessage() {}
 
 func (x *RevokeCertificateResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[21]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2760,7 +2830,7 @@ func (x *RevokeCertificateResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeCertificateResult.ProtoReflect.Descriptor instead.
 func (*RevokeCertificateResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{21}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RevokeCertificateResult) GetSuccess() bool {
@@ -2785,7 +2855,7 @@ type GetRevocationBundleRequested struct {
 
 func (x *GetRevocationBundleRequested) Reset() {
 	*x = GetRevocationBundleRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[22]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2797,7 +2867,7 @@ func (x *GetRevocationBundleRequested) String() string {
 func (*GetRevocationBundleRequested) ProtoMessage() {}
 
 func (x *GetRevocationBundleRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[22]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2810,7 +2880,7 @@ func (x *GetRevocationBundleRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRevocationBundleRequested.ProtoReflect.Descriptor instead.
 func (*GetRevocationBundleRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{22}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{23}
 }
 
 type GetRevocationBundleResult struct {
@@ -2825,7 +2895,7 @@ type GetRevocationBundleResult struct {
 
 func (x *GetRevocationBundleResult) Reset() {
 	*x = GetRevocationBundleResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[23]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2837,7 +2907,7 @@ func (x *GetRevocationBundleResult) String() string {
 func (*GetRevocationBundleResult) ProtoMessage() {}
 
 func (x *GetRevocationBundleResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[23]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2850,7 +2920,7 @@ func (x *GetRevocationBundleResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRevocationBundleResult.ProtoReflect.Descriptor instead.
 func (*GetRevocationBundleResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{23}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetRevocationBundleResult) GetSuccess() bool {
@@ -2896,7 +2966,7 @@ type CreateDeviceLinkRequested struct {
 
 func (x *CreateDeviceLinkRequested) Reset() {
 	*x = CreateDeviceLinkRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[24]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2908,7 +2978,7 @@ func (x *CreateDeviceLinkRequested) String() string {
 func (*CreateDeviceLinkRequested) ProtoMessage() {}
 
 func (x *CreateDeviceLinkRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[24]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2921,7 +2991,7 @@ func (x *CreateDeviceLinkRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDeviceLinkRequested.ProtoReflect.Descriptor instead.
 func (*CreateDeviceLinkRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{24}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CreateDeviceLinkRequested) GetUserId() string {
@@ -2992,7 +3062,7 @@ type DeviceLink struct {
 
 func (x *DeviceLink) Reset() {
 	*x = DeviceLink{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[25]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3004,7 +3074,7 @@ func (x *DeviceLink) String() string {
 func (*DeviceLink) ProtoMessage() {}
 
 func (x *DeviceLink) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[25]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3017,7 +3087,7 @@ func (x *DeviceLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceLink.ProtoReflect.Descriptor instead.
 func (*DeviceLink) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{25}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *DeviceLink) GetToken() string {
@@ -3109,7 +3179,7 @@ type DeviceLinkResult struct {
 
 func (x *DeviceLinkResult) Reset() {
 	*x = DeviceLinkResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[26]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3121,7 +3191,7 @@ func (x *DeviceLinkResult) String() string {
 func (*DeviceLinkResult) ProtoMessage() {}
 
 func (x *DeviceLinkResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[26]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3134,7 +3204,7 @@ func (x *DeviceLinkResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceLinkResult.ProtoReflect.Descriptor instead.
 func (*DeviceLinkResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{26}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DeviceLinkResult) GetSuccess() bool {
@@ -3174,7 +3244,7 @@ type ListDeviceLinksRequested struct {
 
 func (x *ListDeviceLinksRequested) Reset() {
 	*x = ListDeviceLinksRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[27]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3186,7 +3256,7 @@ func (x *ListDeviceLinksRequested) String() string {
 func (*ListDeviceLinksRequested) ProtoMessage() {}
 
 func (x *ListDeviceLinksRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[27]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3199,7 +3269,7 @@ func (x *ListDeviceLinksRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDeviceLinksRequested.ProtoReflect.Descriptor instead.
 func (*ListDeviceLinksRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{27}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ListDeviceLinksRequested) GetUserId() string {
@@ -3220,7 +3290,7 @@ type ListDeviceLinksResult struct {
 
 func (x *ListDeviceLinksResult) Reset() {
 	*x = ListDeviceLinksResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[28]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3232,7 +3302,7 @@ func (x *ListDeviceLinksResult) String() string {
 func (*ListDeviceLinksResult) ProtoMessage() {}
 
 func (x *ListDeviceLinksResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[28]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3245,7 +3315,7 @@ func (x *ListDeviceLinksResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDeviceLinksResult.ProtoReflect.Descriptor instead.
 func (*ListDeviceLinksResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{28}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ListDeviceLinksResult) GetSuccess() bool {
@@ -3279,7 +3349,7 @@ type DeleteDeviceLinkRequested struct {
 
 func (x *DeleteDeviceLinkRequested) Reset() {
 	*x = DeleteDeviceLinkRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[29]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3291,7 +3361,7 @@ func (x *DeleteDeviceLinkRequested) String() string {
 func (*DeleteDeviceLinkRequested) ProtoMessage() {}
 
 func (x *DeleteDeviceLinkRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[29]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3304,7 +3374,7 @@ func (x *DeleteDeviceLinkRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDeviceLinkRequested.ProtoReflect.Descriptor instead.
 func (*DeleteDeviceLinkRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{29}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *DeleteDeviceLinkRequested) GetToken() string {
@@ -3332,7 +3402,7 @@ type TerminateOperatorRequested struct {
 
 func (x *TerminateOperatorRequested) Reset() {
 	*x = TerminateOperatorRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[30]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3344,7 +3414,7 @@ func (x *TerminateOperatorRequested) String() string {
 func (*TerminateOperatorRequested) ProtoMessage() {}
 
 func (x *TerminateOperatorRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[30]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3357,7 +3427,7 @@ func (x *TerminateOperatorRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerminateOperatorRequested.ProtoReflect.Descriptor instead.
 func (*TerminateOperatorRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{30}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *TerminateOperatorRequested) GetOperatorId() string {
@@ -3392,7 +3462,7 @@ type TerminateOperatorResult struct {
 
 func (x *TerminateOperatorResult) Reset() {
 	*x = TerminateOperatorResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[31]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3404,7 +3474,7 @@ func (x *TerminateOperatorResult) String() string {
 func (*TerminateOperatorResult) ProtoMessage() {}
 
 func (x *TerminateOperatorResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[31]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3417,7 +3487,7 @@ func (x *TerminateOperatorResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerminateOperatorResult.ProtoReflect.Descriptor instead.
 func (*TerminateOperatorResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{31}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *TerminateOperatorResult) GetSuccess() bool {
@@ -3450,7 +3520,7 @@ type ListOperatorSlotsRequested struct {
 
 func (x *ListOperatorSlotsRequested) Reset() {
 	*x = ListOperatorSlotsRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[32]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3462,7 +3532,7 @@ func (x *ListOperatorSlotsRequested) String() string {
 func (*ListOperatorSlotsRequested) ProtoMessage() {}
 
 func (x *ListOperatorSlotsRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[32]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3475,7 +3545,7 @@ func (x *ListOperatorSlotsRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOperatorSlotsRequested.ProtoReflect.Descriptor instead.
 func (*ListOperatorSlotsRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{32}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ListOperatorSlotsRequested) GetUserId() string {
@@ -3496,7 +3566,7 @@ type ListOperatorSlotsResult struct {
 
 func (x *ListOperatorSlotsResult) Reset() {
 	*x = ListOperatorSlotsResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[33]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3508,7 +3578,7 @@ func (x *ListOperatorSlotsResult) String() string {
 func (*ListOperatorSlotsResult) ProtoMessage() {}
 
 func (x *ListOperatorSlotsResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[33]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3521,7 +3591,7 @@ func (x *ListOperatorSlotsResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOperatorSlotsResult.ProtoReflect.Descriptor instead.
 func (*ListOperatorSlotsResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{33}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ListOperatorSlotsResult) GetSuccess() bool {
@@ -3556,7 +3626,7 @@ type BindOperatorsRequested struct {
 
 func (x *BindOperatorsRequested) Reset() {
 	*x = BindOperatorsRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[34]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3568,7 +3638,7 @@ func (x *BindOperatorsRequested) String() string {
 func (*BindOperatorsRequested) ProtoMessage() {}
 
 func (x *BindOperatorsRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[34]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3581,7 +3651,7 @@ func (x *BindOperatorsRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BindOperatorsRequested.ProtoReflect.Descriptor instead.
 func (*BindOperatorsRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{34}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *BindOperatorsRequested) GetOperatorIds() []string {
@@ -3619,7 +3689,7 @@ type BindOperatorsResult struct {
 
 func (x *BindOperatorsResult) Reset() {
 	*x = BindOperatorsResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[35]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3631,7 +3701,7 @@ func (x *BindOperatorsResult) String() string {
 func (*BindOperatorsResult) ProtoMessage() {}
 
 func (x *BindOperatorsResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[35]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3644,7 +3714,7 @@ func (x *BindOperatorsResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BindOperatorsResult.ProtoReflect.Descriptor instead.
 func (*BindOperatorsResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{35}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *BindOperatorsResult) GetSuccess() bool {
@@ -3700,7 +3770,7 @@ type UnbindOperatorsRequested struct {
 
 func (x *UnbindOperatorsRequested) Reset() {
 	*x = UnbindOperatorsRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[36]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3712,7 +3782,7 @@ func (x *UnbindOperatorsRequested) String() string {
 func (*UnbindOperatorsRequested) ProtoMessage() {}
 
 func (x *UnbindOperatorsRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[36]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3725,7 +3795,7 @@ func (x *UnbindOperatorsRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnbindOperatorsRequested.ProtoReflect.Descriptor instead.
 func (*UnbindOperatorsRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{36}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *UnbindOperatorsRequested) GetOperatorIds() []string {
@@ -3763,7 +3833,7 @@ type UnbindOperatorsResult struct {
 
 func (x *UnbindOperatorsResult) Reset() {
 	*x = UnbindOperatorsResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[37]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3775,7 +3845,7 @@ func (x *UnbindOperatorsResult) String() string {
 func (*UnbindOperatorsResult) ProtoMessage() {}
 
 func (x *UnbindOperatorsResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[37]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3788,7 +3858,7 @@ func (x *UnbindOperatorsResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnbindOperatorsResult.ProtoReflect.Descriptor instead.
 func (*UnbindOperatorsResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{37}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *UnbindOperatorsResult) GetSuccess() bool {
@@ -3844,7 +3914,7 @@ type SetTargetContextRequested struct {
 
 func (x *SetTargetContextRequested) Reset() {
 	*x = SetTargetContextRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[38]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3856,7 +3926,7 @@ func (x *SetTargetContextRequested) String() string {
 func (*SetTargetContextRequested) ProtoMessage() {}
 
 func (x *SetTargetContextRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[38]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3869,7 +3939,7 @@ func (x *SetTargetContextRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetTargetContextRequested.ProtoReflect.Descriptor instead.
 func (*SetTargetContextRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{38}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *SetTargetContextRequested) GetOperatorId() string {
@@ -3904,7 +3974,7 @@ type SetTargetContextResult struct {
 
 func (x *SetTargetContextResult) Reset() {
 	*x = SetTargetContextResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[39]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3916,7 +3986,7 @@ func (x *SetTargetContextResult) String() string {
 func (*SetTargetContextResult) ProtoMessage() {}
 
 func (x *SetTargetContextResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[39]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3929,7 +3999,7 @@ func (x *SetTargetContextResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetTargetContextResult.ProtoReflect.Descriptor instead.
 func (*SetTargetContextResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{39}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *SetTargetContextResult) GetSuccess() bool {
@@ -3989,7 +4059,7 @@ type OperatorRuntimeConfig struct {
 
 func (x *OperatorRuntimeConfig) Reset() {
 	*x = OperatorRuntimeConfig{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[40]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4001,7 +4071,7 @@ func (x *OperatorRuntimeConfig) String() string {
 func (*OperatorRuntimeConfig) ProtoMessage() {}
 
 func (x *OperatorRuntimeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[40]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4014,7 +4084,7 @@ func (x *OperatorRuntimeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OperatorRuntimeConfig.ProtoReflect.Descriptor instead.
 func (*OperatorRuntimeConfig) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{40}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *OperatorRuntimeConfig) GetCloudMode() bool {
@@ -4169,7 +4239,7 @@ type OperatorDocument struct {
 
 func (x *OperatorDocument) Reset() {
 	*x = OperatorDocument{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[41]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4181,7 +4251,7 @@ func (x *OperatorDocument) String() string {
 func (*OperatorDocument) ProtoMessage() {}
 
 func (x *OperatorDocument) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[41]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4194,7 +4264,7 @@ func (x *OperatorDocument) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OperatorDocument.ProtoReflect.Descriptor instead.
 func (*OperatorDocument) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{41}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *OperatorDocument) GetId() string {
@@ -4444,7 +4514,7 @@ type ShutdownRequested struct {
 
 func (x *ShutdownRequested) Reset() {
 	*x = ShutdownRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[42]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4456,7 +4526,7 @@ func (x *ShutdownRequested) String() string {
 func (*ShutdownRequested) ProtoMessage() {}
 
 func (x *ShutdownRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[42]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4469,7 +4539,7 @@ func (x *ShutdownRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownRequested.ProtoReflect.Descriptor instead.
 func (*ShutdownRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{42}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ShutdownRequested) GetReason() string {
@@ -4495,7 +4565,7 @@ type EvalAnswerRequested struct {
 
 func (x *EvalAnswerRequested) Reset() {
 	*x = EvalAnswerRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[43]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4507,7 +4577,7 @@ func (x *EvalAnswerRequested) String() string {
 func (*EvalAnswerRequested) ProtoMessage() {}
 
 func (x *EvalAnswerRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[43]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4520,7 +4590,7 @@ func (x *EvalAnswerRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvalAnswerRequested.ProtoReflect.Descriptor instead.
 func (*EvalAnswerRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{43}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *EvalAnswerRequested) GetPromptId() string {
@@ -4573,7 +4643,7 @@ type McpCallRequested struct {
 
 func (x *McpCallRequested) Reset() {
 	*x = McpCallRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[44]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4585,7 +4655,7 @@ func (x *McpCallRequested) String() string {
 func (*McpCallRequested) ProtoMessage() {}
 
 func (x *McpCallRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[44]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4598,7 +4668,7 @@ func (x *McpCallRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use McpCallRequested.ProtoReflect.Descriptor instead.
 func (*McpCallRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{44}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *McpCallRequested) GetToolName() string {
@@ -4637,7 +4707,7 @@ type A2ACallRequested struct {
 
 func (x *A2ACallRequested) Reset() {
 	*x = A2ACallRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[45]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4649,7 +4719,7 @@ func (x *A2ACallRequested) String() string {
 func (*A2ACallRequested) ProtoMessage() {}
 
 func (x *A2ACallRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[45]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4662,7 +4732,7 @@ func (x *A2ACallRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use A2ACallRequested.ProtoReflect.Descriptor instead.
 func (*A2ACallRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{45}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *A2ACallRequested) GetSkillName() string {
@@ -4698,7 +4768,7 @@ type McpResourceListRequested struct {
 
 func (x *McpResourceListRequested) Reset() {
 	*x = McpResourceListRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[46]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4710,7 +4780,7 @@ func (x *McpResourceListRequested) String() string {
 func (*McpResourceListRequested) ProtoMessage() {}
 
 func (x *McpResourceListRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[46]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4723,7 +4793,7 @@ func (x *McpResourceListRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use McpResourceListRequested.ProtoReflect.Descriptor instead.
 func (*McpResourceListRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{46}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *McpResourceListRequested) GetExecutionId() string {
@@ -4747,7 +4817,7 @@ type McpResourceReadRequested struct {
 
 func (x *McpResourceReadRequested) Reset() {
 	*x = McpResourceReadRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[47]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4759,7 +4829,7 @@ func (x *McpResourceReadRequested) String() string {
 func (*McpResourceReadRequested) ProtoMessage() {}
 
 func (x *McpResourceReadRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[47]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4772,7 +4842,7 @@ func (x *McpResourceReadRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use McpResourceReadRequested.ProtoReflect.Descriptor instead.
 func (*McpResourceReadRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{47}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *McpResourceReadRequested) GetUri() string {
@@ -4801,7 +4871,7 @@ type McpPromptListRequested struct {
 
 func (x *McpPromptListRequested) Reset() {
 	*x = McpPromptListRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[48]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4813,7 +4883,7 @@ func (x *McpPromptListRequested) String() string {
 func (*McpPromptListRequested) ProtoMessage() {}
 
 func (x *McpPromptListRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[48]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4826,7 +4896,7 @@ func (x *McpPromptListRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use McpPromptListRequested.ProtoReflect.Descriptor instead.
 func (*McpPromptListRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{48}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *McpPromptListRequested) GetExecutionId() string {
@@ -4850,7 +4920,7 @@ type McpPromptGetRequested struct {
 
 func (x *McpPromptGetRequested) Reset() {
 	*x = McpPromptGetRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[49]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4862,7 +4932,7 @@ func (x *McpPromptGetRequested) String() string {
 func (*McpPromptGetRequested) ProtoMessage() {}
 
 func (x *McpPromptGetRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[49]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4875,7 +4945,7 @@ func (x *McpPromptGetRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use McpPromptGetRequested.ProtoReflect.Descriptor instead.
 func (*McpPromptGetRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{49}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *McpPromptGetRequested) GetName() string {
@@ -4929,7 +4999,7 @@ type DeterministicStageEvidence struct {
 
 func (x *DeterministicStageEvidence) Reset() {
 	*x = DeterministicStageEvidence{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[50]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4941,7 +5011,7 @@ func (x *DeterministicStageEvidence) String() string {
 func (*DeterministicStageEvidence) ProtoMessage() {}
 
 func (x *DeterministicStageEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[50]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4954,7 +5024,7 @@ func (x *DeterministicStageEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeterministicStageEvidence.ProtoReflect.Descriptor instead.
 func (*DeterministicStageEvidence) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{50}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *DeterministicStageEvidence) GetStageId() string {
@@ -5175,7 +5245,7 @@ type ReceiptPersistenceAttestation struct {
 
 func (x *ReceiptPersistenceAttestation) Reset() {
 	*x = ReceiptPersistenceAttestation{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[51]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5187,7 +5257,7 @@ func (x *ReceiptPersistenceAttestation) String() string {
 func (*ReceiptPersistenceAttestation) ProtoMessage() {}
 
 func (x *ReceiptPersistenceAttestation) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[51]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5200,7 +5270,7 @@ func (x *ReceiptPersistenceAttestation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiptPersistenceAttestation.ProtoReflect.Descriptor instead.
 func (*ReceiptPersistenceAttestation) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{51}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ReceiptPersistenceAttestation) GetTransactionId() string {
@@ -5291,7 +5361,7 @@ type ActionReceipt struct {
 
 func (x *ActionReceipt) Reset() {
 	*x = ActionReceipt{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[52]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5303,7 +5373,7 @@ func (x *ActionReceipt) String() string {
 func (*ActionReceipt) ProtoMessage() {}
 
 func (x *ActionReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[52]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5316,7 +5386,7 @@ func (x *ActionReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActionReceipt.ProtoReflect.Descriptor instead.
 func (*ActionReceipt) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{52}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ActionReceipt) GetTransactionId() string {
@@ -5455,7 +5525,7 @@ type GovernanceRejection struct {
 
 func (x *GovernanceRejection) Reset() {
 	*x = GovernanceRejection{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[53]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5467,7 +5537,7 @@ func (x *GovernanceRejection) String() string {
 func (*GovernanceRejection) ProtoMessage() {}
 
 func (x *GovernanceRejection) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[53]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5480,7 +5550,7 @@ func (x *GovernanceRejection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GovernanceRejection.ProtoReflect.Descriptor instead.
 func (*GovernanceRejection) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{53}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *GovernanceRejection) GetError() string {
@@ -5509,7 +5579,7 @@ type IngressRefusal struct {
 
 func (x *IngressRefusal) Reset() {
 	*x = IngressRefusal{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[54]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5521,7 +5591,7 @@ func (x *IngressRefusal) String() string {
 func (*IngressRefusal) ProtoMessage() {}
 
 func (x *IngressRefusal) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[54]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5534,7 +5604,7 @@ func (x *IngressRefusal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IngressRefusal.ProtoReflect.Descriptor instead.
 func (*IngressRefusal) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{54}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *IngressRefusal) GetCode() IngressRefusalCode {
@@ -5570,7 +5640,7 @@ type GovernedDispatchResult struct {
 
 func (x *GovernedDispatchResult) Reset() {
 	*x = GovernedDispatchResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[55]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5582,7 +5652,7 @@ func (x *GovernedDispatchResult) String() string {
 func (*GovernedDispatchResult) ProtoMessage() {}
 
 func (x *GovernedDispatchResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[55]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5595,7 +5665,7 @@ func (x *GovernedDispatchResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GovernedDispatchResult.ProtoReflect.Descriptor instead.
 func (*GovernedDispatchResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{55}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *GovernedDispatchResult) GetTransactionId() string {
@@ -5679,7 +5749,7 @@ type CommitmentAttestation struct {
 
 func (x *CommitmentAttestation) Reset() {
 	*x = CommitmentAttestation{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[56]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5691,7 +5761,7 @@ func (x *CommitmentAttestation) String() string {
 func (*CommitmentAttestation) ProtoMessage() {}
 
 func (x *CommitmentAttestation) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[56]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5704,7 +5774,7 @@ func (x *CommitmentAttestation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitmentAttestation.ProtoReflect.Descriptor instead.
 func (*CommitmentAttestation) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{56}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *CommitmentAttestation) GetTransactionId() string {
@@ -5818,7 +5888,7 @@ type CommandResult struct {
 
 func (x *CommandResult) Reset() {
 	*x = CommandResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[57]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5830,7 +5900,7 @@ func (x *CommandResult) String() string {
 func (*CommandResult) ProtoMessage() {}
 
 func (x *CommandResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[57]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5843,7 +5913,7 @@ func (x *CommandResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResult.ProtoReflect.Descriptor instead.
 func (*CommandResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{57}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *CommandResult) GetExecutionId() string {
@@ -5923,7 +5993,7 @@ type FsEntry struct {
 
 func (x *FsEntry) Reset() {
 	*x = FsEntry{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[58]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5935,7 +6005,7 @@ func (x *FsEntry) String() string {
 func (*FsEntry) ProtoMessage() {}
 
 func (x *FsEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[58]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5948,7 +6018,7 @@ func (x *FsEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FsEntry.ProtoReflect.Descriptor instead.
 func (*FsEntry) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{58}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *FsEntry) GetName() string {
@@ -6010,7 +6080,7 @@ type FsListResult struct {
 
 func (x *FsListResult) Reset() {
 	*x = FsListResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[59]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6022,7 +6092,7 @@ func (x *FsListResult) String() string {
 func (*FsListResult) ProtoMessage() {}
 
 func (x *FsListResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[59]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6035,7 +6105,7 @@ func (x *FsListResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FsListResult.ProtoReflect.Descriptor instead.
 func (*FsListResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{59}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *FsListResult) GetExecutionId() string {
@@ -6118,7 +6188,7 @@ type FsReadResult struct {
 
 func (x *FsReadResult) Reset() {
 	*x = FsReadResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[60]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6130,7 +6200,7 @@ func (x *FsReadResult) String() string {
 func (*FsReadResult) ProtoMessage() {}
 
 func (x *FsReadResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[60]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6143,7 +6213,7 @@ func (x *FsReadResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FsReadResult.ProtoReflect.Descriptor instead.
 func (*FsReadResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{60}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *FsReadResult) GetExecutionId() string {
@@ -6222,7 +6292,7 @@ type FsGrepMatch struct {
 
 func (x *FsGrepMatch) Reset() {
 	*x = FsGrepMatch{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[61]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6234,7 +6304,7 @@ func (x *FsGrepMatch) String() string {
 func (*FsGrepMatch) ProtoMessage() {}
 
 func (x *FsGrepMatch) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[61]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6247,7 +6317,7 @@ func (x *FsGrepMatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FsGrepMatch.ProtoReflect.Descriptor instead.
 func (*FsGrepMatch) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{61}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *FsGrepMatch) GetPath() string {
@@ -6302,7 +6372,7 @@ type FsGrepResult struct {
 
 func (x *FsGrepResult) Reset() {
 	*x = FsGrepResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[62]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6314,7 +6384,7 @@ func (x *FsGrepResult) String() string {
 func (*FsGrepResult) ProtoMessage() {}
 
 func (x *FsGrepResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[62]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6327,7 +6397,7 @@ func (x *FsGrepResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FsGrepResult.ProtoReflect.Descriptor instead.
 func (*FsGrepResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{62}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *FsGrepResult) GetExecutionId() string {
@@ -6414,7 +6484,7 @@ type FileEditResult struct {
 
 func (x *FileEditResult) Reset() {
 	*x = FileEditResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[63]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6426,7 +6496,7 @@ func (x *FileEditResult) String() string {
 func (*FileEditResult) ProtoMessage() {}
 
 func (x *FileEditResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[63]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6439,7 +6509,7 @@ func (x *FileEditResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileEditResult.ProtoReflect.Descriptor instead.
 func (*FileEditResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{63}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *FileEditResult) GetExecutionId() string {
@@ -6549,7 +6619,7 @@ type ExecutionStatusUpdate struct {
 
 func (x *ExecutionStatusUpdate) Reset() {
 	*x = ExecutionStatusUpdate{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[64]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6561,7 +6631,7 @@ func (x *ExecutionStatusUpdate) String() string {
 func (*ExecutionStatusUpdate) ProtoMessage() {}
 
 func (x *ExecutionStatusUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[64]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6574,7 +6644,7 @@ func (x *ExecutionStatusUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionStatusUpdate.ProtoReflect.Descriptor instead.
 func (*ExecutionStatusUpdate) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{64}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *ExecutionStatusUpdate) GetExecutionId() string {
@@ -6646,7 +6716,7 @@ type PortCheckEntry struct {
 
 func (x *PortCheckEntry) Reset() {
 	*x = PortCheckEntry{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[65]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6658,7 +6728,7 @@ func (x *PortCheckEntry) String() string {
 func (*PortCheckEntry) ProtoMessage() {}
 
 func (x *PortCheckEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[65]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6671,7 +6741,7 @@ func (x *PortCheckEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortCheckEntry.ProtoReflect.Descriptor instead.
 func (*PortCheckEntry) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{65}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *PortCheckEntry) GetHost() string {
@@ -6722,7 +6792,7 @@ type PortCheckResult struct {
 
 func (x *PortCheckResult) Reset() {
 	*x = PortCheckResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[66]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6734,7 +6804,7 @@ func (x *PortCheckResult) String() string {
 func (*PortCheckResult) ProtoMessage() {}
 
 func (x *PortCheckResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[66]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6747,7 +6817,7 @@ func (x *PortCheckResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortCheckResult.ProtoReflect.Descriptor instead.
 func (*PortCheckResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{66}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *PortCheckResult) GetExecutionId() string {
@@ -6794,7 +6864,7 @@ type OllamaModelInventoryRequested struct {
 
 func (x *OllamaModelInventoryRequested) Reset() {
 	*x = OllamaModelInventoryRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[67]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6806,7 +6876,7 @@ func (x *OllamaModelInventoryRequested) String() string {
 func (*OllamaModelInventoryRequested) ProtoMessage() {}
 
 func (x *OllamaModelInventoryRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[67]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6819,7 +6889,7 @@ func (x *OllamaModelInventoryRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OllamaModelInventoryRequested.ProtoReflect.Descriptor instead.
 func (*OllamaModelInventoryRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{67}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *OllamaModelInventoryRequested) GetExecutionId() string {
@@ -6847,7 +6917,7 @@ type ProviderModelInventoryEntry struct {
 
 func (x *ProviderModelInventoryEntry) Reset() {
 	*x = ProviderModelInventoryEntry{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[68]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6859,7 +6929,7 @@ func (x *ProviderModelInventoryEntry) String() string {
 func (*ProviderModelInventoryEntry) ProtoMessage() {}
 
 func (x *ProviderModelInventoryEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[68]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6872,7 +6942,7 @@ func (x *ProviderModelInventoryEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProviderModelInventoryEntry.ProtoReflect.Descriptor instead.
 func (*ProviderModelInventoryEntry) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{68}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ProviderModelInventoryEntry) GetProviderClass() string {
@@ -6958,7 +7028,7 @@ type OllamaModelInventoryResult struct {
 
 func (x *OllamaModelInventoryResult) Reset() {
 	*x = OllamaModelInventoryResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[69]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6970,7 +7040,7 @@ func (x *OllamaModelInventoryResult) String() string {
 func (*OllamaModelInventoryResult) ProtoMessage() {}
 
 func (x *OllamaModelInventoryResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[69]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6983,7 +7053,7 @@ func (x *OllamaModelInventoryResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OllamaModelInventoryResult.ProtoReflect.Descriptor instead.
 func (*OllamaModelInventoryResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{69}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *OllamaModelInventoryResult) GetExecutionId() string {
@@ -7030,7 +7100,7 @@ type OllamaModelResidencyRequested struct {
 
 func (x *OllamaModelResidencyRequested) Reset() {
 	*x = OllamaModelResidencyRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[70]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7042,7 +7112,7 @@ func (x *OllamaModelResidencyRequested) String() string {
 func (*OllamaModelResidencyRequested) ProtoMessage() {}
 
 func (x *OllamaModelResidencyRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[70]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7055,7 +7125,7 @@ func (x *OllamaModelResidencyRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OllamaModelResidencyRequested.ProtoReflect.Descriptor instead.
 func (*OllamaModelResidencyRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{70}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *OllamaModelResidencyRequested) GetExecutionId() string {
@@ -7074,7 +7144,7 @@ type OllamaModelResidencyModel struct {
 
 func (x *OllamaModelResidencyModel) Reset() {
 	*x = OllamaModelResidencyModel{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[71]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7086,7 +7156,7 @@ func (x *OllamaModelResidencyModel) String() string {
 func (*OllamaModelResidencyModel) ProtoMessage() {}
 
 func (x *OllamaModelResidencyModel) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[71]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7099,7 +7169,7 @@ func (x *OllamaModelResidencyModel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OllamaModelResidencyModel.ProtoReflect.Descriptor instead.
 func (*OllamaModelResidencyModel) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{71}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *OllamaModelResidencyModel) GetName() string {
@@ -7122,7 +7192,7 @@ type OllamaModelResidencyResult struct {
 
 func (x *OllamaModelResidencyResult) Reset() {
 	*x = OllamaModelResidencyResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[72]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7134,7 +7204,7 @@ func (x *OllamaModelResidencyResult) String() string {
 func (*OllamaModelResidencyResult) ProtoMessage() {}
 
 func (x *OllamaModelResidencyResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[72]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7147,7 +7217,7 @@ func (x *OllamaModelResidencyResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OllamaModelResidencyResult.ProtoReflect.Descriptor instead.
 func (*OllamaModelResidencyResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{72}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *OllamaModelResidencyResult) GetExecutionId() string {
@@ -7203,7 +7273,7 @@ type FetchLogsResult struct {
 
 func (x *FetchLogsResult) Reset() {
 	*x = FetchLogsResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[73]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7215,7 +7285,7 @@ func (x *FetchLogsResult) String() string {
 func (*FetchLogsResult) ProtoMessage() {}
 
 func (x *FetchLogsResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[73]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7228,7 +7298,7 @@ func (x *FetchLogsResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchLogsResult.ProtoReflect.Descriptor instead.
 func (*FetchLogsResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{73}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *FetchLogsResult) GetExecutionId() string {
@@ -7313,7 +7383,7 @@ type AuditWebSession struct {
 
 func (x *AuditWebSession) Reset() {
 	*x = AuditWebSession{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[74]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7325,7 +7395,7 @@ func (x *AuditWebSession) String() string {
 func (*AuditWebSession) ProtoMessage() {}
 
 func (x *AuditWebSession) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[74]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7338,7 +7408,7 @@ func (x *AuditWebSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditWebSession.ProtoReflect.Descriptor instead.
 func (*AuditWebSession) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{74}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *AuditWebSession) GetId() string {
@@ -7383,7 +7453,7 @@ type AuditFileMutation struct {
 
 func (x *AuditFileMutation) Reset() {
 	*x = AuditFileMutation{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[75]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7395,7 +7465,7 @@ func (x *AuditFileMutation) String() string {
 func (*AuditFileMutation) ProtoMessage() {}
 
 func (x *AuditFileMutation) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[75]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7408,7 +7478,7 @@ func (x *AuditFileMutation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditFileMutation.ProtoReflect.Descriptor instead.
 func (*AuditFileMutation) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{75}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *AuditFileMutation) GetId() int64 {
@@ -7473,7 +7543,7 @@ type AuditEvent struct {
 
 func (x *AuditEvent) Reset() {
 	*x = AuditEvent{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[76]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7485,7 +7555,7 @@ func (x *AuditEvent) String() string {
 func (*AuditEvent) ProtoMessage() {}
 
 func (x *AuditEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[76]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7498,7 +7568,7 @@ func (x *AuditEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditEvent.ProtoReflect.Descriptor instead.
 func (*AuditEvent) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{76}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *AuditEvent) GetId() int64 {
@@ -7602,7 +7672,7 @@ type FetchHistoryResult struct {
 
 func (x *FetchHistoryResult) Reset() {
 	*x = FetchHistoryResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[77]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7614,7 +7684,7 @@ func (x *FetchHistoryResult) String() string {
 func (*FetchHistoryResult) ProtoMessage() {}
 
 func (x *FetchHistoryResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[77]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7627,7 +7697,7 @@ func (x *FetchHistoryResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchHistoryResult.ProtoReflect.Descriptor instead.
 func (*FetchHistoryResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{77}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *FetchHistoryResult) GetSuccess() bool {
@@ -7704,7 +7774,7 @@ type FileHistoryEntry struct {
 
 func (x *FileHistoryEntry) Reset() {
 	*x = FileHistoryEntry{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[78]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7716,7 +7786,7 @@ func (x *FileHistoryEntry) String() string {
 func (*FileHistoryEntry) ProtoMessage() {}
 
 func (x *FileHistoryEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[78]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7729,7 +7799,7 @@ func (x *FileHistoryEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileHistoryEntry.ProtoReflect.Descriptor instead.
 func (*FileHistoryEntry) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{78}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *FileHistoryEntry) GetCommitHash() string {
@@ -7766,7 +7836,7 @@ type FetchFileHistoryResult struct {
 
 func (x *FetchFileHistoryResult) Reset() {
 	*x = FetchFileHistoryResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[79]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7778,7 +7848,7 @@ func (x *FetchFileHistoryResult) String() string {
 func (*FetchFileHistoryResult) ProtoMessage() {}
 
 func (x *FetchFileHistoryResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[79]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7791,7 +7861,7 @@ func (x *FetchFileHistoryResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchFileHistoryResult.ProtoReflect.Descriptor instead.
 func (*FetchFileHistoryResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{79}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *FetchFileHistoryResult) GetSuccess() bool {
@@ -7842,7 +7912,7 @@ type RestoreFileResult struct {
 
 func (x *RestoreFileResult) Reset() {
 	*x = RestoreFileResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[80]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7854,7 +7924,7 @@ func (x *RestoreFileResult) String() string {
 func (*RestoreFileResult) ProtoMessage() {}
 
 func (x *RestoreFileResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[80]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7867,7 +7937,7 @@ func (x *RestoreFileResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreFileResult.ProtoReflect.Descriptor instead.
 func (*RestoreFileResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{80}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *RestoreFileResult) GetSuccess() bool {
@@ -7923,7 +7993,7 @@ type FileDiffEntry struct {
 
 func (x *FileDiffEntry) Reset() {
 	*x = FileDiffEntry{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[81]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7935,7 +8005,7 @@ func (x *FileDiffEntry) String() string {
 func (*FileDiffEntry) ProtoMessage() {}
 
 func (x *FileDiffEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[81]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7948,7 +8018,7 @@ func (x *FileDiffEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileDiffEntry.ProtoReflect.Descriptor instead.
 func (*FileDiffEntry) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{81}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *FileDiffEntry) GetId() string {
@@ -8036,7 +8106,7 @@ type FetchFileDiffResult struct {
 
 func (x *FetchFileDiffResult) Reset() {
 	*x = FetchFileDiffResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[82]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8048,7 +8118,7 @@ func (x *FetchFileDiffResult) String() string {
 func (*FetchFileDiffResult) ProtoMessage() {}
 
 func (x *FetchFileDiffResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[82]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8061,7 +8131,7 @@ func (x *FetchFileDiffResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchFileDiffResult.ProtoReflect.Descriptor instead.
 func (*FetchFileDiffResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{82}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *FetchFileDiffResult) GetSuccess() bool {
@@ -8141,7 +8211,7 @@ type HeartbeatResult struct {
 
 func (x *HeartbeatResult) Reset() {
 	*x = HeartbeatResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[83]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8153,7 +8223,7 @@ func (x *HeartbeatResult) String() string {
 func (*HeartbeatResult) ProtoMessage() {}
 
 func (x *HeartbeatResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[83]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8166,7 +8236,7 @@ func (x *HeartbeatResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResult.ProtoReflect.Descriptor instead.
 func (*HeartbeatResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{83}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *HeartbeatResult) GetOperatorId() string {
@@ -8324,7 +8394,7 @@ type SystemIdentity struct {
 
 func (x *SystemIdentity) Reset() {
 	*x = SystemIdentity{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[84]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8336,7 +8406,7 @@ func (x *SystemIdentity) String() string {
 func (*SystemIdentity) ProtoMessage() {}
 
 func (x *SystemIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[84]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8349,7 +8419,7 @@ func (x *SystemIdentity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemIdentity.ProtoReflect.Descriptor instead.
 func (*SystemIdentity) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{84}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *SystemIdentity) GetHostname() string {
@@ -8412,7 +8482,7 @@ type NetworkInterface struct {
 
 func (x *NetworkInterface) Reset() {
 	*x = NetworkInterface{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[85]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8424,7 +8494,7 @@ func (x *NetworkInterface) String() string {
 func (*NetworkInterface) ProtoMessage() {}
 
 func (x *NetworkInterface) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[85]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8437,7 +8507,7 @@ func (x *NetworkInterface) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkInterface.ProtoReflect.Descriptor instead.
 func (*NetworkInterface) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{85}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *NetworkInterface) GetName() string {
@@ -8473,7 +8543,7 @@ type NetworkInfo struct {
 
 func (x *NetworkInfo) Reset() {
 	*x = NetworkInfo{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[86]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8485,7 +8555,7 @@ func (x *NetworkInfo) String() string {
 func (*NetworkInfo) ProtoMessage() {}
 
 func (x *NetworkInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[86]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8498,7 +8568,7 @@ func (x *NetworkInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkInfo.ProtoReflect.Descriptor instead.
 func (*NetworkInfo) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{86}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *NetworkInfo) GetPublicIp() string {
@@ -8539,7 +8609,7 @@ type VersionInfo struct {
 
 func (x *VersionInfo) Reset() {
 	*x = VersionInfo{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[87]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8551,7 +8621,7 @@ func (x *VersionInfo) String() string {
 func (*VersionInfo) ProtoMessage() {}
 
 func (x *VersionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[87]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8564,7 +8634,7 @@ func (x *VersionInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VersionInfo.ProtoReflect.Descriptor instead.
 func (*VersionInfo) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{87}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *VersionInfo) GetOperatorVersion() string {
@@ -8591,7 +8661,7 @@ type UptimeInfo struct {
 
 func (x *UptimeInfo) Reset() {
 	*x = UptimeInfo{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[88]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8603,7 +8673,7 @@ func (x *UptimeInfo) String() string {
 func (*UptimeInfo) ProtoMessage() {}
 
 func (x *UptimeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[88]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8616,7 +8686,7 @@ func (x *UptimeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UptimeInfo.ProtoReflect.Descriptor instead.
 func (*UptimeInfo) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{88}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *UptimeInfo) GetUptime() string {
@@ -8649,7 +8719,7 @@ type PerformanceMetrics struct {
 
 func (x *PerformanceMetrics) Reset() {
 	*x = PerformanceMetrics{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[89]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8661,7 +8731,7 @@ func (x *PerformanceMetrics) String() string {
 func (*PerformanceMetrics) ProtoMessage() {}
 
 func (x *PerformanceMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[89]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8674,7 +8744,7 @@ func (x *PerformanceMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PerformanceMetrics.ProtoReflect.Descriptor instead.
 func (*PerformanceMetrics) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{89}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *PerformanceMetrics) GetCpuPercent() float64 {
@@ -8744,7 +8814,7 @@ type OSDetails struct {
 
 func (x *OSDetails) Reset() {
 	*x = OSDetails{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[90]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8756,7 +8826,7 @@ func (x *OSDetails) String() string {
 func (*OSDetails) ProtoMessage() {}
 
 func (x *OSDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[90]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8769,7 +8839,7 @@ func (x *OSDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OSDetails.ProtoReflect.Descriptor instead.
 func (*OSDetails) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{90}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *OSDetails) GetKernel() string {
@@ -8807,7 +8877,7 @@ type UserDetails struct {
 
 func (x *UserDetails) Reset() {
 	*x = UserDetails{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[91]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8819,7 +8889,7 @@ func (x *UserDetails) String() string {
 func (*UserDetails) ProtoMessage() {}
 
 func (x *UserDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[91]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8832,7 +8902,7 @@ func (x *UserDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserDetails.ProtoReflect.Descriptor instead.
 func (*UserDetails) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{91}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *UserDetails) GetUsername() string {
@@ -8889,7 +8959,7 @@ type DiskDetails struct {
 
 func (x *DiskDetails) Reset() {
 	*x = DiskDetails{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[92]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8901,7 +8971,7 @@ func (x *DiskDetails) String() string {
 func (*DiskDetails) ProtoMessage() {}
 
 func (x *DiskDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[92]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8914,7 +8984,7 @@ func (x *DiskDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskDetails.ProtoReflect.Descriptor instead.
 func (*DiskDetails) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{92}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *DiskDetails) GetTotalGb() float64 {
@@ -8957,7 +9027,7 @@ type MemoryDetails struct {
 
 func (x *MemoryDetails) Reset() {
 	*x = MemoryDetails{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[93]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8969,7 +9039,7 @@ func (x *MemoryDetails) String() string {
 func (*MemoryDetails) ProtoMessage() {}
 
 func (x *MemoryDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[93]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8982,7 +9052,7 @@ func (x *MemoryDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryDetails.ProtoReflect.Descriptor instead.
 func (*MemoryDetails) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{93}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *MemoryDetails) GetTotalMb() int64 {
@@ -9029,7 +9099,7 @@ type EnvironmentDetails struct {
 
 func (x *EnvironmentDetails) Reset() {
 	*x = EnvironmentDetails{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[94]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9041,7 +9111,7 @@ func (x *EnvironmentDetails) String() string {
 func (*EnvironmentDetails) ProtoMessage() {}
 
 func (x *EnvironmentDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[94]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9054,7 +9124,7 @@ func (x *EnvironmentDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnvironmentDetails.ProtoReflect.Descriptor instead.
 func (*EnvironmentDetails) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{94}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *EnvironmentDetails) GetPwd() string {
@@ -9125,7 +9195,7 @@ type FingerprintDetails struct {
 
 func (x *FingerprintDetails) Reset() {
 	*x = FingerprintDetails{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[95]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9137,7 +9207,7 @@ func (x *FingerprintDetails) String() string {
 func (*FingerprintDetails) ProtoMessage() {}
 
 func (x *FingerprintDetails) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[95]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9150,7 +9220,7 @@ func (x *FingerprintDetails) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FingerprintDetails.ProtoReflect.Descriptor instead.
 func (*FingerprintDetails) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{95}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *FingerprintDetails) GetOs() string {
@@ -9196,7 +9266,7 @@ type PasskeyCredential struct {
 
 func (x *PasskeyCredential) Reset() {
 	*x = PasskeyCredential{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[96]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9208,7 +9278,7 @@ func (x *PasskeyCredential) String() string {
 func (*PasskeyCredential) ProtoMessage() {}
 
 func (x *PasskeyCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[96]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9221,7 +9291,7 @@ func (x *PasskeyCredential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasskeyCredential.ProtoReflect.Descriptor instead.
 func (*PasskeyCredential) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{96}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *PasskeyCredential) GetId() string {
@@ -9276,7 +9346,7 @@ type PasskeyRegisterChallengeRequested struct {
 
 func (x *PasskeyRegisterChallengeRequested) Reset() {
 	*x = PasskeyRegisterChallengeRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[97]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9288,7 +9358,7 @@ func (x *PasskeyRegisterChallengeRequested) String() string {
 func (*PasskeyRegisterChallengeRequested) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[97]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9301,7 +9371,7 @@ func (x *PasskeyRegisterChallengeRequested) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use PasskeyRegisterChallengeRequested.ProtoReflect.Descriptor instead.
 func (*PasskeyRegisterChallengeRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{97}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *PasskeyRegisterChallengeRequested) GetUserId() string {
@@ -9337,7 +9407,7 @@ type PasskeyRegisterChallengeResult struct {
 
 func (x *PasskeyRegisterChallengeResult) Reset() {
 	*x = PasskeyRegisterChallengeResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[98]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9349,7 +9419,7 @@ func (x *PasskeyRegisterChallengeResult) String() string {
 func (*PasskeyRegisterChallengeResult) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[98]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9362,7 +9432,7 @@ func (x *PasskeyRegisterChallengeResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasskeyRegisterChallengeResult.ProtoReflect.Descriptor instead.
 func (*PasskeyRegisterChallengeResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{98}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *PasskeyRegisterChallengeResult) GetSuccess() bool {
@@ -9448,7 +9518,7 @@ type AttestationResponse struct {
 
 func (x *AttestationResponse) Reset() {
 	*x = AttestationResponse{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[99]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9460,7 +9530,7 @@ func (x *AttestationResponse) String() string {
 func (*AttestationResponse) ProtoMessage() {}
 
 func (x *AttestationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[99]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9473,7 +9543,7 @@ func (x *AttestationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttestationResponse.ProtoReflect.Descriptor instead.
 func (*AttestationResponse) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{99}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *AttestationResponse) GetId() string {
@@ -9521,7 +9591,7 @@ type PasskeyRegisterVerifyRequested struct {
 
 func (x *PasskeyRegisterVerifyRequested) Reset() {
 	*x = PasskeyRegisterVerifyRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[100]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9533,7 +9603,7 @@ func (x *PasskeyRegisterVerifyRequested) String() string {
 func (*PasskeyRegisterVerifyRequested) ProtoMessage() {}
 
 func (x *PasskeyRegisterVerifyRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[100]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9546,7 +9616,7 @@ func (x *PasskeyRegisterVerifyRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasskeyRegisterVerifyRequested.ProtoReflect.Descriptor instead.
 func (*PasskeyRegisterVerifyRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{100}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *PasskeyRegisterVerifyRequested) GetUserId() string {
@@ -9574,7 +9644,7 @@ type PasskeyRegisterVerifyResult struct {
 
 func (x *PasskeyRegisterVerifyResult) Reset() {
 	*x = PasskeyRegisterVerifyResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[101]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9586,7 +9656,7 @@ func (x *PasskeyRegisterVerifyResult) String() string {
 func (*PasskeyRegisterVerifyResult) ProtoMessage() {}
 
 func (x *PasskeyRegisterVerifyResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[101]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9599,7 +9669,7 @@ func (x *PasskeyRegisterVerifyResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasskeyRegisterVerifyResult.ProtoReflect.Descriptor instead.
 func (*PasskeyRegisterVerifyResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{101}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *PasskeyRegisterVerifyResult) GetSuccess() bool {
@@ -9632,7 +9702,7 @@ type PasskeyAuthChallengeRequested struct {
 
 func (x *PasskeyAuthChallengeRequested) Reset() {
 	*x = PasskeyAuthChallengeRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[102]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9644,7 +9714,7 @@ func (x *PasskeyAuthChallengeRequested) String() string {
 func (*PasskeyAuthChallengeRequested) ProtoMessage() {}
 
 func (x *PasskeyAuthChallengeRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[102]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9657,7 +9727,7 @@ func (x *PasskeyAuthChallengeRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasskeyAuthChallengeRequested.ProtoReflect.Descriptor instead.
 func (*PasskeyAuthChallengeRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{102}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *PasskeyAuthChallengeRequested) GetUserId() string {
@@ -9684,7 +9754,7 @@ type PasskeyAuthChallengeResult struct {
 
 func (x *PasskeyAuthChallengeResult) Reset() {
 	*x = PasskeyAuthChallengeResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[103]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9696,7 +9766,7 @@ func (x *PasskeyAuthChallengeResult) String() string {
 func (*PasskeyAuthChallengeResult) ProtoMessage() {}
 
 func (x *PasskeyAuthChallengeResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[103]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9709,7 +9779,7 @@ func (x *PasskeyAuthChallengeResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasskeyAuthChallengeResult.ProtoReflect.Descriptor instead.
 func (*PasskeyAuthChallengeResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{103}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *PasskeyAuthChallengeResult) GetSuccess() bool {
@@ -9782,7 +9852,7 @@ type AssertionResponse struct {
 
 func (x *AssertionResponse) Reset() {
 	*x = AssertionResponse{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[104]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9794,7 +9864,7 @@ func (x *AssertionResponse) String() string {
 func (*AssertionResponse) ProtoMessage() {}
 
 func (x *AssertionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[104]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9807,7 +9877,7 @@ func (x *AssertionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssertionResponse.ProtoReflect.Descriptor instead.
 func (*AssertionResponse) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{104}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *AssertionResponse) GetId() string {
@@ -9862,7 +9932,7 @@ type PasskeyAuthVerifyRequested struct {
 
 func (x *PasskeyAuthVerifyRequested) Reset() {
 	*x = PasskeyAuthVerifyRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[105]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9874,7 +9944,7 @@ func (x *PasskeyAuthVerifyRequested) String() string {
 func (*PasskeyAuthVerifyRequested) ProtoMessage() {}
 
 func (x *PasskeyAuthVerifyRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[105]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9887,7 +9957,7 @@ func (x *PasskeyAuthVerifyRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasskeyAuthVerifyRequested.ProtoReflect.Descriptor instead.
 func (*PasskeyAuthVerifyRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{105}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *PasskeyAuthVerifyRequested) GetUserId() string {
@@ -9917,7 +9987,7 @@ type PasskeyAuthVerifyResult struct {
 
 func (x *PasskeyAuthVerifyResult) Reset() {
 	*x = PasskeyAuthVerifyResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[106]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9929,7 +9999,7 @@ func (x *PasskeyAuthVerifyResult) String() string {
 func (*PasskeyAuthVerifyResult) ProtoMessage() {}
 
 func (x *PasskeyAuthVerifyResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[106]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9942,7 +10012,7 @@ func (x *PasskeyAuthVerifyResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PasskeyAuthVerifyResult.ProtoReflect.Descriptor instead.
 func (*PasskeyAuthVerifyResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{106}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *PasskeyAuthVerifyResult) GetSuccess() bool {
@@ -9989,7 +10059,7 @@ type ListPasskeyCredentialsRequested struct {
 
 func (x *ListPasskeyCredentialsRequested) Reset() {
 	*x = ListPasskeyCredentialsRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[107]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10001,7 +10071,7 @@ func (x *ListPasskeyCredentialsRequested) String() string {
 func (*ListPasskeyCredentialsRequested) ProtoMessage() {}
 
 func (x *ListPasskeyCredentialsRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[107]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10014,7 +10084,7 @@ func (x *ListPasskeyCredentialsRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPasskeyCredentialsRequested.ProtoReflect.Descriptor instead.
 func (*ListPasskeyCredentialsRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{107}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *ListPasskeyCredentialsRequested) GetUserId() string {
@@ -10035,7 +10105,7 @@ type ListPasskeyCredentialsResult struct {
 
 func (x *ListPasskeyCredentialsResult) Reset() {
 	*x = ListPasskeyCredentialsResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[108]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10047,7 +10117,7 @@ func (x *ListPasskeyCredentialsResult) String() string {
 func (*ListPasskeyCredentialsResult) ProtoMessage() {}
 
 func (x *ListPasskeyCredentialsResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[108]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10060,7 +10130,7 @@ func (x *ListPasskeyCredentialsResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPasskeyCredentialsResult.ProtoReflect.Descriptor instead.
 func (*ListPasskeyCredentialsResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{108}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *ListPasskeyCredentialsResult) GetSuccess() bool {
@@ -10094,7 +10164,7 @@ type RevokePasskeyCredentialRequested struct {
 
 func (x *RevokePasskeyCredentialRequested) Reset() {
 	*x = RevokePasskeyCredentialRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[109]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10106,7 +10176,7 @@ func (x *RevokePasskeyCredentialRequested) String() string {
 func (*RevokePasskeyCredentialRequested) ProtoMessage() {}
 
 func (x *RevokePasskeyCredentialRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[109]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10119,7 +10189,7 @@ func (x *RevokePasskeyCredentialRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokePasskeyCredentialRequested.ProtoReflect.Descriptor instead.
 func (*RevokePasskeyCredentialRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{109}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *RevokePasskeyCredentialRequested) GetUserId() string {
@@ -10148,7 +10218,7 @@ type RevokePasskeyCredentialResult struct {
 
 func (x *RevokePasskeyCredentialResult) Reset() {
 	*x = RevokePasskeyCredentialResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[110]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10160,7 +10230,7 @@ func (x *RevokePasskeyCredentialResult) String() string {
 func (*RevokePasskeyCredentialResult) ProtoMessage() {}
 
 func (x *RevokePasskeyCredentialResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[110]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10173,7 +10243,7 @@ func (x *RevokePasskeyCredentialResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokePasskeyCredentialResult.ProtoReflect.Descriptor instead.
 func (*RevokePasskeyCredentialResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{110}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *RevokePasskeyCredentialResult) GetSuccess() bool {
@@ -10216,7 +10286,7 @@ type InferenceToolCall struct {
 
 func (x *InferenceToolCall) Reset() {
 	*x = InferenceToolCall{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[111]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10228,7 +10298,7 @@ func (x *InferenceToolCall) String() string {
 func (*InferenceToolCall) ProtoMessage() {}
 
 func (x *InferenceToolCall) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[111]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10241,7 +10311,7 @@ func (x *InferenceToolCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceToolCall.ProtoReflect.Descriptor instead.
 func (*InferenceToolCall) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{111}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *InferenceToolCall) GetCallId() string {
@@ -10277,7 +10347,7 @@ type InferenceToolResult struct {
 
 func (x *InferenceToolResult) Reset() {
 	*x = InferenceToolResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[112]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10289,7 +10359,7 @@ func (x *InferenceToolResult) String() string {
 func (*InferenceToolResult) ProtoMessage() {}
 
 func (x *InferenceToolResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[112]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10302,7 +10372,7 @@ func (x *InferenceToolResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceToolResult.ProtoReflect.Descriptor instead.
 func (*InferenceToolResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{112}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *InferenceToolResult) GetCallId() string {
@@ -10341,7 +10411,7 @@ type InferenceMessagePart struct {
 
 func (x *InferenceMessagePart) Reset() {
 	*x = InferenceMessagePart{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[113]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10353,7 +10423,7 @@ func (x *InferenceMessagePart) String() string {
 func (*InferenceMessagePart) ProtoMessage() {}
 
 func (x *InferenceMessagePart) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[113]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10366,7 +10436,7 @@ func (x *InferenceMessagePart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceMessagePart.ProtoReflect.Descriptor instead.
 func (*InferenceMessagePart) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{113}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *InferenceMessagePart) GetPart() isInferenceMessagePart_Part {
@@ -10436,7 +10506,7 @@ type InferenceMessage struct {
 
 func (x *InferenceMessage) Reset() {
 	*x = InferenceMessage{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[114]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10448,7 +10518,7 @@ func (x *InferenceMessage) String() string {
 func (*InferenceMessage) ProtoMessage() {}
 
 func (x *InferenceMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[114]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10461,7 +10531,7 @@ func (x *InferenceMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceMessage.ProtoReflect.Descriptor instead.
 func (*InferenceMessage) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{114}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *InferenceMessage) GetRole() InferenceMessageRole {
@@ -10490,7 +10560,7 @@ type InferenceToolDeclaration struct {
 
 func (x *InferenceToolDeclaration) Reset() {
 	*x = InferenceToolDeclaration{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[115]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10502,7 +10572,7 @@ func (x *InferenceToolDeclaration) String() string {
 func (*InferenceToolDeclaration) ProtoMessage() {}
 
 func (x *InferenceToolDeclaration) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[115]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10515,7 +10585,7 @@ func (x *InferenceToolDeclaration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceToolDeclaration.ProtoReflect.Descriptor instead.
 func (*InferenceToolDeclaration) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{115}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *InferenceToolDeclaration) GetName() string {
@@ -10549,7 +10619,7 @@ type InferenceResponseFormat struct {
 
 func (x *InferenceResponseFormat) Reset() {
 	*x = InferenceResponseFormat{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[116]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10561,7 +10631,7 @@ func (x *InferenceResponseFormat) String() string {
 func (*InferenceResponseFormat) ProtoMessage() {}
 
 func (x *InferenceResponseFormat) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[116]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10574,7 +10644,7 @@ func (x *InferenceResponseFormat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceResponseFormat.ProtoReflect.Descriptor instead.
 func (*InferenceResponseFormat) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{116}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *InferenceResponseFormat) GetMediaType() string {
@@ -10601,7 +10671,7 @@ type InferenceToolChoice struct {
 
 func (x *InferenceToolChoice) Reset() {
 	*x = InferenceToolChoice{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[117]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10613,7 +10683,7 @@ func (x *InferenceToolChoice) String() string {
 func (*InferenceToolChoice) ProtoMessage() {}
 
 func (x *InferenceToolChoice) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[117]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10626,7 +10696,7 @@ func (x *InferenceToolChoice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceToolChoice.ProtoReflect.Descriptor instead.
 func (*InferenceToolChoice) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{117}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *InferenceToolChoice) GetMode() InferenceToolChoiceMode {
@@ -10657,7 +10727,7 @@ type InferenceThinkingControl struct {
 
 func (x *InferenceThinkingControl) Reset() {
 	*x = InferenceThinkingControl{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[118]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10669,7 +10739,7 @@ func (x *InferenceThinkingControl) String() string {
 func (*InferenceThinkingControl) ProtoMessage() {}
 
 func (x *InferenceThinkingControl) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[118]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10682,7 +10752,7 @@ func (x *InferenceThinkingControl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceThinkingControl.ProtoReflect.Descriptor instead.
 func (*InferenceThinkingControl) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{118}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *InferenceThinkingControl) GetMode() isInferenceThinkingControl_Mode {
@@ -10748,7 +10818,7 @@ type InferenceResponsePart struct {
 
 func (x *InferenceResponsePart) Reset() {
 	*x = InferenceResponsePart{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[119]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10760,7 +10830,7 @@ func (x *InferenceResponsePart) String() string {
 func (*InferenceResponsePart) ProtoMessage() {}
 
 func (x *InferenceResponsePart) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[119]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10773,7 +10843,7 @@ func (x *InferenceResponsePart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceResponsePart.ProtoReflect.Descriptor instead.
 func (*InferenceResponsePart) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{119}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *InferenceResponsePart) GetPart() isInferenceResponsePart_Part {
@@ -10842,7 +10912,7 @@ type InferenceModelVariant struct {
 
 func (x *InferenceModelVariant) Reset() {
 	*x = InferenceModelVariant{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[120]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10854,7 +10924,7 @@ func (x *InferenceModelVariant) String() string {
 func (*InferenceModelVariant) ProtoMessage() {}
 
 func (x *InferenceModelVariant) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[120]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10867,7 +10937,7 @@ func (x *InferenceModelVariant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceModelVariant.ProtoReflect.Descriptor instead.
 func (*InferenceModelVariant) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{120}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *InferenceModelVariant) GetModel() string {
@@ -10937,7 +11007,7 @@ type InferenceRequested struct {
 
 func (x *InferenceRequested) Reset() {
 	*x = InferenceRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[121]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10949,7 +11019,7 @@ func (x *InferenceRequested) String() string {
 func (*InferenceRequested) ProtoMessage() {}
 
 func (x *InferenceRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[121]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10962,7 +11032,7 @@ func (x *InferenceRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceRequested.ProtoReflect.Descriptor instead.
 func (*InferenceRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{121}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *InferenceRequested) GetRole() ModelRole {
@@ -11188,7 +11258,7 @@ type InferenceProviderAttemptRecord struct {
 
 func (x *InferenceProviderAttemptRecord) Reset() {
 	*x = InferenceProviderAttemptRecord{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[122]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11200,7 +11270,7 @@ func (x *InferenceProviderAttemptRecord) String() string {
 func (*InferenceProviderAttemptRecord) ProtoMessage() {}
 
 func (x *InferenceProviderAttemptRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[122]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11213,7 +11283,7 @@ func (x *InferenceProviderAttemptRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceProviderAttemptRecord.ProtoReflect.Descriptor instead.
 func (*InferenceProviderAttemptRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{122}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *InferenceProviderAttemptRecord) GetProviderAttemptId() string {
@@ -11345,7 +11415,7 @@ type InferenceResult struct {
 
 func (x *InferenceResult) Reset() {
 	*x = InferenceResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[123]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11357,7 +11427,7 @@ func (x *InferenceResult) String() string {
 func (*InferenceResult) ProtoMessage() {}
 
 func (x *InferenceResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[123]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11370,7 +11440,7 @@ func (x *InferenceResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceResult.ProtoReflect.Descriptor instead.
 func (*InferenceResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{123}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *InferenceResult) GetPromptTokens() int32 {
@@ -11613,7 +11683,7 @@ type InferenceProgressEvent struct {
 
 func (x *InferenceProgressEvent) Reset() {
 	*x = InferenceProgressEvent{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11625,7 +11695,7 @@ func (x *InferenceProgressEvent) String() string {
 func (*InferenceProgressEvent) ProtoMessage() {}
 
 func (x *InferenceProgressEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11638,7 +11708,7 @@ func (x *InferenceProgressEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceProgressEvent.ProtoReflect.Descriptor instead.
 func (*InferenceProgressEvent) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{124}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *InferenceProgressEvent) GetProviderAttemptId() string {
@@ -11696,7 +11766,7 @@ type InferenceCompletion struct {
 
 func (x *InferenceCompletion) Reset() {
 	*x = InferenceCompletion{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11708,7 +11778,7 @@ func (x *InferenceCompletion) String() string {
 func (*InferenceCompletion) ProtoMessage() {}
 
 func (x *InferenceCompletion) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11721,7 +11791,7 @@ func (x *InferenceCompletion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceCompletion.ProtoReflect.Descriptor instead.
 func (*InferenceCompletion) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{125}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *InferenceCompletion) GetReceipt() *ActionReceipt {
@@ -11804,7 +11874,7 @@ type InferenceDispatchRequest struct {
 
 func (x *InferenceDispatchRequest) Reset() {
 	*x = InferenceDispatchRequest{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11816,7 +11886,7 @@ func (x *InferenceDispatchRequest) String() string {
 func (*InferenceDispatchRequest) ProtoMessage() {}
 
 func (x *InferenceDispatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11829,7 +11899,7 @@ func (x *InferenceDispatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchRequest.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchRequest) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{126}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *InferenceDispatchRequest) GetRole() ModelRole {
@@ -12100,7 +12170,7 @@ type InferenceDispatchFailure struct {
 
 func (x *InferenceDispatchFailure) Reset() {
 	*x = InferenceDispatchFailure{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12112,7 +12182,7 @@ func (x *InferenceDispatchFailure) String() string {
 func (*InferenceDispatchFailure) ProtoMessage() {}
 
 func (x *InferenceDispatchFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12125,7 +12195,7 @@ func (x *InferenceDispatchFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchFailure.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchFailure) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{127}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *InferenceDispatchFailure) GetError() string {
@@ -12170,7 +12240,7 @@ type InferenceDispatchStreamFailure struct {
 
 func (x *InferenceDispatchStreamFailure) Reset() {
 	*x = InferenceDispatchStreamFailure{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12182,7 +12252,7 @@ func (x *InferenceDispatchStreamFailure) String() string {
 func (*InferenceDispatchStreamFailure) ProtoMessage() {}
 
 func (x *InferenceDispatchStreamFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12195,7 +12265,7 @@ func (x *InferenceDispatchStreamFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchStreamFailure.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchStreamFailure) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{128}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *InferenceDispatchStreamFailure) GetReason() string {
@@ -12232,7 +12302,7 @@ type InferenceDispatchStreamFrame struct {
 
 func (x *InferenceDispatchStreamFrame) Reset() {
 	*x = InferenceDispatchStreamFrame{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12244,7 +12314,7 @@ func (x *InferenceDispatchStreamFrame) String() string {
 func (*InferenceDispatchStreamFrame) ProtoMessage() {}
 
 func (x *InferenceDispatchStreamFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12257,7 +12327,7 @@ func (x *InferenceDispatchStreamFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchStreamFrame.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchStreamFrame) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{129}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *InferenceDispatchStreamFrame) GetFrame() isInferenceDispatchStreamFrame_Frame {
@@ -12341,7 +12411,7 @@ type InferenceDispatchResponse struct {
 
 func (x *InferenceDispatchResponse) Reset() {
 	*x = InferenceDispatchResponse{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12353,7 +12423,7 @@ func (x *InferenceDispatchResponse) String() string {
 func (*InferenceDispatchResponse) ProtoMessage() {}
 
 func (x *InferenceDispatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12366,7 +12436,7 @@ func (x *InferenceDispatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchResponse.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchResponse) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{130}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *InferenceDispatchResponse) GetTransactionId() string {
@@ -12407,7 +12477,7 @@ type PasskeyRegisterChallengeResult_RelyingParty struct {
 
 func (x *PasskeyRegisterChallengeResult_RelyingParty) Reset() {
 	*x = PasskeyRegisterChallengeResult_RelyingParty{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[132]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12419,7 +12489,7 @@ func (x *PasskeyRegisterChallengeResult_RelyingParty) String() string {
 func (*PasskeyRegisterChallengeResult_RelyingParty) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_RelyingParty) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[132]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12432,7 +12502,7 @@ func (x *PasskeyRegisterChallengeResult_RelyingParty) ProtoReflect() protoreflec
 
 // Deprecated: Use PasskeyRegisterChallengeResult_RelyingParty.ProtoReflect.Descriptor instead.
 func (*PasskeyRegisterChallengeResult_RelyingParty) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{98, 0}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{99, 0}
 }
 
 func (x *PasskeyRegisterChallengeResult_RelyingParty) GetName() string {
@@ -12460,7 +12530,7 @@ type PasskeyRegisterChallengeResult_UserInfo struct {
 
 func (x *PasskeyRegisterChallengeResult_UserInfo) Reset() {
 	*x = PasskeyRegisterChallengeResult_UserInfo{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[133]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12472,7 +12542,7 @@ func (x *PasskeyRegisterChallengeResult_UserInfo) String() string {
 func (*PasskeyRegisterChallengeResult_UserInfo) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_UserInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[133]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12485,7 +12555,7 @@ func (x *PasskeyRegisterChallengeResult_UserInfo) ProtoReflect() protoreflect.Me
 
 // Deprecated: Use PasskeyRegisterChallengeResult_UserInfo.ProtoReflect.Descriptor instead.
 func (*PasskeyRegisterChallengeResult_UserInfo) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{98, 1}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{99, 1}
 }
 
 func (x *PasskeyRegisterChallengeResult_UserInfo) GetId() string {
@@ -12519,7 +12589,7 @@ type PasskeyRegisterChallengeResult_PublicKeyCredentialParameters struct {
 
 func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) Reset() {
 	*x = PasskeyRegisterChallengeResult_PublicKeyCredentialParameters{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[134]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12531,7 +12601,7 @@ func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) String() 
 func (*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[134]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12544,7 +12614,7 @@ func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) ProtoRefl
 
 // Deprecated: Use PasskeyRegisterChallengeResult_PublicKeyCredentialParameters.ProtoReflect.Descriptor instead.
 func (*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{98, 2}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{99, 2}
 }
 
 func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) GetType() string {
@@ -12571,7 +12641,7 @@ type PasskeyRegisterChallengeResult_AuthenticatorSelection struct {
 
 func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) Reset() {
 	*x = PasskeyRegisterChallengeResult_AuthenticatorSelection{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[135]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12583,7 +12653,7 @@ func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) String() string 
 func (*PasskeyRegisterChallengeResult_AuthenticatorSelection) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[135]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12596,7 +12666,7 @@ func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) ProtoReflect() p
 
 // Deprecated: Use PasskeyRegisterChallengeResult_AuthenticatorSelection.ProtoReflect.Descriptor instead.
 func (*PasskeyRegisterChallengeResult_AuthenticatorSelection) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{98, 3}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{99, 3}
 }
 
 func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) GetResidentKey() string {
@@ -12617,7 +12687,13 @@ var File_ztd_operator_v1_operator_proto protoreflect.FileDescriptor
 
 const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\n" +
-	"\x1eztd/operator/v1/operator.proto\x12\x0fztd.operator.v1\x1a\x1aztd/common/v1/common.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc7\x03\n" +
+	"\x1eztd/operator/v1/operator.proto\x12\x0fztd.operator.v1\x1a\x1aztd/common/v1/common.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x83\x01\n" +
+	"\x18RunShellCommandArguments\x12\x18\n" +
+	"\acommand\x18\x01 \x01(\tR\acommand\x12\x12\n" +
+	"\x04args\x18\x02 \x03(\tR\x04args\x12\x18\n" +
+	"\atimeout\x18\x03 \x01(\x05R\atimeout\x12\x1f\n" +
+	"\vworking_dir\x18\x04 \x01(\tR\n" +
+	"workingDir\"\xc7\x03\n" +
 	"\x10CommandRequested\x12T\n" +
 	"\acommand\x18\x01 \x01(\tB:\x8a\xb5\x186(^|[;&|(]\\s*)sudo(\\s|$),(^|[;&|(]\\s*)su(\\s|$),rm -rf /R\acommand\x12!\n" +
 	"\fexecution_id\x18\x02 \x01(\tR\vexecutionId\x12$\n" +
@@ -13884,7 +13960,7 @@ func file_ztd_operator_v1_operator_proto_rawDescGZIP() []byte {
 }
 
 var file_ztd_operator_v1_operator_proto_enumTypes = make([]protoimpl.EnumInfo, 17)
-var file_ztd_operator_v1_operator_proto_msgTypes = make([]protoimpl.MessageInfo, 136)
+var file_ztd_operator_v1_operator_proto_msgTypes = make([]protoimpl.MessageInfo, 137)
 var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(ExecutionStatus)(0),                                                 // 0: ztd.operator.v1.ExecutionStatus
 	(L3Status)(0),                                                        // 1: ztd.operator.v1.L3Status
@@ -13903,261 +13979,262 @@ var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(InferenceRetryClassification)(0),                                    // 14: ztd.operator.v1.InferenceRetryClassification
 	(InferenceProviderAttemptStatus)(0),                                  // 15: ztd.operator.v1.InferenceProviderAttemptStatus
 	(InferenceDispatchFailureCode)(0),                                    // 16: ztd.operator.v1.InferenceDispatchFailureCode
-	(*CommandRequested)(nil),                                             // 17: ztd.operator.v1.CommandRequested
-	(*CommandCancelRequested)(nil),                                       // 18: ztd.operator.v1.CommandCancelRequested
-	(*FileEditRequested)(nil),                                            // 19: ztd.operator.v1.FileEditRequested
-	(*FsListRequested)(nil),                                              // 20: ztd.operator.v1.FsListRequested
-	(*FsReadRequested)(nil),                                              // 21: ztd.operator.v1.FsReadRequested
-	(*HeartbeatRequested)(nil),                                           // 22: ztd.operator.v1.HeartbeatRequested
-	(*FsGrepRequested)(nil),                                              // 23: ztd.operator.v1.FsGrepRequested
-	(*CheckPortRequested)(nil),                                           // 24: ztd.operator.v1.CheckPortRequested
-	(*FetchLogsRequested)(nil),                                           // 25: ztd.operator.v1.FetchLogsRequested
-	(*FetchHistoryRequested)(nil),                                        // 26: ztd.operator.v1.FetchHistoryRequested
-	(*FetchFileHistoryRequested)(nil),                                    // 27: ztd.operator.v1.FetchFileHistoryRequested
-	(*FetchFileDiffRequested)(nil),                                       // 28: ztd.operator.v1.FetchFileDiffRequested
-	(*RestoreFileRequested)(nil),                                         // 29: ztd.operator.v1.RestoreFileRequested
-	(*DirectCommandAuditRequested)(nil),                                  // 30: ztd.operator.v1.DirectCommandAuditRequested
-	(*DirectCommandResultAuditRequested)(nil),                            // 31: ztd.operator.v1.DirectCommandResultAuditRequested
-	(*AuditMsgRequested)(nil),                                            // 32: ztd.operator.v1.AuditMsgRequested
-	(*DocumentUpdateRequested)(nil),                                      // 33: ztd.operator.v1.DocumentUpdateRequested
-	(*DocumentDeleteRequested)(nil),                                      // 34: ztd.operator.v1.DocumentDeleteRequested
-	(*SignCertificateRequested)(nil),                                     // 35: ztd.operator.v1.SignCertificateRequested
-	(*SignCertificateResult)(nil),                                        // 36: ztd.operator.v1.SignCertificateResult
-	(*RevokeCertificateRequested)(nil),                                   // 37: ztd.operator.v1.RevokeCertificateRequested
-	(*RevokeCertificateResult)(nil),                                      // 38: ztd.operator.v1.RevokeCertificateResult
-	(*GetRevocationBundleRequested)(nil),                                 // 39: ztd.operator.v1.GetRevocationBundleRequested
-	(*GetRevocationBundleResult)(nil),                                    // 40: ztd.operator.v1.GetRevocationBundleResult
-	(*CreateDeviceLinkRequested)(nil),                                    // 41: ztd.operator.v1.CreateDeviceLinkRequested
-	(*DeviceLink)(nil),                                                   // 42: ztd.operator.v1.DeviceLink
-	(*DeviceLinkResult)(nil),                                             // 43: ztd.operator.v1.DeviceLinkResult
-	(*ListDeviceLinksRequested)(nil),                                     // 44: ztd.operator.v1.ListDeviceLinksRequested
-	(*ListDeviceLinksResult)(nil),                                        // 45: ztd.operator.v1.ListDeviceLinksResult
-	(*DeleteDeviceLinkRequested)(nil),                                    // 46: ztd.operator.v1.DeleteDeviceLinkRequested
-	(*TerminateOperatorRequested)(nil),                                   // 47: ztd.operator.v1.TerminateOperatorRequested
-	(*TerminateOperatorResult)(nil),                                      // 48: ztd.operator.v1.TerminateOperatorResult
-	(*ListOperatorSlotsRequested)(nil),                                   // 49: ztd.operator.v1.ListOperatorSlotsRequested
-	(*ListOperatorSlotsResult)(nil),                                      // 50: ztd.operator.v1.ListOperatorSlotsResult
-	(*BindOperatorsRequested)(nil),                                       // 51: ztd.operator.v1.BindOperatorsRequested
-	(*BindOperatorsResult)(nil),                                          // 52: ztd.operator.v1.BindOperatorsResult
-	(*UnbindOperatorsRequested)(nil),                                     // 53: ztd.operator.v1.UnbindOperatorsRequested
-	(*UnbindOperatorsResult)(nil),                                        // 54: ztd.operator.v1.UnbindOperatorsResult
-	(*SetTargetContextRequested)(nil),                                    // 55: ztd.operator.v1.SetTargetContextRequested
-	(*SetTargetContextResult)(nil),                                       // 56: ztd.operator.v1.SetTargetContextResult
-	(*OperatorRuntimeConfig)(nil),                                        // 57: ztd.operator.v1.OperatorRuntimeConfig
-	(*OperatorDocument)(nil),                                             // 58: ztd.operator.v1.OperatorDocument
-	(*ShutdownRequested)(nil),                                            // 59: ztd.operator.v1.ShutdownRequested
-	(*EvalAnswerRequested)(nil),                                          // 60: ztd.operator.v1.EvalAnswerRequested
-	(*McpCallRequested)(nil),                                             // 61: ztd.operator.v1.McpCallRequested
-	(*A2ACallRequested)(nil),                                             // 62: ztd.operator.v1.A2aCallRequested
-	(*McpResourceListRequested)(nil),                                     // 63: ztd.operator.v1.McpResourceListRequested
-	(*McpResourceReadRequested)(nil),                                     // 64: ztd.operator.v1.McpResourceReadRequested
-	(*McpPromptListRequested)(nil),                                       // 65: ztd.operator.v1.McpPromptListRequested
-	(*McpPromptGetRequested)(nil),                                        // 66: ztd.operator.v1.McpPromptGetRequested
-	(*DeterministicStageEvidence)(nil),                                   // 67: ztd.operator.v1.DeterministicStageEvidence
-	(*ReceiptPersistenceAttestation)(nil),                                // 68: ztd.operator.v1.ReceiptPersistenceAttestation
-	(*ActionReceipt)(nil),                                                // 69: ztd.operator.v1.ActionReceipt
-	(*GovernanceRejection)(nil),                                          // 70: ztd.operator.v1.GovernanceRejection
-	(*IngressRefusal)(nil),                                               // 71: ztd.operator.v1.IngressRefusal
-	(*GovernedDispatchResult)(nil),                                       // 72: ztd.operator.v1.GovernedDispatchResult
-	(*CommitmentAttestation)(nil),                                        // 73: ztd.operator.v1.CommitmentAttestation
-	(*CommandResult)(nil),                                                // 74: ztd.operator.v1.CommandResult
-	(*FsEntry)(nil),                                                      // 75: ztd.operator.v1.FsEntry
-	(*FsListResult)(nil),                                                 // 76: ztd.operator.v1.FsListResult
-	(*FsReadResult)(nil),                                                 // 77: ztd.operator.v1.FsReadResult
-	(*FsGrepMatch)(nil),                                                  // 78: ztd.operator.v1.FsGrepMatch
-	(*FsGrepResult)(nil),                                                 // 79: ztd.operator.v1.FsGrepResult
-	(*FileEditResult)(nil),                                               // 80: ztd.operator.v1.FileEditResult
-	(*ExecutionStatusUpdate)(nil),                                        // 81: ztd.operator.v1.ExecutionStatusUpdate
-	(*PortCheckEntry)(nil),                                               // 82: ztd.operator.v1.PortCheckEntry
-	(*PortCheckResult)(nil),                                              // 83: ztd.operator.v1.PortCheckResult
-	(*OllamaModelInventoryRequested)(nil),                                // 84: ztd.operator.v1.OllamaModelInventoryRequested
-	(*ProviderModelInventoryEntry)(nil),                                  // 85: ztd.operator.v1.ProviderModelInventoryEntry
-	(*OllamaModelInventoryResult)(nil),                                   // 86: ztd.operator.v1.OllamaModelInventoryResult
-	(*OllamaModelResidencyRequested)(nil),                                // 87: ztd.operator.v1.OllamaModelResidencyRequested
-	(*OllamaModelResidencyModel)(nil),                                    // 88: ztd.operator.v1.OllamaModelResidencyModel
-	(*OllamaModelResidencyResult)(nil),                                   // 89: ztd.operator.v1.OllamaModelResidencyResult
-	(*FetchLogsResult)(nil),                                              // 90: ztd.operator.v1.FetchLogsResult
-	(*AuditWebSession)(nil),                                              // 91: ztd.operator.v1.AuditWebSession
-	(*AuditFileMutation)(nil),                                            // 92: ztd.operator.v1.AuditFileMutation
-	(*AuditEvent)(nil),                                                   // 93: ztd.operator.v1.AuditEvent
-	(*FetchHistoryResult)(nil),                                           // 94: ztd.operator.v1.FetchHistoryResult
-	(*FileHistoryEntry)(nil),                                             // 95: ztd.operator.v1.FileHistoryEntry
-	(*FetchFileHistoryResult)(nil),                                       // 96: ztd.operator.v1.FetchFileHistoryResult
-	(*RestoreFileResult)(nil),                                            // 97: ztd.operator.v1.RestoreFileResult
-	(*FileDiffEntry)(nil),                                                // 98: ztd.operator.v1.FileDiffEntry
-	(*FetchFileDiffResult)(nil),                                          // 99: ztd.operator.v1.FetchFileDiffResult
-	(*HeartbeatResult)(nil),                                              // 100: ztd.operator.v1.HeartbeatResult
-	(*SystemIdentity)(nil),                                               // 101: ztd.operator.v1.SystemIdentity
-	(*NetworkInterface)(nil),                                             // 102: ztd.operator.v1.NetworkInterface
-	(*NetworkInfo)(nil),                                                  // 103: ztd.operator.v1.NetworkInfo
-	(*VersionInfo)(nil),                                                  // 104: ztd.operator.v1.VersionInfo
-	(*UptimeInfo)(nil),                                                   // 105: ztd.operator.v1.UptimeInfo
-	(*PerformanceMetrics)(nil),                                           // 106: ztd.operator.v1.PerformanceMetrics
-	(*OSDetails)(nil),                                                    // 107: ztd.operator.v1.OSDetails
-	(*UserDetails)(nil),                                                  // 108: ztd.operator.v1.UserDetails
-	(*DiskDetails)(nil),                                                  // 109: ztd.operator.v1.DiskDetails
-	(*MemoryDetails)(nil),                                                // 110: ztd.operator.v1.MemoryDetails
-	(*EnvironmentDetails)(nil),                                           // 111: ztd.operator.v1.EnvironmentDetails
-	(*FingerprintDetails)(nil),                                           // 112: ztd.operator.v1.FingerprintDetails
-	(*PasskeyCredential)(nil),                                            // 113: ztd.operator.v1.PasskeyCredential
-	(*PasskeyRegisterChallengeRequested)(nil),                            // 114: ztd.operator.v1.PasskeyRegisterChallengeRequested
-	(*PasskeyRegisterChallengeResult)(nil),                               // 115: ztd.operator.v1.PasskeyRegisterChallengeResult
-	(*AttestationResponse)(nil),                                          // 116: ztd.operator.v1.AttestationResponse
-	(*PasskeyRegisterVerifyRequested)(nil),                               // 117: ztd.operator.v1.PasskeyRegisterVerifyRequested
-	(*PasskeyRegisterVerifyResult)(nil),                                  // 118: ztd.operator.v1.PasskeyRegisterVerifyResult
-	(*PasskeyAuthChallengeRequested)(nil),                                // 119: ztd.operator.v1.PasskeyAuthChallengeRequested
-	(*PasskeyAuthChallengeResult)(nil),                                   // 120: ztd.operator.v1.PasskeyAuthChallengeResult
-	(*AssertionResponse)(nil),                                            // 121: ztd.operator.v1.AssertionResponse
-	(*PasskeyAuthVerifyRequested)(nil),                                   // 122: ztd.operator.v1.PasskeyAuthVerifyRequested
-	(*PasskeyAuthVerifyResult)(nil),                                      // 123: ztd.operator.v1.PasskeyAuthVerifyResult
-	(*ListPasskeyCredentialsRequested)(nil),                              // 124: ztd.operator.v1.ListPasskeyCredentialsRequested
-	(*ListPasskeyCredentialsResult)(nil),                                 // 125: ztd.operator.v1.ListPasskeyCredentialsResult
-	(*RevokePasskeyCredentialRequested)(nil),                             // 126: ztd.operator.v1.RevokePasskeyCredentialRequested
-	(*RevokePasskeyCredentialResult)(nil),                                // 127: ztd.operator.v1.RevokePasskeyCredentialResult
-	(*InferenceToolCall)(nil),                                            // 128: ztd.operator.v1.InferenceToolCall
-	(*InferenceToolResult)(nil),                                          // 129: ztd.operator.v1.InferenceToolResult
-	(*InferenceMessagePart)(nil),                                         // 130: ztd.operator.v1.InferenceMessagePart
-	(*InferenceMessage)(nil),                                             // 131: ztd.operator.v1.InferenceMessage
-	(*InferenceToolDeclaration)(nil),                                     // 132: ztd.operator.v1.InferenceToolDeclaration
-	(*InferenceResponseFormat)(nil),                                      // 133: ztd.operator.v1.InferenceResponseFormat
-	(*InferenceToolChoice)(nil),                                          // 134: ztd.operator.v1.InferenceToolChoice
-	(*InferenceThinkingControl)(nil),                                     // 135: ztd.operator.v1.InferenceThinkingControl
-	(*InferenceResponsePart)(nil),                                        // 136: ztd.operator.v1.InferenceResponsePart
-	(*InferenceModelVariant)(nil),                                        // 137: ztd.operator.v1.InferenceModelVariant
-	(*InferenceRequested)(nil),                                           // 138: ztd.operator.v1.InferenceRequested
-	(*InferenceProviderAttemptRecord)(nil),                               // 139: ztd.operator.v1.InferenceProviderAttemptRecord
-	(*InferenceResult)(nil),                                              // 140: ztd.operator.v1.InferenceResult
-	(*InferenceProgressEvent)(nil),                                       // 141: ztd.operator.v1.InferenceProgressEvent
-	(*InferenceCompletion)(nil),                                          // 142: ztd.operator.v1.InferenceCompletion
-	(*InferenceDispatchRequest)(nil),                                     // 143: ztd.operator.v1.InferenceDispatchRequest
-	(*InferenceDispatchFailure)(nil),                                     // 144: ztd.operator.v1.InferenceDispatchFailure
-	(*InferenceDispatchStreamFailure)(nil),                               // 145: ztd.operator.v1.InferenceDispatchStreamFailure
-	(*InferenceDispatchStreamFrame)(nil),                                 // 146: ztd.operator.v1.InferenceDispatchStreamFrame
-	(*InferenceDispatchResponse)(nil),                                    // 147: ztd.operator.v1.InferenceDispatchResponse
-	nil,                                                                  // 148: ztd.operator.v1.CommandRequested.EnvironmentEntry
-	(*PasskeyRegisterChallengeResult_RelyingParty)(nil),                  // 149: ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
-	(*PasskeyRegisterChallengeResult_UserInfo)(nil),                      // 150: ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
-	(*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters)(nil), // 151: ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
-	(*PasskeyRegisterChallengeResult_AuthenticatorSelection)(nil),        // 152: ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
-	(*structpb.Struct)(nil),                                              // 153: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),                                        // 154: google.protobuf.Timestamp
+	(*RunShellCommandArguments)(nil),                                     // 17: ztd.operator.v1.RunShellCommandArguments
+	(*CommandRequested)(nil),                                             // 18: ztd.operator.v1.CommandRequested
+	(*CommandCancelRequested)(nil),                                       // 19: ztd.operator.v1.CommandCancelRequested
+	(*FileEditRequested)(nil),                                            // 20: ztd.operator.v1.FileEditRequested
+	(*FsListRequested)(nil),                                              // 21: ztd.operator.v1.FsListRequested
+	(*FsReadRequested)(nil),                                              // 22: ztd.operator.v1.FsReadRequested
+	(*HeartbeatRequested)(nil),                                           // 23: ztd.operator.v1.HeartbeatRequested
+	(*FsGrepRequested)(nil),                                              // 24: ztd.operator.v1.FsGrepRequested
+	(*CheckPortRequested)(nil),                                           // 25: ztd.operator.v1.CheckPortRequested
+	(*FetchLogsRequested)(nil),                                           // 26: ztd.operator.v1.FetchLogsRequested
+	(*FetchHistoryRequested)(nil),                                        // 27: ztd.operator.v1.FetchHistoryRequested
+	(*FetchFileHistoryRequested)(nil),                                    // 28: ztd.operator.v1.FetchFileHistoryRequested
+	(*FetchFileDiffRequested)(nil),                                       // 29: ztd.operator.v1.FetchFileDiffRequested
+	(*RestoreFileRequested)(nil),                                         // 30: ztd.operator.v1.RestoreFileRequested
+	(*DirectCommandAuditRequested)(nil),                                  // 31: ztd.operator.v1.DirectCommandAuditRequested
+	(*DirectCommandResultAuditRequested)(nil),                            // 32: ztd.operator.v1.DirectCommandResultAuditRequested
+	(*AuditMsgRequested)(nil),                                            // 33: ztd.operator.v1.AuditMsgRequested
+	(*DocumentUpdateRequested)(nil),                                      // 34: ztd.operator.v1.DocumentUpdateRequested
+	(*DocumentDeleteRequested)(nil),                                      // 35: ztd.operator.v1.DocumentDeleteRequested
+	(*SignCertificateRequested)(nil),                                     // 36: ztd.operator.v1.SignCertificateRequested
+	(*SignCertificateResult)(nil),                                        // 37: ztd.operator.v1.SignCertificateResult
+	(*RevokeCertificateRequested)(nil),                                   // 38: ztd.operator.v1.RevokeCertificateRequested
+	(*RevokeCertificateResult)(nil),                                      // 39: ztd.operator.v1.RevokeCertificateResult
+	(*GetRevocationBundleRequested)(nil),                                 // 40: ztd.operator.v1.GetRevocationBundleRequested
+	(*GetRevocationBundleResult)(nil),                                    // 41: ztd.operator.v1.GetRevocationBundleResult
+	(*CreateDeviceLinkRequested)(nil),                                    // 42: ztd.operator.v1.CreateDeviceLinkRequested
+	(*DeviceLink)(nil),                                                   // 43: ztd.operator.v1.DeviceLink
+	(*DeviceLinkResult)(nil),                                             // 44: ztd.operator.v1.DeviceLinkResult
+	(*ListDeviceLinksRequested)(nil),                                     // 45: ztd.operator.v1.ListDeviceLinksRequested
+	(*ListDeviceLinksResult)(nil),                                        // 46: ztd.operator.v1.ListDeviceLinksResult
+	(*DeleteDeviceLinkRequested)(nil),                                    // 47: ztd.operator.v1.DeleteDeviceLinkRequested
+	(*TerminateOperatorRequested)(nil),                                   // 48: ztd.operator.v1.TerminateOperatorRequested
+	(*TerminateOperatorResult)(nil),                                      // 49: ztd.operator.v1.TerminateOperatorResult
+	(*ListOperatorSlotsRequested)(nil),                                   // 50: ztd.operator.v1.ListOperatorSlotsRequested
+	(*ListOperatorSlotsResult)(nil),                                      // 51: ztd.operator.v1.ListOperatorSlotsResult
+	(*BindOperatorsRequested)(nil),                                       // 52: ztd.operator.v1.BindOperatorsRequested
+	(*BindOperatorsResult)(nil),                                          // 53: ztd.operator.v1.BindOperatorsResult
+	(*UnbindOperatorsRequested)(nil),                                     // 54: ztd.operator.v1.UnbindOperatorsRequested
+	(*UnbindOperatorsResult)(nil),                                        // 55: ztd.operator.v1.UnbindOperatorsResult
+	(*SetTargetContextRequested)(nil),                                    // 56: ztd.operator.v1.SetTargetContextRequested
+	(*SetTargetContextResult)(nil),                                       // 57: ztd.operator.v1.SetTargetContextResult
+	(*OperatorRuntimeConfig)(nil),                                        // 58: ztd.operator.v1.OperatorRuntimeConfig
+	(*OperatorDocument)(nil),                                             // 59: ztd.operator.v1.OperatorDocument
+	(*ShutdownRequested)(nil),                                            // 60: ztd.operator.v1.ShutdownRequested
+	(*EvalAnswerRequested)(nil),                                          // 61: ztd.operator.v1.EvalAnswerRequested
+	(*McpCallRequested)(nil),                                             // 62: ztd.operator.v1.McpCallRequested
+	(*A2ACallRequested)(nil),                                             // 63: ztd.operator.v1.A2aCallRequested
+	(*McpResourceListRequested)(nil),                                     // 64: ztd.operator.v1.McpResourceListRequested
+	(*McpResourceReadRequested)(nil),                                     // 65: ztd.operator.v1.McpResourceReadRequested
+	(*McpPromptListRequested)(nil),                                       // 66: ztd.operator.v1.McpPromptListRequested
+	(*McpPromptGetRequested)(nil),                                        // 67: ztd.operator.v1.McpPromptGetRequested
+	(*DeterministicStageEvidence)(nil),                                   // 68: ztd.operator.v1.DeterministicStageEvidence
+	(*ReceiptPersistenceAttestation)(nil),                                // 69: ztd.operator.v1.ReceiptPersistenceAttestation
+	(*ActionReceipt)(nil),                                                // 70: ztd.operator.v1.ActionReceipt
+	(*GovernanceRejection)(nil),                                          // 71: ztd.operator.v1.GovernanceRejection
+	(*IngressRefusal)(nil),                                               // 72: ztd.operator.v1.IngressRefusal
+	(*GovernedDispatchResult)(nil),                                       // 73: ztd.operator.v1.GovernedDispatchResult
+	(*CommitmentAttestation)(nil),                                        // 74: ztd.operator.v1.CommitmentAttestation
+	(*CommandResult)(nil),                                                // 75: ztd.operator.v1.CommandResult
+	(*FsEntry)(nil),                                                      // 76: ztd.operator.v1.FsEntry
+	(*FsListResult)(nil),                                                 // 77: ztd.operator.v1.FsListResult
+	(*FsReadResult)(nil),                                                 // 78: ztd.operator.v1.FsReadResult
+	(*FsGrepMatch)(nil),                                                  // 79: ztd.operator.v1.FsGrepMatch
+	(*FsGrepResult)(nil),                                                 // 80: ztd.operator.v1.FsGrepResult
+	(*FileEditResult)(nil),                                               // 81: ztd.operator.v1.FileEditResult
+	(*ExecutionStatusUpdate)(nil),                                        // 82: ztd.operator.v1.ExecutionStatusUpdate
+	(*PortCheckEntry)(nil),                                               // 83: ztd.operator.v1.PortCheckEntry
+	(*PortCheckResult)(nil),                                              // 84: ztd.operator.v1.PortCheckResult
+	(*OllamaModelInventoryRequested)(nil),                                // 85: ztd.operator.v1.OllamaModelInventoryRequested
+	(*ProviderModelInventoryEntry)(nil),                                  // 86: ztd.operator.v1.ProviderModelInventoryEntry
+	(*OllamaModelInventoryResult)(nil),                                   // 87: ztd.operator.v1.OllamaModelInventoryResult
+	(*OllamaModelResidencyRequested)(nil),                                // 88: ztd.operator.v1.OllamaModelResidencyRequested
+	(*OllamaModelResidencyModel)(nil),                                    // 89: ztd.operator.v1.OllamaModelResidencyModel
+	(*OllamaModelResidencyResult)(nil),                                   // 90: ztd.operator.v1.OllamaModelResidencyResult
+	(*FetchLogsResult)(nil),                                              // 91: ztd.operator.v1.FetchLogsResult
+	(*AuditWebSession)(nil),                                              // 92: ztd.operator.v1.AuditWebSession
+	(*AuditFileMutation)(nil),                                            // 93: ztd.operator.v1.AuditFileMutation
+	(*AuditEvent)(nil),                                                   // 94: ztd.operator.v1.AuditEvent
+	(*FetchHistoryResult)(nil),                                           // 95: ztd.operator.v1.FetchHistoryResult
+	(*FileHistoryEntry)(nil),                                             // 96: ztd.operator.v1.FileHistoryEntry
+	(*FetchFileHistoryResult)(nil),                                       // 97: ztd.operator.v1.FetchFileHistoryResult
+	(*RestoreFileResult)(nil),                                            // 98: ztd.operator.v1.RestoreFileResult
+	(*FileDiffEntry)(nil),                                                // 99: ztd.operator.v1.FileDiffEntry
+	(*FetchFileDiffResult)(nil),                                          // 100: ztd.operator.v1.FetchFileDiffResult
+	(*HeartbeatResult)(nil),                                              // 101: ztd.operator.v1.HeartbeatResult
+	(*SystemIdentity)(nil),                                               // 102: ztd.operator.v1.SystemIdentity
+	(*NetworkInterface)(nil),                                             // 103: ztd.operator.v1.NetworkInterface
+	(*NetworkInfo)(nil),                                                  // 104: ztd.operator.v1.NetworkInfo
+	(*VersionInfo)(nil),                                                  // 105: ztd.operator.v1.VersionInfo
+	(*UptimeInfo)(nil),                                                   // 106: ztd.operator.v1.UptimeInfo
+	(*PerformanceMetrics)(nil),                                           // 107: ztd.operator.v1.PerformanceMetrics
+	(*OSDetails)(nil),                                                    // 108: ztd.operator.v1.OSDetails
+	(*UserDetails)(nil),                                                  // 109: ztd.operator.v1.UserDetails
+	(*DiskDetails)(nil),                                                  // 110: ztd.operator.v1.DiskDetails
+	(*MemoryDetails)(nil),                                                // 111: ztd.operator.v1.MemoryDetails
+	(*EnvironmentDetails)(nil),                                           // 112: ztd.operator.v1.EnvironmentDetails
+	(*FingerprintDetails)(nil),                                           // 113: ztd.operator.v1.FingerprintDetails
+	(*PasskeyCredential)(nil),                                            // 114: ztd.operator.v1.PasskeyCredential
+	(*PasskeyRegisterChallengeRequested)(nil),                            // 115: ztd.operator.v1.PasskeyRegisterChallengeRequested
+	(*PasskeyRegisterChallengeResult)(nil),                               // 116: ztd.operator.v1.PasskeyRegisterChallengeResult
+	(*AttestationResponse)(nil),                                          // 117: ztd.operator.v1.AttestationResponse
+	(*PasskeyRegisterVerifyRequested)(nil),                               // 118: ztd.operator.v1.PasskeyRegisterVerifyRequested
+	(*PasskeyRegisterVerifyResult)(nil),                                  // 119: ztd.operator.v1.PasskeyRegisterVerifyResult
+	(*PasskeyAuthChallengeRequested)(nil),                                // 120: ztd.operator.v1.PasskeyAuthChallengeRequested
+	(*PasskeyAuthChallengeResult)(nil),                                   // 121: ztd.operator.v1.PasskeyAuthChallengeResult
+	(*AssertionResponse)(nil),                                            // 122: ztd.operator.v1.AssertionResponse
+	(*PasskeyAuthVerifyRequested)(nil),                                   // 123: ztd.operator.v1.PasskeyAuthVerifyRequested
+	(*PasskeyAuthVerifyResult)(nil),                                      // 124: ztd.operator.v1.PasskeyAuthVerifyResult
+	(*ListPasskeyCredentialsRequested)(nil),                              // 125: ztd.operator.v1.ListPasskeyCredentialsRequested
+	(*ListPasskeyCredentialsResult)(nil),                                 // 126: ztd.operator.v1.ListPasskeyCredentialsResult
+	(*RevokePasskeyCredentialRequested)(nil),                             // 127: ztd.operator.v1.RevokePasskeyCredentialRequested
+	(*RevokePasskeyCredentialResult)(nil),                                // 128: ztd.operator.v1.RevokePasskeyCredentialResult
+	(*InferenceToolCall)(nil),                                            // 129: ztd.operator.v1.InferenceToolCall
+	(*InferenceToolResult)(nil),                                          // 130: ztd.operator.v1.InferenceToolResult
+	(*InferenceMessagePart)(nil),                                         // 131: ztd.operator.v1.InferenceMessagePart
+	(*InferenceMessage)(nil),                                             // 132: ztd.operator.v1.InferenceMessage
+	(*InferenceToolDeclaration)(nil),                                     // 133: ztd.operator.v1.InferenceToolDeclaration
+	(*InferenceResponseFormat)(nil),                                      // 134: ztd.operator.v1.InferenceResponseFormat
+	(*InferenceToolChoice)(nil),                                          // 135: ztd.operator.v1.InferenceToolChoice
+	(*InferenceThinkingControl)(nil),                                     // 136: ztd.operator.v1.InferenceThinkingControl
+	(*InferenceResponsePart)(nil),                                        // 137: ztd.operator.v1.InferenceResponsePart
+	(*InferenceModelVariant)(nil),                                        // 138: ztd.operator.v1.InferenceModelVariant
+	(*InferenceRequested)(nil),                                           // 139: ztd.operator.v1.InferenceRequested
+	(*InferenceProviderAttemptRecord)(nil),                               // 140: ztd.operator.v1.InferenceProviderAttemptRecord
+	(*InferenceResult)(nil),                                              // 141: ztd.operator.v1.InferenceResult
+	(*InferenceProgressEvent)(nil),                                       // 142: ztd.operator.v1.InferenceProgressEvent
+	(*InferenceCompletion)(nil),                                          // 143: ztd.operator.v1.InferenceCompletion
+	(*InferenceDispatchRequest)(nil),                                     // 144: ztd.operator.v1.InferenceDispatchRequest
+	(*InferenceDispatchFailure)(nil),                                     // 145: ztd.operator.v1.InferenceDispatchFailure
+	(*InferenceDispatchStreamFailure)(nil),                               // 146: ztd.operator.v1.InferenceDispatchStreamFailure
+	(*InferenceDispatchStreamFrame)(nil),                                 // 147: ztd.operator.v1.InferenceDispatchStreamFrame
+	(*InferenceDispatchResponse)(nil),                                    // 148: ztd.operator.v1.InferenceDispatchResponse
+	nil,                                                                  // 149: ztd.operator.v1.CommandRequested.EnvironmentEntry
+	(*PasskeyRegisterChallengeResult_RelyingParty)(nil),                  // 150: ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
+	(*PasskeyRegisterChallengeResult_UserInfo)(nil),                      // 151: ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
+	(*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters)(nil), // 152: ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
+	(*PasskeyRegisterChallengeResult_AuthenticatorSelection)(nil),        // 153: ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
+	(*structpb.Struct)(nil),                                              // 154: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),                                        // 155: google.protobuf.Timestamp
 }
 var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
-	148, // 0: ztd.operator.v1.CommandRequested.environment:type_name -> ztd.operator.v1.CommandRequested.EnvironmentEntry
-	153, // 1: ztd.operator.v1.DocumentUpdateRequested.updates:type_name -> google.protobuf.Struct
-	42,  // 2: ztd.operator.v1.DeviceLinkResult.link:type_name -> ztd.operator.v1.DeviceLink
-	42,  // 3: ztd.operator.v1.ListDeviceLinksResult.links:type_name -> ztd.operator.v1.DeviceLink
-	58,  // 4: ztd.operator.v1.ListOperatorSlotsResult.operators:type_name -> ztd.operator.v1.OperatorDocument
-	154, // 5: ztd.operator.v1.OperatorDocument.created_at:type_name -> google.protobuf.Timestamp
-	154, // 6: ztd.operator.v1.OperatorDocument.updated_at:type_name -> google.protobuf.Timestamp
-	154, // 7: ztd.operator.v1.OperatorDocument.started_at:type_name -> google.protobuf.Timestamp
-	154, // 8: ztd.operator.v1.OperatorDocument.claimed_at:type_name -> google.protobuf.Timestamp
-	154, // 9: ztd.operator.v1.OperatorDocument.last_heartbeat_at:type_name -> google.protobuf.Timestamp
-	100, // 10: ztd.operator.v1.OperatorDocument.latest_heartbeat_snapshot:type_name -> ztd.operator.v1.HeartbeatResult
-	57,  // 11: ztd.operator.v1.OperatorDocument.runtime_config:type_name -> ztd.operator.v1.OperatorRuntimeConfig
-	154, // 12: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
+	149, // 0: ztd.operator.v1.CommandRequested.environment:type_name -> ztd.operator.v1.CommandRequested.EnvironmentEntry
+	154, // 1: ztd.operator.v1.DocumentUpdateRequested.updates:type_name -> google.protobuf.Struct
+	43,  // 2: ztd.operator.v1.DeviceLinkResult.link:type_name -> ztd.operator.v1.DeviceLink
+	43,  // 3: ztd.operator.v1.ListDeviceLinksResult.links:type_name -> ztd.operator.v1.DeviceLink
+	59,  // 4: ztd.operator.v1.ListOperatorSlotsResult.operators:type_name -> ztd.operator.v1.OperatorDocument
+	155, // 5: ztd.operator.v1.OperatorDocument.created_at:type_name -> google.protobuf.Timestamp
+	155, // 6: ztd.operator.v1.OperatorDocument.updated_at:type_name -> google.protobuf.Timestamp
+	155, // 7: ztd.operator.v1.OperatorDocument.started_at:type_name -> google.protobuf.Timestamp
+	155, // 8: ztd.operator.v1.OperatorDocument.claimed_at:type_name -> google.protobuf.Timestamp
+	155, // 9: ztd.operator.v1.OperatorDocument.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	101, // 10: ztd.operator.v1.OperatorDocument.latest_heartbeat_snapshot:type_name -> ztd.operator.v1.HeartbeatResult
+	58,  // 11: ztd.operator.v1.OperatorDocument.runtime_config:type_name -> ztd.operator.v1.OperatorRuntimeConfig
+	155, // 12: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
 	4,   // 13: ztd.operator.v1.DeterministicStageEvidence.kind:type_name -> ztd.operator.v1.DeterministicStageKind
 	5,   // 14: ztd.operator.v1.DeterministicStageEvidence.outcome:type_name -> ztd.operator.v1.DeterministicStageOutcome
 	0,   // 15: ztd.operator.v1.ActionReceipt.status:type_name -> ztd.operator.v1.ExecutionStatus
 	2,   // 16: ztd.operator.v1.ActionReceipt.l2_status:type_name -> ztd.operator.v1.L2Status
 	1,   // 17: ztd.operator.v1.ActionReceipt.l3_status:type_name -> ztd.operator.v1.L3Status
-	67,  // 18: ztd.operator.v1.ActionReceipt.deterministic_stage_evidence:type_name -> ztd.operator.v1.DeterministicStageEvidence
-	68,  // 19: ztd.operator.v1.ActionReceipt.final_persistence_attestation:type_name -> ztd.operator.v1.ReceiptPersistenceAttestation
+	68,  // 18: ztd.operator.v1.ActionReceipt.deterministic_stage_evidence:type_name -> ztd.operator.v1.DeterministicStageEvidence
+	69,  // 19: ztd.operator.v1.ActionReceipt.final_persistence_attestation:type_name -> ztd.operator.v1.ReceiptPersistenceAttestation
 	6,   // 20: ztd.operator.v1.ActionReceipt.failure_code:type_name -> ztd.operator.v1.ReceiptFailureCode
 	7,   // 21: ztd.operator.v1.ActionReceipt.rejection_code:type_name -> ztd.operator.v1.GovernanceRejectionCode
-	69,  // 22: ztd.operator.v1.GovernanceRejection.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	70,  // 22: ztd.operator.v1.GovernanceRejection.receipt:type_name -> ztd.operator.v1.ActionReceipt
 	8,   // 23: ztd.operator.v1.IngressRefusal.code:type_name -> ztd.operator.v1.IngressRefusalCode
-	140, // 24: ztd.operator.v1.GovernedDispatchResult.inference_result:type_name -> ztd.operator.v1.InferenceResult
-	69,  // 25: ztd.operator.v1.GovernedDispatchResult.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	141, // 24: ztd.operator.v1.GovernedDispatchResult.inference_result:type_name -> ztd.operator.v1.InferenceResult
+	70,  // 25: ztd.operator.v1.GovernedDispatchResult.receipt:type_name -> ztd.operator.v1.ActionReceipt
 	0,   // 26: ztd.operator.v1.CommandResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 27: ztd.operator.v1.FsListResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	75,  // 28: ztd.operator.v1.FsListResult.entries:type_name -> ztd.operator.v1.FsEntry
+	76,  // 28: ztd.operator.v1.FsListResult.entries:type_name -> ztd.operator.v1.FsEntry
 	0,   // 29: ztd.operator.v1.FsReadResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 30: ztd.operator.v1.FsGrepResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	78,  // 31: ztd.operator.v1.FsGrepResult.matches:type_name -> ztd.operator.v1.FsGrepMatch
+	79,  // 31: ztd.operator.v1.FsGrepResult.matches:type_name -> ztd.operator.v1.FsGrepMatch
 	0,   // 32: ztd.operator.v1.FileEditResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 33: ztd.operator.v1.ExecutionStatusUpdate.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 34: ztd.operator.v1.PortCheckResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	82,  // 35: ztd.operator.v1.PortCheckResult.results:type_name -> ztd.operator.v1.PortCheckEntry
+	83,  // 35: ztd.operator.v1.PortCheckResult.results:type_name -> ztd.operator.v1.PortCheckEntry
 	0,   // 36: ztd.operator.v1.OllamaModelInventoryResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	85,  // 37: ztd.operator.v1.OllamaModelInventoryResult.entries:type_name -> ztd.operator.v1.ProviderModelInventoryEntry
+	86,  // 37: ztd.operator.v1.OllamaModelInventoryResult.entries:type_name -> ztd.operator.v1.ProviderModelInventoryEntry
 	0,   // 38: ztd.operator.v1.OllamaModelResidencyResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	88,  // 39: ztd.operator.v1.OllamaModelResidencyResult.models:type_name -> ztd.operator.v1.OllamaModelResidencyModel
-	92,  // 40: ztd.operator.v1.AuditEvent.file_mutations:type_name -> ztd.operator.v1.AuditFileMutation
-	91,  // 41: ztd.operator.v1.FetchHistoryResult.web_session:type_name -> ztd.operator.v1.AuditWebSession
-	93,  // 42: ztd.operator.v1.FetchHistoryResult.events:type_name -> ztd.operator.v1.AuditEvent
-	95,  // 43: ztd.operator.v1.FetchFileHistoryResult.history:type_name -> ztd.operator.v1.FileHistoryEntry
-	98,  // 44: ztd.operator.v1.FetchFileDiffResult.diffs:type_name -> ztd.operator.v1.FileDiffEntry
-	98,  // 45: ztd.operator.v1.FetchFileDiffResult.diff:type_name -> ztd.operator.v1.FileDiffEntry
-	101, // 46: ztd.operator.v1.HeartbeatResult.system_identity:type_name -> ztd.operator.v1.SystemIdentity
-	103, // 47: ztd.operator.v1.HeartbeatResult.network_info:type_name -> ztd.operator.v1.NetworkInfo
-	104, // 48: ztd.operator.v1.HeartbeatResult.version_info:type_name -> ztd.operator.v1.VersionInfo
-	105, // 49: ztd.operator.v1.HeartbeatResult.uptime_info:type_name -> ztd.operator.v1.UptimeInfo
-	106, // 50: ztd.operator.v1.HeartbeatResult.performance_metrics:type_name -> ztd.operator.v1.PerformanceMetrics
-	107, // 51: ztd.operator.v1.HeartbeatResult.os_details:type_name -> ztd.operator.v1.OSDetails
-	108, // 52: ztd.operator.v1.HeartbeatResult.user_details:type_name -> ztd.operator.v1.UserDetails
-	109, // 53: ztd.operator.v1.HeartbeatResult.disk_details:type_name -> ztd.operator.v1.DiskDetails
-	110, // 54: ztd.operator.v1.HeartbeatResult.memory_details:type_name -> ztd.operator.v1.MemoryDetails
-	111, // 55: ztd.operator.v1.HeartbeatResult.environment:type_name -> ztd.operator.v1.EnvironmentDetails
-	112, // 56: ztd.operator.v1.HeartbeatResult.fingerprint_details:type_name -> ztd.operator.v1.FingerprintDetails
-	102, // 57: ztd.operator.v1.NetworkInfo.connectivity_status:type_name -> ztd.operator.v1.NetworkInterface
-	149, // 58: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
-	150, // 59: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
-	151, // 60: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
-	152, // 61: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
-	116, // 62: ztd.operator.v1.PasskeyRegisterVerifyRequested.attestation_response:type_name -> ztd.operator.v1.AttestationResponse
-	113, // 63: ztd.operator.v1.PasskeyRegisterVerifyResult.credential:type_name -> ztd.operator.v1.PasskeyCredential
-	121, // 64: ztd.operator.v1.PasskeyAuthVerifyRequested.assertion_response:type_name -> ztd.operator.v1.AssertionResponse
-	113, // 65: ztd.operator.v1.ListPasskeyCredentialsResult.credentials:type_name -> ztd.operator.v1.PasskeyCredential
-	128, // 66: ztd.operator.v1.InferenceMessagePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
-	129, // 67: ztd.operator.v1.InferenceMessagePart.tool_result:type_name -> ztd.operator.v1.InferenceToolResult
+	89,  // 39: ztd.operator.v1.OllamaModelResidencyResult.models:type_name -> ztd.operator.v1.OllamaModelResidencyModel
+	93,  // 40: ztd.operator.v1.AuditEvent.file_mutations:type_name -> ztd.operator.v1.AuditFileMutation
+	92,  // 41: ztd.operator.v1.FetchHistoryResult.web_session:type_name -> ztd.operator.v1.AuditWebSession
+	94,  // 42: ztd.operator.v1.FetchHistoryResult.events:type_name -> ztd.operator.v1.AuditEvent
+	96,  // 43: ztd.operator.v1.FetchFileHistoryResult.history:type_name -> ztd.operator.v1.FileHistoryEntry
+	99,  // 44: ztd.operator.v1.FetchFileDiffResult.diffs:type_name -> ztd.operator.v1.FileDiffEntry
+	99,  // 45: ztd.operator.v1.FetchFileDiffResult.diff:type_name -> ztd.operator.v1.FileDiffEntry
+	102, // 46: ztd.operator.v1.HeartbeatResult.system_identity:type_name -> ztd.operator.v1.SystemIdentity
+	104, // 47: ztd.operator.v1.HeartbeatResult.network_info:type_name -> ztd.operator.v1.NetworkInfo
+	105, // 48: ztd.operator.v1.HeartbeatResult.version_info:type_name -> ztd.operator.v1.VersionInfo
+	106, // 49: ztd.operator.v1.HeartbeatResult.uptime_info:type_name -> ztd.operator.v1.UptimeInfo
+	107, // 50: ztd.operator.v1.HeartbeatResult.performance_metrics:type_name -> ztd.operator.v1.PerformanceMetrics
+	108, // 51: ztd.operator.v1.HeartbeatResult.os_details:type_name -> ztd.operator.v1.OSDetails
+	109, // 52: ztd.operator.v1.HeartbeatResult.user_details:type_name -> ztd.operator.v1.UserDetails
+	110, // 53: ztd.operator.v1.HeartbeatResult.disk_details:type_name -> ztd.operator.v1.DiskDetails
+	111, // 54: ztd.operator.v1.HeartbeatResult.memory_details:type_name -> ztd.operator.v1.MemoryDetails
+	112, // 55: ztd.operator.v1.HeartbeatResult.environment:type_name -> ztd.operator.v1.EnvironmentDetails
+	113, // 56: ztd.operator.v1.HeartbeatResult.fingerprint_details:type_name -> ztd.operator.v1.FingerprintDetails
+	103, // 57: ztd.operator.v1.NetworkInfo.connectivity_status:type_name -> ztd.operator.v1.NetworkInterface
+	150, // 58: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
+	151, // 59: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
+	152, // 60: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
+	153, // 61: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
+	117, // 62: ztd.operator.v1.PasskeyRegisterVerifyRequested.attestation_response:type_name -> ztd.operator.v1.AttestationResponse
+	114, // 63: ztd.operator.v1.PasskeyRegisterVerifyResult.credential:type_name -> ztd.operator.v1.PasskeyCredential
+	122, // 64: ztd.operator.v1.PasskeyAuthVerifyRequested.assertion_response:type_name -> ztd.operator.v1.AssertionResponse
+	114, // 65: ztd.operator.v1.ListPasskeyCredentialsResult.credentials:type_name -> ztd.operator.v1.PasskeyCredential
+	129, // 66: ztd.operator.v1.InferenceMessagePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
+	130, // 67: ztd.operator.v1.InferenceMessagePart.tool_result:type_name -> ztd.operator.v1.InferenceToolResult
 	10,  // 68: ztd.operator.v1.InferenceMessage.role:type_name -> ztd.operator.v1.InferenceMessageRole
-	130, // 69: ztd.operator.v1.InferenceMessage.parts:type_name -> ztd.operator.v1.InferenceMessagePart
+	131, // 69: ztd.operator.v1.InferenceMessage.parts:type_name -> ztd.operator.v1.InferenceMessagePart
 	11,  // 70: ztd.operator.v1.InferenceToolChoice.mode:type_name -> ztd.operator.v1.InferenceToolChoiceMode
-	128, // 71: ztd.operator.v1.InferenceResponsePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
+	129, // 71: ztd.operator.v1.InferenceResponsePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
 	9,   // 72: ztd.operator.v1.InferenceRequested.role:type_name -> ztd.operator.v1.ModelRole
-	131, // 73: ztd.operator.v1.InferenceRequested.messages:type_name -> ztd.operator.v1.InferenceMessage
-	132, // 74: ztd.operator.v1.InferenceRequested.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
-	133, // 75: ztd.operator.v1.InferenceRequested.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
-	134, // 76: ztd.operator.v1.InferenceRequested.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
-	135, // 77: ztd.operator.v1.InferenceRequested.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
-	137, // 78: ztd.operator.v1.InferenceRequested.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
+	132, // 73: ztd.operator.v1.InferenceRequested.messages:type_name -> ztd.operator.v1.InferenceMessage
+	133, // 74: ztd.operator.v1.InferenceRequested.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
+	134, // 75: ztd.operator.v1.InferenceRequested.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
+	135, // 76: ztd.operator.v1.InferenceRequested.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
+	136, // 77: ztd.operator.v1.InferenceRequested.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
+	138, // 78: ztd.operator.v1.InferenceRequested.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
 	14,  // 79: ztd.operator.v1.InferenceProviderAttemptRecord.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
 	15,  // 80: ztd.operator.v1.InferenceProviderAttemptRecord.status:type_name -> ztd.operator.v1.InferenceProviderAttemptStatus
-	136, // 81: ztd.operator.v1.InferenceResult.parts:type_name -> ztd.operator.v1.InferenceResponsePart
+	137, // 81: ztd.operator.v1.InferenceResult.parts:type_name -> ztd.operator.v1.InferenceResponsePart
 	12,  // 82: ztd.operator.v1.InferenceResult.timing_source:type_name -> ztd.operator.v1.InferenceTimingSource
 	13,  // 83: ztd.operator.v1.InferenceResult.load_state:type_name -> ztd.operator.v1.InferenceLoadState
 	14,  // 84: ztd.operator.v1.InferenceResult.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
-	136, // 85: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
-	69,  // 86: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	140, // 87: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
+	137, // 85: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
+	70,  // 86: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	141, // 87: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
 	9,   // 88: ztd.operator.v1.InferenceDispatchRequest.role:type_name -> ztd.operator.v1.ModelRole
-	131, // 89: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
-	132, // 90: ztd.operator.v1.InferenceDispatchRequest.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
-	133, // 91: ztd.operator.v1.InferenceDispatchRequest.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
-	134, // 92: ztd.operator.v1.InferenceDispatchRequest.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
-	135, // 93: ztd.operator.v1.InferenceDispatchRequest.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
-	137, // 94: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
+	132, // 89: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
+	133, // 90: ztd.operator.v1.InferenceDispatchRequest.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
+	134, // 91: ztd.operator.v1.InferenceDispatchRequest.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
+	135, // 92: ztd.operator.v1.InferenceDispatchRequest.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
+	136, // 93: ztd.operator.v1.InferenceDispatchRequest.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
+	138, // 94: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
 	16,  // 95: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	69,  // 96: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	69,  // 97: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
+	70,  // 96: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	70,  // 97: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
 	16,  // 98: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	141, // 99: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
-	147, // 100: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
-	145, // 101: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
-	140, // 102: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
-	69,  // 103: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
-	69,  // 104: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
-	17,  // 105: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
-	18,  // 106: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
-	19,  // 107: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
-	20,  // 108: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
-	21,  // 109: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
-	74,  // 110: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
-	74,  // 111: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
-	74,  // 112: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
-	74,  // 113: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
-	74,  // 114: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
+	142, // 99: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
+	148, // 100: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
+	146, // 101: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
+	141, // 102: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
+	70,  // 103: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	70,  // 104: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
+	18,  // 105: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
+	19,  // 106: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
+	20,  // 107: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
+	21,  // 108: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
+	22,  // 109: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
+	75,  // 110: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
+	75,  // 111: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
+	75,  // 112: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
+	75,  // 113: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
+	75,  // 114: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
 	110, // [110:115] is the sub-list for method output_type
 	105, // [105:110] is the sub-list for method input_type
 	105, // [105:105] is the sub-list for extension type_name
@@ -14170,25 +14247,25 @@ func file_ztd_operator_v1_operator_proto_init() {
 	if File_ztd_operator_v1_operator_proto != nil {
 		return
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[113].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[114].OneofWrappers = []any{
 		(*InferenceMessagePart_Text)(nil),
 		(*InferenceMessagePart_ToolCall)(nil),
 		(*InferenceMessagePart_ToolResult)(nil),
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[118].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[119].OneofWrappers = []any{
 		(*InferenceThinkingControl_Enabled)(nil),
 		(*InferenceThinkingControl_Level)(nil),
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[119].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[120].OneofWrappers = []any{
 		(*InferenceResponsePart_Text)(nil),
 		(*InferenceResponsePart_ToolCall)(nil),
 		(*InferenceResponsePart_Thinking)(nil),
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[121].OneofWrappers = []any{}
-	file_ztd_operator_v1_operator_proto_msgTypes[123].OneofWrappers = []any{}
+	file_ztd_operator_v1_operator_proto_msgTypes[122].OneofWrappers = []any{}
 	file_ztd_operator_v1_operator_proto_msgTypes[124].OneofWrappers = []any{}
-	file_ztd_operator_v1_operator_proto_msgTypes[126].OneofWrappers = []any{}
-	file_ztd_operator_v1_operator_proto_msgTypes[129].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[125].OneofWrappers = []any{}
+	file_ztd_operator_v1_operator_proto_msgTypes[127].OneofWrappers = []any{}
+	file_ztd_operator_v1_operator_proto_msgTypes[130].OneofWrappers = []any{
 		(*InferenceDispatchStreamFrame_Progress)(nil),
 		(*InferenceDispatchStreamFrame_Completion)(nil),
 		(*InferenceDispatchStreamFrame_Failure)(nil),
@@ -14199,7 +14276,7 @@ func file_ztd_operator_v1_operator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ztd_operator_v1_operator_proto_rawDesc), len(file_ztd_operator_v1_operator_proto_rawDesc)),
 			NumEnums:      17,
-			NumMessages:   136,
+			NumMessages:   137,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

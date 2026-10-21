@@ -29,10 +29,9 @@ type MemberDispatcher interface {
 	DispatchMember(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, *operatorv1.InferenceDispatchFailure)
 }
 
-// Service is the Gateway's Tribunal: it deliberates one command intent with
+// Service is the Gateway's Tribunal: it deliberates one shell command intent with
 // every member call dispatched as governed inference. It returns the audited
-// command; dispatching that command is the caller's ordinary governed
-// EXECUTE_BASH.
+// typed arguments; dispatching them is the caller's ordinary governed MCP_CALL.
 type Service struct {
 	members MemberDispatcher
 }
@@ -42,10 +41,10 @@ func NewService(members MemberDispatcher) *Service {
 	return &Service{members: members}
 }
 
-// Deliberate runs one intent through the Tribunal. The result never carries a
-// command outcome; the caller sets it after dispatching an approved command.
+// Deliberate runs one intent through the Tribunal. The result never carries an
+// execution outcome; the caller sets it after dispatching approved arguments.
 // An error means the request itself is invalid; a deliberation that ends
-// without a command, including on a failed member inference, is a result.
+// without approved arguments, including on a failed member inference, is a result.
 func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
 	if err := ValidateIntentRequest(req); err != nil {
 		return nil, err
@@ -62,6 +61,7 @@ func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntent
 		Request:          req.GetRequest(),
 		Guidelines:       req.GetGuidelines(),
 		WorkingDirectory: req.GetWorkingDirectory(),
+		TimeoutSeconds:   int(req.GetTimeoutSeconds()),
 		OS:               req.GetOs(),
 		Shell:            req.GetShell(),
 	}, req.GetStepStartIndex())
@@ -74,7 +74,8 @@ func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntent
 		return nil, fmt.Errorf("tribunal: deliberate: %w", err)
 	}
 	result.Outcome = run.Outcome.Proto()
-	result.Command = run.Command
+	result.Arguments = run.Arguments.Proto()
+	result.ArgumentsJson = run.ArgumentsJSON
 	result.Steps = run.Steps
 	if run.Outcome == OutcomeBlocked && run.Risk != nil {
 		result.RiskRationale = run.Risk.Rationale
@@ -222,7 +223,7 @@ func (m *memberInferer) Infer(ctx context.Context, call Call) (string, error) {
 	record.Result = response.GetResult()
 	record.Receipt = response.GetReceipt()
 	record.ObservationReceipts = response.GetObservationReceipts()
-	return strings.TrimSpace(models.InferenceResultText(response.GetResult())), nil
+	return models.InferenceResultText(response.GetResult()), nil
 }
 
 func textMessage(role operatorv1.InferenceMessageRole, text string) *operatorv1.InferenceMessage {

@@ -687,7 +687,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <code>POST /mcp</code><span>Model Context Protocol over HTTP, or stdio via <code>ztd mcp stdio</code></span>
         <code>POST /api/v1/a2a/call</code><span>Agent-to-agent skill calls</span>
         <code>POST /api/v1/operators/commands</code><span>Governed HTTP dispatch for enrolled apps</span>
-        <code>POST /api/v1/operators/intents</code><span>Plain-language intent; the Gateway Tribunal writes the command, then it runs as an ordinary governed EXECUTE_BASH</span>
+        <code>POST /api/v1/operators/intents</code><span>Plain-language intent; the Gateway Tribunal authors typed run_shell_command arguments that pass through MCP_CALL governance</span>
         <code>POST /api/v1/governance/envelopes</code><span>Pre-built envelopes; missing proofs are never synthesized</span>
         <code>ztd operator run</code><span>CLI dispatch to bound Operators</span>
       </div>

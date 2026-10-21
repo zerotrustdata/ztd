@@ -49,7 +49,7 @@ const agentModelCallPurposeTurn = "agent_turn"
 
 // agentModelCallPurposeTribunalPrefix prefixes the purpose of every governed
 // inference a Tribunal deliberation dispatches inside one intent-only
-// run_commands_with_operator call: tribunal_generate, tribunal_marshal, or
+// Tribunal-authored run_shell_command call: tribunal_generate, tribunal_marshal, or
 // tribunal_audit. These calls are not turns; they hang off their tool call.
 const agentModelCallPurposeTribunalPrefix = "tribunal_"
 
@@ -166,19 +166,20 @@ type AgentToolCall struct {
 	ModelCallID string `json:"model_call_id"`
 	// ProviderCallID is the call ID the model returned; the assistant and tool
 	// result messages sent on the next turn carry it.
-	ProviderCallID string `json:"provider_call_id,omitempty"`
-	ToolName       string `json:"tool_name"`
-	ArgumentsJSON  string `json:"arguments_json"`
-	Command        string `json:"command,omitempty"`
-	ResultJSON     string `json:"result_json,omitempty"`
-	ErrorType      string `json:"error_type,omitempty"`
-	Error          string `json:"error,omitempty"`
-	Success        bool   `json:"success"`
-	IsOperatorTool bool   `json:"is_operator_tool"`
-	LoopTurn       int    `json:"loop_turn"`
-	ActionType     string `json:"action_type,omitempty"`
-	TransactionID  string `json:"transaction_id,omitempty"`
-	PolicyDecision string `json:"policy_decision,omitempty"`
+	ProviderCallID        string `json:"provider_call_id,omitempty"`
+	ToolName              string `json:"tool_name"`
+	ArgumentsJSON         string `json:"arguments_json"`
+	ApprovedArgumentsJSON string `json:"approved_arguments_json,omitempty"`
+	Command               string `json:"command,omitempty"`
+	ResultJSON            string `json:"result_json,omitempty"`
+	ErrorType             string `json:"error_type,omitempty"`
+	Error                 string `json:"error,omitempty"`
+	Success               bool   `json:"success"`
+	IsOperatorTool        bool   `json:"is_operator_tool"`
+	LoopTurn              int    `json:"loop_turn"`
+	ActionType            string `json:"action_type,omitempty"`
+	TransactionID         string `json:"transaction_id,omitempty"`
+	PolicyDecision        string `json:"policy_decision,omitempty"`
 	// Receipt is the signed receipt the Gateway answered the dispatch with: the
 	// executed receipt, or a governance rejection's receipt. A refusal has none.
 	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`

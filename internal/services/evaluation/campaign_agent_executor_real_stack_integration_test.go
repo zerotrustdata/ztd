@@ -231,8 +231,8 @@ func TestCampaignAgentExecutorIntegration_DeclaresScenarioAllowedAndForbiddenToo
 		singleRole: true, suffix: "declared-tools",
 		replies: []fixtures.OllamaReply{{Content: "HEALTHY"}},
 		scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
-			scenario.AllowedTools = []string{"run_commands_with_operator", "read_file"}
-			scenario.ForbiddenTools = []string{constants.MCPToolRunShellCommand}
+			scenario.AllowedTools = []string{constants.MCPToolRunShellCommand, "read_file"}
+			scenario.ForbiddenTools = []string{"fs_disk_profile"}
 			scenario.TribunalCommands = true
 			scenario.ExpectedTools = nil
 		},
@@ -241,7 +241,7 @@ func TestCampaignAgentExecutorIntegration_DeclaresScenarioAllowedAndForbiddenToo
 	res := env.executeNext(t)
 
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
-	want := []string{"read_file", "run_commands_with_operator", constants.MCPToolRunShellCommand}
+	want := []string{"fs_disk_profile", "read_file", constants.MCPToolRunShellCommand}
 	bodies := executorChatBodies(t, env)
 	require.Len(t, bodies, 1)
 	assert.Equal(t, want, executorToolNames(bodies[0]), "forbidden tools stay declared so restraint is observable")

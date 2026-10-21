@@ -8,12 +8,14 @@
 package evaluation
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 )
 
 func TestParseAgentToolArguments_RejectsNullArguments(t *testing.T) {
@@ -39,4 +41,29 @@ func TestParseAgentToolArguments_EmptyArgumentsAcceptInjectedDefaults(t *testing
 	require.Nil(t, failure)
 	args.Set("exclude_audit_reads", true)
 	assert.Equal(t, true, args.Values()["exclude_audit_reads"])
+}
+
+func TestAgentToolCatalogContainsOnlyRegisteredNativeTools(t *testing.T) {
+	registry := mcp.NewToolRegistry()
+	require.NoError(t, mcp.RegisterNativeTools(registry))
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	var want []string
+	for _, tool := range registry.List() {
+		want = append(want, tool.Name())
+	}
+	sort.Strings(want)
+	assert.Equal(t, want, catalog.ToolNames())
+}
+
+func TestAgentToolScopeRequiresRunShellCommandForTribunalAuthoring(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	_, err = catalog.Scope(ScenarioToolExpectations{TribunalCommands: true, AllowedTools: []string{"read_file"}})
+	assert.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
+
+	_, err = catalog.Scope(ScenarioToolExpectations{TribunalCommands: true, AllowedTools: []string{constants.MCPToolRunShellCommand}})
+	assert.NoError(t, err)
+	_, err = catalog.Scope(ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}})
+	assert.NoError(t, err)
 }

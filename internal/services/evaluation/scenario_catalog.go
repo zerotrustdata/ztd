@@ -30,7 +30,7 @@ type ScenarioBlueprint struct {
 	RequiredConcepts  []string
 	EligibleRoles     []evalv1.ModelCampaignRole
 	TrajectoryPolicy  evalv1.EvaluationTrajectoryPolicy
-	// TribunalCommands declares run_commands_with_operator intent-only.
+	// TribunalCommands routes run_shell_command through Tribunal authoring.
 	TribunalCommands bool
 	Input            ScenarioInputFixture
 	Gold             ScenarioGoldCriteria

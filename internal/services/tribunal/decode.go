@@ -17,22 +17,16 @@ import (
 )
 
 // decodeAnswer decodes a model's JSON answer into v. The answer must be one
-// JSON object with only known fields, optionally inside a single markdown
-// code fence. Anything else is an invalid answer; no keyword is ever read
+// JSON object with only known fields. Anything else is an invalid answer; no keyword is ever read
 // out of free text.
 func decodeAnswer(text string, v any) error {
-	body := strings.TrimSpace(text)
-	if strings.HasPrefix(body, "```") && strings.HasSuffix(body, "```") && len(body) >= 6 {
-		body = strings.TrimSpace(body[3 : len(body)-3])
-		body = strings.TrimSpace(strings.TrimPrefix(body, "json"))
-	}
-	if !strings.HasPrefix(body, "{") {
+	if len(text) == 0 || text[0] != '{' {
 		return fmt.Errorf("%w: answer is not a JSON object", constants.ErrTribunalAnswerInvalid)
 	}
-	decoder := json.NewDecoder(strings.NewReader(body))
+	decoder := json.NewDecoder(strings.NewReader(text))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(v); err != nil {
-		return fmt.Errorf("%w: %v", constants.ErrTribunalAnswerInvalid, err)
+		return fmt.Errorf("%w: %w", constants.ErrTribunalAnswerInvalid, err)
 	}
 	if _, err := decoder.Token(); err != io.EOF {
 		return fmt.Errorf("%w: trailing content after JSON object", constants.ErrTribunalAnswerInvalid)

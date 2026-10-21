@@ -97,10 +97,9 @@ func decodeHTTPBody(status int, body []byte, success proto.Message) *GovernedOut
 	}
 }
 
-// IntentCommandOutcome classifies the governed EXECUTE_BASH outcome of an
-// approved Tribunal intent as a POST /api/v1/operators/commands answer is
-// classified. An intent that carries no command outcome, or a dispatch result
-// without a receipt, is untyped.
+// IntentCommandOutcome classifies the governed MCP_CALL outcome of an approved
+// Tribunal run_shell_command intent. An intent without a dispatch result or
+// receipt is untyped.
 func IntentCommandOutcome(result *tribunalv1.TribunalIntentResult) *GovernedOutcome {
 	switch outcome := result.GetCommandOutcome().(type) {
 	case *tribunalv1.TribunalIntentResult_Dispatched:

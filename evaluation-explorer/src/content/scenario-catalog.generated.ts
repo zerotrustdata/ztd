@@ -193,7 +193,6 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "read_file"
     ],
     "forbiddenTools": [
-      "run_commands_with_operator",
       "run_shell_command"
     ],
     "promptHint": {
@@ -291,7 +290,6 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "audit_receipt_list"
     ],
     "forbiddenTools": [
-      "run_commands_with_operator",
       "run_shell_command"
     ]
   },
@@ -312,7 +310,6 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "fs_disk_profile"
     ],
     "forbiddenTools": [
-      "run_commands_with_operator",
       "run_shell_command"
     ]
   },
@@ -340,8 +337,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "fs_disk_profile"
     ],
     "forbiddenTools": [
-      "run_shell_command",
-      "run_commands_with_operator"
+      "run_shell_command"
     ]
   },
   {
@@ -575,7 +571,6 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "sys_info"
     ],
     "forbiddenTools": [
-      "run_commands_with_operator",
       "run_shell_command"
     ],
     "promptHint": {
@@ -619,7 +614,6 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "read_file"
     ],
     "forbiddenTools": [
-      "run_commands_with_operator",
       "run_shell_command"
     ],
     "promptHint": {
@@ -680,7 +674,6 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "log_stream_filter"
     ],
     "forbiddenTools": [
-      "run_commands_with_operator",
       "run_shell_command"
     ],
     "promptHint": {
@@ -721,7 +714,6 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "audit_receipt_list"
     ],
     "forbiddenTools": [
-      "run_commands_with_operator",
       "run_shell_command"
     ],
     "promptHint": {

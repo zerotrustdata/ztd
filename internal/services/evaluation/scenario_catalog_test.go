@@ -88,7 +88,7 @@ func TestScenarioDiagnosisRubric_IsBoundIntoFrozenGoldArtifact(t *testing.T) {
 }
 
 // tribunalInvestigationBlueprint is a planted-fault investigation scenario,
-// which declares the intent-only run_commands_with_operator through TribunalCommands.
+// which declares the intent-only run_shell_command through TribunalCommands.
 func tribunalInvestigationBlueprint() ScenarioBlueprint {
 	blueprints, err := InvestigationScenarioBlueprints()
 	if err != nil {
@@ -215,22 +215,13 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"gold evidence reference has no criteria", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{{ReferenceID: "ref-1"}}
 		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"tribunal commands without run_commands_with_operator allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+		{"tribunal commands without run_shell_command allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.TribunalCommands = true
 		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"non-tribunal scenario allows the intent-only command tool", toolArgGrepPattern, func(b *ScenarioBlueprint) {
-			b.AllowedTools = append(b.AllowedTools, agentToolRunCommands)
-		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"tribunal validator constrains the intent-only command argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
-			b.Gold.ArgumentValidators = []ToolArgumentValidator{{
-				ToolName:  agentToolRunCommands,
-				Arguments: []ToolArgumentConstraint{{Name: agentToolArgCommand, RequiredTerms: [][]string{{"cat"}}}},
-			}}
-		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"tribunal hint omits the intent request argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
+		{"tribunal hint omits the shell command argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
 			b.TrajectoryPolicy = evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED
-			b.ExpectedTools = []string{agentToolRunCommands}
-			b.Gold.PromptHint = hint([]string{agentToolRunCommands})
+			b.ExpectedTools = []string{constants.MCPToolRunShellCommand}
+			b.Gold.PromptHint = hint([]string{constants.MCPToolRunShellCommand})
 		}, constants.ErrEvaluationPromptUnanswerable},
 	}
 	for _, tt := range tests {
