@@ -166,12 +166,18 @@ func TestRunApprovedShellCommandShowsRevisedArgumentsOnSuccessAndFailure(t *test
 			require.NoError(t, err)
 			assert.Equal(t, approvedJSON, record.ApprovedArgumentsJSON)
 			assert.Equal(t, tc.wantSuccess, record.Success)
-			assert.Contains(t, record.ResultJSON, `"approved_arguments"`)
-			assert.Contains(t, record.ResultJSON, `"command":"printf"`)
-			assert.Contains(t, record.ResultJSON, `"working_dir":"/operator/workspace"`)
-			if !tc.wantSuccess {
-				assert.Contains(t, record.ResultJSON, "failed")
+			if tc.wantSuccess {
+				// Success is a typed result carrying the approved arguments.
+				assert.Contains(t, record.ResultJSON, `"approved_arguments"`)
+				assert.Contains(t, record.ResultJSON, `"command":"printf"`)
+				assert.Contains(t, record.ResultJSON, `"working_dir":"/operator/workspace"`)
+				return
 			}
+			// Failure is the standard error result; its text names the approved arguments.
+			assert.Contains(t, record.Error, "failed")
+			assert.Contains(t, record.Error, "Approved arguments: ")
+			assert.Contains(t, record.ResultJSON, "Approved arguments:")
+			assert.Contains(t, record.ResultJSON, "printf")
 		})
 	}
 }

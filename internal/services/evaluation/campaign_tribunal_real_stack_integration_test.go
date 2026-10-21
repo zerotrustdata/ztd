@@ -338,7 +338,7 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	vote := trace.Steps[5].GetVote()
 	require.NotNil(t, vote)
 	assert.True(t, vote.GetConsensusReached())
-	assert.JSONEq(t, tribunalRealCommand, vote.GetSelectedCommand())
+assert.JSONEq(t, tribunalExpectedApprovedArguments(trace), vote.GetSelectedCommand())
 	assert.Equal(t, evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, trace.Steps[7].GetReview().GetVerdict())
 
 	conversation, err := trace.Conversation()
