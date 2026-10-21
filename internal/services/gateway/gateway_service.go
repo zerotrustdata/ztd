@@ -98,6 +98,8 @@ type GatewayModeService struct {
 	platformEnrollmentSvc    *PlatformEnrollmentService
 	dispatchSvc              *DispatchService
 	inferenceDispatchSvc     *dispatch.DispatchService
+	tribunalConsensus        *TribunalConsensusDeliberator
+	consensusSigner          ConsensusMemberSigner
 	providerObservationCoord *ProviderBoundaryObservationCoordinator
 	modelProvenanceCoord     *ModelProvenanceObservationCoordinator
 	observeProducer          *ObserveProducerService
@@ -343,10 +345,15 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	}
 
 	// --- Consensus bootstrap (C2 inverted order: before pubsub and mcpGateway) ---
-	l2Deliberator := b.deliberator
-	if l2Deliberator == nil {
-		l2Deliberator = consensusStore.NewConsensusAppDeliberatorWithClientFactory(pki.NewConsensusAppHTTPClient)
+	// The router reads the binding provider per envelope; its Tribunal vote
+	// producer is bound below, once inference dispatch exists. An injected
+	// deliberator replaces only the application provider's producer.
+	applicationDeliberator := b.deliberator
+	if applicationDeliberator == nil {
+		applicationDeliberator = consensusStore.NewConsensusAppDeliberatorWithClientFactory(pki.NewConsensusAppHTTPClient)
 	}
+	consensusRouter := &consensusDeliberatorRouter{store: consensusStore, application: applicationDeliberator}
+	var l2Deliberator mcp.L2ConsensusDeliberator = consensusRouter
 
 	// --- Command Service (OperatorPubSubService) ---
 	cliVerifier := NewCLISessionVerifier(docStore, pki, logger, userSvc, cliSessionSvc)
@@ -457,6 +464,10 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if auditStore != nil {
 		auditLogger = pubsub.NewAuditLogger(auditStore, logger)
 	}
+	fsGrep, err := execution.NewFsGrepService(cfg.WorkDir, logger)
+	if err != nil {
+		return nil, fmt.Errorf("gateway: file search service: %w", err)
+	}
 
 	mcpGateway, err := mcp.NewGatewayService(mcp.Dependencies{
 		Logger:                 logger,
@@ -470,6 +481,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		PublicBaseURL:          publicBaseURL,
 		AuditStore:             auditStore,
 		AuditReceiptQuery:      auditStore,
+		FsGrep:                 fsGrep,
 		EnvProc:                cmdSvc,
 		OutboundEnvProc:        dispatchSvc,
 		OutboundProofPreparer:  outboundApproval,
@@ -530,6 +542,8 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		&gatewayOperatorListerAdapter{svc: reg},
 		logger,
 	)
+	tribunalConsensus := NewTribunalConsensusDeliberator(consensusStore, db.GetAppPolicyStore(), inferenceDispatchSvc, nil, logger)
+	consensusRouter.tribunal = tribunalConsensus
 	ownerOperatorLister := &registrationOwnerOperatorLister{reg: reg, userSvc: userSvc}
 	evidenceWindows := NewEvidenceWindowPublisher(docStore, NewSSEEventPublisher(sseStore, wsHandler), logger)
 	providerObservationCoord := NewProviderBoundaryObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, nil, nil, logger)
@@ -583,6 +597,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		platformEnrollmentSvc:    platformEnrollmentSvc,
 		dispatchSvc:              dispatchSvc,
 		inferenceDispatchSvc:     inferenceDispatchSvc,
+		tribunalConsensus:        tribunalConsensus,
 		providerObservationCoord: providerObservationCoord,
 		modelProvenanceCoord:     modelProvenanceCoord,
 		observeProducer:          NewObserveProducerService(docStore, sseStore, wsHandler, b.fileSvc, logger),
@@ -931,6 +946,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 			Responder:         ls.responder,
 			IsReady:           ls.IsReady,
 			IsGovernanceReady: ls.IsGovernanceReady,
+			ConsensusHealth:   ls.ConsensusHealth,
 		},
 		GovernanceControllerDeps: GovernanceControllerDeps{
 			Cfg:         cfg,
@@ -1101,6 +1117,15 @@ func (ls *GatewayModeService) GetConsensusStore() *ConsensusStoreService {
 	return ls.consensusStore
 }
 
+// SetConsensusMemberSigner installs the Gateway host's Tribunal member signer
+// for both vote signing and member vote-inference attestations. The host
+// calls it once, before Start.
+func (ls *GatewayModeService) SetConsensusMemberSigner(signer ConsensusMemberSigner) {
+	ls.consensusSigner = signer
+	ls.dispatchSvc.SetConsensusMemberSigner(signer)
+	ls.tribunalConsensus.signer = signer
+}
+
 // GetSignerStore returns the signer store service.
 func (ls *GatewayModeService) GetSignerStore() *SignerStoreService {
 	return ls.signerStore
@@ -1216,16 +1241,24 @@ func (ls *GatewayModeService) Ready() <-chan struct{} {
 
 func (ls *GatewayModeService) IsGovernanceReady(ctx context.Context) bool {
 	// When L2 is audited rather than enforced, governance is ready as soon as
-	// the service is running without requiring registered L2 signers.
+	// the service is running without requiring a bound consensus.
 	if !ls.cfg.Gateway.Posture.RequiresL2() {
 		return true
 	}
-	ready, err := ls.signerStore.HasTrustedSigners(ctx)
+	return ls.ConsensusHealth(ctx).Ready
+}
+
+// ConsensusHealth returns the unauthenticated /health summary of the bound L2
+// consensus readiness. The member signer is read at call time so a signer
+// installed after construction is observed. On a readiness error it logs and
+// returns the zero HealthConsensus, which reports not ready.
+func (ls *GatewayModeService) ConsensusHealth(ctx context.Context) models.HealthConsensus {
+	readiness, err := ls.consensusStore.ConsensusReadiness(ctx, ls.consensusSigner)
 	if err != nil {
-		ls.logger.Error("Failed to check if governance is ready", "state", string(constants.ConnectionStateError), "error", err)
-		return false
+		ls.logger.Error("Failed to compute consensus readiness", "state", string(constants.ConnectionStateError), "error", err)
+		return models.HealthConsensus{}
 	}
-	return ready
+	return readiness.Summary()
 }
 
 // GetGovernanceDeps returns the governance dependencies for transaction verification.

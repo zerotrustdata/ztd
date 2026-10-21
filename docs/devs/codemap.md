@@ -4,7 +4,7 @@ title: ztd Code Map
 audience: maintainers and coding agents
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-21
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -181,6 +181,7 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `gw` | `gw` | `internal/cli/cmd/gw/` | `gateway` | Gateway lifecycle, data, security, and tunnel commands. `gateway_start_running.go` decides whether `gw start` reuses a running Gateway by comparing explicitly set startup flags with its launch profile. |
 | `login`, `logout` | `authcmd` | `internal/cli/cmd/auth/` | | Top-level sign-in (`login` defaults to headless `login cli`; `login web` uses browser) and sign-out (`logout`, `logout web`, `logout cli`); shares `auth` package and enrollment runner. |
 | `auth` | `authcmd` | `internal/cli/cmd/auth/` | | User and platform enrollment, sessions, and approvals. |
+| `consensus` | `consensuscmd` | `internal/cli/cmd/consensus/` | | Gateway L2 consensus: `status` (bound provider, quorum, signer readiness, posture) and `enroll app` (governed application binding). |
 | `mcp` | `mcp` | `internal/cli/cmd/mcp/` | | MCP stdio serving and agent integration. |
 | `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `reset-identity`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
 | `autochthon` | `autochthoncmd` | `internal/cli/cmd/autochthon/` | | Gateway-less foreground runtime: host sampling and local prior under `.ztd/autochthon/`, and read-only `status` reporting. Not an Operator mode; refuses Gateway-facing flags. |
@@ -245,7 +246,7 @@ Mutations that traverse a ztd ingress use a typed `GovernanceEnvelope` (`INV-BOU
 | Step | Owner |
 | :--- | :--- |
 | L1 doctrine | `internal/services/governance/l1_doctrine.go` (`NewL1DoctrineFromDir`). Loader rules: `INV-DOCTRINE-*`. |
-| L2 consensus | `internal/services/governance/l2_consensus.go`, `internal/services/gateway/consensus_store_service.go`. Bound application HTTPS deliberation. Required only for postures that enforce it (`INV-DEP-05`). Architecture: [Consensus](../architecture/consensus.md). |
+| L2 consensus | `internal/services/governance/l2_consensus.go`, `internal/services/gateway/consensus_store_service.go`. Bound application HTTPS deliberation. Required only for postures that enforce it (`INV-DEP-05`). The Gateway-hosted Tribunal provider votes in `internal/services/gateway/tribunal_consensus_deliberator.go` (`TribunalConsensusDeliberator`). Architecture: [Consensus](../architecture/consensus.md). |
 | L3 notary | `internal/services/governance/`. Gateway mode and outbound mode use distinct notaries. See mode table. |
 | L4 verification and L5 actuation | `internal/services/governance/` with command and file dispatch in `internal/services/pubsub/`. |
 | MCP and A2A translation, native tools, suspension | `internal/services/mcp/`. Native registration rules: `INV-MCP-*`. |

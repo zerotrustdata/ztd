@@ -32,6 +32,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/execution"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
@@ -137,7 +138,9 @@ func (unreachableAuditReceiptQuery) GetActionReceipt(string) (*models.ActionRece
 // when the Gateway pre-check was skipped, but still serves reads of its own
 // signed audit store.
 func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
-	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditReceiptQuery{})
+	grep, err := execution.NewFsGrepService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditReceiptQuery{}, grep)
 	require.NoError(t, err)
 	tests := []struct {
 		name         string

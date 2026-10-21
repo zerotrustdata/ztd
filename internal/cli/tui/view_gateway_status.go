@@ -48,6 +48,7 @@ func (m Model) gatewayStatusLines() []string {
 			detailRow("PID", gatewayPID(m.health.PID)),
 			detailRow("GOVERNANCE", ready),
 			detailRow("POSTURE", string(m.health.Posture)),
+			detailRow("CONSENSUS", m.health.Consensus.Describe(m.health.Posture)),
 		)
 		if m.health.StateMerkleRoot != "" {
 			lines = append(lines, detailRow("STATE ROOT", shortHash(m.health.StateMerkleRoot)))

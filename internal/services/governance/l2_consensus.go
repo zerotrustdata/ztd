@@ -25,6 +25,9 @@ type L2ConsensusPolicy struct {
 	Quorum          int
 	RequireDistinct bool
 	Enabled         bool
+	// Provider is the binding's vote producer. Only a tribunal policy can
+	// prove a deliberation attestation.
+	Provider constants.ConsensusProvider
 }
 
 // L2ConsensusPolicyStore defines the generic interface for loading an L2
@@ -58,11 +61,15 @@ func L2Enforced(actionType constants.ActionType, posture constants.Posture) bool
 // records. A valid proof is REQUIRED_VALID even where L2 is not enforced, because
 // its verified stage is recorded as audit evidence. A failed enforced proof is
 // REQUIRED_FAILED. Everything else is NOT_REQUIRED.
-func l2StatusFor(actionType constants.ActionType, posture constants.Posture, valid bool) operatorv1.L2Status {
+//
+// A deliberation-exempt envelope reaching here has had its attestation proven
+// by verifyL2Posture, so it is NOT_REQUIRED even under an L2 posture.
+func l2StatusFor(envelope *govtypes.GovernanceEnvelope, posture constants.Posture, valid bool) operatorv1.L2Status {
+	actionType := constants.ActionType(envelope.GetActionType())
 	switch {
 	case valid:
 		return operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
-	case L2Enforced(actionType, posture):
+	case L2Enforced(actionType, posture) && !L2DeliberationExempt(envelope):
 		return operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED
 	default:
 		return operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
@@ -81,6 +88,17 @@ func l2StatusFor(actionType constants.ActionType, posture constants.Posture, val
 func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture constants.Posture) (bool, error) {
 	actionType := constants.ActionType(envelope.ActionType)
 	enforced := L2Enforced(actionType, posture)
+
+	// A deliberation attestation is verified first and in every posture. A
+	// proven one exempts the envelope from L2 (NOT_REQUIRED); any other
+	// envelope carrying one is rejected.
+	if envelope.GetGovernance().GetL2().GetDeliberation() != nil {
+		if err := tv.verifyL2Deliberation(ctx, envelope, computedHash); err != nil {
+			tv.logger.Error("L2 deliberation attestation rejected", string(constants.ConnectionStateError), err)
+			return false, err
+		}
+		return false, nil
+	}
 
 	if envelope.Governance == nil || envelope.Governance.L2 == nil ||
 		(len(envelope.Governance.L2.Votes) == 0 && envelope.Governance.L2.ConsensusSetId == "") {
@@ -191,6 +209,84 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 // L2VotePayload returns the exact bytes L2 votes sign and L4 verifies: "<message_id>|<decision>".
 func L2VotePayload(messageID string, decision bool) []byte {
 	return []byte(fmt.Sprintf("%s|%v", messageID, decision))
+}
+
+// L2DeliberationPayload returns the exact bytes a Tribunal member's
+// deliberation attestation signs and L4 verifies:
+// "<message_id>|consensus-deliberation". It never equals an L2VotePayload, so a
+// vote can never be replayed as an attestation, nor an attestation as a vote.
+func L2DeliberationPayload(messageID string) []byte {
+	return []byte(messageID + "|consensus-deliberation")
+}
+
+// L2DeliberationExempt reports whether an envelope claims the deliberation
+// exemption from L2: a deliberation action carrying a deliberation attestation
+// and no votes. It is the single owner of the claim. Gateway deliberation sites
+// skip deliberation when it holds; L4 accepts the claim only after
+// verifyL2Deliberation proves it, and rejects any other envelope carrying an
+// attestation.
+func L2DeliberationExempt(envelope *govtypes.GovernanceEnvelope) bool {
+	l2 := envelope.GetGovernance().GetL2()
+	return isDeliberationAction(constants.ActionType(envelope.GetActionType())) &&
+		l2.GetDeliberation() != nil && len(l2.GetVotes()) == 0
+}
+
+// isDeliberationAction reports whether a Tribunal member's vote may produce an
+// envelope of this action: the member's INFERENCE, and the provider-boundary
+// and model-provenance observation commands that same inference attempt emits.
+// Without the observations, each vote's observation would itself be voted on,
+// recursing without bound.
+func isDeliberationAction(actionType constants.ActionType) bool {
+	switch actionType {
+	case constants.ActionTypeInference,
+		constants.ActionTypeProviderBoundaryObservation,
+		constants.ActionTypeModelProvenanceObservation:
+		return true
+	default:
+		return false
+	}
+}
+
+// verifyL2Deliberation verifies a deliberation attestation. It holds only for
+// an L2DeliberationExempt envelope naming a bound, enabled Tribunal-provider
+// consensus set whose member, an enabled trusted signer, signed
+// L2DeliberationPayload over the recomputed hash. Every failure, in every
+// posture, is ErrTxL2SignatureInvalid: an attestation is never audit-only.
+func (tv *L4Warden) verifyL2Deliberation(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string) error {
+	if !L2DeliberationExempt(envelope) {
+		return fmt.Errorf("l4 warden: deliberation attestation outside a vote-free inference: %w", constants.ErrTxL2SignatureInvalid)
+	}
+	if tv.signerStore == nil || tv.consensusPolicyStore == nil {
+		return fmt.Errorf("l4 warden: deliberation attestation: %w", constants.ErrTxL2SignatureInvalid)
+	}
+	l2 := envelope.GetGovernance().GetL2()
+	attestation := l2.GetDeliberation()
+	policy, err := tv.consensusPolicyStore.GetConsensusPolicy(ctx, l2.GetConsensusSetId())
+	if err != nil {
+		return fmt.Errorf("l4 warden: deliberation attestation policy: %w: %w", constants.ErrTxL2SignatureInvalid, err)
+	}
+	if policy == nil || !policy.Enabled || policy.Provider != constants.ConsensusProviderTribunal {
+		return fmt.Errorf("l4 warden: deliberation attestation needs a bound tribunal consensus: %w", constants.ErrTxL2SignatureInvalid)
+	}
+	member := false
+	for _, id := range policy.MemberKeyIDs {
+		if id == attestation.GetSignerKeyId() {
+			member = true
+			break
+		}
+	}
+	if !member {
+		return fmt.Errorf("l4 warden: deliberation attestation signer %q is not a member: %w", attestation.GetSignerKeyId(), constants.ErrTxL2SignatureInvalid)
+	}
+	pubKey, err := tv.signerStore.GetTrustedSigner(ctx, attestation.GetSignerKeyId())
+	if err != nil {
+		return fmt.Errorf("l4 warden: deliberation attestation signer %q: %w: %w", attestation.GetSignerKeyId(), constants.ErrTxL2SignatureInvalid, err)
+	}
+	sig, err := hex.DecodeString(attestation.GetSignature())
+	if pubKey == nil || err != nil || !ed25519.Verify(pubKey, L2DeliberationPayload(computedHash), sig) {
+		return fmt.Errorf("l4 warden: deliberation attestation signer %q: %w", attestation.GetSignerKeyId(), constants.ErrTxL2SignatureInvalid)
+	}
+	return nil
 }
 
 // verifyL2Signature verifies an L2 ED25519 signature.

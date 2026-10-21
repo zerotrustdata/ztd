@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/security"
 )
 
 // FileReadTool reads file contents with path validation and safety checks.
@@ -23,7 +24,7 @@ type FileReadTool struct{}
 
 // Name returns the tool identifier.
 func (t *FileReadTool) Name() string {
-	return "read_file"
+	return constants.MCPToolReadFile
 }
 
 // Description returns a human-readable description.
@@ -89,30 +90,8 @@ func (t *FileReadTool) Execute(ctx context.Context, args json.RawMessage) (CallT
 	// an error field: the Actuator records a failed tool call as a FAILED
 	// receipt, and a COMPLETED receipt must mean the file was read.
 
-	// Security check: prevent reading sensitive system files
-	dangerousPaths := []string{
-		"/etc/shadow",
-		"/etc/passwd",
-		"/etc/gshadow",
-		"/etc/sudoers",
-	}
-	for _, dangerous := range dangerousPaths {
-		if absPath == dangerous {
-			return CallToolResult{}, fmt.Errorf("read_file: %w: %s", constants.ErrMCPSensitiveFile, absPath)
-		}
-	}
-
-	// Check for SSH private key files by filename only
-	dangerousBasenames := []string{
-		"id_rsa",
-		"id_ed25519",
-		"id_ecdsa",
-	}
-	basename := filepath.Base(absPath)
-	for _, dangerous := range dangerousBasenames {
-		if basename == dangerous {
-			return CallToolResult{}, fmt.Errorf("read_file: %w: %s", constants.ErrMCPSensitiveFile, absPath)
-		}
+	if security.IsSensitiveReadPath(absPath) {
+		return CallToolResult{}, fmt.Errorf("read_file: %w: %w: %s", constants.ErrMCPSensitiveFile, constants.ErrSensitivePath, absPath)
 	}
 
 	// Read file

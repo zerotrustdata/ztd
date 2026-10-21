@@ -135,6 +135,35 @@ func TestHandleHealth_GovernanceReadyFalseWhenCallbackNil(t *testing.T) {
 	assert.False(t, resp.GovernanceReady)
 }
 
+func TestHandleHealth_ConsensusSummaryPopulated(t *testing.T) {
+	h, _, infra := setupTestHTTPHandler(t)
+	want := models.HealthConsensus{Bound: true, Provider: "application", Quorum: 2, Members: 3, Usable: 2, Ready: true}
+	h.healthController.consensusHealth = func(context.Context) models.HealthConsensus { return want }
+
+	settings := models.SettingsDocument{
+		Settings:  &models.PlatformSettings{ActuatorKeyID: "test-key-id"},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	settingsBytes, err := json.Marshal(settings)
+	require.NoError(t, err)
+	require.NoError(t, infra.DocStore.DocSet(t.Context(),
+		marshaler.CollectionName(constants.CollectionSettings),
+		marshaler.DocumentID(constants.DocIDPlatformSettings),
+		settingsBytes,
+	))
+
+	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.Health, nil)
+	rr := httptest.NewRecorder()
+
+	h.healthController.handleHealth(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp models.HealthResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	assert.Equal(t, want, resp.Consensus)
+}
+
 func TestHandleHealth_VersionAndStateRootPopulated(t *testing.T) {
 	h, cfg, infra := setupTestHTTPHandler(t)
 	cfg.Version = "9.9.9-test"

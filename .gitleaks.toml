@@ -84,7 +84,7 @@ regexes = [
 [[allowlists]]
 description = "Skip test log fixtures with fake api keys"
 paths = [
-  '''internal/services/mcp/log_stream_filter_test\.go''',
+  '''internal/services/mcp/search_file_test\.go''',
   '''internal/services/mcp/native_handlers_test\.go''',
   '''internal/cli/cmd/mcp_test\.go''',
   '''internal/services/gateway/auth_bootstrap_test\.go''',

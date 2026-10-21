@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	_ "modernc.org/sqlite"
 )
@@ -179,16 +180,17 @@ func TestNativeToolHandler_HandleTool_Integration(t *testing.T) {
 		require.Equal(t, customRegistry, customHandler.registry, "expected handler to use provided registry")
 	})
 
-	t.Run("all 32 tools registered", func(t *testing.T) {
+	t.Run("all 33 tools registered", func(t *testing.T) {
 		tools := handler.ListTools()
-		require.Len(t, tools, 32, "expected 32 registered tools")
+		require.Len(t, tools, 33, "expected 33 registered tools")
 
 		expectedTools := []string{
 			"db_discover_topology",
 			"db_query_validate",
 			"db_isolated_read",
 			"db_index_triage",
-			"log_stream_filter",
+			constants.MCPToolSearchFile,
+			constants.MCPToolSearchDirectory,
 			"sys_oom_detect",
 			"config_diff_mask",
 			"proc_metric_top",
@@ -508,51 +510,6 @@ func TestHandleDBIndexTriage(t *testing.T) {
 	})
 }
 
-func TestHandleLogStreamFilter(t *testing.T) {
-	handler, err := NewNativeToolHandler(nil)
-	require.NoError(t, err)
-
-	t.Run("valid log file", func(t *testing.T) {
-		tmpDir := testutil.TempDir(t)
-		logPath := filepath.Join(tmpDir, "test.log")
-
-		logContent := "INFO: test message\nERROR: error message\nDEBUG: debug message"
-		if err := os.WriteFile(logPath, []byte(logContent), 0644); err != nil {
-			t.Fatalf("failed to create test log file: %v", err)
-		}
-
-		req := LogStreamFilterRequest{
-			LogPath: logPath,
-			Pattern: "ERROR",
-			Limit:   10,
-		}
-		reqJSON, _ := json.Marshal(req)
-
-		result, err := handler.HandleTool(context.Background(), "log_stream_filter", reqJSON)
-		if err != nil {
-			t.Fatalf("HandleTool failed: %v", err)
-		}
-
-		var filterResult LogStreamFilterResult
-		if err := json.Unmarshal([]byte(result.Content[0].Text), &filterResult); err != nil {
-			t.Fatalf("failed to unmarshal result: %v", err)
-		}
-
-		if filterResult.Count == 0 {
-			t.Error("expected matching lines")
-		}
-	})
-
-	t.Run("missing log path", func(t *testing.T) {
-		req := LogStreamFilterRequest{Pattern: "ERROR"}
-		reqJSON, _ := json.Marshal(req)
-
-		_, err := handler.HandleTool(context.Background(), "log_stream_filter", reqJSON)
-		if err == nil {
-			t.Error("expected error for missing log path")
-		}
-	})
-}
 
 func TestHandleSysOOMDetect(t *testing.T) {
 	if runtime.GOOS != "linux" {
@@ -1198,8 +1155,8 @@ func TestNativeTools(t *testing.T) {
 	require.NoError(t, err)
 	nativeTools := handler.ListTools()
 
-	if len(nativeTools) != 32 {
-		t.Errorf("expected 32 native tools, got %d", len(nativeTools))
+	if len(nativeTools) != 33 {
+		t.Errorf("expected 33 native tools, got %d", len(nativeTools))
 	}
 
 	expectedTools := []string{
@@ -1207,7 +1164,8 @@ func TestNativeTools(t *testing.T) {
 		"db_query_validate",
 		"db_isolated_read",
 		"db_index_triage",
-		"log_stream_filter",
+		constants.MCPToolSearchFile,
+		constants.MCPToolSearchDirectory,
 		"sys_oom_detect",
 		"config_diff_mask",
 		"proc_metric_top",

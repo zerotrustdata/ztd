@@ -45,10 +45,21 @@ message L2Vote {
   bool   decision            = 3; // member's safe (true) / unsafe (false) vote
 }
 
+// Consensus (L2) Governance: a bound Tribunal member's attestation that an
+// INFERENCE envelope is that member's own vote deliberation. It exempts the
+// envelope from L2 so a vote never recurses into another vote. It is never a
+// vote: it signs "<transaction_hash>|consensus-deliberation".
+message L2DeliberationAttestation {
+  string signer_key_id = 1; // member appID == TrustedSigner.ID
+  string signature     = 2; // ed25519 over "<transaction_hash>|consensus-deliberation"
+}
+
 // Consensus (L2) Governance: a vote set from an enrolled consensus set.
 message L2Metadata {
   string consensus_set_id = 1;    // ID of the consensus set that produced this vote set
   repeated L2Vote votes   = 2;    // independent member votes
+  // Set only on a Tribunal member's vote inference; mutually exclusive with votes.
+  L2DeliberationAttestation deliberation = 3;
 }
 
 // Notary (L3Notary) Governance: Authorization (Human-in-the-loop)
@@ -218,6 +229,11 @@ message PlatformEnrollmentGovernancePayload {
   repeated string consensus_member_app_ids = 22;
   // Affirmative distinct signatures required from consensus_member_app_ids.
   uint32 consensus_quorum = 23;
+  // Vote producer for the binding: "application" (empty) or "tribunal".
+  string consensus_provider = 24;
+  // Pinned model the Tribunal provider's members vote with.
+  string consensus_model_tag = 25;
+  string consensus_model_digest = 26;
 }
 
 message PlatformEnrollmentDecisionTarget {

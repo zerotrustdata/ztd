@@ -373,19 +373,13 @@ Each run is verified from its stored bytes before it enters the report. At most 
 	return command
 }
 
-// gatewayPosture reads the Gateway's governance posture from its health. An
-// unknown posture is ErrConformancePostureUnknown.
-func gatewayPosture(ctx context.Context, client *harnessclient.Client) (evalv1.EvaluationGovernancePosture, error) {
-	posture, _, err := gatewayStack(ctx, client)
-	return posture, err
-}
-
 // gatewayStack reads the Gateway's governance posture and whether it exposes
-// A2A ingress from one health read.
+// A2A ingress from one health read. An unknown posture is
+// ErrConformancePostureUnknown.
 func gatewayStack(ctx context.Context, client *harnessclient.Client) (evalv1.EvaluationGovernancePosture, bool, error) {
-	health, _, err := client.Health(ctx)
+	health, err := gatewayHealth(ctx, client)
 	if err != nil {
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, false, fmt.Errorf("evaluation: read gateway health: %w", err)
+		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, false, err
 	}
 	posture, err := cases.WirePosture(health.Posture)
 	if err != nil {

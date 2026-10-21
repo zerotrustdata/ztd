@@ -38,13 +38,13 @@ func TestExecute(t *testing.T) {
 		assert.Contains(t, rootCmd.Short, "ztd Platform Manager")
 		assert.Contains(t, rootCmd.Short, "ztd Gateway")
 		assert.Contains(t, rootCmd.Short, "ztd Operator")
-		assert.Len(t, rootCmd.Commands(), 17)
+		assert.Len(t, rootCmd.Commands(), 18)
 	})
 
 	t.Run("root command has all expected subcommands", func(t *testing.T) {
 		rootCmd := NewRootCmd("dev", serve.VersionInfo{})
 
-		expectedCommands := []string{"gw", "login", "logout", "auth", "mcp", "operator", "autochthon", "vault", "test", "audit", "swagger", "report", "public", "tui", "version", "compliance", "eval"}
+		expectedCommands := []string{"gw", "login", "logout", "auth", "consensus", "mcp", "operator", "autochthon", "vault", "test", "audit", "swagger", "report", "public", "tui", "version", "compliance", "eval"}
 		for _, expected := range expectedCommands {
 			found := false
 			for _, cmd := range rootCmd.Commands() {
@@ -110,8 +110,8 @@ func TestRootCommandValidation(t *testing.T) {
 			expectedUse:    "ztd",
 			expectedShort:  "ztd Platform Manager",
 			expectedLong:   "zero-trust execution platform",
-			expectedCmds:   []string{"gw", "login", "logout", "auth", "mcp", "operator", "autochthon", "vault", "test", "audit", "swagger", "report", "public", "tui", "version", "compliance", "eval"},
-			expectedCmdLen: 17,
+			expectedCmds:   []string{"gw", "login", "logout", "auth", "consensus", "mcp", "operator", "autochthon", "vault", "test", "audit", "swagger", "report", "public", "tui", "version", "compliance", "eval"},
+			expectedCmdLen: 18,
 		},
 	}
 

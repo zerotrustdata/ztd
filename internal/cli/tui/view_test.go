@@ -495,6 +495,22 @@ func TestRenderHeader_PostureUnknownBeforeHealth(t *testing.T) {
 	assert.Contains(t, out, "POSTURE: UNKNOWN")
 }
 
+func TestGatewayStatusLines_ConsensusRowFollowsPosture(t *testing.T) {
+	m := NewModel(Options{})
+	m.health = models.HealthResponse{
+		Status:    constants.GatewayModeStatusOK,
+		Posture:   constants.PostureNotary,
+		Consensus: models.HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 2, Ready: false},
+	}
+	out := strings.Join(m.gatewayStatusLines(), "\n")
+	assert.Contains(t, out, "CONSENSUS")
+	assert.Contains(t, out, "tribunal 3-of-5 | signers 2/5 | NOT READY")
+
+	m.health.Consensus = models.HealthConsensus{}
+	out = strings.Join(m.gatewayStatusLines(), "\n")
+	assert.Contains(t, out, "NOT BOUND — posture notary requires L2")
+}
+
 func TestRenderApprovals_EmptyState(t *testing.T) {
 	m := NewModel(Options{})
 	m.pending = []models.SuspendedTxResponse{}

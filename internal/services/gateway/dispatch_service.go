@@ -247,6 +247,64 @@ type L2ConsensusDeliberator interface {
 	Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error)
 }
 
+// ConsensusMemberSigner signs with a Tribunal consensus member's sealed app
+// signing key. The Gateway host owns the keys (internal/cli/serve implements
+// it); a missing or unsealable key is constants.ErrConsensusMemberKeyUnavailable,
+// never a plaintext fallback.
+type ConsensusMemberSigner interface {
+	Sign(memberAppID string, payload []byte) ([]byte, error)
+	// HasKey reports whether memberAppID's sealed key is present and unseals here.
+	HasKey(memberAppID string) bool
+}
+
+// consensusDeliberationKey carries the Tribunal member whose vote a dispatch
+// is producing. It is unexported: only the in-process Tribunal deliberator can
+// set it, so no ingress can claim the deliberation exemption.
+type consensusDeliberationKey struct{}
+
+// withConsensusDeliberation marks ctx as a Tribunal member's vote deliberation.
+// Dispatch and DispatchObservation attach that member's signed
+// L2DeliberationAttestation to every envelope built under ctx (the member's
+// INFERENCE and the observation commands of that attempt).
+func withConsensusDeliberation(ctx context.Context, memberAppID string) context.Context {
+	return context.WithValue(ctx, consensusDeliberationKey{}, memberAppID)
+}
+
+// attachDeliberationAttestation signs env's transaction hash as ctx's
+// deliberating member. Outside a deliberation it does nothing. Inside one, a
+// non-deliberation action, a missing signer, or a signing failure fails closed.
+func (d *DispatchService) attachDeliberationAttestation(ctx context.Context, env *commonv1.GovernanceEnvelope) error {
+	member, ok := ctx.Value(consensusDeliberationKey{}).(string)
+	if !ok || member == "" {
+		return nil
+	}
+	if d.memberSigner == nil {
+		return fmt.Errorf("dispatch: deliberation attestation: %w", constants.ErrConsensusMemberKeyUnavailable)
+	}
+	if env.GetGovernance() == nil {
+		env.Governance = &commonv1.GovernanceMetadata{}
+	}
+	env.Governance.L2 = &commonv1.L2Metadata{
+		ConsensusSetId: string(constants.DocIDConsensusBinding),
+		Deliberation:   &commonv1.L2DeliberationAttestation{SignerKeyId: member},
+	}
+	if !governance.L2DeliberationExempt(env) {
+		return fmt.Errorf("dispatch: deliberation attestation on %s: %w", env.GetActionType(), constants.ErrTxL2SignatureInvalid)
+	}
+	sig, err := d.memberSigner.Sign(member, governance.L2DeliberationPayload(env.GetTransactionHash()))
+	if err != nil {
+		return fmt.Errorf("dispatch: deliberation attestation: %w", err)
+	}
+	env.Governance.L2.Deliberation.Signature = hex.EncodeToString(sig)
+	return nil
+}
+
+// SetConsensusMemberSigner wires the Tribunal consensus member signer. A nil
+// signer fails every deliberation-attested dispatch closed.
+func (d *DispatchService) SetConsensusMemberSigner(signer ConsensusMemberSigner) {
+	d.memberSigner = signer
+}
+
 // DispatchService constructs a GovernanceEnvelope, publishes it to an operator's
 // cmd channel via the in-process WS broker, and correlates the operator's result
 // published on the results channel back to the originating request.
@@ -273,6 +331,7 @@ type DispatchService struct {
 	doctrine          *governance.L1Doctrine
 	l2Deliberator     L2ConsensusDeliberator
 	signerStore       ReceiptSignerResolver
+	memberSigner      ConsensusMemberSigner
 }
 
 // NewDispatchService creates a DispatchService wired to the gateway's in-process
@@ -356,6 +415,9 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: %w", err)
 	}
+	if err := d.attachDeliberationAttestation(ctx, env); err != nil {
+		return nil, err
+	}
 	// 4. Marshal as protojson (the canonical wire format).
 	wire, err := protojson.Marshal(env)
 	if err != nil {
@@ -368,7 +430,9 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	//    envelope with L2 metadata populated. A nil deliberator skips
 	//    deliberation; the envelope fails closed at L4 verification where
 	//    L2 is enforced. A deliberation error fails closed before publish.
-	if governance.L2Enforced(actionType, d.posture) && d.l2Deliberator != nil {
+	//    A Tribunal member's own vote inference is deliberation-exempt: it is
+	//    never deliberated again, which stops L2 recursing into itself.
+	if governance.L2Enforced(actionType, d.posture) && !governance.L2DeliberationExempt(env) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)

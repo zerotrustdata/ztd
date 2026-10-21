@@ -18,6 +18,7 @@ package tribunal
 import (
 	"context"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -69,6 +70,20 @@ const (
 
 // AllMembers is the panel in canonical generation order.
 var AllMembers = []Member{MemberAxiom, MemberConcord, MemberVariance, MemberPragma, MemberNemesis}
+
+// ConsensusMemberAppID is the enrolled application ID of member's L2 consensus identity.
+func ConsensusMemberAppID(m Member) string {
+	return constants.TribunalConsensusAppIDPrefix + string(m)
+}
+
+// ConsensusMemberAppIDs returns every member's consensus app ID in canonical order.
+func ConsensusMemberAppIDs() []string {
+	ids := make([]string, 0, len(AllMembers))
+	for _, m := range AllMembers {
+		ids = append(ids, ConsensusMemberAppID(m))
+	}
+	return ids
+}
 
 // generationRounds is the sealed round plus the one anonymized regeneration.
 const generationRounds = 2

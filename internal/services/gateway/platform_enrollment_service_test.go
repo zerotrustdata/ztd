@@ -322,6 +322,40 @@ func TestPlatformEnrollmentService_BindConsensusRequiresExplicitQuorumForMembers
 	require.ErrorIs(t, err, constants.ErrConsensusAppNotEnrolled)
 }
 
+// TestPlatformEnrollmentService_BindConsensusTribunalRejectsNonCanonicalBindings
+// proves the Tribunal provider is validated at admission, before any governed
+// envelope is submitted: a Gateway-hosted panel must carry no endpoint, the
+// canonical members in canonical order, a quorum of at least the Tribunal
+// minimum, and a pinned model. A canonical binding passes admission and fails
+// only at the enrollment check, because no Tribunal member is enrolled here.
+func TestPlatformEnrollmentService_BindConsensusTribunalRejectsNonCanonicalBindings(t *testing.T) {
+	env := setupPlatformEnrollmentEnv(t, true)
+	canonical := constants.TribunalConsensusMemberAppIDs()
+	reversed := []string{canonical[4], canonical[3], canonical[2], canonical[1], canonical[0]}
+	const digest = "sha256:tribunal-vote-v1"
+	tests := []struct {
+		name string
+		req  models.PlatformEnrollmentBindConsensusRequest
+		want error
+	}{
+		{"endpoint set", models.PlatformEnrollmentBindConsensusRequest{Provider: "tribunal", AppID: "tribunal-axiom", EndpointURL: "https://consensus.example/deliberate", ModelTag: "tribunal-vote-v1", ModelDigest: digest}, constants.ErrConsensusTribunalEndpointSet},
+		{"wrong member order", models.PlatformEnrollmentBindConsensusRequest{Provider: "tribunal", AppID: "tribunal-axiom", MemberAppIDs: reversed, Quorum: 3, ModelTag: "tribunal-vote-v1", ModelDigest: digest}, constants.ErrConsensusTribunalMembersInvalid},
+		{"quorum below tribunal minimum", models.PlatformEnrollmentBindConsensusRequest{Provider: "tribunal", AppID: "tribunal-axiom", MemberAppIDs: canonical, Quorum: 2, ModelTag: "tribunal-vote-v1", ModelDigest: digest}, constants.ErrConsensusQuorumInvalid},
+		{"missing model digest", models.PlatformEnrollmentBindConsensusRequest{Provider: "tribunal", AppID: "tribunal-axiom", MemberAppIDs: canonical, Quorum: 3, ModelTag: "tribunal-vote-v1"}, constants.ErrConsensusModelRequired},
+		{"unknown provider", models.PlatformEnrollmentBindConsensusRequest{Provider: "bogus", AppID: "tribunal-axiom", ModelTag: "tribunal-vote-v1", ModelDigest: digest}, constants.ErrConsensusProviderInvalid},
+		{"canonical binding passes admission", models.PlatformEnrollmentBindConsensusRequest{Provider: "tribunal", AppID: "tribunal-axiom", ModelTag: "tribunal-vote-v1", ModelDigest: digest}, constants.ErrConsensusAppNotEnrolled},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := env.enrollSvc.BindConsensusApplication(t.Context(), env.ownerID, tc.req)
+			require.ErrorIs(t, err, tc.want)
+			bound, getErr := env.docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+			require.NoError(t, getErr)
+			assert.Nil(t, bound, "no consensus binding may be written by a rejected tribunal bind")
+		})
+	}
+}
+
 // ============================================================================
 // Owner authorization tests
 // ============================================================================

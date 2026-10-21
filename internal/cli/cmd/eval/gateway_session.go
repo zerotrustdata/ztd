@@ -23,7 +23,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
@@ -187,8 +189,9 @@ func evalListOperators(
 }
 
 // evalPreflightGatewayPosture fails closed unless the live Gateway runs the
-// posture the campaign froze and the eval lane can execute it. The posture is
-// immutable at runtime, so one read before scheduling or execution suffices.
+// posture the campaign froze, the eval lane can execute it, and the Gateway's
+// governance is ready for that posture. The posture is immutable at runtime, so
+// one health read before scheduling or execution suffices.
 func evalPreflightGatewayPosture(
 	cmd *cobra.Command,
 	deps gatewayEvalDeps,
@@ -200,9 +203,43 @@ func evalPreflightGatewayPosture(
 	if err != nil {
 		return fmt.Errorf("evaluation: initialize gateway client: %w", err)
 	}
-	posture, err := gatewayPosture(cmd.Context(), gatewayClient)
+	health, err := gatewayHealth(cmd.Context(), gatewayClient)
 	if err != nil {
 		return err
 	}
-	return evaluation.ValidateGatewayPosture(spec, posture)
+	posture, err := cases.WirePosture(health.Posture)
+	if err != nil {
+		return fmt.Errorf("evaluation: gateway posture: %w", err)
+	}
+	if err := evaluation.ValidateGatewayPosture(spec, posture); err != nil {
+		return err
+	}
+	return evalGatewayGovernanceReady(health)
+}
+
+// gatewayHealth reads the Gateway's typed /health once.
+func gatewayHealth(ctx context.Context, client *harnessclient.Client) (*models.HealthResponse, error) {
+	health, _, err := client.Health(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: read gateway health: %w", err)
+	}
+	return health, nil
+}
+
+// evalGatewayGovernanceReady refuses a campaign start when the Gateway's posture
+// requires L2 consensus and /health reports governance not ready. Doctrine and
+// ratify do not gate on L2, so they pass here regardless of consensus state.
+func evalGatewayGovernanceReady(health *models.HealthResponse) error {
+	if health.GovernanceReady || !health.Posture.RequiresL2() {
+		return nil
+	}
+	consensus := health.Consensus
+	switch {
+	case !consensus.Bound:
+		return fmt.Errorf("evaluation: gateway posture %s requires L2 consensus: consensus not bound: ztd consensus enroll tribunal --model <tag>: %w", health.Posture, constants.ErrTxL2ConsensusNotConfigured)
+	case !consensus.Ready:
+		return fmt.Errorf("evaluation: gateway posture %s requires L2 consensus: consensus not ready: %d/%d member signers usable, quorum %d: %w", health.Posture, consensus.Usable, consensus.Members, consensus.Quorum, constants.ErrTxL2QuorumNotMet)
+	default:
+		return fmt.Errorf("evaluation: gateway posture %s: governance not ready: %w", health.Posture, constants.ErrGatewayNotReady)
+	}
 }

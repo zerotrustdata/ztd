@@ -79,6 +79,9 @@ type nextStep struct {
 func printNextSteps(cmd *cobra.Command, posture constants.Posture, cfg serve.GatewayConfig, externalIP string) {
 	bin := getBinaryName()
 	var steps []nextStep
+	if posture.RequiresL2() {
+		steps = append(steps, nextStep{bin + " consensus enroll tribunal --model <tag>", "Bind a consensus if none is bound (L2 posture: governed actions fail closed until one is bound)"})
+	}
 	if posture.RequiresL3() {
 		steps = append(steps,
 			nextStep{bin + " login web", "Register a passkey (required: " + string(posture) + " posture enforces L3)"},

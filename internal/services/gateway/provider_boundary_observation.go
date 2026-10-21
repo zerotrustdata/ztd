@@ -429,11 +429,14 @@ func (d *DispatchService) DispatchObservation(ctx context.Context, req Observati
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: observation: %w", err)
 	}
+	if err := d.attachDeliberationAttestation(ctx, env); err != nil {
+		return nil, fmt.Errorf("dispatch: observation: %w", err)
+	}
 	wire, err := protojson.Marshal(env)
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: observation: marshal envelope: %w", err)
 	}
-	if governance.L2Enforced(actionType, d.posture) && d.l2Deliberator != nil {
+	if governance.L2Enforced(actionType, d.posture) && !governance.L2DeliberationExempt(env) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: observation: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)

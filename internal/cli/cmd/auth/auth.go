@@ -120,8 +120,6 @@ func enrollCmd() *cobra.Command {
             identity and optional L2 signing key, then waits for the
             posture-dependent owner decision.
 
-  consensus Bind or inspect the enrolled consensus application.
-
   pending   List pending platform workload enrollment requests (dashboard,
             application, or operator) awaiting an owner decision.
 
@@ -136,12 +134,13 @@ func enrollCmd() *cobra.Command {
 
   revoke    Revoke a completed platform workload enrollment.
 
+Consensus binding moved to ztd consensus: see ztd consensus enroll app and ztd consensus status.
+
 Bare ` + "`auth enroll`" + ` (no subcommand) prints this help and exits non-zero.`,
 	}
 	cmd.AddCommand(
 		enrollUserCmd(),
 		enrollAppCmd(),
-		consensusEnrollmentCmd(),
 		pendingPlatformEnrollmentCmd(),
 		listPlatformEnrollmentCmd(),
 		approvePlatformEnrollmentCmd(),

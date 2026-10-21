@@ -160,6 +160,35 @@ func TestL2TrustStore_ReplaceRejectsMalformedAndKeepsHeldTrust(t *testing.T) {
 	assert.Equal(t, pub, got)
 }
 
+func TestL2TrustStore_ProviderDecoding(t *testing.T) {
+	t.Parallel()
+	t.Run("bogus provider is rejected", func(t *testing.T) {
+		t.Parallel()
+		trust, _ := testL2Trust(t)
+		trust.Provider = "bogus"
+		_, err := NewL2TrustStore(trust)
+		require.ErrorIs(t, err, constants.ErrValidationFailed)
+		require.ErrorIs(t, err, constants.ErrConsensusProviderInvalid)
+	})
+	providers := map[string]constants.ConsensusProvider{
+		"":         constants.ConsensusProviderApplication,
+		"tribunal": constants.ConsensusProviderTribunal,
+	}
+	for provider, want := range providers {
+		t.Run("provider "+provider+" decodes", func(t *testing.T) {
+			t.Parallel()
+			trust, _ := testL2Trust(t)
+			trust.Provider = provider
+			store, err := NewL2TrustStore(trust)
+			require.NoError(t, err)
+			policy, err := store.GetConsensusPolicy(context.Background(), "set-1")
+			require.NoError(t, err)
+			require.NotNil(t, policy)
+			assert.Equal(t, want, policy.Provider)
+		})
+	}
+}
+
 func TestL4Warden_Doctrine(t *testing.T) {
 	t.Parallel()
 	logger := testutil.NewTestLogger()

@@ -8,6 +8,7 @@
     - [GovernanceEnvelope](#ztd-common-v1-GovernanceEnvelope)
     - [GovernanceMetadata](#ztd-common-v1-GovernanceMetadata)
     - [L1Metadata](#ztd-common-v1-L1Metadata)
+    - [L2DeliberationAttestation](#ztd-common-v1-L2DeliberationAttestation)
     - [L2Metadata](#ztd-common-v1-L2Metadata)
     - [L2Vote](#ztd-common-v1-L2Vote)
     - [L3Metadata](#ztd-common-v1-L3Metadata)
@@ -139,6 +140,25 @@ Doctrine (L1Doctrine) Governance: Technical Bedrock (Hard Gates)
 
 
 
+<a name="ztd-common-v1-L2DeliberationAttestation"></a>
+
+### L2DeliberationAttestation
+Consensus (L2) Governance: a bound Tribunal member&#39;s attestation that an
+INFERENCE envelope is that member&#39;s own vote deliberation. It exempts the
+envelope from L2 so a vote never recurses into another vote. It is never a
+vote: it signs &#34;&lt;transaction_hash&gt;|consensus-deliberation&#34;.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| signer_key_id | [string](#string) |  | member appID == TrustedSigner.ID |
+| signature | [string](#string) |  | ed25519 over &#34;&lt;transaction_hash&gt;|consensus-deliberation&#34; |
+
+
+
+
+
+
 <a name="ztd-common-v1-L2Metadata"></a>
 
 ### L2Metadata
@@ -149,6 +169,7 @@ Consensus (L2) Governance: a vote set from an enrolled consensus set.
 | ----- | ---- | ----- | ----------- |
 | consensus_set_id | [string](#string) |  | ID of the consensus set that produced this vote set |
 | votes | [L2Vote](#ztd-common-v1-L2Vote) | repeated | independent member votes |
+| deliberation | [L2DeliberationAttestation](#ztd-common-v1-L2DeliberationAttestation) |  | Set only on a Tribunal member&#39;s vote inference; mutually exclusive with votes. |
 
 
 
@@ -320,6 +341,9 @@ The assertion must still verify for this user, credential and transaction.
 | consensus_endpoint_url | [string](#string) |  | HTTPS deliberation endpoint for a bound consensus application. |
 | consensus_member_app_ids | [string](#string) | repeated | Ordered set of enrolled signing applications participating in L2. |
 | consensus_quorum | [uint32](#uint32) |  | Affirmative distinct signatures required from consensus_member_app_ids. |
+| consensus_provider | [string](#string) |  | Vote producer for the binding: &#34;application&#34; (empty) or &#34;tribunal&#34;. |
+| consensus_model_tag | [string](#string) |  | Pinned model the Tribunal provider&#39;s members vote with. |
+| consensus_model_digest | [string](#string) |  |  |
 
 
 

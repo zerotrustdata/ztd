@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/jsonschema"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -186,7 +187,7 @@ func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing
 	stub := &stubAuditReceiptQuery{
 		listBySession: []*models.ActionReceiptRecord{receipt},
 	}
-	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub)
+	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub, newTestFsGrep(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 	args, err := json.Marshal(AuditReceiptListRequest{
 		InvestigationID:   "investigation-1",
@@ -211,7 +212,7 @@ func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing
 
 func TestOperatorNativeToolHandler_AuditReceiptListRequiresInvestigation(t *testing.T) {
 	stub := &stubAuditReceiptQuery{}
-	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub)
+	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub, newTestFsGrep(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 
 	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"operator_session_id":"session-1"}`))
@@ -231,10 +232,13 @@ func TestOperatorNativeToolHandler_AuditReceiptListRequiresInvestigation(t *test
 }
 
 func TestNewOperatorNativeToolHandler_RequiresIdentityAndLocalStore(t *testing.T) {
-	_, err := NewOperatorNativeToolHandler(nil, "", &stubAuditReceiptQuery{})
+	grep := newTestFsGrep(t, testutil.TempDir(t))
+	_, err := NewOperatorNativeToolHandler(nil, "", &stubAuditReceiptQuery{}, grep)
 	require.ErrorIs(t, err, constants.ErrOperatorIDMissing)
-	_, err = NewOperatorNativeToolHandler(nil, "op-1", nil)
+	_, err = NewOperatorNativeToolHandler(nil, "op-1", nil, grep)
 	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptQueryNotConfigured)
+	_, err = NewOperatorNativeToolHandler(nil, "op-1", &stubAuditReceiptQuery{}, nil)
+	require.ErrorIs(t, err, constants.ErrMCPFsGrepNotConfigured)
 }
 
 func TestAuditReceiptListTool_Execute_ActionTypeFilter(t *testing.T) {

@@ -11,9 +11,6 @@ import "time"
 
 // MCP service constants
 const (
-	// DefaultLogFilterLimit is the default number of log lines to return
-	DefaultLogFilterLimit = 100
-
 	// DefaultProcessLimit is the default number of processes to return in metric tools
 	DefaultProcessLimit = 10
 
@@ -75,4 +72,14 @@ const (
 	// MCPToolAuditReceiptGet reads one signed receipt from the executing
 	// runtime's own audit store.
 	MCPToolAuditReceiptGet = "audit_receipt_get"
+
+	// MCPToolReadFile reads one file's contents.
+	MCPToolReadFile = "read_file"
+
+	// MCPToolSearchFile returns the lines of one file that match a regex.
+	MCPToolSearchFile = "search_file"
+
+	// MCPToolSearchDirectory returns the lines matching a regex across every
+	// file under one directory.
+	MCPToolSearchDirectory = "search_directory"
 )

@@ -23,19 +23,25 @@ const (
 func memberSystemPrompt(member Member) string {
 	base := "You are a member of the Tribunal, a sealed panel that authors one run_shell_command argument set for the request. The executable runs directly without a shell.\n" +
 		"Answer with exactly one JSON object containing command and args, with no explanation or markdown. command must be one executable name with no whitespace; args is an array of argv strings. No pipes, chaining, redirects, globs, or substitutions.\n\n"
+	return base + memberStance(member)
+}
+
+// memberStance is one panel member's persona stance, shared by command
+// generation and the L2 consensus vote.
+func memberStance(member Member) string {
 	switch member {
 	case MemberAxiom:
-		return base + "Role: Axiom (the Composer). Prefer a clean, coherent argv with canonical flag order."
+		return "Role: Axiom (the Composer). Prefer a clean, coherent argv with canonical flag order."
 	case MemberConcord:
-		return base + "Role: Concord (the Guardian). Prefer read-only queries and safe, explicit argv values."
+		return "Role: Concord (the Guardian). Prefer read-only queries and safe, explicit argv values."
 	case MemberVariance:
-		return base + "Role: Variance (the Exhaustive). Handle spaces as individual argv values, explicit locales, and robust matching."
+		return "Role: Variance (the Exhaustive). Handle spaces as individual argv values, explicit locales, and robust matching."
 	case MemberPragma:
-		return base + "Role: Pragma (the Conventional). Prefer modern, idiomatic utilities (ss over netstat, journalctl on systemd) and standard flags."
+		return "Role: Pragma (the Conventional). Prefer modern, idiomatic utilities (ss over netstat, journalctl on systemd) and standard flags."
 	case MemberNemesis:
-		return base + "Role: Nemesis (the Calibrated Adversary). Probe the request for edge cases and ambiguity; emit the standard argv when it is the right one."
+		return "Role: Nemesis (the Calibrated Adversary). Probe the request for edge cases and ambiguity; emit the standard argv when it is the right one."
 	default:
-		return base
+		return ""
 	}
 }
 

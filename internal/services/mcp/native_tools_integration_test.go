@@ -201,7 +201,7 @@ func TestNativeToolsIntegration_LogTools(t *testing.T) {
 	mtlsClient, sessionID, err := setupMTLSClient(t, operatorURL)
 	require.NoError(t, err)
 
-	t.Run("log_stream_filter_with_scrubbing", func(t *testing.T) {
+	t.Run("search_file_with_scrubbing", func(t *testing.T) {
 		tmpDir := testutil.TempDir(t)
 		logPath := filepath.Join(tmpDir, "test.log")
 
@@ -214,27 +214,27 @@ WARN: database connection failed`
 		err := os.WriteFile(logPath, []byte(logContent), 0644)
 		require.NoError(t, err)
 
-		req := LogStreamFilterRequest{
-			LogPath: logPath,
-			Pattern: "ERROR|WARN",
-			Limit:   10,
+		req := SearchFileRequest{
+			Path:       logPath,
+			Pattern:    "ERROR|WARN",
+			MaxMatches: 10,
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "log_stream_filter", reqJSON)
+		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, constants.MCPToolSearchFile, reqJSON)
 		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
 
-		var result LogStreamFilterResult
+		var result SearchFileResult
 		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
 		require.NoError(t, err)
 
-		require.Positive(t, result.Count)
+		require.Positive(t, result.TotalMatches)
 
 		// Verify scrubbing - sensitive patterns should be redacted
-		for _, line := range result.Lines {
-			require.NotContains(t, line, "secret123", "password should be redacted")
-			require.NotContains(t, line, "sk-12345", "api key should be redacted")
-			require.NotContains(t, line, "abc123def456", "token should be redacted")
+		for _, match := range result.Matches {
+			require.NotContains(t, match.Content, "secret123", "password should be redacted")
+			require.NotContains(t, match.Content, "sk-12345", "api key should be redacted")
+			require.NotContains(t, match.Content, "abc123def456", "token should be redacted")
 		}
 	})
 }
@@ -598,8 +598,8 @@ func TestNativeToolsIntegration_PropertyBasedTests(t *testing.T) {
 		}
 	})
 
-	t.Run("log_stream_filter_always_scrubs_secrets", func(t *testing.T) {
-		// Property: log_stream_filter must always redact sensitive patterns
+	t.Run("search_file_always_scrubs_secrets", func(t *testing.T) {
+		// Property: search_file must always redact sensitive patterns
 		tmpDir := testutil.TempDir(t)
 		logPath := filepath.Join(tmpDir, "test.log")
 
@@ -614,25 +614,26 @@ func TestNativeToolsIntegration_PropertyBasedTests(t *testing.T) {
 		err := os.WriteFile(logPath, []byte(logContent), 0644)
 		require.NoError(t, err)
 
-		req := LogStreamFilterRequest{
-			LogPath: logPath,
-			Pattern: ".*",
-			Limit:   100,
+		req := SearchFileRequest{
+			Path:       logPath,
+			Pattern:    ".*",
+			MaxMatches: 100,
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "log_stream_filter", reqJSON)
+		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, constants.MCPToolSearchFile, reqJSON)
 		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
 
-		var result LogStreamFilterResult
+		var result SearchFileResult
 		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
 		require.NoError(t, err)
 
-		for _, line := range result.Lines {
-			require.NotContains(t, line, "secret123")
-			require.NotContains(t, line, "sk-12345")
-			require.NotContains(t, line, "abc123")
-			require.NotContains(t, line, "mysecret")
+		require.Positive(t, result.TotalMatches)
+		for _, match := range result.Matches {
+			require.NotContains(t, match.Content, "secret123")
+			require.NotContains(t, match.Content, "sk-12345")
+			require.NotContains(t, match.Content, "abc123")
+			require.NotContains(t, match.Content, "mysecret")
 		}
 	})
 }

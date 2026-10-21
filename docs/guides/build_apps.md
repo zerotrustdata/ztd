@@ -4,7 +4,7 @@ title: Build ztd-Compatible Applications
 audience: application developers and agent framework authors
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-21
 owners:
   - docs/guides/build_apps.md
   - internal/services/mcp/
@@ -151,10 +151,10 @@ An application that serves as an L2 consensus member MUST enroll with an indepen
 Bind the member set through governance. The primary application MUST appear in the member list, and a set of more than one member MUST state `--quorum` explicitly:
 
 ```bash
-./ztd auth enroll consensus bind etl-service https://etl.example.com:9443 --member-app etl-service --member-app risk-service --quorum 2
+./ztd consensus enroll app etl-service https://etl.example.com:9443 --member-app etl-service --member-app risk-service --quorum 2
 ```
 
-The Gateway stores one bound consensus policy. Under `ratify` and `notary`, the binding requires passkey approval at the printed URL. `./ztd auth enroll consensus show` prints the bound policy. The member lifecycle, deliberation endpoint, and vote verification are defined in [Consensus Architecture](../architecture/consensus.md).
+The Gateway stores one bound consensus policy. Under `ratify` and `notary`, the binding requires passkey approval at the printed URL. `./ztd consensus status` prints the bound provider, quorum, member IDs, and signer readiness. The alternative consensus provider is the Gateway-hosted Tribunal panel, bound with `./ztd consensus enroll tribunal --model <tag>`; it does not use application endpoints. The member lifecycle, deliberation endpoint, and vote verification are defined in [Consensus Architecture](../architecture/consensus.md).
 
 ---
 

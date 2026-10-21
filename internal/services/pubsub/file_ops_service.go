@@ -90,12 +90,16 @@ func NewFileOpsService(
 	if err := requireAuditStore("file ops service", auditStore); err != nil {
 		return nil, err
 	}
+	fsGrep, err := execution.NewFsGrepService(cfg.WorkDir, logger)
+	if err != nil {
+		return nil, fmt.Errorf("file ops service: %w", err)
+	}
 	return &FileOpsService{
 		config:     cfg,
 		logger:     logger,
 		fileEdit:   fileEditSvc,
 		fsList:     execution.NewFsListService(cfg.WorkDir, logger),
-		fsGrep:     execution.NewFsGrepService(cfg.WorkDir, logger),
+		fsGrep:     fsGrep,
 		results:    results,
 		scrubbing:  scrubbingSvc,
 		auditStore: auditStore,

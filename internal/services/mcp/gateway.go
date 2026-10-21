@@ -33,6 +33,7 @@ import (
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/execution"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
@@ -202,6 +203,12 @@ type Dependencies struct {
 	// AuditReceiptQuery.
 	AuditReceiptQuery AuditReceiptQuery
 
+	// FsGrep backs the governed search_file and search_directory native tools.
+	// Optional: when nil, those tools fail closed with
+	// constants.ErrMCPFsGrepNotConfigured. Production wires an
+	// *execution.FsGrepService rooted at the Gateway work directory.
+	FsGrep *execution.FsGrepService
+
 	// EmbeddedSession resolves the claimed embedded Operator's session ID,
 	// which App-originated Gateway-local envelopes are stamped with so their
 	// approval, expiry, and execution evidence lands on the runtime that
@@ -271,6 +278,9 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 	}
 	if deps.AuditReceiptQuery != nil {
 		nativeToolHandler.SetAuditReceiptQuery(deps.AuditReceiptQuery)
+	}
+	if deps.FsGrep != nil {
+		nativeToolHandler.SetFsGrepService(deps.FsGrep)
 	}
 
 	var subprocessDownstream *SubprocessDownstream
@@ -1009,7 +1019,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 	// members and returns the envelope with L2 metadata populated. If the deliberator is
 	// not configured, the envelope proceeds without L2 votes and will fail-closed at L4
 	// verification.
-	if governance.L2Enforced(actionType, g.posture) && g.l2ConsensusDeliberator != nil {
+	if governance.L2Enforced(actionType, g.posture) && !governance.L2DeliberationExempt(env) && g.l2ConsensusDeliberator != nil {
 		deliberatedBytes, err := g.l2ConsensusDeliberator.Deliberate(ctx, envelopeBytes)
 		if err != nil {
 			g.logger.Error("L2 consensus deliberation failed", "tx_hash", hash, "error", err)

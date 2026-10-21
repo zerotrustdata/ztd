@@ -563,3 +563,319 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 		})
 	}
 }
+
+// deliberationSetID names the Tribunal consensus set the deliberation tests bind.
+const deliberationSetID = "tribunal-set"
+
+// deliberationMemberKeyID is the enrolled Tribunal member that signs attestations.
+const deliberationMemberKeyID = "member-a"
+
+// deliberationPolicyStore serves one consensus set, as the outbound Operator's
+// L2TrustStore does, with the policy the test configures.
+type deliberationPolicyStore struct {
+	policy *L2ConsensusPolicy
+}
+
+func (s deliberationPolicyStore) GetConsensusPolicy(_ context.Context, id string) (*L2ConsensusPolicy, error) {
+	if s.policy == nil || id != deliberationSetID {
+		return nil, nil
+	}
+	policy := *s.policy
+	return &policy, nil
+}
+
+// tribunalPolicy is an enabled, tribunal-bound policy over the given members.
+func tribunalPolicy(members ...string) *L2ConsensusPolicy {
+	return &L2ConsensusPolicy{
+		MemberKeyIDs:    members,
+		Quorum:          1,
+		RequireDistinct: true,
+		Enabled:         true,
+		Provider:        constants.ConsensusProviderTribunal,
+	}
+}
+
+// deliberationWarden builds a warden whose signer keys and consensus policy are
+// the given ones.
+func deliberationWarden(t *testing.T, policy *L2ConsensusPolicy, signers map[string]ed25519.PublicKey) *L4Warden {
+	t.Helper()
+	return NewL4Warden(
+		testutil.NewTestLogger(),
+		testutil.NewStatefulMockReplayStore(),
+		testutil.NewMockStateRootProvider("root-1"),
+		&FailClosedSignerStore{Signers: signers},
+		deliberationPolicyStore{policy: policy},
+		testutil.NewConfigurableMockL3Notary(true),
+		NewL1Doctrine(),
+		constants.AllActionTypes,
+		nil,
+		&testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"},
+		&governancetest.UnlockedVault{},
+	)
+}
+
+// newMemberKey generates a Tribunal member's Ed25519 key pair.
+func newMemberKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("failed to generate member key: %v", err)
+	}
+	return pub, priv
+}
+
+// setDeliberation replaces env's L2 proof with a deliberation attestation by
+// keyID carrying sig, under the tribunal consensus set and with no votes.
+func setDeliberation(env *govtypes.GovernanceEnvelope, keyID string, sig []byte) {
+	env.Governance.L2 = &commonv1.L2Metadata{
+		ConsensusSetId: deliberationSetID,
+		Deliberation: &commonv1.L2DeliberationAttestation{
+			SignerKeyId: keyID,
+			Signature:   hex.EncodeToString(sig),
+		},
+	}
+}
+
+// deliberationEnvelope is a signed envelope whose L2 proof is a valid attestation
+// by priv over L2DeliberationPayload of its hash.
+func deliberationEnvelope(t *testing.T, actionType constants.ActionType, posture constants.Posture, priv ed25519.PrivateKey) *govtypes.GovernanceEnvelope {
+	t.Helper()
+	env := signedEnvelope(t, actionType, typedPayload(t, actionType), priv, posture)
+	setDeliberation(env, deliberationMemberKeyID, ed25519.Sign(priv, L2DeliberationPayload(env.TransactionHash)))
+	return env
+}
+
+// protocolL2Stage returns the PROTOCOL_L2 stage of a verified envelope.
+func protocolL2Stage(t *testing.T, verified *VerifiedTransaction) *operatorv1.DeterministicStageEvidence {
+	t.Helper()
+	for _, stage := range verified.DeterministicStageEvidence {
+		if stage.GetKind() == operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2 {
+			return stage
+		}
+	}
+	t.Fatalf("verified envelope carries no PROTOCOL_L2 stage")
+	return nil
+}
+
+// assertAttestationExempt asserts a deliberation-attested envelope passes with
+// its L2 recorded as NOT_REQUIRED and the attesting member on the L2 stage.
+func assertAttestationExempt(t *testing.T, verified *VerifiedTransaction, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("expected deliberation attestation to pass, got %v", err)
+	}
+	if verified.L2Status != operatorv1.L2Status_L2_STATUS_NOT_REQUIRED {
+		t.Fatalf("expected L2 status NOT_REQUIRED for attested envelope, got %s", verified.L2Status)
+	}
+	stage := protocolL2Stage(t, verified)
+	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED, stage.GetOutcome())
+	assert.Equal(t, deliberationMemberKeyID, stage.GetSignerKeyId())
+}
+
+// TestL4Warden_Deliberation_ValidAttestationOnInferencePasses verifies that a
+// valid attestation by an enrolled tribunal member exempts a vote-free INFERENCE
+// from L2 under the notary posture, and that its L2 stage names the member.
+func TestL4Warden_Deliberation_ValidAttestationOnInferencePasses(t *testing.T) {
+	t.Parallel()
+	memberPub, memberPriv := newMemberKey(t)
+	warden := deliberationWarden(t, tribunalPolicy(deliberationMemberKeyID), map[string]ed25519.PublicKey{deliberationMemberKeyID: memberPub})
+	env := deliberationEnvelope(t, constants.ActionTypeInference, "notary", memberPriv)
+
+	verified, err := warden.VerifyEnvelope(context.Background(), env)
+	assertAttestationExempt(t, verified, err)
+}
+
+// TestL4Warden_Deliberation_ValidAttestationOnObservationPasses verifies the
+// same exemption for the provider-boundary observation that a Tribunal vote's
+// inference attempt emits.
+func TestL4Warden_Deliberation_ValidAttestationOnObservationPasses(t *testing.T) {
+	t.Parallel()
+	memberPub, memberPriv := newMemberKey(t)
+	warden := deliberationWarden(t, tribunalPolicy(deliberationMemberKeyID), map[string]ed25519.PublicKey{deliberationMemberKeyID: memberPub})
+	env := deliberationEnvelope(t, constants.ActionTypeProviderBoundaryObservation, "notary", memberPriv)
+
+	verified, err := warden.VerifyEnvelope(context.Background(), env)
+	assertAttestationExempt(t, verified, err)
+}
+
+// TestL4Warden_Deliberation_NonDeliberationActionRejects verifies that an
+// attestation on an action outside the deliberation set is rejected, even with
+// a valid signature by an enrolled member.
+func TestL4Warden_Deliberation_NonDeliberationActionRejects(t *testing.T) {
+	t.Parallel()
+	for _, actionType := range []constants.ActionType{constants.ActionTypeMcpCall, constants.ActionTypeFsList} {
+		t.Run(string(actionType), func(t *testing.T) {
+			t.Parallel()
+			memberPub, memberPriv := newMemberKey(t)
+			warden := deliberationWarden(t, tribunalPolicy(deliberationMemberKeyID), map[string]ed25519.PublicKey{deliberationMemberKeyID: memberPub})
+			env := deliberationEnvelope(t, actionType, "notary", memberPriv)
+
+			_, err := warden.VerifyEnvelope(context.Background(), env)
+			assert.ErrorIs(t, err, constants.ErrTxL2SignatureInvalid)
+		})
+	}
+}
+
+// TestL4Warden_Deliberation_AttestationWithVoteRejects verifies that an
+// attestation carried alongside a valid vote is rejected: the exemption holds
+// only for a vote-free envelope.
+func TestL4Warden_Deliberation_AttestationWithVoteRejects(t *testing.T) {
+	t.Parallel()
+	memberPub, memberPriv := newMemberKey(t)
+	warden := deliberationWarden(t, tribunalPolicy(deliberationMemberKeyID), map[string]ed25519.PublicKey{deliberationMemberKeyID: memberPub})
+	env := deliberationEnvelope(t, constants.ActionTypeInference, "notary", memberPriv)
+	env.Governance.L2.Votes = []*commonv1.L2Vote{signL2Vote(memberPriv, deliberationMemberKeyID, env.TransactionHash, true)}
+
+	_, err := warden.VerifyEnvelope(context.Background(), env)
+	assert.ErrorIs(t, err, constants.ErrTxL2SignatureInvalid)
+}
+
+// TestL4Warden_Deliberation_SignerTrustRejects verifies that an attestation
+// fails closed when its signer is not a policy member, or is a member with no
+// trusted signer key.
+func TestL4Warden_Deliberation_SignerTrustRejects(t *testing.T) {
+	t.Parallel()
+	t.Run("signer not a member", func(t *testing.T) {
+		t.Parallel()
+		outsiderPub, outsiderPriv := newMemberKey(t)
+		warden := deliberationWarden(t, tribunalPolicy("member-b"), map[string]ed25519.PublicKey{"outsider": outsiderPub})
+		env := deliberationEnvelope(t, constants.ActionTypeInference, "notary", outsiderPriv)
+		setDeliberation(env, "outsider", ed25519.Sign(outsiderPriv, L2DeliberationPayload(env.TransactionHash)))
+
+		_, err := warden.VerifyEnvelope(context.Background(), env)
+		assert.ErrorIs(t, err, constants.ErrTxL2SignatureInvalid)
+	})
+	t.Run("member without a trusted signer key", func(t *testing.T) {
+		t.Parallel()
+		_, memberPriv := newMemberKey(t)
+		warden := deliberationWarden(t, tribunalPolicy(deliberationMemberKeyID), map[string]ed25519.PublicKey{})
+		env := deliberationEnvelope(t, constants.ActionTypeInference, "notary", memberPriv)
+
+		_, err := warden.VerifyEnvelope(context.Background(), env)
+		assert.ErrorIs(t, err, constants.ErrTxL2SignatureInvalid)
+	})
+}
+
+// TestL4Warden_Deliberation_NonTribunalPolicyRejects verifies that an attestation
+// is rejected under a consensus set whose provider is not tribunal: an
+// application set, or a policy with no provider decoded.
+func TestL4Warden_Deliberation_NonTribunalPolicyRejects(t *testing.T) {
+	t.Parallel()
+	for name, provider := range map[string]constants.ConsensusProvider{
+		"application provider": constants.ConsensusProviderApplication,
+		"empty provider":       "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			memberPub, memberPriv := newMemberKey(t)
+			policy := tribunalPolicy(deliberationMemberKeyID)
+			policy.Provider = provider
+			warden := deliberationWarden(t, policy, map[string]ed25519.PublicKey{deliberationMemberKeyID: memberPub})
+			env := deliberationEnvelope(t, constants.ActionTypeInference, "notary", memberPriv)
+
+			_, err := warden.VerifyEnvelope(context.Background(), env)
+			assert.ErrorIs(t, err, constants.ErrTxL2SignatureInvalid)
+		})
+	}
+}
+
+// TestL4Warden_Deliberation_VoteSignatureReplayRejects verifies that a vote
+// signature over L2VotePayload cannot be replayed as an attestation, since the
+// attestation signs a different payload.
+func TestL4Warden_Deliberation_VoteSignatureReplayRejects(t *testing.T) {
+	t.Parallel()
+	memberPub, memberPriv := newMemberKey(t)
+	warden := deliberationWarden(t, tribunalPolicy(deliberationMemberKeyID), map[string]ed25519.PublicKey{deliberationMemberKeyID: memberPub})
+	env := deliberationEnvelope(t, constants.ActionTypeInference, "notary", memberPriv)
+	setDeliberation(env, deliberationMemberKeyID, ed25519.Sign(memberPriv, L2VotePayload(env.TransactionHash, true)))
+
+	_, err := warden.VerifyEnvelope(context.Background(), env)
+	assert.ErrorIs(t, err, constants.ErrTxL2SignatureInvalid)
+}
+
+// TestL4Warden_Deliberation_DoctrinePostureStillVerifies verifies that a bad
+// attestation is rejected under the doctrine posture, where L2 is not enforced:
+// an attestation is never audit-only.
+func TestL4Warden_Deliberation_DoctrinePostureStillVerifies(t *testing.T) {
+	t.Parallel()
+	memberPub, memberPriv := newMemberKey(t)
+	_, otherPriv := newMemberKey(t)
+	warden := deliberationWarden(t, tribunalPolicy(deliberationMemberKeyID), map[string]ed25519.PublicKey{deliberationMemberKeyID: memberPub})
+	env := deliberationEnvelope(t, constants.ActionTypeInference, constants.PostureDoctrine, memberPriv)
+	setDeliberation(env, deliberationMemberKeyID, ed25519.Sign(otherPriv, L2DeliberationPayload(env.TransactionHash)))
+
+	_, err := warden.VerifyEnvelope(context.Background(), env)
+	assert.ErrorIs(t, err, constants.ErrTxL2SignatureInvalid)
+}
+
+// TestL4Warden_Deliberation_OutboundTrustStoreVerifies verifies the outbound
+// Operator wiring: one L2TrustStore built from a tribunal enrollment bundle is
+// both the signer store and the consensus policy store, and it accepts a valid
+// attestation.
+func TestL4Warden_Deliberation_OutboundTrustStoreVerifies(t *testing.T) {
+	t.Parallel()
+	memberPub, memberPriv := newMemberKey(t)
+	store, err := NewL2TrustStore(&models.OperatorL2Trust{
+		ConsensusSetID:  deliberationSetID,
+		MemberKeyIDs:    []string{deliberationMemberKeyID, "member-b", "member-c"},
+		Quorum:          3,
+		RequireDistinct: true,
+		Enabled:         true,
+		Signers:         []models.OperatorSigner{{KeyID: deliberationMemberKeyID, PublicKeyHex: hex.EncodeToString(memberPub)}},
+		Provider:        string(constants.ConsensusProviderTribunal),
+	})
+	if err != nil {
+		t.Fatalf("NewL2TrustStore: %v", err)
+	}
+	warden := NewL4Warden(
+		testutil.NewTestLogger(),
+		testutil.NewStatefulMockReplayStore(),
+		testutil.NewMockStateRootProvider("root-1"),
+		store,
+		store,
+		testutil.NewConfigurableMockL3Notary(true),
+		NewL1Doctrine(),
+		constants.AllActionTypes,
+		nil,
+		&testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"},
+		&governancetest.UnlockedVault{},
+	)
+	env := deliberationEnvelope(t, constants.ActionTypeInference, "notary", memberPriv)
+
+	verified, err := warden.VerifyEnvelope(context.Background(), env)
+	assertAttestationExempt(t, verified, err)
+}
+
+// TestL2DeliberationExempt verifies the single owner of the deliberation claim:
+// a deliberation action carrying an attestation and no votes.
+func TestL2DeliberationExempt(t *testing.T) {
+	t.Parallel()
+	attested := func(actionType constants.ActionType, votes []*commonv1.L2Vote) *govtypes.GovernanceEnvelope {
+		return &govtypes.GovernanceEnvelope{
+			ActionType: string(actionType),
+			Governance: &commonv1.GovernanceMetadata{
+				L2: &commonv1.L2Metadata{
+					Votes:        votes,
+					Deliberation: &commonv1.L2DeliberationAttestation{SignerKeyId: deliberationMemberKeyID},
+				},
+			},
+		}
+	}
+	tests := []struct {
+		name string
+		env  *govtypes.GovernanceEnvelope
+		want bool
+	}{
+		{name: "inference attestation without votes", env: attested(constants.ActionTypeInference, nil), want: true},
+		{name: "provider boundary observation without votes", env: attested(constants.ActionTypeProviderBoundaryObservation, nil), want: true},
+		{name: "inference attestation with a vote", env: attested(constants.ActionTypeInference, []*commonv1.L2Vote{{SignerKeyId: deliberationMemberKeyID, Decision: true}}), want: false},
+		{name: "mcp call attestation without votes", env: attested(constants.ActionTypeMcpCall, nil), want: false},
+		{name: "nil envelope", env: nil, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, L2DeliberationExempt(tc.env))
+		})
+	}
+}

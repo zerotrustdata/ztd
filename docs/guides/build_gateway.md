@@ -4,7 +4,7 @@ title: Build Gateway
 audience: developers and operators
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-21
 owners:
   - docs/guides/build_gateway.md
   - Makefile
@@ -125,14 +125,16 @@ Choose a stricter posture only after configuring required proofs:
 ./ztd gw start --posture notary
 ```
 
-Consensus and notary require a bound consensus application. Enroll it as an ordinary application with an L2 signing identity, then bind its HTTPS endpoint. Set `APP_NAME` to the application name and `APP_ENDPOINT` to its HTTPS deliberation endpoint (the application host plus `/deliberate`), then run:
+Consensus and notary require a bound consensus. The default is the Gateway-hosted Tribunal panel: `./ztd consensus enroll tribunal --model <tag>` pins a served model tag from the frozen model registry and enrolls the five `tribunal-*` member applications, skipping any already enrolled. Then run `./ztd consensus status` to confirm the binding.
+
+To bind an application instead, enroll it as an ordinary application with an L2 signing identity, then bind its HTTPS endpoint. Set `APP_NAME` to the application name and `APP_ENDPOINT` to its HTTPS deliberation endpoint (the application host plus `/deliberate`), then run:
 
 ```bash
 APP_NAME=etl-service
 APP_ENDPOINT=https://etl.example.com/deliberate
 ./ztd auth enroll app "$APP_NAME" --signing-key
-./ztd auth enroll consensus bind "$APP_NAME" "$APP_ENDPOINT"
-./ztd auth enroll consensus show
+./ztd consensus enroll app "$APP_NAME" "$APP_ENDPOINT"
+./ztd consensus status
 ```
 
 Ratify and notary require L3 human authorization for mutations, including the binding itself. See [Consensus](../architecture/consensus.md).

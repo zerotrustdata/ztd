@@ -25,7 +25,6 @@ func RegisterNativeTools(registry *ToolRegistry) error {
 		&DBQueryValidateTool{},
 		&DBIsolatedReadTool{},
 		&DBIndexTriageTool{},
-		&LogStreamFilterTool{},
 		&SysOOMDetectTool{},
 		&ConfigDiffMaskTool{},
 		&ProcMetricTopTool{},
@@ -51,6 +50,8 @@ func RegisterNativeTools(registry *ToolRegistry) error {
 		&NetSSHKnownHostsTool{},
 		&OperatorDeployTool{},
 		&FileReadTool{},
+		&SearchFileTool{},
+		&SearchDirectoryTool{},
 		&AuditReceiptListTool{},
 		&AuditReceiptGetTool{},
 	}

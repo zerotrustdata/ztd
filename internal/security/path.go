@@ -62,6 +62,44 @@ func ValidatePath(path string, root string) (string, error) {
 	return absPath, nil
 }
 
+// sensitiveReadPaths are system credential files no read or search tool may
+// open.
+var sensitiveReadPaths = []string{
+	constants.PathEtcShadow,
+	constants.PathEtcPasswd,
+	constants.PathEtcGshadow,
+	constants.PathEtcSudoers,
+}
+
+// sensitiveReadBasenames are SSH private key file names refused wherever they
+// live.
+var sensitiveReadBasenames = []string{
+	constants.SshKeyRSA,
+	constants.SshKeyEd25519,
+	constants.SshKeyECDSA,
+}
+
+// IsSensitiveReadPath reports whether path names a system credential file or
+// an SSH private key that read and search tools refuse to open.
+func IsSensitiveReadPath(path string) bool {
+	if path == "" {
+		return false
+	}
+	clean := filepath.Clean(path)
+	for _, sensitive := range sensitiveReadPaths {
+		if clean == sensitive {
+			return true
+		}
+	}
+	base := filepath.Base(clean)
+	for _, sensitive := range sensitiveReadBasenames {
+		if base == sensitive {
+			return true
+		}
+	}
+	return false
+}
+
 // IsProtectedRuntimePath reports whether path names a runtime control or
 // evidence file. Evaluation controlled targets are the sole writable subtree.
 // The check is lexical so it is safe to use during L1 admission on a Gateway

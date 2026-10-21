@@ -4,7 +4,7 @@ title: Authentication & Authorization Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-21
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/auth/
@@ -238,7 +238,9 @@ Workloads (Operators and applications) enroll via owner-approved workflows gover
 
 The CLI generates the optional signing identity with `ztd auth enroll app <name> --signing-key`. The Ed25519 seed is sealed with the transport key and token in pending state. A resumed attempt retains its original instance ID and keys; requesting a signing key for a pending attempt that did not include one fails before sending a request. On completion, the seed is sealed at `Config.AppSigningKeyFile(name)` independently of the P-256 transport key. `auth.LoadAppSigningKey` unseals it for a local consumer; plaintext and malformed seeds fail closed. Applications that manage their own keys can use the same typed enrollment API and possession proofs directly.
 
-Use `ztd auth enroll consensus bind <app-name> <https-endpoint>` to submit the governed binding and `ztd auth enroll consensus show` to read the authenticated binding as JSON. Binding validates HTTPS locally and at the Gateway. Under ratify/notary, a suspended binding prints the posture reason, approval URL, transaction hash, and expiry; `--json` returns the typed suspension. Submission is not completion: approve the transaction and then inspect the binding with `show`. These commands use the existing owner authorization and L3 suspension path without polling.
+Use `ztd consensus enroll app <primary-app> <https-endpoint>` to submit the governed binding and `ztd consensus status` (with the global `--json` flag for machine-readable output) to read the bound consensus. Binding validates HTTPS locally and at the Gateway. Under ratify/notary, a suspended binding prints the posture reason, approval URL, transaction hash, and expiry; `--json` returns the typed suspension. Submission is not completion: approve the transaction and then inspect the binding with `status`. These commands use the existing owner authorization and L3 suspension path without polling.
+
+The Tribunal consensus members are the ordinary enrolled applications `tribunal-axiom`, `tribunal-concord`, `tribunal-variance`, `tribunal-pragma`, and `tribunal-nemesis` (`constants.TribunalConsensusMemberAppIDs`). Each is enrolled with `ztd auth enroll app <name> --signing-key` and human-approved under the same posture rules as any application. Enrollment has no Tribunal-specific path. A member's signing key is sealed under the enrolling host's `.ztd/pki/apps/`, so a `tribunal-*` application enrolled on another host cannot vote on this Gateway. The binding's `tribunal` provider is set by the same governed `PLATFORM_ENROLLMENT_BIND_CONSENSUS` action, and the vote flow is in [Consensus Architecture](consensus.md).
 
 Enrollment authorization uses the authenticated local account ID and active-owner checks, without selecting on `User.Provider`. `TestPlatformEnrollment_CLISigningIdentityAndConsensusAcrossPostures` exercises the real CLI client with a JWT/JIT-shaped owner across all four postures, and rejects binding by a second account. This is provider-independent authorization coverage, not evidence of implemented Okta/OIDC sign-in. The existing JWT/JWKS verifier is distinct from a complete OIDC login flow. Future federation must map verified issuer/subject pairs to local accounts; it must not substitute IdP tokens or login MFA claims for workload keys or transaction-bound L3 proofs.
 

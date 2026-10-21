@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/execution"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 )
 
@@ -48,6 +49,9 @@ type NativeToolHandler struct {
 	// operatorAuthority is set only on an executing Operator's handler. It
 	// scopes audit_receipt_list to the Operator's own authoritative ledger.
 	operatorAuthority *auditReceiptListAuthority
+	// fsGrep runs search_file and search_directory against the executing
+	// runtime's WorkDir.
+	fsGrep *execution.FsGrepService
 }
 
 // NewNativeToolHandler creates a new native tool handler with all native tools
@@ -68,15 +72,19 @@ func NewNativeToolHandler(logger *slog.Logger) (*NativeToolHandler, error) {
 // executing Operator's Actuator. It serves the same registry as the Gateway
 // against the Operator's own local audit store, and audit_receipt_list runs
 // under the Operator-local ledger authority: investigation_id is mandatory and
-// the query is scoped to operatorID across that Operator's sessions. Both
-// dependencies are required because a missing identity or local store cannot
-// establish authoritative evidence.
-func NewOperatorNativeToolHandler(logger *slog.Logger, operatorID string, query AuditReceiptQuery) (*NativeToolHandler, error) {
+// the query is scoped to operatorID across that Operator's sessions. The
+// identity and local store are required because a missing one cannot
+// establish authoritative evidence; grep is required so the search tools run
+// against the Operator's own WorkDir.
+func NewOperatorNativeToolHandler(logger *slog.Logger, operatorID string, query AuditReceiptQuery, grep *execution.FsGrepService) (*NativeToolHandler, error) {
 	if operatorID == "" {
 		return nil, fmt.Errorf("operator native tool handler: %w", constants.ErrOperatorIDMissing)
 	}
 	if query == nil {
 		return nil, fmt.Errorf("operator native tool handler: %w", constants.ErrMCPAuditReceiptQueryNotConfigured)
+	}
+	if grep == nil {
+		return nil, fmt.Errorf("operator native tool handler: %w", constants.ErrMCPFsGrepNotConfigured)
 	}
 	h, err := NewNativeToolHandler(logger)
 	if err != nil {
@@ -84,6 +92,7 @@ func NewOperatorNativeToolHandler(logger *slog.Logger, operatorID string, query 
 	}
 	h.auditReceiptQuery = query
 	h.operatorAuthority = &auditReceiptListAuthority{operatorID: operatorID, name: "operator_local_ledger"}
+	h.fsGrep = grep
 	return h, nil
 }
 
@@ -93,6 +102,14 @@ func NewOperatorNativeToolHandler(logger *slog.Logger, operatorID string, query 
 // construction once the Gateway's local audit store is available.
 func (h *NativeToolHandler) SetAuditReceiptQuery(q AuditReceiptQuery) {
 	h.auditReceiptQuery = q
+}
+
+// SetFsGrepService wires the runtime's FsGrepService into the handler so the
+// search_file and search_directory native tools resolve paths against its
+// WorkDir. Without it those tools fail closed with
+// constants.ErrMCPFsGrepNotConfigured.
+func (h *NativeToolHandler) SetFsGrepService(grep *execution.FsGrepService) {
+	h.fsGrep = grep
 }
 
 // HandleTool executes a native tool by name and returns the result.
@@ -117,6 +134,9 @@ func (h *NativeToolHandler) HandleTool(ctx context.Context, toolName string, arg
 	}
 	if h.operatorAuthority != nil {
 		ctx = withAuditReceiptListAuthority(ctx, *h.operatorAuthority)
+	}
+	if h.fsGrep != nil {
+		ctx = withFsGrepService(ctx, h.fsGrep)
 	}
 	if len(arguments) == 0 {
 		arguments = json.RawMessage("{}")

@@ -1,0 +1,138 @@
+// Copyright (c) 2026 Lateralus Labs, LLC.
+// Use of this source code is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date listed in the LICENSE file, this software is
+// released under the Apache License, Version 2.0.
+
+//go:build integration
+
+// External package: the Tribunal consensus runs through the production Gateway,
+// Tribunal deliberator, and Inference Operator. Only the model provider is scripted.
+package evaluation_test
+
+import (
+	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/marshaler"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"github.com/zerotrustdata/ztd/test/fixtures"
+)
+
+// tribunalConsensusVoteAnswer is the only vote answer shape the decoder accepts as approve.
+const tribunalConsensusVoteAnswer = `{"decision":"approve","reason":"ok"}`
+
+// tribunalConsensusQuorum is the approval count the Tribunal binding requires.
+const tribunalConsensusQuorum = 3
+
+// tribunalConsensusMemberSigner is the test Gateway host's member signer: each
+// enrolled Tribunal member signs with its own ed25519 key.
+type tribunalConsensusMemberSigner struct {
+	keys map[string]ed25519.PrivateKey
+}
+
+func (s *tribunalConsensusMemberSigner) HasKey(appID string) bool {
+	_, ok := s.keys[appID]
+	return ok
+}
+
+func (s *tribunalConsensusMemberSigner) Sign(appID string, payload []byte) ([]byte, error) {
+	key, ok := s.keys[appID]
+	if !ok {
+		return nil, constants.ErrConsensusMemberKeyUnavailable
+	}
+	return ed25519.Sign(key, payload), nil
+}
+
+// tribunalConsensusVotes scripts n approving vote answers, one per member inference.
+func tribunalConsensusVotes(n int) []fixtures.OllamaReply {
+	replies := make([]fixtures.OllamaReply, 0, n)
+	for range n {
+		replies = append(replies, fixtures.OllamaReply{Content: tribunalConsensusVoteAnswer})
+	}
+	return replies
+}
+
+func TestTribunalConsensusRealStack(t *testing.T) {
+	ctx := t.Context()
+	env := newRealStackAgentRun(t, realStackOptions{
+		posture: constants.PostureConsensus, singleRole: true, suffix: "tribunal-consensus",
+		replies: tribunalConsensusVotes(tribunalConsensusQuorum),
+	})
+	gw := env.stack.Gateway.Service
+	consensusStore := gw.GetConsensusStore()
+
+	// The fixture's binding carries the HTTPS endpoint the application provider
+	// used. AddConsensus validates the endpoint of the binding document, so the
+	// Tribunal binding keeps that endpoint; the Tribunal provider never dials it.
+	fixtureBinding, err := consensusStore.GetBoundConsensusApp(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, fixtureBinding)
+	require.NoError(t, consensusStore.ClearConsensusBinding(ctx, ""))
+
+	signer := &tribunalConsensusMemberSigner{keys: map[string]ed25519.PrivateKey{}}
+	memberAppIDs := make([]string, 0, len(tribunal.AllMembers))
+	for _, member := range tribunal.AllMembers {
+		appID := tribunal.ConsensusMemberAppID(member)
+		memberAppIDs = append(memberAppIDs, appID)
+
+		publicKey, privateKey, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
+		signer.keys[appID] = privateKey
+		require.NoError(t, gw.GetSignerStore().AddTrustedSigner(ctx, models.TrustedSigner{
+			ID: appID, PublicKey: hex.EncodeToString(publicKey), AddedAt: time.Now().UTC(), Enabled: true,
+		}))
+
+		// The Tribunal deliberator reads each member's owner from its app policy
+		// document, so the member votes under the owner the test identity holds.
+		policy, err := json.Marshal(models.AppPolicy{AppID: appID, OwnerUserID: env.stack.Identity.UserID})
+		require.NoError(t, err)
+		require.NoError(t, gw.GetDocStore().DocSet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), appID, policy))
+	}
+
+	require.NoError(t, consensusStore.AddConsensus(ctx, models.ConsensusPolicy{
+		ID:              string(constants.DocIDConsensusBinding),
+		Provider:        string(constants.ConsensusProviderTribunal),
+		EndpointURL:     fixtureBinding.EndpointURL,
+		MemberAppIDs:    memberAppIDs,
+		Quorum:          tribunalConsensusQuorum,
+		RequireDistinct: true,
+		ModelTag:        realStackModelTag,
+		ModelDigest:     fixtures.ScriptedModelDigest(t, realStackModelTag),
+		Enabled:         true,
+	}))
+	gw.SetConsensusMemberSigner(signer)
+
+	// One governed MCP_CALL through the governed HTTP dispatch path the eval lane uses.
+	args := `{"command":"echo","args":["HEALTHY"]}`
+	payload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: args})
+	require.NoError(t, err)
+	out, err := evaluation.NewCommandLane(env.gateway, env.persona).DispatchAgentTool(
+		ctx, evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID},
+		env.req.RunID, "tribunal-consensus-investigation", "tribunal-consensus-attempt-1",
+		constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand, payload,
+	)
+	require.NoError(t, err)
+	require.NoError(t, out.Outcome.Typed())
+
+	receipt := out.Outcome.Observation.GetReceipt()
+	require.NotNil(t, receipt, "the governed action must answer with a signed receipt")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus(), "the action must execute")
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, receipt.GetL2Status(), "the Tribunal quorum proof must be valid")
+
+	// The binding stops at quorum, so exactly three member inferences ran, each on the pinned model.
+	assert.Equal(t, tribunalConsensusQuorum, env.stack.Provider.ChatCount(), "exactly quorum vote inferences must run")
+	assert.Equal(t, []string{realStackModelTag, realStackModelTag, realStackModelTag}, tribunalWireModels(t, env))
+}

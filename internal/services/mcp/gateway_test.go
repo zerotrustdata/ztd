@@ -1029,7 +1029,7 @@ func TestGatewayService_IsNativeTool(t *testing.T) {
 	t.Run("native tool recognized", func(t *testing.T) {
 		require.True(t, g.isNativeTool("db_discover_topology"))
 		require.True(t, g.isNativeTool("db_query_validate"))
-		require.True(t, g.isNativeTool("log_stream_filter"))
+		require.True(t, g.isNativeTool(constants.MCPToolSearchDirectory))
 	})
 
 	t.Run("non-native tool rejected", func(t *testing.T) {

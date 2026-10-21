@@ -10,8 +10,10 @@ package execution
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -33,16 +35,48 @@ type FsGrepService struct {
 	logger  *slog.Logger
 }
 
-// NewFsGrepService creates a new FsGrepService
-func NewFsGrepService(workDir string, logger *slog.Logger) *FsGrepService {
+// fsGrepTarget is the kind of search root a grep accepts.
+type fsGrepTarget int
+
+const (
+	fsGrepTargetAny fsGrepTarget = iota
+	fsGrepTargetFile
+	fsGrepTargetDirectory
+)
+
+// NewFsGrepService creates a new FsGrepService rooted at workDir, against
+// which relative search paths resolve.
+func NewFsGrepService(workDir string, logger *slog.Logger) (*FsGrepService, error) {
+	if workDir == "" {
+		return nil, fmt.Errorf("fs_grep service: work dir: %w", constants.ErrMissingRequiredField)
+	}
+	if logger == nil {
+		return nil, fmt.Errorf("fs_grep service: logger: %w", constants.ErrMissingRequiredField)
+	}
 	return &FsGrepService{
 		workDir: workDir,
 		logger:  logger,
-	}
+	}, nil
 }
 
-// ExecuteFsGrep performs a recursive grep operation
+// ExecuteFsGrep performs a recursive grep operation over a file or directory.
 func (s *FsGrepService) ExecuteFsGrep(ctx context.Context, req *models.FsGrepRequest) (*models.FsGrepResult, error) {
+	return s.grep(ctx, req, fsGrepTargetAny)
+}
+
+// SearchFile greps one file. A directory path fails with
+// constants.ErrPathIsDirectory.
+func (s *FsGrepService) SearchFile(ctx context.Context, req *models.FsGrepRequest) (*models.FsGrepResult, error) {
+	return s.grep(ctx, req, fsGrepTargetFile)
+}
+
+// SearchDirectory greps every file under one directory. A file path fails with
+// constants.ErrNotADirectory.
+func (s *FsGrepService) SearchDirectory(ctx context.Context, req *models.FsGrepRequest) (*models.FsGrepResult, error) {
+	return s.grep(ctx, req, fsGrepTargetDirectory)
+}
+
+func (s *FsGrepService) grep(ctx context.Context, req *models.FsGrepRequest, target fsGrepTarget) (*models.FsGrepResult, error) {
 	startTime := time.Now().UTC()
 	s.logger.Info("Executing fs_grep operation",
 		"execution_id", req.ExecutionID,
@@ -69,15 +103,33 @@ func (s *FsGrepService) ExecuteFsGrep(ctx context.Context, req *models.FsGrepReq
 	// Validate and resolve path (security check)
 	absPath, err := security.ValidatePath(path, s.workDir)
 	if err != nil {
-		return s.failResult(result, constants.ErrFsGrepValidation, fmt.Errorf("fs_grep: path validation failed: %w", err))
+		return s.failResult(result, constants.ErrFsGrepValidation, fmt.Errorf("fs_grep: %w: %w: %w", constants.ErrFsGrepValidation, constants.ErrPathValidation, err))
 	}
 
 	result.Path = absPath
 
+	if security.IsSensitiveReadPath(absPath) {
+		return s.failResult(result, constants.ErrFsGrepValidation, fmt.Errorf("fs_grep: %w: %w: %s", constants.ErrFsGrepValidation, constants.ErrSensitivePath, absPath))
+	}
+
+	rootInfo, err := os.Stat(absPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return s.failResult(result, constants.ErrFsGrepValidation, fmt.Errorf("fs_grep: %w: %w: %s", constants.ErrFsGrepValidation, constants.ErrPathNotFound, absPath))
+	}
+	if err != nil {
+		return s.failResult(result, constants.ErrFsGrepValidation, fmt.Errorf("fs_grep: %w: %w: %w", constants.ErrFsGrepValidation, constants.ErrStatFailed, err))
+	}
+	if target == fsGrepTargetFile && rootInfo.IsDir() {
+		return s.failResult(result, constants.ErrFsGrepValidation, fmt.Errorf("fs_grep: %w: %w: %s", constants.ErrFsGrepValidation, constants.ErrPathIsDirectory, absPath))
+	}
+	if target == fsGrepTargetDirectory && !rootInfo.IsDir() {
+		return s.failResult(result, constants.ErrFsGrepValidation, fmt.Errorf("fs_grep: %w: %w: %s", constants.ErrFsGrepValidation, constants.ErrNotADirectory, absPath))
+	}
+
 	// Compile regex
 	re, err := regexp.Compile(req.Pattern)
 	if err != nil {
-		return s.failResult(result, constants.ErrFsGrepInvalidPattern, fmt.Errorf("fs_grep: invalid regex pattern: %w", err))
+		return s.failResult(result, constants.ErrFsGrepInvalidPattern, fmt.Errorf("fs_grep: %w: %w", constants.ErrFsGrepInvalidPattern, err))
 	}
 
 	// Prepare includes filters
@@ -141,13 +193,22 @@ func (s *FsGrepService) ExecuteFsGrep(ctx context.Context, req *models.FsGrepReq
 					"execution_id", req.ExecutionID)
 				return nil
 			}
+			if security.IsSensitiveReadPath(target) {
+				return nil
+			}
 		}
 
 		if d.IsDir() {
-			// Skip hidden directories (like .git)
-			if d.Name() != "." && strings.HasPrefix(d.Name(), ".") {
+			// Skip hidden directories (like .git) below the root; a hidden
+			// root was named explicitly and is searched.
+			if path != absPath && strings.HasPrefix(d.Name(), ".") {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+
+		if security.IsSensitiveReadPath(path) {
+			s.logger.Debug("Skipping sensitive file during walk", slog.String("execution_id", req.ExecutionID))
 			return nil
 		}
 
@@ -188,7 +249,7 @@ func (s *FsGrepService) ExecuteFsGrep(ctx context.Context, req *models.FsGrepReq
 	})
 
 	if err != nil && err != io.EOF {
-		return s.failResult(result, constants.ErrFsGrepExecution, fmt.Errorf("fs_grep: grep execution failed: %w", err))
+		return s.failResult(result, constants.ErrFsGrepExecution, fmt.Errorf("fs_grep: %w: %w", constants.ErrFsGrepExecution, err))
 	}
 
 	result.Matches = matches

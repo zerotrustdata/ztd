@@ -27,6 +27,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	cligateway "github.com/zerotrustdata/ztd/internal/cli/gateway"
@@ -36,6 +37,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/gateway"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/services/profiling"
 )
@@ -154,6 +157,19 @@ func resolveGatewayFlags(f GatewayFlags) GatewayFlags {
 // gatewayFlagsToServeConfig converts GatewayFlags into serve.GatewayConfig.
 // This is the single conversion point between CLI flags and the foreground
 // gateway config struct.
+// tribunalConsensusSignerFactory unseals the Gateway-hosted Tribunal member
+// signing keys from the runtime tree at workingDir.
+func tribunalConsensusSignerFactory(workingDir string) func(context.Context, fs.RuntimeFileService, keyring.Keyring) (gateway.ConsensusMemberSigner, error) {
+	return func(ctx context.Context, fileSvc fs.RuntimeFileService, kr keyring.Keyring) (gateway.ConsensusMemberSigner, error) {
+		cfg, err := config.Load(workingDir)
+		if err != nil {
+			return nil, fmt.Errorf("gateway: load consensus signer config: %w", err)
+		}
+		cfg.Keyring = kr
+		return auth.NewTribunalConsensusSigner(ctx, fileSvc, cfg), nil
+	}
+}
+
 func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 	return serve.GatewayConfig{
 		OperatorCapabilities:               f.OperatorCapabilities,
@@ -520,6 +536,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 				gatewayCfg := gatewayFlagsToServeConfig(resolved)
 				gatewayCfg.CertIdentityMode = identityResult.CertMode
 				gatewayCfg.NetworkIdentityFile = networkIdentityFile
+				gatewayCfg.ConsensusMemberSignerFactory = tribunalConsensusSignerFactory(gatewayCfg.WorkingDir)
 
 				// Run gateway (this blocks until shutdown)
 				return serve.RunGateway(gatewayCfg, shared.VersionInfoFromCmd(cmd))

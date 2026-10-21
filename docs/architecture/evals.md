@@ -4,7 +4,7 @@ title: Evaluation Programs
 audience: maintainers and coding agents
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-21
 owners:
   - internal/services/evaluation/
   - internal/services/evaluation/conformance/
@@ -213,6 +213,12 @@ The `ztd eval` command tree organizes platform evaluation across ten subcommands
 `ztd eval runs delete` and `ztd eval campaigns delete` remove runs, active or archived, with their evidence; `campaigns delete` also removes the campaign and its inventory. Each run's publication is discarded first through the Gateway (`DELETE /api/v1/eval/campaign/runs/<run>/publication-state`): the mirror withdraws the run's dataset from anonymous reads, the publisher prunes its proof artifacts and pushes the proof catalog, and its publication idempotency is cleared. The signed batch chain is not rewritten. Every snapshot in `eval/backups/` then drops the deleted paths: a snapshot left empty is removed, and a stored object no remaining entry references is deleted. A delete fails without changing anything while a backup or restore holds the backup lock. A run or campaign already gone from the runtime tree but still in the backups is deleted from the backups; a campaign deleted that way loses only its campaign tree and inventory, because its runs cannot be listed without the runtime tree, so they are deleted by run ID. `archive` keeps a run and leaves its public projections in place.
 
 `ztd eval runs resume` executes queued assignments. It fails closed if an assignment remains in `running` without a terminal persisted result; cancel that run and create a new one rather than retrying an ambiguous attempt. Archived runs also cannot resume.
+
+### L2 Consensus Prerequisite
+
+Under the `consensus` and `notary` postures, the Gateway requires a bound L2 consensus (`posture.RequiresL2()`). The `doctrine` and `ratify` postures do not. `ztd eval runs start` and run execution call a preflight that reads `/api/v1/health` and refuses to start when the posture requires L2 and `governance_ready` is false. The refusal reports `consensus not bound` when no consensus is bound, and `consensus not ready` when usable member signers are below quorum. Bind consensus with `ztd consensus enroll tribunal --model <tag>` (Gateway-hosted Tribunal panel, default quorum 3 of 5) or `ztd consensus enroll app` (application provider), and inspect it with `ztd consensus status`. The binding and vote model are in [Consensus Architecture](consensus.md).
+
+Under a bound `tribunal` provider, each governed action that requires L2 consensus costs deliberation inference. The Gateway-hosted deliberator calls one governed inference per consulted member and stops at quorum or when quorum becomes unreachable, so the default 3-of-5 panel makes 3 to 5 inference calls per action.
 
 ### Executing a Model Campaign
 

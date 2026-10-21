@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestValidatePath(t *testing.T) {
@@ -465,6 +467,31 @@ func TestIsShellRequiredAllMetacharacters(t *testing.T) {
 				t.Errorf("IsShellRequired(%q) = false, want true (metacharacter %s)", command, mc)
 			}
 		})
+	}
+}
+
+func TestIsSensitiveReadPath(t *testing.T) {
+	sshDir := filepath.Join(string(filepath.Separator)+"home", "user", constants.SshDirname)
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{path: constants.PathEtcShadow, want: true},
+		{path: constants.PathEtcPasswd, want: true},
+		{path: constants.PathEtcGshadow, want: true},
+		{path: constants.PathEtcSudoers, want: true},
+		{path: constants.PathEtcGroup},
+		{path: filepath.Join(sshDir, constants.SshKeyRSA), want: true},
+		{path: filepath.Join(sshDir, constants.SshKeyEd25519), want: true},
+		{path: filepath.Join(sshDir, constants.SshKeyECDSA), want: true},
+		{path: filepath.Join(sshDir, constants.SshKeyRSA+".pub")},
+		{path: filepath.Join(sshDir, constants.SshKnownHostsBasename)},
+		{path: "/srv/op/notes.txt"},
+		{path: ""},
+	} {
+		if got := IsSensitiveReadPath(tc.path); got != tc.want {
+			t.Errorf("IsSensitiveReadPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
 	}
 }
 

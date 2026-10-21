@@ -110,11 +110,16 @@ func (s *ConsensusStoreService) GetConsensusPolicy(ctx context.Context, id strin
 	if policy == nil {
 		return nil, nil
 	}
+	provider, err := policy.ConsensusProvider()
+	if err != nil {
+		return nil, fmt.Errorf("consensus store: policy %q: %w", policy.ID, err)
+	}
 	return &governance.L2ConsensusPolicy{
 		MemberKeyIDs:    policy.MemberAppIDs,
 		Quorum:          policy.Quorum,
 		RequireDistinct: policy.RequireDistinct,
 		Enabled:         policy.Enabled,
+		Provider:        provider,
 	}, nil
 }
 
@@ -132,12 +137,17 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 	if err != nil || policy == nil || !policy.Enabled {
 		return nil, err
 	}
+	provider, err := policy.ConsensusProvider()
+	if err != nil {
+		return nil, fmt.Errorf("consensus store: operator trust: %w", err)
+	}
 	trust := &models.OperatorL2Trust{
 		ConsensusSetID:  policy.ID,
 		MemberKeyIDs:    policy.MemberAppIDs,
 		Quorum:          policy.Quorum,
 		RequireDistinct: policy.RequireDistinct,
 		Enabled:         policy.Enabled,
+		Provider:        string(provider),
 	}
 	for _, keyID := range policy.MemberAppIDs {
 		pub, err := s.signerSvc.GetTrustedSigner(ctx, keyID)
@@ -150,6 +160,46 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 		trust.Signers = append(trust.Signers, models.OperatorSigner{KeyID: keyID, PublicKeyHex: hex.EncodeToString(pub)})
 	}
 	return trust, nil
+}
+
+// ConsensusReadiness reports which members of the bound consensus can vote on this host.
+func (s *ConsensusStoreService) ConsensusReadiness(ctx context.Context, signer ConsensusMemberSigner) (models.ConsensusReadiness, error) {
+	policy, err := s.GetBoundConsensusApp(ctx)
+	if err != nil {
+		return models.ConsensusReadiness{}, fmt.Errorf("consensus store: readiness: %w", err)
+	}
+	if policy == nil || !policy.Enabled {
+		return models.ConsensusReadiness{}, nil
+	}
+	provider, err := policy.ConsensusProvider()
+	if err != nil {
+		return models.ConsensusReadiness{}, fmt.Errorf("consensus store: readiness: policy %q: %w", policy.ID, err)
+	}
+	readiness := models.ConsensusReadiness{
+		Bound:       true,
+		Provider:    provider,
+		Quorum:      policy.Quorum,
+		ModelTag:    policy.ModelTag,
+		ModelDigest: policy.ModelDigest,
+		Members:     make([]models.ConsensusMemberReadiness, 0, len(policy.MemberAppIDs)),
+	}
+	tribunal := provider == constants.ConsensusProviderTribunal
+	for _, appID := range policy.MemberAppIDs {
+		pub, err := s.signerSvc.GetTrustedSigner(ctx, appID)
+		if err != nil {
+			return models.ConsensusReadiness{}, fmt.Errorf("consensus store: readiness: signer %s: %w", appID, err)
+		}
+		member := models.ConsensusMemberReadiness{AppID: appID, SignerEnabled: pub != nil}
+		if tribunal && signer != nil {
+			member.LocalKey = signer.HasKey(appID)
+		}
+		if member.SignerEnabled && (!tribunal || member.LocalKey) {
+			readiness.Usable++
+		}
+		readiness.Members = append(readiness.Members, member)
+	}
+	readiness.Ready = readiness.Usable >= readiness.Quorum
+	return readiness, nil
 }
 
 // ConsensusAppDeliberator dispatches the GovernanceEnvelope to the bound consensus application's HTTPS endpoint.

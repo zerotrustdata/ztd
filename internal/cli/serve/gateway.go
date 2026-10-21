@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	gateway "github.com/zerotrustdata/ztd/internal/services/gateway"
 	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/profiling"
 )
@@ -67,6 +68,10 @@ type GatewayConfig struct {
 	EvalExplorerRoot                   string                         `json:"eval_explorer_root,omitempty"`
 	PublicSpectatorTrustedProxyCIDRs   []string                       `json:"public_spectator_trusted_proxy_cidrs,omitempty"`
 	PprofListenAddr                    string                         `json:"pprof_listen_addr,omitempty"`
+	// ConsensusMemberSignerFactory builds the signer for the Gateway-hosted
+	// Tribunal consensus members. It is a process dependency, never part of
+	// the launch profile; nil leaves the Tribunal unable to vote.
+	ConsensusMemberSignerFactory func(ctx context.Context, fileSvc fs.RuntimeFileService, kr keyring.Keyring) (gateway.ConsensusMemberSigner, error) `json:"-"`
 }
 
 // RunGateway starts the Operator in gateway mode - the platform's central
@@ -186,6 +191,13 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 	if err != nil {
 		return fmt.Errorf("gateway: create service: %w", err)
 	}
+	if cfg.ConsensusMemberSignerFactory != nil {
+		signer, err := cfg.ConsensusMemberSignerFactory(context.Background(), fileSvc, gatewayCfg.Gateway.Keyring)
+		if err != nil {
+			return fmt.Errorf("gateway: create consensus member signer: %w", err)
+		}
+		svc.SetConsensusMemberSigner(signer)
+	}
 
 	// L2 posture advisory check:
 	// The gateway starts regardless of consensus configuration — L2 enforcement
@@ -193,13 +205,19 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 	// log a warning so the operator knows L2-gated transactions will be rejected
 	// until a consensus application is bound.
 	if cfg.Posture.RequiresL2() {
-		bound, err := svc.GetConsensusStore().GetBoundConsensusApp(context.Background())
-		if err != nil || bound == nil || !bound.Enabled {
-			logger.Warn("L2 posture requires consensus but no consensus application is bound; L2-gated transactions will be rejected until a consensus application is bound",
-				"posture", cfg.Posture)
+		consensus := svc.ConsensusHealth(context.Background())
+		if !consensus.Ready {
+			logger.Warn("L2 posture requires a ready consensus binding; L2-gated transactions will be rejected until one is bound",
+				"posture", cfg.Posture,
+				"bound", consensus.Bound,
+				"usable", consensus.Usable,
+				"quorum", consensus.Quorum,
+				"action", "ztd consensus enroll tribunal --model <tag>")
 		} else {
-			appID := bound.PrimaryAppID()
-			logger.Info("Consensus application bound", "app_id", appID, "endpoint_url", bound.EndpointURL)
+			logger.Info("Consensus binding ready",
+				"provider", consensus.Provider,
+				"quorum", consensus.Quorum,
+				"usable", consensus.Usable)
 		}
 	}
 

@@ -468,12 +468,13 @@ func l2SignatureDigest(env *govtypes.GovernanceEnvelope) string {
 	if env == nil || env.Governance == nil || env.Governance.L2 == nil {
 		return ""
 	}
-	signatures := make([]string, 0, len(env.Governance.L2.Votes))
+	signatures := make([]string, 0, len(env.Governance.L2.Votes)+1)
 	for _, vote := range env.Governance.L2.Votes {
 		if vote != nil {
 			signatures = append(signatures, vote.ConsensusSignature)
 		}
 	}
+	signatures = append(signatures, env.Governance.L2.GetDeliberation().GetSignature())
 	return SignatureDigest(signatures)
 }
 

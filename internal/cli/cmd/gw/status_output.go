@@ -22,6 +22,12 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
+// consensusStatusLine is the gw status Consensus row, built from the /health
+// consensus summary and the posture the Gateway reports.
+func consensusStatusLine(h models.HealthResponse) string {
+	return "Consensus  " + h.Consensus.Describe(h.Posture)
+}
+
 func printGatewayStatus(cmd *cobra.Command, cfg *config.Config, clientFactory authcmd.APIClientFactory, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) error {
 	fileSvc, err := fileSvcFactory("", slog.Default())
 	if err != nil {
@@ -29,9 +35,9 @@ func printGatewayStatus(cmd *cobra.Command, cfg *config.Config, clientFactory au
 	}
 	client, clientErr := clientFactory(fileSvc, cfg)
 	healthy, pid := false, 0
+	var health models.HealthResponse
 	if clientErr == nil {
 		body, err := client.Get(constants.APIPaths.Health)
-		var health models.HealthResponse
 		healthy = err == nil && json.Unmarshal(body, &health) == nil && health.Status == constants.GatewayModeStatusOK
 		if healthy {
 			pid = health.PID
@@ -67,6 +73,9 @@ func printGatewayStatus(cmd *cobra.Command, cfg *config.Config, clientFactory au
 	printOperatorTables(cmd.OutOrStdout(), collectOperatorInventory(client, fileSvc, cfg))
 	fmt.Fprintln(cmd.OutOrStdout())
 	printEnrollmentSummary(cmd.OutOrStdout(), client)
+	if healthy {
+		cmd.Println(consensusStatusLine(health))
+	}
 	var launched serve.GatewayConfig
 	if profile, err := serve.ReadLaunchProfile(fileSvc); err == nil {
 		launched = profile.Config

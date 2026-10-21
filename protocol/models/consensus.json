@@ -49,6 +49,28 @@
       }
     },
 
+    "provider": {
+      "provider": {
+        "type": "string",
+        "enum": ["application", "tribunal"],
+        "required": false,
+        "default": "application",
+        "description": "Vote producer of the bound consensus. Empty means application, so bindings written before providers existed keep working."
+      },
+      "model_tag": {
+        "type": "string",
+        "required": false,
+        "required_when": {"provider": "tribunal"},
+        "description": "Pinned vote model tag. Tribunal provider only; must be empty for the application provider."
+      },
+      "model_digest": {
+        "type": "string",
+        "required": false,
+        "required_when": {"provider": "tribunal"},
+        "description": "Pinned vote model digest. Tribunal provider only; must be empty for the application provider."
+      }
+    },
+
     "lifecycle": {
       "enabled": {
         "type": "boolean",

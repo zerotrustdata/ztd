@@ -14,6 +14,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestDocumentForWire_EmptyDataReturnsSystemFieldsOnly(t *testing.T) {
@@ -152,4 +154,52 @@ func TestDocumentForWire_SystemFieldsOverrideDataFieldsWithSameKey(t *testing.T)
 	var idVal string
 	require.NoError(t, json.Unmarshal(out["id"], &idVal))
 	assert.Equal(t, "doc-7", idVal)
+}
+
+func TestHealthConsensusDescribe(t *testing.T) {
+	bound := HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 5, Ready: true}
+	notReady := HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 2, Ready: false}
+
+	cases := []struct {
+		name      string
+		consensus HealthConsensus
+		posture   constants.Posture
+		want      string
+	}{
+		{
+			name:      "bound and ready",
+			consensus: bound,
+			posture:   constants.PostureNotary,
+			want:      "tribunal 3-of-5 | signers 5/5",
+		},
+		{
+			name:      "bound but not ready",
+			consensus: notReady,
+			posture:   constants.PostureNotary,
+			want:      "tribunal 3-of-5 | signers 2/5 | NOT READY",
+		},
+		{
+			name:      "unbound under notary requires L2",
+			consensus: HealthConsensus{},
+			posture:   constants.PostureNotary,
+			want:      "NOT BOUND — posture notary requires L2: ztd consensus enroll tribunal --model <tag>",
+		},
+		{
+			name:      "unbound under doctrine does not require L2",
+			consensus: HealthConsensus{},
+			posture:   constants.PostureDoctrine,
+			want:      "not bound (posture doctrine does not require L2)",
+		},
+		{
+			name:      "unbound with no reported posture",
+			consensus: HealthConsensus{},
+			posture:   "",
+			want:      "not bound (gateway did not report posture)",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.consensus.Describe(tc.posture))
+		})
+	}
 }

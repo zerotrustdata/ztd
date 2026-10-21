@@ -4,7 +4,7 @@ title: Connect Apps to Gateway
 audience: application developers and system integrators
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-21
 owners:
   - docs/guides/connect_apps_to_gateway.md
   - internal/services/gateway/
@@ -204,7 +204,7 @@ Upon approval, the certificate carrying `spiffe://ztd.local/app/etl-service` is 
 
 ### Consensus Members
 
-A consensus member is an enrolled application bound into the Gateway's K-of-N consensus set. Enroll each member with `./ztd auth enroll app <name> --signing-key`, then bind the set with `./ztd auth enroll consensus bind <app-name> <https-endpoint>`, repeating `--member-app` for every member, including the primary app. A set with more than one member MUST state `--quorum` explicitly; a single application defaults to 1-of-1. The Gateway trims member IDs and rejects duplicate members and a quorum outside the member count. Binding requires the owner's CLI identity, and passkey approval under `ratify` and `notary`. See [Consensus](../architecture/consensus.md) for the signature model and `./ztd auth enroll consensus bind --help` for flags.
+A consensus member is an enrolled application bound into the Gateway's K-of-N consensus set. Enroll each member with `./ztd auth enroll app <name> --signing-key`, then bind the set with `./ztd consensus enroll app <primary-app> <https-endpoint>`, repeating `--member-app` for every member, including the primary app. A set with more than one member MUST state `--quorum` explicitly; a single application defaults to 1-of-1. The Gateway trims member IDs and rejects duplicate members and a quorum outside the member count. Binding requires the owner's CLI identity, and passkey approval under `ratify` and `notary`. See [Consensus](../architecture/consensus.md) for the signature model and `./ztd consensus enroll app --help` for flags.
 
 ---
 

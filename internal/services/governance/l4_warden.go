@@ -616,7 +616,7 @@ func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.Govern
 		// so a required L3 that was never verified is not recorded as satisfied.
 		return operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED, tv.l3StatusFor(actionType, posture, false), []*operatorv1.DeterministicStageEvidence{l2Stage}, err
 	}
-	l2Status := l2StatusFor(actionType, posture, l2Valid)
+	l2Status := l2StatusFor(envelope, posture, l2Valid)
 	l2Stage := newDeterministicStageEvidence(
 		envelope,
 		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2,
@@ -624,6 +624,9 @@ func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.Govern
 		deterministicL2StatusOutcome[l2Status],
 	)
 	l2Stage.L2SignatureDigest = l2SignatureDigest(envelope)
+	if attestation := envelope.GetGovernance().GetL2().GetDeliberation(); attestation != nil {
+		l2Stage.SignerKeyId = attestation.GetSignerKeyId()
+	}
 
 	l3Start := governanceMonotonicNow()
 	l3Valid, err := tv.verifyL3Posture(ctx, envelope, posture)

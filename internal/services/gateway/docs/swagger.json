@@ -3617,12 +3617,44 @@
                 }
             }
         },
+        "models.HealthConsensus": {
+            "type": "object",
+            "properties": {
+                "bound": {
+                    "description": "an enabled binding exists",
+                    "type": "boolean"
+                },
+                "members": {
+                    "description": "N",
+                    "type": "integer"
+                },
+                "provider": {
+                    "description": "constants.ConsensusProvider of the binding",
+                    "type": "string"
+                },
+                "quorum": {
+                    "description": "K",
+                    "type": "integer"
+                },
+                "ready": {
+                    "description": "Usable \u003e= Quorum on an enabled binding",
+                    "type": "boolean"
+                },
+                "usable": {
+                    "description": "members that can vote now (enabled signer; tribunal: local key present)",
+                    "type": "integer"
+                }
+            }
+        },
         "models.HealthResponse": {
             "type": "object",
             "properties": {
                 "a2a_ingress": {
                     "description": "A2A ingress is mounted (a downstream is configured)",
                     "type": "boolean"
+                },
+                "consensus": {
+                    "$ref": "#/definitions/models.HealthConsensus"
                 },
                 "governance_ready": {
                     "type": "boolean"
