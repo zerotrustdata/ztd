@@ -33,6 +33,11 @@ const consensusVoteSystemPrompt = "You are a member of the Tribunal, the consens
 	"Approve only when the action is safe, matches its stated target, and carries no sign of destructive, exfiltrating, privilege-escalating, or persistence behaviour. Deny anything else, and deny when the intent is unclear.\n" +
 	"Answer with exactly one JSON object {\"decision\":\"approve\"|\"deny\",\"reason\":\"<one sentence>\"}, with no explanation or markdown.\n\n"
 
+// ConsensusVoteJSONSchema constrains the provider's vote answer to the shape
+// DecodeConsensusVote accepts.
+const ConsensusVoteJSONSchema = `{"additionalProperties":false,"properties":{"decision":{"enum":["approve","deny"],"type":"string"},` +
+	`"reason":{"type":"string"}},"required":["decision","reason"],"type":"object"}`
+
 // ConsensusVotePrompt returns member's sealed vote instructions and the user
 // prompt rendering subject.
 func ConsensusVotePrompt(member Member, subject ConsensusSubject) (system, user string) {

@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -68,6 +69,8 @@ type inferCall struct {
 	modelDigest  string
 	requestorID  string
 	deliberating string
+	schema       string
+	format       *operatorv1.InferenceResponseFormat
 }
 
 // fakeInferer answers each member's vote from a script keyed by ActingAppID.
@@ -85,6 +88,8 @@ func (f *fakeInferer) DispatchInference(ctx context.Context, req dispatch.Dispat
 		modelDigest:  req.ModelDigest,
 		requestorID:  req.RequestorUserID,
 		deliberating: deliberating,
+		schema:       req.RequestSchemaVersion,
+		format:       req.ResponseFormat,
 	})
 	reply, ok := f.replies[req.ActingAppID]
 	if !ok {
@@ -476,6 +481,12 @@ func TestTribunalConsensusCallsCarryMemberIdentityAndPinnedModel(t *testing.T) {
 		}
 		if call.requestorID != tribunalTestOwnerID {
 			t.Fatalf("call %d requestor = %q, want owner %q", i, call.requestorID, tribunalTestOwnerID)
+		}
+		if call.schema != constants.InferenceRequestSchemaVersion {
+			t.Fatalf("call %d request schema = %q, want %q", i, call.schema, constants.InferenceRequestSchemaVersion)
+		}
+		if call.format.GetJsonSchema() != tribunal.ConsensusVoteJSONSchema {
+			t.Fatalf("call %d response format = %v, want the consensus vote JSON schema", i, call.format)
 		}
 	}
 }

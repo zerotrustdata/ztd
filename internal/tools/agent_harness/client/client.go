@@ -69,6 +69,9 @@ type Exchange struct {
 type Client struct {
 	cfg  config.Config
 	http *http.Client // Operator identity (Auth)
+	// roots are the Operator identity's trust anchors; nil when its config
+	// names no CA bundle.
+	roots *x509.CertPool
 	// cliHTTP presents the CLI identity (CLIAuth). It is the Operator client itself when both name
 	// the same certificate, and nil when no CLI certificate is configured.
 	cliHTTP *http.Client
@@ -93,6 +96,7 @@ func New(cfg config.Config) (*Client, error) {
 			Timeout:   30 * time.Second,
 			Transport: &http.Transport{TLSClientConfig: tlsCfg},
 		},
+		roots: tlsCfg.RootCAs,
 	}
 
 	// The CLI identity carries notary-scenario submits and approval streams, so

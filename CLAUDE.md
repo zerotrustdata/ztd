@@ -44,6 +44,7 @@ make build
 ./ztd test summary
 ./ztd test public-loop --candidate candidate.json --output evidence.json
 ./ztd test eval-loop     # Cross-process eval qualification under ratify and notary
+./ztd test conformance-loop --posture ratify  # Cross-process conformance qualification (all postures by default)
 ./ztd test release-smoke # Isolated governed execution and local evidence smoke
 ./ztd test scale         # Real Operator fleet scale qualification
 

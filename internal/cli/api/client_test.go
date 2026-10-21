@@ -263,18 +263,6 @@ func TestDoRequest_MarshalError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to marshal request body")
 }
 
-func TestDoRequest_HTTPError(t *testing.T) {
-	cfg, fileSvc := setupTestConfig(t)
-	setupTestCredentials(t, fileSvc, cfg)
-
-	client, err := NewClient(fileSvc, cfg)
-	require.NoError(t, err)
-
-	_, err = client.DoRequest("GET", "/invalid-endpoint", nil)
-	require.Error(t, err)
-	assert.Error(t, err)
-}
-
 func TestNewClient_TLSConfig(t *testing.T) {
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)

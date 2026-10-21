@@ -15,6 +15,8 @@
 package evaluation_test
 
 import (
+	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,16 +44,30 @@ func readFileOn(env **realStackAgentRun, relPath string) fixtures.OllamaReply {
 	}}
 }
 
-// shellScriptOn is a provider turn that runs one workspace-relative script with
-// sh, from the attempt in flight.
-func shellScriptOn(env **realStackAgentRun, relPath string) fixtures.OllamaReply {
-	return fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
-		path, err := (*env).inFlightWorkspaceFile(relPath)
-		if err != nil {
-			return fixtures.OllamaReply{Failure: err.Error()}
-		}
-		return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: realStackShellArguments("sh", path)}}}
-	}}
+// shellScriptOn is a provider turn that proposes running one workspace-relative
+// script with sh, from the attempt in flight, followed by the Tribunal rounds
+// that author it: investigation scenarios route run_shell_command through
+// Tribunal, so five matching candidates, the risk check, and the audit approve
+// the proposed command.
+func shellScriptOn(env **realStackAgentRun, relPath string) []fixtures.OllamaReply {
+	script := func(reply func(json.RawMessage) fixtures.OllamaReply) fixtures.OllamaReply {
+		return fixtures.OllamaReply{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+			path, err := (*env).inFlightWorkspaceFile(relPath)
+			if err != nil {
+				return fixtures.OllamaReply{Failure: err.Error()}
+			}
+			return reply(realStackShellArguments("sh", path))
+		}}
+	}
+	proposal := script(func(arguments json.RawMessage) fixtures.OllamaReply {
+		return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: arguments}}}
+	})
+	candidate := script(func(arguments json.RawMessage) fixtures.OllamaReply {
+		return fixtures.OllamaReply{Content: string(arguments)}
+	})
+	return slices.Concat([]fixtures.OllamaReply{proposal},
+		slices.Repeat([]fixtures.OllamaReply{candidate}, 5),
+		tribunalTurn(tribunalRealLowRisk), tribunalTurn(tribunalRealApprove))
 }
 
 // longitudinalPersistent binds a campaign to one persistent investigation on the
@@ -81,26 +97,23 @@ func investigationScores(res *evalv1.EvaluationAssignmentResult) map[string]floa
 func TestCampaignLongitudinal_ImprovementCurveAcrossSequentialRuns(t *testing.T) {
 	var env *realStackAgentRun
 	// Run 1 reads the config and log, runs the check script, then diagnoses.
-	run1 := []fixtures.OllamaReply{
-		readFileOn(&env, "app/service.conf"),
-		readFileOn(&env, "app/logs/service.log"),
+	run1 := slices.Concat(
+		[]fixtures.OllamaReply{readFileOn(&env, "app/service.conf"), readFileOn(&env, "app/logs/service.log")},
 		shellScriptOn(&env, "check.sh"),
-		{Content: longitudinalDiagnosis},
-	}
+		[]fixtures.OllamaReply{{Content: longitudinalDiagnosis}},
+	)
 	// Run 2 on the same persistent investigation queries its history and answers.
 	run2 := []fixtures.OllamaReply{
 		liveContextAuditList(),
 		{Content: "Diagnosis: based on prior investigation history, inventory-api listens on 8081 instead of expected port 8080. Update app/service.conf to listen_port = 8080."},
 	}
 	// The control is a fresh investigation: its history is empty, so it reads.
-	control := []fixtures.OllamaReply{
-		liveContextAuditList(),
-		readFileOn(&env, "app/service.conf"),
-		readFileOn(&env, "app/logs/service.log"),
+	control := slices.Concat(
+		[]fixtures.OllamaReply{liveContextAuditList(), readFileOn(&env, "app/service.conf"), readFileOn(&env, "app/logs/service.log")},
 		shellScriptOn(&env, "check.sh"),
-		{Content: longitudinalControlAnswer},
-	}
-	replies := append(append(append([]fixtures.OllamaReply(nil), run1...), run2...), control...)
+		[]fixtures.OllamaReply{{Content: longitudinalControlAnswer}},
+	)
+	replies := slices.Concat(run1, run2, control)
 
 	env = newRealStackAgentRun(t, realStackOptions{
 		catalog: evaluation.LoadInvestigationsScenarioCatalog, scenarioID: longitudinalScenarioID,

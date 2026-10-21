@@ -21,6 +21,10 @@ import (
 // InvestigationsSuiteID identifies the suite of planted-fault investigation scenarios.
 const InvestigationsSuiteID = "investigations"
 
+// investigationScenarioVersion versions every investigation scenario; 1.1.0
+// replaced log_stream_filter with search_file and search_directory.
+const investigationScenarioVersion = "1.1.0"
+
 var investigationGoldReferences = map[string][]ScenarioGoldEvidenceReference{
 	"wrong-port-config": {
 		{
@@ -155,11 +159,12 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 	}
 
 	allowedTools := []string{
-		"read_file",
-		"fs_disk_profile",
-		"log_stream_filter",
+		constants.MCPToolReadFile,
+		constants.MCPToolFsDiskProfile,
+		constants.MCPToolSearchFile,
+		constants.MCPToolSearchDirectory,
 		constants.MCPToolRunShellCommand,
-		"audit_receipt_list",
+		constants.MCPToolAuditReceiptList,
 	}
 
 	gold := baseGold(
@@ -179,7 +184,7 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 
 	return ScenarioBlueprint{
 		ScenarioID:        s.ID,
-		ScenarioVersion:   "1.0.0",
+		ScenarioVersion:   investigationScenarioVersion,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS,
 		PublicDescription: s.Objective.Goal,
 		GradingMethod:     gradingDeterministic,

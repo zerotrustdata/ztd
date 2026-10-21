@@ -216,7 +216,7 @@ func (c *Client) ConnectOnce(ctx context.Context, handler EventHandler) error {
 // that subsequent reconnects can send Last-Event-ID.
 func parseSSEStream(ctx context.Context, r io.Reader, handler EventHandler, c *Client) error {
 	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, constants.SSEClientInitialLineSize), constants.SSEClientMaxLineSize)
 
 	var eventType, data string
 

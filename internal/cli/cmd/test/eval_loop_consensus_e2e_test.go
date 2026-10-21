@@ -128,7 +128,7 @@ func provisionEvalLoopConsensus(t *testing.T, r *releaseSmokeRun) *evalLoopConse
 		_ = app.close(cleanupCtx)
 	})
 
-	args := []string{"auth", "enroll", "consensus", "bind", evalLoopConsensusPrimaryApp, endpointURL,
+	args := []string{"consensus", "enroll", "app", evalLoopConsensusPrimaryApp, endpointURL,
 		"--member-app", evalLoopConsensusPrimaryApp, "--member-app", "eval-loop-consensus-2", "--member-app", "eval-loop-consensus-3", "--quorum", "2"}
 	if _, err := r.ztdGateway(t.Context(), "bind-eval-loop-consensus", args...); err != nil {
 		t.Fatalf("governed CLI bind of 2-of-3 consensus app: %v", err)

@@ -73,6 +73,12 @@
       "category": "test",
       "description": "Path for the fleet restart E2E JSON report"
     },
+    "NativeToolsURL": {
+      "_go_const": "EnvVar.NativeToolsURL",
+      "value": "ZTD_TEST_NATIVE_TOOLS_OPERATOR_URL",
+      "category": "test",
+      "description": "Explicit Operator endpoint for live native-tools integration tests"
+    },
     "E2EGatewayHTTPPort": {
       "_go_const": "EnvVar.E2EGatewayHTTPPort",
       "value": "ZTD_E2E_GATEWAY_HTTP_PORT",

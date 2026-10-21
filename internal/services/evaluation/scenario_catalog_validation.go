@@ -319,7 +319,10 @@ func validateHintArgumentSource(blueprint ScenarioBlueprint, argument ScenarioHi
 		if !strings.Contains(blueprint.Input.UserPrompt, ScenarioWorkspaceToken) {
 			return scenarioUnanswerableError(blueprint, "%q.%q is sourced from the workspace but the prompt never names it", argument.ToolName, argument.Name)
 		}
-		if argument.Value != "" && !strings.HasPrefix(argument.Value, ScenarioWorkspaceToken) {
+		if argument.Value == "" {
+			return scenarioUnanswerableError(blueprint, "%q.%q is sourced from the workspace but names no workspace path", argument.ToolName, argument.Name)
+		}
+		if !strings.HasPrefix(argument.Value, ScenarioWorkspaceToken) {
 			return scenarioUnanswerableError(blueprint, "%q.%q workspace value %q is not under the workspace", argument.ToolName, argument.Name, argument.Value)
 		}
 	case evalv1.EvaluationHintArgumentSource_EVALUATION_HINT_ARGUMENT_SOURCE_OPERATOR_CONTEXT:

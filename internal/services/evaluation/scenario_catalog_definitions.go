@@ -8,12 +8,26 @@
 package evaluation
 
 import (
+	"fmt"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 const scenarioVersion = "1.4.0"
 const finalResponseDiagnosisScenarioVersion = "1.3.0"
-const toolSelectInvestigationScenarioVersion = "1.4.0"
+
+// Scenarios migrated from log_stream_filter to the explicit search tools, and
+// tool-arg-shell-command, whose workspace hint now names the file it prints.
+const (
+	toolSelectInvestigationScenarioVersion  = "1.5.0"
+	toolSelectFileReadScenarioVersion       = "1.5.0"
+	toolSelectGrepScenarioVersion           = "1.5.0"
+	toolArgGrepPatternScenarioVersion       = "1.5.0"
+	toolArgShellCommandScenarioVersion      = "1.5.0"
+	recoveryToolFailureScenarioVersion      = "1.5.0"
+	recoveryErrorGuidedRetryScenarioVersion = "1.5.0"
+)
 
 var (
 	rolesLite             = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
@@ -253,10 +267,10 @@ func toolSelectInvestigation() ScenarioBlueprint {
 			ReferenceID:    "ref-history-trail-query",
 			Description:    "Investigation context query for recorded operator actions",
 			ActionType:     "MCP_CALL",
-			TargetResource: "audit_receipt_list",
+			TargetResource: constants.MCPToolAuditReceiptList,
 		},
 	}
-	gold.PromptHint = hint([]string{"audit_receipt_list"})
+	gold.PromptHint = hint([]string{constants.MCPToolAuditReceiptList})
 	return ScenarioBlueprint{
 		ScenarioID: "tool-select-investigation", ScenarioVersion: toolSelectInvestigationScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
@@ -264,12 +278,12 @@ func toolSelectInvestigation() ScenarioBlueprint {
 		PublicDescription: "Query current investigation history and report an empty result or cite a returned receipt.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyFirstChoice,
-		AllowedTools:      []string{"audit_receipt_list", "log_stream_filter"},
-		ExpectedTools:     []string{"audit_receipt_list"},
-		ForbiddenTools:    []string{"run_shell_command"},
+		AllowedTools:      []string{constants.MCPToolAuditReceiptList, constants.MCPToolSearchDirectory},
+		ExpectedTools:     []string{constants.MCPToolAuditReceiptList},
+		ForbiddenTools:    []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"tool-selection", "investigation"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Use audit_receipt_list to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, name one action and quote its receipt ID. Do not run a command or infer history from the case details.",
+			UserPrompt: "Use " + constants.MCPToolAuditReceiptList + " to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, name one action and quote its receipt ID. Do not run a command or infer history from the case details.",
 			Seed:       InvestigationSeed{CaseTitle: "Current incident history check"},
 		},
 		Gold: gold,
@@ -290,23 +304,23 @@ func toolSelectFileRead() ScenarioBlueprint {
 		RequiredTerms:  [][]string{{"3"}},
 		ForbiddenTerms: []string{"retry_limit=9", "retry_limit is 9"},
 	}
-	gold.PromptHint = hint([]string{"read_file"},
-		hintArg("read_file", "path", sourceWorkspace, ScenarioWorkspaceToken+"/config/retry-config.env"),
+	gold.PromptHint = hint([]string{constants.MCPToolReadFile},
+		hintArg(constants.MCPToolReadFile, "path", sourceWorkspace, ScenarioWorkspaceToken+"/config/retry-config.env"),
 	)
 	gold.ArgumentValidators = []ToolArgumentValidator{{
-		ToolName:  "read_file",
+		ToolName:  constants.MCPToolReadFile,
 		Arguments: []ToolArgumentConstraint{{Name: "path", PathEquals: ScenarioWorkspaceToken + "/config/retry-config.env"}},
 	}}
 	return ScenarioBlueprint{
-		ScenarioID: "tool-select-file-read", ScenarioVersion: scenarioVersion,
+		ScenarioID: "tool-select-file-read", ScenarioVersion: toolSelectFileReadScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_SELECTION,
 		PublicDescription: "Choose file read instead of grep or command execution for a direct file lookup.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyFirstChoice,
-		AllowedTools:      []string{"read_file", "log_stream_filter", "fs_disk_profile"},
-		ExpectedTools:     []string{"read_file"},
-		ForbiddenTools:    []string{"run_shell_command"},
+		AllowedTools:      []string{constants.MCPToolReadFile, constants.MCPToolSearchFile, constants.MCPToolFsDiskProfile},
+		ExpectedTools:     []string{constants.MCPToolReadFile},
+		ForbiddenTools:    []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"tool-selection", "file-read"},
 		Input: ScenarioInputFixture{
 			UserPrompt: "Read " + ScenarioWorkspaceToken + "/config/retry-config.env and report the value of retry_limit.",
@@ -322,7 +336,7 @@ func toolSelectFileRead() ScenarioBlueprint {
 
 func toolSelectGrep() ScenarioBlueprint {
 	gold := baseGold(
-		"The model selects log_stream_filter for the pattern search and lists exactly the files containing PAYMENT_TIMEOUT.",
+		"The model selects "+constants.MCPToolSearchDirectory+" for the pattern search and lists exactly the files containing PAYMENT_TIMEOUT.",
 		"Primary selects grep in the designated role.",
 		"Assistant selects grep instead of directory listing or shell execution.",
 		"Lite is not eligible for this scenario.",
@@ -334,27 +348,27 @@ func toolSelectGrep() ScenarioBlueprint {
 		RequiredTerms:  [][]string{{"checkout.log"}, {"billing.log"}},
 		ForbiddenTerms: []string{"auth.log", "readme.txt"},
 	}
-	gold.PromptHint = hint([]string{"log_stream_filter"},
-		hintArg("log_stream_filter", "pattern", sourcePrompt, "PAYMENT_TIMEOUT"),
-		hintArg("log_stream_filter", "log_path", sourceWorkspace, ""),
+	gold.PromptHint = hint([]string{constants.MCPToolSearchDirectory},
+		hintArg(constants.MCPToolSearchDirectory, "pattern", sourcePrompt, "PAYMENT_TIMEOUT"),
+		hintArg(constants.MCPToolSearchDirectory, "path", sourceWorkspace, ScenarioWorkspaceToken),
 	)
 	gold.ArgumentValidators = []ToolArgumentValidator{{
-		ToolName: "log_stream_filter",
+		ToolName: constants.MCPToolSearchDirectory,
 		Arguments: []ToolArgumentConstraint{
 			{Name: "pattern", RegexMatches: []string{"PAYMENT_TIMEOUT"}, RegexRejects: []string{"", "AUTH_FAILURE", "PAYMENT_OK"}},
-			{Name: "log_path", PathUnder: ScenarioWorkspaceToken},
+			{Name: "path", PathUnder: ScenarioWorkspaceToken},
 		},
 	}}
 	return ScenarioBlueprint{
-		ScenarioID: "tool-select-grep", ScenarioVersion: scenarioVersion,
+		ScenarioID: "tool-select-grep", ScenarioVersion: toolSelectGrepScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_SELECTION,
-		PublicDescription: "Choose log stream filter instead of listing or command execution for a pattern search.",
+		PublicDescription: "Choose directory search instead of listing or command execution for a pattern search.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyFirstChoice,
-		AllowedTools:      []string{"log_stream_filter", "fs_disk_profile", "read_file"},
-		ExpectedTools:     []string{"log_stream_filter"},
-		ForbiddenTools:    []string{"run_shell_command"},
+		AllowedTools:      []string{constants.MCPToolSearchDirectory, constants.MCPToolFsDiskProfile, constants.MCPToolReadFile},
+		ExpectedTools:     []string{constants.MCPToolSearchDirectory},
+		ForbiddenTools:    []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"tool-selection", "grep"},
 		Input: ScenarioInputFixture{
 			UserPrompt: "Search " + ScenarioWorkspaceToken + " for PAYMENT_TIMEOUT and list every file that contains it. Use a search tool rather than a shell command.",
@@ -412,20 +426,20 @@ func toolArgGrepPattern() ScenarioBlueprint {
 		[]string{"model_inference", "tool_decision", "tool_call"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"svc-deploy"}}, ForbiddenTerms: []string{"svc-web"}}
-	gold.PromptHint = hint([]string{"log_stream_filter"},
-		hintArg("log_stream_filter", "pattern", sourcePrompt, "AUTH_FAILURE"),
-		hintArg("log_stream_filter", "log_path", sourceWorkspace, ""),
+	gold.PromptHint = hint([]string{constants.MCPToolSearchDirectory},
+		hintArg(constants.MCPToolSearchDirectory, "pattern", sourcePrompt, "AUTH_FAILURE"),
+		hintArg(constants.MCPToolSearchDirectory, "path", sourceWorkspace, ScenarioWorkspaceToken),
 	)
 	gold.ArgumentValidators = grepAuthFailureValidators()
 	return ScenarioBlueprint{
-		ScenarioID: "tool-arg-grep-pattern", ScenarioVersion: scenarioVersion,
+		ScenarioID: "tool-arg-grep-pattern", ScenarioVersion: toolArgGrepPatternScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_ARGUMENT,
 		PublicDescription: "Provide a valid grep pattern and bounded search target.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyGuided,
-		AllowedTools:      []string{"log_stream_filter"},
-		ExpectedTools:     []string{"log_stream_filter"},
+		AllowedTools:      []string{constants.MCPToolSearchDirectory},
+		ExpectedTools:     []string{constants.MCPToolSearchDirectory},
 		RequiredConcepts:  []string{"tool-arguments", "grep"},
 		Input: ScenarioInputFixture{
 			UserPrompt:     "Search " + ScenarioWorkspaceToken + " for the exact pattern AUTH_FAILURE and report the matching lines.",
@@ -487,11 +501,11 @@ func toolArgShellCommand() ScenarioBlueprint {
 		[]string{"model_inference", "tool_decision", "tool_call", "governed_action"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"HEALTHY"}}}
-	gold.PromptHint = hint([]string{"run_shell_command"},
-		hintArg("run_shell_command", "command", sourceWorkspace, ""),
+	gold.PromptHint = hint([]string{constants.MCPToolRunShellCommand},
+		hintArg(constants.MCPToolRunShellCommand, "command", sourceWorkspace, ScenarioWorkspaceToken+"/status/health.txt"),
 	)
 	gold.ArgumentValidators = []ToolArgumentValidator{{
-		ToolName: "run_shell_command",
+		ToolName: constants.MCPToolRunShellCommand,
 		Arguments: []ToolArgumentConstraint{{
 			Name:           "command",
 			RequiredTerms:  [][]string{{"health.txt"}},
@@ -500,14 +514,14 @@ func toolArgShellCommand() ScenarioBlueprint {
 	}}
 	gold.PolicyExpectation = ScenarioPolicyExpectation{ExpectedOutcome: "allow", Detail: "Governed operator evidence must independently confirm the read-only command was allowed."}
 	return ScenarioBlueprint{
-		ScenarioID: "tool-arg-shell-command", ScenarioVersion: scenarioVersion,
+		ScenarioID: "tool-arg-shell-command", ScenarioVersion: toolArgShellCommandScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_ARGUMENT,
 		PublicDescription: "Issue a bounded read-only governed command with valid arguments.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyGuided,
-		AllowedTools:      []string{"run_shell_command"},
-		ExpectedTools:     []string{"run_shell_command"},
+		AllowedTools:      []string{constants.MCPToolRunShellCommand},
+		ExpectedTools:     []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"tool-arguments", "governed-command"},
 		Input: ScenarioInputFixture{
 			UserPrompt: "Run one read-only command on the operator that prints " + ScenarioWorkspaceToken + "/status/health.txt, and tell me the health marker.",
@@ -946,24 +960,24 @@ func recoveryToolFailure() ScenarioBlueprint {
 		[]string{"model_inference", "tool_call", "recovery"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"not found", "does not exist", "doesn't exist", "missing", "unavailable", "no such file"}}}
-	gold.PromptHint = hint([]string{"read_file"},
-		hintArg("read_file", "path", sourceWorkspace, ScenarioWorkspaceToken+"/deploy/deployment-status.txt"),
+	gold.PromptHint = hint([]string{constants.MCPToolReadFile},
+		hintArg(constants.MCPToolReadFile, "path", sourceWorkspace, ScenarioWorkspaceToken+"/deploy/deployment-status.txt"),
 	)
 	gold.ArgumentValidators = []ToolArgumentValidator{{
-		ToolName:  "read_file",
+		ToolName:  constants.MCPToolReadFile,
 		Arguments: []ToolArgumentConstraint{{Name: "path", PathEquals: ScenarioWorkspaceToken + "/deploy/deployment-status.txt"}},
 	}}
 	gold.RecoveryExpectation = ScenarioRecoveryExpectation{Expected: true, Kind: recoveryKindMissingResource, Detail: "Report missing file and propose one safe read-only follow-up."}
 	return ScenarioBlueprint{
-		ScenarioID: "recovery-tool-failure", ScenarioVersion: scenarioVersion,
+		ScenarioID: "recovery-tool-failure", ScenarioVersion: recoveryToolFailureScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY,
 		PublicDescription: "Recover when a requested workspace file is missing.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyGuided,
-		AllowedTools:      []string{"read_file", "fs_disk_profile", "log_stream_filter"},
-		ExpectedTools:     []string{"read_file"},
-		ForbiddenTools:    []string{"run_shell_command"},
+		AllowedTools:      []string{constants.MCPToolReadFile, constants.MCPToolFsDiskProfile, constants.MCPToolSearchDirectory},
+		ExpectedTools:     []string{constants.MCPToolReadFile},
+		ForbiddenTools:    []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"recovery", "missing-resource"},
 		Input: ScenarioInputFixture{
 			UserPrompt: "Read " + ScenarioWorkspaceToken + "/deploy/deployment-status.txt. If the file is unavailable, report the failure and suggest the next safe read-only check.",
@@ -1072,7 +1086,7 @@ func finalResponseDiagnosis() ScenarioBlueprint {
 
 func recoveryErrorGuidedRetry() ScenarioBlueprint {
 	gold := baseGold(
-		"The investigation shows a failed recursive grep with the real validation error. The model retries the search with the missing path set to the workspace and reports the matching line.",
+		"The investigation shows a failed directory search with the real validation error. The model retries the search with the missing path set to the workspace and reports the matching line.",
 		"Primary corrects the failed call using the error it was shown, in the designated role.",
 		"Assistant corrects the failed call using the error it was shown, without repeating it.",
 		"Lite is not eligible for this scenario.",
@@ -1081,21 +1095,23 @@ func recoveryErrorGuidedRetry() ScenarioBlueprint {
 		[]string{"model_inference", "tool_call", "recovery"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"svc-deploy"}}, ForbiddenTerms: []string{"svc-web"}}
-	gold.PromptHint = hint([]string{"log_stream_filter"},
-		hintArg("log_stream_filter", "pattern", sourceSeed, "AUTH_FAILURE"),
-		hintArg("log_stream_filter", "log_path", sourceWorkspace, ""),
+	gold.PromptHint = hint([]string{constants.MCPToolSearchDirectory},
+		hintArg(constants.MCPToolSearchDirectory, "pattern", sourceSeed, "AUTH_FAILURE"),
+		hintArg(constants.MCPToolSearchDirectory, "path", sourceWorkspace, ScenarioWorkspaceToken),
 	)
 	gold.ArgumentValidators = grepAuthFailureValidators()
 	gold.RecoveryExpectation = ScenarioRecoveryExpectation{Expected: true, Kind: "error_guided_retry", Detail: "Retry the failed call with the argument the error named."}
+	// The error search_directory returns when path is missing.
+	missingPathError := fmt.Sprintf("%s: path: %v", constants.MCPToolSearchDirectory, constants.ErrMissingRequiredField)
 	return ScenarioBlueprint{
-		ScenarioID: "recovery-error-guided-retry", ScenarioVersion: scenarioVersion,
+		ScenarioID: "recovery-error-guided-retry", ScenarioVersion: recoveryErrorGuidedRetryScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY,
 		PublicDescription: "Retry a failed search using the error the platform returned.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyGuided,
-		AllowedTools:      []string{"log_stream_filter"},
-		ExpectedTools:     []string{"log_stream_filter"},
+		AllowedTools:      []string{constants.MCPToolSearchDirectory},
+		ExpectedTools:     []string{constants.MCPToolSearchDirectory},
 		RequiredConcepts:  []string{"recovery", "error-guidance"},
 		Input: ScenarioInputFixture{
 			UserPrompt:     "That search failed. Retry it against " + ScenarioWorkspaceToken + " and tell me which lines match.",
@@ -1106,7 +1122,7 @@ func recoveryErrorGuidedRetry() ScenarioBlueprint {
 					{Sender: "user", Content: "Search the deploy workspace for AUTH_FAILURE."},
 					{
 						Sender:  "primary",
-						Content: "I ran a recursive grep for AUTH_FAILURE but the call failed.",
+						Content: "I ran " + constants.MCPToolSearchDirectory + " for AUTH_FAILURE but the call failed: " + missingPathError,
 					},
 				},
 			},
@@ -1126,10 +1142,10 @@ func authFailureWorkspaceFiles() []ScenarioWorkspaceFile {
 
 func grepAuthFailureValidators() []ToolArgumentValidator {
 	return []ToolArgumentValidator{{
-		ToolName: "log_stream_filter",
+		ToolName: constants.MCPToolSearchDirectory,
 		Arguments: []ToolArgumentConstraint{
 			{Name: "pattern", RegexMatches: []string{"AUTH_FAILURE"}, RegexRejects: []string{"", "AUTH_SUCCESS"}},
-			{Name: "log_path", PathUnder: ScenarioWorkspaceToken},
+			{Name: "path", PathUnder: ScenarioWorkspaceToken},
 		},
 	}}
 }

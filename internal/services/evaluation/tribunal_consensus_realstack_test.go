@@ -65,13 +65,13 @@ func tribunalConsensusVotes(n int) []fixtures.OllamaReply {
 	return replies
 }
 
-func TestTribunalConsensusRealStack(t *testing.T) {
+// bindTribunalConsensus replaces the fixture's application binding with the
+// Tribunal panel: each member gets a trusted signer, an app policy owned by
+// identity, and a key in the Gateway's member signer. It runs before Operators
+// enroll, so their enrollment bundles carry the Tribunal L2 trust.
+func bindTribunalConsensus(t *testing.T, gateway *fixtures.GatewayFixture, identity *fixtures.ClientIdentity) {
 	ctx := t.Context()
-	env := newRealStackAgentRun(t, realStackOptions{
-		posture: constants.PostureConsensus, singleRole: true, suffix: "tribunal-consensus",
-		replies: tribunalConsensusVotes(tribunalConsensusQuorum),
-	})
-	gw := env.stack.Gateway.Service
+	gw := gateway.Service
 	consensusStore := gw.GetConsensusStore()
 
 	// The fixture's binding carries the HTTPS endpoint the application provider
@@ -97,7 +97,7 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 
 		// The Tribunal deliberator reads each member's owner from its app policy
 		// document, so the member votes under the owner the test identity holds.
-		policy, err := json.Marshal(models.AppPolicy{AppID: appID, OwnerUserID: env.stack.Identity.UserID})
+		policy, err := json.Marshal(models.AppPolicy{AppID: appID, OwnerUserID: identity.UserID})
 		require.NoError(t, err)
 		require.NoError(t, gw.GetDocStore().DocSet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), appID, policy))
 	}
@@ -114,6 +114,15 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 		Enabled:         true,
 	}))
 	gw.SetConsensusMemberSigner(signer)
+}
+
+func TestTribunalConsensusRealStack(t *testing.T) {
+	ctx := t.Context()
+	env := newRealStackAgentRun(t, realStackOptions{
+		posture: constants.PostureConsensus, singleRole: true, suffix: "tribunal-consensus",
+		replies:       tribunalConsensusVotes(tribunalConsensusQuorum),
+		bindConsensus: bindTribunalConsensus,
+	})
 
 	// One governed MCP_CALL through the governed HTTP dispatch path the eval lane uses.
 	args := `{"command":"echo","args":["HEALTHY"]}`
@@ -128,7 +137,8 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	require.NoError(t, out.Outcome.Typed())
 
 	receipt := out.Outcome.Observation.GetReceipt()
-	require.NotNil(t, receipt, "the governed action must answer with a signed receipt")
+	require.NotNil(t, receipt, "the governed action must answer with a signed receipt, got %s: rejection=%q refusal=%q",
+		out.Outcome.Observation.GetKind(), out.Outcome.Observation.GetRejection().GetError(), out.Outcome.Observation.GetRefusal().GetError())
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus(), "the action must execute")
 	assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, receipt.GetL2Status(), "the Tribunal quorum proof must be valid")
 

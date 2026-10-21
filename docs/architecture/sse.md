@@ -199,7 +199,7 @@ Browser / CLI Client                          Gateway SSE Controller
 
 The CLI SSE client (`internal/cli/sse`) is used by auth flows that wait for approval or passkey-registration events. For example, `ztd auth approve` opens the browser approval page and waits for its completion event:
 
-`ztd auth approve <transaction_hash>` opens the Gateway approval page and waits for the `approval.completed` event for that transaction. The `--cli` flag signs the transaction hash with the enrolled CLI certificate instead (`./ztd auth approve --help`).
+`ztd auth approve <transaction_hash>` opens the Gateway approval page and waits for the `approval.completed` event for that transaction. The `--cli` flag signs the transaction hash with the enrolled CLI certificate instead, and `--deny` denies it from the enrolled CLI session (`./ztd auth approve --help`). Both read the final receipt from the HTTP response, not the stream. A stream line may hold up to `SSEClientMaxLineSize` bytes (`internal/constants/paths.go`), enough for an `approval.completed` event whose receipt carries both escaped execution output streams.
 
 ### Consuming Polled Events
 

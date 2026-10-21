@@ -221,7 +221,7 @@ func investigationCommand(call AgentToolCall) (string, bool) {
 			return "", true
 		}
 		return request.CommandLine(), true
-	case "read_file", "log_stream_filter":
+	case constants.MCPToolReadFile, constants.MCPToolSearchFile, constants.MCPToolSearchDirectory:
 		return "", true
 	default:
 		return "", false

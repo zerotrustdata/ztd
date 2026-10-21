@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.6.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.6.0";
+export const SCENARIO_CATALOG_VERSION = "1.7.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.7.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -111,30 +111,30 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
         "decoy": true
       }
     ],
-    "expectedBehavior": "The investigation shows a failed recursive grep with the real validation error. The model retries the search with the missing path set to the workspace and reports the matching line.",
+    "expectedBehavior": "The investigation shows a failed directory search with the real validation error. The model retries the search with the missing path set to the workspace and reports the matching line.",
     "requiredConcepts": [
       "recovery",
       "error-guidance"
     ],
     "allowedTools": [
-      "log_stream_filter"
+      "search_directory"
     ],
     "expectedTools": [
-      "log_stream_filter"
+      "search_directory"
     ],
     "promptHint": {
       "hintedTools": [
-        "log_stream_filter"
+        "search_directory"
       ],
       "arguments": [
         {
-          "toolName": "log_stream_filter",
+          "toolName": "search_directory",
           "argumentName": "pattern",
           "source": "seed"
         },
         {
-          "toolName": "log_stream_filter",
-          "argumentName": "log_path",
+          "toolName": "search_directory",
+          "argumentName": "path",
           "source": "workspace"
         }
       ]
@@ -187,7 +187,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "allowedTools": [
       "read_file",
       "fs_disk_profile",
-      "log_stream_filter"
+      "search_directory"
     ],
     "expectedTools": [
       "read_file"
@@ -491,24 +491,24 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "grep"
     ],
     "allowedTools": [
-      "log_stream_filter"
+      "search_directory"
     ],
     "expectedTools": [
-      "log_stream_filter"
+      "search_directory"
     ],
     "promptHint": {
       "hintedTools": [
-        "log_stream_filter"
+        "search_directory"
       ],
       "arguments": [
         {
-          "toolName": "log_stream_filter",
+          "toolName": "search_directory",
           "argumentName": "pattern",
           "source": "prompt"
         },
         {
-          "toolName": "log_stream_filter",
-          "argumentName": "log_path",
+          "toolName": "search_directory",
+          "argumentName": "path",
           "source": "workspace"
         }
       ]
@@ -607,7 +607,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     ],
     "allowedTools": [
       "read_file",
-      "log_stream_filter",
+      "search_file",
       "fs_disk_profile"
     ],
     "expectedTools": [
@@ -632,7 +632,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
     "id": "tool-select-grep",
     "category": "tool_selection",
-    "publicDescription": "Choose log stream filter instead of listing or command execution for a pattern search.",
+    "publicDescription": "Choose directory search instead of listing or command execution for a pattern search.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "first_choice",
     "userPrompt": "Search {{workspace}} for PAYMENT_TIMEOUT and list every file that contains it. Use a search tool rather than a shell command.",
@@ -660,35 +660,35 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
         "decoy": true
       }
     ],
-    "expectedBehavior": "The model selects log_stream_filter for the pattern search and lists exactly the files containing PAYMENT_TIMEOUT.",
+    "expectedBehavior": "The model selects search_directory for the pattern search and lists exactly the files containing PAYMENT_TIMEOUT.",
     "requiredConcepts": [
       "tool-selection",
       "grep"
     ],
     "allowedTools": [
-      "log_stream_filter",
+      "search_directory",
       "fs_disk_profile",
       "read_file"
     ],
     "expectedTools": [
-      "log_stream_filter"
+      "search_directory"
     ],
     "forbiddenTools": [
       "run_shell_command"
     ],
     "promptHint": {
       "hintedTools": [
-        "log_stream_filter"
+        "search_directory"
       ],
       "arguments": [
         {
-          "toolName": "log_stream_filter",
+          "toolName": "search_directory",
           "argumentName": "pattern",
           "source": "prompt"
         },
         {
-          "toolName": "log_stream_filter",
-          "argumentName": "log_path",
+          "toolName": "search_directory",
+          "argumentName": "path",
           "source": "workspace"
         }
       ]
@@ -708,7 +708,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     ],
     "allowedTools": [
       "audit_receipt_list",
-      "log_stream_filter"
+      "search_directory"
     ],
     "expectedTools": [
       "audit_receipt_list"

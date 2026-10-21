@@ -31,6 +31,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/certs"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/protocol"
@@ -530,36 +531,14 @@ func (pki *PKIAuthority) NewConsensusAppHTTPClient(appID string) (*http.Client, 
 	if !roots.AppendCertsFromPEM(bundle) {
 		return nil, constants.ErrEmptyTrustBundle
 	}
-	expectedIdentity := protocol.NewWorkloadIdentity().AppSPIFFEID(appID)
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = &tls.Config{
-		// App certificates are authenticated by their Gateway-issued SPIFFE
-		// URI SAN, not a caller-controlled DNS name. Verify the chain and exact
-		// bound app identity below while skipping only hostname matching.
-		InsecureSkipVerify: true, // #nosec G402 -- VerifyConnection performs chain and identity validation.
-		MinVersion:         tls.VersionTLS13,
-		VerifyConnection: func(state tls.ConnectionState) error {
-			if len(state.PeerCertificates) == 0 {
-				return constants.ErrConsensusAppNotEnrolled
-			}
-			intermediates := x509.NewCertPool()
-			for _, cert := range state.PeerCertificates[1:] {
-				intermediates.AddCert(cert)
-			}
-			if _, err := state.PeerCertificates[0].Verify(x509.VerifyOptions{
-				Roots: roots, Intermediates: intermediates,
-				KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-			}); err != nil {
-				return fmt.Errorf("verify consensus app certificate chain: %w", err)
-			}
-			for _, uri := range state.PeerCertificates[0].URIs {
-				if uri.String() == expectedIdentity {
-					return nil
-				}
-			}
-			return constants.ErrConsensusAppNotEnrolled
-		},
+	// App certificates are authenticated by their Gateway-issued SPIFFE URI
+	// SAN, not a caller-controlled DNS name.
+	tlsCfg, err := httpclient.SPIFFEServerTLSConfig(roots, protocol.NewWorkloadIdentity().AppSPIFFEID(appID), constants.ErrConsensusAppNotEnrolled)
+	if err != nil {
+		return nil, fmt.Errorf("consensus application TLS identity: %w", err)
 	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsCfg
 	return &http.Client{Transport: transport, Timeout: 30 * time.Second}, nil
 }
 

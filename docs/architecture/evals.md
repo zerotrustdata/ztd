@@ -191,7 +191,7 @@ This Tier 2 rig establishes in-process production-path coverage. Store-only CLI 
 | Program | Suite / Catalog | Core Verification Focus | Excluded Components |
 | :--- | :--- | :--- | :--- |
 | **Governance Conformance Suite** | `governance-conformance@1.1.0` | Proves, per posture, that each governed fault at each ingress ends in its one expected typed outcome, backed by the executing Operator's signed receipts and no unclaimed side effect, through real Gateway and Operator runtimes. | No models, no model judges, no campaigns, no scheduling, no synthetic simulators. |
-| **Model-Role Campaign** (Model Lane) | `default-suite@1.6.0`, `smoke-suite@1.6.0`, or custom suite | Evaluates one frozen model variant as an autonomous agent in a bounded tool-calling loop (up to 8 turns) against scenario gold criteria. | Multi-model formation assignments. |
+| **Model-Role Campaign** (Model Lane) | `default-suite@1.7.0`, `smoke-suite@1.7.0`, or custom suite | Evaluates one frozen model variant as an autonomous agent in a bounded tool-calling loop (up to 8 turns) against scenario gold criteria. | Multi-model formation assignments. |
 | **Formation Campaign** (System Lane) | Checked-in execution-topology formations captured in the campaign's frozen stack set | Evaluates the supported Primary agent-turn and Assistant Tribunal calls using distinct stack slots in the real investigation loop. Grading covers only roles that execute; Lite remains frozen but unused, and Triage/Dash/Codex are not scored. | Arbitrary synthesized stacks and L3-gated campaign execution. |
 
 ### Evaluation CLI Architecture
@@ -336,7 +336,7 @@ With an already-running Gateway, `./ztd eval conformance run` needs no flags. On
 Suites define scenario catalogs and test inputs:
 - Built-In Suites: `default-suite` (27 scenarios) and `smoke-suite` (5 scenarios). Built-in suites are immutable.
 - Custom Suites: Created and updated via `ztd eval suites create <file>` and stored under `.ztd/data/eval/suites/<id>.json`.
-- Catalog Validation: Tool names must exist in the agent tool registry snapshot (`ExpectedTools` is a subset of `AllowedTools`), prompt hints must be answerable, trajectory policies must be well-formed, every scenario must include a content check, and semantic-judge grading is rejected.
+- Catalog Validation: Tool names must exist in the agent tool registry snapshot (`ExpectedTools` is a subset of `AllowedTools`), prompt hints must be answerable (a workspace-sourced argument must name a path under the workspace), trajectory policies must be well-formed, every scenario must include a content check, and semantic-judge grading is rejected.
 - Immutability: When a campaign is created, the suite's catalog is materialized and frozen under `.ztd/data/eval/campaigns/<campaign-id>/`. Future suite edits do not alter existing campaigns.
 
 ### Model Campaign Architecture: System Lane and Model-Role Lane

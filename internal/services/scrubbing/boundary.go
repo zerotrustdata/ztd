@@ -282,10 +282,14 @@ const untokenizedValue = "{{UEI_UNAVAILABLE}}"
 
 // ScrubText replaces every sensitive value in arbitrary text with its
 // reversible {{UEI_N}} token. The surrounding text, including the key of a
-// key-value pair, stays as written.
+// key-value pair, stays as written. A JSON object or array stays valid JSON
+// (see scrubJSONText).
 func (s *ScrubbingService) ScrubText(ctx context.Context, input string) string {
 	if !s.IsEnabled() {
 		return suppressedOutput
+	}
+	if scrubbed, ok := s.scrubJSONText(ctx, input); ok {
+		return scrubbed
 	}
 
 	tokenize := func(value string) string { return s.tokenize(ctx, value) }

@@ -52,6 +52,17 @@ func TestParseSSEStream(t *testing.T) {
 		assert.Equal(t, `{"type":"passkey.registered"}`, events[0].data)
 	})
 
+	t.Run("delivers an approval receipt larger than a megabyte", func(t *testing.T) {
+		// A resumed receipt carries the tool result; an approved call must not
+		// lose it to the line cap.
+		receipt := strings.Repeat("r", 4*1024*1024)
+		input := "event: approval.completed\ndata: " + receipt + "\n\n"
+		var got string
+		err := parseSSEStream(context.Background(), strings.NewReader(input), func(_, data string) { got = data }, nil)
+		require.NoError(t, err)
+		assert.Equal(t, len(receipt), len(got))
+	})
+
 	t.Run("multiple events", func(t *testing.T) {
 		input := "event: first\ndata: one\n\nevent: second\ndata: two\n\n"
 		var count int

@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -20,6 +21,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/jsonschema"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -286,6 +289,42 @@ func TestAuditReceiptListTool_Execute_NotBeforeFilter(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &lr))
 	require.Len(t, lr.Receipts, 1)
 	assert.Equal(t, "tx-new", lr.Receipts[0].TransactionID)
+}
+
+// The egress scrub keeps a receipt list decodable: deterministic stage timings
+// shaped like phone (10-digit) and card (16-digit) numbers stay numbers.
+func TestAuditReceiptListTool_Execute_ScrubbedResultDecodes(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	record := sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
+	record.ActionReceipt = &operatorv1.ActionReceipt{
+		TransactionId:    "tx-1",
+		ExecutedAtUnixMs: now.UnixMilli(),
+		SignerKeyId:      "key-1",
+		Signature:        "sig-tx-1",
+		DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{
+			StageId:          "tx-1:DETERMINISTIC_STAGE_KIND_L1_DOCTRINE",
+			Kind:             operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE,
+			MonotonicStartNs: 5551234567,
+			MonotonicEndNs:   4111111111111111,
+			ClockDomain:      "ztd-operator-process",
+		}},
+	}
+	stub := &stubAuditReceiptQuery{listBySession: []*models.ActionReceiptRecord{record}}
+	ctx := withAuditReceiptQuery(context.Background(), stub)
+	args, _ := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1"})
+
+	result, err := (&AuditReceiptListTool{}).Execute(ctx, args)
+	require.NoError(t, err)
+	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), slog.Default(), storagetest.NewTestTokenStore())
+	require.NoError(t, err)
+	scrubbed := scrubber.ScrubText(context.Background(), result.Content[0].Text)
+
+	var lr AuditReceiptListResult
+	require.NoError(t, json.Unmarshal([]byte(scrubbed), &lr), scrubbed)
+	require.Len(t, lr.Receipts, 1)
+	stage := lr.Receipts[0].ActionReceipt.GetDeterministicStageEvidence()[0]
+	assert.Equal(t, int64(5551234567), stage.GetMonotonicStartNs())
+	assert.Equal(t, int64(4111111111111111), stage.GetMonotonicEndNs())
 }
 
 func TestAuditReceiptListTool_Execute_Pagination(t *testing.T) {

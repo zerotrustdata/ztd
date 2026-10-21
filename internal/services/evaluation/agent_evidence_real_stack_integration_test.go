@@ -189,6 +189,8 @@ type realStackOptions struct {
 	// modelTags are the extra tags the stack serves and attests, each at
 	// fixtures.ScriptedModelDigest(tag).
 	modelTags []string
+	// bindConsensus rebinds the Gateway's consensus before Operators enroll.
+	bindConsensus func(t *testing.T, gateway *fixtures.GatewayFixture, identity *fixtures.ClientIdentity)
 }
 
 // realStackAgentRun is a campaign initialized on the real eval stack, with the
@@ -233,7 +235,7 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	ctx := t.Context()
 	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{
 		Posture: opts.posture, Replies: opts.replies, SharedRuntime: opts.shared,
-		Provenance: true, ModelTags: opts.modelTags,
+		Provenance: true, ModelTags: opts.modelTags, BindConsensus: opts.bindConsensus,
 	})
 
 	logger := testutil.NewTestLogger()

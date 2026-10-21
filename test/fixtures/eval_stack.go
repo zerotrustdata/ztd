@@ -44,6 +44,10 @@ type EvalStackOptions struct {
 	// A2ADownstreamURL opts the Gateway into A2A ingress, forwarding to this
 	// downstream. Empty leaves the Gateway with no A2A ingress.
 	A2ADownstreamURL string
+	// BindConsensus, when set, rebinds the Gateway's consensus before any
+	// Operator enrolls. Outbound Operators receive the binding's L2 trust only
+	// in their enrollment and renewal bundles.
+	BindConsensus func(t *testing.T, gateway *GatewayFixture, identity *ClientIdentity)
 }
 
 // EvalStack holds the real Gateway and outbound Operators used by eval
@@ -93,6 +97,9 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	owner := AttachOwnerConsole(t, gateway, identity.UserID, identity.CLISessionID, OwnerApprovesEach)
 	if posture.RequiresL3() {
 		owner.ApproveTransactionsWithCLI(t, identity)
+	}
+	if opts.BindConsensus != nil {
+		opts.BindConsensus(t, gateway, identity)
 	}
 	witness := NewOperatorWireWitness(t, gateway)
 	provider := NewScriptedOllama(t, opts.Replies)

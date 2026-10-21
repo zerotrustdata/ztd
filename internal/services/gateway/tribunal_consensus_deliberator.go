@@ -142,10 +142,15 @@ func (d *TribunalConsensusDeliberator) memberDecision(ctx context.Context, bound
 	}
 	system, user := tribunal.ConsensusVotePrompt(member, subject)
 	result, err := d.inference.DispatchInference(withConsensusDeliberation(ctx, memberAppID), dispatch.DispatchInferenceRequest{
-		Role: models.InferenceModelRolePrimary,
+		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
+		Role:                 models.InferenceModelRolePrimary,
 		Messages: []*operatorv1.InferenceMessage{
 			consensusVoteMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, system),
 			consensusVoteMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, user),
+		},
+		ResponseFormat: &operatorv1.InferenceResponseFormat{
+			MediaType:  "application/json",
+			JsonSchema: tribunal.ConsensusVoteJSONSchema,
 		},
 		Model:             bound.ModelTag,
 		ModelDigest:       bound.ModelDigest,

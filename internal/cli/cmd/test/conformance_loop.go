@@ -33,7 +33,7 @@ func testConformanceLoopCmdWithRunner(runner e2eCommandRunner) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "conformance-loop",
 		Short: "Qualify governance conformance across real Gateway and Operator processes",
-		Long:  "For each posture, start an isolated Gateway with A2A ingress and a Data Operator, then drive `ztd mcp stdio` and run `ztd eval conformance run` once against the Data Operator and once against the embedded Operator. Each run must cover every applicable case and pass; under ratify and notary only the attended cases may be unavailable. Each run is re-verified offline, the audit chain read through the stdio bridge must advance, and both runtimes' `report all` evidence must verify. Run make build first. Evidence and private command logs remain under .ztd/operators/.",
+		Long:  "For each posture, start an isolated Gateway with A2A ingress and a Data Operator, then drive `ztd mcp stdio` and run `ztd eval conformance run` once against the Data Operator and once against the embedded Operator. Each run must cover every applicable case and pass; under ratify and notary the runs are attended, and the enrolled CLI owner answers each suspended case with `ztd auth approve --cli` or `--deny`. Each run is re-verified offline, the audit chain read through the stdio bridge must advance, and both runtimes' `report all` evidence must verify. Run make build first. Evidence and private command logs remain under .ztd/operators/.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			selector := "^TestConformanceLoopCrossProcess$"

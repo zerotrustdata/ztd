@@ -82,4 +82,7 @@ const (
 	// MCPToolSearchDirectory returns the lines matching a regex across every
 	// file under one directory.
 	MCPToolSearchDirectory = "search_directory"
+
+	// MCPToolFsDiskProfile recursively sizes the directories under one path.
+	MCPToolFsDiskProfile = "fs_disk_profile"
 )

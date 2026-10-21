@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -39,7 +38,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/paths"
-	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
@@ -54,13 +52,7 @@ func TestNativeToolsIntegration_DatabaseTools(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	operatorURL := os.Getenv("OPERATOR_URL")
-	if operatorURL == "" {
-		operatorURL = network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
-	}
-
-	// Check if Operator is reachable
-	checkOperatorReachable(t, operatorURL)
+	operatorURL := operatorURLForIntegrationTest(t)
 
 	// Setup mTLS client (requires ./ztd login)
 	mtlsClient, sessionID, err := setupMTLSClient(t, operatorURL)
@@ -191,12 +183,7 @@ func TestNativeToolsIntegration_LogTools(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	operatorURL := os.Getenv("OPERATOR_URL")
-	if operatorURL == "" {
-		operatorURL = network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
-	}
-
-	checkOperatorReachable(t, operatorURL)
+	operatorURL := operatorURLForIntegrationTest(t)
 
 	mtlsClient, sessionID, err := setupMTLSClient(t, operatorURL)
 	require.NoError(t, err)
@@ -245,12 +232,7 @@ func TestNativeToolsIntegration_ProcessTools(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	operatorURL := os.Getenv("OPERATOR_URL")
-	if operatorURL == "" {
-		operatorURL = network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
-	}
-
-	checkOperatorReachable(t, operatorURL)
+	operatorURL := operatorURLForIntegrationTest(t)
 
 	mtlsClient, sessionID, err := setupMTLSClient(t, operatorURL)
 	require.NoError(t, err)
@@ -319,12 +301,7 @@ func TestNativeToolsIntegration_ProcTree(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	operatorURL := os.Getenv("OPERATOR_URL")
-	if operatorURL == "" {
-		operatorURL = network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
-	}
-
-	checkOperatorReachable(t, operatorURL)
+	operatorURL := operatorURLForIntegrationTest(t)
 
 	mtlsClient, sessionID, err := setupMTLSClient(t, operatorURL)
 	require.NoError(t, err)
@@ -355,12 +332,7 @@ func TestNativeToolsIntegration_NetworkTools(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	operatorURL := os.Getenv("OPERATOR_URL")
-	if operatorURL == "" {
-		operatorURL = network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
-	}
-
-	checkOperatorReachable(t, operatorURL)
+	operatorURL := operatorURLForIntegrationTest(t)
 
 	mtlsClient, sessionID, err := setupMTLSClient(t, operatorURL)
 	require.NoError(t, err)
@@ -443,12 +415,7 @@ func TestNativeToolsIntegration_Concurrency(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	operatorURL := os.Getenv("OPERATOR_URL")
-	if operatorURL == "" {
-		operatorURL = network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
-	}
-
-	checkOperatorReachable(t, operatorURL)
+	operatorURL := operatorURLForIntegrationTest(t)
 
 	mtlsClient, sessionID, err := setupMTLSClient(t, operatorURL)
 	require.NoError(t, err)
@@ -517,12 +484,7 @@ func TestNativeToolsIntegration_PropertyBasedTests(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	operatorURL := os.Getenv("OPERATOR_URL")
-	if operatorURL == "" {
-		operatorURL = network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
-	}
-
-	checkOperatorReachable(t, operatorURL)
+	operatorURL := operatorURLForIntegrationTest(t)
 
 	mtlsClient, sessionID, err := setupMTLSClient(t, operatorURL)
 	require.NoError(t, err)
@@ -644,12 +606,7 @@ func TestNativeToolsIntegration_NegativeControls(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	operatorURL := os.Getenv("OPERATOR_URL")
-	if operatorURL == "" {
-		operatorURL = network.LocalhostHTTPSURL(constants.Ports.OperatorHttps)
-	}
-
-	checkOperatorReachable(t, operatorURL)
+	operatorURL := operatorURLForIntegrationTest(t)
 
 	mtlsClient, sessionID, err := setupMTLSClient(t, operatorURL)
 	require.NoError(t, err)
@@ -698,19 +655,16 @@ func TestNativeToolsIntegration_NegativeControls(t *testing.T) {
 
 // Helper functions
 
-func checkOperatorReachable(t *testing.T, operatorURL string) {
+func operatorURLForIntegrationTest(t *testing.T) string {
 	t.Helper()
-	parsedURL, err := url.Parse(operatorURL)
-	require.NoError(t, err)
-	hostPort := parsedURL.Host
-	if strings.HasPrefix(hostPort, "localhost:") {
-		hostPort = "127.0.0.1" + hostPort[9:]
+	operatorURL := os.Getenv(string(constants.EnvVar.NativeToolsURL))
+	if operatorURL == "" {
+		t.Skipf("set %s to an explicitly selected Operator to run live native-tools integration tests", constants.EnvVar.NativeToolsURL)
 	}
-	conn, err := net.DialTimeout("tcp", hostPort, 5*time.Second)
-	if err != nil {
-		t.Skipf("Operator not reachable at %s: %v. Run './ztd gw start' to enable.", operatorURL, err)
+	if _, err := url.ParseRequestURI(operatorURL); err != nil {
+		t.Fatalf("invalid %s %q: %v", constants.EnvVar.NativeToolsURL, operatorURL, err)
 	}
-	conn.Close()
+	return operatorURL
 }
 
 // mustUUID returns a fresh UUID string, failing the test on the

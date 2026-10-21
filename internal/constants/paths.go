@@ -539,6 +539,14 @@ const (
 	ExecutionMaxStreamSize = 10 * 1024 * 1024 // 10MB per stream
 	ExecutionMaxLines      = 50               // Max lines for terminal output preview
 	FileEditMaxSize        = 50 * 1024 * 1024 // 50MB max file size for operations
+
+	// SSEClientInitialLineSize and SSEClientMaxLineSize bound one line of the
+	// CLI's Gateway SSE stream. An approval.completed event carries the resumed
+	// transaction's signed receipt, whose tool result can hold both execution
+	// output streams; JSON escaping can grow each byte up to six, so a smaller
+	// cap would drop the stream after the approved call already executed.
+	SSEClientInitialLineSize = 64 * 1024
+	SSEClientMaxLineSize     = 2 * 6 * ExecutionMaxStreamSize
 )
 
 // File suffixes for temp, backup, and SQLite artifacts.

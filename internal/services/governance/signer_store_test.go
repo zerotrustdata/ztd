@@ -91,7 +91,8 @@ func TestL2TrustStore_ServesBundlePolicyAndSigners(t *testing.T) {
 	policy, err := store.GetConsensusPolicy(context.Background(), "set-1")
 	require.NoError(t, err)
 	require.NotNil(t, policy)
-	assert.Equal(t, L2ConsensusPolicy{MemberKeyIDs: []string{"m1", "m2"}, Quorum: 1, RequireDistinct: true, Enabled: true}, *policy)
+	// A bundle without a provider decodes as the application provider (INV-CON-POL-06).
+	assert.Equal(t, L2ConsensusPolicy{MemberKeyIDs: []string{"m1", "m2"}, Quorum: 1, RequireDistinct: true, Enabled: true, Provider: constants.ConsensusProviderApplication}, *policy)
 	other, err := store.GetConsensusPolicy(context.Background(), "set-2")
 	require.NoError(t, err)
 	assert.Nil(t, other)

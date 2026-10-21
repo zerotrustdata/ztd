@@ -510,7 +510,6 @@ func TestHandleDBIndexTriage(t *testing.T) {
 	})
 }
 
-
 func TestHandleSysOOMDetect(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("skipping on non-Linux - dmesg/proc not available")

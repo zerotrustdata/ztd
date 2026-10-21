@@ -90,3 +90,20 @@ func ValidateWitnessNativeTool(capabilities constants.OperatorCapabilities, tool
 func HasActiveCapability(op *operatorv1.OperatorDocument, capability constants.OperatorCapability) bool {
 	return IsActiveOperatorSession(op) && GetOperatorCapabilities(op).Has(capability)
 }
+
+// PreferDedicated returns the dedicated (non-embedded) Operators in ops when
+// any exist, otherwise ops. A dedicated Operator takes precedence over the
+// Gateway's embedded Operator, whose baseline always carries Data and
+// Inference, so an untargeted selection is not made ambiguous by the fallback.
+func PreferDedicated(ops []*operatorv1.OperatorDocument) []*operatorv1.OperatorDocument {
+	dedicated := make([]*operatorv1.OperatorDocument, 0, len(ops))
+	for _, op := range ops {
+		if constants.OperatorType(op.GetOperatorType()) != constants.OperatorTypeEmbedded {
+			dedicated = append(dedicated, op)
+		}
+	}
+	if len(dedicated) == 0 {
+		return ops
+	}
+	return dedicated
+}

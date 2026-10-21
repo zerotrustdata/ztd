@@ -349,6 +349,67 @@ func TestScrubbingService_StrictModeDataRows(t *testing.T) {
 	})
 }
 
+// A JSON object or array is scrubbed token by token: the result is valid JSON
+// with its key order and layout, and only the scrubbed scalars change.
+func TestScrubbingService_ScrubText_JSONStaysValid(t *testing.T) {
+	t.Parallel()
+	service := newTestService(t, DefaultConfig())
+	ctx := context.Background()
+
+	t.Run("machine numbers are not read as phone or card numbers", func(t *testing.T) {
+		t.Parallel()
+		assertPreserved(t, service,
+			`{"stage_id":"s1","monotonic_start_ns":5551234567,"monotonic_end_ns":4111111111111111,"outcome":1}`,
+			`[1792605197, 5551234567]`,
+		)
+	})
+
+	t.Run("layout and key order are kept", func(t *testing.T) {
+		t.Parallel()
+		assertPreserved(t, service, "{\n  \"zeta\": \"a <b> & c\",\n  \"alpha\": [true, null, 2.5e3]\n}")
+		result := assertTokenized(t, service, "{\n  \"zeta\": \"admin@test.com\",\n  \"alpha\": 1\n}", "admin@test.com")
+		assert.Regexp(t, `^\{\n  "zeta": "\{\{UEI_\d+\}\}",\n  "alpha": 1\n\}$`, result)
+	})
+
+	t.Run("sensitive values are tokenized whole and stay JSON", func(t *testing.T) {
+		t.Parallel()
+		input := `{"secret":{"inner":"plain"},"prompt_tokens":123,"tokens":["alpha beta","gamma"],"password":"hunter2 with spaces","list":[{"token":"x1"}],"note":"line one\nline two"}`
+		result := service.ScrubText(ctx, input)
+		require.True(t, json.Valid([]byte(result)), result)
+		for _, secret := range []string{"123", "alpha beta", "gamma", "hunter2", `"x1"`} {
+			assert.NotContains(t, result, secret)
+		}
+		assert.Contains(t, result, `"secret":{"inner":"plain"}`, "an object under a sensitive key is scrubbed by its own keys")
+		assert.Regexp(t, `"prompt_tokens":"\{\{UEI_\d+\}\}"`, result)
+		assert.Contains(t, result, `"note":"line one\nline two"`)
+	})
+
+	t.Run("a JSON document inside a string is scrubbed structurally", func(t *testing.T) {
+		t.Parallel()
+		input := `{"content":"{\"api_key\":\"abc123\",\"count\":5551234567}"}`
+		result := service.ScrubText(ctx, input)
+		var outer struct{ Content string }
+		require.NoError(t, json.Unmarshal([]byte(result), &outer))
+		require.True(t, json.Valid([]byte(outer.Content)), outer.Content)
+		assert.NotContains(t, outer.Content, "abc123")
+		assert.Contains(t, outer.Content, `"count":5551234567`)
+	})
+
+	t.Run("key-anchored patterns still see their key", func(t *testing.T) {
+		t.Parallel()
+		lenient := newTestService(t, lenientConfig())
+		secret := "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+		result := assertTokenized(t, lenient, `{"aws_secret_access_key":"`+secret+`"}`, secret)
+		assert.True(t, json.Valid([]byte(result)), result)
+	})
+
+	t.Run("rescrubbing changes nothing", func(t *testing.T) {
+		t.Parallel()
+		once := service.ScrubText(ctx, `{"password":"hunter2","prompt_tokens":7,"email":"a@b.io"}`)
+		assert.Equal(t, once, service.ScrubText(ctx, once))
+	})
+}
+
 func TestScrubbingService_TokenPersistence(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

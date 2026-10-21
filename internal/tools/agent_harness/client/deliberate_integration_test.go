@@ -11,12 +11,22 @@ package client
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,6 +35,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
+	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
@@ -45,24 +56,95 @@ func deliberateProof() *commonv1.L2Metadata {
 	}
 }
 
-// deliberateClient serves Gateway binding discovery and the app's protobuf endpoint.
-func deliberateClient(t *testing.T, handler http.HandlerFunc) *Client {
+// deliberateAppID is the bound primary consensus application of these tests.
+const deliberateAppID = "conformance-consensus-app"
+
+// deliberateCA issues workload certificates the way the Gateway Operator CA
+// does: a SPIFFE URI SAN and no DNS name.
+type deliberateCA struct {
+	cert *x509.Certificate
+	key  *ecdsa.PrivateKey
+	pool *x509.CertPool
+}
+
+func newDeliberateCA(t *testing.T) *deliberateCA {
 	t.Helper()
-	var endpoint string
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "conformance test CA"},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(der)
+	require.NoError(t, err)
+	pool := x509.NewCertPool()
+	pool.AddCert(cert)
+	return &deliberateCA{cert: cert, key: key, pool: pool}
+}
+
+// appCertificate issues a server certificate naming appID's SPIFFE identity.
+func (ca *deliberateCA) appCertificate(t *testing.T, appID string) tls.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	spiffeID, err := protocol.NewWorkloadIdentity().AppSPIFFEURL(appID)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: appID},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		URIs:         []*url.URL{spiffeID},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
+	require.NoError(t, err)
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+}
+
+// deliberateApp starts the application's HTTPS endpoint presenting cert.
+func deliberateApp(t *testing.T, cert tls.Certificate, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	app := httptest.NewUnstartedServer(handler)
+	app.TLS = &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}}
+	app.StartTLS()
+	t.Cleanup(app.Close)
+	return app
+}
+
+// deliberateGateway serves binding discovery for binding and returns a client
+// whose Operator identity trusts roots.
+func deliberateGateway(t *testing.T, binding models.ConsensusPolicy, roots *x509.CertPool) *Client {
+	t.Helper()
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == constants.APIPaths.AuthPlatformEnrollmentConsensus {
-			assert.Empty(t, r.Header.Get(constants.HeaderCLISessionID), "binding discovery runs on the Operator identity, which never carries the CLI session")
-			_ = json.NewEncoder(w).Encode(models.ConsensusPolicy{Enabled: true, EndpointURL: endpoint})
-			return
-		}
-		handler(w, r)
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, constants.APIPaths.AuthPlatformEnrollmentConsensus, r.URL.Path)
+		assert.Empty(t, r.Header.Get(constants.HeaderCLISessionID), "binding discovery runs on the Operator identity, which never carries the CLI session")
+		_ = json.NewEncoder(w).Encode(binding)
 	}))
-	endpoint = srv.URL + "/app/decide"
 	t.Cleanup(srv.Close)
 	c, err := New(config.Config{MTLSBaseURL: srv.URL, PublicBaseURL: srv.URL})
 	require.NoError(t, err)
 	c.http = srv.Client()
+	c.roots = roots
 	return c
+}
+
+// deliberateClient serves Gateway binding discovery and the bound app's
+// protobuf endpoint under the app's SPIFFE identity.
+func deliberateClient(t *testing.T, handler http.HandlerFunc) *Client {
+	t.Helper()
+	ca := newDeliberateCA(t)
+	app := deliberateApp(t, ca.appCertificate(t, deliberateAppID), handler)
+	return deliberateGateway(t, models.ConsensusPolicy{Enabled: true, AppID: deliberateAppID, EndpointURL: app.URL + "/app/decide"}, ca.pool)
 }
 
 func TestDeliberate_Returns200ProofForTheSentTransaction(t *testing.T) {
@@ -201,4 +283,42 @@ func TestDeliberate_ApplicationRedirectIsRejected(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrIngressL2DeliberationFailed)
 	require.ErrorIs(t, err, constants.ErrConsensusEndpointInvalid)
 	assert.Nil(t, proof)
+}
+
+// TestDeliberate_ApplicationIdentityIsPinned proves the envelope reaches only
+// the bound primary application, authenticated by its SPIFFE identity under
+// the Operator identity's trust anchors.
+func TestDeliberate_ApplicationIdentityIsPinned(t *testing.T) {
+	ca := newDeliberateCA(t)
+	for _, tt := range []struct {
+		name    string
+		cert    func(t *testing.T) tls.Certificate
+		appID   string
+		roots   *x509.CertPool
+		wantErr error
+	}{
+		{"another application's identity", func(t *testing.T) tls.Certificate { return ca.appCertificate(t, "other-consensus-app") }, deliberateAppID, ca.pool, constants.ErrConsensusAppNotEnrolled},
+		{"untrusted issuer", func(t *testing.T) tls.Certificate { return newDeliberateCA(t).appCertificate(t, deliberateAppID) }, deliberateAppID, ca.pool, nil},
+		{"no trust anchors", func(t *testing.T) tls.Certificate { return ca.appCertificate(t, deliberateAppID) }, deliberateAppID, nil, constants.ErrEmptyTrustBundle},
+		{"binding names no application", func(t *testing.T) tls.Certificate { return ca.appCertificate(t, deliberateAppID) }, "", ca.pool, constants.ErrConsensusAppNotEnrolled},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var reached atomic.Bool
+			app := deliberateApp(t, tt.cert(t), func(w http.ResponseWriter, _ *http.Request) {
+				reached.Store(true)
+				w.WriteHeader(http.StatusOK)
+			})
+			c := deliberateGateway(t, models.ConsensusPolicy{Enabled: true, AppID: tt.appID, EndpointURL: app.URL + "/app/decide"}, tt.roots)
+			proof, err := c.Deliberate(context.Background(), Persona{}, deliberateEnvelope("tx-1"))
+			require.ErrorIs(t, err, constants.ErrIngressL2DeliberationFailed)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				var unknownAuthority x509.UnknownAuthorityError
+				require.ErrorAs(t, err, &unknownAuthority)
+			}
+			assert.Nil(t, proof)
+			assert.False(t, reached.Load(), "the envelope must not reach an unauthenticated application")
+		})
+	}
 }
