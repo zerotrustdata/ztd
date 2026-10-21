@@ -154,8 +154,9 @@ target for scripts. Outbound runtime roots are discovered from enrollment metada
 --operator-root overrides the local path when needed.
 
 The embedded Operator is a complete Data Operator: with it selected, it also executes the
-outbound dispatch and CLI cases, so every ingress runs. A2A ingress is opt-in: a Gateway without --a2a-downstream-url exposes
-none, and its A2A cases are not applicable. A Gateway started with
+outbound dispatch and CLI cases, so every ingress runs. A2A ingress is opt-in: a Gateway
+without --a2a-downstream-url exposes none, and its A2A cases are not applicable. A Gateway
+started with
 --a2a-downstream-url http://<address> needs this command's --a2a-stub-listen <address>
 for A2A coverage; without it, A2A cases are recorded as unavailable, yielding INCOMPLETE.
 Unattended INCOMPLETE runs exit zero; failures and invalid evidence always exit non-zero.`,

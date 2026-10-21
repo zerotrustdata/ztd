@@ -276,53 +276,35 @@ func TestVerifyAgainstPassingRecordIsPass(t *testing.T) {
 	}
 }
 
-// embeddedOnlyRecord rewrites the full doctrine record into one run against the
-// embedded Operator alone: outbound cases, anchor, and quiescence are dropped
-// and the record declares the outbound Operator absent. With a2aSkipped, A2A
-// cases carry their not-run observation as on a Gateway with A2A ingress but
-// no harness downstream.
+// embeddedOnlyRecord decodes the pinned live doctrine run whose Data Operator was
+// the embedded Operator, so every case, outbound-role ingresses included, ran on
+// the embedded executor. With a2aSkipped, A2A cases carry their not-run
+// observation as on a Gateway with A2A ingress but no harness downstream.
 func embeddedOnlyRecord(t *testing.T, a2aSkipped bool) *evalv1.ConformanceRunRecord {
 	t.Helper()
-	raw, _ := conformancetest.DoctrineRecord(t)
+	raw, _ := conformancetest.EmbeddedDoctrineRecord(t)
 	record := new(evalv1.ConformanceRunRecord)
 	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
+	if !a2aSkipped {
+		return record
+	}
 	applicable, err := cases.Applicable(record.GetPosture(), cases.Stack{A2AIngress: true, Outbound: true})
 	require.NoError(t, err)
 	byID := make(map[string]cases.Case, len(applicable))
 	for _, c := range applicable {
 		byID[c.ID] = c
 	}
-	var kept []*evalv1.ConformanceCaseEvidence
-	for _, ev := range record.GetCases() {
+	for i, ev := range record.GetCases() {
 		c := byID[ev.GetCaseId()]
-		switch {
-		case c.Ingress.Executor() == cases.ExecutorOutbound:
+		if c.Ingress != cases.IngressA2A {
 			continue
-		case a2aSkipped && c.Ingress == cases.IngressA2A:
-			ev = &evalv1.ConformanceCaseEvidence{
-				CaseId: ev.GetCaseId(), AttemptId: ev.GetAttemptId(), Executor: ev.GetExecutor(),
-				TargetPath: ev.GetTargetPath(), Marker: ev.GetMarker(),
-				Observations: []*evalv1.ConformanceObservation{{Kind: c.Ingress.UnavailableObservation()}},
-			}
 		}
-		kept = append(kept, ev)
-	}
-	record.Cases = kept
-	var anchors []*evalv1.ConformanceAnchor
-	for _, a := range record.GetAnchors() {
-		if a.GetRuntimeId() == oracle.GatewayRuntimeID {
-			anchors = append(anchors, a)
+		record.Cases[i] = &evalv1.ConformanceCaseEvidence{
+			CaseId: ev.GetCaseId(), AttemptId: ev.GetAttemptId(), Executor: ev.GetExecutor(),
+			TargetPath: ev.GetTargetPath(), Marker: ev.GetMarker(),
+			Observations: []*evalv1.ConformanceObservation{{Kind: c.Ingress.UnavailableObservation()}},
 		}
 	}
-	record.Anchors = anchors
-	var quiescence []*evalv1.ConformanceQuiescence
-	for _, q := range record.GetQuiescence() {
-		if q.GetExecutor() == string(cases.ExecutorEmbedded) {
-			quiescence = append(quiescence, q)
-		}
-	}
-	record.Quiescence = quiescence
-	record.OutboundAbsent = true
 	return record
 }
 
@@ -340,6 +322,9 @@ func TestVerifyPersisted_EmbeddedOperatorOnlyPasses(t *testing.T) {
 	record := embeddedOnlyRecord(t, false)
 	set := persistedVerdicts(t, record)
 	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_PASS, set.GetSuiteVerdict())
+	applicable, err := cases.Applicable(record.GetPosture(), cases.Stack{A2AIngress: true, Outbound: true})
+	require.NoError(t, err)
+	require.Len(t, set.GetVerdicts(), len(applicable), "an embedded-only run verifies every case")
 	require.Len(t, set.GetVerdicts(), len(record.GetCases()))
 }
 
@@ -991,7 +976,7 @@ func sha256Hex(raw []byte) string {
 
 // doctrineRecordRunID is the run the pinned doctrine record came from.
 const (
-	doctrineRecordRunID = "fb0d6851-a5ff-4466-a19c-c882eb27aaf3"
+	doctrineRecordRunID = "c1f5cb4c-f285-4bfd-bcf0-303bcdbd327f"
 	pinnedCaseID        = "r01-none-direct-doctrine"
 	statusPass          = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 )

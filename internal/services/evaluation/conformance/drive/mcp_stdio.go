@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/mcptransport"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -168,6 +169,20 @@ func (m *MCPStdio) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 		return cases.Driven{}, fmt.Errorf("mcp stdio %s: tools/call: %w", a.Case.Fault, err)
 	}
 	return cases.Driven{Observations: []*evalv1.ConformanceObservation{Observe(client.MCPStdioOutcome(raw))}}, nil
+}
+
+// CallTool sends one tools/call through the bridge and returns its typed result,
+// the call an agent makes for any native tool. A JSON-RPC error is an error.
+func (m *MCPStdio) CallTool(ctx context.Context, req mcp.CallToolRequest) (mcp.CallToolResult, error) {
+	raw, err := m.result(ctx, "tools/call", req)
+	if err != nil {
+		return mcp.CallToolResult{}, fmt.Errorf("mcp stdio %s: %w", req.Name, err)
+	}
+	var result mcp.CallToolResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return mcp.CallToolResult{}, fmt.Errorf("mcp stdio %s: decode result: %w: %w", req.Name, constants.ErrInvalidJSONResponse, err)
+	}
+	return result, nil
 }
 
 // Close closes the bridge's stdin, which ends its serve loop, and reaps it.

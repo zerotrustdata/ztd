@@ -325,7 +325,7 @@ var l2Faults = []Fault{FaultL2Missing, FaultL2BelowQuorum, FaultL2DuplicateSigne
 var gapSpecs = []gapSpec{
 	{row: 2, fault: FaultReadBaseline, ingresses: []Ingress{IngressA2A}, reason: "every A2A call is a mutation"},
 	{row: 2, fault: FaultReadBaseline, ingresses: []Ingress{IngressCLI}, reason: "`ztd operator run` sends EXECUTE_BASH only"},
-	{row: 25, fault: FaultL3ViaArguments, ingresses: []Ingress{IngressMCP, IngressA2A},
+	{row: 25, fault: FaultL3ViaArguments, ingresses: []Ingress{IngressMCP, IngressMCPStdio, IngressA2A},
 		reason: "no tool or skill argument can carry an L3 proof; the only attachment is ResumeWithL3Proof, fed by the WebAuthn assertion (T06 handoff, answer a)"},
 }
 

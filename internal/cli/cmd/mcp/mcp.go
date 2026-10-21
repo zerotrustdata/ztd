@@ -129,6 +129,11 @@ directly (e.g. from an IDE MCP config), credentials resolve in order:
 The CA bundle defaults to the managed trust bundle (override with --ca-bundle) and
 the gateway URL defaults to the local gateway (override with --gateway-url).
 
+Every request, initialize included, is answered by the Gateway, so the negotiated
+protocol version and advertised tools are the Gateway's. One proxied request waits
+longer than the Gateway's dispatch wait, so a slow tools/call returns the Operator's
+signed answer rather than a transport error.
+
 This command is a credential CONSUMER, not an enrollment UI. It does NOT enroll,
 open a browser, install OS trust, or run a passkey ceremony. If credentials are
 absent, enroll or launch first with one of these commands:
@@ -146,7 +151,7 @@ Cert and key must be supplied as a pair per tier; supplying only one half fails 
 	cmd.Flags().String(constants.Flag.ClientCert, "", "Path to CLI client certificate (mTLS)")
 	cmd.Flags().String(constants.Flag.ClientKey, "", "Path to CLI client key (mTLS)")
 	cmd.Flags().String(constants.Flag.CABundle, "", "Path to gateway CA bundle PEM")
-	cmd.Flags().String(constants.Flag.GatewayURL, "", "Gateway MCP endpoint URL (https only, e.g. https://ztd.local:8443/mcp)")
+	cmd.Flags().String(constants.Flag.GatewayURL, "", "Gateway MCP endpoint URL, https only (default: <the Gateway this CLI addresses>/mcp)")
 	cmd.Flags().String(constants.Flag.App, "", "Name of enrolled platform application to authenticate session")
 	return cmd
 }
@@ -257,7 +262,7 @@ func isCLICredentialTier(tierName string) bool {
 // only the --client-cert/--client-key tier reads operator-supplied PEM files.
 // Cert and key are resolved as pairs per tier; supplying only one half fails closed.
 // CA bundle resolves: --ca-bundle flag → auth.ReadTrustBundle.
-// Gateway URL resolves: --gateway-url flag → default https://ztd.local:8443/mcp.
+// Gateway URL resolves: --gateway-url flag → cfg.OperatorHTTPURL() + "/mcp".
 func buildGatewayConn(fileSvc fs.RuntimeFileService, cfg *config.Config, flags stdioCredentialFlags) (*gatewayConn, error) {
 	var appCert, appKey string
 	if flags.App != "" {

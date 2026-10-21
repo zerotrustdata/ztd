@@ -216,6 +216,10 @@ The launcher defines exact tool lockdown levels across registered agents (INV-AG
    - Default CLI credentials on disk (`.ztd/cli.crt`, `.ztd/cli.key`; the key is sealed and unsealed in memory).
 2. Fails closed immediately if a certificate or private key is missing (`ErrIncompleteCredentialPair`, INV-AGT-04).
 3. Proxies tool calls over TLS 1.3 mTLS. A suspended call returns a typed `suspension` (`GovernedSuspension`) in its `tools/call` result. The bridge reads `suspension.tx_hash` and `suspension.approval_url`, opens the approval URL, and waits for the `approval.completed` event over the Gateway SSE stream. The event carries the signed receipt of the resumed transaction, and the bridge returns it as the `tools/call` result. The bridge never re-sends the original request, because a re-send would open a new envelope and transaction.
+4. Proxies every request, `initialize` included, to the Gateway's `/mcp` route: the Gateway negotiates the protocol version and advertises the served tools, so the bridge answers no MCP method locally. The default endpoint is the Gateway the CLI addresses (`-e/--endpoint` and `--port`, else the ports the local Gateway bound) with `/mcp` appended; `--gateway-url` overrides it and accepts only `https`.
+5. Bounds one proxied request by `gatewayCallTimeout`, the Gateway's dispatch wait (`gateway.DispatchTimeout`) plus a margin, so a slow `tools/call` returns the Operator's signed answer rather than a bridge transport error. The L3 approval wait is separate and event-driven.
+
+An MCP client runs the bridge as a subprocess: command `ztd`, args `["mcp", "stdio"]` (add `"--app", "<name>"` for an app identity), with the project root as working directory. `ztd mcp agent show <agent>` prints the configuration for a supported agent ([Connect apps to the Gateway](../guides/connect_apps_to_gateway.md)). The conformance suite's `MCP_STDIO` ingress drives this same bridge ([evaluation architecture](evals.md#governance-conformance-suite)).
 
 ### Five-Layer Governance Enforcement for Agents
 

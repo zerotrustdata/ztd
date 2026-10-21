@@ -65,6 +65,9 @@ type releaseSmokeOptions struct {
 	ZtdBin  string
 	Timeout time.Duration
 	Posture constants.Posture
+	// GatewayArgs are appended to `gw start`, for a run that needs Gateway
+	// ingress the smoke itself does not configure.
+	GatewayArgs []string
 }
 
 type releaseSmokeSummary struct {
@@ -370,7 +373,8 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 }
 func (r *releaseSmokeRun) startGateway(ctx context.Context) error {
 	r.addCleanup("Gateway", func(ctx context.Context) error { _, err := r.ztdGateway(ctx, "gateway-stop", "gw", "stop"); return err })
-	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, "gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", string(r.opts.Posture), "--public-spectator=false")
+	args := []string{"gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", string(r.opts.Posture), "--public-spectator=false"}
+	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, append(args, r.opts.GatewayArgs...)...)
 	if err != nil {
 		return err
 	}

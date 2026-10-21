@@ -128,6 +128,37 @@ func TestMCPStdioDenyIsRejection(t *testing.T) {
 	assert.Equal(t, "tx-deny", obs.GetRejection().GetReceipt().GetTransactionHash())
 }
 
+func TestMCPStdioCallToolReturnsTypedResult(t *testing.T) {
+	var call mcp.CallToolRequest
+	m, err := stdioBridge(t, func(_ context.Context, req mcptransport.JSONRPCRequest) (mcptransport.JSONRPCResponse, error) {
+		resp := mcptransport.JSONRPCResponse{JSONRPC: constants.JSONRPCVersion, ID: req.ID, Result: json.RawMessage(`{}`)}
+		switch req.Method {
+		case "tools/list":
+			resp.Result = toolsList(t, mcpShellTool, mcpReadTool)
+		case "tools/call":
+			require.NoError(t, json.Unmarshal(req.Params, &call))
+			if call.Name == "fails" {
+				resp.Result = nil
+				resp.Error = &mcptransport.JSONRPCError{Code: -32603, Message: "tool failed"}
+				break
+			}
+			resp.Result = json.RawMessage(`{"content":[{"type":"text","text":"{\"count\":2}"}]}`)
+		}
+		return resp, nil
+	})
+	require.NoError(t, err)
+
+	result, err := m.CallTool(context.Background(), mcp.CallToolRequest{Name: constants.MCPToolAuditReceiptList, Arguments: json.RawMessage(`{"operator_session_id":"s1"}`)})
+	require.NoError(t, err)
+	assert.Equal(t, constants.MCPToolAuditReceiptList, call.Name)
+	assert.JSONEq(t, `{"operator_session_id":"s1"}`, string(call.Arguments))
+	require.Len(t, result.Content, 1)
+	assert.Equal(t, `{"count":2}`, result.Content[0].Text)
+
+	_, err = m.CallTool(context.Background(), mcp.CallToolRequest{Name: "fails"})
+	require.ErrorIs(t, err, constants.ErrJSONRPCErrorResponse)
+}
+
 func TestMCPStdioHandshakeFailsWithoutNativeTools(t *testing.T) {
 	_, err := stdioBridge(t, func(_ context.Context, req mcptransport.JSONRPCRequest) (mcptransport.JSONRPCResponse, error) {
 		resp := mcptransport.JSONRPCResponse{JSONRPC: constants.JSONRPCVersion, ID: req.ID, Result: json.RawMessage(`{}`)}
