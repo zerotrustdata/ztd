@@ -276,28 +276,38 @@ func TestVerifyAgainstPassingRecordIsPass(t *testing.T) {
 	}
 }
 
-func TestVerifyPersisted_EmbeddedCoverageIsIncompleteAndTamperingStillFails(t *testing.T) {
+// embeddedOnlyRecord rewrites the full doctrine record into one run against the
+// embedded Operator alone: outbound cases, anchor, and quiescence are dropped
+// and the record declares the outbound Operator absent. With a2aSkipped, A2A
+// cases carry their not-run observation as on a Gateway with A2A ingress but
+// no harness downstream.
+func embeddedOnlyRecord(t *testing.T, a2aSkipped bool) *evalv1.ConformanceRunRecord {
+	t.Helper()
 	raw, _ := conformancetest.DoctrineRecord(t)
 	record := new(evalv1.ConformanceRunRecord)
 	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
-	applicable, err := cases.Applicable(record.GetPosture(), !record.GetA2AIngressAbsent())
+	applicable, err := cases.Applicable(record.GetPosture(), cases.Stack{A2AIngress: true, Outbound: true})
 	require.NoError(t, err)
 	byID := make(map[string]cases.Case, len(applicable))
 	for _, c := range applicable {
 		byID[c.ID] = c
 	}
-	var skipped int
-	for i, ev := range record.GetCases() {
+	var kept []*evalv1.ConformanceCaseEvidence
+	for _, ev := range record.GetCases() {
 		c := byID[ev.GetCaseId()]
-		if kind := c.Ingress.UnavailableObservation(); kind != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED {
-			record.Cases[i] = &evalv1.ConformanceCaseEvidence{
+		switch {
+		case c.Ingress.Executor() == cases.ExecutorOutbound:
+			continue
+		case a2aSkipped && c.Ingress == cases.IngressA2A:
+			ev = &evalv1.ConformanceCaseEvidence{
 				CaseId: ev.GetCaseId(), AttemptId: ev.GetAttemptId(), Executor: ev.GetExecutor(),
 				TargetPath: ev.GetTargetPath(), Marker: ev.GetMarker(),
-				Observations: []*evalv1.ConformanceObservation{{Kind: kind}},
+				Observations: []*evalv1.ConformanceObservation{{Kind: c.Ingress.UnavailableObservation()}},
 			}
-			skipped++
 		}
+		kept = append(kept, ev)
 	}
+	record.Cases = kept
 	var anchors []*evalv1.ConformanceAnchor
 	for _, a := range record.GetAnchors() {
 		if a.GetRuntimeId() == oracle.GatewayRuntimeID {
@@ -312,27 +322,69 @@ func TestVerifyPersisted_EmbeddedCoverageIsIncompleteAndTamperingStillFails(t *t
 		}
 	}
 	record.Quiescence = quiescence
-	raw, err = evalv1.MarshalCanonical(record)
+	record.OutboundAbsent = true
+	return record
+}
+
+func persistedVerdicts(t *testing.T, record *evalv1.ConformanceRunRecord) *evalv1.ConformanceVerdictSet {
+	t.Helper()
+	raw, err := evalv1.MarshalCanonical(record)
 	require.NoError(t, err)
 	digest := sha256.Sum256(raw)
 	set, err := VerifyPersisted(raw, hex.EncodeToString(digest[:]))
 	require.NoError(t, err)
+	return set
+}
+
+func TestVerifyPersisted_EmbeddedOperatorOnlyPasses(t *testing.T) {
+	record := embeddedOnlyRecord(t, false)
+	set := persistedVerdicts(t, record)
+	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_PASS, set.GetSuiteVerdict())
+	require.Len(t, set.GetVerdicts(), len(record.GetCases()))
+}
+
+func TestVerifyPersisted_OutboundAbsentWithPinnedOutboundIsInvalid(t *testing.T) {
+	raw, _ := conformancetest.DoctrineRecord(t)
+	record := new(evalv1.ConformanceRunRecord)
+	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
+	record.OutboundAbsent = true
+	set := persistedVerdicts(t, record)
+	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE, set.GetSuiteVerdict())
+	assert.Empty(t, set.GetVerdicts())
+}
+
+func TestVerifyPersisted_SkippedA2AIsIncompleteAndTamperingStillFails(t *testing.T) {
+	record := embeddedOnlyRecord(t, true)
+	set := persistedVerdicts(t, record)
 	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INCOMPLETE, set.GetSuiteVerdict())
-	var unavailableCount int
-	for _, v := range set.GetVerdicts() {
-		if v.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE {
-			unavailableCount++
+	var skipped, unavailable int
+	for _, ev := range record.GetCases() {
+		if ev.GetObservations()[0].GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A {
+			skipped++
 		}
 	}
-	assert.GreaterOrEqual(t, unavailableCount, skipped)
+	for _, v := range set.GetVerdicts() {
+		if v.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE {
+			unavailable++
+		}
+	}
+	require.Positive(t, skipped)
+	assert.GreaterOrEqual(t, unavailable, skipped)
+	var tampered string
 	for _, ev := range record.GetCases() {
-		if ev.GetObservations()[0].GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND {
+		if ev.GetObservations()[0].GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A {
 			ev.SentinelBefore = record.GetQuiescence()[0].GetFirst()
+			tampered = ev.GetCaseId()
 			break
 		}
 	}
-	set = verifyRecord(t, record, applicable)
-	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE, set.GetSuiteVerdict(), "unavailable cases cannot hide execution evidence")
+	set = persistedVerdicts(t, record)
+	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_FAIL, set.GetSuiteVerdict(), "unavailable cases cannot hide execution evidence")
+	for _, v := range set.GetVerdicts() {
+		if v.GetCaseId() == tampered {
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, v.GetStatus())
+		}
+	}
 }
 
 func TestVerifyAgainstUnavailableReasonCannotHideRequiredIngress(t *testing.T) {
@@ -978,7 +1030,7 @@ func assertOnlyCaseNotPass(t *testing.T, set *evalv1.ConformanceVerdictSet, case
 
 func TestVerifyPersistedPinnedDoctrineRecordIsPass(t *testing.T) {
 	record, raw, digest := pinnedDoctrineRecord(t)
-	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true)
+	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, cases.Stack{A2AIngress: true, Outbound: true})
 	require.NoError(t, err)
 	reencoded, err := evalv1.MarshalCanonical(record)
 	require.NoError(t, err)

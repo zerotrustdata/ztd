@@ -206,8 +206,11 @@ func TestRowSeventeenMissingFieldPinsDirectRejectionAndDispatchRefusal(t *testin
 	}
 }
 
+// fullStack includes every optional ingress.
+var fullStack = Stack{A2AIngress: true, Outbound: true}
+
 func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
-	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true)
+	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, fullStack)
 	if err != nil {
 		t.Fatalf("Applicable(DOCTRINE): %v", err)
 	}
@@ -223,7 +226,7 @@ func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
 }
 
 func TestApplicableRatifyExcludesRowOne(t *testing.T) {
-	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, true)
+	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, fullStack)
 	if err != nil {
 		t.Fatalf("Applicable(RATIFY): %v", err)
 	}
@@ -234,33 +237,55 @@ func TestApplicableRatifyExcludesRowOne(t *testing.T) {
 	}
 }
 
-func TestApplicableWithoutA2AIngressDropsOnlyA2ACases(t *testing.T) {
-	for _, binding := range Postures {
-		with, err := Applicable(binding.Wire, true)
-		if err != nil {
-			t.Fatalf("Applicable(%s, true): %v", binding.Posture, err)
-		}
-		without, err := Applicable(binding.Wire, false)
-		if err != nil {
-			t.Fatalf("Applicable(%s, false): %v", binding.Posture, err)
-		}
-		var want []Case
-		for _, c := range with {
-			if c.Ingress != IngressA2A {
-				want = append(want, c)
+func TestApplicableDropsOnlyIngressesTheStackLacks(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		stack   Stack
+		dropped []Ingress
+	}{
+		{"no A2A ingress", Stack{Outbound: true}, []Ingress{IngressA2A}},
+		{"embedded Operator only", Stack{A2AIngress: true}, []Ingress{IngressDispatchOutbound, IngressCLI}},
+		{"minimal stack", Stack{}, []Ingress{IngressA2A, IngressDispatchOutbound, IngressCLI}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, binding := range Postures {
+				with, err := Applicable(binding.Wire, fullStack)
+				if err != nil {
+					t.Fatalf("Applicable(%s, full): %v", binding.Posture, err)
+				}
+				without, err := Applicable(binding.Wire, tc.stack)
+				if err != nil {
+					t.Fatalf("Applicable(%s, %+v): %v", binding.Posture, tc.stack, err)
+				}
+				var want []Case
+				for _, c := range with {
+					if !slices.Contains(tc.dropped, c.Ingress) {
+						want = append(want, c)
+					}
+				}
+				if len(want) == len(with) {
+					t.Fatalf("Applicable(%s, full) has no %v case", binding.Posture, tc.dropped)
+				}
+				if len(without) != len(want) {
+					t.Fatalf("Applicable(%s, %+v) = %d cases, want %d", binding.Posture, tc.stack, len(without), len(want))
+				}
+				for i := range want {
+					if without[i].ID != want[i].ID {
+						t.Fatalf("Applicable(%s, %+v)[%d] = %s, want %s", binding.Posture, tc.stack, i, without[i].ID, want[i].ID)
+					}
+				}
 			}
-		}
-		if len(want) == len(with) {
-			t.Fatalf("Applicable(%s, true) has no A2A case", binding.Posture)
-		}
-		if len(without) != len(want) {
-			t.Fatalf("Applicable(%s, false) = %d cases, want %d", binding.Posture, len(without), len(want))
-		}
-		for i := range want {
-			if without[i].ID != want[i].ID {
-				t.Fatalf("Applicable(%s, false)[%d] = %s, want %s", binding.Posture, i, without[i].ID, want[i].ID)
-			}
-		}
+		})
+	}
+}
+
+func TestRecordStackReadsAbsenceFlags(t *testing.T) {
+	if got := RecordStack(&evalv1.ConformanceRunRecord{}); got != fullStack {
+		t.Fatalf("RecordStack(legacy) = %+v, want %+v", got, fullStack)
+	}
+	got := RecordStack(&evalv1.ConformanceRunRecord{A2AIngressAbsent: true, OutboundAbsent: true})
+	if got != (Stack{}) {
+		t.Fatalf("RecordStack(absent) = %+v, want empty stack", got)
 	}
 }
 
@@ -295,7 +320,7 @@ func TestPostureMappingRejectsUnknown(t *testing.T) {
 }
 
 func TestApplicableRejectsUnknownPosture(t *testing.T) {
-	_, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, true)
+	_, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fullStack)
 	if !errors.Is(err, constants.ErrConformancePostureUnknown) {
 		t.Fatalf("Applicable(UNSPECIFIED) = %v, want ErrConformancePostureUnknown", err)
 	}

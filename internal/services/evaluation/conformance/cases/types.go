@@ -52,11 +52,10 @@ func (i Ingress) Executor() Executor {
 }
 
 // UnavailableObservation names the missing optional setup for this ingress.
-// Other ingresses must always run; their absence is a configuration error.
+// Other ingresses must always run when applicable; their absence is a
+// configuration error.
 func (i Ingress) UnavailableObservation() evalv1.ConformanceObservationKind {
 	switch i {
-	case IngressDispatchOutbound, IngressCLI:
-		return evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND
 	case IngressA2A:
 		return evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A
 	default:

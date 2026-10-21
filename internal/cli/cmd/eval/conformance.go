@@ -113,11 +113,12 @@ Operator. When several are available, choose one from the list. --operator-id pi
 target for scripts. Outbound runtime roots are discovered from enrollment metadata;
 --operator-root overrides the local path when needed.
 
-Outbound and CLI cases need an outbound Data Operator. A2A ingress is opt-in: a Gateway
-without --a2a-downstream-url exposes none, and its A2A cases are not applicable. A Gateway
-started with --a2a-downstream-url http://<address> needs this command's
---a2a-stub-listen <address> for A2A coverage.
-Missing optional setup is recorded as unavailable coverage, yielding INCOMPLETE.
+The embedded Operator is a complete Data Operator. Selecting an outbound Operator adds
+outbound dispatch and CLI coverage; with the embedded Operator selected those cases are
+not applicable. A2A ingress is opt-in: a Gateway without --a2a-downstream-url exposes
+none, and its A2A cases are not applicable. A Gateway started with
+--a2a-downstream-url http://<address> needs this command's --a2a-stub-listen <address>
+for A2A coverage; without it, A2A cases are recorded as unavailable, yielding INCOMPLETE.
 Unattended INCOMPLETE runs exit zero; failures and invalid evidence always exit non-zero.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -215,13 +216,8 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		return err
 	}
 	unavailable := make(map[cases.Ingress]evalv1.ConformanceObservationKind)
-	for _, ingress := range []cases.Ingress{cases.IngressDispatchOutbound, cases.IngressCLI, cases.IngressA2A} {
-		if ingress == cases.IngressA2A && !a2aIngress {
-			continue // not applicable, not unavailable
-		}
-		if drivers[ingress] == nil {
-			unavailable[ingress] = ingress.UnavailableObservation()
-		}
+	if a2aIngress && drivers[cases.IngressA2A] == nil {
+		unavailable[cases.IngressA2A] = cases.IngressA2A.UnavailableObservation()
 	}
 	if !output.JSONEnabled(cmd) {
 		if err := writeConformanceSetup(cmd.ErrOrStderr(), outboundDoc, unavailable); err != nil {
@@ -619,7 +615,6 @@ func writeConformanceVerdicts(cmd *cobra.Command, runID string, set *evalv1.Conf
 		kind        evalv1.ConformanceObservationKind
 		description string
 	}{
-		{evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND, "outbound Data Operator not selected"},
 		{evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A, "A2A test downstream not configured"},
 		{evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED, "human approval cases not requested (use --attended)"},
 	} {

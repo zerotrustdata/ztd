@@ -2408,7 +2408,6 @@ const (
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED        ConformanceObservationKind = 4 // approval pending, tx hash returned
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED ConformanceObservationKind = 5 // attended case skipped in an unattended run
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED          ConformanceObservationKind = 6 // anything else: always a failure
-	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND ConformanceObservationKind = 7 // no outbound Data Operator selected
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A      ConformanceObservationKind = 8 // no harness-owned A2A downstream configured
 )
 
@@ -2422,7 +2421,6 @@ var (
 		4: "CONFORMANCE_OBSERVATION_KIND_SUSPENDED",
 		5: "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED",
 		6: "CONFORMANCE_OBSERVATION_KIND_UNTYPED",
-		7: "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND",
 		8: "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A",
 	}
 	ConformanceObservationKind_value = map[string]int32{
@@ -2433,7 +2431,6 @@ var (
 		"CONFORMANCE_OBSERVATION_KIND_SUSPENDED":        4,
 		"CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED": 5,
 		"CONFORMANCE_OBSERVATION_KIND_UNTYPED":          6,
-		"CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND": 7,
 		"CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A":      8,
 	}
 )
@@ -11380,8 +11377,12 @@ type ConformanceRunRecord struct {
 	// Gateway health reported no A2A ingress (no downstream configured). A2A is
 	// opt-in, so its cases are not applicable to this run.
 	A2AIngressAbsent bool `protobuf:"varint,13,opt,name=a2a_ingress_absent,json=a2aIngressAbsent,proto3" json:"a2a_ingress_absent,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// The selected Data Operator was the Gateway's embedded Operator. Outbound
+	// dispatch and CLI cases need an outbound Operator, so they are not
+	// applicable to this run.
+	OutboundAbsent bool `protobuf:"varint,14,opt,name=outbound_absent,json=outboundAbsent,proto3" json:"outbound_absent,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ConformanceRunRecord) Reset() {
@@ -11501,6 +11502,13 @@ func (x *ConformanceRunRecord) GetFinishedAt() *timestamppb.Timestamp {
 func (x *ConformanceRunRecord) GetA2AIngressAbsent() bool {
 	if x != nil {
 		return x.A2AIngressAbsent
+	}
+	return false
+}
+
+func (x *ConformanceRunRecord) GetOutboundAbsent() bool {
+	if x != nil {
+		return x.OutboundAbsent
 	}
 	return false
 }
@@ -13454,7 +13462,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x15ConformanceQuiescence\x12\x1a\n" +
 	"\bexecutor\x18\x01 \x01(\tR\bexecutor\x124\n" +
 	"\x05first\x18\x02 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x05first\x126\n" +
-	"\x06second\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x06second\"\x84\x05\n" +
+	"\x06second\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x06second\"\xad\x05\n" +
 	"\x14ConformanceRunRecord\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x19\n" +
 	"\bsuite_id\x18\x02 \x01(\tR\asuiteId\x12#\n" +
@@ -13474,7 +13482,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"started_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
 	"\vfinished_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"finishedAt\x12,\n" +
-	"\x12a2a_ingress_absent\x18\r \x01(\bR\x10a2aIngressAbsent\"\xb6\x01\n" +
+	"\x12a2a_ingress_absent\x18\r \x01(\bR\x10a2aIngressAbsent\x12'\n" +
+	"\x0foutbound_absent\x18\x0e \x01(\bR\x0eoutboundAbsent\"\xb6\x01\n" +
 	"\x12ConformanceVerdict\x12\x17\n" +
 	"\acase_id\x18\x01 \x01(\tR\x06caseId\x12<\n" +
 	"\x06status\x18\x02 \x01(\x0e2$.ztd.eval.v1.EvaluationVerdictStatusR\x06status\x12I\n" +
@@ -13814,7 +13823,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" PUBLIC_RELEASE_BASIS_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dPUBLIC_RELEASE_BASIS_RECORDED\x10\x01\x12!\n" +
 	"\x1dPUBLIC_RELEASE_BASIS_ASSERTED\x10\x02\x12 \n" +
-	"\x1cPUBLIC_RELEASE_BASIS_UNKNOWN\x10\x03*\xb4\x03\n" +
+	"\x1cPUBLIC_RELEASE_BASIS_UNKNOWN\x10\x03*\xb6\x03\n" +
 	"\x1aConformanceObservationKind\x12,\n" +
 	"(CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CONFORMANCE_OBSERVATION_KIND_RECEIPT\x10\x01\x12*\n" +
@@ -13822,9 +13831,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"$CONFORMANCE_OBSERVATION_KIND_REFUSAL\x10\x03\x12*\n" +
 	"&CONFORMANCE_OBSERVATION_KIND_SUSPENDED\x10\x04\x121\n" +
 	"-CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED\x10\x05\x12(\n" +
-	"$CONFORMANCE_OBSERVATION_KIND_UNTYPED\x10\x06\x121\n" +
-	"-CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND\x10\a\x12,\n" +
-	"(CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A\x10\b*\xcb\x06\n" +
+	"$CONFORMANCE_OBSERVATION_KIND_UNTYPED\x10\x06\x12,\n" +
+	"(CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A\x10\b\"\x04\b\a\x10\a*-CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND*\xcb\x06\n" +
 	"\x17ConformanceFailureClass\x12)\n" +
 	"%CONFORMANCE_FAILURE_CLASS_UNSPECIFIED\x10\x00\x12.\n" +
 	"*CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH\x10\x01\x12+\n" +

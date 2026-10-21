@@ -133,8 +133,8 @@ func writeConformanceSetup(out io.Writer, outboundDoc *operatorv1.OperatorDocume
 	if _, err := fmt.Fprintf(out, "Data Operator: %s\n", label); err != nil {
 		return err
 	}
-	if _, ok := unavailable[cases.IngressDispatchOutbound]; ok {
-		if _, err := fmt.Fprintln(out, "Unavailable: outbound dispatch and CLI coverage (select an outbound Data Operator to include it)."); err != nil {
+	if outboundDoc == nil {
+		if _, err := fmt.Fprintln(out, "Not applicable: outbound dispatch and CLI coverage (embedded Data Operator selected)."); err != nil {
 			return err
 		}
 	}

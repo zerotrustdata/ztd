@@ -85,13 +85,21 @@ type runView struct {
 	// bundleHash is the doctrine bundle hash of every signed L1 rejection in the posture.
 	bundleHash    string
 	signedIngress map[cases.Ingress]bool
-	// a2aAbsent is the record's a2a_ingress_absent: the stack exposed no A2A ingress.
-	a2aAbsent bool
+	// stack is the record's stack: which optional ingresses it could run.
+	stack cases.Stack
 }
 
 // excludes reports whether a catalogue case is not applicable to this run's stack.
 func (v *runView) excludes(c cases.Case) bool {
-	return v.a2aAbsent && c.Ingress == cases.IngressA2A
+	return !v.stack.Includes(c.Ingress)
+}
+
+// exclusionReason names the missing optional stack part behind an excluded cell.
+func exclusionReason(ingress cases.Ingress) string {
+	if ingress == cases.IngressA2A {
+		return "A2A ingress not configured"
+	}
+	return "embedded Operator selected; no outbound Operator"
 }
 
 // Build fails with ErrConformanceRecordInvalid if two runs share a posture, a
@@ -170,7 +178,7 @@ func indexRun(run VerifiedRun, all []cases.Case) (constants.Posture, *runView, e
 		},
 		evidence:      make(map[string]*evalv1.ConformanceCaseEvidence, len(record.GetCases())),
 		signedIngress: make(map[cases.Ingress]bool),
-		a2aAbsent:     record.GetA2AIngressAbsent(),
+		stack:         cases.RecordStack(record),
 	}
 	for _, ev := range record.GetCases() {
 		if ev == nil {
@@ -331,7 +339,7 @@ func cellFor(k cellKey, col cases.PostureBinding, all []cases.Case, gaps []cases
 		return cell, nil
 	}
 	if view.excludes(inCell[0]) {
-		cell.Status, cell.Reason = CellNotApplicable, "A2A ingress not configured"
+		cell.Status, cell.Reason = CellNotApplicable, exclusionReason(inCell[0].Ingress)
 		return cell, nil
 	}
 	if view.summary.SuiteVerdict == evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE {

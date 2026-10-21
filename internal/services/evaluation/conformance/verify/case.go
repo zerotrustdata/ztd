@@ -127,7 +127,6 @@ func hasNotRunObservation(ev *evalv1.ConformanceCaseEvidence) bool {
 	for _, obs := range ev.GetObservations() {
 		switch obs.GetKind() {
 		case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED,
-			evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND,
 			evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A:
 			return true
 		}

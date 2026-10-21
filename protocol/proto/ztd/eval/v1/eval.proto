@@ -1371,8 +1371,9 @@ enum ConformanceObservationKind {
   CONFORMANCE_OBSERVATION_KIND_SUSPENDED = 4;        // approval pending, tx hash returned
   CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED = 5; // attended case skipped in an unattended run
   CONFORMANCE_OBSERVATION_KIND_UNTYPED = 6;          // anything else: always a failure
-  CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND = 7; // no outbound Data Operator selected
-  CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A = 8;      // no harness-owned A2A downstream configured
+  reserved 7; // NOT_RUN_OUTBOUND: outbound cases are not applicable without an outbound Operator
+  reserved "CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND";
+  CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A = 8;     // no harness-owned A2A downstream configured
 }
 
 // ConformanceObservation is what one drive of one ingress returned. Exactly
@@ -1442,6 +1443,10 @@ message ConformanceRunRecord {
   // Gateway health reported no A2A ingress (no downstream configured). A2A is
   // opt-in, so its cases are not applicable to this run.
   bool a2a_ingress_absent = 13;
+  // The selected Data Operator was the Gateway's embedded Operator. Outbound
+  // dispatch and CLI cases need an outbound Operator, so they are not
+  // applicable to this run.
+  bool outbound_absent = 14;
 }
 
 enum ConformanceFailureClass {

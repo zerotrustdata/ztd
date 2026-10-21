@@ -360,9 +360,35 @@ func Catalogue() ([]Case, []Gap, error) {
 	return cases, gaps, nil
 }
 
-// Applicable returns the cases for one posture, in catalogue order. A2A is
-// opt-in at the Gateway: without A2A ingress its cases are not applicable.
-func Applicable(posture evalv1.EvaluationGovernancePosture, a2aIngress bool) ([]Case, error) {
+// Stack is the optional parts of the stack under test that decide which cases
+// apply. A2A ingress is opt-in at the Gateway, and the embedded Operator is a
+// complete Data Operator, so neither an A2A downstream nor an outbound Operator
+// is required.
+type Stack struct {
+	A2AIngress bool // the Gateway exposes A2A ingress
+	Outbound   bool // the selected Data Operator is an outbound Operator
+}
+
+// RecordStack returns the stack a run record was executed against.
+func RecordStack(record *evalv1.ConformanceRunRecord) Stack {
+	return Stack{A2AIngress: !record.GetA2AIngressAbsent(), Outbound: !record.GetOutboundAbsent()}
+}
+
+// Includes reports whether the stack can run cases on ingress i.
+func (s Stack) Includes(i Ingress) bool {
+	switch {
+	case i == IngressA2A:
+		return s.A2AIngress
+	case i.Executor() == ExecutorOutbound:
+		return s.Outbound
+	default:
+		return true
+	}
+}
+
+// Applicable returns the cases for one posture, in catalogue order. Cases on
+// an ingress the stack does not include are not applicable.
+func Applicable(posture evalv1.EvaluationGovernancePosture, stack Stack) ([]Case, error) {
 	if _, err := GovernancePosture(posture); err != nil {
 		return nil, fmt.Errorf("catalogue: applicable: %w", err)
 	}
@@ -372,7 +398,7 @@ func Applicable(posture evalv1.EvaluationGovernancePosture, a2aIngress bool) ([]
 	}
 	var out []Case
 	for _, c := range all {
-		if c.Posture != posture || (c.Ingress == IngressA2A && !a2aIngress) {
+		if c.Posture != posture || !stack.Includes(c.Ingress) {
 			continue
 		}
 		out = append(out, c)

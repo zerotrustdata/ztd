@@ -462,6 +462,7 @@ executor whose commitment links must be adjacent.
 | started_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | finished_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | a2a_ingress_absent | [bool](#bool) |  | Gateway health reported no A2A ingress (no downstream configured). A2A is opt-in, so its cases are not applicable to this run. |
+| outbound_absent | [bool](#bool) |  | The selected Data Operator was the Gateway&#39;s embedded Operator. Outbound dispatch and CLI cases need an outbound Operator, so they are not applicable to this run. |
 
 
 
@@ -2426,7 +2427,6 @@ AgentRole is the generic function a step performs in an agent pipeline.
 | CONFORMANCE_OBSERVATION_KIND_SUSPENDED | 4 | approval pending, tx hash returned |
 | CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED | 5 | attended case skipped in an unattended run |
 | CONFORMANCE_OBSERVATION_KIND_UNTYPED | 6 | anything else: always a failure |
-| CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND | 7 | no outbound Data Operator selected |
 | CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A | 8 | no harness-owned A2A downstream configured |
 
 

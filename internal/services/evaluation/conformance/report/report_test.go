@@ -42,9 +42,12 @@ func l1Observation(bundleHash string) *evalv1.ConformanceObservation {
 }
 
 // passingRun builds a verified run for posture in which every applicable case passes.
+// fullStack includes every optional ingress.
+var fullStack = cases.Stack{A2AIngress: true, Outbound: true}
+
 func passingRun(t *testing.T, posture evalv1.EvaluationGovernancePosture) VerifiedRun {
 	t.Helper()
-	applicable, err := cases.Applicable(posture, true)
+	applicable, err := cases.Applicable(posture, fullStack)
 	if err != nil {
 		t.Fatalf("cases.Applicable(%s): %v", posture, err)
 	}
@@ -99,7 +102,7 @@ func runFor(t *testing.T, runs []VerifiedRun, p evalv1.EvaluationGovernancePostu
 // findCase returns the first applicable case of posture p that matches pred.
 func findCase(t *testing.T, p evalv1.EvaluationGovernancePosture, pred func(cases.Case) bool) cases.Case {
 	t.Helper()
-	applicable, err := cases.Applicable(p, true)
+	applicable, err := cases.Applicable(p, fullStack)
 	if err != nil {
 		t.Fatalf("cases.Applicable(%s): %v", p, err)
 	}
@@ -217,12 +220,12 @@ func TestBuildUnrunAttendedCaseMarksCellPartial(t *testing.T) {
 	}
 }
 
-func TestBuildA2AAbsentRunMarksA2ACellsNotApplicable(t *testing.T) {
+func TestBuildMinimalStackRunMarksOptionalIngressCellsNotApplicable(t *testing.T) {
 	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
-	a2a := findCase(t, doctrine, func(c cases.Case) bool { return c.Ingress == cases.IngressA2A })
 	run := passingRun(t, doctrine)
 	run.Record.A2AIngressAbsent = true
-	applicable, err := cases.Applicable(doctrine, false)
+	run.Record.OutboundAbsent = true
+	applicable, err := cases.Applicable(doctrine, cases.Stack{})
 	if err != nil {
 		t.Fatalf("cases.Applicable: %v", err)
 	}
@@ -247,8 +250,11 @@ func TestBuildA2AAbsentRunMarksA2ACellsNotApplicable(t *testing.T) {
 	run.Verdicts.Verdicts = verdicts
 
 	rep := buildOK(t, []VerifiedRun{run})
-	if cell := cellAt(t, rep, a2a.Row, cases.IngressA2A, constants.PostureDoctrine); cell.Status != CellNotApplicable {
-		t.Fatalf("A2A cell status = %s, want %s", cell.Status, CellNotApplicable)
+	for _, ingress := range []cases.Ingress{cases.IngressA2A, cases.IngressDispatchOutbound, cases.IngressCLI} {
+		c := findCase(t, doctrine, func(c cases.Case) bool { return c.Ingress == ingress })
+		if cell := cellAt(t, rep, c.Row, ingress, constants.PostureDoctrine); cell.Status != CellNotApplicable {
+			t.Fatalf("%s cell status = %s, want %s", ingress, cell.Status, CellNotApplicable)
+		}
 	}
 	direct := findCase(t, doctrine, func(c cases.Case) bool { return c.Ingress == cases.IngressDirect })
 	if cell := cellAt(t, rep, direct.Row, cases.IngressDirect, constants.PostureDoctrine); cell.Status != CellCovered {

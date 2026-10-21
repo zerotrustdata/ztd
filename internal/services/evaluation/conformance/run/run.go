@@ -52,7 +52,11 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 	if posture == evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED {
 		return nil, fmt.Errorf("conformance run: read posture: %w", constants.ErrConformancePostureUnknown)
 	}
-	applicable, err := cases.Applicable(posture, cfg.A2AIngress)
+	// Outbound cases apply exactly when the caller selected an outbound Operator,
+	// which is when it supplies that Operator's root.
+	_, outbound := cfg.Roots[cases.ExecutorOutbound]
+	stack := cases.Stack{A2AIngress: cfg.A2AIngress, Outbound: outbound}
+	applicable, err := cases.Applicable(posture, stack)
 	if err != nil {
 		return nil, fmt.Errorf("conformance run: applicable cases: %w", err)
 	}
@@ -135,7 +139,8 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 		Cases:                evidence,
 		DoctrineCorpusSha256: doctrinecorpus.SHA256(),
 		Attended:             cfg.Attended,
-		A2AIngressAbsent:     !cfg.A2AIngress,
+		A2AIngressAbsent:     !stack.A2AIngress,
+		OutboundAbsent:       !stack.Outbound,
 		StartedAt:            timestamppb.New(started),
 		FinishedAt:           timestamppb.New(cfg.Now()),
 	}, nil

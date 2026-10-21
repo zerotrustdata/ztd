@@ -53,7 +53,7 @@ func Verify(record *evalv1.ConformanceRunRecord) (*evalv1.ConformanceVerdictSet,
 	if !isRealPosture(record.GetPosture()) {
 		return invalidSet(record), nil
 	}
-	applicable, err := cases.Applicable(record.GetPosture(), !record.GetA2AIngressAbsent())
+	applicable, err := cases.Applicable(record.GetPosture(), cases.RecordStack(record))
 	if err != nil {
 		return nil, fmt.Errorf("conformance verify: load applicable cases: %w", err)
 	}
@@ -220,6 +220,9 @@ func checkAnchors(record *evalv1.ConformanceRunRecord) (map[string]string, *orac
 // checkCaseSet requires the record's cases to be exactly the applicable cases,
 // each once, each run on the executor its ingress names.
 func checkCaseSet(record *evalv1.ConformanceRunRecord, applicable []cases.Case, runtimes map[string]string) error {
+	if _, pinned := runtimes[executorOutbound]; pinned && record.GetOutboundAbsent() {
+		return fmt.Errorf("conformance verify: record pins outbound runtime %s but declares it absent: %w", runtimes[executorOutbound], constants.ErrConformanceRecordInvalid)
+	}
 	if len(record.GetCases()) != len(applicable) {
 		return fmt.Errorf("conformance verify: record holds %d cases, want %d: %w", len(record.GetCases()), len(applicable), constants.ErrConformanceRecordInvalid)
 	}
@@ -243,9 +246,6 @@ func checkCaseSet(record *evalv1.ConformanceRunRecord, applicable []cases.Case, 
 			return fmt.Errorf("conformance verify: case %s ran on %q, want %q: %w", c.ID, ev.GetExecutor(), executor, constants.ErrConformanceRecordInvalid)
 		}
 		if setupUnavailable(c, ev) {
-			if c.Ingress.Executor() == cases.ExecutorOutbound && runtimes[executor] != "" {
-				return fmt.Errorf("conformance verify: case %s skips a pinned outbound runtime: %w", c.ID, constants.ErrConformanceRecordInvalid)
-			}
 			continue
 		}
 		if _, ok := runtimes[executor]; !ok {
