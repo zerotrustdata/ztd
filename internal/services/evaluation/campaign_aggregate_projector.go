@@ -250,9 +250,11 @@ func ModelSummaryIdempotencyKey(runID, variantID, role string, terminal uint32) 
 }
 
 // MethodologySnapshotIdempotencyKey returns the publication key for one
-// methodology aggregate revision keyed by terminal assignment count.
-func MethodologySnapshotIdempotencyKey(runID string, terminal uint32) string {
-	return fmt.Sprintf("%s:aggregate:methodology:t%d", runID, terminal)
+// methodology aggregate revision keyed by quality state. Methodology content
+// depends only on the frozen suite, release, and quality state, so it is
+// published once per state rather than on every terminal assignment.
+func MethodologySnapshotIdempotencyKey(runID, qualityState string) string {
+	return fmt.Sprintf("%s:aggregate:methodology:%s", runID, qualityState)
 }
 
 // EvaluationSummaryIdempotencyKey returns the publication key for one live
@@ -783,7 +785,7 @@ func BuildRunAggregateViewRecords(run *evalv1.EvaluationRun, state *runAggregate
 		return nil, err
 	}
 	records = append(records, CampaignViewRecord{
-		IdempotencyKey: MethodologySnapshotIdempotencyKey(runID, state.Terminal),
+		IdempotencyKey: MethodologySnapshotIdempotencyKey(runID, methodologyRecord.QualityState),
 		Body:           methodologyBody,
 	})
 	return records, nil

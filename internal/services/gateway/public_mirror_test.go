@@ -1091,27 +1091,42 @@ func TestMirror_History_BoundedPageSize(t *testing.T) {
 	assert.Equal(t, 500, page.Limit)
 }
 
-func TestMirror_History_CompressesGzipResponse(t *testing.T) {
+func TestMirror_JSONReads_CompressGzipResponse(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	records := []models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "title": strings.Repeat("evaluation ", 100)}))}
 	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
 	_, ingestResp := env.sendIngest(batch)
 	require.True(t, ingestResp.Accepted)
 
-	req, err := http.NewRequest(http.MethodGet, env.publicServer.URL+"/history?source="+env.sourceID, nil)
-	require.NoError(t, err)
-	req.Header.Set("Accept-Encoding", "gzip")
-	resp, err := env.client.Do(req)
-	require.NoError(t, err)
-	t.Cleanup(func() { resp.Body.Close() })
-	assert.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))
+	getGzip := func(path string) *gzip.Reader {
+		req, err := http.NewRequest(http.MethodGet, env.publicServer.URL+path, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp, err := env.client.Do(req)
+		require.NoError(t, err)
+		t.Cleanup(func() { resp.Body.Close() })
+		require.Equal(t, http.StatusOK, resp.StatusCode, path)
+		assert.Equal(t, "gzip", resp.Header.Get("Content-Encoding"), path)
+		reader, err := gzip.NewReader(resp.Body)
+		require.NoError(t, err, path)
+		t.Cleanup(func() { reader.Close() })
+		return reader
+	}
 
-	reader, err := gzip.NewReader(resp.Body)
-	require.NoError(t, err)
-	t.Cleanup(func() { reader.Close() })
 	var page models.PublicFeedCursorPage
-	require.NoError(t, json.NewDecoder(reader).Decode(&page))
+	require.NoError(t, json.NewDecoder(getGzip("/history?source="+env.sourceID)).Decode(&page))
 	require.Len(t, page.Items, 1)
+
+	var bootstrap models.PublicFeedBootstrap
+	require.NoError(t, json.NewDecoder(getGzip("/bootstrap?source="+env.sourceID)).Decode(&bootstrap))
+	require.Len(t, bootstrap.RecentProjections, 1)
+
+	var snapshot models.PublicFeedSnapshot
+	require.NoError(t, json.NewDecoder(getGzip("/snapshot?source="+env.sourceID)).Decode(&snapshot))
+	assert.Equal(t, int64(1), snapshot.HighWaterSequence)
+
+	var catalog models.PublicProofCatalog
+	require.NoError(t, json.NewDecoder(getGzip("/proof-catalog?source="+env.sourceID)).Decode(&catalog))
 }
 
 func TestMirror_History_FiltersByRecordKindBeforePagination(t *testing.T) {

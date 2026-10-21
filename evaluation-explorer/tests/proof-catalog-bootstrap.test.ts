@@ -83,6 +83,41 @@ describe('proof catalog bootstrap', () => {
     expect(evalStore.getState().proofArtifactCount).toBe(1);
   });
 
+  it('reconciles history without waiting for the proof catalog', async () => {
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const path = requestPath(input);
+      if (path === '/runtime.json') {
+        return new Response(JSON.stringify({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }), { status: 200 });
+      }
+      if (path === '/bootstrap') {
+        return new Response(JSON.stringify({
+          protocol_version: '1.0.0',
+          snapshot: snapshot(),
+          source_freshness: 'active',
+          recent_projections: [],
+          proof_catalog_summary: { artifact_count: 1, total_byte_size: 512 },
+          generated_at: '2026-09-20T00:00:00Z',
+        }), { status: 200 });
+      }
+      if (path === '/proof-catalog') {
+        return new Promise<Response>(() => undefined);
+      }
+      if (path === '/snapshot') {
+        return new Response(JSON.stringify(snapshot()), { status: 200 });
+      }
+      if (path === '/history') {
+        return new Response(JSON.stringify({ protocol_version: '1.0.0', items: [], has_more: false, limit: 500 }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+    await startFeed({ fetchImpl: fetchImpl as typeof fetch });
+
+    expect(fetchImpl.mock.calls.some(([url]) => requestPath(url) === '/history')).toBe(true);
+    expect(evalStore.getState().proofArtifacts.size).toBe(0);
+    expect(evalStore.getState().proofArtifactCount).toBe(1);
+  });
+
   it('skips proof catalog fetch when bootstrap reports zero artifacts', async () => {
     const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const path = requestPath(input);

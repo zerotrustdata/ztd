@@ -123,15 +123,11 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
     const snapshot = bootstrap.snapshot;
     const recent = bootstrap.recent_projections.map(normalizeRecentProjection);
     evalStore.initBootstrap(snapshot, recent, bootstrap.proof_catalog_summary.artifact_count);
-    if (bootstrap.proof_catalog_summary.artifact_count > 0) {
-      try {
-        const catalog = await fetchProofCatalog(runtime.mirror_origin, snapshot.source_id, fetchImpl);
-        if (gen !== generation) return;
-        evalStore.initProofCatalog(catalog.entries);
-      } catch {
-        // Feed history still reconciles; audit downloads stay absent without catalog entries.
-      }
-    }
+    // The proof catalog only resolves audit downloads, so it is fetched
+    // alongside history instead of delaying it.
+    const catalogRequest = bootstrap.proof_catalog_summary.artifact_count > 0
+      ? fetchProofCatalog(runtime.mirror_origin, snapshot.source_id, fetchImpl)
+      : null;
     const cached = await loadCompatibleCache(cacheStorage, runtime.mirror_origin, snapshot, fetchImpl);
     if (gen !== generation) return;
     const records = cached ? [...cached.records] : [];
@@ -140,6 +136,15 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
       for (const record of cached.records) evalStore.acceptProjection(record);
       evalStore.acceptSnapshot(snapshot);
     }
+    // Applied after the last initBootstrap, which resets store state.
+    catalogRequest?.then(
+      (catalog) => {
+        if (gen === generation) evalStore.initProofCatalog(catalog.entries);
+      },
+      () => {
+        // Feed history still reconciles; audit downloads stay absent without catalog entries.
+      },
+    );
     await reconcileHistory(runtime.mirror_origin, snapshot.source_id, fetchImpl, gen, records);
     if (gen !== generation) return;
     await saveCache(cacheStorage, runtime.mirror_origin, records);

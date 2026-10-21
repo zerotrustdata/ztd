@@ -666,13 +666,13 @@ func (m *PublicMirrorServer) PublicHandler() http.Handler {
 
 func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/bootstrap", m.handleBootstrap)
-	mux.HandleFunc("/snapshot", m.handleSnapshot)
+	mux.Handle("/bootstrap", m.withGzip(http.HandlerFunc(m.handleBootstrap)))
+	mux.Handle("/snapshot", m.withGzip(http.HandlerFunc(m.handleSnapshot)))
 	mux.Handle("/history", m.withGzip(http.HandlerFunc(m.handleHistory)))
 	mux.HandleFunc("/stream", m.handleStream)
-	mux.HandleFunc("/proof-catalog", m.handleProofCatalog)
-	mux.HandleFunc("/proof-manifest", m.handleProofManifest)
-	mux.HandleFunc("/proof-segments", m.handleProofSegments)
+	mux.Handle("/proof-catalog", m.withGzip(http.HandlerFunc(m.handleProofCatalog)))
+	mux.Handle("/proof-manifest", m.withGzip(http.HandlerFunc(m.handleProofManifest)))
+	mux.Handle("/proof-segments", m.withGzip(http.HandlerFunc(m.handleProofSegments)))
 	mux.HandleFunc("/proofs/", m.handleProofDownload)
 	return mux
 }
