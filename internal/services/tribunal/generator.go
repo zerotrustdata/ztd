@@ -11,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"unicode"
 
 	"github.com/zerotrustdata/ztd/internal/models"
 )
@@ -90,7 +89,7 @@ func generate(ctx context.Context, cfg Config, req Request, round uint32, prior 
 			Args    []string `json:"args"`
 		}
 		candidate := Candidate{Member: member, Round: round}
-		if decodeAnswer(text, &answer) == nil && validCommandName(answer.Command) {
+		if decodeAnswer(text, &answer) == nil && models.ValidExecutableName(answer.Command) {
 			candidate.Arguments = models.RunShellCommandRequest{
 				Command: answer.Command, Args: answer.Args,
 				Timeout: req.TimeoutSeconds, WorkingDir: req.WorkingDirectory,
@@ -99,8 +98,4 @@ func generate(ctx context.Context, cfg Config, req Request, round uint32, prior 
 		candidates = append(candidates, candidate)
 	}
 	return candidates, nil
-}
-
-func validCommandName(command string) bool {
-	return command != "" && strings.TrimSpace(command) == command && !strings.ContainsFunc(command, unicode.IsSpace)
 }

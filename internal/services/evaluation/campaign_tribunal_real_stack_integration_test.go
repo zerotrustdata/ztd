@@ -27,16 +27,16 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
-	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/testutil"
-	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -260,7 +260,7 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	require.Len(t, trace.ToolCalls, 1)
 	tool := trace.ToolCalls[0]
 	assert.True(t, tool.Success, "tool error: %s", tool.Error)
-	assert.Equal(t, tribunalRealRequest, tool.ArgumentsJSON)
+	assert.Equal(t, `{"args":["HEALTHY"],"command":"echo"}`, tool.ArgumentsJSON, "the proposal is recorded in canonical sorted-key form")
 	approved := tribunalExpectedApprovedArguments(trace)
 	assert.Equal(t, approved, tool.ApprovedArgumentsJSON, "Gateway-owned timeout and working directory are composed before review")
 	require.NotNil(t, tool.Receipt, "the dispatched command keeps its signed receipt")
@@ -338,7 +338,7 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	vote := trace.Steps[5].GetVote()
 	require.NotNil(t, vote)
 	assert.True(t, vote.GetConsensusReached())
-assert.JSONEq(t, tribunalExpectedApprovedArguments(trace), vote.GetSelectedCommand())
+	assert.JSONEq(t, tribunalExpectedApprovedArguments(trace), vote.GetSelectedCommand())
 	assert.Equal(t, evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, trace.Steps[7].GetReview().GetVerdict())
 
 	conversation, err := trace.Conversation()
@@ -385,7 +385,14 @@ func TestCampaignTribunalIntegration_L1ScreensApprovedTypedArguments(t *testing.
 	assert.Empty(t, call.TransactionID, "L1 refuses the typed call before an envelope reaches the Operator")
 	assert.Nil(t, call.Receipt)
 	assert.Empty(t, call.PolicyDecision)
-	assert.Empty(t, trace.ToolCalls[0].ApprovedArgumentsJSON, "a refused call has no dispatched approved bytes")
+	// The Tribunal approved these bytes before L1 refused the dispatch; the
+	// trace keeps them as evidence, and the refusal names them.
+	assert.Equal(t, (models.RunShellCommandRequest{
+		Command: "rm", Args: []string{"-rf", "/"},
+		Timeout:    constants.DefaultShellCommandTimeout,
+		WorkingDir: trace.Workspace.OperatorWorkingDirectory,
+	}).CanonicalJSON(), trace.ToolCalls[0].ApprovedArgumentsJSON, "the refused call records the approved bytes it was refused with")
+	assert.Contains(t, call.Error, "Approved arguments: ")
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 }
 
@@ -404,6 +411,14 @@ func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing
 			assert.True(t, trace.ToolCalls[0].Success)
 			assert.Equal(t, string(constants.ActionTypeMcpCall), trace.ToolCalls[0].ActionType)
 			assert.Equal(t, tribunalExpectedApprovedArguments(trace), trace.ToolCalls[0].ApprovedArgumentsJSON)
+			// Notary enforces L2, so the Tribunal dispatch must carry a
+			// deliberated quorum proof; ratify leaves L2 to audit only.
+			wantL2 := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
+			if posture.RequiresL2() {
+				wantL2 = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
+			}
+			require.NotNil(t, trace.ToolCalls[0].Receipt)
+			assert.Equal(t, wantL2, trace.ToolCalls[0].Receipt.GetL2Status())
 			assert.Equal(t, "HEALTHY", trace.FinalOutput)
 			assert.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 		})
@@ -429,7 +444,7 @@ func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing
 }
 
 func TestCampaignTribunalIntegration_MarshalBlockFailsCallAndSecondBlockIsConflict(t *testing.T) {
-	const destructive = "rm -rf ."
+	const destructive = `{"command":"rm","args":["-rf","."]}`
 	env := tribunalRun(t, "marshal-block",
 		tribunalIntent("call-1"),
 		tribunalUnanimous(destructive),
@@ -442,7 +457,7 @@ func TestCampaignTribunalIntegration_MarshalBlockFailsCallAndSecondBlockIsConfli
 
 	res := env.executeNext(t)
 
-	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "a blocked command is a scored answer, not a harness failure")
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "a blocked command is a scored answer, not a harness failure: %s", res.GetInvalidEvidenceDetail())
 	assert.Empty(t, res.GetInvalidEvidenceDetail())
 	trace := executorLoadTrace(t, env, res)
 	require.Len(t, trace.ToolCalls, 2)

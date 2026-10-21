@@ -104,7 +104,7 @@ func auditVerdict(text string, v Vote, clusters []Cluster, req Request) (*Audit,
 	rationale := strings.TrimSpace(answer.Rationale)
 	swap := strings.ToLower(strings.TrimSpace(answer.SwapToCluster))
 	var revised models.RunShellCommandRequest
-	if answer.RevisedArguments != nil && validCommandName(answer.RevisedArguments.Command) {
+	if answer.RevisedArguments != nil && models.ValidExecutableName(answer.RevisedArguments.Command) {
 		revised = models.RunShellCommandRequest{Command: answer.RevisedArguments.Command, Args: answer.RevisedArguments.Args, Timeout: req.TimeoutSeconds, WorkingDir: req.WorkingDirectory}
 	}
 	hasRevision := answer.RevisedArguments != nil

@@ -43,7 +43,10 @@
       }
     ],
     "governed_probe": {
-      "command": "sh ./verify.sh"
+      "command": "sh",
+      "args": [
+        "./verify.sh"
+      ]
     },
     "answer_concepts": {
       "required": [

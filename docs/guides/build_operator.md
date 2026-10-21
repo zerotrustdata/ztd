@@ -65,7 +65,7 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 
 #### Prerequisites
 
-- **Go 1.27.2+**, declared in root `go.mod`.
+- **Go 1.27.3+**, declared in root `go.mod`.
 - **Make** on Linux and macOS. Windows builds use the repository's PowerShell workflow and invoke Make.
 - **Node.js 22.22.2+, 24.15+, or 26+ and npm**, required only if rebuilding frontend embeds. `make build` uses committed embeds.
 

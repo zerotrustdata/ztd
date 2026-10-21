@@ -33,7 +33,7 @@ body:
     attributes:
       label: Environment
       description: OS and architecture, plus Go version if you built from source
-      placeholder: "macOS 15 arm64, Go 1.27.2 — or: Ubuntu 24.04 amd64, release binary"
+      placeholder: "macOS 15 arm64, Go 1.27.3 — or: Ubuntu 24.04 amd64, release binary"
     validations:
       required: true
   - type: textarea

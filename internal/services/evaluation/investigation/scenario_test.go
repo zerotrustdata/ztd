@@ -232,6 +232,7 @@ func TestScenarioValidateRejectsInvalidScenarios(t *testing.T) {
 		}},
 		{"bad regex", func(s *Scenario) { s.Objective.FileState[0].NotMatches = []string{"("} }},
 		{"blank probe command", func(s *Scenario) { s.Objective.GovernedProbe = &GovernedProbe{Command: " "} }},
+		{"shell text probe command", func(s *Scenario) { s.Objective.GovernedProbe = &GovernedProbe{Command: "sh ./check.sh"} }},
 		{"no answer concepts", func(s *Scenario) { s.Objective.AnswerConcepts = AnswerConcepts{} }},
 		{"uppercase concept", func(s *Scenario) { s.Objective.AnswerConcepts.Required = []string{"Port"} }},
 		{"required and forbidden concept", func(s *Scenario) {

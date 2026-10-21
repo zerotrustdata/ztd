@@ -23,6 +23,16 @@ func TestPayloadFromDomainResult_NilReturnsNil(t *testing.T) {
 	assert.Nil(t, PayloadFromDomainResult(nil))
 }
 
+func TestValidExecutableName(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, ValidExecutableName("echo"))
+	assert.True(t, ValidExecutableName("./check.sh"))
+	for _, command := range []string{"", " echo", "echo ", "sh ./check.sh", "echo\tok", "echo ok"} {
+		assert.False(t, ValidExecutableName(command), "%q", command)
+	}
+}
+
 func TestRunShellCommandRequestCanonicalJSONAndProto(t *testing.T) {
 	t.Parallel()
 
@@ -30,7 +40,7 @@ func TestRunShellCommandRequestCanonicalJSONAndProto(t *testing.T) {
 		Command: "printf", Args: []string{"%s", "hello"}, Timeout: 12,
 		WorkingDir: "/tmp/work", Hostnames: []string{"operator-a"},
 	}
-	assert.Equal(t, `{"command":"printf","args":["%s","hello"],"timeout":12,"working_dir":"/tmp/work","hostnames":["operator-a"]}`, request.CanonicalJSON())
+	assert.Equal(t, `{"args":["%s","hello"],"command":"printf","hostnames":["operator-a"],"timeout":12,"working_dir":"/tmp/work"}`, request.CanonicalJSON())
 
 	proto := request.Proto()
 	assert.Equal(t, "printf", proto.Command)

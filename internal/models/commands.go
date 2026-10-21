@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+	"unicode"
 
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -45,6 +46,12 @@ type RunShellCommandRequest struct {
 	Hostnames  []string `json:"hostnames,omitempty"`
 }
 
+// ValidExecutableName reports whether command names one executable that
+// runs directly without a shell: non-empty and free of whitespace.
+func ValidExecutableName(command string) bool {
+	return command != "" && !strings.ContainsFunc(command, unicode.IsSpace)
+}
+
 // CommandLine returns the command and its arguments as the single
 // space-joined line that safety and doctrine checks screen.
 func (r RunShellCommandRequest) CommandLine() string {
@@ -56,9 +63,13 @@ func (r RunShellCommandRequest) CommandLine() string {
 // because the shared typed protocol contract intentionally excludes hosts.
 func (r RunShellCommandRequest) CanonicalJSON() string {
 	// This fixed struct contains only JSON-safe scalar and slice types, so
-	// json.Marshal cannot fail.
+	// json.Marshal cannot fail. Re-marshalling through a map sorts keys, the
+	// canonical object form the inference and evaluation verifiers require.
 	b, _ := json.Marshal(r)
-	return string(b)
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(b, &fields)
+	canonical, _ := json.Marshal(fields)
+	return string(canonical)
 }
 
 // Proto converts the native request to the shared execution argument type.

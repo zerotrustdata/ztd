@@ -151,9 +151,8 @@ func (TribunalOutcome) EnumDescriptor() ([]byte, []int) {
 // TribunalIntentRequest is the body of POST /api/v1/operators/intents. The
 // Gateway's Tribunal reviews typed run_shell_command arguments through governed
 // INFERENCE dispatches, then dispatches the approved bytes to the target
-// Operator as an ordinary governed MCP_CALL. The
-// Tribunal acts in front of envelope construction; it never supplies or
-// replaces an L2 quorum proof or an L3 approval.
+// Operator as an ordinary governed MCP_CALL. It never supplies or replaces
+// an L2 quorum proof or an L3 approval.
 type TribunalIntentRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Canonical JSON proposed run_shell_command arguments. Required.

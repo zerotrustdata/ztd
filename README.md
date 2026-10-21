@@ -146,7 +146,7 @@ pwsh scripts/windows-setup.ps1 --build-only
 make quickstart
 ```
 
-*Requirements for source builds: Go 1.27.2, Git, and GNU Make. Pre-built frontends are already embedded in the repository.*
+*Requirements for source builds: Go 1.27.3, Git, and GNU Make. Pre-built frontends are already embedded in the repository.*
 
 ---
 

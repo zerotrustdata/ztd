@@ -120,7 +120,7 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, call.Success)
 		assert.Equal(t, 1, inference.intentCalls)
-		assert.Equal(t, proposal, inference.intent.GetRequest())
+		assert.Equal(t, `{"args":["hello"],"command":"echo"}`, inference.intent.GetRequest(), "the intent carries the proposal in canonical sorted-key form")
 		assert.Equal(t, "/operator/workspace", inference.intent.GetWorkingDirectory())
 		assert.Equal(t, int32(constants.DefaultShellCommandTimeout), inference.intent.GetTimeoutSeconds())
 		assert.Zero(t, tools.dispatches)

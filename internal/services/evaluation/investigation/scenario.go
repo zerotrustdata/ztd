@@ -22,6 +22,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/eval/investigations"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/persona"
 )
 
@@ -88,8 +89,11 @@ type FileState struct {
 
 // GovernedProbe is a harness-owned command run in the workspace root after the
 // attempt. It passes when its signed receipt shows a successful execution.
+// Like run_shell_command, it names one executable and its argv; it never
+// runs through a shell.
 type GovernedProbe struct {
-	Command string `json:"command"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
 }
 
 type AnswerConcepts struct {
@@ -228,8 +232,8 @@ func (o Objective) validate() (map[string]bool, error) {
 	if len(o.FileState) == 0 && o.GovernedProbe == nil {
 		return nil, invalid("objective needs file_state or governed_probe so the scenario can fail")
 	}
-	if o.GovernedProbe != nil && blank(o.GovernedProbe.Command) {
-		return nil, invalid("objective.governed_probe.command is required")
+	if o.GovernedProbe != nil && !models.ValidExecutableName(o.GovernedProbe.Command) {
+		return nil, invalid("objective.governed_probe.command must be one executable name with no whitespace")
 	}
 	paths := make(map[string]bool, len(o.FileState))
 	for i, state := range o.FileState {

@@ -71,7 +71,7 @@ pwsh scripts/windows-setup.ps1 --build-only
 make quickstart
 ```
 
-Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe), GNU Make (`winget install ezwinports.make` or `choco install make`), and Go 1.27.2. Run `make` targets from PowerShell; WSL is not required. The setup script stops if a `GOROOT` environment variable points at a different Go install than the active toolchain, because builds would then use the wrong standard library. Paths such as `--working-dir ~/.ztd-op1` and `MODEL_STORAGE_ROOT=$env:USERPROFILE\.ollama\models` work as written. WSL 2 with the Linux commands above also works.
+Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe), GNU Make (`winget install ezwinports.make` or `choco install make`), and Go 1.27.3. Run `make` targets from PowerShell; WSL is not required. The setup script stops if a `GOROOT` environment variable points at a different Go install than the active toolchain, because builds would then use the wrong standard library. Paths such as `--working-dir ~/.ztd-op1` and `MODEL_STORAGE_ROOT=$env:USERPROFILE\.ollama\models` work as written. WSL 2 with the Linux commands above also works.
 
 ### What setup does
 
@@ -195,7 +195,7 @@ ztd runs natively on the host: compile the `ztd` binary and run it directly.
 
 | Requirement | Version | Notes |
 | :--- | :--- | :--- |
-| Go | 1.27.2 | Required to build from source |
+| Go | 1.27.3 | Required to build from source |
 | Make | Any recent | Required to run Makefile targets |
 | Git | Any recent | Required to clone the repository |
 | curl | Any recent | Used by the setup scripts to download Go |
