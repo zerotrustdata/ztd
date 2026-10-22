@@ -519,11 +519,10 @@ public mirror, so the explorer stops reporting the run as running.`,
 			if result.Stopped, err = controller.CancelRun(cmd.Context(), runID); err != nil {
 				return fmt.Errorf("evaluation: runs cancel: %w", err)
 			}
-			if result.Stopped > 0 && (!result.WasRunning || result.ClearedStale) {
-				// Cancel stopped work that no live process will report: the run was
-				// idle, or its holder exited without releasing. Cancel reports the
-				// cancelled status, as a holder would. A settled run stops nothing
-				// and posts nothing.
+			if result.Stopped > 0 {
+				// Only cancel stops assignments, so only cancel reports the cancelled
+				// status. A holder released before this point and projected the run
+				// as waiting. A settled run stops nothing and posts nothing.
 				authContext, err := deps.authLoader(fileSvc, cfg)
 				if err != nil {
 					return fmt.Errorf("evaluation: runs cancel: load CLI identity: %w", err)

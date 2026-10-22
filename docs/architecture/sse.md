@@ -73,6 +73,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`, `POST /api/v1/observe/producer/stop`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
+| INV-SSE-PROD-04 | Every rejected observe producer request returns a typed `models.ObserveProducerRejection` body with a stable `code`. Transition and stale-update rejections include their typed details; ownership misses return `forbidden` without record details, and unclassified failures return `internal` without details. Clients MUST decode the rejection and use its cause rather than treating the response as an untyped error string. |
 
 ### Consumer authentication (`INV-SSE-CONS`)
 
@@ -102,6 +103,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | SSE event storage | `internal/services/gateway/sse_event_service.go` | Append, list, cleanup (30s interval, >1h purge), count |
 | Live channel naming | `internal/services/pubsub/channels.go`, `internal/constants/channels.go` | `sse:cli:<id>`, `sse:web:<id>` |
 | Observe producers | `internal/services/gateway/observe_producer_controller.go` | `./ztd test integration --pkg ./internal/services/gateway --run ObserveProducer` |
+| Observe producer rejection contract | `internal/models/observe_producer_rejection.go`, `internal/tools/agent_harness/client/observe_producer.go` | Typed code, transition and stale details; client preserves the classified cause |
 | Event registry | `protocol/constants/events.json` | `make constants-check` |
 
 ## Event Routing and Wire Framing
@@ -217,6 +219,7 @@ curl -k -H "Cookie: ztd_web_session_cookie=${ZTD_WEB_SESSION_COOKIE}" \
 - **Broadcasting user-wide events without session scoping**: Attempting to publish without specifying `cli_session_id` or `web_session_id` (`INV-SSE-EVT-01`).
 - **Supplying routing IDs in consumer query parameters**: Attempting to select a user or session through query parameters; routing derives only from authenticated context (`INV-SSE-CONS-02`).
 - **Supplying `user_id` in an observe producer request body**: Attempting to name the owning user in the body; `user_id` derives from the mTLS peer certificate and strict decoding rejects unknown fields (`INV-SSE-PROD-03`).
+- **Treating an observe producer rejection as an untyped HTTP error**: Discarding the typed rejection body loses its stable code and transition or stale-update details (`INV-SSE-PROD-04`).
 - **Treating SSE as a permanent audit log**: Relying on `sse_events` for long-term historical records; rows older than 1 hour are automatically pruned (`INV-SSE-DEL-04`).
 - **Emitting `id:` lines on ephemeral events**: Rewinding consumer cursors by sending synthetic or zero IDs for ephemeral notifications (`INV-SSE-EVT-03`).
 

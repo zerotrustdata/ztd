@@ -92,7 +92,7 @@ func TestValidateAgentProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *te
 	req.Status = models.AgentLifecycleStatus("bogus")
 	err := validateAgentProducerRequest(req)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveInvalidTransition),
+	assert.True(t, errors.Is(err, constants.ErrObserveStatusInvalid),
 		"unknown first-write status must be rejected, not accepted as 'no existing projection'")
 }
 
@@ -152,7 +152,7 @@ func TestValidateRunProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *test
 	req.Status = models.RunLifecycleStatus("bogus")
 	err := validateRunProducerRequest(req)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveInvalidTransition),
+	assert.True(t, errors.Is(err, constants.ErrObserveStatusInvalid),
 		"unknown first-write status must be rejected")
 }
 

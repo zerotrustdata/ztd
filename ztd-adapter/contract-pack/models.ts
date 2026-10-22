@@ -653,6 +653,27 @@ export interface EvalStopRequestedPayload {
   observed_at: string;
 }
 
+export interface ObserveProjectionTransitionError {
+  kind: 'agent' | 'run';
+  id: string;
+  from: string;
+  to: string;
+}
+
+export interface ObserveProjectionStaleUpdateError {
+  kind: 'agent' | 'run';
+  id: string;
+  observed_at: string;
+  projected_at: string;
+}
+
+export interface ObserveProducerRejection {
+  error: string;
+  code: 'body_unreadable' | 'body_too_large' | 'invalid_json' | 'unsupported_schema_version' | 'agent_id_required' | 'run_id_required' | 'campaign_id_required' | 'observed_at_required' | 'agent_display_name_required' | 'agent_role_required' | 'run_display_name_required' | 'run_kind_invalid' | 'status_invalid' | 'negative_task_count' | 'completed_exceeds_total' | 'end_before_start' | 'stop_reason_invalid' | 'stop_scope_invalid' | 'route_user_required' | 'route_session_required' | 'route_session_ambiguous' | 'invalid_transition' | 'stale_update' | 'forbidden' | 'internal';
+  transition?: ObserveProjectionTransitionError;
+  stale?: ObserveProjectionStaleUpdateError;
+}
+
 export interface ObservePage<T> {
   schema_version: string;
   items: T[];
@@ -1273,5 +1294,35 @@ export function isEvalStopRequestedPayload(value: unknown): value is EvalStopReq
   if (!(typeof v.stop_scope === 'string' && (STOP_SCOPES as readonly string[]).includes(v.stop_scope))) return false; /* stop_scope */
   if (!(typeof v.requested_at === 'string')) return false; /* requested_at */
   if (!(typeof v.observed_at === 'string')) return false; /* observed_at */
+  return true;
+}
+
+export function isObserveProjectionTransitionError(value: unknown): value is ObserveProjectionTransitionError {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (!(typeof v.kind === 'string' && ["agent","run"].includes(v.kind as string))) return false; /* kind */
+  if (!(typeof v.id === 'string')) return false; /* id */
+  if (!(typeof v.from === 'string')) return false; /* from */
+  if (!(typeof v.to === 'string')) return false; /* to */
+  return true;
+}
+
+export function isObserveProjectionStaleUpdateError(value: unknown): value is ObserveProjectionStaleUpdateError {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (!(typeof v.kind === 'string' && ["agent","run"].includes(v.kind as string))) return false; /* kind */
+  if (!(typeof v.id === 'string')) return false; /* id */
+  if (!(typeof v.observed_at === 'string')) return false; /* observed_at */
+  if (!(typeof v.projected_at === 'string')) return false; /* projected_at */
+  return true;
+}
+
+export function isObserveProducerRejection(value: unknown): value is ObserveProducerRejection {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (!(typeof v.error === 'string')) return false; /* error */
+  if (!(typeof v.code === 'string' && ["body_unreadable","body_too_large","invalid_json","unsupported_schema_version","agent_id_required","run_id_required","campaign_id_required","observed_at_required","agent_display_name_required","agent_role_required","run_display_name_required","run_kind_invalid","status_invalid","negative_task_count","completed_exceeds_total","end_before_start","stop_reason_invalid","stop_scope_invalid","route_user_required","route_session_required","route_session_ambiguous","invalid_transition","stale_update","forbidden","internal"].includes(v.code as string))) return false; /* code */
+  if (v.transition !== undefined && !(isObserveProjectionTransitionError(v.transition))) return false; /* transition */
+  if (v.stale !== undefined && !(isObserveProjectionStaleUpdateError(v.stale))) return false; /* stale */
   return true;
 }

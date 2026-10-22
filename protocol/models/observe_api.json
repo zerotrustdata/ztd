@@ -354,5 +354,29 @@
     "freshness": {"type": "string", "required": true, "description": "Campaign source freshness status", "enum": ["active", "delayed", "stale", "intentionally_stopped", "safety_stopped", "source_offline"]},
     "last_heartbeat_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp of the last heartbeat observation"},
     "observed_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp of the last freshness observation"}
+  },
+
+  "observe_projection_transition_error": {
+    "_description": "Typed lifecycle transition rejection returned by the mTLS observe producer boundary.",
+    "kind": {"type": "string", "required": true, "enum": ["agent", "run"]},
+    "id": {"type": "string", "required": true},
+    "from": {"type": "string", "required": true, "description": "Current projection lifecycle status"},
+    "to": {"type": "string", "required": true, "description": "Requested projection lifecycle status"}
+  },
+
+  "observe_projection_stale_update_error": {
+    "_description": "Typed stale update rejection returned by the mTLS observe producer boundary.",
+    "kind": {"type": "string", "required": true, "enum": ["agent", "run"]},
+    "id": {"type": "string", "required": true},
+    "observed_at": {"type": "string", "format": "iso8601", "required": true},
+    "projected_at": {"type": "string", "format": "iso8601", "required": true}
+  },
+
+  "observe_producer_rejection": {
+    "_description": "Typed error body returned when the mTLS observe producer boundary rejects a request. The code is the stable contract; transition and stale carry structured lifecycle details.",
+    "error": {"type": "string", "required": true},
+    "code": {"type": "string", "required": true, "enum": ["body_unreadable", "body_too_large", "invalid_json", "unsupported_schema_version", "agent_id_required", "run_id_required", "campaign_id_required", "observed_at_required", "agent_display_name_required", "agent_role_required", "run_display_name_required", "run_kind_invalid", "status_invalid", "negative_task_count", "completed_exceeds_total", "end_before_start", "stop_reason_invalid", "stop_scope_invalid", "route_user_required", "route_session_required", "route_session_ambiguous", "invalid_transition", "stale_update", "forbidden", "internal"]},
+    "transition": {"type": "object", "required": false, "model": "observe_projection_transition_error"},
+    "stale": {"type": "object", "required": false, "model": "observe_projection_stale_update_error"}
   }
 }

@@ -131,7 +131,11 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 	}
 	require.NoError(t, env.store(t).ClearRunLease(context.Background(), runID))
 	env.control.setAlive(otherHostPID, false)
-	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusCancelled)
+	// A holder asked to stop leaves its queued assignments resumable, so it
+	// projects waiting; only cancel, which stops them, projects cancelled.
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusWaiting)
+	released := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, released.Status)
 	select {
 	case result := <-done:
 		require.NoError(t, result.err, result.out)
@@ -139,6 +143,9 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancel did not finish after the process released the run")
 	}
+	posted := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, posted.Status)
+	assert.Equal(t, models.RunLifecycleStatusCancelled, posted.Status.Status)
 	_, err := env.store(t).LoadRunLease(context.Background(), runID)
 	assert.True(t, isMissingRecord(err))
 }
@@ -251,6 +258,12 @@ func TestRunsResume_OfACompletedRunIsRejectedByTheGateway(t *testing.T) {
 	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	var transition *models.ObserveTransitionError
+	require.ErrorAs(t, err, &transition, "the Gateway's refused transition reaches the CLI typed")
+	assert.Equal(t, &models.ObserveTransitionError{
+		Kind: models.ObserveProjectionKindRun, ID: runID,
+		From: string(models.RunLifecycleStatusCompleted), To: string(models.RunLifecycleStatusRunning),
+	}, transition)
 	var show runShowJSON
 	require.NoError(t, env.runJSON(t, &show, "runs", "show", runID))
 	assert.Equal(t, uint32(testModelRoleCells(t)), show.Queued)

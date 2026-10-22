@@ -41,12 +41,11 @@ func TestRunStopWatcher_StopEventRequestsWithoutCancelling(t *testing.T) {
 
 func TestReleasedRunStatus_ReportsWhereTheRunStands(t *testing.T) {
 	tests := []struct {
-		name          string
-		stopRequested bool
-		row           *runRow
-		want          models.RunLifecycleStatus
+		name string
+		row  *runRow
+		want models.RunLifecycleStatus
 	}{
-		{name: "a stop request cancels the run", stopRequested: true, row: &runRow{Status: "interrupted", Queued: 1, Terminal: 1}, want: models.RunLifecycleStatusCancelled},
+		{name: "a run stopped with assignments queued waits for resume", row: &runRow{Status: "in_progress", Queued: 1, Terminal: 1}, want: models.RunLifecycleStatusWaiting},
 		{name: "a stopped run with nothing left is cancelled", row: &runRow{Status: "cancelled", Stopped: 2, Terminal: 2}, want: models.RunLifecycleStatusCancelled},
 		{name: "queued assignments leave an errored run waiting for resume", row: &runRow{Status: "in_progress", Queued: 1, Terminal: 1}, want: models.RunLifecycleStatusWaiting},
 		{name: "queued assignments outrank a failed verification", row: &runRow{Status: "verify_failed", Queued: 1, Terminal: 1}, want: models.RunLifecycleStatusWaiting},
@@ -58,7 +57,7 @@ func TestReleasedRunStatus_ReportsWhereTheRunStands(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, releasedRunStatus(tt.stopRequested, tt.row))
+			assert.Equal(t, tt.want, releasedRunStatus(tt.row))
 		})
 	}
 }

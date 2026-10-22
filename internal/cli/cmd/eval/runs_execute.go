@@ -621,7 +621,7 @@ func (l *runLifecycle) reportRunning(ctx context.Context) error {
 // status and then reads the released run. A release that executed nothing posts
 // nothing, so a finished run resumed again makes no transition, and a
 // verification verdict recorded after the run settled is not projected. A stop
-// request always posts, because cancel waiters return on its cancelled status.
+// request always posts, because cancel waiters return on a settled status.
 func (l *runLifecycle) reportTerminal(ctx context.Context, stopRequested bool) error {
 	if !l.running && !stopRequested {
 		return nil
@@ -631,18 +631,20 @@ func (l *runLifecycle) reportTerminal(ctx context.Context, stopRequested bool) e
 		return err
 	}
 	endedAt := l.deps.now().UTC()
-	return l.post(ctx, releasedRunStatus(stopRequested, row), row, &endedAt)
+	return l.post(ctx, releasedRunStatus(row), row, &endedAt)
 }
 
 // releasedRunStatus is the projected status of a released run, read from the row
-// runs show renders for it. A run asked to stop is cancelled. A run that still
-// has queued or running assignments is waiting for its next resume, whatever the
-// release reported. Otherwise the run's own classification decides: verified or
-// completed runs complete, a run whose verification failed fails, and a run the
-// classification does not settle waits.
-func releasedRunStatus(stopRequested bool, row *runRow) models.RunLifecycleStatus {
+// runs show renders for it, so the projection never claims more than the store.
+// A stop request alone is not a cancel: it leaves assignments queued and the run
+// resumable, so it projects as waiting. Only a run whose assignments runs cancel
+// stopped is cancelled. A run that still has queued or running assignments is
+// waiting for its next resume. Otherwise the run's own classification decides:
+// verified or completed runs complete, a run whose verification failed fails,
+// and a run the classification does not settle waits.
+func releasedRunStatus(row *runRow) models.RunLifecycleStatus {
 	switch {
-	case stopRequested, row.Status == "cancelled":
+	case row.Status == "cancelled":
 		return models.RunLifecycleStatusCancelled
 	case row.Status == "running":
 		return models.RunLifecycleStatusRunning

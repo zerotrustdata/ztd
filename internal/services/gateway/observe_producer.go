@@ -245,10 +245,14 @@ func (s *ObserveProducerService) UpdateAgentState(ctx context.Context, userID st
 			return fmt.Errorf("observe producer: update agent state: %w: agent %s owned by different user", constants.ErrObserveAgentNotFound, payload.AgentID)
 		}
 		if !isValidAgentTransition(proj.Status, payload.Status) {
-			return fmt.Errorf("observe producer: update agent state: %w: %s -> %s for agent %s", constants.ErrObserveInvalidTransition, proj.Status, payload.Status, payload.AgentID)
+			return fmt.Errorf("observe producer: update agent state: %w", &models.ObserveTransitionError{
+				Kind: models.ObserveProjectionKindAgent, ID: payload.AgentID, From: string(proj.Status), To: string(payload.Status),
+			})
 		}
 		if payload.ObservedAt.Before(proj.ObservedAt) {
-			return fmt.Errorf("observe producer: update agent state: %w: new observed_at %s before existing %s for agent %s", constants.ErrObserveStaleUpdate, payload.ObservedAt.Format(time.RFC3339Nano), proj.ObservedAt.Format(time.RFC3339Nano), payload.AgentID)
+			return fmt.Errorf("observe producer: update agent state: %w", &models.ObserveStaleUpdateError{
+				Kind: models.ObserveProjectionKindAgent, ID: payload.AgentID, ObservedAt: payload.ObservedAt, ProjectedAt: proj.ObservedAt,
+			})
 		}
 	}
 
@@ -318,10 +322,14 @@ func (s *ObserveProducerService) UpdateRunState(ctx context.Context, userID stri
 			return fmt.Errorf("observe producer: update run state: %w: run %s owned by different user", constants.ErrObserveRunNotFound, payload.RunID)
 		}
 		if !isValidRunTransition(proj.Status, payload.Status) {
-			return fmt.Errorf("observe producer: update run state: %w: %s -> %s for run %s", constants.ErrObserveInvalidTransition, proj.Status, payload.Status, payload.RunID)
+			return fmt.Errorf("observe producer: update run state: %w", &models.ObserveTransitionError{
+				Kind: models.ObserveProjectionKindRun, ID: payload.RunID, From: string(proj.Status), To: string(payload.Status),
+			})
 		}
 		if payload.ObservedAt.Before(proj.ObservedAt) {
-			return fmt.Errorf("observe producer: update run state: %w: new observed_at %s before existing %s for run %s", constants.ErrObserveStaleUpdate, payload.ObservedAt.Format(time.RFC3339Nano), proj.ObservedAt.Format(time.RFC3339Nano), payload.RunID)
+			return fmt.Errorf("observe producer: update run state: %w", &models.ObserveStaleUpdateError{
+				Kind: models.ObserveProjectionKindRun, ID: payload.RunID, ObservedAt: payload.ObservedAt, ProjectedAt: proj.ObservedAt,
+			})
 		}
 		existingProj = &proj
 	}

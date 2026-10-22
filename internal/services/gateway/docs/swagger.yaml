@@ -1161,6 +1161,76 @@ definitions:
       web_session_id:
         type: string
     type: object
+  models.ObserveProducerRejection:
+    properties:
+      code:
+        $ref: '#/definitions/models.ObserveProducerRejectionCode'
+      error:
+        type: string
+      stale:
+        $ref: '#/definitions/models.ObserveStaleUpdateError'
+      transition:
+        $ref: '#/definitions/models.ObserveTransitionError'
+    type: object
+  models.ObserveProducerRejectionCode:
+    enum:
+    - body_unreadable
+    - body_too_large
+    - invalid_json
+    - unsupported_schema_version
+    - agent_id_required
+    - run_id_required
+    - campaign_id_required
+    - observed_at_required
+    - agent_display_name_required
+    - agent_role_required
+    - run_display_name_required
+    - run_kind_invalid
+    - status_invalid
+    - negative_task_count
+    - completed_exceeds_total
+    - end_before_start
+    - stop_reason_invalid
+    - stop_scope_invalid
+    - route_user_required
+    - route_session_required
+    - route_session_ambiguous
+    - invalid_transition
+    - stale_update
+    - forbidden
+    - internal
+    type: string
+    x-enum-varnames:
+    - ObserveProducerRejectionBodyUnreadable
+    - ObserveProducerRejectionBodyTooLarge
+    - ObserveProducerRejectionInvalidJSON
+    - ObserveProducerRejectionUnsupportedSchema
+    - ObserveProducerRejectionAgentIDRequired
+    - ObserveProducerRejectionRunIDRequired
+    - ObserveProducerRejectionCampaignIDRequired
+    - ObserveProducerRejectionObservedAtRequired
+    - ObserveProducerRejectionAgentDisplayNameMissing
+    - ObserveProducerRejectionAgentRoleMissing
+    - ObserveProducerRejectionRunDisplayNameMissing
+    - ObserveProducerRejectionRunKindInvalid
+    - ObserveProducerRejectionStatusInvalid
+    - ObserveProducerRejectionNegativeTaskCount
+    - ObserveProducerRejectionCompletedExceedsTotal
+    - ObserveProducerRejectionEndBeforeStart
+    - ObserveProducerRejectionStopReasonInvalid
+    - ObserveProducerRejectionStopScopeInvalid
+    - ObserveProducerRejectionRouteUserRequired
+    - ObserveProducerRejectionRouteSessionRequired
+    - ObserveProducerRejectionRouteSessionAmbiguous
+    - ObserveProducerRejectionInvalidTransition
+    - ObserveProducerRejectionStaleUpdate
+    - ObserveProducerRejectionForbidden
+    - ObserveProducerRejectionInternal
+  models.ObserveProducerResponse:
+    properties:
+      accepted:
+        type: boolean
+    type: object
   models.ObserveProducerRunStateRequest:
     properties:
       active_task_id:
@@ -1205,6 +1275,36 @@ definitions:
       stop_scope:
         $ref: '#/definitions/models.StopScope'
       web_session_id:
+        type: string
+    type: object
+  models.ObserveProjectionKind:
+    enum:
+    - agent
+    - run
+    type: string
+    x-enum-varnames:
+    - ObserveProjectionKindAgent
+    - ObserveProjectionKindRun
+  models.ObserveStaleUpdateError:
+    properties:
+      id:
+        type: string
+      kind:
+        $ref: '#/definitions/models.ObserveProjectionKind'
+      observed_at:
+        type: string
+      projected_at:
+        type: string
+    type: object
+  models.ObserveTransitionError:
+    properties:
+      from:
+        type: string
+      id:
+        type: string
+      kind:
+        $ref: '#/definitions/models.ObserveProjectionKind'
+      to:
         type: string
     type: object
   models.ObservedMeasurement:
@@ -4370,11 +4470,11 @@ paths:
         "200":
           description: accepted
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerResponse'
         "400":
           description: Invalid transition, stale update, or missing fields
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
         "401":
           description: Unauthorized — mTLS user identity required
           schema:
@@ -4386,7 +4486,7 @@ paths:
         "500":
           description: Persistence failure
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
       summary: Push observe agent state
       tags:
       - observe
@@ -4411,11 +4511,11 @@ paths:
         "200":
           description: accepted
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerResponse'
         "400":
           description: Invalid transition, stale update, or missing fields
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
         "401":
           description: Unauthorized — mTLS user identity required
           schema:
@@ -4427,7 +4527,7 @@ paths:
         "500":
           description: Persistence failure
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
       summary: Push observe run state
       tags:
       - observe
@@ -4452,11 +4552,11 @@ paths:
         "200":
           description: accepted
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerResponse'
         "400":
           description: Invalid stop reason or scope, or missing campaign_id or run_id
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
         "401":
           description: Unauthorized — mTLS user identity required
           schema:
@@ -4468,7 +4568,7 @@ paths:
         "500":
           description: Persistence failure
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
       summary: Request observe campaign run stop
       tags:
       - observe

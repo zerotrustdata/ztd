@@ -1207,7 +1207,9 @@ var (
 
 	// Observe producer errors (Phase 3: state projection persistence and SSE emission)
 	ErrObserveInvalidTransition  = errors.New("observe: invalid state transition")
+	ErrObserveStatusInvalid      = errors.New("observe: unrecognized lifecycle status")
 	ErrObserveStaleUpdate        = errors.New("observe: stale update rejected")
+	ErrObserveRejectionUnknown   = errors.New("observe: unrecognized producer rejection code")
 	ErrObserveAgentIDRequired    = errors.New("observe: agent_id is required")
 	ErrObserveRunIDRequired      = errors.New("observe: run_id is required")
 	ErrObserveObservedAtRequired = errors.New("observe: observed_at is required")
