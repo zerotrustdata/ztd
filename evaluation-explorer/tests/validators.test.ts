@@ -627,3 +627,14 @@ describe('native evaluation contract', () => {
     expect(() => decodeViewRecord('evaluation_summary', bad)).toThrow(ValidationError);
   });
 });
+
+describe('evaluation_summary run_seconds', () => {
+  it('accepts a non-negative run time alongside historical elapsed_seconds', () => {
+    expect(() => decodeViewRecord('evaluation_summary', { ...nativeEvaluation, run_seconds: 1 })).not.toThrow();
+  });
+
+  it('rejects a negative or non-numeric run time', () => {
+    expect(() => decodeViewRecord('evaluation_summary', { ...nativeEvaluation, run_seconds: -1 })).toThrow(ValidationError);
+    expect(() => decodeViewRecord('evaluation_summary', { ...nativeEvaluation, run_seconds: '1' })).toThrow(ValidationError);
+  });
+});

@@ -202,6 +202,30 @@ func TestDeleterDeleteCampaignRemovesRunsCampaignAndInventory(t *testing.T) {
 	assert.False(t, exists)
 }
 
+func TestDeleterRejectsUnsafeIDsWithTypedPathElementError(t *testing.T) {
+	f := newArchiveFixture(t)
+	ctx := context.Background()
+	const unsafeID = "eval-v130-smoke-1022-13:30-gemma4-e4b"
+
+	_, err := f.deleter(t, false, newRecordingPublicationStateStore()).DeleteCampaign(ctx, unsafeID)
+	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	assert.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	assert.ErrorContains(t, err, "campaign ID")
+
+	_, err = f.deleter(t, false, newRecordingPublicationStateStore()).DeleteRun(ctx, unsafeID)
+	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	assert.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	assert.ErrorContains(t, err, "run ID")
+
+	_, _, err = LocateRun(ctx, f.files, unsafeID)
+	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	assert.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+
+	_, _, err = LocateCampaign(ctx, f.files, unsafeID)
+	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	assert.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+}
+
 func TestDeleterDeleteCampaignRemovesArchivedCampaign(t *testing.T) {
 	f := newArchiveFixture(t)
 	ctx := context.Background()

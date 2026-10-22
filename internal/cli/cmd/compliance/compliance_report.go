@@ -536,8 +536,8 @@ func buildEvaluationReportSources(ctx context.Context, fileSvc fs.RuntimeFileSer
 	store := evaluation.NewStore(fileSvc)
 	selected := make(map[string]struct{}, len(runIDs))
 	for _, runID := range runIDs {
-		if !evidence.ValidPathElement(runID) {
-			return nil, nil, fmt.Errorf("%w: invalid eval run ID %q", constants.ErrPathValidation, runID)
+		if err := evidence.ValidatePathElement(runID); err != nil {
+			return nil, nil, fmt.Errorf("%w: invalid eval run ID: %w", constants.ErrPathValidation, err)
 		}
 		if _, exists := selected[runID]; exists {
 			return nil, nil, fmt.Errorf("%w: duplicate eval run %s", constants.ErrValidationFailed, runID)
@@ -1128,8 +1128,8 @@ func buildOperationalReportSources(ctx context.Context, sourceDirs []string, sco
 		bodies := map[string][]byte{inventoryPath: inventoryBody}
 		sourceArtifacts := []compliancereport.SourceArtifact{{BundlePath: inventoryPath, Body: inventoryBody, MediaType: constants.MediaTypeJSON}}
 		for _, artifact := range inventory.Artifacts {
-			if !evidence.ValidRelativePath(artifact.RelativePath) {
-				return nil, nil, fmt.Errorf("%w: invalid operational artifact path %s", constants.ErrPathValidation, artifact.RelativePath)
+			if err := evidence.ValidateRelativePath(artifact.RelativePath); err != nil {
+				return nil, nil, fmt.Errorf("%w: invalid operational artifact path: %w", constants.ErrPathValidation, err)
 			}
 			body, err := readComplianceReportInputFile(filepath.Join(sourceDir, artifact.RelativePath))
 			if err != nil {
@@ -1168,8 +1168,11 @@ func buildStandaloneReportSources(ctx context.Context, input standaloneReportSou
 	artifacts := make([]compliancereport.SourceArtifact, 0, 10)
 	ksiRequested := input.ksiRunID != "" || input.ksiHistory != "" || input.ksiResults != ""
 	if ksiRequested {
-		if !evidence.ValidPathElement(input.ksiRunID) || input.ksiHistory == "" || input.ksiResults == "" {
+		if input.ksiRunID == "" || input.ksiHistory == "" || input.ksiResults == "" {
 			return nil, nil, fmt.Errorf("%w: --ksi-run-id, --ksi-history, and --ksi-results are required together", constants.ErrValidationFailed)
+		}
+		if err := evidence.ValidatePathElement(input.ksiRunID); err != nil {
+			return nil, nil, fmt.Errorf("%w: --ksi-run-id: %w", constants.ErrValidationFailed, err)
 		}
 		historyBody, err := readComplianceReportInputFile(input.ksiHistory)
 		if err != nil {
@@ -1199,8 +1202,11 @@ func buildStandaloneReportSources(ctx context.Context, input standaloneReportSou
 	}
 	commitmentRequested := input.commitmentRunID != "" || input.commitment != ""
 	if commitmentRequested {
-		if !evidence.ValidPathElement(input.commitmentRunID) || input.commitment == "" || input.evidenceTrust == nil || input.verifiedAt.IsZero() {
+		if input.commitmentRunID == "" || input.commitment == "" || input.evidenceTrust == nil || input.verifiedAt.IsZero() {
 			return nil, nil, fmt.Errorf("%w: commitment source, run, verification time, and assessed evidence trust are required", constants.ErrValidationFailed)
+		}
+		if err := evidence.ValidatePathElement(input.commitmentRunID); err != nil {
+			return nil, nil, fmt.Errorf("%w: commitment run: %w", constants.ErrValidationFailed, err)
 		}
 		body, err := readComplianceReportInputFile(input.commitment)
 		if err != nil {
@@ -1219,8 +1225,11 @@ func buildStandaloneReportSources(ctx context.Context, input standaloneReportSou
 	}
 	attestationRequested := input.attestationRunID != "" || input.attestations != ""
 	if attestationRequested {
-		if !evidence.ValidPathElement(input.attestationRunID) || input.attestations == "" || input.evidenceTrust == nil || input.verifiedAt.IsZero() {
+		if input.attestationRunID == "" || input.attestations == "" || input.evidenceTrust == nil || input.verifiedAt.IsZero() {
 			return nil, nil, fmt.Errorf("%w: attestation source, run, verification time, and assessed evidence trust are required", constants.ErrValidationFailed)
+		}
+		if err := evidence.ValidatePathElement(input.attestationRunID); err != nil {
+			return nil, nil, fmt.Errorf("%w: attestation run: %w", constants.ErrValidationFailed, err)
 		}
 		body, err := readComplianceReportInputFile(input.attestations)
 		if err != nil {
@@ -1235,8 +1244,11 @@ func buildStandaloneReportSources(ctx context.Context, input standaloneReportSou
 	}
 	auditRequested := input.auditRunID != "" || len(input.auditRecords) != 0
 	if auditRequested {
-		if !evidence.ValidPathElement(input.auditRunID) || len(input.auditRecords) == 0 {
+		if input.auditRunID == "" || len(input.auditRecords) == 0 {
 			return nil, nil, fmt.Errorf("%w: --audit-run-id and at least one --audit-record are required together", constants.ErrValidationFailed)
+		}
+		if err := evidence.ValidatePathElement(input.auditRunID); err != nil {
+			return nil, nil, fmt.Errorf("%w: --audit-run-id: %w", constants.ErrValidationFailed, err)
 		}
 		for _, sourcePath := range input.auditRecords {
 			body, err := readComplianceReportInputFile(sourcePath)
@@ -1259,8 +1271,11 @@ func buildStandaloneReportSources(ctx context.Context, input standaloneReportSou
 	}
 	ledgerRequested := input.ledgerRunID != "" || input.ledgerCommits != "" || input.ledgerState != ""
 	if ledgerRequested {
-		if !evidence.ValidPathElement(input.ledgerRunID) || input.ledgerCommits == "" || input.ledgerState == "" {
+		if input.ledgerRunID == "" || input.ledgerCommits == "" || input.ledgerState == "" {
 			return nil, nil, fmt.Errorf("%w: --ledger-run-id, --ledger-commits, and --ledger-state are required together", constants.ErrValidationFailed)
+		}
+		if err := evidence.ValidatePathElement(input.ledgerRunID); err != nil {
+			return nil, nil, fmt.Errorf("%w: --ledger-run-id: %w", constants.ErrValidationFailed, err)
 		}
 		commitsBody, err := readComplianceReportInputFile(input.ledgerCommits)
 		if err != nil {
@@ -1284,8 +1299,11 @@ func buildStandaloneReportSources(ctx context.Context, input standaloneReportSou
 	}
 	buildRequested := input.buildRunID != "" || input.buildConfig != ""
 	if buildRequested {
-		if !evidence.ValidPathElement(input.buildRunID) || input.buildConfig == "" {
+		if input.buildRunID == "" || input.buildConfig == "" {
 			return nil, nil, fmt.Errorf("%w: --build-run-id and --build-config-attestations are required together", constants.ErrValidationFailed)
+		}
+		if err := evidence.ValidatePathElement(input.buildRunID); err != nil {
+			return nil, nil, fmt.Errorf("%w: --build-run-id: %w", constants.ErrValidationFailed, err)
 		}
 		body, err := readComplianceReportInputFile(input.buildConfig)
 		if err != nil {

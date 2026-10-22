@@ -347,9 +347,9 @@ export function ModelDetailView() {
                               <strong>{latencyVal !== undefined ? formatLatency(latencyVal) : '—'}</strong>
                             </span>
                             <span>
-                              Elapsed:{' '}
+                              Run time:{' '}
                               <strong>
-                                {run.elapsed_seconds !== undefined ? formatDuration(run.elapsed_seconds) : '—'}
+                                {run.run_seconds !== undefined ? formatDuration(run.run_seconds) : '—'}
                               </strong>
                             </span>
                           </div>

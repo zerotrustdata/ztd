@@ -117,7 +117,7 @@ func evalCmdWithConfig(deps nativeEvalDeps) *cobra.Command {
 		runsEvalCmd(deps),
 		suitesEvalCmd(deps),
 		rolloutEvalCmd(deps),
-		formationsEvalCmd(),
+		formationsEvalCmd(deps),
 		gatesEvalCmd(deps),
 		conformanceEvalCmd(deps),
 		jsonLeaf(backupEvalCmd(deps)),
@@ -126,7 +126,7 @@ func evalCmdWithConfig(deps nativeEvalDeps) *cobra.Command {
 	return cmd
 }
 
-func formationsEvalCmd() *cobra.Command {
+func formationsEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "formations",
 		Short: "Heterogeneous model sets",
@@ -134,7 +134,7 @@ func formationsEvalCmd() *cobra.Command {
 	cmd.AddCommand(
 		formationsListEvalCmd(),
 		formationsShowEvalCmd(),
-		formationsAddEvalCmd(),
+		formationsAddEvalCmd(deps),
 		formationsRemoveEvalCmd(),
 	)
 	return cmd

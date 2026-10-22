@@ -557,7 +557,11 @@ export interface EvaluationSummary extends ViewRecordEnvelope {
   terminal_outcomes: Record<TerminalStatus, number>;
   started_at?: string;
   ended_at?: string;
+  /** Historical wall-clock from run start to publication, including stopped
+   *  and verification time. Not displayed; superseded by run_seconds. */
   elapsed_seconds?: number;
+  /** Time at least one assignment was executing; stop/resume gaps excluded. */
+  run_seconds?: number;
   verifier_state: VerifierState;
   verifier_failure_summary?: string;
   verification_metadata?: PublicVerificationMetadata;

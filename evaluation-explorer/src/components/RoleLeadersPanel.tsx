@@ -35,7 +35,7 @@ export type LeaderboardSortField =
   | 'tokens'
   | 'size'
   | 'throughput'
-  | 'eval_time';
+  | 'run_time';
 
 interface LeaderboardColumnDef {
   field: LeaderboardSortField;
@@ -106,9 +106,9 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
     initialDirection: 'desc',
   },
   {
-    field: 'eval_time',
-    label: 'Eval time',
-    title: 'Evaluation elapsed run duration: smaller is better',
+    field: 'run_time',
+    label: 'Run time',
+    title: 'Run time: time spent executing assignments, excluding stop/resume and verification gaps; smaller is better',
     initialDirection: 'desc',
   },
 ];
@@ -120,7 +120,7 @@ const OVERALL_COLUMN_TITLES: Partial<Record<LeaderboardSortField, string>> = {
   speed: 'Mean of role p50 latencies; faster is better',
   tokens: 'Mean output tokens per task across roles; fewer is better',
   throughput: 'Mean of role p50 token throughputs; unavailable if any contributor lacks throughput',
-  eval_time: 'Total elapsed duration of distinct contributing datasets; shared runs count once',
+  run_time: 'Total run time of distinct contributing datasets; shared runs count once',
 };
 
 function compareNullableNumber(
@@ -179,9 +179,9 @@ function compareLeaderboardRows(
       // Higher throughput is better
       diff = compareNullableNumber(a.throughput_p50, b.throughput_p50, false);
       break;
-    case 'eval_time':
-      // Shorter elapsed duration is better: smaller the better
-      diff = compareNullableNumber(a.elapsed_seconds, b.elapsed_seconds, true);
+    case 'run_time':
+      // Shorter run time is better: smaller the better
+      diff = compareNullableNumber(a.run_seconds, b.run_seconds, true);
       break;
   }
 
@@ -452,8 +452,8 @@ export function RoleLeadersPanel({
                           )}
                         </td>
                         <td>
-                          {row.elapsed_seconds !== undefined ? (
-                            formatDuration(row.elapsed_seconds)
+                          {row.run_seconds !== undefined ? (
+                            formatDuration(row.run_seconds)
                           ) : (
                             <UnavailableValue />
                           )}

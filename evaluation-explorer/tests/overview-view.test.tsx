@@ -129,16 +129,24 @@ describe('OverviewView', () => {
       render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
       const row = within(screen.getByRole('list', { name: 'Recent runs' }));
       expect(row.getByText(status)).toHaveClass(`status-${status}`);
-      if (status !== 'running') expect(row.queryByText(/Running for/)).not.toBeInTheDocument();
     },
   );
+
+  it('shows assignment run time, never wall-clock time since start', () => {
+    evalStore.loadFixtures([catalog, { ...evaluation, ended_at: '2026-09-23T12:00:00Z' }], []);
+    const { unmount } = render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    expect(within(screen.getByRole('list', { name: 'Recent runs' })).queryByText(/Run time/)).not.toBeInTheDocument();
+    unmount();
+    evalStore.loadFixtures([catalog, { ...evaluation, ended_at: '2026-09-23T12:00:00Z', run_seconds: 5400 }], []);
+    render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
+    expect(within(screen.getByRole('list', { name: 'Recent runs' })).getByText('Run time 1h 30m')).toBeInTheDocument();
+  });
 
   it('does not claim running from a historical partial summary without process evidence', () => {
     evalStore.loadFixtures([catalog, { ...evaluation, run_status: undefined }], []);
     render(<MemoryRouter initialEntries={['/?release=all']}><OverviewView /></MemoryRouter>);
     const row = within(screen.getByRole('list', { name: 'Recent runs' }));
     expect(row.getByText('unknown')).toBeInTheDocument();
-    expect(row.queryByText(/Running for/)).not.toBeInTheDocument();
   });
 
   it('receives cancellation through a pushed summary and counts stopped assignments as terminal', () => {

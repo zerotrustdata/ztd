@@ -641,8 +641,12 @@ func (s *Store) ListRunInventory(ctx context.Context) ([]RunInventoryEntry, erro
 	}
 	inventory := make([]RunInventoryEntry, 0, len(entries))
 	for _, candidate := range entries {
-		if !candidate.IsDir() || !complianceevidence.ValidPathElement(candidate.Name()) {
-			inventory = append(inventory, RunInventoryEntry{RunID: candidate.Name(), Kind: RunKindMalformed, Reason: "run inventory entry is not a valid directory"})
+		if !candidate.IsDir() {
+			inventory = append(inventory, RunInventoryEntry{RunID: candidate.Name(), Kind: RunKindMalformed, Reason: "run inventory entry is not a directory"})
+			continue
+		}
+		if err := complianceevidence.ValidatePathElement(candidate.Name()); err != nil {
+			inventory = append(inventory, RunInventoryEntry{RunID: candidate.Name(), Kind: RunKindMalformed, Reason: err.Error()})
 			continue
 		}
 		entry, inspectErr := s.InspectRun(ctx, candidate.Name())

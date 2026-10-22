@@ -9,6 +9,7 @@ package evidence
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -41,8 +42,11 @@ func (i *AuditRecordImporter) SourceID() string {
 }
 
 func (i *AuditRecordImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
-	if i == nil || i.reader == nil || !validAuditRecordBinding(i.binding) {
-		return nil, fmt.Errorf("%w: reader, content reference, path, scope, run, and operator session are required", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil {
+		return nil, fmt.Errorf("%w: reader is required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := validAuditRecordBinding(i.binding); err != nil {
+		return nil, fmt.Errorf("%w: audit record binding: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -72,7 +76,15 @@ func (i *AuditRecordImporter) Import(ctx context.Context) ([]EvidenceNode, error
 	return []EvidenceNode{{ArtifactID: i.binding.Reference, ArtifactType: ArtifactTypeAuditRecord, SHA256: digest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.AuditEvent", ProducerIdentity: event.GetOperatorSessionId(), ProducedAt: producedAt, ScopeID: i.binding.ScopeID, RunID: i.binding.RunID, AttemptID: i.binding.AttemptID, ScenarioID: i.binding.ScenarioID, VerificationStatus: VerificationStatusUnverified, BundlePath: i.binding.Path, CanonicalBytes: result.Bytes, References: []string{}}}, nil
 }
 
-func validAuditRecordBinding(binding AuditRecordImportBinding) bool {
-	_, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.AuditRecordReferencePrefix)
-	return referenceValid && ValidRelativePath(binding.Path) && binding.ScopeID != "" && binding.RunID != "" && binding.OperatorSessionID != ""
+func validAuditRecordBinding(binding AuditRecordImportBinding) error {
+	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.AuditRecordReferencePrefix); !referenceValid {
+		return errors.New("content reference is invalid")
+	}
+	if err := ValidateRelativePath(binding.Path); err != nil {
+		return err
+	}
+	if binding.ScopeID == "" || binding.RunID == "" || binding.OperatorSessionID == "" {
+		return constants.ErrMissingRequiredField
+	}
+	return nil
 }

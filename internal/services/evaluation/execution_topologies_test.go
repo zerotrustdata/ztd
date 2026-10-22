@@ -45,6 +45,55 @@ func TestFormationValidateRejectsProviderAndFamilyOverlap(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrFormationFamilyOverlap)
 }
 
+func TestParseVRAMBudgetMiB(t *testing.T) {
+	for raw, want := range map[string]uint64{
+		"8gb":     8 * 1024,
+		"12GiB":   12 * 1024,
+		"8192mib": 8192,
+		"8":       8 * 1024,
+		" 1.5g ":  1536,
+		"512MB":   512,
+	} {
+		got, err := ParseVRAMBudgetMiB(raw)
+		require.NoError(t, err, raw)
+		assert.Equal(t, want, got, raw)
+	}
+	for _, raw := range []string{"", "8gbx", "0", "-1", "nan", "inf", "gb"} {
+		_, err := ParseVRAMBudgetMiB(raw)
+		assert.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid, raw)
+	}
+}
+
+func TestEstimateFormationVRAM(t *testing.T) {
+	assert.Equal(t, uint64(5365), EstimateFormationModelVRAMMiB(9_000_000_000, "Q4_K_M"))
+	assert.Equal(t, uint64(9120), EstimateFormationModelVRAMMiB(9_000_000_000, "Q8_0"))
+	assert.Zero(t, EstimateFormationModelVRAMMiB(9_000_000_000, "unknown"))
+	assert.Equal(t, uint64(512), EstimateFormationKVCacheMiB(3_000_000_000))
+	assert.Equal(t, uint64(256), EstimateFormationKVCacheMiB(700_000_000))
+}
+
+func TestFormationValidateNamesMissingFields(t *testing.T) {
+	formation := newTestFormation("missing-fields")
+	formation.DisplayName, formation.MaxVRAMMiB = "", 0
+	err := formation.Validate()
+	require.ErrorIs(t, err, constants.ErrFormationInvalid)
+	assert.Contains(t, err.Error(), "missing display name, max VRAM")
+
+	formation = newTestFormation("missing-role-fields")
+	formation.Lite.Family, formation.Lite.Provider = "", ""
+	err = formation.Validate()
+	require.ErrorIs(t, err, constants.ErrFormationInvalid)
+	assert.Contains(t, err.Error(), "role lite: missing family, provider")
+}
+
+func TestFormationValidateBudgetErrorBreaksDownRoles(t *testing.T) {
+	formation := newTestFormation("over-budget")
+	formation.MaxVRAMMiB = 8 * 1024
+	err := formation.Validate()
+	require.ErrorIs(t, err, constants.ErrFormationVRAMBudgetExceeded)
+	assert.Contains(t, err.Error(), "primary test-primary:9b 6144")
+}
+
 func newTestFormation(id string) Formation {
 	return Formation{
 		ID: id, DisplayName: "Test Formation", Description: "A formation used for CRUD tests.", MaxVRAMMiB: FormationMaxVRAMMiB,

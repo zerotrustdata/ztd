@@ -82,6 +82,9 @@ func (s *Store) ListRunIDs(ctx context.Context) ([]string, error) {
 // wherever it lives, so every read of a run works whether or not it is
 // archived.
 func LocateRun(ctx context.Context, files fs.RuntimeFileService, runID string) (*Store, bool, error) {
+	if err := validatePathElements(runIDElement(runID)); err != nil {
+		return nil, false, fmt.Errorf("evaluation: locate run: %w", err)
+	}
 	active := NewStore(files)
 	exists, err := active.RunExists(ctx, runID)
 	if err != nil {
@@ -115,6 +118,9 @@ func LocateRun(ctx context.Context, files fs.RuntimeFileService, runID string) (
 // LocateCampaign returns the store that holds a campaign and whether the
 // campaign is archived.
 func LocateCampaign(ctx context.Context, files fs.RuntimeFileService, campaignID string) (*Store, bool, error) {
+	if err := validatePathElements(campaignIDElement(campaignID)); err != nil {
+		return nil, false, fmt.Errorf("evaluation: locate campaign: %w", err)
+	}
 	active := NewStore(files)
 	exists, err := active.CampaignExists(ctx, campaignID)
 	if err != nil {
@@ -392,8 +398,8 @@ func (a *Archiver) readManifest(ctx context.Context, dir string) (*ArchiveManife
 
 // LoadArchiveManifest reads the manifest beside an archived run or campaign.
 func LoadArchiveManifest(ctx context.Context, files fs.RuntimeFileService, kind ArchiveKind, id string) (*ArchiveManifest, error) {
-	if !complianceevidence.ValidPathElement(id) {
-		return nil, fmt.Errorf("%w: archive ID is invalid", constants.ErrEvidenceArtifactMalformed)
+	if err := complianceevidence.ValidatePathElement(id); err != nil {
+		return nil, fmt.Errorf("evaluation: load archive manifest: archive ID: %w", err)
 	}
 	archiver := &Archiver{files: files}
 	switch kind {

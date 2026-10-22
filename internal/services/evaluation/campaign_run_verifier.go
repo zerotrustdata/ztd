@@ -287,8 +287,11 @@ func BindStoredCampaignVerificationReport(ctx context.Context, store *Store, rep
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if store == nil || store.files == nil || report == nil || !complianceevidence.ValidPathElement(report.GetRunId()) || policy.VerifierReleaseVersion == "" {
+	if store == nil || store.files == nil || report == nil || policy.VerifierReleaseVersion == "" {
 		return nil, nil, fmt.Errorf("evaluation: bind stored campaign verification report: %w", constants.ErrMissingRequiredField)
+	}
+	if err := complianceevidence.ValidatePathElement(report.GetRunId()); err != nil {
+		return nil, nil, fmt.Errorf("evaluation: bind stored campaign verification report: run ID: %w", err)
 	}
 	run, err := store.LoadRun(ctx, report.GetRunId())
 	if err != nil {
@@ -342,8 +345,11 @@ func verifyCampaignRunReadOnly(ctx context.Context, store *Store, runID string, 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if store == nil || store.files == nil || !complianceevidence.ValidPathElement(runID) || policy.VerifierReleaseVersion == "" || policy.AssessmentTime == nil {
+	if store == nil || store.files == nil || policy.VerifierReleaseVersion == "" || policy.AssessmentTime == nil {
 		return nil, fmt.Errorf("evaluation: verify campaign run read-only: %w", constants.ErrMissingRequiredField)
+	}
+	if err := complianceevidence.ValidatePathElement(runID); err != nil {
+		return nil, fmt.Errorf("evaluation: verify campaign run read-only: run ID: %w", err)
 	}
 	run, err := store.LoadRun(ctx, runID)
 	if err != nil {

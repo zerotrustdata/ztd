@@ -145,10 +145,10 @@ type StreamSortField = 'time' | 'result' | 'task' | 'model' | AssignmentMetricCo
 type StreamSortDirection = 'asc' | 'desc';
 
 const ASSIGNMENT_METRIC_COLUMNS: Array<{ key: AssignmentMetricColumn; label: string; format: (value: number) => string }> = [
-  { key: 'latency_ms', label: 'Latency (s)', format: (ms) => formatNumber(ms / 1000, 2) },
+  { key: 'latency_ms', label: 'Latency (ms)', format: (ms) => formatNumber(ms) },
   { key: 'input_tokens', label: 'Input (tok)', format: (value) => formatNumber(value) },
   { key: 'output_tokens', label: 'Output (tok)', format: (value) => formatNumber(value) },
-  { key: 'tokens_per_second', label: 'Tokens/s (tok/s)', format: (value) => formatNumber(value, 1) },
+  { key: 'tokens_per_second', label: 'Tokens/s', format: (value) => formatNumber(value, 1) },
 ];
 
 type StreamResult = { label: string; symbol: string; tone: 'ok' | 'critical' | 'neutral' | 'info' };

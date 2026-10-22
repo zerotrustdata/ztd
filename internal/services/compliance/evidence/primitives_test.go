@@ -191,6 +191,13 @@ func TestValidPathElement_AcceptsSafeElement(t *testing.T) {
 	assert.True(t, ValidPathElement("abc123"))
 }
 
+func TestValidatePathElement_ReturnsTypedErrorForUnsafeElements(t *testing.T) {
+	for _, value := range []string{"", ".", "..", "a/b", "/absolute", "eval-1022-13:30", "run\x00id"} {
+		require.ErrorIs(t, ValidatePathElement(value), constants.ErrEvidencePathElementInvalid, value)
+	}
+	require.NoError(t, ValidatePathElement("eval-1022-1330"))
+}
+
 func TestValidPathElement_RejectsUnsafeElements(t *testing.T) {
 	assert.False(t, ValidPathElement(""))
 	assert.False(t, ValidPathElement("."))

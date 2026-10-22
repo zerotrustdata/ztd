@@ -420,7 +420,7 @@ export const fixtureEvaluationSummaries: EvaluationSummary[] = suiteDefs.map((s)
   terminal_outcomes: { completed: 125, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
   started_at: '2026-09-14T00:00:00Z',
   ended_at: '2026-09-14T06:00:00Z',
-  elapsed_seconds: 21600,
+  run_seconds: 21600,
   verifier_state: s.verifier,
   verifier_failure_summary:
     s.verifier === 'failed'
@@ -904,7 +904,7 @@ export const fixtureLiveEvaluationSummary: EvaluationSummary = {
   assignment_failed: 0,
   terminal_outcomes: { completed: 1, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
   started_at: '2026-09-14T08:00:05Z',
-  elapsed_seconds: 5,
+  run_seconds: 5,
   verifier_state: 'not_applicable',
   headline_metrics: {},
 };
@@ -1022,7 +1022,7 @@ export const fixtureVerifiedEvaluationSummaries: EvaluationSummary[] = [
     terminal_outcomes: { completed: 5, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
     started_at: '2026-09-13T22:00:00Z',
     ended_at: '2026-09-13T22:30:00Z',
-    elapsed_seconds: 1800,
+    run_seconds: 1800,
     verifier_state: 'not_applicable',
     headline_metrics: {
       pass_rate: { value: 0.8, unit: 'ratio', observed_count: 5, eligible_count: 5, unavailable_count: 0 },
@@ -1057,7 +1057,7 @@ export const fixtureVerifiedEvaluationSummaries: EvaluationSummary[] = [
     terminal_outcomes: { completed: 5, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
     started_at: '2026-09-13T23:00:00Z',
     ended_at: '2026-09-13T23:30:00Z',
-    elapsed_seconds: 1800,
+    run_seconds: 1800,
     verifier_state: 'not_applicable',
     headline_metrics: {
       pass_rate: { value: 0.6, unit: 'ratio', observed_count: 5, eligible_count: 5, unavailable_count: 0 },

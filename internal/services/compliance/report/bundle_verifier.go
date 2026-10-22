@@ -815,8 +815,8 @@ func (v *bundleVerifier) verifyEvalSourceVerificationReports(ctx context.Context
 					continue
 				}
 				runtimePath := strings.Join(parts[4:], "/")
-				if !evidence.ValidRelativePath(runtimePath) {
-					v.fail(constants.ErrPathValidation, bundlePath, "campaign runtime source path is invalid")
+				if err := evidence.ValidateRelativePath(runtimePath); err != nil {
+					v.fail(constants.ErrPathValidation, bundlePath, fmt.Sprintf("campaign runtime source path is invalid: %v", err))
 					continue
 				}
 				if _, exists := inventory.runtimeArtifactPaths[runtimePath]; exists {
@@ -894,8 +894,8 @@ func (v *bundleVerifier) verifyLedgerSources(ctx context.Context) {
 		if resource == nil || (resource.GetArtifactType() != string(evidence.ArtifactTypeLedgerCommit) && resource.GetArtifactType() != string(evidence.ArtifactTypeLedgerState)) {
 			continue
 		}
-		if !evidence.ValidPathElement(resource.GetScopeId()) || !evidence.ValidPathElement(resource.GetRunId()) {
-			v.fail(constants.ErrEvidenceScopeMismatch, resource.GetArtifactId(), "ledger evidence requires canonical scope and run identifiers")
+		if err := canonicalResourceIdentifiers(resource.GetScopeId(), resource.GetRunId()); err != nil {
+			v.fail(constants.ErrEvidenceScopeMismatch, resource.GetArtifactId(), fmt.Sprintf("ledger evidence requires canonical scope and run identifiers: %v", err))
 			continue
 		}
 		base := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, resource.GetScopeId(), resource.GetRunId(), constants.LedgerEvidenceDirname)
@@ -1003,8 +1003,8 @@ func (v *bundleVerifier) verifyBuildConfigSources(ctx context.Context) {
 		if resource == nil || (resource.GetArtifactType() != string(evidence.ArtifactTypeBuildAttestation) && resource.GetArtifactType() != string(evidence.ArtifactTypeConfigAttestation)) {
 			continue
 		}
-		if !evidence.ValidPathElement(resource.GetScopeId()) || !evidence.ValidPathElement(resource.GetRunId()) {
-			v.fail(constants.ErrEvidenceScopeMismatch, resource.GetArtifactId(), "build and configuration evidence requires canonical scope and run identifiers")
+		if err := canonicalResourceIdentifiers(resource.GetScopeId(), resource.GetRunId()); err != nil {
+			v.fail(constants.ErrEvidenceScopeMismatch, resource.GetArtifactId(), fmt.Sprintf("build and configuration evidence requires canonical scope and run identifiers: %v", err))
 			continue
 		}
 		expectedPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, resource.GetScopeId(), resource.GetRunId(), constants.BuildConfigAttestationsFilename)
@@ -1121,8 +1121,8 @@ func (v *bundleVerifier) verifyOperationalSources(ctx context.Context) {
 		expectedPaths := map[string]struct{}{bundlePath: {}}
 		validInventory := true
 		for _, artifact := range inventory.Artifacts {
-			if !evidence.ValidRelativePath(artifact.RelativePath) {
-				v.fail(constants.ErrPathValidation, bundlePath, "operational source inventory contains an invalid artifact path")
+			if err := evidence.ValidateRelativePath(artifact.RelativePath); err != nil {
+				v.fail(constants.ErrPathValidation, bundlePath, fmt.Sprintf("operational source inventory contains an invalid artifact path: %v", err))
 				validInventory = false
 				continue
 			}
@@ -1192,8 +1192,8 @@ func (v *bundleVerifier) verifyCommitmentSources(ctx context.Context) {
 			continue
 		}
 		bundlePath := resource.GetBundlePath()
-		if !evidence.ValidPathElement(resource.GetScopeId()) || !evidence.ValidPathElement(resource.GetRunId()) {
-			v.fail(constants.ErrInvalidEvidenceGraph, bundlePath, "commitment evidence requires canonical scope and run identifiers")
+		if err := canonicalResourceIdentifiers(resource.GetScopeId(), resource.GetRunId()); err != nil {
+			v.fail(constants.ErrInvalidEvidenceGraph, bundlePath, fmt.Sprintf("commitment evidence requires canonical scope and run identifiers: %v", err))
 			continue
 		}
 		expectedPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, resource.GetScopeId(), resource.GetRunId(), constants.ComplianceBundleCommitmentsFilename)
@@ -1294,8 +1294,8 @@ func (v *bundleVerifier) verifyAttestationSources(ctx context.Context) {
 			continue
 		}
 		bundlePath := resource.GetBundlePath()
-		if !evidence.ValidPathElement(resource.GetScopeId()) || !evidence.ValidPathElement(resource.GetRunId()) {
-			v.fail(constants.ErrInvalidEvidenceGraph, bundlePath, "attestation evidence requires canonical scope and run identifiers")
+		if err := canonicalResourceIdentifiers(resource.GetScopeId(), resource.GetRunId()); err != nil {
+			v.fail(constants.ErrInvalidEvidenceGraph, bundlePath, fmt.Sprintf("attestation evidence requires canonical scope and run identifiers: %v", err))
 			continue
 		}
 		expectedPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, resource.GetScopeId(), resource.GetRunId(), constants.ComplianceBundleAttestationsFilename)
@@ -1397,8 +1397,8 @@ func (v *bundleVerifier) verifyAuditRecordSources(ctx context.Context) {
 			continue
 		}
 		bundlePath := resource.GetBundlePath()
-		if !evidence.ValidPathElement(resource.GetScopeId()) || !evidence.ValidPathElement(resource.GetRunId()) {
-			v.fail(constants.ErrInvalidEvidenceGraph, bundlePath, "audit record evidence requires canonical scope and run identifiers")
+		if err := canonicalResourceIdentifiers(resource.GetScopeId(), resource.GetRunId()); err != nil {
+			v.fail(constants.ErrInvalidEvidenceGraph, bundlePath, fmt.Sprintf("audit record evidence requires canonical scope and run identifiers: %v", err))
 			continue
 		}
 		expectedPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, resource.GetScopeId(), resource.GetRunId(), constants.AuditRecordsDirname, resource.GetSha256()+constants.FileExtJSON)
@@ -1479,8 +1479,8 @@ func (v *bundleVerifier) verifyKSIHistorySources(ctx context.Context) {
 		if resource == nil || resource.GetArtifactType() != string(evidence.ArtifactTypeKSIResult) {
 			continue
 		}
-		if !evidence.ValidPathElement(resource.GetScopeId()) || !evidence.ValidPathElement(resource.GetRunId()) {
-			v.fail(constants.ErrEvidenceScopeMismatch, resource.GetArtifactId(), "KSI history evidence requires canonical scope and run identifiers")
+		if err := canonicalResourceIdentifiers(resource.GetScopeId(), resource.GetRunId()); err != nil {
+			v.fail(constants.ErrEvidenceScopeMismatch, resource.GetArtifactId(), fmt.Sprintf("KSI history evidence requires canonical scope and run identifiers: %v", err))
 			continue
 		}
 		historyPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, resource.GetScopeId(), resource.GetRunId(), constants.ComplianceBundleKSIHistoryFilename)
@@ -1655,8 +1655,8 @@ func (v *bundleVerifier) verifySourceVerificationReport(bundlePath string, body 
 func (v *bundleVerifier) replayCampaignSourceVerification(ctx context.Context, admissionID string, inventory *evalSourceInventory) {
 	bundleRoot := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, admissionID)
 	for _, artifact := range inventory.campaignInventory.GetArtifacts() {
-		if !evidence.ValidRelativePath(artifact.GetRuntimePath()) {
-			v.fail(constants.ErrPathValidation, artifact.GetRuntimePath(), "campaign runtime path is invalid")
+		if err := evidence.ValidateRelativePath(artifact.GetRuntimePath()); err != nil {
+			v.fail(constants.ErrPathValidation, artifact.GetRuntimePath(), fmt.Sprintf("campaign runtime path is invalid: %v", err))
 			return
 		}
 		body, exists := v.bodies[path.Join(bundleRoot, constants.ComplianceBundleSourceRuntimeDirname, artifact.GetRuntimePath())]
@@ -1711,8 +1711,11 @@ func validateCampaignSourceInventory(manifest *evalv1.CampaignComplianceSourceIn
 	}
 	seenPaths := make(map[string]struct{}, len(manifest.GetArtifacts()))
 	for _, artifact := range manifest.GetArtifacts() {
-		if artifact == nil || !evidence.ValidRelativePath(artifact.GetRuntimePath()) || artifact.GetMediaType() != constants.MediaTypeJSON || len(artifact.GetSha256()) != sha256.Size*2 || strings.ToLower(artifact.GetSha256()) != artifact.GetSha256() {
+		if artifact == nil || artifact.GetMediaType() != constants.MediaTypeJSON || len(artifact.GetSha256()) != sha256.Size*2 || strings.ToLower(artifact.GetSha256()) != artifact.GetSha256() {
 			return fmt.Errorf("campaign source inventory contains an incomplete artifact")
+		}
+		if err := evidence.ValidateRelativePath(artifact.GetRuntimePath()); err != nil {
+			return fmt.Errorf("campaign source inventory contains an incomplete artifact: %w", err)
 		}
 		if _, err := hex.DecodeString(artifact.GetSha256()); err != nil {
 			return fmt.Errorf("campaign source inventory contains an invalid artifact digest")
@@ -1982,6 +1985,18 @@ func (v *bundleVerifier) verifyRenderedFormats() {
 func (v *bundleVerifier) fail(code error, subject, reason string) {
 	stableCode := stableVerificationFailureCode(code)
 	v.report.Failures = append(v.report.Failures, &compliancev1.VerificationFailure{Code: stableCode.Error(), SubjectRef: subject, Reason: reason})
+}
+
+// canonicalResourceIdentifiers reports the first scope or run identifier that
+// is not a single safe path element, wrapping its typed cause.
+func canonicalResourceIdentifiers(scopeID, runID string) error {
+	if err := evidence.ValidatePathElement(scopeID); err != nil {
+		return fmt.Errorf("scope ID: %w", err)
+	}
+	if err := evidence.ValidatePathElement(runID); err != nil {
+		return fmt.Errorf("run ID: %w", err)
+	}
+	return nil
 }
 
 func stableVerificationFailureCode(err error) error {

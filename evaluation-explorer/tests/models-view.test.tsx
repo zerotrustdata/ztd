@@ -202,7 +202,7 @@ describe('ModelsView', () => {
           assignment_failed: 0,
           terminal_outcomes: { completed: 10, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
           started_at: '2026-10-06T00:00:00Z',
-          elapsed_seconds: 60,
+          run_seconds: 60,
           verifier_state: 'not_applicable',
           headline_metrics: {},
         },
@@ -228,7 +228,7 @@ describe('ModelsView', () => {
     expect(panel.getByText('50%')).toBeInTheDocument();
     expect(panel.getByText('4B')).toBeInTheDocument();
     expect(panel.getByText('1.20 s')).toBeInTheDocument();
-    for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Size', 'Eval time']) {
+    for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Size', 'Run time']) {
       expect(panel.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
     expect(panel.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument();

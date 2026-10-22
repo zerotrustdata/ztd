@@ -1220,7 +1220,7 @@ export interface RecentCampaignRow extends ReleaseProvenance {
   models: RecentRunModel[];
   startedAt?: string;
   endedAt?: string;
-  elapsedSeconds?: number;
+  runSeconds?: number;
   detail: string;
   observedAt: string;
   qualityState: QualityState;
@@ -1306,7 +1306,7 @@ export function recentCampaignRows(
       modelName: (runModels.find((m) => m.role === 'primary') ?? runModels[0])?.name,
       startedAt: primary?.started_at,
       endedAt: primary?.ended_at,
-      elapsedSeconds: primary?.elapsed_seconds,
+      runSeconds: primary?.run_seconds,
       release: primary?.release ?? catalog?.release,
       release_basis: primary?.release_basis ?? catalog?.release_basis,
       source_revision: primary?.source_revision ?? catalog?.source_revision,
@@ -1342,7 +1342,7 @@ export interface ModelLeaderboardRow {
   /** Advertised parameter count; displayed and used as a tie-break, never scored. */
   parameter_billions?: number;
   throughput_p50?: number;
-  elapsed_seconds?: number;
+  run_seconds?: number;
 }
 
 export interface ModelRoleLeaderboardRow extends ModelLeaderboardRow {
@@ -1373,14 +1373,14 @@ function modelParameterBillions(model: ModelSummary): number | undefined {
   return undefined;
 }
 
-/** A dataset with a single homogeneous run has an unambiguous finish time.
+/** A dataset with a single homogeneous run has an unambiguous run time.
  *  Multi-run and heterogeneous datasets cannot supply a per-model duration. */
-function modelElapsedSeconds(model: ModelSummary, evaluations: EvaluationSummary[]): number | undefined {
+function modelRunSeconds(model: ModelSummary, evaluations: EvaluationSummary[]): number | undefined {
   const runs = evaluations.filter((run) => run.dataset_id === model.dataset_id);
   const run = runs[0];
   if (runs.length !== 1 || !run || run.evaluation_unit !== 'model' || run.lifecycle_state !== 'completed') return undefined;
-  const elapsed = run.elapsed_seconds;
-  return elapsed !== undefined && Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : undefined;
+  const seconds = run.run_seconds;
+  return seconds !== undefined && Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
 }
 
 function positive(value: number | undefined): number | undefined {
@@ -1486,7 +1486,7 @@ export function modelRoleLeaderboardRows(
       output_tokens: tokens,
       parameter_billions: positive(modelParameterBillions(model)),
       throughput_p50: model.output_throughput_p50?.value,
-      elapsed_seconds: modelElapsedSeconds(model, evaluations),
+      run_seconds: modelRunSeconds(model, evaluations),
     };
   });
   rows.sort(compareModelLeaderboardScores);
@@ -1536,7 +1536,7 @@ export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[])
       const observed = group.flatMap((row) => row.security !== undefined ? [row.security] : []);
       return observed.length > 0 ? [mean(observed)] : [];
     });
-    const durations = Array.from(new Map(groups.flat().map((row) => [row.model.dataset_id, row.elapsed_seconds])).values());
+    const durations = Array.from(new Map(groups.flat().map((row) => [row.model.dataset_id, row.run_seconds])).values());
     rows.push({
       rank: 0,
       model: groups[0]![0]!.model,
@@ -1550,7 +1550,7 @@ export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[])
       output_tokens: meanByRole((row) => row.output_tokens),
       parameter_billions: groups[0]![0]!.parameter_billions,
       throughput_p50: optionalMeanByRole((row) => row.throughput_p50),
-      elapsed_seconds: durations.every((value) => value !== undefined)
+      run_seconds: durations.every((value) => value !== undefined)
         ? durations.reduce((sum, value) => sum + value, 0)
         : undefined,
     });

@@ -181,6 +181,9 @@ type runAggregateState struct {
 	VariantRoles   map[string]*variantRoleAggregate
 	EvaluatedCount uint32
 	Headline       *runHeadlineMetrics
+	// RunSeconds is the time the run spent executing assignments; nil until
+	// an assignment has a persisted result. See assignmentRunSeconds.
+	RunSeconds *float64
 
 	// ProviderEnvironment is the declared environment the run started on. It is
 	// not derived from assignments: callers attach it after
@@ -389,6 +392,7 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 	}
 	state.ModelCount = uint32(len(scheduledVariants))
 	state.EvaluatedCount = uint32(len(evaluatedVariants))
+	state.RunSeconds = assignmentRunSeconds(assignments, results)
 	headline, err := collectRunHeadlineMetrics(assignments, results, state)
 	if err != nil {
 		return nil, err
@@ -1215,7 +1219,7 @@ type evaluationSummaryRecord struct {
 	TerminalOutcomes       map[string]uint32                  `json:"terminal_outcomes"`
 	StartedAt              string                             `json:"started_at,omitempty"`
 	EndedAt                string                             `json:"ended_at,omitempty"`
-	ElapsedSeconds         *float64                           `json:"elapsed_seconds,omitempty"`
+	RunSeconds             *float64                           `json:"run_seconds,omitempty"`
 	VerifierState          string                             `json:"verifier_state"`
 	VerifierFailureSummary string                             `json:"verifier_failure_summary,omitempty"`
 	VerificationMetadata   *summaryVerificationMetadataRecord `json:"verification_metadata,omitempty"`
@@ -1269,22 +1273,13 @@ func buildEvaluationSummaryRecord(input evaluationSummaryInput) (*evaluationSumm
 		TerminalOutcomes:    aggregateTerminalOutcomes(state),
 		VerifierState:       "not_run",
 		HeadlineMetrics:     headlineMetricsForState(state),
+		RunSeconds:          state.RunSeconds,
 	}
 	if settled {
 		record.EndedAt = input.ObservedAt
 	}
 	if run.GetStartedAt() != nil {
-		startedAtTime := run.GetStartedAt().AsTime().UTC()
-		record.StartedAt = startedAtTime.Format(time.RFC3339Nano)
-		observedTime, _ := time.Parse(time.RFC3339Nano, input.ObservedAt)
-		if observedTime.IsZero() {
-			if parsed, err := time.Parse(time.RFC3339, input.ObservedAt); err == nil {
-				observedTime = parsed.UTC()
-			}
-		}
-		if elapsed := elapsedSecondsBetween(startedAtTime, observedTime); elapsed != nil {
-			record.ElapsedSeconds = elapsed
-		}
+		record.StartedAt = run.GetStartedAt().AsTime().UTC().Format(time.RFC3339Nano)
 	}
 	if input.Report == nil {
 		return record, nil
@@ -1357,11 +1352,48 @@ func headlineMetricsForState(state *runAggregateState) evaluationHeadlineMetrics
 	}
 }
 
-func elapsedSecondsBetween(startedAt, observedAt time.Time) *float64 {
-	if startedAt.IsZero() || observedAt.IsZero() || observedAt.Before(startedAt) {
+// assignmentRunSeconds returns the time at least one assignment of the run
+// was executing: the union of each resulted assignment's started_at to result
+// completed_at interval. Time while the run was stopped, interrupted, waiting
+// to resume, or waiting for verification is excluded, and concurrent
+// assignments count once. An assignment without a persisted result has no
+// closed execution interval and contributes nothing.
+func assignmentRunSeconds(assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult) *float64 {
+	type interval struct{ start, end time.Time }
+	intervals := make([]interval, 0, len(results))
+	for _, assignment := range assignments {
+		result := results[assignment.GetAssignmentId()]
+		if result == nil || assignment.GetStartedAt() == nil {
+			continue
+		}
+		completedAt := result.GetCompletedAt()
+		if completedAt == nil {
+			completedAt = assignment.GetCompletedAt()
+		}
+		if completedAt == nil {
+			continue
+		}
+		start, end := assignment.GetStartedAt().AsTime(), completedAt.AsTime()
+		if end.After(start) {
+			intervals = append(intervals, interval{start: start, end: end})
+		}
+	}
+	if len(intervals) == 0 {
 		return nil
 	}
-	seconds := math.Round(observedAt.Sub(startedAt).Seconds())
+	sort.Slice(intervals, func(i, j int) bool { return intervals[i].start.Before(intervals[j].start) })
+	var total time.Duration
+	current := intervals[0]
+	for _, next := range intervals[1:] {
+		if next.start.After(current.end) {
+			total += current.end.Sub(current.start)
+			current = next
+		} else if next.end.After(current.end) {
+			current.end = next.end
+		}
+	}
+	total += current.end.Sub(current.start)
+	seconds := math.Round(total.Seconds())
 	return &seconds
 }
 

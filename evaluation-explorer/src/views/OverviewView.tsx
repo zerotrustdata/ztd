@@ -10,7 +10,7 @@ import { useStoreState } from '../state/store';
 import { LiveEventStream } from '../components/LiveEventStream';
 import { formatNumber } from '../components/shared';
 import { formatDuration, formatRelativeTime, formatTimestamp } from '../utils/format';
-import { recentCampaignRows, roleLabel, terminalOutcomeBreakdown, type RecentCampaignRow } from './derived';
+import { recentCampaignRows, roleLabel, terminalOutcomeBreakdown } from './derived';
 import type { CatalogSnapshot, EvaluationSummary, ModelSummary } from '../contract/types';
 
 function formatClock(iso: string | undefined): string {
@@ -18,15 +18,6 @@ function formatClock(iso: string | undefined): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return 'Unavailable';
   return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-}
-
-/** Wall-clock seconds a run has spent executing: recorded elapsed, start→end, or start→now while live. */
-function runDurationSeconds(row: RecentCampaignRow, now: number): number | undefined {
-  if (row.elapsedSeconds !== undefined) return row.elapsedSeconds;
-  if (!row.startedAt) return undefined;
-  const start = new Date(row.startedAt).getTime();
-  const end = row.endedAt ? new Date(row.endedAt).getTime() : row.runStatus === 'running' ? now : NaN;
-  return Number.isFinite(start) && Number.isFinite(end) && end >= start ? (end - start) / 1000 : undefined;
 }
 
 /** Most recent run for each dataset in the feed. */
@@ -43,7 +34,6 @@ function Runs({
     () => recentCampaignRows(catalogs, evaluations, models),
     [catalogs, evaluations, models],
   );
-  const now = Date.now();
   return (
     <section className="panel campaign-evidence-panel" aria-label="Runs">
       <div className="panel-head campaign-evidence-head">
@@ -93,8 +83,6 @@ function Runs({
             const title = campaign.modelName ?? campaign.label;
             const titleModel = campaign.models.find((model) => model.role === 'primary') ?? campaign.models[0];
             const otherModels = campaign.models.filter((model) => model.name !== campaign.modelName);
-            const duration = runDurationSeconds(campaign, now);
-            const running = status === 'running';
             const startedAt = campaign.startedAt ?? campaign.observedAt;
             return (
               <li key={campaign.datasetId} className="campaign-evidence-row">
@@ -167,9 +155,9 @@ function Runs({
                   <span title={formatTimestamp(startedAt)}>
                     Started {formatClock(startedAt)} · {formatRelativeTime(startedAt)}
                   </span>
-                  {duration !== undefined ? (
-                    <span title={campaign.endedAt ? `Ended ${formatTimestamp(campaign.endedAt)}` : undefined}>
-                      {running ? 'Running for' : status === 'unknown' || status === 'in_progress' || status === 'interrupted' ? 'Recorded' : 'Ran for'} {formatDuration(duration)}
+                  {campaign.runSeconds !== undefined ? (
+                    <span title={`Time spent executing assignments; stop/resume gaps excluded${campaign.endedAt ? `. Ended ${formatTimestamp(campaign.endedAt)}` : ''}`}>
+                      Run time {formatDuration(campaign.runSeconds)}
                     </span>
                   ) : null}
                 </div>

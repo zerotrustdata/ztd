@@ -10,7 +10,10 @@ package evaluation
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -109,20 +112,41 @@ func (f Formation) EstimatedVRAMMiB() uint64 {
 	return total
 }
 
+// vramBreakdown renders each sovereign role's estimate for budget errors.
+func (f Formation) vramBreakdown() string {
+	parts := make([]string, 0, 3)
+	for _, role := range []FormationRole{FormationRolePrimary, FormationRoleAssistant, FormationRoleLite} {
+		model, _ := f.Model(role)
+		if model.Trust != FormationTrustSovereign {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s %s %d", role, model.ServedModelTag, model.EstimatedModelVRAMMiB+model.EstimatedKVCacheMiB))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // Validate enforces the formation's role, trust, heterogeneity, and hardware
 // constraints.
 func (f Formation) Validate() error {
-	if f.ID == "" || f.DisplayName == "" || f.Description == "" || f.MaxVRAMMiB == 0 {
-		return fmt.Errorf("formation %q: %w", f.ID, constants.ErrFormationInvalid)
+	if missing := missingFields(map[string]bool{
+		"id": f.ID == "", "display name": f.DisplayName == "", "description": f.Description == "", "max VRAM": f.MaxVRAMMiB == 0,
+	}); missing != "" {
+		return fmt.Errorf("formation %q: missing %s: %w", f.ID, missing, constants.ErrFormationInvalid)
+	}
+	for _, role := range []FormationRole{FormationRolePrimary, FormationRoleAssistant, FormationRoleLite} {
+		model, err := f.Model(role)
+		if err != nil {
+			return err
+		}
+		if err := validateFormationModel(role, model); err != nil {
+			return err
+		}
 	}
 	if !f.RelaxedValidation {
 		seenProviders := make(map[string]FormationRole, 3)
 		seenFamilies := make(map[string]FormationRole, 3)
 		for _, role := range []FormationRole{FormationRolePrimary, FormationRoleAssistant, FormationRoleLite} {
-			model, err := f.Model(role)
-			if err != nil {
-				return err
-			}
+			model, _ := f.Model(role)
 			provider := formationIdentity(model.Provider)
 			if previous, exists := seenProviders[provider]; exists {
 				return fmt.Errorf("formation %q: roles %s and %s share provider %q: %w", f.ID, previous, role, model.Provider, constants.ErrFormationProviderOverlap)
@@ -134,25 +158,25 @@ func (f Formation) Validate() error {
 			}
 			seenFamilies[family] = role
 		}
+		for _, role := range []FormationRole{FormationRolePrimary, FormationRoleAssistant, FormationRoleLite} {
+			model, _ := f.Model(role)
+			if model.Trust == FormationTrustSovereign && model.EstimatedModelVRAMMiB == 0 {
+				return fmt.Errorf("formation %q role %s: sovereign model %q has no VRAM estimate: %w", f.ID, role, model.ServedModelTag, constants.ErrFormationInvalid)
+			}
+		}
 		if f.EstimatedVRAMMiB() >= f.MaxVRAMMiB {
-			return fmt.Errorf("formation %q: estimated %d MiB must remain below %d MiB: %w", f.ID, f.EstimatedVRAMMiB(), f.MaxVRAMMiB, constants.ErrFormationVRAMBudgetExceeded)
-		}
-	}
-	for _, role := range []FormationRole{FormationRolePrimary, FormationRoleAssistant, FormationRoleLite} {
-		model, err := f.Model(role)
-		if err != nil {
-			return err
-		}
-		if err := validateFormationModel(role, model); err != nil {
-			return err
+			return fmt.Errorf("formation %q: estimated %d MiB (%s) must remain below %d MiB: %w", f.ID, f.EstimatedVRAMMiB(), f.vramBreakdown(), f.MaxVRAMMiB, constants.ErrFormationVRAMBudgetExceeded)
 		}
 	}
 	return nil
 }
 
 func validateFormationModel(role FormationRole, model FormationModel) error {
-	if model.VariantID == "" || model.DisplayName == "" || model.Provider == "" || model.Family == "" || model.ProviderClass == "" || model.ServedModelTag == "" {
-		return fmt.Errorf("formation role %s: %w", role, constants.ErrFormationInvalid)
+	if missing := missingFields(map[string]bool{
+		"variant id": model.VariantID == "", "display name": model.DisplayName == "", "provider": model.Provider == "",
+		"family": model.Family == "", "provider class": model.ProviderClass == "", "served model tag": model.ServedModelTag == "",
+	}); missing != "" {
+		return fmt.Errorf("formation role %s: missing %s: %w", role, missing, constants.ErrFormationInvalid)
 	}
 	switch model.Trust {
 	case FormationTrustSovereign:
@@ -172,9 +196,75 @@ func validateFormationModel(role FormationRole, model FormationModel) error {
 	return nil
 }
 
+// missingFields names the absent fields, sorted, or returns "" when none are.
+func missingFields(absent map[string]bool) string {
+	names := make([]string, 0, len(absent))
+	for name, missing := range absent {
+		if missing {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
 func isSupportedLocalQuantization(value string) bool {
 	quantization := strings.ToLower(strings.TrimSpace(value))
 	return strings.HasPrefix(quantization, "q4") || strings.HasPrefix(quantization, "q8")
+}
+
+// Effective bits per parameter for local GGUF weights, including the
+// higher-precision embedding and output tensors a quantized file keeps.
+const (
+	formationQ4BitsPerParameter = 5.0
+	formationQ8BitsPerParameter = 8.5
+)
+
+// EstimateFormationModelVRAMMiB estimates resident weight memory for a local
+// model from its parameter count and quantization. It returns zero when the
+// parameter count is unknown or the quantization is not a supported local one.
+func EstimateFormationModelVRAMMiB(parameterCount uint64, quantization string) uint64 {
+	var bits float64
+	switch q := strings.ToLower(strings.TrimSpace(quantization)); {
+	case strings.HasPrefix(q, "q4"):
+		bits = formationQ4BitsPerParameter
+	case strings.HasPrefix(q, "q8"):
+		bits = formationQ8BitsPerParameter
+	default:
+		return 0
+	}
+	return uint64(math.Ceil(float64(parameterCount) * bits / 8 / (1 << 20)))
+}
+
+// EstimateFormationKVCacheMiB returns the KV-cache allowance for a local
+// model: 512 MiB from 3B parameters up, 256 MiB below.
+func EstimateFormationKVCacheMiB(parameterCount uint64) uint64 {
+	if parameterCount >= 3_000_000_000 {
+		return 512
+	}
+	return 256
+}
+
+// ParseVRAMBudgetMiB parses a VRAM budget such as "8gb", "12GiB", or
+// "8192mib" into MiB. A bare number is GiB, so "8" is an 8 GiB card.
+func ParseVRAMBudgetMiB(raw string) (uint64, error) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	multiplier := float64(1024)
+	for _, unit := range []struct {
+		suffix string
+		mib    float64
+	}{{"gib", 1024}, {"gb", 1024}, {"g", 1024}, {"mib", 1}, {"mb", 1}, {"m", 1}} {
+		if strings.HasSuffix(value, unit.suffix) {
+			value = strings.TrimSpace(strings.TrimSuffix(value, unit.suffix))
+			multiplier = unit.mib
+			break
+		}
+	}
+	amount, err := strconv.ParseFloat(value, 64)
+	if err != nil || !(amount > 0) || math.IsInf(amount, 0) {
+		return 0, fmt.Errorf("formation: VRAM budget %q: use a size such as 8gb or 8192mib: %w", raw, constants.ErrEvaluationFlagsInvalid)
+	}
+	return uint64(math.Round(amount * multiplier)), nil
 }
 
 func formationIdentity(value string) string {

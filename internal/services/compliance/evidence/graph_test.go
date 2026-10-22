@@ -621,16 +621,14 @@ func TestEvidenceNode_ToProto_OmitsNilEncryption(t *testing.T) {
 	assert.Nil(t, ref.GetEncryption())
 }
 
-func TestValidBundlePath_RejectsUnsafePaths(t *testing.T) {
-	assert.False(t, validBundlePath(""))
-	assert.False(t, validBundlePath("/absolute/path"))
-	assert.False(t, validBundlePath(".."))
-	assert.False(t, validBundlePath("../escape"))
-	assert.False(t, validBundlePath("../../escape"))
+func TestValidateRelativePath_RejectsUnsafePathsWithTypedError(t *testing.T) {
+	for _, value := range []string{"", "/absolute/path", "..", "../escape", "../../escape", "run:1"} {
+		require.ErrorIs(t, ValidateRelativePath(value), constants.ErrEvidenceRelativePathInvalid, value)
+	}
 }
 
-func TestValidBundlePath_AcceptsSafePaths(t *testing.T) {
-	assert.True(t, validBundlePath("manifest.json"))
-	assert.True(t, validBundlePath("receipts/abc.json"))
-	assert.True(t, validBundlePath("a/b/c.json"))
+func TestValidateRelativePath_AcceptsSafePaths(t *testing.T) {
+	for _, value := range []string{"manifest.json", "receipts/abc.json", "a/b/c.json"} {
+		require.NoError(t, ValidateRelativePath(value), value)
+	}
 }

@@ -13,7 +13,6 @@ import (
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
@@ -57,7 +56,7 @@ func NewDeleter(files fs.RuntimeFileService, live LeaseLiveness, publication Cam
 // that is only in the backups is deleted from them; a run in neither is not
 // found.
 func (d *Deleter) DeleteRun(ctx context.Context, runID string) (*DeleteReport, error) {
-	if err := d.validate(runID); err != nil {
+	if err := d.validate(runIDElement(runID)); err != nil {
 		return nil, fmt.Errorf("evaluation: delete run: %w", err)
 	}
 	held, err := NewEvalBackup(d.files, nil).exclusiveLock(ctx)
@@ -99,7 +98,7 @@ func (d *Deleter) DeleteRun(ctx context.Context, runID string) (*DeleteReport, e
 // inventory there. Its runs cannot be listed without the runtime tree, so
 // they are deleted by run ID.
 func (d *Deleter) DeleteCampaign(ctx context.Context, campaignID string) (*DeleteReport, error) {
-	if err := d.validate(campaignID); err != nil {
+	if err := d.validate(campaignIDElement(campaignID)); err != nil {
 		return nil, fmt.Errorf("evaluation: delete campaign: %w", err)
 	}
 	held, err := NewEvalBackup(d.files, nil).exclusiveLock(ctx)
@@ -184,14 +183,11 @@ func (d *Deleter) DeleteCampaign(ctx context.Context, campaignID string) (*Delet
 	return report, nil
 }
 
-func (d *Deleter) validate(id string) error {
+func (d *Deleter) validate(elements ...pathElement) error {
 	if d == nil || d.files == nil || d.publication == nil || d.backupDir == "" {
 		return constants.ErrMissingRequiredField
 	}
-	if !complianceevidence.ValidPathElement(id) {
-		return fmt.Errorf("%w: %q", constants.ErrEvidenceArtifactMalformed, id)
-	}
-	return nil
+	return validatePathElements(elements...)
 }
 
 // discardAndPurge discards each run's publication, then purges the backups.

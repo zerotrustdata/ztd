@@ -108,13 +108,45 @@ func TestPassRateIsUnavailableWhenNothingWasJudgedOnTheModel(t *testing.T) {
 	assert.Nil(t, model.PassRate)
 }
 
+func TestAssignmentRunSeconds_ExcludesIdleGapsAndCountsOverlapOnce(t *testing.T) {
+	at := func(seconds int64) *timestamppb.Timestamp {
+		return timestamppb.New(time.Unix(1_700_000_000+seconds, 0).UTC())
+	}
+	executed := func(id string, start, end int64) (*evalv1.EvaluationAssignment, *evalv1.EvaluationAssignmentResult) {
+		assignment := homogeneousAssignment(id, "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
+		assignment.StartedAt = at(start)
+		return assignment, &evalv1.EvaluationAssignmentResult{AssignmentId: id, CompletedAt: at(end)}
+	}
+	first, firstResult := executed("assign-1", 0, 60)
+	overlapping, overlappingResult := executed("assign-2", 30, 90)
+	// Resumed the next day: the overnight stop is not run time.
+	resumed, resumedResult := executed("assign-3", 86_400, 86_430)
+	// Interrupted by the stop and never resulted: no closed interval.
+	interrupted := homogeneousAssignment("assign-4", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
+	interrupted.StartedAt = at(90)
+	interrupted.CompletedAt = at(80_000)
+	queued := homogeneousAssignment("assign-5", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
+
+	assignments := []*evalv1.EvaluationAssignment{resumed, overlapping, first, interrupted, queued}
+	results := map[string]*evalv1.EvaluationAssignmentResult{
+		"assign-1": firstResult, "assign-2": overlappingResult, "assign-3": resumedResult,
+	}
+	seconds := assignmentRunSeconds(assignments, results)
+	require.NotNil(t, seconds)
+	assert.Equal(t, 120.0, *seconds)
+
+	assert.Nil(t, assignmentRunSeconds([]*evalv1.EvaluationAssignment{interrupted, queued}, nil))
+}
+
 func TestBuildRunAggregateViewRecords(t *testing.T) {
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
+	assignments[0].StartedAt = timestamppb.New(time.Unix(1_700_000_005, 0).UTC())
 	results := map[string]*evalv1.EvaluationAssignmentResult{
 		"assign-1": {
 			AssignmentId:    "assign-1",
+			CompletedAt:     timestamppb.New(time.Unix(1_700_000_035, 0).UTC()),
 			LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 			DeterministicGrades: []*evalv1.DeterministicGrade{{
 				Basis:  evalv1.GradeBasis_GRADE_BASIS_OBSERVATION,
@@ -147,8 +179,8 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 	require.NoError(t, json.Unmarshal(records[0].Body, &publicSummary))
 	assert.Equal(t, "completed", publicSummary.RunStatus)
 	assert.Equal(t, "exploratory_partial", summary.QualityState)
-	require.NotNil(t, summary.ElapsedSeconds)
-	assert.Equal(t, 50.0, *summary.ElapsedSeconds)
+	require.NotNil(t, summary.RunSeconds)
+	assert.Equal(t, 30.0, *summary.RunSeconds)
 
 	var catalog catalogSnapshotRecord
 	require.NoError(t, json.Unmarshal(records[1].Body, &catalog))
@@ -309,8 +341,7 @@ func TestBuildRunCompletionViewRecords(t *testing.T) {
 	assert.Equal(t, "evaluation_summary", summary.Kind)
 	assert.NotNil(t, summary.ModelRoleMapping)
 	assert.Equal(t, "completed", summary.LifecycleState)
-	require.NotNil(t, summary.ElapsedSeconds)
-	assert.Equal(t, 100.0, *summary.ElapsedSeconds)
+	assert.Nil(t, summary.RunSeconds, "assignments without started_at have no execution interval")
 	assert.Equal(t, uint32(2), summary.AssignmentTotal)
 	assert.Equal(t, uint32(1), summary.AssignmentCompleted)
 	assert.Equal(t, uint32(1), summary.AssignmentFailed)

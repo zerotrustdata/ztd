@@ -683,6 +683,38 @@ func TestRunsPublish_ForceRepublish(t *testing.T) {
 	assert.Contains(t, env.mustRun(t, "runs", "publish", "run-a-1", "--force"), "forced republish")
 }
 
+// --all republishes a run already published, publishes one never published,
+// and skips a run a live process holds.
+func TestRunsPublish_AllRepublishesEveryRunAndSkipsHeldRuns(t *testing.T) {
+	env := newPublicationRunEnv(t)
+	env.prepareRun(t)
+	env.mustRun(t, "runs", "publish", "run-a-1")
+	env.createCampaign(t, "eval-b")
+	env.startPrepared(t, "eval-b", "run-b-1")
+	env.createCampaign(t, "eval-c")
+	env.startPrepared(t, "eval-c", "run-c-1")
+	env.holdRun(t, "run-c-1")
+
+	var payload runPublishAllJSON
+	require.NoError(t, env.runJSON(t, &payload, "runs", "publish", "--all"))
+	require.Len(t, payload.Published, 2)
+	assert.Equal(t, "run-a-1", payload.Published[0].RunID)
+	assert.Positive(t, payload.Published[0].PublishedRecords, "an already published run is published again")
+	assert.True(t, payload.Published[0].Force)
+	assert.Equal(t, "run-b-1", payload.Published[1].RunID)
+	assert.Positive(t, payload.Published[1].PublishedRecords)
+	require.Len(t, payload.Skipped, 1)
+	assert.Equal(t, "run-c-1", payload.Skipped[0].RunID)
+	assert.Empty(t, payload.Failed)
+}
+
+func TestRunsPublish_AllRejectsRunArgument(t *testing.T) {
+	env := newStoreRunEnv(t)
+
+	_, err := env.run(t, "runs", "publish", "run-a-1", "--all")
+	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+}
+
 func TestRunsPublish_IgnoresLegacyFailedReport(t *testing.T) {
 	env := newPublicationRunEnv(t)
 	env.prepareRun(t)

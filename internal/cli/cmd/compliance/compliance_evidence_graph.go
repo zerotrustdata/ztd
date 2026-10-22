@@ -122,8 +122,8 @@ func buildEvidenceGraphImporters(
 	importers := make([]evidence.EvidenceImporter, 0, len(evalRuns))
 
 	for _, runID := range evalRuns {
-		if !evidence.ValidPathElement(runID) {
-			return nil, fmt.Errorf("%w: invalid eval run ID %q", constants.ErrPathValidation, runID)
+		if err := evidence.ValidatePathElement(runID); err != nil {
+			return nil, fmt.Errorf("%w: invalid eval run ID: %w", constants.ErrPathValidation, err)
 		}
 		importers = append(importers, evaluation.NewEvidenceImporter(fileSvc, runID, nowFunc))
 	}

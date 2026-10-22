@@ -44,12 +44,12 @@ describe('LiveEventStream', () => {
   it('keeps eight columns and links the task and result directly to evidence', () => {
     render(stream([liveEvent({ metric_delta: { pass: { value: 1 }, latency_ms: { value: 780 }, input_tokens: { value: 350 } } })]));
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim()))
-      .toEqual(['Result', 'Task', 'Model', 'Latency (s)', 'Input (tok)', 'Output (tok)', 'Tokens/s (tok/s)', 'Time']);
+      .toEqual(['Result', 'Task', 'Model', 'Latency (ms)', 'Input (tok)', 'Output (tok)', 'Tokens/s', 'Time']);
     const href = '/evaluations/ds-live-a/run-a/assignments/assignment-1';
     expect(screen.getByRole('link', { name: 'tool-select-file-read — View details' })).toHaveAttribute('href', href);
     expect(screen.getByRole('link', { name: /Passed:.*View details/ })).toHaveAttribute('href', href);
     expect(screen.getByRole('link', { name: 'model-a' })).toHaveAttribute('href', '/models/ds-live-a/model-a?role=primary');
-    expect(screen.getByText('0.78')).toBeInTheDocument();
+    expect(screen.getByText('780')).toBeInTheDocument();
     expect(screen.getByText('350')).toBeInTheDocument();
     expect(screen.getByText('Primary')).toHaveClass('stream-role');
   });
@@ -107,7 +107,7 @@ describe('LiveEventStream', () => {
       benchmark_observations: { timing: { generation_ms: { value: 780 } }, unavailable_reasons: [] },
     })], []);
     render(stream([liveEvent()]));
-    expect(screen.getByText('1.20')).toBeInTheDocument();
+    expect(screen.getByText('1,200')).toBeInTheDocument();
     expect(screen.getByText('450')).toBeInTheDocument();
     expect(screen.getByText('180')).toBeInTheDocument();
     expect(screen.getByText('230.8')).toBeInTheDocument();

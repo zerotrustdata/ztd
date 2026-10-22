@@ -87,7 +87,7 @@ export function EvaluationDetailView() {
         kicker={run.native_result ? 'Conformance run' : 'Model campaign'}
         title={run.run_id}
         tone={run.native_result ? nativeResultTone(run.native_result.summary_status) : lifecycleStateTone(run.lifecycle_state)}
-        meta={<><span>{run.suite_id}</span><span>{releaseLabel(run)}</span><code>{run.dataset_id}</code>{run.started_at ? <span>{formatTimestamp(run.started_at)}</span> : null}{run.elapsed_seconds !== undefined ? <span>{formatDuration(run.elapsed_seconds)}</span> : null}</>}
+        meta={<><span>{run.suite_id}</span><span>{releaseLabel(run)}</span><code>{run.dataset_id}</code>{run.started_at ? <span>{formatTimestamp(run.started_at)}</span> : null}{run.run_seconds !== undefined ? <span title="Run time: stop/resume gaps excluded">{formatDuration(run.run_seconds)}</span> : null}</>}
         verdict={<><TonePill tone={run.native_result ? nativeResultTone(run.native_result.summary_status) : lifecycleStateTone(run.lifecycle_state)}>{run.native_result?.summary_status ?? run.lifecycle_state}</TonePill>{!run.native_result ? <TonePill tone={verifierStateTone(run.verifier_state)} title={run.verifier_failure_summary}>{verifierStateLabels[run.verifier_state]}</TonePill> : null}</>}
       >
       <div className="quality-banner">
@@ -167,7 +167,7 @@ export function EvaluationDetailView() {
           {run.source_revision ? <DetailRow label="Source revision">{run.source_revision}</DetailRow> : null}
           <DetailRow label="Started">{run.started_at ? formatTimestamp(run.started_at) : '—'}</DetailRow>
           <DetailRow label="Ended">{run.ended_at ? formatTimestamp(run.ended_at) : '—'}</DetailRow>
-          <DetailRow label="Elapsed">{run.elapsed_seconds ? formatDuration(run.elapsed_seconds) : '—'}</DetailRow>
+          <DetailRow label="Run time">{run.run_seconds !== undefined ? formatDuration(run.run_seconds) : '—'}</DetailRow>
           {run.native_result ? <DetailRow label="Active posture">{run.native_result.active_posture}</DetailRow> : null}
           {run.native_result ? <DetailRow label="Lane">{run.native_result.lane}</DetailRow> : null}
         </dl>

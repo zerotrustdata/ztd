@@ -25,8 +25,11 @@ import (
 // readConformanceRecordRaw returns the persisted record bytes and the hex
 // digest stored next to them, unparsed.
 func readConformanceRecordRaw(ctx context.Context, reader complianceevidence.ArtifactReader, runID string) ([]byte, string, error) {
-	if reader == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, "", fmt.Errorf("%w: artifact reader and canonical run ID are required", constants.ErrConformanceRecordInvalid)
+	if reader == nil {
+		return nil, "", fmt.Errorf("%w: artifact reader is required", constants.ErrConformanceRecordInvalid)
+	}
+	if err := complianceevidence.ValidatePathElement(runID); err != nil {
+		return nil, "", fmt.Errorf("%w: canonical run ID: %w", constants.ErrConformanceRecordInvalid, err)
 	}
 	runDir := evaluationRunDir(runID)
 	raw, err := reader.ReadFile(ctx, filepath.Join(runDir, constants.ConformanceRecordFilename))
@@ -62,8 +65,11 @@ func verifyConformanceSourceWith(ctx context.Context, reader complianceevidence.
 // verifyConformanceRecord verifies bytes the caller has already read, so the
 // importer verifies and decodes the same bytes.
 func verifyConformanceRecord(raw []byte, digest, runID string, verifiedAt time.Time, verifyPersisted conformanceVerifier) (*compliancev1.ComplianceVerificationReport, *evalv1.ConformanceVerdictSet, error) {
-	if !complianceevidence.ValidPathElement(runID) || verifiedAt.IsZero() || verifyPersisted == nil {
-		return nil, nil, fmt.Errorf("%w: canonical run ID, verification time and verifier are required", constants.ErrInvalidEvidenceGraph)
+	if verifiedAt.IsZero() || verifyPersisted == nil {
+		return nil, nil, fmt.Errorf("%w: verification time and verifier are required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := complianceevidence.ValidatePathElement(runID); err != nil {
+		return nil, nil, fmt.Errorf("%w: canonical run ID: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	set, err := verifyPersisted(raw, digest)
 	if err != nil {

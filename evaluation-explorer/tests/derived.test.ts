@@ -443,7 +443,7 @@ describe('modelOverallLeaderboardRows', () => {
       output_throughput_p50: { value: 100 * (index + 1) },
     }));
     const run = {
-      dataset_id: 'ds-test', evaluation_unit: 'model', lifecycle_state: 'completed', elapsed_seconds: 60,
+      dataset_id: 'ds-test', evaluation_unit: 'model', lifecycle_state: 'completed', run_seconds: 60,
     } as EvaluationSummary;
     const row = overall(models, [run])[0];
     expect(row?.latency_p50_ms).toBe(200);
@@ -451,13 +451,14 @@ describe('modelOverallLeaderboardRows', () => {
     expect(row?.parameter_billions).toBe(4);
     expect(row?.throughput_p50).toBe(200);
     expect(row?.security).toBeCloseTo(0.6);
-    expect(row?.elapsed_seconds).toBe(60);
+    expect(row?.run_seconds).toBe(60);
     expect(overall(models.map((model) => model.role === 'lite' ? { ...model, output_throughput_p50: undefined } : model))[0]?.throughput_p50).toBeUndefined();
-    expect(overall(models)[0]?.elapsed_seconds).toBeUndefined();
+    expect(overall(models)[0]?.run_seconds).toBeUndefined();
+    expect(overall(models, [{ ...run, run_seconds: undefined, elapsed_seconds: 60 }])[0]?.run_seconds).toBeUndefined();
     const separateRuns = models.map((model, index) => ({ ...model, dataset_id: `ds-${index}` }));
     expect(overall(separateRuns, separateRuns.map((model, index) => ({
-      ...run, dataset_id: model.dataset_id, elapsed_seconds: (index + 1) * 10,
-    })))[0]?.elapsed_seconds).toBe(60);
+      ...run, dataset_id: model.dataset_id, run_seconds: (index + 1) * 10,
+    })))[0]?.run_seconds).toBe(60);
   });
 });
 
@@ -830,7 +831,7 @@ describe('recentCampaignRows', () => {
       campaign_id: 'eval-qwen3-5-0-8b-gguf-q4-k-m',
       started_at: '2026-09-17T12:00:00Z',
       ended_at: '2026-09-17T12:10:30Z',
-      elapsed_seconds: 630,
+      run_seconds: 630,
       observed_at: '2026-09-17T12:10:30Z',
       model_role_mapping: { primary: 'qwen3-5-0-8b', lite: 'unmapped-lite' },
     });
@@ -845,7 +846,7 @@ describe('recentCampaignRows', () => {
       { role: 'lite', variantId: 'unmapped-lite', name: 'unmapped-lite' },
     ]);
     expect(row?.startedAt).toBe('2026-09-17T12:00:00Z');
-    expect(row?.elapsedSeconds).toBe(630);
+    expect(row?.runSeconds).toBe(630);
   });
 });
 

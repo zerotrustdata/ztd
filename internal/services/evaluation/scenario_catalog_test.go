@@ -72,7 +72,7 @@ func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 
 	assert.Equal(t, DefaultSuiteVersion, defaultCatalog.GetCatalogRef().GetVersion())
 	assert.Equal(t, DefaultSuiteVersion, smokeCatalog.GetCatalogRef().GetVersion())
-	assert.Equal(t, "1.9.0", DefaultSuiteVersion)
+	assert.Equal(t, "1.10.0", DefaultSuiteVersion)
 	assert.Equal(t, "1.5.0", GraderVersion)
 }
 

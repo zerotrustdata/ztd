@@ -537,7 +537,7 @@ function assertCurrentHeadlineMetrics(value: unknown, path: string): void {
 
 export function isEvaluationSummary(value: unknown): asserts value is EvaluationSummary {
   assertObject(value, 'evaluation_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'], 'evaluation_summary');
+  rejectUnknown(value, [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'], 'evaluation_summary');
   assertEnvelope(value, 'evaluation_summary', ['evaluation_summary']);
   assertString(value.run_id, 'evaluation_summary.run_id');
   assertOptional(value.campaign_id, 'evaluation_summary.campaign_id', assertString);
@@ -575,6 +575,8 @@ export function isEvaluationSummary(value: unknown): asserts value is Evaluation
   assertOptional(value.started_at, 'evaluation_summary.started_at', assertString);
   assertOptional(value.ended_at, 'evaluation_summary.ended_at', assertString);
   assertOptional(value.elapsed_seconds, 'evaluation_summary.elapsed_seconds', assertNumber);
+  assertOptional(value.run_seconds, 'evaluation_summary.run_seconds', assertNumber);
+  assert(value.run_seconds === undefined || value.run_seconds >= 0, 'evaluation_summary.run_seconds', 'must be >= 0');
   assertEnum(value.verifier_state, VERIFIER_STATES, 'evaluation_summary.verifier_state');
   assertOptional(value.verifier_failure_summary, 'evaluation_summary.verifier_failure_summary', assertString);
   if (schemaAtLeast(value.schema_version, '1.5.0')) {

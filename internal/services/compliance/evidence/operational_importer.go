@@ -47,8 +47,11 @@ func (i *OperationalExportImporter) SourceID() string {
 }
 
 func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
-	if i == nil || i.reader == nil || i.trust == nil || !ValidRelativePath(i.inventoryPath) || i.scopeID == "" || i.admission == nil || i.admission.GetAdmissionId() == "" || i.admission.GetRunId() == "" || i.verifiedAt.IsZero() {
-		return nil, fmt.Errorf("%w: operational export reader, trust, inventory, scope, admission, run, and assessment time are required", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil || i.trust == nil || i.scopeID == "" || i.admission == nil || i.admission.GetAdmissionId() == "" || i.admission.GetRunId() == "" || i.verifiedAt.IsZero() {
+		return nil, fmt.Errorf("%w: operational export reader, trust, scope, admission, run, and assessment time are required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := ValidateRelativePath(i.inventoryPath); err != nil {
+		return nil, fmt.Errorf("%w: operational export inventory: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -71,7 +74,10 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 	seenArtifactIDs := make(map[string]struct{}, len(artifacts))
 	for _, artifact := range artifacts {
 		artifactType := ArtifactType(artifact.ArtifactType)
-		if !ValidRelativePath(artifact.RelativePath) || artifact.SHA256 == "" || artifact.ArtifactID == "" || artifact.ProducedAtUTC == "" || artifactType != ArtifactTypeActionReceipt && artifactType != ArtifactTypeReceiptPersistence && artifactType != ArtifactTypeCommitment && artifactType != ArtifactTypeAuditChainEntry {
+		if err := ValidateRelativePath(artifact.RelativePath); err != nil {
+			return nil, fmt.Errorf("%w: operational artifact path: %w", constants.ErrEvidenceArtifactMalformed, err)
+		}
+		if artifact.SHA256 == "" || artifact.ArtifactID == "" || artifact.ProducedAtUTC == "" || artifactType != ArtifactTypeActionReceipt && artifactType != ArtifactTypeReceiptPersistence && artifactType != ArtifactTypeCommitment && artifactType != ArtifactTypeAuditChainEntry {
 			return nil, fmt.Errorf("%w: operational artifact inventory entry is incomplete", constants.ErrEvidenceArtifactMalformed)
 		}
 		if artifactType != ArtifactTypeAuditChainEntry && artifact.TransactionID == "" {
