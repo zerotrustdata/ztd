@@ -15,6 +15,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestRegexScrubber_Name(t *testing.T) {
@@ -61,7 +64,7 @@ func TestTokenizeSensitivePairs(t *testing.T) {
 		{`{"token": "x", "id": "y"}`, `{"token": "<x>", "id": "y"}`},
 		{`{'secret':'z'}`, `{'secret':'<z>'}`},
 		{"auth://host", "auth://host"},
-		{"password={{UEI_3}}", "password=<{{UEI_3}}>"},
+		{"password={{UEI_3f9a0c12be47_3}}", "password=<{{UEI_3f9a0c12be47_3}}>"},
 	}
 	for _, tt := range tests {
 		assert.Equal(t, tt.expected, service.tokenizeSensitivePairs(tt.input, mark), "input: %s", tt.input)
@@ -78,7 +81,7 @@ func TestTokenize_KeepsExistingTokens(t *testing.T) {
 	assert.Equal(t, inner, service.tokenize(ctx, inner))
 
 	result := service.tokenize(ctx, "  Bearer "+inner)
-	assert.Regexp(t, `^  \{\{UEI_\d+\}\} `+regexp.QuoteMeta(inner)+`$`, result)
+	assert.Regexp(t, `^  \{\{UEI_[0-9a-f]{12}_\d+\}\} `+regexp.QuoteMeta(inner)+`$`, result)
 	assert.Equal(t, "  Bearer abc", mustRehydrateText(t, service, result))
 }
 
@@ -109,8 +112,15 @@ func TestTokenKeymapHash_WithTokens(t *testing.T) {
 func TestTokenKeymapHash_Deterministic(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	service1 := newTestService(t, lenientConfig())
-	service2 := newTestService(t, lenientConfig())
+	// Two separate stores holding the same owner namespace mint identical keymaps.
+	newService := func() *ScrubbingService {
+		store := storagetest.NewTestTokenStore()
+		require.NoError(t, store.KVSet(ctx, constants.ScrubbingTokenOwnerKey, "3f9a0c12be47", 0))
+		service, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), store)
+		require.NoError(t, err)
+		return service
+	}
+	service1, service2 := newService(), newService()
 
 	_, err := service1.GetTokenForValue(ctx, "secret123")
 	require.NoError(t, err)

@@ -251,7 +251,7 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 	if err := ValidateCampaignSpecDigest(spec); err != nil {
 		return nil, fmt.Errorf("evaluation: start run: campaign spec: %w", err)
 	}
-	// Campaigns frozen before ztd v2.3.0 recorded no release; their asserted tag
+	// Campaigns frozen before ztd v1.0.0 recorded no release; their asserted tag
 	// is not a digest-bound fact, so only a recorded release is enforced.
 	if recorded := spec.GetPlatformRelease(); recorded != "" && recorded != req.PlatformRelease {
 		return nil, fmt.Errorf("evaluation: start run %q: campaign %q recorded %q, executing build is %q: %w", req.RunID, req.CampaignID, recorded, req.PlatformRelease, constants.ErrEvaluationPlatformReleaseMismatch)

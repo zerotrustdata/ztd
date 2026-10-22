@@ -793,9 +793,10 @@ func campaignsTagCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tag --release <vX.Y.Z> <campaign>...",
 		Short: "Assert the platform release of campaigns frozen before releases were recorded",
-		Long: `Campaigns frozen by ztd v2.3.0 or later record the platform release in their
-digest. Older campaigns recorded none, so their release is unknown until an
-operator asserts it. The tag is stored beside the campaign, outside its
+		Long: `Campaigns frozen by ztd v1.0.0 or later record the platform release in their
+digest. Campaigns frozen by earlier development builds, numbered v2.x before
+ztd v1.0.0, recorded none, so their release is unknown until an operator
+asserts it. The tag is stored beside the campaign, outside its
 digest, and is shown as "(asserted)" rather than "(recorded)".
 
 A campaign that recorded its release cannot be tagged: the recorded release is

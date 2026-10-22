@@ -435,6 +435,7 @@ var (
 	ErrScrubbingTokenKeyFormat        = errors.New("invalid token key format")
 	ErrScrubbingTokenSequence         = errors.New("failed to parse token sequence")
 	ErrScrubbingTokenUnresolved       = errors.New("UEI token cannot be rehydrated: payload withheld from dispatch")
+	ErrScrubbingTokenOwner            = errors.New("UEI token owner cannot be loaded or minted")
 	ErrScrubbingKeyCollision          = errors.New("rehydrated object keys collide: payload withheld from dispatch")
 	ErrScrubbingTokenStoreUnavailable = errors.New("token persistence required but TokenStore unavailable")
 	ErrScrubbingServiceRequired       = errors.New("scrubbing service is required: it must be wired at construction, not defaulted")

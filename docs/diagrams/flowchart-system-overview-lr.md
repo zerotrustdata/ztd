@@ -66,7 +66,7 @@ The Gateway receives governed work through distinct authenticated ingress paths:
 2. **L5 Actuator Execution Boundary**:
    - Signs and persists the initial `EXECUTING` `ActionReceipt`.
    - Appends a signed `CommitmentAttestation` to the local SQLite ledger.
-   - Rehydrates scrubbed `{{UEI_N}}` tokens in place via `ScrubbingService`.
+   - Rehydrates its own scrubbed `{{UEI_<owner>_N}}` tokens in place via `ScrubbingService`.
    - Mints a short-lived, transaction-bound JIT capability.
    - Dispatches the command to the registered execution handler.
    - Dissolves the capability immediately post-execution (zero standing privileges).

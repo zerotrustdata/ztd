@@ -22,8 +22,13 @@ const SentinelKeyPrefix = "ztd:sentinel:"
 const OperatorHeartbeatKeyPrefix = "ztd:operator:heartbeat:"
 
 // ScrubbingTokenKeyPrefix is the key prefix for UEI token persistence in the KV store.
-// Combined with a token (e.g. "{{UEI_1}}") to form the full key passed to TokenStore.
+// Combined with a token (e.g. "{{UEI_3f9a0c12be47_1}}") to form the full key passed to TokenStore.
 const ScrubbingTokenKeyPrefix = "uei_token_"
+
+// ScrubbingTokenOwnerKey holds the runtime's UEI token owner namespace in the KV
+// store. It is outside ScrubbingTokenKeyPrefix and never expires: every token the
+// runtime mints names this owner.
+const ScrubbingTokenOwnerKey = "uei_owner"
 
 const (
 	KVKeySessionWeb                   = "ztd:sessions:{session.type}:{session.id}"

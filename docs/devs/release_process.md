@@ -90,6 +90,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-REL-VER-07 | The console embed (`internal/services/gateway/console/static/`) carries no release string, but `make console-embed-check` MUST pass before PR so committed embeds match `console/` at the release commit. |
 | INV-REL-VER-08 | Current installation examples in `README.md` and `.github/CONTRIBUTING.md` MUST match `VERSION`. Audit prerequisites and startup commands against current `Makefile`. Audit `AGENTS.md` and `CLAUDE.md` for removed paths, commands, and targets. Historical release notes and scoped evidence retain original versions. |
 | INV-REL-VER-09 | The first line of `docs/release_notes/vX.Y.x/vX.Y.Z.md` MUST be `## [X.Y.Z] - YYYY-MM-DD - <Title>`, where `<Title>` is a short title-case phrase naming what the release delivers (for example `Onboarding and Host Configuration`), and `YYYY-MM-DD` is the planned tag date in UTC. A version number alone is not a title, and `Unreleased` is not a date. The `CHANGELOG.md` row carries the same date. |
+| INV-REL-VER-10 | While the major version is 1, a release that breaks a CLI, wire, or evidence contract, or that requires the Gateway and Operators to upgrade together, MUST bump the minor version (`v1.Y+1.0`). A patch release (`v1.Y.Z+1`) MUST be compatible with the previous release in the same minor series. The `CHANGELOG.md` preamble states this rule. |
 
 ### Compliance evidence (`INV-REL-COMP`)
 

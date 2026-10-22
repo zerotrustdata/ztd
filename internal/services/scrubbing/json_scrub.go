@@ -33,7 +33,7 @@ const jsonTokenSeparators = " \t\r\n,:"
 // scrubJSONText scrubs a JSON object or array token by token and splices each
 // scrubbed scalar back in place, so the result is still valid JSON with its key
 // order and layout unchanged. Text scrubbing over the raw document would
-// instead write bare {{UEI_N}} tokens where JSON expects a value.
+// instead write bare UEI tokens where JSON expects a value.
 //
 // An object member is scrubbed as `key: value` text, so key-anchored patterns
 // still see their key; a member whose key the scrubbers rewrite is tokenized

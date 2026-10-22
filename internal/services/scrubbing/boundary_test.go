@@ -32,7 +32,7 @@ func newTestService(t *testing.T, config *Config) *ScrubbingService {
 }
 
 // assertTokenized scrubs input and asserts that every secret was replaced by a
-// reversible {{UEI_N}} token and that rehydration restores the input exactly.
+// reversible UEI token and that rehydration restores the input exactly.
 func assertTokenized(t *testing.T, service *ScrubbingService, input string, secrets ...string) string {
 	t.Helper()
 	ctx := context.Background()
@@ -49,9 +49,14 @@ func assertTokenized(t *testing.T, service *ScrubbingService, input string, secr
 // mustRehydrateText rehydrates text and fails the test when any placeholder does not resolve.
 func mustRehydrateText(t *testing.T, service *ScrubbingService, text string) string {
 	t.Helper()
-	rehydrated, err := service.RehydrateText(context.Background(), text)
+	rehydrated, err := service.RehydrateText(context.Background(), text, ForeignTokenReject)
 	require.NoError(t, err)
 	return rehydrated
+}
+
+// unmintedToken returns a token in service's own namespace that it never minted.
+func unmintedToken(service *ScrubbingService) string {
+	return fmt.Sprintf("{{UEI_%s_999999}}", service.tokenOwner)
 }
 
 // assertPreserved asserts that input passes through scrubbing unchanged.
@@ -66,10 +71,14 @@ func lenientConfig() *Config {
 	return &Config{Enabled: true, StrictMode: false, RequirePersistence: true}
 }
 
+// failingTokenStore persists the owner namespace but fails every token write.
 type failingTokenStore struct{ *storagetest.TestTokenStore }
 
-func (failingTokenStore) KVSet(context.Context, string, string, int) error {
-	return fmt.Errorf("kv set: %w", constants.ErrScrubbingTokenPersist)
+func (f failingTokenStore) KVSet(ctx context.Context, key, value string, ttlSeconds int) error {
+	if strings.HasPrefix(key, constants.ScrubbingTokenKeyPrefix) {
+		return fmt.Errorf("kv set: %w", constants.ErrScrubbingTokenPersist)
+	}
+	return f.TestTokenStore.KVSet(ctx, key, value, ttlSeconds)
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -90,10 +99,11 @@ func TestContainsToken(t *testing.T) {
 		payload string
 		want    bool
 	}{
-		{name: "plain text token", payload: "cat {{UEI_1}}", want: true},
-		{name: "JSON value token", payload: `{"path":"{{UEI_2}}"}`, want: true},
-		{name: "JSON-escaped value token", payload: `{"path":"{{UEI_3}}"}`, want: true},
-		{name: "JSON-escaped key token", payload: `{"{{UEI_4}}":1}`, want: true},
+		{name: "plain text token", payload: "cat {{UEI_3f9a0c12be47_1}}", want: true},
+		{name: "ownerless token", payload: "cat {{UEI_1}}", want: true},
+		{name: "JSON value token", payload: `{"path":"{{UEI_3f9a0c12be47_2}}"}`, want: true},
+		{name: "JSON-escaped value token", payload: `{"path":"{{UEI_3f9a0c12be47_3}}"}`, want: true},
+		{name: "JSON-escaped key token", payload: `{"{{UEI_3f9a0c12be47_4}}":1}`, want: true},
 		{name: "JSON without token", payload: `{"path":"/tmp/x","n":[1,2]}`, want: false},
 		{name: "text without token", payload: "ls -la", want: false},
 	} {
@@ -245,9 +255,9 @@ func TestScrubbingService_ScrubText_KeepsKeysVisible(t *testing.T) {
 	t.Parallel()
 	service := newTestService(t, lenientConfig())
 
-	assert.Regexp(t, `^password=\{\{UEI_\d+\}\}$`, assertTokenized(t, service, "password=secretvalue123", "secretvalue123"))
-	assert.Regexp(t, `^Contact \{\{UEI_\d+\}\}$`, assertTokenized(t, service, "Contact admin@example.com", "admin@example.com"))
-	assert.Regexp(t, `^fetch https://\{\{UEI_\d+\}\}@example\.com/repo$`, assertTokenized(t, service, "fetch https://bob:hunter2@example.com/repo", "hunter2"))
+	assert.Regexp(t, `^password=\{\{UEI_[0-9a-f]{12}_\d+\}\}$`, assertTokenized(t, service, "password=secretvalue123", "secretvalue123"))
+	assert.Regexp(t, `^Contact \{\{UEI_[0-9a-f]{12}_\d+\}\}$`, assertTokenized(t, service, "Contact admin@example.com", "admin@example.com"))
+	assert.Regexp(t, `^fetch https://\{\{UEI_[0-9a-f]{12}_\d+\}\}@example\.com/repo$`, assertTokenized(t, service, "fetch https://bob:hunter2@example.com/repo", "hunter2"))
 }
 
 // Overlapping scrubbers never wrap one token inside another, so rehydration is exact.
@@ -310,7 +320,7 @@ func TestScrubbingService_CustomScrubPatterns(t *testing.T) {
 	service := newTestService(t, config)
 
 	result := assertTokenized(t, service, "Processing INT-123456", "INT-123456")
-	assert.Regexp(t, `^Processing \{\{UEI_\d+\}\}$`, result)
+	assert.Regexp(t, `^Processing \{\{UEI_[0-9a-f]{12}_\d+\}\}$`, result)
 }
 
 func TestScrubbingService_StrictModeDataRows(t *testing.T) {
@@ -326,14 +336,14 @@ func TestScrubbingService_StrictModeDataRows(t *testing.T) {
 	t.Run("sensitive keys stay visible with tokenized values", func(t *testing.T) {
 		t.Parallel()
 		result := assertTokenized(t, service, "salary_info: 75000\nincome_data: 4430", "75000", "4430")
-		assert.Regexp(t, `(?m)^salary_info: \{\{UEI_\d+\}\}$`, result)
-		assert.Regexp(t, `(?m)^income_data: \{\{UEI_\d+\}\}$`, result)
+		assert.Regexp(t, `(?m)^salary_info: \{\{UEI_[0-9a-f]{12}_\d+\}\}$`, result)
+		assert.Regexp(t, `(?m)^income_data: \{\{UEI_[0-9a-f]{12}_\d+\}\}$`, result)
 	})
 
 	t.Run("json sensitive key keeps key and quotes", func(t *testing.T) {
 		t.Parallel()
 		result := assertTokenized(t, service, `{"password":"hunter2","user":"svc-deploy"}`, "hunter2")
-		assert.Regexp(t, `^\{"password":"\{\{UEI_\d+\}\}","user":"svc-deploy"\}$`, result)
+		assert.Regexp(t, `^\{"password":"\{\{UEI_[0-9a-f]{12}_\d+\}\}","user":"svc-deploy"\}$`, result)
 	})
 
 	t.Run("json email value tokenized, other fields kept", func(t *testing.T) {
@@ -368,7 +378,7 @@ func TestScrubbingService_ScrubText_JSONStaysValid(t *testing.T) {
 		t.Parallel()
 		assertPreserved(t, service, "{\n  \"zeta\": \"a <b> & c\",\n  \"alpha\": [true, null, 2.5e3]\n}")
 		result := assertTokenized(t, service, "{\n  \"zeta\": \"admin@test.com\",\n  \"alpha\": 1\n}", "admin@test.com")
-		assert.Regexp(t, `^\{\n  "zeta": "\{\{UEI_\d+\}\}",\n  "alpha": 1\n\}$`, result)
+		assert.Regexp(t, `^\{\n  "zeta": "\{\{UEI_[0-9a-f]{12}_\d+\}\}",\n  "alpha": 1\n\}$`, result)
 	})
 
 	t.Run("sensitive values are tokenized whole and stay JSON", func(t *testing.T) {
@@ -380,7 +390,7 @@ func TestScrubbingService_ScrubText_JSONStaysValid(t *testing.T) {
 			assert.NotContains(t, result, secret)
 		}
 		assert.Contains(t, result, `"secret":{"inner":"plain"}`, "an object under a sensitive key is scrubbed by its own keys")
-		assert.Regexp(t, `"prompt_tokens":"\{\{UEI_\d+\}\}"`, result)
+		assert.Regexp(t, `"prompt_tokens":"\{\{UEI_[0-9a-f]{12}_\d+\}\}"`, result)
 		assert.Contains(t, result, `"note":"line one\nline two"`)
 	})
 
@@ -423,7 +433,7 @@ func TestScrubbingService_TokenPersistence(t *testing.T) {
 	sensitiveValue := "my-secret-api-key-12345"
 	token, err := service.GetTokenForValue(ctx, sensitiveValue)
 	require.NoError(t, err)
-	assert.Regexp(t, `^\{\{UEI_\d+\}\}$`, token)
+	assert.Regexp(t, `^\{\{UEI_[0-9a-f]{12}_\d+\}\}$`, token)
 	assert.Equal(t, sensitiveValue, mustRehydrateText(t, service, token))
 
 	storedValue, err := tokenStore.KVGet(ctx, constants.ScrubbingTokenKeyPrefix+token)
@@ -438,6 +448,62 @@ func TestScrubbingService_TokenPersistence(t *testing.T) {
 	token2, err := service2.GetTokenForValue(ctx, "another-secret")
 	require.NoError(t, err)
 	assert.NotEqual(t, token, token2)
+	assert.Equal(t, service.tokenOwner, service2.tokenOwner, "a restart keeps the runtime's owner namespace")
+}
+
+// The owner namespace is the runtime's identity for its tokens: a store that
+// cannot yield a well-formed one fails construction instead of minting tokens
+// under an owner the runtime cannot keep.
+func TestNewScrubbingService_TokenOwnerFailsClosed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("unreadable store", func(t *testing.T) {
+		t.Parallel()
+		storeErr := errors.New("vault is locked")
+		_, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), unreadableTokenStore{err: storeErr, ownerReadable: false})
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenOwner)
+		require.ErrorIs(t, err, storeErr)
+	})
+
+	t.Run("malformed persisted owner", func(t *testing.T) {
+		t.Parallel()
+		store := storagetest.NewTestTokenStore()
+		require.NoError(t, store.KVSet(ctx, constants.ScrubbingTokenOwnerKey, "not-an-owner", 0))
+		_, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), store)
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenOwner)
+	})
+
+	t.Run("owner write failure", func(t *testing.T) {
+		t.Parallel()
+		_, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), unwritableTokenStore{storagetest.NewTestTokenStore()})
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenOwner)
+	})
+}
+
+// unwritableTokenStore fails every write, the owner namespace included.
+type unwritableTokenStore struct{ *storagetest.TestTokenStore }
+
+func (unwritableTokenStore) KVSet(context.Context, string, string, int) error {
+	return fmt.Errorf("kv set: %w", constants.ErrScrubbingTokenPersist)
+}
+
+// Persisted tokens from another owner, or with no owner, are never loaded.
+func TestScrubbingService_LoadPersistedTokens_SkipsForeign(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := storagetest.NewTestTokenStore()
+	owner, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), store)
+	require.NoError(t, err)
+	own, err := owner.GetTokenForValue(ctx, "own-secret")
+	require.NoError(t, err)
+	require.NoError(t, store.KVSet(ctx, constants.ScrubbingTokenKeyPrefix+"{{UEI_7}}", "ownerless-secret", 0))
+	require.NoError(t, store.KVSet(ctx, constants.ScrubbingTokenKeyPrefix+"{{UEI_000000000000_9}}", "foreign-secret", 0))
+
+	restarted, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), store)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{own: "own-secret"}, restarted.tokenMap)
+	assert.Equal(t, 1, restarted.tokenSequence)
 }
 
 // Tokens minted by another service on the same store are loaded on demand.
@@ -456,6 +522,72 @@ func TestScrubbingService_RehydrateText_LoadsFromStore(t *testing.T) {
 	assert.Equal(t, "password=late-secret", mustRehydrateText(t, reader, scrubbed))
 }
 
+// Two runtimes each mint their first token. Neither may resolve the other's
+// token, least of all to its own unrelated value.
+func TestScrubbingService_RehydrateText_ForeignTokenNeverResolvesLocally(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	data := newTestService(t, lenientConfig())
+	inference := newTestService(t, lenientConfig())
+
+	dataToken, err := data.GetTokenForValue(ctx, "data-runtime-secret")
+	require.NoError(t, err)
+	inferenceToken, err := inference.GetTokenForValue(ctx, "inference-runtime-secret")
+	require.NoError(t, err)
+	require.Equal(t, 1, data.tokenSequence)
+	require.Equal(t, 1, inference.tokenSequence)
+	assert.NotEqual(t, dataToken, inferenceToken, "equal sequence numbers on two runtimes are distinct tokens")
+
+	t.Run("rejected", func(t *testing.T) {
+		t.Parallel()
+		rehydrated, err := inference.RehydrateText(ctx, "value="+dataToken, ForeignTokenReject)
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+		assert.Empty(t, rehydrated)
+	})
+
+	t.Run("opaque", func(t *testing.T) {
+		t.Parallel()
+		rehydrated, err := inference.RehydrateText(ctx, "summarize "+dataToken+" with "+inferenceToken, ForeignTokenOpaque)
+		require.NoError(t, err)
+		assert.Equal(t, "summarize "+dataToken+" with inference-runtime-secret", rehydrated)
+	})
+
+	t.Run("ownerless token is foreign", func(t *testing.T) {
+		t.Parallel()
+		_, err := inference.RehydrateText(ctx, "cat {{UEI_1}}", ForeignTokenReject)
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+		rehydrated, err := inference.RehydrateText(ctx, "cat {{UEI_1}}", ForeignTokenOpaque)
+		require.NoError(t, err)
+		assert.Equal(t, "cat {{UEI_1}}", rehydrated)
+	})
+
+	// Opaque applies only to foreign tokens: an own token that no longer
+	// resolves still withholds the text.
+	t.Run("own unresolvable token fails under opaque", func(t *testing.T) {
+		t.Parallel()
+		rehydrated, err := inference.RehydrateText(ctx, dataToken+" "+unmintedToken(inference), ForeignTokenOpaque)
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+		assert.Empty(t, rehydrated)
+	})
+
+	t.Run("opaque JSON payload keeps foreign keys and values", func(t *testing.T) {
+		t.Parallel()
+		payload := `{"` + dataToken + `":"` + dataToken + `","own":"` + inferenceToken + `"}`
+		rehydrated, err := inference.RehydratePayload(ctx, []byte(payload), ForeignTokenOpaque)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"`+dataToken+`":"`+dataToken+`","own":"inference-runtime-secret"}`, string(rehydrated))
+	})
+
+	// A foreign token in text the local runtime scrubs is never wrapped in a
+	// local token, so its owner can still rehydrate it.
+	t.Run("rescrubbing keeps a foreign token whole", func(t *testing.T) {
+		t.Parallel()
+		scrubbed := inference.ScrubText(ctx, "password="+dataToken)
+		assert.Equal(t, "password="+dataToken, scrubbed)
+		assert.Equal(t, "password=data-runtime-secret", mustRehydrateText(t, data, scrubbed))
+	})
+}
+
 func TestScrubbingService_IsEnabled(t *testing.T) {
 	t.Parallel()
 	assert.True(t, newTestService(t, &Config{Enabled: true}).IsEnabled())
@@ -472,7 +604,7 @@ func TestScrubbingService_RehydrateText(t *testing.T) {
 
 	t.Run("empty input returns empty", func(t *testing.T) {
 		t.Parallel()
-		rehydrated, err := service.RehydrateText(ctx, "")
+		rehydrated, err := service.RehydrateText(ctx, "", ForeignTokenReject)
 		require.NoError(t, err)
 		assert.Empty(t, rehydrated)
 	})
@@ -502,7 +634,7 @@ func TestScrubbingService_RehydrateText(t *testing.T) {
 	// whole call fails and returns no text.
 	t.Run("unknown token fails closed", func(t *testing.T) {
 		t.Parallel()
-		rehydrated, err := service.RehydrateText(ctx, "run {{UEI_999999}}")
+		rehydrated, err := service.RehydrateText(ctx, "run "+unmintedToken(service), ForeignTokenReject)
 		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
 		assert.Empty(t, rehydrated)
 	})
@@ -510,10 +642,10 @@ func TestScrubbingService_RehydrateText(t *testing.T) {
 	t.Run("token store lookup failure fails closed", func(t *testing.T) {
 		t.Parallel()
 		storeErr := errors.New("vault is locked")
-		failing, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), unreadableTokenStore{err: storeErr})
+		failing, err := NewScrubbingService(ctx, lenientConfig(), testutil.NewTestLogger(), unreadableTokenStore{err: storeErr, ownerReadable: true})
 		require.NoError(t, err)
 
-		rehydrated, err := failing.RehydrateText(ctx, "password={{UEI_1}}")
+		rehydrated, err := failing.RehydrateText(ctx, "password="+unmintedToken(failing), ForeignTokenReject)
 		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
 		require.ErrorIs(t, err, storeErr, "the store failure stays in the error chain")
 		assert.Empty(t, rehydrated)
@@ -524,18 +656,28 @@ func TestScrubbingService_RehydrateText(t *testing.T) {
 		unpersisted, err := NewScrubbingService(ctx, &Config{Enabled: true}, testutil.NewTestLogger(), nil)
 		require.NoError(t, err)
 
-		rehydrated, err := unpersisted.RehydrateText(ctx, "{{UEI_1}}")
+		rehydrated, err := unpersisted.RehydrateText(ctx, unmintedToken(unpersisted), ForeignTokenReject)
 		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
 		assert.Empty(t, rehydrated)
 	})
 }
 
-// unreadableTokenStore is a TokenStore whose lookups fail, as a locked vault makes them.
-type unreadableTokenStore struct{ err error }
+// unreadableTokenStore is a TokenStore whose lookups fail, as a locked vault
+// makes them. With ownerReadable it holds no owner namespace instead of failing
+// that lookup, so construction mints one and only token lookups fail.
+type unreadableTokenStore struct {
+	err           error
+	ownerReadable bool
+}
 
 func (f unreadableTokenStore) KVSet(context.Context, string, string, int) error { return nil }
 
-func (f unreadableTokenStore) KVGet(context.Context, string) (string, error) { return "", f.err }
+func (f unreadableTokenStore) KVGet(_ context.Context, key string) (string, error) {
+	if f.ownerReadable && key == constants.ScrubbingTokenOwnerKey {
+		return "", constants.ErrKeyNotFound
+	}
+	return "", f.err
+}
 
 func (f unreadableTokenStore) KVScanPrefix(context.Context, string) (map[string]string, error) {
 	return map[string]string{}, nil
@@ -548,7 +690,7 @@ func TestScrubbingService_RehydratePayload(t *testing.T) {
 
 	t.Run("empty payload returns empty", func(t *testing.T) {
 		t.Parallel()
-		result, err := service.RehydratePayload(ctx, []byte{})
+		result, err := service.RehydratePayload(ctx, []byte{}, ForeignTokenReject)
 		require.NoError(t, err)
 		assert.Empty(t, result)
 	})
@@ -557,7 +699,7 @@ func TestScrubbingService_RehydratePayload(t *testing.T) {
 		t.Parallel()
 		token, err := service.GetTokenForValue(ctx, "secret")
 		require.NoError(t, err)
-		result, err := service.RehydratePayload(ctx, []byte("Text with "+token))
+		result, err := service.RehydratePayload(ctx, []byte("Text with "+token), ForeignTokenReject)
 		require.NoError(t, err)
 		assert.Equal(t, "Text with secret", string(result))
 	})
@@ -567,7 +709,7 @@ func TestScrubbingService_RehydratePayload(t *testing.T) {
 		token, err := service.GetTokenForValue(ctx, "secret")
 		require.NoError(t, err)
 		payload := []byte(`{"key": "value ` + token + `", "nested": {"data": "` + token + `"}}`)
-		result, err := service.RehydratePayload(ctx, payload)
+		result, err := service.RehydratePayload(ctx, payload, ForeignTokenReject)
 		require.NoError(t, err)
 
 		var parsed struct {
@@ -584,19 +726,20 @@ func TestScrubbingService_RehydratePayload(t *testing.T) {
 	t.Run("JSON scalar types remain unchanged", func(t *testing.T) {
 		t.Parallel()
 		payload := []byte(`{"count":42,"enabled":true,"missing":null,"values":[1,false,null]}`)
-		result, err := service.RehydratePayload(ctx, payload)
+		result, err := service.RehydratePayload(ctx, payload, ForeignTokenReject)
 		require.NoError(t, err)
 		assert.JSONEq(t, string(payload), string(result))
 	})
 
 	t.Run("unresolvable token fails the whole payload", func(t *testing.T) {
 		t.Parallel()
+		unminted := unmintedToken(service)
 		for _, payload := range [][]byte{
-			[]byte("Text with {{UEI_999999}}"),
-			[]byte(`{"ok":"fine","bad":"{{UEI_999999}}"}`),
-			[]byte(`["fine",{"bad":["{{UEI_999999}}"]}]`),
+			[]byte("Text with " + unminted),
+			[]byte(`{"ok":"fine","bad":"` + unminted + `"}`),
+			[]byte(`["fine",{"bad":["` + unminted + `"]}]`),
 		} {
-			result, err := service.RehydratePayload(ctx, payload)
+			result, err := service.RehydratePayload(ctx, payload, ForeignTokenOpaque)
 			require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved, "payload: %s", payload)
 			assert.Nil(t, result, "no partially rehydrated payload is returned: %s", payload)
 		}
@@ -609,14 +752,14 @@ func TestScrubbingService_RehydratePayload(t *testing.T) {
 		scrubbed := service.ScrubText(ctx, `{"bob@x.io":1,"nested":{"bob@x.io":"v"}}`)
 		require.NotContains(t, scrubbed, "bob@x.io")
 
-		result, err := service.RehydratePayload(ctx, []byte(scrubbed))
+		result, err := service.RehydratePayload(ctx, []byte(scrubbed), ForeignTokenReject)
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"bob@x.io":1,"nested":{"bob@x.io":"v"}}`, string(result))
 	})
 
 	t.Run("unresolvable object key fails the whole payload", func(t *testing.T) {
 		t.Parallel()
-		result, err := service.RehydratePayload(ctx, []byte(`{"ok":1,"{{UEI_999999}}":2}`))
+		result, err := service.RehydratePayload(ctx, []byte(`{"ok":1,"`+unmintedToken(service)+`":2}`), ForeignTokenReject)
 		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
 		assert.Nil(t, result, "no partially rehydrated payload is returned")
 	})
@@ -627,7 +770,7 @@ func TestScrubbingService_RehydratePayload(t *testing.T) {
 		token, err := service.GetTokenForValue(ctx, "bob@x.io")
 		require.NoError(t, err)
 
-		result, err := service.RehydratePayload(ctx, []byte(`{"bob@x.io":1,"`+token+`":2}`))
+		result, err := service.RehydratePayload(ctx, []byte(`{"bob@x.io":1,"`+token+`":2}`), ForeignTokenReject)
 		require.ErrorIs(t, err, constants.ErrScrubbingKeyCollision)
 		assert.Nil(t, result, "no payload with a dropped field is returned")
 	})
@@ -680,8 +823,10 @@ func TestScrubbingService_GetTokenForValue(t *testing.T) {
 // The scrubbed marker pattern recognises exactly the markers tokenize emits.
 func TestScrubbedMarkerPattern(t *testing.T) {
 	t.Parallel()
-	assert.True(t, scrubbedMarkerPattern.MatchString("{{UEI_12}}"))
+	assert.True(t, scrubbedMarkerPattern.MatchString("{{UEI_3f9a0c12be47_12}}"))
+	assert.True(t, scrubbedMarkerPattern.MatchString("{{UEI_12}}"), "an ownerless token is still a token")
 	assert.True(t, scrubbedMarkerPattern.MatchString(untokenizedValue))
 	assert.False(t, scrubbedMarkerPattern.MatchString("{{UEI_}}"))
-	assert.False(t, regexp.MustCompile(`^`+scrubbedMarkerPattern.String()+`$`).MatchString("{{UEI_1}}x"))
+	assert.False(t, scrubbedMarkerPattern.MatchString("{{UEI_3F9A0C12BE47_1}}"))
+	assert.False(t, regexp.MustCompile(`^`+scrubbedMarkerPattern.String()+`$`).MatchString("{{UEI_3f9a0c12be47_1}}x"))
 }

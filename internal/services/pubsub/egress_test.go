@@ -257,7 +257,7 @@ func TestEgressScrubbed_InferenceProgressIsDigestBoundAndPassesThrough(t *testin
 		ProviderAttemptId: "attempt-1",
 		Sequence:          1,
 		Parts: []*operatorv1.InferenceResponsePart{
-			{Part: &operatorv1.InferenceResponsePart_Text{Text: "{{UEI_1}} "}},
+			{Part: &operatorv1.InferenceResponsePart_Text{Text: "{{UEI_3f9a0c12be47_1}} "}},
 		},
 	}
 	for name, s := range map[string]*scrubbing.ScrubbingService{

@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	governanceService "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -163,7 +164,7 @@ func TestOperatorNativeToolRoute_OutboundExecutesRegistryLocally(t *testing.T) {
 	var got mcp.AuditReceiptGetResult
 	// Native tool summaries are scrubbed text; random receipt signatures can
 	// match sensitive-value patterns. Rehydrate locally before decoding JSON.
-	summary, err := svc.scrubbing.RehydrateText(ctx, getReceipt.GetResultSummary())
+	summary, err := svc.scrubbing.RehydrateText(ctx, getReceipt.GetResultSummary(), scrubbing.ForeignTokenReject)
 	require.NoError(t, err, "every token in the signed summary must resolve")
 	require.NoError(t, json.Unmarshal([]byte(summary), &got))
 	require.NotNil(t, got.Receipt)

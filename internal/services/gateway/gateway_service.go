@@ -313,7 +313,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 
 	// --- Scrubbing and MCP gateway ---
 	// UEI tokens persist encrypted in the canonical KV store, as on the outbound Operator, so every
-	// scrubbed value is a reversible {{UEI_N}} token rather than a lossy marker.
+	// scrubbed value is a reversible UEI token rather than a lossy marker.
 	scrubbingConfig := scrubbing.DefaultConfig()
 	scrubbingService, err := scrubbing.NewScrubbingService(context.Background(), scrubbingConfig, logger, NewEncryptedKVAdapter(kvStore, db.GetVault()))
 	if err != nil {

@@ -151,7 +151,7 @@ flowchart LR
 
 ### 5.4 Sovereign Execution Boundary and Token Rehydration
 
-To safeguard sensitive operational data, the Operator deploys a Sovereign Execution Boundary. Bounded scrubbing transforms sensitive values in tool outputs into tokenized placeholders (`{{UEI_N}}`) before transmission across network boundaries. Token mappings are encrypted at rest using AES-256-GCM via the local vault. When an admitted transaction returns to the host for execution, L5 Actuator rehydrates placeholders locally in memory immediately prior to dispatching commands to the underlying operating system.
+To safeguard sensitive operational data, the Operator deploys a Sovereign Execution Boundary. Bounded scrubbing transforms sensitive values in tool outputs into tokenized placeholders (`{{UEI_<owner>_N}}`, named for the minting runtime) before transmission across network boundaries. Token mappings are encrypted at rest using AES-256-GCM via the local vault. When an admitted transaction returns to the host for execution, L5 Actuator rehydrates placeholders locally in memory immediately prior to dispatching commands to the underlying operating system.
 
 ### 5.5 Transaction-Bound Human Authorization
 

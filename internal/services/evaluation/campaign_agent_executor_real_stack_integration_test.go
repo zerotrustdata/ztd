@@ -79,7 +79,7 @@ func executorTraceToolNames(tools []evaluation.AgentTraceTool) []string {
 
 // executorScrubbedToken is the placeholder the Inference boundary substitutes for
 // a sensitive value (the random operator directory) before the provider sees it.
-var executorScrubbedToken = regexp.MustCompile(`\{\{UEI_\d+\}\}`)
+var executorScrubbedToken = regexp.MustCompile(`\{\{UEI_[0-9a-f]{12}_\d+\}\}`)
 
 // executorAssertDispatchedText asserts that the trace's dispatched text equals the
 // provider's copy of it, where each scrub token on the wire stands for the value
@@ -602,6 +602,71 @@ func TestCampaignAgentExecutorIntegration_DistinctRuntimesKeepInferenceLedgerOut
 	trace := executorLoadTrace(t, env, res)
 	assert.False(t, trace.SharedRuntime())
 	require.Len(t, trace.ModelCalls, 2, "the trace claims only the assignment's own turns")
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+}
+
+// executorSecretHealthCatalog is the default shell scenario with a credential in
+// its health fixture, so the Data Operator's tool result carries a sensitive value.
+func executorSecretHealthCatalog(secret string) func() (*evalv1.EvaluationScenarioCatalog, map[string]evaluation.ScenarioArtifacts, error) {
+	return func() (*evalv1.EvaluationScenarioCatalog, map[string]evaluation.ScenarioArtifacts, error) {
+		def := evaluation.DefaultScenarioSuite()
+		suite := evaluation.ScenarioSuite{SchemaVersion: evaluation.SuiteSchemaVersion, ID: "suite-secret-health", Version: "1.0.0", Description: "secret health fixture"}
+		for _, scenario := range def.Scenarios {
+			if scenario.ScenarioID != realStackScenarioID {
+				continue
+			}
+			for i, file := range scenario.Input.WorkspaceFiles {
+				if file.RelPath == "status/health.txt" {
+					scenario.Input.WorkspaceFiles[i].Content = "HEALTHY\nKey: " + secret + "\n"
+				}
+			}
+			suite.Scenarios = append(suite.Scenarios, scenario)
+		}
+		return evaluation.MaterializeSuite(suite)
+	}
+}
+
+// A Data-scrubbed token in a tool result reaches the next inference turn on the
+// dedicated Inference Operator. The Inference runtime does not own the token, so
+// L5 passes it through opaque: the turn completes and the provider sees the Data
+// placeholder, never the Data runtime's secret.
+func TestCampaignAgentExecutorIntegration_DataTokenPassesOpaqueToDedicatedInference(t *testing.T) {
+	// An AWS access key ID is scrubbed, and L1 admits it as fixture content.
+	const secret = "AKIAIOSFODNN7EXAMPLE"
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, suffix: "data-token", replies: shellReplies(), catalog: executorSecretHealthCatalog(secret),
+	})
+
+	res := env.executeNext(t)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+	trace := executorLoadTrace(t, env, res)
+	assert.False(t, trace.SharedRuntime(), "Data and Inference are distinct runtimes")
+	require.Len(t, trace.ToolCalls, 1)
+	result := trace.ToolCalls[0].ResultJSON
+	assert.NotContains(t, result, secret, "the Data Operator scrubs its tool result")
+	dataToken := executorScrubbedToken.FindString(result)
+	require.NotEmpty(t, dataToken, "the tool result carries a Data-owned token")
+
+	bodies := executorChatBodies(t, env)
+	require.Len(t, bodies, 2, "the continuation turn reached the provider")
+	var continuation strings.Builder
+	for _, message := range bodies[1].Messages {
+		continuation.WriteString(message.Content)
+	}
+	assert.Contains(t, continuation.String(), dataToken, "the foreign token reaches the provider verbatim")
+	for _, body := range bodies {
+		for _, message := range body.Messages {
+			assert.NotContains(t, message.Content, secret, "no runtime's secret reaches the provider")
+		}
+	}
+	// Tokens the Inference runtime minted for its own prompt name another owner.
+	dataOwner := strings.Split(strings.TrimPrefix(dataToken, "{{UEI_"), "_")[0]
+	for _, message := range bodies[0].Messages {
+		for _, token := range executorScrubbedToken.FindAllString(message.Content, -1) {
+			assert.NotContains(t, token, "UEI_"+dataOwner+"_", "each runtime mints under its own owner")
+		}
+	}
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 }
 

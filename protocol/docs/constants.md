@@ -1,7 +1,7 @@
 # Protocol Constants System
 
 Last Updated: 2026-10-20
-Version: v1.2.0
+Version: v1.3.0
 
 The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the absolute **Single Source of Truth (SSOT)** for all platform contracts, collection definitions, action types, event registries, route paths, and configuration identifiers.
 

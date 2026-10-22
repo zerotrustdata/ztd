@@ -396,7 +396,7 @@ A client private key stored under the keystore master key instead of as PEM: the
 
 ## Sovereign Execution Boundary
 
-The Operator-local scrubbing and rehydration architecture implemented by `ScrubbingService` (`internal/services/scrubbing/`). Egress traffic leaves the host only after sensitive values are tokenized (`{{UEI_N}}`) or redacted; persistent token mappings are encrypted at rest with the local vault; the token keymap hash can participate in the Bound State Root; and L5 rehydrates reversible tokens strictly on the target execution host immediately before command dispatch.
+The Operator-local scrubbing and rehydration architecture implemented by `ScrubbingService` (`internal/services/scrubbing/`). Egress traffic leaves the host only after sensitive values are tokenized (`{{UEI_<owner>_N}}`, where `<owner>` names the minting runtime) or redacted; persistent token mappings are encrypted at rest with the local vault; the token keymap hash can participate in the Bound State Root; and L5 rehydrates reversible tokens strictly on the target execution host immediately before command dispatch.
 
 ---
 

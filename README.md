@@ -102,7 +102,7 @@ ztd uses a **Local-First Audit Architecture**:
 - **Authoritative local store:** Each Operator maintains its own encrypted SQLite audit records in `data/ztd.db` and a git-backed file history ledger under its runtime directory.
 - **Projections, not truth:** The Gateway mirrors receipts for the UI and CLI, but the local host remains the single authoritative root of truth for what ran.
 - **Incremental Merkle commitment:** State roots are computed incrementally across 65,536 buckets in a 16-ary tree. Proofs don't degrade into full-table scans as your audit history grows.
-- **Local secret rehydration:** Sensitive credentials and tokens never travel across the wire in plaintext. They are scrubbed to reversible placeholders (`{{UEI_N}}`) and rehydrated by the L5 Actuator inside the target host's memory immediately before execution.
+- **Local secret rehydration:** Sensitive credentials and tokens never travel across the wire in plaintext. They are scrubbed to reversible placeholders (`{{UEI_<owner>_N}}`) and rehydrated by the L5 Actuator inside the memory of the host that minted them, immediately before execution.
 
 ---
 

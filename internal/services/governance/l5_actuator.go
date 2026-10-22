@@ -510,6 +510,10 @@ func SignatureDigest(signatures []string) string {
 // rehydratePayload rehydrates the command message payload in place. Fail-closed:
 // returns an error on rehydration failure, and an Actuator with no
 // ScrubbingService refuses a payload that holds a token it cannot rehydrate.
+// Only this runtime's own tokens rehydrate. A token another runtime minted stays
+// opaque in an INFERENCE prompt, where the model reads the token and never its
+// value; in any other action it fails the payload, since the handler would act
+// on the token text instead of the value it stands for.
 func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransaction, cmdMsg CommandMessage) error {
 	if cmdMsg == nil {
 		return nil
@@ -525,7 +529,11 @@ func (w *L5Actuator) rehydratePayload(ctx context.Context, vt *VerifiedTransacti
 		}
 		return nil
 	}
-	rehydrated, err := w.Scrubbing.RehydratePayload(ctx, p)
+	foreign := scrubbing.ForeignTokenReject
+	if vt.ActionType == constants.ActionTypeInference {
+		foreign = scrubbing.ForeignTokenOpaque
+	}
+	rehydrated, err := w.Scrubbing.RehydratePayload(ctx, p, foreign)
 	if err != nil {
 		w.Logger.Error("Fail-closed: Failed to rehydrate payload", string(constants.ConnectionStateError), err, "message_id", vt.Envelope.Id)
 		return fmt.Errorf("%w: %w", constants.ErrL5ActuatorRehydrate, err)

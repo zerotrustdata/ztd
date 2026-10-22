@@ -372,6 +372,43 @@ func TestL5RehydratePayloadFailsClosedOnUnresolvableToken(t *testing.T) {
 	assert.Equal(t, original, msg.GetPayload(), "an unrehydrated payload is never handed back as dispatchable")
 }
 
+// A token another runtime minted never rehydrates to a local value. An INFERENCE prompt carries
+// it verbatim, since the model reads only the token; any other action withholds the payload,
+// since its handler would act on the token text.
+func TestL5RehydratePayloadForeignTokenByActionType(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	actuator, _ := newTestActuator(t)
+	other, err := scrubbing.NewScrubbingService(ctx, nil, testutil.NewTestLogger(), storagetest.NewTestTokenStore())
+	require.NoError(t, err)
+	foreign, err := other.GetTokenForValue(ctx, "other-runtime-secret")
+	require.NoError(t, err)
+	own, err := actuator.Scrubbing.GetTokenForValue(ctx, "local-secret")
+	require.NoError(t, err)
+	payload := []byte(`{"prompt":"compare ` + foreign + ` with ` + own + `"}`)
+
+	t.Run("inference keeps the foreign token opaque", func(t *testing.T) {
+		t.Parallel()
+		vt := rehydrationTestVT()
+		vt.ActionType = constants.ActionTypeInference
+		msg := &rehydrationCommandMessage{payload: payload}
+		require.NoError(t, actuator.rehydratePayload(ctx, vt, msg))
+		assert.JSONEq(t, `{"prompt":"compare `+foreign+` with local-secret"}`, string(msg.GetPayload()))
+	})
+
+	t.Run("shell command fails closed", func(t *testing.T) {
+		t.Parallel()
+		vt := rehydrationTestVT()
+		vt.ActionType = constants.ActionTypeExecuteBash
+		msg := &rehydrationCommandMessage{payload: payload}
+		err := actuator.rehydratePayload(ctx, vt, msg)
+		require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
+		require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
+		assert.Equal(t, payload, msg.GetPayload())
+		assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, classifyReceiptFailure(err))
+	})
+}
+
 // An Actuator with no scrubbing service cannot rehydrate a token, so a payload that holds one is
 // refused; a payload with no token passes unchanged.
 func TestL5RehydratePayloadWithoutScrubberRefusesTokens(t *testing.T) {
