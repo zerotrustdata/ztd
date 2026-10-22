@@ -129,6 +129,19 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 	if trace.FinalOutput != "" && (lastTurn == nil || lastTurn.Text != trace.FinalOutput) {
 		return fmt.Errorf("final output differs from the last signed model turn: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 	}
+	if len(trace.ToolCalls) > 0 && trace.Input == nil {
+		return fmt.Errorf("tool calls have no recorded tool declarations: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	specs := make(map[string]agentToolSpec)
+	if trace.Input != nil {
+		for _, declaration := range trace.Input.Tools {
+			spec, err := agentToolSpecFromDeclaration(declaration)
+			if err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrEvaluationEvidenceTraceMismatch, err)
+			}
+			specs[declaration.Name] = spec
+		}
+	}
 	for _, tool := range trace.ToolCalls {
 		turn := turns[tool.ModelCallID]
 		if turn == nil {
@@ -137,11 +150,9 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 		_, _, calls := agentResponseParts(turn.InferenceResult.InferenceResult)
 		found := false
 		for _, requested := range calls {
-			arguments, err := canonicalAgentToolArguments(requested.GetName(), requested.GetArgumentsJson())
-			if err != nil {
-				arguments = "{}" // The executor records malformed arguments as an empty object.
-			}
-			if requested.GetCallId() == tool.ProviderCallID && requested.GetName() == tool.ToolName && arguments == tool.ArgumentsJSON {
+			spec, declared := specs[requested.GetName()]
+			request := decodeAgentToolRequest(spec, declared, requested.GetArgumentsJson())
+			if requested.GetCallId() == tool.ProviderCallID && requested.GetName() == tool.ToolName && request.ArgumentsJSON == tool.ArgumentsJSON {
 				found = true
 				break
 			}
@@ -167,28 +178,6 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 		}
 	}
 	return nil
-}
-
-func canonicalAgentToolArguments(tool, raw string) (string, error) {
-	if tool != constants.MCPToolRunShellCommand {
-		return canonicalizeToolJSON(raw)
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &fields); err != nil || fields == nil {
-		return canonicalizeToolJSON(raw)
-	}
-	for name := range fields {
-		switch name {
-		case "command", "args", "timeout", "working_dir", "hostnames":
-		default:
-			return canonicalizeToolJSON(raw)
-		}
-	}
-	var request models.RunShellCommandRequest
-	if err := json.Unmarshal([]byte(raw), &request); err != nil {
-		return canonicalizeToolJSON(raw)
-	}
-	return request.CanonicalJSON(), nil
 }
 
 // verifyObservationEvidence returns the ledger claims for the observer receipts

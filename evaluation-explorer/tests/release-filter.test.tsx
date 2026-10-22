@@ -32,24 +32,24 @@ describe('campaign release selection', () => {
     })) as SnapshotRecord[], []);
   });
 
-  it('defaults to the newest release and keeps older and unknown runs out', () => {
+  it('defaults to all releases and includes older and unknown runs', () => {
     render(<MemoryRouter><EvaluationsView /></MemoryRouter>);
-    expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue(currentRelease);
+    expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue('all');
     expect(screen.getByRole('link', { name: 'run-current' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'run-older' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'run-unknown' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'run-older' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'run-unknown' })).toBeInTheDocument();
   });
 
-  it('defaults to the newest feed release when the build release has no records', () => {
+  it('defaults to all releases when the build release has no records', () => {
     evalStore.getState().evaluations.delete(recordKey('ds-live-run-current', 'run-current'));
     render(<MemoryRouter><EvaluationsView /></MemoryRouter>);
-    expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue('v0.9.0');
+    expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue('all');
     expect(screen.getByRole('link', { name: 'run-older' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'run-unknown' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'run-unknown' })).toBeInTheDocument();
   });
 
   it('persists all releases in the URL and includes asserted and unknown releases', () => {
-    render(<MemoryRouter><EvaluationsView /><Location /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/evaluations?release=v0.9.0']}><EvaluationsView /><Location /></MemoryRouter>);
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by release' }), { target: { value: 'all' } });
     expect(screen.getByTestId('location')).toHaveTextContent('release=all');
     expect(screen.getByRole('link', { name: 'run-older' })).toBeInTheDocument();

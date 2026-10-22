@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -494,4 +495,64 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeMustPinOneKey(t *testing.T) {
 	trace.Inference.Anchor = &AgentTraceAnchor{ConformanceAnchor: oracletest.NewSigner(t).Anchor(trace.Inference.OperatorID)}
 
 	requireEvidenceError(t, trace, constants.ErrConformanceAnchorInvalid)
+}
+
+// shellEpisodeTrace returns a v7 trace whose one signed agent turn requested
+// run_shell_command with raw, declared from the native catalog, and whose
+// recorded tool call carries recorded as its arguments.
+func shellEpisodeTrace(t *testing.T, raw, recorded string) *AgentTrace {
+	t.Helper()
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	scope, err := catalog.Scope(ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}})
+	require.NoError(t, err)
+	input, err := newAgentTraceInput(nil, scope.Declarations())
+	require.NoError(t, err)
+	result := &operatorv1.InferenceResult{Parts: []*operatorv1.InferenceResponsePart{{
+		Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "call-1", Name: constants.MCPToolRunShellCommand, ArgumentsJson: raw}},
+	}}}
+	return &AgentTrace{
+		SchemaVersion: agentTraceSchemaVersionV7,
+		Input:         input,
+		ModelCalls: []AgentModelCall{{
+			ProviderAttemptID: "attempt-1", TransactionID: "tx-m1", Purpose: agentModelCallPurposeTurn,
+			InferenceResult: &AgentTraceInferenceResult{InferenceResult: result},
+		}},
+		ToolCalls: []AgentToolCall{{ModelCallID: "attempt-1", ProviderCallID: "call-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: recorded}},
+	}
+}
+
+func TestVerifyV7EpisodeOutputs_BindsToolArgumentsThroughTypedRequest(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      string
+		recorded string
+		cause    error
+	}{
+		{name: "typed shell request records canonical form", raw: `{"args":["hi"],"command":"echo"}`, recorded: models.RunShellCommandRequest{Command: "echo", Args: []string{"hi"}}.CanonicalJSON()},
+		{name: "schema-invalid shell request records generic form", raw: `{"args": ["hi"]}`, recorded: `{"args":["hi"]}`},
+		{name: "recorded arguments differ from the signed request", raw: `{"command":"echo"}`, recorded: `{"command":"rm"}`, cause: constants.ErrEvaluationEvidenceTraceMismatch},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := verifyV7EpisodeOutputs(shellEpisodeTrace(t, test.raw, test.recorded))
+			if test.cause == nil {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, test.cause)
+		})
+	}
+
+	t.Run("tool calls without recorded declarations", func(t *testing.T) {
+		trace := shellEpisodeTrace(t, `{"command":"echo"}`, `{"command":"echo"}`)
+		trace.Input = nil
+		require.ErrorIs(t, verifyV7EpisodeOutputs(trace), constants.ErrEvaluationEvidenceTraceMismatch)
+	})
+
+	t.Run("undecodable declaration", func(t *testing.T) {
+		trace := shellEpisodeTrace(t, `{"command":"echo"}`, `{"command":"echo"}`)
+		trace.Input.Tools[0].JSONSchema = "{"
+		require.ErrorIs(t, verifyV7EpisodeOutputs(trace), constants.ErrEvaluationEvidenceTraceMismatch)
+	})
 }

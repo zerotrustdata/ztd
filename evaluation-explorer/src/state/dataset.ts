@@ -113,12 +113,12 @@ function defaultDatasetId(
   return liveDatasetIds[0] ?? '';
 }
 
-// The release every view filters by: the explicit ?release= choice, else the
+// Explicit ?release= choices take precedence over a view default or the
 // newest release present in the feed.
-export function useSelectedRelease(): string {
+export function useSelectedRelease(defaultRelease?: string): string {
   const [params] = useSearchParams();
   const feedDefault = useStoreState((state) => defaultViewRelease([...state.catalogs.values(), ...state.evaluations.values(), ...state.models.values()]));
-  return params.get('release') ?? feedDefault;
+  return params.get('release') ?? defaultRelease ?? feedDefault;
 }
 
 export function useDatasetOptions(release: string): DatasetOption[] {

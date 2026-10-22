@@ -183,7 +183,7 @@ func TestRunToolRejectsHostnamesBeforeTribunalIntent(t *testing.T) {
 		run := newTribunalAuthoringRun(t, true, inference, tools)
 		call, err := run.runTool(context.Background(), 1, "model-call-1", &operatorv1.InferenceToolCall{
 			CallId: "call-1", Name: constants.MCPToolRunShellCommand,
-			ArgumentsJson: `{"command":"echo","args":["hello"],"hostnames":[]}`,
+			ArgumentsJson: `{"command":"echo","args":["hello"],"hostnames":["web-1"]}`,
 		})
 		require.NoError(t, err)
 		assert.False(t, call.Success)

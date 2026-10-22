@@ -6,9 +6,9 @@ import { compareReleasesDescending, CURRENT_PLATFORM_RELEASE } from '../content/
 import { useSelectedRelease } from '../state/dataset';
 import { useStoreState } from '../state/store';
 
-export function ReleaseSelector() {
+export function ReleaseSelector({ defaultRelease }: { defaultRelease?: string }) {
   const [params, setParams] = useSearchParams();
-  const selected = useSelectedRelease();
+  const selected = useSelectedRelease(defaultRelease);
   const releases = useStoreState((state) => Array.from(new Set([
     CURRENT_PLATFORM_RELEASE,
     ...(selected === 'all' ? [] : [selected]),

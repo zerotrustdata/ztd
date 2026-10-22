@@ -47,8 +47,8 @@ const modelCallGovernanceRejected = "governance_rejected"
 // as a direct command's is. A deliberation that approves no command is a
 // model-visible failure; a member inference failure is also recorded as the
 // trace's provider failure, which ends the loop.
-func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, args agentToolArguments) (AgentToolCall, error) {
-	if len(args.Strings("hostnames")) > 0 {
+func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, proposal models.RunShellCommandRequest) (AgentToolCall, error) {
+	if len(proposal.Hostnames) > 0 {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "run_shell_command Tribunal authoring does not accept hostnames"})
 	}
 	tier := r.designated

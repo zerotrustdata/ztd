@@ -24,7 +24,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
@@ -902,13 +901,10 @@ func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, to
 		ToolName:       toolCall.GetName(),
 		LoopTurn:       turn,
 	}
-	arguments, err := canonicalizeToolJSON(toolCall.GetArgumentsJson())
-	if err != nil {
-		arguments = "{}"
-	}
-	record.ArgumentsJSON = arguments
-	spec, ok := r.tools.Spec(toolCall.GetName())
-	if !ok {
+	spec, declared := r.tools.Spec(toolCall.GetName())
+	request := decodeAgentToolRequest(spec, declared, toolCall.GetArgumentsJson())
+	record.ArgumentsJSON = request.ArgumentsJSON
+	if !declared {
 		hint := "no tools are available; answer directly"
 		if names := r.tools.DeclaredNames(); len(names) > 0 {
 			hint = "use one of: " + strings.Join(names, ", ")
@@ -916,33 +912,13 @@ func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, to
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("ZTD-1607: Unknown tool %q; %s", toolCall.GetName(), hint)})
 	}
 	record.IsOperatorTool = spec.Operator
-	args, failure := parseAgentToolArguments(spec, toolCall.GetArgumentsJson())
-	if failure != nil {
-		return r.fail(record, *failure)
+	if request.Failure != nil {
+		return r.fail(record, *request.Failure)
 	}
-	if spec.Name == constants.MCPToolRunShellCommand && r.req.ScenarioTools.TribunalCommands {
-		if _, hasHostnames := args.Values()["hostnames"]; hasHostnames {
-			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "run_shell_command Tribunal authoring does not accept hostnames"})
-		}
-		encoded, err := json.Marshal(args.Values())
-		if err != nil {
-			return AgentToolCall{}, fmt.Errorf("evaluation: encode proposed %s arguments: %w", spec.Name, err)
-		}
-		var proposal models.RunShellCommandRequest
-		if err := json.Unmarshal(encoded, &proposal); err != nil {
-			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("invalid %s proposal: %v", spec.Name, err)})
-		}
-		record.ArgumentsJSON = proposal.CanonicalJSON()
+	if request.Shell != nil && r.req.ScenarioTools.TribunalCommands {
+		return r.runTribunal(ctx, record, *request.Shell)
 	}
-	switch spec.Name {
-	case constants.MCPToolRunShellCommand:
-		if r.req.ScenarioTools.TribunalCommands {
-			return r.runTribunal(ctx, record, args)
-		}
-		return r.runNativeMCPTool(ctx, record, spec.Name, args)
-	default:
-		return r.runNativeMCPTool(ctx, record, spec.Name, args)
-	}
+	return r.runNativeMCPTool(ctx, record, request)
 }
 
 func (r *agentRun) fail(record AgentToolCall, failure agentToolFailure) (AgentToolCall, error) {
@@ -968,22 +944,14 @@ func (r *agentRun) succeed(record AgentToolCall, value any) (AgentToolCall, erro
 }
 
 // runNativeMCPTool maps one native MCP tool onto its governed MCP_CALL action.
-func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, tool string, args agentToolArguments) (AgentToolCall, error) {
+func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, request agentToolRequest) (AgentToolCall, error) {
+	tool, args := record.ToolName, request.Arguments
 	if tool == constants.MCPToolAuditReceiptList {
 		r.injectAuditReceiptListDefaults(args)
 	}
 	var argsJSON []byte
-	if tool == constants.MCPToolRunShellCommand {
-		encoded, err := json.Marshal(args.Values())
-		if err != nil {
-			return AgentToolCall{}, fmt.Errorf("evaluation: encode %s arguments: %w", tool, err)
-		}
-		var request models.RunShellCommandRequest
-		if err := json.Unmarshal(encoded, &request); err != nil {
-			return AgentToolCall{}, fmt.Errorf("evaluation: decode %s arguments: %w", tool, err)
-		}
-		argsJSON = []byte(request.CanonicalJSON())
-		record.ArgumentsJSON = string(argsJSON)
+	if request.Shell != nil {
+		argsJSON = []byte(request.Shell.CanonicalJSON())
 	} else {
 		var err error
 		argsJSON, err = json.Marshal(args.Values())

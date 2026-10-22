@@ -235,6 +235,48 @@ func TestRepairAssignmentsWithoutResults_ResolvesRunningRejectedScenarioContract
 	require.ErrorIs(t, err, constants.ErrEvaluationAssignmentUnresolved)
 }
 
+// Regrade re-imports a stored result whose sealed agent trace imports to a
+// different lifecycle, keeps the stored completion time and the trace bytes,
+// and leaves an agreeing result alone.
+func TestRegradeAssignmentsFromAgentTraces_ReimportsDisagreeingResult(t *testing.T) {
+	ctx := context.Background()
+	store := NewStore(newCampaignRuntimeFileService(t))
+	run := completedTestCampaign(t, store)
+	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-regrade" })
+	assignments, err := store.ListAssignments(ctx, run.GetRunId())
+	require.NoError(t, err)
+	require.NotEmpty(t, assignments)
+	traced := assignments[0]
+	stored, err := store.LoadAssignmentResult(ctx, run.GetRunId(), traced.GetAssignmentId())
+	require.NoError(t, err)
+	invalid := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+	require.NotEqual(t, invalid, stored.GetLifecycleStatus())
+	// A trace that carries no ledger evidence imports as INVALID_EVIDENCE.
+	workspace, err := NewScenarioWorkspace(agentTestWorkingDirectory, run.GetRunId(), "attempt-1")
+	require.NoError(t, err)
+	traceBody, err := SealAgentTrace(&AgentTrace{RunID: run.GetRunId(), AssignmentID: traced.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Workspace: AgentTraceWorkspace(workspace), Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."})
+	require.NoError(t, err)
+	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), traced.GetAssignmentId(), traceBody))
+
+	regraded, err := controller.RegradeAssignmentsFromAgentTraces(ctx, run.GetRunId())
+	require.NoError(t, err)
+	assert.Equal(t, 1, regraded)
+	result, err := store.LoadAssignmentResult(ctx, run.GetRunId(), traced.GetAssignmentId())
+	require.NoError(t, err)
+	assert.Equal(t, invalid, result.GetLifecycleStatus())
+	assert.True(t, proto.Equal(stored.GetCompletedAt(), result.GetCompletedAt()))
+	assignment, err := store.LoadAssignment(ctx, run.GetRunId(), traced.GetAssignmentId())
+	require.NoError(t, err)
+	assert.Equal(t, invalid, assignment.GetLifecycleStatus())
+	_, body, err := store.LoadAssignmentAgentTraceArtifact(ctx, run.GetRunId(), traced.GetAssignmentId())
+	require.NoError(t, err)
+	assert.Equal(t, traceBody, body)
+
+	regraded, err = controller.RegradeAssignmentsFromAgentTraces(ctx, run.GetRunId())
+	require.NoError(t, err)
+	assert.Zero(t, regraded)
+}
+
 func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

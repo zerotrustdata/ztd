@@ -641,50 +641,10 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	if startPublishErr != nil {
 		startPublishErr = fmt.Errorf("%w: assignment %s start: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), startPublishErr)
 	}
-	artifact, found := artifacts[assignment.GetScenarioId()]
-	if !found {
-		return nil, false, fmt.Errorf("evaluation: execute next assignment: missing scenario artifacts for %s", assignment.GetScenarioId())
-	}
-	var scenarioInput ScenarioInputFixture
-	if err := json.Unmarshal(artifact.Input.Body, &scenarioInput); err != nil {
-		return nil, false, fmt.Errorf("evaluation: execute next assignment: decode scenario input: %w", err)
-	}
-	var scenarioGold ScenarioGoldCriteria
-	if err := json.Unmarshal(artifact.Gold.Body, &scenarioGold); err != nil {
-		return nil, false, fmt.Errorf("evaluation: execute next assignment: decode scenario gold: %w", err)
-	}
-	catalog, err := c.store.LoadScenarioCatalog(ctx, run.GetCampaignBinding().GetCampaignId())
+	execReq, err := c.frozenAssignmentRequest(ctx, campaignSpec, binding, formationStackSet, artifacts, assignment, c.newID("attempt"))
 	if err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("evaluation: execute next assignment: %w", err)
 	}
-	gradingMethod, err := scenarioGradingMethodForAssignment(catalog, assignment)
-	if err != nil {
-		return nil, false, err
-	}
-	scenarioTools, err := scenarioToolsForAssignment(catalog, assignment)
-	if err != nil {
-		return nil, false, err
-	}
-	requiredConcepts, err := scenarioRequiredConceptsForAssignment(catalog, assignment)
-	if err != nil {
-		return nil, false, err
-	}
-	attemptID := c.newID("attempt")
-	execReq := AssignmentExecutionRequest{
-		Assignment:        assignment,
-		FormationStackSet: formationStackSet,
-		Investigation:     campaignSpec.GetInvestigation(),
-		AttemptID:         attemptID,
-		ScenarioInput:     scenarioInput,
-		ScenarioGold:      scenarioGold,
-		ScenarioTools:     scenarioTools,
-		RequiredConcepts:  requiredConcepts,
-		GradingMethod:     gradingMethod,
-		Binding:           binding,
-	}
-	execReq.Binding.ModelVariants = campaignSpec.GetModelRegistry()
-	execReq.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(campaignSpec.GetModelRegistry())
-	execReq.Binding.FormationStackSetDigest = campaignSpec.GetFormationStackSetDigest()
 	var result *evalv1.EvaluationAssignmentResult
 	execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)
 	if err == nil {
@@ -713,6 +673,56 @@ func persistedTerminalResult(result *evalv1.EvaluationAssignmentResult, startPub
 		return nil, false, persistErr
 	}
 	return result, true, errors.Join(startPublishErr, persistErr)
+}
+
+// frozenAssignmentRequest builds the request one assignment executes and is
+// graded under from its campaign's frozen spec, scenario catalog and artifacts.
+func (c *CampaignController) frozenAssignmentRequest(ctx context.Context, spec *evalv1.EvaluationCampaignSpec, binding CampaignExecutionBinding, formationStackSet *HeterogeneousStackSet, artifacts map[string]ScenarioArtifacts, assignment *evalv1.EvaluationAssignment, attemptID string) (AssignmentExecutionRequest, error) {
+	artifact, found := artifacts[assignment.GetScenarioId()]
+	if !found {
+		return AssignmentExecutionRequest{}, fmt.Errorf("missing scenario artifacts for %s: %w", assignment.GetScenarioId(), constants.ErrMissingRequiredField)
+	}
+	var scenarioInput ScenarioInputFixture
+	if err := json.Unmarshal(artifact.Input.Body, &scenarioInput); err != nil {
+		return AssignmentExecutionRequest{}, fmt.Errorf("decode scenario input: %w", err)
+	}
+	var scenarioGold ScenarioGoldCriteria
+	if err := json.Unmarshal(artifact.Gold.Body, &scenarioGold); err != nil {
+		return AssignmentExecutionRequest{}, fmt.Errorf("decode scenario gold: %w", err)
+	}
+	catalog, err := c.store.LoadScenarioCatalog(ctx, spec.GetCampaignId())
+	if err != nil {
+		return AssignmentExecutionRequest{}, err
+	}
+	gradingMethod, err := scenarioGradingMethodForAssignment(catalog, assignment)
+	if err != nil {
+		return AssignmentExecutionRequest{}, err
+	}
+	scenarioTools, err := scenarioToolsForAssignment(catalog, assignment)
+	if err != nil {
+		return AssignmentExecutionRequest{}, err
+	}
+	requiredConcepts, err := scenarioRequiredConceptsForAssignment(catalog, assignment)
+	if err != nil {
+		return AssignmentExecutionRequest{}, err
+	}
+	req := AssignmentExecutionRequest{
+		Assignment:        assignment,
+		FormationStackSet: formationStackSet,
+		Investigation:     spec.GetInvestigation(),
+		AttemptID:         attemptID,
+		ScenarioInput:     scenarioInput,
+		ScenarioGold:      scenarioGold,
+		ScenarioTools:     scenarioTools,
+		RequiredConcepts:  requiredConcepts,
+		GradingMethod:     gradingMethod,
+		Binding:           binding,
+	}
+	req.Binding.ModelRegistryDigest = spec.GetModelRegistryDigest()
+	req.Binding.ModelVariants = spec.GetModelRegistry()
+	req.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(spec.GetModelRegistry())
+	req.Binding.FormationStackSetDigest = spec.GetFormationStackSetDigest()
+	return req, nil
 }
 
 func scenarioGradingMethodForAssignment(catalog *evalv1.EvaluationScenarioCatalog, assignment *evalv1.EvaluationAssignment) (evalv1.EvaluationGradingMethod, error) {

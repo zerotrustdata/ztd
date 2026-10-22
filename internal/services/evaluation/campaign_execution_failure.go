@@ -413,21 +413,117 @@ func (c *CampaignController) importPersistedAgentTrace(ctx context.Context, req 
 	if err != nil || trace == nil {
 		return nil, false
 	}
-	// The loaded trace is digest-checked sealed evidence; its canonical body is
-	// the persisted one, whatever schema version sealed it.
-	body, err := MarshalCanonicalJSONObject(trace)
-	if err != nil {
-		return nil, false
-	}
-	ref, err := BuildAssignmentAgentTraceEvidenceReference(req.Assignment.GetRunId(), trace.EvaluationAttemptID, body, c.now().UTC())
-	if err != nil {
-		return nil, false
-	}
-	// Recovery is pinned to the current sealed version like the live path, so an
-	// earlier-version persisted trace is INVALID_EVIDENCE.
-	result, err := ImportAssignmentResultFromAgentTrace(req, trace, ref, c.now().UTC(), c.newID)
+	result, err := importSealedAgentTrace(req, trace, c.now().UTC(), c.newID)
 	if err != nil {
 		return nil, false
 	}
 	return result, true
+}
+
+// importSealedAgentTrace imports the result a persisted agent trace grades to.
+// The loaded trace is digest-checked sealed evidence; its canonical body is the
+// persisted one, whatever schema version sealed it. The import is pinned to the
+// current sealed version like the live path, so an earlier-version persisted
+// trace is INVALID_EVIDENCE.
+func importSealedAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, now time.Time, newID func(string) string) (*evalv1.EvaluationAssignmentResult, error) {
+	body, err := MarshalCanonicalJSONObject(trace)
+	if err != nil {
+		return nil, err
+	}
+	ref, err := BuildAssignmentAgentTraceEvidenceReference(req.Assignment.GetRunId(), trace.EvaluationAttemptID, body, now)
+	if err != nil {
+		return nil, err
+	}
+	return ImportAssignmentResultFromAgentTrace(req, trace, ref, now, newID)
+}
+
+// RegradeAssignmentsFromAgentTraces re-imports each terminal homogeneous
+// assignment result from its sealed agent trace when the trace imports to a
+// different lifecycle than the stored result, such as an INVALID_EVIDENCE that
+// a since-fixed import check recorded for valid evidence. The sealed trace is
+// the evidence and is never changed; the regraded result keeps the stored
+// completion time. The caller must hold the run lease.
+func (c *CampaignController) RegradeAssignmentsFromAgentTraces(ctx context.Context, runID string) (int, error) {
+	if c == nil || c.store == nil || runID == "" {
+		return 0, fmt.Errorf("evaluation: regrade assignments: %w", constants.ErrMissingRequiredField)
+	}
+	run, err := c.store.LoadRun(ctx, runID)
+	if err != nil {
+		return 0, err
+	}
+	spec, err := c.store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
+	if err != nil {
+		return 0, err
+	}
+	if err := ValidateCampaignSpecDigest(spec); err != nil {
+		return 0, fmt.Errorf("evaluation: regrade assignments: campaign spec: %w", err)
+	}
+	if spec.GetCampaignDigest() != run.GetCampaignBinding().GetCampaignDigest() ||
+		spec.GetModelRegistryDigest() != run.GetCampaignBinding().GetModelRegistryDigest() ||
+		spec.GetCatalogDigest() != run.GetCampaignBinding().GetCatalogDigest() {
+		return 0, fmt.Errorf("evaluation: regrade assignments: campaign spec does not match run binding: %w", constants.ErrChecksumMismatch)
+	}
+	catalog, err := c.store.LoadScenarioCatalog(ctx, spec.GetCampaignId())
+	if err != nil {
+		return 0, err
+	}
+	artifacts, err := c.store.LoadScenarioArtifacts(ctx, spec.GetCampaignId(), catalog)
+	if err != nil {
+		return 0, err
+	}
+	assignments, err := c.store.ListAssignments(ctx, runID)
+	if err != nil {
+		return 0, err
+	}
+	regraded := 0
+	for _, assignment := range assignments {
+		if assignment == nil || IsHeterogeneousAssignment(assignment) || !isTerminalAssignmentLifecycle(assignment.GetLifecycleStatus()) {
+			continue
+		}
+		result, err := c.regradeAssignment(ctx, spec, artifacts, assignment)
+		if err != nil {
+			return regraded, fmt.Errorf("evaluation: regrade assignment %s: %w", assignment.GetAssignmentId(), err)
+		}
+		if result == nil {
+			continue
+		}
+		if err := c.persistTerminalAssignment(ctx, assignment, result); err != nil {
+			return regraded, err
+		}
+		regraded++
+	}
+	return regraded, nil
+}
+
+// regradeAssignment returns the result one assignment's sealed agent trace
+// imports to, or nil when the assignment has no persisted result and trace or
+// the trace imports to the stored lifecycle.
+func (c *CampaignController) regradeAssignment(ctx context.Context, spec *evalv1.EvaluationCampaignSpec, artifacts map[string]ScenarioArtifacts, assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {
+	runID, assignmentID := assignment.GetRunId(), assignment.GetAssignmentId()
+	if exists, err := c.store.AssignmentResultExists(ctx, runID, assignmentID); err != nil || !exists {
+		return nil, err
+	}
+	if traced, err := c.store.AssignmentAgentTraceExists(ctx, runID, assignmentID); err != nil || !traced {
+		return nil, err
+	}
+	stored, err := c.store.LoadAssignmentResult(ctx, runID, assignmentID)
+	if err != nil {
+		return nil, err
+	}
+	trace, err := c.store.LoadAssignmentAgentTrace(ctx, runID, assignmentID)
+	if err != nil {
+		return nil, err
+	}
+	req, err := c.frozenAssignmentRequest(ctx, spec, CampaignExecutionBinding{}, nil, artifacts, assignment, trace.EvaluationAttemptID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := importSealedAgentTrace(req, trace, stored.GetCompletedAt().AsTime().UTC(), c.newID)
+	if err != nil {
+		return nil, err
+	}
+	if result.GetLifecycleStatus() == stored.GetLifecycleStatus() {
+		return nil, nil
+	}
+	return result, nil
 }

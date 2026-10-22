@@ -184,7 +184,7 @@ describe('OverviewView', () => {
     expect(screen.queryByText(/live deployment of the ztd AI governance suite/i)).not.toBeInTheDocument();
   });
 
-  it('shows activity from every run in the selected release, including events arriving before summaries', () => {
+  it('shows activity from every run, including events arriving before summaries', () => {
     const secondEvent: LiveEvent = {
       ...events[0]!,
       dataset_id: 'ds-live-second-run',
@@ -208,17 +208,33 @@ describe('OverviewView', () => {
     expect(stream.getByRole('link', { name: /Stage Updated:.*View details/ })).toBeInTheDocument();
   });
 
-  it('filters live events by release even before a catalog or run summary arrives', () => {
+  it.each(['/', '/?release=v1.1.2'])('shows live activity across releases at %s before summaries arrive', (route) => {
     evalStore.loadFixtures([], [
       { ...events[0]!, release: 'v1.1.2', release_basis: 'recorded', variant_id: 'current-model' },
-      { ...events[0]!, event_id: 'older-event', assignment_id: 'older-assignment', release: 'v1.1.1', release_basis: 'recorded', variant_id: 'older-model' },
+      { ...events[0]!, event_id: 'older-event', run_id: 'older-run', assignment_id: 'older-assignment', release: 'v1.1.1', release_basis: 'recorded', variant_id: 'older-model' },
+      { ...events[0]!, event_id: 'unknown-event', run_id: 'unknown-run', assignment_id: 'unknown-assignment', variant_id: 'unknown-model' },
     ]);
 
-    render(<MemoryRouter initialEntries={['/?release=v1.1.2']}><OverviewView /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[route]}><OverviewView /></MemoryRouter>);
 
     const stream = within(screen.getByRole('region', { name: 'Live activity' }));
     expect(stream.getByRole('link', { name: 'current-model' })).toBeInTheDocument();
-    expect(stream.queryByRole('link', { name: 'older-model' })).not.toBeInTheDocument();
+    expect(stream.getByRole('link', { name: 'older-model' })).toBeInTheDocument();
+    expect(stream.getByRole('link', { name: 'unknown-model' })).toBeInTheDocument();
+  });
+
+  it('shows recent runs across releases by recency', () => {
+    evalStore.loadFixtures([
+      { ...evaluation, release: 'v1.3.0', release_basis: 'recorded' },
+      { ...evaluation, dataset_id: 'ds-live-older-release', run_id: 'recent-older-release',
+        release: 'v1.2.0', release_basis: 'recorded', started_at: '2026-09-23T12:00:00Z' },
+      { ...evaluation, dataset_id: 'ds-live-unknown', run_id: 'recent-unknown', started_at: '2026-09-24T12:00:00Z' },
+    ], []);
+    render(<MemoryRouter><OverviewView /></MemoryRouter>);
+    const recent = within(screen.getByRole('list', { name: 'Recent runs' }));
+    expect(recent.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'recent-unknown', 'recent-older-release', evaluation.run_id,
+    ]);
   });
 
   it('removes the landing page explainer while retaining recent runs', () => {

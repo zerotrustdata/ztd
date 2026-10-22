@@ -425,16 +425,19 @@ func runsExportCmd(deps nativeEvalDeps) *cobra.Command {
 type runRepairJSON struct {
 	RunID   string `json:"run_id"`
 	Results int    `json:"repaired_results"`
+	// Regraded counts the results --regrade re-imported from their sealed
+	// agent traces.
+	Regraded int `json:"regraded_results,omitempty"`
 	// ProjectionReopened is the terminal Gateway run status --projection
 	// replaced, empty when the projection was not reopened.
 	ProjectionReopened models.RunLifecycleStatus `json:"projection_reopened,omitempty"`
 }
 
 func runsRepairCmd(deps nativeEvalDeps) *cobra.Command {
-	var projection bool
+	var projection, regrade bool
 	cmd := &cobra.Command{
 		Use:   "repair <run>",
-		Short: "Backfill terminal results for assignments missing result records",
+		Short: "Backfill or regrade terminal assignment results",
 		Long: `Repair one run's persisted records: every assignment that reached a terminal
 lifecycle without a persisted result gets one, recorded as a recovered failure.
 A running assignment with no result and no agent trace, whose frozen scenario
@@ -447,6 +450,12 @@ holds a terminal status the local store contradicts, such as a paused run
 projected as cancelled. The local store is authoritative: a run with assignments
 queued and none cancelled is reported as waiting, and the Gateway reopens the
 terminal projection only while it still holds that exact status.
+
+With --regrade, repair re-imports each terminal assignment result from its
+sealed agent trace when the trace now imports to a different lifecycle, such as
+an INVALID_EVIDENCE an import check since fixed recorded for valid evidence.
+The sealed trace is never changed. Run ztd eval runs verify and then
+ztd eval runs publish --force to republish the corrected projections.
 
 Repair holds the run lease throughout, so it refuses a run a live process holds.`,
 		Args: cobra.ExactArgs(1),
@@ -466,6 +475,11 @@ Repair holds the run lease throughout, so it refuses a run a live process holds.
 				if payload.Results, err = controller.RepairAssignmentsWithoutResults(cmd.Context(), runID); err != nil {
 					return err
 				}
+				if regrade {
+					if payload.Regraded, err = controller.RegradeAssignmentsFromAgentTraces(cmd.Context(), runID); err != nil {
+						return err
+					}
+				}
 				if projection {
 					payload.ProjectionReopened, err = repairRunProjection(cmd, deps, cfg, fileSvc, store, runID, lease)
 				}
@@ -480,6 +494,11 @@ Repair holds the run lease throughout, so it refuses a run a live process holds.
 			if _, err := fmt.Fprintf(out, "Repaired %d terminal assignment result(s) for run %s\n", payload.Results, runID); err != nil {
 				return err
 			}
+			if regrade {
+				if _, err := fmt.Fprintf(out, "Regraded %d assignment result(s) from sealed agent traces for run %s\n", payload.Regraded, runID); err != nil {
+					return err
+				}
+			}
 			switch {
 			case !projection:
 				return nil
@@ -492,6 +511,7 @@ Repair holds the run lease throughout, so it refuses a run a live process holds.
 		},
 	}
 	cmd.Flags().BoolVar(&projection, "projection", false, "Reopen a terminal Gateway run projection the local store contradicts")
+	cmd.Flags().BoolVar(&regrade, "regrade", false, "Re-import terminal results whose sealed agent trace imports to a different lifecycle")
 	return cmd
 }
 

@@ -5,8 +5,7 @@
 
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { matchesRelease, releaseLabel } from '../content/release';
-import { useSelectedRelease } from '../state/dataset';
+import { releaseLabel } from '../content/release';
 import { useStoreState } from '../state/store';
 import { LiveEventStream } from '../components/LiveEventStream';
 import { formatNumber } from '../components/shared';
@@ -174,13 +173,10 @@ function Runs({
 }
 
 export function OverviewView() {
-  const release = useSelectedRelease();
-  const catalogs = useStoreState((state) => Array.from(state.catalogs.values()).filter((record) => matchesRelease(record, release)));
-  const allEvaluations = useStoreState((state) => Array.from(state.evaluations.values()).filter((record) => matchesRelease(record, release)));
-  const allModels = useStoreState((state) => Array.from(state.models.values()).filter((record) => matchesRelease(record, release)));
-  const events = useStoreState((state) =>
-    state.events.filter((event) => matchesRelease(event, release)),
-  );
+  const catalogs = useStoreState((state) => Array.from(state.catalogs.values()));
+  const allEvaluations = useStoreState((state) => Array.from(state.evaluations.values()));
+  const allModels = useStoreState((state) => Array.from(state.models.values()));
+  const events = useStoreState((state) => state.events);
   const connection = useStoreState((state) => state.connection);
   const streamConnection = useStoreState((state) => state.streamConnection);
   const isReconciling = useStoreState((state) => state.pendingSnapshot !== null);
@@ -189,7 +185,6 @@ export function OverviewView() {
     <div className="overview">
       <Runs catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
       <LiveEventStream
-        key={release}
         events={events}
         connection={connection}
         streamConnection={streamConnection}

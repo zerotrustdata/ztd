@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -371,6 +372,69 @@ func parseAgentToolArguments(spec agentToolSpec, raw string) (agentToolArguments
 		return agentToolArguments{}, agentToolValidationFailure(spec.Name, problems)
 	}
 	return agentToolArguments{tool: spec.Name, values: values}, nil
+}
+
+// agentToolRequest is one model tool request decoded against the contract
+// declared to the model. decodeAgentToolRequest is its only constructor: the
+// executor records its ArgumentsJSON and the evidence verifier recomputes it
+// from the signed model response, so the recorded form has one owner.
+type agentToolRequest struct {
+	// ArgumentsJSON is the recorded form: the typed canonical request of a
+	// run_shell_command call that satisfies its contract, otherwise the
+	// canonical JSON the model sent, or "{}" when that is not a JSON object.
+	ArgumentsJSON string
+	Arguments     agentToolArguments
+	// Shell is the typed request of a contract-valid run_shell_command call.
+	Shell *models.RunShellCommandRequest
+	// Failure is the model-visible rejection of a request that does not
+	// satisfy its contract. It is nil for an undeclared tool, which the
+	// caller rejects with the declared tool names.
+	Failure *agentToolFailure
+}
+
+func decodeAgentToolRequest(spec agentToolSpec, declared bool, raw string) agentToolRequest {
+	request := agentToolRequest{ArgumentsJSON: "{}"}
+	if canonical, err := canonicalizeToolJSON(raw); err == nil {
+		request.ArgumentsJSON = canonical
+	}
+	if !declared {
+		return request
+	}
+	request.Arguments, request.Failure = parseAgentToolArguments(spec, raw)
+	if request.Failure != nil || spec.Name != constants.MCPToolRunShellCommand {
+		return request
+	}
+	shell, err := decodeRunShellCommandRequest(request.Arguments)
+	if err != nil {
+		request.Failure = &agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("invalid %s request: %v", spec.Name, err)}
+		return request
+	}
+	request.Shell = &shell
+	request.ArgumentsJSON = shell.CanonicalJSON()
+	return request
+}
+
+func decodeRunShellCommandRequest(args agentToolArguments) (models.RunShellCommandRequest, error) {
+	var request models.RunShellCommandRequest
+	encoded, err := json.Marshal(args.Values())
+	if err != nil {
+		return request, fmt.Errorf("evaluation: encode %s arguments: %w", constants.MCPToolRunShellCommand, err)
+	}
+	if err := json.Unmarshal(encoded, &request); err != nil {
+		return request, fmt.Errorf("evaluation: decode %s arguments: %w", constants.MCPToolRunShellCommand, err)
+	}
+	return request, nil
+}
+
+// agentToolSpecFromDeclaration rebuilds a tool's argument contract from the
+// declaration the model received, so verification judges each request by the
+// contract the executor applied when the trace was sealed.
+func agentToolSpecFromDeclaration(tool AgentTraceTool) (agentToolSpec, error) {
+	var schema mcp.InputSchema
+	if err := json.Unmarshal([]byte(tool.JSONSchema), &schema); err != nil {
+		return agentToolSpec{}, fmt.Errorf("evaluation: decode %s declaration: %w", tool.Name, err)
+	}
+	return agentToolSpec{Name: tool.Name, Description: tool.Description, Properties: schema.Properties, Required: schema.Required}, nil
 }
 
 func propertyAccepts(prop *mcp.PropertySchema, value any) bool {
