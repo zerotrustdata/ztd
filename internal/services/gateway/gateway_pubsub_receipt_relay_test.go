@@ -69,14 +69,14 @@ func (s *stubSignerStore) ReceiptSignerKey(_ context.Context, _ string, receipt 
 	return pub, nil
 }
 
-// stubReceiptRecorder implements ReceiptRecorder for receipt relay tests.
+// stubReceiptRecorder implements EventReceiptRecorder for receipt relay tests.
 type stubReceiptRecorder struct {
 	mu      sync.Mutex
-	records []*models.ActionReceiptRecord
+	records []*models.EventReceiptRecord
 	err     error
 }
 
-func (r *stubReceiptRecorder) RecordActionReceipt(record *models.ActionReceiptRecord) error {
+func (r *stubReceiptRecorder) RecordEventReceipt(record *models.EventReceiptRecord) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -86,10 +86,10 @@ func (r *stubReceiptRecorder) RecordActionReceipt(record *models.ActionReceiptRe
 	return nil
 }
 
-func (r *stubReceiptRecorder) recorded() []*models.ActionReceiptRecord {
+func (r *stubReceiptRecorder) recorded() []*models.EventReceiptRecord {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]*models.ActionReceiptRecord, len(r.records))
+	out := make([]*models.EventReceiptRecord, len(r.records))
 	copy(out, r.records)
 	return out
 }

@@ -178,7 +178,7 @@ type PubSubPublishResponse struct {
 	Receivers int `json:"receivers"`
 }
 
-type ActionReceiptRecord struct {
+type EventReceiptRecord struct {
 	TransactionID     string                     `json:"transaction_id"`
 	TransactionHash   string                     `json:"transaction_hash"`
 	InvestigationID   string                     `json:"investigation_id"`

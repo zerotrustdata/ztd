@@ -33,7 +33,7 @@ import (
 
 // mockAuditReader is a mock implementation of AuditEvidenceReader for unit testing.
 type mockAuditReader struct {
-	receipts     []*models.ActionReceiptRecord
+	receipts     []*models.EventReceiptRecord
 	receiptsErr  error
 	events       []*storage.Event
 	eventsErr    error
@@ -41,7 +41,7 @@ type mockAuditReader struct {
 	mutationsErr error
 }
 
-func (m *mockAuditReader) ListActionReceipts(_ models.AuditScope, _, _ int) ([]*models.ActionReceiptRecord, error) {
+func (m *mockAuditReader) ListEventReceipts(_ models.AuditScope, _, _ int) ([]*models.EventReceiptRecord, error) {
 	if m.receiptsErr != nil {
 		return nil, m.receiptsErr
 	}
@@ -190,7 +190,7 @@ func fullDeps(t *testing.T) EvaluatorDeps {
 	now := time.Now().UTC()
 	return EvaluatorDeps{
 		Audit: &mockAuditReader{
-			receipts: []*models.ActionReceiptRecord{{
+			receipts: []*models.EventReceiptRecord{{
 				TransactionID: receipt.TransactionId, TransactionHash: receipt.TransactionHash,
 				StateRootBefore: receipt.StateRootBefore, StateRootAfter: receipt.StateRootAfter,
 				ExecutedAt: now, Signature: receipt.Signature, SignerKeyID: receipt.SignerKeyId, ActionReceipt: receipt,

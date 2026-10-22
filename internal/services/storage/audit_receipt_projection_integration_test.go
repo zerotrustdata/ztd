@@ -24,16 +24,16 @@ func TestReceiptProjectionNeverRegressesTerminalStatus(t *testing.T) {
 	store := newIntegrationAuditStore(t)
 	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))
 
-	completed := sampleActionReceiptRecord(t, "projection-session")
-	require.NoError(t, store.RecordActionReceipt(completed))
+	completed := sampleEventReceiptRecord(t, "projection-session")
+	require.NoError(t, store.RecordEventReceipt(completed))
 
-	replayed := sampleActionReceiptRecord(t, "projection-session")
+	replayed := sampleEventReceiptRecord(t, "projection-session")
 	replayed.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
 	replayed.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
 	replayed.ResultSummary = ""
-	require.NoError(t, store.RecordActionReceipt(replayed))
+	require.NoError(t, store.RecordEventReceipt(replayed))
 
-	got, err := store.GetActionReceipt(completed.TransactionID)
+	got, err := store.GetEventReceipt(completed.TransactionID)
 	require.NoError(t, err)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, got.Status)
 	require.Equal(t, "completed successfully", got.ResultSummary)
@@ -49,17 +49,17 @@ func TestReceiptProjectionAdvancesFromExecutingToTerminal(t *testing.T) {
 	store := newIntegrationAuditStore(t)
 	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))
 
-	executing := sampleActionReceiptRecord(t, "projection-session")
+	executing := sampleEventReceiptRecord(t, "projection-session")
 	executing.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
 	executing.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
-	require.NoError(t, store.RecordActionReceipt(executing))
+	require.NoError(t, store.RecordEventReceipt(executing))
 
-	failed := sampleActionReceiptRecord(t, "projection-session")
+	failed := sampleEventReceiptRecord(t, "projection-session")
 	failed.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 	failed.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-	require.NoError(t, store.RecordActionReceipt(failed))
+	require.NoError(t, store.RecordEventReceipt(failed))
 
-	got, err := store.GetActionReceipt(failed.TransactionID)
+	got, err := store.GetEventReceipt(failed.TransactionID)
 	require.NoError(t, err)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, got.Status)
 }
@@ -68,17 +68,17 @@ func TestReceiptReadsRestoreL2L3Validity(t *testing.T) {
 	store := newIntegrationAuditStore(t)
 	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))
 
-	record := sampleActionReceiptRecord(t, "projection-session")
+	record := sampleEventReceiptRecord(t, "projection-session")
 	record.ActionReceipt.L2Status = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
 	record.ActionReceipt.L3Status = operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
-	require.NoError(t, store.RecordActionReceipt(record))
+	require.NoError(t, store.RecordEventReceipt(record))
 
-	got, err := store.GetActionReceipt(record.TransactionID)
+	got, err := store.GetEventReceipt(record.TransactionID)
 	require.NoError(t, err)
 	require.True(t, got.L2Valid)
 	require.False(t, got.L3Valid)
 
-	listed, err := store.ListActionReceipts(models.AuditScope{}, 10, 0)
+	listed, err := store.ListEventReceipts(models.AuditScope{}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 	require.True(t, listed[0].L2Valid)
@@ -88,19 +88,20 @@ func TestReceiptReadsTolerateLegacyNullColumns(t *testing.T) {
 	store := newIntegrationAuditStore(t)
 	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))
 
-	record := sampleActionReceiptRecord(t, "projection-session")
-	require.NoError(t, store.RecordActionReceipt(record))
+	record := sampleEventReceiptRecord(t, "projection-session")
+	require.NoError(t, store.RecordEventReceipt(record))
 	// Writers may omit the optional columns, which then read back as NULL.
-	_, err := store.db.Exec(`UPDATE receipts SET requestor_user_id = NULL, acting_app_id = NULL, event_type = NULL,
-		target_resource = NULL, result_summary = NULL, state_root_before = NULL, state_root_after = NULL`)
+	_, err := store.db.Exec(`UPDATE events SET event_receipt_requestor_user_id = NULL, event_receipt_acting_app_id = NULL, event_receipt_event_type = NULL,
+		event_receipt_target_resource = NULL, event_receipt_result_summary = NULL, event_receipt_state_root_before = NULL, event_receipt_state_root_after = NULL
+		WHERE event_receipt_status IS NOT NULL`)
 	require.NoError(t, err)
 
-	got, err := store.GetActionReceipt(record.TransactionID)
+	got, err := store.GetEventReceipt(record.TransactionID)
 	require.NoError(t, err)
 	require.Empty(t, got.RequestorUserID)
 	require.Empty(t, got.TargetResource)
 
-	listed, err := store.ListActionReceipts(models.AuditScope{}, 10, 0)
+	listed, err := store.ListEventReceipts(models.AuditScope{}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 }
@@ -109,17 +110,17 @@ func TestReceiptProjectionIgnoresReplayedUnspecifiedAfterTerminal(t *testing.T) 
 	store := newIntegrationAuditStore(t)
 	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))
 
-	failed := sampleActionReceiptRecord(t, "projection-session")
+	failed := sampleEventReceiptRecord(t, "projection-session")
 	failed.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 	failed.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-	require.NoError(t, store.RecordActionReceipt(failed))
+	require.NoError(t, store.RecordEventReceipt(failed))
 
-	stale := sampleActionReceiptRecord(t, "projection-session")
+	stale := sampleEventReceiptRecord(t, "projection-session")
 	stale.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED
 	stale.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED
-	require.NoError(t, store.RecordActionReceipt(stale))
+	require.NoError(t, store.RecordEventReceipt(stale))
 
-	got, err := store.GetActionReceipt(failed.TransactionID)
+	got, err := store.GetEventReceipt(failed.TransactionID)
 	require.NoError(t, err)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, got.Status)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, got.ActionReceipt.GetStatus())
@@ -129,14 +130,14 @@ func TestReceiptProjectionAllowsTerminalReplacement(t *testing.T) {
 	store := newIntegrationAuditStore(t)
 	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))
 
-	first := sampleActionReceiptRecord(t, "projection-session")
-	require.NoError(t, store.RecordActionReceipt(first))
+	first := sampleEventReceiptRecord(t, "projection-session")
+	require.NoError(t, store.RecordEventReceipt(first))
 
-	second := sampleActionReceiptRecord(t, "projection-session")
+	second := sampleEventReceiptRecord(t, "projection-session")
 	second.ResultSummary = "re-signed final stage"
-	require.NoError(t, store.RecordActionReceipt(second))
+	require.NoError(t, store.RecordEventReceipt(second))
 
-	got, err := store.GetActionReceipt(first.TransactionID)
+	got, err := store.GetEventReceipt(first.TransactionID)
 	require.NoError(t, err)
 	require.Equal(t, "re-signed final stage", got.ResultSummary)
 }
@@ -145,17 +146,17 @@ func TestReceiptProjectionKeepsTransactionsIndependent(t *testing.T) {
 	store := newIntegrationAuditStore(t)
 	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))
 
-	done := sampleActionReceiptRecord(t, "projection-session")
-	require.NoError(t, store.RecordActionReceipt(done))
+	done := sampleEventReceiptRecord(t, "projection-session")
+	require.NoError(t, store.RecordEventReceipt(done))
 
-	other := sampleActionReceiptRecord(t, "projection-session")
+	other := sampleEventReceiptRecord(t, "projection-session")
 	other.TransactionID = "tx-integration-2"
 	other.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
 	other.ActionReceipt.TransactionId = other.TransactionID
 	other.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
-	require.NoError(t, store.RecordActionReceipt(other))
+	require.NoError(t, store.RecordEventReceipt(other))
 
-	got, err := store.GetActionReceipt(other.TransactionID)
+	got, err := store.GetEventReceipt(other.TransactionID)
 	require.NoError(t, err)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING, got.Status)
 }
@@ -164,15 +165,16 @@ func TestReceiptExportReadsRestoreL2L3ValidityAndTolerateNulls(t *testing.T) {
 	store := newIntegrationAuditStore(t)
 	require.NoError(t, store.CreateSession("projection-session", constants.SessionTypeOperator, "Projection", "user-1"))
 
-	record := sampleActionReceiptRecord(t, "projection-session")
+	record := sampleEventReceiptRecord(t, "projection-session")
 	record.ActionReceipt.L2Status = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
 	record.ActionReceipt.L3Status = operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
-	require.NoError(t, store.RecordActionReceipt(record))
-	_, err := store.db.Exec(`UPDATE receipts SET requestor_user_id = NULL, acting_app_id = NULL, event_type = NULL,
-		target_resource = NULL, result_summary = NULL, state_root_before = NULL, state_root_after = NULL`)
+	require.NoError(t, store.RecordEventReceipt(record))
+	_, err := store.db.Exec(`UPDATE events SET event_receipt_requestor_user_id = NULL, event_receipt_acting_app_id = NULL, event_receipt_event_type = NULL,
+		event_receipt_target_resource = NULL, event_receipt_result_summary = NULL, event_receipt_state_root_before = NULL, event_receipt_state_root_after = NULL
+		WHERE event_receipt_status IS NOT NULL`)
 	require.NoError(t, err)
 
-	got, err := store.ListActionReceiptsSince(time.Now().Add(-time.Hour), 10)
+	got, err := store.ListEventReceiptsSince(time.Now().Add(-time.Hour), 10)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.True(t, got[0].L2Valid)

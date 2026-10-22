@@ -200,7 +200,7 @@ const (
 const (
 	DbFilename             = "ztd.db"
 	VaultHeaderFilename    = "vault.header"
-	ReceiptsExportFilename = "receipts-export.json"
+	ReceiptsExportFilename = "event-receipts-export.json"
 
 	// Storage DB filenames (used with filepath.Join)
 	ChaosDBFilename = "chaos.db"
@@ -560,7 +560,7 @@ const (
 // Reporting constants for output directory and filenames.
 const (
 	ReportsDirname                 = "reports"
-	ReportReceiptsFilename         = "receipts.csv"
+	ReportReceiptsFilename         = "event_receipts.csv"
 	ReportSessionsFilename         = "sessions.csv"
 	ReportEventsFilename           = "events.csv"
 	ReportFileMutationsFilename    = "file_mutations.csv"

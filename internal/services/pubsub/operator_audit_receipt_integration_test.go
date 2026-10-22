@@ -96,7 +96,7 @@ func TestOperatorAuditReceiptRoute_GovernedLocalLedgerScope(t *testing.T) {
 	require.Equal(t, svc.config.OperatorID, result.OperatorID)
 	require.Equal(t, "operator_local_ledger", result.Authority)
 	require.Len(t, result.Receipts, 2)
-	rows, err := auditStore.ListActionReceipts(models.AuditScope{OperatorID: svc.config.OperatorID}, 100, 0)
+	rows, err := auditStore.ListEventReceipts(models.AuditScope{OperatorID: svc.config.OperatorID}, 100, 0)
 	require.NoError(t, err)
 	storedSessions := make(map[string]string, len(rows))
 	for _, row := range rows {
@@ -124,7 +124,7 @@ func TestOperatorAuditReceiptRoute_GovernedLocalLedgerScope(t *testing.T) {
 
 	// Both the scored query and the fresh query are issued through MCP_CALL and
 	// leave their own signed receipts only after each result is materialized.
-	allRows, err := auditStore.ListActionReceipts(models.AuditScope{OperatorID: svc.config.OperatorID}, 100, 0)
+	allRows, err := auditStore.ListEventReceipts(models.AuditScope{OperatorID: svc.config.OperatorID}, 100, 0)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(allRows), 5)
 }

@@ -74,7 +74,7 @@ func seedEgressAudit(t *testing.T, store *storage.SQLAuditStore) {
 		SignerKeyId:     "warden-key",
 		Signature:       "signature",
 	}
-	require.NoError(t, store.RecordActionReceipt(&models.ActionReceiptRecord{
+	require.NoError(t, store.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     receipt.TransactionId,
 		TransactionHash:   receipt.TransactionHash,
 		InvestigationID:   "investigation-egress",
@@ -157,8 +157,8 @@ func TestAuditController_EventsAndReportNeverReturnRawContent(t *testing.T) {
 
 	t.Run("receipt list and export", func(t *testing.T) {
 		for path, call := range map[string]func(http.ResponseWriter, *http.Request){
-			"/api/v1/audit/receipts?operator_session_id=" + egressSessionID:        controller.handleAuditReceipts,
-			"/api/v1/audit/receipts/export?operator_session_id=" + egressSessionID: controller.handleAuditReceiptsExport,
+			"/api/v1/audit/event-receipts?operator_session_id=" + egressSessionID:        controller.handleAuditEventReceipts,
+			"/api/v1/audit/event-receipts/export?operator_session_id=" + egressSessionID: controller.handleAuditEventReceiptsExport,
 		} {
 			rr := httptest.NewRecorder()
 			call(rr, httptest.NewRequest(http.MethodGet, path, nil))
@@ -180,8 +180,8 @@ func TestAuditController_DisabledScrubberWithholds(t *testing.T) {
 	for name, call := range map[string]func(http.ResponseWriter, *http.Request){
 		"events":          controller.handleAuditEvents,
 		"report":          controller.handleAuditReport,
-		"receipts":        controller.handleAuditReceipts,
-		"receipt export":  controller.handleAuditReceiptsExport,
+		"receipts":        controller.handleAuditEventReceipts,
+		"receipt export":  controller.handleAuditEventReceiptsExport,
 		"consensus votes": controller.handleAuditConsensusVotes,
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -313,7 +313,7 @@ func requireRecordedReceipt(ctx context.Context, t *testing.T, actionType consta
 	t.Helper()
 	receiptsResp, err := e2eClient.GetAuditReceipts(ctx)
 	require.NoError(t, err, "audit receipts must be readable")
-	for _, r := range receiptsResp.Receipts {
+	for _, r := range receiptsResp.EventReceipts {
 		if r.ActionType != actionType || r.TargetResource != targetResource {
 			continue
 		}

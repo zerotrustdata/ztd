@@ -643,51 +643,6 @@ definitions:
     - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
     - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
     - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
-  models.ActionReceiptRecord:
-    properties:
-      acting_app_id:
-        type: string
-      action_receipt:
-        $ref: '#/definitions/operatorv1.ActionReceipt'
-      action_type:
-        $ref: '#/definitions/constants.ActionType'
-      event_type:
-        $ref: '#/definitions/constants.EventType'
-      executed_at:
-        type: string
-      investigation_id:
-        type: string
-      l2_valid:
-        type: boolean
-      l3_valid:
-        type: boolean
-      operator_id:
-        type: string
-      operator_session_id:
-        type: string
-      requestor_user_id:
-        type: string
-      result_summary:
-        type: string
-      signature:
-        type: string
-      signer_key_id:
-        type: string
-      state_root_after:
-        type: string
-      state_root_before:
-        type: string
-      status:
-        $ref: '#/definitions/operatorv1.ExecutionStatus'
-      target_resource:
-        type: string
-      timestamp:
-        type: string
-      transaction_hash:
-        type: string
-      transaction_id:
-        type: string
-    type: object
   models.AgentLifecycleStatus:
     enum:
     - idle
@@ -742,11 +697,11 @@ definitions:
       reason:
         type: string
     type: object
-  models.AuditReceiptsResponse:
+  models.AuditEventReceiptsResponse:
     properties:
-      receipts:
+      event_receipts:
         items:
-          $ref: '#/definitions/models.ActionReceiptRecord'
+          $ref: '#/definitions/models.EventReceiptRecord'
         type: array
       success:
         type: boolean
@@ -1022,6 +977,51 @@ definitions:
     - EvalVerificationProjectionValidated
     - EvalVerificationReceiptVerificationNotApplicable
     - EvalVerificationVerified
+  models.EventReceiptRecord:
+    properties:
+      acting_app_id:
+        type: string
+      action_receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
+      action_type:
+        $ref: '#/definitions/constants.ActionType'
+      event_type:
+        $ref: '#/definitions/constants.EventType'
+      executed_at:
+        type: string
+      investigation_id:
+        type: string
+      l2_valid:
+        type: boolean
+      l3_valid:
+        type: boolean
+      operator_id:
+        type: string
+      operator_session_id:
+        type: string
+      requestor_user_id:
+        type: string
+      result_summary:
+        type: string
+      signature:
+        type: string
+      signer_key_id:
+        type: string
+      state_root_after:
+        type: string
+      state_root_before:
+        type: string
+      status:
+        $ref: '#/definitions/operatorv1.ExecutionStatus'
+      target_resource:
+        type: string
+      timestamp:
+        type: string
+      transaction_hash:
+        type: string
+      transaction_id:
+        type: string
+    type: object
   models.EvidenceSafeLink:
     properties:
       artifact_id:
@@ -3866,12 +3866,12 @@ paths:
       summary: List consensus votes for a transaction
       tags:
       - audit
-  /api/v1/audit/receipts:
+  /api/v1/audit/event-receipts:
     get:
       description: Returns one canonical protojson ActionReceipt when tx_id is set
-        or when investigation_id and action_type uniquely correlate a receipt. Without
-        those selectors, returns searchable receipt records with the complete receipt
-        nested under action_receipt.
+        or when investigation_id and action_type uniquely correlate an event receipt.
+        Without those selectors, returns searchable event receipt records with the
+        complete ActionReceipt nested under action_receipt.
       parameters:
       - description: Transaction ID for a single canonical ActionReceipt
         in: query
@@ -3907,7 +3907,7 @@ paths:
         "200":
           description: List wrapper; unique selectors instead return a bare operatorv1.ActionReceipt
           schema:
-            $ref: '#/definitions/models.AuditReceiptsResponse'
+            $ref: '#/definitions/models.AuditEventReceiptsResponse'
         "400":
           description: Bad Request — conflicting or incomplete selectors
           schema:
@@ -3933,12 +3933,12 @@ paths:
             withheld
           schema:
             type: string
-      summary: Get or list audit receipts
+      summary: Get or list event receipts
       tags:
       - audit
-  /api/v1/audit/receipts/export:
+  /api/v1/audit/event-receipts/export:
     get:
-      description: Returns an AuditReceiptsResponse list wrapper. Every searchable
+      description: Returns an AuditEventReceiptsResponse list wrapper. Every searchable
         record embeds the complete canonical protojson receipt under action_receipt.
       parameters:
       - description: Inclusive receipt timestamp in RFC3339 format
@@ -3963,7 +3963,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.AuditReceiptsResponse'
+            $ref: '#/definitions/models.AuditEventReceiptsResponse'
         "405":
           description: Method Not Allowed
           schema:
@@ -3977,7 +3977,7 @@ paths:
             withheld
           schema:
             type: string
-      summary: Export audit receipts
+      summary: Export event receipts
       tags:
       - audit
   /api/v1/auth/logout:

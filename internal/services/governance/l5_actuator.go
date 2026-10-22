@@ -380,7 +380,7 @@ func (w *L5Actuator) signAndLogReceipt(vt *VerifiedTransaction, audit govtypes.R
 		return nil, fmt.Errorf("%w: %w", constants.ErrL5ActuatorCommitmentPersist, err)
 	}
 	var attestation *operatorv1.CommitmentAttestation
-	err = w.SQLAuditStore.RecordActionReceiptWithCommitment(BuildReceiptRecord(vt.Envelope, audit, receipt), func(priorHash string) (*operatorv1.CommitmentAttestation, error) {
+	err = w.SQLAuditStore.RecordEventReceiptWithCommitment(BuildEventReceiptRecord(vt.Envelope, audit, receipt), func(priorHash string) (*operatorv1.CommitmentAttestation, error) {
 		built, err := w.buildCommitment(vt, receipt, priorHash)
 		if err != nil {
 			return nil, err
@@ -757,7 +757,7 @@ func (w *L5Actuator) signAndLogFinalReceipt(ctx context.Context, vt *VerifiedTra
 	if err := w.signFinalReceipt(receipt, vt.Envelope.Id); err != nil {
 		return err
 	}
-	if logErr := w.LogReceipt(ctx, vt.Envelope, audit, receipt); logErr != nil {
+	if logErr := w.LogEventReceipt(ctx, vt.Envelope, audit, receipt); logErr != nil {
 		receipt.FinalPersistenceAttestation = nil
 		w.Logger.Error("Failed to log final action receipt - mutation already executed", string(constants.ConnectionStateError), logErr, "message_id", vt.Envelope.Id)
 		return fmt.Errorf("%w: %w", constants.ErrL5ActuatorLogReceipt, logErr)
@@ -772,7 +772,7 @@ func (w *L5Actuator) signAndLogRejectionReceipt(ctx context.Context, vt *Verifie
 	if err := w.signFinalReceipt(receipt, vt.Envelope.Id); err != nil {
 		return err
 	}
-	if logErr := w.LogReceipt(ctx, vt.Envelope, audit, receipt); logErr != nil {
+	if logErr := w.LogEventReceipt(ctx, vt.Envelope, audit, receipt); logErr != nil {
 		receipt.FinalPersistenceAttestation = nil
 		w.Logger.Error("Failed to persist rejection receipt - rejection evidence lost, nothing was executed", string(constants.ConnectionStateError), logErr, "message_id", vt.Envelope.Id)
 		return fmt.Errorf("%w: %w", constants.ErrL5ActuatorRejectionReceiptPersist, logErr)
@@ -1042,16 +1042,16 @@ func (w *L5Actuator) requireAuditStore() error {
 	return nil
 }
 
-// LogReceipt records the signed action receipt in the audit store receipts table.
+// LogEventReceipt records the signed event receipt on its chain event.
 // The row is filed under audit, the operator and session the runtime owns.
-func (w *L5Actuator) LogReceipt(_ context.Context, env *govtypes.GovernanceEnvelope, audit govtypes.RuntimeIdentity, r *operatorv1.ActionReceipt) error {
+func (w *L5Actuator) LogEventReceipt(_ context.Context, env *govtypes.GovernanceEnvelope, audit govtypes.RuntimeIdentity, r *operatorv1.ActionReceipt) error {
 	if w.SQLAuditStore == nil {
 		return constants.ErrL5ActuatorAuditStoreMissing
 	}
 	if env == nil {
 		return constants.ErrTxInvalidEnvelope
 	}
-	if err := w.SQLAuditStore.RecordActionReceipt(BuildReceiptRecord(env, audit, r)); err != nil {
+	if err := w.SQLAuditStore.RecordEventReceipt(BuildEventReceiptRecord(env, audit, r)); err != nil {
 		if w.Logger != nil {
 			w.Logger.Error("Failed to record ActionReceipt in audit store", string(constants.ConnectionStateError), err)
 		}
@@ -1060,18 +1060,18 @@ func (w *L5Actuator) LogReceipt(_ context.Context, env *govtypes.GovernanceEnvel
 	return nil
 }
 
-// buildReceiptRecord constructs an ActionReceiptRecord from a GovernanceEnvelope and ActionReceipt.
-// This is the single source of truth for record construction, used by LogReceipt and the commitment-bound initial receipt write.
+// buildReceiptRecord constructs an EventReceiptRecord from a GovernanceEnvelope and ActionReceipt.
+// This is the single source of truth for record construction, used by LogEventReceipt and the commitment-bound initial receipt write.
 // audit is the operator and session the audit row is filed under. It is passed explicitly because the
 // envelope's operator_id and operator_session_id are claims and are not the audit identity of a rejected
 // transaction; the signed receipt keeps the claims in its stage evidence.
-func BuildReceiptRecord(env *govtypes.GovernanceEnvelope, audit govtypes.RuntimeIdentity, r *operatorv1.ActionReceipt) *models.ActionReceiptRecord {
+func BuildEventReceiptRecord(env *govtypes.GovernanceEnvelope, audit govtypes.RuntimeIdentity, r *operatorv1.ActionReceipt) *models.EventReceiptRecord {
 	eventType := constants.EventType(env.EventType)
 	if eventType == "" && r.EventType != "" {
 		eventType = constants.EventType(r.EventType)
 	}
 
-	return &models.ActionReceiptRecord{
+	return &models.EventReceiptRecord{
 		TransactionID:     r.TransactionId,
 		TransactionHash:   r.TransactionHash,
 		InvestigationID:   env.InvestigationId,

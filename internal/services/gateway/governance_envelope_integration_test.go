@@ -153,7 +153,7 @@ func assertEnvelopeRejectedAtIngress(t *testing.T, f *fixtures.GatewayFixture, c
 	require.NoError(t, json.Unmarshal(body, &errBody))
 	require.Contains(t, errBody.Error, sentinel.Error(), "HTTP rejection must carry the sentinel")
 
-	persisted, err := f.Service.GetAuditStore().GetActionReceipt(env.Id)
+	persisted, err := f.Service.GetAuditStore().GetEventReceipt(env.Id)
 	require.NoError(t, err)
 	if persisted != nil {
 		require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING, persisted.ActionReceipt.GetStatus(), "L5 must not start execution for rejected transaction")

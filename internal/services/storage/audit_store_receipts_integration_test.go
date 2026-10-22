@@ -23,9 +23,9 @@ import (
 )
 
 // receiptFor builds a sample receipt with its own transaction id, session, app, and timestamp.
-func receiptFor(t *testing.T, txID, sessionID, appID string, ts time.Time) *models.ActionReceiptRecord {
+func receiptFor(t *testing.T, txID, sessionID, appID string, ts time.Time) *models.EventReceiptRecord {
 	t.Helper()
-	record := sampleActionReceiptRecord(t, sessionID)
+	record := sampleEventReceiptRecord(t, sessionID)
 	record.TransactionID = txID
 	record.InvestigationID = "inv-" + txID
 	record.ActingAppID = appID
@@ -48,20 +48,22 @@ func TestRecordActionReceipt_SameTransactionTwiceKeepsOneRow(t *testing.T) {
 	executing.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
 	executing.ResultSummary = "executing"
 	executing.TransactionHash = "hash-first"
-	require.NoError(t, ass.RecordActionReceipt(executing))
+	require.NoError(t, ass.RecordEventReceipt(executing))
 
 	completed := receiptFor(t, "tx-upsert-once", "upsert-session", "app-upsert", now.Add(time.Second))
 	completed.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	completed.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	completed.ResultSummary = "completed"
 	completed.TransactionHash = "hash-second"
-	require.NoError(t, ass.RecordActionReceipt(completed))
+	require.NoError(t, ass.RecordEventReceipt(completed))
 
 	var rows int
-	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM receipts WHERE transaction_id = ?`, "tx-upsert-once").Scan(&rows))
-	assert.Equal(t, 1, rows)
+	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, "tx-upsert-once").Scan(&rows))
+	assert.Equal(t, 1, rows, "one current event receipt")
+	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM events WHERE transaction_id = ? AND type = ?`, "tx-upsert-once", string(constants.EventOperatorReceiptRecorded)).Scan(&rows))
+	assert.Equal(t, 2, rows, "each stage remains a chain event")
 
-	got, err := ass.GetActionReceipt("tx-upsert-once")
+	got, err := ass.GetEventReceipt("tx-upsert-once")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, got.Status)
@@ -77,7 +79,7 @@ func TestListActionReceipts_FiltersBySessionInvestigationAndActingApp(t *testing
 	require.NoError(t, ass.CreateSession("scope-b", constants.SessionTypeOperator, "B", "user-b"))
 
 	now := time.Now().UTC()
-	fixtures := []*models.ActionReceiptRecord{
+	fixtures := []*models.EventReceiptRecord{
 		receiptFor(t, "tx-scope-1", "scope-a", "app-x", now.Add(-3*time.Minute)),
 		receiptFor(t, "tx-scope-2", "scope-a", "app-y", now.Add(-2*time.Minute)),
 		receiptFor(t, "tx-scope-3", "scope-b", "app-y", now.Add(-1*time.Minute)),
@@ -87,10 +89,10 @@ func TestListActionReceipts_FiltersBySessionInvestigationAndActingApp(t *testing
 	fixtures[2].InvestigationID = "investigation-shared"
 	fixtures[2].OperatorID = "other-operator"
 	for _, record := range fixtures {
-		require.NoError(t, ass.RecordActionReceipt(record))
+		require.NoError(t, ass.RecordEventReceipt(record))
 	}
 
-	ids := func(records []*models.ActionReceiptRecord) map[string]bool {
+	ids := func(records []*models.EventReceiptRecord) map[string]bool {
 		out := map[string]bool{}
 		for _, r := range records {
 			out[r.TransactionID] = true
@@ -98,32 +100,32 @@ func TestListActionReceipts_FiltersBySessionInvestigationAndActingApp(t *testing
 		return out
 	}
 
-	bySession, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "scope-a"}, 10, 0)
+	bySession, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "scope-a"}, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{"tx-scope-1": true, "tx-scope-2": true}, ids(bySession))
 
-	byApp, err := ass.ListActionReceipts(models.AuditScope{ActingAppID: "app-y"}, 10, 0)
+	byApp, err := ass.ListEventReceipts(models.AuditScope{ActingAppID: "app-y"}, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{"tx-scope-2": true, "tx-scope-3": true}, ids(byApp))
 
-	combined, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "scope-a", ActingAppID: "app-y"}, 10, 0)
+	combined, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "scope-a", ActingAppID: "app-y"}, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{"tx-scope-2": true}, ids(combined))
 
-	byInvestigation, err := ass.ListActionReceipts(models.AuditScope{InvestigationID: "investigation-shared"}, 10, 0)
+	byInvestigation, err := ass.ListEventReceipts(models.AuditScope{InvestigationID: "investigation-shared"}, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{"tx-scope-1": true, "tx-scope-3": true}, ids(byInvestigation))
 
-	byOperator, err := ass.ListActionReceipts(models.AuditScope{OperatorID: fixtures[0].OperatorID, InvestigationID: "investigation-shared"}, 1, 0)
+	byOperator, err := ass.ListEventReceipts(models.AuditScope{OperatorID: fixtures[0].OperatorID, InvestigationID: "investigation-shared"}, 1, 0)
 	require.NoError(t, err)
 	require.Len(t, byOperator, 1, "operator filtering must precede pagination")
 	assert.Equal(t, "tx-scope-1", byOperator[0].TransactionID)
 
-	intersection, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "scope-a", InvestigationID: "investigation-shared"}, 10, 0)
+	intersection, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "scope-a", InvestigationID: "investigation-shared"}, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{"tx-scope-1": true}, ids(intersection))
 
-	unfiltered, err := ass.ListActionReceipts(models.AuditScope{}, 10, 0)
+	unfiltered, err := ass.ListEventReceipts(models.AuditScope{}, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, unfiltered, 3)
 }
@@ -151,32 +153,32 @@ func TestListActionReceipts_ExcludeAuditReadsFiltersBeforePagination(t *testing.
 		record.InvestigationID = "investigation-mixed"
 		record.ActionType = f.action
 		record.TargetResource = f.target
-		require.NoError(t, ass.RecordActionReceipt(record))
+		require.NoError(t, ass.RecordEventReceipt(record))
 	}
 
 	scope := models.AuditScope{InvestigationID: "investigation-mixed", ExcludeAuditReads: true}
 
-	all, err := ass.ListActionReceipts(scope, 10, 0)
+	all, err := ass.ListEventReceipts(scope, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, all, 2)
 	assert.Equal(t, "tx-mixed-shell", all[0].TransactionID)
 	assert.Equal(t, "tx-mixed-command", all[1].TransactionID)
 
-	first, err := ass.ListActionReceipts(scope, 1, 0)
+	first, err := ass.ListEventReceipts(scope, 1, 0)
 	require.NoError(t, err)
 	require.Len(t, first, 1)
 	assert.Equal(t, "tx-mixed-shell", first[0].TransactionID)
 
-	second, err := ass.ListActionReceipts(scope, 1, 1)
+	second, err := ass.ListEventReceipts(scope, 1, 1)
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	assert.Equal(t, "tx-mixed-command", second[0].TransactionID)
 
-	past, err := ass.ListActionReceipts(scope, 10, 2)
+	past, err := ass.ListEventReceipts(scope, 10, 2)
 	require.NoError(t, err)
 	assert.Empty(t, past)
 
-	unfiltered, err := ass.ListActionReceipts(models.AuditScope{InvestigationID: "investigation-mixed"}, 10, 0)
+	unfiltered, err := ass.ListEventReceipts(models.AuditScope{InvestigationID: "investigation-mixed"}, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, unfiltered, 3, "without the flag every receipt in the investigation is returned")
 }
@@ -192,17 +194,17 @@ func TestListActionReceipts_ExcludeAuditReadsPagesPastFullBatches(t *testing.T) 
 		record := receiptFor(t, txID, "batch-session", "", base.Add(time.Duration(i)*time.Minute))
 		record.InvestigationID = "investigation-batch"
 		record.ActionType = constants.ActionTypeExecuteBash
-		require.NoError(t, ass.RecordActionReceipt(record))
+		require.NoError(t, ass.RecordEventReceipt(record))
 	}
 	for i := range auditReadScanBatchSize + 5 {
 		record := receiptFor(t, fmt.Sprintf("tx-batch-read-%03d", i), "batch-session", "", base.Add(time.Hour+time.Duration(i)*time.Second))
 		record.InvestigationID = "investigation-batch"
 		record.ActionType = constants.ActionTypeMcpCall
 		record.TargetResource = constants.MCPToolAuditReceiptList
-		require.NoError(t, ass.RecordActionReceipt(record))
+		require.NoError(t, ass.RecordEventReceipt(record))
 	}
 
-	rows, err := ass.ListActionReceipts(models.AuditScope{InvestigationID: "investigation-batch", ExcludeAuditReads: true}, 10, 0)
+	rows, err := ass.ListEventReceipts(models.AuditScope{InvestigationID: "investigation-batch", ExcludeAuditReads: true}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	assert.Equal(t, "tx-batch-command-new", rows[0].TransactionID)
@@ -217,16 +219,16 @@ func TestListActionReceipts_PaginatesNewestFirst(t *testing.T) {
 
 	base := time.Now().UTC().Add(-time.Hour)
 	for i, txID := range []string{"tx-page-oldest", "tx-page-middle", "tx-page-newest"} {
-		require.NoError(t, ass.RecordActionReceipt(receiptFor(t, txID, "page-receipts", "app-page", base.Add(time.Duration(i)*time.Minute))))
+		require.NoError(t, ass.RecordEventReceipt(receiptFor(t, txID, "page-receipts", "app-page", base.Add(time.Duration(i)*time.Minute))))
 	}
 
-	first, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "page-receipts"}, 2, 0)
+	first, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "page-receipts"}, 2, 0)
 	require.NoError(t, err)
 	require.Len(t, first, 2)
 	assert.Equal(t, "tx-page-newest", first[0].TransactionID)
 	assert.Equal(t, "tx-page-middle", first[1].TransactionID)
 
-	second, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "page-receipts"}, 2, 2)
+	second, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "page-receipts"}, 2, 2)
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	assert.Equal(t, "tx-page-oldest", second[0].TransactionID)
@@ -239,17 +241,17 @@ func TestListActionReceiptsSince_ReturnsOnlyNewerReceiptsAscending(t *testing.T)
 	require.NoError(t, ass.CreateSession("since-session", constants.SessionTypeOperator, "Since", "user-since"))
 
 	now := time.Now().UTC()
-	require.NoError(t, ass.RecordActionReceipt(receiptFor(t, "tx-since-old", "since-session", "app-since", now.Add(-3*time.Hour))))
-	require.NoError(t, ass.RecordActionReceipt(receiptFor(t, "tx-since-late", "since-session", "app-since", now.Add(-10*time.Minute))))
-	require.NoError(t, ass.RecordActionReceipt(receiptFor(t, "tx-since-recent", "since-session", "app-since", now.Add(-5*time.Minute))))
+	require.NoError(t, ass.RecordEventReceipt(receiptFor(t, "tx-since-old", "since-session", "app-since", now.Add(-3*time.Hour))))
+	require.NoError(t, ass.RecordEventReceipt(receiptFor(t, "tx-since-late", "since-session", "app-since", now.Add(-10*time.Minute))))
+	require.NoError(t, ass.RecordEventReceipt(receiptFor(t, "tx-since-recent", "since-session", "app-since", now.Add(-5*time.Minute))))
 
-	since, err := ass.ListActionReceiptsSince(now.Add(-2*time.Hour), 10)
+	since, err := ass.ListEventReceiptsSince(now.Add(-2*time.Hour), 10)
 	require.NoError(t, err)
 	require.Len(t, since, 2)
 	assert.Equal(t, "tx-since-late", since[0].TransactionID)
 	assert.Equal(t, "tx-since-recent", since[1].TransactionID)
 
-	none, err := ass.ListActionReceiptsSince(now.Add(time.Hour), 10)
+	none, err := ass.ListEventReceiptsSince(now.Add(time.Hour), 10)
 	require.NoError(t, err)
 	assert.Empty(t, none)
 }
@@ -259,19 +261,19 @@ func TestListActionReceiptsSince_ReturnsOnlyNewerReceiptsAscending(t *testing.T)
 func TestReceiptReads_LockedVaultFailsRead(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.CreateSession("locked-receipts", constants.SessionTypeOperator, "Locked", "user-locked"))
-	require.NoError(t, ass.RecordActionReceipt(receiptFor(t, "tx-locked-read", "locked-receipts", "app-locked", time.Now().UTC())))
+	require.NoError(t, ass.RecordEventReceipt(receiptFor(t, "tx-locked-read", "locked-receipts", "app-locked", time.Now().UTC())))
 
 	ass.GetEncryptionVault().Lock()
 
-	got, err := ass.GetActionReceipt("tx-locked-read")
+	got, err := ass.GetEventReceipt("tx-locked-read")
 	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
 	assert.Nil(t, got)
 
-	listed, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "locked-receipts"}, 10, 0)
+	listed, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "locked-receipts"}, 10, 0)
 	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
 	assert.Nil(t, listed)
 
-	since, err := ass.ListActionReceiptsSince(time.Now().UTC().Add(-time.Hour), 10)
+	since, err := ass.ListEventReceiptsSince(time.Now().UTC().Add(-time.Hour), 10)
 	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
 	assert.Nil(t, since)
 }

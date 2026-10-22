@@ -178,8 +178,8 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	govEnvHandler := h.rateLimitMiddleware(govEnvMux)
 	mux.Handle(constants.APIPaths.GovernanceEnvelopes, govEnvHandler)
 
-	mux.HandleFunc(constants.APIPaths.AuditReceipts, h.auditController.handleAuditReceipts)
-	mux.HandleFunc(constants.APIPaths.AuditReceiptsExport, h.auditController.handleAuditReceiptsExport)
+	mux.HandleFunc(constants.APIPaths.AuditEventReceipts, h.auditController.handleAuditEventReceipts)
+	mux.HandleFunc(constants.APIPaths.AuditEventReceiptsExport, h.auditController.handleAuditEventReceiptsExport)
 	mux.HandleFunc(constants.APIPaths.AuditRecords, h.auditController.handleAuditRecords)
 	mux.HandleFunc(constants.APIPaths.AuditEvents, h.auditController.handleAuditEvents)
 	mux.HandleFunc(constants.APIPaths.AuditConsensusVotes, h.auditController.handleAuditConsensusVotes)

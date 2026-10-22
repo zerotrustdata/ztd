@@ -72,7 +72,7 @@ type GatewayWebSocketHandler struct {
 	// is disabled and publishes to receipts: are rejected fail-closed.
 	receiptRelayMu       sync.RWMutex
 	receiptSignerStore   ReceiptSignerResolver
-	receiptAuditRecorder ReceiptRecorder
+	receiptAuditRecorder EventReceiptRecorder
 
 	// certRenewal answers Operator requests on renewal: channels, wired by
 	// SetCertRenewalService. Nil refuses every request as unavailable.
@@ -80,12 +80,12 @@ type GatewayWebSocketHandler struct {
 	certRenewal   *OperatorCertRenewalService
 }
 
-// ReceiptRecorder is the narrow interface wrapping
-// RecordActionReceipt(*models.ActionReceiptRecord) error so the pubsub broker
+// EventReceiptRecorder is the narrow interface wrapping
+// RecordEventReceipt(*models.EventReceiptRecord) error so the pubsub broker
 // does not depend directly on *storage.SQLAuditStore. Implemented by
 // *storage.SQLAuditStore.
-type ReceiptRecorder interface {
-	RecordActionReceipt(record *models.ActionReceiptRecord) error
+type EventReceiptRecorder interface {
+	RecordEventReceipt(record *models.EventReceiptRecord) error
 }
 
 // dropOldestBuf is a bounded buffer that enforces drop-oldest back-pressure
@@ -225,16 +225,16 @@ func NewGatewayWebSocketHandler(logger *slog.Logger) *GatewayWebSocketHandler {
 	}
 }
 
-// SetReceiptRelayDeps wires the SignerStore and ReceiptRecorder required for
+// SetReceiptRelayDeps wires the SignerStore and EventReceiptRecorder required for
 // the receipts: ActionReceipt relay. When set, publishes to receipts:
 // channels from authorized operators are intercepted, the ActionReceipt
 // signature is verified against the operator's actuator public key (looked up
 // via the SignerStore), the receipt is recorded in the gateway's
-// SQLAuditStore via the ReceiptRecorder, and the envelope is fanned out to
+// SQLAuditStore via the EventReceiptRecorder, and the envelope is fanned out to
 // subscribers. When nil (the default), the receipts: relay path is disabled
 // and publishes to receipts: are rejected fail-closed. Called once during
 // gateway startup after the SignerStore and AuditStore are constructed.
-func (b *GatewayWebSocketHandler) SetReceiptRelayDeps(signerStore ReceiptSignerResolver, recorder ReceiptRecorder) {
+func (b *GatewayWebSocketHandler) SetReceiptRelayDeps(signerStore ReceiptSignerResolver, recorder EventReceiptRecorder) {
 	b.receiptRelayMu.Lock()
 	b.receiptSignerStore = signerStore
 	b.receiptAuditRecorder = recorder
@@ -697,15 +697,15 @@ func (h *pubSubSessionHandler) relayActionReceipt(channel string, data []byte) {
 		return
 	}
 
-	// 5. Build the ActionReceiptRecord via the shared single source of
+	// 5. Build the EventReceiptRecord via the shared single source of
 	// truth, reusing the same construction the operator's L5Actuator uses.
 	// The audit session is the channel-validated publisher session (step 2).
-	record := governance.BuildReceiptRecord(env, govtypes.RuntimeIdentity{OperatorID: env.OperatorId, SessionID: env.OperatorSessionId}, receipt)
+	record := governance.BuildEventReceiptRecord(env, govtypes.RuntimeIdentity{OperatorID: env.OperatorId, SessionID: env.OperatorSessionId}, receipt)
 
 	// 6. Record the receipt in the gateway's SQLAuditStore. Log on error
 	// but do not block fan-out: the receipt is still useful to subscribers
 	// even if the gateway's local recording fails.
-	if err := recorder.RecordActionReceipt(record); err != nil {
+	if err := recorder.RecordEventReceipt(record); err != nil {
 		b.logger.Error("PubSub receipts: relay: failed to record receipt in audit store",
 			"channel", channel,
 			"transaction_id", receipt.TransactionId,

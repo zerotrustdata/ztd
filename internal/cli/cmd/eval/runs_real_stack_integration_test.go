@@ -313,7 +313,7 @@ func TestRunsExecute_RealStack(t *testing.T) {
 
 			operatorFiles, err := fs.NewRuntimeFileService(run.stack.InferenceHost.WorkingDir, slog.Default())
 			require.NoError(t, err)
-			local, err := storage.ReadLocalActionReceipt(operatorFiles, slog.Default(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, receipt.GetTransactionId())
+			local, err := storage.ReadLocalEventReceipt(operatorFiles, slog.Default(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, receipt.GetTransactionId())
 			require.NoError(t, err)
 			require.NotNil(t, local)
 			assert.True(t, proto.Equal(receipt, local.ActionReceipt), "the imported trace receipt must match the Inference Operator's authoritative local record")
@@ -369,14 +369,14 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, residency.Models, "release verifies absence inside its own execution")
 
-	receipts, err := run.stack.Gateway.Service.GetAuditStore().ListActionReceipts(models.AuditScope{
+	receipts, err := run.stack.Gateway.Service.GetAuditStore().ListEventReceipts(models.AuditScope{
 		OperatorSessionID: inferenceWorkload.OperatorSessionID,
 		InvestigationID:   "ollama-model-residency",
 	}, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, receipts, 1, "the caller must not dispatch a second governed residency query after release")
 
-	releaseReceipts, err := run.stack.Gateway.Service.GetAuditStore().ListActionReceipts(models.AuditScope{
+	releaseReceipts, err := run.stack.Gateway.Service.GetAuditStore().ListEventReceipts(models.AuditScope{
 		OperatorSessionID: inferenceWorkload.OperatorSessionID,
 		InvestigationID:   "ollama-model-release",
 	}, 10, 0)
@@ -386,7 +386,7 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	assert.NotEmpty(t, releaseReceipts[0].TransactionID)
 	operatorFiles, err := fs.NewRuntimeFileService(run.stack.InferenceHost.WorkingDir, testutil.NewTestLogger())
 	require.NoError(t, err)
-	local, err := storage.ReadLocalActionReceipt(operatorFiles, testutil.NewTestLogger(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, releaseReceipts[0].TransactionID)
+	local, err := storage.ReadLocalEventReceipt(operatorFiles, testutil.NewTestLogger(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, releaseReceipts[0].TransactionID)
 	require.NoError(t, err)
 	require.NotNil(t, local)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, local.ActionReceipt.GetStatus())

@@ -516,7 +516,7 @@ func TestReportVerification_AllReceiptsPresent_Pass(t *testing.T) {
 
 	insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
 
-	err = auditStore.RecordActionReceipt(&models.ActionReceiptRecord{
+	err = auditStore.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     "tx-1",
 		TransactionHash:   "hash-1",
 		OperatorID:        "op-1",
@@ -550,7 +550,7 @@ func TestReportVerification_MissingReceipt_Fails(t *testing.T) {
 	firstHash := insertCommitment(t, cl, "tx-1", "hash-1", "", "FS_WRITE", "/file1")
 	insertCommitment(t, cl, "tx-2", "hash-2", firstHash, "FS_WRITE", "/file2")
 
-	err = auditStore.RecordActionReceipt(&models.ActionReceiptRecord{
+	err = auditStore.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     "tx-1",
 		TransactionHash:   "hash-1",
 		OperatorID:        "op-1",

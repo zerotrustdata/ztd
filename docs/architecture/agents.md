@@ -4,7 +4,7 @@ title: AI Agents and the ztd Governance Boundary
 audience: maintainers and coding agents
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-22
 owners:
   - internal/cli/agent/
   - internal/cli/cmd/mcp/
@@ -136,7 +136,7 @@ Set `OPERATOR_SESSION_ID` to the operator session ID before running the operator
 ztd audit events --app spiffe://ztd.local/app/claude
 
 # List signed transaction receipts filtered by agent identity:
-ztd audit receipts --app spiffe://ztd.local/app/claude
+ztd audit event-receipts --app spiffe://ztd.local/app/claude
 
 # List audit events scoped by operator session:
 ztd gw data audit list --operator-session-id "$OPERATOR_SESSION_ID"
@@ -239,7 +239,7 @@ Every admitted tool execution produces a signed `ActionReceipt` containing:
 - Execution status (`COMPLETED` or `FAILED`) and typed error codes.
 - `ReceiptPersistenceAttestation` signed by the Actuator's private key, proving local database persistence.
 
-Receipts are persisted authoritatively in the executing Operator's local SQLite database. Mirrored receipts at the Gateway provide query access via `ztd audit receipts --app <spiffe-id>`.
+Event receipts are persisted authoritatively on the executing Operator's local `events` chain. Mirrored event receipts at the Gateway provide query access via `ztd audit event-receipts --app <spiffe-id>`.
 
 The `audit_receipt_list` and `audit_receipt_get` tools read the executing runtime's own audit store. Through the Gateway's MCP endpoint, `audit_receipt_list`'s optional `investigation_id` filter intersects the required `operator_session_id` scope, and remote Operator records there remain best-effort projections. Dispatched to an outbound Operator as `MCP_CALL`, both return that Operator's authoritative local receipts. Evaluation's built-in model-role executor has a separate governed route to the selected Operator's own `audit_receipt_list` handler. That route requires an investigation ID and `exclude_audit_reads`, which drops only the audit-read tools' own receipts so that `run_shell_command` and other native-tool receipts stay investigation context; it returns only the Operator's authoritative local receipts and does not fall back to Gateway projections. `audit_receipt_list` also accepts an `action_type` filter, a `not_before` RFC 3339 lower bound on execution time, and `limit` (default 50) and `offset` pagination, and returns only signed receipt records with their `count`; `audit_receipt_get` returns one signed receipt by `transaction_id`. See the [evaluation architecture](evals.md#model-campaign-architecture-system-lane-and-model-role-lane) for its campaign binding and trace evidence.
 

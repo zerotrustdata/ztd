@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,8 +28,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
 	"github.com/zerotrustdata/ztd/internal/timesvc"
-	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
-	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // AuditStoreConfig holds configuration for the SQL audit store
@@ -270,6 +267,26 @@ CREATE TABLE IF NOT EXISTS events (
 	execution_duration_ms INTEGER,
 	stored_locally INTEGER DEFAULT 1,
 	execution_id TEXT,
+	-- Event receipt columns are null on events that are not the current event
+	-- receipt for a transaction. The canonical signed body is content_text.
+	-- event_receipt_status IS NOT NULL marks the one current row. A later
+	-- non-terminal stage stays on the chain with these columns null.
+	event_receipt_transaction_hash TEXT,
+	event_receipt_investigation_id TEXT,
+	event_receipt_operator_id TEXT,
+	event_receipt_operator_session_id TEXT,
+	event_receipt_requestor_user_id TEXT,
+	event_receipt_acting_app_id TEXT,
+	event_receipt_event_type TEXT,
+	event_receipt_action_type TEXT,
+	event_receipt_target_resource BLOB,
+	event_receipt_status INTEGER,
+	event_receipt_result_summary BLOB,
+	event_receipt_state_root_before TEXT,
+	event_receipt_state_root_after TEXT,
+	event_receipt_executed_at_ms INTEGER,
+	event_receipt_signer_key_id TEXT,
+	event_receipt_signature TEXT,
 	FOREIGN KEY(operator_session_id) REFERENCES sessions(id)
 );
 
@@ -285,29 +302,6 @@ CREATE TABLE IF NOT EXISTS file_mutation_log (
 	ledger_hash_after TEXT,
 	diff_stat BLOB,
 	FOREIGN KEY(event_id) REFERENCES events(id)
-);
-
-CREATE TABLE IF NOT EXISTS receipts (
-	transaction_id TEXT PRIMARY KEY,
-	transaction_hash TEXT NOT NULL,
-	investigation_id TEXT,
-	operator_id TEXT NOT NULL,
-	operator_session_id TEXT NOT NULL,
-	requestor_user_id TEXT,
-	acting_app_id TEXT,
-	event_type TEXT,
-	action_type TEXT NOT NULL,
-	target_resource BLOB,
-	status TEXT NOT NULL,
-	result_summary BLOB,
-	state_root_before TEXT,
-	state_root_after TEXT,
-	executed_at_ms INTEGER NOT NULL,
-	signer_key_id TEXT NOT NULL,
-	signature TEXT NOT NULL,
-	receipt_json BLOB,
-	timestamp TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now')),
-	FOREIGN KEY(operator_session_id) REFERENCES sessions(id)
 );
 
 CREATE TABLE IF NOT EXISTS commitment_ledger (
@@ -342,11 +336,13 @@ CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(operator_session_id);
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
 CREATE INDEX IF NOT EXISTS idx_events_transaction_id_type ON events(transaction_id, type);
+CREATE INDEX IF NOT EXISTS idx_events_event_receipt_acting_app ON events(event_receipt_acting_app_id, transaction_id) WHERE event_receipt_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_events_event_receipt_investigation ON events(event_receipt_investigation_id, event_receipt_action_type) WHERE event_receipt_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_events_event_receipt_session ON events(event_receipt_operator_session_id) WHERE event_receipt_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_events_event_receipt_operator ON events(event_receipt_operator_id) WHERE event_receipt_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_events_event_receipt_timestamp ON events(timestamp) WHERE event_receipt_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_events_event_receipt_tx ON events(transaction_id) WHERE event_receipt_status IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_file_mutation_event_id ON file_mutation_log(event_id);
-CREATE INDEX IF NOT EXISTS idx_receipts_session_id ON receipts(operator_session_id);
-CREATE INDEX IF NOT EXISTS idx_receipts_timestamp ON receipts(timestamp);
-CREATE INDEX IF NOT EXISTS idx_receipts_investigation_id ON receipts(investigation_id);
-CREATE INDEX IF NOT EXISTS idx_receipts_acting_app_id ON receipts(acting_app_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_id_type ON sessions(id, session_type);
 CREATE INDEX IF NOT EXISTS idx_commitment_ledger_committed_at ON commitment_ledger(committed_at_unix_ms);
 CREATE INDEX IF NOT EXISTS idx_audit_chain_checkpoints_seq ON audit_chain_checkpoints(pruned_through_seq);
@@ -616,8 +612,10 @@ func (ass *SQLAuditStore) RecordEventOnce(event *Event) (eventID int64, recorded
 const (
 	eventOnceQuery      = "SELECT 1 FROM events WHERE transaction_id = ? AND type = ? LIMIT 1"
 	eventChainMetaQuery = "SELECT seq, hash FROM events WHERE transaction_id = ? ORDER BY id DESC LIMIT 1"
-	// eventActingAppPredicate is driven from the receipts side, so it never scans events.
-	eventActingAppPredicate       = "transaction_id IN (SELECT transaction_id FROM receipts WHERE acting_app_id = ?)"
+	// eventActingAppPredicate is driven from the current event receipt, so the
+	// acting-app index selects the transaction ids and the events lookup uses
+	// idx_events_transaction_id_type. It must not scan events.
+	eventActingAppPredicate       = "transaction_id IN (SELECT transaction_id FROM events WHERE event_receipt_acting_app_id = ? AND event_receipt_status IS NOT NULL)"
 	eventTransactionTypePredicate = "transaction_id = ? AND type = ?"
 	// eventSelectColumns is the column list materializeEvents scans.
 	eventSelectColumns = `
@@ -752,179 +750,6 @@ func (ass *SQLAuditStore) GetEventChainMetaByTransactionID(transactionID string)
 	return seq, hash, true, nil
 }
 
-// RecordActionReceipt upserts the latest-stage receipt projection and appends a
-// chained operator.receipt.recorded fact for every stage write.
-func (ass *SQLAuditStore) RecordActionReceipt(record *models.ActionReceiptRecord) error {
-	return ass.recordActionReceipt(record, nil)
-}
-
-// RecordActionReceiptWithCommitment records the receipt exactly as
-// RecordActionReceipt does and appends the commitment built over the ledger
-// head in the same write transaction: both commit or neither does.
-func (ass *SQLAuditStore) RecordActionReceiptWithCommitment(record *models.ActionReceiptRecord, build CommitmentBuilder) error {
-	if build == nil {
-		return constants.ErrAuditStoreRecordReceiptFailed
-	}
-	return ass.recordActionReceipt(record, build)
-}
-
-func (ass *SQLAuditStore) recordActionReceipt(record *models.ActionReceiptRecord, build CommitmentBuilder) error {
-	if ass == nil {
-		return constants.ErrAuditStoreDisabled
-	}
-	if ass.db == nil {
-		return constants.ErrAuditStoreDBNotInitialized
-	}
-	if record == nil {
-		return constants.ErrAuditStoreRecordReceiptFailed
-	}
-	if build != nil && ass.commitmentLedger == nil {
-		return constants.ErrAuditStoreDBNotInitialized
-	}
-	if record.OperatorSessionID == "" || strings.TrimSpace(record.OperatorSessionID) != record.OperatorSessionID {
-		return fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordReceiptFailed, constants.ErrAuditSessionMissing)
-	}
-
-	ass.muWrites.Add(1)
-	defer ass.muWrites.Done()
-
-	receiptJSON := []byte(nil)
-	if record.ActionReceipt != nil {
-		var err error
-		receiptJSON, err = compliancev1.MarshalCanonical(record.ActionReceipt)
-		if err != nil {
-			return fmt.Errorf("%w: marshal canonical receipt: %w", constants.ErrAuditStoreRecordReceiptFailed, err)
-		}
-	}
-
-	timestamp := record.Timestamp
-	if timestamp.IsZero() {
-		timestamp = time.Now().UTC()
-	}
-
-	// Canonicalization and encryption depend only on this receipt, not on either
-	// chain head. Do this work before serializing writers on the ledger/SQLite.
-	chainEvent := &Event{
-		OperatorSessionID: record.OperatorSessionID,
-		Timestamp:         timestamp,
-		Type:              constants.EventOperatorReceiptRecorded,
-		ContentText:       string(receiptJSON),
-		TransactionID:     record.TransactionID,
-	}
-	prepared, err := ass.prepareAuditEventInsert(chainEvent)
-	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordReceiptFailed, err)
-	}
-
-	// Both chain appends select their heads inside one write transaction, so
-	// the event chain and commitment ledger advance atomically.
-	var commitment *CommitmentRow
-	err = ass.db.ExecInImmediateTxWithRetry(context.Background(), func(conn *sql.Conn) error {
-		// The session owner creates the session row at session start. A receipt
-		// naming a session that was never started is rejected, never created here.
-		if record.OperatorSessionID != "" {
-			if err := ass.requireExistingSessionConn(conn, chainEvent); err != nil {
-				return err
-			}
-		}
-
-		if err := ass.upsertActionReceiptConn(conn, record, receiptJSON, timestamp); err != nil {
-			return err
-		}
-
-		// The session was verified above; the receipt and event foreign keys hold.
-		if _, _, _, err := AppendPreparedAuditEvent(context.Background(), conn, prepared); err != nil {
-			return err
-		}
-		if build != nil {
-			var err error
-			commitment, err = ass.commitmentLedger.appendBuiltCommitment(conn, build)
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordReceiptFailed, err)
-	}
-
-	if commitment != nil {
-		ass.commitmentLedger.logAppend(commitment)
-	}
-	ass.logger.Info("ActionReceipt recorded",
-		"transaction_id", record.TransactionID,
-		"status", record.Status)
-
-	return nil
-}
-
-func (ass *SQLAuditStore) upsertActionReceiptConn(conn *sql.Conn, record *models.ActionReceiptRecord, receiptJSON []byte, timestamp time.Time) error {
-	targetBytes, err := ass.encryptColumn("receipts.target_resource", record.TransactionID, record.TargetResource)
-	if err != nil {
-		return err
-	}
-	summaryBytes, err := ass.encryptColumn("receipts.result_summary", record.TransactionID, record.ResultSummary)
-	if err != nil {
-		return err
-	}
-	receiptBytes, err := ass.encryptColumn("receipts.receipt_json", record.TransactionID, string(receiptJSON))
-	if err != nil {
-		return err
-	}
-
-	query := `
-	INSERT INTO receipts (
-		transaction_id, transaction_hash, investigation_id, operator_id, operator_session_id,
-		requestor_user_id, acting_app_id, event_type,
-		action_type, target_resource, status, result_summary,
-		state_root_before, state_root_after, executed_at_ms,
-		signer_key_id, signature, receipt_json, timestamp
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(transaction_id) DO UPDATE SET
-		investigation_id = excluded.investigation_id,
-		status = excluded.status,
-		result_summary = excluded.result_summary,
-		state_root_after = excluded.state_root_after,
-		executed_at_ms = excluded.executed_at_ms,
-		signature = excluded.signature,
-		receipt_json = excluded.receipt_json,
-		timestamp = excluded.timestamp
-	WHERE CAST(excluded.status AS INTEGER) NOT IN (?, ?) OR CAST(receipts.status AS INTEGER) IN (?, ?)
-	`
-
-	_, err = conn.ExecContext(context.Background(), query,
-		record.TransactionID,
-		record.TransactionHash,
-		record.InvestigationID,
-		record.OperatorID,
-		record.OperatorSessionID,
-		record.RequestorUserID,
-		record.ActingAppID,
-		record.EventType,
-		record.ActionType,
-		targetBytes,
-		record.Status,
-		summaryBytes,
-		record.StateRootBefore,
-		record.StateRootAfter,
-		record.ExecutedAt.UnixMilli(),
-		record.SignerKeyID,
-		record.Signature,
-		receiptBytes,
-		timesvc.FormatTimestamp(timestamp),
-		// The projection only moves forward: a replayed or late non-terminal
-		// stage never overwrites a terminal receipt. Its audit fact is still
-		// appended by the caller.
-		operatorv1.ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED,
-		operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING,
-		operatorv1.ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED,
-		operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING,
-	)
-	if err != nil {
-		return fmt.Errorf("audit store: upsert receipt projection: %w", err)
-	}
-	return nil
-}
-
 // GetAuditChainHead returns the latest chained audit event sequence and hash.
 func (ass *SQLAuditStore) GetAuditChainHead(ctx context.Context) (int64, string, error) {
 	if ass == nil || ass.db == nil {
@@ -945,73 +770,21 @@ func (ass *SQLAuditStore) GetAuditChainHead(ctx context.Context) (int64, string,
 	return headSeq, headHash, nil
 }
 
-// receiptSelectColumns is the receipts projection read by every receipt query.
-// The projection columns the schema leaves nullable are NULL when the record's
-// value is empty (empty content columns encrypt to NULL), so they are coalesced
-// to the empty string the record's string fields expect.
-const receiptSelectColumns = `transaction_id, transaction_hash, investigation_id, operator_id, operator_session_id,
-		COALESCE(requestor_user_id, ''), COALESCE(acting_app_id, ''), COALESCE(event_type, ''),
-		action_type, COALESCE(target_resource, ''), status, COALESCE(result_summary, ''),
-		COALESCE(state_root_before, ''), COALESCE(state_root_after, ''), executed_at_ms,
-		signer_key_id, signature, receipt_json, timestamp`
-
-// hydrateReceiptRecord fills the derived fields of a scanned receipt row. L2/L3
-// validity is not a projection column; it is restored from the canonical
-// receipt exactly as governance.BuildReceiptRecord derives it at write time.
-func hydrateReceiptRecord(r *models.ActionReceiptRecord, executedAtMs int64, timestampStr, receiptJSON string) error {
-	r.ExecutedAt = time.UnixMilli(executedAtMs)
-	r.Timestamp, _ = timesvc.ParseTimestamp(timestampStr)
-	receipt, err := parseStoredActionReceipt(receiptJSON)
-	if err != nil {
-		return err
-	}
-	r.ActionReceipt = receipt
-	if receipt != nil {
-		r.L2Valid = receipt.GetL2Status() == operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
-		r.L3Valid = receipt.GetL3Status() == operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
-	}
-	return nil
-}
-
-// decryptReceiptRow decrypts the encrypted receipts content columns of one row into r
-// and returns the decrypted canonical receipt JSON. Fail-closed on a locked vault.
-func (ass *SQLAuditStore) decryptReceiptRow(r *models.ActionReceiptRecord, targetBytes, summaryBytes, receiptBytes []byte) (string, error) {
-	var err error
-	if r.TargetResource, err = ass.decryptColumn("receipts.target_resource", r.TransactionID, targetBytes); err != nil {
-		return "", err
-	}
-	if r.ResultSummary, err = ass.decryptColumn("receipts.result_summary", r.TransactionID, summaryBytes); err != nil {
-		return "", err
-	}
-	return ass.decryptColumn("receipts.receipt_json", r.TransactionID, receiptBytes)
-}
-
-func parseStoredActionReceipt(receiptJSON string) (*operatorv1.ActionReceipt, error) {
-	if receiptJSON == "" {
-		return nil, nil
-	}
-	receipt := &operatorv1.ActionReceipt{}
-	if err := compliancev1.UnmarshalCanonical([]byte(receiptJSON), receipt); err != nil {
-		return nil, err
-	}
-	return receipt, nil
-}
-
 // DocSet implements governance.TransactionAuditStore for outbound mode. The
-// outbound-mode L5Actuator persists signed ActionReceipt records via this
-// method; the data payload is a JSON-encoded models.ActionReceiptRecord that
-// is decoded and recorded in the receipts table via the transaction-native
-// RecordActionReceipt API. The collection and id parameters are ignored —
-// the receipts table is keyed by transaction_id embedded in the record.
+// outbound-mode L5Actuator persists signed event receipts via this method; the
+// data payload is a JSON-encoded models.EventReceiptRecord that is decoded and
+// recorded on the matching chain event via RecordEventReceipt. The collection
+// and id parameters are ignored — the event receipt is keyed by transaction_id
+// embedded in the record.
 func (ass *SQLAuditStore) DocSet(_ context.Context, collection, id string, data json.RawMessage) error {
 	if ass == nil || ass.db == nil {
 		return constants.ErrAuditStoreDisabled
 	}
-	var receipt models.ActionReceiptRecord
+	var receipt models.EventReceiptRecord
 	if err := json.Unmarshal(data, &receipt); err != nil {
 		return fmt.Errorf("%w: SQLAuditStore.DocSet: failed to decode action receipt record: %w", constants.ErrInvalidJSONBody, err)
 	}
-	return ass.RecordActionReceipt(&receipt)
+	return ass.RecordEventReceipt(&receipt)
 }
 
 // DocDelete implements governance.TransactionAuditStore for outbound mode.
@@ -1023,281 +796,6 @@ func (ass *SQLAuditStore) DocDelete(_ context.Context, collection, id string) er
 		return constants.ErrAuditStoreDisabled
 	}
 	return nil
-}
-
-// GetActionReceipt retrieves a single action receipt by transaction ID.
-func (ass *SQLAuditStore) GetActionReceipt(transactionID string) (*models.ActionReceiptRecord, error) {
-	if ass == nil || ass.db == nil {
-		return nil, constants.ErrAuditStoreDisabled
-	}
-
-	query := `
-	SELECT ` + receiptSelectColumns + `
-	FROM receipts
-	WHERE transaction_id = ?
-	`
-
-	var r models.ActionReceiptRecord
-	var executedAtMs int64
-	var timestampStr string
-	var investigationID sql.NullString
-	var sessionID sql.NullString
-	var targetBytes, summaryBytes, receiptBytes []byte
-	err := ass.db.QueryRowWithRetry(context.Background(), query, transactionID).Scan(
-		&r.TransactionID, &r.TransactionHash, &investigationID, &r.OperatorID, &sessionID,
-		&r.RequestorUserID, &r.ActingAppID, &r.EventType,
-		&r.ActionType, &targetBytes, &r.Status, &summaryBytes,
-		&r.StateRootBefore, &r.StateRootAfter, &executedAtMs,
-		&r.SignerKeyID, &r.Signature, &receiptBytes, &timestampStr,
-	)
-	r.InvestigationID = investigationID.String
-	r.OperatorSessionID = sessionID.String
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreGetReceiptFailed, err)
-	}
-
-	receiptJSON, err := ass.decryptReceiptRow(&r, targetBytes, summaryBytes, receiptBytes)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreGetReceiptFailed, err)
-	}
-	if err := hydrateReceiptRecord(&r, executedAtMs, timestampStr, receiptJSON); err != nil {
-		return nil, fmt.Errorf("%w: unmarshal canonical receipt: %w", constants.ErrAuditStoreGetReceiptFailed, err)
-	}
-
-	return &r, nil
-}
-
-func (ass *SQLAuditStore) GetActionReceiptByInvestigationID(
-	investigationID string,
-	actionType constants.ActionType,
-) (*models.ActionReceiptRecord, error) {
-	if ass == nil || ass.db == nil {
-		return nil, constants.ErrAuditStoreDisabled
-	}
-
-	rows, err := sqliteutil.MaterializeRows(context.Background(),
-		ass.db,
-		"SELECT transaction_id FROM receipts WHERE investigation_id = ? AND action_type = ? ORDER BY timestamp DESC LIMIT 2",
-		[]interface{}{investigationID, actionType},
-		func(row *sql.Rows) (string, error) {
-			var transactionID string
-			if err := row.Scan(&transactionID); err != nil {
-				return "", err
-			}
-			return transactionID, nil
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("%w: investigation correlation: %w", constants.ErrAuditStoreGetReceiptFailed, err)
-	}
-	if len(rows) == 0 {
-		return nil, nil
-	}
-	if len(rows) > 1 {
-		return nil, constants.ErrAuditStoreReceiptCorrelationDuplicate
-	}
-	return ass.GetActionReceipt(rows[0])
-}
-
-// auditReadScanBatchSize is how many SQL rows one scan pulls while
-// ExcludeAuditReads filters the receipt stream after decryption.
-const auditReadScanBatchSize = 100
-
-// isAuditReadReceipt reports whether r is an audit-read tool's own MCP_CALL
-// receipt. For MCP_CALL, target_resource is the tool name: the Gateway MCP
-// ingress and the evaluation lane both set it, and the executing Operator signs
-// the envelope target into the receipt.
-func isAuditReadReceipt(r *models.ActionReceiptRecord) bool {
-	if r == nil || r.ActionType != constants.ActionTypeMcpCall {
-		return false
-	}
-	return r.TargetResource == constants.MCPToolAuditReceiptList || r.TargetResource == constants.MCPToolAuditReceiptGet
-}
-
-// ListActionReceipts retrieves action receipts with optional filtering and pagination.
-// With ExcludeAuditReads, limit and offset apply after the audit reads are dropped.
-func (ass *SQLAuditStore) ListActionReceipts(scope models.AuditScope, limit, offset int) ([]*models.ActionReceiptRecord, error) {
-	if ass == nil || ass.db == nil {
-		return nil, constants.ErrAuditStoreDisabled
-	}
-
-	if limit <= 0 {
-		limit = 50
-	}
-
-	query, args := receiptScopeQuery(scope)
-	if !scope.ExcludeAuditReads {
-		return ass.queryReceiptRows(query+" ORDER BY timestamp DESC LIMIT ? OFFSET ?", append(args, limit, offset))
-	}
-	return ass.listReceiptsExcludingAuditReads(query, args, limit, offset)
-}
-
-// receiptScopeQuery builds the receipts SELECT for the scope fields that SQL can
-// filter. target_resource is encrypted, so audit-read exclusion is not a predicate here.
-func receiptScopeQuery(scope models.AuditScope) (string, []interface{}) {
-	args := []interface{}{}
-	predicates := []string{}
-	if scope.OperatorID != "" {
-		predicates = append(predicates, "operator_id = ?")
-		args = append(args, scope.OperatorID)
-	}
-	if scope.OperatorSessionID != "" {
-		predicates = append(predicates, "operator_session_id = ?")
-		args = append(args, scope.OperatorSessionID)
-	}
-	if scope.InvestigationID != "" {
-		predicates = append(predicates, "investigation_id = ?")
-		args = append(args, scope.InvestigationID)
-	}
-	if scope.ActingAppID != "" {
-		predicates = append(predicates, "acting_app_id = ?")
-		args = append(args, scope.ActingAppID)
-	}
-	query := "SELECT " + receiptSelectColumns + " FROM receipts"
-	if len(predicates) > 0 {
-		query += " WHERE " + strings.Join(predicates, " AND ")
-	}
-	return query, args
-}
-
-// listReceiptsExcludingAuditReads pages the SQL scope newest first in batches, drops
-// audit reads from each decrypted batch, and applies offset and limit to what remains.
-// It stops once limit receipts are collected or the scope is exhausted.
-func (ass *SQLAuditStore) listReceiptsExcludingAuditReads(query string, args []interface{}, limit, offset int) ([]*models.ActionReceiptRecord, error) {
-	var out []*models.ActionReceiptRecord
-	skip := offset
-	for sqlOffset := 0; ; sqlOffset += auditReadScanBatchSize {
-		batchArgs := append(slices.Clone(args), auditReadScanBatchSize, sqlOffset)
-		batch, err := ass.queryReceiptRows(query+" ORDER BY timestamp DESC LIMIT ? OFFSET ?", batchArgs)
-		if err != nil {
-			return nil, err
-		}
-		for _, r := range batch {
-			if isAuditReadReceipt(r) {
-				continue
-			}
-			if skip > 0 {
-				skip--
-				continue
-			}
-			out = append(out, r)
-			if len(out) == limit {
-				return out, nil
-			}
-		}
-		if len(batch) < auditReadScanBatchSize {
-			return out, nil
-		}
-	}
-}
-
-// queryReceiptRows runs one receipts SELECT and returns its rows decrypted and hydrated.
-func (ass *SQLAuditStore) queryReceiptRows(query string, args []interface{}) ([]*models.ActionReceiptRecord, error) {
-	type receiptRow struct {
-		record          models.ActionReceiptRecord
-		executedAtMs    int64
-		timestampStr    string
-		investigationID sql.NullString
-		sessionID       sql.NullString
-		targetBytes     []byte
-		summaryBytes    []byte
-		receiptBytes    []byte
-	}
-
-	rows, err := sqliteutil.MaterializeRows(context.Background(), ass.db, query, args, func(r *sql.Rows) (receiptRow, error) {
-		var row receiptRow
-		err := r.Scan(
-			&row.record.TransactionID, &row.record.TransactionHash, &row.investigationID, &row.record.OperatorID, &row.sessionID,
-			&row.record.RequestorUserID, &row.record.ActingAppID, &row.record.EventType,
-			&row.record.ActionType, &row.targetBytes, &row.record.Status, &row.summaryBytes,
-			&row.record.StateRootBefore, &row.record.StateRootAfter, &row.executedAtMs,
-			&row.record.SignerKeyID, &row.record.Signature, &row.receiptBytes, &row.timestampStr,
-		)
-		row.record.InvestigationID = row.investigationID.String
-		row.record.OperatorSessionID = row.sessionID.String
-		return row, err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreQueryReceiptsFailed, err)
-	}
-
-	var results []*models.ActionReceiptRecord
-	for _, row := range rows {
-		receiptJSON, err := ass.decryptReceiptRow(&row.record, row.targetBytes, row.summaryBytes, row.receiptBytes)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreQueryReceiptsFailed, err)
-		}
-		if err := hydrateReceiptRecord(&row.record, row.executedAtMs, row.timestampStr, receiptJSON); err != nil {
-			return nil, fmt.Errorf("%w: unmarshal canonical receipt: %w", constants.ErrAuditStoreQueryReceiptsFailed, err)
-		}
-		results = append(results, &row.record)
-	}
-
-	return results, nil
-}
-
-// ListActionReceiptsSince retrieves action receipts newer than the given timestamp.
-func (ass *SQLAuditStore) ListActionReceiptsSince(since time.Time, limit int) ([]*models.ActionReceiptRecord, error) {
-	if ass == nil || ass.db == nil {
-		return nil, constants.ErrAuditStoreDisabled
-	}
-
-	if limit <= 0 {
-		limit = 100
-	}
-
-	query := `
-	SELECT ` + receiptSelectColumns + `
-	FROM receipts
-	WHERE timestamp > ?
-	ORDER BY timestamp ASC
-	LIMIT ?
-	`
-
-	type receiptRow struct {
-		record          models.ActionReceiptRecord
-		executedAtMs    int64
-		timestampStr    string
-		investigationID sql.NullString
-		sessionID       sql.NullString
-		targetBytes     []byte
-		summaryBytes    []byte
-		receiptBytes    []byte
-	}
-
-	rows, err := sqliteutil.MaterializeRows(context.Background(), ass.db, query, []interface{}{timesvc.FormatTimestamp(since), limit}, func(r *sql.Rows) (receiptRow, error) {
-		var row receiptRow
-		err := r.Scan(
-			&row.record.TransactionID, &row.record.TransactionHash, &row.investigationID, &row.record.OperatorID, &row.sessionID,
-			&row.record.RequestorUserID, &row.record.ActingAppID, &row.record.EventType,
-			&row.record.ActionType, &row.targetBytes, &row.record.Status, &row.summaryBytes,
-			&row.record.StateRootBefore, &row.record.StateRootAfter, &row.executedAtMs,
-			&row.record.SignerKeyID, &row.record.Signature, &row.receiptBytes, &row.timestampStr,
-		)
-		row.record.InvestigationID = row.investigationID.String
-		row.record.OperatorSessionID = row.sessionID.String
-		return row, err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("%w %v: %w", constants.ErrAuditStoreQueryReceiptsSinceFailed, since, err)
-	}
-
-	var results []*models.ActionReceiptRecord
-	for _, row := range rows {
-		receiptJSON, err := ass.decryptReceiptRow(&row.record, row.targetBytes, row.summaryBytes, row.receiptBytes)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreQueryReceiptsFailed, err)
-		}
-		if err := hydrateReceiptRecord(&row.record, row.executedAtMs, row.timestampStr, receiptJSON); err != nil {
-			return nil, fmt.Errorf("%w: unmarshal canonical receipt: %w", constants.ErrAuditStoreQueryReceiptsSinceFailed, err)
-		}
-		results = append(results, &row.record)
-	}
-
-	return results, nil
 }
 
 // decryptEventContent decrypts the four encrypted content columns of one events row
@@ -1880,7 +1378,7 @@ func (ass *SQLAuditStore) ListFileMutations(limit, offset int) ([]*FileMutationL
 }
 
 // auditStorePrune returns a PruneFunc that handles retention pruning
-// for events, receipts, ended sessions, and file mutations.
+// for events (including event receipts), ended sessions, and file mutations.
 func auditStorePrune(config *AuditStoreConfig) sqliteutil.PruneFunc {
 	return func(ctx context.Context, db *sqliteutil.DB, logger *slog.Logger) error {
 		cutoff := timesvc.FormatTimestamp(time.Now().AddDate(0, 0, -config.RetentionDays))
@@ -1895,31 +1393,20 @@ func auditStorePrune(config *AuditStoreConfig) sqliteutil.PruneFunc {
 			return err
 		}
 
-		// 2. Checkpoint and delete chained events older than retention period
+		// 2. Checkpoint and delete chained events older than retention period.
+		// Event receipts live on those rows, so they leave with the chain.
 		if err := PruneChainedAuditEvents(ctx, db, logger, config.EncryptionVault, cutoff); err != nil {
 			logger.Error("Failed to prune chained audit events", string(constants.ConnectionStateError), err)
 			return err
 		}
 
-		// 3. Delete receipts older than retention period
-		result, err := db.ExecWithRetry(ctx, "DELETE FROM receipts WHERE timestamp < ?", cutoff)
-		if err != nil {
-			logger.Error("Failed to prune old receipts", string(constants.ConnectionStateError), err)
-			return err
-		}
-		rowsDeleted, _ := result.RowsAffected()
-		if rowsDeleted > 0 {
-			logger.Info("Pruned old receipts", "rows_deleted", rowsDeleted)
-		}
-
-		// 4. Delete ended sessions past retention that no longer have any events or
-		// receipts. A session with NULL ended_at is still owned by a live runtime
+		// 3. Delete ended sessions past retention that no longer have any events.
+		// A session with NULL ended_at is still owned by a live runtime
 		// session (idle sessions write no events) and is never pruned.
 		_, err = db.ExecWithRetry(ctx, `
 			DELETE FROM sessions
 			WHERE ended_at IS NOT NULL AND ended_at < ?
 			AND id NOT IN (SELECT DISTINCT operator_session_id FROM events WHERE operator_session_id IS NOT NULL)
-			AND id NOT IN (SELECT DISTINCT operator_session_id FROM receipts)
 		`, cutoff)
 		if err != nil {
 			logger.Warn("Failed to prune orphaned sessions", string(constants.ConnectionStateError), err)
@@ -1977,19 +1464,20 @@ func (ass *SQLAuditStore) GetDataDir() string {
 // Content column identities bound into the AEAD associated data. A ciphertext only
 // decrypts under the column and row it was written for.
 const (
-	auditColumnEventContentText = "events.content_text"
-	auditColumnEventCommandRaw  = "events.command_raw"
-	auditColumnEventStdout      = "events.command_stdout"
-	auditColumnEventStderr      = "events.command_stderr"
-	ReceiptColumnReceiptJSON    = "receipts.receipt_json"
+	auditColumnEventContentText    = "events.content_text"
+	auditColumnEventCommandRaw     = "events.command_raw"
+	auditColumnEventStdout         = "events.command_stdout"
+	auditColumnEventStderr         = "events.command_stderr"
+	auditColumnEventReceiptTarget  = "events.event_receipt_target_resource"
+	auditColumnEventReceiptSummary = "events.event_receipt_result_summary"
 
 	auditContentAADVersion = "ztd-content-aad-v1"
 )
 
 // AuditContentAAD returns the associated data that binds a ciphertext to its
 // "table.column" and row identity. The row identity is known before the insert:
-// the chain sequence for events, the session id, the transaction id for receipts
-// and suspended transactions, the commitment hash, or the event id and mutation uid
+// the chain sequence for events (including event receipt columns), the session id,
+// the transaction id for suspended transactions, the commitment hash, or the event id and mutation uid
 // for file mutations. It is never the autoincrement rowid.
 func AuditContentAAD(column, rowID string) []byte {
 	return []byte(auditContentAADVersion + "|" + column + "|" + rowID)
@@ -1998,6 +1486,11 @@ func AuditContentAAD(column, rowID string) []byte {
 // auditEventRowID is the events row identity bound into the AEAD data.
 func auditEventRowID(seq int64) string {
 	return strconv.FormatInt(seq, 10)
+}
+
+// EventContentRowID is the events row identity bound into content ciphertext.
+func EventContentRowID(seq int64) string {
+	return auditEventRowID(seq)
 }
 
 // fileMutationRowID is the file_mutation_log row identity bound into the AEAD data.

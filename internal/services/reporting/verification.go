@@ -194,7 +194,7 @@ func reportVerification(ctx context.Context, outDir string, auditStore *storage.
 			if c.TransactionID == "" {
 				continue
 			}
-			r, err := auditStore.GetActionReceipt(c.TransactionID)
+			r, err := auditStore.GetEventReceipt(c.TransactionID)
 			if err != nil || r == nil {
 				missingReceipts++
 			}

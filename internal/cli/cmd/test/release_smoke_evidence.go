@@ -91,7 +91,7 @@ func evaluateSmokeReport(name, dir string) (smokeReportEvidence, error) {
 	ev.checkVerification(verification.rows)
 
 	if ev.ReceiptRows == 0 {
-		ev.Failures = append(ev.Failures, "receipts.csv is empty")
+		ev.Failures = append(ev.Failures, constants.ReportReceiptsFilename+" is empty")
 	}
 	if ev.CommitmentRows == 0 {
 		ev.Failures = append(ev.Failures, "commitments.csv is empty")

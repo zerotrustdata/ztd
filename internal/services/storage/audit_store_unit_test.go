@@ -281,12 +281,12 @@ func TestSQLAuditStore_NilEncryptionVault(t *testing.T) {
 func TestGetActionReceipt_NilStore(t *testing.T) {
 	var ass *SQLAuditStore
 
-	receipt, err := ass.GetActionReceipt("test-tx-id")
+	receipt, err := ass.GetEventReceipt("test-tx-id")
 	if err == nil {
-		t.Error("GetActionReceipt on nil store should return error")
+		t.Error("GetEventReceipt on nil store should return error")
 	}
 	if receipt != nil {
-		t.Error("GetActionReceipt on nil store should return nil receipt")
+		t.Error("GetEventReceipt on nil store should return nil receipt")
 	}
 	if !strings.Contains(err.Error(), "audit store is disabled") {
 		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
@@ -299,12 +299,12 @@ func TestGetActionReceipt_NilDB(t *testing.T) {
 		db: nil,
 	}
 
-	receipt, err := ass.GetActionReceipt("test-tx-id")
+	receipt, err := ass.GetEventReceipt("test-tx-id")
 	if err == nil {
-		t.Error("GetActionReceipt with nil db should return error")
+		t.Error("GetEventReceipt with nil db should return error")
 	}
 	if receipt != nil {
-		t.Error("GetActionReceipt with nil db should return nil receipt")
+		t.Error("GetEventReceipt with nil db should return nil receipt")
 	}
 	if !strings.Contains(err.Error(), "audit store is disabled") {
 		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
@@ -315,12 +315,12 @@ func TestGetActionReceipt_NilDB(t *testing.T) {
 func TestListActionReceipts_NilStore(t *testing.T) {
 	var ass *SQLAuditStore
 
-	receipts, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 10, 0)
+	receipts, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 10, 0)
 	if err == nil {
-		t.Error("ListActionReceipts on nil store should return error")
+		t.Error("ListEventReceipts on nil store should return error")
 	}
 	if receipts != nil {
-		t.Error("ListActionReceipts on nil store should return nil receipts")
+		t.Error("ListEventReceipts on nil store should return nil receipts")
 	}
 	if !strings.Contains(err.Error(), "audit store is disabled") {
 		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
@@ -333,12 +333,12 @@ func TestListActionReceipts_NilDB(t *testing.T) {
 		db: nil,
 	}
 
-	receipts, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 10, 0)
+	receipts, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 10, 0)
 	if err == nil {
-		t.Error("ListActionReceipts with nil db should return error")
+		t.Error("ListEventReceipts with nil db should return error")
 	}
 	if receipts != nil {
-		t.Error("ListActionReceipts with nil db should return nil receipts")
+		t.Error("ListEventReceipts with nil db should return nil receipts")
 	}
 	if !strings.Contains(err.Error(), "audit store is disabled") {
 		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
@@ -354,12 +354,12 @@ func TestListActionReceipts_DefaultLimit(t *testing.T) {
 	}
 
 	// Test with zero limit (should default to 50)
-	receipts, err := ass.ListActionReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 0, 0)
+	receipts, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 0, 0)
 	if err == nil {
-		t.Error("ListActionReceipts with nil db should return error")
+		t.Error("ListEventReceipts with nil db should return error")
 	}
 	if receipts != nil {
-		t.Error("ListActionReceipts with nil db should return nil receipts")
+		t.Error("ListEventReceipts with nil db should return nil receipts")
 	}
 }
 
@@ -368,12 +368,12 @@ func TestListActionReceiptsSince_NilStore(t *testing.T) {
 	var ass *SQLAuditStore
 
 	since := time.Now()
-	receipts, err := ass.ListActionReceiptsSince(since, 10)
+	receipts, err := ass.ListEventReceiptsSince(since, 10)
 	if err == nil {
-		t.Error("ListActionReceiptsSince on nil store should return error")
+		t.Error("ListEventReceiptsSince on nil store should return error")
 	}
 	if receipts != nil {
-		t.Error("ListActionReceiptsSince on nil store should return nil receipts")
+		t.Error("ListEventReceiptsSince on nil store should return nil receipts")
 	}
 	if !strings.Contains(err.Error(), "audit store is disabled") {
 		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
@@ -387,12 +387,12 @@ func TestListActionReceiptsSince_NilDB(t *testing.T) {
 	}
 
 	since := time.Now()
-	receipts, err := ass.ListActionReceiptsSince(since, 10)
+	receipts, err := ass.ListEventReceiptsSince(since, 10)
 	if err == nil {
-		t.Error("ListActionReceiptsSince with nil db should return error")
+		t.Error("ListEventReceiptsSince with nil db should return error")
 	}
 	if receipts != nil {
-		t.Error("ListActionReceiptsSince with nil db should return nil receipts")
+		t.Error("ListEventReceiptsSince with nil db should return nil receipts")
 	}
 	if !strings.Contains(err.Error(), "audit store is disabled") {
 		t.Errorf("Error should mention 'audit store is disabled', got: %v", err)
@@ -407,11 +407,11 @@ func TestListActionReceiptsSince_DefaultLimit(t *testing.T) {
 
 	since := time.Now()
 	// Test with zero limit (should default to 100)
-	receipts, err := ass.ListActionReceiptsSince(since, 0)
+	receipts, err := ass.ListEventReceiptsSince(since, 0)
 	if err == nil {
-		t.Error("ListActionReceiptsSince with nil db should return error")
+		t.Error("ListEventReceiptsSince with nil db should return error")
 	}
 	if receipts != nil {
-		t.Error("ListActionReceiptsSince with nil db should return nil receipts")
+		t.Error("ListEventReceiptsSince with nil db should return nil receipts")
 	}
 }

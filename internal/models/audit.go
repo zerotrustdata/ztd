@@ -23,10 +23,10 @@ type AuditScope struct {
 	ActingAppID       string
 }
 
-// AuditReceiptsResponse is the typed response for GET /api/audit/receipts.
-type AuditReceiptsResponse struct {
-	Success  bool                   `json:"success"`
-	Receipts []*ActionReceiptRecord `json:"receipts"`
+// AuditEventReceiptsResponse is the typed response for GET /api/v1/audit/event-receipts.
+type AuditEventReceiptsResponse struct {
+	Success       bool                  `json:"success"`
+	EventReceipts []*EventReceiptRecord `json:"event_receipts"`
 }
 
 // AuditEventRow is a single audit event row in the events response.
@@ -49,14 +49,14 @@ type AuditEventsResponse struct {
 
 // AuditReportData is the report payload within AuditReportResponse.
 type AuditReportData struct {
-	GeneratedAt       string            `json:"generated_at"`
-	OperatorSessionID string            `json:"operator_session_id"`
-	ActingAppID       string            `json:"acting_app_id,omitempty"`
-	Events            []json.RawMessage `json:"events"`
-	EventsCount       int               `json:"events_count"`
-	Receipts          []json.RawMessage `json:"receipts"`
-	ReceiptsCount     int               `json:"receipts_count"`
-	TotalRecords      int               `json:"total_records"`
+	GeneratedAt        string            `json:"generated_at"`
+	OperatorSessionID  string            `json:"operator_session_id"`
+	ActingAppID        string            `json:"acting_app_id,omitempty"`
+	Events             []json.RawMessage `json:"events"`
+	EventsCount        int               `json:"events_count"`
+	EventReceipts      []json.RawMessage `json:"event_receipts"`
+	EventReceiptsCount int               `json:"event_receipts_count"`
+	TotalRecords       int               `json:"total_records"`
 }
 
 // AuditReportResponse is the typed response for GET /api/audit/report.
@@ -67,12 +67,12 @@ type AuditReportResponse struct {
 
 // AuditSummaryResponse is the typed response for GET /api/audit/summary.
 type AuditSummaryResponse struct {
-	Success         bool           `json:"success"`
-	EventsSummary   map[string]int `json:"events_summary"`
-	EventsTotal     int            `json:"events_total"`
-	ReceiptsSummary map[string]int `json:"receipts_summary"`
-	ReceiptsTotal   int            `json:"receipts_total"`
-	TotalRecords    int            `json:"total_records"`
+	Success              bool           `json:"success"`
+	EventsSummary        map[string]int `json:"events_summary"`
+	EventsTotal          int            `json:"events_total"`
+	EventReceiptsSummary map[string]int `json:"event_receipts_summary"`
+	EventReceiptsTotal   int            `json:"event_receipts_total"`
+	TotalRecords         int            `json:"total_records"`
 }
 
 // AuditVerifyResponse is the typed response for GET /api/v1/audit/verify.

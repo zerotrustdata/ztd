@@ -68,16 +68,16 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 	require.NoError(t, auditController.auditStore.CreateSession("receipt-session", constants.SessionTypeOperator, "Receipt Session", "operator-1"))
 
 	t.Run("Method Not Allowed", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/audit/receipts", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/audit/event-receipts", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 	})
 
 	t.Run("GET by tx_id - not found", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts?tx_id=nonexistent", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts?tx_id=nonexistent", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 		assert.Equal(t, http.StatusNotFound, rr.Code)
 	})
 
@@ -96,7 +96,7 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 				TransactionHash: "hash-evidence",
 			}},
 		}
-		err := auditController.auditStore.RecordActionReceipt(&models.ActionReceiptRecord{
+		err := auditController.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
 			TransactionID:     receipt.TransactionId,
 			TransactionHash:   receipt.TransactionHash,
 			InvestigationID:   "investigation-evidence",
@@ -112,9 +112,9 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts?tx_id=tx-evidence", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts?tx_id=tx-evidence", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		assert.Equal(t, constants.HeaderValueApplicationJSON, rr.Header().Get(constants.HeaderContentType))
@@ -136,7 +136,7 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 			SignerKeyId:     "warden-key",
 			Signature:       "signature",
 		}
-		err := auditController.auditStore.RecordActionReceipt(&models.ActionReceiptRecord{
+		err := auditController.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
 			TransactionID:     documentReceipt.TransactionId,
 			TransactionHash:   documentReceipt.TransactionHash,
 			InvestigationID:   "investigation-evidence",
@@ -152,9 +152,9 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts?investigation_id=investigation-evidence&action_type=EXECUTE_BASH", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts?investigation_id=investigation-evidence&action_type=EXECUTE_BASH", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		parsed := &operatorv1.ActionReceipt{}
@@ -170,7 +170,7 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 			SignerKeyId:     "warden-key",
 			Signature:       "signature",
 		}
-		err := auditController.auditStore.RecordActionReceipt(&models.ActionReceiptRecord{
+		err := auditController.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
 			TransactionID:     receipt.TransactionId,
 			TransactionHash:   receipt.TransactionHash,
 			InvestigationID:   "investigation-evidence",
@@ -186,47 +186,47 @@ func TestAuditControllerHandleAuditReceipts(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts?investigation_id=investigation-evidence&action_type=EXECUTE_BASH", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts?investigation_id=investigation-evidence&action_type=EXECUTE_BASH", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 
 		assert.Equal(t, http.StatusConflict, rr.Code)
 		assert.Contains(t, rr.Body.String(), constants.ErrAuditStoreReceiptCorrelationDuplicate.Error())
 	})
 
 	t.Run("GET with multiple correlation fields is rejected", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts?tx_id=tx-evidence&investigation_id=investigation-evidence&action_type=EXECUTE_BASH", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts?tx_id=tx-evidence&investigation_id=investigation-evidence&action_type=EXECUTE_BASH", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 
 	t.Run("GET by investigation_id without action_type is rejected", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts?investigation_id=investigation-evidence", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts?investigation_id=investigation-evidence", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 
 	t.Run("GET list - success with defaults", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Contains(t, rr.Body.String(), `"success":true`)
 	})
 
 	t.Run("GET list - with operator_session_id", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts?operator_session_id=op-123", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts?operator_session_id=op-123", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 	})
 
 	t.Run("GET list - with limit and offset", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts?limit=10&offset=5", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts?limit=10&offset=5", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceipts(rr, req)
+		auditController.handleAuditEventReceipts(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 	})
 }
@@ -235,43 +235,43 @@ func TestAuditControllerHandleAuditReceiptsExport(t *testing.T) {
 	auditController := setupTestAuditController(t)
 
 	t.Run("Method Not Allowed", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/audit/receipts/export", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/audit/event-receipts/export", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceiptsExport(rr, req)
+		auditController.handleAuditEventReceiptsExport(rr, req)
 		assert.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 	})
 
 	t.Run("GET - success with defaults", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts/export", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts/export", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceiptsExport(rr, req)
+		auditController.handleAuditEventReceiptsExport(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 		assert.True(t, json.Valid(rr.Body.Bytes()))
 
-		var response models.AuditReceiptsResponse
+		var response models.AuditEventReceiptsResponse
 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
 		assert.True(t, response.Success)
 	})
 
 	t.Run("GET - with since parameter RFC3339", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts/export?since=2026-01-01T00:00:00Z", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts/export?since=2026-01-01T00:00:00Z", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceiptsExport(rr, req)
+		auditController.handleAuditEventReceiptsExport(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 	})
 
 	t.Run("GET - with since parameter timestamp", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts/export?since=1704067200000", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts/export?since=1704067200000", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceiptsExport(rr, req)
+		auditController.handleAuditEventReceiptsExport(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 	})
 
 	t.Run("GET - with limit", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/receipts/export?limit=50", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/event-receipts/export?limit=50", nil)
 		rr := httptest.NewRecorder()
-		auditController.handleAuditReceiptsExport(rr, req)
+		auditController.handleAuditEventReceiptsExport(rr, req)
 		assert.Equal(t, http.StatusOK, rr.Code)
 	})
 }
@@ -341,7 +341,7 @@ func TestAuditControllerHandleAuditSummary(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.Success)
 		assert.Equal(t, 0, resp.EventsTotal)
-		assert.Equal(t, 0, resp.ReceiptsTotal)
+		assert.Equal(t, 0, resp.EventReceiptsTotal)
 		assert.Equal(t, 0, resp.TotalRecords)
 	})
 
@@ -355,7 +355,7 @@ func TestAuditControllerHandleAuditSummary(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.Success)
 		assert.NotNil(t, resp.EventsSummary)
-		assert.NotNil(t, resp.ReceiptsSummary)
+		assert.NotNil(t, resp.EventReceiptsSummary)
 	})
 }
 
@@ -379,7 +379,7 @@ func TestAuditControllerHandleAuditReport(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.Success)
 		assert.Equal(t, 0, resp.Report.EventsCount)
-		assert.Equal(t, 0, resp.Report.ReceiptsCount)
+		assert.Equal(t, 0, resp.Report.EventReceiptsCount)
 		assert.Equal(t, 0, resp.Report.TotalRecords)
 		assert.NotEmpty(t, resp.Report.GeneratedAt)
 	})
@@ -423,7 +423,7 @@ func TestAuditControllerHandleAuditVerify(t *testing.T) {
 
 	t.Run("Success - receipt stage appends verify", func(t *testing.T) {
 		require.NoError(t, auditController.auditStore.CreateSession("verify-session", constants.SessionTypeOperator, "Verify Session", "operator-1"))
-		err := auditController.auditStore.RecordActionReceipt(&models.ActionReceiptRecord{
+		err := auditController.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
 			TransactionID:     "tx-verify-1",
 			TransactionHash:   "hash-verify",
 			OperatorID:        "operator-1",

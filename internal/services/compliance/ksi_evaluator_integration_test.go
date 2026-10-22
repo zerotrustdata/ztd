@@ -150,7 +150,7 @@ func (f *integrationEvaluatorFixture) seedEvidence(t *testing.T) {
 	require.NoError(t, err)
 	attestation.Signature = hex.EncodeToString(ed25519.Sign(f.receiptKey, payload))
 	receipt.FinalPersistenceAttestation = attestation
-	require.NoError(t, f.auditStore.RecordActionReceipt(&models.ActionReceiptRecord{
+	require.NoError(t, f.auditStore.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     integrationTxID,
 		TransactionHash:   receipt.TransactionHash,
 		OperatorID:        "operator-1",

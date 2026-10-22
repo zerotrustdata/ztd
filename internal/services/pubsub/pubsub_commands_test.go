@@ -121,15 +121,15 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 // required store; the witness gate refuses or passes before any query runs.
 type unreachableAuditReceiptQuery struct{}
 
-func (unreachableAuditReceiptQuery) ListActionReceipts(models.AuditScope, int, int) ([]*models.ActionReceiptRecord, error) {
+func (unreachableAuditReceiptQuery) ListEventReceipts(models.AuditScope, int, int) ([]*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (unreachableAuditReceiptQuery) ListActionReceiptsSince(time.Time, int) ([]*models.ActionReceiptRecord, error) {
+func (unreachableAuditReceiptQuery) ListEventReceiptsSince(time.Time, int) ([]*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (unreachableAuditReceiptQuery) GetActionReceipt(string) (*models.ActionReceiptRecord, error) {
+func (unreachableAuditReceiptQuery) GetEventReceipt(string) (*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
