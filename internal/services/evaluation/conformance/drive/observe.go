@@ -16,14 +16,14 @@ import (
 )
 
 // Observe converts one typed harness outcome into a conformance observation.
-// It copies the typed message; it never inspects body text. The receipt of a
+// It copies the typed message; it never inspects body text. The event receipt of a
 // dispatch success is filled from the dispatch result when the observation has
 // none. Every driver calls Observe, so no driver converts outcomes itself.
 // o must come from a call that returned no error.
 func Observe(o *client.GovernedOutcome) *evalv1.ConformanceObservation {
 	obs := proto.Clone(o.Observation).(*evalv1.ConformanceObservation)
-	if obs.GetReceipt() == nil && o.Dispatch.GetReceipt() != nil {
-		obs.Receipt = proto.Clone(o.Dispatch.GetReceipt()).(*operatorv1.ActionReceipt)
+	if obs.GetEventReceipt() == nil && o.Dispatch.GetEventReceipt() != nil {
+		obs.EventReceipt = proto.Clone(o.Dispatch.GetEventReceipt()).(*operatorv1.EventReceipt)
 	}
 	return obs
 }

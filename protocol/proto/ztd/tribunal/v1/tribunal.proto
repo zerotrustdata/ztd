@@ -81,7 +81,7 @@ enum TribunalOutcome {
 }
 
 // TribunalMemberCall is one governed INFERENCE dispatch made by the Tribunal.
-// Every call the Inference Operator executed carries its signed receipt.
+// Every call the Inference Operator executed carries its signed event receipt.
 message TribunalMemberCall {
   TribunalStage stage = 1;
   string persona = 2;
@@ -90,13 +90,13 @@ message TribunalMemberCall {
   string transaction_id = 5;
   // result is the complete verified InferenceResult of a completed call.
   ztd.operator.v1.InferenceResult result = 6;
-  // receipt is the Inference Operator's signed final ActionReceipt.
-  ztd.operator.v1.ActionReceipt receipt = 7;
+  // event receipt is the Inference Operator's signed final EventReceipt.
+  ztd.operator.v1.EventReceipt event_receipt = 7;
   // failure is set on a call that did not complete.
   ztd.operator.v1.InferenceDispatchFailure failure = 8;
-  // observation_receipts are the observers' signed final receipts for the
+  // observation_event_receipts are the observers' signed final event receipts for the
   // call's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).
-  repeated ztd.operator.v1.ActionReceipt observation_receipts = 9;
+  repeated ztd.operator.v1.EventReceipt observation_event_receipts = 9;
 }
 
 // TribunalIntentResult is the HTTP 200 body of POST /api/v1/operators/intents.

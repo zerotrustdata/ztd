@@ -136,6 +136,6 @@ func TestOperatorPubSubService_StartOutboundModeDoesNotRequireMCPGatewayBinding(
 	assert.Nil(t, svc.GetMCPGateway())
 	_, hasMCPHandler := svc.actionHandlers[constants.ActionTypeMcpCall]
 	_, hasA2AHandler := svc.actionHandlers[constants.ActionTypeA2aCall]
-	assert.True(t, hasMCPHandler, "MCP_CALL is registered outbound for the Operator-local audit receipt route")
+	assert.True(t, hasMCPHandler, "MCP_CALL is registered outbound for the Operator-local audit event receipt route")
 	assert.False(t, hasA2AHandler)
 }

@@ -12,7 +12,7 @@
 // listen, or accept a GovernanceEnvelope. It samples the runtime it can see
 // and breeds a fixed-topology network that tries to predict the next sample,
 // starting from persistence, the forecast that nothing changes. The tally under .ztd/autochthon/ is a local hash chain. It is not
-// the commitment ledger and not an ActionReceipt.
+// the commitment ledger and not an EventReceipt.
 package autochthon
 
 import (

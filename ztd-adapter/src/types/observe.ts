@@ -94,7 +94,7 @@ export interface RunSummary {
   total_tasks: number;
   started_at?: UTCDatetime;
   ended_at?: UTCDatetime;
-  has_receipts: boolean;
+  has_event_receipts: boolean;
   evidence_count: number;
   observed_at: UTCDatetime;
 }
@@ -146,7 +146,7 @@ export interface EvalSummary {
   arm_id: string;
   status: RunLifecycleStatus;
   verification_status: EvalVerificationStatus;
-  receipt_count: number;
+  event_receipt_count: number;
   metric_count: number;
   published_projection_sha256?: string;
   completed_at?: UTCDatetime;
@@ -177,7 +177,7 @@ export interface EvalDetail {
   model_provider?: string;
   status: RunLifecycleStatus;
   verification_status: EvalVerificationStatus;
-  receipt_count: number;
+  event_receipt_count: number;
   assigned_tasks: number;
   terminal_attempts: number;
   metrics: EvalMetricSummary[];
@@ -261,7 +261,7 @@ export interface EvalRunCompletedPayload {
   arm_id: string;
   terminal_attempts: number;
   assigned_tasks: number;
-  receipt_count: number;
+  event_receipt_count: number;
   verification_status: EvalVerificationStatus;
   published_projection_sha256: string;
   completed_at: UTCDatetime;

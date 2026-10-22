@@ -249,7 +249,7 @@
       "deny",
       "refused"
     ],
-    "PublicReceiptStatus": [
+    "PublicEventReceiptStatus": [
       "unavailable",
       "reported"
     ],

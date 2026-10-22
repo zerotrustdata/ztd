@@ -113,7 +113,7 @@ func successDispatchResultFor(t *testing.T, req DispatchInferenceRequest) *Comma
 	return &CommandDispatchResult{
 		TransactionID: "tx-1",
 		ResultPayload: payload,
-		Receipt:       &operatorv1.ActionReceipt{TransactionId: "tx-1"},
+		EventReceipt:  &operatorv1.EventReceipt{TransactionId: "tx-1"},
 	}
 }
 
@@ -537,8 +537,8 @@ func TestDispatchInference_ResultIdentityMismatchFailsClosed(t *testing.T) {
 	}
 }
 
-func TestDispatchInference_SuccessReturnsResultAndReceipt(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-9", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+func TestDispatchInference_SuccessReturnsResultAndEventReceipt(t *testing.T) {
+	eventReceipt := &operatorv1.EventReceipt{TransactionId: "tx-9", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	req := baseRequest()
 	successResult := &operatorv1.InferenceResult{
 		Parts:                 []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: "answer"}}},
@@ -553,7 +553,7 @@ func TestDispatchInference_SuccessReturnsResultAndReceipt(t *testing.T) {
 	dispatcher := &stubCommandDispatcher{result: &CommandDispatchResult{
 		TransactionID: "tx-9",
 		ResultPayload: resultPayload,
-		Receipt:       receipt,
+		EventReceipt:  eventReceipt,
 	}}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{
 		capableOp("sess-a"),
@@ -567,7 +567,7 @@ func TestDispatchInference_SuccessReturnsResultAndReceipt(t *testing.T) {
 	require.NotNil(t, out.Result)
 	require.Len(t, out.Result.GetParts(), 1)
 	assert.Equal(t, "answer", out.Result.GetParts()[0].GetText())
-	assert.Same(t, receipt, out.Receipt)
+	assert.Same(t, eventReceipt, out.EventReceipt)
 	assert.Equal(t, "case-1", dispatcher.lastReq.CaseID)
 	assert.Equal(t, "spiffe://ztd.local/app/test-app", dispatcher.lastReq.ActingAppID)
 }
@@ -666,25 +666,25 @@ func TestDispatchInference_UndecodableResultFinalizesObservation(t *testing.T) {
 	}
 }
 
-func (s *stubObservationNotifier) NotifyAttemptBegin(_ context.Context, _, _ string, _ int64, _ uint32) (*operatorv1.ActionReceipt, error) {
+func (s *stubObservationNotifier) NotifyAttemptBegin(_ context.Context, _, _ string, _ int64, _ uint32) (*operatorv1.EventReceipt, error) {
 	s.beginCalls++
 	if s.beginErr != nil {
 		return nil, s.beginErr
 	}
-	return &operatorv1.ActionReceipt{TransactionId: "observe-begin"}, nil
+	return &operatorv1.EventReceipt{TransactionId: "observe-begin"}, nil
 }
 
-func (s *stubObservationNotifier) NotifyAttemptFinalize(_ context.Context, _, _, _ string, _, _ int64, _ bool, _ uint32) (*operatorv1.ActionReceipt, error) {
+func (s *stubObservationNotifier) NotifyAttemptFinalize(_ context.Context, _, _, _ string, _, _ int64, _ bool, _ uint32) (*operatorv1.EventReceipt, error) {
 	s.finalizeCalls++
 	if s.finalizeErr != nil {
 		return nil, s.finalizeErr
 	}
-	return &operatorv1.ActionReceipt{TransactionId: "observe-finalize"}, nil
+	return &operatorv1.EventReceipt{TransactionId: "observe-finalize"}, nil
 }
 
-// The observers' BEGIN and FINALIZE receipts are returned with the result, in
+// The observers' BEGIN and FINALIZE event receipts are returned with the result, in
 // dispatch order, so the caller can claim their ledger commitments.
-func TestDispatchInference_ReturnsObservationReceiptsInDispatchOrder(t *testing.T) {
+func TestDispatchInference_ReturnsObservationEventReceiptsInDispatchOrder(t *testing.T) {
 	req := baseRequest()
 	configureCampaignRequest(t, &req)
 	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
@@ -695,29 +695,29 @@ func TestDispatchInference_ReturnsObservationReceiptsInDispatchOrder(t *testing.
 	result, err := svc.DispatchInference(t.Context(), req)
 	require.NoError(t, err)
 	var got []string
-	for _, receipt := range result.Response().GetObservationReceipts() {
-		got = append(got, receipt.GetTransactionId())
+	for _, eventReceipt := range result.Response().GetObservationEventReceipts() {
+		got = append(got, eventReceipt.GetTransactionId())
 	}
 	assert.Equal(t, []string{"observe-begin", "provenance-begin", "observe-finalize", "provenance-finalize"}, got)
 }
 
-// A failed attempt keeps its observers' BEGIN and FINALIZE receipts on the
-// error, in dispatch order, alongside the Operator's signed FAILED receipt.
-func TestDispatchInference_FailedAttemptCarriesObservationReceipts(t *testing.T) {
+// A failed attempt keeps its observers' BEGIN and FINALIZE event receipts on the
+// error, in dispatch order, alongside the Operator's signed FAILED event receipt.
+func TestDispatchInference_FailedAttemptCarriesObservationEventReceipts(t *testing.T) {
 	req := baseRequest()
 	configureCampaignRequest(t, &req)
-	failedReceipt := &operatorv1.ActionReceipt{TransactionId: "tx-failed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
-	dispatcher := &stubCommandDispatcher{err: governance.WithFailedReceipt(failedReceipt, constants.ErrInferenceReceiptFailed)}
+	failedEventReceipt := &operatorv1.EventReceipt{TransactionId: "tx-failed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+	dispatcher := &stubCommandDispatcher{err: governance.WithFailedEventReceipt(failedEventReceipt, constants.ErrInferenceEventReceiptFailed)}
 	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}, testLogger())
 	svc.SetProviderObservationNotifier(&stubObservationNotifier{})
 	svc.SetProvenanceObservationNotifier(&recordingProvenanceNotifier{})
 
 	_, err := svc.DispatchInference(t.Context(), req)
-	require.ErrorIs(t, err, constants.ErrInferenceReceiptFailed)
-	assert.Same(t, failedReceipt, governance.FailedReceipt(err))
+	require.ErrorIs(t, err, constants.ErrInferenceEventReceiptFailed)
+	assert.Same(t, failedEventReceipt, governance.FailedEventReceipt(err))
 	var got []string
-	for _, receipt := range ObservationReceipts(err) {
-		got = append(got, receipt.GetTransactionId())
+	for _, eventReceipt := range ObservationEventReceipts(err) {
+		got = append(got, eventReceipt.GetTransactionId())
 	}
 	assert.Equal(t, []string{"observe-begin", "provenance-begin", "observe-finalize", "provenance-finalize"}, got)
 }
@@ -750,7 +750,7 @@ type orderingObservationNotifier struct {
 	beganInAdmission bool
 }
 
-func (o *orderingObservationNotifier) NotifyAttemptBegin(ctx context.Context, requestorUserID, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.ActionReceipt, error) {
+func (o *orderingObservationNotifier) NotifyAttemptBegin(ctx context.Context, requestorUserID, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.EventReceipt, error) {
 	o.callsAtBegin = o.dispatcher.calls
 	o.beganInAdmission = o.dispatcher.admitting
 	return o.stubObservationNotifier.NotifyAttemptBegin(ctx, requestorUserID, providerAttemptID, startedAtUnixMs, retryCount)
@@ -789,7 +789,7 @@ func TestDispatchInference_NoObserverProceedsUnobserved(t *testing.T) {
 	assert.Equal(t, 1, dispatcher.calls)
 	assert.Equal(t, 1, notifier.beginCalls)
 	assert.Zero(t, notifier.finalizeCalls)
-	assert.Empty(t, result.Response().GetObservationReceipts())
+	assert.Empty(t, result.Response().GetObservationEventReceipts())
 }
 
 func TestDispatchInference_CampaignObservationFinalizeFailureFailsClosed(t *testing.T) {

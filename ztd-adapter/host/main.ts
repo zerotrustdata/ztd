@@ -120,7 +120,7 @@ function renderEvals(state: AdapterState): void {
   }
   el.innerHTML = state.projections.latestEvals.map((e) => {
     const p = presentEval(e);
-    return `<div class="row">${p.runId} — ${p.verificationLabel} [${p.receiptCount} receipts, ${p.metricCount} metrics]</div>`;
+    return `<div class="row">${p.runId} — ${p.verificationLabel} [${p.eventReceiptCount} event receipts, ${p.metricCount} metrics]</div>`;
   }).join('');
 }
 

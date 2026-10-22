@@ -695,7 +695,7 @@ function runSummary(overrides = {}) {
     status: 'running',
     completed_tasks: 0,
     total_tasks: 0,
-    has_receipts: false,
+    has_event_receipts: false,
     evidence_count: 0,
     observed_at: ISO,
     ...overrides,
@@ -826,7 +826,7 @@ function generateFixtures() {
         model_cohort_ids: [],
         status: 'completed',
         verification_status: 'projection_validated',
-        receipt_count: 3,
+        event_receipt_count: 3,
         metric_count: 2,
         published_projection_sha256: 'a'.repeat(64),
         completed_at: ISO,
@@ -917,7 +917,7 @@ Populate every section in the homepage matrix from typed stores only. Static sec
 - Overview counters: agents running and tasks in queue, each with a freshness label (observed, stale, unavailable). Success rate only when a typed success_rate measurement exists.
 - Agent roster: each agent's display name, role, status label, and freshness. Throughput only when a typed throughput measurement exists.
 - Active run and recent runs: display name, run kind, status label, completed/total task counts. No fabricated task counts.
-- Latest evals: run id, verification label, receipt count, metric count. Partial verification shown as projection_validated, never as verified until the complete verifier exists.
+- Latest evals: run id, verification label, event receipt count, metric count. Partial verification shown as projection_validated, never as verified until the complete verifier exists.
 - Downloads: filename, media type, byte size, SHA-256, privacy classification, authenticated URL. Only public_safe artifacts appear.
 - Live narrative: bounded, virtualized live event rows from normalized safe events. Unknown events appear only as a bounded diagnostic row and cannot mutate projections or counters.
 

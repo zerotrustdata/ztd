@@ -33,19 +33,19 @@ import (
 
 // mockAuditReader is a mock implementation of AuditEvidenceReader for unit testing.
 type mockAuditReader struct {
-	receipts     []*models.EventReceiptRecord
-	receiptsErr  error
-	events       []*storage.Event
-	eventsErr    error
-	mutations    []*storage.FileMutationLog
-	mutationsErr error
+	eventReceipts    []*models.EventReceiptRecord
+	eventReceiptsErr error
+	events           []*storage.Event
+	eventsErr        error
+	mutations        []*storage.FileMutationLog
+	mutationsErr     error
 }
 
 func (m *mockAuditReader) ListEventReceipts(_ models.AuditScope, _, _ int) ([]*models.EventReceiptRecord, error) {
-	if m.receiptsErr != nil {
-		return nil, m.receiptsErr
+	if m.eventReceiptsErr != nil {
+		return nil, m.eventReceiptsErr
 	}
-	return m.receipts, nil
+	return m.eventReceipts, nil
 }
 
 func (m *mockAuditReader) ListEvents(_ string, _, _ int) ([]*storage.Event, error) {
@@ -169,15 +169,15 @@ func fullDeps(t *testing.T) EvaluatorDeps {
 	t.Helper()
 	privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
 	signerKeyID := hex.EncodeToString(privateKey.Public().(ed25519.PublicKey))
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-1", TransactionHash: "hash-1", StateRootBefore: "state-before", StateRootAfter: "state-after", ExecutedAtUnixMs: 1_700_000_001_000, SignerKeyId: signerKeyID}
-	payload, err := governance.CanonicalizeActionReceipt(receipt)
+	eventReceipt := &operatorv1.EventReceipt{TransactionId: "tx-1", TransactionHash: "hash-1", StateRootBefore: "state-before", StateRootAfter: "state-after", ExecutedAtUnixMs: 1_700_000_001_000, SignerKeyId: signerKeyID}
+	payload, err := governance.CanonicalizeEventReceipt(eventReceipt)
 	require.NoError(t, err)
-	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
-	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: receipt.TransactionId, ReceiptSignatureDigest: governance.SignatureDigest([]string{receipt.Signature}), PersistedAtUnixMs: 1_700_000_002_000, AuditRecordId: receipt.TransactionId, SignerKeyId: signerKeyID}
-	payload, err = governance.CanonicalizeReceiptPersistenceAttestation(attestation)
+	eventReceipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
+	attestation := &operatorv1.EventReceiptPersistenceAttestation{TransactionId: eventReceipt.TransactionId, EventReceiptSignatureDigest: governance.SignatureDigest([]string{eventReceipt.Signature}), PersistedAtUnixMs: 1_700_000_002_000, AuditRecordId: eventReceipt.TransactionId, SignerKeyId: signerKeyID}
+	payload, err = governance.CanonicalizeEventReceiptPersistenceAttestation(attestation)
 	require.NoError(t, err)
 	attestation.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
-	receipt.FinalPersistenceAttestation = attestation
+	eventReceipt.FinalPersistenceAttestation = attestation
 	commitment := &operatorv1.CommitmentAttestation{TransactionId: "tx-1", TransactionHash: "hash-1", StateRootAtCommit: "state-before", CommittedAtUnixMs: 1_700_000_003_000, AuditorKeyId: signerKeyID}
 	payload, err = governance.CanonicalizeCommitmentAttestation(commitment)
 	require.NoError(t, err)
@@ -190,10 +190,10 @@ func fullDeps(t *testing.T) EvaluatorDeps {
 	now := time.Now().UTC()
 	return EvaluatorDeps{
 		Audit: &mockAuditReader{
-			receipts: []*models.EventReceiptRecord{{
-				TransactionID: receipt.TransactionId, TransactionHash: receipt.TransactionHash,
-				StateRootBefore: receipt.StateRootBefore, StateRootAfter: receipt.StateRootAfter,
-				ExecutedAt: now, Signature: receipt.Signature, SignerKeyID: receipt.SignerKeyId, ActionReceipt: receipt,
+			eventReceipts: []*models.EventReceiptRecord{{
+				TransactionID: eventReceipt.TransactionId, TransactionHash: eventReceipt.TransactionHash,
+				StateRootBefore: eventReceipt.StateRootBefore, StateRootAfter: eventReceipt.StateRootAfter,
+				ExecutedAt: now, Signature: eventReceipt.Signature, SignerKeyID: eventReceipt.SignerKeyId, EventReceipt: eventReceipt,
 			}},
 			events:    []*storage.Event{{ID: 1, OperatorSessionID: "sess-1"}},
 			mutations: []*storage.FileMutationLog{{ID: 1, Filepath: "/etc/config"}},
@@ -217,13 +217,13 @@ func fullDeps(t *testing.T) EvaluatorDeps {
 		Graders: &mockEvalGraderReader{results: []GraderResult{{
 			ArtifactID: "metric:protocol-chain", GraderID: "protocol_chain", GraderVersion: "1.0.0",
 			SHA256: strings.Repeat("a", 64), Verified: true, ProducedAt: now,
-			Evidence: []*compliancev1.ComplianceEvidenceReference{{ArtifactId: "receipt:tx-1", Sha256: strings.Repeat("b", 64)}},
+			Evidence: []*compliancev1.ComplianceEvidenceReference{{ArtifactId: "event_receipt:tx-1", Sha256: strings.Repeat("b", 64)}},
 		}}},
 	}
 }
 
 func testKSIMethod(name string, property KSIMeasuredProperty, evaluate ksiMethodEvaluator) KSIMethod {
-	return newKSIMethod(name, KSIArtifactActionReceipts, KSICollectionAuditStore, KSIVerifierStructural, property, evaluate)
+	return newKSIMethod(name, KSIArtifactEventReceipts, KSICollectionAuditStore, KSIVerifierStructural, property, evaluate)
 }
 
 // testBinding returns a valid EvaluationBinding for evaluator tests.
@@ -444,7 +444,7 @@ func TestKSIEvaluator_Evaluate_MethodError_FailClosed(t *testing.T) {
 		return false, nil, errors.New("simulated storage failure")
 	})
 	okMethod := testKSIMethod("okMethod", KSIPropertySignatureValidity, func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
-		return true, []*compliancev1.ComplianceEvidenceReference{newKSIEvidenceReference(EvidenceTypeReceiptID, "tx-1")}, nil
+		return true, []*compliancev1.ComplianceEvidenceReference{newKSIEvidenceReference(EvidenceTypeEventReceiptID, "tx-1")}, nil
 	})
 
 	require.NoError(t, eval.RegisterMethods("KSI-CMT-01", errMethod, okMethod))
@@ -624,7 +624,7 @@ func TestKSIEvaluator_Evaluate_ClassB_LowerThreshold(t *testing.T) {
 
 	// Register only 1 method for KSI-CMT-01
 	okMethod := testKSIMethod("okMethod", KSIPropertyPresence, func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
-		return true, []*compliancev1.ComplianceEvidenceReference{newKSIEvidenceReference(EvidenceTypeReceiptID, "tx-1")}, nil
+		return true, []*compliancev1.ComplianceEvidenceReference{newKSIEvidenceReference(EvidenceTypeEventReceiptID, "tx-1")}, nil
 	})
 	require.NoError(t, eval.RegisterMethods("KSI-CMT-01", okMethod))
 
@@ -766,7 +766,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 			Binding: binding,
 			Results: []KSIResult{{
 				ID: "KSI-CMT-01", Status: KSIStatusSatisfied, Outcome: KSIOutcomeSatisfied, Binding: binding,
-				Evidence: []*compliancev1.ComplianceEvidenceReference{{ArtifactId: "tx-1", ArtifactType: string(EvidenceTypeReceiptID), ScopeId: "other-scope"}},
+				Evidence: []*compliancev1.ComplianceEvidenceReference{{ArtifactId: "tx-1", ArtifactType: string(EvidenceTypeEventReceiptID), ScopeId: "other-scope"}},
 			}},
 		}
 		err := rs.Validate(catalog)
@@ -849,7 +849,7 @@ func TestKSIResultSetValidateRejectsEvidenceOutsideAssertionAssessmentScope(t *t
 	catalog := testCatalog()
 	binding := testBinding(t)
 	validEvidence := &compliancev1.ComplianceEvidenceReference{
-		ArtifactId: "receipt-1", ArtifactType: string(EvidenceTypeReceiptID), ScopeId: binding.ScopeID, RunId: binding.RunID,
+		ArtifactId: "event_receipt-1", ArtifactType: string(EvidenceTypeEventReceiptID), ScopeId: binding.ScopeID, RunId: binding.RunID,
 		AttemptId: "attempt-1", ScenarioId: "scenario-1", TransactionId: "action-1", ProducedAt: timestamppb.New(time.UnixMilli(binding.WindowStartUnixMs)),
 	}
 	tests := []struct {
@@ -889,7 +889,7 @@ func TestKSIResultSetValidateAcceptsEvidenceMatchingAnyAllowedAssertionAssessmen
 		ActionIDs:     []string{"action-1", "action-2"},
 	}
 	evidence := &compliancev1.ComplianceEvidenceReference{
-		ArtifactId: "receipt-2", ArtifactType: string(EvidenceTypeReceiptID), ScopeId: binding.ScopeID, RunId: binding.RunID,
+		ArtifactId: "event_receipt-2", ArtifactType: string(EvidenceTypeEventReceiptID), ScopeId: binding.ScopeID, RunId: binding.RunID,
 		AttemptId: "attempt-2", ScenarioId: "scenario-2", TransactionId: "action-2", ProducedAt: timestamppb.New(time.UnixMilli(binding.WindowEndUnixMs)),
 	}
 	resultSet := &KSIResultSet{Binding: binding, Results: []KSIResult{{ID: "KSI-CMT-01", Status: KSIStatusSatisfied, Outcome: KSIOutcomeSatisfied, Binding: binding, Evidence: []*compliancev1.ComplianceEvidenceReference{evidence}}}}
@@ -900,7 +900,7 @@ func TestKSIEvaluatorEvaluateFailsClosedOnEvidenceOutsideAssertionAssessmentScop
 	catalog := testCatalog()
 	evaluator := NewKSIEvaluator(catalog)
 	method := testKSIMethod("cross-scope", KSIPropertyPresence, func(context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
-		return true, []*compliancev1.ComplianceEvidenceReference{{ArtifactId: "receipt-1", ArtifactType: string(EvidenceTypeReceiptID), AttemptId: "attempt-2"}}, nil
+		return true, []*compliancev1.ComplianceEvidenceReference{{ArtifactId: "event_receipt-1", ArtifactType: string(EvidenceTypeEventReceiptID), AttemptId: "attempt-2"}}, nil
 	})
 	require.NoError(t, evaluator.RegisterMethods("KSI-CMT-01", method))
 	resultSet, err := evaluator.Evaluate(context.Background(), ClassB, testBinding(t))
@@ -953,35 +953,35 @@ func TestDefaultMethods_CommitmentChainIntact(t *testing.T) {
 	assert.False(t, allTrue, "At least one method should return false with broken chain")
 }
 
-// TestDefaultMethods_ReceiptAndPersistenceCryptographicVerification verifies
-// canonical receipt and final-persistence evidence fail closed under mutation.
-func TestDefaultMethods_ReceiptAndPersistenceCryptographicVerification(t *testing.T) {
+// TestDefaultMethods_EventReceiptAndPersistenceCryptographicVerification verifies
+// canonical event receipt and final-persistence evidence fail closed under mutation.
+func TestDefaultMethods_EventReceiptAndPersistenceCryptographicVerification(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*mockAuditReader)
 		want   bool
 	}{
-		{name: "valid receipt and persistence", want: true},
-		{name: "missing canonical receipt", mutate: func(audit *mockAuditReader) { audit.receipts[0].ActionReceipt = nil }},
-		{name: "record signature binding mismatch", mutate: func(audit *mockAuditReader) { audit.receipts[0].Signature = "different" }},
-		{name: "malformed receipt signature", mutate: func(audit *mockAuditReader) {
-			audit.receipts[0].ActionReceipt.Signature = "not-hex"
-			audit.receipts[0].Signature = "not-hex"
+		{name: "valid event receipt and persistence", want: true},
+		{name: "missing canonical event receipt", mutate: func(audit *mockAuditReader) { audit.eventReceipts[0].EventReceipt = nil }},
+		{name: "record signature binding mismatch", mutate: func(audit *mockAuditReader) { audit.eventReceipts[0].Signature = "different" }},
+		{name: "malformed event receipt signature", mutate: func(audit *mockAuditReader) {
+			audit.eventReceipts[0].EventReceipt.Signature = "not-hex"
+			audit.eventReceipts[0].Signature = "not-hex"
 		}},
 		{name: "missing final persistence attestation", mutate: func(audit *mockAuditReader) {
-			audit.receipts[0].ActionReceipt.FinalPersistenceAttestation = nil
+			audit.eventReceipts[0].EventReceipt.FinalPersistenceAttestation = nil
 		}},
 		{name: "mutated persistence signature", mutate: func(audit *mockAuditReader) {
-			audit.receipts[0].ActionReceipt.FinalPersistenceAttestation.Signature = "not-hex"
+			audit.eventReceipts[0].EventReceipt.FinalPersistenceAttestation.Signature = "not-hex"
 		}},
-		{name: "mutated receipt signature digest", mutate: func(audit *mockAuditReader) {
-			audit.receipts[0].ActionReceipt.FinalPersistenceAttestation.ReceiptSignatureDigest = "wrong-digest"
+		{name: "mutated event receipt signature digest", mutate: func(audit *mockAuditReader) {
+			audit.eventReceipts[0].EventReceipt.FinalPersistenceAttestation.EventReceiptSignatureDigest = "wrong-digest"
 		}},
-		{name: "one invalid receipt among valid receipts", mutate: func(audit *mockAuditReader) {
-			invalid := *audit.receipts[0]
+		{name: "one invalid event receipt among valid event receipts", mutate: func(audit *mockAuditReader) {
+			invalid := *audit.eventReceipts[0]
 			invalid.TransactionID = "tx-2"
-			invalid.ActionReceipt = nil
-			audit.receipts = append(audit.receipts, &invalid)
+			invalid.EventReceipt = nil
+			audit.eventReceipts = append(audit.eventReceipts, &invalid)
 		}},
 	}
 
@@ -1159,9 +1159,11 @@ func TestDefaultMethods_IndependentStateObservation(t *testing.T) {
 		want   bool
 	}{
 		{name: "distinct state roots", want: true},
-		{name: "missing state root", mutate: func(deps *EvaluatorDeps) { deps.Audit.(*mockAuditReader).receipts[0].StateRootAfter = "" }},
-		{name: "unchanged state root", mutate: func(deps *EvaluatorDeps) { deps.Audit.(*mockAuditReader).receipts[0].StateRootAfter = "state-before" }},
-		{name: "missing receipt", mutate: func(deps *EvaluatorDeps) { deps.Audit.(*mockAuditReader).receipts = nil }},
+		{name: "missing state root", mutate: func(deps *EvaluatorDeps) { deps.Audit.(*mockAuditReader).eventReceipts[0].StateRootAfter = "" }},
+		{name: "unchanged state root", mutate: func(deps *EvaluatorDeps) {
+			deps.Audit.(*mockAuditReader).eventReceipts[0].StateRootAfter = "state-before"
+		}},
+		{name: "missing event receipt", mutate: func(deps *EvaluatorDeps) { deps.Audit.(*mockAuditReader).eventReceipts = nil }},
 		{name: "nil dependency", mutate: func(deps *EvaluatorDeps) { deps.Audit = nil }},
 	}
 	for _, tt := range tests {

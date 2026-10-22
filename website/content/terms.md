@@ -47,13 +47,13 @@ Within one business day of payment, we email you a **License Certificate**. It r
 production limit, and term. It is a record of your license. It is not an audit opinion, a security
 certification, or an attestation about your own systems.
 
-Stripe emails your receipt and invoice when you pay. Billing questions, purchase orders, and invoice requests go to
+Stripe emails your event receipt and invoice when you pay. Billing questions, purchase orders, and invoice requests go to
 [danny@zerotrustdata.io](mailto:danny@zerotrustdata.io).
 
 ## Renewal and cancellation
 
 Plans renew automatically at the end of each monthly or yearly period until you cancel. You can cancel at any
-time from the billing link in your Stripe receipt or by emailing us. Cancellation takes effect at the end of the
+time from the billing link in your Stripe event receipt or by emailing us. Cancellation takes effect at the end of the
 current paid period. Your production rights end then, and we do not issue refunds for partial periods.
 
 **Refunds:** If you ask within 14 days of your first payment for a license plan, we refund that payment in full.
@@ -84,7 +84,7 @@ Principal Architect Retainer.
 
 ## Compliance evidence
 
-ztd produces technical evidence: signed receipts, hash-chained ledgers, and compliance report bundles. Neither ztd
+ztd produces technical evidence: signed event receipts, hash-chained ledgers, and compliance report bundles. Neither ztd
 nor we certify that you comply with any law, framework, or standard. That determination belongs to you and your
 auditors.
 

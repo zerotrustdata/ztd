@@ -32,9 +32,9 @@ export function isRunKind(value: unknown): value is RunKind {
   return typeof value === 'string' && (RUN_KINDS as readonly string[]).includes(value);
 }
 
-export type EvalVerificationStatus = 'projection_validated' | 'receipt_verification_not_applicable' | 'verified';
+export type EvalVerificationStatus = 'projection_validated' | 'event_receipt_verification_not_applicable' | 'verified';
 export const EVAL_VERIFICATION_STATUSES: readonly EvalVerificationStatus[] = [
-  'projection_validated', 'receipt_verification_not_applicable', 'verified',
+  'projection_validated', 'event_receipt_verification_not_applicable', 'verified',
 ] as const;
 export function isEvalVerificationStatus(value: unknown): value is EvalVerificationStatus {
   return typeof value === 'string' && (EVAL_VERIFICATION_STATUSES as readonly string[]).includes(value);
@@ -213,7 +213,7 @@ export interface RunSummary {
   total_tasks: number;
   started_at?: string;
   ended_at?: string;
-  has_receipts: boolean;
+  has_event_receipts: boolean;
   evidence_count: number;
   observed_at: string;
 }
@@ -262,7 +262,7 @@ export interface EvalSummary {
   model_cohort_ids: String[];
   status: RunLifecycleStatus;
   verification_status: EvalVerificationStatus;
-  receipt_count: number;
+  event_receipt_count: number;
   metric_count: number;
   published_projection_sha256?: string;
   completed_at?: string;
@@ -293,7 +293,7 @@ export interface EvalDetail {
   model_cohort_ids: String[];
   status: RunLifecycleStatus;
   verification_status: EvalVerificationStatus;
-  receipt_count: number;
+  event_receipt_count: number;
   assigned_tasks: number;
   terminal_attempts: number;
   metrics: EvalMetricSummary[];
@@ -474,7 +474,7 @@ export interface EvalRunCompletedPayload {
   arm_ids: String[];
   terminal_attempts: number;
   assigned_tasks: number;
-  receipt_count: number;
+  event_receipt_count: number;
   verification_status: EvalVerificationStatus;
   published_projection_sha256: string;
   completed_at: string;
@@ -745,7 +745,7 @@ export function isRunSummary(value: unknown): value is RunSummary {
   if (!(typeof v.total_tasks === 'number' && Number.isInteger(v.total_tasks))) return false; /* total_tasks */
   if (v.started_at !== undefined && !(typeof v.started_at === 'string')) return false; /* started_at */
   if (v.ended_at !== undefined && !(typeof v.ended_at === 'string')) return false; /* ended_at */
-  if (!(typeof v.has_receipts === 'boolean')) return false; /* has_receipts */
+  if (!(typeof v.has_event_receipts === 'boolean')) return false; /* has_event_receipts */
   if (!(typeof v.evidence_count === 'number' && Number.isInteger(v.evidence_count))) return false; /* evidence_count */
   if (!(typeof v.observed_at === 'string')) return false; /* observed_at */
   return true;
@@ -806,7 +806,7 @@ export function isEvalSummary(value: unknown): value is EvalSummary {
   if (!(Array.isArray(v.model_cohort_ids) && v.model_cohort_ids.every((x) => typeof x === 'string'))) return false; /* model_cohort_ids */
   if (!(typeof v.status === 'string' && (RUN_LIFECYCLE_STATUSES as readonly string[]).includes(v.status))) return false; /* status */
   if (!(typeof v.verification_status === 'string' && (EVAL_VERIFICATION_STATUSES as readonly string[]).includes(v.verification_status))) return false; /* verification_status */
-  if (!(typeof v.receipt_count === 'number' && Number.isInteger(v.receipt_count))) return false; /* receipt_count */
+  if (!(typeof v.event_receipt_count === 'number' && Number.isInteger(v.event_receipt_count))) return false; /* event_receipt_count */
   if (!(typeof v.metric_count === 'number' && Number.isInteger(v.metric_count))) return false; /* metric_count */
   if (v.published_projection_sha256 !== undefined && !(typeof v.published_projection_sha256 === 'string')) return false; /* published_projection_sha256 */
   if (v.completed_at !== undefined && !(typeof v.completed_at === 'string')) return false; /* completed_at */
@@ -843,7 +843,7 @@ export function isEvalDetail(value: unknown): value is EvalDetail {
   if (!(Array.isArray(v.model_cohort_ids) && v.model_cohort_ids.every((x) => typeof x === 'string'))) return false; /* model_cohort_ids */
   if (!(typeof v.status === 'string' && (RUN_LIFECYCLE_STATUSES as readonly string[]).includes(v.status))) return false; /* status */
   if (!(typeof v.verification_status === 'string' && (EVAL_VERIFICATION_STATUSES as readonly string[]).includes(v.verification_status))) return false; /* verification_status */
-  if (!(typeof v.receipt_count === 'number' && Number.isInteger(v.receipt_count))) return false; /* receipt_count */
+  if (!(typeof v.event_receipt_count === 'number' && Number.isInteger(v.event_receipt_count))) return false; /* event_receipt_count */
   if (!(typeof v.assigned_tasks === 'number' && Number.isInteger(v.assigned_tasks))) return false; /* assigned_tasks */
   if (!(typeof v.terminal_attempts === 'number' && Number.isInteger(v.terminal_attempts))) return false; /* terminal_attempts */
   if (!(Array.isArray(v.metrics) && v.metrics.every((x) => isEvalMetricSummary(x)))) return false; /* metrics */
@@ -1060,7 +1060,7 @@ export function isEvalRunCompletedPayload(value: unknown): value is EvalRunCompl
   if (!(Array.isArray(v.arm_ids) && v.arm_ids.every((x) => typeof x === 'string'))) return false; /* arm_ids */
   if (!(typeof v.terminal_attempts === 'number' && Number.isInteger(v.terminal_attempts))) return false; /* terminal_attempts */
   if (!(typeof v.assigned_tasks === 'number' && Number.isInteger(v.assigned_tasks))) return false; /* assigned_tasks */
-  if (!(typeof v.receipt_count === 'number' && Number.isInteger(v.receipt_count))) return false; /* receipt_count */
+  if (!(typeof v.event_receipt_count === 'number' && Number.isInteger(v.event_receipt_count))) return false; /* event_receipt_count */
   if (!(typeof v.verification_status === 'string' && (EVAL_VERIFICATION_STATUSES as readonly string[]).includes(v.verification_status))) return false; /* verification_status */
   if (!(typeof v.published_projection_sha256 === 'string')) return false; /* published_projection_sha256 */
   if (!(typeof v.completed_at === 'string')) return false; /* completed_at */

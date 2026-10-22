@@ -29,7 +29,7 @@ func Cmd() *cobra.Command {
 		Short:   "Generate CSV evidence reports from all persistent stores",
 		Long: `Generate flat, deterministic CSV files from every ztd persistent store.
 Each file contains one record type with cryptographic proof fields.
-A verification pass independently re-validates receipt signatures,
+A verification pass independently re-validates event receipt signatures,
 the commitment hash chain, and the git merkle root.`,
 	}
 
@@ -110,7 +110,7 @@ func reportAllCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "all",
 		Short: "Export all stores to CSV and run verification",
-		Long: `Export all persistent stores (audit store, receipts, ledger, secrets) to
+		Long: `Export all persistent stores (audit store, event receipts, ledger, secrets) to
 deterministic CSV files and run verification checks. Output files are written
 to the reports directory.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -149,7 +149,7 @@ func reportVerifyCmd() *cobra.Command {
 		Short: "Run verification checks and write verification_summary.csv",
 		Long: `Run verification checks against the persistent stores and write a
 verification_summary.csv file to the reports directory. Checks include hash
-integrity, receipt signature validation, and ledger consistency.`,
+integrity, event receipt signature validation, and ledger consistency.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts, err := f.resolveOptions()
 			if err != nil {

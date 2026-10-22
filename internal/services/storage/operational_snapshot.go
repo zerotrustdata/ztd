@@ -30,9 +30,9 @@ type OperationalEvidenceQuery struct {
 	MaxRows     int
 }
 
-// OperationalReceiptSource preserves the stored canonical receipt body and its
+// OperationalEventReceiptSource preserves the stored canonical event receipt body and its
 // searchable selection fields without opening a writable audit store.
-type OperationalReceiptSource struct {
+type OperationalEventReceiptSource struct {
 	TransactionID string
 	ExecutedAt    time.Time
 	Body          []byte
@@ -57,7 +57,7 @@ type OperationalAuditChainSource struct {
 	OperatorSessionID string
 	Timestamp         time.Time
 	ContentDigest     string
-	// ContentSHA256 is the plain SHA-256 of the decrypted receipt body. The reader
+	// ContentSHA256 is the plain SHA-256 of the decrypted event receipt body. The reader
 	// sets it only after the row's keyed content digest verified.
 	ContentSHA256 string
 	TransactionID string
@@ -67,16 +67,16 @@ type OperationalAuditChainSource struct {
 // snapshot. A nil body records a retained row whose canonical source body is
 // unavailable rather than silently dropping that row.
 type OperationalEvidenceSnapshot struct {
-	Receipts    []OperationalReceiptSource
-	Commitments []OperationalCommitmentSource
-	AuditChain  []OperationalAuditChainSource
+	EventReceipts []OperationalEventReceiptSource
+	Commitments   []OperationalCommitmentSource
+	AuditChain    []OperationalAuditChainSource
 }
 
 // ReadOnlyOperationalEvidence reads the Gateway or Operator-local audit
 // database without schema bootstrap, migration, pruning, or writes.
 type ReadOnlyOperationalEvidence struct {
 	db *sqliteutil.DB
-	// vault decrypts the receipt and commitment bodies, which are encrypted at rest.
+	// vault decrypts the event receipt and commitment bodies, which are encrypted at rest.
 	// A nil or locked vault makes every Snapshot that reads a body fail closed.
 	vault *vault.Vault
 }
@@ -119,7 +119,7 @@ func (r *ReadOnlyOperationalEvidence) LatestCommitmentAt(ctx context.Context) (t
 	return time.UnixMilli(committedAtMs.Int64).UTC(), nil
 }
 
-// Snapshot reads receipts and commitments from one read-only transaction. The
+// Snapshot reads event receipts and commitments from one read-only transaction. The
 // query has no implicit pagination; exceeding MaxRows fails rather than
 // silently exporting a truncated population.
 func (r *ReadOnlyOperationalEvidence) Snapshot(ctx context.Context, query OperationalEvidenceQuery) (snapshot *OperationalEvidenceSnapshot, returnErr error) {
@@ -148,7 +148,7 @@ func (r *ReadOnlyOperationalEvidence) Snapshot(ctx context.Context, query Operat
 	}()
 
 	snapshot = &OperationalEvidenceSnapshot{}
-	if err := readOperationalReceipts(ctx, tx, r.vault, query, snapshot); err != nil {
+	if err := readOperationalEventReceipts(ctx, tx, r.vault, query, snapshot); err != nil {
 		return nil, err
 	}
 	if err := readOperationalCommitments(ctx, tx, r.vault, query, snapshot); err != nil {
@@ -163,7 +163,7 @@ func (r *ReadOnlyOperationalEvidence) Snapshot(ctx context.Context, query Operat
 	return snapshot, nil
 }
 
-func readOperationalReceipts(ctx context.Context, tx *sql.Tx, encryptionVault *vault.Vault, query OperationalEvidenceQuery, snapshot *OperationalEvidenceSnapshot) error {
+func readOperationalEventReceipts(ctx context.Context, tx *sql.Tx, encryptionVault *vault.Vault, query OperationalEvidenceQuery, snapshot *OperationalEvidenceSnapshot) error {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT transaction_id, event_receipt_executed_at_ms, seq, content_text
 		FROM events
@@ -172,35 +172,35 @@ func readOperationalReceipts(ctx context.Context, tx *sql.Tx, encryptionVault *v
 		ORDER BY event_receipt_executed_at_ms ASC, transaction_id ASC
 	`, query.WindowStart.UnixMilli(), query.WindowEnd.UnixMilli())
 	if err != nil {
-		return fmt.Errorf("operational evidence: query receipts: %w", err)
+		return fmt.Errorf("operational evidence: query event_receipts: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var receipt OperationalReceiptSource
+		var eventReceipt OperationalEventReceiptSource
 		var executedAtMs int64
 		var seq sql.NullInt64
 		var body []byte
-		if err := rows.Scan(&receipt.TransactionID, &executedAtMs, &seq, &body); err != nil {
+		if err := rows.Scan(&eventReceipt.TransactionID, &executedAtMs, &seq, &body); err != nil {
 			return fmt.Errorf("operational evidence: scan event receipt: %w", err)
 		}
-		receipt.ExecutedAt = time.UnixMilli(executedAtMs).UTC()
+		eventReceipt.ExecutedAt = time.UnixMilli(executedAtMs).UTC()
 		if len(body) > 0 {
 			if !seq.Valid {
-				return fmt.Errorf("operational evidence: event receipt %s has no chain sequence", receipt.TransactionID)
+				return fmt.Errorf("operational evidence: event receipt %s has no chain sequence", eventReceipt.TransactionID)
 			}
 			decrypted, err := decryptAuditContent(encryptionVault, auditColumnEventContentText, auditEventRowID(seq.Int64), body)
 			if err != nil {
 				return fmt.Errorf("operational evidence: decrypt event receipt: %w", err)
 			}
-			receipt.Body = []byte(decrypted)
+			eventReceipt.Body = []byte(decrypted)
 		}
-		snapshot.Receipts = append(snapshot.Receipts, receipt)
-		if len(snapshot.Receipts) > query.MaxRows {
-			return fmt.Errorf("%w: receipt population exceeds bound %d", constants.ErrEvidenceArtifactTooLarge, query.MaxRows)
+		snapshot.EventReceipts = append(snapshot.EventReceipts, eventReceipt)
+		if len(snapshot.EventReceipts) > query.MaxRows {
+			return fmt.Errorf("%w: event receipt population exceeds bound %d", constants.ErrEvidenceArtifactTooLarge, query.MaxRows)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("operational evidence: iterate receipts: %w", err)
+		return fmt.Errorf("operational evidence: iterate event_receipts: %w", err)
 	}
 	return nil
 }
@@ -244,7 +244,7 @@ func readOperationalCommitments(ctx context.Context, tx *sql.Tx, encryptionVault
 }
 
 // readOperationalAuditChain exports the contiguous chain segment that spans every
-// chained receipt fact in the window. Every chained event between the first and
+// chained event receipt fact in the window. Every chained event between the first and
 // last of those facts is included whatever its type, so the segment has no
 // sequence gap and its prev_hash linkage verifies offline.
 func readOperationalAuditChain(ctx context.Context, tx *sql.Tx, encryptionVault *vault.Vault, query OperationalEvidenceQuery, snapshot *OperationalEvidenceSnapshot) error {
@@ -266,7 +266,7 @@ func readOperationalAuditChain(ctx context.Context, tx *sql.Tx, encryptionVault 
 		WHERE seq IS NOT NULL
 		  AND seq >= bounds.first_seq AND seq <= bounds.last_seq
 		ORDER BY seq ASC
-	`, string(constants.EventOperatorReceiptRecorded), windowStart, windowEnd)
+	`, string(constants.EventOperatorEventReceiptRecorded), windowStart, windowEnd)
 	if err != nil {
 		return fmt.Errorf("operational evidence: query audit chain: %w", err)
 	}
@@ -289,9 +289,9 @@ func readOperationalAuditChain(ctx context.Context, tx *sql.Tx, encryptionVault 
 		if err != nil {
 			return fmt.Errorf("operational evidence: verify audit chain content: %w", err)
 		}
-		// Only receipt facts carry a plain content hash: an importer matches it to the
-		// exported receipt body. Other chained content is never exported, so its hash is not.
-		if entry.EventType == string(constants.EventOperatorReceiptRecorded) && event.ContentText != "" {
+		// Only event receipt facts carry a plain content hash: an importer matches it to the
+		// exported event receipt body. Other chained content is never exported, so its hash is not.
+		if entry.EventType == string(constants.EventOperatorEventReceiptRecorded) && event.ContentText != "" {
 			sum := sha256.Sum256([]byte(event.ContentText))
 			entry.ContentSHA256 = hex.EncodeToString(sum[:])
 		}

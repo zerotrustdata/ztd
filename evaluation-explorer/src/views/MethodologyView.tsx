@@ -173,7 +173,7 @@ function ArchitectureDiagram() {
         { key: 'gateway', label: 'Gateway PDP', value: 'Admits typed intent', tone: 'info' },
         { key: 'governance', label: 'L1–L5', value: 'Governance pipeline', tone: 'info' },
         { key: 'operator', label: 'Operator PEP', value: 'Verifies and executes', tone: 'info' },
-        { key: 'receipt', label: 'Signed receipt', value: 'Local execution evidence', tone: 'ok' },
+        { key: 'event_receipt', label: 'Signed event receipt', value: 'Local execution evidence', tone: 'ok' },
         { key: 'verification', label: 'Verification', value: 'Offline evidence checks', tone: 'ok' },
       ]} />
     </div>
@@ -245,9 +245,9 @@ export function MethodologyView() {
             <article className="evidence-panel docs-program-card">
               <div className="docs-program-head"><span>01</span><code>governance-conformance@1.0.0</code></div>
               <h3>Governance conformance</h3>
-              <p>Proves, per posture, that each governed fault at each ingress ends in its one expected typed outcome, backed by the executing Operator&apos;s signed receipts and no unclaimed side effect.</p>
+              <p>Proves, per posture, that each governed fault at each ingress ends in its one expected typed outcome, backed by the executing Operator&apos;s signed event receipts and no unclaimed side effect.</p>
               <dl>
-                <div><dt>Uses</dt><dd>Live Gateway and Operator runtimes, signed receipts verified against enrollment-bound keys, a canary file set, and the Operator commitment ledger.</dd></div>
+                <div><dt>Uses</dt><dd>Live Gateway and Operator runtimes, signed event receipts verified against enrollment-bound keys, a canary file set, and the Operator commitment ledger.</dd></div>
                 <div><dt>Excludes</dt><dd>Model providers, model judges, campaigns, scheduling, and synthetic simulators.</dd></div>
               </dl>
             </article>
@@ -282,8 +282,8 @@ export function MethodologyView() {
 
         <DocsSection id="conformance" title="Governance conformance suite">
           <DocsCard title="Every ingress, every posture, one expected outcome">
-            <p>A 26-row case catalogue submits governed faults through direct envelope submission, governed dispatch, the CLI, MCP, and A2A on a live native stack, against both the embedded and an outbound Operator. Each posture is one run on a Gateway started in that posture. Every case expects exactly one typed outcome: a signed receipt, a signed <code>GovernanceRejection</code>, a typed <code>IngressRefusal</code>, or a suspension.</p>
-            <p>Each verdict comes from the executing Operator&apos;s signed receipt, a canary file-set snapshot before and after the case, and the Operator&apos;s commitment-ledger bracket, never from the Gateway&apos;s HTTP response. Attended cases (L3 approve and deny) run only with <code>--attended</code>; otherwise they are recorded as not run.</p>
+            <p>A 26-row case catalogue submits governed faults through direct envelope submission, governed dispatch, the CLI, MCP, and A2A on a live native stack, against both the embedded and an outbound Operator. Each posture is one run on a Gateway started in that posture. Every case expects exactly one typed outcome: a signed event receipt, a signed <code>GovernanceRejection</code>, a typed <code>IngressRefusal</code>, or a suspension.</p>
+            <p>Each verdict comes from the executing Operator&apos;s signed event receipt, a canary file-set snapshot before and after the case, and the Operator&apos;s commitment-ledger bracket, never from the Gateway&apos;s HTTP response. Attended cases (L3 approve and deny) run only with <code>--attended</code>; otherwise they are recorded as not run.</p>
             <div className="docs-command-row">
               <Command>./ztd eval conformance run</Command>
               <Command>./ztd eval conformance verify --run &lt;run-id&gt;</Command>
@@ -292,7 +292,7 @@ export function MethodologyView() {
           </DocsCard>
           <div className="docs-split">
             <DocsCard title="Authority boundary">
-              <p>The Gateway is the Policy Decision Point: ingress authentication, envelope construction, L1–L3 decisions, and coordination. The selected remote Operator is the Policy Execution Point: L4–L5 execution and authoritative local evidence. A Gateway receipt query is a verified mirror of Operator-authored evidence.</p>
+              <p>The Gateway is the Policy Decision Point: ingress authentication, envelope construction, L1–L3 decisions, and coordination. The selected remote Operator is the Policy Execution Point: L4–L5 execution and authoritative local evidence. A Gateway event receipt query is a verified mirror of Operator-authored evidence.</p>
             </DocsCard>
             <DocsCard title="Sealed, offline-verifiable record">
               <p>The run persists <code>conformance-record.json</code> with a SHA-256 sidecar, sealed with the runtime vault. <code>verify</code> recomputes every verdict from those bytes and the anchors pinned in the record without contacting the Gateway; any changed byte makes the suite <code>INVALID_EVIDENCE</code>. <code>report</code> builds the case-by-posture coverage table and the L1 doctrine recall report.</p>
@@ -336,7 +336,7 @@ export function MethodologyView() {
 
         <DocsSection id="scenarios" title="Scenario inputs and grading">
           <DocsCard title="One agent trace per assignment">
-            <p>Each assignment starts from its frozen scenario input: the prompt, inline context, and workspace files, which governed file edits place in the Data Operator&apos;s workspace. The model sees only the scenario&apos;s declared tools. The complete conversation, every model and tool call with its signed receipt, and the Data ledger bracket are sealed in the assignment&apos;s agent trace.</p>
+            <p>Each assignment starts from its frozen scenario input: the prompt, inline context, and workspace files, which governed file edits place in the Data Operator&apos;s workspace. The model sees only the scenario&apos;s declared tools. The complete conversation, every model and tool call with its signed event receipt, and the Data ledger bracket are sealed in the assignment&apos;s agent trace.</p>
             <p>The scenario&apos;s trajectory policy (answer, first choice, guided, or governed) decides which tool use the grade expects. A security-policy scenario records whether the model attempted a forbidden action, so refusal and governed denial stay distinguishable.</p>
           </DocsCard>
           <DocsCard title="What a score means">
@@ -378,7 +378,7 @@ export function MethodologyView() {
             <p><code>ztd eval backup</code> snapshots the host&apos;s <code>.ztd/data/eval/</code> and <code>.ztd/eval/</code> trees outside <code>.ztd/</code>, with a per-file SHA-256 manifest. Runs also attempt a backup after completion; backup failure is a warning, not a changed run result. <code>ztd eval restore</code> verifies the manifest before writing and requires <code>--overwrite</code> for differing files. A host snapshot does not restore Gateway volumes.</p>
           </DocsCard>
           <DocsCard title="What this Explorer can show">
-            <p>The public projection omits principals, Operator and session identities, credentials, endpoints, filesystem paths, envelopes, receipts, and evidence bodies. It can expose approved scenario context, bounded outputs, grades, activity, resource metrics, verification metadata, and SHA-256 bindings. A public binding does not make its private artifact public; mirror availability is not verification evidence.</p>
+            <p>The public projection omits principals, Operator and session identities, credentials, endpoints, filesystem paths, envelopes, event receipts, and evidence bodies. It can expose approved scenario context, bounded outputs, grades, activity, resource metrics, verification metadata, and SHA-256 bindings. A public binding does not make its private artifact public; mirror availability is not verification evidence.</p>
             <p>Only an applicable passing report can publish <code>exploratory_verified</code> for the exact run-derived dataset and eligible model-role aggregate. Missing observations remain unavailable, separate from observed zero. Cross-run comparisons require matching observed provider capacities and the same evaluated suites; they do not pool runs.</p>
           </DocsCard>
         </DocsSection>

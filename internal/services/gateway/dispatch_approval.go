@@ -34,8 +34,8 @@ type DispatchApprovalCoordinator struct {
 }
 
 type approvalOutcome struct {
-	receipt *operatorv1.ActionReceipt
-	err     error
+	eventReceipt *operatorv1.EventReceipt
+	err          error
 }
 type pendingDispatchApproval struct {
 	ctx      context.Context
@@ -93,7 +93,7 @@ func (c *DispatchApprovalCoordinator) await(ctx context.Context, env *commonv1.G
 // request disappeared, including after cancellation or a Gateway restart.
 // handedOff reports that the original request took the decision; from then on
 // that request owns the outcome, so the decision can never be retried.
-func (c *DispatchApprovalCoordinator) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (receipt *operatorv1.ActionReceipt, handedOff bool, err error) {
+func (c *DispatchApprovalCoordinator) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (eventReceipt *operatorv1.EventReceipt, handedOff bool, err error) {
 	c.mu.Lock()
 	p := c.pending[env.GetId()]
 	c.mu.Unlock()
@@ -116,7 +116,7 @@ func (c *DispatchApprovalCoordinator) ResumePendingDispatch(ctx context.Context,
 	}
 	select {
 	case outcome := <-p.outcome:
-		return outcome.receipt, true, outcome.err
+		return outcome.eventReceipt, true, outcome.err
 	case <-p.ctx.Done():
 		return nil, true, p.ctx.Err()
 	case <-ctx.Done():
@@ -124,7 +124,7 @@ func (c *DispatchApprovalCoordinator) ResumePendingDispatch(ctx context.Context,
 	}
 }
 
-func (c *DispatchApprovalCoordinator) finish(txHash string, p *pendingDispatchApproval, receipt *operatorv1.ActionReceipt, err error) {
+func (c *DispatchApprovalCoordinator) finish(txHash string, p *pendingDispatchApproval, eventReceipt *operatorv1.EventReceipt, err error) {
 	c.mu.Lock()
 	if c.pending[txHash] != p {
 		c.mu.Unlock()
@@ -134,7 +134,7 @@ func (c *DispatchApprovalCoordinator) finish(txHash string, p *pendingDispatchAp
 	close(p.done)
 	c.mu.Unlock()
 	select {
-	case p.outcome <- approvalOutcome{receipt: receipt, err: err}:
+	case p.outcome <- approvalOutcome{eventReceipt: eventReceipt, err: err}:
 	default:
 	}
 }

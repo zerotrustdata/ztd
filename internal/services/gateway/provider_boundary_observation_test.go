@@ -410,8 +410,8 @@ func TestProviderBoundaryObservationCoordinator_PreflightCommandDelivery_Embedde
 			RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityObserver)}},
 		},
 	}}
-	processor := embeddedEnvelopeProcessorFunc(func(context.Context, []byte) (*operatorv1.ActionReceipt, error) {
-		return &operatorv1.ActionReceipt{}, nil
+	processor := embeddedEnvelopeProcessorFunc(func(context.Context, []byte) (*operatorv1.EventReceipt, error) {
+		return &operatorv1.EventReceipt{}, nil
 	})
 
 	withProcessor := NewProviderBoundaryObservationCoordinator(&DispatchService{pubsub: pubsubHandler, embeddedProcessor: processor}, lister, pubsubHandler, windowStore, nil, logger)

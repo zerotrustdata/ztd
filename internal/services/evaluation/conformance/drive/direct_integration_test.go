@@ -74,7 +74,7 @@ func (fx *directFixture) attemptFor(t *testing.T, c cases.Case) cases.Attempt {
 	})
 	marker := cases.Marker(runID, attemptID)
 	// Read cases need the file to exist; the content is the marker so a read
-	// receipt can be checked against it.
+	// event receipt can be checked against it.
 	readAbs := filepath.Join(dir, "read.txt")
 	require.NoError(t, os.WriteFile(readAbs, []byte(marker), constants.PermFilePrivate))
 	return cases.Attempt{
@@ -99,7 +99,7 @@ func answerText(got *evalv1.ConformanceObservation) string {
 	case got.GetRefusal() != nil:
 		return got.GetRefusal().GetCode().String() + ": " + got.GetRefusal().GetError()
 	case got.GetRejection() != nil:
-		return got.GetRejection().GetReceipt().GetRejectionCode().String() + ": " + got.GetRejection().GetError()
+		return got.GetRejection().GetEventReceipt().GetRejectionCode().String() + ": " + got.GetRejection().GetError()
 	default:
 		return got.GetKind().String()
 	}
@@ -141,11 +141,11 @@ func assertObservation(t *testing.T, want cases.Expect, got *evalv1.ConformanceO
 	t.Helper()
 	switch want.Kind {
 	case cases.ExpectExecuted:
-		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, got.GetKind(), "answer: %s", answerText(got))
-		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, got.GetReceipt().GetStatus(), "answer: %s", answerText(got))
+		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, got.GetKind(), "answer: %s", answerText(got))
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, got.GetEventReceipt().GetStatus(), "answer: %s", answerText(got))
 	case cases.ExpectRejected:
 		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, got.GetKind(), "answer: %s", answerText(got))
-		assert.Equal(t, want.RejectionCode, got.GetRejection().GetReceipt().GetRejectionCode(), "answer: %s", answerText(got))
+		assert.Equal(t, want.RejectionCode, got.GetRejection().GetEventReceipt().GetRejectionCode(), "answer: %s", answerText(got))
 	case cases.ExpectRefused:
 		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL, got.GetKind(), "answer: %s", answerText(got))
 		assert.Equal(t, want.RefusalCode, got.GetRefusal().GetCode(), "answer: %s", answerText(got))
@@ -167,7 +167,7 @@ func TestDirectProbeWrongTargetByPosture(t *testing.T) {
 			require.Len(t, driven.Observations, 1)
 			obs := driven.Observations[0]
 			t.Logf("Row 9 probe posture=%s kind=%s http=%d refusal=%s rejection=%s",
-				posture, obs.GetKind(), obs.GetHttpStatus(), obs.GetRefusal().GetCode(), obs.GetRejection().GetReceipt().GetRejectionCode())
+				posture, obs.GetKind(), obs.GetHttpStatus(), obs.GetRefusal().GetCode(), obs.GetRejection().GetEventReceipt().GetRejectionCode())
 			assert.NotEqual(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED, obs.GetKind())
 		})
 	}
@@ -184,7 +184,7 @@ func TestDirectDriveReturnsObservationKindPerAnswer(t *testing.T) {
 		want   evalv1.ConformanceObservationKind
 		status int32
 	}{
-		{"accepted receipt", cases.FaultNone, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, http.StatusOK},
+		{"accepted event receipt", cases.FaultNone, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, http.StatusOK},
 		{"governance rejection", cases.FaultPayloadTampered, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, http.StatusForbidden},
 		{"ingress refusal", cases.FaultMalformedJSON, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL, http.StatusBadRequest},
 	}
@@ -263,6 +263,6 @@ func TestDirectDriveL2Consensus(t *testing.T) {
 		require.Len(t, driven.Observations, 1)
 		obs := driven.Observations[0]
 		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, obs.GetKind(), "answer: %s", answerText(obs))
-		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING, obs.GetRejection().GetReceipt().GetRejectionCode(), "answer: %s", answerText(obs))
+		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING, obs.GetRejection().GetEventReceipt().GetRejectionCode(), "answer: %s", answerText(obs))
 	})
 }

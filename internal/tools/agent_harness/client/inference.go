@@ -155,9 +155,9 @@ func (c *Client) DispatchIntent(ctx context.Context, req *tribunalv1.TribunalInt
 // inferenceDispatchFailure maps a non-2xx dispatch response to its public
 // sentinel through the typed failure code, keeping ErrHTTPStatusError in the
 // chain. A body without a known code yields the status error alone. The
-// Operator's signed FAILED receipt, when the body carries one, rides with the
-// error (governance.FailedReceipt), as do the observers' signed receipts for
-// the attempt (dispatch.ObservationReceipts), so evidence verification can
+// Operator's signed FAILED event receipt, when the body carries one, rides with the
+// error (governance.FailedEventReceipt), as do the observers' signed event receipts for
+// the attempt (dispatch.ObservationEventReceipts), so evidence verification can
 // claim their ledger commitments; they are unverified here and must be
 // checked against the signing runtime's anchor before use.
 func inferenceDispatchFailure(status int, body []byte) error {
@@ -169,7 +169,7 @@ func inferenceDispatchFailure(status int, body []byte) error {
 	if sentinel := dispatch.FailureSentinel(failure.GetCode()); sentinel != nil {
 		err = fmt.Errorf("%w: inference dispatch returned status %d: %w", constants.ErrHTTPStatusError, status, sentinel)
 	}
-	return dispatch.WithObservationReceipts(failure.GetObservationReceipts(), governance.WithFailedReceipt(failure.GetReceipt(), err))
+	return dispatch.WithObservationEventReceipts(failure.GetObservationEventReceipts(), governance.WithFailedEventReceipt(failure.GetEventReceipt(), err))
 }
 
 // InferenceDispatchStreamResult carries the terminal governed response and any

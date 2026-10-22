@@ -263,10 +263,10 @@ func (c *ProviderBoundaryObservationCoordinator) PreflightCommandDelivery(ctx co
 }
 
 // NotifyAttemptBegin dispatches a BEGIN command to the observer and returns its
-// verified final signed receipt. It fails closed when the command cannot be
+// verified final signed event receipt. It fails closed when the command cannot be
 // delivered or the observer does not sign an outcome. A skipped attempt (no
-// attempt ID) returns a nil receipt.
-func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.Context, _ string, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.ActionReceipt, error) {
+// attempt ID) returns a nil event receipt.
+func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.Context, _ string, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.EventReceipt, error) {
 	if providerAttemptID == "" {
 		return nil, nil
 	}
@@ -283,7 +283,7 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.
 }
 
 // NotifyAttemptFinalize dispatches a FINALIZE command to the observer and
-// returns its verified final signed receipt.
+// returns its verified final signed event receipt.
 func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
 	ctx context.Context,
 	_ string,
@@ -293,7 +293,7 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
 	completedAtUnixMs int64,
 	failed bool,
 	retryCount uint32,
-) (*operatorv1.ActionReceipt, error) {
+) (*operatorv1.EventReceipt, error) {
 	if providerAttemptID == "" {
 		return nil, nil
 	}
@@ -316,7 +316,7 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
 	return c.publishCommand(ctx, command)
 }
 
-func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ProviderBoundaryObservationCommand) (*operatorv1.ActionReceipt, error) {
+func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Context, command *evalv1.ProviderBoundaryObservationCommand) (*operatorv1.EventReceipt, error) {
 	c.mu.Lock()
 	observer := c.observer
 	c.mu.Unlock()
@@ -327,7 +327,7 @@ func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Cont
 	if err != nil {
 		return nil, fmt.Errorf("provider-boundary observation command marshal: %w", err)
 	}
-	receipt, err := c.dispatch.DispatchObservation(ctx, ObservationDispatchRequest{
+	eventReceipt, err := c.dispatch.DispatchObservation(ctx, ObservationDispatchRequest{
 		TargetOperatorSessionID: observer.OperatorSessionID,
 		EventType:               string(constants.Event.Operator.ProviderBoundaryObservation.Requested),
 		Payload:                 payload,
@@ -342,13 +342,13 @@ func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Cont
 		return nil, err
 	}
 	c.logger.Info("Provider-boundary observation command executed",
-		"transaction_id", receipt.GetTransactionId(),
-		"status", receipt.GetStatus().String(),
+		"transaction_id", eventReceipt.GetTransactionId(),
+		"status", eventReceipt.GetStatus().String(),
 		"provider_attempt_id", command.GetProviderAttemptId(),
 		"phase", command.GetPhase().String(),
 		"operator_id", observer.OperatorID,
 		"operator_session_id", observer.OperatorSessionID)
-	return receipt, nil
+	return eventReceipt, nil
 }
 
 func (c *ProviderBoundaryObservationCoordinator) ingestResult(ctx context.Context, observer *providerBoundaryObserverTarget, data []byte) {
@@ -394,12 +394,12 @@ type ObservationDispatchRequest struct {
 }
 
 // DispatchObservation builds a governed observation envelope, delivers it to
-// the observer, and waits for the observer's verified final signed receipt.
+// the observer, and waits for the observer's verified final signed event receipt.
 // Waiting puts the observer's ledger commitment ahead of anything the caller
 // does next, so a trace bracket that closes after the inference dispatch can
 // claim it. Only observation action types are accepted: this path admits no
 // L3 approval wait.
-func (d *DispatchService) DispatchObservation(ctx context.Context, req ObservationDispatchRequest) (*operatorv1.ActionReceipt, error) {
+func (d *DispatchService) DispatchObservation(ctx context.Context, req ObservationDispatchRequest) (*operatorv1.EventReceipt, error) {
 	actionType, err := constants.ValidateGovernedRequest(constants.EventType(req.EventType))
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: observation: %w", err)
@@ -450,14 +450,14 @@ func (d *DispatchService) DispatchObservation(ctx context.Context, req Observati
 		return nil, err
 	}
 	// An observer whose handler failed did not observe the attempt.
-	if result.Receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return nil, fmt.Errorf("dispatch: observation %s: %w: %s", result.TransactionID, constants.ErrEvaluationObservationUnavailable, result.Receipt.GetResultSummary())
+	if result.EventReceipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return nil, fmt.Errorf("dispatch: observation %s: %w: %s", result.TransactionID, constants.ErrEvaluationObservationUnavailable, result.EventReceipt.GetResultSummary())
 	}
-	return result.Receipt, nil
+	return result.EventReceipt, nil
 }
 
 // isObservationAction reports whether an action is an observer BEGIN/FINALIZE
-// command, whose verified final receipt is its terminal outcome.
+// command, whose verified final event receipt is its terminal outcome.
 func isObservationAction(actionType constants.ActionType) bool {
 	return actionType == constants.ActionTypeProviderBoundaryObservation ||
 		actionType == constants.ActionTypeModelProvenanceObservation

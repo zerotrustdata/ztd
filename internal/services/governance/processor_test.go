@@ -17,12 +17,12 @@ import (
 
 // mockProcessor implements EnvelopeProcessor for testing interface compliance.
 type mockProcessor struct {
-	receipt *operatorv1.ActionReceipt
-	err     error
+	eventReceipt *operatorv1.EventReceipt
+	err          error
 }
 
-func (m *mockProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
-	return m.receipt, m.err
+func (m *mockProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
+	return m.eventReceipt, m.err
 }
 
 func TestEnvelopeProcessorInterface(t *testing.T) {
@@ -31,11 +31,11 @@ func TestEnvelopeProcessorInterface(t *testing.T) {
 	var _ EnvelopeProcessor = (*mockProcessor)(nil)
 
 	proc := &mockProcessor{
-		receipt: &operatorv1.ActionReceipt{TransactionId: "test-tx"},
-		err:     nil,
+		eventReceipt: &operatorv1.EventReceipt{TransactionId: "test-tx"},
+		err:          nil,
 	}
 
-	receipt, err := proc.ProcessEnvelope(context.Background(), []byte("{}"))
+	eventReceipt, err := proc.ProcessEnvelope(context.Background(), []byte("{}"))
 	require.NoError(t, err)
-	require.Equal(t, "test-tx", receipt.TransactionId)
+	require.Equal(t, "test-tx", eventReceipt.TransactionId)
 }

@@ -92,7 +92,7 @@ func assertRequests(t *testing.T, got []*evalv1.ConformanceApprovalRequest, a ca
 
 // TestAttendedRatifyApprovalResumesMCPCall drives row 23 on MCP under ratify. The call
 // suspends, the test approves it with its passkey, and the attended driver returns the
-// resumed signed receipt with the marker written. Its approval request names the
+// resumed signed event receipt with the marker written. Its approval request names the
 // suspended transaction.
 func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	all, _, err := cases.Catalogue()
@@ -120,14 +120,14 @@ func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, driven.Observations, 1)
 	obs := driven.Observations[0]
-	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, obs.GetKind(), "answer kind: %s", obs.GetKind())
+	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, obs.GetKind(), "answer kind: %s", obs.GetKind())
 	assertRequests(t, *requests, a, evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_APPROVE, approvedTxHash)
 
-	receipt := obs.GetReceipt()
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
-	assert.Equal(t, approvedTxHash, receipt.GetTransactionHash(), "the resumed receipt must be for the suspended transaction")
-	assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, receipt.GetL3Status(), "the approved call must carry a valid L3 proof")
-	assert.Equal(t, row23.Expect[0].L2Status, receipt.GetL2Status())
+	eventReceipt := obs.GetEventReceipt()
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.GetStatus())
+	assert.Equal(t, approvedTxHash, eventReceipt.GetTransactionHash(), "the resumed event receipt must be for the suspended transaction")
+	assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, eventReceipt.GetL3Status(), "the approved call must carry a valid L3 proof")
+	assert.Equal(t, row23.Expect[0].L2Status, eventReceipt.GetL2Status())
 
 	written, err := os.ReadFile(a.TargetAbs)
 	require.NoError(t, err)
@@ -160,9 +160,9 @@ func TestAttendedRatifyDenialResumesMCPAsSignedRejection(t *testing.T) {
 	require.Len(t, driven.Observations, 1)
 	obs := driven.Observations[0]
 	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, obs.GetKind(), "answer kind: %s", obs.GetKind())
-	assert.Nil(t, obs.GetReceipt(), "a deny is never reported as an executed receipt")
+	assert.Nil(t, obs.GetEventReceipt(), "a deny is never reported as an executed event receipt")
 
-	rejection := obs.GetRejection().GetReceipt()
+	rejection := obs.GetRejection().GetEventReceipt()
 	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, rejection.GetRejectionCode())
 	assert.Equal(t, deniedTxHash, rejection.GetTransactionHash(), "the signed deny must be for the suspended transaction")
 	assert.NotEmpty(t, rejection.GetSignature(), "the deny must carry the Operator's signature")
@@ -240,7 +240,7 @@ func (g *liveGateway) denyWithCLI(t *testing.T, approver *http.Client, txHash st
 // governed dispatch and the CLI under ratify against a live Gateway. The request blocks
 // while the transaction is pending, the human decides over the Gateway's approval routes,
 // and the attended driver returns the signed answer the blocked request got: the executed
-// receipt on approve, the L3_DENIED rejection on deny.
+// event receipt on approve, the L3_DENIED rejection on deny.
 func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
@@ -304,15 +304,15 @@ func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
 				assertExpect(t, c.Expect[0], obs)
 
 				if row == 23 {
-					receipt := obs.GetReceipt()
-					assert.Equal(t, txHash, receipt.GetTransactionHash(), "the receipt must be for the suspended transaction")
-					assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, receipt.GetL3Status())
+					eventReceipt := obs.GetEventReceipt()
+					assert.Equal(t, txHash, eventReceipt.GetTransactionHash(), "the event receipt must be for the suspended transaction")
+					assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, eventReceipt.GetL3Status())
 					written, err := os.ReadFile(a.TargetAbs)
 					require.NoError(t, err)
 					assert.Equal(t, a.Marker, string(written), "the approved mutation must write exactly the marker")
 					return
 				}
-				assert.Equal(t, txHash, obs.GetRejection().GetReceipt().GetTransactionHash(), "the rejection must be for the suspended transaction")
+				assert.Equal(t, txHash, obs.GetRejection().GetEventReceipt().GetTransactionHash(), "the rejection must be for the suspended transaction")
 				_, statErr = os.Stat(a.TargetAbs)
 				assert.True(t, os.IsNotExist(statErr), "a denied mutation must leave no file")
 			})
@@ -372,8 +372,8 @@ func TestAttendedRatifyA2AApprovalAttributesDownstreamCallToAttempt(t *testing.T
 	require.NoError(t, got.err)
 	require.Len(t, got.driven.Observations, 1)
 	obs := got.driven.Observations[0]
-	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, obs.GetKind(), "answer kind: %s", obs.GetKind())
-	assert.Equal(t, txHash, obs.GetReceipt().GetTransactionHash(), "the receipt must be for the suspended transaction")
+	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, obs.GetKind(), "answer kind: %s", obs.GetKind())
+	assert.Equal(t, txHash, obs.GetEventReceipt().GetTransactionHash(), "the event receipt must be for the suspended transaction")
 
 	require.Len(t, got.driven.A2ACalls, 1, "the downstream call made to resume the approval must be attributed to the attempt")
 	call := got.driven.A2ACalls[0]
@@ -430,7 +430,7 @@ func TestL3GarbageProofExecutesUnderDoctrine(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, driven.Observations, len(c.Expect))
 	assertExpect(t, c.Expect[0], driven.Observations[0])
-	assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, driven.Observations[0].GetReceipt().GetL3Status())
+	assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, driven.Observations[0].GetEventReceipt().GetL3Status())
 
 	written, err := os.ReadFile(a.TargetAbs)
 	require.NoError(t, err)
@@ -545,7 +545,7 @@ func TestAttendedNonSuspendedAnswerReturnsWithoutWaiting(t *testing.T) {
 		row      int
 		executes bool
 	}{
-		{name: "receipt", row: 1, executes: true},
+		{name: "event_receipt", row: 1, executes: true},
 		{name: "rejection", row: 14, executes: false},
 	}
 	for _, tt := range tests {

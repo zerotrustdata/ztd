@@ -48,15 +48,15 @@ var failureCodes = []struct {
 	{constants.ErrInferenceCampaignBindingInvalid, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID},
 	{constants.ErrInferenceGovernanceRejected, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED},
 	{constants.ErrDispatchNoDelivery, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY},
-	{constants.ErrInferenceReceiptFailed, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED},
-	{constants.ErrInferenceReceiptVerify, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY},
+	{constants.ErrInferenceEventReceiptFailed, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_FAILED},
+	{constants.ErrInferenceEventReceiptVerify, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_VERIFY},
 	{constants.ErrInferenceResultDigestMismatch, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH},
 	{constants.ErrInferenceResultDigest, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST},
 	{constants.ErrInferenceIdentityMismatch, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH},
 	{constants.ErrInferenceModelDigestMismatch, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH},
 	{constants.ErrInferenceEvidenceHashInvalid, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID},
 	{constants.ErrInferenceResultDecode, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE},
-	{constants.ErrInferenceCompletionNoReceipt, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT},
+	{constants.ErrInferenceCompletionNoEventReceipt, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_EVENT_RECEIPT},
 	{constants.ErrInferenceCompletionNoResult, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT},
 	{constants.ErrInferenceBackendUnavailable, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE},
 	{constants.ErrInferenceBackendNotRegistered, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED},
@@ -83,35 +83,35 @@ func FailureCode(sentinel error) operatorv1.InferenceDispatchFailureCode {
 }
 
 // ObservedFailureError carries the observers' signed BEGIN and FINALIZE
-// receipts for a failed attempt alongside the error that ended it. Each
-// receipt is an executed commitment on its observing runtime's ledger, so a
+// event receipts for a failed attempt alongside the error that ended it. Each
+// event receipt is an executed commitment on its observing runtime's ledger, so a
 // trace bracket that claims the failed call must claim them as well. It
-// unwraps to the error, keeping any governance.ReceiptError in the chain.
+// unwraps to the error, keeping any governance.EventReceiptError in the chain.
 type ObservedFailureError struct {
-	ObservationReceipts []*operatorv1.ActionReceipt
-	Err                 error
+	ObservationEventReceipts []*operatorv1.EventReceipt
+	Err                      error
 }
 
 func (e *ObservedFailureError) Error() string { return e.Err.Error() }
 func (e *ObservedFailureError) Unwrap() error { return e.Err }
 
-// WithObservationReceipts wraps err in an *ObservedFailureError when receipts
+// WithObservationEventReceipts wraps err in an *ObservedFailureError when event_receipts
 // is non-empty; otherwise it returns err unchanged.
-func WithObservationReceipts(receipts []*operatorv1.ActionReceipt, err error) error {
-	if err == nil || len(receipts) == 0 {
+func WithObservationEventReceipts(eventReceipts []*operatorv1.EventReceipt, err error) error {
+	if err == nil || len(eventReceipts) == 0 {
 		return err
 	}
-	return &ObservedFailureError{ObservationReceipts: receipts, Err: err}
+	return &ObservedFailureError{ObservationEventReceipts: eventReceipts, Err: err}
 }
 
-// ObservationReceipts returns the signed observation receipts err carries,
+// ObservationEventReceipts returns the signed observation event receipts err carries,
 // or nil.
-func ObservationReceipts(err error) []*operatorv1.ActionReceipt {
+func ObservationEventReceipts(err error) []*operatorv1.EventReceipt {
 	var observed *ObservedFailureError
 	if !errors.As(err, &observed) {
 		return nil
 	}
-	return observed.ObservationReceipts
+	return observed.ObservationEventReceipts
 }
 
 // FailureSentinel returns the public sentinel a wire code names, or nil for

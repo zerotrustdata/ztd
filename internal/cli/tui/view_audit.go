@@ -83,7 +83,7 @@ func (m Model) auditDetailLines(width int) []string {
 	default:
 		lines = append(lines,
 			detailRow("EVENTS", fmt.Sprint(m.auditSummary.EventsTotal)),
-			detailRow("RECEIPTS", fmt.Sprint(m.auditSummary.EventReceiptsTotal)),
+			detailRow("EVENT_RECEIPTS", fmt.Sprint(m.auditSummary.EventReceiptsTotal)),
 			detailRow("TOTAL", fmt.Sprint(m.auditSummary.TotalRecords)),
 		)
 		for _, key := range sortedAuditKeys(m.auditSummary.EventsSummary) {

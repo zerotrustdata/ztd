@@ -88,8 +88,8 @@ const minimalValidOSCAL = `{
         "observations": [
           {
             "uuid": "c1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-            "title": "Receipt Integrity Observation",
-            "description": "Verified receipt signatures",
+            "title": "Event receipt Integrity Observation",
+            "description": "Verified event receipt signatures",
             "methods": ["TEST"],
             "subjects": [
               {
@@ -101,7 +101,7 @@ const minimalValidOSCAL = `{
             "relevant-evidence": [
               {
                 "href": "#e1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-                "description": "Signed receipt evidence"
+                "description": "Signed event receipt evidence"
               }
             ],
             "collected": "2026-09-07T00:30:00Z"
@@ -111,7 +111,7 @@ const minimalValidOSCAL = `{
           {
             "uuid": "f1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
             "title": "KSI-MLA-07 Finding",
-            "description": "Receipt integrity verified",
+            "description": "Event receipt integrity verified",
             "target": {
               "type": "statement-id",
               "target-id": "KSI-MLA-07",
@@ -127,8 +127,8 @@ const minimalValidOSCAL = `{
       "resources": [
         {
           "uuid": "e1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-          "title": "Receipt Evidence",
-          "description": "Content-addressed receipt evidence",
+          "title": "Event receipt Evidence",
+          "description": "Content-addressed event receipt evidence",
           "props": [
             {
               "name": "media-type",
@@ -412,17 +412,17 @@ func TestValidator_EmptyObservationSubjects_FailsSemantic(t *testing.T) {
 
 func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
 	contentAddressProps := `"props": [
-            {"name": "artifact-id", "value": "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-            {"name": "artifact-type", "value": "action-receipt"},
+            {"name": "artifact-id", "value": "event-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+            {"name": "artifact-type", "value": "event-receipt"},
             {"name": "sha256", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
             {"name": "media-type", "value": "application/json"},
-            {"name": "schema-ref", "value": "ztd.operator.v1.ActionReceipt"},
+            {"name": "schema-ref", "value": "ztd.operator.v1.EventReceipt"},
             {"name": "producer-identity", "value": "gateway"},
             {"name": "verification-status", "value": "verified"},
-            {"name": "verifier-id", "value": "receipt-verifier"},
+            {"name": "verifier-id", "value": "event_receipt-verifier"},
             {"name": "verifier-version", "value": "1.0.0"},
             {"name": "scope-id", "value": "scope-1"},
-            {"name": "bundle-path", "value": "receipts.jsonl"}
+            {"name": "bundle-path", "value": "event receipts.jsonl"}
           ]`
 	withContentAddress := replaceInJSON(t, minimalValidOSCAL, `"props": [
             {
@@ -474,7 +474,7 @@ func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
 		},
 		{
 			name:     "artifact type does not match content address",
-			document: replaceInJSON(t, withContentAddress, `"name": "artifact-type", "value": "action-receipt"`, `"name": "artifact-type", "value": "eval-metric"`),
+			document: replaceInJSON(t, withContentAddress, `"name": "artifact-type", "value": "event-receipt"`, `"name": "artifact-type", "value": "eval-metric"`),
 			reason:   SemanticContentAddressInvalid,
 		},
 		{
@@ -484,17 +484,17 @@ func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
 		},
 		{
 			name:     "duplicate evidence property",
-			document: replaceInJSON(t, withContentAddress, `{"name": "artifact-type", "value": "action-receipt"}`, `{"name": "artifact-type", "value": "action-receipt"}, {"name": "artifact-type", "value": "action-receipt"}`),
+			document: replaceInJSON(t, withContentAddress, `{"name": "artifact-type", "value": "event-receipt"}`, `{"name": "artifact-type", "value": "event-receipt"}, {"name": "artifact-type", "value": "event-receipt"}`),
 			reason:   SemanticContentAddressInvalid,
 		},
 		{
 			name:     "verified evidence missing verifier identity",
-			document: replaceInJSON(t, withContentAddress, `{"name": "verifier-id", "value": "receipt-verifier"},`, ``),
+			document: replaceInJSON(t, withContentAddress, `{"name": "verifier-id", "value": "event_receipt-verifier"},`, ``),
 			reason:   SemanticContentAddressInvalid,
 		},
 		{
 			name:     "incomplete encryption metadata",
-			document: replaceInJSON(t, withContentAddress, `{"name": "bundle-path", "value": "receipts.jsonl"}`, `{"name": "bundle-path", "value": "receipts.jsonl"}, {"name": "encryption-algorithm", "value": "AES-256-GCM"}`),
+			document: replaceInJSON(t, withContentAddress, `{"name": "bundle-path", "value": "event receipts.jsonl"}`, `{"name": "bundle-path", "value": "event receipts.jsonl"}, {"name": "encryption-algorithm", "value": "AES-256-GCM"}`),
 			reason:   SemanticContentAddressInvalid,
 		},
 		{
@@ -510,8 +510,8 @@ func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
 		},
 		{
 			name: "back-matter resource missing title and description",
-			document: replaceInJSON(t, minimalValidOSCAL, `          "title": "Receipt Evidence",
-          "description": "Content-addressed receipt evidence",
+			document: replaceInJSON(t, minimalValidOSCAL, `          "title": "Event receipt Evidence",
+          "description": "Content-addressed event receipt evidence",
 `, ``),
 			reason: SemanticBackMatterResourceMissing,
 		},
@@ -542,17 +542,17 @@ func TestValidator_FindingTargetPassesWhenReviewedControlsIncludesAll(t *testing
 
 func TestValidator_ContentAddressedEvidenceWithMatchingScopePasses(t *testing.T) {
 	contentAddressProps := `"props": [
-            {"name": "artifact-id", "value": "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-            {"name": "artifact-type", "value": "action-receipt"},
+            {"name": "artifact-id", "value": "event-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+            {"name": "artifact-type", "value": "event-receipt"},
             {"name": "sha256", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
             {"name": "media-type", "value": "application/json"},
-            {"name": "schema-ref", "value": "ztd.operator.v1.ActionReceipt"},
+            {"name": "schema-ref", "value": "ztd.operator.v1.EventReceipt"},
             {"name": "producer-identity", "value": "gateway"},
             {"name": "verification-status", "value": "verified"},
-            {"name": "verifier-id", "value": "receipt-verifier"},
+            {"name": "verifier-id", "value": "event_receipt-verifier"},
             {"name": "verifier-version", "value": "1.0.0"},
             {"name": "scope-id", "value": "scope-1"},
-            {"name": "bundle-path", "value": "receipts.jsonl"}
+            {"name": "bundle-path", "value": "event receipts.jsonl"}
           ]`
 	document := replaceInJSON(t, minimalValidOSCAL, `"props": [
             {

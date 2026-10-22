@@ -226,7 +226,7 @@ func (c *E2EClient) GetOperatorBySession(ctx context.Context, sessionID string) 
 // DispatchCommand sends a command dispatch request to the gateway via the
 // owner-authenticated commands endpoint. The models.OperatorCommandRequest body carries
 // the target operator session ID, event type, and protobuf payload. The 200
-// body is a GovernedDispatchResult carrying the signed final receipt. The timeout parameter overrides the default client timeout for
+// body is a GovernedDispatchResult carrying the signed final event receipt. The timeout parameter overrides the default client timeout for
 // long-running dispatch operations.
 func (c *E2EClient) DispatchCommand(ctx context.Context, body models.OperatorCommandRequest, timeout time.Duration) (*operatorv1.GovernedDispatchResult, error) {
 	bodyBytes, err := json.Marshal(body)
@@ -298,10 +298,10 @@ func newBareMTLSRequest(ctx context.Context, reqURL string) (*http.Request, erro
 	return req, nil
 }
 
-// GetAuditReceipts fetches the authenticated audit receipts list and returns
+// GetAuditEventReceipts fetches the authenticated audit event receipts list and returns
 // the typed response up to the server default limit. Use GetEventReceipt for
 // the canonical protobuf response selected by transaction ID.
-func (c *E2EClient) GetAuditReceipts(ctx context.Context) (models.AuditEventReceiptsResponse, error) {
+func (c *E2EClient) GetAuditEventReceipts(ctx context.Context) (models.AuditEventReceiptsResponse, error) {
 	path := constants.APIPaths.AuditEventReceipts
 	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -309,31 +309,31 @@ func (c *E2EClient) GetAuditReceipts(ctx context.Context) (models.AuditEventRece
 	}
 	body, _, err := doRequest(c.mtlsClient, req, http.StatusOK)
 	if err != nil {
-		return models.AuditEventReceiptsResponse{}, fmt.Errorf("fetch audit receipts: %w", err)
+		return models.AuditEventReceiptsResponse{}, fmt.Errorf("fetch audit event_receipts: %w", err)
 	}
-	return decodeJSON[models.AuditEventReceiptsResponse](body, "audit receipts")
+	return decodeJSON[models.AuditEventReceiptsResponse](body, "audit event receipts")
 }
 
 // GetEventReceipt reads the bare canonical protobuf response selected by tx_id.
 // The list endpoint returns an AuditEventReceiptsResponse wrapper instead.
-func (c *E2EClient) GetEventReceipt(ctx context.Context, txID string) (*operatorv1.ActionReceipt, error) {
+func (c *E2EClient) GetEventReceipt(ctx context.Context, txID string) (*operatorv1.EventReceipt, error) {
 	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, constants.APIPaths.AuditEventReceipts+"?tx_id="+txID, nil)
 	if err != nil {
 		return nil, err
 	}
 	body, _, err := doRequest(c.mtlsClient, req, http.StatusOK)
 	if err != nil {
-		return nil, fmt.Errorf("fetch canonical receipt: %w", err)
+		return nil, fmt.Errorf("fetch canonical event_receipt: %w", err)
 	}
-	receipt := &operatorv1.ActionReceipt{}
-	if err := protojson.Unmarshal(body, receipt); err != nil {
-		return nil, fmt.Errorf("decode canonical receipt: %w", err)
+	eventReceipt := &operatorv1.EventReceipt{}
+	if err := protojson.Unmarshal(body, eventReceipt); err != nil {
+		return nil, fmt.Errorf("decode canonical event_receipt: %w", err)
 	}
-	return receipt, nil
+	return eventReceipt, nil
 }
 
 // GetAuditSummary fetches the authenticated audit summary and returns the
-// typed response with event and receipt counts broken down by type.
+// typed response with event and event receipt counts broken down by type.
 func (c *E2EClient) GetAuditSummary(ctx context.Context) (models.AuditSummaryResponse, error) {
 	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, constants.APIPaths.AuditSummary, nil)
 	if err != nil {
@@ -415,7 +415,7 @@ func (c *E2EClient) GetAuditEvents(ctx context.Context) (models.AuditEventsRespo
 // dispatchFsRead discovers the live active remote operator, dispatches an
 // FS_READ command for /etc/hostname once, and returns the dispatch response. It
 // is the shared action used by tests that need a governed command to have
-// executed before asserting on its consequences (audit receipts, compliance
+// executed before asserting on its consequences (audit event receipts, compliance
 // state). An operator the registry lists as active has established its command
 // subscription, so the dispatch is not retried: a failed dispatch fails the
 // test. A caller that has just enrolled the operator must first wait for its
@@ -456,7 +456,7 @@ func (c *E2EClient) dispatchFsReadToSession(t *testing.T, ctx context.Context, o
 		TargetResource:          constants.PathEtcHostname,
 	}, 60*time.Second)
 	require.NoError(t, err, "dispatch to operator session %s must succeed", operatorSessionID)
-	require.NotNil(t, resp.GetReceipt(), "dispatch to operator session %s must return the signed final receipt: %v", operatorSessionID, resp)
+	require.NotNil(t, resp.GetEventReceipt(), "dispatch to operator session %s must return the signed final event_receipt: %v", operatorSessionID, resp)
 	return resp
 }
 

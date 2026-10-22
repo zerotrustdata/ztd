@@ -18,25 +18,25 @@ import (
 )
 
 // TestAttendedDecisionObservationMapsDenyToRejection checks the observation a human decision
-// becomes: a signed L3_DENIED governance rejection is a REJECTION carrying the receipt, and an
-// executed receipt is a RECEIPT.
+// becomes: a signed L3_DENIED governance rejection is a REJECTION carrying the event receipt, and an
+// executed event receipt is an event-receipt observation.
 func TestAttendedDecisionObservationMapsDenyToRejection(t *testing.T) {
-	denied := &operatorv1.ActionReceipt{
+	denied := &operatorv1.EventReceipt{
 		TransactionHash: "tx-deny",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		FailureCode:     operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
 	}
 	obs := decisionObservation(denied)
 	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, obs.GetKind())
-	assert.Nil(t, obs.GetReceipt(), "a deny is never reported as an executed receipt")
-	assert.Equal(t, denied, obs.GetRejection().GetReceipt())
+	assert.Nil(t, obs.GetEventReceipt(), "a deny is never reported as an executed event receipt")
+	assert.Equal(t, denied, obs.GetRejection().GetEventReceipt())
 	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED.String(), obs.GetRejection().GetError())
 
-	executed := &operatorv1.ActionReceipt{TransactionHash: "tx-approve", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	executed := &operatorv1.EventReceipt{TransactionHash: "tx-approve", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	obs = decisionObservation(executed)
-	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, obs.GetKind())
-	assert.Equal(t, executed, obs.GetReceipt())
+	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, obs.GetKind())
+	assert.Equal(t, executed, obs.GetEventReceipt())
 }
 
 // TestAttendedBlocksUntilDecisionOnlyForHeldIngresses checks which ingresses hold the request

@@ -64,7 +64,7 @@ type Config struct {
 	// load, or building the harness client fails.
 	CLIAuth Auth `json:"cli_auth"`
 
-	// OperatorSessionID scopes audit receipt queries to the real Operator that
+	// OperatorSessionID scopes audit event receipt queries to the real Operator that
 	// executed the work. If empty, Agent Harness tries to discover it from /api/operators.
 	OperatorSessionID string `json:"operator_session_id"`
 
@@ -83,7 +83,7 @@ type Config struct {
 	// the suspended transaction.
 	CLISessionID string `json:"cli_session_id"`
 
-	// OutDir is where the auditor writes its detailed run report and receipt export.
+	// OutDir is where the auditor writes its detailed run report and event receipt export.
 	OutDir string `json:"out_dir"`
 
 	// Verbose echoes every request/response to stderr as it happens.

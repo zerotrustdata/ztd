@@ -199,7 +199,7 @@ func OpenCanonicalDBService(logger *slog.Logger, ks *keystore.Keystore, fileSvc 
 	}
 
 	// The schema and Actuator key come first: the SignerStore binds the
-	// Gateway's own Actuator key as the embedded Operator's receipt key, and
+	// Gateway's own Actuator key as the embedded Operator's event receipt key, and
 	// that key is created by the secret manager's app settings initialization.
 	if err := svc.initSchema(fileSvc, ks); err != nil {
 		cancel()

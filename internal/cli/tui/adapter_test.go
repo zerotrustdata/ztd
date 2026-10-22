@@ -189,7 +189,7 @@ func (s *testSession) DoRequestContext(_ context.Context, method, path string, b
 	case strings.HasPrefix(path, constants.APIPaths.AuditEvents):
 		return []byte(orDefault(s.auditEventsJSON, `{"success":true,"events":[],"count":0}`)), nil
 	case path == constants.APIPaths.AuditSummary:
-		return []byte(orDefault(s.auditSummaryJSON, `{"success":true,"events_summary":{},"events_total":0,"receipts_summary":{},"receipts_total":0,"total_records":0}`)), nil
+		return []byte(orDefault(s.auditSummaryJSON, `{"success":true,"events_summary":{},"events_total":0,"event_receipts_summary":{},"event_receipts_total":0,"total_records":0}`)), nil
 	case strings.HasPrefix(path, constants.APIPaths.AuditVerify):
 		return []byte(orDefault(s.auditVerifyJSON, `{"success":true,"ok":true,"verified_from_seq":0,"head_seq":0,"head_hash":""}`)), nil
 	case strings.HasPrefix(path, constants.APIPaths.ApprovalsCLIStatus):
@@ -311,15 +311,15 @@ func TestTranslateSSEEvents_GatewayWireShape(t *testing.T) {
 		assert.Equal(t, []tea.Msg{ApprovalCompletedMsg{TxHash: "tx-abc"}}, msgs)
 	})
 
-	t.Run("approval.completed with the L3_DENIED receipt is a deny", func(t *testing.T) {
-		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	t.Run("approval.completed with the L3_DENIED event receipt is a deny", func(t *testing.T) {
+		eventReceipt, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 			TransactionHash: "tx-denied",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-			FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+			FailureCode:     operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 			RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
 		})
 		require.NoError(t, err)
-		event, err := json.Marshal(models.ApprovalCompletedEvent{Type: constants.SSEEventTypeApprovalCompleted, UserID: "user-1", TxHash: "tx-denied", Receipt: receipt})
+		event, err := json.Marshal(models.ApprovalCompletedEvent{Type: constants.SSEEventTypeApprovalCompleted, UserID: "user-1", TxHash: "tx-denied", EventReceipt: eventReceipt})
 		require.NoError(t, err)
 		frame, err := json.Marshal(models.SSEPushPayload{UserID: "user-1", CliSessionID: "cli-1", Event: event})
 		require.NoError(t, err)

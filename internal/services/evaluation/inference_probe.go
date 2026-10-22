@@ -95,21 +95,21 @@ func BuildInferenceProbeDispatchRequest(req InferenceProbeRequest) (*operatorv1.
 	return dispatch, nil
 }
 
-// ValidateInferenceProbeResponse verifies the governed probe returned a receipt,
+// ValidateInferenceProbeResponse verifies the governed probe returned an event receipt,
 // result digest binding, and identity fields matching the submitted request.
 func ValidateInferenceProbeResponse(req InferenceProbeRequest, resp *operatorv1.InferenceDispatchResponse) error {
-	if resp == nil || resp.GetResult() == nil || resp.GetReceipt() == nil {
+	if resp == nil || resp.GetResult() == nil || resp.GetEventReceipt() == nil {
 		return fmt.Errorf("evaluation: validate inference probe response: %w", constants.ErrMissingRequiredField)
 	}
 	result := resp.GetResult()
-	receipt := resp.GetReceipt()
+	eventReceipt := resp.GetEventReceipt()
 	if result.GetProviderAttemptId() != req.ProviderAttemptID {
 		return fmt.Errorf("evaluation: validate inference probe response: %w", constants.ErrIdentityBindingFailed)
 	}
 	if result.GetRequestedModel() != req.Model {
 		return fmt.Errorf("evaluation: validate inference probe response: %w", constants.ErrInferenceModelOverrideDenied)
 	}
-	if result.GetResultDigest() == "" || receipt.GetResultSummary() != result.GetResultDigest() {
+	if result.GetResultDigest() == "" || eventReceipt.GetResultSummary() != result.GetResultDigest() {
 		return fmt.Errorf("evaluation: validate inference probe response: %w", constants.ErrInferenceResultDigest)
 	}
 	if req.CampaignID != "" && result.GetCampaignId() != req.CampaignID {

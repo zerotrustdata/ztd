@@ -171,31 +171,31 @@ func marshalCommandResult(t *testing.T, result *operatorv1.CommandResult) []byte
 func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
 	signedRejection := &operatorv1.GovernanceRejection{
 		Error: "rejected",
-		Receipt: &operatorv1.ActionReceipt{
+		EventReceipt: &operatorv1.EventReceipt{
 			TransactionId: "tx-2",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-			FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+			FailureCode:   operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 			RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE,
 			ResultSummary: "denied by doctrine",
 			SignerKeyId:   "key-2",
 		},
 	}
 	tests := []struct {
-		name              string
-		raw               []byte
-		err               error
-		wantSuccess       bool
-		wantTransaction   string
-		wantError         string
-		wantReceiptStatus string
-		wantSignerKey     string
-		wantStdout        string
-		wantRejection     bool
-		wantRejectionCode string
-		wantRefusalCode   string
+		name                   string
+		raw                    []byte
+		err                    error
+		wantSuccess            bool
+		wantTransaction        string
+		wantError              string
+		wantEventReceiptStatus string
+		wantSignerKey          string
+		wantStdout             string
+		wantRejection          bool
+		wantRejectionCode      string
+		wantRefusalCode        string
 	}{
 		{
-			name: "signed final receipt and completed command",
+			name: "signed final event receipt and completed command",
 			raw: marshalDispatchBody(t, &operatorv1.GovernedDispatchResult{
 				TransactionId: "tx-1",
 				EventType:     "ztd.v1.operator.command.completed",
@@ -204,40 +204,40 @@ func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
 					Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 					Stdout: "hi\n",
 				}),
-				Receipt: &operatorv1.ActionReceipt{
+				EventReceipt: &operatorv1.EventReceipt{
 					TransactionId: "tx-1",
 					Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 					SignerKeyId:   "key-1",
 				},
 			}),
-			wantSuccess:       true,
-			wantTransaction:   "tx-1",
-			wantReceiptStatus: "EXECUTION_STATUS_COMPLETED",
-			wantSignerKey:     "key-1",
-			wantStdout:        "hi\n",
+			wantSuccess:            true,
+			wantTransaction:        "tx-1",
+			wantEventReceiptStatus: "EXECUTION_STATUS_COMPLETED",
+			wantSignerKey:          "key-1",
+			wantStdout:             "hi\n",
 		},
 		{
-			name: "200 body without a receipt fails closed",
+			name: "200 body without an event receipt fails closed",
 			raw: marshalDispatchBody(t, &operatorv1.GovernedDispatchResult{
 				TransactionId: "tx-1",
 				ResultPayload: marshalCommandResult(t, &operatorv1.CommandResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}),
 			}),
 			wantTransaction: "tx-1",
-			wantError:       "no receipt",
+			wantError:       "no event receipt",
 		},
 		{
-			name: "completed receipt with a failed command reports the command error",
+			name: "completed event receipt with a failed command reports the command error",
 			raw: marshalDispatchBody(t, &operatorv1.GovernedDispatchResult{
 				TransactionId: "tx-1",
 				ResultPayload: marshalCommandResult(t, &operatorv1.CommandResult{
 					Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 					Error:  "command exited",
 				}),
-				Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},
+				EventReceipt: &operatorv1.EventReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED},
 			}),
-			wantTransaction:   "tx-1",
-			wantError:         "command exited",
-			wantReceiptStatus: "EXECUTION_STATUS_COMPLETED",
+			wantTransaction:        "tx-1",
+			wantError:              "command exited",
+			wantEventReceiptStatus: "EXECUTION_STATUS_COMPLETED",
 		},
 		{
 			name:      "malformed 200 body is an error",
@@ -285,14 +285,14 @@ func TestRunOnce_DecodesEveryOutcome(t *testing.T) {
 			} else {
 				assert.Empty(t, result.Error)
 			}
-			assert.Equal(t, tt.wantReceiptStatus, result.ReceiptStatus)
+			assert.Equal(t, tt.wantEventReceiptStatus, result.EventReceiptStatus)
 			assert.Equal(t, tt.wantSignerKey, result.SignerKeyID)
 			assert.Equal(t, tt.wantStdout, result.Stdout)
 			assert.Equal(t, tt.wantRejection, result.Rejection != nil)
 			assert.Equal(t, tt.wantRejectionCode, result.RejectionCode)
 			assert.Equal(t, tt.wantRefusalCode, result.RefusalCode)
 			if tt.wantSuccess {
-				assert.NotNil(t, result.Receipt, "a success carries the verified final receipt")
+				assert.NotNil(t, result.EventReceipt, "a success carries the verified final event receipt")
 			}
 		})
 	}

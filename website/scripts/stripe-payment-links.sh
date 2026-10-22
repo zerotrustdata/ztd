@@ -36,7 +36,7 @@ OUTPUT="$(cd "$(dirname "$0")/.." && pwd)/src/payment-links.json"
 LINK_REVISION=3
 TERMS_URL="https://zerotrustdata.io/terms/"
 OEM_AGREEMENT_URL="https://zerotrustdata.io/terms/oem/"
-CONFIRMATION="Payment received — thank you. Your Stripe receipt is on its way. Within one business day, danny@zerotrustdata.io will email your License Certificate, or for services, to agree on scope and a start date."
+CONFIRMATION="Payment received — thank you. Your Stripe event receipt is on its way. Within one business day, danny@zerotrustdata.io will email your License Certificate, or for services, to agree on scope and a start date."
 
 # sku|name|description|unit_amount_cents|interval (month, year, or once)
 CATALOG=(

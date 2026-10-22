@@ -15,7 +15,7 @@ vi.mock('../src/state/feed', () => ({
 
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
 
-const receipt = (transactionId: string, actionType: string) => ({
+const eventReceipt = (transactionId: string, actionType: string) => ({
   transaction_id: transactionId,
   status: 'EXECUTION_STATUS_COMPLETED',
   executed_at_unix_ms: '1760000000000',
@@ -70,11 +70,11 @@ function traceTail(schemaVersion: string, overrides: Record<string, unknown> = {
     tool_calls: [{
       call_id: 'call-1', model_call_id: 'attempt-a', tool_name: 'fs_read', arguments_json: '{"path":"app.log"}', command: 'cat app.log',
       result_json: '{"content":"OOM"}', success: true, is_operator_tool: true, loop_turn: 1, action_type: 'fs_read',
-      policy_decision: 'allow', receipt: receipt('tx-read', 'fs_read'),
+      policy_decision: 'allow', event_receipt: eventReceipt('tx-read', 'fs_read'),
     }],
     final_output: 'Checkout is out of memory.',
     tool_turn_limit_reached: false,
-    bracket: { before: receipt('tx-before', 'fs_read'), after: receipt('tx-after', 'fs_read') },
+    bracket: { before: eventReceipt('tx-before', 'fs_read'), after: eventReceipt('tx-after', 'fs_read') },
     ...overrides,
   };
 }
@@ -92,10 +92,10 @@ function investigationRetrievalToolCall(overrides: Record<string, unknown> = {})
   return {
     call_id: 'call-context', model_call_id: 'attempt-a', tool_name: 'query_investigation_context',
     arguments_json: '{"data_type":"history_trail","limit":10}', success: true, is_operator_tool: true,
-    loop_turn: 2, action_type: 'MCP_CALL', receipt: receipt('tx-context', 'MCP_CALL'),
+    loop_turn: 2, action_type: 'MCP_CALL', event_receipt: eventReceipt('tx-context', 'MCP_CALL'),
     retrieval: {
       query: { operator_session_id: '', investigation_id: 'investigation-1', exclude_audit_reads: true, limit: 10 },
-      receipts: [{ receipt_id: 'receipt-1', sha256: 'e'.repeat(64) }],
+      event_receipts: [{ event_receipt_id: 'event_receipt-1', sha256: 'e'.repeat(64) }],
     },
     ...overrides,
   };
@@ -163,7 +163,7 @@ describe('verifyAgentTraceArtifact', () => {
 
     expect(trace.input?.messages[0]?.text).toBe('Why is checkout failing? 2>&1 <out>');
     expect(trace.model_calls[0]?.thinking).toBe('The log should say why.');
-    expect(trace.tool_calls[0]?.receipt?.status).toBe('EXECUTION_STATUS_COMPLETED');
+    expect(trace.tool_calls[0]?.event_receipt?.status).toBe('EXECUTION_STATUS_COMPLETED');
   });
 
   it('verifies a v3 trace without input and treats null lists as empty', async () => {
@@ -206,7 +206,7 @@ describe('verifyAgentTraceArtifact', () => {
     expect(trace.held_context?.messages[3]?.tool_result?.result_json).toBe('{"content":"held OOM"}');
   });
 
-  it('verifies a v6 trace with investigation identity and authoritative receipt retrieval', async () => {
+  it('verifies a v6 trace with investigation identity and authoritative event receipt retrieval', async () => {
     const body = sealedBody('agent-trace.v6', { tool_calls: [investigationRetrievalToolCall()] });
 
     const trace = await verifyAgentTraceArtifact(body, scope(body));
@@ -214,35 +214,35 @@ describe('verifyAgentTraceArtifact', () => {
     expect(trace.investigation_id).toBe('investigation-1');
     expect(trace.held_context?.repetition).toBe(1);
     expect(trace.tool_calls[0]?.retrieval?.query.investigation_id).toBe('investigation-1');
-    expect(trace.tool_calls[0]?.retrieval?.receipts[0]?.sha256).toBe('e'.repeat(64));
+    expect(trace.tool_calls[0]?.retrieval?.event_receipts[0]?.sha256).toBe('e'.repeat(64));
   });
 
   it('rejects malformed v6 retrieval and completed context calls without retrieval', async () => {
     const malformedDigest = sealedBody('agent-trace.v6', {
       tool_calls: [investigationRetrievalToolCall({ retrieval: {
         query: { investigation_id: 'investigation-1', exclude_audit_reads: true, limit: 10 },
-        receipts: [{ receipt_id: 'receipt-1', sha256: 'BAD' }],
+        event_receipts: [{ event_receipt_id: 'event_receipt-1', sha256: 'BAD' }],
       } })],
     });
     const wrongInvestigation = sealedBody('agent-trace.v6', {
       tool_calls: [investigationRetrievalToolCall({ retrieval: {
         query: { investigation_id: 'another-investigation', exclude_audit_reads: true, limit: 10 },
-        receipts: [],
+        event_receipts: [],
       } })],
     });
     const completedWithoutRetrieval = sealedBody('agent-trace.v6', {
       tool_calls: [investigationRetrievalToolCall({ success: false, retrieval: undefined })],
     });
     const successfulWithoutRetrieval = sealedBody('agent-trace.v6', {
-      tool_calls: [investigationRetrievalToolCall({ success: true, receipt: { status: 'EXECUTION_STATUS_FAILED' }, retrieval: undefined })],
+      tool_calls: [investigationRetrievalToolCall({ success: true, event_receipt: { status: 'EXECUTION_STATUS_FAILED' }, retrieval: undefined })],
     });
     const statusWithoutRetrieval = sealedBody('agent-trace.v6', {
       tool_calls: [investigationRetrievalToolCall({
-        arguments_json: '{"data_type":"investigation_status"}', action_type: undefined, receipt: undefined, retrieval: undefined,
+        arguments_json: '{"data_type":"investigation_status"}', action_type: undefined, event_receipt: undefined, retrieval: undefined,
       })],
     });
 
-    await expect(verifyAgentTraceArtifact(malformedDigest, scope(malformedDigest))).rejects.toMatchObject({ path: 'agent_trace.tool_calls[0].retrieval.receipts[0].sha256' });
+    await expect(verifyAgentTraceArtifact(malformedDigest, scope(malformedDigest))).rejects.toMatchObject({ path: 'agent_trace.tool_calls[0].retrieval.event_receipts[0].sha256' });
     await expect(verifyAgentTraceArtifact(wrongInvestigation, scope(wrongInvestigation))).rejects.toThrow(/must match trace investigation_id/u);
     await expect(verifyAgentTraceArtifact(completedWithoutRetrieval, scope(completedWithoutRetrieval))).rejects.toThrow(/completed context query must carry retrieval evidence/u);
     await expect(verifyAgentTraceArtifact(successfulWithoutRetrieval, scope(successfulWithoutRetrieval))).rejects.toThrow(/successful non-status context query must carry retrieval evidence/u);
@@ -303,7 +303,7 @@ describe('AgentTraceSection', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders the verified trace: input, thinking, tool call, receipt, and download', async () => {
+  it('renders the verified trace: input, thinking, tool call, event receipt, and download', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(body.slice()));
     vi.stubGlobal('fetch', fetchMock);
 

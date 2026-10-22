@@ -43,7 +43,7 @@ func fullProtocolChainStages(_, _ string) []*operatorv1.DeterministicStageEviden
 		{StageId: txID + ":L2", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED, TransactionId: txID, TransactionHash: txHash, ParentStageId: l4ID},
 		{StageId: txID + ":L3", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED, TransactionId: txID, TransactionHash: txHash, ParentStageId: l4ID},
 		{StageId: l4ID, Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED, TransactionId: txID, TransactionHash: txHash, ParentStageId: l5ID},
-		{StageId: txID + ":PERSIST", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED, TransactionId: txID, TransactionHash: txHash, ParentStageId: l5ID},
+		{StageId: txID + ":PERSIST", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED, TransactionId: txID, TransactionHash: txHash, ParentStageId: l5ID},
 		{StageId: txID + ":COMMIT", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED, TransactionId: txID, TransactionHash: txHash, ParentStageId: l5ID},
 		{StageId: l5ID, Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED, TransactionId: txID, TransactionHash: txHash, StateRootBefore: "before", StateRootAfter: "after"},
 	}
@@ -53,15 +53,15 @@ func fullProtocolChainStages(_, _ string) []*operatorv1.DeterministicStageEviden
 	return stages
 }
 
-func TestValidateDeterministicProtocolChainAcceptsVerifiedAndRejectedReceipts(t *testing.T) {
+func TestValidateDeterministicProtocolChainAcceptsVerifiedAndRejectedEventReceipts(t *testing.T) {
 	tests := []struct {
-		name    string
-		receipt *operatorv1.ActionReceipt
-		stages  int
+		name         string
+		eventReceipt *operatorv1.EventReceipt
+		stages       int
 	}{
 		{
 			name: "verified",
-			receipt: &operatorv1.ActionReceipt{
+			eventReceipt: &operatorv1.EventReceipt{
 				TransactionId: "tx-1", TransactionHash: "hash-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 				StateRootBefore: "before", StateRootAfter: "after", L2Status: operatorv1.L2Status_L2_STATUS_REQUIRED_VALID,
 				L3Status: operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, DeterministicStageEvidence: fullProtocolChainStages("tx-1", "hash-1"),
@@ -70,7 +70,7 @@ func TestValidateDeterministicProtocolChainAcceptsVerifiedAndRejectedReceipts(t 
 		},
 		{
 			name: "rejected",
-			receipt: &operatorv1.ActionReceipt{
+			eventReceipt: &operatorv1.EventReceipt{
 				TransactionId: "tx-1", TransactionHash: "hash-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 				L2Status: operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, L3Status: operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 				DeterministicStageEvidence: protocolChainStages("tx-1", "hash-1", true),
@@ -80,7 +80,7 @@ func TestValidateDeterministicProtocolChainAcceptsVerifiedAndRejectedReceipts(t 
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			chain, err := ValidateDeterministicProtocolChain(tt.receipt)
+			chain, err := ValidateDeterministicProtocolChain(tt.eventReceipt)
 			require.NoError(t, err)
 			assert.Len(t, chain.Stages, tt.stages)
 			assert.NotEmpty(t, chain.ContentReference)
@@ -91,32 +91,34 @@ func TestValidateDeterministicProtocolChainAcceptsVerifiedAndRejectedReceipts(t 
 func TestValidateDeterministicProtocolChainRejectsMalformedEvidence(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*operatorv1.ActionReceipt)
+		mutate func(*operatorv1.EventReceipt)
 	}{
-		{name: "nil receipt", mutate: func(receipt *operatorv1.ActionReceipt) {}},
-		{name: "duplicate stage id", mutate: func(receipt *operatorv1.ActionReceipt) {
-			receipt.DeterministicStageEvidence[1].StageId = receipt.DeterministicStageEvidence[0].StageId
+		{name: "nil event receipt", mutate: func(eventReceipt *operatorv1.EventReceipt) {}},
+		{name: "duplicate stage id", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.DeterministicStageEvidence[1].StageId = eventReceipt.DeterministicStageEvidence[0].StageId
 		}},
-		{name: "transaction mismatch", mutate: func(receipt *operatorv1.ActionReceipt) { receipt.DeterministicStageEvidence[0].TransactionId = "other" }},
-		{name: "invalid order", mutate: func(receipt *operatorv1.ActionReceipt) {
-			receipt.DeterministicStageEvidence[0], receipt.DeterministicStageEvidence[1] = receipt.DeterministicStageEvidence[1], receipt.DeterministicStageEvidence[0]
+		{name: "transaction mismatch", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.DeterministicStageEvidence[0].TransactionId = "other"
 		}},
-		{name: "state root mismatch", mutate: func(receipt *operatorv1.ActionReceipt) {
-			receipt.DeterministicStageEvidence[6].StateRootAfter = "tampered"
+		{name: "invalid order", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.DeterministicStageEvidence[0], eventReceipt.DeterministicStageEvidence[1] = eventReceipt.DeterministicStageEvidence[1], eventReceipt.DeterministicStageEvidence[0]
+		}},
+		{name: "state root mismatch", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.DeterministicStageEvidence[6].StateRootAfter = "tampered"
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var receipt *operatorv1.ActionReceipt
-			if tt.name != "nil receipt" {
-				receipt = &operatorv1.ActionReceipt{
+			var eventReceipt *operatorv1.EventReceipt
+			if tt.name != "nil event receipt" {
+				eventReceipt = &operatorv1.EventReceipt{
 					TransactionId: "tx-1", TransactionHash: "hash-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 					StateRootBefore: "before", StateRootAfter: "after", L2Status: operatorv1.L2Status_L2_STATUS_REQUIRED_VALID,
 					L3Status: operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, DeterministicStageEvidence: fullProtocolChainStages("tx-1", "hash-1"),
 				}
 			}
-			tt.mutate(receipt)
-			_, err := ValidateDeterministicProtocolChain(receipt)
+			tt.mutate(eventReceipt)
+			_, err := ValidateDeterministicProtocolChain(eventReceipt)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
 		})
@@ -136,37 +138,37 @@ func TestDeterministicStagesContentAddressIsStable(t *testing.T) {
 func TestValidateDeterministicProtocolChainRejectsInconsistentStageOutcomes(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*operatorv1.ActionReceipt)
+		mutate func(*operatorv1.EventReceipt)
 	}{
-		{name: "missing required stage", mutate: func(receipt *operatorv1.ActionReceipt) {
-			receipt.DeterministicStageEvidence = receipt.DeterministicStageEvidence[:4]
+		{name: "missing required stage", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.DeterministicStageEvidence = eventReceipt.DeterministicStageEvidence[:4]
 		}},
-		{name: "l1 not verified", mutate: func(receipt *operatorv1.ActionReceipt) {
-			receipt.DeterministicStageEvidence[0].Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
+		{name: "l1 not verified", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.DeterministicStageEvidence[0].Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
 		}},
-		{name: "l2 status mismatch", mutate: func(receipt *operatorv1.ActionReceipt) {
-			receipt.DeterministicStageEvidence[1].Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
+		{name: "l2 status mismatch", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.DeterministicStageEvidence[1].Outcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
 		}},
-		{name: "identity mismatch", mutate: func(receipt *operatorv1.ActionReceipt) {
-			receipt.DeterministicStageEvidence[0].InvestigationId = "first"
-			receipt.DeterministicStageEvidence[1].InvestigationId = "other"
+		{name: "identity mismatch", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.DeterministicStageEvidence[0].InvestigationId = "first"
+			eventReceipt.DeterministicStageEvidence[1].InvestigationId = "other"
 		}},
-		{name: "rejected receipt status", mutate: func(receipt *operatorv1.ActionReceipt) {
-			receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+		{name: "rejected event receipt status", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		}},
-		{name: "rejected extra stage", mutate: func(receipt *operatorv1.ActionReceipt) {
-			receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, &operatorv1.DeterministicStageEvidence{StageId: "tx-1:L5", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED, TransactionId: "tx-1", TransactionHash: "hash-1"})
+		{name: "rejected extra stage", mutate: func(eventReceipt *operatorv1.EventReceipt) {
+			eventReceipt.DeterministicStageEvidence = append(eventReceipt.DeterministicStageEvidence, &operatorv1.DeterministicStageEvidence{StageId: "tx-1:L5", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED, TransactionId: "tx-1", TransactionHash: "hash-1"})
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			receipt := &operatorv1.ActionReceipt{
+			eventReceipt := &operatorv1.EventReceipt{
 				TransactionId: "tx-1", TransactionHash: "hash-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 				StateRootBefore: "before", StateRootAfter: "after", L2Status: operatorv1.L2Status_L2_STATUS_REQUIRED_VALID,
 				L3Status: operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, DeterministicStageEvidence: fullProtocolChainStages("tx-1", "hash-1"),
 			}
-			tt.mutate(receipt)
-			_, err := ValidateDeterministicProtocolChain(receipt)
+			tt.mutate(eventReceipt)
+			_, err := ValidateDeterministicProtocolChain(eventReceipt)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
 		})

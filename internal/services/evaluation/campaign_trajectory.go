@@ -19,10 +19,10 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-// IsDenied reports a governance rejection carried by the call's signed receipt.
-// Trace evidence verification authenticates that receipt before grading.
+// IsDenied reports a governance rejection carried by the call's signed event receipt.
+// Trace evidence verification authenticates that event receipt before grading.
 func (c AgentToolCall) IsDenied() bool {
-	return c.Receipt != nil && governance.IsGovernanceRejectionReceipt(c.Receipt.ActionReceipt)
+	return c.EventReceipt != nil && governance.IsGovernanceRejectionEventReceipt(c.EventReceipt.EventReceipt)
 }
 
 // agentGradingView is the typed trace content deterministic grading reads:

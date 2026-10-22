@@ -497,7 +497,7 @@ func proxySessionToGateway(session *gatewayConn, req JSONRPCRequest) (JSONRPCRes
 }
 
 // gatewayRPCResponse is the Gateway's JSON-RPC answer with result and error.data
-// kept as bytes. The proxy relays the signed receipt and the typed governance
+// kept as bytes. The proxy relays the signed event receipt and the typed governance
 // failure exactly as the Gateway encoded them; decoding them into interface{}
 // would reorder keys and turn numbers into float64.
 type gatewayRPCResponse struct {
@@ -533,7 +533,7 @@ func (w gatewayRPCResponse) response() JSONRPCResponse {
 // proxySessionToGatewayWithRetryContext handles L3 approval responses by opening
 // the browser for WebAuthn authorization and waiting for the approval.completed
 // SSE event from the gateway. The event carries the resumed transaction's signed
-// receipt, which becomes the tools/call result; the request is not re-sent. SSE
+// event receipt, which becomes the tools/call result; the request is not re-sent. SSE
 // credentials are required — there is no polling fallback.
 //
 // Only tools/call can suspend, so only it opens the approval stream. It opens the
@@ -584,7 +584,7 @@ func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gateway
 		fmt.Fprintf(os.Stderr, "\n[ztd] Please visit: %s\n", suspension.ApprovalURL)
 	}
 
-	receipt, err := approvals.Wait(ctx, suspension.TxHash, "")
+	eventReceipt, err := approvals.Wait(ctx, suspension.TxHash, "")
 	if err != nil {
 		if logger != nil {
 			logger.Warn("L3 approval SSE wait ended", "error", err)
@@ -595,13 +595,13 @@ func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gateway
 	// A deny is the Operator-signed L3_DENIED rejection. It is answered as the
 	// Gateway answers every signed rejection: a JSON-RPC error whose data is the
 	// typed GovernanceRejection, never a tool result.
-	if rejection := governance.ReceiptRejection(receipt); rejection != nil {
+	if rejection := governance.EventReceiptRejection(eventReceipt); rejection != nil {
 		data, err := response.MarshalProtoJSONCanonical(rejection)
 		if err != nil {
 			return resp, fmt.Errorf("L3 approval: encode rejection: %w", err)
 		}
 		if logger != nil {
-			logger.Info("L3 approval completed with a signed rejection", "rejection_code", receipt.GetRejectionCode().String())
+			logger.Info("L3 approval completed with a signed rejection", "rejection_code", eventReceipt.GetRejectionCode().String())
 		}
 		return JSONRPCResponse{
 			JSONRPC: constants.JSONRPCVersion,
@@ -610,17 +610,17 @@ func proxySessionToGatewayWithRetryContext(ctx context.Context, session *gateway
 		}, nil
 	}
 
-	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
+	eventReceiptJSON, err := response.MarshalProtoJSONCanonical(eventReceipt)
 	if err != nil {
-		return resp, fmt.Errorf("L3 approval: encode resumed receipt: %w", err)
+		return resp, fmt.Errorf("L3 approval: encode resumed event_receipt: %w", err)
 	}
 	if logger != nil {
-		logger.Info("L3 approval completed, returning the resumed receipt")
+		logger.Info("L3 approval completed, returning the resumed event receipt")
 	}
 	return JSONRPCResponse{
 		JSONRPC: constants.JSONRPCVersion,
 		ID:      resp.ID,
-		Result:  mcp.ReceiptCallToolResult(receipt, receiptJSON),
+		Result:  mcp.EventReceiptCallToolResult(eventReceipt, eventReceiptJSON),
 	}, nil
 }
 
