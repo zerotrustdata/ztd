@@ -221,7 +221,7 @@ func TestHandleCLIAuth_ExpiredSessionOnNonRefreshEndpoint_FailClosed(t *testing.
 	_, middleware, userID, cliSessionID := setupRefreshAuthTestInfra(t, "refresh-auth-nonrefresh-expired", true, "cert-fp")
 
 	// Target a non-refresh mTLS endpoint (e.g., the audit receipts list).
-	req := cliRefreshMTLSRequest(t, constants.APIPaths.AuditReceipts, cliSessionID, userID)
+	req := cliRefreshMTLSRequest(t, constants.APIPaths.AuditEventReceipts, cliSessionID, userID)
 	rr := httptest.NewRecorder()
 	middleware.ServeHTTP(rr, req)
 
@@ -252,7 +252,7 @@ func TestHandleCLIAuth_CertNamingOtherSessionRejected(t *testing.T) {
 			cliURI, err := wid.CLISPIFFEURL(userID, "initial-session-id")
 			require.NoError(t, err)
 
-			req := httptest.NewRequest(http.MethodGet, constants.APIPaths.AuditReceipts, nil)
+			req := httptest.NewRequest(http.MethodGet, constants.APIPaths.AuditEventReceipts, nil)
 			req.Header.Set(constants.HeaderCLISessionID, cliSessionID)
 			req.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{{
 				Raw:  certRaw,
@@ -323,7 +323,7 @@ func TestHandleCLIAuth_MissingSessionOnNonRefreshEndpoint_FailClosed(t *testing.
 	middleware := auth.Middleware(handler)
 
 	// No session persisted — use a random session ID that doesn't exist.
-	req := cliRefreshMTLSRequest(t, constants.APIPaths.AuditReceipts, "nonexistent-session-id", user.ID)
+	req := cliRefreshMTLSRequest(t, constants.APIPaths.AuditEventReceipts, "nonexistent-session-id", user.ID)
 	rr := httptest.NewRecorder()
 	middleware.ServeHTTP(rr, req)
 
@@ -443,7 +443,7 @@ func TestHandleCLIAuth_ServerInvalidSessionStatesOnNonRefreshEndpoint_FailClosed
 			require.NoError(t, err)
 			require.NoError(t, auth.db.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID, data))
 
-			req := cliRefreshMTLSRequest(t, constants.APIPaths.AuditReceipts, cliSessionID, userID)
+			req := cliRefreshMTLSRequest(t, constants.APIPaths.AuditEventReceipts, cliSessionID, userID)
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
 

@@ -4,7 +4,7 @@ title: Event and Action Protocol
 audience: maintainers and coding agents
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-22
 owners:
   - protocol/constants/events.json
   - internal/services/gateway/
@@ -191,7 +191,7 @@ Events appended to the `events` table of the SQL audit store form an append-only
 3. `content_digest`: HMAC-SHA256 over the canonical content fields (`content_text`, `command_raw`, `command_exit_code`, `command_stdout`, `command_stderr`, `execution_duration_ms`, `execution_id`) under a subkey the runtime vault derives (see [Storage Architecture](./storage.md)). A locked vault fails the append closed.
 4. `hash`: SHA-256 digest over `ztd-audit-v1|seq|prev_hash|type|operator_session_id|timestamp|content_digest|transaction_id`.
 
-Receipt stages append `ztd.v1.operator.receipt.recorded` facts to the chain. The `receipts` table is a latest-stage projection keyed by `transaction_id`, not the record of record.
+Receipt stages append `ztd.v1.operator.receipt.recorded` facts to the chain. The current event receipt is the one of those events whose `event_receipt_status` is not null. The chain event type string stays `ztd.v1.operator.receipt.recorded`; it is an input to the chain hash.
 
 Pruning deletes chained events older than a cutoff, excluding checkpoint events. Before deletion, it appends a `ztd.v1.platform.audit.chain.checkpointed` fact recording `pruned_through_seq`, `pruned_through_hash`, and `pruned_count`, and writes a matching `audit_chain_checkpoints` anchor row. Chain verification without an explicit start sequence begins after the latest checkpoint.
 

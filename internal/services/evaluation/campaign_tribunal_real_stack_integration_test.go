@@ -151,7 +151,7 @@ func tribunalLocalReceipts(t *testing.T, env *realStackAgentRun, investigationID
 	return result.Receipts
 }
 
-func tribunalVerifyLocalReceipt(t *testing.T, env *realStackAgentRun, receipt *operatorv1.ActionReceipt) *models.ActionReceiptRecord {
+func tribunalVerifyLocalReceipt(t *testing.T, env *realStackAgentRun, receipt *operatorv1.ActionReceipt) *models.EventReceiptRecord {
 	t.Helper()
 	operator, err := env.stack.Gateway.Service.GetRegistrationService().GetOperator(t.Context(), env.dataOperatorID)
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func tribunalVerifyLocalReceipt(t *testing.T, env *realStackAgentRun, receipt *o
 	require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, publicKey))
 	files, err := fs.NewRuntimeFileService(env.stack.DataHost.WorkingDir, testutil.NewTestLogger())
 	require.NoError(t, err)
-	local, err := storage.ReadLocalActionReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.DataHost.Keyring}, receipt.GetTransactionId())
+	local, err := storage.ReadLocalEventReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.DataHost.Keyring}, receipt.GetTransactionId())
 	require.NoError(t, err)
 	require.NotNil(t, local)
 	assert.True(t, proto.Equal(receipt, local.ActionReceipt), "receipt is present in the Data Operator's authoritative local store")

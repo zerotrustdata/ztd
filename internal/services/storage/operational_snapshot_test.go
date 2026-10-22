@@ -39,7 +39,10 @@ func TestReadOnlyOperationalEvidence_SnapshotReadsBoundedReceiptAndCommitmentBod
 	_, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	testVault := CreateTestVault(t, fileSvc, privKey)
-	receiptBody, err := encryptAuditContent(testVault, ReceiptColumnReceiptJSON, "tx-1", `{"transactionId":"tx-1"}`)
+	const receiptPlaintext = `{"transactionId":"tx-1"}`
+	receiptBody, err := encryptAuditContent(testVault, auditColumnEventContentText, auditEventRowID(1), receiptPlaintext)
+	require.NoError(t, err)
+	contentDigest, err := computeEventContentDigest(testVault, &Event{ContentText: receiptPlaintext})
 	require.NoError(t, err)
 	attestationBody, err := encryptAuditContent(testVault, CommitmentColumnAttestationJSON, "commitment-1", `{"transactionId":"tx-1"}`)
 	require.NoError(t, err)
@@ -49,7 +52,7 @@ func TestReadOnlyOperationalEvidence_SnapshotReadsBoundedReceiptAndCommitmentBod
 	require.NoError(t, err)
 	_, err = writer.Exec(`INSERT INTO sessions (id) VALUES (?)`, "session-1")
 	require.NoError(t, err)
-	_, err = writer.Exec(`INSERT INTO receipts (transaction_id, transaction_hash, operator_id, operator_session_id, action_type, status, executed_at_ms, signer_key_id, signature, receipt_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, "tx-1", "hash-1", "operator-1", "session-1", "FILE_EDIT", "COMPLETED", int64(1_700_000_001_000), "signer-1", "signature-1", receiptBody)
+	_, err = writer.Exec(`INSERT INTO events (operator_session_id, type, transaction_id, seq, prev_hash, hash, content_digest, timestamp, event_receipt_status, event_receipt_executed_at_ms, content_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, "session-1", string(constants.EventOperatorReceiptRecorded), "tx-1", int64(1), auditChainGenesisPrevHash, "hash-1", contentDigest, "2023-11-14T22:13:21.000000Z", int64(3), int64(1_700_000_001_000), receiptBody)
 	require.NoError(t, err)
 	_, err = writer.Exec(`INSERT INTO commitment_ledger (transaction_id, transaction_hash, prior_commitment_hash, committed_at_unix_ms, hash, attestation_json) VALUES (?, ?, ?, ?, ?, ?)`, "tx-1", "hash-1", "", int64(1_700_000_002_000), "commitment-1", attestationBody)
 	require.NoError(t, err)
@@ -83,8 +86,8 @@ func TestReadOnlyOperationalEvidence_SnapshotFailsInsteadOfTruncatingPopulation(
 	require.NoError(t, err)
 	_, err = writer.Exec(`INSERT INTO sessions (id) VALUES (?)`, "session-1")
 	require.NoError(t, err)
-	for _, transactionID := range []string{"tx-1", "tx-2"} {
-		_, err = writer.Exec(`INSERT INTO receipts (transaction_id, transaction_hash, operator_id, operator_session_id, action_type, status, executed_at_ms, signer_key_id, signature) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, transactionID, "hash", "operator-1", "session-1", "FILE_EDIT", "COMPLETED", int64(1_700_000_001_000), "signer-1", "signature")
+	for seq, transactionID := range []string{"tx-1", "tx-2"} {
+		_, err = writer.Exec(`INSERT INTO events (operator_session_id, type, transaction_id, seq, prev_hash, hash, event_receipt_status, event_receipt_executed_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, "session-1", string(constants.EventOperatorReceiptRecorded), transactionID, int64(seq+1), auditChainGenesisPrevHash, "hash", int64(3), int64(1_700_000_001_000))
 		require.NoError(t, err)
 	}
 	require.NoError(t, writer.Close())

@@ -370,7 +370,7 @@ func (rr *PubSubResultsService) PublishHeartbeat(ctx context.Context, heartbeat 
 // (operator_id, operator_session_id, requestor_user_id, acting_app_id,
 // action_type, target_resource, case_id, investigation_id, task_id) from the
 // original command envelope env, so the gateway can build a complete
-// ActionReceiptRecord without the ActionReceipt proto carrying those fields.
+// EventReceiptRecord without the ActionReceipt proto carrying those fields.
 // The gateway intercepts the publish, verifies the receipt signature against
 // the operator's actuator public key, records the receipt in its
 // SQLAuditStore, and fans out the envelope to subscribers.

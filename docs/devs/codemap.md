@@ -4,7 +4,7 @@ title: ztd Code Map
 audience: maintainers and coding agents
 status: current
 version: v1.2.0
-last_updated: 2026-10-21
+last_updated: 2026-10-22
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -308,7 +308,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `GetBlobStore` | `BlobStoreService` |
 | `GetAuditStore` | `storage.SQLAuditStore` |
 
-`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. `storage.ReadLocalActionReceipt` (`local_receipt.go`) reads one runtime's signed receipt from its own audit store with that runtime's vault key, never a Gateway mirror. Storage architecture: [Storage Architecture](../architecture/storage.md).
+`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. `storage.ReadLocalEventReceipt` (`local_receipt.go`) reads one runtime's signed event receipt from its own audit store with that runtime's vault key, never a Gateway mirror. Storage architecture: [Storage Architecture](../architecture/storage.md).
 
 ### Internal services
 

@@ -84,7 +84,7 @@ func TestCLIRefresh_ExpiredSessionRecoverable(t *testing.T) {
 
 	// 2. Verify the expired session is rejected on a non-refresh endpoint
 	//    (fail-closed). Use the audit receipts endpoint as a stand-in.
-	preRefreshReq, _ := http.NewRequest(http.MethodGet, mtlsURL+constants.APIPaths.AuditReceipts, nil)
+	preRefreshReq, _ := http.NewRequest(http.MethodGet, mtlsURL+constants.APIPaths.AuditEventReceipts, nil)
 	preRefreshResp, err := cliClient.Do(preRefreshReq)
 	require.NoError(t, err)
 	_, _ = io.ReadAll(preRefreshResp.Body)
@@ -136,7 +136,7 @@ func TestCLIRefresh_ExpiredSessionRecoverable(t *testing.T) {
 	//    same certificate and session ID header.
 	identity.CLISessionID = refreshResult.CLISessionID
 	newCliClient := fixtures.CreateCLIMTLSClient(t, fixture, identity)
-	postRefreshReq, _ := http.NewRequest(http.MethodGet, mtlsURL+constants.APIPaths.AuditReceipts, nil)
+	postRefreshReq, _ := http.NewRequest(http.MethodGet, mtlsURL+constants.APIPaths.AuditEventReceipts, nil)
 	postRefreshResp, err := newCliClient.Do(postRefreshReq)
 	require.NoError(t, err)
 	_, _ = io.ReadAll(postRefreshResp.Body)

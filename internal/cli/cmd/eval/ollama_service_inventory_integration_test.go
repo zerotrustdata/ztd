@@ -56,12 +56,12 @@ func TestListOllamaProviderInventory_UsesTypedInventoryAction(t *testing.T) {
 
 			// Use the Gateway projection only to discover the transaction ID;
 			// the Inference Operator's own store is authoritative for evidence.
-			projected, err := env.stack.Gateway.Service.GetAuditStore().ListActionReceipts(models.AuditScope{OperatorSessionID: workload.OperatorSessionID, InvestigationID: "ollama-model-inventory"}, 10, 0)
+			projected, err := env.stack.Gateway.Service.GetAuditStore().ListEventReceipts(models.AuditScope{OperatorSessionID: workload.OperatorSessionID, InvestigationID: "ollama-model-inventory"}, 10, 0)
 			require.NoError(t, err)
 			require.Len(t, projected, 1)
 			files, err := fs.NewRuntimeFileService(env.stack.InferenceHost.WorkingDir, testutil.NewTestLogger())
 			require.NoError(t, err)
-			local, err := storage.ReadLocalActionReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.InferenceHost.Keyring}, projected[0].TransactionID)
+			local, err := storage.ReadLocalEventReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.InferenceHost.Keyring}, projected[0].TransactionID)
 			require.NoError(t, err)
 			require.NotNil(t, local)
 			assert.Equal(t, workload.OperatorSessionID, local.OperatorSessionID)

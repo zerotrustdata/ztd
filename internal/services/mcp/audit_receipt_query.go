@@ -23,9 +23,9 @@ import (
 // handler uses its local SQLAuditStore, which may contain best-effort remote
 // Operator receipt projections. The interface exposes only receipt reads.
 type AuditReceiptQuery interface {
-	ListActionReceipts(scope models.AuditScope, limit, offset int) ([]*models.ActionReceiptRecord, error)
-	ListActionReceiptsSince(since time.Time, limit int) ([]*models.ActionReceiptRecord, error)
-	GetActionReceipt(transactionID string) (*models.ActionReceiptRecord, error)
+	ListEventReceipts(scope models.AuditScope, limit, offset int) ([]*models.EventReceiptRecord, error)
+	ListEventReceiptsSince(since time.Time, limit int) ([]*models.EventReceiptRecord, error)
+	GetEventReceipt(transactionID string) (*models.EventReceiptRecord, error)
 }
 
 // auditReceiptQueryCtxKey is the context key under which the
@@ -128,11 +128,11 @@ type AuditReceiptListRequest struct {
 
 // AuditReceiptListResult is the result for the "audit_receipt_list" tool.
 type AuditReceiptListResult struct {
-	Receipts   []*models.ActionReceiptRecord `json:"receipts"`
-	Count      int                           `json:"count"`
-	OperatorID string                        `json:"operator_id,omitempty"`
-	Authority  string                        `json:"authority,omitempty"`
-	Error      string                        `json:"error,omitempty"`
+	Receipts   []*models.EventReceiptRecord `json:"receipts"`
+	Count      int                          `json:"count"`
+	OperatorID string                       `json:"operator_id,omitempty"`
+	Authority  string                       `json:"authority,omitempty"`
+	Error      string                       `json:"error,omitempty"`
 }
 
 // OperatorAuditReceiptListResult is the allowlisted result returned by the
@@ -180,7 +180,7 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 	if operatorLocal {
 		scope.OperatorID = authority.operatorID
 	}
-	receipts, err := q.ListActionReceipts(scope, limit, req.Offset)
+	receipts, err := q.ListEventReceipts(scope, limit, req.Offset)
 	if err != nil {
 		return CallToolResult{}, fmt.Errorf("audit_receipt_list: query: %w", err)
 	}
@@ -201,7 +201,7 @@ func (t *AuditReceiptListTool) Execute(ctx context.Context, args json.RawMessage
 		notBefore = parsed
 	}
 
-	filtered := make([]*models.ActionReceiptRecord, 0, len(receipts))
+	filtered := make([]*models.EventReceiptRecord, 0, len(receipts))
 	for _, rec := range receipts {
 		if req.ActionType != "" && string(rec.ActionType) != req.ActionType {
 			continue
@@ -282,8 +282,8 @@ type AuditReceiptGetRequest struct {
 
 // AuditReceiptGetResult is the result for the "audit_receipt_get" tool.
 type AuditReceiptGetResult struct {
-	Receipt *models.ActionReceiptRecord `json:"receipt,omitempty"`
-	Error   string                      `json:"error,omitempty"`
+	Receipt *models.EventReceiptRecord `json:"receipt,omitempty"`
+	Error   string                     `json:"error,omitempty"`
 }
 
 // Execute implements the tool logic.
@@ -302,7 +302,7 @@ func (t *AuditReceiptGetTool) Execute(ctx context.Context, args json.RawMessage)
 		return CallToolResult{}, fmt.Errorf("audit_receipt_get: %w", constants.ErrMCPAuditReceiptQueryNotConfigured)
 	}
 
-	receipt, err := q.GetActionReceipt(req.TransactionID)
+	receipt, err := q.GetEventReceipt(req.TransactionID)
 	if err != nil {
 		return CallToolResult{}, fmt.Errorf("audit_receipt_get: query: %w", err)
 	}

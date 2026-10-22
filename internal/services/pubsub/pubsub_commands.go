@@ -1517,7 +1517,7 @@ func (rs *OperatorPubSubService) blockedSummary(ctx context.Context, rejectionRe
 	return "blocked: " + rs.scrubbing.ScrubText(ctx, rejectionReason.Error())
 }
 
-// logBlockedTransaction records a blocked/rejected transaction using the ActionReceiptRecord schema.
+// logBlockedTransaction records a blocked/rejected transaction using the EventReceiptRecord schema.
 // This ensures consistency with accepted/failed Actuator receipts - all transaction outcomes use the same canonical schema.
 func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env *govpkg.GovernanceEnvelope, rejectionReason error) {
 	if rs.audit == nil || rs.audit.auditStore == nil {
@@ -1535,8 +1535,8 @@ func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env 
 		return
 	}
 
-	// Create ActionReceiptRecord with BLOCKED status for canonical audit trail
-	record := models.ActionReceiptRecord{
+	// Create EventReceiptRecord with BLOCKED status for canonical audit trail
+	record := models.EventReceiptRecord{
 		TransactionID:     env.Id,
 		TransactionHash:   env.TransactionHash,
 		OperatorID:        identity.OperatorID,
@@ -1553,8 +1553,8 @@ func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env 
 		Timestamp:         time.Now().UTC(),
 	}
 
-	// Log to audit store using canonical RecordActionReceipt for unified query experience
-	if err := rs.audit.auditStore.RecordActionReceipt(&record); err != nil {
+	// Log to audit store using canonical RecordEventReceipt for unified query experience
+	if err := rs.audit.auditStore.RecordEventReceipt(&record); err != nil {
 		rs.logger.Error("Failed to record blocked transaction in audit store", string(constants.ConnectionStateError), err, "message_id", env.Id)
 	}
 }

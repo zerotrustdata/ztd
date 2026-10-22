@@ -4,7 +4,7 @@ title: Storage Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-22
 owners:
   - internal/services/storage/
   - internal/constants/paths.go
@@ -61,7 +61,7 @@ Documents ztd's storage architecture: local SQLite databases, persistence topolo
 | INV-STOR-KV-03 | Gateway services and application clients MUST use Gateway storage primitives and MUST NOT emulate atomic counters, hashes, lists, or nonce reservation through client-side read/modify/write. Governed replay protection belongs to the executing runtime's uniqueness-constrained replay store. |
 | INV-STOR-ENC-01 | Vault-protected content fields (event content text, command lines and output, file snapshots and paths, target resources, summaries, receipt and attestation bodies, suspended envelopes and tool arguments, diff stats, and session titles and identities) MUST be encrypted with the runtime vault before they are written. A nil or locked vault MUST fail protected writes and reads with a typed error. MUST NOT add a plaintext branch, an `encrypted` flag, or a fallback. Platform documents, SSE payloads, approval proof fields, and the explicitly listed inference evidence metadata are outside this field-level encryption boundary; see Security Properties. Identifiers, hashes, signatures, enum types and statuses, timestamps, sizes, counts, exit codes, and key IDs stay plaintext. |
 | INV-STOR-ONE-01 | Each runtime root persists canonical runtime state in one SQLite database (`data/ztd.db`) and one file ledger (`data/ledger/`), plus the vault, secrets, and inference trees. The Gateway's public spectator mirror is the documented exception: its store (`PublicMirrorStore`, opened by `OpenPublicMirrorStore`) persists to a separate `public-mirror/mirror.db` that is not part of `ztd.db` ([Public Spectator Architecture](public_spectator.md)). Each fact has one owning record and one store implementation: MUST NOT add a second database file outside that exception, a second table holding the same fact in another shape, or a parallel implementation of an existing store. |
-| INV-STOR-EGRESS-01 | Local stores hold full, unscrubbed content (encrypted per INV-STOR-ENC-01). Every result that leaves the runtime MUST pass the single egress choke point (`pubsub.BuildUniversalResultEnvelope`, backed by `scrubbing.ScrubbingService`). With no scrubber, egress publishes the typed failure event and never the raw content. The Gateway HTTP audit endpoints (`/api/v1/audit/events`, `/report`, `/receipts`, `/receipts/export`, `/consensus-votes`) scrub every content-bearing field (`command_raw`, receipt `target_resource` and `result_summary`, consensus vote `reason` and `failure`) before the response, `AuditController` requires a scrubber at construction, and a disabled scrubber returns 503 with `ErrEgressScrubberUnavailable`. `mcp.GatewayService.DispatchToDownstream` scrubs every branch (read_field, native tools, downstream MCP) and fails closed with no scrubber. The L5 actuator signs a result digest only from the typed `CommandMessage.InferenceResultDigest` channel of an INFERENCE action; every other handler output is scrubbed text, and no output is recognized by shape. |
+| INV-STOR-EGRESS-01 | Local stores hold full, unscrubbed content (encrypted per INV-STOR-ENC-01). Every result that leaves the runtime MUST pass the single egress choke point (`pubsub.BuildUniversalResultEnvelope`, backed by `scrubbing.ScrubbingService`). With no scrubber, egress publishes the typed failure event and never the raw content. The Gateway HTTP audit endpoints (`/api/v1/audit/events`, `/report`, `/event-receipts`, `/event-receipts/export`, `/consensus-votes`) scrub every content-bearing field (`command_raw`, event receipt `target_resource` and `result_summary`, consensus vote `reason` and `failure`) before the response, `AuditController` requires a scrubber at construction, and a disabled scrubber returns 503 with `ErrEgressScrubberUnavailable`. `mcp.GatewayService.DispatchToDownstream` scrubs every branch (read_field, native tools, downstream MCP) and fails closed with no scrubber. The L5 actuator signs a result digest only from the typed `CommandMessage.InferenceResultDigest` channel of an INFERENCE action; every other handler output is scrubbed text, and no output is recognized by shape. |
 | INV-STOR-LOG-01 | Logs carry no execution content. Logger calls MUST NOT include command lines, arguments, stdout or stderr, file paths and patterns, target resources, summaries, diffs, envelopes, tool arguments, prompts, or outputs, as attributes or in the message, and MUST NOT log an error whose text embeds them (use `logging.ErrorKind`). Log identifiers (`execution_id`, transaction hash, `operator_session_id`), sizes, counts, and exit codes instead; the raw content lives only in the encrypted `events` table. `TestLoggerCallsCarryNoExecutionContent` enforces the attribute keys for the execution-path packages. |
 | INV-STOR-SESSION-01 | Audit record paths (`RecordEvent`, `RecordEventChained`, batch recording, and receipt recording in `internal/services/storage/audit_store.go`) MUST NOT write the `sessions` table; a record for an unknown session fails with `ErrAuditSessionUnknown`. Each session row has one owner per runtime that creates it when the session starts: the outbound Operator creates its session at start in `internal/services/ztdo.go`, and on the Gateway `OperatorSessionService.PersistOperatorSession` creates the audit session row before it writes the session document (embedded claim, bootstrap, registration, recovery, and platform enrollment all call it). CLISession and WebSession rows record no audit events. |
 | INV-STOR-SCHEMA-01 | Each store's `CREATE TABLE` is its whole schema. MUST NOT add `ALTER TABLE` migrations, column back-fills, or legacy-shape readers. |
@@ -104,7 +104,7 @@ ztd separates platform coordination state from host-local execution evidence. Th
 
 Each runtime root holds one canonical SQLite database and one file ledger (INV-STOR-ONE-01); the Gateway's public spectator mirror is the separate exception listed under [Persistence Topology](#persistence-topology). Replay nonces, suspended transactions, and execution events are tables in `ztd.db`, not separate database files. An outbound Operator records execution events (encrypted command output) in its own `ztd.db` and keeps a required file ledger. Native and campaign evaluation artifacts persist under host-local `.ztd/data/eval/` on the evaluation CLI host, encrypted with the runtime vault; model inventories and rollout queues use project-root `.ztd/eval/` paths. A remote Operator remains authoritative for its local execution evidence; its publication of signed receipts to the Gateway is best-effort mirroring. The Gateway's embedded Operator keeps its own execution events in `ztd.db`, file ledger, and history handler in the Gateway runtime root, opened by the same `storage.OpenLocalExecutionEvidence` owner as the outbound Operator.
 
-See [Encryption Architecture](./encryption.md) for vault and keystore protection, [Gateway Architecture](./gateway.md) for Gateway service assembly, [Operator Architecture](./operator.md) for host-local execution, and [Event and Action Protocol](./events.md) for the audit-chain and receipt-projection contract.
+See [Encryption Architecture](./encryption.md) for vault and keystore protection, [Gateway Architecture](./gateway.md) for Gateway service assembly, [Operator Architecture](./operator.md) for host-local execution, and [Event and Action Protocol](./events.md) for the audit-chain and event-receipt contract.
 
 ## Persistence Topology
 
@@ -112,7 +112,7 @@ Paths are relative to `.ztd/data/` within the runtime directory. The database fi
 
 | Store | Gateway | Outbound Operator | Purpose |
 | --- | --- | --- | --- |
-| Canonical database (`ztd.db`) | ✓ | ✓ | Platform documents, key-value and blob state, state roots, SSE events, the audit chain (`events`, `sessions`), receipts, `file_mutation_log`, the commitment ledger, and audit-chain checkpoints. Opened once by `CanonicalDBService`. |
+| Canonical database (`ztd.db`) | ✓ | ✓ | Platform documents, key-value and blob state, state roots, SSE events, the audit chain (`events`, `sessions`) including the current event receipt on `events`, `file_mutation_log`, the commitment ledger, and audit-chain checkpoints. Opened once by `CanonicalDBService`. |
 | Execution record (`events` in `ztd.db`) | — | ✓ | Full raw command output and stderr, encrypted at rest and looked up by `execution_id`. File diffs are not stored; they come from the file ledger. |
 | Replay nonces (`nonces` in `ztd.db`) | ✓ | ✓ | Durable nonce reservation for L4 verification, one implementation (`storage.ReplayStore`). |
 | Suspended transactions (`suspended_transactions` in `ztd.db`) | ✓ | ✓ | Transactions and approval proof material awaiting L3 approval. `envelope` and `tool_arguments` are encrypted. |
@@ -166,8 +166,7 @@ The SQL audit store shares `ztd.db` with canonical platform persistence. It reco
 
 Every content column of `ztd.db` is encrypted with the runtime vault on write and decrypted on read, and no content column has a plaintext branch. A locked or absent vault fails the write with `ErrAuditStoreVaultLocked`. The encrypted columns, per table, are:
 
-- `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr`.
-- `receipts`: `target_resource`, `result_summary`, `receipt_json`.
+- `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr`, `event_receipt_target_resource`, `event_receipt_result_summary`. The canonical protojson ActionReceipt for a `ztd.v1.operator.receipt.recorded` fact is `content_text`. There is no second copy.
 - `commitment_ledger`: `target_resource`, `attestation_json`.
 - `file_mutation_log`: `filepath`, `diff_stat`.
 - `sessions`: `title`, `user_identity`.
@@ -175,7 +174,7 @@ Every content column of `ztd.db` is encrypted with the runtime vault on write an
 
 Identifiers, hashes, signatures, enum types and statuses, timestamps, sizes, exit codes, and key IDs stay plaintext. The `encryption.md` Canonical Audit Store section carries the same list.
 
-Every content ciphertext binds its `table.column` and row identity as AEAD associated data (`storage.AuditContentAAD`), so a blob moved to another row or column fails authentication. The row identity is known before the insert and is never the autoincrement rowid: the chain `seq` for `events` (assigned under the write lock, where the append encrypts), the session id, the transaction id for `receipts`, the transaction hash for `suspended_transactions`, the commitment hash for `commitment_ledger`, and the event id plus the row's random `mutation_uid` for `file_mutation_log`.
+Every content ciphertext binds its `table.column` and row identity as AEAD associated data (`storage.AuditContentAAD`), so a blob moved to another row or column fails authentication. The row identity is known before the insert and is never the autoincrement rowid: the chain `seq` for every `events` content column, including the event-receipt target and summary (assigned under the write lock, where the append encrypts), the session id, the transaction hash for `suspended_transactions`, the commitment hash for `commitment_ledger`, and the event id plus the row's random `mutation_uid` for `file_mutation_log`.
 
 #### Hash-chained audit log
 
@@ -183,11 +182,11 @@ Every row in the `events` table is an append-only chain entry. Each entry record
 
 Pruning deletes chained rows only after appending a `ztd.v1.platform.audit.chain.checkpointed` anchor that records the pruned range and terminal hash. `ztd audit verify` and `GET /api/v1/audit/verify` walk the chain from the latest checkpoint (or genesis) and report the head sequence and hash.
 
-#### Receipt projection
+#### Event receipt
 
-The `receipts` table is a latest-stage query projection, not the audit record of record. L5 upserts one row per `transaction_id` as the receipt advances from `EXECUTING` to the signed final receipt that carries the signed persistence attestation. The `EXECUTING` write also appends the transaction's commitment in the same transaction when the commitment ledger is configured. Every stage write also appends a chained `ztd.v1.operator.receipt.recorded` fact whose `content_text` is the canonical protojson receipt for that stage.
+An event receipt is the current stage of one transaction, stored on its `ztd.v1.operator.receipt.recorded` chain event. `event_receipt_status IS NOT NULL` marks that one current row. Every stage still appends a chained fact whose `content_text` is the canonical protojson ActionReceipt for that stage. A later stage that moves the projection forward copies the sticky identity columns (transaction hash, operator, session, requestor, acting app, event type, action type, target, state root before, signer key) onto the new event and clears them on the previous current row, in the same write as the append. A later non-terminal stage stays on the chain with the event-receipt columns null, so it cannot replace a terminal receipt. The `EXECUTING` write also appends the transaction's commitment in the same transaction when the commitment ledger is configured. The signed payload, the chain event type string, and consensus vote events are unchanged. `CREATE TABLE` is the whole schema (INV-STOR-SCHEMA-01): a database created before these columns exist is not altered or back-filled.
 
-Receipt canonicalization and audit-content encryption happen before acquiring the writer gate or SQLite write transaction. Nonempty session IDs are checked for surrounding whitespace before any write. The receipt upsert, audit-chain append, and optional commitment append still commit atomically; receipt and event foreign keys enforce session existence without a repeated session lookup; commitment construction uses the head read inside that transaction. Receipt and commitment success logs run only after commit and after the writer gate is released, so log sinks do not extend the chain's critical section.
+Receipt canonicalization and audit-content encryption happen before acquiring the writer gate or SQLite write transaction. Nonempty session IDs are checked for surrounding whitespace before any write. The chain append, the clear of the previous current event receipt, and the optional commitment append still commit atomically. The event foreign key enforces session existence. Commitment construction uses the head read inside that transaction. Event-receipt and commitment success logs run only after commit and after the writer gate is released, so log sinks do not extend the chain's critical section.
 
 Compliance operational export carries both the retained receipt body and the matching chained receipt facts. The exported chain segment runs from the first to the last chained receipt fact in the window and includes every chained event between them whatever its type, so the segment is sequence-contiguous; only receipt facts carry `content_sha256`. The evidence importer verifies the exported chain segment, cross-links matching receipt projections to their chain entries, and cross-links commitments to receipts through deterministic stage evidence.
 
@@ -287,7 +286,7 @@ Initial receipt and commitment are execution gates. Final receipt persistence oc
 - Platform documents, approval proof fields, and SSE payloads are not vault-encrypted by the canonical store. Suspended `envelope` and `tool_arguments` are. Commitment `target_resource` and `attestation_json` are encrypted (see the `commitment_ledger` entry above).
 - Ledger snapshots are always encrypted, and their names and commit messages carry no host path (keyed names). Mirroring and path lookups fail closed while the vault is locked.
 - A remote Operator's local receipt is authoritative. Gateway receipt mirroring improves centralized visibility but is not a durability guarantee for remote evidence.
-- Retention removes audit receipts while commitments remain permanent, so long-term commitment verification can outlive the locally retained receipt cross-link.
+- Retention removes chained events, and the current event receipt leaves with its chain row, while commitments remain permanent, so long-term commitment verification can outlive the locally retained event-receipt cross-link.
 
 ## Links out
 
@@ -296,7 +295,7 @@ Initial receipt and commitment are execution gates. Final receipt persistence oc
 - [Gateway Architecture](./gateway.md): Gateway service assembly and canonical database ownership.
 - [Operator Architecture](./operator.md): Host execution and local-first evidence.
 - [Network Architecture](./network.md): mTLS, transport identity, and PKI.
-- [Event and Action Protocol](./events.md): Audit chain and receipt projection.
+- [Event and Action Protocol](./events.md): Audit chain and event receipts.
 - [SSE Streaming](./sse.md): Session routing and event replay.
 - [Evaluation Programs](./evals.md): Native and campaign evaluation evidence layout.
 - [Model Provenance](./model-provenance.md): Attestation window persistence and preflight.

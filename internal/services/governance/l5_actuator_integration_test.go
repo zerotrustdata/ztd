@@ -107,8 +107,8 @@ func TestL5ActuatorExecutePersistsReceiptAndCommitment(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, receipt)
 
-	// Verify RecordActionReceipt was called by querying the audit store
-	persistedReceipt, err := auditStore.GetActionReceipt(envelope.Id)
+	// Verify RecordEventReceipt was called by querying the audit store
+	persistedReceipt, err := auditStore.GetEventReceipt(envelope.Id)
 	require.NoError(t, err)
 	require.NotNil(t, persistedReceipt, "Receipt should be persisted in audit store")
 
@@ -155,17 +155,17 @@ func TestL5ActuatorExecutePersistsReceiptAndCommitment(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ed25519.Verify(actuator.AuditorSigningKey.Public().(ed25519.PublicKey), canonicalSigningBytes, commitmentSignature))
 
-	listedReceipts, err := auditStore.ListActionReceipts(models.AuditScope{OperatorSessionID: envelope.OperatorSessionId}, 10, 0)
+	listedReceipts, err := auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: envelope.OperatorSessionId}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, listedReceipts, 1)
 	require.True(t, proto.Equal(receipt, listedReceipts[0].ActionReceipt),
-		"ListActionReceipts must return the same canonical ActionReceipt persisted by L5")
+		"ListEventReceipts must return the same canonical ActionReceipt persisted by L5")
 
-	exportedReceipts, err := auditStore.ListActionReceiptsSince(startedAt, 10)
+	exportedReceipts, err := auditStore.ListEventReceiptsSince(startedAt, 10)
 	require.NoError(t, err)
 	require.Len(t, exportedReceipts, 1)
 	require.True(t, proto.Equal(receipt, exportedReceipts[0].ActionReceipt),
-		"ListActionReceiptsSince must return the same canonical ActionReceipt persisted by L5")
+		"ListEventReceiptsSince must return the same canonical ActionReceipt persisted by L5")
 }
 
 // divergentMirrorPublisher models a Gateway receipt mirror that diverges from
@@ -177,7 +177,7 @@ type divergentMirrorPublisher struct {
 
 	calls                int
 	publishedCopy        *operatorv1.ActionReceipt
-	localAtPublish       *models.ActionReceiptRecord
+	localAtPublish       *models.EventReceiptRecord
 	localLookupErr       error
 	commitmentsAtPublish []*storage.CommitmentRow
 	commitmentLookupErr  error
@@ -186,7 +186,7 @@ type divergentMirrorPublisher struct {
 func (p *divergentMirrorPublisher) PublishActionReceipt(_ context.Context, _ *govtypes.GovernanceEnvelope, receipt *operatorv1.ActionReceipt) error {
 	p.calls++
 	p.publishedCopy = proto.Clone(receipt).(*operatorv1.ActionReceipt)
-	p.localAtPublish, p.localLookupErr = p.auditStore.GetActionReceipt(receipt.TransactionId)
+	p.localAtPublish, p.localLookupErr = p.auditStore.GetEventReceipt(receipt.TransactionId)
 	p.commitmentsAtPublish, p.commitmentLookupErr = p.auditStore.CommitmentLedger().ListCommitments()
 
 	receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
@@ -233,7 +233,7 @@ func TestL5ActuatorDivergentGatewayMirrorLeavesLocalRecordsIntact(t *testing.T) 
 		"publisher must be handed the receipt already persisted locally")
 
 	// The mirror's tampering must not reach the local record.
-	persisted, err := auditStore.GetActionReceipt(envelope.Id)
+	persisted, err := auditStore.GetEventReceipt(envelope.Id)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.Status)
@@ -244,11 +244,11 @@ func TestL5ActuatorDivergentGatewayMirrorLeavesLocalRecordsIntact(t *testing.T) 
 		"local receipt must be unchanged by the mirror")
 	require.NoError(t, VerifyReceiptPersistenceAttestation(persisted.ActionReceipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
 
-	listedReceipts, err := auditStore.ListActionReceipts(models.AuditScope{OperatorSessionID: envelope.OperatorSessionId}, 10, 0)
+	listedReceipts, err := auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: envelope.OperatorSessionId}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, listedReceipts, 1)
 	require.True(t, proto.Equal(publisher.publishedCopy, listedReceipts[0].ActionReceipt),
-		"ListActionReceipts must still return the locally persisted receipt")
+		"ListEventReceipts must still return the locally persisted receipt")
 	require.Equal(t, 2, receiptFactCount(t, auditStore, envelope.OperatorSessionId),
 		"mirror divergence must not append receipt audit facts")
 
@@ -334,7 +334,7 @@ func TestL5ActuatorRecordsEachStageOnce(t *testing.T) {
 	require.Equal(t, 2, receiptFactCount(t, auditStore, envelope.OperatorSessionId),
 		"one receipt fact per stage")
 
-	persisted, err := auditStore.GetActionReceipt(envelope.Id)
+	persisted, err := auditStore.GetEventReceipt(envelope.Id)
 	require.NoError(t, err)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.Status)
 	require.NotNil(t, persisted.ActionReceipt.FinalPersistenceAttestation)

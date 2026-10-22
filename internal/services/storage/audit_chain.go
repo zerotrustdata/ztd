@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/services/vault"
 	"github.com/zerotrustdata/ztd/internal/timesvc"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 const (
@@ -138,6 +139,28 @@ func loadAuditChainHeadConn(ctx context.Context, conn *sql.Conn) (auditChainHead
 	return auditChainHead{Seq: 0, PrevHash: checkpointHash}, nil
 }
 
+// EventReceiptColumns is the current event receipt stored on one chain event.
+// Nil on PreparedAuditEventInsert leaves those columns null. Status zero is a
+// real value; absence is a nil pointer, not ExecutionStatus_UNSPECIFIED.
+type EventReceiptColumns struct {
+	TransactionHash   string
+	InvestigationID   string
+	OperatorID        string
+	OperatorSessionID string
+	RequestorUserID   string
+	ActingAppID       string
+	EventType         string
+	ActionType        string
+	TargetResource    string
+	Status            operatorv1.ExecutionStatus
+	ResultSummary     string
+	StateRootBefore   string
+	StateRootAfter    string
+	ExecutedAtMs      int64
+	SignerKeyID       string
+	Signature         string
+}
+
 // PreparedAuditEventInsert holds an event ready for chained append. Stdout and Stderr are
 // the gzip-compressed command output; AppendPreparedAuditEvent encrypts every content
 // column under the vault once the chain sequence that identifies the row is assigned.
@@ -147,6 +170,7 @@ type PreparedAuditEventInsert struct {
 	Vault        *vault.Vault
 	Stdout       []byte
 	Stderr       []byte
+	EventReceipt *EventReceiptColumns
 }
 
 // AppendPreparedAuditEvent appends one event to the audit chain under SQLite's write lock.
@@ -196,30 +220,45 @@ func AppendPreparedAuditEvent(ctx context.Context, conn *sql.Conn, prepared Prep
 		sessionID = sql.NullString{String: prepared.Event.OperatorSessionID, Valid: true}
 	}
 
+	receiptArgs, err := eventReceiptInsertArgs(prepared.Vault, rowID, prepared.EventReceipt)
+	if err != nil {
+		return 0, 0, "", err
+	}
+
 	result, err := conn.ExecContext(ctx, `
 		INSERT INTO events (
 			operator_session_id, timestamp, type, content_text,
 			command_raw, command_exit_code, command_stdout, command_stderr,
 			execution_duration_ms, stored_locally, execution_id,
-			seq, prev_hash, content_digest, hash, transaction_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			seq, prev_hash, content_digest, hash, transaction_id,
+			event_receipt_transaction_hash, event_receipt_investigation_id,
+			event_receipt_operator_id, event_receipt_operator_session_id,
+			event_receipt_requestor_user_id, event_receipt_acting_app_id,
+			event_receipt_event_type, event_receipt_action_type,
+			event_receipt_target_resource, event_receipt_status,
+			event_receipt_result_summary, event_receipt_state_root_before,
+			event_receipt_state_root_after, event_receipt_executed_at_ms,
+			event_receipt_signer_key_id, event_receipt_signature
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		sessionID,
-		prepared.TimestampStr,
-		prepared.Event.Type,
-		contentTextBytes,
-		commandRawBytes,
-		prepared.Event.CommandExitCode,
-		stdoutBytes,
-		stderrBytes,
-		prepared.Event.ExecutionDurationMs,
-		true,
-		sql.NullString{String: prepared.Event.ExecutionID, Valid: prepared.Event.ExecutionID != ""},
-		nextSeq,
-		head.PrevHash,
-		contentDigest,
-		hash,
-		prepared.Event.TransactionID,
+		append([]any{
+			sessionID,
+			prepared.TimestampStr,
+			prepared.Event.Type,
+			contentTextBytes,
+			commandRawBytes,
+			prepared.Event.CommandExitCode,
+			stdoutBytes,
+			stderrBytes,
+			prepared.Event.ExecutionDurationMs,
+			true,
+			sql.NullString{String: prepared.Event.ExecutionID, Valid: prepared.Event.ExecutionID != ""},
+			nextSeq,
+			head.PrevHash,
+			contentDigest,
+			hash,
+			prepared.Event.TransactionID,
+		}, receiptArgs...)...,
 	)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordEventFailed, err)

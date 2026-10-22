@@ -298,10 +298,10 @@ func TestGetActionReceipt_Success(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	receipt, body, err := testClient.GetActionReceipt(ctx, transactionID)
+	receipt, body, err := testClient.GetEventReceipt(ctx, transactionID)
 
 	if err != nil {
-		t.Fatalf("GetActionReceipt failed: %v", err)
+		t.Fatalf("GetEventReceipt failed: %v", err)
 	}
 
 	if receipt == nil {
@@ -403,10 +403,10 @@ func TestGetActionReceipt_NotFound(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	receipt, _, err := testClient.GetActionReceipt(ctx, "nonexistent-tx")
+	receipt, _, err := testClient.GetEventReceipt(ctx, "nonexistent-tx")
 
 	if err != nil {
-		t.Fatalf("GetActionReceipt should not return error for 404: %v", err)
+		t.Fatalf("GetEventReceipt should not return error for 404: %v", err)
 	}
 
 	if receipt != nil {
@@ -485,7 +485,7 @@ func TestGetActionReceipt_ServerError(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	receipt, body, err := testClient.GetActionReceipt(ctx, "test-tx")
+	receipt, body, err := testClient.GetEventReceipt(ctx, "test-tx")
 
 	if err == nil {
 		t.Fatal("Expected error for server error")
@@ -571,7 +571,7 @@ func TestGetActionReceipt_InvalidJSON(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	receipt, body, err := testClient.GetActionReceipt(ctx, "test-tx")
+	receipt, body, err := testClient.GetEventReceipt(ctx, "test-tx")
 
 	if err == nil {
 		t.Fatal("Expected error for invalid JSON")

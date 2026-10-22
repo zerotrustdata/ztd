@@ -91,7 +91,7 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 						wantL2 = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
 					}
 					assert.Equal(t, wantL2, receipt.GetL2Status())
-					local, err := storage.ReadLocalActionReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.DataHost.Keyring}, receipt.GetTransactionId())
+					local, err := storage.ReadLocalEventReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.DataHost.Keyring}, receipt.GetTransactionId())
 					require.NoError(t, err)
 					require.NotNil(t, local)
 					assert.True(t, proto.Equal(receipt, local.ActionReceipt))

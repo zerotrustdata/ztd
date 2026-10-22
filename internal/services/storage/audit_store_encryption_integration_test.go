@@ -68,18 +68,18 @@ func TestContentColumnsAreEncryptedAtRest(t *testing.T) {
 	rawDiff := rawColumn(t, ass, `SELECT diff_stat FROM file_mutation_log WHERE event_id = ?`, eventID)
 	require.NotContains(t, string(rawDiff), marker, "file_mutation_log.diff_stat")
 
-	record := sampleActionReceiptRecord(t, "enc-session")
+	record := sampleEventReceiptRecord(t, "enc-session")
 	record.TargetResource = "/target/" + marker
 	record.ResultSummary = "summary " + marker
 	record.ActionReceipt = &operatorv1.ActionReceipt{TransactionId: record.TransactionID, TransactionHash: record.TransactionHash}
-	require.NoError(t, ass.RecordActionReceipt(record))
-	rawTarget := rawColumn(t, ass, `SELECT target_resource FROM receipts WHERE transaction_id = ?`, record.TransactionID)
-	require.NotContains(t, string(rawTarget), marker, "receipts.target_resource")
-	rawSummary := rawColumn(t, ass, `SELECT result_summary FROM receipts WHERE transaction_id = ?`, record.TransactionID)
-	require.NotContains(t, string(rawSummary), marker, "receipts.result_summary")
-	// receipt_json carries the transaction ID; its ciphertext must not.
-	rawReceipt := rawColumn(t, ass, `SELECT receipt_json FROM receipts WHERE transaction_id = ?`, record.TransactionID)
-	require.NotContains(t, string(rawReceipt), record.TransactionID, "receipts.receipt_json")
+	require.NoError(t, ass.RecordEventReceipt(record))
+	rawTarget := rawColumn(t, ass, `SELECT event_receipt_target_resource FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, record.TransactionID)
+	require.NotContains(t, string(rawTarget), marker, "events.event_receipt_target_resource")
+	rawSummary := rawColumn(t, ass, `SELECT event_receipt_result_summary FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, record.TransactionID)
+	require.NotContains(t, string(rawSummary), marker, "events.event_receipt_result_summary")
+	// content_text carries the canonical event receipt, including the transaction ID; its ciphertext must not.
+	rawReceipt := rawColumn(t, ass, `SELECT content_text FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, record.TransactionID)
+	require.NotContains(t, string(rawReceipt), record.TransactionID, "events.content_text")
 
 	err = ass.CommitmentLedger().AppendCommitment(func(prior string) (*operatorv1.CommitmentAttestation, error) {
 		return &operatorv1.CommitmentAttestation{
@@ -109,7 +109,7 @@ func TestContentColumnsAreEncryptedAtRest(t *testing.T) {
 	require.NotNil(t, commandEvent)
 	require.Equal(t, "echo "+marker, commandEvent.CommandRaw)
 	require.Equal(t, "stdout "+marker, commandEvent.CommandStdout)
-	got, err := ass.GetActionReceipt(record.TransactionID)
+	got, err := ass.GetEventReceipt(record.TransactionID)
 	require.NoError(t, err)
 	require.Equal(t, "/target/"+marker, got.TargetResource)
 	require.Equal(t, "summary "+marker, got.ResultSummary)
@@ -140,10 +140,10 @@ func TestLockedVaultFailsContentWrites(t *testing.T) {
 	})
 	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "file_mutation_log: %v", err)
 
-	record := sampleActionReceiptRecord(t, "locked-session")
+	record := sampleEventReceiptRecord(t, "locked-session")
 	record.TargetResource = "/locked/target"
 	record.ResultSummary = "locked summary"
-	err = ass.RecordActionReceipt(record)
+	err = ass.RecordEventReceipt(record)
 	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "receipts: %v", err)
 
 	_, err = ass.RecordEvent(&Event{

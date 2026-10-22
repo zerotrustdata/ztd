@@ -125,7 +125,7 @@ func TestRecordTypeForFile(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"receipts.csv", "receipts"},
+		{"event_receipts.csv", "event_receipts"},
 		{"events.csv", "events"},
 		{"verification_summary.csv", "verification_summary"},
 		{"/some/path/commitments.csv", "commitments"},

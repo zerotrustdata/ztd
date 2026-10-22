@@ -39,10 +39,10 @@ func TestCompliance_AuditReceiptsRecorded(t *testing.T) {
 	receipts, err := e2eClient.GetAuditReceipts(ctx)
 	require.NoError(t, err, "audit receipts endpoint must succeed on an approved stack")
 	require.True(t, receipts.Success, "audit receipts response must report success")
-	require.NotEmpty(t, receipts.Receipts,
-		"gateway must have at least one audit receipt from platform enrollment operations")
+	require.NotEmpty(t, receipts.EventReceipts,
+		"gateway must have at least one event receipt from platform enrollment operations")
 
-	r := receipts.Receipts[0]
+	r := receipts.EventReceipts[0]
 	assert.NotEmpty(t, r.TransactionID, "audit receipt must carry a transaction ID")
 	assert.NotEmpty(t, r.ActionType, "audit receipt must carry an action type")
 	assert.NotEmpty(t, r.Signature, "audit receipt must carry the governance signature")
@@ -69,14 +69,14 @@ func TestCompliance_AuditSummaryConsistent(t *testing.T) {
 	summary, err := e2eClient.GetAuditSummary(ctx)
 	require.NoError(t, err, "audit summary endpoint must succeed on an approved stack")
 	require.True(t, summary.Success, "audit summary response must report success")
-	assert.GreaterOrEqual(t, summary.ReceiptsTotal, 0,
+	assert.GreaterOrEqual(t, summary.EventReceiptsTotal, 0,
 		"receipts total must be non-negative")
 	assert.GreaterOrEqual(t, summary.EventsTotal, 0,
 		"events total must be non-negative")
 	assert.GreaterOrEqual(t, summary.TotalRecords, 0,
 		"total records must be non-negative")
 	t.Logf("audit summary: events=%d receipts=%d total=%d",
-		summary.EventsTotal, summary.ReceiptsTotal, summary.TotalRecords)
+		summary.EventsTotal, summary.EventReceiptsTotal, summary.TotalRecords)
 }
 
 // TestCompliance_AuditEventsRecorded verifies the audit events endpoint

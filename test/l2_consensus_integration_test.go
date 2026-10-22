@@ -266,9 +266,9 @@ func TestL2Consensus_L1ToL5Walkthrough(t *testing.T) {
 
 	// Verify the audit store recorded the governed execution.
 	receipts := getAuditReceipts(t, apiClient, f.Service.GetHTTPSPort(), identity.OperatorSessionID)
-	require.NotEmpty(t, receipts.Receipts, "governed tools/call must leave at least one audit receipt")
-	require.True(t, hasCompletedReceipt(receipts.Receipts),
-		"audit receipts must include a COMPLETED execution, got %d receipt(s)", len(receipts.Receipts))
+	require.NotEmpty(t, receipts.EventReceipts, "governed tools/call must leave at least one event receipt")
+	require.True(t, hasCompletedReceipt(receipts.EventReceipts),
+		"event receipts must include a COMPLETED execution, got %d receipt(s)", len(receipts.EventReceipts))
 
 	// Also verify the health endpoint reports a valid state root (L5 state integrity)
 	mtlsURL := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
@@ -287,7 +287,7 @@ func TestL2Consensus_L1ToL5Walkthrough(t *testing.T) {
 }
 
 // hasCompletedReceipt reports whether any receipt carries EXECUTION_STATUS_COMPLETED.
-func hasCompletedReceipt(receipts []*models.ActionReceiptRecord) bool {
+func hasCompletedReceipt(receipts []*models.EventReceiptRecord) bool {
 	for _, r := range receipts {
 		if r != nil && r.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 			return true

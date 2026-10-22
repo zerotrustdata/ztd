@@ -844,7 +844,7 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 		assert.Equal(t, string(constants.ActionTypeFileEdit), stage.ActionType)
 	}
 
-	persisted, err := infra.AuditStore.GetActionReceipt(result.TransactionID)
+	persisted, err := infra.AuditStore.GetEventReceipt(result.TransactionID)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.NotNil(t, persisted.ActionReceipt)
@@ -1167,7 +1167,7 @@ func TestInferenceDispatch_RealBrokerAndOutboundOperator_VerifiesReceiptAuditAnd
 	assert.Equal(t, "primary-boundary", request.Model)
 	assert.Equal(t, "boundary prompt", boundaryInferenceText(t, request.Messages))
 
-	receipt, err := infra.AuditStore.GetActionReceipt(result.TransactionID)
+	receipt, err := infra.AuditStore.GetEventReceipt(result.TransactionID)
 	require.NoError(t, err)
 	require.NotNil(t, receipt)
 	assert.Equal(t, constants.ActionTypeInference, receipt.ActionType)
@@ -1435,7 +1435,7 @@ func TestInferenceDispatch_CallerCancellationRemovesHandlerWhileRemoteExecutionC
 
 	close(release)
 	require.Eventually(t, func() bool {
-		receipt, err := infra.AuditStore.GetActionReceipt(transactionID)
+		receipt, err := infra.AuditStore.GetEventReceipt(transactionID)
 		return err == nil && receipt != nil && receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	}, time.Second, 10*time.Millisecond)
 	assert.Zero(t, resultHandlerCount(infra.Pubsub, &operatorv1.OperatorDocument{Id: operatorID, OperatorSessionId: sessionID}))

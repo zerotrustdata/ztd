@@ -810,7 +810,7 @@ func verifyAuditVaultPersistence(t *testing.T, transactionID, _ string) {
 
 	// Query audit vault for the transaction
 	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM receipts WHERE transaction_id = ?", transactionID).Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL", transactionID).Scan(&count)
 	require.NoError(t, err)
 	require.Equal(t, 1, count, "transaction should be recorded in audit vault")
 }

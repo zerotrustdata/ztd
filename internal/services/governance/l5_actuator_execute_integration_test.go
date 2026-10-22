@@ -143,8 +143,8 @@ func TestL5ActuatorExecuteHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, ed25519.Verify(pubKey, tamperedCanonical, sigBytes))
 
-	// The receipts table holds exactly one row per transaction, finalized as COMPLETED
-	persisted, err := auditStore.GetActionReceipt(envelope.Id)
+	// The current event receipt is exactly one row per transaction, finalized as COMPLETED
+	persisted, err := auditStore.GetEventReceipt(envelope.Id)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.Status)
@@ -198,7 +198,7 @@ func TestL5ActuatorExecuteHandlerError(t *testing.T) {
 	require.True(t, valid, "Receipt signature should verify even when handler fails")
 
 	// Verify the persisted receipt carries the FAILED status
-	persisted, err := auditStore.GetActionReceipt(receipt.TransactionId)
+	persisted, err := auditStore.GetEventReceipt(receipt.TransactionId)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, persisted.Status)
@@ -227,7 +227,7 @@ func TestL5ActuatorExecuteFinalPersistenceAttestationWriteFailure(t *testing.T) 
 	assert.ErrorIs(t, err, constants.ErrL5ActuatorAuditStore)
 	require.NotNil(t, receipt)
 	assert.Nil(t, receipt.FinalPersistenceAttestation, "an unpersisted final receipt must not carry a persistence attestation")
-	persisted, getErr := auditStore.GetActionReceipt(vt.Envelope.Id)
+	persisted, getErr := auditStore.GetEventReceipt(vt.Envelope.Id)
 	require.NoError(t, getErr)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING, persisted.Status, "only the initial receipt is persisted")
 }
@@ -274,8 +274,9 @@ func TestL5ActuatorExecuteCallsReceiptPublisherOnSuccess(t *testing.T) {
 // when signAndLogFinalReceipt fails (the receipt is not finalized).
 func TestL5ActuatorExecuteDoesNotCallReceiptPublisherWhenFinalReceiptFails(t *testing.T) {
 	actuator, _, db := newPersistingActuator(t)
-	// The final receipt write is an update of the initial row; refuse it so
-	// signAndLogFinalReceipt fails before the ReceiptPublisher is reached.
+	// A later stage clears the previous current event receipt in the same
+	// transaction as the new chain event. Refuse that update so the final
+	// write rolls back before the ReceiptPublisher is reached.
 	failReceiptWrites(t, db, "UPDATE")
 
 	publisher := &mockReceiptPublisher{}
@@ -473,7 +474,7 @@ func TestL5ActuatorExecuteFailsClosedWhenRehydrationFails(t *testing.T) {
 	require.NotNil(t, receipt.FinalPersistenceAttestation)
 	assert.NoError(t, VerifyReceiptPersistenceAttestation(receipt, publicKey))
 
-	persisted, err := auditStore.GetActionReceipt(receipt.TransactionId)
+	persisted, err := auditStore.GetEventReceipt(receipt.TransactionId)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, persisted.Status)
@@ -665,11 +666,19 @@ func TestL5Actuator_CapabilityDissolvedOnHandlerError(t *testing.T) {
 	assert.True(t, capturedCap.IsDissolved(), "capability must be dissolved even when handler fails")
 }
 
-// failingReceiptWriteDB installs a trigger that aborts the given receipts write,
-// so the real audit store reports a write failure at that stage.
+// failReceiptWrites installs a trigger that aborts the event-receipt write at
+// the named stage. INSERT refuses a new current event receipt. UPDATE refuses
+// clearing the previous current row, which is how a later stage replaces it.
 func failReceiptWrites(t *testing.T, db *sqliteutil.DB, op string) {
 	t.Helper()
-	_, err := db.ExecWithRetry(context.Background(), "CREATE TRIGGER fail_receipt_"+strings.ToLower(op)+" BEFORE "+op+" ON receipts BEGIN SELECT RAISE(ABORT, 'receipt write refused'); END")
+	when := "OLD.event_receipt_status IS NOT NULL"
+	if strings.EqualFold(op, "INSERT") {
+		when = "NEW.event_receipt_status IS NOT NULL"
+	}
+	_, err := db.ExecWithRetry(context.Background(), fmt.Sprintf(
+		"CREATE TRIGGER fail_receipt_%s BEFORE %s ON events WHEN %s BEGIN SELECT RAISE(ABORT, 'event receipt write refused'); END",
+		strings.ToLower(op), op, when,
+	))
 	require.NoError(t, err)
 }
 
@@ -735,7 +744,7 @@ func TestL5ActuatorRejectionReceiptFilesUnderRuntimeSession(t *testing.T) {
 	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH, receipt.RejectionCode, "a wrapped sentinel still classifies")
 	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed)
 
-	persisted, err := auditStore.GetActionReceipt(vt.Envelope.Id)
+	persisted, err := auditStore.GetEventReceipt(vt.Envelope.Id)
 	require.NoError(t, err)
 	require.NotNil(t, persisted, "the rejection evidence must be persisted")
 	assert.Equal(t, "test-operator-session", persisted.OperatorSessionID, "the audit row belongs to the runtime's own session")
@@ -795,7 +804,7 @@ func TestL5ActuatorRejectionReceiptRequiresRuntimeIdentity(t *testing.T) {
 
 			require.ErrorIs(t, err, constants.ErrL5ActuatorRuntimeIdentityMissing)
 			assert.Nil(t, receipt)
-			persisted, getErr := auditStore.GetActionReceipt(vt.Envelope.Id)
+			persisted, getErr := auditStore.GetEventReceipt(vt.Envelope.Id)
 			require.NoError(t, getErr)
 			assert.Nil(t, persisted)
 		})
@@ -844,7 +853,7 @@ func TestL5ActuatorExecuteUnboundEnvelopeFilesUnderRuntimeSession(t *testing.T) 
 		require.NoError(t, err)
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
 
-		persisted, err := auditStore.GetActionReceipt(vt.Envelope.Id)
+		persisted, err := auditStore.GetEventReceipt(vt.Envelope.Id)
 		require.NoError(t, err)
 		require.NotNil(t, persisted)
 		assert.Equal(t, "test-operator-session", persisted.OperatorSessionID)

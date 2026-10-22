@@ -113,7 +113,7 @@ func TestDispatchRealStack(t *testing.T) {
 
 			dataFiles, err := fs.NewRuntimeFileService(stack.DataHost.WorkingDir, testutil.NewTestLogger())
 			require.NoError(t, err)
-			local, err := storage.ReadLocalActionReceipt(dataFiles, slog.Default(), keystore.Options{Keyring: stack.DataHost.Keyring}, result.GetTransactionId())
+			local, err := storage.ReadLocalEventReceipt(dataFiles, slog.Default(), keystore.Options{Keyring: stack.DataHost.Keyring}, result.GetTransactionId())
 			require.NoError(t, err)
 			require.NotNil(t, local)
 			require.True(t, proto.Equal(result.GetReceipt(), local.ActionReceipt), "returned receipt must equal Data Operator's authoritative local record")

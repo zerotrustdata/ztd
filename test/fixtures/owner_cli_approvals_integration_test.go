@@ -87,7 +87,7 @@ func TestEvalStackOwnerCLIApprovals(t *testing.T) {
 				require.Equal(t, stack.Gateway.ActuatorKeyID, receipt.GetSignerKeyId())
 				require.NoError(t, receiptgov.VerifyActionReceipt(receipt, publicKey), "receipt must verify with the Gateway actuator key")
 
-				persisted, err := stack.Gateway.Service.GetAuditStore().GetActionReceipt(receipt.GetTransactionId())
+				persisted, err := stack.Gateway.Service.GetAuditStore().GetEventReceipt(receipt.GetTransactionId())
 				require.NoError(t, err)
 				require.NotNil(t, persisted, "approval receipt must be present in the Gateway's authoritative audit store")
 				require.NotNil(t, persisted.ActionReceipt)

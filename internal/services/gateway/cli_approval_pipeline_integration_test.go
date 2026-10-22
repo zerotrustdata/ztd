@@ -112,7 +112,7 @@ func TestCLIApproval_RatifyResumesSuspendedEnvelopeAndCommitsMutation(t *testing
 	require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, receipt.GetL3Status())
 	require.EqualValues(t, 1, mutationCount.Load(), "approval must resume and execute the governed mutation exactly once")
 
-	persisted, err := f.Service.GetAuditStore().GetActionReceipt(txHash)
+	persisted, err := f.Service.GetAuditStore().GetEventReceipt(txHash)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, persisted.ActionReceipt.GetL3Status())

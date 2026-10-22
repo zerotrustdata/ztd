@@ -49,7 +49,7 @@ func TestNewZtdoService_NilL2Trust(t *testing.T) {
 func TestAuditStoreTransactionStore_DocSet_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	receipt := models.ActionReceiptRecord{
+	receipt := models.EventReceiptRecord{
 		TransactionID:     "tx-roundtrip",
 		TransactionHash:   "hash-roundtrip",
 		OperatorID:        "op-1",
@@ -67,7 +67,7 @@ func TestAuditStoreTransactionStore_DocSet_RoundTrip(t *testing.T) {
 	data, err := json.Marshal(&receipt)
 	require.NoError(t, err)
 
-	var unmarshaled models.ActionReceiptRecord
+	var unmarshaled models.EventReceiptRecord
 	err = json.Unmarshal(data, &unmarshaled)
 	require.NoError(t, err)
 

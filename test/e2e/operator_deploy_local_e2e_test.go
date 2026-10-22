@@ -322,7 +322,7 @@ func deploymentDecisionCount(t *testing.T) int {
 	t.Helper()
 	db := deploymentAuditDB(t, e2eCfg.fileSvc)
 	var count int
-	require.NoError(t, db.QueryRow("SELECT count(*) FROM receipts WHERE action_type = ?", string(constants.ActionTypePlatformEnrollmentDecide)).Scan(&count))
+	require.NoError(t, db.QueryRow("SELECT count(*) FROM events WHERE event_receipt_action_type = ? AND event_receipt_status IS NOT NULL", string(constants.ActionTypePlatformEnrollmentDecide)).Scan(&count))
 	return count
 }
 
@@ -371,7 +371,7 @@ func verifyDeploymentFanOut(t *testing.T, bin, root string, sessions []string) {
 		require.NoError(t, err)
 		// The Operator's local receipt is authoritative; its content columns are
 		// sealed with the Operator's vault key, so read through the audit store.
-		record, err := storage.ReadLocalActionReceipt(fileSvc, testutil.NewTestLogger(), keystore.Options{}, result.TransactionID)
+		record, err := storage.ReadLocalEventReceipt(fileSvc, testutil.NewTestLogger(), keystore.Options{}, result.TransactionID)
 		require.NoError(t, err)
 		require.NotNil(t, record, "the Operator must hold its own local receipt")
 		receipt := record.ActionReceipt
@@ -385,7 +385,7 @@ func verifyDeploymentFanOut(t *testing.T, bin, root string, sessions []string) {
 		require.NoError(t, governance.VerifyActionReceiptSignature(receipt, key))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		require.Eventually(t, func() bool {
-			projected, err := e2eClient.GetActionReceipt(ctx, result.TransactionID)
+			projected, err := e2eClient.GetEventReceipt(ctx, result.TransactionID)
 			return err == nil && proto.Equal(projected, receipt)
 		}, 10*time.Second, 50*time.Millisecond, "Gateway must project the same signed local receipt")
 		cancel()

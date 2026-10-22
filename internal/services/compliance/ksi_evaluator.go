@@ -29,7 +29,7 @@ import (
 // AuditEvidenceReader provides read-only access to audit store evidence
 // for KSI evaluation. SQLAuditStore satisfies this interface.
 type AuditEvidenceReader interface {
-	ListActionReceipts(scope models.AuditScope, limit, offset int) ([]*models.ActionReceiptRecord, error)
+	ListEventReceipts(scope models.AuditScope, limit, offset int) ([]*models.EventReceiptRecord, error)
 	ListEvents(sessionID string, limit, offset int) ([]*storage.Event, error)
 	ListFileMutations(limit, offset int) ([]*storage.FileMutationLog, error)
 }
@@ -410,7 +410,7 @@ func DefaultMethods(deps EvaluatorDeps) map[string][]KSIMethod {
 		if deps.Audit == nil {
 			return false, nil, nil
 		}
-		receipts, err := deps.Audit.ListActionReceipts(models.AuditScope{OperatorSessionID: ""}, 1, 0)
+		receipts, err := deps.Audit.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 1, 0)
 		if err != nil {
 			return false, nil, err
 		}
@@ -424,7 +424,7 @@ func DefaultMethods(deps EvaluatorDeps) map[string][]KSIMethod {
 		if deps.Audit == nil {
 			return false, nil, nil
 		}
-		receipts, err := deps.Audit.ListActionReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
+		receipts, err := deps.Audit.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
 		if err != nil {
 			return false, nil, err
 		}
@@ -647,7 +647,7 @@ func newIndependentStateObservedMethod(reader AuditEvidenceReader) KSIMethod {
 		if reader == nil {
 			return false, nil, nil
 		}
-		receipts, err := reader.ListActionReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
+		receipts, err := reader.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
 		if err != nil {
 			return false, nil, err
 		}
@@ -668,7 +668,7 @@ func newIndependentStateObservedMethod(reader AuditEvidenceReader) KSIMethod {
 	})
 }
 
-func receiptDeclaresStateTransition(record *models.ActionReceiptRecord) bool {
+func receiptDeclaresStateTransition(record *models.EventReceiptRecord) bool {
 	return record != nil && record.TransactionID != "" && record.StateRootBefore != "" && record.StateRootAfter != "" &&
 		record.StateRootBefore != record.StateRootAfter && record.ActionReceipt != nil &&
 		record.ActionReceipt.GetTransactionId() == record.TransactionID && record.ActionReceipt.GetStateRootBefore() == record.StateRootBefore &&

@@ -4,7 +4,7 @@ title: Encryption Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.2.0
-last_updated: 2026-10-20
+last_updated: 2026-10-22
 owners:
   - internal/services/vault/
   - internal/services/keystore/
@@ -159,8 +159,7 @@ Vault encryption protects high-sensitivity fields across platform services:
 
 - **Execution record** (`events`, `internal/services/storage/audit_store.go`): `command_stdout` and `command_stderr` hold the full raw output, gzip-compressed and then encrypted with the vault. `command_raw` and `content_text` are encrypted. Structured metadata (exit code, duration, `execution_id`, `operator_session_id`, hashes) stays plaintext for indexing. File diffs are not stored; they are computed from encrypted ledger snapshots.
 - **Canonical Audit Store** (`internal/services/storage/audit_store.go`, `commitment_ledger.go`): Encrypted content columns of `ztd.db`. Every write encrypts through the runtime vault and fails with `ErrAuditStoreVaultLocked` when the vault is locked or absent. There is no plaintext branch and no "encrypted" flag column. Reads decrypt on the owning runtime; a locked vault fails the read. Each ciphertext is bound to its column and row identity as AES-GCM associated data (`Vault.EncryptWithAAD`), and keyed digests use `Vault.HMACSHA256`, which derives a purpose-bound subkey from the DEK with HKDF-SHA256 so the DEK itself is never a MAC key.
-  - `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr` (BLOB).
-  - `receipts`: `target_resource`, `result_summary`, `receipt_json` (BLOB). The receipt signature is verified over the decrypted canonical form.
+  - `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr`, `event_receipt_target_resource`, `event_receipt_result_summary` (BLOB). The canonical protojson ActionReceipt is `content_text` on the `ztd.v1.operator.receipt.recorded` event. The signature stays plaintext and is verified over the stable canonical signing payload, not over these columns.
   - `commitment_ledger`: `target_resource`, `attestation_json` (BLOB). Commitment hash and signature checks run over decrypted values.
   - `file_mutation_log`: `filepath`, `diff_stat` (BLOB).
   - `sessions`: `title`, `user_identity` (BLOB).

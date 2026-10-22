@@ -23,12 +23,12 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func (c *Client) GetActionReceipt(ctx context.Context, transactionID string, persona ...Persona) (*operatorv1.ActionReceipt, []byte, error) {
+func (c *Client) GetEventReceipt(ctx context.Context, transactionID string, persona ...Persona) (*operatorv1.ActionReceipt, []byte, error) {
 	p := c.auditorPersona()
 	if len(persona) > 0 {
 		p = persona[0]
 	}
-	u := c.cfg.MTLSBaseURL + constants.APIPaths.AuditReceipts + "?tx_id=" + url.QueryEscape(transactionID)
+	u := c.cfg.MTLSBaseURL + constants.APIPaths.AuditEventReceipts + "?tx_id=" + url.QueryEscape(transactionID)
 	status, body, err := c.do(ctx, p, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, body, err

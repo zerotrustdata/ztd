@@ -313,7 +313,7 @@ func TestRouteAuthRegistry_ObservePrefixDoesNotLeakToOtherRoutes(t *testing.T) {
 	// or their explicit classification; the observe prefix must not widen auth.
 	outsidePaths := []string{
 		"/api/v1/data/settings",
-		"/api/v1/audit/receipts",
+		"/api/v1/audit/event-receipts",
 		constants.APIPaths.GovernanceEnvelopes,
 	}
 	for _, path := range outsidePaths {
@@ -398,8 +398,8 @@ func TestRouteAuthRegistry_GenericRoutesRemainMTLS(t *testing.T) {
 		constants.APIPaths.DataItems,
 		constants.APIPaths.DataBlobs + "some-blob",
 		// Audit write/export routes (browser read routes are RouteAuthWebSession)
-		constants.APIPaths.AuditReceipts,
-		constants.APIPaths.AuditReceiptsExport,
+		constants.APIPaths.AuditEventReceipts,
+		constants.APIPaths.AuditEventReceiptsExport,
 		constants.APIPaths.AuditReport,
 		constants.APIPaths.AuditStream,
 		// PubSub routes

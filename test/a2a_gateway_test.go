@@ -121,8 +121,8 @@ func TestA2AGateway_SkillCallEndToEnd(t *testing.T) {
 
 		// The call must have traversed the governance pipeline and been recorded.
 		receiptsAfter := getAuditReceipts(t, mtlsClient, fixture.Service.GetHTTPSPort(), identity.OperatorSessionID)
-		require.Greater(t, len(receiptsAfter.Receipts), len(receiptsBefore.Receipts),
-			"a2a/call must record an audit receipt for its governed execution")
+		require.Greater(t, len(receiptsAfter.EventReceipts), len(receiptsBefore.EventReceipts),
+			"a2a/call must record an event receipt for its governed execution")
 
 		// A suspended call must not have reached the downstream server yet.
 		require.Empty(t, snapshotSkills(), "suspended a2a/call must not dispatch downstream before approval")
@@ -141,7 +141,7 @@ func TestA2AGateway_SkillCallEndToEnd(t *testing.T) {
 		// Verify returns after execution, so the downstream call has happened.
 		require.Equal(t, []string{"test-skill"}, snapshotSkills(),
 			"downstream must be called exactly once with skill_name test-skill")
-		require.True(t, hasCompletedReceipt(getAuditReceipts(t, mtlsClient, fixture.Service.GetHTTPSPort(), identity.OperatorSessionID).Receipts),
+		require.True(t, hasCompletedReceipt(getAuditReceipts(t, mtlsClient, fixture.Service.GetHTTPSPort(), identity.OperatorSessionID).EventReceipts),
 			"approved a2a/call must record a COMPLETED audit receipt")
 	})
 }

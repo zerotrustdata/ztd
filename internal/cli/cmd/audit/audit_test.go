@@ -43,7 +43,7 @@ func TestAuditCmd(t *testing.T) {
 			subcommandNames[sub.Use] = true
 		}
 
-		assert.True(t, subcommandNames["receipts"], "missing receipts subcommand")
+		assert.True(t, subcommandNames["event-receipts"], "missing event-receipts subcommand")
 		assert.True(t, subcommandNames["export"], "missing export subcommand")
 		assert.True(t, subcommandNames["report"], "missing report subcommand")
 		assert.True(t, subcommandNames["events"], "missing events subcommand")
@@ -53,13 +53,13 @@ func TestAuditCmd(t *testing.T) {
 
 func TestAuditReceiptsCmd(t *testing.T) {
 	t.Run("receipts command has correct use and description", func(t *testing.T) {
-		cmd := auditReceiptsCmd()
-		assert.Equal(t, "receipts", cmd.Use)
-		assert.Contains(t, cmd.Short, "List signed receipts")
+		cmd := auditEventReceiptsCmd()
+		assert.Equal(t, "event-receipts", cmd.Use)
+		assert.Contains(t, cmd.Short, "List signed event receipts")
 	})
 
 	t.Run("receipts has session and tx-id flags", func(t *testing.T) {
-		cmd := auditReceiptsCmd()
+		cmd := auditEventReceiptsCmd()
 		sessionFlag := cmd.Flags().Lookup("session")
 		txIDFlag := cmd.Flags().Lookup("tx-id")
 
@@ -72,7 +72,7 @@ func TestAuditExportCmd(t *testing.T) {
 	t.Run("export command has correct use and description", func(t *testing.T) {
 		cmd := auditExportCmd()
 		assert.Equal(t, "export", cmd.Use)
-		assert.Contains(t, cmd.Short, "Export the full receipts bundle")
+		assert.Contains(t, cmd.Short, "Export the full event receipts bundle")
 	})
 
 	t.Run("export has session and out flags", func(t *testing.T) {
@@ -155,7 +155,7 @@ func TestAuditSummaryCmd(t *testing.T) {
 func TestAuditCommandFlags(t *testing.T) {
 	t.Run("all audit commands have consistent session flag naming", func(t *testing.T) {
 		commands := []*cobra.Command{
-			auditReceiptsCmd(),
+			auditEventReceiptsCmd(),
 			auditExportCmd(),
 			auditReportCmd(),
 			auditEventsCmd(),
@@ -177,7 +177,7 @@ func TestAuditReceiptsResponseParsing(t *testing.T) {
 	t.Run("parses valid receipts response", func(t *testing.T) {
 		jsonResp := `{
 			"success": true,
-			"receipts": [
+			"event_receipts": [
 				{
 					"transaction_id": "tx-123",
 					"transaction_hash": "abc123def456",
@@ -198,26 +198,26 @@ func TestAuditReceiptsResponseParsing(t *testing.T) {
 			]
 		}`
 
-		var resp models.AuditReceiptsResponse
+		var resp models.AuditEventReceiptsResponse
 		err := json.Unmarshal([]byte(jsonResp), &resp)
 		require.NoError(t, err)
 		assert.True(t, resp.Success)
-		assert.Len(t, resp.Receipts, 1)
-		assert.Equal(t, "tx-123", resp.Receipts[0].TransactionID)
-		assert.Equal(t, constants.ActionTypeFsRead, resp.Receipts[0].ActionType)
+		assert.Len(t, resp.EventReceipts, 1)
+		assert.Equal(t, "tx-123", resp.EventReceipts[0].TransactionID)
+		assert.Equal(t, constants.ActionTypeFsRead, resp.EventReceipts[0].ActionType)
 	})
 
 	t.Run("handles empty receipts array", func(t *testing.T) {
 		jsonResp := `{
 			"success": true,
-			"receipts": []
+			"event_receipts": []
 		}`
 
-		var resp models.AuditReceiptsResponse
+		var resp models.AuditEventReceiptsResponse
 		err := json.Unmarshal([]byte(jsonResp), &resp)
 		require.NoError(t, err)
 		assert.True(t, resp.Success)
-		assert.Empty(t, resp.Receipts)
+		assert.Empty(t, resp.EventReceipts)
 	})
 }
 
@@ -280,11 +280,11 @@ func TestAuditSummaryResponseParsing(t *testing.T) {
 				"FILE_READ": 5
 			},
 			"events_total": 15,
-			"receipts_summary": {
+			"event_receipts_summary": {
 				"READ": 8,
 				"WRITE": 2
 			},
-			"receipts_total": 10,
+			"event_receipts_total": 10,
 			"total_records": 25
 		}`
 
@@ -293,10 +293,10 @@ func TestAuditSummaryResponseParsing(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.Success)
 		assert.Equal(t, 15, resp.EventsTotal)
-		assert.Equal(t, 10, resp.ReceiptsTotal)
+		assert.Equal(t, 10, resp.EventReceiptsTotal)
 		assert.Equal(t, 25, resp.TotalRecords)
 		assert.Equal(t, 10, resp.EventsSummary["COMMAND_EXECUTION"])
-		assert.Equal(t, 8, resp.ReceiptsSummary["READ"])
+		assert.Equal(t, 8, resp.EventReceiptsSummary["READ"])
 	})
 
 	t.Run("handles empty summary", func(t *testing.T) {
@@ -304,8 +304,8 @@ func TestAuditSummaryResponseParsing(t *testing.T) {
 			"success": true,
 			"events_summary": {},
 			"events_total": 0,
-			"receipts_summary": {},
-			"receipts_total": 0,
+			"event_receipts_summary": {},
+			"event_receipts_total": 0,
 			"total_records": 0
 		}`
 
@@ -326,8 +326,8 @@ func TestAuditReportResponseParsing(t *testing.T) {
 				"operator_session_id": "sess-1",
 				"events": [],
 				"events_count": 0,
-				"receipts": [],
-				"receipts_count": 0,
+				"event_receipts": [],
+				"event_receipts_count": 0,
 				"total_records": 0
 			}
 		}`
@@ -351,7 +351,7 @@ func TestAuditReceiptsCmd_ConfigLoadFailure(t *testing.T) {
 		}
 		defer func() { shared.ConfigLoad = originalLoad }()
 
-		cmd := auditReceiptsCmdWithConfig(shared.LoadConfig, authcmd.DefaultAPIClientFactory, shared.NewFileSvc)
+		cmd := auditEventReceiptsCmdWithConfig(shared.LoadConfig, authcmd.DefaultAPIClientFactory, shared.NewFileSvc)
 
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -367,7 +367,7 @@ func TestAuditReceiptsCmd_APIClientFailure(t *testing.T) {
 	t.Run("receipts fails when API client creation fails", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
-		cmd := auditReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
+		cmd := auditEventReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
 			return cfg, nil
 		}, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
 
@@ -389,7 +389,7 @@ func TestAuditReceiptsCmd_CredentialsLoadFailure(t *testing.T) {
 
 		require.NoError(t, fileSvc.WriteFile(context.Background(), cmdtest.MustRel(t, fileSvc, cfg.CredentialsFile()), []byte("invalid json {{{"), constants.PermFilePrivate))
 
-		cmd := auditReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
+		cmd := auditEventReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
 			return cfg, nil
 		}, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
 
@@ -407,7 +407,7 @@ func TestAuditReceiptsCmd_NoCredentials(t *testing.T) {
 	t.Run("receipts fails when no credentials exist", func(t *testing.T) {
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
-		cmd := auditReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
+		cmd := auditEventReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
 			return cfg, nil
 		}, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
 
@@ -490,7 +490,7 @@ func TestAuditReceiptsCmd_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
-			cmd := auditReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
+			cmd := auditEventReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
 				return cfg, nil
 			}, authcmd.DefaultAPIClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
 
