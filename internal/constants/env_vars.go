@@ -23,7 +23,6 @@ var EnvVar = struct {
 	E2EFleetRounds        EnvVarKey
 	E2EFleetReport        EnvVarKey
 	E2EFleetRestartReport EnvVarKey
-	NativeToolsURL        EnvVarKey
 	E2EGatewayHTTPPort    EnvVarKey
 	E2EGatewayHTTPSPort   EnvVarKey
 	Shell                 EnvVarKey
@@ -51,7 +50,6 @@ var EnvVar = struct {
 	E2EFleetRounds:        EnvVarKey("ZTD_E2E_FLEET_ROUNDS"),
 	E2EFleetReport:        EnvVarKey("ZTD_E2E_FLEET_REPORT"),
 	E2EFleetRestartReport: EnvVarKey("ZTD_E2E_FLEET_RESTART_REPORT"),
-	NativeToolsURL:        EnvVarKey("ZTD_TEST_NATIVE_TOOLS_OPERATOR_URL"),
 	E2EGatewayHTTPPort:    EnvVarKey("ZTD_E2E_GATEWAY_HTTP_PORT"),
 	E2EGatewayHTTPSPort:   EnvVarKey("ZTD_E2E_GATEWAY_HTTPS_PORT"),
 	Shell:                 EnvVarKey("SHELL"),

@@ -729,7 +729,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Detect contradicting statements in synthetic evidence.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "answer",
-    "userPrompt": "Do the synthetic records below contradict each other about service health? Reply yes or no and name the contradiction.",
+    "userPrompt": "Do the synthetic records below contradict each other about service health? Reply with yes or no as the first word, then name the contradiction by quoting the two conflicting health values exactly as they appear in the records.",
     "inlineContext": [
       {
         "kind": "log",

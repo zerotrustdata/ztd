@@ -3463,8 +3463,9 @@ definitions:
         - $ref: '#/definitions/operatorv1.InferenceDispatchRequest'
         description: |-
           member_inference is the template for every member call. The Gateway sets
-          messages and provider_attempt_id per call; the template must leave
-          messages, tools, provider_attempt_id, acting_app_id and stream empty.
+          messages, provider_attempt_id and the role's response_format schema per
+          call; the template must leave messages, tools, provider_attempt_id,
+          acting_app_id, stream and response_format empty.
       os:
         type: string
       provider_attempt_prefix:

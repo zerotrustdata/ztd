@@ -7068,7 +7068,7 @@
                     "type": "string"
                 },
                 "member_inference": {
-                    "description": "member_inference is the template for every member call. The Gateway sets\nmessages and provider_attempt_id per call; the template must leave\nmessages, tools, provider_attempt_id, acting_app_id and stream empty.",
+                    "description": "member_inference is the template for every member call. The Gateway sets\nmessages, provider_attempt_id and the role's response_format schema per\ncall; the template must leave messages, tools, provider_attempt_id,\nacting_app_id, stream and response_format empty.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/operatorv1.InferenceDispatchRequest"

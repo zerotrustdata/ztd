@@ -38,8 +38,6 @@ The platform enforces a four-tier test architecture:
 - **Tier 3 (Live Platform E2E)**: End-to-end tests exercising deployed service boundaries, including steady-state platform verification, multi-Operator scale, and stateful enrollment topologies.
 - **Tier 4 (External-Service Integration)**: Tests calling live external LLM providers or remote cloud services. These require dedicated opt-in targets and credentials and do not run in default CI. The repository has no general `ztd test` Tier 4 command. The dedicated live-provider gate is `ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>`; other Tier 4 tests use the owning package's documented target.
 
-The live native-tools integration tests in `internal/services/mcp/native_tools_integration_test.go` skip by default; set `ZTD_TEST_NATIVE_TOOLS_OPERATOR_URL` to explicitly select an Operator.
-
 ## Quick index
 
 - [Purpose](#purpose)
