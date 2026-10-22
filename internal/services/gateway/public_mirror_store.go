@@ -874,6 +874,27 @@ func (s *PublicMirrorStore) proofArtifact(ctx context.Context, artifactID string
 	return artifact, true, nil
 }
 
+// proofCatalogEntry returns one source's active catalog entry for an artifact.
+// A withdrawn or unknown artifact is not found.
+func (s *PublicMirrorStore) proofCatalogEntry(ctx context.Context, sourceID, artifactID string) (models.PublicProofCatalogEntry, bool, error) {
+	var entryJSON string
+	err := s.db.QueryRowWithRetry(ctx, `SELECT entry_json FROM proof_manifest_entries e
+		WHERE e.source_id = ? AND e.artifact_id = ?
+		  AND NOT EXISTS (SELECT 1 FROM proof_withdrawn_artifacts w WHERE w.source_id = e.source_id AND w.artifact_id = e.artifact_id)
+		ORDER BY e.segment_index, e.ordinal LIMIT 1`, sourceID, artifactID).Scan(&entryJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.PublicProofCatalogEntry{}, false, nil
+	}
+	if err != nil {
+		return models.PublicProofCatalogEntry{}, false, fmt.Errorf("public mirror store: read proof catalog entry: %w", err)
+	}
+	var entry models.PublicProofCatalogEntry
+	if err := decodePublicMirrorJSON(entryJSON, &entry); err != nil {
+		return models.PublicProofCatalogEntry{}, false, publicMirrorCorrupt("decode proof entry %s: %v", artifactID, err)
+	}
+	return entry, true, nil
+}
+
 // proofArtifactSizes returns the stored size of every listed artifact the
 // store already holds.
 func (s *PublicMirrorStore) proofArtifactSizes(ctx context.Context, artifactIDs []string) (map[string]int64, error) {

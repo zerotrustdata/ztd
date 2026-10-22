@@ -1589,7 +1589,9 @@ func (m *PublicMirrorServer) resolveProofManifestSource(ctx context.Context, req
 }
 
 // handleProofCatalog handles GET /proof-catalog — the full public proof
-// catalog, derived from the stored signed manifest.
+// catalog, derived from the stored signed manifest. The optional artifact
+// parameter narrows it to that one active entry, so a reader can resolve a
+// single evidence binding without fetching the whole catalog.
 func (m *PublicMirrorServer) handleProofCatalog(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1600,12 +1602,29 @@ func (m *PublicMirrorServer) handleProofCatalog(w http.ResponseWriter, r *http.R
 		Entries:       []models.PublicProofCatalogEntry{},
 		GeneratedAt:   time.Now().UTC(),
 	}
+	artifactID := r.URL.Query().Get("artifact")
+	if r.URL.Query().Has("artifact") && !validPublicProofArtifactID(artifactID) {
+		http.Error(w, "artifact must be a lowercase sha256 hex digest", http.StatusBadRequest)
+		return
+	}
 	sourceID, ok, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
 	if err != nil {
 		m.writeStoreUnavailable(w, "mirror: resolve proof catalog source", err)
 		return
 	}
 	if !ok {
+		m.writeJSON(w, http.StatusOK, emptyCatalog)
+		return
+	}
+	if artifactID != "" {
+		entry, found, err := m.store.proofCatalogEntry(r.Context(), sourceID, artifactID)
+		if err != nil {
+			m.writeStoreUnavailable(w, "mirror: read proof catalog entry", err)
+			return
+		}
+		if found {
+			emptyCatalog.Entries = append(emptyCatalog.Entries, entry)
+		}
 		m.writeJSON(w, http.StatusOK, emptyCatalog)
 		return
 	}

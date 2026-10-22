@@ -24,7 +24,10 @@ export function AppFooter() {
             <a href={`${origin}/history?cursor=0&limit=500`} {...external}>History <code>JSON</code></a>
             <a href={`${origin}/bootstrap`} {...external}>Bootstrap <code>JSON</code></a>
             {proofsPublished ? (
-              <a href={`${origin}/proof-manifest`} {...external}>Proof manifest <code>JSON</code></a>
+              <>
+                <a href={`${origin}/proof-manifest`} {...external}>Proof manifest <code>JSON</code></a>
+                <a href={`${origin}/proof-catalog`} {...external}>Proof catalog <code>JSON</code></a>
+              </>
             ) : null}
             <a href={`${origin}/stream`} {...external}>Live updates <code>SSE</code></a>
           </>

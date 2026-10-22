@@ -3,7 +3,7 @@
 
 import type { PublicEvidenceBinding } from '../contract/types';
 import { useMirrorOrigin } from '../state/mirror';
-import { useStoreState } from '../state/store';
+import { useProofArtifact } from '../state/proof';
 import { formatNumber } from './shared';
 
 function bindingForKind(bindings: PublicEvidenceBinding[] | undefined, kind: PublicEvidenceBinding['kind']) {
@@ -20,9 +20,7 @@ function formatBytes(value: number): string {
 export function AssignmentAuditProofRow({ bindings }: { bindings: PublicEvidenceBinding[] | undefined }) {
   const origin = useMirrorOrigin();
   const sliceBinding = bindingForKind(bindings, 'assignment_audit_slice');
-  const sliceArtifact = useStoreState((state) =>
-    sliceBinding ? state.proofArtifacts.get(sliceBinding.sha256) : undefined,
-  );
+  const sliceArtifact = useProofArtifact(sliceBinding);
 
   if (!sliceBinding || !sliceArtifact) return null;
 

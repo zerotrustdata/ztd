@@ -18,6 +18,8 @@ export interface PublicClient {
   snapshotAt(sourceID: string, sequence: number, signal?: AbortSignal): Promise<PublicSnapshot>;
   history(sourceID?: string, cursor?: number, limit?: number, signal?: AbortSignal): Promise<PublicHistory>;
   proofCatalog(sourceID?: string, signal?: AbortSignal): Promise<PublicProofCatalog>;
+  /** The catalog narrowed to one active artifact: zero or one entries. */
+  proofCatalogEntry(sourceID: string | undefined, artifactID: string, signal?: AbortSignal): Promise<PublicProofCatalog>;
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -131,5 +133,6 @@ export function createPublicClient(config: PublicRuntimeConfig, fetchImpl: typeo
     snapshotAt: (sourceID, sequence, signal) => read(fetchPublic, 'snapshot', query({ source: sourceID, sequence }), snapshot, signal),
     history: (sourceID, cursor, limit, signal) => read(fetchPublic, 'history', query({ source: sourceID, cursor, limit }), history, signal),
     proofCatalog: (sourceID, signal) => read(fetchPublic, 'proofCatalog', query({ source: sourceID }), proofCatalog, signal),
+    proofCatalogEntry: (sourceID, artifactID, signal) => read(fetchPublic, 'proofCatalog', query({ source: sourceID, artifact: artifactID }), proofCatalog, signal),
   };
 }

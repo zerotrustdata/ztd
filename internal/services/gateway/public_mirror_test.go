@@ -2113,6 +2113,31 @@ func TestMirror_ProofCatalog_ReturnsEntries(t *testing.T) {
 	assert.Equal(t, artifactID, catalog.Entries[0].ArtifactID)
 }
 
+// TestMirror_ProofCatalog_ArtifactFilterReturnsOneEntry verifies that the
+// artifact parameter narrows the catalog to that entry, returns an empty
+// catalog for an unknown digest, and rejects a malformed one.
+func TestMirror_ProofCatalog_ArtifactFilterReturnsOneEntry(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	first := env.makeProofIngestRequest("first.json", []byte(`{"proof":"first"}`))
+	require.NoError(t, env.mirror.storeProofPackage(context.Background(), first))
+	second := env.makeProofIngestRequest("second.json", []byte(`{"proof":"second"}`))
+	require.NoError(t, env.mirror.storeProofPackage(context.Background(), second))
+	artifactID := second.Artifacts[0].ArtifactID
+
+	var catalog models.PublicProofCatalog
+	require.Equal(t, http.StatusOK, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact="+artifactID, &catalog))
+	require.Len(t, catalog.Entries, 1)
+	assert.Equal(t, artifactID, catalog.Entries[0].ArtifactID)
+	assert.Equal(t, "second.json", catalog.Entries[0].Filename)
+
+	var unknown models.PublicProofCatalog
+	require.Equal(t, http.StatusOK, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact="+strings.Repeat("0", 64), &unknown))
+	assert.Empty(t, unknown.Entries)
+
+	assert.Equal(t, http.StatusBadRequest, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact=not-a-digest", nil))
+	assert.Equal(t, http.StatusBadRequest, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact=", nil))
+}
+
 // TestMirror_ProofCatalog_EmptyReturnsEmptyArray verifies that the proof
 // catalog endpoint returns an empty array when no proofs exist.
 func TestMirror_ProofCatalog_EmptyReturnsEmptyArray(t *testing.T) {

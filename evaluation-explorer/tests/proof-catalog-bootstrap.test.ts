@@ -7,7 +7,6 @@ import { startFeed, stopFeed } from '../src/state/startup';
 
 const mirrorOrigin = 'http://127.0.0.1:8082';
 const sourceId = 'proof-bootstrap-source';
-const sliceHash = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
 
 function requestPath(input: Parameters<typeof fetch>[0]): string {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as { url: string }).url;
@@ -33,7 +32,7 @@ describe('proof catalog bootstrap', () => {
     evalStore.loadFixtures([], []);
   });
 
-  it('indexes proof catalog entries during startup when artifacts are published', async () => {
+  it('never fetches the proof catalog during startup, even when artifacts are published', async () => {
     const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const path = requestPath(input);
       if (path === '/runtime.json') {
@@ -48,59 +47,6 @@ describe('proof catalog bootstrap', () => {
           proof_catalog_summary: { artifact_count: 1, total_byte_size: 512 },
           generated_at: '2026-09-20T00:00:00Z',
         }), { status: 200 });
-      }
-      if (path === '/proof-catalog') {
-        return new Response(JSON.stringify({
-          schema_version: '1.0.0',
-          generated_at: '2026-09-20T00:00:00Z',
-          entries: [{
-            artifact_id: sliceHash,
-            filename: 'assignment.db',
-            media_type: 'application/vnd.sqlite3',
-            byte_size: 512,
-            sha256: sliceHash,
-            classification: 'public_safe',
-            campaign_id: 'campaign-1',
-            generated_at: '2026-09-20T00:00:00Z',
-            verification_command: 'ztd public verify-assignment --db assignment.db --segments proof-segments.jsonl --public-key <trusted-ed25519-key-hex>',
-            immutable_url: `/proofs/${sliceHash}`,
-          }],
-        }), { status: 200 });
-      }
-      if (path === '/snapshot') {
-        return new Response(JSON.stringify(snapshot()), { status: 200 });
-      }
-      if (path === '/history') {
-        return new Response(JSON.stringify({ protocol_version: '1.0.0', items: [], has_more: false, limit: 500 }), { status: 200 });
-      }
-      return new Response('not found', { status: 404 });
-    });
-
-    await startFeed({ fetchImpl: fetchImpl as typeof fetch });
-
-    expect(fetchImpl.mock.calls.some(([url]) => requestPath(url) === '/proof-catalog')).toBe(true);
-    expect(evalStore.getState().proofArtifacts.get(sliceHash)?.filename).toBe('assignment.db');
-    expect(evalStore.getState().proofArtifactCount).toBe(1);
-  });
-
-  it('reconciles history without waiting for the proof catalog', async () => {
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
-      const path = requestPath(input);
-      if (path === '/runtime.json') {
-        return new Response(JSON.stringify({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }), { status: 200 });
-      }
-      if (path === '/bootstrap') {
-        return new Response(JSON.stringify({
-          protocol_version: '1.0.0',
-          snapshot: snapshot(),
-          source_freshness: 'active',
-          recent_projections: [],
-          proof_catalog_summary: { artifact_count: 1, total_byte_size: 512 },
-          generated_at: '2026-09-20T00:00:00Z',
-        }), { status: 200 });
-      }
-      if (path === '/proof-catalog') {
-        return new Promise<Response>(() => undefined);
       }
       if (path === '/snapshot') {
         return new Response(JSON.stringify(snapshot()), { status: 200 });
@@ -114,38 +60,8 @@ describe('proof catalog bootstrap', () => {
     await startFeed({ fetchImpl: fetchImpl as typeof fetch });
 
     expect(fetchImpl.mock.calls.some(([url]) => requestPath(url) === '/history')).toBe(true);
-    expect(evalStore.getState().proofArtifacts.size).toBe(0);
-    expect(evalStore.getState().proofArtifactCount).toBe(1);
-  });
-
-  it('skips proof catalog fetch when bootstrap reports zero artifacts', async () => {
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
-      const path = requestPath(input);
-      if (path === '/runtime.json') {
-        return new Response(JSON.stringify({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }), { status: 200 });
-      }
-      if (path === '/bootstrap') {
-        return new Response(JSON.stringify({
-          protocol_version: '1.0.0',
-          snapshot: snapshot(),
-          source_freshness: 'active',
-          recent_projections: [],
-          proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
-          generated_at: '2026-09-20T00:00:00Z',
-        }), { status: 200 });
-      }
-      if (path === '/snapshot') {
-        return new Response(JSON.stringify(snapshot()), { status: 200 });
-      }
-      if (path === '/history') {
-        return new Response(JSON.stringify({ protocol_version: '1.0.0', items: [], has_more: false, limit: 500 }), { status: 200 });
-      }
-      return new Response('not found', { status: 404 });
-    });
-
-    await startFeed({ fetchImpl: fetchImpl as typeof fetch });
-
     expect(fetchImpl.mock.calls.some(([url]) => requestPath(url) === '/proof-catalog')).toBe(false);
     expect(evalStore.getState().proofArtifacts.size).toBe(0);
+    expect(evalStore.getState().proofArtifactCount).toBe(1);
   });
 });

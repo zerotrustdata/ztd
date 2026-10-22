@@ -21,7 +21,7 @@ import {
 import type { PublicEvidenceBinding } from '../contract/types';
 import { ValidationError } from '../contract/validators';
 import { useMirrorOrigin } from '../state/mirror';
-import { useStoreState } from '../state/store';
+import { useProofArtifact } from '../state/proof';
 import { PanelSection } from './evidence';
 import { label, prettyJSON } from './RoleTranscripts';
 import { CopyButton, formatLatency, formatTokens } from './shared';
@@ -338,7 +338,7 @@ export function AgentTraceSection({ id, bindings, runId, assignmentId }: {
 }) {
   const origin = useMirrorOrigin();
   const binding = agentTraceBinding(bindings);
-  const artifact = useStoreState((state) => (binding ? state.proofArtifacts.get(binding.sha256) : undefined));
+  const artifact = useProofArtifact(binding);
   const url = origin && artifact ? `${origin}${artifact.immutable_url}` : undefined;
   const state = useVerifiedTrace(url, binding, runId, assignmentId);
 

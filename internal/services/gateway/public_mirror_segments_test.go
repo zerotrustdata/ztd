@@ -348,6 +348,9 @@ func TestMirror_SegmentIngest_WithdrawalPersistsAndDeniesDownload(t *testing.T) 
 	_, found, err = env.store.proofArtifact(ctx, entry.ArtifactID)
 	require.NoError(t, err)
 	require.False(t, found)
+	_, found, err = env.store.proofCatalogEntry(ctx, env.sourceID, entry.ArtifactID)
+	require.NoError(t, err)
+	require.False(t, found)
 	// A full manifest cannot replace or downgrade an established chain.
 	require.ErrorIs(t, mirror.storeProofPackage(ctx, env.makeProofIngestRequest("other.json", []byte("other"))), constants.ErrPublicFeedProofSegmentInvalid)
 }

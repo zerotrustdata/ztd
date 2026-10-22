@@ -147,7 +147,9 @@ export interface StoreState {
   errors: string[];
   lastAcceptedAt: string | undefined;
   proofArtifactCount: number;
-  proofArtifacts: Map<string, ProofCatalogEntry>;
+  /** Catalog entries resolved on demand by content address; null is a
+   *  resolved absence (unknown or withdrawn on the mirror). */
+  proofArtifacts: Map<string, ProofCatalogEntry | null>;
 }
 
 function snapshotPinnedFreshness(freshness: FeedSnapshot['freshness']): FreshnessState | undefined {
@@ -289,16 +291,11 @@ export class EvalStore {
     this.emitIfNotBatching();
   }
 
-  /** Index mirror proof-catalog entries by content address for download resolution. */
-  initProofCatalog(entries: ProofCatalogEntry[]): void {
-    const proofArtifacts = new Map<string, ProofCatalogEntry>();
-    for (const entry of entries) {
-      proofArtifacts.set(entry.sha256, entry);
-    }
+  /** Record one on-demand catalog lookup for a content address. */
+  acceptProofArtifact(sha256: string, entry: ProofCatalogEntry | null): void {
     this.setState((state) => ({
       ...state,
-      proofArtifacts,
-      proofArtifactCount: entries.length > 0 ? entries.length : state.proofArtifactCount,
+      proofArtifacts: new Map(state.proofArtifacts).set(sha256, entry),
     }));
   }
 
@@ -546,7 +543,10 @@ export class EvalStore {
 
   /** Load deterministic fixtures supplied by test code. */
   loadProofCatalog(entries: ProofCatalogEntry[]): void {
-    this.initProofCatalog(entries);
+    this.setState((state) => ({
+      ...state,
+      proofArtifacts: new Map(entries.map((entry) => [entry.sha256, entry])),
+    }));
   }
 
   loadFixtures(snapshotRecords: SnapshotRecord[], liveEvents: LiveEvent[]): void {
