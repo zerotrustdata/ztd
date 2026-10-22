@@ -66,13 +66,31 @@ func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {
 	}
 	assert.Equal(t, []string{"gemma3:4b", "llama3.2:3b", "qwen3:4b"}, blocks)
 
+	for _, tag := range blocks {
+		var scenarioIDs []string
+		for _, assignment := range assignments {
+			if assignment.GetHomogeneous().GetCandidateVariant().GetServedModelTag() != tag {
+				continue
+			}
+			id := assignment.GetScenarioId()
+			if len(scenarioIDs) == 0 || scenarioIDs[len(scenarioIDs)-1] != id {
+				scenarioIDs = append(scenarioIDs, id)
+			}
+		}
+		var expected []string
+		for _, blueprint := range scenarioBlueprints() {
+			expected = append(expected, blueprint.ScenarioID)
+		}
+		assert.Equal(t, expected, scenarioIDs, tag)
+	}
+
 	// The store lists assignments from files named by hash; re-sorting a
 	// reversed copy must reproduce the scheduled order exactly.
 	reversed := make([]*evalv1.EvaluationAssignment, len(assignments))
 	for i, assignment := range assignments {
 		reversed[len(assignments)-1-i] = assignment
 	}
-	sortAssignmentsDeterministic(reversed)
+	sortAssignmentsDeterministic(reversed, catalog)
 	assert.Equal(t, assignments, reversed)
 }
 
@@ -119,4 +137,39 @@ func TestBuildHomogeneousAssignmentMatrix_RejectsScenarioWithoutEligibleRoles(t 
 	})
 
 	require.ErrorIs(t, err, constants.ErrEvaluationScenarioRolesUnassigned)
+}
+
+func TestBuildHomogeneousAssignmentMatrix_PreservesFilteredCatalogOrderAfterReload(t *testing.T) {
+	catalog, _, err := BuildScenarioCatalog()
+	require.NoError(t, err)
+	// A custom suite's declared order is authoritative even when it differs
+	// from the built-in workflow and the filter is supplied in reverse order.
+	catalog.Scenarios = []*evalv1.EvaluationScenarioDefinition{catalog.Scenarios[5], catalog.Scenarios[0], catalog.Scenarios[26]}
+	catalog.CatalogDigest, err = ComputeScenarioCatalogDigest(catalog)
+	require.NoError(t, err)
+	assignments, err := BuildHomogeneousAssignmentMatrix(HomogeneousScheduleRequest{
+		CampaignID: "workflow-campaign", RunID: "workflow-run", Catalog: catalog,
+		Variants:    []*evalv1.ModelVariant{{VariantId: "model", ServedModelTag: "model:1", ModelDigest: repeatHex('a')}},
+		ScenarioIDs: []string{catalog.Scenarios[2].GetScenarioId(), catalog.Scenarios[0].GetScenarioId()},
+		QueuedAt:    time.Unix(1_700_000_000, 0).UTC(),
+	})
+	require.NoError(t, err)
+	var ids []string
+	for _, assignment := range assignments {
+		if len(ids) == 0 || ids[len(ids)-1] != assignment.GetScenarioId() {
+			ids = append(ids, assignment.GetScenarioId())
+		}
+	}
+	assert.Equal(t, []string{catalog.Scenarios[0].GetScenarioId(), "final-response-diagnosis"}, ids)
+	store := NewStore(newCampaignMemoryFileService())
+	require.NoError(t, store.SaveScenarioCatalog(t.Context(), "workflow-campaign", catalog))
+	for i := len(assignments) - 1; i >= 0; i-- {
+		require.NoError(t, store.SaveAssignment(t.Context(), assignments[i]))
+	}
+	loaded, err := store.ListAssignments(t.Context(), "workflow-run")
+	require.NoError(t, err)
+	require.Equal(t, len(assignments), len(loaded))
+	for i := range assignments {
+		assert.Equal(t, assignments[i].GetAssignmentId(), loaded[i].GetAssignmentId())
+	}
 }

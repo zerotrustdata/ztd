@@ -42,10 +42,19 @@ func TestCampaignExporter_ExportRunWritesDisclosureSafeBundle(t *testing.T) {
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
+	scenariosByID := make(map[string]*evalv1.EvaluationScenarioDefinition, len(catalog.Scenarios))
+	for _, scenario := range catalog.Scenarios {
+		scenariosByID[scenario.GetScenarioId()] = scenario
+	}
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
-		Scenarios:     catalog.GetScenarios()[:3],
+		// Keep this disclosure fixture's primary/lite population explicit.
+		Scenarios: []*evalv1.EvaluationScenarioDefinition{
+			scenariosByID["final-response-diagnosis"],
+			scenariosByID["instruction-bounded-count"],
+			scenariosByID["instruction-classify-severity"],
+		},
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)
 	require.NoError(t, err)
@@ -208,10 +217,19 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 	controller := NewCampaignController(store, &stubCampaignExecutor{}, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
+	scenariosByID := make(map[string]*evalv1.EvaluationScenarioDefinition, len(catalog.Scenarios))
+	for _, scenario := range catalog.Scenarios {
+		scenariosByID[scenario.GetScenarioId()] = scenario
+	}
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
-		Scenarios:     catalog.GetScenarios()[:3],
+		// Keep this disclosure fixture's primary/lite population explicit.
+		Scenarios: []*evalv1.EvaluationScenarioDefinition{
+			scenariosByID["final-response-diagnosis"],
+			scenariosByID["instruction-bounded-count"],
+			scenariosByID["instruction-classify-severity"],
+		},
 	}
 	truncatedDigest, err := ComputeScenarioCatalogDigest(truncated)
 	require.NoError(t, err)

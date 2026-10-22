@@ -28,7 +28,8 @@ const (
 // for one assignment run:
 //
 //  1. retrieval_hit_rate: the fraction of the scenario's gold evidence references
-//     that the agent retrieved through context tools or direct tool observations.
+//     the agent had: supplied in the scenario input, retrieved through context
+//     tools, or observed through direct tool calls.
 //  2. redundant_command_rate: commands or queries whose outcome was already
 //     present in retrieved history.
 //  3. steps_to_diagnosis: model turns and governed actions before the terminal response.
@@ -40,7 +41,7 @@ func ComputeInvestigationMetrics(assignmentID string, trace *AgentTrace, gold Sc
 		return nil
 	}
 
-	retrievalHitRate := computeRetrievalHitRate(trace, gold.GoldEvidenceReferences)
+	retrievalHitRate := computeRetrievalHitRate(trace, gold.GoldEvidenceReferences, input)
 	redundantCommandRate := computeRedundantCommandRate(trace)
 	stepsToDiagnosis := computeStepsToDiagnosis(trace)
 	diagnosisCorrectness := 0.0
@@ -93,64 +94,101 @@ func ComputeInvestigationMetrics(assignmentID string, trace *AgentTrace, gold Sc
 	}
 }
 
-func computeRetrievalHitRate(trace *AgentTrace, references []ScenarioGoldEvidenceReference) float64 {
+func computeRetrievalHitRate(trace *AgentTrace, references []ScenarioGoldEvidenceReference, input ScenarioInputFixture) float64 {
 	if len(references) == 0 {
 		return 1.0
 	}
+	supplied := suppliedEvidence(input)
 	hitCount := 0
 	for _, ref := range references {
-		matched := false
+		if referenceSupplied(ref, supplied) {
+			hitCount++
+			continue
+		}
 		for _, call := range trace.ToolCalls {
-			resLower := strings.ToLower(call.ResultJSON)
-			argsLower := strings.ToLower(call.ArgumentsJSON)
-			cmdLower := strings.ToLower(call.Command)
-
-			// 1. Check if retrieved via context retrieval
-			if call.Retrieval != nil {
-				if len(call.Retrieval.Receipts) > 0 {
-					refMatches := true
-					if ref.ActionType != "" && !strings.Contains(resLower, strings.ToLower(ref.ActionType)) && !strings.EqualFold(call.Retrieval.Query.ActionType, ref.ActionType) {
-						refMatches = false
-					}
-					if ref.TargetResource != "" && !strings.Contains(resLower, strings.ToLower(ref.TargetResource)) {
-						refMatches = false
-					}
-					if ref.CommandPattern != "" && !strings.Contains(resLower, strings.ToLower(ref.CommandPattern)) {
-						refMatches = false
-					}
-					if ref.ExpectedContent != "" && !strings.Contains(resLower, strings.ToLower(ref.ExpectedContent)) {
-						refMatches = false
-					}
-					if refMatches {
-						matched = true
-					}
-				}
-			}
-
-			// 2. Check if observed in direct tool call
-			if !matched {
-				if ref.TargetResource != "" && strings.Contains(argsLower, strings.ToLower(ref.TargetResource)) {
-					if ref.ExpectedContent == "" || strings.Contains(resLower, strings.ToLower(ref.ExpectedContent)) {
-						matched = true
-					}
-				} else if ref.CommandPattern != "" && (strings.Contains(cmdLower, strings.ToLower(ref.CommandPattern)) || strings.Contains(argsLower, strings.ToLower(ref.CommandPattern))) {
-					if ref.ExpectedContent == "" || strings.Contains(resLower, strings.ToLower(ref.ExpectedContent)) {
-						matched = true
-					}
-				} else if ref.ExpectedContent != "" && (strings.Contains(resLower, strings.ToLower(ref.ExpectedContent)) || strings.Contains(argsLower, strings.ToLower(ref.ExpectedContent))) {
-					matched = true
-				}
-			}
-
-			if matched {
+			if referenceObserved(ref, call) {
+				hitCount++
 				break
 			}
 		}
-		if matched {
-			hitCount++
-		}
 	}
 	return float64(hitCount) / float64(len(references))
+}
+
+// suppliedEvidence returns the folded evidence the scenario input hands the
+// agent before it acts: inline context, case memory, and seeded turns.
+func suppliedEvidence(input ScenarioInputFixture) []string {
+	var corpus []string
+	for _, inline := range input.InlineContext {
+		corpus = append(corpus, foldContentTerm(inline.Content))
+	}
+	if input.Seed.CaseMemory != nil {
+		corpus = append(corpus, foldContentTerm(input.Seed.CaseMemory.InvestigationSummary))
+	}
+	for _, turn := range input.Seed.Turns {
+		corpus = append(corpus, foldContentTerm(turn.Content))
+	}
+	return corpus
+}
+
+// referenceSupplied reports whether the scenario input already carries a
+// content-only reference, so the agent had it without retrieving it. A
+// reference naming an action, resource, or command needs an observation.
+func referenceSupplied(ref ScenarioGoldEvidenceReference, supplied []string) bool {
+	if ref.ExpectedContent == "" || ref.ActionType != "" || ref.TargetResource != "" || ref.CommandPattern != "" {
+		return false
+	}
+	content := foldContentTerm(ref.ExpectedContent)
+	for _, text := range supplied {
+		if strings.Contains(text, content) {
+			return true
+		}
+	}
+	return false
+}
+
+// referenceObserved reports whether call retrieved or observed ref: through
+// context retrieval receipts, or directly through the resource, tool, or
+// command the reference names.
+func referenceObserved(ref ScenarioGoldEvidenceReference, call AgentToolCall) bool {
+	resLower := strings.ToLower(call.ResultJSON)
+	argsLower := strings.ToLower(call.ArgumentsJSON)
+	cmdLower := strings.ToLower(call.Command)
+
+	if call.Retrieval != nil && len(call.Retrieval.Receipts) > 0 {
+		refMatches := true
+		if ref.ActionType != "" && !strings.Contains(resLower, strings.ToLower(ref.ActionType)) && !strings.EqualFold(call.Retrieval.Query.ActionType, ref.ActionType) {
+			refMatches = false
+		}
+		if ref.TargetResource != "" && !strings.Contains(resLower, strings.ToLower(ref.TargetResource)) {
+			refMatches = false
+		}
+		if ref.CommandPattern != "" && !strings.Contains(resLower, strings.ToLower(ref.CommandPattern)) {
+			refMatches = false
+		}
+		if ref.ExpectedContent != "" && !strings.Contains(resLower, strings.ToLower(ref.ExpectedContent)) {
+			refMatches = false
+		}
+		if refMatches {
+			return true
+		}
+	}
+
+	contentSeen := ref.ExpectedContent == "" || strings.Contains(resLower, strings.ToLower(ref.ExpectedContent))
+	switch {
+	case ref.TargetResource != "" && strings.Contains(argsLower, strings.ToLower(ref.TargetResource)):
+		return contentSeen
+	// A reference whose target is a tool is observed by a successful call to
+	// it, even when the query it answered came back empty.
+	case ref.TargetResource != "" && call.Success && call.ToolName == ref.TargetResource &&
+		(ref.ActionType == "" || strings.EqualFold(call.ActionType, ref.ActionType)):
+		return contentSeen
+	case ref.CommandPattern != "" && (strings.Contains(cmdLower, strings.ToLower(ref.CommandPattern)) || strings.Contains(argsLower, strings.ToLower(ref.CommandPattern))):
+		return contentSeen
+	case ref.ExpectedContent != "":
+		return strings.Contains(resLower, strings.ToLower(ref.ExpectedContent)) || strings.Contains(argsLower, strings.ToLower(ref.ExpectedContent))
+	}
+	return false
 }
 
 func computeRedundantCommandRate(trace *AgentTrace) float64 {
@@ -248,22 +286,13 @@ func computeEvidenceBackedConclusion(trace *AgentTrace, gold ScenarioGoldCriteri
 	}
 
 	// Collect all evidence sources available to the agent
-	var evidenceCorpus []string
-	for _, inline := range input.InlineContext {
-		evidenceCorpus = append(evidenceCorpus, foldContentTerm(inline.Content))
-	}
+	evidenceCorpus := suppliedEvidence(input)
 	for _, call := range trace.ToolCalls {
 		evidenceCorpus = append(evidenceCorpus, foldContentTerm(call.ResultJSON))
 		evidenceCorpus = append(evidenceCorpus, foldContentTerm(call.ArgumentsJSON))
 	}
 	for _, clarification := range trace.Clarifications {
 		evidenceCorpus = append(evidenceCorpus, foldContentTerm(clarification.UserResponse))
-	}
-	if input.Seed.CaseMemory != nil {
-		evidenceCorpus = append(evidenceCorpus, foldContentTerm(input.Seed.CaseMemory.InvestigationSummary))
-	}
-	for _, turn := range input.Seed.Turns {
-		evidenceCorpus = append(evidenceCorpus, foldContentTerm(turn.Content))
 	}
 
 	// If the scenario has content checks with required terms, ensure that

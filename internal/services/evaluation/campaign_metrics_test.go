@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -191,4 +192,49 @@ func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *test
 	// Because "unsupported-cause-dns-failure" was never in evidence, evidence backed conclusion is 0.0
 	require.Contains(t, scoreMap, MetricEvidenceBackedConclusion)
 	assert.Equal(t, 0.0, scoreMap[MetricEvidenceBackedConclusion].Value)
+}
+
+func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {
+	refs := []ScenarioGoldEvidenceReference{{
+		ReferenceID:    "ref-history-trail-query",
+		ActionType:     "MCP_CALL",
+		TargetResource: constants.MCPToolAuditReceiptList,
+	}}
+	call := AgentToolCall{
+		ToolName:   constants.MCPToolAuditReceiptList,
+		ActionType: "MCP_CALL",
+		Success:    true,
+		Retrieval:  &AgentContextRetrieval{},
+		ResultJSON: `{"receipts": []}`,
+	}
+
+	trace := &AgentTrace{ToolCalls: []AgentToolCall{call}}
+	assert.Equal(t, 1.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}))
+
+	call.Success = false
+	trace = &AgentTrace{ToolCalls: []AgentToolCall{call}}
+	assert.Equal(t, 0.0, computeRetrievalHitRate(trace, refs, ScenarioInputFixture{}))
+}
+
+func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
+	refs := []ScenarioGoldEvidenceReference{
+		{ReferenceID: "ref-missing-script", ExpectedContent: "deploy-healthcheck: not found"},
+		{ReferenceID: "ref-exit-code", ExpectedContent: "exit_code=127"},
+	}
+	input := ScenarioInputFixture{
+		InlineContext: []ScenarioInlineContent{
+			{Content: "step=verify sh: deploy-healthcheck: not found\nstep=verify exit_code=127"},
+		},
+	}
+	trace := &AgentTrace{}
+	assert.Equal(t, 1.0, computeRetrievalHitRate(trace, refs, input))
+
+	// A content-only reference the input never carried is still a miss.
+	refs = append(refs, ScenarioGoldEvidenceReference{ReferenceID: "ref-unseen", ExpectedContent: "disk quota exceeded"})
+	assert.InDelta(t, 2.0/3.0, computeRetrievalHitRate(trace, refs, input), 1e-9)
+
+	// A reference naming a resource needs an observation even when the input
+	// quotes its content.
+	resourceRef := []ScenarioGoldEvidenceReference{{ReferenceID: "ref-log", TargetResource: "logs/deploy.log", ExpectedContent: "exit_code=127"}}
+	assert.Equal(t, 0.0, computeRetrievalHitRate(trace, resourceRef, input))
 }

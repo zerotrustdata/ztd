@@ -241,8 +241,15 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 	rs.ollama = ollama
 
 	rs.audit = NewAuditService(c.Config, c.Logger, c.AuditStore)
-	if c.Config != nil && c.Config.OperatorID != "" && c.AuditStore != nil {
-		rs.localNativeTools, err = mcp.NewOperatorNativeToolHandler(c.Logger, c.Config.OperatorID, c.AuditStore, rs.fileOps.fsGrep)
+	nativeOperatorID := ""
+	if c.Config != nil {
+		nativeOperatorID = c.Config.OperatorID
+	}
+	if gatewayMode {
+		nativeOperatorID = string(constants.DocIDEmbeddedOperator)
+	}
+	if nativeOperatorID != "" && c.AuditStore != nil {
+		rs.localNativeTools, err = mcp.NewOperatorNativeToolHandler(c.Logger, nativeOperatorID, c.AuditStore, rs.fileOps.fsGrep)
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("pubsub: local native tool handler: %w", err)

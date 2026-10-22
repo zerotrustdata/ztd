@@ -1120,6 +1120,21 @@ func (v *L1Doctrine) initializeInputThreatDetectors() {
 			recommendation:   "BLOCK: Attempting to clear system logs",
 			blockRecommended: true,
 		},
+		// An audit-named log or database file (audit.log, ztd-audit.db,
+		// audit-2026.jsonl) destroyed anywhere: removed or truncated from a
+		// command position, overwritten by a non-appending redirect or tee,
+		// or copied over from /dev/null.
+		&InputThreatDetector{
+			name:             "evasion_clear_audit_trail",
+			pattern:          regexp.MustCompile(`(?i)(?:(?:^|[;(\x60{]|\|\|?|&&|&\s|\b(?:ba|z|da|k)?sh\s+(?:-[a-z]+\s+)*-[a-z]*c\s*["']?|\b(?:sudo|exec|xargs|nohup)\s+(?:-\S+\s+)*)\s*(?:truncate|shred|rm|unlink)\s[^;&|\n]*?|(?:^|[^>])>\|?\s*|\btee\s+(?:-[b-z]+\s+)*|\bcp\s+(?:-\S+\s+)*/dev/null\s+|\bdd\s[^;&|\n]*?\bof=)["']?[^\s;&|<>'"]*audit[^\s;&|<>'"/]*\.(?:log|db|sqlite3?|jsonl)(?:\.\d+)?(?:["')\s;&|]|$)`),
+			category:         ThreatCategoryDefenseEvasion,
+			severity:         ThreatSeverityCritical,
+			confidence:       0.90,
+			mitreAttack:      "T1070",
+			mitreTactic:      "Defense Evasion",
+			recommendation:   "BLOCK: Attempting to destroy an audit trail file",
+			blockRecommended: true,
+		},
 		&InputThreatDetector{
 			name:             "evasion_clear_history",
 			pattern:          regexp.MustCompile(`(?i)\bhistory\s+-c\b|\brm\s+.*\.(bash_history|zsh_history)\b|\bunset\s+HISTFILE\b|\bHISTSIZE=0\b`),

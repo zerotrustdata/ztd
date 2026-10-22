@@ -1161,6 +1161,9 @@ var (
 	ErrUnexpectedEvidenceArtifact     = errors.New("compliance: unexpected evidence artifact")
 	ErrEvidenceArtifactTooLarge       = errors.New("compliance: evidence artifact exceeds size limit")
 	ErrEvidenceArtifactPersistFailed  = errors.New("compliance: evidence artifact persistence failed")
+	ErrEvidenceArtifactTypeInvalid    = errors.New("compliance: unsupported evidence artifact type")
+	ErrEvidencePathElementInvalid     = errors.New("compliance: invalid evidence path element")
+	ErrEvidenceRelativePathInvalid    = errors.New("compliance: invalid evidence relative path")
 	ErrEvidenceDirectoryLimitExceeded = errors.New("compliance: evidence directory resource limit exceeded")
 	ErrEvalRunVerificationFailed      = errors.New("compliance: eval run verification failed")
 

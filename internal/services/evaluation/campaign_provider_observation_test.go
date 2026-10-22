@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -222,6 +223,23 @@ func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_
 	failures, unavailable := reader.VerifyAssignmentProviderObservations(ctx, result, ProviderObservationPolicyInterim)
 	assert.Empty(t, failures)
 	assert.Equal(t, []string{"source_not_captured"}, unavailable)
+}
+
+func TestSaveProviderAttemptRecord_ReportsTypedPreconditionErrors(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+
+	err := store.SaveProviderAttemptRecord(ctx, "eval-1022-13:30-1792701045", &operatorv1.InferenceProviderAttemptRecord{ProviderAttemptId: "attempt-1"})
+	require.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)
+	assert.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+
+	err = store.SaveProviderAttemptRecord(ctx, "run-1", &operatorv1.InferenceProviderAttemptRecord{})
+	require.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)
+	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
+
+	err = store.SaveProviderObservationWindow(ctx, "run-1", nil)
+	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 type publicAssignmentRecordEnvelope struct {

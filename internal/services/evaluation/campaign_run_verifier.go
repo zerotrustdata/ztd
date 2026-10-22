@@ -431,8 +431,8 @@ func isTerminalAssignmentLifecycle(status evalv1.EvaluationAssignmentLifecycleSt
 
 // LoadCampaignVerification reads one persisted run-level campaign verification report.
 func (s *Store) LoadCampaignVerification(ctx context.Context, runID string) (*evalv1.EvaluationVerificationReport, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return nil, err
 	}
 	path := s.layout.campaignVerificationPath(runID)
 	body, err := s.files.ReadFile(ctx, path)
@@ -451,8 +451,14 @@ func (s *Store) LoadCampaignVerification(ctx context.Context, runID string) (*ev
 
 // SaveCampaignVerification persists one run-level campaign verification report.
 func (s *Store) SaveCampaignVerification(ctx context.Context, runID string, report *evalv1.EvaluationVerificationReport) error {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || report == nil || report.GetRunId() != runID {
-		return fmt.Errorf("%w: campaign verification report binding is invalid", constants.ErrEvaluationReportPersistFailed)
+	if report == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "campaign verification report")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, runIDElement(runID)); err != nil {
+		return err
+	}
+	if report.GetRunId() != runID {
+		return fmt.Errorf("%w: campaign verification report: %w", constants.ErrEvaluationReportPersistFailed, constants.ErrEvidenceScopeMismatch)
 	}
 	body, err := evalv1.MarshalCanonical(report)
 	if err != nil {

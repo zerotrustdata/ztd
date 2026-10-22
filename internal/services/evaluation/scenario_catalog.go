@@ -9,7 +9,6 @@ package evaluation
 
 import (
 	"fmt"
-	"sort"
 
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -47,8 +46,9 @@ type ScenarioArtifacts struct {
 const DefaultSuiteScenarioCount = 27
 
 // buildSuiteCatalog materializes one suite's blueprints into a catalog and its
-// content-addressed fixture artifacts. Every blueprint is validated against the
-// agent tool registry first, so a blueprint that breaks the scenario contract
+// content-addressed fixture artifacts, preserving authored workflow order. Every
+// blueprint is validated against the agent tool registry first, so a blueprint
+// that breaks the scenario contract
 // cannot materialize. The catalog's identity is ref; the same blueprints under
 // another ref yield another catalog digest.
 func buildSuiteCatalog(ref *compliancev1.VersionedReference, blueprints []ScenarioBlueprint) (*evalv1.EvaluationScenarioCatalog, map[string]ScenarioArtifacts, error) {
@@ -66,9 +66,6 @@ func buildSuiteCatalog(ref *compliancev1.VersionedReference, blueprints []Scenar
 		artifacts[blueprint.ScenarioID] = pair
 		scenarios = append(scenarios, scenario)
 	}
-	sort.Slice(scenarios, func(i, j int) bool {
-		return scenarios[i].GetScenarioId() < scenarios[j].GetScenarioId()
-	})
 	catalog := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: CampaignSchemaVersion,
 		CatalogRef:    ref,

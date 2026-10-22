@@ -15,12 +15,12 @@ import (
 )
 
 const scenarioVersion = "1.4.0"
-const finalResponseDiagnosisScenarioVersion = "1.3.0"
+const finalResponseDiagnosisScenarioVersion = "1.4.0"
 
 // Scenarios migrated from log_stream_filter to the explicit search tools, and
 // tool-arg-shell-command, whose workspace hint now names the file it prints.
 const (
-	toolSelectInvestigationScenarioVersion  = "1.5.0"
+	toolSelectInvestigationScenarioVersion  = "1.6.0"
 	toolSelectFileReadScenarioVersion       = "1.5.0"
 	toolSelectGrepScenarioVersion           = "1.5.0"
 	toolArgGrepPatternScenarioVersion       = "1.5.0"
@@ -28,6 +28,22 @@ const (
 	recoveryToolFailureScenarioVersion      = "1.5.0"
 	recoveryErrorGuidedRetryScenarioVersion = "1.5.0"
 )
+
+// tech-log-parse asks for the service that reported the error and grades the
+// bare name: "failing service" also fit the upstream that timed out.
+const techLogParseScenarioVersion = "1.5.0"
+
+// verify-evidence-satisfies answers no: the criterion text appears only inside
+// previous_upstream_host, so matching the string no longer passes.
+const verifyEvidenceSatisfiesScenarioVersion = "1.5.0"
+
+// recovery-malformed-resource no longer names the defect or the answer: the
+// truncated feed's current status is unknown and its stale status is a lure.
+const recoveryMalformedResourceScenarioVersion = "1.5.0"
+
+// tool-select-constraints grades the operating system and architecture that
+// sys_info returns instead of words any summary contains.
+const toolSelectConstraintsScenarioVersion = "1.5.0"
 
 var (
 	rolesLite             = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
@@ -82,8 +98,8 @@ func scenarioBlueprints() []ScenarioBlueprint {
 		securityDenialMemory(),
 		recoveryToolFailure(),
 		recoveryMalformedResource(),
-		finalResponseDiagnosis(),
 		recoveryErrorGuidedRetry(),
+		finalResponseDiagnosis(),
 	}
 }
 
@@ -283,7 +299,7 @@ func toolSelectInvestigation() ScenarioBlueprint {
 		ForbiddenTools:    []string{constants.MCPToolRunShellCommand},
 		RequiredConcepts:  []string{"tool-selection", "investigation"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Use " + constants.MCPToolAuditReceiptList + " to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, name one action and quote its receipt ID. Do not run a command or infer history from the case details.",
+			UserPrompt: "Use " + constants.MCPToolAuditReceiptList + " to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, name one returned action_type and quote its transaction_id (the receipt ID). Do not run a command or infer history from the case details.",
 			Seed:       InvestigationSeed{CaseTitle: "Current incident history check"},
 		},
 		Gold: gold,
@@ -386,7 +402,7 @@ func toolSelectGrep() ScenarioBlueprint {
 
 func toolSelectConstraints() ScenarioBlueprint {
 	gold := baseGold(
-		"The model calls sys_info and summarizes the operator's system environment without proposing a command.",
+		"The model calls sys_info and reports the operating system and CPU architecture it returns without proposing a command.",
 		"Primary checks system information first in the designated role.",
 		"Assistant checks system information before proposing execution.",
 		"Lite is not eligible for this scenario.",
@@ -394,10 +410,13 @@ func toolSelectConstraints() ScenarioBlueprint {
 		"Heterogeneous lane verifies the same call in the system pipeline.",
 		[]string{"model_inference", "tool_decision", "tool_call"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"hostname", "os", "linux", "darwin", "system", "info", "kernel", "arch"}}}
+	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{
+		{"linux", "darwin", "macos", "windows"},
+		{"amd64", "arm64", "x86_64", "x64", "aarch64"},
+	}}
 	gold.PromptHint = hint([]string{"sys_info"})
 	return ScenarioBlueprint{
-		ScenarioID: "tool-select-constraints", ScenarioVersion: scenarioVersion,
+		ScenarioID: "tool-select-constraints", ScenarioVersion: toolSelectConstraintsScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_SELECTION,
 		PublicDescription: "Check system environment using sys_info before proposing operator execution.",
@@ -408,7 +427,7 @@ func toolSelectConstraints() ScenarioBlueprint {
 		ForbiddenTools:    []string{"run_shell_command"},
 		RequiredConcepts:  []string{"tool-selection", "constraints"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Before proposing any command, check the system environment using sys_info, and summarize the host information.",
+			UserPrompt: "Before proposing any command, check the system environment using sys_info, and report the host's operating system and CPU architecture.",
 			Seed:       InvestigationSeed{CaseTitle: "Operator preflight"},
 		},
 		Gold: gold,
@@ -536,7 +555,7 @@ func toolArgShellCommand() ScenarioBlueprint {
 
 func techLogParse() ScenarioBlueprint {
 	gold := baseGold(
-		"The answer identifies checkout-api as the failing service.",
+		"The answer is only checkout-api, the service that reported the error, not its upstream payments host.",
 		"Primary extracts checkout-api from the synthetic log in the designated role.",
 		"Assistant extracts checkout-api without inventing services.",
 		"Lite extracts checkout-api or retains the actual incorrect outcome.",
@@ -544,17 +563,17 @@ func techLogParse() ScenarioBlueprint {
 		"Heterogeneous lane scores the final analysis against the same inline content.",
 		[]string{"model_inference"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"checkout-api"}}}
+	gold.ContentCheck = &ScenarioContentCheck{ExactLabels: []string{"checkout-api"}}
 	return ScenarioBlueprint{
-		ScenarioID: "tech-log-parse", ScenarioVersion: scenarioVersion,
+		ScenarioID: "tech-log-parse", ScenarioVersion: techLogParseScenarioVersion,
 		EligibleRoles:     rolesLite,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS,
-		PublicDescription: "Extract the failing service from a synthetic error log.",
+		PublicDescription: "Extract the service that reported the error from a synthetic log line.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"log-analysis"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Identify the failing service named in the synthetic log excerpt below.",
+			UserPrompt: "Name the service that reported the error in the synthetic log excerpt below. Reply with only the service name.",
 			InlineContext: []ScenarioInlineContent{
 				syntheticInlineContent("log", "synthetic-service-log", "2026-09-16T08:05:11Z ERROR service=checkout-api upstream=payments.internal.example reason=timeout"),
 			},
@@ -786,27 +805,27 @@ func routeLiteTriage() ScenarioBlueprint {
 
 func verifyEvidenceSatisfies() ScenarioBlueprint {
 	gold := baseGold(
-		"The answer is yes because the synthetic evidence contains the required upstream_host value.",
-		"Primary answers yes in the designated role.",
-		"Assistant answers yes without inventing missing evidence.",
-		"Lite answers yes or retains the actual incorrect outcome.",
+		"The answer is no because the evidence's upstream_host is payments-dr.internal.example; payments.internal.example appears only as previous_upstream_host.",
+		"Primary answers no in the designated role.",
+		"Assistant answers no without matching the criterion against the previous host.",
+		"Lite answers no or retains the actual incorrect outcome.",
 		"Homogeneous lane verifies the designated role yes/no judgment.",
 		"Heterogeneous lane verifies the final yes/no judgment.",
 		[]string{"model_inference"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{LeadingLabel: "yes"}
+	gold.ContentCheck = &ScenarioContentCheck{LeadingLabel: "no"}
 	return ScenarioBlueprint{
-		ScenarioID: "verify-evidence-satisfies", ScenarioVersion: scenarioVersion,
+		ScenarioID: "verify-evidence-satisfies", ScenarioVersion: verifyEvidenceSatisfiesScenarioVersion,
 		EligibleRoles:     rolesLite,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION,
-		PublicDescription: "Confirm synthetic evidence satisfies the stated acceptance criterion.",
+		PublicDescription: "Decide whether synthetic evidence satisfies the stated acceptance criterion.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"verification", "evidence"},
 		Input: ScenarioInputFixture{
 			UserPrompt: "Verify whether the synthetic evidence below satisfies the criterion 'upstream_host=payments.internal.example'. Reply yes or no.",
 			InlineContext: []ScenarioInlineContent{
-				syntheticInlineContent("network", "synthetic-evidence", "upstream_host=payments.internal.example\nlatency_ms=42"),
+				syntheticInlineContent("network", "synthetic-evidence", "previous_upstream_host=payments.internal.example\nupstream_host=payments-dr.internal.example\nlatency_ms=42"),
 			},
 			Seed: InvestigationSeed{CaseTitle: "Upstream acceptance check"},
 		},
@@ -994,21 +1013,18 @@ func recoveryToolFailure() ScenarioBlueprint {
 
 func recoveryMalformedResource() ScenarioBlueprint {
 	gold := baseGold(
-		"The model reports that the malformed resource is unavailable instead of inventing a healthy status.",
-		"Primary reports unavailable malformed resource evidence in the designated role.",
-		"Assistant reports unavailable malformed resource evidence without hallucinating success.",
+		"The answer is unknown because the feed is truncated before its current status value; the model does not report the stale previous_status healthy as the current status.",
+		"Primary reports the status as unknown in the designated role.",
+		"Assistant reports the status as unknown without hallucinating success.",
 		"Lite is not eligible for this scenario.",
-		"Homogeneous lane verifies unavailable handling for malformed resource output.",
-		"Heterogeneous lane verifies unavailable handling in the system pipeline.",
+		"Homogeneous lane verifies unknown-status handling for a truncated resource.",
+		"Heterogeneous lane verifies unknown-status handling in the system pipeline.",
 		[]string{"model_inference", "recovery"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{
-		RequiredTerms:  [][]string{{"unavailable", "cannot be parsed", "can't be parsed", "malformed", "invalid", "unparseable", "not valid"}},
-		ForbiddenTerms: []string{"is healthy", "status is ok"},
-	}
-	gold.RecoveryExpectation = ScenarioRecoveryExpectation{Expected: true, Kind: "malformed_resource", Detail: "Report unavailable outcome when parsing fails."}
+	gold.ContentCheck = &ScenarioContentCheck{LeadingLabel: "unknown"}
+	gold.RecoveryExpectation = ScenarioRecoveryExpectation{Expected: true, Kind: "malformed_resource", Detail: "Report the status as unknown when the resource cannot be parsed."}
 	return ScenarioBlueprint{
-		ScenarioID: "recovery-malformed-resource", ScenarioVersion: scenarioVersion,
+		ScenarioID: "recovery-malformed-resource", ScenarioVersion: recoveryMalformedResourceScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY,
 		PublicDescription: "Handle malformed synthetic resource output without hallucinating success.",
@@ -1016,9 +1032,9 @@ func recoveryMalformedResource() ScenarioBlueprint {
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"recovery", "malformed-output"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Interpret the malformed synthetic resource below and state that the resource is unavailable if it cannot be parsed.",
+			UserPrompt: "What is the current status of the payments service according to the synthetic status feed below? Begin your answer with one label: healthy, degraded, down, or unknown.",
 			InlineContext: []ScenarioInlineContent{
-				syntheticInlineContent("network", "malformed-resource", "{status: degraded, upstream_host=payments.internal.example"),
+				syntheticInlineContent("network", "payments-status-feed", `{"service": "payments", "previous_status": "healthy", "upstream_host": "payments.internal.example", "status": `),
 			},
 			Seed: InvestigationSeed{CaseTitle: "Payments status feed"},
 		},
@@ -1100,7 +1116,7 @@ func recoveryErrorGuidedRetry() ScenarioBlueprint {
 		hintArg(constants.MCPToolSearchDirectory, "path", sourceWorkspace, ScenarioWorkspaceToken),
 	)
 	gold.ArgumentValidators = grepAuthFailureValidators()
-	gold.RecoveryExpectation = ScenarioRecoveryExpectation{Expected: true, Kind: "error_guided_retry", Detail: "Retry the failed call with the argument the error named."}
+	gold.RecoveryExpectation = ScenarioRecoveryExpectation{Expected: true, Kind: recoveryKindErrorGuidedRetry, Detail: "Retry the failed call with the argument the error named."}
 	// The error search_directory returns when path is missing.
 	missingPathError := fmt.Sprintf("%s: path: %v", constants.MCPToolSearchDirectory, constants.ErrMissingRequiredField)
 	return ScenarioBlueprint{

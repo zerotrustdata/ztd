@@ -27,8 +27,11 @@ import (
 // SaveCampaignSpec persists one canonical campaign spec beneath the campaign
 // directory after validating its digest binding.
 func (s *Store) SaveCampaignSpec(ctx context.Context, spec *evalv1.EvaluationCampaignSpec) error {
-	if s == nil || s.files == nil || spec == nil || !complianceevidence.ValidPathElement(spec.GetCampaignId()) {
-		return fmt.Errorf("%w: campaign spec and campaign ID are required", constants.ErrEvaluationReportPersistFailed)
+	if spec == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "campaign spec")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, campaignIDElement(spec.GetCampaignId())); err != nil {
+		return err
 	}
 	if spec.GetSchemaVersion() != CampaignSchemaVersion {
 		return fmt.Errorf("%w: unsupported campaign spec schema version", constants.ErrEvaluationReportPersistFailed)
@@ -52,8 +55,8 @@ func (s *Store) SaveCampaignSpec(ctx context.Context, spec *evalv1.EvaluationCam
 
 // LoadCampaignSpec reads one persisted campaign spec.
 func (s *Store) LoadCampaignSpec(ctx context.Context, campaignID string) (*evalv1.EvaluationCampaignSpec, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(campaignID) {
-		return nil, fmt.Errorf("%w: file service and campaign ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, campaignIDElement(campaignID)); err != nil {
+		return nil, err
 	}
 	body, err := s.files.ReadFile(ctx, s.layout.campaignSpecPath(campaignID))
 	if err != nil {
@@ -74,8 +77,11 @@ func (s *Store) LoadCampaignSpec(ctx context.Context, campaignID string) (*evalv
 
 // SaveScenarioCatalog persists one canonical scenario catalog for a campaign.
 func (s *Store) SaveScenarioCatalog(ctx context.Context, campaignID string, catalog *evalv1.EvaluationScenarioCatalog) error {
-	if s == nil || s.files == nil || catalog == nil || !complianceevidence.ValidPathElement(campaignID) {
-		return fmt.Errorf("%w: scenario catalog and campaign ID are required", constants.ErrEvaluationReportPersistFailed)
+	if catalog == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "scenario catalog")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, campaignIDElement(campaignID)); err != nil {
+		return err
 	}
 	if catalog.GetSchemaVersion() != CampaignSchemaVersion {
 		return fmt.Errorf("%w: unsupported scenario catalog schema version", constants.ErrEvaluationReportPersistFailed)
@@ -99,8 +105,8 @@ func (s *Store) SaveScenarioCatalog(ctx context.Context, campaignID string, cata
 
 // LoadScenarioCatalog reads one persisted scenario catalog.
 func (s *Store) LoadScenarioCatalog(ctx context.Context, campaignID string) (*evalv1.EvaluationScenarioCatalog, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(campaignID) {
-		return nil, fmt.Errorf("%w: file service and campaign ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, campaignIDElement(campaignID)); err != nil {
+		return nil, err
 	}
 	body, err := s.files.ReadFile(ctx, s.layout.scenarioCatalogPath(campaignID))
 	if err != nil {
@@ -117,8 +123,11 @@ func (s *Store) LoadScenarioCatalog(ctx context.Context, campaignID string) (*ev
 }
 
 func (s *Store) SaveScenarioArtifacts(ctx context.Context, campaignID string, catalog *evalv1.EvaluationScenarioCatalog, artifacts map[string]ScenarioArtifacts) error {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(campaignID) || catalog == nil {
-		return fmt.Errorf("%w: frozen scenario artifacts and campaign ID are required", constants.ErrEvaluationReportPersistFailed)
+	if catalog == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "scenario catalog")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, campaignIDElement(campaignID)); err != nil {
+		return err
 	}
 	if err := validateFrozenScenarioArtifacts(catalog, artifacts); err != nil {
 		return fmt.Errorf("%w: validate frozen scenario artifacts: %w", constants.ErrEvaluationReportPersistFailed, err)
@@ -147,13 +156,16 @@ func (s *Store) SaveScenarioArtifacts(ctx context.Context, campaignID string, ca
 }
 
 func (s *Store) LoadScenarioArtifacts(ctx context.Context, campaignID string, catalog *evalv1.EvaluationScenarioCatalog) (map[string]ScenarioArtifacts, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(campaignID) || catalog == nil {
-		return nil, fmt.Errorf("%w: frozen scenario artifacts and campaign ID are required", constants.ErrEvidenceArtifactMalformed)
+	if catalog == nil {
+		return nil, missingField(constants.ErrEvidenceArtifactMalformed, "scenario catalog")
+	}
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, campaignIDElement(campaignID)); err != nil {
+		return nil, err
 	}
 	artifacts := make(map[string]ScenarioArtifacts, len(catalog.GetScenarios()))
 	for _, scenario := range catalog.GetScenarios() {
-		if scenario == nil || !complianceevidence.ValidPathElement(scenario.GetScenarioId()) {
-			return nil, fmt.Errorf("%w: frozen scenario identity is invalid", constants.ErrEvidenceArtifactMalformed)
+		if err := validateFrozenScenarioIdentity(scenario); err != nil {
+			return nil, err
 		}
 		input, err := s.loadScenarioArtifact(ctx, campaignID, scenario.GetInputFixtureRef())
 		if err != nil {
@@ -177,8 +189,8 @@ func validateFrozenScenarioArtifacts(catalog *evalv1.EvaluationScenarioCatalog, 
 	}
 	seen := make(map[string]struct{}, len(catalog.GetScenarios()))
 	for _, scenario := range catalog.GetScenarios() {
-		if scenario == nil || !complianceevidence.ValidPathElement(scenario.GetScenarioId()) {
-			return fmt.Errorf("%w: frozen scenario identity is invalid", constants.ErrEvidenceArtifactMalformed)
+		if err := validateFrozenScenarioIdentity(scenario); err != nil {
+			return err
 		}
 		if _, exists := seen[scenario.GetScenarioId()]; exists {
 			return fmt.Errorf("%w: duplicate frozen scenario identity", constants.ErrEvidenceArtifactMalformed)
@@ -200,6 +212,18 @@ func validateFrozenScenarioArtifacts(catalog *evalv1.EvaluationScenarioCatalog, 
 		if err := validateFrozenScenarioArtifact(pair.Gold.Reference, pair.Gold.Body); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateFrozenScenarioIdentity reports a missing frozen scenario or a
+// scenario ID that cannot name a path element.
+func validateFrozenScenarioIdentity(scenario *evalv1.EvaluationScenarioDefinition) error {
+	if scenario == nil {
+		return missingField(constants.ErrEvidenceArtifactMalformed, "frozen scenario")
+	}
+	if err := validatePathElements(scenarioIDElement(scenario.GetScenarioId())); err != nil {
+		return fmt.Errorf("%w: frozen %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	return nil
 }
@@ -235,8 +259,11 @@ func validateFrozenScenarioArtifact(reference *compliancev1.ComplianceEvidenceRe
 
 // SaveRun persists one canonical model-campaign run record.
 func (s *Store) SaveRun(ctx context.Context, run *evalv1.EvaluationRun) error {
-	if s == nil || s.files == nil || run == nil || !complianceevidence.ValidPathElement(run.GetRunId()) {
-		return fmt.Errorf("%w: run and run ID are required", constants.ErrEvaluationReportPersistFailed)
+	if run == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "run")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, runIDElement(run.GetRunId())); err != nil {
+		return err
 	}
 	if run.GetSchemaVersion() != CampaignSchemaVersion {
 		return fmt.Errorf("%w: unsupported run schema version", constants.ErrEvaluationReportPersistFailed)
@@ -260,8 +287,8 @@ func (s *Store) SaveRun(ctx context.Context, run *evalv1.EvaluationRun) error {
 
 // RunExists reports whether the canonical run record exists on the host store.
 func (s *Store) RunExists(ctx context.Context, runID string) (bool, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return false, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return false, err
 	}
 	exists, err := s.files.FileExists(ctx, s.layout.runStatePath(runID))
 	if err != nil {
@@ -272,8 +299,8 @@ func (s *Store) RunExists(ctx context.Context, runID string) (bool, error) {
 
 // LoadRun reads one persisted model-campaign run record.
 func (s *Store) LoadRun(ctx context.Context, runID string) (*evalv1.EvaluationRun, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return nil, err
 	}
 	body, err := s.files.ReadFile(ctx, s.layout.runStatePath(runID))
 	if err != nil {
@@ -291,8 +318,8 @@ func (s *Store) LoadRun(ctx context.Context, runID string) (*evalv1.EvaluationRu
 
 // CountAssignments returns the number of persisted assignment records for one run.
 func (s *Store) CountAssignments(ctx context.Context, runID string) (int, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return 0, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return 0, err
 	}
 	dir := s.layout.assignmentsDir(runID)
 	entries, err := s.files.ReadDir(ctx, dir)
@@ -314,8 +341,8 @@ func (s *Store) CountAssignments(ctx context.Context, runID string) (int, error)
 
 // ListAssignments returns all persisted assignments for one run in deterministic order.
 func (s *Store) ListAssignments(ctx context.Context, runID string) ([]*evalv1.EvaluationAssignment, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return nil, err
 	}
 	dir := s.layout.assignmentsDir(runID)
 	entries, err := s.files.ReadDir(ctx, dir)
@@ -337,15 +364,21 @@ func (s *Store) ListAssignments(ctx context.Context, runID string) ([]*evalv1.Ev
 		}
 		assignments = append(assignments, assignment)
 	}
-	sortAssignmentsDeterministic(assignments)
+	if len(assignments) > 1 {
+		catalog, err := s.LoadScenarioCatalog(ctx, assignments[0].GetCampaignId())
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: list assignments: load workflow catalog: %w", err)
+		}
+		sortAssignmentsDeterministic(assignments, catalog)
+	}
 	return assignments, nil
 }
 
 // LoadAssignmentResults reads persisted terminal assignment results for the
 // provided assignments in one pass.
 func (s *Store) LoadAssignmentResults(ctx context.Context, runID string, assignments []*evalv1.EvaluationAssignment) (map[string]*evalv1.EvaluationAssignmentResult, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return nil, err
 	}
 	results := make(map[string]*evalv1.EvaluationAssignmentResult, len(assignments))
 	for _, assignment := range assignments {
@@ -353,8 +386,8 @@ func (s *Store) LoadAssignmentResults(ctx context.Context, runID string, assignm
 			continue
 		}
 		assignmentID := assignment.GetAssignmentId()
-		if !complianceevidence.ValidPathElement(assignmentID) {
-			return nil, fmt.Errorf("%w: assignment ID is required", constants.ErrEvidenceArtifactMalformed)
+		if err := validatePathElements(assignmentIDElement(assignmentID)); err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrEvidenceArtifactMalformed, err)
 		}
 		exists, err := s.files.FileExists(ctx, s.layout.assignmentResultPath(runID, assignmentID))
 		if err != nil {
@@ -374,8 +407,8 @@ func (s *Store) LoadAssignmentResults(ctx context.Context, runID string, assignm
 
 // AssignmentResultExists reports whether a terminal assignment result is persisted.
 func (s *Store) AssignmentResultExists(ctx context.Context, runID, assignmentID string) (bool, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(assignmentID) {
-		return false, fmt.Errorf("%w: file service, run ID, and assignment ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID), assignmentIDElement(assignmentID)); err != nil {
+		return false, err
 	}
 	exists, err := s.files.FileExists(ctx, s.layout.assignmentResultPath(runID, assignmentID))
 	if err != nil {
@@ -387,8 +420,8 @@ func (s *Store) AssignmentResultExists(ctx context.Context, runID, assignmentID 
 // AssignmentAgentTraceExists reports whether an agent trace file is persisted
 // for an assignment, without reading or digest-checking it.
 func (s *Store) AssignmentAgentTraceExists(ctx context.Context, runID, assignmentID string) (bool, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(assignmentID) {
-		return false, fmt.Errorf("%w: file service, run ID, and assignment ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID), assignmentIDElement(assignmentID)); err != nil {
+		return false, err
 	}
 	exists, err := s.files.FileExists(ctx, s.layout.assignmentAgentTracePath(runID, assignmentID))
 	if err != nil {
@@ -397,16 +430,23 @@ func (s *Store) AssignmentAgentTraceExists(ctx context.Context, runID, assignmen
 	return exists, nil
 }
 
-func sortAssignmentsDeterministic(assignments []*evalv1.EvaluationAssignment) {
+func sortAssignmentsDeterministic(assignments []*evalv1.EvaluationAssignment, catalog *evalv1.EvaluationScenarioCatalog) {
+	scenarioOrder := make(map[string]int, len(catalog.GetScenarios()))
+	for i, scenario := range catalog.GetScenarios() {
+		scenarioOrder[scenario.GetScenarioId()] = i
+	}
 	sort.Slice(assignments, func(i, j int) bool {
-		return assignmentExecutionLess(assignments[i], assignments[j])
+		return assignmentExecutionLess(assignments[i], assignments[j], scenarioOrder)
 	})
 }
 
 // SaveAssignment persists one queued or running assignment record.
 func (s *Store) SaveAssignment(ctx context.Context, assignment *evalv1.EvaluationAssignment) error {
-	if s == nil || s.files == nil || assignment == nil || !complianceevidence.ValidPathElement(assignment.GetRunId()) || !complianceevidence.ValidPathElement(assignment.GetAssignmentId()) {
-		return fmt.Errorf("%w: assignment, run ID, and assignment ID are required", constants.ErrEvaluationReportPersistFailed)
+	if assignment == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "assignment")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, runIDElement(assignment.GetRunId()), assignmentIDElement(assignment.GetAssignmentId())); err != nil {
+		return err
 	}
 	if assignment.GetSchemaVersion() != CampaignSchemaVersion {
 		return fmt.Errorf("%w: unsupported assignment schema version", constants.ErrEvaluationReportPersistFailed)
@@ -435,8 +475,8 @@ func (s *Store) SaveAssignment(ctx context.Context, assignment *evalv1.Evaluatio
 
 // LoadAssignment reads one persisted assignment record.
 func (s *Store) LoadAssignment(ctx context.Context, runID, assignmentID string) (*evalv1.EvaluationAssignment, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(assignmentID) {
-		return nil, fmt.Errorf("%w: file service, run ID, and assignment ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID), assignmentIDElement(assignmentID)); err != nil {
+		return nil, err
 	}
 	body, err := s.files.ReadFile(ctx, s.layout.assignmentPath(runID, assignmentID))
 	if err != nil {
@@ -461,8 +501,11 @@ func (s *Store) LoadAssignment(ctx context.Context, runID, assignmentID string) 
 
 // SaveAssignmentResult persists one terminal assignment result.
 func (s *Store) SaveAssignmentResult(ctx context.Context, result *evalv1.EvaluationAssignmentResult) error {
-	if s == nil || s.files == nil || result == nil || !complianceevidence.ValidPathElement(result.GetRunId()) || !complianceevidence.ValidPathElement(result.GetAssignmentId()) {
-		return fmt.Errorf("%w: assignment result, run ID, and assignment ID are required", constants.ErrEvaluationReportPersistFailed)
+	if result == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "assignment result")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, runIDElement(result.GetRunId()), assignmentIDElement(result.GetAssignmentId())); err != nil {
+		return err
 	}
 	if result.GetSchemaVersion() != CampaignSchemaVersion {
 		return fmt.Errorf("%w: unsupported assignment result schema version", constants.ErrEvaluationReportPersistFailed)
@@ -486,8 +529,8 @@ func (s *Store) SaveAssignmentResult(ctx context.Context, result *evalv1.Evaluat
 
 // LoadAssignmentResult reads one persisted terminal assignment result.
 func (s *Store) LoadAssignmentResult(ctx context.Context, runID, assignmentID string) (*evalv1.EvaluationAssignmentResult, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(assignmentID) {
-		return nil, fmt.Errorf("%w: file service, run ID, and assignment ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID), assignmentIDElement(assignmentID)); err != nil {
+		return nil, err
 	}
 	body, err := s.files.ReadFile(ctx, s.layout.assignmentResultPath(runID, assignmentID))
 	if err != nil {
@@ -523,8 +566,8 @@ type RunInventoryEntry struct {
 }
 
 func (s *Store) InspectRun(ctx context.Context, runID string) (RunInventoryEntry, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return RunInventoryEntry{}, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return RunInventoryEntry{}, err
 	}
 	entry := RunInventoryEntry{RunID: runID}
 	conformanceMarker, err := s.files.FileExists(ctx, filepath.Join(s.layout.runDir(runID), constants.ConformanceRecordFilename))
@@ -586,8 +629,8 @@ func (s *Store) InspectRun(ctx context.Context, runID string) (RunInventoryEntry
 }
 
 func (s *Store) ListRunInventory(ctx context.Context) ([]RunInventoryEntry, error) {
-	if s == nil || s.files == nil {
-		return nil, fmt.Errorf("%w: file service is required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed); err != nil {
+		return nil, err
 	}
 	entries, err := s.files.ReadDir(ctx, s.layout.runsRootDir())
 	if err != nil {
@@ -626,8 +669,8 @@ type CampaignListEntry struct {
 
 // ListCampaigns returns all persisted campaign specs in deterministic order.
 func (s *Store) ListCampaigns(ctx context.Context) ([]CampaignListEntry, error) {
-	if s == nil || s.files == nil {
-		return nil, fmt.Errorf("%w: file service is required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed); err != nil {
+		return nil, err
 	}
 	runIDsByCampaign, err := s.listRunIDsByCampaign(ctx)
 	if err != nil {
@@ -705,8 +748,11 @@ func (s *Store) listRunIDsByCampaign(ctx context.Context) (map[string][]string, 
 
 // SaveHeterogeneousStackSet persists one frozen heterogeneous stack set for a campaign.
 func (s *Store) SaveHeterogeneousStackSet(ctx context.Context, campaignID string, stackSet *HeterogeneousStackSet) error {
-	if s == nil || s.files == nil || stackSet == nil || !complianceevidence.ValidPathElement(campaignID) {
-		return fmt.Errorf("%w: heterogeneous stack set and campaign ID are required", constants.ErrEvaluationReportPersistFailed)
+	if stackSet == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "heterogeneous stack set")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, campaignIDElement(campaignID)); err != nil {
+		return err
 	}
 	if err := ValidateHeterogeneousStackSet(stackSet); err != nil {
 		return fmt.Errorf("%w: %v", constants.ErrEvaluationReportPersistFailed, err)
@@ -727,8 +773,8 @@ func (s *Store) SaveHeterogeneousStackSet(ctx context.Context, campaignID string
 
 // LoadHeterogeneousStackSet reads one persisted heterogeneous stack set.
 func (s *Store) LoadHeterogeneousStackSet(ctx context.Context, campaignID string) (*HeterogeneousStackSet, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(campaignID) {
-		return nil, fmt.Errorf("%w: file service and campaign ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, campaignIDElement(campaignID)); err != nil {
+		return nil, err
 	}
 	body, err := s.files.ReadFile(ctx, s.layout.heterogeneousStackSetPath(campaignID))
 	if err != nil {

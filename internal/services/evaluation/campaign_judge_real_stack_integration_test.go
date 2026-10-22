@@ -127,7 +127,7 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, diagGrade.GetStatus(), diagGrade.GetDetail())
 	assert.Contains(t, diagGrade.GetDetail(), "score: 4/5")
 	assert.Contains(t, diagGrade.GetDetail(), "rubric: "+judge.RubricVersion)
-	assert.Equal(t, "diagnosis-quality-v1", judge.RubricVersion)
+	assert.Equal(t, "diagnosis-quality-v2", judge.RubricVersion)
 
 	// 2. The judge receipt is kept as verified and names the judge's own
 	// transaction, which is distinct from the agent's.
@@ -464,4 +464,22 @@ func TestRealStackAgentTraceV7_RejectsResealedToolArguments(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, evaluation.ValidateAgentTraceDigest(trace))
 	require.ErrorIs(t, evaluation.VerifyAgentTraceEvidence(trace), constants.ErrEvaluationEvidenceTraceMismatch)
+}
+
+func TestRealStackJudge_ContradictoryHighScoreIsUnavailable(t *testing.T) {
+	overclaim := strings.Replace(judgeDiagnosis, "Moderate; the available evidence is incomplete.", "High. The failing dependency establishes a clear causal link.", 1)
+	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-contradiction",
+		replies: []fixtures.OllamaReply{{Content: overclaim}, {Content: `{"score":5,"rationale":"Appropriately qualified uncertainty."}`}},
+	})
+	res := env.executeNext(t)
+	grade := diagnosisQualityGrade(res)
+	require.NotNil(t, grade)
+	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE, grade.GetStatus())
+	require.Contains(t, grade.GetDetail(), "contradicts")
+	require.Contains(t, grade.GetDetail(), "5/5")
+	require.NotNil(t, grade.GetGraderCallRef(), "retain the judge's verified receipt and raw assessment")
+	for _, score := range res.GetDecomposedScores() {
+		require.NotEqual(t, "diagnosis_quality", score.GetDimension())
+	}
+	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, evaluation.DerivePublicSummaryStatus(res))
 }

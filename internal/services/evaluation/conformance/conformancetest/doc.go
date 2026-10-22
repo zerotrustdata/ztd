@@ -10,8 +10,8 @@
 // by a key named in the record's own anchors) against the real eval stack with A2A
 // ingress configured:
 //
-//   - DoctrineRecord: run c1f5cb4c-f285-4bfd-bcf0-303bcdbd327f, outbound Data Operator.
-//   - EmbeddedDoctrineRecord: run 573603cf-0a56-4d42-a242-7a2d145b62dc, embedded
+//   - DoctrineRecord: run c5dc678c-8567-4e5c-8c11-14a49a959a57, outbound Data Operator.
+//   - EmbeddedDoctrineRecord: run 4fc08862-3df7-4eb6-93c5-42d0555035b2, embedded
 //     Operator as the Data Operator.
 //
 // They are regenerated only by a live run, never by hand. The package is imported

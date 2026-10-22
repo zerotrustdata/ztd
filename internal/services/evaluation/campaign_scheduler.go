@@ -56,9 +56,6 @@ func BuildHomogeneousAssignmentMatrix(req HomogeneousScheduleRequest) ([]*evalv1
 		}
 		scenarios = filtered
 	}
-	sort.Slice(scenarios, func(i, j int) bool {
-		return scenarios[i].GetScenarioId() < scenarios[j].GetScenarioId()
-	})
 	variants := append([]*evalv1.ModelVariant(nil), req.Variants...)
 	sort.Slice(variants, func(i, j int) bool {
 		left, right := variants[i].GetServedModelTag(), variants[j].GetServedModelTag()
@@ -89,15 +86,16 @@ func BuildHomogeneousAssignmentMatrix(req HomogeneousScheduleRequest) ([]*evalv1
 			}
 		}
 	}
-	sortAssignmentsDeterministic(assignments)
+	sortAssignmentsDeterministic(assignments, req.Catalog)
 	return assignments, nil
 }
 
 // assignmentExecutionLess is the single execution order for assignments.
 // Homogeneous assignments run model by model, so the provider keeps one model
 // resident while it works through every scenario, role, and repetition before
-// the next model loads. Identity breaks ties and orders every other lane.
-func assignmentExecutionLess(left, right *evalv1.EvaluationAssignment) bool {
+// the next model loads. System assignments run stack by stack. Both lanes use
+// the frozen catalog workflow order; identity breaks any remaining ties.
+func assignmentExecutionLess(left, right *evalv1.EvaluationAssignment, scenarioOrder map[string]int) bool {
 	leftTarget, rightTarget := left.GetHomogeneous(), right.GetHomogeneous()
 	if (leftTarget != nil) != (rightTarget != nil) {
 		return leftTarget != nil
@@ -110,16 +108,29 @@ func assignmentExecutionLess(left, right *evalv1.EvaluationAssignment) bool {
 		if l, r := leftVariant.GetVariantId(), rightVariant.GetVariantId(); l != r {
 			return l < r
 		}
-		if l, r := left.GetScenarioId(), right.GetScenarioId(); l != r {
-			return l < r
+	} else if l, r := left.GetHeterogeneous().GetStack().GetStackId(), right.GetHeterogeneous().GetStack().GetStackId(); l != r {
+		return l < r
+	}
+	if l, r := left.GetScenarioId(), right.GetScenarioId(); l != r {
+		leftOrder, leftKnown := scenarioOrder[l]
+		rightOrder, rightKnown := scenarioOrder[r]
+		if leftKnown != rightKnown {
+			return leftKnown
 		}
+		if leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+		return l < r
+	}
+	if leftTarget != nil {
 		if l, r := leftTarget.GetDesignatedRole(), rightTarget.GetDesignatedRole(); l != r {
 			return l < r
 		}
-		if l, r := left.GetRepetition(), right.GetRepetition(); l != r {
-			return l < r
-		}
 	}
+	if l, r := left.GetRepetition(), right.GetRepetition(); l != r {
+		return l < r
+	}
+
 	return left.GetDeterministicIdentity() < right.GetDeterministicIdentity()
 }
 

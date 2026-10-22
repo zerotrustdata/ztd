@@ -125,8 +125,8 @@ func isProviderEvidenceNotFound(err error) bool {
 // SaveProviderObservationWindow seals one provider observation window in the
 // run's evidence directory and records its reference under the attempt.
 func (s *Store) SaveProviderObservationWindow(ctx context.Context, runID string, window *evalv1.ProviderBoundaryObservationWindow) error {
-	if window == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(window.GetProviderAttemptId()) {
-		return fmt.Errorf("%w: run ID, provider attempt ID, and observation window are required", constants.ErrEvaluationReportPersistFailed)
+	if window.GetProviderAttemptId() == "" {
+		return fmt.Errorf("%w: provider observation window attempt ID: %w", constants.ErrEvaluationReportPersistFailed, constants.ErrMissingRequiredField)
 	}
 	attemptID := window.GetProviderAttemptId()
 	reference, err := s.SaveProtoArtifact(ctx, EvidenceScope{RunID: runID, AttemptID: attemptID}, complianceevidence.ArtifactTypeProviderObservationWindow, window)
@@ -139,8 +139,8 @@ func (s *Store) SaveProviderObservationWindow(ctx context.Context, runID string,
 // SaveProviderAttemptRecord seals one governed provider-attempt record in the
 // run's evidence directory and records its reference under the attempt.
 func (s *Store) SaveProviderAttemptRecord(ctx context.Context, runID string, attempt *operatorv1.InferenceProviderAttemptRecord) error {
-	if attempt == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(attempt.GetProviderAttemptId()) {
-		return fmt.Errorf("%w: run ID, provider attempt ID, and attempt record are required", constants.ErrEvaluationReportPersistFailed)
+	if attempt.GetProviderAttemptId() == "" {
+		return fmt.Errorf("%w: provider attempt record attempt ID: %w", constants.ErrEvaluationReportPersistFailed, constants.ErrMissingRequiredField)
 	}
 	attemptID := attempt.GetProviderAttemptId()
 	reference, err := s.SaveProtoArtifact(ctx, EvidenceScope{RunID: runID, AttemptID: attemptID}, complianceevidence.ArtifactTypeProviderAttemptRecord, attempt)
@@ -153,8 +153,8 @@ func (s *Store) SaveProviderAttemptRecord(ctx context.Context, runID string, att
 // LoadProviderObservationWindow returns the sealed window recorded for one
 // provider attempt of a run. A missing record reports constants.ErrNotFound.
 func (s *Store) LoadProviderObservationWindow(ctx context.Context, runID, providerAttemptID string) (*evalv1.ProviderBoundaryObservationWindow, error) {
-	if s == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(providerAttemptID) {
-		return nil, fmt.Errorf("%w: run ID and provider attempt ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID), attemptIDElement(providerAttemptID)); err != nil {
+		return nil, err
 	}
 	reference, err := s.readEvidenceRef(ctx, s.layout.providerWindowRefPath(runID, providerAttemptID), runID, providerAttemptID)
 	if err != nil {
@@ -173,8 +173,8 @@ func (s *Store) LoadProviderObservationWindow(ctx context.Context, runID, provid
 // LoadProviderAttemptRecord returns the sealed provider-attempt record recorded
 // for one provider attempt of a run. A missing record reports constants.ErrNotFound.
 func (s *Store) LoadProviderAttemptRecord(ctx context.Context, runID, providerAttemptID string) (*operatorv1.InferenceProviderAttemptRecord, error) {
-	if s == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(providerAttemptID) {
-		return nil, fmt.Errorf("%w: run ID and provider attempt ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID), attemptIDElement(providerAttemptID)); err != nil {
+		return nil, err
 	}
 	reference, err := s.readEvidenceRef(ctx, s.layout.providerAttemptRefPath(runID, providerAttemptID), runID, providerAttemptID)
 	if err != nil {

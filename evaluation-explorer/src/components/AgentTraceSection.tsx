@@ -354,7 +354,7 @@ export function AgentTraceSection({ id, bindings, runId, assignmentId }: {
       </div>
       <p className="task-section-note">
         Verified in this browser against its published SHA-256 and evidence digest before display. Receipt signatures and the
-        sentinel bracket verify offline with <code>{command}</code>.
+        sentinel bracket verify offline with <code>{command}</code>. Verification establishes evidence integrity, not grading fairness.
       </p>
       {state.status === 'loading' ? <p className="model-response-empty">Loading and verifying the trace…</p> : null}
       {state.status === 'failed' ? (

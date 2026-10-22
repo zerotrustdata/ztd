@@ -2160,3 +2160,23 @@ func TestOperatorPubSubService_BoundMCPGatewaySupportsConcurrentReads(t *testing
 		assert.Same(t, gateway, result)
 	}
 }
+
+func TestGatewayNativeHistoryHostExistsWithoutOutboundOperatorID(t *testing.T) {
+
+	cfg := testutil.NewTestConfig(t)
+	cfg.OperatorID = ""
+	govDeps := validTestGatewayModeDeps(constants.PostureDoctrine)
+	svc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
+		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
+			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
+			Ledger:       storagetest.NewTestLedger(t),
+			RuntimeVault: governancetest.UnlockedVault{},
+			Config:       cfg,
+			Logger:       testutil.NewTestLogger(),
+			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
+		}),
+		GovDeps: &govDeps,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, svc.localNativeTools, "embedded runtime must construct its authoritative native history host")
+}

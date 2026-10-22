@@ -42,16 +42,16 @@ type ArchiveManifest struct {
 
 // CampaignExists reports whether the store holds a campaign spec.
 func (s *Store) CampaignExists(ctx context.Context, campaignID string) (bool, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(campaignID) {
-		return false, fmt.Errorf("%w: file service and campaign ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, campaignIDElement(campaignID)); err != nil {
+		return false, err
 	}
 	return s.files.FileExists(ctx, s.layout.campaignSpecPath(campaignID))
 }
 
 // ListCampaignRunIDs returns the IDs of the store's runs bound to one campaign.
 func (s *Store) ListCampaignRunIDs(ctx context.Context, campaignID string) ([]string, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(campaignID) {
-		return nil, fmt.Errorf("%w: file service and campaign ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, campaignIDElement(campaignID)); err != nil {
+		return nil, err
 	}
 	byCampaign, err := s.listRunIDsByCampaign(ctx)
 	if err != nil {

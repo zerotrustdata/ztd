@@ -465,8 +465,8 @@ type campaignCreateResult struct {
 // internal artifact. Creating a campaign whose ID
 // already holds the same frozen spec is a no-op.
 func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.RuntimeFileService, spec campaignCreateSpec) (*campaignCreateResult, error) {
-	if !complianceevidence.ValidPathElement(spec.CampaignID) {
-		return nil, fmt.Errorf("evaluation: campaigns create: invalid campaign ID %q: %w", spec.CampaignID, constants.ErrMissingRequiredField)
+	if err := complianceevidence.ValidatePathElement(spec.CampaignID); err != nil {
+		return nil, fmt.Errorf("evaluation: campaigns create: campaign ID: %w", err)
 	}
 	store := evaluation.NewStore(fileSvc)
 	suiteID := spec.SuiteID

@@ -22,12 +22,12 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.3.0"
+	GraderVersion = "1.5.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.7.0"
+	DefaultSuiteVersion = "1.9.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -237,6 +237,10 @@ type ScenarioEscalationExpectation struct {
 // recoveryKindMissingResource marks a recovery scenario whose tool call fails by
 // design (its target does not exist) and whose answer must explain the failure.
 const recoveryKindMissingResource = "missing_resource"
+
+// recoveryKindErrorGuidedRetry supplies the earlier failure in the scenario's
+// seed. The scored call must successfully apply the frozen argument constraints.
+const recoveryKindErrorGuidedRetry = "error_guided_retry"
 
 // ScenarioRecoveryExpectation records whether recovery behavior is expected.
 type ScenarioRecoveryExpectation struct {

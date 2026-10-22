@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -196,6 +197,53 @@ func TestValidPathElement_RejectsUnsafeElements(t *testing.T) {
 	assert.False(t, ValidPathElement(".."))
 	assert.False(t, ValidPathElement("a/b"))
 	assert.False(t, ValidPathElement("/absolute"))
+	assert.False(t, ValidPathElement("eval-1022-13:30"))
+	assert.False(t, ValidPathElement("a\x00b"))
+}
+
+func TestValidatePathElement_AdmitsOnlyValidRelativePaths(t *testing.T) {
+	for _, value := range []string{"", "..", "a/b", "eval-1022-13:30", "a\x00b"} {
+		assert.ErrorIs(t, ValidatePathElement(value), constants.ErrEvidencePathElementInvalid, "%q", value)
+	}
+	for _, value := range []string{"eval-1022-1330", "run-1", "abc123"} {
+		require.NoError(t, ValidatePathElement(value))
+		require.NoError(t, ValidateRelativePath("runs/"+value+"/evidence"), "an admitted element must form a valid evidence directory")
+	}
+}
+
+func TestValidateRelativePath_ReportsTypedError(t *testing.T) {
+	for _, value := range []string{"", "..", "../escape", "/absolute", "runs/a:b/evidence", "a\x00b"} {
+		assert.ErrorIs(t, ValidateRelativePath(value), constants.ErrEvidenceRelativePathInvalid, "%q", value)
+	}
+}
+
+// unusedFileService panics on any file operation, proving a rejected write
+// fails before touching storage.
+type unusedFileService struct{ fs.RuntimeFileService }
+
+func TestPersistCanonicalProtoArtifact_ReportsEachUnmetPrecondition(t *testing.T) {
+	message := &compliancev1.ComplianceVerificationReport{ReportId: "report-1", Valid: true}
+	files := unusedFileService{}
+	tests := []struct {
+		name         string
+		files        fs.RuntimeFileService
+		directory    string
+		artifactType ArtifactType
+		message      proto.Message
+		want         error
+	}{
+		{name: "file service", directory: "evidence", artifactType: ArtifactTypeEvalManifest, message: message, want: constants.ErrMissingRequiredField},
+		{name: "message", files: files, directory: "evidence", artifactType: ArtifactTypeEvalManifest, want: constants.ErrMissingRequiredField},
+		{name: "artifact type", files: files, directory: "evidence", artifactType: ArtifactType("unknown"), message: message, want: constants.ErrEvidenceArtifactTypeInvalid},
+		{name: "directory", files: files, directory: "runs/eval-1022-13:30/evidence", artifactType: ArtifactTypeEvalManifest, message: message, want: constants.ErrEvidenceRelativePathInvalid},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := PersistCanonicalProtoArtifact(context.Background(), tt.files, tt.directory, tt.artifactType, tt.message)
+			require.ErrorIs(t, err, constants.ErrEvidenceArtifactPersistFailed)
+			assert.ErrorIs(t, err, tt.want)
+		})
+	}
 }
 
 func TestValidRelativePath_AcceptsSafeRelativePath(t *testing.T) {

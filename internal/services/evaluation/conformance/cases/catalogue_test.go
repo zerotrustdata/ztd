@@ -97,13 +97,13 @@ func TestCatalogueCountsPerRowAndIngress(t *testing.T) {
 		t.Errorf("row 2 %s: got %d cases, want 2", IngressMCPStdio, got)
 	}
 
-	// Row 13: 49 attack entries on DIRECT in each of four postures.
-	if got := countCases(cs, row(13)); got != 49*4 {
-		t.Errorf("row 13: got %d cases, want %d", got, 49*4)
+	// Row 13: 52 attack entries on DIRECT in each of four postures.
+	if got := countCases(cs, row(13)); got != 52*4 {
+		t.Errorf("row 13: got %d cases, want %d", got, 52*4)
 	}
 	for _, p := range Postures {
-		if got := countCases(cs, row(13), posture(p.Wire)); got != 49 {
-			t.Errorf("row 13 posture %s: got %d cases, want 49", p.Posture, got)
+		if got := countCases(cs, row(13), posture(p.Wire)); got != 52 {
+			t.Errorf("row 13 posture %s: got %d cases, want 52", p.Posture, got)
 		}
 	}
 

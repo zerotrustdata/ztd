@@ -51,6 +51,19 @@ func TestBuildScenarioCatalog_HasTwentySevenScenariosWithExpectedCategoryCounts(
 	}
 }
 
+func TestBuildScenarioCatalog_PreservesWorkflowOrder(t *testing.T) {
+	catalog, _, err := BuildScenarioCatalog()
+	require.NoError(t, err)
+	var ids []string
+	for _, scenario := range catalog.GetScenarios() {
+		ids = append(ids, scenario.GetScenarioId())
+	}
+	assert.Equal(t, "instruction-exact-format", ids[0])
+	assert.Equal(t, "final-response-diagnosis", ids[len(ids)-1])
+	// Recovery belongs before the final synthesis, including the guided retry.
+	assert.Equal(t, "recovery-error-guided-retry", ids[len(ids)-2])
+}
+
 func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 	defaultCatalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
@@ -59,8 +72,8 @@ func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 
 	assert.Equal(t, DefaultSuiteVersion, defaultCatalog.GetCatalogRef().GetVersion())
 	assert.Equal(t, DefaultSuiteVersion, smokeCatalog.GetCatalogRef().GetVersion())
-	assert.Equal(t, "1.7.0", DefaultSuiteVersion)
-	assert.Equal(t, "1.3.0", GraderVersion)
+	assert.Equal(t, "1.9.0", DefaultSuiteVersion)
+	assert.Equal(t, "1.5.0", GraderVersion)
 }
 
 func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {

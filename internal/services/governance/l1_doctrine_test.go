@@ -478,6 +478,63 @@ func TestL1Doctrine_AnalyzeCommand_AllDefenseEvasion(t *testing.T) {
 	}
 }
 
+func TestL1Doctrine_AnalyzeCommand_ClearAuditTrail(t *testing.T) {
+	t.Parallel()
+	doctrine := NewL1Doctrine()
+
+	blocked := []string{
+		"truncate -s 0 /srv/ws/protected/audit.log",
+		`sh -c "> /srv/ws/protected/audit.log"`,
+		"bash -lc ': > protected/audit.log'",
+		"cd /srv/ws && > protected/audit.log",
+		"cat /dev/null > protected/audit.log",
+		"echo -n > ./audit.log",
+		"printf '' >| audit.log.1",
+		"date > audit.log",
+		"cp /dev/null protected/audit.log",
+		"dd if=/dev/zero of=/srv/ws/audit.log bs=1 count=0",
+		"echo reset | tee protected/audit.log",
+		"rm -f .ztd/data/ztd-audit.db",
+		"sudo shred -u /srv/app/audit-2026.jsonl",
+		"find . -name '*.tmp' | xargs unlink; rm audit.sqlite",
+	}
+	for _, cmd := range blocked {
+		t.Run(cmd, func(t *testing.T) {
+			t.Parallel()
+			found := false
+			for _, sig := range doctrine.AnalyzeCommand(cmd) {
+				if sig.Indicator == "evasion_clear_audit_trail" {
+					found = true
+					assert.True(t, sig.BlockRecommended)
+					assert.Equal(t, ThreatCategoryDefenseEvasion, sig.Category)
+				}
+			}
+			assert.True(t, found, "expected evasion_clear_audit_trail for: %s", cmd)
+		})
+	}
+
+	allowed := []string{
+		"cat protected/audit.log",
+		"tail -n 50 /srv/ws/protected/audit.log",
+		"grep -c truncate protected/audit.log",
+		"echo entry >> protected/audit.log",
+		"date | tee -a audit.log",
+		"go test ./... > test.log",
+		"cp protected/audit.log /srv/backup/audit.log.bak",
+		"sqlite3 .ztd/data/audit.db '.tables'",
+		"rm internal/services/audit/audit_test.go",
+		"git rm --cached audit.log",
+	}
+	for _, cmd := range allowed {
+		t.Run(cmd, func(t *testing.T) {
+			t.Parallel()
+			for _, sig := range doctrine.AnalyzeCommand(cmd) {
+				assert.NotEqual(t, "evasion_clear_audit_trail", sig.Indicator, "unexpected match for: %s", cmd)
+			}
+		})
+	}
+}
+
 func TestL1Doctrine_AnalyzeCommand_Cryptominer(t *testing.T) {
 	t.Parallel()
 	doctrine := NewL1Doctrine()

@@ -8,6 +8,7 @@
 package evaluation
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,75 @@ import (
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
+
+func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *testing.T) {
+	blueprint := recoveryErrorGuidedRetry()
+	blueprint.Input.ScenarioID = blueprint.ScenarioID
+	workspace, err := NewScenarioWorkspace(agentTestWorkingDirectory, "run-retry", "attempt-retry")
+	require.NoError(t, err)
+	arguments, err := json.Marshal(struct {
+		Path    string `json:"path"`
+		Pattern string `json:"pattern"`
+	}{Path: workspace.Root, Pattern: "AUTH_FAILURE"})
+	require.NoError(t, err)
+	corrected := AgentToolCall{ToolName: constants.MCPToolSearchDirectory, ArgumentsJSON: string(arguments), Success: true}
+	failed := corrected
+	failed.Success = false
+	failed.Error = "search failed"
+	wrongPattern := corrected
+	wrongPattern.ArgumentsJSON = strings.ReplaceAll(corrected.ArgumentsJSON, "AUTH_FAILURE", "AUTH_SUCCESS")
+	wrongPath := corrected
+	wrongPath.ArgumentsJSON = `{"path":"/outside-workspace","pattern":"AUTH_FAILURE"}`
+	wrongTool := corrected
+	wrongTool.ToolName = constants.MCPToolReadFile
+
+	cases := []struct {
+		name   string
+		calls  []AgentToolCall
+		passed bool
+	}{
+		{name: "successful correction after seeded failure", calls: []AgentToolCall{corrected}, passed: true},
+		{name: "successful correction after live failure", calls: []AgentToolCall{failed, corrected}, passed: true},
+		{name: "answer claiming recovery without a call"},
+		{name: "corrected arguments but execution failed", calls: []AgentToolCall{failed}},
+		{name: "successful search with wrong pattern", calls: []AgentToolCall{wrongPattern}},
+		{name: "successful search outside workspace", calls: []AgentToolCall{wrongPath}},
+		{name: "successful call to wrong tool", calls: []AgentToolCall{wrongTool}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := AssignmentExecutionRequest{
+				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: "assign-retry", RunId: "run-retry"},
+				ScenarioInput: blueprint.Input,
+				ScenarioGold:  blueprint.Gold,
+				ScenarioTools: ScenarioToolExpectations{
+					TrajectoryPolicy: blueprint.TrajectoryPolicy,
+					AllowedTools:     blueprint.AllowedTools,
+					ExpectedTools:    blueprint.ExpectedTools,
+				},
+			}
+			trace := &AgentTrace{
+				RunID: "run-retry", AssignmentID: "assign-retry", DesignatedRole: "primary",
+				Workspace:   AgentTraceWorkspace(workspace),
+				ModelCalls:  []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-retry", ResultDigest: "digest-retry"}},
+				ToolCalls:   tc.calls,
+				FinalOutput: "logs/auth.log line 1: AUTH_FAILURE user=svc-deploy",
+			}
+			grading, err := GradeHomogeneousScenario(req, trace,
+				evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
+			require.NoError(t, err)
+			require.Equal(t, tc.passed, gradePassed(grading.DeterministicGrades, "required-evidence:recovery"))
+			if tc.passed {
+				for _, grade := range grading.DeterministicGrades {
+					require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grade.GetStatus(), grade.GetCriterionId())
+				}
+			}
+			if len(tc.calls) == 1 && tc.passed {
+				require.Zero(t, grading.Trajectory.GuidedRetryCount, "seeded history must not count as an executed failure")
+			}
+		})
+	}
+}
 
 // playerGradingErrorRequest is a model-role assignment whose Gold.Players
 // expectations are supplied by the caller.

@@ -75,3 +75,27 @@ func TestFailureSentences_PublicContentCheckOmitsRuleDetail(t *testing.T) {
 	assert.Contains(t, private, rule)
 	assert.Equal(t, "The answer failed the content check.", public)
 }
+
+func TestFailureSentences_WrongToolNamesExpectedCallAlongsideForbidden(t *testing.T) {
+	tools := ScenarioToolExpectations{
+		ExpectedTools:  []string{constants.MCPToolReadFile},
+		ForbiddenTools: []string{constants.MCPToolRunShellCommand},
+	}
+	traj := trajectoryResult{
+		Outcome:        evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL,
+		FirstWrongTool: constants.MCPToolRunShellCommand,
+	}
+	view := agentGradingView{
+		Trace: &AgentTrace{},
+		Calls: []AgentToolCall{{ToolName: constants.MCPToolReadFile}, {ToolName: constants.MCPToolRunShellCommand}},
+	}
+	private, public := failureSentences(tools, ScenarioGoldCriteria{}, traj, true, "", view)
+	want := "The model called `read_file`, but also called forbidden tool `run_shell_command`."
+	assert.Contains(t, private, want)
+	assert.Contains(t, public, want)
+	assert.NotContains(t, public, "instead")
+
+	view.Calls = []AgentToolCall{{ToolName: constants.MCPToolRunShellCommand}}
+	_, public = failureSentences(tools, ScenarioGoldCriteria{}, traj, true, "", view)
+	assert.Contains(t, public, "The model called forbidden tool `run_shell_command` instead.")
+}

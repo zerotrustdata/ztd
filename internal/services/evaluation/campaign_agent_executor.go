@@ -251,6 +251,14 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	if objective == "" {
 		objective = req.ScenarioInput.UserPrompt
 	}
+	for _, evidence := range req.ScenarioInput.InlineContext {
+		objective += "\n\nFrozen evidence (" + evidence.Label + "):\n" + evidence.Content
+	}
+	diagnosisPassed, diagnosisDetail := true, ""
+	if check := req.ScenarioGold.ContentCheck; check != nil && check.DiagnosisRubric == ScenarioDiagnosisRubricCheckoutTimeoutV1 {
+		diagnosisPassed, diagnosisDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, req.ScenarioInput)
+		objective += "\n\nDeterministic evidence assessment:\n" + diagnosisDetail
+	}
 	var memoryFacts []string
 	if req.ScenarioGold.Players != nil && req.ScenarioGold.Players.Codex != nil {
 		if req.ScenarioGold.Players.Codex.ExactToken != "" {
@@ -331,14 +339,19 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 				rubric = judge.RubricVersion
 			}
 			detail = fmt.Sprintf("score: %d/5; rubric: %s; rationale: %s", sc.Value, rubric, sc.Rationale)
-			decomposedScores = append(decomposedScores, &evalv1.DecomposedScoreRecord{
-				ScoreId:           fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), dimension),
-				Dimension:         dimension,
-				Value:             float64(sc.Value),
-				Unit:              evalv1.EvaluationMetricUnit_EVALUATION_METRIC_UNIT_COUNT,
-				Direction:         evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_HIGHER_IS_BETTER,
-				MissingDataPolicy: evalv1.EvaluationMissingDataPolicy_EVALUATION_MISSING_DATA_POLICY_EXCLUDE,
-			})
+			if sc.Subject == judge.SubjectFinalReply && sc.Value >= 3 && !diagnosisPassed {
+				status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
+				detail += "; judge assessment contradicts deterministic evidence check: " + diagnosisDetail + "; excluded from quality aggregates"
+			} else {
+				decomposedScores = append(decomposedScores, &evalv1.DecomposedScoreRecord{
+					ScoreId:           fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), dimension),
+					Dimension:         dimension,
+					Value:             float64(sc.Value),
+					Unit:              evalv1.EvaluationMetricUnit_EVALUATION_METRIC_UNIT_COUNT,
+					Direction:         evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_HIGHER_IS_BETTER,
+					MissingDataPolicy: evalv1.EvaluationMissingDataPolicy_EVALUATION_MISSING_DATA_POLICY_EXCLUDE,
+				})
+			}
 		}
 		semanticGrades = append(semanticGrades, &evalv1.SemanticGrade{
 			GradeId:        gradeID,

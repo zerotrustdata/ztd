@@ -316,9 +316,13 @@ func TestCampaignsCreate_FormationsFreezeIdempotentlyAndRejectSetOrLaneChanges(t
 func TestCampaignsCreate_InvalidCampaignID(t *testing.T) {
 	env := newStoreRunEnv(t)
 
-	_, err := env.run(t, "campaigns", "create", "../escape", "--all")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	// A colon is rejected at admission: it would pass here but fail every
+	// later evidence write, stranding the run after its first assignment.
+	for _, campaignID := range []string{"../escape", "eval-1022-13:30"} {
+		_, err := env.run(t, "campaigns", "create", campaignID, "--all")
+		require.Error(t, err, campaignID)
+		assert.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid, campaignID)
+	}
 }
 
 func TestCampaignsCreate_IsIdempotentForTheSameFrozenSpec(t *testing.T) {

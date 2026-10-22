@@ -976,7 +976,7 @@ func sha256Hex(raw []byte) string {
 
 // doctrineRecordRunID is the run the pinned doctrine record came from.
 const (
-	doctrineRecordRunID = "c1f5cb4c-f285-4bfd-bcf0-303bcdbd327f"
+	doctrineRecordRunID = "c5dc678c-8567-4e5c-8c11-14a49a959a57"
 	pinnedCaseID        = "r01-none-direct-doctrine"
 	statusPass          = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 )

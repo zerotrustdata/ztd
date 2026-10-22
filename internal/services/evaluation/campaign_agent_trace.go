@@ -779,8 +779,11 @@ func BuildAssignmentAgentTraceEvidenceReference(runID, attemptID string, body []
 // SaveAssignmentAgentTrace persists one canonical agent trace for one
 // assignment.
 func (s *Store) SaveAssignmentAgentTrace(ctx context.Context, runID, assignmentID string, body []byte) error {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(assignmentID) || len(body) == 0 {
-		return fmt.Errorf("%w: assignment agent trace, run ID, assignment ID, and body are required", constants.ErrEvaluationReportPersistFailed)
+	if len(body) == 0 {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "assignment agent trace body")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, runIDElement(runID), assignmentIDElement(assignmentID)); err != nil {
+		return err
 	}
 	if err := complianceevidence.ValidateCanonicalJSON(body); err != nil {
 		return fmt.Errorf("%w: assignment agent trace is not canonical JSON: %v", constants.ErrEvaluationReportPersistFailed, err)
@@ -812,8 +815,11 @@ func (s *Store) LoadAssignmentAgentTraceArtifact(ctx context.Context, runID, ass
 }
 
 func loadAssignmentAgentTrace(ctx context.Context, reader complianceevidence.ArtifactReader, layout evalLayout, runID, assignmentID string) (*AgentTrace, []byte, error) {
-	if reader == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(assignmentID) {
-		return nil, nil, fmt.Errorf("evaluation: load assignment agent trace: %w", constants.ErrMissingRequiredField)
+	if reader == nil {
+		return nil, nil, fmt.Errorf("evaluation: load assignment agent trace: reader: %w", constants.ErrMissingRequiredField)
+	}
+	if err := validatePathElements(runIDElement(runID), assignmentIDElement(assignmentID)); err != nil {
+		return nil, nil, fmt.Errorf("evaluation: load assignment agent trace: %w", err)
 	}
 	body, err := reader.ReadFile(ctx, layout.assignmentAgentTracePath(runID, assignmentID))
 	if err != nil {
