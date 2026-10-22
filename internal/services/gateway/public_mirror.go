@@ -1331,7 +1331,9 @@ func (m *PublicMirrorServer) handleSnapshot(w http.ResponseWriter, r *http.Reque
 
 // handleHistory handles GET /history — cursor-paginated page of public
 // records. The cursor is the last sequence number seen; the response
-// returns records after the cursor up to the page limit.
+// returns records after the cursor up to the page limit. Optional kind and
+// dataset parameters keep only records whose top-level kind and dataset_id
+// match, so a single-dataset lookup never pages the whole feed.
 func (m *PublicMirrorServer) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1340,6 +1342,7 @@ func (m *PublicMirrorServer) handleHistory(w http.ResponseWriter, r *http.Reques
 	cursorStr := r.URL.Query().Get("cursor")
 	limitStr := r.URL.Query().Get("limit")
 	recordKind := r.URL.Query().Get("kind")
+	datasetID := r.URL.Query().Get("dataset")
 
 	limit := m.defaultPageSize
 	if limitStr != "" {
@@ -1391,6 +1394,12 @@ scan:
 			if recordKind != "" {
 				kind, ok := item.StringField("kind")
 				if !ok || kind != recordKind {
+					continue
+				}
+			}
+			if datasetID != "" {
+				id, ok := item.StringField("dataset_id")
+				if !ok || id != datasetID {
 					continue
 				}
 			}

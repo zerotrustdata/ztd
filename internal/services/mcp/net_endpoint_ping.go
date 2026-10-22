@@ -39,7 +39,7 @@ type NetEndpointPingTool struct{}
 
 // Name returns the tool identifier
 func (t *NetEndpointPingTool) Name() string {
-	return "net_endpoint_ping"
+	return constants.MCPToolNetEndpointPing
 }
 
 // Description returns a human-readable description

@@ -766,7 +766,6 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 	}
 
 	capable := func(op *operatorv1.OperatorDocument) bool {
-
 		if req.Decision != nil {
 			if op.GetRuntimeConfig().GetInferenceDecisionBackend() == "" || !slices.Contains(op.GetRuntimeConfig().GetInferenceDecisionModels(), req.Model) {
 				return false

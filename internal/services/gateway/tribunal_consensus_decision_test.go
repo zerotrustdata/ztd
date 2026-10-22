@@ -9,6 +9,9 @@ package gateway
 
 import (
 	"context"
+	"log/slog"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -17,8 +20,6 @@ import (
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/encoding/protojson"
-	"log/slog"
-	"testing"
 )
 
 type decisionVoteInferer struct {

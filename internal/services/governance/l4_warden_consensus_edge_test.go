@@ -59,8 +59,8 @@ func TestL4Warden_ConsensusPolicyStoreError_FailClosed(t *testing.T) {
 		&governancetest.UnlockedVault{},
 	)
 
-	payload := typedPayload(t, constants.ActionTypeFsList)
-	env := signedEnvelope(t, constants.ActionTypeFsList, payload, priv, "consensus")
+	payload := typedPayload(t, constants.ActionTypeExecuteBash)
+	env := signedEnvelope(t, constants.ActionTypeExecuteBash, payload, priv, "consensus")
 	// Override the L2 vote to use our member key
 	hash := env.TransactionHash
 	env.Governance.L2.Votes[0] = signL2Vote(priv, "member-1", hash, true)
@@ -120,13 +120,13 @@ func TestL4Warden_L2SplitVote_QuorumNotMet(t *testing.T) {
 		&governancetest.UnlockedVault{},
 	)
 
-	payload := typedPayload(t, constants.ActionTypeFsList)
+	payload := typedPayload(t, constants.ActionTypeExecuteBash)
 	nonceSuffix := hex.EncodeToString(payload)
 	if len(nonceSuffix) > 8 {
 		nonceSuffix = nonceSuffix[:8]
 	}
 
-	eventType, err := constants.RequestEventForAction(constants.ActionTypeFsList)
+	eventType, err := constants.RequestEventForAction(constants.ActionTypeExecuteBash)
 	if err != nil {
 		t.Fatalf("failed to resolve request event: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestL4Warden_L2SplitVote_QuorumNotMet(t *testing.T) {
 		OperatorId:        "operator-1",
 		OperatorSessionId: "operator-session-1",
 		EventType:         string(eventType),
-		ActionType:        string(constants.ActionTypeFsList),
+		ActionType:        string(constants.ActionTypeExecuteBash),
 		TargetResource:    "localhost",
 		Payload:           payload,
 		StateMerkleRoot:   "root-1",
@@ -211,12 +211,12 @@ func TestL4Warden_L2VoteOrderingIndependence(t *testing.T) {
 	}
 
 	buildEnv := func(nonceTag string, voteOrder []*commonv1.L2Vote) *govtypes.GovernanceEnvelope {
-		payload := typedPayload(t, constants.ActionTypeFsList)
+		payload := typedPayload(t, constants.ActionTypeExecuteBash)
 		nonceSuffix := hex.EncodeToString(payload)
 		if len(nonceSuffix) > 8 {
 			nonceSuffix = nonceSuffix[:8]
 		}
-		eventType, err := constants.RequestEventForAction(constants.ActionTypeFsList)
+		eventType, err := constants.RequestEventForAction(constants.ActionTypeExecuteBash)
 		if err != nil {
 			t.Fatalf("failed to resolve request event: %v", err)
 		}
@@ -228,7 +228,7 @@ func TestL4Warden_L2VoteOrderingIndependence(t *testing.T) {
 			OperatorId:        "operator-1",
 			OperatorSessionId: "operator-session-1",
 			EventType:         string(eventType),
-			ActionType:        string(constants.ActionTypeFsList),
+			ActionType:        string(constants.ActionTypeExecuteBash),
 			TargetResource:    "localhost",
 			Payload:           payload,
 			StateMerkleRoot:   "root-1",
@@ -346,12 +346,12 @@ func TestL4Warden_SingleKeyCannotSatisfyQuorum(t *testing.T) {
 	}
 
 	buildEnv := func(nonceTag string, votes []*commonv1.L2Vote) *govtypes.GovernanceEnvelope {
-		payload := typedPayload(t, constants.ActionTypeFsList)
+		payload := typedPayload(t, constants.ActionTypeExecuteBash)
 		nonceSuffix := hex.EncodeToString(payload)
 		if len(nonceSuffix) > 8 {
 			nonceSuffix = nonceSuffix[:8]
 		}
-		eventType, err := constants.RequestEventForAction(constants.ActionTypeFsList)
+		eventType, err := constants.RequestEventForAction(constants.ActionTypeExecuteBash)
 		if err != nil {
 			t.Fatalf("failed to resolve request event: %v", err)
 		}
@@ -363,7 +363,7 @@ func TestL4Warden_SingleKeyCannotSatisfyQuorum(t *testing.T) {
 			OperatorId:        "operator-1",
 			OperatorSessionId: "operator-session-1",
 			EventType:         string(eventType),
-			ActionType:        string(constants.ActionTypeFsList),
+			ActionType:        string(constants.ActionTypeExecuteBash),
 			TargetResource:    "localhost",
 			Payload:           payload,
 			StateMerkleRoot:   "root-1",
@@ -650,7 +650,7 @@ func TestVerifyL2Posture_VoteFaults(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), priv1, "consensus")
+			env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), priv1, "consensus")
 			env.Governance.L2.ConsensusSetId = "fault-consensus"
 			env.Governance.L2.Votes = tc.votes(env.TransactionHash)
 			ok, err := newWarden(tc.signers).verifyL2Posture(context.Background(), env, env.TransactionHash, tc.posture)

@@ -49,7 +49,7 @@ func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) 
 		constants.ActionTypeHeartbeat, constants.ActionTypeExecuteBash, constants.ActionTypeCancel,
 		constants.ActionTypeFsList, constants.ActionTypeFsRead, constants.ActionTypeFsGrep,
 		constants.ActionTypePortCheck, constants.ActionTypeOllamaModelInventory, constants.ActionTypeOllamaModelResidency,
-		constants.ActionTypeFetchLogs, constants.ActionTypeFetchHistory, constants.ActionTypeFetchFileHistory,
+		constants.ActionTypeOllamaModelRelease, constants.ActionTypeFetchLogs, constants.ActionTypeFetchHistory, constants.ActionTypeFetchFileHistory,
 		constants.ActionTypeRestoreFile, constants.ActionTypeFetchFileDiff,
 	} {
 		t.Run(string(action), func(t *testing.T) {

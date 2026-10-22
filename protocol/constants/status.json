@@ -4,11 +4,13 @@
       "A2A_CALL": {
         "_go_const": "ActionTypeA2aCall",
         "_mutation": true,
+        "_state_change": true,
         "value": "A2A_CALL"
       },
       "CANCEL": {
         "_go_const": "ActionTypeCancel",
         "_mutation": true,
+        "_state_change": true,
         "value": "CANCEL"
       },
       "EVAL_ANSWER": {
@@ -18,6 +20,7 @@
       "EXECUTE_BASH": {
         "_go_const": "ActionTypeExecuteBash",
         "_mutation": true,
+        "_state_change": true,
         "value": "EXECUTE_BASH"
       },
       "FETCH_FILE_DIFF": {
@@ -39,6 +42,7 @@
       "FILE_EDIT": {
         "_go_const": "ActionTypeFileEdit",
         "_mutation": true,
+        "_state_change": true,
         "value": "FILE_EDIT"
       },
       "FS_GREP": {
@@ -73,16 +77,50 @@
       "DOCUMENT_UPDATE": {
         "_go_const": "ActionTypeDocumentUpdate",
         "_mutation": true,
+        "_state_change": true,
         "value": "DOCUMENT_UPDATE"
       },
       "DOCUMENT_DELETE": {
         "_go_const": "ActionTypeDocumentDelete",
         "_mutation": true,
+        "_state_change": true,
         "value": "DOCUMENT_DELETE"
       },
       "MCP_CALL": {
         "_go_const": "ActionTypeMcpCall",
         "_mutation": true,
+        "_read_only_targets": [
+          "MCPToolAuditReceiptGet",
+          "MCPToolAuditReceiptList",
+          "MCPToolCloudMetadata",
+          "MCPToolConfigDiffMask",
+          "MCPToolDBDiscoverTopology",
+          "MCPToolDBIndexTriage",
+          "MCPToolDBIsolatedRead",
+          "MCPToolDBQueryValidate",
+          "MCPToolFsDiskProfile",
+          "MCPToolFsDiskUsage",
+          "MCPToolFsFileChecksum",
+          "MCPToolGitOps",
+          "MCPToolK8sInspect",
+          "MCPToolNetDNSResolve",
+          "MCPToolNetEndpointPing",
+          "MCPToolNetSSHKnownHosts",
+          "MCPToolNetSocketAudit",
+          "MCPToolProcMetricTop",
+          "MCPToolProcTree",
+          "MCPToolReadFile",
+          "MCPToolSearchDirectory",
+          "MCPToolSearchFile",
+          "MCPToolSysContainerStatus",
+          "MCPToolSysEnvVars",
+          "MCPToolSysInfo",
+          "MCPToolSysOOMDetect",
+          "MCPToolSysServiceStatus",
+          "MCPToolSysTimeClock",
+          "MCPToolTLSCertInspect"
+        ],
+        "_state_change": true,
         "value": "MCP_CALL"
       },
       "MCP_PROMPT_GET": {
@@ -110,6 +148,7 @@
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentDecide",
         "_mutation": true,
+        "_state_change": true,
         "value": "PLATFORM_ENROLLMENT_DECIDE"
       },
       "PLATFORM_ENROLLMENT_ISSUE": {
@@ -117,6 +156,7 @@
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentIssue",
         "_mutation": true,
+        "_state_change": true,
         "value": "PLATFORM_ENROLLMENT_ISSUE"
       },
       "PLATFORM_ENROLLMENT_PERSIST_POLICY": {
@@ -124,6 +164,7 @@
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentPersistPolicy",
         "_mutation": true,
+        "_state_change": true,
         "value": "PLATFORM_ENROLLMENT_PERSIST_POLICY"
       },
       "PLATFORM_ENROLLMENT_CREATE_SESSION": {
@@ -131,18 +172,21 @@
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentCreateSession",
         "_mutation": true,
+        "_state_change": true,
         "value": "PLATFORM_ENROLLMENT_CREATE_SESSION"
       },
       "PLATFORM_ENROLLMENT_REVOKE": {
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentRevoke",
         "_mutation": true,
+        "_state_change": true,
         "value": "PLATFORM_ENROLLMENT_REVOKE"
       },
       "PLATFORM_ENROLLMENT_BIND_CONSENSUS": {
         "_bootstrap": true,
         "_go_const": "ActionTypePlatformEnrollmentBindConsensus",
         "_mutation": true,
+        "_state_change": true,
         "value": "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
       },
       "PORT_CHECK": {
@@ -157,14 +201,21 @@
         "_go_const": "ActionTypeOllamaModelResidency",
         "value": "OLLAMA_MODEL_RESIDENCY"
       },
+      "OLLAMA_MODEL_RELEASE": {
+        "_go_const": "ActionTypeOllamaModelRelease",
+        "_mutation": true,
+        "value": "OLLAMA_MODEL_RELEASE"
+      },
       "RESTORE_FILE": {
         "_go_const": "ActionTypeRestoreFile",
         "_mutation": true,
+        "_state_change": true,
         "value": "RESTORE_FILE"
       },
       "SHUTDOWN": {
         "_go_const": "ActionTypeShutdown",
         "_mutation": true,
+        "_state_change": true,
         "value": "SHUTDOWN"
       }
     },

@@ -45,7 +45,7 @@ func marshalCloudMetadataResult(result interface{}) (CallToolResult, error) {
 
 // Name returns the tool identifier.
 func (t *CloudMetadataTool) Name() string {
-	return "cloud_metadata"
+	return constants.MCPToolCloudMetadata
 }
 
 // Description returns a human-readable description.

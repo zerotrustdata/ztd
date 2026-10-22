@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -22,7 +24,7 @@ type DBQueryValidateTool struct{}
 
 // Name returns the tool identifier.
 func (t *DBQueryValidateTool) Name() string {
-	return "db_query_validate"
+	return constants.MCPToolDBQueryValidate
 }
 
 // Description returns a human-readable description.

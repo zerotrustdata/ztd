@@ -18,6 +18,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
+	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -123,6 +124,55 @@ func (s *OllamaMaintenanceService) HandleResidencyRequest(ctx context.Context, m
 	payload.ExecutionId = executionID
 	payload.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	return "", publishLFAATypedResponseTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Completed, payload, s.auditStore, s.scrubbing)
+}
+
+// HandleReleaseRequest unloads the requested served model tags, verifies they
+// have left provider residency, and returns a typed OllamaModelReleaseResult.
+// The full tag set is validated before any unload, and an empty set fails closed.
+func (s *OllamaMaintenanceService) HandleReleaseRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	var request operatorv1.OllamaModelReleaseRequested
+	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
+		s.logger.Error("Failed to decode Ollama release payload", string(constants.ConnectionStateError), err)
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, "invalid request payload", s.auditStore, s.scrubbing))
+	}
+
+	executionID := request.GetExecutionId()
+	if executionID == "" {
+		executionID = executionIDFromMessage(msg)
+	}
+
+	if err := validateReleaseModelTags(request.GetModelTags()); err != nil {
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, err.Error(), s.auditStore, s.scrubbing))
+	}
+
+	backend, err := s.ollamaBackend()
+	if err != nil {
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, err.Error(), s.auditStore, s.scrubbing))
+	}
+
+	if err := backend.ReleaseModels(ctx, request.GetModelTags()); err != nil {
+		return "", errors.Join(err, publishLFAAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, err.Error(), s.auditStore, s.scrubbing))
+	}
+
+	payload := &operatorv1.OllamaModelReleaseResult{
+		ExecutionId: executionID,
+		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+	}
+	return "", publishLFAATypedResponseTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Completed, payload, s.auditStore, s.scrubbing)
+}
+
+// validateReleaseModelTags fails closed on an empty release set and on any tag
+// that the served-model-tag validator rejects.
+func validateReleaseModelTags(modelTags []string) error {
+	if len(modelTags) == 0 {
+		return fmt.Errorf("ollama maintenance: release models: %w: at least one model tag is required", constants.ErrInferenceModelTagInvalid)
+	}
+	for _, modelTag := range modelTags {
+		if err := operatorcapability.ValidateServedModelTag(modelTag); err != nil {
+			return fmt.Errorf("ollama maintenance: release models: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *OllamaMaintenanceService) ollamaBackend() (*inference.OllamaBackend, error) {

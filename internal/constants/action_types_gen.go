@@ -36,6 +36,7 @@ const (
 	ActionTypeMcpResourceRead                 ActionType = "MCP_RESOURCE_READ"
 	ActionTypeModelProvenanceObservation      ActionType = "MODEL_PROVENANCE_OBSERVATION"
 	ActionTypeOllamaModelInventory            ActionType = "OLLAMA_MODEL_INVENTORY"
+	ActionTypeOllamaModelRelease              ActionType = "OLLAMA_MODEL_RELEASE"
 	ActionTypeOllamaModelResidency            ActionType = "OLLAMA_MODEL_RESIDENCY"
 	ActionTypePlatformEnrollmentBindConsensus ActionType = "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
 	ActionTypePlatformEnrollmentCreate        ActionType = "PLATFORM_ENROLLMENT_CREATE"
@@ -75,6 +76,7 @@ var AllActionTypes = []ActionType{
 	ActionTypeMcpResourceRead,
 	ActionTypeModelProvenanceObservation,
 	ActionTypeOllamaModelInventory,
+	ActionTypeOllamaModelRelease,
 	ActionTypeOllamaModelResidency,
 	ActionTypePlatformEnrollmentBindConsensus,
 	ActionTypePlatformEnrollmentCreate,
@@ -100,6 +102,7 @@ func (a ActionType) IsMutation() bool {
 		ActionTypeFileEdit,
 		ActionTypeInference,
 		ActionTypeMcpCall,
+		ActionTypeOllamaModelRelease,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
@@ -142,4 +145,77 @@ func (a ActionType) AuthorizedByDecision() bool {
 	default:
 		return false
 	}
+}
+
+// IsStateChange returns true for actions whose execution changes state.
+// ChangesState narrows it by target resource.
+func (a ActionType) IsStateChange() bool {
+	switch a {
+	case ActionTypeA2aCall,
+		ActionTypeCancel,
+		ActionTypeDocumentDelete,
+		ActionTypeDocumentUpdate,
+		ActionTypeExecuteBash,
+		ActionTypeFileEdit,
+		ActionTypeMcpCall,
+		ActionTypePlatformEnrollmentBindConsensus,
+		ActionTypePlatformEnrollmentCreateSession,
+		ActionTypePlatformEnrollmentDecide,
+		ActionTypePlatformEnrollmentIssue,
+		ActionTypePlatformEnrollmentPersistPolicy,
+		ActionTypePlatformEnrollmentRevoke,
+		ActionTypeRestoreFile,
+		ActionTypeShutdown:
+		return true
+	default:
+		return false
+	}
+}
+
+// ChangesState reports whether executing the action against targetResource
+// changes state. A state-change action changes state against every target
+// except its registered read-only targets, so an unknown target fails closed.
+func (a ActionType) ChangesState(targetResource string) bool {
+	return a.IsStateChange() && !a.readOnlyTarget(targetResource)
+}
+
+// readOnlyTarget reports whether targetResource is a registered read-only
+// target of state-change action a.
+func (a ActionType) readOnlyTarget(targetResource string) bool {
+	switch a {
+	case ActionTypeMcpCall:
+		switch targetResource {
+		case MCPToolAuditReceiptGet,
+			MCPToolAuditReceiptList,
+			MCPToolCloudMetadata,
+			MCPToolConfigDiffMask,
+			MCPToolDBDiscoverTopology,
+			MCPToolDBIndexTriage,
+			MCPToolDBIsolatedRead,
+			MCPToolDBQueryValidate,
+			MCPToolFsDiskProfile,
+			MCPToolFsDiskUsage,
+			MCPToolFsFileChecksum,
+			MCPToolGitOps,
+			MCPToolK8sInspect,
+			MCPToolNetDNSResolve,
+			MCPToolNetEndpointPing,
+			MCPToolNetSSHKnownHosts,
+			MCPToolNetSocketAudit,
+			MCPToolProcMetricTop,
+			MCPToolProcTree,
+			MCPToolReadFile,
+			MCPToolSearchDirectory,
+			MCPToolSearchFile,
+			MCPToolSysContainerStatus,
+			MCPToolSysEnvVars,
+			MCPToolSysInfo,
+			MCPToolSysOOMDetect,
+			MCPToolSysServiceStatus,
+			MCPToolSysTimeClock,
+			MCPToolTLSCertInspect:
+			return true
+		}
+	}
+	return false
 }

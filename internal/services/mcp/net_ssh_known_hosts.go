@@ -26,7 +26,7 @@ type NetSSHKnownHostsTool struct{}
 
 // Name returns the tool identifier.
 func (t *NetSSHKnownHostsTool) Name() string {
-	return "net_ssh_known_hosts"
+	return constants.MCPToolNetSSHKnownHosts
 }
 
 // Description returns a human-readable description.

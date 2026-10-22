@@ -35,7 +35,7 @@ func TestSystemOneOllamaTypedTransportAndDigestPin(t *testing.T) {
 			fmt.Fprint(w, `{"model":"tev1:0.8b","answers":{"safe":{"type":"noul","noul":0.99},"action":{"type":"choice","choice":"read","probabilities":{"read":0.9,"write":0.1},"confidence":0.8},"risk":{"type":"score","score":0.2,"probabilities":{"0":0.8,"1":0.2},"confidence":0.6}},"usage":{"input_tokens":15,"output_tokens":3}}`)
 		default:
 			t.Errorf("unexpected provider path %s", r.URL.Path)
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()

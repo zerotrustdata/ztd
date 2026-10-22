@@ -8,10 +8,11 @@
 package models
 
 import (
-	"github.com/zerotrustdata/ztd/internal/constants"
-	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	"math"
 	"regexp"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
 const ConsensusVoteKindGenerative = "generative"

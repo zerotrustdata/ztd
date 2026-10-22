@@ -8,9 +8,10 @@
 package tribunal
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"testing"
 )
 
 func TestConsensusDecisionAtomicGatesAndNemesisNegation(t *testing.T) {

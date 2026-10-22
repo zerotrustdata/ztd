@@ -127,7 +127,7 @@ func countingMirrorProxy(t *testing.T, mirrorBaseURL string, bootstrapRequests, 
 	return server.URL
 }
 
-func TestHTTPCampaignMirrorProbe_DatasetPresentFromBootstrap(t *testing.T) {
+func TestHTTPCampaignMirrorProbe_ReportsPresentAndAbsentDatasets(t *testing.T) {
 	_, fileSvc, cfg := newPublicMirrorGateway(t)
 	publishCatalogSnapshots(t, fileSvc, cfg, "eval-run-1")
 
@@ -164,7 +164,7 @@ func TestHTTPCampaignMirrorProbe_DatasetPresentFromHistory(t *testing.T) {
 	}
 }
 
-func TestHTTPCampaignMirrorProbe_IndexesMirrorOnceForMultipleDatasets(t *testing.T) {
+func TestHTTPCampaignMirrorProbe_ReadsOneFilteredHistoryPagePerDataset(t *testing.T) {
 	gateway, fileSvc, cfg := newPublicMirrorGateway(t)
 	publishCatalogSnapshots(t, fileSvc, cfg, "eval-run-history", "eval-run-recent")
 
@@ -182,8 +182,8 @@ func TestHTTPCampaignMirrorProbe_IndexesMirrorOnceForMultipleDatasets(t *testing
 		require.NoError(t, err)
 		assert.Equal(t, expected, present, datasetID)
 	}
-	assert.Equal(t, int32(1), bootstrapRequests.Load())
-	assert.Equal(t, int32(1), historyRequests.Load())
+	assert.Equal(t, int32(0), bootstrapRequests.Load())
+	assert.Equal(t, int32(3), historyRequests.Load())
 }
 
 func TestGatewayPublisherStatus_ReturnsBootstrapFields(t *testing.T) {
@@ -224,14 +224,14 @@ func TestFetchPublicMirrorHistory_ReturnsCursorPage(t *testing.T) {
 	require.NoError(t, err)
 	sourceID := bootstrap.Snapshot.SourceID
 
-	first, err := fetchPublicMirrorHistory(t.Context(), nil, sourceID, "", 2)
+	first, err := fetchPublicMirrorHistory(t.Context(), nil, sourceID, "", "", 2)
 	require.NoError(t, err)
 	require.Len(t, first.Items, 2)
 	assert.True(t, first.HasMore)
 	require.NotEmpty(t, first.Cursor)
 	assertDatasetIDs(t, first.Items, "eval-run-1", "eval-run-2")
 
-	second, err := fetchPublicMirrorHistory(t.Context(), nil, sourceID, first.Cursor, 2)
+	second, err := fetchPublicMirrorHistory(t.Context(), nil, sourceID, "", first.Cursor, 2)
 	require.NoError(t, err)
 	assert.False(t, second.HasMore)
 	assertDatasetIDs(t, second.Items, "eval-run-3")

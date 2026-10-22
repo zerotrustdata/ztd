@@ -110,6 +110,8 @@
     - [OSDetails](#ztd-operator-v1-OSDetails)
     - [OllamaModelInventoryRequested](#ztd-operator-v1-OllamaModelInventoryRequested)
     - [OllamaModelInventoryResult](#ztd-operator-v1-OllamaModelInventoryResult)
+    - [OllamaModelReleaseRequested](#ztd-operator-v1-OllamaModelReleaseRequested)
+    - [OllamaModelReleaseResult](#ztd-operator-v1-OllamaModelReleaseResult)
     - [OllamaModelResidencyModel](#ztd-operator-v1-OllamaModelResidencyModel)
     - [OllamaModelResidencyRequested](#ztd-operator-v1-OllamaModelResidencyRequested)
     - [OllamaModelResidencyResult](#ztd-operator-v1-OllamaModelResidencyResult)
@@ -2310,6 +2312,40 @@ Reads a specific resource from the downstream MCP server.
 | execution_id | [string](#string) |  |  |
 | status | [ExecutionStatus](#ztd-operator-v1-ExecutionStatus) |  |  |
 | entries | [ProviderModelInventoryEntry](#ztd-operator-v1-ProviderModelInventoryEntry) | repeated |  |
+| error_message | [string](#string) |  |  |
+| error_type | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-OllamaModelReleaseRequested"></a>
+
+### OllamaModelReleaseRequested
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| model_tags | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-OllamaModelReleaseResult"></a>
+
+### OllamaModelReleaseResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| status | [ExecutionStatus](#ztd-operator-v1-ExecutionStatus) |  |  |
 | error_message | [string](#string) |  |  |
 | error_type | [string](#string) |  |  |
 

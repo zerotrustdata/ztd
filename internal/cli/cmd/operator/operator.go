@@ -93,7 +93,6 @@ func operatorModelCmd() *cobra.Command {
 		operatorModelCopyCmd(),
 		operatorModelInventoryCmd(),
 		operatorModelResidencyCmd(),
-		operatorModelReleaseCmd(),
 	)
 	return cmd
 }
@@ -211,28 +210,6 @@ func operatorModelResidencyCmd() *cobra.Command {
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(payload))
 			return err
-		},
-	}
-}
-
-func operatorModelReleaseCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "release <model> [model...]",
-		Hidden: true,
-		Args:   cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := operatorOllamaEndpoint(cmd)
-			if err != nil {
-				return err
-			}
-			backend, err := inference.NewOllamaBackend(endpoint, slog.Default())
-			if err != nil {
-				return fmt.Errorf("operator: release model: %w", err)
-			}
-			if err := backend.ReleaseModels(cmd.Context(), args); err != nil {
-				return fmt.Errorf("operator: release model: %w", err)
-			}
-			return nil
 		},
 	}
 }

@@ -9,11 +9,12 @@ package evaluation
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"net/url"
-	"strings"
 )
 
 // ValidateConsensusProviderIsolation refuses overlapping consensus and campaign providers.

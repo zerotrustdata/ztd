@@ -14,6 +14,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // SysTimeClockTool provides NTP sync status and system time verification.
@@ -21,7 +23,7 @@ type SysTimeClockTool struct{}
 
 // Name returns the tool identifier.
 func (t *SysTimeClockTool) Name() string {
-	return "sys_time_clock"
+	return constants.MCPToolSysTimeClock
 }
 
 // Description returns a human-readable description.

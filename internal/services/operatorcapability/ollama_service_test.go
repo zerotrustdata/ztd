@@ -18,15 +18,14 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestOllamaReleaseCommand_ValidatesServedModelTag(t *testing.T) {
+func TestValidateServedModelTag(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
 		tag  string
-		want string
 		ok   bool
 	}{
-		{name: "namespaced tag", tag: "registry.example/team/qwen3:0.6b", want: "ztd operator model release registry.example/team/qwen3:0.6b", ok: true},
+		{name: "namespaced tag", tag: "registry.example/team/qwen3:0.6b", ok: true},
 		{name: "empty tag", tag: "", ok: false},
 		{name: "option-like tag", tag: "--all", ok: false},
 		{name: "shell metacharacter", tag: "qwen3:0.6b;whoami", ok: false},
@@ -34,10 +33,9 @@ func TestOllamaReleaseCommand_ValidatesServedModelTag(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			command, err := OllamaReleaseCommand(tt.tag)
+			err := ValidateServedModelTag(tt.tag)
 			if tt.ok {
 				require.NoError(t, err)
-				assert.Equal(t, tt.want, command)
 				return
 			}
 			require.ErrorIs(t, err, constants.ErrInferenceModelTagInvalid)

@@ -23,7 +23,7 @@ type DBIsolatedReadTool struct{}
 
 // Name returns the tool identifier.
 func (t *DBIsolatedReadTool) Name() string {
-	return "db_isolated_read"
+	return constants.MCPToolDBIsolatedRead
 }
 
 // Description returns a human-readable description.

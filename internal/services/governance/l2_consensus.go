@@ -48,14 +48,22 @@ func (NoopConsensusPolicyStore) GetConsensusPolicy(context.Context, string) (*L2
 	return nil, nil
 }
 
-// L2Enforced reports whether posture gates this action on L2 consensus votes.
-// Bootstrap actions (platform enrollment) are exempt: they bring the consensus
-// tribunal into existence and therefore predate its ability to sign.
+// L2Enforced reports whether posture gates this envelope on L2 consensus votes.
+// The Tribunal votes only on state changes: an action the registry classifies
+// as changing state against the envelope's target resource
+// (constants.ActionType.ChangesState). Inference, observations, typed provider
+// reads and read-only tools get no vote round. Bootstrap actions (platform
+// enrollment) are exempt: they bring the consensus tribunal into existence and
+// therefore predate its ability to sign.
 //
 // This is the single owner of the L2 gate. L4 verification and every Gateway
-// deliberation site call it, so the bootstrap exemption cannot drift per caller.
-func L2Enforced(actionType constants.ActionType, posture constants.Posture) bool {
-	return posture.RequiresL2() && !actionType.IsBootstrapAction()
+// deliberation site call it, so the scope cannot drift per caller. The target
+// resource is in the canonical hash, and L4 binds an MCP call's target to its
+// tool name, so the classification cannot be steered after admission.
+func L2Enforced(envelope *govtypes.GovernanceEnvelope, posture constants.Posture) bool {
+	actionType := constants.ActionType(envelope.GetActionType())
+	return posture.RequiresL2() && !actionType.IsBootstrapAction() &&
+		actionType.ChangesState(envelope.GetTargetResource())
 }
 
 // l2StatusFor maps the L2 result of one envelope to the status its receipt
@@ -66,11 +74,10 @@ func L2Enforced(actionType constants.ActionType, posture constants.Posture) bool
 // A deliberation-exempt envelope reaching here has had its attestation proven
 // by verifyL2Posture, so it is NOT_REQUIRED even under an L2 posture.
 func l2StatusFor(envelope *govtypes.GovernanceEnvelope, posture constants.Posture, valid bool) operatorv1.L2Status {
-	actionType := constants.ActionType(envelope.GetActionType())
 	switch {
 	case valid:
 		return operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
-	case L2Enforced(actionType, posture) && !L2DeliberationExempt(envelope):
+	case L2Enforced(envelope, posture) && !L2DeliberationExempt(envelope):
 		return operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED
 	default:
 		return operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
@@ -87,8 +94,7 @@ func l2StatusFor(envelope *govtypes.GovernanceEnvelope, posture constants.Postur
 // recorded as audit evidence, but their absence or failure does not reject the
 // envelope.
 func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture constants.Posture) (bool, error) {
-	actionType := constants.ActionType(envelope.ActionType)
-	enforced := L2Enforced(actionType, posture)
+	enforced := L2Enforced(envelope, posture)
 
 	// A deliberation attestation is verified first and in every posture. A
 	// proven one exempts the envelope from L2 (NOT_REQUIRED); any other

@@ -30,20 +30,6 @@ func ValidateServedModelTag(modelTag string) error {
 	return nil
 }
 
-// OllamaReleaseCommand returns the fixed embedded-client model-release command
-// for a validated served model tag.
-func OllamaReleaseCommand(modelTags ...string) (string, error) {
-	if len(modelTags) == 0 {
-		return "", fmt.Errorf("%w: at least one model tag is required", constants.ErrInferenceModelTagInvalid)
-	}
-	for _, modelTag := range modelTags {
-		if err := ValidateServedModelTag(modelTag); err != nil {
-			return "", err
-		}
-	}
-	return constants.BinaryImageName + " operator model release " + strings.Join(modelTags, " "), nil
-}
-
 // OllamaPullCommand returns the embedded-client model-pull command for one
 // validated served model tag.
 func OllamaPullCommand(modelTag string) (string, error) {

@@ -101,7 +101,7 @@ func TestL4Warden_Consensus_AllActionTypesFromSSOT(t *testing.T) {
 func TestL4Warden_Consensus_MissingL2Rejects(t *testing.T) {
 	t.Parallel()
 	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
-	env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "consensus")
+	env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "consensus")
 
 	env.Governance.L2 = nil
 
@@ -301,7 +301,7 @@ func TestL4Warden_L2VerifiesAgainstEnrollmentBundleTrust(t *testing.T) {
 				&testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"},
 				&governancetest.UnlockedVault{},
 			)
-			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), priv, "consensus")
+			env := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), priv, "consensus")
 
 			verified, err := warden.VerifyEnvelope(context.Background(), env)
 			if tc.wantErr != nil {
@@ -362,14 +362,14 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 		Enabled:         false,
 	}
 
-	payload := typedPayload(t, constants.ActionTypeFsList)
+	payload := typedPayload(t, constants.ActionTypeExecuteBash)
 
 	buildEnv := func(nonceTag, consensusID string, votes []*commonv1.L2Vote) *govtypes.GovernanceEnvelope {
 		nonceSuffix := hex.EncodeToString(payload)
 		if len(nonceSuffix) > 8 {
 			nonceSuffix = nonceSuffix[:8]
 		}
-		eventType, err := constants.RequestEventForAction(constants.ActionTypeFsList)
+		eventType, err := constants.RequestEventForAction(constants.ActionTypeExecuteBash)
 		if err != nil {
 			t.Fatalf("failed to resolve request event: %v", err)
 		}
@@ -381,7 +381,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 			OperatorId:        "operator-1",
 			OperatorSessionId: "operator-session-1",
 			EventType:         string(eventType),
-			ActionType:        string(constants.ActionTypeFsList),
+			ActionType:        string(constants.ActionTypeExecuteBash),
 			TargetResource:    "localhost",
 			Payload:           payload,
 			StateMerkleRoot:   "root-1",

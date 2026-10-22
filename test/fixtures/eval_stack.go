@@ -64,6 +64,8 @@ type EvalStack struct {
 	Provider      *ScriptedOllama
 	// Provenance is the Provenance Operator, nil unless EvalStackOptions.Provenance.
 	Provenance *OperatorProcess
+	// Posture is the posture the Gateway runs under.
+	Posture constants.Posture
 }
 
 // NewEvalStack builds an isolated Gateway, bootstrap owner, wire witness, and
@@ -159,7 +161,7 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 		Gateway: gateway, Identity: identity, Owner: owner, Witness: witness,
 		Data: data, Inference: inference, DataHost: dataHost,
 		InferenceHost: inferenceHost, Provider: provider,
-		Provenance: provenance,
+		Provenance: provenance, Posture: posture,
 	}
 }
 

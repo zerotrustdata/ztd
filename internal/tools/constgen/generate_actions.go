@@ -21,6 +21,12 @@ type actionTypeMeta struct {
 	Mutation             bool
 	Bootstrap            bool
 	AuthorizedByDecision bool
+	// StateChange marks an action whose execution changes state. Every state
+	// change is a mutation.
+	StateChange bool
+	// ReadOnlyTargets are the constants package identifiers of the target
+	// resources against which a state-change action changes no state.
+	ReadOnlyTargets []string
 }
 
 func loadActionTypeMeta(path string) (map[string]actionTypeMeta, error) {
@@ -31,11 +37,13 @@ func loadActionTypeMeta(path string) (map[string]actionTypeMeta, error) {
 	var raw struct {
 		Status struct {
 			ActionType map[string]struct {
-				GoConst              string `json:"_go_const"`
-				Value                string `json:"value"`
-				Mutation             bool   `json:"_mutation"`
-				Bootstrap            bool   `json:"_bootstrap"`
-				AuthorizedByDecision bool   `json:"_authorized_by_decision"`
+				GoConst              string   `json:"_go_const"`
+				Value                string   `json:"value"`
+				Mutation             bool     `json:"_mutation"`
+				Bootstrap            bool     `json:"_bootstrap"`
+				AuthorizedByDecision bool     `json:"_authorized_by_decision"`
+				StateChange          bool     `json:"_state_change"`
+				ReadOnlyTargets      []string `json:"_read_only_targets"`
 			} `json:"action_type"`
 		} `json:"status"`
 	}
@@ -47,12 +55,22 @@ func loadActionTypeMeta(path string) (map[string]actionTypeMeta, error) {
 		if meta.AuthorizedByDecision && !meta.Bootstrap {
 			return nil, fmt.Errorf("decode %s: action %s: _authorized_by_decision requires _bootstrap", path, key)
 		}
+		if meta.StateChange && !meta.Mutation {
+			return nil, fmt.Errorf("decode %s: action %s: _state_change requires _mutation", path, key)
+		}
+		if len(meta.ReadOnlyTargets) > 0 && !meta.StateChange {
+			return nil, fmt.Errorf("decode %s: action %s: _read_only_targets requires _state_change", path, key)
+		}
+		targets := append([]string(nil), meta.ReadOnlyTargets...)
+		sort.Strings(targets)
 		out[key] = actionTypeMeta{
 			GoConst:              meta.GoConst,
 			Value:                meta.Value,
 			Mutation:             meta.Mutation,
 			Bootstrap:            meta.Bootstrap,
 			AuthorizedByDecision: meta.AuthorizedByDecision,
+			StateChange:          meta.StateChange,
+			ReadOnlyTargets:      targets,
 		}
 	}
 	return out, nil
@@ -68,10 +86,18 @@ func generateActionTypesGo(actionTypes map[string]actionTypeMeta) string {
 	var mutations []string
 	var bootstraps []string
 	var decisionAuthorized []string
+	var stateChanges []string
+	var readOnlyTargetKeys []string
 	for _, key := range keys {
 		meta := actionTypes[key]
 		if meta.Mutation {
 			mutations = append(mutations, meta.GoConst)
+		}
+		if meta.StateChange {
+			stateChanges = append(stateChanges, meta.GoConst)
+		}
+		if len(meta.ReadOnlyTargets) > 0 {
+			readOnlyTargetKeys = append(readOnlyTargetKeys, key)
 		}
 		if meta.Bootstrap {
 			bootstraps = append(bootstraps, meta.GoConst)
@@ -125,6 +151,12 @@ var AllActionTypes = []ActionType{
 // L3 proof of their own; their handler requires the committed decision.`,
 			actions: decisionAuthorized,
 		},
+		{
+			name: "IsStateChange",
+			comment: `// IsStateChange returns true for actions whose execution changes state.
+// ChangesState narrows it by target resource.`,
+			actions: stateChanges,
+		},
 	} {
 		fmt.Fprintf(&b, "\n%s\nfunc (a ActionType) %s() bool {\n\tswitch a {\n", predicate.comment, predicate.name)
 		// Empty classifications have only the default branch: no action qualifies.
@@ -137,5 +169,27 @@ var AllActionTypes = []ActionType{
 }
 `)
 	}
+	b.WriteString(`
+// ChangesState reports whether executing the action against targetResource
+// changes state. A state-change action changes state against every target
+// except its registered read-only targets, so an unknown target fails closed.
+func (a ActionType) ChangesState(targetResource string) bool {
+	return a.IsStateChange() && !a.readOnlyTarget(targetResource)
+}
+
+// readOnlyTarget reports whether targetResource is a registered read-only
+// target of state-change action a.
+`)
+	if len(readOnlyTargetKeys) == 0 {
+		b.WriteString("func (ActionType) readOnlyTarget(string) bool {\n\treturn false\n}\n")
+		return b.String()
+	}
+	b.WriteString("func (a ActionType) readOnlyTarget(targetResource string) bool {\n\tswitch a {\n")
+	for _, key := range readOnlyTargetKeys {
+		meta := actionTypes[key]
+		fmt.Fprintf(&b, "\tcase %s:\n\t\tswitch targetResource {\n\t\tcase %s:\n\t\t\treturn true\n\t\t}\n",
+			meta.GoConst, strings.Join(meta.ReadOnlyTargets, ",\n\t\t\t"))
+	}
+	b.WriteString("\t}\n\treturn false\n}\n")
 	return b.String()
 }

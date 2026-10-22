@@ -59,6 +59,8 @@ func DecodePayloadForAction(actionType constants.ActionType, payload []byte) (pr
 		msg = &operatorv1.OllamaModelInventoryRequested{}
 	case constants.ActionTypeOllamaModelResidency:
 		msg = &operatorv1.OllamaModelResidencyRequested{}
+	case constants.ActionTypeOllamaModelRelease:
+		msg = &operatorv1.OllamaModelReleaseRequested{}
 	case constants.ActionTypeFetchLogs:
 		msg = &operatorv1.FetchLogsRequested{}
 	case constants.ActionTypeFetchHistory:

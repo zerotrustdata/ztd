@@ -200,7 +200,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		return nil, fmt.Errorf("evaluation: runs start: load CLI identity: %w", err)
 	}
 	controller := evaluation.NewCampaignController(store, nil, deps.now, adaptNewID(deps.newID))
-	if _, err := controller.StartRun(cmd.Context(), evaluation.RunStartRequest{
+	started, err := controller.StartRun(cmd.Context(), evaluation.RunStartRequest{
 		CampaignID:                 opts.CampaignID,
 		RunID:                      runID,
 		InferenceOperatorSessionID: topology.Inference.OperatorSessionID,
@@ -211,11 +211,13 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		ProviderObservationPolicy:  witnessPolicy(opts.RequireObservation),
 		ModelProvenancePolicy:      witnessPolicy(opts.RequireProvenance),
 		Governance:                 governance,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
 	if !opts.JSONOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Started run %s of campaign %s\n", runID, opts.CampaignID)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Governance: %s\n", evaluation.DescribeRunGovernance(started))
 	}
 	if opts.Publish {
 		publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)

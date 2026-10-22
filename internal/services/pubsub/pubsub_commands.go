@@ -430,6 +430,7 @@ func (rs *OperatorPubSubService) buildHandlers() {
 		constants.ActionTypePortCheck:                   rs.ports.HandlePortCheckRequest,
 		constants.ActionTypeOllamaModelInventory:        rs.ollama.HandleInventoryRequest,
 		constants.ActionTypeOllamaModelResidency:        rs.ollama.HandleResidencyRequest,
+		constants.ActionTypeOllamaModelRelease:          rs.ollama.HandleReleaseRequest,
 		constants.ActionTypeFetchLogs:                   rs.history.HandleFetchLogsRequest,
 		constants.ActionTypeFetchHistory:                rs.history.HandleFetchHistoryRequest,
 		constants.ActionTypeFetchFileHistory:            rs.history.HandleFetchFileHistoryRequest,

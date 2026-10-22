@@ -1827,6 +1827,48 @@
         "OperatorOllamaModelInventoryFailed"
       ]
     },
+    "OperatorOllamaModelReleaseCompleted": {
+      "_go_const": "EventOperatorOllamaModelReleaseCompleted",
+      "value": "ztd.v1.operator.ollama.model.release.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelReleaseFailed": {
+      "_go_const": "EventOperatorOllamaModelReleaseFailed",
+      "value": "ztd.v1.operator.ollama.model.release.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelReleaseRequested": {
+      "_go_const": "EventOperatorOllamaModelReleaseRequested",
+      "value": "ztd.v1.operator.ollama.model.release.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "OLLAMA_MODEL_RELEASE",
+        "payload": "ztd.operator.v1.OllamaModelReleaseRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorOllamaModelReleaseCompleted",
+        "OperatorOllamaModelReleaseFailed"
+      ]
+    },
     "OperatorOllamaModelResidencyCompleted": {
       "_go_const": "EventOperatorOllamaModelResidencyCompleted",
       "value": "ztd.v1.operator.ollama.model.residency.completed",

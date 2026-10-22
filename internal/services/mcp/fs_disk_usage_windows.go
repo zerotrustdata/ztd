@@ -27,7 +27,7 @@ type FSDiskUsageTool struct {
 
 // Name returns the tool identifier.
 func (t *FSDiskUsageTool) Name() string {
-	return "fs_disk_usage"
+	return constants.MCPToolFsDiskUsage
 }
 
 // Description returns a human-readable description.

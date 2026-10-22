@@ -9,11 +9,12 @@ package models
 
 import (
 	"fmt"
+	"math"
+	"strings"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/proto"
-	"math"
-	"strings"
 )
 
 // DecisionRequest carries decision input and the same provider identity as chat.
@@ -48,7 +49,7 @@ func ValidateDecisionRequest(req *operatorv1.InferenceDecisionRequest) error {
 			return invalid
 		}
 		for _, c := range q.Name {
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '.' || c == '-') {
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '.' && c != '-' {
 				return invalid
 			}
 		}

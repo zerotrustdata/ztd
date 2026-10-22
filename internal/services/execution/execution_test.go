@@ -31,7 +31,6 @@ func TestResolveCommandBinary(t *testing.T) {
 	executable, err := os.Executable()
 	require.NoError(t, err)
 	for _, command := range []string{
-		"ztd operator model release smollm2:135m",
 		"ztd operator model pull qwen3:0.6b",
 		"ztd operator model copy qwen3:0.6b local/qwen3:0.6b",
 		"ztd operator model inventory",

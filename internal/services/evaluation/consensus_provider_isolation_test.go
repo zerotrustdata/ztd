@@ -8,11 +8,12 @@
 package evaluation
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"testing"
 )
 
 func TestDecisionConsensusProviderIsolation(t *testing.T) {

@@ -47,6 +47,7 @@ type OllamaModelCommandDispatchResult struct {
 	CommandResult   *operatorv1.CommandResult
 	InventoryResult *operatorv1.OllamaModelInventoryResult
 	ResidencyResult *operatorv1.OllamaModelResidencyResult
+	ReleaseResult   *operatorv1.OllamaModelReleaseResult
 	ResponseBody    []byte
 }
 
@@ -72,9 +73,19 @@ func ValidateOllamaModelCommandResult(command string, result *OllamaModelCommand
 		return fmt.Errorf("%w: Ollama model command %q failed: %s", constants.ErrEvaluationDispatchFailed, command, result.CommandResult.GetError())
 	}
 	if result.CommandResult.GetReturnCode() != 0 {
+		if cause := lastOutputLine(result.CommandResult.GetStderr()); cause != "" {
+			return fmt.Errorf("%w: Ollama model command %q exited with code %d: %s", constants.ErrEvaluationDispatchFailed, command, result.CommandResult.GetReturnCode(), cause)
+		}
 		return fmt.Errorf("%w: Ollama model command %q exited with code %d", constants.ErrEvaluationDispatchFailed, command, result.CommandResult.GetReturnCode())
 	}
 	return nil
+}
+
+// lastOutputLine returns the final non-empty line of command output, where the
+// ztd CLI writes the error that ended the command.
+func lastOutputLine(output string) string {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
 }
 
 // ValidateOllamaModelInventoryResult validates the HTTP and Operator result
@@ -112,6 +123,24 @@ func ValidateOllamaModelResidencyResult(result *OllamaModelCommandDispatchResult
 	}
 	if result.ResidencyResult.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 		return fmt.Errorf("%w: Ollama model residency failed: %s", constants.ErrEvaluationDispatchFailed, result.ResidencyResult.GetErrorMessage())
+	}
+	return nil
+}
+
+// ValidateOllamaModelReleaseResult validates the HTTP and Operator result for
+// one typed batch release.
+func ValidateOllamaModelReleaseResult(result *OllamaModelCommandDispatchResult) error {
+	if result == nil {
+		return fmt.Errorf("%w: Ollama model release returned no result", constants.ErrEvaluationDispatchFailed)
+	}
+	if result.Status != http.StatusOK || !result.Success {
+		return fmt.Errorf("%w: Ollama model release rejected with status %d", constants.ErrEvaluationDispatchFailed, result.Status)
+	}
+	if result.ReleaseResult == nil {
+		return fmt.Errorf("%w: Ollama model release missing typed result", constants.ErrEvaluationDispatchFailed)
+	}
+	if result.ReleaseResult.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return fmt.Errorf("%w: Ollama model release failed: %s", constants.ErrEvaluationDispatchFailed, result.ReleaseResult.GetErrorMessage())
 	}
 	return nil
 }
@@ -156,6 +185,18 @@ func MarshalOllamaModelResidencyPayload(executionID string) ([]byte, error) {
 	payload, err := proto.Marshal(&operatorv1.OllamaModelResidencyRequested{ExecutionId: executionID})
 	if err != nil {
 		return nil, fmt.Errorf("%w: marshal Ollama model residency request: %v", constants.ErrEvaluationDispatchFailed, err)
+	}
+	return payload, nil
+}
+
+// MarshalOllamaModelReleasePayload builds the typed batch release payload.
+func MarshalOllamaModelReleasePayload(executionID string, modelTags []string) ([]byte, error) {
+	if executionID == "" || len(modelTags) == 0 {
+		return nil, fmt.Errorf("%w: execution ID and model tags are required", constants.ErrMissingRequiredField)
+	}
+	payload, err := proto.Marshal(&operatorv1.OllamaModelReleaseRequested{ExecutionId: executionID, ModelTags: modelTags})
+	if err != nil {
+		return nil, fmt.Errorf("%w: marshal Ollama model release request: %v", constants.ErrEvaluationDispatchFailed, err)
 	}
 	return payload, nil
 }
@@ -353,31 +394,26 @@ func ReadOllamaProviderResidency(ctx context.Context, dispatcher OllamaModelComm
 	return residency, nil
 }
 
-// ReleaseOllamaModels sends one governed batch release to the exact Inference
-// Operator session. The Operator validates the full set, unloads it, and
-// verifies absence before this command completes.
+// ReleaseOllamaModels sends one governed typed batch release to the exact
+// Inference Operator session. The Operator validates the full set, unloads it,
+// and verifies absence before this command completes.
 func ReleaseOllamaModels(ctx context.Context, dispatcher OllamaModelCommandDispatcher, targetOperatorSessionID, runID string, modelTags []string, environment map[string]string, newID func(string) string) error {
 	if dispatcher == nil || targetOperatorSessionID == "" || runID == "" || newID == nil || len(modelTags) == 0 {
 		return fmt.Errorf("evaluation: release Ollama models: %w", constants.ErrMissingRequiredField)
 	}
-	command, err := operatorcapability.OllamaReleaseCommand(modelTags...)
-	if err != nil {
-		return fmt.Errorf("evaluation: release Ollama models: %w", err)
+	for _, modelTag := range modelTags {
+		if err := operatorcapability.ValidateServedModelTag(modelTag); err != nil {
+			return fmt.Errorf("evaluation: release Ollama models: %w", err)
+		}
 	}
 	executionID := newID("ollama-release")
-	payload, err := MarshalOllamaModelCommandPayload(OllamaModelCommandDispatchRequest{
-		Command:        command,
-		ExecutionID:    executionID,
-		Environment:    environment,
-		TimeoutSeconds: 60,
-	})
+	payload, err := MarshalOllamaModelReleasePayload(executionID, modelTags)
 	if err != nil {
 		return fmt.Errorf("evaluation: release Ollama models: %w", err)
 	}
 	request := OllamaModelCommandDispatchRequest{
 		TargetOperatorSessionID: targetOperatorSessionID,
-		ActionType:              constants.ActionTypeExecuteBash,
-		Command:                 command,
+		ActionType:              constants.ActionTypeOllamaModelRelease,
 		Payload:                 payload,
 		Environment:             environment,
 		TimeoutSeconds:          60,
@@ -390,7 +426,7 @@ func ReleaseOllamaModels(ctx context.Context, dispatcher OllamaModelCommandDispa
 	if err != nil {
 		return fmt.Errorf("evaluation: release Ollama models: %w", err)
 	}
-	if err := ValidateOllamaModelCommandResult(command, result); err != nil {
+	if err := ValidateOllamaModelReleaseResult(result); err != nil {
 		return fmt.Errorf("evaluation: release Ollama models: %w", err)
 	}
 	return nil

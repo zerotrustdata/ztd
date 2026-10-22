@@ -442,7 +442,7 @@ func (d *DispatchService) DispatchObservation(ctx context.Context, req Observati
 	}
 	// A witness bound to its admitted parent INFERENCE carries that parent's
 	// quorum, so it is not deliberated again.
-	if governance.L2Enforced(actionType, d.posture) && !governance.L2DeliberationExempt(env) && !governance.L2WitnessBound(env) && d.l2Deliberator != nil {
+	if governance.L2Enforced(env, d.posture) && !governance.L2DeliberationExempt(env) && !governance.L2WitnessBound(env) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: observation: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)

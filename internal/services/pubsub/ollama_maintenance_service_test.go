@@ -94,6 +94,16 @@ func ollamaResidencyMessage(t *testing.T, executionID string) *PubSubCommandMess
 	}
 }
 
+func ollamaReleaseMessage(t *testing.T, executionID string, modelTags ...string) *PubSubCommandMessage {
+	t.Helper()
+	return &PubSubCommandMessage{
+		ID:                ollamaTestMessageID,
+		EventType:         constants.Event.Operator.OllamaModelRelease.Requested,
+		OperatorSessionID: ollamaTestSessionID,
+		Payload:           mustMarshalProto(t, &operatorv1.OllamaModelReleaseRequested{ExecutionId: executionID, ModelTags: modelTags}),
+	}
+}
+
 // publishedResult decodes the single published result envelope and its typed
 // payload, and verifies it was routed to the originating session's results
 // channel.

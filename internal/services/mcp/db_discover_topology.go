@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -21,7 +23,7 @@ type DBDiscoverTopologyTool struct{}
 
 // Name returns the tool identifier.
 func (t *DBDiscoverTopologyTool) Name() string {
-	return "db_discover_topology"
+	return constants.MCPToolDBDiscoverTopology
 }
 
 // Description returns a human-readable description.

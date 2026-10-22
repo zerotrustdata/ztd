@@ -11,9 +11,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"net/http"
 )
 
 // ConsensusBinding reads the current binding through the authenticated owner route.

@@ -66,7 +66,7 @@ type SysContainerStatusTool struct {
 
 // Name returns the tool identifier.
 func (t *SysContainerStatusTool) Name() string {
-	return "sys_container_status"
+	return constants.MCPToolSysContainerStatus
 }
 
 // Description returns a human-readable description.

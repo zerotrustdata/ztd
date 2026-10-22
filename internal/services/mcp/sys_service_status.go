@@ -25,7 +25,7 @@ type SysServiceStatusTool struct {
 
 // Name returns the tool identifier.
 func (t *SysServiceStatusTool) Name() string {
-	return "sys_service_status"
+	return constants.MCPToolSysServiceStatus
 }
 
 // Description returns a human-readable description.

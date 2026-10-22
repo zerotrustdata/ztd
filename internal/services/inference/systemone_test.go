@@ -57,7 +57,7 @@ func TestTypeSafeDecisionOptInPinningVaultAndAttestation(t *testing.T) {
 		require.NoError(t, err)
 		require.NotContains(t, string(body), "keep_alive")
 		require.NotContains(t, string(body), v.key)
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"model":"jev-1.14.0","answers":{"safe":{"type":"noul","noul":0.99}},"usage":{"input_tokens":12,"output_tokens":1}}`)), Header: make(http.Header)}, nil
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"model":"jev-1.14.0","answers":{"safe":{"type":"noul","noul":0.99}},"usage":{"input_tokens":12,"output_tokens":1}}`)), Header: make(http.Header)}, nil
 	})
 	req := models.DecisionRequest{Input: decisionInput(), Model: "jev-1.14.0", KeepAlive: "-1"}
 	_, err = backend.Decide(t.Context(), req)

@@ -26,6 +26,20 @@ type recordingOllamaModelCommandDispatcher struct {
 
 func (d *recordingOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ context.Context, request OllamaModelCommandDispatchRequest) (*OllamaModelCommandDispatchResult, error) {
 	d.requests = append(d.requests, request)
+	if request.ActionType == constants.ActionTypeOllamaModelRelease {
+		status := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
+		if d.returnCode != 0 {
+			status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+		}
+		return &OllamaModelCommandDispatchResult{
+			Status:  200,
+			Success: true,
+			ReleaseResult: &operatorv1.OllamaModelReleaseResult{
+				ExecutionId: request.ExecutionID,
+				Status:      status,
+			},
+		}, nil
+	}
 	return &OllamaModelCommandDispatchResult{
 		Status:  200,
 		Success: true,
@@ -43,8 +57,13 @@ func TestReleaseOllamaModels_TargetsExactInferenceSession(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, dispatcher.requests, 1)
 	assert.Equal(t, "inference-session", dispatcher.requests[0].TargetOperatorSessionID)
-	assert.Equal(t, "ztd operator model release qwen3:0.6b registry.example/team/gemma3:4b", dispatcher.requests[0].Command)
+	assert.Equal(t, constants.ActionTypeOllamaModelRelease, dispatcher.requests[0].ActionType)
+	assert.Empty(t, dispatcher.requests[0].Command, "release is a typed action, not a shell command")
 	assert.Equal(t, "http://provider.example:11434", dispatcher.requests[0].Environment["ZTD_OLLAMA_ENDPOINT"])
+	var payload operatorv1.OllamaModelReleaseRequested
+	require.NoError(t, proto.Unmarshal(dispatcher.requests[0].Payload, &payload))
+	assert.Equal(t, dispatcher.requests[0].ExecutionID, payload.GetExecutionId(), "payload and envelope execution ids must match")
+	assert.Equal(t, []string{"qwen3:0.6b", "registry.example/team/gemma3:4b"}, payload.GetModelTags())
 }
 
 func TestReleaseOllamaModels_ValidatesWholeBatchBeforeDispatch(t *testing.T) {
@@ -93,4 +112,39 @@ func TestValidateOllamaModelCommandResult_RejectsNonzeroExit(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
+}
+
+func TestValidateOllamaModelCommandResult_NonzeroExitNamesStderrCause(t *testing.T) {
+	t.Parallel()
+	err := ValidateOllamaModelCommandResult("ztd operator model pull qwen3:0.6b", &OllamaModelCommandDispatchResult{
+		Status:  200,
+		Success: true,
+		CommandResult: &operatorv1.CommandResult{
+			Status:     operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+			ReturnCode: 1,
+			Stderr:     "Usage:\n  ztd operator model pull\n\nError: operator: pull model: manifest for \"qwen3:0.6b\" not found\n",
+		},
+	})
+	require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
+	assert.Contains(t, err.Error(), "exited with code 1: Error: operator: pull model: manifest for \"qwen3:0.6b\" not found")
+}
+
+func TestValidateOllamaModelReleaseResult_RequiresCompletedTypedResult(t *testing.T) {
+	t.Parallel()
+	require.ErrorIs(t, ValidateOllamaModelReleaseResult(&OllamaModelCommandDispatchResult{Status: 200, Success: true}), constants.ErrEvaluationDispatchFailed)
+	require.ErrorIs(t, ValidateOllamaModelReleaseResult(&OllamaModelCommandDispatchResult{
+		Status:  200,
+		Success: true,
+		ReleaseResult: &operatorv1.OllamaModelReleaseResult{
+			Status:       operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			ErrorMessage: "model remains resident",
+		},
+	}), constants.ErrEvaluationDispatchFailed)
+	require.NoError(t, ValidateOllamaModelReleaseResult(&OllamaModelCommandDispatchResult{
+		Status:  200,
+		Success: true,
+		ReleaseResult: &operatorv1.OllamaModelReleaseResult{
+			Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		},
+	}))
 }

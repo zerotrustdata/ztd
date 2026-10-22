@@ -166,6 +166,9 @@ const EventOperatorNotaryTransactionExpired EventType = "ztd.v1.operator.notary.
 const EventOperatorOllamaModelInventoryCompleted EventType = "ztd.v1.operator.ollama.model.inventory.completed"
 const EventOperatorOllamaModelInventoryFailed EventType = "ztd.v1.operator.ollama.model.inventory.failed"
 const EventOperatorOllamaModelInventoryRequested EventType = "ztd.v1.operator.ollama.model.inventory.requested"
+const EventOperatorOllamaModelReleaseCompleted EventType = "ztd.v1.operator.ollama.model.release.completed"
+const EventOperatorOllamaModelReleaseFailed EventType = "ztd.v1.operator.ollama.model.release.failed"
+const EventOperatorOllamaModelReleaseRequested EventType = "ztd.v1.operator.ollama.model.release.requested"
 const EventOperatorOllamaModelResidencyCompleted EventType = "ztd.v1.operator.ollama.model.residency.completed"
 const EventOperatorOllamaModelResidencyFailed EventType = "ztd.v1.operator.ollama.model.residency.failed"
 const EventOperatorOllamaModelResidencyRequested EventType = "ztd.v1.operator.ollama.model.residency.requested"
@@ -1468,6 +1471,33 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Outcomes:          []string{"OperatorOllamaModelInventoryCompleted", "OperatorOllamaModelInventoryFailed"},
 		Reserved:          true,
 	},
+	EventOperatorOllamaModelReleaseCompleted: {
+		Key:         "OperatorOllamaModelReleaseCompleted",
+		Kind:        EventKindOutcome,
+		Transport:   nil,
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+		Reserved:    true,
+	},
+	EventOperatorOllamaModelReleaseFailed: {
+		Key:         "OperatorOllamaModelReleaseFailed",
+		Kind:        EventKindOutcome,
+		Transport:   nil,
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+		Reserved:    true,
+	},
+	EventOperatorOllamaModelReleaseRequested: {
+		Key:               "OperatorOllamaModelReleaseRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli", "mcp"},
+		Persistence:       "ephemeral",
+		GovernanceAction:  ActionTypeOllamaModelRelease,
+		GovernancePayload: "ztd.operator.v1.OllamaModelReleaseRequested",
+		Outcomes:          []string{"OperatorOllamaModelReleaseCompleted", "OperatorOllamaModelReleaseFailed"},
+		Reserved:          true,
+	},
 	EventOperatorOllamaModelResidencyCompleted: {
 		Key:         "OperatorOllamaModelResidencyCompleted",
 		Kind:        EventKindOutcome,
@@ -2043,6 +2073,7 @@ type _EventOperator struct {
 	NetworkPing                 _EventOperatorNetworkPing
 	Notary                      _EventOperatorNotary
 	OllamaModelInventory        _EventOperatorOllamaModelInventory
+	OllamaModelRelease          _EventOperatorOllamaModelRelease
 	OllamaModelResidency        _EventOperatorOllamaModelResidency
 	PanelListUpdated            EventType
 	PortCheck                   _EventOperatorPortCheck
@@ -2219,6 +2250,12 @@ type _EventOperatorNotary struct {
 }
 
 type _EventOperatorOllamaModelInventory struct {
+	Completed EventType
+	Failed    EventType
+	Requested EventType
+}
+
+type _EventOperatorOllamaModelRelease struct {
 	Completed EventType
 	Failed    EventType
 	Requested EventType
@@ -2417,6 +2454,11 @@ var Event = struct {
 			Completed: EventOperatorOllamaModelInventoryCompleted,
 			Failed:    EventOperatorOllamaModelInventoryFailed,
 			Requested: EventOperatorOllamaModelInventoryRequested,
+		},
+		OllamaModelRelease: _EventOperatorOllamaModelRelease{
+			Completed: EventOperatorOllamaModelReleaseCompleted,
+			Failed:    EventOperatorOllamaModelReleaseFailed,
+			Requested: EventOperatorOllamaModelReleaseRequested,
 		},
 		OllamaModelResidency: _EventOperatorOllamaModelResidency{
 			Completed: EventOperatorOllamaModelResidencyCompleted,

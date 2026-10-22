@@ -216,8 +216,14 @@ func TestAdmit(t *testing.T) {
 		assert.ErrorIs(t, err, errBoom)
 	})
 
-	for name, admitted := range map[string]*commonv1.GovernanceEnvelope{"denied quorum": denied, "unverifiable votes": forged} {
-		t.Run(name+" never runs OnAdmitted", func(t *testing.T) {
+	// A state change is L2-gated under consensus, so its votes decide whether
+	// OnAdmitted runs.
+	stateChange := func(env *commonv1.GovernanceEnvelope) *commonv1.GovernanceEnvelope {
+		env.ActionType = string(constants.ActionTypeExecuteBash)
+		return env
+	}
+	for name, admitted := range map[string]*commonv1.GovernanceEnvelope{"denied quorum": stateChange(denied), "unverifiable votes": stateChange(forged)} {
+		t.Run(name+" on a state change never runs OnAdmitted", func(t *testing.T) {
 			ran := false
 			req := DispatchRequest{OnAdmitted: func(context.Context) error { ran = true; return nil }}
 			require.NoError(t, quorumDispatchService(q).admit(context.Background(), req, admitted))
@@ -229,7 +235,9 @@ func TestAdmit(t *testing.T) {
 		ran := false
 		req := DispatchRequest{OnAdmitted: func(context.Context) error { ran = true; return nil }}
 		svc := &DispatchService{logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)), posture: constants.PostureConsensus}
-		require.NoError(t, svc.admit(context.Background(), req, approved))
+		gated := witnessParentEnv()
+		gated.ActionType = string(constants.ActionTypeExecuteBash)
+		require.NoError(t, svc.admit(context.Background(), req, gated))
 		assert.False(t, ran)
 	})
 
@@ -237,8 +245,19 @@ func TestAdmit(t *testing.T) {
 		ran := false
 		req := DispatchRequest{OnAdmitted: func(context.Context) error { ran = true; return nil }}
 		svc := &DispatchService{logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)), posture: constants.PostureDoctrine}
-		require.NoError(t, svc.admit(context.Background(), req, forged))
+		require.NoError(t, svc.admit(context.Background(), req, stateChange(witnessParentEnv())))
 		assert.True(t, ran)
+	})
+
+	t.Run("an INFERENCE is not a state change, so it runs OnAdmitted under consensus without votes", func(t *testing.T) {
+		var parent string
+		ran := false
+		req := DispatchRequest{OnAdmitted: func(ctx context.Context) error { ran, parent = true, witnessParentHash(ctx); return nil }}
+		unvoted := witnessParentEnv()
+		unvoted.Governance.L2 = nil
+		require.NoError(t, quorumDispatchService(q).admit(context.Background(), req, unvoted))
+		assert.True(t, ran)
+		assert.Empty(t, parent, "an un-voted INFERENCE binds no witness parent")
 	})
 }
 
@@ -320,16 +339,23 @@ func (d votingL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte)
 }
 
 // TestDispatchService_OnAdmittedRunsWithDeliberatedQuorumBeforePublish proves
-// that Dispatch runs OnAdmitted after L2 deliberation and before publish, under
-// a ctx bound to the deliberated INFERENCE, that a hook error stops publish, and
-// that a deliberation short of quorum publishes the envelope without running
-// OnAdmitted.
+// that Dispatch runs OnAdmitted before publish, that a hook error stops
+// publish, and that an L2-gated state change runs OnAdmitted only after its
+// deliberation reaches quorum: a deliberation short of quorum publishes the
+// envelope without running OnAdmitted. An INFERENCE is not a state change, so
+// it is never deliberated and its hook runs unbound to a witness parent.
 func TestDispatchService_OnAdmittedRunsWithDeliberatedQuorumBeforePublish(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 	q := newWitnessQuorum(t)
-	dispatchDecided := func(t *testing.T, decision bool, hook func(ctx context.Context, published bool) error) (bool, error) {
+	inference := DispatchRequest{EventType: string(constants.Event.Operator.Inference.Requested)}
+	command := DispatchRequest{EventType: string(constants.Event.Operator.Command.Requested)}
+	dispatchDecided := func(t *testing.T, base DispatchRequest, decision bool, hook func(ctx context.Context, published bool) error) (bool, error) {
 		t.Helper()
+		payload := inferencePayload(t)
+		if base.EventType == command.EventType {
+			payload = commandPayload(t)
+		}
 		broker := NewGatewayWebSocketHandler(logger)
 		svc := NewDispatchService(
 			logger, broker,
@@ -354,8 +380,8 @@ func TestDispatchService_OnAdmittedRunsWithDeliberatedQuorumBeforePublish(t *tes
 		defer unreg()
 		_, err := svc.Dispatch(dispatchCtx, DispatchRequest{
 			TargetOperatorSessionID: op.OperatorSessionId,
-			EventType:               string(constants.Event.Operator.Inference.Requested),
-			Payload:                 inferencePayload(t),
+			EventType:               base.EventType,
+			Payload:                 payload,
 			RequestorUserID:         "user-001",
 			OnAdmitted: func(ctx context.Context) error {
 				return hook(ctx, published)
@@ -364,28 +390,42 @@ func TestDispatchService_OnAdmittedRunsWithDeliberatedQuorumBeforePublish(t *tes
 		return published, err
 	}
 
-	t.Run("hook sees the deliberated parent before publish", func(t *testing.T) {
+	t.Run("an INFERENCE hook runs unbound before publish", func(t *testing.T) {
 		var parentHash string
 		var publishedAtHook bool
-		published, _ := dispatchDecided(t, true, func(ctx context.Context, published bool) error {
-			parentHash, publishedAtHook = witnessParentHash(ctx), published
+		ran := false
+		published, _ := dispatchDecided(t, inference, false, func(ctx context.Context, published bool) error {
+			ran, parentHash, publishedAtHook = true, witnessParentHash(ctx), published
 			return nil
 		})
-		assert.NotEmpty(t, parentHash, "OnAdmitted must run under the deliberated INFERENCE")
+		assert.True(t, ran, "an INFERENCE is never deliberated, so a denying deliberator cannot stop its witnesses")
+		assert.Empty(t, parentHash, "an un-voted INFERENCE binds no witness parent")
 		assert.False(t, publishedAtHook, "OnAdmitted must run before publish")
 		assert.True(t, published)
 	})
 
 	t.Run("hook error prevents publish", func(t *testing.T) {
-		published, err := dispatchDecided(t, true, func(context.Context, bool) error { return errBoom })
+		published, err := dispatchDecided(t, inference, true, func(context.Context, bool) error { return errBoom })
 		assert.ErrorIs(t, err, errBoom)
 		assert.False(t, published, "envelope must not be published when OnAdmitted fails")
 	})
 
+	t.Run("a state change hook runs after quorum, before publish", func(t *testing.T) {
+		var publishedAtHook bool
+		ran := false
+		published, _ := dispatchDecided(t, command, true, func(_ context.Context, published bool) error {
+			ran, publishedAtHook = true, published
+			return nil
+		})
+		assert.True(t, ran)
+		assert.False(t, publishedAtHook, "OnAdmitted must run before publish")
+		assert.True(t, published)
+	})
+
 	t.Run("quorum-denied deliberation publishes without running the hook", func(t *testing.T) {
 		ran := false
-		published, _ := dispatchDecided(t, false, func(context.Context, bool) error { ran = true; return nil })
-		assert.False(t, ran, "no witness may begin for an inference short of quorum")
+		published, _ := dispatchDecided(t, command, false, func(context.Context, bool) error { ran = true; return nil })
+		assert.False(t, ran, "nothing may begin for a state change short of quorum")
 		assert.True(t, published, "the executing Operator must sign the L2 rejection")
 	})
 }

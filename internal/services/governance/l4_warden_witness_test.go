@@ -139,17 +139,20 @@ func TestL4Warden_Witness_WithDeliberationRejects(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrTxL2SignatureInvalid)
 }
 
-// TestL4Warden_Witness_VotesOverOwnHashRejects verifies that a bound witness's
-// votes are checked against the parent hash only: votes over the observation's
-// own hash do not satisfy the parent quorum.
-func TestL4Warden_Witness_VotesOverOwnHashRejects(t *testing.T) {
+// TestL4Warden_Witness_VotesOverOwnHashNotCounted verifies that a bound
+// witness's votes are checked against the parent hash only: votes over the
+// observation's own hash do not satisfy the parent quorum. An observation is
+// not a state change, so L2 does not gate it and the receipt records the
+// uncounted votes as NOT_REQUIRED rather than REQUIRED_VALID.
+func TestL4Warden_Witness_VotesOverOwnHashNotCounted(t *testing.T) {
 	t.Parallel()
 	warden, memberPriv := witnessWarden(t)
 	env := witnessEnvelope(t, constants.ActionTypeProviderBoundaryObservation, witnessParentHash, constants.PostureConsensus, memberPriv)
 	env.Governance.L2.Votes = []*commonv1.L2Vote{signL2Vote(memberPriv, deliberationMemberKeyID, env.TransactionHash, true)}
 
-	_, err := warden.VerifyEnvelope(context.Background(), env)
-	assert.Error(t, err)
+	verified, err := warden.VerifyEnvelope(context.Background(), env)
+	require.NoError(t, err)
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, verified.L2Status)
 }
 
 // TestL4Warden_Witness_DoctrinePostureStillVerifies verifies that a binding

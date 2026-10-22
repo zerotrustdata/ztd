@@ -48,7 +48,7 @@ type TLSCertInspectTool struct{}
 
 // Name returns the tool identifier.
 func (t *TLSCertInspectTool) Name() string {
-	return "tls_cert_inspect"
+	return constants.MCPToolTLSCertInspect
 }
 
 // Description returns a human-readable description.

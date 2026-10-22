@@ -118,7 +118,7 @@ type gitErrorResult struct {
 
 // Name returns the tool identifier.
 func (t *GitOpsTool) Name() string {
-	return "git_ops"
+	return constants.MCPToolGitOps
 }
 
 // Description returns a human-readable description.

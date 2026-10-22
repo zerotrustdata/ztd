@@ -1041,6 +1041,18 @@ message OllamaModelResidencyResult {
   string error_type = 5;
 }
 
+message OllamaModelReleaseRequested {
+  string execution_id = 1;
+  repeated string model_tags = 2;
+}
+
+message OllamaModelReleaseResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string error_message = 3;
+  string error_type = 4;
+}
+
 message FetchLogsResult {
   string execution_id = 1;
   string command = 2;

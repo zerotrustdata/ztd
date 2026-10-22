@@ -1161,6 +1161,35 @@ func TestMirror_History_FiltersByRecordKindBeforePagination(t *testing.T) {
 	assert.False(t, second.HasMore)
 }
 
+func TestMirror_History_FiltersByDatasetBeforePagination(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	records := make([]models.PublicFeedRecord, 0, 41)
+	for seq := int64(1); seq <= 40; seq++ {
+		records = append(records, env.makeRecord(seq, models.NewPublicFeedObject(map[string]string{
+			"kind": "catalog_snapshot", "dataset_id": fmt.Sprintf("ds-live-run-%d", seq%4),
+		})))
+	}
+	records = append(records, env.makeRecord(41, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "ds-live-run-last"})))
+	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
+	_, resp := env.sendIngest(batch)
+	require.True(t, resp.Accepted)
+
+	var found models.PublicFeedCursorPage
+	status := env.getJSON("/history?source="+env.sourceID+"&kind=catalog_snapshot&dataset=ds-live-run-last&limit=1", &found)
+	assert.Equal(t, http.StatusOK, status)
+	require.Len(t, found.Items, 1)
+	datasetID, ok := found.Items[0].StringField("dataset_id")
+	require.True(t, ok)
+	assert.Equal(t, "ds-live-run-last", datasetID)
+	assert.False(t, found.HasMore)
+
+	var absent models.PublicFeedCursorPage
+	status = env.getJSON("/history?source="+env.sourceID+"&kind=catalog_snapshot&dataset=ds-live-run-missing&limit=1", &absent)
+	assert.Equal(t, http.StatusOK, status)
+	assert.Empty(t, absent.Items)
+	assert.False(t, absent.HasMore)
+}
+
 // ---------------------------------------------------------------------------
 // CORS tests
 // ---------------------------------------------------------------------------

@@ -398,7 +398,7 @@ func (d *DispatchService) admit(ctx context.Context, req DispatchRequest, admitt
 // gates the action. The Operator's L4 stays the authority; this only decides
 // whether the admitted envelope's witnesses begin.
 func (d *DispatchService) holdsL2Quorum(ctx context.Context, admitted *commonv1.GovernanceEnvelope) bool {
-	if !governance.L2Enforced(constants.ActionType(admitted.GetActionType()), d.posture) || governance.L2DeliberationExempt(admitted) {
+	if !governance.L2Enforced(admitted, d.posture) || governance.L2DeliberationExempt(admitted) {
 		return true
 	}
 	if d.l2Policies == nil {
@@ -560,7 +560,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	//    L2 is enforced. A deliberation error fails closed before publish.
 	//    A Tribunal member's own vote inference is deliberation-exempt: it is
 	//    never deliberated again, which stops L2 recursing into itself.
-	if governance.L2Enforced(actionType, d.posture) && !governance.L2DeliberationExempt(env) && d.l2Deliberator != nil {
+	if governance.L2Enforced(env, d.posture) && !governance.L2DeliberationExempt(env) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)

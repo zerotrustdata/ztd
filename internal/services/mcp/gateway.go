@@ -1013,13 +1013,13 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 		return "", nil, "", fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
 
-	// Under a posture that enforces L2 for this action (consensus and notary; bootstrap
-	// actions are exempt via governance.L2Enforced), send the envelope to the Consensus
+	// Under a posture that enforces L2 for this envelope (consensus and notary, state
+	// changes only, per governance.L2Enforced), send the envelope to the Consensus
 	// for L2 deliberation before dispatch. The Consensus collects signed votes from its
 	// members and returns the envelope with L2 metadata populated. If the deliberator is
 	// not configured, the envelope proceeds without L2 votes and will fail-closed at L4
 	// verification.
-	if governance.L2Enforced(actionType, g.posture) && !governance.L2DeliberationExempt(env) && g.l2ConsensusDeliberator != nil {
+	if governance.L2Enforced(env, g.posture) && !governance.L2DeliberationExempt(env) && g.l2ConsensusDeliberator != nil {
 		deliberatedBytes, err := g.l2ConsensusDeliberator.Deliberate(ctx, envelopeBytes)
 		if err != nil {
 			g.logger.Error("L2 consensus deliberation failed", "tx_hash", hash, "error", err)
