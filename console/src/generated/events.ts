@@ -26,6 +26,7 @@ export const EventType = Object.freeze({
     APP_INVESTIGATION_UPDATED: 'ztd.v1.app.investigation.updated',
     APP_RUN_STATUS_UPDATED: 'ztd.v1.app.run.status.updated',
     APP_TASK_COMPLETED: 'ztd.v1.app.task.completed',
+    CONSENSUS_VOTE_RECORDED: 'ztd.v1.consensus.vote.recorded',
     MODEL_PROVENANCE_ATTESTATION_RECORDED: 'ztd.v1.inference.model.provenance.attestation.recorded',
     OPERATOR_A2A_CALL_REQUESTED: 'ztd.v1.operator.a2a.call.requested',
     OPERATOR_AUDIT_AI_RECORD_REQUESTED: 'ztd.v1.operator.audit.ai.record.requested',
@@ -346,6 +347,11 @@ export const EventRegistry = Object.freeze({
         kind: 'outcome',
         producers: ['cli'],
         persistence: 'ephemeral',
+    }),
+    CONSENSUS_VOTE_RECORDED: Object.freeze({
+        kind: 'fact',
+        producers: ['gateway'],
+        persistence: 'gateway.audit_log',
     }),
     MODEL_PROVENANCE_ATTESTATION_RECORDED: Object.freeze({
         kind: 'fact',

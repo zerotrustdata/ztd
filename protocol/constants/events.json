@@ -221,6 +221,15 @@
       ],
       "persistence": "ephemeral"
     },
+    "ConsensusVoteRecorded": {
+      "_go_const": "EventConsensusVoteRecorded",
+      "value": "ztd.v1.consensus.vote.recorded",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.audit_log"
+    },
     "OperatorA2aCallRequested": {
       "_go_const": "EventOperatorA2aCallRequested",
       "value": "ztd.v1.operator.a2a.call.requested",

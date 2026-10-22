@@ -59,6 +59,11 @@ type RunResult struct {
 	// final receipt on success.
 	SignerKeyID   string `json:"signer_key_id,omitempty"`
 	ReceiptStatus string `json:"receipt_status,omitempty"`
+	// ConsensusVotes are the recorded L2 member votes behind an
+	// L2_QUORUM_NOT_MET rejection; ConsensusVotesError is why they could not
+	// be read. Set by AttachConsensusVotes.
+	ConsensusVotes      []models.ConsensusVoteRecord `json:"consensus_votes,omitempty"`
+	ConsensusVotesError string                       `json:"consensus_votes_error,omitempty"`
 	// Receipt, Rejection and Refusal are the typed bodies behind the fields
 	// above, for callers that need the signed evidence itself.
 	Receipt   *operatorv1.ActionReceipt       `json:"-"`

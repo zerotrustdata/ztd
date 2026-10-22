@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestConsensusVotePromptSystemEndsWithMemberStance(t *testing.T) {
@@ -27,35 +29,47 @@ func TestConsensusVotePromptUserRendersSubject(t *testing.T) {
 		ActionType:     "run_shell_command",
 		TargetResource: "host-7",
 		EventType:      "EXECUTION_REQUESTED",
+		PayloadJSON:    `{"command":"ls -l"}`,
 		IntentJSON:     `{"command":"ls","args":["-l"]}`,
 	}
 	for _, member := range AllMembers {
 		_, user := ConsensusVotePrompt(member, subject)
 		require.Equal(t, "<action>\nAction type: run_shell_command\nTarget resource: host-7\nEvent type: EXECUTION_REQUESTED\n</action>\n\n"+
+			"<payload>\n"+subject.PayloadJSON+"\n</payload>\n\n"+
 			"<intent_data>\n"+subject.IntentJSON+"\n</intent_data>\n", user, "member %s", member)
 	}
 }
 
-func TestDecodeConsensusVote(t *testing.T) {
+func TestParseConsensusVote(t *testing.T) {
 	tests := []struct {
-		name string
-		text string
-		want bool
+		name       string
+		text       string
+		want       bool
+		wantReason string
+		wantErr    bool
 	}{
-		{name: "approve", text: `{"decision":"approve","reason":"ok"}`, want: true},
-		{name: "approve with surrounding whitespace", text: "  \n{\"decision\":\"approve\",\"reason\":\"ok\"}\t\n", want: true},
-		{name: "deny", text: `{"decision":"deny","reason":"destructive"}`, want: false},
-		{name: "uppercase approve", text: `{"decision":"APPROVE","reason":"ok"}`, want: false},
-		{name: "unknown decision", text: `{"decision":"maybe","reason":"unsure"}`, want: false},
-		{name: "empty string", text: "", want: false},
-		{name: "free text approve", text: "approve", want: false},
-		{name: "invalid JSON", text: `{"decision":"approve",`, want: false},
-		{name: "unknown field rejected", text: `{"decision":"approve","reason":"ok","extra":true}`, want: false},
-		{name: "markdown fenced rejected", text: "```json\n{\"decision\":\"approve\",\"reason\":\"ok\"}\n```", want: false},
+		{name: "approve", text: `{"decision":"approve","reason":"ok"}`, want: true, wantReason: "ok"},
+		{name: "approve with surrounding whitespace", text: "  \n{\"decision\":\"approve\",\"reason\":\"ok\"}\t\n", want: true, wantReason: "ok"},
+		{name: "deny keeps its reason", text: `{"decision":"deny","reason":"destructive"}`, wantReason: "destructive"},
+		{name: "uppercase approve", text: `{"decision":"APPROVE","reason":"ok"}`, wantReason: "ok", wantErr: true},
+		{name: "unknown decision", text: `{"decision":"maybe","reason":"unsure"}`, wantReason: "unsure", wantErr: true},
+		{name: "empty string", text: "", wantErr: true},
+		{name: "free text approve", text: "approve", wantErr: true},
+		{name: "invalid JSON", text: `{"decision":"approve",`, wantErr: true},
+		{name: "unknown field rejected", text: `{"decision":"approve","reason":"ok","extra":true}`, wantErr: true},
+		{name: "markdown fenced rejected", text: "```json\n{\"decision\":\"approve\",\"reason\":\"ok\"}\n```", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, DecodeConsensusVote(tt.text))
+			answer := ParseConsensusVote(tt.text)
+			require.Equal(t, tt.want, answer.Approve())
+			require.Equal(t, tt.wantReason, answer.Reason)
+			if tt.wantErr {
+				require.ErrorIs(t, answer.Err, constants.ErrTribunalAnswerInvalid)
+				require.Equal(t, ConsensusVoteDeny, answer.Decision)
+				return
+			}
+			require.NoError(t, answer.Err)
 		})
 	}
 }

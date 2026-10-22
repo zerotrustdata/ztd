@@ -10,9 +10,11 @@ package gateway
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
@@ -21,7 +23,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
+	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -45,6 +49,12 @@ type consensusMemberPolicies interface {
 	GetAppPolicy(ctx context.Context, appID string) (*models.AppPolicy, error)
 }
 
+// consensusVoteRecorder appends member vote records to the Gateway audit
+// chain. *storage.SQLAuditStore satisfies it.
+type consensusVoteRecorder interface {
+	RecordEvent(event *storage.Event) (int64, error)
+}
+
 // TribunalConsensusDeliberator produces L2 votes from the Gateway-hosted
 // Tribunal panel. Each bound member votes through one governed INFERENCE on
 // the binding's pinned model, under its own app identity and a signed
@@ -54,6 +64,7 @@ type TribunalConsensusDeliberator struct {
 	store     consensusBindingReader
 	policies  consensusMemberPolicies
 	inference consensusVoteInferer
+	votes     consensusVoteRecorder
 	signer    ConsensusMemberSigner
 	logger    *slog.Logger
 }
@@ -61,13 +72,15 @@ type TribunalConsensusDeliberator struct {
 // NewTribunalConsensusDeliberator returns the Tribunal vote producer. signer
 // may be nil until the Gateway host supplies it; without it no member votes
 // and L4 rejects the envelope for quorum.
-func NewTribunalConsensusDeliberator(store consensusBindingReader, policies consensusMemberPolicies, inference consensusVoteInferer, signer ConsensusMemberSigner, logger *slog.Logger) *TribunalConsensusDeliberator {
-	return &TribunalConsensusDeliberator{store: store, policies: policies, inference: inference, signer: signer, logger: logger}
+func NewTribunalConsensusDeliberator(store consensusBindingReader, policies consensusMemberPolicies, inference consensusVoteInferer, votes consensusVoteRecorder, signer ConsensusMemberSigner, logger *slog.Logger) *TribunalConsensusDeliberator {
+	return &TribunalConsensusDeliberator{store: store, policies: policies, inference: inference, votes: votes, signer: signer, logger: logger}
 }
 
 // Deliberate collects member votes on the envelope until quorum is met or can
 // no longer be met. A member that cannot run its inference or sign casts no
-// vote; an answer that is not a strict approve is a signed deny.
+// vote; an answer that is not a strict approve is a signed deny. Every
+// member's outcome, with its stated reason, is recorded as a
+// ztd.v1.consensus.vote.recorded audit event before its vote counts.
 func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
 	var env commonv1.GovernanceEnvelope
 	if err := protojson.Unmarshal(envelopeBytes, &env); err != nil {
@@ -101,17 +114,24 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 		if approvals >= bound.Quorum || approvals+len(bound.MemberAppIDs)-i < bound.Quorum {
 			break
 		}
-		approve, ok := d.memberDecision(ctx, bound, memberAppID, computed, subject)
-		if !ok {
+		vote := d.castVote(ctx, bound, memberAppID, computed, subject)
+		var signature []byte
+		if vote.failure == nil {
+			if signature, err = d.signer.Sign(memberAppID, governance.L2VotePayload(computed, vote.answer.Approve())); err != nil {
+				d.logger.Warn("tribunal consensus: member cannot sign", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
+				vote.failure = fmt.Errorf("sign vote: %w", err)
+			}
+		}
+		// A vote counts only once its record is on the Gateway audit chain.
+		if err := d.recordVote(&env, bound, memberAppID, vote); err != nil {
+			d.logger.Warn("tribunal consensus: member vote not recorded", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
 			continue
 		}
-		signature, err := d.signer.Sign(memberAppID, governance.L2VotePayload(computed, approve))
-		if err != nil {
-			d.logger.Warn("tribunal consensus: member cannot sign", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
+		if vote.failure != nil {
 			continue
 		}
-		votes = append(votes, &commonv1.L2Vote{SignerKeyId: memberAppID, ConsensusSignature: hex.EncodeToString(signature), Decision: approve})
-		if approve {
+		votes = append(votes, &commonv1.L2Vote{SignerKeyId: memberAppID, ConsensusSignature: hex.EncodeToString(signature), Decision: vote.answer.Approve()})
+		if vote.answer.Approve() {
 			approvals++
 		}
 	}
@@ -127,19 +147,75 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 	return deliberated, nil
 }
 
-// memberDecision runs memberAppID's vote inference. ok is false when the
+// memberVote is one member's deliberation outcome. failure is set when the
 // member casts no vote.
-func (d *TribunalConsensusDeliberator) memberDecision(ctx context.Context, bound *models.ConsensusPolicy, memberAppID, txHash string, subject tribunal.ConsensusSubject) (approve, ok bool) {
+type memberVote struct {
+	answer        tribunal.ConsensusVoteAnswer
+	inferenceTxID string
+	attemptID     string
+	failure       error
+}
+
+// recordVote appends memberAppID's vote to the Gateway audit chain under the
+// envelope's transaction ID, the ID its receipts carry.
+func (d *TribunalConsensusDeliberator) recordVote(env *commonv1.GovernanceEnvelope, bound *models.ConsensusPolicy, memberAppID string, vote memberVote) error {
+	record := models.ConsensusVoteRecord{
+		TransactionID:          env.GetId(),
+		TransactionHash:        env.GetTransactionHash(),
+		ConsensusSetID:         bound.ID,
+		MemberAppID:            memberAppID,
+		Reason:                 vote.answer.Reason,
+		InferenceTransactionID: vote.inferenceTxID,
+		ProviderAttemptID:      vote.attemptID,
+		ModelTag:               bound.ModelTag,
+		Quorum:                 bound.Quorum,
+		RecordedAt:             time.Now().UTC(),
+	}
+	switch {
+	case vote.failure != nil:
+		record.Outcome = models.ConsensusVoteOutcomeNoVote
+		record.Failure = vote.failure.Error()
+	case vote.answer.Approve():
+		record.Outcome = models.ConsensusVoteOutcomeApprove
+	default:
+		record.Outcome = models.ConsensusVoteOutcomeDeny
+		if vote.answer.Err != nil {
+			record.Failure = vote.answer.Err.Error()
+		}
+	}
+	content, err := json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("tribunal consensus: encode vote record: %w", err)
+	}
+	if _, err := d.votes.RecordEvent(&storage.Event{
+		TransactionID:     record.TransactionID,
+		OperatorSessionID: env.GetOperatorSessionId(),
+		Timestamp:         record.RecordedAt,
+		Type:              constants.EventConsensusVoteRecorded,
+		ContentText:       string(content),
+	}); err != nil {
+		return fmt.Errorf("tribunal consensus: record vote: %w", err)
+	}
+	return nil
+}
+
+// castVote runs memberAppID's vote inference.
+func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *models.ConsensusPolicy, memberAppID, txHash string, subject tribunal.ConsensusSubject) memberVote {
 	member, found := tribunalMemberForAppID(memberAppID)
 	if !found || d.signer == nil || !d.signer.HasKey(memberAppID) {
 		d.logger.Warn("tribunal consensus: member key unavailable", slog.String("member_app_id", memberAppID), logging.ErrorKind(constants.ErrConsensusMemberKeyUnavailable))
-		return false, false
+		return memberVote{failure: constants.ErrConsensusMemberKeyUnavailable}
 	}
-	policy, err := d.policies.GetAppPolicy(ctx, memberAppID)
-	if err != nil || policy == nil || policy.OwnerUserID == "" {
+	// App policies are keyed by the member's SPIFFE ID, as enrollment persists them.
+	policy, err := d.policies.GetAppPolicy(ctx, protocol.NewWorkloadIdentity().AppSPIFFEID(memberAppID))
+	if err == nil && (policy == nil || policy.OwnerUserID == "") {
+		err = constants.ErrConsensusAppNotEnrolled
+	}
+	if err != nil {
 		d.logger.Warn("tribunal consensus: member owner unavailable", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
-		return false, false
+		return memberVote{failure: fmt.Errorf("member owner: %w", err)}
 	}
+	attemptID := consensusVoteAttemptID(txHash, memberAppID)
 	system, user := tribunal.ConsensusVotePrompt(member, subject)
 	result, err := d.inference.DispatchInference(withConsensusDeliberation(ctx, memberAppID), dispatch.DispatchInferenceRequest{
 		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
@@ -154,19 +230,33 @@ func (d *TribunalConsensusDeliberator) memberDecision(ctx context.Context, bound
 		},
 		Model:             bound.ModelTag,
 		ModelDigest:       bound.ModelDigest,
-		ProviderAttemptID: consensusVoteAttemptID(txHash, memberAppID),
+		ProviderAttemptID: attemptID,
 		RequestorUserID:   policy.OwnerUserID,
 		ActingAppID:       memberAppID,
 	})
 	if err != nil {
 		d.logger.Warn("tribunal consensus: member inference failed", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
-		return false, false
+		return memberVote{attemptID: attemptID, failure: fmt.Errorf("member inference: %w", err)}
 	}
-	return tribunal.DecodeConsensusVote(models.InferenceResultText(result.Result)), true
+	return memberVote{
+		answer:        tribunal.ParseConsensusVote(models.InferenceResultText(result.Result)),
+		inferenceTxID: result.TransactionID,
+		attemptID:     attemptID,
+	}
 }
 
-// consensusSubject renders the envelope fields a member votes on.
+// consensusSubject renders the envelope fields a member votes on, including the
+// typed action payload. A payload that does not decode for its action type
+// fails closed: no member is asked to vote on an action it cannot see.
 func consensusSubject(env *commonv1.GovernanceEnvelope) (tribunal.ConsensusSubject, error) {
+	decoded, err := governance.DecodePayloadForAction(constants.ActionType(env.GetActionType()), env.GetPayload())
+	if err != nil {
+		return tribunal.ConsensusSubject{}, fmt.Errorf("tribunal consensus: decode payload: %w", err)
+	}
+	payload, err := protojson.Marshal(decoded)
+	if err != nil {
+		return tribunal.ConsensusSubject{}, fmt.Errorf("tribunal consensus: encode payload: %w", err)
+	}
 	intent := "{}"
 	if env.GetIntentData() != nil {
 		encoded, err := protojson.Marshal(env.GetIntentData())
@@ -179,6 +269,7 @@ func consensusSubject(env *commonv1.GovernanceEnvelope) (tribunal.ConsensusSubje
 		ActionType:     env.GetActionType(),
 		TargetResource: env.GetTargetResource(),
 		EventType:      env.GetEventType(),
+		PayloadJSON:    string(payload),
 		IntentJSON:     intent,
 	}, nil
 }

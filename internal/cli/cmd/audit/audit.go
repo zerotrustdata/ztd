@@ -22,6 +22,7 @@ import (
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -41,6 +42,7 @@ func Cmd() *cobra.Command {
 		auditExportCmd(),
 		auditReportCmd(),
 		auditEventsCmd(),
+		auditVotesCmd(),
 		auditSummaryCmd(),
 		auditVerifyCmd(),
 	)
@@ -397,6 +399,56 @@ Gateway-local app records that have no Operator session.`,
 	cmd.Flags().IntVar(&limit, "limit", 100, "Max rows")
 
 	cmd.MarkFlagsMutuallyExclusive("session", "app")
+	return cmd
+}
+
+func auditVotesCmd() *cobra.Command {
+	return auditVotesCmdWithConfig(shared.LoadConfig, authcmd.DefaultAPIClientFactory, shared.NewFileSvc)
+}
+
+func auditVotesCmdWithConfig(configLoader func(string) (*config.Config, error), clientFactory authcmd.APIClientFactory, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) *cobra.Command {
+	var txID string
+
+	cmd := &cobra.Command{
+		Use:   "votes",
+		Short: "Show each L2 consensus member's vote on a transaction",
+		Long: `Show every recorded L2 consensus member vote on one governed transaction from the
+running Gateway over mTLS: the member, its outcome (approve, deny, or no_vote), its
+own stated reason, and why an answer was read as deny or no vote was cast. --tx is
+the transaction ID that 'ztd operator run' and receipts report. --json outputs the
+raw response.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := configLoader("")
+			if err != nil {
+				return err
+			}
+			fileSvc, err := fileSvcFactory("", slog.Default())
+			if err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+			}
+			client, err := clientFactory(fileSvc, cfg)
+			if err != nil {
+				return fmt.Errorf("audit: create API client: %w", err)
+			}
+
+			if output.JSONEnabled(cmd) {
+				resp, err := client.Get(operator.ConsensusVotesPath(txID))
+				if err != nil {
+					return fmt.Errorf("audit: fetch consensus votes: %w", err)
+				}
+				return output.WriteRawJSON(cmd.OutOrStdout(), resp)
+			}
+			resp, err := operator.FetchConsensusVotes(client, txID)
+			if err != nil {
+				return fmt.Errorf("audit: %w", err)
+			}
+			operator.WriteConsensusVotes(cmd.OutOrStdout(), "", resp.TransactionID, resp.Votes)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&txID, "tx", "", "Governed transaction ID")
+	_ = cmd.MarkFlagRequired("tx")
 	return cmd
 }
 

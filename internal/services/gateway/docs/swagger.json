@@ -321,6 +321,59 @@
                 }
             }
         },
+        "/api/v1/audit/consensus-votes": {
+            "get": {
+                "description": "Returns every recorded L2 consensus member vote (member, outcome, reason, failure) for one governed transaction, oldest first. Reason and failure text is scrubbed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "audit"
+                ],
+                "summary": "List consensus votes for a transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Governed transaction ID (the envelope ID receipts carry)",
+                        "name": "tx_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ConsensusVotesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request — tx_id missing",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable — egress scrubber unavailable, content withheld",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/audit/receipts": {
             "get": {
                 "description": "Returns one canonical protojson ActionReceipt when tx_id is set or when investigation_id and action_type uniquely correlate a receipt. Without those selectors, returns searchable receipt records with the complete receipt nested under action_receipt.",
@@ -2581,6 +2634,7 @@
                 "ztd.v1.app.investigation.updated",
                 "ztd.v1.app.run.status.updated",
                 "ztd.v1.app.task.completed",
+                "ztd.v1.consensus.vote.recorded",
                 "ztd.v1.inference.model.provenance.attestation.recorded",
                 "ztd.v1.operator.a2a.call.requested",
                 "ztd.v1.operator.audit.ai.record.requested",
@@ -2803,6 +2857,7 @@
                 "EventAppInvestigationUpdated",
                 "EventAppRunStatusUpdated",
                 "EventAppTaskCompleted",
+                "EventConsensusVoteRecorded",
                 "EventModelProvenanceAttestationRecorded",
                 "EventOperatorA2aCallRequested",
                 "EventOperatorAuditAiRecordRequested",
@@ -3342,6 +3397,81 @@
                 "CampaignFreshnessSafetyStopped",
                 "CampaignFreshnessSourceOffline"
             ]
+        },
+        "models.ConsensusVoteOutcome": {
+            "type": "string",
+            "enum": [
+                "approve",
+                "deny",
+                "no_vote"
+            ],
+            "x-enum-varnames": [
+                "ConsensusVoteOutcomeApprove",
+                "ConsensusVoteOutcomeDeny",
+                "ConsensusVoteOutcomeNoVote"
+            ]
+        },
+        "models.ConsensusVoteRecord": {
+            "type": "object",
+            "properties": {
+                "consensus_set_id": {
+                    "type": "string"
+                },
+                "failure": {
+                    "description": "Failure explains a deny read from an invalid answer, or why no vote was cast.",
+                    "type": "string"
+                },
+                "inference_transaction_id": {
+                    "description": "InferenceTransactionID is the member's governed INFERENCE transaction.",
+                    "type": "string"
+                },
+                "member_app_id": {
+                    "type": "string"
+                },
+                "model_tag": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "$ref": "#/definitions/models.ConsensusVoteOutcome"
+                },
+                "provider_attempt_id": {
+                    "type": "string"
+                },
+                "quorum": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "description": "Reason is the member's own stated reason for its decision.",
+                    "type": "string"
+                },
+                "recorded_at": {
+                    "type": "string"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "description": "TransactionID is the envelope ID, the ID its receipts carry.",
+                    "type": "string"
+                }
+            }
+        },
+        "models.ConsensusVotesResponse": {
+            "type": "object",
+            "properties": {
+                "success": {
+                    "type": "boolean"
+                },
+                "transaction_id": {
+                    "type": "string"
+                },
+                "votes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ConsensusVoteRecord"
+                    }
+                }
+            }
         },
         "models.DownloadArtifact": {
             "type": "object",

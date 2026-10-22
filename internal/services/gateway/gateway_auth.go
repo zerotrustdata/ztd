@@ -188,6 +188,7 @@ func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
 	// Owner audit read routes support the browser console's web session and
 	// the CLI's verified mTLS session. Write/ingest paths remain mTLS default.
 	r.addExact(constants.APIPaths.AuditEvents, RouteAuthDual)
+	r.addExact(constants.APIPaths.AuditConsensusVotes, RouteAuthDual)
 	r.addExact(constants.APIPaths.AuditSummary, RouteAuthDual)
 	r.addExact(constants.APIPaths.AuditVerify, RouteAuthDual)
 

@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
+	"github.com/zerotrustdata/ztd/protocol"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
@@ -97,9 +98,11 @@ func bindTribunalConsensus(t *testing.T, gateway *fixtures.GatewayFixture, ident
 
 		// The Tribunal deliberator reads each member's owner from its app policy
 		// document, so the member votes under the owner the test identity holds.
-		policy, err := json.Marshal(models.AppPolicy{AppID: appID, OwnerUserID: identity.UserID})
+		// Enrollment keys app policies by SPIFFE ID; the seed matches it.
+		spiffeID := protocol.NewWorkloadIdentity().AppSPIFFEID(appID)
+		policy, err := json.Marshal(models.AppPolicy{AppID: spiffeID, OwnerUserID: identity.UserID})
 		require.NoError(t, err)
-		require.NoError(t, gw.GetDocStore().DocSet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), appID, policy))
+		require.NoError(t, gw.GetDocStore().DocSet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), spiffeID, policy))
 	}
 
 	require.NoError(t, consensusStore.AddConsensus(ctx, models.ConsensusPolicy{

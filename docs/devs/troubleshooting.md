@@ -92,7 +92,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-TROUBLE-OP-01 | Outbound Operators connect strictly outbound over mTLS to the Gateway (`cmd:<operator_id>:<operator_session_id>`) and expose NO inbound listening ports. To diagnose an unreachable Operator, check Gateway mTLS port reachability, local CA bundle integrity, and platform enrollment approval status. |
-| INV-TROUBLE-OP-02 | Governance rejections at L1, L2, L3, or L4 fail closed. Diagnostic investigations MUST inspect error codes in audit receipts (`ztd audit receipts`, `ztd audit events`; stored under `.ztd/data/`) and state roots before altering configuration or attempting re-execution. |
+| INV-TROUBLE-OP-02 | Governance rejections at L1, L2, L3, or L4 fail closed. Diagnostic investigations MUST inspect error codes in audit receipts (`ztd audit receipts`, `ztd audit events`, and `ztd audit votes --tx` for an L2 quorum rejection; stored under `.ztd/data/`) and state roots before altering configuration or attempting re-execution. |
 | INV-TROUBLE-OP-03 | `ztd operator start` and `ztd operator reset-identity` refuse a working directory whose runtime tree holds the Gateway root CA (`constants.GatewayRuntimeMarker`); `operator start` fails with `ErrOperatorGatewayRuntime`. Each executing runtime owns its own audit store and state root, so an outbound Operator on the Gateway host MUST run with `--working-dir` set to a separate directory. |
 
 ## Owned surfaces

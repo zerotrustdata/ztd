@@ -12,6 +12,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -23,10 +24,12 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -49,10 +52,14 @@ func (f *fakeBinding) GetBoundConsensusApp(context.Context) (*models.ConsensusPo
 	return f.policy, f.err
 }
 
-// fakePolicies returns every member app owned by tribunalTestOwnerID.
+// fakePolicies returns every member app owned by tribunalTestOwnerID. Like
+// the enrollment store, it keys policies by the app's SPIFFE ID only.
 type fakePolicies struct{}
 
 func (fakePolicies) GetAppPolicy(_ context.Context, appID string) (*models.AppPolicy, error) {
+	if !strings.HasPrefix(appID, "spiffe://") {
+		return nil, nil
+	}
 	return &models.AppPolicy{AppID: appID, OwnerUserID: tribunalTestOwnerID}, nil
 }
 
@@ -71,6 +78,7 @@ type inferCall struct {
 	deliberating string
 	schema       string
 	format       *operatorv1.InferenceResponseFormat
+	messages     []*operatorv1.InferenceMessage
 }
 
 // fakeInferer answers each member's vote from a script keyed by ActingAppID.
@@ -90,6 +98,7 @@ func (f *fakeInferer) DispatchInference(ctx context.Context, req dispatch.Dispat
 		deliberating: deliberating,
 		schema:       req.RequestSchemaVersion,
 		format:       req.ResponseFormat,
+		messages:     req.Messages,
 	})
 	reply, ok := f.replies[req.ActingAppID]
 	if !ok {
@@ -198,15 +207,29 @@ func membersExcept(skip string) []string {
 	return out
 }
 
-// tribunalTestEnvelope returns a hashed envelope whose transaction hash
-// matches its canonical content.
+// tribunalTestCommand is the shell command carried by tribunalTestEnvelope.
+const tribunalTestCommand = "uname -a"
+
+// tribunalTestEnvelope returns a hashed EXECUTE_BASH envelope whose
+// transaction hash matches its canonical content.
 func tribunalTestEnvelope(t *testing.T) (*commonv1.GovernanceEnvelope, string) {
 	t.Helper()
-	env := &commonv1.GovernanceEnvelope{
-		ActionType:     string(constants.ActionTypeInference),
-		TargetResource: "operator://op-1/inference",
-		EventType:      string(constants.EventOperatorCommandRequested),
+	payload, err := proto.Marshal(&operatorv1.CommandRequested{Command: tribunalTestCommand})
+	if err != nil {
+		t.Fatalf("marshal command payload: %v", err)
 	}
+	env := &commonv1.GovernanceEnvelope{
+		ActionType:     string(constants.ActionTypeExecuteBash),
+		TargetResource: "operator://op-1/shell",
+		EventType:      string(constants.EventOperatorCommandRequested),
+		Payload:        payload,
+	}
+	return hashTribunalTestEnvelope(t, env)
+}
+
+// hashTribunalTestEnvelope stamps env with its canonical transaction hash.
+func hashTribunalTestEnvelope(t *testing.T, env *commonv1.GovernanceEnvelope) (*commonv1.GovernanceEnvelope, string) {
+	t.Helper()
 	hash, err := govpkg.GenerateMessageID(env)
 	if err != nil {
 		t.Fatalf("generate message id: %v", err)
@@ -234,9 +257,42 @@ func unmarshalDeliberatedEnvelope(t *testing.T, raw []byte) *commonv1.Governance
 	return &env
 }
 
+// fakeVoteRecorder keeps every vote event the deliberator records. With err
+// set it records nothing and fails.
+type fakeVoteRecorder struct {
+	events []*storage.Event
+	err    error
+}
+
+func (f *fakeVoteRecorder) RecordEvent(event *storage.Event) (int64, error) {
+	if f.err != nil {
+		return 0, f.err
+	}
+	f.events = append(f.events, event)
+	return int64(len(f.events)), nil
+}
+
+// records decodes the recorded vote events.
+func (f *fakeVoteRecorder) records(t *testing.T) []models.ConsensusVoteRecord {
+	t.Helper()
+	out := make([]models.ConsensusVoteRecord, 0, len(f.events))
+	for _, event := range f.events {
+		var record models.ConsensusVoteRecord
+		if err := json.Unmarshal([]byte(event.ContentText), &record); err != nil {
+			t.Fatalf("decode vote record: %v", err)
+		}
+		out = append(out, record)
+	}
+	return out
+}
+
 func newTribunalTestDeliberator(binding *models.ConsensusPolicy, inferer *fakeInferer, signer *fakeSigner) *TribunalConsensusDeliberator {
+	return newRecordingTribunalTestDeliberator(binding, inferer, signer, &fakeVoteRecorder{})
+}
+
+func newRecordingTribunalTestDeliberator(binding *models.ConsensusPolicy, inferer *fakeInferer, signer *fakeSigner, recorder *fakeVoteRecorder) *TribunalConsensusDeliberator {
 	logger := slog.New(slog.DiscardHandler)
-	return NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, signer, logger)
+	return NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, recorder, signer, logger)
 }
 
 // assertVoteSignature verifies vote's signature over the L2 vote payload for
@@ -436,6 +492,75 @@ func TestTribunalConsensusMemberWithoutKeyCastsNoVote(t *testing.T) {
 	}
 }
 
+func TestTribunalConsensusRecordsEveryMemberVote(t *testing.T) {
+	env, _ := tribunalTestEnvelope(t)
+	env.OperatorSessionId = "session-1"
+	hash, err := govpkg.GenerateMessageID(env)
+	if err != nil {
+		t.Fatalf("generate message id: %v", err)
+	}
+	env.Id, env.TransactionHash = hash, hash
+	binding := tribunalTestBinding()
+	replies := repliesForAll(inferReply{text: tribunalApproveAnswer})
+	replies[binding.MemberAppIDs[0]] = inferReply{text: tribunalDenyAnswer}
+	replies[binding.MemberAppIDs[1]] = inferReply{text: "probably fine"}
+	replies[binding.MemberAppIDs[3]] = inferReply{err: errors.New("member inference unavailable")}
+	inferer := &fakeInferer{replies: replies}
+	signer := newFakeSigner(t, binding.MemberAppIDs...)
+	recorder := &fakeVoteRecorder{}
+	d := newRecordingTribunalTestDeliberator(binding, inferer, signer, recorder)
+
+	if _, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env)); err != nil {
+		t.Fatalf("Deliberate: %v", err)
+	}
+
+	// Deny, invalid-answer deny, approve, no vote; then quorum is unreachable.
+	for _, event := range recorder.events {
+		if event.Type != constants.EventConsensusVoteRecorded || event.TransactionID != hash || event.OperatorSessionID != "session-1" {
+			t.Fatalf("vote event = type %s tx %s session %s, want %s on %s/session-1",
+				event.Type, event.TransactionID, event.OperatorSessionID, constants.EventConsensusVoteRecorded, hash)
+		}
+	}
+	records := recorder.records(t)
+	want := []struct {
+		outcome models.ConsensusVoteOutcome
+		reason  string
+		failed  bool
+	}{
+		{outcome: models.ConsensusVoteOutcomeDeny, reason: "unsafe"},
+		{outcome: models.ConsensusVoteOutcomeDeny, failed: true},
+		{outcome: models.ConsensusVoteOutcomeApprove, reason: "matches target"},
+		{outcome: models.ConsensusVoteOutcomeNoVote, failed: true},
+	}
+	if len(records) != len(want) {
+		t.Fatalf("vote records = %d, want %d: %+v", len(records), len(want), records)
+	}
+	for i, record := range records {
+		if record.MemberAppID != binding.MemberAppIDs[i] || record.Outcome != want[i].outcome || record.Reason != want[i].reason || (record.Failure != "") != want[i].failed {
+			t.Fatalf("record %d = %+v, want member %s outcome %s reason %q failed %v", i, record, binding.MemberAppIDs[i], want[i].outcome, want[i].reason, want[i].failed)
+		}
+		if record.TransactionHash != hash || record.ConsensusSetID != tribunalTestBindingID || record.Quorum != 3 || record.ModelTag != tribunalTestModel || record.ProviderAttemptID == "" {
+			t.Fatalf("record %d context = %+v", i, record)
+		}
+	}
+}
+
+func TestTribunalConsensusUnrecordedVoteDoesNotCount(t *testing.T) {
+	env, _ := tribunalTestEnvelope(t)
+	binding := tribunalTestBinding()
+	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
+	signer := newFakeSigner(t, binding.MemberAppIDs...)
+	d := newRecordingTribunalTestDeliberator(binding, inferer, signer, &fakeVoteRecorder{err: constants.ErrAuditStoreDisabled})
+
+	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
+	if err != nil {
+		t.Fatalf("Deliberate: %v", err)
+	}
+	if votes := unmarshalDeliberatedEnvelope(t, out).GetGovernance().GetL2().GetVotes(); len(votes) != 0 {
+		t.Fatalf("votes = %d, want 0 when no vote can be recorded", len(votes))
+	}
+}
+
 func TestTribunalConsensusHashMismatchFailsBeforeAnyWork(t *testing.T) {
 	env, _ := tribunalTestEnvelope(t)
 	env.TargetResource = "operator://op-1/tampered"
@@ -488,6 +613,55 @@ func TestTribunalConsensusCallsCarryMemberIdentityAndPinnedModel(t *testing.T) {
 		if call.format.GetJsonSchema() != tribunal.ConsensusVoteJSONSchema {
 			t.Fatalf("call %d response format = %v, want the consensus vote JSON schema", i, call.format)
 		}
+	}
+}
+
+func TestTribunalConsensusVotePromptCarriesTypedPayload(t *testing.T) {
+	env, _ := tribunalTestEnvelope(t)
+	binding := tribunalTestBinding()
+	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
+	signer := newFakeSigner(t, binding.MemberAppIDs...)
+	d := newTribunalTestDeliberator(binding, inferer, signer)
+
+	if _, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env)); err != nil {
+		t.Fatalf("Deliberate: %v", err)
+	}
+	if len(inferer.calls) == 0 {
+		t.Fatal("no inference calls recorded")
+	}
+	for i, call := range inferer.calls {
+		var user string
+		for _, msg := range call.messages {
+			if msg.GetRole() != operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER {
+				continue
+			}
+			for _, part := range msg.GetParts() {
+				user += part.GetText()
+			}
+		}
+		if !strings.Contains(user, "<payload>") || !strings.Contains(user, tribunalTestCommand) {
+			t.Fatalf("call %d user prompt does not carry the command payload:\n%s", i, user)
+		}
+	}
+}
+
+func TestTribunalConsensusUndecodablePayloadFailsBeforeAnyWork(t *testing.T) {
+	env, _ := hashTribunalTestEnvelope(t, &commonv1.GovernanceEnvelope{
+		ActionType:     string(constants.ActionTypeExecuteBash),
+		TargetResource: "operator://op-1/shell",
+		EventType:      string(constants.EventOperatorCommandRequested),
+		Payload:        []byte{0xff, 0xff, 0xff},
+	})
+	binding := tribunalTestBinding()
+	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
+	signer := newFakeSigner(t, binding.MemberAppIDs...)
+	d := newTribunalTestDeliberator(binding, inferer, signer)
+
+	if _, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env)); err == nil {
+		t.Fatal("Deliberate succeeded on an undecodable payload, want error")
+	}
+	if len(inferer.calls) != 0 || len(signer.calls) != 0 {
+		t.Fatalf("inference calls = %d, sign calls = %d, want 0 and 0", len(inferer.calls), len(signer.calls))
 	}
 }
 

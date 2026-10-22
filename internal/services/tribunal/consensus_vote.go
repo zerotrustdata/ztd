@@ -10,6 +10,8 @@ package tribunal
 import (
 	"fmt"
 	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // ConsensusVoteDecision is the decision field of a member's L2 consensus vote answer.
@@ -21,11 +23,13 @@ const (
 )
 
 // ConsensusSubject is the governed envelope a Tribunal member votes on as
-// an L2 consensus member: its classification and decoded intent data.
+// an L2 consensus member: its classification, typed action payload, and
+// decoded intent data.
 type ConsensusSubject struct {
 	ActionType     string
 	TargetResource string
 	EventType      string
+	PayloadJSON    string
 	IntentJSON     string
 }
 
@@ -34,7 +38,7 @@ const consensusVoteSystemPrompt = "You are a member of the Tribunal, the consens
 	"Answer with exactly one JSON object {\"decision\":\"approve\"|\"deny\",\"reason\":\"<one sentence>\"}, with no explanation or markdown.\n\n"
 
 // ConsensusVoteJSONSchema constrains the provider's vote answer to the shape
-// DecodeConsensusVote accepts.
+// ParseConsensusVote accepts.
 const ConsensusVoteJSONSchema = `{"additionalProperties":false,"properties":{"decision":{"enum":["approve","deny"],"type":"string"},` +
 	`"reason":{"type":"string"}},"required":["decision","reason"],"type":"object"}`
 
@@ -43,6 +47,7 @@ const ConsensusVoteJSONSchema = `{"additionalProperties":false,"properties":{"de
 func ConsensusVotePrompt(member Member, subject ConsensusSubject) (system, user string) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<action>\nAction type: %s\nTarget resource: %s\nEvent type: %s\n</action>\n\n", subject.ActionType, subject.TargetResource, subject.EventType)
+	fmt.Fprintf(&b, "<payload>\n%s\n</payload>\n\n", subject.PayloadJSON)
 	fmt.Fprintf(&b, "<intent_data>\n%s\n</intent_data>\n", subject.IntentJSON)
 	return consensusVoteSystemPrompt + memberStance(member), b.String()
 }
@@ -53,13 +58,29 @@ type consensusVoteAnswer struct {
 	Reason   string                `json:"reason"`
 }
 
-// DecodeConsensusVote returns true only for a strict approve answer. An
-// invalid answer or any other decision value is a deny; no keyword is ever
-// read out of free text.
-func DecodeConsensusVote(text string) bool {
+// ConsensusVoteAnswer is a member's decoded vote answer. Err is set when the
+// answer is not the strict vote shape; the vote then counts as a deny.
+type ConsensusVoteAnswer struct {
+	Decision ConsensusVoteDecision
+	Reason   string
+	Err      error
+}
+
+// Approve reports whether the answer is a strict approve.
+func (a ConsensusVoteAnswer) Approve() bool {
+	return a.Err == nil && a.Decision == ConsensusVoteApprove
+}
+
+// ParseConsensusVote decodes a member's vote answer. An invalid answer or any
+// other decision value is a deny; no keyword is ever read out of free text.
+func ParseConsensusVote(text string) ConsensusVoteAnswer {
 	var answer consensusVoteAnswer
 	if err := decodeAnswer(strings.TrimSpace(text), &answer); err != nil {
-		return false
+		return ConsensusVoteAnswer{Decision: ConsensusVoteDeny, Err: err}
 	}
-	return answer.Decision == ConsensusVoteApprove
+	if answer.Decision != ConsensusVoteApprove && answer.Decision != ConsensusVoteDeny {
+		return ConsensusVoteAnswer{Decision: ConsensusVoteDeny, Reason: answer.Reason,
+			Err: fmt.Errorf("decision %q: %w", answer.Decision, constants.ErrTribunalAnswerInvalid)}
+	}
+	return ConsensusVoteAnswer{Decision: answer.Decision, Reason: answer.Reason}
 }

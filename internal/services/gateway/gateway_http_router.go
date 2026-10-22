@@ -182,6 +182,7 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	mux.HandleFunc(constants.APIPaths.AuditReceiptsExport, h.auditController.handleAuditReceiptsExport)
 	mux.HandleFunc(constants.APIPaths.AuditRecords, h.auditController.handleAuditRecords)
 	mux.HandleFunc(constants.APIPaths.AuditEvents, h.auditController.handleAuditEvents)
+	mux.HandleFunc(constants.APIPaths.AuditConsensusVotes, h.auditController.handleAuditConsensusVotes)
 	mux.HandleFunc(constants.APIPaths.AuditSummary, h.auditController.handleAuditSummary)
 	mux.HandleFunc(constants.APIPaths.AuditReport, h.auditController.handleAuditReport)
 	mux.HandleFunc(constants.APIPaths.AuditVerify, h.auditController.handleAuditVerify)

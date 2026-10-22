@@ -279,6 +279,50 @@ func TestAuditReportCmd_API_GetError(t *testing.T) {
 	assert.ErrorIs(t, err, errMockNetwork)
 }
 
+// --- Consensus votes ---
+
+func TestAuditVotesCmd_API_PrintsEachMemberVote(t *testing.T) {
+	cfg := setupAuditAPITestEnv(t)
+
+	votesJSON := `{"success":true,"transaction_id":"tx-1","votes":[` +
+		`{"transaction_id":"tx-1","consensus_set_id":"tribunal","member_app_id":"tribunal-1","outcome":"deny","reason":"writes outside target","quorum":3,"model_tag":"gemma4:e2b","recorded_at":"2026-01-01T00:00:00Z"},` +
+		`{"transaction_id":"tx-1","consensus_set_id":"tribunal","member_app_id":"tribunal-2","outcome":"no_vote","failure":"member inference: timeout","quorum":3,"recorded_at":"2026-01-01T00:00:01Z"},` +
+		`{"transaction_id":"tx-1","consensus_set_id":"tribunal","member_app_id":"tribunal-3","outcome":"approve","reason":"read-only","quorum":3,"recorded_at":"2026-01-01T00:00:02Z"}]}`
+	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(votesJSON)}
+
+	loader := func(string) (*config.Config, error) { return cfg, nil }
+	factory := func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) { return mockClient, nil }
+
+	cmd := auditVotesCmdWithConfig(loader, factory, shared.NewFileSvc)
+	require.NoError(t, cmd.Flags().Set("tx", "tx-1"))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.RunE(cmd, []string{}))
+	require.Equal(t, []string{constants.APIPaths.AuditConsensusVotes + "?tx_id=tx-1"}, mockClient.GetCalls)
+	out := buf.String()
+	for _, want := range []string{"set tribunal, model gemma4:e2b, quorum 3", "tribunal-1", "reason: writes outside target",
+		"no_vote", "failure: member inference: timeout", "approve", "Approvals: 1 of 3 votes, quorum 3"} {
+		assert.Contains(t, out, want)
+	}
+}
+
+func TestAuditVotesCmd_API_NoVotes(t *testing.T) {
+	cfg := setupAuditAPITestEnv(t)
+	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"success":true,"transaction_id":"tx-2","votes":[]}`)}
+	loader := func(string) (*config.Config, error) { return cfg, nil }
+	factory := func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) { return mockClient, nil }
+
+	cmd := auditVotesCmdWithConfig(loader, factory, shared.NewFileSvc)
+	require.NoError(t, cmd.Flags().Set("tx", "tx-2"))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	require.NoError(t, cmd.RunE(cmd, []string{}))
+	assert.Contains(t, buf.String(), "No consensus votes recorded for transaction tx-2")
+}
+
 // --- Events ---
 
 func TestAuditEventsCmd_API_MockHappyPath(t *testing.T) {

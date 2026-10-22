@@ -51,7 +51,7 @@ func TestView_MinHeightClamp(t *testing.T) {
 }
 
 func TestView_ContainsAllPaneHeaders(t *testing.T) {
-	m := NewModel(Options{})
+	m := NewModel(Options{Version: "v1.0.0"})
 	m.width = 120
 	m.height = 40
 	out := m.View()
@@ -59,7 +59,7 @@ func TestView_ContainsAllPaneHeaders(t *testing.T) {
 	assert.Contains(t, out, "SOVEREIGN AUDIT LEDGER")
 	assert.Contains(t, out, "PENDING APPROVALS")
 	assert.Contains(t, out, "OPERATORS")
-	assert.Contains(t, out, "ztd TACTICAL GOVERNANCE CONSOLE")
+	assert.Contains(t, out, "ztd v")
 }
 
 func TestView_ContainsAllPipelineStages(t *testing.T) {
@@ -461,7 +461,8 @@ func TestRenderHeader_ContainsIdentity(t *testing.T) {
 	m.width = 120
 	out := m.renderHeader(120)
 	assert.Contains(t, out, "alice@example.com")
-	assert.Contains(t, out, "abcdef12...")
+	assert.NotContains(t, out, "CLI SESSION")
+	assert.NotContains(t, out, "TACTICAL")
 	assert.Contains(t, out, "OPERATOR: unbound")
 	assert.Contains(t, out, "v1.0.0")
 }
@@ -680,7 +681,7 @@ func TestView_FitsTerminalExactly(t *testing.T) {
 		for i, line := range lines {
 			assert.LessOrEqual(t, lipgloss.Width(line), size.width, "%dx%d: line %d too wide", size.width, size.height, i)
 		}
-		assert.Contains(t, lines[0], "ztd TACTICAL GOVERNANCE CONSOLE", "%dx%d: header on the first line", size.width, size.height)
+		assert.Contains(t, lines[0], "ztd v", "%dx%d: header on the first line", size.width, size.height)
 		assert.Contains(t, lines[len(lines)-1], "SSE:", "%dx%d: status bar on the last line", size.width, size.height)
 	}
 }

@@ -352,6 +352,53 @@ func (c *AuditController) handleAuditEvents(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+// @Summary		List consensus votes for a transaction
+// @Description	Returns every recorded L2 consensus member vote (member, outcome, reason, failure) for one governed transaction, oldest first. Reason and failure text is scrubbed.
+// @Tags			audit
+// @Produce		json
+// @Param			tx_id	query		string	true	"Governed transaction ID (the envelope ID receipts carry)"
+// @Success		200		{object}	models.ConsensusVotesResponse
+// @Failure		400		{string}	string	"Bad Request — tx_id missing"
+// @Failure		405		{string}	string	"Method Not Allowed"
+// @Failure		500		{string}	string	"Internal Server Error"
+// @Failure		503		{string}	string	"Service Unavailable — egress scrubber unavailable, content withheld"
+// @Router			/api/v1/audit/consensus-votes [get]
+func (c *AuditController) handleAuditConsensusVotes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	if !c.egressReady(w) {
+		return
+	}
+	txID := r.URL.Query().Get("tx_id")
+	if txID == "" {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrMissingRequiredField.Error())
+		return
+	}
+	events, err := c.auditStore.GetTransactionEvents(txID, constants.EventConsensusVoteRecorded)
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditConsensusVotes: %w", err).Error())
+		return
+	}
+	votes := make([]models.ConsensusVoteRecord, 0, len(events))
+	for _, e := range events {
+		var vote models.ConsensusVoteRecord
+		if err := json.Unmarshal([]byte(e.ContentText), &vote); err != nil {
+			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditConsensusVotes: event %d: %w", e.ID, err).Error())
+			return
+		}
+		vote.Reason = c.scrubber.ScrubText(r.Context(), vote.Reason)
+		vote.Failure = c.scrubber.ScrubText(r.Context(), vote.Failure)
+		votes = append(votes, vote)
+	}
+	c.responder.JSON(w, http.StatusOK, models.ConsensusVotesResponse{
+		Success:       true,
+		TransactionID: txID,
+		Votes:         votes,
+	})
+}
+
 // toAuditEventRow converts a storage.Event to the API-facing AuditEventRow. CommandRaw is
 // the only content-bearing field (decrypted command lines, file paths, tool arguments) and
 // is scrubbed; the rest are identifiers, the event type, a timestamp and an exit code.

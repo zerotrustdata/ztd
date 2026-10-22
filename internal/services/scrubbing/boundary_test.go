@@ -388,7 +388,9 @@ func TestScrubbingService_ScrubText_JSONStaysValid(t *testing.T) {
 		t.Parallel()
 		input := `{"content":"{\"api_key\":\"abc123\",\"count\":5551234567}"}`
 		result := service.ScrubText(ctx, input)
-		var outer struct{ Content string }
+		var outer struct {
+			Content string `json:"content"`
+		}
 		require.NoError(t, json.Unmarshal([]byte(result), &outer))
 		require.True(t, json.Valid([]byte(outer.Content)), outer.Content)
 		assert.NotContains(t, outer.Content, "abc123")

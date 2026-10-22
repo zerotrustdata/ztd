@@ -542,7 +542,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		&gatewayOperatorListerAdapter{svc: reg},
 		logger,
 	)
-	tribunalConsensus := NewTribunalConsensusDeliberator(consensusStore, db.GetAppPolicyStore(), inferenceDispatchSvc, nil, logger)
+	tribunalConsensus := NewTribunalConsensusDeliberator(consensusStore, db.GetAppPolicyStore(), inferenceDispatchSvc, auditStore, nil, logger)
 	consensusRouter.tribunal = tribunalConsensus
 	ownerOperatorLister := &registrationOwnerOperatorLister{reg: reg, userSvc: userSvc}
 	evidenceWindows := NewEvidenceWindowPublisher(docStore, NewSSEEventPublisher(sseStore, wsHandler), logger)

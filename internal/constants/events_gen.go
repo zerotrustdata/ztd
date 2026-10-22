@@ -36,6 +36,7 @@ const EventAppInvestigationCreated EventType = "ztd.v1.app.investigation.created
 const EventAppInvestigationUpdated EventType = "ztd.v1.app.investigation.updated"
 const EventAppRunStatusUpdated EventType = "ztd.v1.app.run.status.updated"
 const EventAppTaskCompleted EventType = "ztd.v1.app.task.completed"
+const EventConsensusVoteRecorded EventType = "ztd.v1.consensus.vote.recorded"
 const EventModelProvenanceAttestationRecorded EventType = "ztd.v1.inference.model.provenance.attestation.recorded"
 const EventOperatorA2aCallRequested EventType = "ztd.v1.operator.a2a.call.requested"
 const EventOperatorAuditAiRecordRequested EventType = "ztd.v1.operator.audit.ai.record.requested"
@@ -440,6 +441,13 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Transport:   nil,
 		Producers:   []string{"cli"},
 		Persistence: "ephemeral",
+	},
+	EventConsensusVoteRecorded: {
+		Key:         "ConsensusVoteRecorded",
+		Kind:        EventKindFact,
+		Transport:   nil,
+		Producers:   []string{"gateway"},
+		Persistence: "gateway.audit_log",
 	},
 	EventModelProvenanceAttestationRecorded: {
 		Key:         "ModelProvenanceAttestationRecorded",

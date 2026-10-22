@@ -13,6 +13,7 @@
   "approvals_verify_action": "/verify",
   "approve_page": "/api/v1/approve/",
   "approve_page_prefix": "/api/v1/approve/",
+  "audit_consensus_votes": "/api/v1/audit/consensus-votes",
   "audit_events": "/api/v1/audit/events",
   "audit_receipts": "/api/v1/audit/receipts",
   "audit_receipts_export": "/api/v1/audit/receipts/export",

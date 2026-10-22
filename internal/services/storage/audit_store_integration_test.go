@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -545,4 +546,75 @@ func TestSQLAuditStore_RecordActionReceipt_RejectsEmptySession(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	err := ass.RecordActionReceipt(sampleActionReceiptRecord(t, ""))
 	require.ErrorIs(t, err, constants.ErrAuditSessionMissing)
+}
+
+// TestGetTransactionEventsReturnsTypedEventsInOrder asserts the transaction
+// read returns only the requested type for that transaction, oldest first, decrypted.
+func TestGetTransactionEventsReturnsTypedEventsInOrder(t *testing.T) {
+	ass := newIntegrationAuditStore(t)
+	require.NoError(t, ass.CreateSession("votes-session", constants.SessionTypeOperator, "Votes", "user-votes"))
+	record := func(tx string, eventType constants.EventType, content string) {
+		_, err := ass.RecordEvent(&Event{
+			TransactionID:     tx,
+			OperatorSessionID: "votes-session",
+			Timestamp:         time.Now().UTC(),
+			Type:              eventType,
+			ContentText:       content,
+			CommandExitCode:   constants.ExitCodeNone,
+		})
+		require.NoError(t, err)
+	}
+	record("tx-a", constants.EventConsensusVoteRecorded, "vote-1")
+	record("tx-a", constants.Event.Operator.Audit.Command, "other-type")
+	record("tx-b", constants.EventConsensusVoteRecorded, "other-tx")
+	record("tx-a", constants.EventConsensusVoteRecorded, "vote-2")
+
+	events, err := ass.GetTransactionEvents("tx-a", constants.EventConsensusVoteRecorded)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.Equal(t, "vote-1", events[0].ContentText)
+	assert.Equal(t, "vote-2", events[1].ContentText)
+
+	_, err = ass.GetTransactionEvents("", constants.EventConsensusVoteRecorded)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+}
+
+// TestAuditQueriesUseIndexes asserts the per-append event lookups and the
+// acting-app audit filters stay on an index instead of scanning the audit tables.
+func TestAuditQueriesUseIndexes(t *testing.T) {
+	ass := newIntegrationAuditStore(t)
+	receiptsByApp, _ := receiptScopeQuery(models.AuditScope{ActingAppID: "app"})
+	for _, tc := range []struct {
+		name, query string
+		args        []any
+		indexes     []string
+	}{
+		{"event_once", eventOnceQuery, []any{"tx", "type"}, []string{"idx_events_transaction_id_type"}},
+		{"event_chain_meta", eventChainMetaQuery, []any{"tx"}, []string{"idx_events_transaction_id_type"}},
+		{"transaction_events", eventSelectColumns + " WHERE " + eventTransactionTypePredicate + " ORDER BY id ASC", []any{"tx", "type"},
+			[]string{"idx_events_transaction_id_type"}},
+		{"events_by_app", "SELECT id FROM events WHERE " + eventActingAppPredicate + " ORDER BY timestamp DESC LIMIT 10", []any{"app"},
+			[]string{"idx_receipts_acting_app_id", "idx_events_transaction_id_type"}},
+		{"receipts_by_app", receiptsByApp + " ORDER BY timestamp DESC LIMIT 10", []any{"app"}, []string{"idx_receipts_acting_app_id"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rows, err := ass.db.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+tc.query, tc.args...)
+			require.NoError(t, err)
+			defer rows.Close()
+			var details []string
+			for rows.Next() {
+				var id, parent, unused int
+				var detail string
+				require.NoError(t, rows.Scan(&id, &parent, &unused, &detail))
+				details = append(details, detail)
+			}
+			require.NoError(t, rows.Err())
+			plan := strings.Join(details, "\n")
+			for _, index := range tc.indexes {
+				assert.Contains(t, plan, index)
+			}
+			assert.NotContains(t, plan, "SCAN events")
+			assert.NotContains(t, plan, "SCAN receipts")
+		})
+	}
 }

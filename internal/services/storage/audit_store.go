@@ -341,10 +341,12 @@ CREATE TABLE IF NOT EXISTS audit_chain_checkpoints (
 CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(operator_session_id);
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
+CREATE INDEX IF NOT EXISTS idx_events_transaction_id_type ON events(transaction_id, type);
 CREATE INDEX IF NOT EXISTS idx_file_mutation_event_id ON file_mutation_log(event_id);
 CREATE INDEX IF NOT EXISTS idx_receipts_session_id ON receipts(operator_session_id);
 CREATE INDEX IF NOT EXISTS idx_receipts_timestamp ON receipts(timestamp);
 CREATE INDEX IF NOT EXISTS idx_receipts_investigation_id ON receipts(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_acting_app_id ON receipts(acting_app_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_id_type ON sessions(id, session_type);
 CREATE INDEX IF NOT EXISTS idx_commitment_ledger_committed_at ON commitment_ledger(committed_at_unix_ms);
 CREATE INDEX IF NOT EXISTS idx_audit_chain_checkpoints_seq ON audit_chain_checkpoints(pruned_through_seq);
@@ -609,6 +611,24 @@ func (ass *SQLAuditStore) RecordEventOnce(event *Event) (eventID int64, recorded
 	return ass.recordEvent(event, true)
 }
 
+// Event lookups by transaction run on every governed append and every acting-app
+// audit read; each must stay on an index (TestAuditQueriesUseIndexes).
+const (
+	eventOnceQuery      = "SELECT 1 FROM events WHERE transaction_id = ? AND type = ? LIMIT 1"
+	eventChainMetaQuery = "SELECT seq, hash FROM events WHERE transaction_id = ? ORDER BY id DESC LIMIT 1"
+	// eventActingAppPredicate is driven from the receipts side, so it never scans events.
+	eventActingAppPredicate       = "transaction_id IN (SELECT transaction_id FROM receipts WHERE acting_app_id = ?)"
+	eventTransactionTypePredicate = "transaction_id = ? AND type = ?"
+	// eventSelectColumns is the column list materializeEvents scans.
+	eventSelectColumns = `
+	SELECT id, seq, operator_session_id, timestamp, type, content_text,
+		command_raw, command_exit_code, command_stdout, command_stderr,
+		execution_duration_ms, stored_locally,
+		COALESCE(transaction_id, ''), COALESCE(execution_id, '')
+	FROM events
+	`
+)
+
 // recordEvent appends one event under SQLite's write lock. When once is true the append
 // is skipped if an event with the same transaction_id and type already exists.
 func (ass *SQLAuditStore) recordEvent(event *Event, once bool) (int64, bool, error) {
@@ -628,8 +648,7 @@ func (ass *SQLAuditStore) recordEvent(event *Event, once bool) (int64, bool, err
 		eventID, recorded = 0, false
 		if once {
 			var exists int
-			err := conn.QueryRowContext(context.Background(),
-				"SELECT 1 FROM events WHERE transaction_id = ? AND type = ? LIMIT 1",
+			err := conn.QueryRowContext(context.Background(), eventOnceQuery,
 				event.TransactionID, string(event.Type)).Scan(&exists)
 			if err == nil {
 				return nil
@@ -723,9 +742,7 @@ func (ass *SQLAuditStore) GetEventChainMetaByTransactionID(transactionID string)
 
 	var seq int64
 	var hash string
-	err := ass.db.QueryRowContext(context.Background(), `
-		SELECT seq, hash FROM events WHERE transaction_id = ? ORDER BY id DESC LIMIT 1
-	`, transactionID).Scan(&seq, &hash)
+	err := ass.db.QueryRowContext(context.Background(), eventChainMetaQuery, transactionID).Scan(&seq, &hash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, "", false, nil
 	}
@@ -1324,13 +1341,7 @@ func (ass *SQLAuditStore) GetEvents(scope models.AuditScope, limit, offset int) 
 		limit = 50
 	}
 
-	query := `
-	SELECT id, seq, operator_session_id, timestamp, type, content_text,
-		command_raw, command_exit_code, command_stdout, command_stderr,
-		execution_duration_ms, stored_locally,
-		COALESCE(transaction_id, ''), COALESCE(execution_id, '')
-	FROM events
-	`
+	query := eventSelectColumns
 	args := []interface{}{}
 	predicates := []string{}
 	if scope.OperatorSessionID != "" {
@@ -1338,7 +1349,7 @@ func (ass *SQLAuditStore) GetEvents(scope models.AuditScope, limit, offset int) 
 		args = append(args, scope.OperatorSessionID)
 	}
 	if scope.ActingAppID != "" {
-		predicates = append(predicates, "EXISTS (SELECT 1 FROM receipts WHERE receipts.transaction_id = events.transaction_id AND receipts.acting_app_id = ?)")
+		predicates = append(predicates, eventActingAppPredicate)
 		args = append(args, scope.ActingAppID)
 	}
 	if len(predicates) > 0 {
@@ -1346,7 +1357,24 @@ func (ass *SQLAuditStore) GetEvents(scope models.AuditScope, limit, offset int) 
 	}
 	query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
+	return ass.materializeEvents(query, args)
+}
 
+// GetTransactionEvents returns the events of eventType recorded under
+// transactionID, oldest first, decrypted.
+func (ass *SQLAuditStore) GetTransactionEvents(transactionID string, eventType constants.EventType) ([]*Event, error) {
+	if ass == nil || ass.db == nil {
+		return nil, constants.ErrAuditStoreDisabled
+	}
+	if transactionID == "" {
+		return nil, fmt.Errorf("audit store: transaction events: transaction_id: %w", constants.ErrMissingRequiredField)
+	}
+	return ass.materializeEvents(eventSelectColumns+" WHERE "+eventTransactionTypePredicate+" ORDER BY id ASC", []interface{}{transactionID, string(eventType)})
+}
+
+// materializeEvents runs an events query selecting eventSelectColumns and
+// decrypts each row.
+func (ass *SQLAuditStore) materializeEvents(query string, args []interface{}) ([]*Event, error) {
 	type eventRow struct {
 		event              Event
 		sessionID          sql.NullString
