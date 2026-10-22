@@ -129,7 +129,7 @@ export function CapabilityProbeBadges({
 export function ModelsView() {
   const [filters, setFilters] = useUserPref<ModelFilters>(PREF.filters, DEFAULT_FILTERS);
 
-  const release = useSelectedRelease();
+  const release = useSelectedRelease('all');
   const models = useStoreState((state) =>
     Array.from(state.models.values()).filter((record) => matchesRelease(record, release)),
   );
@@ -409,7 +409,7 @@ export function ModelsView() {
 
   const filterControls = (
     <>
-      <ReleaseSelector />
+      <ReleaseSelector defaultRelease="all" />
       <input
         type="search"
         placeholder="Search models, tags, or families..."
