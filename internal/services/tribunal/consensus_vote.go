@@ -27,7 +27,6 @@ const (
 // decoded intent data.
 type ConsensusSubject struct {
 	ActionType        string
-	ActionSemantics   string
 	TargetResource    string
 	EventType         string
 	OperatorID        string
@@ -53,11 +52,7 @@ const ConsensusVoteJSONSchema = `{"additionalProperties":false,"properties":{"de
 // prompt rendering subject.
 func ConsensusVotePrompt(member Member, subject ConsensusSubject) (system, user string) {
 	var b strings.Builder
-	fmt.Fprintf(&b, "<action>\nAction type: %s\n", subject.ActionType)
-	if subject.ActionSemantics != "" {
-		fmt.Fprintf(&b, "Action semantics: %s\n", subject.ActionSemantics)
-	}
-	fmt.Fprintf(&b, "Target resource: %s\nEvent type: %s\n</action>\n\n", subject.TargetResource, subject.EventType)
+	fmt.Fprintf(&b, "<action>\nAction type: %s\nTarget resource: %s\nEvent type: %s\n</action>\n\n", subject.ActionType, subject.TargetResource, subject.EventType)
 	fmt.Fprintf(&b, "<context>\nOperator ID: %s\nOperator session ID: %s\nCase ID: %s\nInvestigation ID: %s\nTask ID: %s\n</context>\n\n",
 		subject.OperatorID, subject.OperatorSessionID, subject.CaseID, subject.InvestigationID, subject.TaskID)
 	fmt.Fprintf(&b, "<payload>\n%s\n</payload>\n\n", subject.PayloadJSON)

@@ -458,7 +458,6 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		return nil, fmt.Errorf("gateway: dispatch approvals: %w", err)
 	}
 	dispatchSvc := NewDispatchService(logger, wsHandler, stateRootSvc, auth, cfg.Gateway.Posture, doctrine, l2Deliberator, signerStore, cmdSvc, dispatchApprovals)
-	dispatchSvc.SetL2QuorumSources(consensusStore, signerStore)
 
 	// --- MCP gateway (C2: concrete cmdSvc, auditLogger, l2Deliberator injected) ---
 	var auditLogger mcp.AuditLogger
@@ -1118,12 +1117,10 @@ func (ls *GatewayModeService) GetConsensusStore() *ConsensusStoreService {
 	return ls.consensusStore
 }
 
-// SetConsensusMemberSigner installs the Gateway host's Tribunal member signer
-// for both vote signing and member vote-inference attestations. The host
-// calls it once, before Start.
+// SetConsensusMemberSigner installs the Gateway host's Tribunal member vote
+// signer. The host calls it once, before Start.
 func (ls *GatewayModeService) SetConsensusMemberSigner(signer ConsensusMemberSigner) {
 	ls.consensusSigner = signer
-	ls.dispatchSvc.SetConsensusMemberSigner(signer)
 	ls.tribunalConsensus.signer = signer
 }
 

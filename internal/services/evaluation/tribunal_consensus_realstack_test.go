@@ -15,6 +15,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -127,7 +128,26 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 		bindConsensus: bindTribunalConsensus,
 	})
 
-	// One governed MCP_CALL through the governed HTTP dispatch path the eval lane uses.
+	// A read-only tool is not a state change: the Operator signs its receipt
+	// with L2 NOT_REQUIRED and no member inference runs. The path is absent,
+	// so the Actuator signs a FAILED receipt; only its L2 status matters here.
+	readArgs, err := json.Marshal(map[string]string{"path": filepath.Join(env.workingDirectory, "tribunal-consensus-absent.txt")})
+	require.NoError(t, err)
+	readPayload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolReadFile, ArgumentsJson: string(readArgs)})
+	require.NoError(t, err)
+	read, err := evaluation.NewCommandLane(env.gateway, env.persona).DispatchAgentTool(
+		ctx, evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID},
+		env.req.RunID, "tribunal-consensus-investigation", "tribunal-consensus-attempt-0",
+		constants.ActionTypeMcpCall, constants.MCPToolReadFile, readPayload,
+	)
+	require.NoError(t, err)
+	readReceipt := read.Outcome.Observation.GetReceipt()
+	require.NotNil(t, readReceipt, "read_file must answer with a signed receipt, got %s: rejection=%q refusal=%q",
+		read.Outcome.Observation.GetKind(), read.Outcome.Observation.GetRejection().GetError(), read.Outcome.Observation.GetRefusal().GetError())
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, readReceipt.GetL2Status(), "a read-only tool must not be voted on")
+	assert.Zero(t, env.stack.Provider.ChatCount(), "a read-only tool must run no vote inference")
+
+	// One governed state change through the governed HTTP dispatch path the eval lane uses.
 	args := `{"command":"echo","args":["HEALTHY"]}`
 	payload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: args})
 	require.NoError(t, err)

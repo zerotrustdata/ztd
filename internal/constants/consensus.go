@@ -24,11 +24,11 @@ const (
 	ConsensusProviderTribunal ConsensusProvider = "tribunal"
 )
 
-// ParseConsensusProvider decodes a stored or requested provider. Empty decodes
-// as the application provider.
+// ParseConsensusProvider decodes a stored or requested provider. The provider
+// is required; empty is invalid.
 func ParseConsensusProvider(value string) (ConsensusProvider, error) {
 	switch ConsensusProvider(value) {
-	case "", ConsensusProviderApplication:
+	case ConsensusProviderApplication:
 		return ConsensusProviderApplication, nil
 	case ConsensusProviderTribunal:
 		return ConsensusProviderTribunal, nil

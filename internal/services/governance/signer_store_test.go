@@ -91,8 +91,7 @@ func TestL2TrustStore_ServesBundlePolicyAndSigners(t *testing.T) {
 	policy, err := store.GetConsensusPolicy(context.Background(), "set-1")
 	require.NoError(t, err)
 	require.NotNil(t, policy)
-	// A bundle without a provider decodes as the application provider (INV-CON-POL-06).
-	assert.Equal(t, L2ConsensusPolicy{MemberKeyIDs: []string{"m1", "m2"}, Quorum: 1, RequireDistinct: true, Enabled: true, Provider: constants.ConsensusProviderApplication}, *policy)
+	assert.Equal(t, L2ConsensusPolicy{MemberKeyIDs: []string{"m1", "m2"}, Quorum: 1, RequireDistinct: true, Enabled: true}, *policy)
 	other, err := store.GetConsensusPolicy(context.Background(), "set-2")
 	require.NoError(t, err)
 	assert.Nil(t, other)
@@ -159,35 +158,6 @@ func TestL2TrustStore_ReplaceRejectsMalformedAndKeepsHeldTrust(t *testing.T) {
 	got, err := store.GetTrustedSigner(context.Background(), "m1")
 	require.NoError(t, err)
 	assert.Equal(t, pub, got)
-}
-
-func TestL2TrustStore_ProviderDecoding(t *testing.T) {
-	t.Parallel()
-	t.Run("bogus provider is rejected", func(t *testing.T) {
-		t.Parallel()
-		trust, _ := testL2Trust(t)
-		trust.Provider = "bogus"
-		_, err := NewL2TrustStore(trust)
-		require.ErrorIs(t, err, constants.ErrValidationFailed)
-		require.ErrorIs(t, err, constants.ErrConsensusProviderInvalid)
-	})
-	providers := map[string]constants.ConsensusProvider{
-		"":         constants.ConsensusProviderApplication,
-		"tribunal": constants.ConsensusProviderTribunal,
-	}
-	for provider, want := range providers {
-		t.Run("provider "+provider+" decodes", func(t *testing.T) {
-			t.Parallel()
-			trust, _ := testL2Trust(t)
-			trust.Provider = provider
-			store, err := NewL2TrustStore(trust)
-			require.NoError(t, err)
-			policy, err := store.GetConsensusPolicy(context.Background(), "set-1")
-			require.NoError(t, err)
-			require.NotNil(t, policy)
-			assert.Equal(t, want, policy.Provider)
-		})
-	}
 }
 
 func TestL4Warden_Doctrine(t *testing.T) {

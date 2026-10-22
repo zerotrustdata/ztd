@@ -123,6 +123,7 @@ func TestAllActionTypes_ContainsAllConstants(t *testing.T) {
 		ActionTypePortCheck,
 		ActionTypeOllamaModelInventory,
 		ActionTypeOllamaModelResidency,
+		ActionTypeOllamaModelRelease,
 		ActionTypeRestoreFile,
 		ActionTypeShutdown,
 		ActionTypeInference,

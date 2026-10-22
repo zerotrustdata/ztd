@@ -262,12 +262,6 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 			payload: fsReadPayload,
 		},
 		{
-			name:    "consensus inference does not deliberate",
-			posture: constants.PostureConsensus,
-			event:   constants.Event.Operator.Inference.Requested,
-			payload: inferencePayload,
-		},
-		{
 			name:            "consensus state change deliberates",
 			posture:         constants.PostureConsensus,
 			event:           constants.Event.Operator.Command.Requested,

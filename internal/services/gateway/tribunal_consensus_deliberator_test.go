@@ -77,14 +77,13 @@ type inferReply struct {
 
 // inferCall records one DispatchInference call as the deliberator issued it.
 type inferCall struct {
-	actingAppID  string
-	model        string
-	modelDigest  string
-	requestorID  string
-	deliberating string
-	schema       string
-	format       *operatorv1.InferenceResponseFormat
-	messages     []*operatorv1.InferenceMessage
+	actingAppID string
+	model       string
+	modelDigest string
+	requestorID string
+	schema      string
+	format      *operatorv1.InferenceResponseFormat
+	messages    []*operatorv1.InferenceMessage
 }
 
 // fakeInferer answers each member's vote from a script keyed by ActingAppID.
@@ -136,16 +135,14 @@ func (f *fakeInferer) DispatchInference(ctx context.Context, req dispatch.Dispat
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	deliberating, _ := ctx.Value(consensusDeliberationKey{}).(string)
 	f.calls = append(f.calls, inferCall{
-		actingAppID:  req.ActingAppID,
-		model:        req.Model,
-		modelDigest:  req.ModelDigest,
-		requestorID:  req.RequestorUserID,
-		deliberating: deliberating,
-		schema:       req.RequestSchemaVersion,
-		format:       req.ResponseFormat,
-		messages:     req.Messages,
+		actingAppID: req.ActingAppID,
+		model:       req.Model,
+		modelDigest: req.ModelDigest,
+		requestorID: req.RequestorUserID,
+		schema:      req.RequestSchemaVersion,
+		format:      req.ResponseFormat,
+		messages:    req.Messages,
 	})
 	reply, ok := f.replies[req.ActingAppID]
 	if !ok {
@@ -697,9 +694,6 @@ func TestTribunalConsensusCallsCarryMemberIdentityAndPinnedModel(t *testing.T) {
 		t.Fatal("no inference calls recorded")
 	}
 	for i, call := range inferer.calls {
-		if call.deliberating != call.actingAppID {
-			t.Fatalf("call %d ctx deliberating member = %q, want acting app %q", i, call.deliberating, call.actingAppID)
-		}
 		if call.model != tribunalTestModel {
 			t.Fatalf("call %d model = %q, want %q", i, call.model, tribunalTestModel)
 		}
@@ -747,7 +741,7 @@ func TestTribunalConsensusVotePromptCarriesTypedPayload(t *testing.T) {
 	}
 }
 
-func TestTribunalConsensusSubjectAddsResidencyMeaningAndEnvelopeContext(t *testing.T) {
+func TestTribunalConsensusSubjectCarriesEnvelopeContext(t *testing.T) {
 	t.Parallel()
 	payload, err := proto.Marshal(&operatorv1.OllamaModelResidencyRequested{ExecutionId: "exec-1"})
 	require.NoError(t, err)
@@ -766,7 +760,6 @@ func TestTribunalConsensusSubjectAddsResidencyMeaningAndEnvelopeContext(t *testi
 	subject, err := consensusSubject(env)
 	require.NoError(t, err)
 	assert.Equal(t, "{}", subject.IntentJSON)
-	assert.Equal(t, "Ollama model residency query: reads current resident models; the residency handler does not load or unload models.", subject.ActionSemantics)
 	assert.Equal(t, "operator-1", subject.OperatorID)
 	assert.Equal(t, "session-2", subject.OperatorSessionID)
 	assert.Equal(t, "case-3", subject.CaseID)
@@ -774,7 +767,7 @@ func TestTribunalConsensusSubjectAddsResidencyMeaningAndEnvelopeContext(t *testi
 	assert.Equal(t, "task-5", subject.TaskID)
 
 	_, prompt := tribunal.ConsensusVotePrompt(tribunal.MemberAxiom, subject)
-	assert.Contains(t, prompt, "Action semantics: "+subject.ActionSemantics)
+	assert.Contains(t, prompt, "Action type: "+subject.ActionType)
 	assert.Contains(t, prompt, "Operator session ID: session-2")
 	assert.Contains(t, prompt, "<intent_data>\n{}\n</intent_data>")
 }

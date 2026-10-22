@@ -548,7 +548,6 @@ func TestConsensusStoreService_OperatorL2Trust(t *testing.T) {
 		Quorum:          1,
 		RequireDistinct: true,
 		Enabled:         true,
-		Provider:        string(constants.ConsensusProviderApplication),
 		Signers:         []models.OperatorSigner{{KeyID: "trust-enabled", PublicKeyHex: hex.EncodeToString(enabledPub)}},
 	}, trust, "a disabled member's key is not delivered")
 

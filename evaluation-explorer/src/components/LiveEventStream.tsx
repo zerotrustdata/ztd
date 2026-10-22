@@ -9,7 +9,6 @@ import { Link } from 'react-router-dom';
 import type { FeedConnectionState, StreamConnectionState } from '../utils/feed-state';
 import { recordKey, resolveModelSummary, useStoreState } from '../state/store';
 import {
-  assignmentMetricFormatter,
   roleLabel,
   visibleStreamEvents,
 } from '../views/derived';
@@ -22,6 +21,7 @@ import {
   type MetricValue,
   type ModelRole,
 } from '../contract/types';
+import { formatNumber } from '../utils/format';
 import { LIVE_EVENT_RETENTION_LIMIT } from '../constants';
 const STREAM_PAGE_SIZE = 25;
 const STREAM_EMPTY_METRIC = '--';
@@ -144,11 +144,11 @@ type AssignmentMetricColumn = 'latency_ms' | 'input_tokens' | 'output_tokens' | 
 type StreamSortField = 'time' | 'result' | 'task' | 'model' | AssignmentMetricColumn;
 type StreamSortDirection = 'asc' | 'desc';
 
-const ASSIGNMENT_METRIC_COLUMNS: Array<{ key: AssignmentMetricColumn; label: string }> = [
-  { key: 'latency_ms', label: 'Latency' },
-  { key: 'input_tokens', label: 'Input' },
-  { key: 'output_tokens', label: 'Output' },
-  { key: 'tokens_per_second', label: 'Tokens/s' },
+const ASSIGNMENT_METRIC_COLUMNS: Array<{ key: AssignmentMetricColumn; label: string; format: (value: number) => string }> = [
+  { key: 'latency_ms', label: 'Latency (s)', format: (ms) => formatNumber(ms / 1000, 2) },
+  { key: 'input_tokens', label: 'Input (tok)', format: (value) => formatNumber(value) },
+  { key: 'output_tokens', label: 'Output (tok)', format: (value) => formatNumber(value) },
+  { key: 'tokens_per_second', label: 'Tokens/s (tok/s)', format: (value) => formatNumber(value, 1) },
 ];
 
 type StreamResult = { label: string; symbol: string; tone: 'ok' | 'critical' | 'neutral' | 'info' };
@@ -425,9 +425,9 @@ export function LiveEventStream({
                       {modelHref ? <Link to={modelHref} className="stream-model-link" title={model?.served_model_tag ?? event.variant_id}>{model?.served_model_tag ?? event.variant_id}</Link> : <span>Platform</span>}
                       {event.assignment_id || event.role ? <span className="stream-secondary stream-role">{streamEventRoleLabel(event, assignment, designatedRoles)}</span> : null}
                     </td>
-                    {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => {
+                    {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label, format }) => {
                       const displayed = event.assignment_id
-                        ? streamMetricDisplay(assignmentMetric(event, assignment, key), assignmentMetricFormatter(key))
+                        ? streamMetricDisplay(assignmentMetric(event, assignment, key), format)
                         : { text: STREAM_EMPTY_METRIC, unavailable: true, reason: 'not applicable' };
                       return <td className="stream-metric-cell" key={key} data-label={label}>
                         <span className={`stream-metric-value${displayed.unavailable ? ' unavailable' : ''}`}

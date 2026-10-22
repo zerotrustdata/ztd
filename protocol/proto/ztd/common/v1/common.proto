@@ -45,26 +45,12 @@ message L2Vote {
   bool   decision            = 3; // member's safe (true) / unsafe (false) vote
 }
 
-// Consensus (L2) Governance: a bound Tribunal member's attestation that an
-// INFERENCE envelope is that member's own vote deliberation. It exempts the
-// envelope from L2 so a vote never recurses into another vote. It is never a
-// vote: it signs "<transaction_hash>|consensus-deliberation".
-message L2DeliberationAttestation {
-  string signer_key_id = 1; // member appID == TrustedSigner.ID
-  string signature     = 2; // ed25519 over "<transaction_hash>|consensus-deliberation"
-}
-
 // Consensus (L2) Governance: a vote set from an enrolled consensus set.
 message L2Metadata {
+  reserved 3, 4;
+  reserved "deliberation", "parent_transaction_hash";
   string consensus_set_id = 1;    // ID of the consensus set that produced this vote set
   repeated L2Vote votes   = 2;    // independent member votes
-  // Set only on a Tribunal member's vote inference; mutually exclusive with votes.
-  L2DeliberationAttestation deliberation = 3;
-  // Set only on a witness observation command (provider-boundary or
-  // model-provenance): votes are the parent INFERENCE's quorum and sign this
-  // hash, not the observation's. It MUST equal the command payload's
-  // inference_transaction_id; mutually exclusive with deliberation.
-  string parent_transaction_hash = 4;
 }
 
 // Notary (L3Notary) Governance: Authorization (Human-in-the-loop)

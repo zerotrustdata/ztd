@@ -1019,7 +1019,7 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 	// members and returns the envelope with L2 metadata populated. If the deliberator is
 	// not configured, the envelope proceeds without L2 votes and will fail-closed at L4
 	// verification.
-	if governance.L2Enforced(env, g.posture) && !governance.L2DeliberationExempt(env) && g.l2ConsensusDeliberator != nil {
+	if governance.L2Enforced(env, g.posture) && g.l2ConsensusDeliberator != nil {
 		deliberatedBytes, err := g.l2ConsensusDeliberator.Deliberate(ctx, envelopeBytes)
 		if err != nil {
 			g.logger.Error("L2 consensus deliberation failed", "tx_hash", hash, "error", err)

@@ -320,13 +320,9 @@ func TestRunsExecute_RealStack(t *testing.T) {
 	}
 }
 
-func TestReleaseProviderModels_DoesNotRunASecondTribunalResidencyQuery(t *testing.T) {
-	replies := make([]fixtures.OllamaReply, 6)
-	for i := range replies {
-		replies[i] = fixtures.OllamaReply{Content: `{"decision":"approve","reason":"ok"}`}
-	}
+func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	run := newRealStackEnvironment(t, fixtures.EvalStackOptions{
-		Posture: constants.PostureConsensus, Replies: replies, BindConsensus: bindRunTribunalConsensus,
+		Posture: constants.PostureConsensus, BindConsensus: bindRunTribunalConsensus,
 	}, runControlDeps{})
 
 	cmd := &cobra.Command{}
@@ -337,18 +333,17 @@ func TestReleaseProviderModels_DoesNotRunASecondTribunalResidencyQuery(t *testin
 	inferenceWorkload, err := run.stack.Inference.Workload()
 	require.NoError(t, err)
 
-	// The strict-run preflight residency read deliberates through Tribunal and
-	// loads its pinned model. The release command then deliberates through the
-	// same model before unloading and checking /api/ps inside that command.
+	// Neither the strict-run preflight residency read nor the typed release is
+	// a state change, so under consensus neither runs a Tribunal vote round.
 	require.NoError(t, releaseProviderModels(cmd, run.deps, runExecuteOptions{RunID: "tribunal-release"}, run.cfg, authContext,
 		inferenceWorkload.OperatorSessionID, run.stack.Provider.Endpoint(), "resident", nil))
-	assert.Equal(t, 6, run.stack.Provider.ChatCount(), "one preflight and one release each need the Tribunal quorum")
+	assert.Zero(t, run.stack.Provider.ChatCount(), "residency and release must not deliberate")
 
 	provider, err := inference.NewOllamaBackend(run.stack.Provider.Endpoint(), slog.Default())
 	require.NoError(t, err)
 	residency, err := provider.ReadResidency(run.ctx)
 	require.NoError(t, err)
-	assert.Empty(t, residency.Models, "release verifies absence after its own Tribunal votes load the pinned model")
+	assert.Empty(t, residency.Models, "release verifies absence inside its own execution")
 
 	receipts, err := run.stack.Gateway.Service.GetAuditStore().ListActionReceipts(models.AuditScope{
 		OperatorSessionID: inferenceWorkload.OperatorSessionID,
@@ -363,7 +358,7 @@ func TestReleaseProviderModels_DoesNotRunASecondTribunalResidencyQuery(t *testin
 	}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, releaseReceipts, 1)
-	assert.Equal(t, constants.ActionTypeExecuteBash, releaseReceipts[0].ActionType)
+	assert.Equal(t, constants.ActionTypeOllamaModelRelease, releaseReceipts[0].ActionType)
 	assert.NotEmpty(t, releaseReceipts[0].TransactionID)
 	operatorFiles, err := fs.NewRuntimeFileService(run.stack.InferenceHost.WorkingDir, testutil.NewTestLogger())
 	require.NoError(t, err)
@@ -371,5 +366,5 @@ func TestReleaseProviderModels_DoesNotRunASecondTribunalResidencyQuery(t *testin
 	require.NoError(t, err)
 	require.NotNil(t, local)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, local.ActionReceipt.GetStatus())
-	assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, local.ActionReceipt.GetL2Status())
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, local.ActionReceipt.GetL2Status())
 }

@@ -216,13 +216,9 @@ type DispatchRequest struct {
 	// waiting for the authoritative terminal completion.
 	OnInferenceProgress func(*operatorv1.InferenceProgressEvent) error
 
-	// OnAdmitted runs once the envelope holds every admission proof (L2
-	// quorum and any L3 approval) and before it is published. Its ctx binds
-	// that admitted envelope: observation commands dispatched under it carry
-	// the parent's L2 quorum (withWitnessParent). An envelope the deliberation
-	// left short of quorum never runs it and publishes unchanged, so the
-	// executing Operator signs its L2 rejection. An error stops the dispatch
-	// before publish.
+	// OnAdmitted runs once the envelope holds every admission proof (any L2
+	// votes and L3 approval) and before it is published. An error stops the
+	// dispatch before publish.
 	OnAdmitted func(ctx context.Context) error
 }
 
@@ -266,169 +262,15 @@ type ConsensusMemberSigner interface {
 	HasKey(memberAppID string) bool
 }
 
-// consensusDeliberationKey carries the Tribunal member whose vote a dispatch
-// is producing. It is unexported: only the in-process Tribunal deliberator can
-// set it, so no ingress can claim the deliberation exemption.
-type consensusDeliberationKey struct{}
-
-// withConsensusDeliberation marks ctx as a Tribunal member's vote deliberation.
-// Dispatch and DispatchObservation attach that member's signed
-// L2DeliberationAttestation to every envelope built under ctx (the member's
-// INFERENCE and the observation commands of that attempt).
-func withConsensusDeliberation(ctx context.Context, memberAppID string) context.Context {
-	return context.WithValue(ctx, consensusDeliberationKey{}, memberAppID)
-}
-
-// attachDeliberationAttestation signs env's transaction hash as ctx's
-// deliberating member. Outside a deliberation it does nothing. Inside one, a
-// non-deliberation action, a missing signer, or a signing failure fails closed.
-func (d *DispatchService) attachDeliberationAttestation(ctx context.Context, env *commonv1.GovernanceEnvelope) error {
-	member, ok := ctx.Value(consensusDeliberationKey{}).(string)
-	if !ok || member == "" {
+// admit runs req.OnAdmitted once the envelope holds every admission proof.
+func admit(ctx context.Context, req DispatchRequest) error {
+	if req.OnAdmitted == nil {
 		return nil
 	}
-	if d.memberSigner == nil {
-		return fmt.Errorf("dispatch: deliberation attestation: %w", constants.ErrConsensusMemberKeyUnavailable)
-	}
-	if env.GetGovernance() == nil {
-		env.Governance = &commonv1.GovernanceMetadata{}
-	}
-	env.Governance.L2 = &commonv1.L2Metadata{
-		ConsensusSetId: string(constants.DocIDConsensusBinding),
-		Deliberation:   &commonv1.L2DeliberationAttestation{SignerKeyId: member},
-	}
-	if !governance.L2DeliberationExempt(env) {
-		return fmt.Errorf("dispatch: deliberation attestation on %s: %w", env.GetActionType(), constants.ErrTxL2SignatureInvalid)
-	}
-	sig, err := d.memberSigner.Sign(member, governance.L2DeliberationPayload(env.GetTransactionHash()))
-	if err != nil {
-		return fmt.Errorf("dispatch: deliberation attestation: %w", err)
-	}
-	env.Governance.L2.Deliberation.Signature = hex.EncodeToString(sig)
-	return nil
-}
-
-// witnessParentKey carries the admitted INFERENCE whose attempt the
-// observation commands dispatched under ctx witness. It is unexported: only
-// Dispatch sets it, after the parent holds its L2 quorum (holdsL2Quorum), so
-// no ingress can claim a witness binding.
-type witnessParentKey struct{}
-
-// witnessParent is an admitted parent INFERENCE's transaction hash and L2
-// quorum.
-type witnessParent struct {
-	transactionHash string
-	l2              *commonv1.L2Metadata
-}
-
-// withWitnessParent marks ctx with admitted's L2 quorum when admitted is an
-// INFERENCE that carries votes. A Tribunal member's vote inference carries a
-// deliberation attestation instead, and its observations carry that
-// attestation (attachDeliberationAttestation).
-func withWitnessParent(ctx context.Context, admitted *commonv1.GovernanceEnvelope) context.Context {
-	l2 := admitted.GetGovernance().GetL2()
-	if constants.ActionType(admitted.GetActionType()) != constants.ActionTypeInference ||
-		len(l2.GetVotes()) == 0 || l2.GetDeliberation() != nil {
-		return ctx
-	}
-	return context.WithValue(ctx, witnessParentKey{}, witnessParent{
-		transactionHash: admitted.GetTransactionHash(),
-		l2:              proto.Clone(l2).(*commonv1.L2Metadata),
-	})
-}
-
-// witnessParentHash returns the transaction hash of ctx's admitted parent
-// INFERENCE, or "" outside one. Observation coordinators name it as the
-// command's inference_transaction_id.
-func witnessParentHash(ctx context.Context) string {
-	parent, _ := ctx.Value(witnessParentKey{}).(witnessParent)
-	return parent.transactionHash
-}
-
-// witnessInferenceTransactionID is the inference a FINALIZE command names: the
-// completed inference's transaction, or ctx's admitted parent when the attempt
-// failed before a result named one.
-func witnessInferenceTransactionID(ctx context.Context, inferenceTransactionID string) string {
-	if inferenceTransactionID != "" {
-		return inferenceTransactionID
-	}
-	return witnessParentHash(ctx)
-}
-
-// attachWitnessBinding binds an observation envelope to ctx's admitted parent
-// INFERENCE: the parent's votes and hash replace deliberating the observation.
-// Outside a parent, or inside a Tribunal member's deliberation (already
-// attested), it does nothing. A command that names another inference fails
-// closed.
-func attachWitnessBinding(ctx context.Context, env *commonv1.GovernanceEnvelope) error {
-	parent, ok := ctx.Value(witnessParentKey{}).(witnessParent)
-	if !ok || env.GetGovernance().GetL2().GetDeliberation() != nil {
-		return nil
-	}
-	if env.GetGovernance() == nil {
-		env.Governance = &commonv1.GovernanceMetadata{}
-	}
-	l2 := proto.Clone(parent.l2).(*commonv1.L2Metadata)
-	l2.ParentTransactionHash = parent.transactionHash
-	env.Governance.L2 = l2
-	if err := governance.VerifyL2WitnessBinding(env); err != nil {
-		return fmt.Errorf("dispatch: %w", err)
-	}
-	return nil
-}
-
-// admit runs req.OnAdmitted under a ctx bound to the admitted envelope, once
-// admitted holds its L2 quorum. A quorum-short envelope runs nothing: it is
-// published unchanged and the executing Operator signs its L2 rejection, so no
-// witness begins for an inference that never executes.
-func (d *DispatchService) admit(ctx context.Context, req DispatchRequest, admitted *commonv1.GovernanceEnvelope) error {
-	if req.OnAdmitted == nil || !d.holdsL2Quorum(ctx, admitted) {
-		return nil
-	}
-	if err := req.OnAdmitted(withWitnessParent(ctx, admitted)); err != nil {
+	if err := req.OnAdmitted(ctx); err != nil {
 		return fmt.Errorf("dispatch: admitted: %w", err)
 	}
 	return nil
-}
-
-// holdsL2Quorum reports whether admitted holds the L2 proof its executing L4
-// will require: L2 does not gate the action, the envelope is
-// deliberation-exempt, or its votes verify to the bound consensus quorum
-// (governance.VerifyL2Quorum). Without quorum sources it never holds where L2
-// gates the action. The Operator's L4 stays the authority; this only decides
-// whether the admitted envelope's witnesses begin.
-func (d *DispatchService) holdsL2Quorum(ctx context.Context, admitted *commonv1.GovernanceEnvelope) bool {
-	if !governance.L2Enforced(admitted, d.posture) || governance.L2DeliberationExempt(admitted) {
-		return true
-	}
-	if d.l2Policies == nil {
-		return false
-	}
-	l2 := admitted.GetGovernance().GetL2()
-	policy, err := d.l2Policies.GetConsensusPolicy(ctx, l2.GetConsensusSetId())
-	if err == nil {
-		err = governance.VerifyL2Quorum(ctx, d.l2Signers, policy, l2, admitted.GetTransactionHash())
-	}
-	if err != nil {
-		d.logger.Info("Admitted envelope lacks L2 quorum; publishing for the Operator's rejection",
-			"transaction_hash", admitted.GetTransactionHash(), "action_type", admitted.GetActionType(), string(constants.ConnectionStateError), err)
-		return false
-	}
-	return true
-}
-
-// SetL2QuorumSources wires the consensus policies and trusted signers
-// holdsL2Quorum verifies an admitted envelope's votes against: the same
-// sources the embedded Operator's L4 uses.
-func (d *DispatchService) SetL2QuorumSources(policies governance.L2ConsensusPolicyStore, signers governance.SignerStore) {
-	d.l2Policies = policies
-	d.l2Signers = signers
-}
-
-// SetConsensusMemberSigner wires the Tribunal consensus member signer. A nil
-// signer fails every deliberation-attested dispatch closed.
-func (d *DispatchService) SetConsensusMemberSigner(signer ConsensusMemberSigner) {
-	d.memberSigner = signer
 }
 
 // DispatchService constructs a GovernanceEnvelope, publishes it to an operator's
@@ -457,9 +299,6 @@ type DispatchService struct {
 	doctrine          *governance.L1Doctrine
 	l2Deliberator     L2ConsensusDeliberator
 	signerStore       ReceiptSignerResolver
-	memberSigner      ConsensusMemberSigner
-	l2Policies        governance.L2ConsensusPolicyStore
-	l2Signers         governance.SignerStore
 }
 
 // NewDispatchService creates a DispatchService wired to the gateway's in-process
@@ -543,9 +382,6 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: %w", err)
 	}
-	if err := d.attachDeliberationAttestation(ctx, env); err != nil {
-		return nil, err
-	}
 	// 4. Marshal as protojson (the canonical wire format).
 	wire, err := protojson.Marshal(env)
 	if err != nil {
@@ -558,9 +394,9 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	//    envelope with L2 metadata populated. A nil deliberator skips
 	//    deliberation; the envelope fails closed at L4 verification where
 	//    L2 is enforced. A deliberation error fails closed before publish.
-	//    A Tribunal member's own vote inference is deliberation-exempt: it is
-	//    never deliberated again, which stops L2 recursing into itself.
-	if governance.L2Enforced(env, d.posture) && !governance.L2DeliberationExempt(env) && d.l2Deliberator != nil {
+	//    A Tribunal member's own vote inference is never L2-enforced
+	//    (INFERENCE changes no state), so L2 cannot recurse into itself.
+	if governance.L2Enforced(env, d.posture) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)
@@ -583,7 +419,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 			d.approvals.finish(env.Id, pending, nil, err)
 			return nil, err
 		}
-		if err := d.admit(ctx, req, resumed); err != nil {
+		if err := admit(ctx, req); err != nil {
 			d.approvals.finish(env.Id, pending, nil, err)
 			return nil, err
 		}
@@ -596,15 +432,8 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		d.approvals.finish(env.Id, pending, receipt, err)
 		return result, err
 	}
-	if req.OnAdmitted != nil {
-		// Admit the exact deliberated envelope, votes included.
-		admitted := &commonv1.GovernanceEnvelope{}
-		if err := protojson.Unmarshal(wire, admitted); err != nil {
-			return nil, fmt.Errorf("dispatch: decode deliberated envelope: %w", err)
-		}
-		if err := d.admit(ctx, req, admitted); err != nil {
-			return nil, err
-		}
+	if err := admit(ctx, req); err != nil {
+		return nil, err
 	}
 	return d.dispatchEnvelope(ctx, op, env, wire, req)
 }

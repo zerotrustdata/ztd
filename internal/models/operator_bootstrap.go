@@ -78,9 +78,6 @@ type OperatorL2Trust struct {
 	RequireDistinct bool             `json:"require_distinct"`
 	Enabled         bool             `json:"enabled"`
 	Signers         []OperatorSigner `json:"signers"`
-	// Provider is the binding's constants.ConsensusProvider; empty == application.
-	// The Operator's L4 accepts a deliberation attestation only under tribunal.
-	Provider string `json:"provider,omitempty"`
 }
 
 // OperatorSigner is one trusted L2 signer: its key ID and hex-encoded raw

@@ -41,5 +41,9 @@ func EvaluationTestCampaignInitRequest(t *testing.T) evaluation.CampaignInitRequ
 		Platform:                   evaluation.PlatformIdentity{Release: "v2.3.0"},
 		InferenceOperatorSessionID: "inf-session",
 		DataOperatorSessionID:      "data-session",
+		Governance: evaluation.RunGovernance{
+			Posture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+			Consensus: &evalv1.EvaluationConsensusIdentity{},
+		},
 	}
 }

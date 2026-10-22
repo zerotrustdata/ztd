@@ -175,6 +175,7 @@ func SetupConsensus(t *testing.T, policies PolicyRegistrar, signers SignerRegist
 		MemberAppIDs:    memberAppIDs,
 		Quorum:          quorum,
 		RequireDistinct: true,
+		Provider:        string(constants.ConsensusProviderApplication),
 		Enabled:         true,
 	})
 	require.NoError(t, err)
@@ -208,7 +209,7 @@ func SetupConsensus(t *testing.T, policies PolicyRegistrar, signers SignerRegist
 	t.Cleanup(server.Close)
 	err = policies.AddConsensus(t.Context(), models.ConsensusPolicy{
 		ID: string(constants.DocIDConsensusBinding), MemberAppIDs: []string{memberAppIDs[0]},
-		Quorum: 1, RequireDistinct: true, EndpointURL: server.URL, Enabled: true,
+		Quorum: 1, RequireDistinct: true, EndpointURL: server.URL, Provider: string(constants.ConsensusProviderApplication), Enabled: true,
 	})
 	require.NoError(t, err)
 

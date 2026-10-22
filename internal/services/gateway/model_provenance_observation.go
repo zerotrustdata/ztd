@@ -182,7 +182,6 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptBegin(
 	}
 	command := &evalv1.ModelProvenanceObservationCommand{
 		ProviderAttemptId:      providerAttemptID,
-		InferenceTransactionId: witnessParentHash(ctx),
 		Phase:                  evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_BEGIN,
 		AttemptStartedAtUnixMs: startedAtUnixMs,
 		RetryCount:             retryCount,
@@ -223,7 +222,7 @@ func (c *ModelProvenanceObservationCoordinator) NotifyAttemptFinalize(
 	}
 	command := &evalv1.ModelProvenanceObservationCommand{
 		ProviderAttemptId:        providerAttemptID,
-		InferenceTransactionId:   witnessInferenceTransactionID(ctx, inferenceTransactionID),
+		InferenceTransactionId:   inferenceTransactionID,
 		Phase:                    evalv1.ModelProvenanceObservationPhase_MODEL_PROVENANCE_OBSERVATION_PHASE_FINALIZE,
 		AttemptStartedAtUnixMs:   startedAtUnixMs,
 		AttemptCompletedAtUnixMs: completedAtUnixMs,

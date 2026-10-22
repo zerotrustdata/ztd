@@ -237,7 +237,7 @@ func TestNewOperatorPubSubService_StartsWithoutTrustedSignersButRejectsL2(t *tes
 
 func unsignedSignerEnvelope(t *testing.T, signerPriv ed25519.PrivateKey) *govpkg.GovernanceEnvelope {
 	t.Helper()
-	req := &operatorv1.FsListRequested{Path: ".", ExecutionId: "exec-1"}
+	req := &operatorv1.CommandRequested{Command: "uptime", ExecutionId: "exec-1", Justification: "test"}
 	payload, err := proto.Marshal(req)
 	require.NoError(t, err)
 	env := &govpkg.GovernanceEnvelope{
@@ -247,9 +247,9 @@ func unsignedSignerEnvelope(t *testing.T, signerPriv ed25519.PrivateKey) *govpkg
 		SourceComponent:   commonv1.Component_COMPONENT_AGENT,
 		OperatorId:        "operator-1",
 		OperatorSessionId: "session-1",
-		EventType:         string(constants.Event.Operator.FsList.Requested),
+		EventType:         string(constants.Event.Operator.Command.Requested),
 
-		ActionType:      string(constants.ActionTypeFsList),
+		ActionType:      string(constants.ActionTypeExecuteBash),
 		TargetResource:  "localhost",
 		Payload:         payload,
 		StateMerkleRoot: "test-state-root",

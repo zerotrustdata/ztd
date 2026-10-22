@@ -597,7 +597,7 @@ type ConsensusPolicy struct {
 	Quorum          int       `json:"quorum"`                 // K affirmative distinct signers required
 	RequireDistinct bool      `json:"require_distinct"`       // reject duplicate signer keys
 	EndpointURL     string    `json:"endpoint_url,omitempty"` // HTTPS deliberation endpoint for bound consensus app
-	Provider        string    `json:"provider,omitempty"`     // constants.ConsensusProvider; empty == application
+	Provider        string    `json:"provider"`               // constants.ConsensusProvider; required
 	ModelTag        string    `json:"model_tag,omitempty"`    // tribunal provider: pinned vote model tag
 	ModelDigest     string    `json:"model_digest,omitempty"` // tribunal provider: pinned vote model digest
 	Enabled         bool      `json:"enabled"`
@@ -606,8 +606,7 @@ type ConsensusPolicy struct {
 }
 
 // ConsensusProvider decodes the binding's vote producer. An empty or unknown
-// stored value is reported as an error by constants.ParseConsensusProvider;
-// empty decodes as the application provider.
+// stored value is reported as an error by constants.ParseConsensusProvider.
 func (p *ConsensusPolicy) ConsensusProvider() (constants.ConsensusProvider, error) {
 	if p == nil {
 		return "", constants.ErrConsensusBindingNotFound
@@ -641,7 +640,7 @@ type PlatformEnrollmentBindConsensusRequest struct {
 	EndpointURL  string   `json:"endpoint_url"`
 	MemberAppIDs []string `json:"member_app_ids,omitempty"`
 	Quorum       int      `json:"quorum,omitempty"`
-	Provider     string   `json:"provider,omitempty"`     // constants.ConsensusProvider; empty == application
+	Provider     string   `json:"provider"`               // constants.ConsensusProvider; required
 	ModelTag     string   `json:"model_tag,omitempty"`    // tribunal provider only
 	ModelDigest  string   `json:"model_digest,omitempty"` // tribunal provider only
 }

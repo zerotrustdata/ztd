@@ -624,9 +624,6 @@ func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.Govern
 		deterministicL2StatusOutcome[l2Status],
 	)
 	l2Stage.L2SignatureDigest = l2SignatureDigest(envelope)
-	if attestation := envelope.GetGovernance().GetL2().GetDeliberation(); attestation != nil {
-		l2Stage.SignerKeyId = attestation.GetSignerKeyId()
-	}
 
 	l3Start := governanceMonotonicNow()
 	l3Valid, err := tv.verifyL3Posture(ctx, envelope, posture)

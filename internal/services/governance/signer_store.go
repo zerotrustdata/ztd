@@ -108,17 +108,12 @@ func decodeL2Trust(trust *models.OperatorL2Trust) (l2Trust, error) {
 		}
 		signers[signer.KeyID] = ed25519.PublicKey(pub)
 	}
-	provider, err := constants.ParseConsensusProvider(trust.Provider)
-	if err != nil {
-		return l2Trust{}, fmt.Errorf("l2 trust: %w: %w", constants.ErrValidationFailed, err)
-	}
 	return l2Trust{
 		policy: &L2ConsensusPolicy{
 			MemberKeyIDs:    append([]string(nil), trust.MemberKeyIDs...),
 			Quorum:          trust.Quorum,
 			RequireDistinct: trust.RequireDistinct,
 			Enabled:         trust.Enabled,
-			Provider:        provider,
 		},
 		setID:   trust.ConsensusSetID,
 		signers: signers,

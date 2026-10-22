@@ -275,7 +275,6 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptBegin(ctx context.
 	}
 	command := &evalv1.ProviderBoundaryObservationCommand{
 		ProviderAttemptId:      providerAttemptID,
-		InferenceTransactionId: witnessParentHash(ctx),
 		Phase:                  evalv1.ProviderBoundaryObservationPhase_PROVIDER_BOUNDARY_OBSERVATION_PHASE_BEGIN,
 		AttemptStartedAtUnixMs: startedAtUnixMs,
 		RetryCount:             retryCount,
@@ -307,7 +306,7 @@ func (c *ProviderBoundaryObservationCoordinator) NotifyAttemptFinalize(
 	}
 	command := &evalv1.ProviderBoundaryObservationCommand{
 		ProviderAttemptId:        providerAttemptID,
-		InferenceTransactionId:   witnessInferenceTransactionID(ctx, inferenceTransactionID),
+		InferenceTransactionId:   inferenceTransactionID,
 		Phase:                    evalv1.ProviderBoundaryObservationPhase_PROVIDER_BOUNDARY_OBSERVATION_PHASE_FINALIZE,
 		AttemptStartedAtUnixMs:   startedAtUnixMs,
 		AttemptCompletedAtUnixMs: completedAtUnixMs,
@@ -430,19 +429,11 @@ func (d *DispatchService) DispatchObservation(ctx context.Context, req Observati
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: observation: %w", err)
 	}
-	if err := d.attachDeliberationAttestation(ctx, env); err != nil {
-		return nil, fmt.Errorf("dispatch: observation: %w", err)
-	}
-	if err := attachWitnessBinding(ctx, env); err != nil {
-		return nil, fmt.Errorf("dispatch: observation: %w", err)
-	}
 	wire, err := protojson.Marshal(env)
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: observation: marshal envelope: %w", err)
 	}
-	// A witness bound to its admitted parent INFERENCE carries that parent's
-	// quorum, so it is not deliberated again.
-	if governance.L2Enforced(env, d.posture) && !governance.L2DeliberationExempt(env) && !governance.L2WitnessBound(env) && d.l2Deliberator != nil {
+	if governance.L2Enforced(env, d.posture) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: observation: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)

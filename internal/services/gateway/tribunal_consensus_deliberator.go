@@ -58,9 +58,9 @@ type consensusVoteRecorder interface {
 
 // TribunalConsensusDeliberator produces L2 votes from the Gateway-hosted
 // Tribunal panel. Each bound member votes through one governed INFERENCE on
-// the binding's pinned model, under its own app identity and a signed
-// deliberation attestation, and signs "<tx_hash>|<decision>" with its sealed
-// app signing key. The envelope it returns differs from the input in L2 only.
+// the binding's pinned model, under its own app identity, and signs
+// "<tx_hash>|<decision>" with its sealed app signing key. INFERENCE changes no
+// state, so a member's vote inference is never itself voted on. The envelope it returns differs from the input in L2 only.
 type TribunalConsensusDeliberator struct {
 	store     consensusBindingReader
 	policies  consensusMemberPolicies
@@ -286,7 +286,7 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 		request.Messages = nil
 		request.ResponseFormat = nil
 	}
-	result, err := d.inference.DispatchInference(withConsensusDeliberation(ctx, memberAppID), request)
+	result, err := d.inference.DispatchInference(ctx, request)
 	if err != nil {
 		d.logger.Warn("tribunal consensus: member inference failed", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
 		return memberVote{attemptID: attemptID, failure: fmt.Errorf("member inference: %w", err)}
@@ -336,7 +336,6 @@ func consensusSubject(env *commonv1.GovernanceEnvelope) (tribunal.ConsensusSubje
 	}
 	return tribunal.ConsensusSubject{
 		ActionType:        env.GetActionType(),
-		ActionSemantics:   consensusActionSemantics(constants.ActionType(env.GetActionType())),
 		TargetResource:    env.GetTargetResource(),
 		EventType:         env.GetEventType(),
 		OperatorID:        env.GetOperatorId(),
@@ -347,13 +346,6 @@ func consensusSubject(env *commonv1.GovernanceEnvelope) (tribunal.ConsensusSubje
 		PayloadJSON:       string(payload),
 		IntentJSON:        intent,
 	}, nil
-}
-
-func consensusActionSemantics(actionType constants.ActionType) string {
-	if actionType == constants.ActionTypeOllamaModelResidency {
-		return "Ollama model residency query: reads current resident models; the residency handler does not load or unload models."
-	}
-	return ""
 }
 
 // tribunalMemberForAppID maps a canonical consensus app ID to its panel member.

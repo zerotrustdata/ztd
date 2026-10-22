@@ -74,7 +74,7 @@ func TestVerifyL2Quorum(t *testing.T) {
 			if tc.noSigners {
 				s = nil
 			}
-			err := VerifyL2Quorum(context.Background(), s, p, &commonv1.L2Metadata{ConsensusSetId: "set", Votes: tc.votes}, txHash)
+			err := verifyL2Quorum(context.Background(), s, p, &commonv1.L2Metadata{ConsensusSetId: "set", Votes: tc.votes}, txHash)
 			if tc.want == nil {
 				assert.NoError(t, err)
 				return

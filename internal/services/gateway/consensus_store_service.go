@@ -111,16 +111,11 @@ func (s *ConsensusStoreService) GetConsensusPolicy(ctx context.Context, id strin
 	if policy == nil {
 		return nil, nil
 	}
-	provider, err := policy.ConsensusProvider()
-	if err != nil {
-		return nil, fmt.Errorf("consensus store: policy %q: %w", policy.ID, err)
-	}
 	return &governance.L2ConsensusPolicy{
 		MemberKeyIDs:    policy.MemberAppIDs,
 		Quorum:          policy.Quorum,
 		RequireDistinct: policy.RequireDistinct,
 		Enabled:         policy.Enabled,
-		Provider:        provider,
 	}, nil
 }
 
@@ -138,17 +133,12 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 	if err != nil || policy == nil || !policy.Enabled {
 		return nil, err
 	}
-	provider, err := policy.ConsensusProvider()
-	if err != nil {
-		return nil, fmt.Errorf("consensus store: operator trust: %w", err)
-	}
 	trust := &models.OperatorL2Trust{
 		ConsensusSetID:  policy.ID,
 		MemberKeyIDs:    policy.MemberAppIDs,
 		Quorum:          policy.Quorum,
 		RequireDistinct: policy.RequireDistinct,
 		Enabled:         policy.Enabled,
-		Provider:        string(provider),
 	}
 	for _, keyID := range policy.MemberAppIDs {
 		pub, err := s.signerSvc.GetTrustedSigner(ctx, keyID)

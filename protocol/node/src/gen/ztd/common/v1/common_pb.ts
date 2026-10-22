@@ -19,7 +19,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file ztd/common/v1/common.proto.
  */
 export const file_ztd_common_v1_common: GenFile = /*@__PURE__*/
-  fileDesc("Chp6dGQvY29tbW9uL3YxL2NvbW1vbi5wcm90bxINenRkLmNvbW1vbi52MSIzCgpMMU1ldGFkYXRhEhEKCXZhbGlkYXRlZBgBIAEoCBISCgp2aW9sYXRpb25zGAIgAygJIk4KBkwyVm90ZRIVCg1zaWduZXJfa2V5X2lkGAEgASgJEhsKE2NvbnNlbnN1c19zaWduYXR1cmUYAiABKAkSEAoIZGVjaXNpb24YAyABKAgiRQoZTDJEZWxpYmVyYXRpb25BdHRlc3RhdGlvbhIVCg1zaWduZXJfa2V5X2lkGAEgASgJEhEKCXNpZ25hdHVyZRgCIAEoCSKtAQoKTDJNZXRhZGF0YRIYChBjb25zZW5zdXNfc2V0X2lkGAEgASgJEiQKBXZvdGVzGAIgAygLMhUuenRkLmNvbW1vbi52MS5MMlZvdGUSPgoMZGVsaWJlcmF0aW9uGAMgASgLMiguenRkLmNvbW1vbi52MS5MMkRlbGliZXJhdGlvbkF0dGVzdGF0aW9uEh8KF3BhcmVudF90cmFuc2FjdGlvbl9oYXNoGAQgASgJIq8CCgdMM1Byb29mEigKEGNsaWVudF9kYXRhX2pzb24YASABKAlSDmNsaWVudERhdGFKU09OEhoKEmF1dGhlbnRpY2F0b3JfZGF0YRgCIAEoCRIRCglzaWduYXR1cmUYAyABKAkSFQoNY3JlZGVudGlhbF9pZBgEIAEoCRIdChVtdGxzX2NlcnRfZmluZ2VycHJpbnQYBSABKAkSFQoNY2xpX3NpZ25hdHVyZRgGIAEoCRIbChNjbGlfY2VydGlmaWNhdGVfZGVyGAcgASgMEkIKD3Bhc3NrZXlfY29udGV4dBgIIAEoCzIpLnp0ZC5jb21tb24udjEuUGFzc2tleVZlcmlmaWNhdGlvbkNvbnRleHQSHQoVY2xpX2ludGVybWVkaWF0ZXNfZGVyGAkgAygMIoUBChpQYXNza2V5VmVyaWZpY2F0aW9uQ29udGV4dBIPCgd1c2VyX2lkGAEgASgJEhUKDWNyZWRlbnRpYWxfaWQYAiABKAkSFwoPcHVibGljX2tleV9jb3NlGAMgASgMEg0KBXJwX2lkGAQgASgJEhcKD2FsbG93ZWRfb3JpZ2lucxgFIAMoCSJdCgpMM01ldGFkYXRhEiUKBXByb29mGAEgASgLMhYuenRkLmNvbW1vbi52MS5MM1Byb29mEg4KBmRlbmllZBgCIAEoCBIYChBwZW5kaW5nX2Rpc3BhdGNoGAMgASgIIokBChJHb3Zlcm5hbmNlTWV0YWRhdGESJQoCbDEYASABKAsyGS56dGQuY29tbW9uLnYxLkwxTWV0YWRhdGESJQoCbDIYAiABKAsyGS56dGQuY29tbW9uLnYxLkwyTWV0YWRhdGESJQoCbDMYAyABKAsyGS56dGQuY29tbW9uLnYxLkwzTWV0YWRhdGEi8gUKEkdvdmVybmFuY2VFbnZlbG9wZRIKCgJpZBgBIAEoCRItCgl0aW1lc3RhbXAYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjIKEHNvdXJjZV9jb21wb25lbnQYBCABKA4yGC56dGQuY29tbW9uLnYxLkNvbXBvbmVudBITCgtvcGVyYXRvcl9pZBgFIAEoCRIbChNvcGVyYXRvcl9zZXNzaW9uX2lkGAYgASgJEhYKDndlYl9zZXNzaW9uX2lkGAcgASgJEhYKDmNsaV9zZXNzaW9uX2lkGBYgASgJEhkKEXJlcXVlc3Rvcl91c2VyX2lkGBkgASgJEhUKDWFjdGluZ19hcHBfaWQYGiABKAkSEgoKZXZlbnRfdHlwZRgIIAEoCRIPCgdwYXlsb2FkGAkgASgMEiwKC2ludGVudF9kYXRhGAogASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBITCgthY3Rpb25fdHlwZRgTIAEoCRIXCg90YXJnZXRfcmVzb3VyY2UYFCABKAkSGQoRc3RhdGVfbWVya2xlX3Jvb3QYCyABKAkSDQoFbm9uY2UYDCABKAkSGAoQdHJhbnNhY3Rpb25faGFzaBgNIAEoCRIYChBwcm90b2NvbF92ZXJzaW9uGBUgASgJEjUKCmdvdmVybmFuY2UYDiABKAsyIS56dGQuY29tbW9uLnYxLkdvdmVybmFuY2VNZXRhZGF0YRIPCgdjYXNlX2lkGA8gASgJEhgKEGludmVzdGlnYXRpb25faWQYECABKAkSDwoHdGFza19pZBgRIAEoCRIaChJzeXN0ZW1fZmluZ2VycHJpbnQYEiABKAkSEQoJdGVuYW50X2lkGBcgASgJEhcKD2JpbmRpbmdfcGVyc29uYRgYIAEoCRIPCgdwb3N0dXJlGBsgASgJImEKHlBsYXRmb3JtRW5yb2xsbWVudEZpbmdlcnByaW50cxILCgNhcHAYASABKAkSEAoIb3BlcmF0b3IYAiABKAkSCwoDY2xpGAMgASgJEhMKC3NpZ25pbmdfa2V5GAQgASgJIo8ICiNQbGF0Zm9ybUVucm9sbG1lbnRHb3Zlcm5hbmNlUGF5bG9hZBIOCgZhY3Rpb24YASABKAkSDgoGaW50ZW50GAIgASgJEhIKCnJlcXVlc3RfaWQYAyABKAkSPAoOY29tcG9uZW50X2tpbmQYBCABKA4yJC56dGQuY29tbW9uLnYxLlBsYXRmb3JtQ29tcG9uZW50S2luZBITCgtpbnN0YW5jZV9pZBgFIAEoCRIVCg1hY3Rvcl91c2VyX2lkGAYgASgJEjsKCGRlY2lzaW9uGAcgASgOMikuenRkLmNvbW1vbi52MS5QbGF0Zm9ybUVucm9sbG1lbnREZWNpc2lvbhJDCgxmaW5nZXJwcmludHMYCCABKAsyLS56dGQuY29tbW9uLnYxLlBsYXRmb3JtRW5yb2xsbWVudEZpbmdlcnByaW50cxIZChF0YXJnZXRfY29sbGVjdGlvbhgJIAEoCRIaChJ0YXJnZXRfZG9jdW1lbnRfaWQYCiABKAkSEwoLb3BlcmF0b3JfaWQYCyABKAkSGwoTb3BlcmF0b3Jfc2Vzc2lvbl9pZBgMIAEoCRIWCg5jbGlfc2Vzc2lvbl9pZBgNIAEoCRIRCglwb2xpY3lfaWQYDiABKAkSGgoSY2VydGlmaWNhdGVfc2VyaWFsGA8gASgJEh8KF2NlcnRpZmljYXRlX2ZpbmdlcnByaW50GBAgASgJEhUKDW93bmVyX3VzZXJfaWQYESABKAkSDgoGcmVhc29uGBIgASgJEkkKEGRlY2lzaW9uX3RhcmdldHMYEyADKAsyLy56dGQuY29tbW9uLnYxLlBsYXRmb3JtRW5yb2xsbWVudERlY2lzaW9uVGFyZ2V0EhwKFGlzc3VhbmNlX2xlYXNlX293bmVyGBQgASgJEh4KFmNvbnNlbnN1c19lbmRwb2ludF91cmwYFSABKAkSIAoYY29uc2Vuc3VzX21lbWJlcl9hcHBfaWRzGBYgAygJEhgKEGNvbnNlbnN1c19xdW9ydW0YFyABKA0SGgoSY29uc2Vuc3VzX3Byb3ZpZGVyGBggASgJEhsKE2NvbnNlbnN1c19tb2RlbF90YWcYGSABKAkSHgoWY29uc2Vuc3VzX21vZGVsX2RpZ2VzdBgaIAEoCRIbChNjb25zZW5zdXNfdm90ZV9raW5kGBsgASgJEicKH2NvbnNlbnN1c19pbmZlcmVuY2Vfb3BlcmF0b3JfaWQYHCABKAkSTAoZY29uc2Vuc3VzX3ZvdGVfdGhyZXNob2xkcxgdIAMoCzIpLnp0ZC5jb21tb24udjEuQ29uc2Vuc3VzRGVjaXNpb25UaHJlc2hvbGQSHgoWY29uc2Vuc3VzX2FsbG93X2hvc3RlZBgeIAEoCCJ7CiBQbGF0Zm9ybUVucm9sbG1lbnREZWNpc2lvblRhcmdldBISCgpyZXF1ZXN0X2lkGAEgASgJEkMKDGZpbmdlcnByaW50cxgCIAEoCzItLnp0ZC5jb21tb24udjEuUGxhdGZvcm1FbnJvbGxtZW50RmluZ2VycHJpbnRzIoICCiZQbGF0Zm9ybUVucm9sbG1lbnRDb21wbGV0aW9uVHJhbnNjcmlwdBIYChBwcm90b2NvbF92ZXJzaW9uGAEgASgJEhIKCnJlcXVlc3RfaWQYAiABKAkSEgoKdG9rZW5faGFzaBgDIAEoCRI8Cg5jb21wb25lbnRfa2luZBgEIAEoDjIkLnp0ZC5jb21tb24udjEuUGxhdGZvcm1Db21wb25lbnRLaW5kEhMKC2luc3RhbmNlX2lkGAUgASgJEkMKDGZpbmdlcnByaW50cxgGIAEoCzItLnp0ZC5jb21tb24udjEuUGxhdGZvcm1FbnJvbGxtZW50RmluZ2VycHJpbnRzIp8CCg1Db21tYW5kSW50ZW50EhMKC29wZXJhdG9yX2lkGAEgASgJEhsKE29wZXJhdG9yX3Nlc3Npb25faWQYAiABKAkSGQoRcmVxdWVzdG9yX3VzZXJfaWQYAyABKAkSEgoKZXZlbnRfdHlwZRgEIAEoCRITCgthY3Rpb25fdHlwZRgFIAEoCRIXCg90YXJnZXRfcmVzb3VyY2UYBiABKAkSDwoHcGF5bG9hZBgHIAEoDBIPCgdjYXNlX2lkGAggASgJEhgKEGludmVzdGlnYXRpb25faWQYCSABKAkSDwoHdGFza19pZBgKIAEoCRIWCg53ZWJfc2Vzc2lvbl9pZBgLIAEoCRIWCg5jbGlfc2Vzc2lvbl9pZBgMIAEoCToCGAEiRgoaQ29uc2Vuc3VzRGVjaXNpb25UaHJlc2hvbGQSFQoNbWVtYmVyX2FwcF9pZBgBIAEoCRIRCgl0aHJlc2hvbGQYAiABKAEqZQoJQ29tcG9uZW50EhkKFUNPTVBPTkVOVF9VTlNQRUNJRklFRBAAEhMKD0NPTVBPTkVOVF9BR0VOVBABEhIKDkNPTVBPTkVOVF9aVERPEAISFAoQQ09NUE9ORU5UX0NMSUVOVBADKt4BChVQbGF0Zm9ybUNvbXBvbmVudEtpbmQSJwojUExBVEZPUk1fQ09NUE9ORU5UX0tJTkRfVU5TUEVDSUZJRUQQABIlCiFQTEFURk9STV9DT01QT05FTlRfS0lORF9EQVNIQk9BUkQQARIkCiBQTEFURk9STV9DT01QT05FTlRfS0lORF9PUEVSQVRPUhADEicKI1BMQVRGT1JNX0NPTVBPTkVOVF9LSU5EX0FQUExJQ0FUSU9OEAQiBAgCEAIqIFBMQVRGT1JNX0NPTVBPTkVOVF9LSU5EX0VOU0VNQkxFKpsBChpQbGF0Zm9ybUVucm9sbG1lbnREZWNpc2lvbhIsCihQTEFURk9STV9FTlJPTExNRU5UX0RFQ0lTSU9OX1VOU1BFQ0lGSUVEEAASKAokUExBVEZPUk1fRU5ST0xMTUVOVF9ERUNJU0lPTl9BUFBST1ZFEAESJQohUExBVEZPUk1fRU5ST0xMTUVOVF9ERUNJU0lPTl9ERU5ZEAI6TgoSZm9yYmlkZGVuX3BhdHRlcm5zEh0uZ29vZ2xlLnByb3RvYnVmLkZpZWxkT3B0aW9ucxjRhgMgASgJUhFmb3JiaWRkZW5QYXR0ZXJuc0JEWkJnaXRodWIuY29tL3plcm90cnVzdGRhdGEvenRkL3Byb3RvY29sL3Byb3RvL3p0ZC9jb21tb24vdjE7Y29tbW9udjFiBnByb3RvMw", [file_google_protobuf_descriptor, file_google_protobuf_timestamp, file_google_protobuf_struct]);
+  fileDesc("Chp6dGQvY29tbW9uL3YxL2NvbW1vbi5wcm90bxINenRkLmNvbW1vbi52MSIzCgpMMU1ldGFkYXRhEhEKCXZhbGlkYXRlZBgBIAEoCBISCgp2aW9sYXRpb25zGAIgAygJIk4KBkwyVm90ZRIVCg1zaWduZXJfa2V5X2lkGAEgASgJEhsKE2NvbnNlbnN1c19zaWduYXR1cmUYAiABKAkSEAoIZGVjaXNpb24YAyABKAgifwoKTDJNZXRhZGF0YRIYChBjb25zZW5zdXNfc2V0X2lkGAEgASgJEiQKBXZvdGVzGAIgAygLMhUuenRkLmNvbW1vbi52MS5MMlZvdGVKBAgDEARKBAgEEAVSDGRlbGliZXJhdGlvblIXcGFyZW50X3RyYW5zYWN0aW9uX2hhc2girwIKB0wzUHJvb2YSKAoQY2xpZW50X2RhdGFfanNvbhgBIAEoCVIOY2xpZW50RGF0YUpTT04SGgoSYXV0aGVudGljYXRvcl9kYXRhGAIgASgJEhEKCXNpZ25hdHVyZRgDIAEoCRIVCg1jcmVkZW50aWFsX2lkGAQgASgJEh0KFW10bHNfY2VydF9maW5nZXJwcmludBgFIAEoCRIVCg1jbGlfc2lnbmF0dXJlGAYgASgJEhsKE2NsaV9jZXJ0aWZpY2F0ZV9kZXIYByABKAwSQgoPcGFzc2tleV9jb250ZXh0GAggASgLMikuenRkLmNvbW1vbi52MS5QYXNza2V5VmVyaWZpY2F0aW9uQ29udGV4dBIdChVjbGlfaW50ZXJtZWRpYXRlc19kZXIYCSADKAwihQEKGlBhc3NrZXlWZXJpZmljYXRpb25Db250ZXh0Eg8KB3VzZXJfaWQYASABKAkSFQoNY3JlZGVudGlhbF9pZBgCIAEoCRIXCg9wdWJsaWNfa2V5X2Nvc2UYAyABKAwSDQoFcnBfaWQYBCABKAkSFwoPYWxsb3dlZF9vcmlnaW5zGAUgAygJIl0KCkwzTWV0YWRhdGESJQoFcHJvb2YYASABKAsyFi56dGQuY29tbW9uLnYxLkwzUHJvb2YSDgoGZGVuaWVkGAIgASgIEhgKEHBlbmRpbmdfZGlzcGF0Y2gYAyABKAgiiQEKEkdvdmVybmFuY2VNZXRhZGF0YRIlCgJsMRgBIAEoCzIZLnp0ZC5jb21tb24udjEuTDFNZXRhZGF0YRIlCgJsMhgCIAEoCzIZLnp0ZC5jb21tb24udjEuTDJNZXRhZGF0YRIlCgJsMxgDIAEoCzIZLnp0ZC5jb21tb24udjEuTDNNZXRhZGF0YSLyBQoSR292ZXJuYW5jZUVudmVsb3BlEgoKAmlkGAEgASgJEi0KCXRpbWVzdGFtcBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoQc291cmNlX2NvbXBvbmVudBgEIAEoDjIYLnp0ZC5jb21tb24udjEuQ29tcG9uZW50EhMKC29wZXJhdG9yX2lkGAUgASgJEhsKE29wZXJhdG9yX3Nlc3Npb25faWQYBiABKAkSFgoOd2ViX3Nlc3Npb25faWQYByABKAkSFgoOY2xpX3Nlc3Npb25faWQYFiABKAkSGQoRcmVxdWVzdG9yX3VzZXJfaWQYGSABKAkSFQoNYWN0aW5nX2FwcF9pZBgaIAEoCRISCgpldmVudF90eXBlGAggASgJEg8KB3BheWxvYWQYCSABKAwSLAoLaW50ZW50X2RhdGEYCiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EhMKC2FjdGlvbl90eXBlGBMgASgJEhcKD3RhcmdldF9yZXNvdXJjZRgUIAEoCRIZChFzdGF0ZV9tZXJrbGVfcm9vdBgLIAEoCRINCgVub25jZRgMIAEoCRIYChB0cmFuc2FjdGlvbl9oYXNoGA0gASgJEhgKEHByb3RvY29sX3ZlcnNpb24YFSABKAkSNQoKZ292ZXJuYW5jZRgOIAEoCzIhLnp0ZC5jb21tb24udjEuR292ZXJuYW5jZU1ldGFkYXRhEg8KB2Nhc2VfaWQYDyABKAkSGAoQaW52ZXN0aWdhdGlvbl9pZBgQIAEoCRIPCgd0YXNrX2lkGBEgASgJEhoKEnN5c3RlbV9maW5nZXJwcmludBgSIAEoCRIRCgl0ZW5hbnRfaWQYFyABKAkSFwoPYmluZGluZ19wZXJzb25hGBggASgJEg8KB3Bvc3R1cmUYGyABKAkiYQoeUGxhdGZvcm1FbnJvbGxtZW50RmluZ2VycHJpbnRzEgsKA2FwcBgBIAEoCRIQCghvcGVyYXRvchgCIAEoCRILCgNjbGkYAyABKAkSEwoLc2lnbmluZ19rZXkYBCABKAkijwgKI1BsYXRmb3JtRW5yb2xsbWVudEdvdmVybmFuY2VQYXlsb2FkEg4KBmFjdGlvbhgBIAEoCRIOCgZpbnRlbnQYAiABKAkSEgoKcmVxdWVzdF9pZBgDIAEoCRI8Cg5jb21wb25lbnRfa2luZBgEIAEoDjIkLnp0ZC5jb21tb24udjEuUGxhdGZvcm1Db21wb25lbnRLaW5kEhMKC2luc3RhbmNlX2lkGAUgASgJEhUKDWFjdG9yX3VzZXJfaWQYBiABKAkSOwoIZGVjaXNpb24YByABKA4yKS56dGQuY29tbW9uLnYxLlBsYXRmb3JtRW5yb2xsbWVudERlY2lzaW9uEkMKDGZpbmdlcnByaW50cxgIIAEoCzItLnp0ZC5jb21tb24udjEuUGxhdGZvcm1FbnJvbGxtZW50RmluZ2VycHJpbnRzEhkKEXRhcmdldF9jb2xsZWN0aW9uGAkgASgJEhoKEnRhcmdldF9kb2N1bWVudF9pZBgKIAEoCRITCgtvcGVyYXRvcl9pZBgLIAEoCRIbChNvcGVyYXRvcl9zZXNzaW9uX2lkGAwgASgJEhYKDmNsaV9zZXNzaW9uX2lkGA0gASgJEhEKCXBvbGljeV9pZBgOIAEoCRIaChJjZXJ0aWZpY2F0ZV9zZXJpYWwYDyABKAkSHwoXY2VydGlmaWNhdGVfZmluZ2VycHJpbnQYECABKAkSFQoNb3duZXJfdXNlcl9pZBgRIAEoCRIOCgZyZWFzb24YEiABKAkSSQoQZGVjaXNpb25fdGFyZ2V0cxgTIAMoCzIvLnp0ZC5jb21tb24udjEuUGxhdGZvcm1FbnJvbGxtZW50RGVjaXNpb25UYXJnZXQSHAoUaXNzdWFuY2VfbGVhc2Vfb3duZXIYFCABKAkSHgoWY29uc2Vuc3VzX2VuZHBvaW50X3VybBgVIAEoCRIgChhjb25zZW5zdXNfbWVtYmVyX2FwcF9pZHMYFiADKAkSGAoQY29uc2Vuc3VzX3F1b3J1bRgXIAEoDRIaChJjb25zZW5zdXNfcHJvdmlkZXIYGCABKAkSGwoTY29uc2Vuc3VzX21vZGVsX3RhZxgZIAEoCRIeChZjb25zZW5zdXNfbW9kZWxfZGlnZXN0GBogASgJEhsKE2NvbnNlbnN1c192b3RlX2tpbmQYGyABKAkSJwofY29uc2Vuc3VzX2luZmVyZW5jZV9vcGVyYXRvcl9pZBgcIAEoCRJMChljb25zZW5zdXNfdm90ZV90aHJlc2hvbGRzGB0gAygLMikuenRkLmNvbW1vbi52MS5Db25zZW5zdXNEZWNpc2lvblRocmVzaG9sZBIeChZjb25zZW5zdXNfYWxsb3dfaG9zdGVkGB4gASgIInsKIFBsYXRmb3JtRW5yb2xsbWVudERlY2lzaW9uVGFyZ2V0EhIKCnJlcXVlc3RfaWQYASABKAkSQwoMZmluZ2VycHJpbnRzGAIgASgLMi0uenRkLmNvbW1vbi52MS5QbGF0Zm9ybUVucm9sbG1lbnRGaW5nZXJwcmludHMiggIKJlBsYXRmb3JtRW5yb2xsbWVudENvbXBsZXRpb25UcmFuc2NyaXB0EhgKEHByb3RvY29sX3ZlcnNpb24YASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRISCgp0b2tlbl9oYXNoGAMgASgJEjwKDmNvbXBvbmVudF9raW5kGAQgASgOMiQuenRkLmNvbW1vbi52MS5QbGF0Zm9ybUNvbXBvbmVudEtpbmQSEwoLaW5zdGFuY2VfaWQYBSABKAkSQwoMZmluZ2VycHJpbnRzGAYgASgLMi0uenRkLmNvbW1vbi52MS5QbGF0Zm9ybUVucm9sbG1lbnRGaW5nZXJwcmludHMinwIKDUNvbW1hbmRJbnRlbnQSEwoLb3BlcmF0b3JfaWQYASABKAkSGwoTb3BlcmF0b3Jfc2Vzc2lvbl9pZBgCIAEoCRIZChFyZXF1ZXN0b3JfdXNlcl9pZBgDIAEoCRISCgpldmVudF90eXBlGAQgASgJEhMKC2FjdGlvbl90eXBlGAUgASgJEhcKD3RhcmdldF9yZXNvdXJjZRgGIAEoCRIPCgdwYXlsb2FkGAcgASgMEg8KB2Nhc2VfaWQYCCABKAkSGAoQaW52ZXN0aWdhdGlvbl9pZBgJIAEoCRIPCgd0YXNrX2lkGAogASgJEhYKDndlYl9zZXNzaW9uX2lkGAsgASgJEhYKDmNsaV9zZXNzaW9uX2lkGAwgASgJOgIYASJGChpDb25zZW5zdXNEZWNpc2lvblRocmVzaG9sZBIVCg1tZW1iZXJfYXBwX2lkGAEgASgJEhEKCXRocmVzaG9sZBgCIAEoASplCglDb21wb25lbnQSGQoVQ09NUE9ORU5UX1VOU1BFQ0lGSUVEEAASEwoPQ09NUE9ORU5UX0FHRU5UEAESEgoOQ09NUE9ORU5UX1pURE8QAhIUChBDT01QT05FTlRfQ0xJRU5UEAMq3gEKFVBsYXRmb3JtQ29tcG9uZW50S2luZBInCiNQTEFURk9STV9DT01QT05FTlRfS0lORF9VTlNQRUNJRklFRBAAEiUKIVBMQVRGT1JNX0NPTVBPTkVOVF9LSU5EX0RBU0hCT0FSRBABEiQKIFBMQVRGT1JNX0NPTVBPTkVOVF9LSU5EX09QRVJBVE9SEAMSJwojUExBVEZPUk1fQ09NUE9ORU5UX0tJTkRfQVBQTElDQVRJT04QBCIECAIQAiogUExBVEZPUk1fQ09NUE9ORU5UX0tJTkRfRU5TRU1CTEUqmwEKGlBsYXRmb3JtRW5yb2xsbWVudERlY2lzaW9uEiwKKFBMQVRGT1JNX0VOUk9MTE1FTlRfREVDSVNJT05fVU5TUEVDSUZJRUQQABIoCiRQTEFURk9STV9FTlJPTExNRU5UX0RFQ0lTSU9OX0FQUFJPVkUQARIlCiFQTEFURk9STV9FTlJPTExNRU5UX0RFQ0lTSU9OX0RFTlkQAjpOChJmb3JiaWRkZW5fcGF0dGVybnMSHS5nb29nbGUucHJvdG9idWYuRmllbGRPcHRpb25zGNGGAyABKAlSEWZvcmJpZGRlblBhdHRlcm5zQkRaQmdpdGh1Yi5jb20vemVyb3RydXN0ZGF0YS96dGQvcHJvdG9jb2wvcHJvdG8venRkL2NvbW1vbi92MTtjb21tb252MWIGcHJvdG8z", [file_google_protobuf_descriptor, file_google_protobuf_timestamp, file_google_protobuf_struct]);
 
 /**
  * Doctrine (L1Doctrine) Governance: Technical Bedrock (Hard Gates)
@@ -81,37 +81,6 @@ export const L2VoteSchema: GenMessage<L2Vote> = /*@__PURE__*/
   messageDesc(file_ztd_common_v1_common, 1);
 
 /**
- * Consensus (L2) Governance: a bound Tribunal member's attestation that an
- * INFERENCE envelope is that member's own vote deliberation. It exempts the
- * envelope from L2 so a vote never recurses into another vote. It is never a
- * vote: it signs "<transaction_hash>|consensus-deliberation".
- *
- * @generated from message ztd.common.v1.L2DeliberationAttestation
- */
-export type L2DeliberationAttestation = Message<"ztd.common.v1.L2DeliberationAttestation"> & {
-  /**
-   * member appID == TrustedSigner.ID
-   *
-   * @generated from field: string signer_key_id = 1;
-   */
-  signerKeyId: string;
-
-  /**
-   * ed25519 over "<transaction_hash>|consensus-deliberation"
-   *
-   * @generated from field: string signature = 2;
-   */
-  signature: string;
-};
-
-/**
- * Describes the message ztd.common.v1.L2DeliberationAttestation.
- * Use `create(L2DeliberationAttestationSchema)` to create a new message.
- */
-export const L2DeliberationAttestationSchema: GenMessage<L2DeliberationAttestation> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 2);
-
-/**
  * Consensus (L2) Governance: a vote set from an enrolled consensus set.
  *
  * @generated from message ztd.common.v1.L2Metadata
@@ -130,23 +99,6 @@ export type L2Metadata = Message<"ztd.common.v1.L2Metadata"> & {
    * @generated from field: repeated ztd.common.v1.L2Vote votes = 2;
    */
   votes: L2Vote[];
-
-  /**
-   * Set only on a Tribunal member's vote inference; mutually exclusive with votes.
-   *
-   * @generated from field: ztd.common.v1.L2DeliberationAttestation deliberation = 3;
-   */
-  deliberation?: L2DeliberationAttestation | undefined;
-
-  /**
-   * Set only on a witness observation command (provider-boundary or
-   * model-provenance): votes are the parent INFERENCE's quorum and sign this
-   * hash, not the observation's. It MUST equal the command payload's
-   * inference_transaction_id; mutually exclusive with deliberation.
-   *
-   * @generated from field: string parent_transaction_hash = 4;
-   */
-  parentTransactionHash: string;
 };
 
 /**
@@ -154,7 +106,7 @@ export type L2Metadata = Message<"ztd.common.v1.L2Metadata"> & {
  * Use `create(L2MetadataSchema)` to create a new message.
  */
 export const L2MetadataSchema: GenMessage<L2Metadata> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 3);
+  messageDesc(file_ztd_common_v1_common, 2);
 
 /**
  * Notary (L3Notary) Governance: Authorization (Human-in-the-loop)
@@ -235,7 +187,7 @@ export type L3Proof = Message<"ztd.common.v1.L3Proof"> & {
  * Use `create(L3ProofSchema)` to create a new message.
  */
 export const L3ProofSchema: GenMessage<L3Proof> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 4);
+  messageDesc(file_ztd_common_v1_common, 3);
 
 /**
  * PasskeyVerificationContext transfers registration facts, never an approval.
@@ -275,7 +227,7 @@ export type PasskeyVerificationContext = Message<"ztd.common.v1.PasskeyVerificat
  * Use `create(PasskeyVerificationContextSchema)` to create a new message.
  */
 export const PasskeyVerificationContextSchema: GenMessage<PasskeyVerificationContext> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 5);
+  messageDesc(file_ztd_common_v1_common, 4);
 
 /**
  * @generated from message ztd.common.v1.L3Metadata
@@ -312,7 +264,7 @@ export type L3Metadata = Message<"ztd.common.v1.L3Metadata"> & {
  * Use `create(L3MetadataSchema)` to create a new message.
  */
 export const L3MetadataSchema: GenMessage<L3Metadata> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 6);
+  messageDesc(file_ztd_common_v1_common, 5);
 
 /**
  * Unified Governance Metadata
@@ -341,7 +293,7 @@ export type GovernanceMetadata = Message<"ztd.common.v1.GovernanceMetadata"> & {
  * Use `create(GovernanceMetadataSchema)` to create a new message.
  */
 export const GovernanceMetadataSchema: GenMessage<GovernanceMetadata> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 7);
+  messageDesc(file_ztd_common_v1_common, 6);
 
 /**
  * GovernanceEnvelope is the single canonical container for all ztd mutations.
@@ -524,7 +476,7 @@ export type GovernanceEnvelope = Message<"ztd.common.v1.GovernanceEnvelope"> & {
  * Use `create(GovernanceEnvelopeSchema)` to create a new message.
  */
 export const GovernanceEnvelopeSchema: GenMessage<GovernanceEnvelope> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 8);
+  messageDesc(file_ztd_common_v1_common, 7);
 
 /**
  * @generated from message ztd.common.v1.PlatformEnrollmentFingerprints
@@ -558,7 +510,7 @@ export type PlatformEnrollmentFingerprints = Message<"ztd.common.v1.PlatformEnro
  * Use `create(PlatformEnrollmentFingerprintsSchema)` to create a new message.
  */
 export const PlatformEnrollmentFingerprintsSchema: GenMessage<PlatformEnrollmentFingerprints> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 9);
+  messageDesc(file_ztd_common_v1_common, 8);
 
 /**
  * @generated from message ztd.common.v1.PlatformEnrollmentGovernancePayload
@@ -742,7 +694,7 @@ export type PlatformEnrollmentGovernancePayload = Message<"ztd.common.v1.Platfor
  * Use `create(PlatformEnrollmentGovernancePayloadSchema)` to create a new message.
  */
 export const PlatformEnrollmentGovernancePayloadSchema: GenMessage<PlatformEnrollmentGovernancePayload> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 10);
+  messageDesc(file_ztd_common_v1_common, 9);
 
 /**
  * @generated from message ztd.common.v1.PlatformEnrollmentDecisionTarget
@@ -764,7 +716,7 @@ export type PlatformEnrollmentDecisionTarget = Message<"ztd.common.v1.PlatformEn
  * Use `create(PlatformEnrollmentDecisionTargetSchema)` to create a new message.
  */
 export const PlatformEnrollmentDecisionTargetSchema: GenMessage<PlatformEnrollmentDecisionTarget> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 11);
+  messageDesc(file_ztd_common_v1_common, 10);
 
 /**
  * @generated from message ztd.common.v1.PlatformEnrollmentCompletionTranscript
@@ -806,7 +758,7 @@ export type PlatformEnrollmentCompletionTranscript = Message<"ztd.common.v1.Plat
  * Use `create(PlatformEnrollmentCompletionTranscriptSchema)` to create a new message.
  */
 export const PlatformEnrollmentCompletionTranscriptSchema: GenMessage<PlatformEnrollmentCompletionTranscript> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 12);
+  messageDesc(file_ztd_common_v1_common, 11);
 
 /**
  * CommandIntent is deprecated. New callers must use the Gateway HTTP protocol
@@ -893,7 +845,7 @@ export type CommandIntent = Message<"ztd.common.v1.CommandIntent"> & {
  * @deprecated
  */
 export const CommandIntentSchema: GenMessage<CommandIntent> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 13);
+  messageDesc(file_ztd_common_v1_common, 12);
 
 /**
  * Frozen per-member approval probability threshold for decision voting.
@@ -917,7 +869,7 @@ export type ConsensusDecisionThreshold = Message<"ztd.common.v1.ConsensusDecisio
  * Use `create(ConsensusDecisionThresholdSchema)` to create a new message.
  */
 export const ConsensusDecisionThresholdSchema: GenMessage<ConsensusDecisionThreshold> = /*@__PURE__*/
-  messageDesc(file_ztd_common_v1_common, 14);
+  messageDesc(file_ztd_common_v1_common, 13);
 
 /**
  * Source component identifier

@@ -24,6 +24,7 @@ definitions:
     - MCP_RESOURCE_READ
     - MODEL_PROVENANCE_OBSERVATION
     - OLLAMA_MODEL_INVENTORY
+    - OLLAMA_MODEL_RELEASE
     - OLLAMA_MODEL_RESIDENCY
     - PLATFORM_ENROLLMENT_BIND_CONSENSUS
     - PLATFORM_ENROLLMENT_CREATE
@@ -61,6 +62,7 @@ definitions:
     - ActionTypeMcpResourceRead
     - ActionTypeModelProvenanceObservation
     - ActionTypeOllamaModelInventory
+    - ActionTypeOllamaModelRelease
     - ActionTypeOllamaModelResidency
     - ActionTypePlatformEnrollmentBindConsensus
     - ActionTypePlatformEnrollmentCreate
@@ -227,6 +229,9 @@ definitions:
     - ztd.v1.operator.ollama.model.inventory.completed
     - ztd.v1.operator.ollama.model.inventory.failed
     - ztd.v1.operator.ollama.model.inventory.requested
+    - ztd.v1.operator.ollama.model.release.completed
+    - ztd.v1.operator.ollama.model.release.failed
+    - ztd.v1.operator.ollama.model.release.requested
     - ztd.v1.operator.ollama.model.residency.completed
     - ztd.v1.operator.ollama.model.residency.failed
     - ztd.v1.operator.ollama.model.residency.requested
@@ -450,6 +455,9 @@ definitions:
     - EventOperatorOllamaModelInventoryCompleted
     - EventOperatorOllamaModelInventoryFailed
     - EventOperatorOllamaModelInventoryRequested
+    - EventOperatorOllamaModelReleaseCompleted
+    - EventOperatorOllamaModelReleaseFailed
+    - EventOperatorOllamaModelReleaseRequested
     - EventOperatorOllamaModelResidencyCompleted
     - EventOperatorOllamaModelResidencyFailed
     - EventOperatorOllamaModelResidencyRequested

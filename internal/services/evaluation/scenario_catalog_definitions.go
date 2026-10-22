@@ -834,7 +834,7 @@ func verifyContradiction() ScenarioBlueprint {
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"verification", "contradiction"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Do the synthetic records below contradict each other about service health? Reply yes or no and name the contradiction.",
+			UserPrompt: "Do the synthetic records below contradict each other about service health? Reply with yes or no as the first word, then name the contradiction by quoting the two conflicting health values exactly as they appear in the records.",
 			InlineContext: []ScenarioInlineContent{
 				syntheticInlineContent("log", "synthetic-health-a", "service=checkout-api health=healthy"),
 				syntheticInlineContent("log", "synthetic-health-b", "service=checkout-api health=degraded"),
