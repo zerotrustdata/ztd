@@ -79,15 +79,15 @@ var APIPaths = struct {
 	PKICABundle           string `json:"pki_ca_bundle"`
 	PKIFingerprint        string `json:"pki_fingerprint"`
 	// Audit routes
-	AuditReceipts       string `json:"audit_receipts"`
-	AuditReceiptsExport string `json:"audit_receipts_export"`
-	AuditRecords        string `json:"audit_records"`
-	AuditEvents         string `json:"audit_events"`
-	AuditConsensusVotes string `json:"audit_consensus_votes"`
-	AuditSummary        string `json:"audit_summary"`
-	AuditReport         string `json:"audit_report"`
-	AuditVerify         string `json:"audit_verify"`
-	AuditStream         string `json:"audit_stream"`
+	AuditEventReceipts       string `json:"audit_receipts"`
+	AuditEventReceiptsExport string `json:"audit_receipts_export"`
+	AuditRecords             string `json:"audit_records"`
+	AuditEvents              string `json:"audit_events"`
+	AuditConsensusVotes      string `json:"audit_consensus_votes"`
+	AuditSummary             string `json:"audit_summary"`
+	AuditReport              string `json:"audit_report"`
+	AuditVerify              string `json:"audit_verify"`
+	AuditStream              string `json:"audit_stream"`
 	// Public feed routes
 	PublicFeedBatches     string `json:"public_feed_batches"`
 	PublicFeedSnapshot    string `json:"public_feed_snapshot"`
@@ -254,15 +254,15 @@ var APIPaths = struct {
 	PKICABundle:           "/.well-known/ztd/pki/ca-bundle",
 	PKIFingerprint:        "/.well-known/ztd/pki/fingerprint",
 	// Audit routes
-	AuditReceipts:       "/api/v1/audit/receipts",
-	AuditReceiptsExport: "/api/v1/audit/receipts/export",
-	AuditRecords:        "/api/v1/audit/records",
-	AuditEvents:         "/api/v1/audit/events",
-	AuditConsensusVotes: "/api/v1/audit/consensus-votes",
-	AuditSummary:        "/api/v1/audit/summary",
-	AuditReport:         "/api/v1/audit/report",
-	AuditVerify:         "/api/v1/audit/verify",
-	AuditStream:         "/api/v1/audit/stream",
+	AuditEventReceipts:       "/api/v1/audit/event-receipts",
+	AuditEventReceiptsExport: "/api/v1/audit/event-receipts/export",
+	AuditRecords:             "/api/v1/audit/records",
+	AuditEvents:              "/api/v1/audit/events",
+	AuditConsensusVotes:      "/api/v1/audit/consensus-votes",
+	AuditSummary:             "/api/v1/audit/summary",
+	AuditReport:              "/api/v1/audit/report",
+	AuditVerify:              "/api/v1/audit/verify",
+	AuditStream:              "/api/v1/audit/stream",
 	// Public feed routes
 	PublicFeedBatches:     "/api/v1/public-feed/batches",
 	PublicFeedSnapshot:    "/api/v1/public-feed/snapshot",

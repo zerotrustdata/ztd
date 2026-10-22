@@ -180,10 +180,10 @@ func TestAuditView(t *testing.T) {
 		Offset: 0,
 	})
 	m = m.applyAuditSummaryMsg(AuditSummaryMsg{Summary: models.AuditSummaryResponse{
-		EventsSummary: map[string]int{"command.completed": 1, "approval.completed": 1},
-		EventsTotal:   2,
-		ReceiptsTotal: 1,
-		TotalRecords:  3,
+		EventsSummary:      map[string]int{"command.completed": 1, "approval.completed": 1},
+		EventsTotal:        2,
+		EventReceiptsTotal: 1,
+		TotalRecords:       3,
 	}})
 
 	out := m.View()

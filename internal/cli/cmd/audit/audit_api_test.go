@@ -47,12 +47,12 @@ func setupAuditAPITestEnv(t *testing.T) *config.Config {
 func TestAuditReceiptsCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
-	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"receipts":[{"transaction_hash":"abc123","action_type":"file_edit","target_resource":"/path/to/file","status":2,"executed_at":"2026-01-01T00:00:00Z","l2_valid":true,"l3_valid":false}]}`)}
+	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"event_receipts":[{"transaction_hash":"abc123","action_type":"file_edit","target_resource":"/path/to/file","status":2,"executed_at":"2026-01-01T00:00:00Z","l2_valid":true,"l3_valid":false}]}`)}
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
 	factory := func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) { return mockClient, nil }
 
-	cmd := auditReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
+	cmd := auditEventReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
 	cmd.Flags().Set("session", "op-sess-test")
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -68,13 +68,13 @@ func TestAuditReceiptsCmd_API_MockHappyPath(t *testing.T) {
 func TestAuditReceiptsCmd_API_JSONOutput(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
-	rawJSON := `{"receipts":[]}`
+	rawJSON := `{"event_receipts":[]}`
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(rawJSON)}
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
 	factory := func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) { return mockClient, nil }
 
-	cmd := auditReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
+	cmd := auditEventReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
 	cmdtest.EnableGlobalJSON(t, cmd)
 	cmd.Flags().Set("session", "op-sess-test")
 	var buf bytes.Buffer
@@ -83,19 +83,19 @@ func TestAuditReceiptsCmd_API_JSONOutput(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{})
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), `"receipts"`)
+	assert.Contains(t, buf.String(), `"event_receipts"`)
 	assert.Contains(t, buf.String(), `[]`)
 }
 
 func TestAuditReceiptsCmd_API_EmptyReceipts(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
-	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"receipts":[]}`)}
+	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"event_receipts":[]}`)}
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
 	factory := func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) { return mockClient, nil }
 
-	cmd := auditReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
+	cmd := auditEventReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
 	cmd.Flags().Set("session", "op-sess-test")
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -103,7 +103,7 @@ func TestAuditReceiptsCmd_API_EmptyReceipts(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{})
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "No receipts found")
+	assert.Contains(t, buf.String(), "No event receipts found")
 }
 
 func TestAuditReceiptsCmd_API_GetError(t *testing.T) {
@@ -114,7 +114,7 @@ func TestAuditReceiptsCmd_API_GetError(t *testing.T) {
 	loader := func(string) (*config.Config, error) { return cfg, nil }
 	factory := func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) { return mockClient, nil }
 
-	cmd := auditReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
+	cmd := auditEventReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
 	cmd.Flags().Set("session", "op-sess-test")
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -133,7 +133,7 @@ func TestAuditReceiptsCmd_API_InvalidJSON(t *testing.T) {
 	loader := func(string) (*config.Config, error) { return cfg, nil }
 	factory := func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) { return mockClient, nil }
 
-	cmd := auditReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
+	cmd := auditEventReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
 	cmd.Flags().Set("session", "op-sess-test")
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -152,7 +152,7 @@ func TestAuditReceiptsCmd_API_ClientFactoryError(t *testing.T) {
 		return nil, constants.ErrNotAuthenticated
 	}
 
-	cmd := auditReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
+	cmd := auditEventReceiptsCmdWithConfig(loader, factory, shared.NewFileSvc)
 	cmd.Flags().Set("session", "op-sess-test")
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -169,7 +169,7 @@ func TestAuditExportCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 	tmpDir := testutil.TempDir(t)
 
-	exportData := `{"receipts":[],"export_time":"2026-01-01T00:00:00Z"}`
+	exportData := `{"event_receipts":[],"export_time":"2026-01-01T00:00:00Z"}`
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(exportData)}
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -217,7 +217,7 @@ func TestAuditReportCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 	tmpDir := testutil.TempDir(t)
 
-	reportJSON := `{"success":true,"report":{"generated_at":"2026-01-01T00:00:00Z","operator_session_id":"op-sess-test","events":[],"events_count":5,"receipts":[],"receipts_count":3,"total_records":8}}`
+	reportJSON := `{"success":true,"report":{"generated_at":"2026-01-01T00:00:00Z","operator_session_id":"op-sess-test","events":[],"events_count":5,"event_receipts":[],"event_receipts_count":3,"total_records":8}}`
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(reportJSON)}
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -234,7 +234,7 @@ func TestAuditReportCmd_API_MockHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Compliance report written")
 	assert.Contains(t, buf.String(), "Events:   5")
-	assert.Contains(t, buf.String(), "Receipts: 3")
+	assert.Contains(t, buf.String(), "Event receipts: 3")
 }
 
 func TestAuditReportCmd_API_InvalidJSON(t *testing.T) {

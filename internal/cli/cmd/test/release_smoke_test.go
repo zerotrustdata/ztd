@@ -146,7 +146,7 @@ func TestEvaluateSmokeReportRejectsEmptyEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("evaluate: %v", err)
 	}
-	for _, want := range []string{"receipts.csv is empty", "commitments.csv is empty", "file_mutations.csv is empty"} {
+	for _, want := range []string{constants.ReportReceiptsFilename + " is empty", "commitments.csv is empty", "file_mutations.csv is empty"} {
 		if !strings.Contains(strings.Join(ev.Failures, "\n"), want) {
 			t.Errorf("failures missing %q: %v", want, ev.Failures)
 		}

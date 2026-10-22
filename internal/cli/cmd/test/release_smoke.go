@@ -518,7 +518,7 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	if err != nil {
 		return err
 	}
-	record, err := storage.ReadLocalActionReceipt(fileSvc, slog.Default(), keystore.Options{Keyring: r.agent.Keyring(fileSvc)}, tx)
+	record, err := storage.ReadLocalEventReceipt(fileSvc, slog.Default(), keystore.Options{Keyring: r.agent.Keyring(fileSvc)}, tx)
 	if err != nil {
 		return err
 	}

@@ -35,7 +35,7 @@ func TestReceiptPreparationDoesNotWaitForLedger(t *testing.T) {
 	for _, invalid := range []string{"canonical JSON", "locked vault", "session whitespace"} {
 		t.Run(invalid, func(t *testing.T) {
 			store := newIntegrationAuditStore(t)
-			record := sampleActionReceiptRecord(t, "session")
+			record := sampleEventReceiptRecord(t, "session")
 			switch invalid {
 			case "canonical JSON":
 				record.ActionReceipt.ResultSummary = string([]byte{0xff})
@@ -48,7 +48,7 @@ func TestReceiptPreparationDoesNotWaitForLedger(t *testing.T) {
 			require.True(t, acquired)
 			done := make(chan error, 1)
 			go func() {
-				done <- store.RecordActionReceiptWithCommitment(record, func(string) (*operatorv1.CommitmentAttestation, error) {
+				done <- store.RecordEventReceiptWithCommitment(record, func(string) (*operatorv1.CommitmentAttestation, error) {
 					return nil, constants.ErrNotFound
 				})
 			}()
@@ -69,7 +69,7 @@ func TestReceiptPreparationDoesNotWaitForLedger(t *testing.T) {
 				require.ErrorIs(t, err, constants.ErrAuditSessionMissing)
 			}
 			var count int
-			require.NoError(t, store.db.QueryRow("SELECT count(*) FROM receipts").Scan(&count))
+			require.NoError(t, store.db.QueryRow("SELECT count(*) FROM events WHERE type = ?", string(constants.EventOperatorReceiptRecorded)).Scan(&count))
 			require.Zero(t, count)
 		})
 	}
@@ -108,14 +108,14 @@ func TestReceiptSuccessLogsFollowCommitAndUnlock(t *testing.T) {
 	})
 	store.logger = logger
 	store.commitmentLedger.logger = logger
-	record := sampleActionReceiptRecord(t, "session")
-	require.NoError(t, store.RecordActionReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
+	record := sampleEventReceiptRecord(t, "session")
+	require.NoError(t, store.RecordEventReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
 		return &operatorv1.CommitmentAttestation{
 			TransactionId: record.TransactionID, TransactionHash: record.TransactionHash,
 			PriorCommitmentHash: prior, Hash: "commitment-hash",
 		}, nil
 	}))
-	require.Contains(t, messages, "ActionReceipt recorded")
+	require.Contains(t, messages, "Event receipt recorded")
 	require.Contains(t, messages, "Commitment appended to ledger")
 	require.NoError(t, store.VerifyChain(t.Context(), 0))
 }
@@ -140,8 +140,8 @@ func TestReceiptCommitFailureRollsBackWithoutSuccessLogs(t *testing.T) {
 		observe: func(record slog.Record) { messages = append(messages, record.Message) },
 	})
 	store.logger, store.commitmentLedger.logger = logger, logger
-	record := sampleActionReceiptRecord(t, "session")
-	err = store.RecordActionReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
+	record := sampleEventReceiptRecord(t, "session")
+	err = store.RecordEventReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
 		return &operatorv1.CommitmentAttestation{
 			TransactionId: record.TransactionID, TransactionHash: record.TransactionHash,
 			PriorCommitmentHash: prior, Hash: "commitment-hash",
@@ -149,7 +149,7 @@ func TestReceiptCommitFailureRollsBackWithoutSuccessLogs(t *testing.T) {
 	})
 	require.ErrorIs(t, err, constants.ErrAuditStoreRecordReceiptFailed)
 	require.Empty(t, messages, "a rolled-back write must not emit success logs")
-	for _, table := range []string{"receipts", "events", "commitment_ledger"} {
+	for _, table := range []string{"events", "commitment_ledger"} {
 		var count int
 		require.NoError(t, store.db.QueryRow("SELECT count(*) FROM "+table).Scan(&count))
 		require.Zero(t, count, table)
@@ -165,14 +165,14 @@ func TestReceiptConcurrentStagesPreserveBothChains(t *testing.T) {
 	errs := make(chan error, writers)
 	var wg sync.WaitGroup
 	for i := range writers {
-		record := sampleActionReceiptRecord(t, "shared-session")
+		record := sampleEventReceiptRecord(t, "shared-session")
 		record.TransactionID = fmt.Sprintf("receipt-%d", i)
 		record.ActionReceipt.TransactionId = record.TransactionID
 		record.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
 		record.ActionReceipt.Status = record.Status
 		wg.Go(func() {
 			<-start
-			err := store.RecordActionReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
+			err := store.RecordEventReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
 				hash := "commitment-" + record.TransactionID
 				return &operatorv1.CommitmentAttestation{
 					TransactionId: record.TransactionID, TransactionHash: record.TransactionHash,
@@ -182,7 +182,7 @@ func TestReceiptConcurrentStagesPreserveBothChains(t *testing.T) {
 			if err == nil {
 				record.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 				record.ActionReceipt.Status = record.Status
-				err = store.RecordActionReceipt(record)
+				err = store.RecordEventReceipt(record)
 			}
 			errs <- err
 		})
@@ -200,7 +200,7 @@ func TestReceiptConcurrentStagesPreserveBothChains(t *testing.T) {
 	for _, row := range rows {
 		require.Equal(t, prior, row.PriorCommitmentHash)
 		prior = row.Hash
-		record, err := store.GetActionReceipt(row.TransactionID)
+		record, err := store.GetEventReceipt(row.TransactionID)
 		require.NoError(t, err)
 		require.NotNil(t, record)
 		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, record.Status)
@@ -218,18 +218,18 @@ func TestReceiptMissingSessionFailsClosedAtomically(t *testing.T) {
 			headSeq, headHash, err := store.GetAuditChainHead(t.Context())
 			require.NoError(t, err)
 
-			record := sampleActionReceiptRecord(t, "missing-session")
+			record := sampleEventReceiptRecord(t, "missing-session")
 			if withCommitment {
-				err = store.RecordActionReceiptWithCommitment(record, func(string) (*operatorv1.CommitmentAttestation, error) {
+				err = store.RecordEventReceiptWithCommitment(record, func(string) (*operatorv1.CommitmentAttestation, error) {
 					t.Error("commitment builder ran despite missing session")
 					return nil, constants.ErrNotFound
 				})
 			} else {
-				err = store.RecordActionReceipt(record)
+				err = store.RecordEventReceipt(record)
 			}
 			require.ErrorIs(t, err, constants.ErrAuditStoreRecordReceiptFailed)
 			require.ErrorIs(t, err, constants.ErrAuditSessionUnknown)
-			persisted, err := store.GetActionReceipt(record.TransactionID)
+			persisted, err := store.GetEventReceipt(record.TransactionID)
 			require.NoError(t, err)
 			require.Nil(t, persisted)
 			afterSeq, afterHash, err := store.GetAuditChainHead(t.Context())
@@ -250,8 +250,8 @@ func TestReceiptCommitmentInvalidBuilderResultRollsBackAtomically(t *testing.T) 
 		t.Run(invalid, func(t *testing.T) {
 			store := newIntegrationAuditStore(t)
 			startReceiptSession(t, store, "session")
-			record := sampleActionReceiptRecord(t, "session")
-			err := store.RecordActionReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
+			record := sampleEventReceiptRecord(t, "session")
+			err := store.RecordEventReceiptWithCommitment(record, func(prior string) (*operatorv1.CommitmentAttestation, error) {
 				attestation := &operatorv1.CommitmentAttestation{
 					TransactionId: record.TransactionID, TransactionHash: record.TransactionHash,
 					PriorCommitmentHash: prior, Hash: "commitment-hash",
@@ -273,7 +273,7 @@ func TestReceiptCommitmentInvalidBuilderResultRollsBackAtomically(t *testing.T) 
 			case "nil attestation":
 				require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 			}
-			for _, table := range []string{"receipts", "events", "commitment_ledger"} {
+			for _, table := range []string{"events", "commitment_ledger"} {
 				var count int
 				require.NoError(t, store.db.QueryRow("SELECT count(*) FROM "+table).Scan(&count))
 				require.Zero(t, count, table)

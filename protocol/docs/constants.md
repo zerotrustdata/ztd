@@ -229,8 +229,8 @@ HTTP route paths for Gateway REST, mTLS, and control-plane controllers are expos
   - `ObserveProducerRunState`: `/api/v1/observe/producer/run-state`
   - `ObserveProducerStop`: `/api/v1/observe/producer/stop`
 - **Audit & Forensics**:
-  - `AuditReceipts`: `/api/v1/audit/receipts`
-  - `AuditReceiptsExport`: `/api/v1/audit/receipts/export`
+  - `AuditEventReceipts`: `/api/v1/audit/event-receipts`
+  - `AuditEventReceiptsExport`: `/api/v1/audit/event-receipts/export`
   - `AuditEvents`: `/api/v1/audit/events`
   - `AuditSummary`: `/api/v1/audit/summary`
 - **Streaming & PubSub**:

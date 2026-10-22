@@ -84,7 +84,7 @@ func TestGovernanceEnvelope_ForeignOperatorRejectionIsRecordedUnderEmbeddedSessi
 	require.Equal(t, constants.ErrTxTargetOperatorMismatch.Error(), rejection.GetError(), "the error text is the sentinel only, never the chain")
 	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH, rejection.GetReceipt().GetRejectionCode())
 
-	record, err := svc.GetAuditStore().GetActionReceipt(env.Id)
+	record, err := svc.GetAuditStore().GetEventReceipt(env.Id)
 	require.NoError(t, err)
 	require.NotNil(t, record, "the rejection evidence must be persisted")
 	require.Equal(t, record.ActionReceipt.GetSignature(), rejection.GetReceipt().GetSignature(), "the response carries the persisted signed receipt")
@@ -115,7 +115,7 @@ func TestGovernanceEnvelope_ForeignOperatorRejectionBeforeEmbeddedClaim(t *testi
 	require.Contains(t, w.Body.String(), "TX_TARGET_OPERATOR_MISMATCH")
 	require.NotContains(t, w.Body.String(), "L5Actuator")
 	require.NotContains(t, w.Body.String(), "rejection receipt")
-	record, err := svc.GetAuditStore().GetActionReceipt(env.Id)
+	record, err := svc.GetAuditStore().GetEventReceipt(env.Id)
 	require.NoError(t, err)
 	require.NotNil(t, record)
 	require.Equal(t, constants.EmbeddedOperatorBootstrapSessionID, record.OperatorSessionID)

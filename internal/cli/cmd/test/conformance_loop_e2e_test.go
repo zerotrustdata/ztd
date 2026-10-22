@@ -84,7 +84,7 @@ type conformanceLoopState struct {
 	// are read from it on.
 	started time.Time
 	// completed holds, per runtime, the completed receipts the runs added.
-	completed map[string][]*models.ActionReceiptRecord
+	completed map[string][]*models.EventReceiptRecord
 	evidence  conformanceLoopEvidence
 }
 
@@ -453,7 +453,7 @@ func checkConformanceLoopVerdicts(posture constants.Posture, set *evalv1.Conform
 // signed receipts the conformance runs added, some of them completed.
 func (st *conformanceLoopState) checkChains(ctx context.Context) error {
 	var errs []error
-	st.completed = make(map[string][]*models.ActionReceiptRecord, len(st.evidence.AuditChains))
+	st.completed = make(map[string][]*models.EventReceiptRecord, len(st.evidence.AuditChains))
 	for i := range st.evidence.AuditChains {
 		chain := &st.evidence.AuditChains[i]
 		// Pages keep each tool result, and under ratify and notary the approval

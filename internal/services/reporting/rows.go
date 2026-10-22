@@ -19,7 +19,7 @@ type Row interface {
 	Record() []string
 }
 
-// ReceiptRow maps to receipts.csv.
+// ReceiptRow maps to event_receipts.csv.
 type ReceiptRow struct {
 	TransactionID   string
 	TransactionHash string

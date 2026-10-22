@@ -32,7 +32,7 @@ func TestNilAuditStore_WritesFailClosed(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrAuditStoreDisabled)
 	_, _, _, err = ass.RecordEventChained(event)
 	require.ErrorIs(t, err, constants.ErrAuditStoreDisabled)
-	require.ErrorIs(t, ass.RecordActionReceipt(&models.ActionReceiptRecord{}), constants.ErrAuditStoreDisabled)
+	require.ErrorIs(t, ass.RecordEventReceipt(&models.EventReceiptRecord{}), constants.ErrAuditStoreDisabled)
 	require.ErrorIs(t, ass.RecordFileMutation(&FileMutationLog{}), constants.ErrAuditStoreDisabled)
 	require.ErrorIs(t, ass.DocDelete(context.Background(), "c", "id"), constants.ErrAuditStoreDisabled)
 }

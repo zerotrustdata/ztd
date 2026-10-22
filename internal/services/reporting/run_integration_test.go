@@ -101,7 +101,7 @@ func seedReportingData(t *testing.T, store *storage.SQLAuditStore, rs *storage.R
 	// Session + events + receipts + file mutations.
 	require.NoError(t, store.CreateSession("sess-run-1", "operator", "Run Test", "user@test.com"))
 
-	require.NoError(t, store.RecordActionReceipt(&models.ActionReceiptRecord{
+	require.NoError(t, store.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     "tx-run-1",
 		TransactionHash:   "hash-run-1",
 		OperatorID:        "op-1",

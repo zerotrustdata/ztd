@@ -35,7 +35,7 @@ func TestGetActionReceiptQueriesCanonicalReceiptByTransactionID(t *testing.T) {
 	body, err := protojson.Marshal(expected)
 	require.NoError(t, err)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, constants.APIPaths.AuditReceipts, r.URL.Path)
+		assert.Equal(t, constants.APIPaths.AuditEventReceipts, r.URL.Path)
 		assert.Equal(t, "transaction/1", r.URL.Query().Get("tx_id"))
 		w.Header().Set("Content-Type", "application/json")
 		_, writeErr := w.Write(body)
@@ -45,7 +45,7 @@ func TestGetActionReceiptQueriesCanonicalReceiptByTransactionID(t *testing.T) {
 	client, err := New(config.Config{MTLSBaseURL: server.URL})
 	require.NoError(t, err)
 
-	receipt, raw, err := client.GetActionReceipt(context.Background(), "transaction/1")
+	receipt, raw, err := client.GetEventReceipt(context.Background(), "transaction/1")
 
 	require.NoError(t, err)
 	assert.Equal(t, body, raw)
@@ -62,7 +62,7 @@ func TestGetActionReceiptFailsClosedOnMalformedCanonicalReceipt(t *testing.T) {
 	client, err := New(config.Config{MTLSBaseURL: server.URL})
 	require.NoError(t, err)
 
-	receipt, _, err := client.GetActionReceipt(context.Background(), "transaction-1")
+	receipt, _, err := client.GetEventReceipt(context.Background(), "transaction-1")
 
 	require.Error(t, err)
 	assert.Nil(t, receipt)
@@ -76,7 +76,7 @@ func TestGetActionReceiptReturnsNilForMissingTransaction(t *testing.T) {
 	client, err := New(config.Config{MTLSBaseURL: server.URL})
 	require.NoError(t, err)
 
-	receipt, _, err := client.GetActionReceipt(context.Background(), "missing-transaction")
+	receipt, _, err := client.GetEventReceipt(context.Background(), "missing-transaction")
 
 	require.NoError(t, err)
 	assert.Nil(t, receipt)

@@ -165,10 +165,11 @@ func (r *ReadOnlyOperationalEvidence) Snapshot(ctx context.Context, query Operat
 
 func readOperationalReceipts(ctx context.Context, tx *sql.Tx, encryptionVault *vault.Vault, query OperationalEvidenceQuery, snapshot *OperationalEvidenceSnapshot) error {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT transaction_id, executed_at_ms, receipt_json
-		FROM receipts
-		WHERE executed_at_ms >= ? AND executed_at_ms <= ?
-		ORDER BY executed_at_ms ASC, transaction_id ASC
+		SELECT transaction_id, event_receipt_executed_at_ms, seq, content_text
+		FROM events
+		WHERE event_receipt_status IS NOT NULL
+		  AND event_receipt_executed_at_ms >= ? AND event_receipt_executed_at_ms <= ?
+		ORDER BY event_receipt_executed_at_ms ASC, transaction_id ASC
 	`, query.WindowStart.UnixMilli(), query.WindowEnd.UnixMilli())
 	if err != nil {
 		return fmt.Errorf("operational evidence: query receipts: %w", err)
@@ -177,15 +178,19 @@ func readOperationalReceipts(ctx context.Context, tx *sql.Tx, encryptionVault *v
 	for rows.Next() {
 		var receipt OperationalReceiptSource
 		var executedAtMs int64
+		var seq sql.NullInt64
 		var body []byte
-		if err := rows.Scan(&receipt.TransactionID, &executedAtMs, &body); err != nil {
-			return fmt.Errorf("operational evidence: scan receipt: %w", err)
+		if err := rows.Scan(&receipt.TransactionID, &executedAtMs, &seq, &body); err != nil {
+			return fmt.Errorf("operational evidence: scan event receipt: %w", err)
 		}
 		receipt.ExecutedAt = time.UnixMilli(executedAtMs).UTC()
 		if len(body) > 0 {
-			decrypted, err := decryptAuditContent(encryptionVault, ReceiptColumnReceiptJSON, receipt.TransactionID, body)
+			if !seq.Valid {
+				return fmt.Errorf("operational evidence: event receipt %s has no chain sequence", receipt.TransactionID)
+			}
+			decrypted, err := decryptAuditContent(encryptionVault, auditColumnEventContentText, auditEventRowID(seq.Int64), body)
 			if err != nil {
-				return fmt.Errorf("operational evidence: decrypt receipt_json: %w", err)
+				return fmt.Errorf("operational evidence: decrypt event receipt: %w", err)
 			}
 			receipt.Body = []byte(decrypted)
 		}

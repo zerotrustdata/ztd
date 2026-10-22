@@ -229,7 +229,7 @@ List audit events for an operator session with `./ztd gw data audit list --opera
 ./ztd audit summary --app spiffe://ztd.local/app/etl-service
 ```
 
-Over HTTP, receipts are served by `GET /api/v1/audit/receipts` with an `operator_session_id` or `acting_app_id` query parameter, and exported as JSON by `GET /api/v1/audit/receipts/export?limit=100`, both over mTLS. To export every store to CSV with independent signature and hash-chain verification, run `./ztd report all`.
+Over HTTP, event receipts are served by `GET /api/v1/audit/event-receipts` with an `operator_session_id` or `acting_app_id` query parameter, and exported as JSON by `GET /api/v1/audit/event-receipts/export?limit=100`, both over mTLS. To export every store to CSV with independent signature and hash-chain verification, run `./ztd report all`.
 
 ---
 

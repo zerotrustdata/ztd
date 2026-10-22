@@ -518,7 +518,7 @@ func TestRouteAuthRegistry_BrowserOperatorApprovalAndAudit(t *testing.T) {
 	assert.Equal(t, RouteAuthDual, registry.AuthMode(constants.APIPaths.AuditSummary))
 	assert.Equal(t, RouteAuthDual, registry.AuthMode(constants.APIPaths.AuditVerify))
 	assert.Equal(t, RouteAuthMTLS, registry.AuthMode(constants.APIPaths.AuditRecords))
-	assert.Equal(t, RouteAuthMTLS, registry.AuthMode(constants.APIPaths.AuditReceipts))
+	assert.Equal(t, RouteAuthMTLS, registry.AuthMode(constants.APIPaths.AuditEventReceipts))
 }
 
 func TestRouteAuthRegistry_SSEDualAuth(t *testing.T) {

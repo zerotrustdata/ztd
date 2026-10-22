@@ -79,7 +79,7 @@ func TestDecisionInferenceGovernedReceiptBindsTypedResult(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, digest, result.ResultDigest)
 	require.Equal(t, digest, receipt.ResultSummary)
-	receipts, err := auditStore.ListActionReceipts(models.AuditScope{}, 10, 0)
+	receipts, err := auditStore.ListEventReceipts(models.AuditScope{}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, receipts, 1)
 	require.Equal(t, digest, receipts[0].ResultSummary)

@@ -38,7 +38,7 @@ func Cmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		auditReceiptsCmd(),
+		auditEventReceiptsCmd(),
 		auditExportCmd(),
 		auditReportCmd(),
 		auditEventsCmd(),
@@ -50,21 +50,21 @@ func Cmd() *cobra.Command {
 	return cmd
 }
 
-func auditReceiptsCmd() *cobra.Command {
-	return auditReceiptsCmdWithConfig(shared.LoadConfig, authcmd.DefaultAPIClientFactory, shared.NewFileSvc)
+func auditEventReceiptsCmd() *cobra.Command {
+	return auditEventReceiptsCmdWithConfig(shared.LoadConfig, authcmd.DefaultAPIClientFactory, shared.NewFileSvc)
 }
 
-func auditReceiptsCmdWithConfig(configLoader func(string) (*config.Config, error), clientFactory authcmd.APIClientFactory, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) *cobra.Command {
+func auditEventReceiptsCmdWithConfig(configLoader func(string) (*config.Config, error), clientFactory authcmd.APIClientFactory, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) *cobra.Command {
 	var operatorSessionID string
 	var actingAppID string
 	var txID string
 
 	cmd := &cobra.Command{
-		Use:   "receipts",
-		Short: "List signed receipts from the running Gateway",
-		Long: `List signed transaction receipts from the running Gateway over mTLS. Use
+		Use:   "event-receipts",
+		Short: "List signed event receipts from the running Gateway",
+		Long: `List signed event receipts from the running Gateway over mTLS. Use
 --session to filter by operator session ID or --app to select an acting app, --tx-id to look up a specific
-transaction hash (returns the canonical receipt as JSON), and --json to output
+transaction (returns the canonical ActionReceipt as JSON), and --json to output
 list results as raw JSON instead of a table. Without either identity selector, includes
 Gateway-local app records that have no Operator session.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -87,7 +87,7 @@ Gateway-local app records that have no Operator session.`,
 			if txID != "" {
 				query.Set("tx_id", txID)
 			}
-			path := auditQueryPath(constants.APIPaths.AuditReceipts, models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
+			path := auditQueryPath(constants.APIPaths.AuditEventReceipts, models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
 
 			resp, err := client.Get(path)
 			if err != nil {
@@ -98,13 +98,13 @@ Gateway-local app records that have no Operator session.`,
 				return output.WriteRawJSON(cmd.OutOrStdout(), resp)
 			}
 
-			var receiptsResp models.AuditReceiptsResponse
+			var receiptsResp models.AuditEventReceiptsResponse
 			if err := json.Unmarshal(resp, &receiptsResp); err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
 			}
 
-			if len(receiptsResp.Receipts) == 0 {
-				cmd.Println("No receipts found")
+			if len(receiptsResp.EventReceipts) == 0 {
+				cmd.Println("No event receipts found")
 				return nil
 			}
 
@@ -116,14 +116,14 @@ Gateway-local app records that have no Operator session.`,
 					sessionDisplay = "app=" + actingAppID
 				}
 			}
-			cmd.Printf("Signed receipts — scope: %s\n", sessionDisplay)
+			cmd.Printf("Signed event receipts — scope: %s\n", sessionDisplay)
 			cmd.Println(strings.Repeat("=", 110))
 			cmd.Printf("%-16s %-16s %-40s %-8s %s\n", "TX HASH", "ACTION TYPE", "RESOURCE", "STATUS", "AT")
 			cmd.Println(strings.Repeat("-", 110))
 
 			l2Valid := 0
 			l3Valid := 0
-			for _, r := range receiptsResp.Receipts {
+			for _, r := range receiptsResp.EventReceipts {
 				txHash := r.TransactionHash
 				if len(txHash) > 12 {
 					txHash = txHash[:12] + "…"
@@ -147,8 +147,8 @@ Gateway-local app records that have no Operator session.`,
 			}
 
 			cmd.Println(strings.Repeat("-", 110))
-			cmd.Printf("%d receipts  |  L2 valid: %d  |  L3 valid: %d\n",
-				len(receiptsResp.Receipts), l2Valid, l3Valid)
+			cmd.Printf("%d event receipts  |  L2 valid: %d  |  L3 valid: %d\n",
+				len(receiptsResp.EventReceipts), l2Valid, l3Valid)
 
 			return nil
 		},
@@ -173,8 +173,8 @@ func auditExportCmdWithConfig(configLoader func(string) (*config.Config, error),
 
 	cmd := &cobra.Command{
 		Use:   "export",
-		Short: "Export the full receipts bundle for archival",
-		Long: `Export the full signed receipts bundle from the running Gateway over mTLS.
+		Short: "Export the full event receipts bundle for archival",
+		Long: `Export the full signed event receipts bundle from the running Gateway over mTLS.
 Use --session to filter by operator session ID or --app to filter by acting app identity and --out to specify the output
 file path (defaults to stdout).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -194,7 +194,7 @@ file path (defaults to stdout).`,
 			}
 
 			query := url.Values{}
-			path := auditQueryPath(constants.APIPaths.AuditReceiptsExport, models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
+			path := auditQueryPath(constants.APIPaths.AuditEventReceiptsExport, models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: actingAppID}, query)
 
 			resp, err := client.Get(path)
 			if err != nil {
@@ -279,7 +279,7 @@ directory for the report file.`,
 			cmd.Println("Compliance report written:")
 			cmd.Printf("  JSON:     %s\n", jsonPath)
 			cmd.Printf("  Events:   %d\n", reportResp.Report.EventsCount)
-			cmd.Printf("  Receipts: %d\n", reportResp.Report.ReceiptsCount)
+			cmd.Printf("  Event receipts: %d\n", reportResp.Report.EventReceiptsCount)
 			cmd.Printf("  Total:    %d records\n", reportResp.Report.TotalRecords)
 
 			return nil
@@ -509,9 +509,9 @@ Gateway over mTLS. Use --session to filter by operator session ID or --app to fi
 				}
 			}
 
-			if summaryResp.ReceiptsTotal > 0 {
-				cmd.Printf("\nGoverned Receipts (%d total):\n", summaryResp.ReceiptsTotal)
-				for keyStr, count := range summaryResp.ReceiptsSummary {
+			if summaryResp.EventReceiptsTotal > 0 {
+				cmd.Printf("\nEvent receipts (%d total):\n", summaryResp.EventReceiptsTotal)
+				for keyStr, count := range summaryResp.EventReceiptsSummary {
 					cmd.Printf("  %-40s %d\n", keyStr, count)
 				}
 			}
