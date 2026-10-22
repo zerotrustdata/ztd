@@ -24,7 +24,7 @@ import (
 
 // MemberDispatcher runs one member call as a governed INFERENCE dispatch. A
 // call that did not complete returns its typed failure, carrying the
-// Inference Operator's FAILED receipt when one was signed.
+// Inference Operator's FAILED event receipt when one was signed.
 type MemberDispatcher interface {
 	DispatchMember(ctx context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, *operatorv1.InferenceDispatchFailure)
 }
@@ -221,13 +221,13 @@ func (m *memberInferer) Infer(ctx context.Context, call Call) (string, error) {
 	response, failure := m.members.DispatchMember(ctx, req)
 	if failure != nil {
 		record.Failure = failure
-		record.Receipt = failure.GetReceipt()
+		record.EventReceipt = failure.GetEventReceipt()
 		return "", fmt.Errorf("%w: %s %s: %s", constants.ErrTribunalInferenceFailed, call.Stage, call.Persona, failure.GetError())
 	}
 	record.TransactionId = response.GetTransactionId()
 	record.Result = response.GetResult()
-	record.Receipt = response.GetReceipt()
-	record.ObservationReceipts = response.GetObservationReceipts()
+	record.EventReceipt = response.GetEventReceipt()
+	record.ObservationEventReceipts = response.GetObservationEventReceipts()
 	return models.InferenceResultText(response.GetResult()), nil
 }
 

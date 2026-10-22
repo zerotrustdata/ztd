@@ -557,7 +557,7 @@ type L3Metadata struct {
 	Proof *L3Proof               `protobuf:"bytes,1,opt,name=proof,proto3" json:"proof,omitempty"` // WebAuthn or CLI/mTLS proof
 	// The human declined the suspended transaction. L4 rejects a denied
 	// envelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so
-	// the deny is an Operator-signed rejection receipt. A deny can only stop
+	// the deny is an Operator-signed rejection event receipt. A deny can only stop
 	// execution, so it needs no proof.
 	Denied bool `protobuf:"varint,2,opt,name=denied,proto3" json:"denied,omitempty"`
 	// Gateway-owned suspension provenance. A waiting dispatch must receive the

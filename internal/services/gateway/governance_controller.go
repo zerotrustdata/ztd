@@ -286,10 +286,10 @@ func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 // for BYO Gateway clients. It accepts a GovernanceEnvelope, verifies it
 // through the Gateway's fail-closed gate (id, hash, expiry, nonce, state
 // root, L2/L3 governance), executes it through the Actuator, and returns the
-// signed ActionReceipt.
+// signed EventReceipt.
 //
 // Status semantics:
-//   - 200 OK: envelope verified and executed (receipt body); receipt.status
+//   - 200 OK: envelope verified and executed (event receipt body); event receipt.status
 //     reflects whether the underlying handler succeeded or failed.
 //   - 400 Bad Request: malformed envelope (decode failure, empty body,
 //     payload too large) - no governance state mutated. Body is an
@@ -298,7 +298,7 @@ func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 //     (expired, replayed, hash mismatch, missing/invalid L2/L3, unknown
 //     action type, or transport-to-envelope identity mismatch) - no state
 //     mutated. An L4 rejection returns a GovernanceRejection body carrying
-//     the Operator's signed GOVERNANCE_REJECTED receipt and its
+//     the Operator's signed GOVERNANCE_REJECTED event receipt and its
 //     rejection_code; refusals before L4 return an IngressRefusal.
 //   - 503 Service Unavailable: envelope processor not configured, or L4
 //     could not run (vault locked, verifier dependency absent); the latter
@@ -307,17 +307,17 @@ func stampEnvelopePosture(body []byte, posture string) ([]byte, error) {
 //
 // @Summary		Submit governance envelope
 // @Description	Accepts a GovernanceEnvelope, verifies it through the 5-layer gauntlet (L1–L3 pre-flight,
-// @Description	L4 warden, L5 actuator), and returns the signed ActionReceipt. Transport-to-envelope
+// @Description	L4 warden, L5 actuator), and returns the signed EventReceipt. Transport-to-envelope
 // @Description	identity binding is enforced via mTLS certificate URI SAN matching.
 // @Tags			governance
 // @Accept			json
 // @Produce		json
 // @Param			envelope	body		[]byte		true	"GovernanceEnvelope (protojson)"
-// @Success		200			{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt"
+// @Success		200			{object}	operatorv1.EventReceipt	"Canonical protojson EventReceipt"
 // @Failure		400			{object}	operatorv1.IngressRefusal	"Bad Request — malformed envelope"
-// @Failure		403			{object}	operatorv1.IngressRefusal	"Forbidden — IngressRefusal when refused before L4 (identity binding, outcome, L3 proof unmintable); GovernanceRejection carrying the signed receipt when L4 rejects"
+// @Failure		403			{object}	operatorv1.IngressRefusal	"Forbidden — IngressRefusal when refused before L4 (identity binding, outcome, L3 proof unmintable); GovernanceRejection carrying the signed event receipt when L4 rejects"
 // @Failure		405			{object}	operatorv1.IngressRefusal	"Method Not Allowed"
-// @Failure		503			{object}	operatorv1.IngressRefusal	"Service Unavailable — IngressRefusal when the processor is not configured; GovernanceRejection carrying the signed receipt when L4 cannot run"
+// @Failure		503			{object}	operatorv1.IngressRefusal	"Service Unavailable — IngressRefusal when the processor is not configured; GovernanceRejection carrying the signed event receipt when L4 cannot run"
 // @Router			/api/v1/governance/envelopes [post]
 func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -357,22 +357,22 @@ func (c *GovernanceController) handleGovernanceEnvelope(w http.ResponseWriter, r
 		return
 	}
 
-	receipt, procErr := proc.ProcessEnvelope(r.Context(), body)
+	eventReceipt, procErr := proc.ProcessEnvelope(r.Context(), body)
 	if procErr != nil {
 		c.renderEnvelopeError(w, procErr)
 		return
 	}
-	if receipt == nil {
-		// Defensive: a nil receipt with nil error should never happen, but if
+	if eventReceipt == nil {
+		// Defensive: a nil event receipt with nil error should never happen, but if
 		// the processor regresses, do not mask the failure.
-		c.renderEnvelopeError(w, fmt.Errorf("governance envelope: %w", constants.ErrNilReceipt))
+		c.renderEnvelopeError(w, fmt.Errorf("governance envelope: %w", constants.ErrNilEventReceipt))
 		return
 	}
 
-	// Receipt is returned as canonical protojson. Execution-failure receipts
+	// Event receipt is returned as canonical protojson. Execution-failure event_receipts
 	// (status=FAILED) are still HTTP 200 because they represent a verified,
 	// audited outcome - the caller has cryptographic evidence of the attempt.
-	c.responder.ProtoJSONCanonical(w, http.StatusOK, receipt)
+	c.responder.ProtoJSONCanonical(w, http.StatusOK, eventReceipt)
 }
 
 // renderEnvelopeError writes a direct-submission failure: the signed
@@ -436,7 +436,7 @@ func classifyEnvelopeError(err error) int {
 // envelopeErrorCode returns the HTTP status and the typed sentinel that
 // identifies err. A response renders the sentinel, never the wrapped chain:
 // a chain can carry internal audit or store failure text, such as a
-// rejection receipt that could not be persisted. An unclassified error is a
+// rejection event receipt that could not be persisted. An unclassified error is a
 // 500 with constants.ErrInternal.
 func envelopeErrorCode(err error) (int, error) {
 	if err == nil {

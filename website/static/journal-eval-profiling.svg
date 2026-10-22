@@ -62,7 +62,7 @@
   <text x="60" y="165" font-family="monospace" font-size="7.5" fill="#91b6b0">pprof: mutex contention &amp; allocs</text>
 
   <rect x="275" y="152" width="235" height="19" rx="3" fill="#2b1a18" stroke="#d99b88"/>
-  <text x="285" y="165" font-family="monospace" font-size="7.5" fill="#fca5a5">root locks + signed FAILED receipts</text>
+  <text x="285" y="165" font-family="monospace" font-size="7.5" fill="#fca5a5">root locks + signed FAILED event receipts</text>
 
   <!-- CLI Command Output In Profiler -->
   <rect x="50" y="178" width="460" height="34" rx="4" fill="#091316" stroke="#23423d"/>

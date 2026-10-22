@@ -40,7 +40,7 @@ type GovernedOutcome struct {
 // with no typed outcome. Callers that cannot grade an untyped answer call it.
 func (o *GovernedOutcome) Typed() error {
 	switch o.kind() {
-	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
 		evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
 		evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL,
 		evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED:
@@ -80,16 +80,16 @@ func decodeHTTPBody(status int, body []byte, success proto.Message) *GovernedOut
 		return untypedOutcome()
 	}
 	switch msg := success.(type) {
-	case *operatorv1.ActionReceipt:
+	case *operatorv1.EventReceipt:
 		if msg.GetTransactionId() == "" {
 			return untypedOutcome()
 		}
-		return receiptOutcome(msg)
+		return eventReceiptOutcome(msg)
 	case *operatorv1.GovernedDispatchResult:
-		if msg.GetReceipt() == nil {
+		if msg.GetEventReceipt() == nil {
 			return untypedOutcome()
 		}
-		outcome := receiptOutcome(msg.GetReceipt())
+		outcome := eventReceiptOutcome(msg.GetEventReceipt())
 		outcome.Dispatch = msg
 		return outcome
 	default:
@@ -99,14 +99,14 @@ func decodeHTTPBody(status int, body []byte, success proto.Message) *GovernedOut
 
 // IntentCommandOutcome classifies the governed MCP_CALL outcome of an approved
 // Tribunal run_shell_command intent. An intent without a dispatch result or
-// receipt is untyped.
+// event receipt is untyped.
 func IntentCommandOutcome(result *tribunalv1.TribunalIntentResult) *GovernedOutcome {
 	switch outcome := result.GetCommandOutcome().(type) {
 	case *tribunalv1.TribunalIntentResult_Dispatched:
-		if outcome.Dispatched.GetReceipt() == nil {
+		if outcome.Dispatched.GetEventReceipt() == nil {
 			return untypedOutcome()
 		}
-		governed := receiptOutcome(outcome.Dispatched.GetReceipt())
+		governed := eventReceiptOutcome(outcome.Dispatched.GetEventReceipt())
 		governed.Dispatch = outcome.Dispatched
 		return governed
 	case *tribunalv1.TribunalIntentResult_Rejection:
@@ -161,7 +161,7 @@ func decodeRPCBody(raw []byte, result func(json.RawMessage) *GovernedOutcome) *G
 }
 
 // decodeMCPResult classifies a tools/call result: a typed suspension, or a
-// signed receipt.
+// signed event receipt.
 func decodeMCPResult(result json.RawMessage) *GovernedOutcome {
 	var call mcp.CallToolResult
 	if err := decodeStrictJSON(result, &call); err != nil {
@@ -170,11 +170,11 @@ func decodeMCPResult(result json.RawMessage) *GovernedOutcome {
 	if call.Suspension != nil && call.Suspension.TxHash != "" {
 		return suspendedOutcome(call.Suspension)
 	}
-	return decodeReceiptJSON(call.Receipt)
+	return decodeEventReceiptJSON(call.EventReceipt)
 }
 
 // decodeA2AResult classifies an a2a/call result: a typed suspension, or the
-// success wrapper around a signed receipt.
+// success wrapper around a signed event receipt.
 func decodeA2AResult(result json.RawMessage) *GovernedOutcome {
 	var suspension mcp.GovernedSuspension
 	if err := decodeStrictJSON(result, &suspension); err == nil && suspension.Status != "" && suspension.TxHash != "" {
@@ -184,18 +184,18 @@ func decodeA2AResult(result json.RawMessage) *GovernedOutcome {
 	if err := decodeStrictJSON(result, &success); err != nil {
 		return untypedOutcome()
 	}
-	return decodeReceiptJSON(success.Result)
+	return decodeEventReceiptJSON(success.Result)
 }
 
-func decodeReceiptJSON(raw json.RawMessage) *GovernedOutcome {
+func decodeEventReceiptJSON(raw json.RawMessage) *GovernedOutcome {
 	if len(raw) == 0 {
 		return untypedOutcome()
 	}
-	receipt := &operatorv1.ActionReceipt{}
-	if err := decodeStrictProtoJSON(raw, receipt); err != nil {
+	eventReceipt := &operatorv1.EventReceipt{}
+	if err := decodeStrictProtoJSON(raw, eventReceipt); err != nil {
 		return untypedOutcome()
 	}
-	return receiptOutcome(receipt)
+	return eventReceiptOutcome(eventReceipt)
 }
 
 // decodeStrictJSON decodes exactly one JSON value into v, rejecting unknown
@@ -225,10 +225,10 @@ func untypedOutcome() *GovernedOutcome {
 	return &GovernedOutcome{Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED}}
 }
 
-func receiptOutcome(receipt *operatorv1.ActionReceipt) *GovernedOutcome {
+func eventReceiptOutcome(eventReceipt *operatorv1.EventReceipt) *GovernedOutcome {
 	return &GovernedOutcome{Observation: &evalv1.ConformanceObservation{
-		Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
-		Receipt: receipt,
+		Kind:         evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
+		EventReceipt: eventReceipt,
 	}}
 }
 

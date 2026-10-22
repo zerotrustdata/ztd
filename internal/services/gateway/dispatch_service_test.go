@@ -117,24 +117,24 @@ func TestOperatorCommandRequest_Validate(t *testing.T) {
 // --- DispatchResult.GovernedDispatchResult tests ---
 
 func TestDispatchResult_GovernedDispatchResult(t *testing.T) {
-	t.Run("carries the result envelope and the final receipt", func(t *testing.T) {
+	t.Run("carries the result envelope and the final event receipt", func(t *testing.T) {
 		env := &commonv1.GovernanceEnvelope{
 			EventType:  string(constants.Event.Operator.FsRead.Completed),
 			ActionType: string(constants.ActionTypeFsRead),
 			Payload:    []byte("result-payload-bytes"),
 		}
-		receipt := &operatorv1.ActionReceipt{TransactionId: "tx-abc-123", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+		eventReceipt := &operatorv1.EventReceipt{TransactionId: "tx-abc-123", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 		result := &DispatchResult{
 			TransactionID:  "tx-abc-123",
 			ResultEnvelope: env,
-			Receipt:        receipt,
+			EventReceipt:   eventReceipt,
 		}
 		resp := result.GovernedDispatchResult()
 		assert.Equal(t, "tx-abc-123", resp.GetTransactionId())
 		assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), resp.GetEventType())
 		assert.Equal(t, string(constants.ActionTypeFsRead), resp.GetActionType())
 		assert.Equal(t, []byte("result-payload-bytes"), resp.GetResultPayload())
-		assert.Same(t, receipt, resp.GetReceipt())
+		assert.Same(t, eventReceipt, resp.GetEventReceipt())
 		assert.Nil(t, resp.GetInferenceResult())
 	})
 
@@ -147,7 +147,7 @@ func TestDispatchResult_GovernedDispatchResult(t *testing.T) {
 		assert.Empty(t, resp.GetEventType())
 		assert.Empty(t, resp.GetActionType())
 		assert.Empty(t, resp.GetResultPayload())
-		assert.Nil(t, resp.GetReceipt())
+		assert.Nil(t, resp.GetEventReceipt())
 	})
 }
 
@@ -193,7 +193,7 @@ func fsReadPayloadBytes(t *testing.T) []byte {
 // publishes a result envelope on the results channel.
 
 // dispatchTestActuator returns the Actuator key the simulated outbound Operator
-// signs its receipts with. newTestDispatchService binds the public half to the
+// signs its event receipts with. newTestDispatchService binds the public half to the
 // Operator's signer store, as a provisioned Operator's bound key is.
 func dispatchTestActuator() (ed25519.PublicKey, ed25519.PrivateKey, string) {
 	priv := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x42}, ed25519.SeedSize))
@@ -201,11 +201,11 @@ func dispatchTestActuator() (ed25519.PublicKey, ed25519.PrivateKey, string) {
 	return pub, priv, hex.EncodeToString(pub)
 }
 
-// publishDispatchTestReceipt publishes the simulated Operator's signed final
-// receipt for cmdEnv on its receipts channel, as PublishActionReceipt does.
-func publishDispatchTestReceipt(t *testing.T, broker *GatewayWebSocketHandler, op *operatorv1.OperatorDocument, cmdEnv *commonv1.GovernanceEnvelope, priv ed25519.PrivateKey, keyID string) {
+// publishDispatchTestEventReceipt publishes the simulated Operator's signed final
+// event receipt for cmdEnv on its event receipts channel, as PublishEventReceipt does.
+func publishDispatchTestEventReceipt(t *testing.T, broker *GatewayWebSocketHandler, op *operatorv1.OperatorDocument, cmdEnv *commonv1.GovernanceEnvelope, priv ed25519.PrivateKey, keyID string) {
 	t.Helper()
-	receipt := &operatorv1.ActionReceipt{
+	eventReceipt := &operatorv1.EventReceipt{
 		TransactionId:    cmdEnv.GetId(),
 		TransactionHash:  cmdEnv.GetTransactionHash(),
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -214,17 +214,17 @@ func publishDispatchTestReceipt(t *testing.T, broker *GatewayWebSocketHandler, o
 		StateRootAfter:   "root-abc",
 		ExecutedAtUnixMs: 1700000000000,
 	}
-	signTestReceipt(t, receipt, priv, keyID)
-	payload, err := proto.Marshal(receipt)
+	signTestEventReceipt(t, eventReceipt, priv, keyID)
+	payload, err := proto.Marshal(eventReceipt)
 	require.NoError(t, err)
 	wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
-		EventType:         string(constants.Event.Operator.Receipt.Recorded),
+		EventType:         string(constants.Event.Operator.EventReceipt.Recorded),
 		OperatorId:        op.Id,
 		OperatorSessionId: op.OperatorSessionId,
 		Payload:           payload,
 	})
 	require.NoError(t, err)
-	broker.Publish(pubsub.ReceiptsChannel(op.Id, op.OperatorSessionId), wire)
+	broker.Publish(pubsub.EventReceiptsChannel(op.Id, op.OperatorSessionId), wire)
 }
 
 func newTestDispatchService(t *testing.T, _ string, op *operatorv1.OperatorDocument) (*DispatchService, *GatewayWebSocketHandler) {
@@ -280,7 +280,7 @@ func TestDispatchService_Dispatch_Success(t *testing.T) {
 		require.NoError(t, err)
 		broker.Publish(resultsChannel, resultWire)
 		_, priv, keyID := dispatchTestActuator()
-		publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
+		publishDispatchTestEventReceipt(t, broker, op, cmdEnv, priv, keyID)
 	})
 	defer unregisterOperator()
 
@@ -296,8 +296,8 @@ func TestDispatchService_Dispatch_Success(t *testing.T) {
 	assert.NotEmpty(t, result.TransactionID)
 	require.NotNil(t, result.ResultEnvelope)
 	assert.Equal(t, result.TransactionID, result.ResultEnvelope.Id)
-	require.NotNil(t, result.Receipt, "a successful dispatch carries the verified final receipt")
-	assert.Equal(t, result.TransactionID, result.Receipt.GetTransactionId())
+	require.NotNil(t, result.EventReceipt, "a successful dispatch carries the verified final event receipt")
+	assert.Equal(t, result.TransactionID, result.EventReceipt.GetTransactionId())
 }
 
 func TestDispatchService_Dispatch_InvalidOperatorSession(t *testing.T) {
@@ -394,7 +394,7 @@ func TestDispatchErrorCode_RendersRefusalNotChain(t *testing.T) {
 			message: constants.ErrIngressL2DeliberationFailed.Error(),
 		},
 		{
-			name:    "vault locked without a receipt is gateway unavailable",
+			name:    "vault locked without an event receipt is gateway unavailable",
 			err:     fmt.Errorf("dispatch: %w", constants.ErrWardenVaultLocked),
 			status:  http.StatusServiceUnavailable,
 			code:    operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_GATEWAY_UNAVAILABLE,
@@ -598,7 +598,7 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 			}
 			broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), wire)
 			_, priv, keyID := dispatchTestActuator()
-			publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
+			publishDispatchTestEventReceipt(t, broker, op, cmdEnv, priv, keyID)
 		}
 	}
 
@@ -716,7 +716,7 @@ func TestDispatchService_Dispatch_DuplicateResultDropped(t *testing.T) {
 			broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), wire)
 		}
 		_, priv, keyID := dispatchTestActuator()
-		publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
+		publishDispatchTestEventReceipt(t, broker, op, cmdEnv, priv, keyID)
 	})
 	defer unreg()
 
@@ -732,18 +732,18 @@ func TestDispatchService_Dispatch_DuplicateResultDropped(t *testing.T) {
 	assert.Equal(t, 0, resultHandlerCount(broker, op))
 }
 
-func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
+func TestDispatchService_Dispatch_FinalEventReceiptGatesSuccess(t *testing.T) {
 	tests := []struct {
-		name           string
-		receiptFirst   bool
-		publishReceipt bool
-		boundKey       bool
-		wantErr        error
+		name                string
+		eventReceiptFirst   bool
+		publishEventReceipt bool
+		boundKey            bool
+		wantErr             error
 	}{
-		{name: "verified receipt after the result succeeds", publishReceipt: true, boundKey: true},
-		{name: "verified receipt before the result succeeds", receiptFirst: true, publishReceipt: true, boundKey: true},
-		{name: "result without a receipt times out", wantErr: constants.ErrDispatchResultTimeout},
-		{name: "receipt signed by an unbound key does not end the wait", publishReceipt: true, wantErr: constants.ErrDispatchResultTimeout},
+		{name: "verified event receipt after the result succeeds", publishEventReceipt: true, boundKey: true},
+		{name: "verified event receipt before the result succeeds", eventReceiptFirst: true, publishEventReceipt: true, boundKey: true},
+		{name: "result without an event receipt times out", wantErr: constants.ErrDispatchResultTimeout},
+		{name: "event receipt signed by an unbound key does not end the wait", publishEventReceipt: true, wantErr: constants.ErrDispatchResultTimeout},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -765,15 +765,15 @@ func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
 				resultWire, err := protojson.Marshal(dispatchTestResultEnvelope(cmdEnv, []byte("ok")))
 				require.NoError(t, err)
 				publish := func() {
-					if tt.publishReceipt {
-						publishDispatchTestReceipt(t, broker, op, cmdEnv, signPriv, signKeyID)
+					if tt.publishEventReceipt {
+						publishDispatchTestEventReceipt(t, broker, op, cmdEnv, signPriv, signKeyID)
 					}
 				}
-				if tt.receiptFirst {
+				if tt.eventReceiptFirst {
 					publish()
 				}
 				broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), resultWire)
-				if !tt.receiptFirst {
+				if !tt.eventReceiptFirst {
 					publish()
 				}
 			})
@@ -795,18 +795,18 @@ func TestDispatchService_Dispatch_FinalReceiptGatesSuccess(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.NotNil(t, result.Receipt)
-			assert.NoError(t, governance.VerifyActionReceiptSignature(result.Receipt, boundPub))
-			assert.NoError(t, governance.VerifyReceiptPersistenceAttestation(result.Receipt, boundPub))
+			require.NotNil(t, result.EventReceipt)
+			assert.NoError(t, governance.VerifyEventReceiptSignature(result.EventReceipt, boundPub))
+			assert.NoError(t, governance.VerifyEventReceiptPersistenceAttestation(result.EventReceipt, boundPub))
 		})
 	}
 }
 
-// TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt pins the MCP_CALL
+// TestDispatchService_Dispatch_McpCallCompletesOnFinalEventReceipt pins the MCP_CALL
 // exception: the Operator publishes no result envelope for an MCP_CALL, so the
-// verified final receipt alone completes the dispatch. Every other action still
-// needs its result envelope and times out on a receipt alone.
-func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
+// verified final event receipt alone completes the dispatch. Every other action still
+// needs its result envelope and times out on an event receipt alone.
+func TestDispatchService_Dispatch_McpCallCompletesOnFinalEventReceipt(t *testing.T) {
 	mcpPayload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: `{"command":"pwd"}`, ExecutionId: "exec-mcp"})
 	require.NoError(t, err)
 	tests := []struct {
@@ -815,7 +815,7 @@ func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
 		payload   []byte
 		wantErr   error
 	}{
-		{name: "MCP_CALL completes on its verified final receipt", eventType: constants.Event.Operator.Mcp.CallRequested, payload: mcpPayload},
+		{name: "MCP_CALL completes on its verified final event receipt", eventType: constants.Event.Operator.Mcp.CallRequested, payload: mcpPayload},
 		{name: "FS_READ still waits for its result envelope", eventType: constants.Event.Operator.FsRead.Requested, payload: fsReadPayloadBytes(t), wantErr: constants.ErrDispatchResultTimeout},
 	}
 	for _, tt := range tests {
@@ -830,7 +830,7 @@ func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
 					t.Errorf("operator: unmarshal command: %v", err)
 					return
 				}
-				publishDispatchTestReceipt(t, broker, op, cmdEnv, signPriv, signKeyID)
+				publishDispatchTestEventReceipt(t, broker, op, cmdEnv, signPriv, signKeyID)
 			})
 			defer unreg()
 
@@ -850,9 +850,9 @@ func TestDispatchService_Dispatch_McpCallCompletesOnFinalReceipt(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.NotNil(t, result.Receipt)
+			require.NotNil(t, result.EventReceipt)
 			assert.Nil(t, result.ResultEnvelope, "MCP_CALL publishes no result envelope")
-			assert.NoError(t, governance.VerifyActionReceiptSignature(result.Receipt, boundPub))
+			assert.NoError(t, governance.VerifyEventReceiptSignature(result.EventReceipt, boundPub))
 		})
 	}
 }
@@ -872,7 +872,7 @@ func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(
 		resultWire, err := protojson.Marshal(dispatchTestResultEnvelope(cmdEnv, []byte("ok")))
 		require.NoError(t, err)
 		broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), resultWire)
-		publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
+		publishDispatchTestEventReceipt(t, broker, op, cmdEnv, priv, keyID)
 	})
 	defer unreg()
 
@@ -895,9 +895,9 @@ func TestDispatchController_HandleDispatch_SuccessReturnsGovernedDispatchResult(
 	got := &operatorv1.GovernedDispatchResult{}
 	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), got))
 	assert.Equal(t, string(constants.Event.Operator.FsRead.Completed), got.GetEventType())
-	require.NotNil(t, got.GetReceipt(), "the 200 body carries the final receipt")
-	assert.NoError(t, governance.VerifyActionReceiptSignature(got.GetReceipt(), pub))
-	assert.NoError(t, governance.VerifyReceiptPersistenceAttestation(got.GetReceipt(), pub))
+	require.NotNil(t, got.GetEventReceipt(), "the 200 body carries the final event receipt")
+	assert.NoError(t, governance.VerifyEventReceiptSignature(got.GetEventReceipt(), pub))
+	assert.NoError(t, governance.VerifyEventReceiptPersistenceAttestation(got.GetEventReceipt(), pub))
 }
 
 // --- DispatchController.HandleDispatch tests ---
@@ -1075,7 +1075,7 @@ func TestDispatchService_Dispatch_ExecuteBash_WaitsForTerminalResult(t *testing.
 		require.NoError(t, err)
 		broker.Publish(resultsChannel, completedWire)
 		_, priv, keyID := dispatchTestActuator()
-		publishDispatchTestReceipt(t, broker, op, cmdEnv, priv, keyID)
+		publishDispatchTestEventReceipt(t, broker, op, cmdEnv, priv, keyID)
 	})
 	defer unregisterOperator()
 

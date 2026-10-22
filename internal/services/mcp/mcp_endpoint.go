@@ -251,9 +251,9 @@ func (g *GatewayService) dispatchMCP(r *http.Request, req *JSONRPCRequest) (inte
 // wrapDispatch converts a (result, error) pair from a governed handler into the
 // dispatcher's (result, *mcpDispatchError) contract, mapping governance errors
 // to granular JSON-RPC codes. When the error carries the Operator's signed
-// rejection receipt (*governance.ReceiptError), the typed
+// rejection event receipt (*governance.EventReceiptError), the typed
 // GovernanceRejection is the JSON-RPC error data, so the caller holds the
-// signed receipt and its rejection_code. Every other error is an
+// signed event receipt and its rejection_code. Every other error is an
 // IngressRefusal.
 func (g *GatewayService) wrapDispatch(result interface{}, err error) (interface{}, *mcpDispatchError) {
 	if err == nil {

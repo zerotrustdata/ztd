@@ -187,7 +187,7 @@ func buildPublicGovernedActionActivity(result *evalv1.EvaluationAssignmentResult
 		if err != nil {
 			return nil, err
 		}
-		records = append(records, &evalv1.PublicGovernedActionActivityRecord{ActionLabel: record.GetActionType(), ReportedPolicyOutcome: outcome, ReceiptStatus: evalv1.PublicReceiptStatus_PUBLIC_RECEIPT_STATUS_UNAVAILABLE, EvidenceSource: evalv1.PublicEvidenceSource_PUBLIC_EVIDENCE_SOURCE_APPLICATION_REPORTED})
+		records = append(records, &evalv1.PublicGovernedActionActivityRecord{ActionLabel: record.GetActionType(), ReportedPolicyOutcome: outcome, EventReceiptStatus: evalv1.PublicEventReceiptStatus_PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE, EvidenceSource: evalv1.PublicEvidenceSource_PUBLIC_EVIDENCE_SOURCE_APPLICATION_REPORTED})
 	}
 	return publicGovernedActionActivityObserved(records), nil
 }

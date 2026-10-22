@@ -9,7 +9,7 @@
 
 // Real-stack longitudinal cases: sequential runs that share a persistent
 // investigation, a fresh-investigation control, and the planted-fault
-// investigation scenarios. The Data Operator answers audit_receipt_list from its
+// investigation scenarios. The Data Operator answers audit_event_receipt_list from its
 // own ledger and runs the workspace's reads and shell commands; only the model
 // provider is scripted. Rig: agent_evidence_real_stack_integration_test.go.
 package evaluation_test

@@ -334,7 +334,7 @@ func (x *TribunalIntentRequest) GetStepStartIndex() uint32 {
 }
 
 // TribunalMemberCall is one governed INFERENCE dispatch made by the Tribunal.
-// Every call the Inference Operator executed carries its signed receipt.
+// Every call the Inference Operator executed carries its signed event receipt.
 type TribunalMemberCall struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Stage             TribunalStage          `protobuf:"varint,1,opt,name=stage,proto3,enum=ztd.tribunal.v1.TribunalStage" json:"stage,omitempty"`
@@ -344,15 +344,15 @@ type TribunalMemberCall struct {
 	TransactionId     string                 `protobuf:"bytes,5,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	// result is the complete verified InferenceResult of a completed call.
 	Result *v1.InferenceResult `protobuf:"bytes,6,opt,name=result,proto3" json:"result,omitempty"`
-	// receipt is the Inference Operator's signed final ActionReceipt.
-	Receipt *v1.ActionReceipt `protobuf:"bytes,7,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	// event receipt is the Inference Operator's signed final EventReceipt.
+	EventReceipt *v1.EventReceipt `protobuf:"bytes,7,opt,name=event_receipt,json=eventReceipt,proto3" json:"event_receipt,omitempty"`
 	// failure is set on a call that did not complete.
 	Failure *v1.InferenceDispatchFailure `protobuf:"bytes,8,opt,name=failure,proto3" json:"failure,omitempty"`
-	// observation_receipts are the observers' signed final receipts for the
+	// observation_event_receipts are the observers' signed final event receipts for the
 	// call's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).
-	ObservationReceipts []*v1.ActionReceipt `protobuf:"bytes,9,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	ObservationEventReceipts []*v1.EventReceipt `protobuf:"bytes,9,rep,name=observation_event_receipts,json=observationEventReceipts,proto3" json:"observation_event_receipts,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *TribunalMemberCall) Reset() {
@@ -427,9 +427,9 @@ func (x *TribunalMemberCall) GetResult() *v1.InferenceResult {
 	return nil
 }
 
-func (x *TribunalMemberCall) GetReceipt() *v1.ActionReceipt {
+func (x *TribunalMemberCall) GetEventReceipt() *v1.EventReceipt {
 	if x != nil {
-		return x.Receipt
+		return x.EventReceipt
 	}
 	return nil
 }
@@ -441,9 +441,9 @@ func (x *TribunalMemberCall) GetFailure() *v1.InferenceDispatchFailure {
 	return nil
 }
 
-func (x *TribunalMemberCall) GetObservationReceipts() []*v1.ActionReceipt {
+func (x *TribunalMemberCall) GetObservationEventReceipts() []*v1.EventReceipt {
 	if x != nil {
-		return x.ObservationReceipts
+		return x.ObservationEventReceipts
 	}
 	return nil
 }
@@ -643,17 +643,17 @@ const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"\x10member_inference\x18\r \x01(\v2).ztd.operator.v1.InferenceDispatchRequestR\x0fmemberInference\x126\n" +
 	"\x17provider_attempt_prefix\x18\x0e \x01(\tR\x15providerAttemptPrefix\x122\n" +
 	"\x04tier\x18\x0f \x01(\x0e2\x1e.ztd.eval.v1.ModelCampaignRoleR\x04tier\x12(\n" +
-	"\x10step_start_index\x18\x10 \x01(\rR\x0estepStartIndex\"\xdd\x03\n" +
+	"\x10step_start_index\x18\x10 \x01(\rR\x0estepStartIndex\"\xf1\x03\n" +
 	"\x12TribunalMemberCall\x124\n" +
 	"\x05stage\x18\x01 \x01(\x0e2\x1e.ztd.tribunal.v1.TribunalStageR\x05stage\x12\x18\n" +
 	"\apersona\x18\x02 \x01(\tR\apersona\x12\x14\n" +
 	"\x05round\x18\x03 \x01(\rR\x05round\x12.\n" +
 	"\x13provider_attempt_id\x18\x04 \x01(\tR\x11providerAttemptId\x12%\n" +
 	"\x0etransaction_id\x18\x05 \x01(\tR\rtransactionId\x128\n" +
-	"\x06result\x18\x06 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x128\n" +
-	"\areceipt\x18\a \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12C\n" +
-	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\x12Q\n" +
-	"\x14observation_receipts\x18\t \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"\x90\x05\n" +
+	"\x06result\x18\x06 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x12B\n" +
+	"\revent_receipt\x18\a \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\feventReceipt\x12C\n" +
+	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\x12[\n" +
+	"\x1aobservation_event_receipts\x18\t \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x18observationEventReceipts\"\x90\x05\n" +
 	"\x14TribunalIntentResult\x12:\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2 .ztd.tribunal.v1.TribunalOutcomeR\aoutcome\x12G\n" +
 	"\targuments\x18\v \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targuments\x12%\n" +
@@ -706,7 +706,7 @@ var file_ztd_tribunal_v1_tribunal_proto_goTypes = []any{
 	(*v1.InferenceDispatchRequest)(nil), // 5: ztd.operator.v1.InferenceDispatchRequest
 	(v11.ModelCampaignRole)(0),          // 6: ztd.eval.v1.ModelCampaignRole
 	(*v1.InferenceResult)(nil),          // 7: ztd.operator.v1.InferenceResult
-	(*v1.ActionReceipt)(nil),            // 8: ztd.operator.v1.ActionReceipt
+	(*v1.EventReceipt)(nil),             // 8: ztd.operator.v1.EventReceipt
 	(*v1.InferenceDispatchFailure)(nil), // 9: ztd.operator.v1.InferenceDispatchFailure
 	(*v1.RunShellCommandArguments)(nil), // 10: ztd.operator.v1.RunShellCommandArguments
 	(*v11.AgentStep)(nil),               // 11: ztd.eval.v1.AgentStep
@@ -719,9 +719,9 @@ var file_ztd_tribunal_v1_tribunal_proto_depIdxs = []int32{
 	6,  // 1: ztd.tribunal.v1.TribunalIntentRequest.tier:type_name -> ztd.eval.v1.ModelCampaignRole
 	0,  // 2: ztd.tribunal.v1.TribunalMemberCall.stage:type_name -> ztd.tribunal.v1.TribunalStage
 	7,  // 3: ztd.tribunal.v1.TribunalMemberCall.result:type_name -> ztd.operator.v1.InferenceResult
-	8,  // 4: ztd.tribunal.v1.TribunalMemberCall.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	8,  // 4: ztd.tribunal.v1.TribunalMemberCall.event_receipt:type_name -> ztd.operator.v1.EventReceipt
 	9,  // 5: ztd.tribunal.v1.TribunalMemberCall.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
-	8,  // 6: ztd.tribunal.v1.TribunalMemberCall.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
+	8,  // 6: ztd.tribunal.v1.TribunalMemberCall.observation_event_receipts:type_name -> ztd.operator.v1.EventReceipt
 	1,  // 7: ztd.tribunal.v1.TribunalIntentResult.outcome:type_name -> ztd.tribunal.v1.TribunalOutcome
 	10, // 8: ztd.tribunal.v1.TribunalIntentResult.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
 	11, // 9: ztd.tribunal.v1.TribunalIntentResult.steps:type_name -> ztd.eval.v1.AgentStep

@@ -23,7 +23,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func (c *Client) GetEventReceipt(ctx context.Context, transactionID string, persona ...Persona) (*operatorv1.ActionReceipt, []byte, error) {
+func (c *Client) GetEventReceipt(ctx context.Context, transactionID string, persona ...Persona) (*operatorv1.EventReceipt, []byte, error) {
 	p := c.auditorPersona()
 	if len(persona) > 0 {
 		p = persona[0]
@@ -39,16 +39,16 @@ func (c *Client) GetEventReceipt(ctx context.Context, transactionID string, pers
 	if status >= 400 {
 		return nil, body, fmt.Errorf("gateway returned status %d for transaction %s: %s", status, transactionID, string(body))
 	}
-	receipt := &operatorv1.ActionReceipt{}
-	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(body, receipt); err != nil {
-		return nil, body, fmt.Errorf("decode canonical action receipt: %w", err)
+	eventReceipt := &operatorv1.EventReceipt{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(body, eventReceipt); err != nil {
+		return nil, body, fmt.Errorf("decode canonical action event_receipt: %w", err)
 	}
-	return receipt, body, nil
+	return eventReceipt, body, nil
 }
 
 // GetTrustedSignerPublicKey fetches the Ed25519 public key for a governance
 // trusted signer by key ID from the Gateway's signer endpoint. It is used by
-// the harness to independently verify receipt and persistence attestation
+// the harness to independently verify event receipt and persistence attestation
 // signatures outside the Gateway relay trust boundary. Returns
 // constants.ErrTrustedSignerKeyNotFound when the gateway has no record of the
 // requested key ID.

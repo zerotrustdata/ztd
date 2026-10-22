@@ -166,18 +166,18 @@ When constructing a `GovernanceEnvelope` directly:
 2. **Serialize Typed Payload**: Create the protobuf message (e.g. `ztd.operator.v1.CommandRequested`), serialize to binary, and base64-encode. Set `event_type` to a registered request event type and `protocol_version` to `"2"`; protocol version 2 is required for new ingress.
 3. **Compute Transaction Hash**: Compute the lowercase hexadecimal SHA-256 of `ztd-tx-v2|<action_type>|<event_type>|<canonical_v1>`. `<canonical_v1>` appends each populated field, followed by `|`, in this order: `action_type`, `target_resource`, `payload`, `state_merkle_root`, `nonce`, `expires_at`, `intent_data`, `requestor_user_id`, `acting_app_id`, `operator_id`, `operator_session_id`, `case_id`, `investigation_id`, `task_id`, `web_session_id`, `cli_session_id`. Absent optional fields are omitted. The canonical encoding is defined in [Governance Architecture](../architecture/governance.md).
 4. **Attach Posture-Required Proofs**: Under `consensus` and `notary` postures, set `governance.l2.consensus_set_id` and include `votes` from at least K distinct bound members. Each vote carries `signer_key_id`, `decision`, and a hex-encoded Ed25519 `consensus_signature` over `<transaction_hash>|<decision>`. Attach L3 authorization when the posture requires it. Direct submission does not synthesize missing L2 or L3 proofs; the envelope fails closed at L4.
-5. **Submit**: `POST /api/v1/governance/envelopes` returns HTTP 200 with `ActionReceipt`.
+5. **Submit**: `POST /api/v1/governance/envelopes` returns HTTP 200 with `EventReceipt`.
 
 ---
 
-## Verifying Action Receipts
+## Verifying Action Event receipts
 
-An `ActionReceipt` contains execution status, state roots, stage evidence, and signatures. Verify both signatures before trusting the outcome, using the Ed25519 Actuator public key bound to the receipt's `signer_key_id`:
+An `EventReceipt` contains execution status, state roots, stage evidence, and signatures. Verify both signatures before trusting the outcome, using the Ed25519 Actuator public key bound to the event receipt's `signer_key_id`:
 
-1. `signature`: Signs the canonical receipt fields and deterministic stage evidence.
-2. `final_persistence_attestation.signature`: Signs the persistence attestation. Its `signer_key_id` MUST equal the receipt's `signer_key_id`, and its `receipt_signature_digest` MUST match `signature`.
+1. `signature`: Signs the canonical event receipt fields and deterministic stage evidence.
+2. `final_persistence_attestation.signature`: Signs the persistence attestation. Its `signer_key_id` MUST equal the event receipt's `signer_key_id`, and its `event_receipt_signature_digest` MUST match `signature`.
 
-Use the reference verifiers `VerifyActionReceiptSignature` and `VerifyReceiptPersistenceAttestation` from `internal/services/governance/l5_actuator.go`.
+Use the reference verifiers `VerifyEventReceiptSignature` and `VerifyEventReceiptPersistenceAttestation` from `internal/services/governance/l5_actuator.go`.
 
 ---
 
@@ -186,7 +186,7 @@ Use the reference verifiers `VerifyActionReceiptSignature` and `VerifyReceiptPer
 - Applications MUST send all mutations through a governed Gateway ingress and MUST NOT bypass the PEP execution boundary.
 - Applications MUST validate Gateway TLS certificates and MUST NOT disable verification.
 - Applications MUST rebuild envelopes on state-root mismatches (`TX_STATE_MISMATCH`) with fresh nonces and signatures.
-- Applications MUST verify receipt signatures against trusted actuator keys before consuming execution output.
+- Applications MUST verify event receipt signatures against trusted actuator keys before consuming execution output.
 
 ---
 

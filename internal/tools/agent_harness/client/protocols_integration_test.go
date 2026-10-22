@@ -32,7 +32,7 @@ func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *test
 		EventType:     string(constants.EventOperatorFileEditRequested),
 		ActionType:    "FILE_EDIT",
 		ResultPayload: []byte("result"),
-		Receipt:       outcomeReceipt("tx-1"),
+		EventReceipt:  outcomeEventReceipt("tx-1"),
 	}
 	responseBody := canonicalBody(t, dispatched)
 	var received models.OperatorCommandRequest

@@ -79,7 +79,7 @@ func ValidateWitnessNativeTool(capabilities constants.OperatorCapabilities, tool
 		return nil
 	}
 	switch toolName {
-	case constants.MCPToolAuditReceiptList, constants.MCPToolAuditReceiptGet:
+	case constants.MCPToolAuditEventReceiptList, constants.MCPToolAuditEventReceiptGet:
 		return nil
 	}
 	return fmt.Errorf("%w: native tool %q", constants.ErrWitnessCommandNotCapable, toolName)

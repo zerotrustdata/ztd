@@ -93,7 +93,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-NET-COMM-01 | Governed remote Operators MUST establish outbound-only mTLS WebSocket connections to the Gateway pub/sub endpoint (`/api/v1/pubsub/stream`). Operators MUST NOT open inbound listening ports for command, MCP, or A2A traffic. |
-| INV-NET-COMM-02 | Pub/sub topic channels (`cmd:`, `results:`, `heartbeat:`, `receipts:`, `renewal:`, `audit:`) MUST be strictly scoped by Operator ID and session ID, and authorization MUST be validated against the caller's verified SPIFFE identity URI SAN. |
+| INV-NET-COMM-02 | Pub/sub topic channels (`cmd:`, `results:`, `heartbeat:`, `event_receipts:`, `renewal:`, `audit:`) MUST be strictly scoped by Operator ID and session ID, and authorization MUST be validated against the caller's verified SPIFFE identity URI SAN. |
 
 ## Owned surfaces
 
@@ -215,7 +215,7 @@ Governed Operators enforce strict listener isolation:
   - `cmd:<operator_id>:<operator_session_id>`: Gateway-to-Operator command dispatch.
   - `results:<operator_id>:<operator_session_id>`: Command execution results.
   - `heartbeat:<operator_id>:<operator_session_id>`: Operator liveness telemetry.
-  - `receipts:<operator_id>:<operator_session_id>`: Signed `ActionReceipt` publication.
+  - `event_receipts:<operator_id>:<operator_session_id>`: Signed `EventReceipt` publication.
   - `renewal:<operator_id>:<operator_session_id>`: Certificate leaf renewal.
   - `audit:<operator_id>:<operator_session_id>`: Gateway-to-Operator audit ingest.
 - **Embedded Substrate**: When running in Gateway mode, Gateway-local operations use an in-process loopback pub/sub bridge without opening network sockets.
@@ -270,7 +270,7 @@ curl -s http://localhost:8080/.well-known/ztd/pki/fingerprint
 - [System Architecture Overview](overview.md): Platform architecture and component boundaries.
 - [Authentication & Authorization Architecture](auth.md): Route classification, identity extraction, and session lifecycle.
 - [Gateway Architecture](gateway.md): Gateway admission control, operational modes, and policy decision points.
-- [Operator Architecture](operator.md): Remote operator execution, L4 Warden verification, and L5 Actuator receipts.
+- [Operator Architecture](operator.md): Remote operator execution, L4 Warden verification, and L5 Actuator event receipts.
 - [SSE Streaming](sse.md): Server-Sent Events architecture and consumer routing.
 - [Console Architecture](console.md): Gateway-embedded browser console architecture.
 - [Public Spectator Architecture](public_spectator.md): Read-only public mirror and evaluation explorer.

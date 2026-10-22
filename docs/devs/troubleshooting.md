@@ -220,7 +220,7 @@ Run `./ztd operator show` with an operator ID or operator session ID from the `l
 ./ztd audit events --limit 20
 ```
 
-Filter receipts with `--session` set to the Operator session ID, or fetch one canonical receipt with `--tx-id`.
+Filter event receipts with `--session` set to the Operator session ID, or fetch one canonical event receipt with `--tx-id`.
 
 ## Anti-patterns
 
@@ -230,7 +230,7 @@ Filter receipts with `--session` set to the Operator session ID, or fetch one ca
 - Re-enrolling and wiping valid certificates when a simple `auth refresh` suffices (`INV-TROUBLE-AUTH-02`).
 - Running `auth refresh` against a revoked certificate instead of clearing local credentials and logging in again (`INV-TROUBLE-AUTH-04`).
 - Attempting to connect inbound to an outbound Operator, or configuring inbound firewall ports for an Operator (`INV-TROUBLE-OP-01`).
-- Bypassing the L1–L5 pipeline when an envelope is rejected instead of diagnosing root causes from audit receipts (`INV-TROUBLE-OP-02`).
+- Bypassing the L1–L5 pipeline when an envelope is rejected instead of diagnosing root causes from audit event receipts (`INV-TROUBLE-OP-02`).
 
 ## Links out
 

@@ -63,7 +63,7 @@ func diagnosisQualityGrade(result *evalv1.EvaluationAssignmentResult) *evalv1.Se
 
 // judgeTamperInference forwards every governed inference to the real Inference
 // Operator. The provider dispatch numbered turn (1-based) is handed to tamper
-// before the executor verifies its receipt; judgeTx records that dispatch's
+// before the executor verifies its event receipt; judgeTx records that dispatch's
 // transaction as the Operator signed it, before any tamper.
 type judgeTamperInference struct {
 	realStackInference
@@ -105,7 +105,7 @@ func executeNextWithInference(t *testing.T, env *realStackAgentRun, inference ev
 	return res
 }
 
-func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
+func TestRealStackJudge_SecondaryScoreAttachesVerifiedEventReceipt(t *testing.T) {
 	ctx := t.Context()
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true, scenarioID: judgeScenarioID, suffix: "judge-score",
@@ -129,12 +129,12 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	assert.Contains(t, diagGrade.GetDetail(), "rubric: "+judge.RubricVersion)
 	assert.Equal(t, "diagnosis-quality-v1", judge.RubricVersion)
 
-	// 2. The judge receipt is kept as verified and names the judge's own
+	// 2. The judge event receipt is kept as verified and names the judge's own
 	// transaction, which is distinct from the agent's.
 	require.NotNil(t, diagGrade.GetGraderCallRef())
 	artifactID := diagGrade.GetGraderCallRef().GetArtifactId()
-	require.True(t, strings.HasPrefix(artifactID, "receipt:"), "artifact %q", artifactID)
-	judgeTx := strings.TrimPrefix(artifactID, "receipt:")
+	require.True(t, strings.HasPrefix(artifactID, "event_receipt:"), "artifact %q", artifactID)
+	judgeTx := strings.TrimPrefix(artifactID, "event_receipt:")
 	require.NotEmpty(t, judgeTx)
 	assert.NotEqual(t, agentTx, judgeTx, "the judge is a second governed inference")
 	assert.Equal(t, "verified", diagGrade.GetGraderCallRef().GetVerificationStatus())
@@ -154,7 +154,7 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	// 4. GraderCalls records the judge inference.
 	hasJudgeGraderCall := false
 	for _, gc := range res.GetGraderCalls() {
-		if gc.GetInferenceRecordRef() != nil && gc.GetInferenceRecordRef().GetArtifactId() == "receipt:"+judgeTx {
+		if gc.GetInferenceRecordRef() != nil && gc.GetInferenceRecordRef().GetArtifactId() == "event_receipt:"+judgeTx {
 			hasJudgeGraderCall = true
 			break
 		}
@@ -205,33 +205,33 @@ func TestRealStackJudge_FailureReportedSeparately(t *testing.T) {
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus())
 }
 
-// TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts proves a judge
-// score is labelled verified only when its receipt verifies. Each case tampers
+// TestRealStackJudge_EventReceiptVerificationRejectsTamperedEventReceipts proves a judge
+// score is labelled verified only when its event receipt verifies. Each case tampers
 // the real judge response in flight. The case that needs re-signing with the
 // Inference Operator's pinned key is not here: the real stack exposes no
 // handle to that key.
-func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T) {
+func TestRealStackJudge_EventReceiptVerificationRejectsTamperedEventReceipts(t *testing.T) {
 	tampers := []struct {
 		name       string
 		tamper     func(t *testing.T, response *operatorv1.InferenceDispatchResponse)
 		wantDetail string
 	}{
 		{
-			name: "unsigned judge receipt",
+			name: "unsigned judge event receipt",
 			tamper: func(_ *testing.T, response *operatorv1.InferenceDispatchResponse) {
-				response.Receipt.Signature = ""
+				response.EventReceipt.Signature = ""
 			},
 		},
 		{
-			name: "judge receipt signed by an unpinned key",
+			name: "judge event receipt signed by an unpinned key",
 			tamper: func(t *testing.T, response *operatorv1.InferenceDispatchResponse) {
-				oracletest.NewSigner(t).Resign(t, response.Receipt)
+				oracletest.NewSigner(t).Resign(t, response.EventReceipt)
 			},
 		},
 		{
-			name: "judge response with no receipt",
+			name: "judge response with no event receipt",
 			tamper: func(_ *testing.T, response *operatorv1.InferenceDispatchResponse) {
-				response.Receipt = nil
+				response.EventReceipt = nil
 			},
 		},
 		{
@@ -242,7 +242,7 @@ func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T)
 			wantDetail: constants.ErrMissingRequiredField.Error(),
 		},
 		{
-			// The digest and receipt still agree; only the score body the
+			// The digest and event receipt still agree; only the score body the
 			// executor reads is altered.
 			name: "judge score body altered under the signed digest",
 			tamper: func(_ *testing.T, response *operatorv1.InferenceDispatchResponse) {
@@ -269,14 +269,14 @@ func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T)
 			diagGrade := diagnosisQualityGrade(res)
 			require.NotNil(t, diagGrade, "diagnosis-quality grade should be present in SemanticGrades")
 			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, diagGrade.GetStatus())
-			assert.True(t, strings.HasPrefix(diagGrade.GetDetail(), "judge receipt verification failed: "), "detail: %s", diagGrade.GetDetail())
+			assert.True(t, strings.HasPrefix(diagGrade.GetDetail(), "judge event receipt verification failed: "), "detail: %s", diagGrade.GetDetail())
 			if tc.wantDetail != "" {
 				assert.Contains(t, diagGrade.GetDetail(), tc.wantDetail)
 			}
-			assert.Nil(t, diagGrade.GetGraderCallRef(), "an unverified judge receipt must not be referenced as verified")
-			assert.Empty(t, res.GetGraderCalls(), "an unverified judge receipt must not be recorded as a grader call")
+			assert.Nil(t, diagGrade.GetGraderCallRef(), "an unverified judge event receipt must not be referenced as verified")
+			assert.Empty(t, res.GetGraderCalls(), "an unverified judge event receipt must not be recorded as a grader call")
 			for _, ga := range res.GetGovernedActions() {
-				assert.NotEqual(t, inference.judgeTx, ga.GetTransactionId(), "an unverified judge receipt must not bind a governed action")
+				assert.NotEqual(t, inference.judgeTx, ga.GetTransactionId(), "an unverified judge event receipt must not bind a governed action")
 			}
 			for _, ds := range res.GetDecomposedScores() {
 				assert.NotEqual(t, "diagnosis_quality", ds.GetDimension(), "an unverified judge score must not be recorded")
@@ -294,7 +294,7 @@ func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T)
 // TestRealStackJudge_InvalidEvidenceIsNeverJudged proves a trace the signed
 // evidence does not back imports INVALID_EVIDENCE and is never sent to the
 // judge, so no judge grade, score, or promotion can attach to it. The agent's
-// own inference receipt is altered in flight, so the trace fails verification.
+// own inference event receipt is altered in flight, so the trace fails verification.
 func TestRealStackJudge_InvalidEvidenceIsNeverJudged(t *testing.T) {
 	ctx := t.Context()
 	env := newRealStackAgentRun(t, realStackOptions{
@@ -303,7 +303,7 @@ func TestRealStackJudge_InvalidEvidenceIsNeverJudged(t *testing.T) {
 	})
 	inference := &judgeTamperInference{realStackInference: env.inference, turn: 1}
 	inference.tamper = func(response *operatorv1.InferenceDispatchResponse) {
-		response.Receipt.Signature = flipHexDigit(response.Receipt.Signature)
+		response.EventReceipt.Signature = flipHexDigit(response.EventReceipt.Signature)
 	}
 
 	res := executeNextWithInference(t, env, inference)

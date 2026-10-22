@@ -468,7 +468,7 @@ message OperatorDocument {
   google.protobuf.Timestamp stale_at = 35;
   // actuator_public_key is the hex Ed25519 public key of this Operator's L5
   // Actuator, bound once at enrollment over the authenticated bootstrap channel.
-  // Receipts executed by this Operator verify only against this key.
+  // Event receipts executed by this Operator verify only against this key.
   string actuator_public_key = 36;
   // actuator_key_id equals actuator_public_key (key_id == hex(pub)).
   string actuator_key_id = 37;
@@ -563,7 +563,7 @@ enum DeterministicStageKind {
   DETERMINISTIC_STAGE_KIND_PROTOCOL_L2 = 2;
   DETERMINISTIC_STAGE_KIND_L3_NOTARY = 3;
   DETERMINISTIC_STAGE_KIND_L4_VERIFICATION = 4;
-  DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE = 5;
+  DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE = 5;
   DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND = 6;
   DETERMINISTIC_STAGE_KIND_L5_EXECUTION = 7;
 }
@@ -597,7 +597,7 @@ message DeterministicStageEvidence {
   string state_root_before = 18;
   string state_root_after = 19;
   string signer_key_id = 20;
-  string receipt_signature_digest = 21;
+  string event_receipt_signature_digest = 21;
   string commitment_hash = 22;
   string prior_commitment_hash = 23;
   string l2_signature_digest = 24;
@@ -608,69 +608,69 @@ message DeterministicStageEvidence {
   string doctrine_bundle_version = 29;
 }
 
-// ReceiptPersistenceAttestation is the signed proof that a receipt signature was durably associated with an audit record at a specific timestamp.
-message ReceiptPersistenceAttestation {
+// EventReceiptPersistenceAttestation is the signed proof that an event receipt signature was durably associated with an audit record at a specific timestamp.
+message EventReceiptPersistenceAttestation {
   string transaction_id = 1;
-  string receipt_signature_digest = 2;
+  string event_receipt_signature_digest = 2;
   int64 persisted_at_unix_ms = 3;
   string audit_record_id = 4;
   string signer_key_id = 5;
   string signature = 6;
 }
 
-// ReceiptFailureCode is the typed classification of a FAILED ActionReceipt.
+// EventReceiptFailureCode is the typed classification of a FAILED EventReceipt.
 // The L5 actuator stamps it at finalization so verifiers can distinguish
 // governance rejections, client faults, and provider failures without
-// string-matching the result_summary. It is bound into the receipt signature.
-enum ReceiptFailureCode {
-  RECEIPT_FAILURE_CODE_UNSPECIFIED = 0;
+// string-matching the result_summary. It is bound into the event receipt signature.
+enum EventReceiptFailureCode {
+  EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED = 0;
   // The transaction failed governance verification before execution
   // (L1 doctrine, L2 consensus, L3 notary, identity, replay, expiry).
-  RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED = 1;
+  EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED = 1;
   // The request model did not equal the configured role model.
-  RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED = 2;
+  EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED = 2;
   // The request carried an unspecified or unknown model role.
-  RECEIPT_FAILURE_CODE_ROLE_INVALID = 3;
+  EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID = 3;
   // The request carried a malformed model reference.
-  RECEIPT_FAILURE_CODE_MODEL_REF_INVALID = 4;
+  EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID = 4;
   // The inference backend was unreachable or not registered.
-  RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE = 5;
+  EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE = 5;
   // The inference backend request timed out.
-  RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT = 6;
+  EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT = 6;
   // The inference backend failed generation.
-  RECEIPT_FAILURE_CODE_GENERATE_FAILED = 7;
+  EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED = 7;
   // Any other execution failure.
-  RECEIPT_FAILURE_CODE_EXECUTION_FAILED = 8;
+  EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED = 8;
   // The requested or configured model is absent from the provider's model store.
-  RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND = 9;
+  EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND = 9;
   // The provider returned a malformed or oversized response.
-  RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID = 10;
-  RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID = 11;
-  RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED = 12;
-  RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED = 13;
-  RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH = 14;
-  RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH = 15;
-  RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID = 16;
-  RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID = 17;
-  RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID = 18;
-  RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED = 19;
+  EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID = 10;
+  EVENT_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID = 11;
+  EVENT_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED = 12;
+  EVENT_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED = 13;
+  EVENT_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH = 14;
+  EVENT_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH = 15;
+  EVENT_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID = 16;
+  EVENT_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID = 17;
+  EVENT_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID = 18;
+  EVENT_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED = 19;
   // The prompt filled the provider's context window, so the provider truncated it or left no room to generate.
-  RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW = 20;
+  EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW = 20;
   // A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch.
-  RECEIPT_FAILURE_CODE_REHYDRATION_FAILED = 21;
-  RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID = 22;
-  RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID = 23;
-  RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED = 24;
-  RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED = 25;
+  EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED = 21;
+  EVENT_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID = 22;
+  EVENT_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID = 23;
+  EVENT_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED = 24;
+  EVENT_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED = 25;
 }
 
 // GovernanceRejectionCode names the verification check that rejected a
 // transaction before execution. The L5 actuator stamps it on every
-// GOVERNANCE_REJECTED receipt, so a verifier can attribute a rejection to a
+// GOVERNANCE_REJECTED event receipt, so a verifier can attribute a rejection to a
 // layer from signed evidence alone, without parsing result_summary. It is
-// bound into the receipt signature.
+// bound into the event receipt signature.
 enum GovernanceRejectionCode {
-  // The receipt is not a governance rejection.
+  // The event receipt is not a governance rejection.
   GOVERNANCE_REJECTION_CODE_UNSPECIFIED = 0;
   // The rejection error is not mapped to a check. A verifier treats it as a defect.
   GOVERNANCE_REJECTION_CODE_UNCLASSIFIED = 1;
@@ -708,8 +708,8 @@ enum GovernanceRejectionCode {
   GOVERNANCE_REJECTION_CODE_MCP_TARGET_MISMATCH = 25;
 }
 
-// ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
-message ActionReceipt {
+// EventReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
+message EventReceipt {
   // Original GovernanceEnvelope ID
   string transaction_id = 1;
 
@@ -734,51 +734,51 @@ message ActionReceipt {
   // ID of the Warden's signing key
   string signer_key_id = 8;
 
-  // ED25519 signature over the canonical receipt fields and deterministic stage evidence hash.
+  // ED25519 signature over the canonical event receipt fields and deterministic stage evidence hash.
   string signature = 9;
 
   // Status of L2 (Consensus) signature verification.
   // Distinguishes between "not required" vs "required but failed" for compliance.
-  L2Status l2_status = 11;
+  L2Status l2_status = 10;
 
   // Status of L3 (Notary/Human) proof verification.
   // Distinguishes between "not required" vs "required but failed" for compliance.
-  L3Status l3_status = 12;
+  L3Status l3_status = 11;
 
-  repeated DeterministicStageEvidence deterministic_stage_evidence = 13;
-  ReceiptPersistenceAttestation final_persistence_attestation = 14;
+  repeated DeterministicStageEvidence deterministic_stage_evidence = 12;
+  EventReceiptPersistenceAttestation final_persistence_attestation = 13;
 
-  // Typed classification of a FAILED receipt. UNSPECIFIED on non-failed
-  // receipts. Bound into the signature via canonicalization.
-  ReceiptFailureCode failure_code = 15;
+  // Typed classification of a FAILED event receipt. UNSPECIFIED on non-failed
+  // event receipts. Bound into the signature via canonicalization.
+  EventReceiptFailureCode failure_code = 14;
 
-  // The semantic request event that produced this receipt.
-  string event_type = 16;
+  // The semantic request event that produced this event receipt.
+  string event_type = 15;
 
   // The registry-derived governance class for the request event.
-  string action_type = 17;
+  string action_type = 16;
 
   // The verification check that rejected the transaction. Set exactly when
   // failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the
   // signature via canonicalization.
-  GovernanceRejectionCode rejection_code = 18;
+  GovernanceRejectionCode rejection_code = 17;
 }
 
 // GovernanceRejection is the client-facing body every governed ingress
 // (direct envelope submission, governed dispatch, MCP, A2A) returns when the
-// executing Operator rejected a transaction at L4. receipt is the Operator's
-// signed FAILED receipt with failure_code GOVERNANCE_REJECTED; its
+// executing Operator rejected a transaction at L4. event receipt is the Operator's
+// signed FAILED event receipt with failure_code GOVERNANCE_REJECTED; its
 // transaction_id and rejection_code are the authoritative identity and
 // attribution of the rejection. error is the governance sentinel text, for
 // display only.
 message GovernanceRejection {
   string error = 1;
-  ActionReceipt receipt = 2;
+  EventReceipt event_receipt = 2;
 }
 
 // IngressRefusalCode classifies a refusal that happens before a GovernanceEnvelope
 // exists. It is the pre-envelope counterpart of GovernanceRejectionCode. A refusal
-// never carries a receipt, because nothing was executed or rejected by L4.
+// never carries an event receipt, because nothing was executed or rejected by L4.
 enum IngressRefusalCode {
   INGRESS_REFUSAL_CODE_UNSPECIFIED = 0;
   INGRESS_REFUSAL_CODE_UNCLASSIFIED = 1;
@@ -811,7 +811,7 @@ message IngressRefusal {
 }
 
 // GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
-// receipt is the executing Operator's signed final ActionReceipt. Failures are
+// event receipt is the executing Operator's signed final EventReceipt. Failures are
 // GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
 message GovernedDispatchResult {
   string transaction_id = 1;
@@ -821,7 +821,7 @@ message GovernedDispatchResult {
   // (for example FsReadResult), the same bytes the dispatch response carries today.
   bytes result_payload = 4;
   InferenceResult inference_result = 5;
-  ActionReceipt receipt = 6;
+  EventReceipt event_receipt = 6;
 }
 
 // CommitmentAttestation is the Auditor's signed record that a verified
@@ -1657,7 +1657,7 @@ enum InferenceProviderAttemptStatus {
 
 // InferenceProviderAttemptRecord is the durable operator-local record for one
 // governed provider attempt. It is written before provider contact and
-// finalized only after terminal receipt/result evidence is available.
+// finalized only after terminal event receipt/result evidence is available.
 message InferenceProviderAttemptRecord {
   string provider_attempt_id = 1;
   string transaction_id = 2;
@@ -1677,7 +1677,7 @@ message InferenceProviderAttemptRecord {
   uint64 raw_response_size_bytes = 11;
 }
 
-// InferenceResult carries ordered response parts, usage metadata, and the finish reason returned by the backend. The governed envelope carries this for the receipt and audit chain.
+// InferenceResult carries ordered response parts, usage metadata, and the finish reason returned by the backend. The governed envelope carries this for the event receipt and audit chain.
 message InferenceResult {
   reserved 1;
   reserved "text";
@@ -1701,7 +1701,7 @@ message InferenceResult {
   // Canonical digest of the complete result: lowercase hex SHA-256 over the
   // deterministic protobuf serialization of this message with result_digest
   // cleared. The Inference Node computes it at execution time; the signed
-  // ActionReceipt's result_summary binds it, and the User Gateway verifies
+  // EventReceipt's result_summary binds it, and the User Gateway verifies
   // digest equality before returning success to the caller.
   string result_digest = 7;
 
@@ -1762,15 +1762,15 @@ message InferenceProgressEvent {
 // InferenceCompletion is the protocol-owned completion publication for a
 // governed inference request. The Inference Node publishes it to the
 // results channel only after the L5 Actuator has finalized and signed the
-// ActionReceipt, so the complete result and its verified receipt are a
-// single correlated outcome. A failed execution carries the FAILED receipt
+// EventReceipt, so the complete result and its verified event receipt are a
+// single correlated outcome. A failed execution carries the FAILED event_receipt
 // and no result, which terminates the Gateway's dispatch wait immediately
 // instead of at the dispatch deadline.
 message InferenceCompletion {
-  // The signed final ActionReceipt for the inference transaction.
-  ActionReceipt receipt = 1;
+  // The signed final EventReceipt for the inference transaction.
+  EventReceipt event_receipt = 1;
 
-  // The complete inference result. Absent when the receipt status is not
+  // The complete inference result. Absent when the event receipt status is not
   // EXECUTION_STATUS_COMPLETED.
   InferenceResult result = 2;
 }
@@ -1885,15 +1885,15 @@ enum InferenceDispatchFailureCode {
   INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID = 21;
   INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED = 22;
   INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY = 23;
-  INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED = 24;
-  INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY = 25;
+  INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_FAILED = 24;
+  INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_VERIFY = 25;
   INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH = 26;
   INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST = 27;
   INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH = 28;
   INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH = 29;
   INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID = 30;
   INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE = 31;
-  INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT = 32;
+  INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_EVENT_RECEIPT = 32;
   INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT = 33;
   INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE = 34;
   INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED = 35;
@@ -1914,25 +1914,25 @@ enum InferenceDispatchFailureCode {
 // InferenceDispatchFailure is the protocol-owned error body for a non-2xx
 // POST /api/v1/inference/dispatch. Error is a public-safe centralized
 // sentinel; code classifies it, and is UNSPECIFIED for request faults the
-// handler rejects before dispatch (method, identity, body size). Receipt is
-// the executing Operator's verified signed FAILED receipt when the dispatch
+// handler rejects before dispatch (method, identity, body size). Event receipt is
+// the executing Operator's verified signed FAILED event receipt when the dispatch
 // reached it: a governance rejection, or a failed execution whose commitment
 // the Operator's ledger holds. It is absent for every failure that ended
-// before the Operator signed an outcome. Observation_receipts are the
-// observers' verified signed BEGIN and FINALIZE receipts the failed attempt
+// before the Operator signed an outcome. Observation_event_receipts are the
+// observers' verified signed BEGIN and FINALIZE event receipts the failed attempt
 // produced, in dispatch order, so a trace bracket can claim their
 // commitments as it does for InferenceDispatchResponse.
 message InferenceDispatchFailure {
   string error = 1;
   InferenceDispatchFailureCode code = 2;
-  ActionReceipt receipt = 3;
-  repeated ActionReceipt observation_receipts = 4;
+  EventReceipt event_receipt = 3;
+  repeated EventReceipt observation_event_receipts = 4;
 }
 
 // InferenceDispatchStreamFailure is the protocol-owned terminal failure
 // frame for a streaming dispatch that already started NDJSON delivery.
 // Reason is a public-safe centralized sentinel; it never carries raw
-// prompts, model output, or receipt bodies. Code classifies it.
+// prompts, model output, or event receipt bodies. Code classifies it.
 message InferenceDispatchStreamFailure {
   string reason = 1;
   InferenceDispatchFailureCode code = 2;
@@ -1940,7 +1940,7 @@ message InferenceDispatchStreamFailure {
 
 // InferenceDispatchStreamFrame is one NDJSON line in a streaming dispatch
 // response. Progress frames are delivery telemetry only. The completion
-// frame carries the verified terminal result and signed receipt. A failure
+// frame carries the verified terminal result and signed event receipt. A failure
 // frame is the explicit terminal outcome when cancellation, disconnect,
 // backpressure, or event-to-terminal hash reconciliation prevents a
 // verified completion after the HTTP response has started.
@@ -1954,7 +1954,7 @@ message InferenceDispatchStreamFrame {
 
 // InferenceDispatchResponse is the protocol-owned success response for
 // POST /api/v1/inference/dispatch. The Gateway returns it only after
-// verifying the final receipt signature, persistence attestation,
+// verifying the final event receipt signature, persistence attestation,
 // transaction identity, and result digest equality. Failure responses use
 // the gateway's standard typed error envelope with a public-safe code.
 message InferenceDispatchResponse {
@@ -1962,20 +1962,20 @@ message InferenceDispatchResponse {
   string transaction_id = 1;
 
   // The complete inference result whose result_digest is bound into the
-  // signed receipt.
+  // signed event receipt.
   InferenceResult result = 2;
 
-  // The verified final signed ActionReceipt for the transaction.
-  ActionReceipt receipt = 3;
+  // The verified final signed EventReceipt for the transaction.
+  EventReceipt event_receipt = 3;
 
-  // The observers' verified final signed receipts for this attempt's
+  // The observers' verified final signed event receipts for this attempt's
   // provider-boundary and model provenance BEGIN and FINALIZE commands, in
   // dispatch order. Each was signed before the response was returned, so a
   // trace bracket closing after the dispatch can claim its commitment.
-  repeated ActionReceipt observation_receipts = 4;
+  repeated EventReceipt observation_event_receipts = 4;
 }
 
-// Included in result_digest and therefore bound by the Operator's signed L5 receipt.
+// Included in result_digest and therefore bound by the Operator's signed L5 event receipt.
 message InferenceHostedEgressAttestation {
  string provider_origin = 1;
  string model_version = 2;

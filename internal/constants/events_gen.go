@@ -80,6 +80,7 @@ const EventOperatorCommandStatusUpdatedRunning EventType = "ztd.v1.operator.comm
 const EventOperatorContextChanged EventType = "ztd.v1.operator.context.changed"
 const EventOperatorDeviceRegistered EventType = "ztd.v1.operator.device.registered"
 const EventOperatorEvalAnswerRequested EventType = "ztd.v1.operator.eval.answer.requested"
+const EventOperatorEventReceiptRecorded EventType = "ztd.v1.operator.event_receipt.recorded"
 const EventOperatorFieldReadAccessDenied EventType = "ztd.v1.operator.field.read.access.denied"
 const EventOperatorFieldReadAccessGranted EventType = "ztd.v1.operator.field.read.access.granted"
 const EventOperatorFieldReadRequested EventType = "ztd.v1.operator.field.read.requested"
@@ -175,7 +176,6 @@ const EventOperatorOllamaModelResidencyRequested EventType = "ztd.v1.operator.ol
 const EventOperatorPanelListUpdated EventType = "ztd.v1.operator.panel.list.updated"
 const EventOperatorProviderBoundaryObservationCompleted EventType = "ztd.v1.operator.provider.boundary.observation.completed"
 const EventOperatorProviderBoundaryObservationRequested EventType = "ztd.v1.operator.provider.boundary.observation.requested"
-const EventOperatorReceiptRecorded EventType = "ztd.v1.operator.receipt.recorded"
 const EventOperatorReputationCommitmentCreated EventType = "ztd.v1.operator.reputation.commitment.created"
 const EventOperatorReputationCommitmentFailed EventType = "ztd.v1.operator.reputation.commitment.failed"
 const EventOperatorReputationCommitmentVerified EventType = "ztd.v1.operator.reputation.commitment.verified"
@@ -781,6 +781,13 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Persistence:       "ephemeral",
 		GovernanceAction:  ActionTypeEvalAnswer,
 		GovernancePayload: "ztd.operator.v1.EvalAnswerRequested",
+	},
+	EventOperatorEventReceiptRecorded: {
+		Key:         "OperatorEventReceiptRecorded",
+		Kind:        EventKindFact,
+		Transport:   nil,
+		Producers:   []string{"gateway", "operator"},
+		Persistence: "operator.audit_log",
 	},
 	EventOperatorFieldReadAccessDenied: {
 		Key:         "OperatorFieldReadAccessDenied",
@@ -1551,13 +1558,6 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Outcomes:          []string{"OperatorProviderBoundaryObservationCompleted"},
 		Reserved:          true,
 	},
-	EventOperatorReceiptRecorded: {
-		Key:         "OperatorReceiptRecorded",
-		Kind:        EventKindFact,
-		Transport:   nil,
-		Producers:   []string{"gateway", "operator"},
-		Persistence: "operator.audit_log",
-	},
 	EventOperatorReputationCommitmentCreated: {
 		Key:         "OperatorReputationCommitmentCreated",
 		Kind:        EventKindOutcome,
@@ -2054,6 +2054,7 @@ type _EventOperator struct {
 	ContextChanged              EventType
 	DeviceRegistered            EventType
 	Eval                        _EventOperatorEval
+	EventReceipt                _EventOperatorEventReceipt
 	FetchFileDiff               _EventOperatorFetchFileDiff
 	FetchFileHistory            _EventOperatorFetchFileHistory
 	FetchHistory                _EventOperatorFetchHistory
@@ -2078,7 +2079,6 @@ type _EventOperator struct {
 	PanelListUpdated            EventType
 	PortCheck                   _EventOperatorPortCheck
 	ProviderBoundaryObservation _EventOperatorProviderBoundaryObservation
-	Receipt                     _EventOperatorReceipt
 	RestoreFile                 _EventOperatorRestoreFile
 	ShutdownAcknowledged        EventType
 	ShutdownRequested           EventType
@@ -2138,6 +2138,10 @@ type _EventOperatorCommandStatusUpdated struct {
 
 type _EventOperatorEval struct {
 	AnswerRequested EventType
+}
+
+type _EventOperatorEventReceipt struct {
+	Recorded EventType
 }
 
 type _EventOperatorFetchFileDiff struct {
@@ -2280,10 +2284,6 @@ type _EventOperatorProviderBoundaryObservation struct {
 	Requested EventType
 }
 
-type _EventOperatorReceipt struct {
-	Recorded EventType
-}
-
 type _EventOperatorRestoreFile struct {
 	Completed EventType
 	Failed    EventType
@@ -2350,6 +2350,9 @@ var Event = struct {
 		DeviceRegistered: EventOperatorDeviceRegistered,
 		Eval: _EventOperatorEval{
 			AnswerRequested: EventOperatorEvalAnswerRequested,
+		},
+		EventReceipt: _EventOperatorEventReceipt{
+			Recorded: EventOperatorEventReceiptRecorded,
 		},
 		FetchFileDiff: _EventOperatorFetchFileDiff{
 			Completed: EventOperatorFileDiffFetchCompleted,
@@ -2476,9 +2479,6 @@ var Event = struct {
 		ProviderBoundaryObservation: _EventOperatorProviderBoundaryObservation{
 			Completed: EventOperatorProviderBoundaryObservationCompleted,
 			Requested: EventOperatorProviderBoundaryObservationRequested,
-		},
-		Receipt: _EventOperatorReceipt{
-			Recorded: EventOperatorReceiptRecorded,
 		},
 		RestoreFile: _EventOperatorRestoreFile{
 			Completed: EventOperatorFileRestoreCompleted,

@@ -76,8 +76,8 @@ type Score struct {
 	JudgeModelTag    string
 	JudgeModelDigest string
 	TransactionID    string // the governed inference transaction
-	Receipt          *operatorv1.ActionReceipt
-	Result           *operatorv1.InferenceResult // the result the receipt's result summary binds
+	EventReceipt     *operatorv1.EventReceipt
+	Result           *operatorv1.InferenceResult // the result the event receipt's result summary binds
 	RubricVersion    string
 	Detail           string
 }
@@ -162,7 +162,7 @@ func (j *Judge) score(ctx context.Context, subject Subject, userText string) Sco
 	resp, err := j.dispatcher.DispatchInference(ctx, dispatchReq)
 	if resp != nil {
 		result.TransactionID = resp.GetTransactionId()
-		result.Receipt = resp.GetReceipt()
+		result.EventReceipt = resp.GetEventReceipt()
 		result.Result = resp.GetResult()
 	}
 	if err != nil {
@@ -229,11 +229,11 @@ func (j *Judge) buildDispatchRequest(subject Subject, userText string) (*operato
 // validateResponse checks that the Operator's result answers this judge's dispatch:
 // same attempt, same campaign authority, and same run, assignment, and scenario.
 func (j *Judge) validateResponse(providerAttemptID string, resp *operatorv1.InferenceDispatchResponse) error {
-	if resp == nil || resp.GetResult() == nil || resp.GetReceipt() == nil {
+	if resp == nil || resp.GetResult() == nil || resp.GetEventReceipt() == nil {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrMissingRequiredField)
 	}
 	result := resp.GetResult()
-	receipt := resp.GetReceipt()
+	eventReceipt := resp.GetEventReceipt()
 	if result.GetProviderAttemptId() != providerAttemptID ||
 		result.GetRunId() != j.cfg.RunID ||
 		result.GetAssignmentId() != j.cfg.AssignmentID ||
@@ -243,7 +243,7 @@ func (j *Judge) validateResponse(providerAttemptID string, resp *operatorv1.Infe
 	if result.GetRequestedModel() != j.cfg.Variant.GetServedModelTag() {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceModelOverrideDenied)
 	}
-	if result.GetResultDigest() == "" || receipt.GetResultSummary() != result.GetResultDigest() {
+	if result.GetResultDigest() == "" || eventReceipt.GetResultSummary() != result.GetResultDigest() {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrInferenceResultDigest)
 	}
 	if j.cfg.CampaignID != "" && result.GetCampaignId() != j.cfg.CampaignID {

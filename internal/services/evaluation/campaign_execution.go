@@ -20,7 +20,7 @@ import (
 type CampaignExecutionBinding struct {
 	// Topology names the Inference and Data runtimes and, for model-driven
 	// lanes, pins each one's enrollment-bound actuator key. Evidence verifies
-	// every governed receipt against the anchor of the runtime that signed it.
+	// every governed event receipt against the anchor of the runtime that signed it.
 	Topology            CampaignOperatorTopology
 	ModelRegistryDigest string
 	ModelRegistry       []*operatorv1.InferenceModelVariant

@@ -30,11 +30,11 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// resumedReceiptJSON returns the canonical signed receipt of txHash's resumed
+// resumedEventReceiptJSON returns the canonical signed event receipt of txHash's resumed
 // transaction, as the Gateway embeds it in approval.completed.
-func resumedReceiptJSON(t *testing.T, txHash string) json.RawMessage {
+func resumedEventReceiptJSON(t *testing.T, txHash string) json.RawMessage {
 	t.Helper()
-	receiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	eventReceiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 		TransactionId:   "transaction-" + txHash,
 		TransactionHash: txHash,
 		SignerKeyId:     "warden-key-sse",
@@ -43,26 +43,26 @@ func resumedReceiptJSON(t *testing.T, txHash string) json.RawMessage {
 		Signature:       "signature-sse",
 	})
 	require.NoError(t, err)
-	return receiptJSON
+	return eventReceiptJSON
 }
 
-// expectedReceipt decodes the receipt that resumedReceiptJSON encodes for txHash.
-func expectedReceipt(t *testing.T, txHash string) *operatorv1.ActionReceipt {
+// expectedEventReceipt decodes the event receipt that resumedEventReceiptJSON encodes for txHash.
+func expectedEventReceipt(t *testing.T, txHash string) *operatorv1.EventReceipt {
 	t.Helper()
-	want := &operatorv1.ActionReceipt{}
-	require.NoError(t, protojson.Unmarshal(resumedReceiptJSON(t, txHash), want))
+	want := &operatorv1.EventReceipt{}
+	require.NoError(t, protojson.Unmarshal(resumedEventReceiptJSON(t, txHash), want))
 	return want
 }
 
 // approvalEnvelope returns the SSE data payload that carries an approval.completed
-// event for userID and txHash, with receipt as its embedded receipt.
-func approvalEnvelope(t *testing.T, userID, txHash string, receipt json.RawMessage) string {
+// event for userID and txHash, with event receipt as its embedded event receipt.
+func approvalEnvelope(t *testing.T, userID, txHash string, eventReceipt json.RawMessage) string {
 	t.Helper()
 	eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-		Type:    constants.SSEEventTypeApprovalCompleted,
-		UserID:  userID,
-		TxHash:  txHash,
-		Receipt: receipt,
+		Type:         constants.SSEEventTypeApprovalCompleted,
+		UserID:       userID,
+		TxHash:       txHash,
+		EventReceipt: eventReceipt,
 	})
 	require.NoError(t, err)
 	envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, CliSessionID: "cli-session", Event: eventPayload})
@@ -71,9 +71,9 @@ func approvalEnvelope(t *testing.T, userID, txHash string, receipt json.RawMessa
 }
 
 // approvalFrame returns one approval.completed SSE frame, with its event: line.
-func approvalFrame(t *testing.T, userID, txHash string, receipt json.RawMessage) string {
+func approvalFrame(t *testing.T, userID, txHash string, eventReceipt json.RawMessage) string {
 	t.Helper()
-	return fmt.Sprintf("event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, approvalEnvelope(t, userID, txHash, receipt))
+	return fmt.Sprintf("event: %s\ndata: %s\n\n", constants.SSEEventTypeApprovalCompleted, approvalEnvelope(t, userID, txHash, eventReceipt))
 }
 
 // startSSE writes the 200 and flushes it, as the Gateway does before it writes any event.
@@ -123,7 +123,7 @@ func TestSubscribeApprovals_SendsCLISessionHeaderAndLiveOnlyQuery(t *testing.T) 
 func TestSubscribeApprovals_WaitReturnsApprovalPublishedAfterSubscribeReturns(t *testing.T) {
 	const userID = "user-published-after-subscribe"
 	const txHash = "tx-published-after-subscribe"
-	frame := approvalFrame(t, userID, txHash, resumedReceiptJSON(t, txHash))
+	frame := approvalFrame(t, userID, txHash, resumedEventReceiptJSON(t, txHash))
 
 	release := make(chan struct{})
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -154,22 +154,22 @@ func TestSubscribeApprovals_WaitReturnsApprovalPublishedAfterSubscribeReturns(t 
 	sub.mu.Unlock()
 	require.True(t, held, "the approval must be held for Wait before Wait is called")
 
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
+	eventReceipt, err := sub.Wait(context.Background(), txHash, userID)
 	require.NoError(t, err)
-	assert.True(t, proto.Equal(expectedReceipt(t, txHash), receipt), "the approval must return the event's signed receipt")
+	assert.True(t, proto.Equal(expectedEventReceipt(t, txHash), eventReceipt), "the approval must return the event's signed event receipt")
 }
 
 // TestSubscribeApprovals_WaitIgnoresOtherTransactionAndUser places the decoys before the
-// matching approval. The other-user frame carries a receipt that fails strict protojson
+// matching approval. The other-user frame carries an event receipt that fails strict protojson
 // decoding, so matching it would fail the wait.
 func TestSubscribeApprovals_WaitIgnoresOtherTransactionAndUser(t *testing.T) {
 	const userID = "user-ignored-frames"
 	const txHash = "tx-ignored-frames"
 	const otherTxHash = "tx-ignored-frames-other"
 	frames := []string{
-		approvalFrame(t, userID, otherTxHash, resumedReceiptJSON(t, otherTxHash)),
-		approvalFrame(t, "some-other-user", txHash, json.RawMessage(`{"transaction_hash":"`+txHash+`","not_a_receipt_field":1}`)),
-		approvalFrame(t, userID, txHash, resumedReceiptJSON(t, txHash)),
+		approvalFrame(t, userID, otherTxHash, resumedEventReceiptJSON(t, otherTxHash)),
+		approvalFrame(t, "some-other-user", txHash, json.RawMessage(`{"transaction_hash":"`+txHash+`","not_an_event_receipt_field":1}`)),
+		approvalFrame(t, userID, txHash, resumedEventReceiptJSON(t, txHash)),
 	}
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		startSSE(w)
@@ -181,14 +181,14 @@ func TestSubscribeApprovals_WaitIgnoresOtherTransactionAndUser(t *testing.T) {
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
+	eventReceipt, err := sub.Wait(context.Background(), txHash, userID)
 	require.NoError(t, err)
-	assert.True(t, proto.Equal(expectedReceipt(t, txHash), receipt))
+	assert.True(t, proto.Equal(expectedEventReceipt(t, txHash), eventReceipt))
 }
 
 func TestSubscribeApprovals_WaitMatchesTransactionOnlyWhenUserIsEmpty(t *testing.T) {
 	const txHash = "tx-any-user"
-	frame := approvalFrame(t, "user-of-the-approver", txHash, resumedReceiptJSON(t, txHash))
+	frame := approvalFrame(t, "user-of-the-approver", txHash, resumedEventReceiptJSON(t, txHash))
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		startSSE(w)
 		writeSSE(w, frame)
@@ -199,9 +199,9 @@ func TestSubscribeApprovals_WaitMatchesTransactionOnlyWhenUserIsEmpty(t *testing
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(context.Background(), txHash, "")
+	eventReceipt, err := sub.Wait(context.Background(), txHash, "")
 	require.NoError(t, err)
-	assert.True(t, proto.Equal(expectedReceipt(t, txHash), receipt))
+	assert.True(t, proto.Equal(expectedEventReceipt(t, txHash), eventReceipt))
 }
 
 // TestSubscribeApprovals_WaitRefusesEmptyTransactionHash holds an approval in the backlog
@@ -209,7 +209,7 @@ func TestSubscribeApprovals_WaitMatchesTransactionOnlyWhenUserIsEmpty(t *testing
 func TestSubscribeApprovals_WaitRefusesEmptyTransactionHash(t *testing.T) {
 	const userID = "user-empty-hash"
 	const txHash = "tx-empty-hash"
-	frame := approvalFrame(t, userID, txHash, resumedReceiptJSON(t, txHash))
+	frame := approvalFrame(t, userID, txHash, resumedEventReceiptJSON(t, txHash))
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		startSSE(w)
 		writeSSE(w, frame)
@@ -220,14 +220,14 @@ func TestSubscribeApprovals_WaitRefusesEmptyTransactionHash(t *testing.T) {
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(context.Background(), "", "")
+	eventReceipt, err := sub.Wait(context.Background(), "", "")
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
-	assert.Nil(t, receipt)
+	assert.Nil(t, eventReceipt)
 }
 
-func TestSubscribeApprovals_WaitFailsClosedWhenReceiptIsMissing(t *testing.T) {
-	const userID = "user-no-receipt"
-	const txHash = "tx-no-receipt"
+func TestSubscribeApprovals_WaitFailsClosedWhenEventReceiptIsMissing(t *testing.T) {
+	const userID = "user-no-event_receipt"
+	const txHash = "tx-no-event_receipt"
 	frame := approvalFrame(t, userID, txHash, nil)
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		startSSE(w)
@@ -235,19 +235,19 @@ func TestSubscribeApprovals_WaitFailsClosedWhenReceiptIsMissing(t *testing.T) {
 		<-r.Context().Done()
 	})
 
-	sub, err := SubscribeApprovals(context.Background(), srv.Client(), srv.URL, "cli-no-receipt")
+	sub, err := SubscribeApprovals(context.Background(), srv.Client(), srv.URL, "cli-no-event_receipt")
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
-	require.ErrorIs(t, err, constants.ErrActionReceiptMissing)
-	assert.Nil(t, receipt)
+	eventReceipt, err := sub.Wait(context.Background(), txHash, userID)
+	require.ErrorIs(t, err, constants.ErrEventReceiptMissing)
+	assert.Nil(t, eventReceipt)
 }
 
-func TestSubscribeApprovals_WaitFailsClosedWhenReceiptIsNotProtojson(t *testing.T) {
-	const userID = "user-malformed-receipt"
-	const txHash = "tx-malformed-receipt"
-	frame := approvalFrame(t, userID, txHash, json.RawMessage(`{"transaction_hash":"`+txHash+`","not_a_receipt_field":1}`))
+func TestSubscribeApprovals_WaitFailsClosedWhenEventReceiptIsNotProtojson(t *testing.T) {
+	const userID = "user-malformed-event_receipt"
+	const txHash = "tx-malformed-event_receipt"
+	frame := approvalFrame(t, userID, txHash, json.RawMessage(`{"transaction_hash":"`+txHash+`","not_an_event_receipt_field":1}`))
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		startSSE(w)
 		writeSSE(w, frame)
@@ -258,15 +258,15 @@ func TestSubscribeApprovals_WaitFailsClosedWhenReceiptIsNotProtojson(t *testing.
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
-	require.Error(t, err, "a receipt with unknown fields must fail strict protojson decoding")
-	assert.Nil(t, receipt)
+	eventReceipt, err := sub.Wait(context.Background(), txHash, userID)
+	require.Error(t, err, "an event receipt with unknown fields must fail strict protojson decoding")
+	assert.Nil(t, eventReceipt)
 }
 
-func TestSubscribeApprovals_WaitFailsClosedWhenReceiptBelongsToAnotherTransaction(t *testing.T) {
-	const userID = "user-mismatched-receipt"
+func TestSubscribeApprovals_WaitFailsClosedWhenEventReceiptBelongsToAnotherTransaction(t *testing.T) {
+	const userID = "user-mismatched-event_receipt"
 	const txHash = "tx-matched-event"
-	frame := approvalFrame(t, userID, txHash, resumedReceiptJSON(t, "different-transaction-hash"))
+	frame := approvalFrame(t, userID, txHash, resumedEventReceiptJSON(t, "different-transaction-hash"))
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		startSSE(w)
 		writeSSE(w, frame)
@@ -277,9 +277,9 @@ func TestSubscribeApprovals_WaitFailsClosedWhenReceiptBelongsToAnotherTransactio
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
-	require.ErrorIs(t, err, constants.ErrActionReceiptMissing)
-	assert.Nil(t, receipt)
+	eventReceipt, err := sub.Wait(context.Background(), txHash, userID)
+	require.ErrorIs(t, err, constants.ErrEventReceiptMissing)
+	assert.Nil(t, eventReceipt)
 }
 
 // TestSubscribeApprovals_WaitFailsClosedWhenStreamEndsBeforeApproval checks that a live
@@ -289,7 +289,7 @@ func TestSubscribeApprovals_WaitFailsClosedWhenStreamEndsBeforeApproval(t *testi
 	const userID = "user-stream-ends"
 	const txHash = "tx-stream-ends"
 	const otherTxHash = "tx-stream-ends-other"
-	frame := approvalFrame(t, userID, otherTxHash, resumedReceiptJSON(t, otherTxHash))
+	frame := approvalFrame(t, userID, otherTxHash, resumedEventReceiptJSON(t, otherTxHash))
 	var connections atomic.Int32
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		connections.Add(1)
@@ -302,10 +302,10 @@ func TestSubscribeApprovals_WaitFailsClosedWhenStreamEndsBeforeApproval(t *testi
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
+	eventReceipt, err := sub.Wait(context.Background(), txHash, userID)
 	require.ErrorIs(t, err, constants.ErrSSEStreamClosed)
 	assert.NotErrorIs(t, err, constants.ErrApprovalSSETimeout)
-	assert.Nil(t, receipt)
+	assert.Nil(t, eventReceipt)
 	assert.Equal(t, int32(1), connections.Load(), "a stream that ended after connecting must not be re-opened")
 }
 
@@ -349,7 +349,7 @@ func TestSubscribeApprovals_WaitTransactionsChangedWakesOnTransactionsAnnounceme
 func TestSubscribeApprovals_WaitTransactionsChangedIgnoresEnrollmentAnnouncement(t *testing.T) {
 	const userID = "user-enrollment-only"
 	const txHash = "tx-enrollment-only"
-	frames := approvalsChangedFrame(t, models.ApprovalsChangedEnrollments) + approvalFrame(t, userID, txHash, resumedReceiptJSON(t, txHash))
+	frames := approvalsChangedFrame(t, models.ApprovalsChangedEnrollments) + approvalFrame(t, userID, txHash, resumedEventReceiptJSON(t, txHash))
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		startSSE(w)
 		writeSSE(w, frames)
@@ -426,9 +426,9 @@ func TestSubscribeApprovals_WaitTimesOutWithoutMatchingApproval(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	receipt, err := sub.Wait(ctx, "tx-never-approved", "user-never-approved")
+	eventReceipt, err := sub.Wait(ctx, "tx-never-approved", "user-never-approved")
 	require.ErrorIs(t, err, constants.ErrApprovalSSETimeout)
-	assert.Nil(t, receipt)
+	assert.Nil(t, eventReceipt)
 }
 
 // TestSubscribeApprovals_BacklogDropsOldestApprovalsBeyondLimit sends one more approval
@@ -440,9 +440,9 @@ func TestSubscribeApprovals_BacklogDropsOldestApprovalsBeyondLimit(t *testing.T)
 	frames := make([]string, 0, approvalBacklogLimit+2)
 	for i := 0; i <= approvalBacklogLimit; i++ {
 		txHash := fmt.Sprintf("tx-backlog-%03d", i)
-		frames = append(frames, approvalFrame(t, userID, txHash, resumedReceiptJSON(t, txHash)))
+		frames = append(frames, approvalFrame(t, userID, txHash, resumedEventReceiptJSON(t, txHash)))
 	}
-	frames = append(frames, approvalFrame(t, userID, finalTxHash, resumedReceiptJSON(t, finalTxHash)))
+	frames = append(frames, approvalFrame(t, userID, finalTxHash, resumedEventReceiptJSON(t, finalTxHash)))
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		startSSE(w)
 		writeSSE(w, frames...)
@@ -453,9 +453,9 @@ func TestSubscribeApprovals_BacklogDropsOldestApprovalsBeyondLimit(t *testing.T)
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(context.Background(), finalTxHash, userID)
+	eventReceipt, err := sub.Wait(context.Background(), finalTxHash, userID)
 	require.NoError(t, err)
-	assert.True(t, proto.Equal(expectedReceipt(t, finalTxHash), receipt))
+	assert.True(t, proto.Equal(expectedEventReceipt(t, finalTxHash), eventReceipt))
 
 	sub.mu.Lock()
 	defer sub.mu.Unlock()
@@ -469,7 +469,7 @@ func TestSubscribeApprovals_BacklogDropsOldestApprovalsBeyondLimit(t *testing.T)
 func TestSubscribeApprovals_ReadsApprovalTypeFromPayloadWhenEventFieldIsOmitted(t *testing.T) {
 	const userID = "user-no-event-line"
 	const txHash = "tx-no-event-line"
-	frame := fmt.Sprintf("data: %s\n\n", approvalEnvelope(t, userID, txHash, resumedReceiptJSON(t, txHash)))
+	frame := fmt.Sprintf("data: %s\n\n", approvalEnvelope(t, userID, txHash, resumedEventReceiptJSON(t, txHash)))
 	srv := newSSEServer(t, func(w http.ResponseWriter, r *http.Request) {
 		startSSE(w)
 		writeSSE(w, frame)
@@ -480,7 +480,7 @@ func TestSubscribeApprovals_ReadsApprovalTypeFromPayloadWhenEventFieldIsOmitted(
 	require.NoError(t, err)
 	defer sub.Close()
 
-	receipt, err := sub.Wait(context.Background(), txHash, userID)
+	eventReceipt, err := sub.Wait(context.Background(), txHash, userID)
 	require.NoError(t, err)
-	assert.True(t, proto.Equal(expectedReceipt(t, txHash), receipt))
+	assert.True(t, proto.Equal(expectedEventReceipt(t, txHash), eventReceipt))
 }

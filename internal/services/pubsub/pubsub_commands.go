@@ -54,16 +54,16 @@ type PubSubCommandMessage struct {
 
 	// InferenceResult carries the complete inference result produced by
 	// handleInferenceRequestSync so the post-actuation completion
-	// publication can bind it to the final signed receipt.
+	// publication can bind it to the final signed event receipt.
 	InferenceResult *operatorv1.InferenceResult `json:"-"`
 
-	// auditReceiptListSummary carries only the local route's typed allowlisted
-	// receipt result to L5 for its verified MCP_CALL summary path.
-	auditReceiptListSummary *models.OperatorAuditReceiptListResult
+	// auditEventReceiptListSummary carries only the local route's typed allowlisted
+	// event receipt result to L5 for its verified MCP_CALL summary path.
+	auditEventReceiptListSummary *models.OperatorAuditEventReceiptListResult
 }
 
 // verifiedActionHandler executes a governed action class after L4 verification.
-// A non-empty summary is stamped into the signed ActionReceipt.
+// A non-empty summary is stamped into the signed EventReceipt.
 type verifiedActionHandler func(ctx context.Context, msg *PubSubCommandMessage) (string, error)
 
 // OperatorPubSubService manages the Operator pub/sub connection and dispatches inbound
@@ -123,7 +123,7 @@ type OperatorPubSubService struct {
 	mcpGatewayMu sync.RWMutex
 	// localNativeTools executes native MCP tools on this runtime against its
 	// own audit store. Outbound Operators route every MCP_CALL here; Gateway
-	// mode routes only the Operator-local audit_receipt_list shape here.
+	// mode routes only the Operator-local audit_event_receipt_list shape here.
 	localNativeTools *mcp.NativeToolHandler
 
 	// platformEnrollment dispatches the five platform enrollment
@@ -366,7 +366,7 @@ func (rs *OperatorPubSubService) initializeGovernance(c CommandServiceConfig, co
 	rs.actuator = &governance.L5Actuator{
 		Logger:            c.Logger,
 		SQLAuditStore:     c.AuditStore,
-		Identity:          core.ExecutionTarget, // the runtime's own session; rejection receipts are filed under it
+		Identity:          core.ExecutionTarget, // the runtime's own session; rejection event receipts are filed under it
 		StateRootProvider: core.StateRootProvider,
 		ExecutionHandler:  rs, // OperatorPubSubService implements ExecutionHandler
 		Scrubbing:         c.Scrubbing,
@@ -376,14 +376,14 @@ func (rs *OperatorPubSubService) initializeGovernance(c CommandServiceConfig, co
 		AuditorKeyID:      c.AuditorKeyID,
 	}
 
-	// Wire the ReceiptPublisher so the actuator publishes signed
-	// ActionReceipts to the gateway's receipts: channel after execution.
-	// PubSubResultsService implements governance.ReceiptPublisher via
-	// PublishActionReceipt. Nil is valid (gateway in-process operator path
-	// records receipts directly in the gateway's SQLAuditStore).
+	// Wire the EventReceiptPublisher so the actuator publishes signed
+	// EventReceipts to the gateway's event_receipts: channel after execution.
+	// PubSubResultsService implements governance.EventReceiptPublisher via
+	// PublishEventReceipt. Nil is valid (gateway in-process operator path
+	// records event receipts directly in the gateway's SQLAuditStore).
 	if c.ResultsService != nil {
-		if publisher, ok := c.ResultsService.(governance.ReceiptPublisher); ok {
-			rs.actuator.ReceiptPublisher = publisher
+		if publisher, ok := c.ResultsService.(governance.EventReceiptPublisher); ok {
+			rs.actuator.EventReceiptPublisher = publisher
 		}
 	}
 
@@ -756,14 +756,14 @@ func (rs *OperatorPubSubService) handleCommandPayload(payload []byte) {
 // ProcessEnvelope is the public, synchronous entry point for fail-closed
 // Gateway transaction processing. It is used by the listen-mode HTTP surface
 // (POST /api/v1/governance/envelopes) to verify a GovernanceEnvelope and execute it
-// through the Actuator, returning the signed ActionReceipt or a verification
+// through the Actuator, returning the signed EventReceipt or a verification
 // error.
 //
-// The signed receipt is returned on execution and verification failure so callers
+// The signed event receipt is returned on execution and verification failure so callers
 // receive cryptographic evidence of the attempt. A verification failure is a
-// *governance.ReceiptError carrying that receipt, and still wraps the
+// *governance.EventReceiptError carrying that event receipt, and still wraps the
 // corresponding governance.ErrXxx sentinel.
-func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
 	if len(payload) == 0 {
 		return nil, constants.ErrPubSubEmptyPayload
 	}
@@ -777,7 +777,7 @@ func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []
 	}
 
 	// Only an event that is not a registered governed request is refused before L4.
-	// An event/action mismatch is an L4 rejection with a signed receipt.
+	// An event/action mismatch is an L4 rejection with a signed event receipt.
 	if _, err := constants.ValidateGovernedRequest(constants.EventType(envelope.EventType)); err != nil {
 		return nil, err
 	}
@@ -791,14 +791,14 @@ func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []
 			rs.logBlockedTransaction(ctx, envelope, err)
 			return nil, fmt.Errorf("%w: %w", constants.ErrPubSubActuator, err)
 		}
-		receipt, recordErr := rs.actuator.RecordRejectedTransaction(ctx, verified, err)
+		eventReceipt, recordErr := rs.actuator.RecordRejectedTransaction(ctx, verified, err)
 		if recordErr != nil {
-			return nil, fmt.Errorf("%w: rejection receipt: %w", err, recordErr)
+			return nil, fmt.Errorf("%w: rejection event_receipt: %w", err, recordErr)
 		}
 		if envelope.ActionType == string(constants.ActionTypeInference) {
-			rs.publishInferenceCompletion(ctx, envelope, nil, receipt)
+			rs.publishInferenceCompletion(ctx, envelope, nil, eventReceipt)
 		}
-		return receipt, governance.WithRejectionReceipt(receipt, err)
+		return eventReceipt, governance.WithRejectionEventReceipt(eventReceipt, err)
 	}
 
 	if rs.actuator == nil {
@@ -823,14 +823,14 @@ func (rs *OperatorPubSubService) ProcessEnvelope(ctx context.Context, payload []
 		Timestamp:         envelope.Timestamp.AsTime(),
 	}
 
-	receipt, execErr := rs.actuator.Execute(ctx, verified, cmdMsg)
+	eventReceipt, execErr := rs.actuator.Execute(ctx, verified, cmdMsg)
 	if envelope.ActionType == string(constants.ActionTypeInference) {
-		rs.publishInferenceCompletion(ctx, envelope, cmdMsg.InferenceResult, receipt)
+		rs.publishInferenceCompletion(ctx, envelope, cmdMsg.InferenceResult, eventReceipt)
 	}
 	if execErr == nil && envelope.ActionType == string(constants.ActionTypeShutdown) {
 		execErr = rs.completeShutdown(ctx, cmdMsg)
 	}
-	return receipt, execErr
+	return eventReceipt, execErr
 }
 
 // gatewayDispatchedVerificationContext returns a verification context for
@@ -867,14 +867,14 @@ func (rs *OperatorPubSubService) handleGovernanceEnvelope(env *govpkg.Governance
 				rs.logBlockedTransaction(rs.ctx, env, err)
 				return
 			}
-			receipt, recordErr := rs.actuator.RecordRejectedTransaction(rs.ctx, verified, err)
+			eventReceipt, recordErr := rs.actuator.RecordRejectedTransaction(rs.ctx, verified, err)
 			if recordErr != nil {
 				rs.logger.Error("Failed to record signed rejected transaction",
 					string(constants.ConnectionStateError), recordErr,
 					"message_id", env.Id)
 			}
 			if env.ActionType == string(constants.ActionTypeInference) {
-				rs.publishInferenceCompletion(rs.ctx, env, nil, receipt)
+				rs.publishInferenceCompletion(rs.ctx, env, nil, eventReceipt)
 			}
 			return
 		}
@@ -908,17 +908,17 @@ func (rs *OperatorPubSubService) handleGovernanceEnvelope(env *govpkg.Governance
 
 	// Execute through Actuator (execution boundary)
 	if rs.actuator != nil {
-		receipt, err := rs.actuator.Execute(rs.ctx, verified, cmdMsg)
+		eventReceipt, err := rs.actuator.Execute(rs.ctx, verified, cmdMsg)
 		if env.ActionType == string(constants.ActionTypeInference) {
-			rs.publishInferenceCompletion(rs.ctx, env, cmdMsg.InferenceResult, receipt)
+			rs.publishInferenceCompletion(rs.ctx, env, cmdMsg.InferenceResult, eventReceipt)
 		}
 		if err != nil {
-			// Execute returns a nil receipt when it fails closed before the
-			// initial receipt is persisted; GetStatus is nil-safe.
+			// Execute returns a nil event receipt when it fails closed before the
+			// initial event receipt is persisted; GetStatus is nil-safe.
 			rs.logger.Error("Actuator execution failed",
 				logging.ErrorKind(err),
 				slog.String("message_id", env.Id),
-				slog.Any("receipt_status", receipt.GetStatus().String()))
+				slog.Any("event_receipt_status", eventReceipt.GetStatus().String()))
 			return
 		}
 		if env.ActionType == string(constants.ActionTypeShutdown) {
@@ -929,7 +929,7 @@ func (rs *OperatorPubSubService) handleGovernanceEnvelope(env *govpkg.Governance
 		}
 		rs.logger.Info("Actuator execution succeeded",
 			"message_id", env.Id,
-			"receipt_status", receipt.Status.String())
+			"event_receipt_status", eventReceipt.Status.String())
 	} else {
 		rs.logger.Error("FATAL: Actuator service missing - cannot execute", "message_id", env.Id)
 		return
@@ -979,7 +979,7 @@ func (rs *OperatorPubSubService) ExecuteVerifiedTransaction(ctx context.Context,
 // handleMcpCallRequestSync is the Actuator egress for MCP_CALL transactions:
 // it decodes the typed payload, executes the tool on the owning runtime, and
 // returns the textual result so the Actuator can stamp it into the signed
-// ActionReceipt. Outbound Operators execute native tools locally against their
+// EventReceipt. Outbound Operators execute native tools locally against their
 // own audit store; Gateway mode dispatches through the MCP gateway, which also
 // owns read_field and the downstream MCP server.
 func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
@@ -1017,10 +1017,10 @@ func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, m
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", constants.ErrGatewayDownstreamHTTPError, err)
 	}
-	// Bound the receipt summary on external tools to avoid unbounded growth on chatty tools.
+	// Bound the event receipt summary on external tools to avoid unbounded growth on chatty tools.
 	// Native tools return structured JSON payloads (e.g. audit queries) and must not be truncated.
-	if mcpReq.ToolName != "read_field" && !gw.IsNativeTool(mcpReq.ToolName) && len(summary) > constants.ReceiptSummaryMaxBytes {
-		summary = summary[:constants.ReceiptSummaryMaxBytes]
+	if mcpReq.ToolName != "read_field" && !gw.IsNativeTool(mcpReq.ToolName) && len(summary) > constants.EventReceiptSummaryMaxBytes {
+		summary = summary[:constants.EventReceiptSummaryMaxBytes]
 	}
 
 	return summary, nil
@@ -1028,8 +1028,8 @@ func (rs *OperatorPubSubService) handleMcpCallRequestSync(ctx context.Context, m
 
 // executeLocalNativeTool runs a native MCP tool on this runtime's own handler.
 // The egress scrubber is required before execution because the summary leaves
-// the execution boundary in the signed receipt. audit_receipt_list returns
-// canonical signed receipts that must stay byte-exact, so its result is parsed
+// the execution boundary in the signed event receipt. audit_event_receipt_list returns
+// canonical signed event receipts that must stay byte-exact, so its result is parsed
 // into the typed allowlisted summary instead of being scrubbed; every other
 // native tool result is scrubbed like the Gateway's native dispatch.
 func (rs *OperatorPubSubService) executeLocalNativeTool(ctx context.Context, msg *PubSubCommandMessage, toolName string, args json.RawMessage) (string, error) {
@@ -1050,14 +1050,14 @@ func (rs *OperatorPubSubService) executeLocalNativeTool(ctx context.Context, msg
 		return "", fmt.Errorf("mcp call %q: %w", toolName, err)
 	}
 	summary := mcp.ToolResultSummary(result)
-	if toolName != constants.MCPToolAuditReceiptList {
+	if toolName != constants.MCPToolAuditEventReceiptList {
 		return rs.scrubbing.ScrubText(ctx, summary), nil
 	}
-	var typedResult mcp.OperatorAuditReceiptListResult
+	var typedResult mcp.OperatorAuditEventReceiptListResult
 	if err := json.Unmarshal([]byte(summary), &typedResult); err != nil {
-		return "", fmt.Errorf("operator audit receipt result: %w: %w", constants.ErrMCPUnmarshalArguments, err)
+		return "", fmt.Errorf("operator audit event receipt result: %w: %w", constants.ErrMCPUnmarshalArguments, err)
 	}
-	msg.auditReceiptListSummary = &typedResult
+	msg.auditEventReceiptListSummary = &typedResult
 	return summary, nil
 }
 
@@ -1065,17 +1065,17 @@ func (rs *OperatorPubSubService) executeLocalNativeTool(ctx context.Context, msg
 // Outbound Operators always own it: they never construct mcp.GatewayService.
 // Gateway mode also owns an embedded Operator ledger, but session-only public
 // Gateway queries and every other tool keep using the Gateway's MCP handler;
-// the explicit local query shape is audit_receipt_list with investigation_id
+// the explicit local query shape is audit_event_receipt_list with investigation_id
 // plus exclude_audit_reads=true, which excludes only the audit-read tools' own
-// receipts and keeps every other native-tool MCP_CALL as investigation context.
+// event receipts and keeps every other native-tool MCP_CALL as investigation context.
 func (rs *OperatorPubSubService) useLocalNativeToolRoute(toolName string, args json.RawMessage) bool {
 	if rs == nil || !rs.gatewayMode {
 		return true
 	}
-	if toolName != constants.MCPToolAuditReceiptList {
+	if toolName != constants.MCPToolAuditEventReceiptList {
 		return false
 	}
-	var request mcp.AuditReceiptListRequest
+	var request mcp.AuditEventReceiptListRequest
 	if err := json.Unmarshal(args, &request); err != nil {
 		return false
 	}
@@ -1157,7 +1157,7 @@ func (rs *OperatorPubSubService) handleMcpPromptListSync(ctx context.Context, ms
 // handleA2aCallRequestSync is the Actuator egress for A2A_CALL transactions:
 // it decodes the typed payload, dispatches to the configured downstream A2A
 // server via the gateway, and returns the textual result so the Actuator can
-// stamp it into the signed ActionReceipt.
+// stamp it into the signed EventReceipt.
 func (rs *OperatorPubSubService) handleA2aCallRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	gw := rs.GetMCPGateway()
 	if gw == nil {
@@ -1190,9 +1190,9 @@ func (rs *OperatorPubSubService) handleA2aCallRequestSync(ctx context.Context, m
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", constants.ErrGatewayDownstreamHTTPError, err)
 	}
-	// Bound the receipt summary to avoid unbounded growth on chatty tools.
-	if len(summary) > constants.ReceiptSummaryMaxBytes {
-		summary = summary[:constants.ReceiptSummaryMaxBytes]
+	// Bound the event receipt summary to avoid unbounded growth on chatty tools.
+	if len(summary) > constants.EventReceiptSummaryMaxBytes {
+		summary = summary[:constants.EventReceiptSummaryMaxBytes]
 	}
 	return summary, nil
 }
@@ -1356,10 +1356,10 @@ func (rs *OperatorPubSubService) handleEvalAnswerRequestSync(ctx context.Context
 		"model", evalReq.Model,
 		"answer_length", len(evalReq.Answer))
 
-	// Truncate answer to sane bound for receipt (4 KiB per plan)
+	// Truncate answer to sane bound for event receipt (4 KiB per plan)
 	summary := evalReq.Answer
-	if len(summary) > constants.ReceiptSummaryMaxBytes {
-		summary = summary[:constants.ReceiptSummaryMaxBytes]
+	if len(summary) > constants.EventReceiptSummaryMaxBytes {
+		summary = summary[:constants.EventReceiptSummaryMaxBytes]
 	}
 
 	return summary, nil
@@ -1384,8 +1384,8 @@ func (rs *OperatorPubSubService) handleModelProvenanceObservationSync(ctx contex
 // configured inference execution handler (which calls the Ollama backend),
 // stamps the canonical result digest onto the InferenceResult, stores the
 // result on the command message for the post-actuation completion
-// publication, and returns the digest as the receipt summary so the signed
-// ActionReceipt binds the complete result (see operator.proto
+// publication, and returns the digest as the event receipt summary so the signed
+// EventReceipt binds the complete result (see operator.proto
 // InferenceResult.result_digest).
 func (rs *OperatorPubSubService) handleInferenceRequestSync(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	if rs.inference == nil {
@@ -1448,21 +1448,21 @@ func (rs *OperatorPubSubService) handleInferenceRequestSync(ctx context.Context,
 }
 
 // publishInferenceCompletion publishes the protocol-owned InferenceCompletion
-// — the final signed ActionReceipt plus the complete InferenceResult — to
+// — the final signed EventReceipt plus the complete InferenceResult — to
 // the operator's results channel after the L5 actuator has finalized and
-// signed the receipt, so the result and its verified receipt are a single
+// signed the event receipt, so the result and its verified event receipt are a single
 // correlated outcome. A failed or rejected transaction publishes the FAILED
-// receipt with no result so the waiting Gateway dispatch terminates
+// event receipt with no result so the waiting Gateway dispatch terminates
 // immediately with a typed failure instead of the generic timeout.
-// Publication is best-effort: the receipt is already persisted locally; a
+// Publication is best-effort: the event receipt is already persisted locally; a
 // delivery failure is logged and surfaces to the waiting dispatcher as a
 // missing correlated result.
-func (rs *OperatorPubSubService) publishInferenceCompletion(ctx context.Context, env *govpkg.GovernanceEnvelope, result *operatorv1.InferenceResult, receipt *operatorv1.ActionReceipt) {
-	if rs.results == nil || env == nil || receipt == nil {
+func (rs *OperatorPubSubService) publishInferenceCompletion(ctx context.Context, env *govpkg.GovernanceEnvelope, result *operatorv1.InferenceResult, eventReceipt *operatorv1.EventReceipt) {
+	if rs.results == nil || env == nil || eventReceipt == nil {
 		return
 	}
-	completion := &operatorv1.InferenceCompletion{Receipt: receipt}
-	if receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+	completion := &operatorv1.InferenceCompletion{EventReceipt: eventReceipt}
+	if eventReceipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 		completion.Result = result
 	}
 	if err := rs.results.PublishInferenceCompletion(ctx, env, completion); err != nil {
@@ -1518,7 +1518,7 @@ func (rs *OperatorPubSubService) blockedSummary(ctx context.Context, rejectionRe
 }
 
 // logBlockedTransaction records a blocked/rejected transaction using the EventReceiptRecord schema.
-// This ensures consistency with accepted/failed Actuator receipts - all transaction outcomes use the same canonical schema.
+// This ensures consistency with accepted/failed Actuator event receipts - all transaction outcomes use the same canonical schema.
 func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env *govpkg.GovernanceEnvelope, rejectionReason error) {
 	if rs.audit == nil || rs.audit.auditStore == nil {
 		return
@@ -1575,13 +1575,13 @@ func (m *PubSubCommandMessage) InferenceResultDigest() string {
 	return m.InferenceResult.GetResultDigest()
 }
 
-// AuditReceiptListSummary returns the local tool's typed, allowlisted result.
+// AuditEventReceiptListSummary returns the local tool's typed, allowlisted result.
 // L5 checks the verified MCP request and serialized output before preserving it.
-func (m *PubSubCommandMessage) AuditReceiptListSummary() *models.OperatorAuditReceiptListResult {
+func (m *PubSubCommandMessage) AuditEventReceiptListSummary() *models.OperatorAuditEventReceiptListResult {
 	if m == nil {
 		return nil
 	}
-	return m.auditReceiptListSummary
+	return m.auditEventReceiptListSummary
 }
 
 // ResultOrigin preserves request identity when a witness completion is published.

@@ -35,5 +35,5 @@ type ResultsPublisher interface {
 	PublishModelProvenanceObservationCompleted(ctx context.Context, origin *commonv1.GovernanceEnvelope, completion *evalv1.ModelProvenanceObservationCompleted) error
 	PublishExecutionStatus(ctx context.Context, status proto.Message, originalMsg *PubSubCommandMessage) error
 	PublishHeartbeat(ctx context.Context, heartbeat proto.Message) error
-	PublishActionReceipt(ctx context.Context, env *commonv1.GovernanceEnvelope, receipt *operatorv1.ActionReceipt) error
+	PublishEventReceipt(ctx context.Context, env *commonv1.GovernanceEnvelope, eventReceipt *operatorv1.EventReceipt) error
 }

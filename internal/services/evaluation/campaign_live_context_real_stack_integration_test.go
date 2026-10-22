@@ -7,7 +7,7 @@
 
 //go:build integration
 
-// Real-stack live-context cases. The Data Operator answers audit_receipt_list
+// Real-stack live-context cases. The Data Operator answers audit_event_receipt_list
 // from its own ledger and runs the scenario workspace's shell commands; only
 // the model provider is scripted. Rig: agent_evidence_real_stack_integration_test.go.
 package evaluation_test
@@ -30,7 +30,7 @@ import (
 // intent tool in AllowedTools, so the catalog's own entries are kept.
 func liveContextSurface(scenario *evalv1.EvaluationScenarioDefinition) {
 	candidates := append(append([]string(nil), scenario.GetAllowedTools()...),
-		constants.MCPToolRunShellCommand, constants.MCPToolAuditReceiptList)
+		constants.MCPToolRunShellCommand, constants.MCPToolAuditEventReceiptList)
 	seen := make(map[string]bool, len(candidates))
 	surface := make([]string, 0, len(candidates))
 	for _, name := range candidates {
@@ -43,9 +43,9 @@ func liveContextSurface(scenario *evalv1.EvaluationScenarioDefinition) {
 	scenario.AllowedTools = surface
 }
 
-// liveContextAuditList is one audit_receipt_list turn for the investigation.
+// liveContextAuditList is one audit_event_receipt_list turn for the investigation.
 func liveContextAuditList() fixtures.OllamaReply {
-	return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolAuditReceiptList, Arguments: json.RawMessage(`{"limit":20}`)}}}
+	return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolAuditEventReceiptList, Arguments: json.RawMessage(`{"limit":20}`)}}}
 }
 
 // liveContextEcho is one run_shell_command turn that runs a real command with
@@ -70,9 +70,9 @@ func TestRealStackLiveContext_ReturnsJustExecutedCommandAndExcludesSetup(t *test
 	require.Len(t, trace.ToolCalls, 2)
 	assert.Contains(t, trace.ToolCalls[1].ResultJSON, "HEALTHY")
 	assert.NotContains(t, trace.ToolCalls[1].ResultJSON, "FILE_EDIT", "workspace materialization is setup, not investigation history")
-	assert.NotEmpty(t, trace.ToolCalls[1].TransactionID, "context retrieval is itself receipted")
+	assert.NotEmpty(t, trace.ToolCalls[1].TransactionID, "context retrieval records its own event receipt")
 	require.NotNil(t, trace.ToolCalls[1].Retrieval)
-	require.Len(t, trace.ToolCalls[1].Retrieval.Receipts, 1, "only the shell command this investigation ran")
+	require.Len(t, trace.ToolCalls[1].Retrieval.EventReceipts, 1, "only the shell command this investigation ran")
 	assert.Equal(t, trace.InvestigationID, trace.ToolCalls[1].Retrieval.Query.InvestigationID)
 	assert.Equal(t, env.dataOperatorID, trace.Data.OperatorID, "context must come from the Data Operator's ledger")
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
@@ -83,7 +83,7 @@ func TestRealStackLiveContext_ReturnsJustExecutedCommandAndExcludesSetup(t *test
 	}{
 		{"missing retrieval", func(v *evaluation.AgentTrace) { v.ToolCalls[1].Retrieval = nil }},
 		{"failed flag suppressing retrieval", func(v *evaluation.AgentTrace) { v.ToolCalls[1].Success = false; v.ToolCalls[1].Retrieval = nil }},
-		{"wrong digest", func(v *evaluation.AgentTrace) { v.ToolCalls[1].Retrieval.Receipts[0].Digest = "forged" }},
+		{"wrong digest", func(v *evaluation.AgentTrace) { v.ToolCalls[1].Retrieval.EventReceipts[0].Digest = "forged" }},
 		{"invented model facts", func(v *evaluation.AgentTrace) { v.ToolCalls[1].ResultJSON = `{"success":true,"summary":"invented"}` }},
 		{"wrong investigation", func(v *evaluation.AgentTrace) { v.InvestigationID = "another-investigation" }},
 		{"changed query limit", func(v *evaluation.AgentTrace) { v.ToolCalls[1].Retrieval.Query.Limit++ }},
@@ -103,7 +103,7 @@ func TestRealStackLiveContext_FreshInvestigationHasNoSetupHistory(t *testing.T) 
 	env := newRealStackAgentRun(t, realStackOptions{
 		singleRole: true,
 		suffix:     "live-fresh",
-		replies:    []fixtures.OllamaReply{liveContextAuditList(), {Content: "No prior receipts were returned."}},
+		replies:    []fixtures.OllamaReply{liveContextAuditList(), {Content: "No prior event receipts were returned."}},
 		scenario:   liveContextSurface,
 	})
 	res := env.executeNext(t)
@@ -112,7 +112,7 @@ func TestRealStackLiveContext_FreshInvestigationHasNoSetupHistory(t *testing.T) 
 
 	require.Len(t, trace.ToolCalls, 1)
 	require.NotNil(t, trace.ToolCalls[0].Retrieval)
-	assert.Empty(t, trace.ToolCalls[0].Retrieval.Receipts)
+	assert.Empty(t, trace.ToolCalls[0].Retrieval.EventReceipts)
 	assert.NotContains(t, trace.ToolCalls[0].ResultJSON, "FILE_EDIT")
 	assert.NotEqual(t, trace.ScenarioID, trace.InvestigationID)
 	assert.NotEqual(t, trace.RunID, trace.InvestigationID)

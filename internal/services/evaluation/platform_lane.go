@@ -48,7 +48,7 @@ type AgentDispatchScope struct {
 	InvestigationID string
 	AttemptID       string
 	Target          Target
-	// HarnessPhase separates fixture and probe receipts from scored actions.
+	// HarnessPhase separates fixture and probe event receipts from scored actions.
 	// Empty denotes a model tool call.
 	HarnessPhase agentDispatchPhase
 }
@@ -58,7 +58,7 @@ type laneClient interface {
 }
 
 // CommandLane is the campaign's governed path to a bound Data Operator. Each
-// call is one typed dispatch whose answer carries the signed receipt, so the
+// call is one typed dispatch whose answer carries the signed event receipt, so the
 // lane never polls for evidence.
 type CommandLane struct {
 	client  laneClient
@@ -72,7 +72,7 @@ func NewCommandLane(laneClient laneClient, persona client.Persona) *CommandLane 
 
 // WriteWorkspaceFile dispatches a governed file write that materializes one
 // frozen scenario fixture file at absPath (under the attempt-scoped workspace)
-// on the bound Data Operator. It returns once the dispatch answer is a receipt
+// on the bound Data Operator. It returns once the dispatch answer is a event_receipt
 // for a completed write, so a scenario's expected read target exists before the
 // scenario's chat request is sent.
 func (l *CommandLane) WriteWorkspaceFile(ctx context.Context, target Target, runID, scenarioID, attemptID, absPath, content string) error {
@@ -135,17 +135,17 @@ func (l *CommandLane) ReadWorkspaceFile(ctx context.Context, target Target, runI
 }
 
 // GovernedToolDispatch is the Gateway's typed answer to one governed agent tool
-// dispatch. Outcome is that answer: a receipt, a governance rejection, or an
+// dispatch. Outcome is that answer: an event receipt, a governance rejection, or an
 // ingress refusal. TransactionID and ResultPayload are read from the answer's
-// receipt and dispatch result.
+// event receipt and dispatch result.
 type GovernedToolDispatch struct {
-	Outcome       *client.GovernedOutcome // the typed answer; Receipt, Rejection or Refusal
+	Outcome       *client.GovernedOutcome // the typed answer; Event receipt, Rejection or Refusal
 	TransactionID string
 	ResultPayload []byte
 }
 
 // DispatchAgentTool submits one typed operator action on behalf of a model
-// tool call and returns the Gateway's typed answer. A receipt, a governance
+// tool call and returns the Gateway's typed answer. An event receipt, a governance
 // rejection or an ingress refusal is an answer the model sees. A transport
 // failure, an untyped answer or an approval suspension is a harness failure and
 // is returned as an error so it is never graded against the model.
@@ -165,15 +165,15 @@ func (l *CommandLane) DispatchAgentTool(ctx context.Context, target Target, runI
 }
 
 // classifyToolDispatch reads one governed answer as a model tool call's
-// dispatch. A receipt, a governance rejection or an ingress refusal is an
+// dispatch. An event receipt, a governance rejection or an ingress refusal is an
 // answer the model sees; an untyped answer or an approval suspension is a
 // harness failure.
 func classifyToolDispatch(action constants.ActionType, outcome *client.GovernedOutcome) (GovernedToolDispatch, error) {
 	switch answerKind(outcome) {
-	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT:
 		return GovernedToolDispatch{Outcome: outcome, TransactionID: outcome.Dispatch.GetTransactionId(), ResultPayload: outcome.Dispatch.GetResultPayload()}, nil
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION:
-		return GovernedToolDispatch{Outcome: outcome, TransactionID: outcome.Observation.GetRejection().GetReceipt().GetTransactionId()}, nil
+		return GovernedToolDispatch{Outcome: outcome, TransactionID: outcome.Observation.GetRejection().GetEventReceipt().GetTransactionId()}, nil
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL:
 		return GovernedToolDispatch{Outcome: outcome}, nil
 	default:
@@ -210,23 +210,23 @@ func (l *CommandLane) dispatchAction(ctx context.Context, scope AgentDispatchSco
 	return outcome, nil
 }
 
-// requireExecuted accepts a governed dispatch whose signed receipt ran to
+// requireExecuted accepts a governed dispatch whose signed event receipt ran to
 // completion. Any other answer is ErrEvaluationDispatchFailed: an untyped answer
-// wraps its typed error, and a rejection, refusal, or receipt that did not
+// wraps its typed error, and a rejection, refusal, or event receipt that did not
 // complete names what the Gateway or Operator reported.
 func requireExecuted(outcome *client.GovernedOutcome) error {
 	if err := outcome.Typed(); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrEvaluationDispatchFailed, err)
 	}
-	if answerKind(outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
+	if answerKind(outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT {
 		reason := answerMessage(outcome)
 		if reason == "" {
 			reason = answerKind(outcome).String()
 		}
 		return fmt.Errorf("%w: governed action was not admitted: %s", constants.ErrEvaluationDispatchFailed, reason)
 	}
-	if receipt := outcome.Observation.GetReceipt(); receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return fmt.Errorf("%w: governed action ended %s", constants.ErrEvaluationDispatchFailed, receipt.GetStatus())
+	if eventReceipt := outcome.Observation.GetEventReceipt(); eventReceipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return fmt.Errorf("%w: governed action ended %s", constants.ErrEvaluationDispatchFailed, eventReceipt.GetStatus())
 	}
 	return nil
 }

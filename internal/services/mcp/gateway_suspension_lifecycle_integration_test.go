@@ -206,18 +206,18 @@ func resumeFixture(t *testing.T, s lifecycleStores, store storage.SuspendedTrans
 
 // An executed transaction whose suspended record could not be deleted must never be recorded
 // as expired: the claim taken before execution marks it as attempted, and the failed delete is
-// returned to the caller with the receipt.
+// returned to the caller with the event receipt.
 func TestResumeWithL3Proof_ExecutedTransactionIsNeverRecordedExpired(t *testing.T) {
 	s := newLifecycleStores(t)
 	s.store(t, "tx-executed", time.Hour)
 	deleteFailure := errors.New("disk I/O error")
 	flaky := &flakySuspendedStore{SuspendedTransactionStore: s.suspended, deleteErr: deleteFailure}
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-executed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
-	g := resumeFixture(t, s, flaky, &fakeEnvelopeProcessor{receipt: receipt})
+	eventReceipt := &operatorv1.EventReceipt{TransactionId: "tx-executed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	g := resumeFixture(t, s, flaky, &fakeEnvelopeProcessor{eventReceipt: eventReceipt})
 
 	got, err := g.ResumeWithL3Proof(context.Background(), "tx-executed", "user-1", &commonv1.L3Proof{})
 	require.ErrorIs(t, err, deleteFailure, "a failed delete after execution is propagated, not logged")
-	assert.Same(t, receipt, got, "the signed receipt still reaches the caller")
+	assert.Same(t, eventReceipt, got, "the signed event receipt still reaches the caller")
 	require.True(t, s.remaining(t, "tx-executed"))
 
 	// A second resume cannot execute the same transaction again.
@@ -244,7 +244,7 @@ func TestResumeWithL3Proof_FailedExecutionReleasesTheClaim(t *testing.T) {
 	require.True(t, s.remaining(t, "tx-retry"), "the suspension stays so the proof can be retried")
 
 	proc.err = nil
-	proc.receipt = &operatorv1.ActionReceipt{TransactionId: "tx-retry"}
+	proc.eventReceipt = &operatorv1.EventReceipt{TransactionId: "tx-retry"}
 	_, err = g.ResumeWithL3Proof(context.Background(), "tx-retry", "user-1", &commonv1.L3Proof{})
 	require.NoError(t, err, "the released claim lets the retry execute")
 	assert.False(t, s.remaining(t, "tx-retry"))

@@ -92,7 +92,7 @@ type OutboundL3ProofPreparer interface {
 // PendingDispatchResumer hands a human decision to the governed dispatch that is
 // still waiting for it. handedOff is true once that dispatch owns the outcome.
 type PendingDispatchResumer interface {
-	ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (receipt *operatorv1.ActionReceipt, handedOff bool, err error)
+	ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (eventReceipt *operatorv1.EventReceipt, handedOff bool, err error)
 }
 
 // GatewayService handles MCP/A2A protocol translation and downstream dispatch.
@@ -195,13 +195,13 @@ type Dependencies struct {
 	// when nil — a missing audit store is a wiring bug, not a no-op condition.
 	AuditStore AuditEventRecorder
 
-	// AuditReceiptQuery provides read access to the Gateway's local audit store for
-	// the governed audit_receipt_list and audit_receipt_get native tools.
+	// AuditEventReceiptQuery provides read access to the Gateway's local audit store for
+	// the governed audit_event_receipt_list and audit_event_receipt_get native tools.
 	// Optional: when nil, those tools fail closed with
-	// constants.ErrMCPAuditReceiptQueryNotConfigured. Production wires
+	// constants.ErrMCPAuditEventReceiptQueryNotConfigured. Production wires
 	// *storage.SQLAuditStore, which implements both AuditEventRecorder and
-	// AuditReceiptQuery.
-	AuditReceiptQuery AuditReceiptQuery
+	// AuditEventReceiptQuery.
+	AuditEventReceiptQuery AuditEventReceiptQuery
 
 	// FsGrep backs the governed search_file and search_directory native tools.
 	// Optional: when nil, those tools fail closed with
@@ -222,7 +222,7 @@ type Dependencies struct {
 	FieldPathRegistryFactory func(*slog.Logger) (*FieldPathRegistry, error)
 
 	// OutboundEnvProc routes prebuilt suspended envelopes to outbound Operators
-	// and verifies their terminal receipts. Without it, outbound resume fails closed.
+	// and verifies their terminal event receipts. Without it, outbound resume fails closed.
 	OutboundEnvProc        governance.EnvelopeProcessor
 	OutboundProofPreparer  OutboundL3ProofPreparer
 	PendingDispatchResumer PendingDispatchResumer
@@ -276,8 +276,8 @@ func NewGatewayService(deps Dependencies) (*GatewayService, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway: %w", constants.ErrInternal)
 	}
-	if deps.AuditReceiptQuery != nil {
-		nativeToolHandler.SetAuditReceiptQuery(deps.AuditReceiptQuery)
+	if deps.AuditEventReceiptQuery != nil {
+		nativeToolHandler.SetAuditEventReceiptQuery(deps.AuditEventReceiptQuery)
 	}
 	if deps.FsGrep != nil {
 		nativeToolHandler.SetFsGrepService(deps.FsGrep)
@@ -598,7 +598,7 @@ func (g *GatewayService) callTool(ctx context.Context, r *http.Request, params j
 		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, stateRoot)
 	}
 
-	receipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
+	eventReceipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
 	if err != nil {
 		if errors.Is(err, governance.ErrL3ProofMissing) {
 			suspension, err := g.suspendGovernedCall(ctx, r, hash, envelopeBytes, callParams.Name, callParams.Arguments)
@@ -618,27 +618,27 @@ func (g *GatewayService) callTool(ctx context.Context, r *http.Request, params j
 		return nil, err
 	}
 
-	receiptJSON, err := encodeActionReceipt(receipt)
+	eventReceiptJSON, err := encodeEventReceipt(eventReceipt)
 	if err != nil {
 		return nil, err
 	}
-	return ReceiptCallToolResult(receipt, receiptJSON), nil
+	return EventReceiptCallToolResult(eventReceipt, eventReceiptJSON), nil
 }
 
-// ReceiptCallToolResult builds the tools/call result of a completed governed call:
-// the receipt summary as text, the signed receipt bytes, and IsError unless the
-// receipt reports COMPLETED. receiptJSON must be the canonical encoding of receipt.
-func ReceiptCallToolResult(receipt *operatorv1.ActionReceipt, receiptJSON json.RawMessage) CallToolResult {
+// EventReceiptCallToolResult builds the tools/call result of a completed governed call:
+// the event receipt summary as text, the signed event receipt bytes, and IsError unless the
+// event receipt reports COMPLETED. eventReceiptJSON must be the canonical encoding of event receipt.
+func EventReceiptCallToolResult(eventReceipt *operatorv1.EventReceipt, eventReceiptJSON json.RawMessage) CallToolResult {
 	mcpRes := CallToolResult{
 		Content: []TextContent{
 			{
 				Type: "text",
-				Text: receipt.ResultSummary,
+				Text: eventReceipt.ResultSummary,
 			},
 		},
-		Receipt: receiptJSON,
+		EventReceipt: eventReceiptJSON,
 	}
-	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+	if eventReceipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 		mcpRes.IsError = true
 	}
 	return mcpRes
@@ -780,7 +780,7 @@ func (g *GatewayService) readResource(ctx context.Context, params json.RawMessag
 		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, stateRoot)
 	}
 
-	receipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
+	eventReceipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -789,12 +789,12 @@ func (g *GatewayService) readResource(ctx context.Context, params json.RawMessag
 		Contents: []TextContent{
 			{
 				Type: "text",
-				Text: receipt.ResultSummary,
+				Text: eventReceipt.ResultSummary,
 			},
 		},
 	}
-	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		mcpRes.Contents[0].Text = fmt.Sprintf("Error: %s", receipt.ResultSummary)
+	if eventReceipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		mcpRes.Contents[0].Text = fmt.Sprintf("Error: %s", eventReceipt.ResultSummary)
 	}
 	return mcpRes, nil
 }
@@ -837,25 +837,25 @@ func (g *GatewayService) getPrompt(ctx context.Context, params json.RawMessage) 
 		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, stateRoot)
 	}
 
-	receipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
+	eventReceipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
 	if err != nil {
 		return nil, err
 	}
 
 	mcpRes := GetPromptResult{
-		Description: receipt.ResultSummary,
+		Description: eventReceipt.ResultSummary,
 		Messages: []PromptMessage{
 			{
 				Role: string(constants.UserRoleUser),
 				Content: TextContent{
 					Type: "text",
-					Text: receipt.ResultSummary,
+					Text: eventReceipt.ResultSummary,
 				},
 			},
 		},
 	}
-	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		mcpRes.Description = fmt.Sprintf("Error: %s", receipt.ResultSummary)
+	if eventReceipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		mcpRes.Description = fmt.Sprintf("Error: %s", eventReceipt.ResultSummary)
 	}
 	return mcpRes, nil
 }
@@ -918,8 +918,8 @@ func mcpResultSummary(raw json.RawMessage) string {
 	if summary == "" || summary == "null" {
 		return "completed"
 	}
-	if len(summary) > constants.ReceiptSummaryMaxBytes {
-		return summary[:constants.ReceiptSummaryMaxBytes]
+	if len(summary) > constants.EventReceiptSummaryMaxBytes {
+		return summary[:constants.EventReceiptSummaryMaxBytes]
 	}
 	return summary
 }
@@ -1049,7 +1049,7 @@ func (g *GatewayService) HandleA2aCall(w http.ResponseWriter, r *http.Request) {
 }
 
 // callIDs returns the caller's execution and investigation IDs, minting any
-// that are absent, so every governed call is attributable in its receipt and
+// that are absent, so every governed call is attributable in its event receipt and
 // approval reference.
 func callIDs(executionID, investigationID string) (string, string, error) {
 	if executionID == "" {
@@ -1114,7 +1114,7 @@ func (g *GatewayService) a2aCall(ctx context.Context, r *http.Request, params js
 		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, stateRoot)
 	}
 
-	receipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
+	eventReceipt, err := g.envProc.ProcessEnvelope(ctx, envelopeBytes)
 	if err != nil {
 		if errors.Is(err, governance.ErrL3ProofMissing) {
 			suspension, err := g.suspendGovernedCall(ctx, r, hash, envelopeBytes, req.SkillName, req.Payload)
@@ -1126,13 +1126,13 @@ func (g *GatewayService) a2aCall(ctx context.Context, r *http.Request, params js
 		return nil, err
 	}
 
-	receiptJSON, err := encodeActionReceipt(receipt)
+	eventReceiptJSON, err := encodeEventReceipt(eventReceipt)
 	if err != nil {
 		return nil, err
 	}
 	return A2ASuccessResponse{
 		ID:     hash,
-		Result: receiptJSON,
+		Result: eventReceiptJSON,
 	}, nil
 }
 
@@ -1157,18 +1157,18 @@ func (g *GatewayService) suspendGovernedCall(ctx context.Context, r *http.Reques
 	}, nil
 }
 
-// encodeActionReceipt renders the executing Operator's signed receipt as canonical
+// encodeEventReceipt renders the executing Operator's signed event receipt as canonical
 // protojson, the same bytes the direct and dispatch ingresses write. A missing
-// receipt is an error: a governed success never returns without its receipt.
-func encodeActionReceipt(receipt *operatorv1.ActionReceipt) (json.RawMessage, error) {
-	if receipt == nil {
-		return nil, fmt.Errorf("gateway: encode action receipt: %w", constants.ErrInternal)
+// event receipt is an error: a governed success never returns without its event receipt.
+func encodeEventReceipt(eventReceipt *operatorv1.EventReceipt) (json.RawMessage, error) {
+	if eventReceipt == nil {
+		return nil, fmt.Errorf("gateway: encode action event_receipt: %w", constants.ErrInternal)
 	}
-	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
+	eventReceiptJSON, err := response.MarshalProtoJSONCanonical(eventReceipt)
 	if err != nil {
-		return nil, fmt.Errorf("gateway: encode action receipt: %w", err)
+		return nil, fmt.Errorf("gateway: encode action event_receipt: %w", err)
 	}
-	return receiptJSON, nil
+	return eventReceiptJSON, nil
 }
 
 // mapGatewayError maps governance verification errors to granular JSON-RPC codes.
@@ -1294,9 +1294,9 @@ func (g *GatewayService) DeleteSuspendedTransaction(ctx context.Context, txHash 
 // the proof; this method attaches it without changing hashed fields and routes
 // to the embedded processor or the outbound dispatcher by envelope target.
 //
-// The signed receipt returned by the executing Operator is forwarded so
+// The signed event receipt returned by the executing Operator is forwarded so
 // the OOB approval UI can surface the downstream tool result to the user.
-func (g *GatewayService) ResumeWithL3Proof(ctx context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.ActionReceipt, error) {
+func (g *GatewayService) ResumeWithL3Proof(ctx context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.EventReceipt, error) {
 	if proof == nil {
 		return nil, constants.ErrGatewayL3ProofRequired
 	}
@@ -1305,31 +1305,31 @@ func (g *GatewayService) ResumeWithL3Proof(ctx context.Context, txHash, userID s
 		return nil, err
 	}
 
-	receipt, handedOff, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Proof: proof})
+	eventReceipt, handedOff, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Proof: proof})
 	if procErr != nil {
 		if handedOff {
 			// The waiting dispatch owns this outcome and cannot take a second
 			// decision, so the suspension ends with the failure.
-			return receipt, g.retireAfterHandedOffFailure(ctx, txHash, procErr)
+			return eventReceipt, g.retireAfterHandedOffFailure(ctx, txHash, procErr)
 		}
 		// Keep the suspension in place so the user can retry the proof
 		// without re-issuing the upstream MCP call: release the claim.
-		return receipt, g.releaseAfterFailedResume(ctx, txHash, procErr)
+		return eventReceipt, g.releaseAfterFailedResume(ctx, txHash, procErr)
 	}
 
 	// Successful execution - remove from the suspension list. The transaction ran, so a
-	// failed delete is returned with the receipt instead of being logged: the caller must
+	// failed delete is returned with the event receipt instead of being logged: the caller must
 	// know the pending row is still listed. The row stays claimed, so the expiry sweep
 	// deletes it without ever recording it as expired.
 	if err := g.suspendedStore.DeleteSuspendedTransaction(ctx, txHash); err != nil {
-		return receipt, fmt.Errorf("gateway: transaction %s executed but its suspended record was not removed: %w", txHash, err)
+		return eventReceipt, fmt.Errorf("gateway: transaction %s executed but its suspended record was not removed: %w", txHash, err)
 	}
-	return receipt, nil
+	return eventReceipt, nil
 }
 
 // DenySuspendedTransaction ends a suspended transaction the human declined. The
 // envelope is re-submitted with the L3 deny marker, so the executing Operator's L4
-// rejects it with L3_DENIED and its L5 signs the rejection receipt. The deny is
+// rejects it with L3_DENIED and its L5 signs the rejection event receipt. The deny is
 // therefore recorded on the executing runtime's own ledger, never only as a
 // Gateway-side delete, and the reserved nonce means the transaction can never run.
 //
@@ -1338,17 +1338,17 @@ func (g *GatewayService) ResumeWithL3Proof(ctx context.Context, txHash, userID s
 // A failure that produced no signed rejection releases the claim, so the deny can be
 // retried, unless a waiting dispatch already took the deny. A deny that executed is a
 // platform defect and fails closed.
-func (g *GatewayService) DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
+func (g *GatewayService) DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.EventReceipt, error) {
 	tx, err := g.claimSuspended(ctx, txHash, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, handedOff, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Denied: true})
+	eventReceipt, handedOff, procErr := g.resubmitSuspended(ctx, tx, &commonv1.L3Metadata{Denied: true})
 	if procErr == nil {
-		return receipt, fmt.Errorf("gateway: deny transaction %s: %w", txHash, constants.ErrL3DenyNotRejected)
+		return eventReceipt, fmt.Errorf("gateway: deny transaction %s: %w", txHash, constants.ErrL3DenyNotRejected)
 	}
-	if !governance.IsGovernanceRejectionReceipt(receipt) {
+	if !governance.IsGovernanceRejectionEventReceipt(eventReceipt) {
 		procErr = fmt.Errorf("gateway: deny transaction %s: %w", txHash, procErr)
 		if handedOff {
 			return nil, g.retireAfterHandedOffFailure(ctx, txHash, procErr)
@@ -1356,9 +1356,9 @@ func (g *GatewayService) DenySuspendedTransaction(ctx context.Context, txHash, u
 		return nil, g.releaseAfterFailedResume(ctx, txHash, procErr)
 	}
 	if err := g.suspendedStore.DeleteSuspendedTransaction(ctx, txHash); err != nil {
-		return receipt, fmt.Errorf("gateway: transaction %s denied but its suspended record was not removed: %w", txHash, err)
+		return eventReceipt, fmt.Errorf("gateway: transaction %s denied but its suspended record was not removed: %w", txHash, err)
 	}
-	return receipt, nil
+	return eventReceipt, nil
 }
 
 // claimSuspended loads a suspended transaction and claims it for one resume or
@@ -1404,7 +1404,7 @@ func (g *GatewayService) claimSuspended(ctx context.Context, txHash, userID stri
 // L3 metadata is outside the transaction hash, so the hashed fields are untouched.
 // handedOff reports that a waiting governed dispatch took the decision and owns
 // its outcome; such a suspension can never be decided again.
-func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.SuspendedTransaction, l3 *commonv1.L3Metadata) (receipt *operatorv1.ActionReceipt, handedOff bool, err error) {
+func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.SuspendedTransaction, l3 *commonv1.L3Metadata) (eventReceipt *operatorv1.EventReceipt, handedOff bool, err error) {
 	env := &commonv1.GovernanceEnvelope{}
 	if err := protojson.Unmarshal([]byte(tx.Envelope), env); err != nil {
 		return nil, false, fmt.Errorf("gateway: decode suspended envelope %s: %w", tx.TransactionHash, err)
@@ -1430,12 +1430,12 @@ func (g *GatewayService) resubmitSuspended(ctx context.Context, tx *models.Suspe
 		}
 		return g.pendingDispatchResumer.ResumePendingDispatch(ctx, env)
 	}
-	receipt, err = g.processSuspended(ctx, tx.TransactionHash, env)
-	return receipt, false, err
+	eventReceipt, err = g.processSuspended(ctx, tx.TransactionHash, env)
+	return eventReceipt, false, err
 }
 
 // processSuspended submits a decided standalone suspension to its execution target.
-func (g *GatewayService) processSuspended(ctx context.Context, txHash string, env *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, error) {
+func (g *GatewayService) processSuspended(ctx context.Context, txHash string, env *commonv1.GovernanceEnvelope) (*operatorv1.EventReceipt, error) {
 	resubmitted, err := (protojson.MarshalOptions{Multiline: false}).Marshal(env)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: encode resubmitted envelope %s: %w", txHash, err)
@@ -1486,7 +1486,7 @@ func (g *GatewayService) retireAfterHandedOffFailure(ctx context.Context, txHash
 // DispatchToDownstream forwards a verified MCP tool call to the downstream MCP server.
 // This implements the Actuator Egress phase for MCP protocol translation.
 // Native tools are executed locally so every call — native or downstream — passes through
-// the full L1-L5 governance pipeline and produces a signed receipt.
+// the full L1-L5 governance pipeline and produces a signed event receipt.
 func (g *GatewayService) DispatchToDownstream(ctx context.Context, toolName string, toolArgs json.RawMessage, operatorSessionID string) (string, error) {
 	// Handle read_field tool locally (JIT field resolution)
 	if toolName == "read_field" {

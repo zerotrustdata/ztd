@@ -17,28 +17,28 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestObserveFillsReceiptFromDispatchWhenObservationHasNone(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-dispatch"}
+func TestObserveFillsEventReceiptFromDispatchWhenObservationHasNone(t *testing.T) {
+	eventReceipt := &operatorv1.EventReceipt{TransactionId: "tx-dispatch"}
 	o := &client.GovernedOutcome{
-		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT},
-		Dispatch:    &operatorv1.GovernedDispatchResult{Receipt: receipt},
+		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT},
+		Dispatch:    &operatorv1.GovernedDispatchResult{EventReceipt: eventReceipt},
 	}
 
 	obs := Observe(o)
-	assert.Equal(t, "tx-dispatch", obs.GetReceipt().GetTransactionId())
+	assert.Equal(t, "tx-dispatch", obs.GetEventReceipt().GetTransactionId())
 }
 
-func TestObserveKeepsObservationReceiptOverDispatch(t *testing.T) {
+func TestObserveKeepsObservationEventReceiptOverDispatch(t *testing.T) {
 	o := &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{
-			Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
-			Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-observed"},
+			Kind:         evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
+			EventReceipt: &operatorv1.EventReceipt{TransactionId: "tx-observed"},
 		},
-		Dispatch: &operatorv1.GovernedDispatchResult{Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-dispatch"}},
+		Dispatch: &operatorv1.GovernedDispatchResult{EventReceipt: &operatorv1.EventReceipt{TransactionId: "tx-dispatch"}},
 	}
 
 	obs := Observe(o)
-	assert.Equal(t, "tx-observed", obs.GetReceipt().GetTransactionId())
+	assert.Equal(t, "tx-observed", obs.GetEventReceipt().GetTransactionId())
 }
 
 func TestObserveCopiesTypedMessage(t *testing.T) {
@@ -56,9 +56,9 @@ func TestObserveCopiesTypedMessage(t *testing.T) {
 	assert.Equal(t, int32(500), source.GetHttpStatus(), "Observe must copy, not alias, the outcome")
 }
 
-func TestObserveWithoutDispatchLeavesReceiptEmpty(t *testing.T) {
+func TestObserveWithoutDispatchLeavesEventReceiptEmpty(t *testing.T) {
 	o := &client.GovernedOutcome{Observation: &evalv1.ConformanceObservation{
 		Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL,
 	}}
-	assert.Nil(t, Observe(o).GetReceipt())
+	assert.Nil(t, Observe(o).GetEventReceipt())
 }

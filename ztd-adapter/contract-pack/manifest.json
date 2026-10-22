@@ -2,15 +2,15 @@
   "files": [
     {
       "path": "builder-prompt.md",
-      "sha256": "af1964ed4f04b1387a5cfc8c2c4aa212ee49d08ec9b66197758d85f6aa8b776d"
+      "sha256": "e12a7f3f3accdb233af05d48839e862b5352427ddbc896463382607274ab6a61"
     },
     {
       "path": "event-schemas.json",
-      "sha256": "e34c0f64538cd7151f91cfffa306be9832ca89f1df361c0900198f01f1f18283"
+      "sha256": "e850bd9a3a3fe9a96687a0db57e69fcf43b945a636bb202136160dfae17b4d61"
     },
     {
       "path": "fixtures/bootstrap.json",
-      "sha256": "fe0b59f4b9cc95229505af27c26b79a544a291d5a46f5d4d0318822db9b10f8b"
+      "sha256": "71b46455994df3df53ba2800f343250784aa177f6ca2396a8f9d9264b9a62590"
     },
     {
       "path": "fixtures/download-availability.json",
@@ -26,7 +26,7 @@
     },
     {
       "path": "fixtures/partial-verification.json",
-      "sha256": "755b1bf08416412b6e2733542de49d292981f78b99d2e09d8b6edf7e2f517ab4"
+      "sha256": "78e9e71a9c81bd55467218768296e90e4f82f775c127e721571d15acb89236a8"
     },
     {
       "path": "fixtures/reconnect.json",
@@ -54,11 +54,11 @@
     },
     {
       "path": "models.ts",
-      "sha256": "199ed5d60923442f7bd2fb22521cec8301e2242d2a5d3517e2eb4a6dec06d3a6"
+      "sha256": "9ed8a34b02b6ff722e6a6ea5739cdd616ced1b3ebf5eefe652c4ded61081ce5d"
     },
     {
       "path": "observe.openapi.json",
-      "sha256": "e3e0ba498251fde06d6e29715b87ff23bc40bad8542b0dc293301bbdc7cbd113"
+      "sha256": "b7f7d2b2c3123daa92b2c7f7d693e2672df841cb2fb614447ebff170dae7786b"
     },
     {
       "path": "public/disclosure-matrix.json",

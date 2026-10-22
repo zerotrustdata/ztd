@@ -23,7 +23,7 @@ import (
 
 var errFactory = fmt.Errorf("factory boom")
 
-func TestAuditReceiptsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestAuditEventReceiptsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := auditEventReceiptsCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer

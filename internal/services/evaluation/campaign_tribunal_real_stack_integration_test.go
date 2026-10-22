@@ -117,11 +117,11 @@ func tribunalWireModels(t *testing.T, env *realStackAgentRun) []string {
 	return models
 }
 
-// tribunalLocalReceipts reads the Data Operator's authoritative local receipt
+// tribunalLocalEventReceipts reads the Data Operator's authoritative local event_receipt
 // list for this investigation, excluding the list query itself.
-func tribunalLocalReceipts(t *testing.T, env *realStackAgentRun, investigationID string) []*operatorv1.ActionReceipt {
+func tribunalLocalEventReceipts(t *testing.T, env *realStackAgentRun, investigationID string) []*operatorv1.EventReceipt {
 	t.Helper()
-	args, err := json.Marshal(mcp.AuditReceiptListRequest{
+	args, err := json.Marshal(mcp.AuditEventReceiptListRequest{
 		OperatorSessionID: env.dataSessionID,
 		InvestigationID:   investigationID,
 		ExcludeAuditReads: true,
@@ -129,42 +129,42 @@ func tribunalLocalReceipts(t *testing.T, env *realStackAgentRun, investigationID
 	})
 	require.NoError(t, err)
 	payload, err := proto.Marshal(&operatorv1.McpCallRequested{
-		ToolName:      constants.MCPToolAuditReceiptList,
+		ToolName:      constants.MCPToolAuditEventReceiptList,
 		ArgumentsJson: string(args),
 	})
 	require.NoError(t, err)
 	out, err := evaluation.NewCommandLane(env.gateway, env.persona).DispatchAgentTool(
 		t.Context(), evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID},
 		"tribunal-ledger-read", investigationID, "tribunal-ledger-read",
-		constants.ActionTypeMcpCall, constants.MCPToolAuditReceiptList, payload,
+		constants.ActionTypeMcpCall, constants.MCPToolAuditEventReceiptList, payload,
 	)
 	require.NoError(t, err)
-	queryReceipt := out.Outcome.Observation.GetReceipt()
-	require.NotNil(t, queryReceipt)
-	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, queryReceipt.GetStatus())
-	var result models.OperatorAuditReceiptListResult
-	require.NoError(t, json.Unmarshal([]byte(queryReceipt.GetResultSummary()), &result))
+	queryEventReceipt := out.Outcome.Observation.GetEventReceipt()
+	require.NotNil(t, queryEventReceipt)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, queryEventReceipt.GetStatus())
+	var result models.OperatorAuditEventReceiptListResult
+	require.NoError(t, json.Unmarshal([]byte(queryEventReceipt.GetResultSummary()), &result))
 	assert.Equal(t, env.dataOperatorID, result.OperatorID)
 	assert.Equal(t, "operator_local_ledger", result.Authority)
 	assert.Equal(t, investigationID, result.InvestigationID)
-	assert.Equal(t, len(result.Receipts), result.Count)
-	return result.Receipts
+	assert.Equal(t, len(result.EventReceipts), result.Count)
+	return result.EventReceipts
 }
 
-func tribunalVerifyLocalReceipt(t *testing.T, env *realStackAgentRun, receipt *operatorv1.ActionReceipt) *models.EventReceiptRecord {
+func tribunalVerifyLocalEventReceipt(t *testing.T, env *realStackAgentRun, eventReceipt *operatorv1.EventReceipt) *models.EventReceiptRecord {
 	t.Helper()
 	operator, err := env.stack.Gateway.Service.GetRegistrationService().GetOperator(t.Context(), env.dataOperatorID)
 	require.NoError(t, err)
 	publicKey, err := models.DecodeActuatorPublicKey(operator.GetActuatorPublicKey())
 	require.NoError(t, err)
-	require.NoError(t, governance.VerifyActionReceiptSignature(receipt, publicKey))
-	require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, publicKey))
+	require.NoError(t, governance.VerifyEventReceiptSignature(eventReceipt, publicKey))
+	require.NoError(t, governance.VerifyEventReceiptPersistenceAttestation(eventReceipt, publicKey))
 	files, err := fs.NewRuntimeFileService(env.stack.DataHost.WorkingDir, testutil.NewTestLogger())
 	require.NoError(t, err)
-	local, err := storage.ReadLocalEventReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.DataHost.Keyring}, receipt.GetTransactionId())
+	local, err := storage.ReadLocalEventReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.DataHost.Keyring}, eventReceipt.GetTransactionId())
 	require.NoError(t, err)
 	require.NotNil(t, local)
-	assert.True(t, proto.Equal(receipt, local.ActionReceipt), "receipt is present in the Data Operator's authoritative local store")
+	assert.True(t, proto.Equal(eventReceipt, local.EventReceipt), "event receipt is present in the Data Operator's authoritative local store")
 	return local
 }
 
@@ -263,8 +263,8 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	assert.Equal(t, `{"args":["HEALTHY"],"command":"echo"}`, tool.ArgumentsJSON, "the proposal is recorded in canonical sorted-key form")
 	approved := tribunalExpectedApprovedArguments(trace)
 	assert.Equal(t, approved, tool.ApprovedArgumentsJSON, "Gateway-owned timeout and working directory are composed before review")
-	require.NotNil(t, tool.Receipt, "the dispatched command keeps its signed receipt")
-	assert.Equal(t, tool.TransactionID, tool.Receipt.GetTransactionId())
+	require.NotNil(t, tool.EventReceipt, "the dispatched command keeps its signed event receipt")
+	assert.Equal(t, tool.TransactionID, tool.EventReceipt.GetTransactionId())
 	assert.Equal(t, string(constants.ActionTypeMcpCall), tool.ActionType)
 	assert.JSONEq(t, tribunalRealRequest, tool.ArgumentsJSON, "the trace records the native proposal")
 	var dispatched *operatorv1.McpCallRequested
@@ -277,21 +277,21 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 	assert.Equal(t, tool.CallID, dispatched.GetExecutionId())
 	assert.Equal(t, tool.ApprovedArgumentsJSON, dispatched.GetArgumentsJson(), "the exact approved bytes reach the Operator")
 
-	localReceipts := tribunalLocalReceipts(t, env, trace.InvestigationID)
-	var shellReceipts []*operatorv1.ActionReceipt
-	for _, receipt := range localReceipts {
-		if receipt.GetActionType() == string(constants.ActionTypeMcpCall) {
-			shellReceipts = append(shellReceipts, receipt)
+	localEventReceipts := tribunalLocalEventReceipts(t, env, trace.InvestigationID)
+	var shellEventReceipts []*operatorv1.EventReceipt
+	for _, eventReceipt := range localEventReceipts {
+		if eventReceipt.GetActionType() == string(constants.ActionTypeMcpCall) {
+			shellEventReceipts = append(shellEventReceipts, eventReceipt)
 		}
-		assert.NotEqual(t, string(constants.ActionTypeExecuteBash), receipt.GetActionType(), "the Operator ledger contains no EXECUTE_BASH receipt")
+		assert.NotEqual(t, string(constants.ActionTypeExecuteBash), eventReceipt.GetActionType(), "the Operator ledger contains no EXECUTE_BASH event receipt")
 	}
-	require.Len(t, shellReceipts, 1, "one Tribunal intent executes one native MCP_CALL")
-	local := tribunalVerifyLocalReceipt(t, env, shellReceipts[0])
+	require.Len(t, shellEventReceipts, 1, "one Tribunal intent executes one native MCP_CALL")
+	local := tribunalVerifyLocalEventReceipt(t, env, shellEventReceipts[0])
 	assert.Equal(t, tool.TransactionID, local.TransactionID)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, local.Status)
 	assert.Equal(t, string(constants.ActionTypeMcpCall), string(local.ActionType))
 	var shellResult mcp.RunShellCommandResult
-	require.NoError(t, json.Unmarshal([]byte(local.ResultSummary), &shellResult), "the signed local receipt keeps the native result shape")
+	require.NoError(t, json.Unmarshal([]byte(local.ResultSummary), &shellResult), "the signed local event receipt keeps the native result shape")
 	assert.Equal(t, 0, shellResult.ExitCode)
 	assert.Equal(t, "HEALTHY\n", shellResult.Stdout)
 	assert.Empty(t, shellResult.Stderr)
@@ -315,7 +315,7 @@ func TestCampaignTribunalIntegration_ApprovedCommandDispatchesWithGovernedDelibe
 		assert.Equal(t, 1, call.LoopTurn)
 		assert.Empty(t, call.ToolsDeclared)
 		assert.Equal(t, fmt.Sprintf("%s-%d", prefix, i+1), call.ProviderAttemptID, "each member call is numbered in deliberation order")
-		require.NotNil(t, call.Receipt, "every Tribunal call keeps its signed receipt")
+		require.NotNil(t, call.EventReceipt, "every Tribunal call keeps its signed event receipt")
 		assert.True(t, call.Completed())
 	}
 	assert.Contains(t, trace.ModelCalls[1].Text, `"command":"echo"`)
@@ -383,7 +383,7 @@ func TestCampaignTribunalIntegration_L1ScreensApprovedTypedArguments(t *testing.
 	assert.False(t, call.Success)
 	assert.Contains(t, call.Error, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE.String())
 	assert.Empty(t, call.TransactionID, "L1 refuses the typed call before an envelope reaches the Operator")
-	assert.Nil(t, call.Receipt)
+	assert.Nil(t, call.EventReceipt)
 	assert.Empty(t, call.PolicyDecision)
 	// The Tribunal approved these bytes before L1 refused the dispatch; the
 	// trace keeps them as evidence, and the refusal names them.
@@ -417,8 +417,8 @@ func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing
 			if posture.RequiresL2() {
 				wantL2 = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
 			}
-			require.NotNil(t, trace.ToolCalls[0].Receipt)
-			assert.Equal(t, wantL2, trace.ToolCalls[0].Receipt.GetL2Status())
+			require.NotNil(t, trace.ToolCalls[0].EventReceipt)
+			assert.Equal(t, wantL2, trace.ToolCalls[0].EventReceipt.GetL2Status())
 			assert.Equal(t, "HEALTHY", trace.FinalOutput)
 			assert.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 		})
@@ -436,8 +436,8 @@ func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing
 			call := trace.ToolCalls[0]
 			assert.False(t, call.Success)
 			assert.Equal(t, evaluation.ExportedAgentPolicyDecisionDeny, call.PolicyDecision)
-			require.NotNil(t, call.Receipt)
-			assert.True(t, governance.IsGovernanceRejectionReceipt(call.Receipt.ActionReceipt))
+			require.NotNil(t, call.EventReceipt)
+			assert.True(t, governance.IsGovernanceRejectionEventReceipt(call.EventReceipt.EventReceipt))
 			assert.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 		})
 	}
@@ -470,7 +470,7 @@ func TestCampaignTribunalIntegration_MarshalBlockFailsCallAndSecondBlockIsConfli
 	assert.Equal(t, evaluation.ExportedTribunalMarshalConflict, second.Error)
 	for _, call := range []evaluation.AgentToolCall{first, second} {
 		assert.Empty(t, call.TransactionID, "a blocked command never dispatches")
-		assert.Nil(t, call.Receipt, "a blocked command never dispatches, so there is no receipt")
+		assert.Nil(t, call.EventReceipt, "a blocked command never dispatches, so there is no event receipt")
 	}
 	assert.Equal(t, evaluation.AgentTerminalClassificationPipelineOutcome, trace.TerminalClassification)
 	require.Len(t, trace.Steps, 14, "two deliberations of five candidates, a vote, and a risk step each")
@@ -555,8 +555,8 @@ func TestCampaignTribunalIntegration_TribunalProviderFailureEndsLoopAndVerifies(
 	failed := trace.ModelCalls[2]
 	assert.Equal(t, "tribunal_generate", failed.Purpose)
 	assert.False(t, failed.Completed())
-	require.NotNil(t, failed.Receipt)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.Receipt.GetStatus())
+	require.NotNil(t, failed.EventReceipt)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.EventReceipt.GetStatus())
 	require.Len(t, trace.ToolCalls, 1)
 	assert.Equal(t, fmt.Sprintf(evaluation.ExportedTribunalInferenceFailedMsg, trace.ProviderFailure), trace.ToolCalls[0].Error)
 	assert.Empty(t, trace.Steps, "an interrupted deliberation records no steps")

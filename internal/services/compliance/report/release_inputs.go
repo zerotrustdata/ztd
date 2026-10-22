@@ -103,7 +103,7 @@ func BuildReleaseAssessmentScope(request ReleaseScopeRequest) (*compliancev1.Ass
 }
 
 // CollectOperationalSignerKeys returns the sorted distinct signer key IDs that
-// authenticate the receipts, deterministic-stage evidence, persistence
+// authenticate the event receipts, deterministic-stage evidence, persistence
 // attestations, and commitments in a snapshot. A retained row without a
 // canonical body contributes no key; the exporter records that gap itself.
 func CollectOperationalSignerKeys(snapshot *storage.OperationalEvidenceSnapshot) ([]string, error) {
@@ -116,13 +116,13 @@ func CollectOperationalSignerKeys(snapshot *storage.OperationalEvidenceSnapshot)
 			keys[keyID] = struct{}{}
 		}
 	}
-	for _, receipt := range snapshot.Receipts {
-		if len(receipt.Body) == 0 {
+	for _, eventReceipt := range snapshot.EventReceipts {
+		if len(eventReceipt.Body) == 0 {
 			continue
 		}
-		message := &operatorv1.ActionReceipt{}
-		if err := compliancev1.UnmarshalCanonical(receipt.Body, message); err != nil {
-			return nil, fmt.Errorf("release trust: decode receipt %s: %w", receipt.TransactionID, err)
+		message := &operatorv1.EventReceipt{}
+		if err := compliancev1.UnmarshalCanonical(eventReceipt.Body, message); err != nil {
+			return nil, fmt.Errorf("release trust: decode event receipt %s: %w", eventReceipt.TransactionID, err)
 		}
 		add(message.GetSignerKeyId())
 		add(message.GetFinalPersistenceAttestation().GetSignerKeyId())

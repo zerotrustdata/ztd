@@ -198,7 +198,7 @@ Consensus (L2) Governance: a vote from a single L2 consensus member.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | proof | [L3Proof](#ztd-common-v1-L3Proof) |  | WebAuthn or CLI/mTLS proof |
-| denied | [bool](#bool) |  | The human declined the suspended transaction. L4 rejects a denied envelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so the deny is an Operator-signed rejection receipt. A deny can only stop execution, so it needs no proof. |
+| denied | [bool](#bool) |  | The human declined the suspended transaction. L4 rejects a denied envelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so the deny is an Operator-signed rejection event receipt. A deny can only stop execution, so it needs no proof. |
 | pending_dispatch | [bool](#bool) |  | Gateway-owned suspension provenance. A waiting dispatch must receive the decision in-process; after restart/cancellation it must never resume alone. |
 
 

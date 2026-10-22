@@ -217,11 +217,11 @@ func TestVerifyEnvelopeIdentityBinding_Exhaustive(t *testing.T) {
 
 // TestEnvelopeErrorCode_RendersTypedCodeOnly proves a response renders the
 // governance sentinel and never the wrapped chain, which can carry an audit or
-// store failure such as a rejection receipt that could not be persisted.
+// store failure such as a rejection event receipt that could not be persisted.
 func TestEnvelopeErrorCode_RendersTypedCodeOnly(t *testing.T) {
 	rejection := fmt.Errorf("%w: %q", constants.ErrTxTargetOperatorMismatch, "remote-operator")
-	persistFailure := fmt.Errorf("%w: %w", constants.ErrL5ActuatorRejectionReceiptPersist, constants.ErrAuditSessionUnknown)
-	chain := fmt.Errorf("%w: rejection receipt: %w", rejection, persistFailure)
+	persistFailure := fmt.Errorf("%w: %w", constants.ErrL5ActuatorRejectionEventReceiptPersist, constants.ErrAuditSessionUnknown)
+	chain := fmt.Errorf("%w: rejection event_receipt: %w", rejection, persistFailure)
 
 	status, code := envelopeErrorCode(chain)
 	require.Equal(t, http.StatusForbidden, status)

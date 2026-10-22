@@ -30,7 +30,7 @@ This guide provides operational routing for executing sovereignty, compliance, a
 In ztd, sovereignty is established through cryptographic verification at the local host execution boundary:
 - A model can request an action, but cannot directly execute mutations.
 - Every governed mutation requires a canonical `GovernanceEnvelope` verified through all five governance layers (L1–L5).
-- Every execution produces an immutable, signed `ActionReceipt` and a commitment attestation in the local ledger.
+- Every execution produces an immutable, signed `EventReceipt` and a commitment attestation in the local ledger.
 - System integrity is proven through Key Security Indicators (KSIs), cross-source evidence graphs, and reproducible model evaluation suites.
 
 ## Quick index
@@ -89,7 +89,7 @@ The `ztd eval` command suite executes governance conformance verification, manag
 
 ### Step 1: Verify Governance Conformance
 
-Execute the model-independent governance conformance suite against a live native stack to confirm that L1–L5 policy enforcement, replay protection, nonce reservation, and signed receipt generation hold under test conditions. `./ztd eval conformance run --help` lists the Operator discovery rules, the setup each ingress requires, and the flags:
+Execute the model-independent governance conformance suite against a live native stack to confirm that L1–L5 policy enforcement, replay protection, nonce reservation, and signed event receipt generation hold under test conditions. `./ztd eval conformance run --help` lists the Operator discovery rules, the setup each ingress requires, and the flags:
 
 ```bash
 ./ztd eval conformance run --help

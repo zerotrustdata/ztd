@@ -491,8 +491,8 @@ func writeOperatorRunText(cmd *cobra.Command, results []operator.RunResult) int 
 		if result.TransactionID != "" {
 			cmd.Printf("  transaction: %s\n", result.TransactionID)
 		}
-		if result.ReceiptStatus != "" {
-			cmd.Printf("  receipt: %s\n", result.ReceiptStatus)
+		if result.EventReceiptStatus != "" {
+			cmd.Printf("  event_receipt: %s\n", result.EventReceiptStatus)
 		}
 		if result.SignerKeyID != "" {
 			cmd.Printf("  signer key: %s\n", result.SignerKeyID)

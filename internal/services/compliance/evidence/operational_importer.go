@@ -71,7 +71,7 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 	seenArtifactIDs := make(map[string]struct{}, len(artifacts))
 	for _, artifact := range artifacts {
 		artifactType := ArtifactType(artifact.ArtifactType)
-		if !ValidRelativePath(artifact.RelativePath) || artifact.SHA256 == "" || artifact.ArtifactID == "" || artifact.ProducedAtUTC == "" || artifactType != ArtifactTypeActionReceipt && artifactType != ArtifactTypeReceiptPersistence && artifactType != ArtifactTypeCommitment && artifactType != ArtifactTypeAuditChainEntry {
+		if !ValidRelativePath(artifact.RelativePath) || artifact.SHA256 == "" || artifact.ArtifactID == "" || artifact.ProducedAtUTC == "" || artifactType != ArtifactTypeEventReceipt && artifactType != ArtifactTypeEventReceiptPersistence && artifactType != ArtifactTypeCommitment && artifactType != ArtifactTypeAuditChainEntry {
 			return nil, fmt.Errorf("%w: operational artifact inventory entry is incomplete", constants.ErrEvidenceArtifactMalformed)
 		}
 		if artifactType != ArtifactTypeAuditChainEntry && artifact.TransactionID == "" {
@@ -98,37 +98,37 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 		}
 		entriesByType[artifactType] = append(entriesByType[artifactType], artifact)
 	}
-	if inventory.ReceiptCount != len(entriesByType[ArtifactTypeActionReceipt]) || inventory.PersistenceCount != len(entriesByType[ArtifactTypeReceiptPersistence]) || inventory.CommitmentCount != len(entriesByType[ArtifactTypeCommitment]) || inventory.AuditChainCount != len(entriesByType[ArtifactTypeAuditChainEntry]) {
+	if inventory.EventReceiptCount != len(entriesByType[ArtifactTypeEventReceipt]) || inventory.PersistenceCount != len(entriesByType[ArtifactTypeEventReceiptPersistence]) || inventory.CommitmentCount != len(entriesByType[ArtifactTypeCommitment]) || inventory.AuditChainCount != len(entriesByType[ArtifactTypeAuditChainEntry]) {
 		return nil, fmt.Errorf("%w: operational artifact counts do not match inventory", constants.ErrEvidenceArtifactMalformed)
 	}
 
-	receiptEntries := entriesByType[ArtifactTypeActionReceipt]
-	receiptBindings := make(map[string]ReceiptImportBinding, len(receiptEntries))
-	receiptsByTransaction := make(map[string]*operatorv1.ActionReceipt, len(receiptEntries))
-	receiptNodesByTransaction := make(map[string]EvidenceNode, len(receiptEntries))
-	for _, entry := range receiptEntries {
+	eventReceiptEntries := entriesByType[ArtifactTypeEventReceipt]
+	eventReceiptBindings := make(map[string]EventReceiptImportBinding, len(eventReceiptEntries))
+	eventReceiptsByTransaction := make(map[string]*operatorv1.EventReceipt, len(eventReceiptEntries))
+	eventReceiptNodesByTransaction := make(map[string]EvidenceNode, len(eventReceiptEntries))
+	for _, entry := range eventReceiptEntries {
 		entryPath := i.sourceArtifactPath(entry.RelativePath)
 		body, err := i.reader.ReadFile(ctx, entryPath)
 		if err != nil {
 			return nil, err
 		}
-		transactionID, err := receiptTransactionID(body)
+		transactionID, err := eventReceiptTransactionID(body)
 		if err != nil {
 			return nil, err
 		}
 		if transactionID != entry.TransactionID {
-			return nil, fmt.Errorf("%w: operational receipt transaction does not match inventory", constants.ErrEvidenceScopeMismatch)
+			return nil, fmt.Errorf("%w: operational event receipt transaction does not match inventory", constants.ErrEvidenceScopeMismatch)
 		}
-		if _, exists := receiptBindings[transactionID]; exists {
-			return nil, fmt.Errorf("%w: duplicate operational receipt transaction %s", constants.ErrEvidenceDuplicateID, transactionID)
+		if _, exists := eventReceiptBindings[transactionID]; exists {
+			return nil, fmt.Errorf("%w: duplicate operational event receipt transaction %s", constants.ErrEvidenceDuplicateID, transactionID)
 		}
-		receiptBindings[transactionID] = ReceiptImportBinding{Reference: entry.ArtifactID, Path: entryPath, ScopeID: i.scopeID, RunID: i.admission.GetRunId()}
+		eventReceiptBindings[transactionID] = EventReceiptImportBinding{Reference: entry.ArtifactID, Path: entryPath, ScopeID: i.scopeID, RunID: i.admission.GetRunId()}
 	}
 
 	nodes := make([]EvidenceNode, 0, len(artifacts))
-	for _, entry := range receiptEntries {
-		binding := receiptBindingsForEntry(receiptBindings, entry, i.scopeID, i.admission.GetRunId())
-		imported, err := NewReceiptImporterAt(i.reader, i.trust, binding, i.nowFunc).Import(ctx)
+	for _, entry := range eventReceiptEntries {
+		binding := eventReceiptBindingsForEntry(eventReceiptBindings, entry, i.scopeID, i.admission.GetRunId())
+		imported, err := NewEventReceiptImporterAt(i.reader, i.trust, binding, i.nowFunc).Import(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -137,13 +137,13 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 		if err != nil {
 			return nil, err
 		}
-		receipt := &operatorv1.ActionReceipt{}
-		if err := compliancev1.UnmarshalCanonical(body, receipt); err != nil {
-			return nil, fmt.Errorf("%w: decode operational receipt for protocol chain: %w", constants.ErrEvidenceArtifactMalformed, err)
+		eventReceipt := &operatorv1.EventReceipt{}
+		if err := compliancev1.UnmarshalCanonical(body, eventReceipt); err != nil {
+			return nil, fmt.Errorf("%w: decode operational event receipt for protocol chain: %w", constants.ErrEvidenceArtifactMalformed, err)
 		}
-		receiptsByTransaction[entry.TransactionID] = receipt
-		receiptNodesByTransaction[entry.TransactionID] = imported[0]
-		chainNode, err := operationalProtocolChainNode(receipt, imported[0])
+		eventReceiptsByTransaction[entry.TransactionID] = eventReceipt
+		eventReceiptNodesByTransaction[entry.TransactionID] = imported[0]
+		chainNode, err := operationalProtocolChainNode(eventReceipt, imported[0])
 		if err != nil {
 			return nil, err
 		}
@@ -151,7 +151,7 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 			nodes = append(nodes, *chainNode)
 		}
 	}
-	for _, entry := range entriesByType[ArtifactTypeReceiptPersistence] {
+	for _, entry := range entriesByType[ArtifactTypeEventReceiptPersistence] {
 		entryPath := i.sourceArtifactPath(entry.RelativePath)
 		body, err := i.reader.ReadFile(ctx, entryPath)
 		if err != nil {
@@ -164,11 +164,11 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 		if transactionID != entry.TransactionID {
 			return nil, fmt.Errorf("%w: operational persistence transaction does not match inventory", constants.ErrEvidenceScopeMismatch)
 		}
-		receiptBinding, exists := receiptBindings[transactionID]
+		eventReceiptBinding, exists := eventReceiptBindings[transactionID]
 		if !exists {
-			return nil, fmt.Errorf("%w: persistence attestation %s has no exported receipt", constants.ErrUnresolvedReference, transactionID)
+			return nil, fmt.Errorf("%w: persistence attestation %s has no exported event receipt", constants.ErrUnresolvedReference, transactionID)
 		}
-		imported, err := NewPersistenceImporterAt(i.reader, i.trust, PersistenceImportBinding{Reference: entry.ArtifactID, Path: entryPath, ReceiptReference: receiptBinding.Reference, ReceiptPath: receiptBinding.Path, ScopeID: i.scopeID, RunID: i.admission.GetRunId()}, i.nowFunc).Import(ctx)
+		imported, err := NewPersistenceImporterAt(i.reader, i.trust, PersistenceImportBinding{Reference: entry.ArtifactID, Path: entryPath, EventReceiptReference: eventReceiptBinding.Reference, EventReceiptPath: eventReceiptBinding.Path, ScopeID: i.scopeID, RunID: i.admission.GetRunId()}, i.nowFunc).Import(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -212,38 +212,38 @@ func (i *OperationalExportImporter) Import(ctx context.Context) ([]EvidenceNode,
 	nodes = append(nodes, chainNodesByTransaction...)
 
 	for _, record := range commitmentRecords {
-		receipt := receiptsByTransaction[record.attestation.GetTransactionId()]
-		if receipt == nil {
+		eventReceipt := eventReceiptsByTransaction[record.attestation.GetTransactionId()]
+		if eventReceipt == nil {
 			continue
 		}
-		receiptNode := receiptNodesByTransaction[record.attestation.GetTransactionId()]
-		receiptReference, err := validateOperationalCommitmentReceiptLink(record.attestation, receipt, receiptNode.ArtifactID)
+		eventReceiptNode := eventReceiptNodesByTransaction[record.attestation.GetTransactionId()]
+		eventReceiptReference, err := validateOperationalCommitmentEventReceiptLink(record.attestation, eventReceipt, eventReceiptNode.ArtifactID)
 		if err != nil {
 			return nil, err
 		}
-		if receiptReference != "" {
+		if eventReceiptReference != "" {
 			for index := range nodes {
 				if nodes[index].ArtifactID == record.nodeID {
-					nodes[index].References = append(nodes[index].References, receiptReference)
+					nodes[index].References = append(nodes[index].References, eventReceiptReference)
 					break
 				}
 			}
 		}
 	}
-	for transactionID, receiptNode := range receiptNodesByTransaction {
-		receipt := receiptsByTransaction[transactionID]
+	for transactionID, eventReceiptNode := range eventReceiptNodesByTransaction {
+		eventReceipt := eventReceiptsByTransaction[transactionID]
 		for _, chainNode := range chainNodesByTransaction {
 			if chainNode.TransactionID != transactionID {
 				continue
 			}
-			if !operationalReceiptMatchesChainEntry(receipt, chainNode.CanonicalBytes) {
+			if !operationalEventReceiptMatchesChainEntry(eventReceipt, chainNode.CanonicalBytes) {
 				continue
 			}
-			// One direction only: the chain fact records the receipt. A reciprocal
+			// One direction only: the chain fact records the event receipt. A reciprocal
 			// reference would make a reference cycle, which the graph verifier rejects.
 			for index := range nodes {
 				if nodes[index].ArtifactID == chainNode.ArtifactID {
-					nodes[index].References = append(nodes[index].References, receiptNode.ArtifactID)
+					nodes[index].References = append(nodes[index].References, eventReceiptNode.ArtifactID)
 				}
 			}
 		}
@@ -278,18 +278,18 @@ func validateOperationalCommitmentSegment(inventory *OperationalSourceInventory,
 	return nil
 }
 
-func validateOperationalCommitmentReceiptLink(attestation *operatorv1.CommitmentAttestation, receipt *operatorv1.ActionReceipt, receiptReference string) (string, error) {
-	if attestation.GetTransactionHash() != receipt.GetTransactionHash() {
-		return "", fmt.Errorf("%w: commitment %s transaction hash does not match retained receipt", constants.ErrEvidenceScopeMismatch, attestation.GetTransactionId())
+func validateOperationalCommitmentEventReceiptLink(attestation *operatorv1.CommitmentAttestation, eventReceipt *operatorv1.EventReceipt, eventReceiptReference string) (string, error) {
+	if attestation.GetTransactionHash() != eventReceipt.GetTransactionHash() {
+		return "", fmt.Errorf("%w: commitment %s transaction hash does not match retained event receipt", constants.ErrEvidenceScopeMismatch, attestation.GetTransactionId())
 	}
-	for _, stage := range receipt.GetDeterministicStageEvidence() {
+	for _, stage := range eventReceipt.GetDeterministicStageEvidence() {
 		if stage.GetKind() != operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND {
 			continue
 		}
 		if stage.GetTransactionId() != attestation.GetTransactionId() || stage.GetTransactionHash() != attestation.GetTransactionHash() || stage.GetCommitmentHash() != attestation.GetHash() || stage.GetPriorCommitmentHash() != attestation.GetPriorCommitmentHash() || stage.GetSignerKeyId() != attestation.GetAuditorKeyId() || stage.GetL2SignatureDigest() != attestation.GetL2SignatureDigest() || stage.GetL3SignatureDigest() != attestation.GetHumanSignatureDigest() {
 			return "", fmt.Errorf("%w: commitment %s does not match its retained commitment stage", constants.ErrEvidenceScopeMismatch, attestation.GetTransactionId())
 		}
-		return receiptReference, nil
+		return eventReceiptReference, nil
 	}
 	return "", nil
 }
@@ -318,11 +318,11 @@ func (i *OperationalExportImporter) sourceArtifactPath(relativePath string) stri
 	return path.Join(i.sourceRoot, relativePath)
 }
 
-func operationalProtocolChainNode(receipt *operatorv1.ActionReceipt, receiptNode EvidenceNode) (*EvidenceNode, error) {
-	if len(receipt.GetDeterministicStageEvidence()) == 0 {
+func operationalProtocolChainNode(eventReceipt *operatorv1.EventReceipt, eventReceiptNode EvidenceNode) (*EvidenceNode, error) {
+	if len(eventReceipt.GetDeterministicStageEvidence()) == 0 {
 		return nil, nil
 	}
-	chain, err := governance.ValidateDeterministicProtocolChain(receipt)
+	chain, err := governance.ValidateDeterministicProtocolChain(eventReceipt)
 	if err != nil {
 		return nil, fmt.Errorf("%w: validate operational protocol chain: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
@@ -340,22 +340,22 @@ func operationalProtocolChainNode(receipt *operatorv1.ActionReceipt, receiptNode
 		SHA256:             digest,
 		MediaType:          constants.MediaTypeOctetStream,
 		SchemaRef:          "ztd.operator.v1.DeterministicStageEvidence[]",
-		ProducerIdentity:   receiptNode.ProducerIdentity,
-		ProducedAt:         receiptNode.ProducedAt,
-		ScopeID:            receiptNode.ScopeID,
-		RunID:              receiptNode.RunID,
-		TransactionID:      receiptNode.TransactionID,
-		VerificationStatus: receiptNode.VerificationStatus,
-		VerifierID:         receiptNode.VerifierID,
-		VerifierVersion:    receiptNode.VerifierVersion,
-		VerifiedAt:         receiptNode.VerifiedAt,
-		BundlePath:         receiptNode.BundlePath,
+		ProducerIdentity:   eventReceiptNode.ProducerIdentity,
+		ProducedAt:         eventReceiptNode.ProducedAt,
+		ScopeID:            eventReceiptNode.ScopeID,
+		RunID:              eventReceiptNode.RunID,
+		TransactionID:      eventReceiptNode.TransactionID,
+		VerificationStatus: eventReceiptNode.VerificationStatus,
+		VerifierID:         eventReceiptNode.VerifierID,
+		VerifierVersion:    eventReceiptNode.VerifierVersion,
+		VerifiedAt:         eventReceiptNode.VerifiedAt,
+		BundlePath:         eventReceiptNode.BundlePath,
 		CanonicalBytes:     canonical,
-		References:         []string{receiptNode.ArtifactID},
+		References:         []string{eventReceiptNode.ArtifactID},
 	}, nil
 }
 
-func receiptBindingsForEntry(bindings map[string]ReceiptImportBinding, entry OperationalExportArtifact, scopeID, runID string) ReceiptImportBinding {
+func eventReceiptBindingsForEntry(bindings map[string]EventReceiptImportBinding, entry OperationalExportArtifact, scopeID, runID string) EventReceiptImportBinding {
 	for _, binding := range bindings {
 		if binding.Reference == entry.ArtifactID {
 			binding.ScopeID = scopeID
@@ -363,19 +363,19 @@ func receiptBindingsForEntry(bindings map[string]ReceiptImportBinding, entry Ope
 			return binding
 		}
 	}
-	return ReceiptImportBinding{}
+	return EventReceiptImportBinding{}
 }
 
-func receiptTransactionID(body []byte) (string, error) {
-	receipt := &operatorv1.ActionReceipt{}
-	if err := compliancev1.UnmarshalCanonical(body, receipt); err != nil || receipt.GetTransactionId() == "" {
-		return "", fmt.Errorf("%w: operational receipt transaction binding is incomplete", constants.ErrEvidenceArtifactMalformed)
+func eventReceiptTransactionID(body []byte) (string, error) {
+	eventReceipt := &operatorv1.EventReceipt{}
+	if err := compliancev1.UnmarshalCanonical(body, eventReceipt); err != nil || eventReceipt.GetTransactionId() == "" {
+		return "", fmt.Errorf("%w: operational event receipt transaction binding is incomplete", constants.ErrEvidenceArtifactMalformed)
 	}
-	return receipt.GetTransactionId(), nil
+	return eventReceipt.GetTransactionId(), nil
 }
 
 func persistenceTransactionID(body []byte) (string, error) {
-	attestation := &operatorv1.ReceiptPersistenceAttestation{}
+	attestation := &operatorv1.EventReceiptPersistenceAttestation{}
 	if err := compliancev1.UnmarshalCanonical(body, attestation); err != nil || attestation.GetTransactionId() == "" {
 		return "", fmt.Errorf("%w: operational persistence transaction binding is incomplete", constants.ErrEvidenceArtifactMalformed)
 	}
@@ -470,28 +470,28 @@ func validateOperationalAuditChainInventory(inventory *OperationalSourceInventor
 	return nil
 }
 
-func operationalReceiptMatchesChainEntry(receipt *operatorv1.ActionReceipt, chainBody []byte) bool {
-	if receipt == nil {
+func operationalEventReceiptMatchesChainEntry(eventReceipt *operatorv1.EventReceipt, chainBody []byte) bool {
+	if eventReceipt == nil {
 		return false
 	}
 	chainEntry, err := storage.UnmarshalAuditChainSegmentEntry(chainBody)
 	if err != nil {
 		return false
 	}
-	if chainEntry.TransactionID != "" && chainEntry.TransactionID != receipt.GetTransactionId() {
+	if chainEntry.TransactionID != "" && chainEntry.TransactionID != eventReceipt.GetTransactionId() {
 		return false
 	}
 	// The export carries no event content, and the chain row's content_digest is keyed
 	// under the exporting runtime's vault, so it cannot be recomputed here. The exporter
-	// verified that keyed digest against the decrypted receipt body and recorded the
-	// body's SHA-256 in the entry; the receipt is checked against that.
+	// verified that keyed digest against the decrypted event receipt body and recorded the
+	// body's SHA-256 in the entry; the event receipt is checked against that.
 	if chainEntry.ContentSHA256 == "" {
 		return false
 	}
-	canonicalReceipt, err := compliancev1.MarshalCanonical(receipt)
+	canonicalEventReceipt, err := compliancev1.MarshalCanonical(eventReceipt)
 	if err != nil {
 		return false
 	}
-	sum := sha256.Sum256(canonicalReceipt)
+	sum := sha256.Sum256(canonicalEventReceipt)
 	return hex.EncodeToString(sum[:]) == chainEntry.ContentSHA256
 }

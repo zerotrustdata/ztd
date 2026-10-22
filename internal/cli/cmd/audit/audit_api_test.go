@@ -42,9 +42,9 @@ func setupAuditAPITestEnv(t *testing.T) *config.Config {
 	return cfg
 }
 
-// --- Receipts ---
+// --- Event receipts ---
 
-func TestAuditReceiptsCmd_API_MockHappyPath(t *testing.T) {
+func TestAuditEventReceiptsCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"event_receipts":[{"transaction_hash":"abc123","action_type":"file_edit","target_resource":"/path/to/file","status":2,"executed_at":"2026-01-01T00:00:00Z","l2_valid":true,"l3_valid":false}]}`)}
@@ -65,7 +65,7 @@ func TestAuditReceiptsCmd_API_MockHappyPath(t *testing.T) {
 	assert.Contains(t, buf.String(), "L2 valid: 1")
 }
 
-func TestAuditReceiptsCmd_API_JSONOutput(t *testing.T) {
+func TestAuditEventReceiptsCmd_API_JSONOutput(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	rawJSON := `{"event_receipts":[]}`
@@ -87,7 +87,7 @@ func TestAuditReceiptsCmd_API_JSONOutput(t *testing.T) {
 	assert.Contains(t, buf.String(), `[]`)
 }
 
-func TestAuditReceiptsCmd_API_EmptyReceipts(t *testing.T) {
+func TestAuditEventReceiptsCmd_API_EmptyEventReceipts(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"event_receipts":[]}`)}
@@ -106,7 +106,7 @@ func TestAuditReceiptsCmd_API_EmptyReceipts(t *testing.T) {
 	assert.Contains(t, buf.String(), "No event receipts found")
 }
 
-func TestAuditReceiptsCmd_API_GetError(t *testing.T) {
+func TestAuditEventReceiptsCmd_API_GetError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetErr: errMockNetwork}
@@ -125,7 +125,7 @@ func TestAuditReceiptsCmd_API_GetError(t *testing.T) {
 	assert.ErrorIs(t, err, errMockNetwork)
 }
 
-func TestAuditReceiptsCmd_API_InvalidJSON(t *testing.T) {
+func TestAuditEventReceiptsCmd_API_InvalidJSON(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`not json {{{`)}
@@ -144,7 +144,7 @@ func TestAuditReceiptsCmd_API_InvalidJSON(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestAuditReceiptsCmd_API_ClientFactoryError(t *testing.T) {
+func TestAuditEventReceiptsCmd_API_ClientFactoryError(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -185,7 +185,7 @@ func TestAuditExportCmd_API_MockHappyPath(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{})
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "Receipts export written")
+	assert.Contains(t, buf.String(), "Event receipts export written")
 
 	data, err := os.ReadFile(outFile)
 	require.NoError(t, err)
@@ -431,7 +431,7 @@ func TestAuditEventsCmd_API_InvalidJSON(t *testing.T) {
 func TestAuditSummaryCmd_API_MockHappyPath(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
-	summaryJSON := `{"success":true,"events_summary":{"file_edit":5,"file_read":10},"events_total":15,"receipts_summary":{"approved":3,"rejected":1},"receipts_total":4,"total_records":19}`
+	summaryJSON := `{"success":true,"events_summary":{"file_edit":5,"file_read":10},"events_total":15,"event_receipts_summary":{"approved":3,"rejected":1},"event_receipts_total":4,"total_records":19}`
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(summaryJSON)}
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -453,7 +453,7 @@ func TestAuditSummaryCmd_API_MockHappyPath(t *testing.T) {
 func TestAuditSummaryCmd_API_EmptyRecords(t *testing.T) {
 	cfg := setupAuditAPITestEnv(t)
 
-	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"success":true,"events_summary":{},"events_total":0,"receipts_summary":{},"receipts_total":0,"total_records":0}`)}
+	mockClient := &cmdtest.MockAPIClient{GetResp: []byte(`{"success":true,"events_summary":{},"events_total":0,"event_receipts_summary":{},"event_receipts_total":0,"total_records":0}`)}
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
 	factory := func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) { return mockClient, nil }

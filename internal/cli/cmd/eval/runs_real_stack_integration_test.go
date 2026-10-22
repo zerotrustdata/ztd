@@ -137,7 +137,7 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 	require.NoError(t, err)
 
 	// Keep the live run to the answer-only Lite scenario: each assignment is one
-	// real model turn with no synthetic tools or receipts.
+	// real model turn with no synthetic tools or event receipts.
 	suite := evaluation.DefaultScenarioSuite()
 	suite.ID = "real-stack-suite"
 	suite.Version = evaluation.SuiteSchemaVersion
@@ -300,8 +300,8 @@ func TestRunsExecute_RealStack(t *testing.T) {
 			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 			require.Len(t, trace.ModelCalls, 1)
 			assert.Equal(t, "READY", trace.FinalOutput)
-			require.NotNil(t, trace.ModelCalls[0].Receipt)
-			receipt := trace.ModelCalls[0].Receipt.ActionReceipt
+			require.NotNil(t, trace.ModelCalls[0].EventReceipt)
+			eventReceipt := trace.ModelCalls[0].EventReceipt.EventReceipt
 			workload, err := run.stack.Inference.Workload()
 			require.NoError(t, err)
 			assert.Equal(t, workload.OperatorID, trace.Inference.OperatorID)
@@ -313,10 +313,10 @@ func TestRunsExecute_RealStack(t *testing.T) {
 
 			operatorFiles, err := fs.NewRuntimeFileService(run.stack.InferenceHost.WorkingDir, slog.Default())
 			require.NoError(t, err)
-			local, err := storage.ReadLocalEventReceipt(operatorFiles, slog.Default(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, receipt.GetTransactionId())
+			local, err := storage.ReadLocalEventReceipt(operatorFiles, slog.Default(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, eventReceipt.GetTransactionId())
 			require.NoError(t, err)
 			require.NotNil(t, local)
-			assert.True(t, proto.Equal(receipt, local.ActionReceipt), "the imported trace receipt must match the Inference Operator's authoritative local record")
+			assert.True(t, proto.Equal(eventReceipt, local.EventReceipt), "the imported trace event receipt must match the Inference Operator's authoritative local record")
 		})
 	}
 }
@@ -353,8 +353,8 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, inferenceResult)
-	require.NotNil(t, inferenceResult.GetReceipt())
-	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, inferenceResult.GetReceipt().GetL2Status())
+	require.NotNil(t, inferenceResult.GetEventReceipt())
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, inferenceResult.GetEventReceipt().GetL2Status())
 	assert.Equal(t, 1, run.stack.Provider.ChatCount(), "warm-up inference is not voted on")
 
 	// Neither the strict-run preflight residency read nor the typed release is
@@ -369,26 +369,26 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, residency.Models, "release verifies absence inside its own execution")
 
-	receipts, err := run.stack.Gateway.Service.GetAuditStore().ListEventReceipts(models.AuditScope{
+	eventReceipts, err := run.stack.Gateway.Service.GetAuditStore().ListEventReceipts(models.AuditScope{
 		OperatorSessionID: inferenceWorkload.OperatorSessionID,
 		InvestigationID:   "ollama-model-residency",
 	}, 10, 0)
 	require.NoError(t, err)
-	assert.Len(t, receipts, 1, "the caller must not dispatch a second governed residency query after release")
+	assert.Len(t, eventReceipts, 1, "the caller must not dispatch a second governed residency query after release")
 
-	releaseReceipts, err := run.stack.Gateway.Service.GetAuditStore().ListEventReceipts(models.AuditScope{
+	releaseEventReceipts, err := run.stack.Gateway.Service.GetAuditStore().ListEventReceipts(models.AuditScope{
 		OperatorSessionID: inferenceWorkload.OperatorSessionID,
 		InvestigationID:   "ollama-model-release",
 	}, 10, 0)
 	require.NoError(t, err)
-	require.Len(t, releaseReceipts, 1)
-	assert.Equal(t, constants.ActionTypeOllamaModelRelease, releaseReceipts[0].ActionType)
-	assert.NotEmpty(t, releaseReceipts[0].TransactionID)
+	require.Len(t, releaseEventReceipts, 1)
+	assert.Equal(t, constants.ActionTypeOllamaModelRelease, releaseEventReceipts[0].ActionType)
+	assert.NotEmpty(t, releaseEventReceipts[0].TransactionID)
 	operatorFiles, err := fs.NewRuntimeFileService(run.stack.InferenceHost.WorkingDir, testutil.NewTestLogger())
 	require.NoError(t, err)
-	local, err := storage.ReadLocalEventReceipt(operatorFiles, testutil.NewTestLogger(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, releaseReceipts[0].TransactionID)
+	local, err := storage.ReadLocalEventReceipt(operatorFiles, testutil.NewTestLogger(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, releaseEventReceipts[0].TransactionID)
 	require.NoError(t, err)
 	require.NotNil(t, local)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, local.ActionReceipt.GetStatus())
-	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, local.ActionReceipt.GetL2Status())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, local.EventReceipt.GetStatus())
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, local.EventReceipt.GetL2Status())
 }

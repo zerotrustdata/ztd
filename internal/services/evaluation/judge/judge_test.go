@@ -63,7 +63,7 @@ func judgmentResponse(req *operatorv1.InferenceDispatchRequest, text string) *op
 	return &operatorv1.InferenceDispatchResponse{
 		TransactionId: "tx-" + req.GetProviderAttemptId(),
 		Result:        result,
-		Receipt:       &operatorv1.ActionReceipt{ResultSummary: result.GetResultDigest()},
+		EventReceipt:  &operatorv1.EventReceipt{ResultSummary: result.GetResultDigest()},
 	}
 }
 
@@ -151,11 +151,11 @@ func TestScoreTrace_FinalReplyAndMemoryAreScoredThroughCampaignAuthorizedDispatc
 		JudgeModelTag:    judgeModelTag,
 		JudgeModelDigest: strings.Repeat("d", 64),
 		TransactionID:    "tx-judge-final_reply",
-		Receipt:          &operatorv1.ActionReceipt{ResultSummary: "digest"},
+		EventReceipt:     &operatorv1.EventReceipt{ResultSummary: "digest"},
 		Result:           scores[0].Result,
 		RubricVersion:    RubricVersion,
 	}, scores[0])
-	require.NotNil(t, scores[0].Result, "a scored judge carries the result its receipt binds")
+	require.NotNil(t, scores[0].Result, "a scored judge carries the result its event receipt binds")
 	assert.Equal(t, `{"score": 4, "rationale": "answers the objective"}`, models.InferenceResultText(scores[0].Result))
 	assert.Equal(t, SubjectMemory, scores[1].Subject)
 	assert.Equal(t, StatusScored, scores[1].Status)

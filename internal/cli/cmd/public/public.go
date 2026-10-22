@@ -531,7 +531,7 @@ func publicVerifyProofCmd() *cobra.Command {
 }
 
 // publicVerifyAgentTraceCmd verifies a downloaded assignment_agent_trace proof
-// artifact offline: its evidence digest, every receipt signature against the
+// artifact offline: its evidence digest, every event receipt signature against the
 // trace's pinned actuator anchors, and the sentinel ledger bracket.
 func publicVerifyAgentTraceCmd() *cobra.Command {
 	var tracePath string

@@ -24,27 +24,27 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// verifyErrorClasses maps every sentinel a receipt verification can return to its
-// failure class. A receipt error that matches none of them is SIGNATURE_INVALID.
+// verifyErrorClasses maps every sentinel an event receipt verification can return to its
+// failure class. An event receipt error that matches none of them is SIGNATURE_INVALID.
 var verifyErrorClasses = []struct {
 	sentinel error
 	class    evalv1.ConformanceFailureClass
 }{
 	{constants.ErrConformanceAnchorUnknown, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN},
-	{constants.ErrConformanceReceiptUnclassifiable, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE},
+	{constants.ErrConformanceEventReceiptUnclassifiable, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE},
 	{constants.ErrInvalidEvidenceGraph, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID},
-	{constants.ErrActionReceiptMissing, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
-	{constants.ErrActionReceiptSignatureInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
-	{constants.ErrL5ActuatorCanonicalizeReceipt, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
-	{constants.ErrReceiptPersistenceAttestationMissing, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
-	{constants.ErrReceiptPersistenceAttestationInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
-	{constants.ErrReceiptPersistenceSignatureMismatch, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+	{constants.ErrEventReceiptMissing, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+	{constants.ErrEventReceiptSignatureInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+	{constants.ErrL5ActuatorCanonicalizeEventReceipt, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+	{constants.ErrEventReceiptPersistenceAttestationMissing, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+	{constants.ErrEventReceiptPersistenceAttestationInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+	{constants.ErrEventReceiptPersistenceSignatureMismatch, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
 }
 
 // expectedObservation maps each expected outcome to the observation kind that
 // must carry it.
 var expectedObservation = map[cases.ExpectKind]evalv1.ConformanceObservationKind{
-	cases.ExpectExecuted:  evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+	cases.ExpectExecuted:  evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
 	cases.ExpectRejected:  evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
 	cases.ExpectRefused:   evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL,
 	cases.ExpectSuspended: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED,
@@ -81,14 +81,14 @@ func (r *recordCheck) verifyCase(c cases.Case, ev *evalv1.ConformanceCaseEvidenc
 		return failed(c.ID, verifyErrorClass(err)), nil
 	}
 
-	// 4. Each observation against its expectation. Receipts are the claimed executions.
+	// 4. Each observation against its expectation. Event receipts are the claimed executions.
 	var claimed []oracle.Outcome
 	for i, obs := range ev.GetObservations() {
 		outcome, class := r.checkObservation(runtime, obs, c.Expect[i])
 		if class != evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNSPECIFIED {
 			return failed(c.ID, class), nil
 		}
-		if obs.GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
+		if obs.GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT {
 			claimed = append(claimed, outcome)
 		}
 	}
@@ -112,7 +112,7 @@ func (r *recordCheck) verifyCase(c cases.Case, ev *evalv1.ConformanceCaseEvidenc
 }
 
 // setupUnavailable accepts only the ingress's own typed setup reason and no
-// execution evidence. A skipped case cannot conceal a receipt or side effect.
+// execution evidence. A skipped case cannot conceal an event receipt or side effect.
 func setupUnavailable(c cases.Case, ev *evalv1.ConformanceCaseEvidence) bool {
 	kind := c.Ingress.UnavailableObservation()
 	return kind != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED &&
@@ -147,7 +147,7 @@ func effectOf(c cases.Case) cases.Effect {
 }
 
 // checkObservation compares one observation with its expectation. It returns the
-// classified outcome for a receipt and the failure class, which is UNSPECIFIED
+// classified outcome for an event receipt and the failure class, which is UNSPECIFIED
 // when the observation matches.
 func (r *recordCheck) checkObservation(runtime string, obs *evalv1.ConformanceObservation, expect cases.Expect) (oracle.Outcome, evalv1.ConformanceFailureClass) {
 	if obs.GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED {
@@ -158,7 +158,7 @@ func (r *recordCheck) checkObservation(runtime string, obs *evalv1.ConformanceOb
 	}
 	switch expect.Kind {
 	case cases.ExpectExecuted:
-		return r.checkReceipt(runtime, obs.GetReceipt(), expect)
+		return r.checkEventReceipt(runtime, obs.GetEventReceipt(), expect)
 	case cases.ExpectRejected:
 		return r.checkRejection(runtime, obs.GetRejection(), expect)
 	case cases.ExpectRefused:
@@ -173,11 +173,11 @@ func (r *recordCheck) checkObservation(runtime string, obs *evalv1.ConformanceOb
 	}
 }
 
-func (r *recordCheck) checkReceipt(runtime string, receipt *operatorv1.ActionReceipt, expect cases.Expect) (oracle.Outcome, evalv1.ConformanceFailureClass) {
-	if receipt == nil {
+func (r *recordCheck) checkEventReceipt(runtime string, eventReceipt *operatorv1.EventReceipt, expect cases.Expect) (oracle.Outcome, evalv1.ConformanceFailureClass) {
+	if eventReceipt == nil {
 		return oracle.Outcome{}, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING
 	}
-	outcome, err := classifyReceipt(r.anchors, runtime, receipt)
+	outcome, err := classifyEventReceipt(r.anchors, runtime, eventReceipt)
 	if err != nil {
 		return oracle.Outcome{}, verifyErrorClass(err)
 	}
@@ -194,10 +194,10 @@ func (r *recordCheck) checkReceipt(runtime string, receipt *operatorv1.ActionRec
 }
 
 func (r *recordCheck) checkRejection(runtime string, rejection *operatorv1.GovernanceRejection, expect cases.Expect) (oracle.Outcome, evalv1.ConformanceFailureClass) {
-	if rejection.GetReceipt() == nil {
+	if rejection.GetEventReceipt() == nil {
 		return oracle.Outcome{}, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING
 	}
-	outcome, err := classifyReceipt(r.anchors, runtime, rejection.GetReceipt())
+	outcome, err := classifyEventReceipt(r.anchors, runtime, rejection.GetEventReceipt())
 	if err != nil {
 		return oracle.Outcome{}, verifyErrorClass(err)
 	}
@@ -210,14 +210,14 @@ func (r *recordCheck) checkRejection(runtime string, rejection *operatorv1.Gover
 	return outcome, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNSPECIFIED
 }
 
-// checkRefusal requires a typed refusal with the expected code and no receipt:
+// checkRefusal requires a typed refusal with the expected code and no event_receipt:
 // nothing reached L4, so nothing was executed or rejected.
 func checkRefusal(obs *evalv1.ConformanceObservation, expect cases.Expect) (oracle.Outcome, evalv1.ConformanceFailureClass) {
 	refusal := obs.GetRefusal()
 	if refusal == nil {
 		return oracle.Outcome{}, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING
 	}
-	if obs.GetReceipt() != nil {
+	if obs.GetEventReceipt() != nil {
 		return oracle.Outcome{}, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH
 	}
 	if !refusalCodeMatches(refusal.GetCode(), expect.RefusalCode) {
@@ -226,7 +226,7 @@ func checkRefusal(obs *evalv1.ConformanceObservation, expect cases.Expect) (orac
 	return oracle.Outcome{}, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNSPECIFIED
 }
 
-// rejectionCodeMatches reports whether a receipt's rejection code is the expected
+// rejectionCodeMatches reports whether an event receipt's rejection code is the expected
 // one. UNSPECIFIED and UNCLASSIFIED never match, even against an expectation.
 func rejectionCodeMatches(got, want operatorv1.GovernanceRejectionCode) bool {
 	if got == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED ||
@@ -294,35 +294,35 @@ func a2aCarriesMarker(payloadJSON, marker string) bool {
 	return payload.Marker == marker
 }
 
-// classifyReceipt verifies a receipt against runtime's pinned anchor and classifies
+// classifyEventReceipt verifies an event receipt against runtime's pinned anchor and classifies
 // its outcome.
-func classifyReceipt(anchors *oracle.AnchorSet, runtime string, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
-	if receipt == nil {
-		return oracle.Outcome{}, fmt.Errorf("conformance verify: receipt missing: %w", constants.ErrConformanceReceiptUnclassifiable)
+func classifyEventReceipt(anchors *oracle.AnchorSet, runtime string, eventReceipt *operatorv1.EventReceipt) (oracle.Outcome, error) {
+	if eventReceipt == nil {
+		return oracle.Outcome{}, fmt.Errorf("conformance verify: event receipt missing: %w", constants.ErrConformanceEventReceiptUnclassifiable)
 	}
-	if _, err := oracle.VerifyReceipt(anchors, runtime, receipt); err != nil {
-		return oracle.Outcome{}, fmt.Errorf("conformance verify: receipt: %w", err)
+	if _, err := oracle.VerifyEventReceipt(anchors, runtime, eventReceipt); err != nil {
+		return oracle.Outcome{}, fmt.Errorf("conformance verify: event_receipt: %w", err)
 	}
-	outcome, err := oracle.Classify(receipt)
+	outcome, err := oracle.Classify(eventReceipt)
 	if err != nil {
-		return oracle.Outcome{}, fmt.Errorf("conformance verify: receipt: %w", err)
+		return oracle.Outcome{}, fmt.Errorf("conformance verify: event_receipt: %w", err)
 	}
 	return outcome, nil
 }
 
-// classifyExecuted is classifyReceipt for a sentinel, which must be an executed receipt.
-func classifyExecuted(anchors *oracle.AnchorSet, runtime string, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
-	outcome, err := classifyReceipt(anchors, runtime, receipt)
+// classifyExecuted is classifyEventReceipt for a sentinel, which must be an executed event receipt.
+func classifyExecuted(anchors *oracle.AnchorSet, runtime string, eventReceipt *operatorv1.EventReceipt) (oracle.Outcome, error) {
+	outcome, err := classifyEventReceipt(anchors, runtime, eventReceipt)
 	if err != nil {
 		return oracle.Outcome{}, err
 	}
 	if outcome.Kind != oracle.OutcomeExecuted {
-		return oracle.Outcome{}, fmt.Errorf("conformance verify: sentinel is not an executed receipt: %w", constants.ErrConformanceReceiptUnclassifiable)
+		return oracle.Outcome{}, fmt.Errorf("conformance verify: sentinel is not an executed event_receipt: %w", constants.ErrConformanceEventReceiptUnclassifiable)
 	}
 	return outcome, nil
 }
 
-// verifyErrorClass maps a receipt verification error to its failure class. Unmapped
+// verifyErrorClass maps an event receipt verification error to its failure class. Unmapped
 // errors fail closed as SIGNATURE_INVALID.
 func verifyErrorClass(err error) evalv1.ConformanceFailureClass {
 	for _, entry := range verifyErrorClasses {
@@ -340,7 +340,7 @@ func invalidEvidenceClass(class evalv1.ConformanceFailureClass) bool {
 	case evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID,
-		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE,
+		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH:
 		return true
 	default:

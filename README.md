@@ -54,7 +54,7 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
                      │  - L4 Warden: Re-verifies hash & root  │
                      │  - L5 Actuator: Mint ephemeral cap     │
                      │  - Executes locally on target host     │
-                     │  - Appends signed ActionReceipt to     │
+                     │  - Appends signed EventReceipt to     │
                      │    local SQLite ledger & Git history   │
                      └────────────────────────────────────────┘
 ```
@@ -63,7 +63,7 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
 The Gateway is the front door and protocol coordinator. It ingests intent via MCP (`POST /mcp` or stdio), Agent-to-Agent (A2A), HTTP dispatch, or CLI. It checks technical bedrock rules, coordinates multi-agent consensus or human passkey authorizations, and packages admitted intent into a canonical, signed `GovernanceEnvelope`. It also serves the embedded browser console and hosts an in-process Operator substrate strictly for Gateway-local operations.
 
 ### The Policy Execution Point: Operator (`ztdo`)
-The Operator is a lightweight process that runs on the target machine that owns the data. It connects **strictly outbound** over mTLS to the Gateway and listens on zero inbound network ports. It pulls transactions from its dedicated session channel, independently re-evaluates the envelope at Layer 4, mints a short-lived capability, dispatches the action locally, and records cryptographic receipts in its own local SQLite audit database and git file ledger.
+The Operator is a lightweight process that runs on the target machine that owns the data. It connects **strictly outbound** over mTLS to the Gateway and listens on zero inbound network ports. It pulls transactions from its dedicated session channel, independently re-evaluates the envelope at Layer 4, mints a short-lived capability, dispatches the action locally, and records cryptographic event receipts in its own local SQLite audit database and git file ledger.
 
 Even if the Gateway is compromised, an Operator refuses to execute any envelope whose canonical transaction hash, state Merkle root, or cryptographic proofs fail its independent verification. Delivery from the Gateway does not equal authorization.
 
@@ -79,7 +79,7 @@ Every mutation passing through ztd must clear five deterministic layers:
 | **L2** | **Consensus** | Gateway (coord.), Operator (verify) | $K$-of-$N$ Ed25519 quorum signature check over `<tx_hash>\|<decision>` by enrolled machine peers. |
 | **L3** | **Notary** | Gateway (coord.), Operator (verify) | Cryptographic human approval gate. WebAuthn passkeys in the browser console, or signed Ed25519 CLI approval proofs for headless runtimes. |
 | **L4** | **Warden** | Executing Operator | Pre-dispatch host gate. Reserves nonces, checks TTLs, recomputes the canonical transaction hash, checks the state Merkle root, and re-runs L1. |
-| **L5** | **Actuator** | Executing Operator | Sole execution boundary. Signs `EXECUTING` receipt, rehydrates scrubbed credentials locally, mints a single-action just-in-time capability, executes the action, dissolves the capability, and signs the final `COMPLETED` or `FAILED` receipt. |
+| **L5** | **Actuator** | Executing Operator | Sole execution boundary. Signs `EXECUTING` event receipt, rehydrates scrubbed credentials locally, mints a single-action just-in-time capability, executes the action, dissolves the capability, and signs the final `COMPLETED` or `FAILED` event receipt. |
 
 ### Governance Postures
 
@@ -100,7 +100,7 @@ Most cloud-managed agent tools ship logs back to a vendor bucket. If the vendor 
 
 ztd uses a **Local-First Audit Architecture**:
 - **Authoritative local store:** Each Operator maintains its own encrypted SQLite audit records in `data/ztd.db` and a git-backed file history ledger under its runtime directory.
-- **Projections, not truth:** The Gateway mirrors receipts for the UI and CLI, but the local host remains the single authoritative root of truth for what ran.
+- **Projections, not truth:** The Gateway mirrors event receipts for the UI and CLI, but the local host remains the single authoritative root of truth for what ran.
 - **Incremental Merkle commitment:** State roots are computed incrementally across 65,536 buckets in a 16-ary tree. Proofs don't degrade into full-table scans as your audit history grows.
 - **Local secret rehydration:** Sensitive credentials and tokens never travel across the wire in plaintext. They are scrubbed to reversible placeholders (`{{UEI_<owner>_N}}`) and rehydrated by the L5 Actuator inside the memory of the host that minted them, immediately before execution.
 

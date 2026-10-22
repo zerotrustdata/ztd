@@ -186,67 +186,67 @@ func TestClassifyGovernanceRejectionCoversDirectWardenSentinels(t *testing.T) {
 	}
 }
 
-func TestWithRejectionReceiptWrapsOnlyGovernanceRejections(t *testing.T) {
+func TestWithRejectionEventReceiptWrapsOnlyGovernanceRejections(t *testing.T) {
 	verifyErr := fmt.Errorf("verify: %w: 3s ago", constants.ErrTxTransactionExpired)
-	rejected := &operatorv1.ActionReceipt{
+	rejected := &operatorv1.EventReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		FailureCode:   operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EXPIRED,
 	}
 
-	err := WithRejectionReceipt(rejected, verifyErr)
+	err := WithRejectionEventReceipt(rejected, verifyErr)
 	require.ErrorIs(t, err, constants.ErrTxTransactionExpired)
 	resp := RejectionResponse(fmt.Errorf("dispatch: %w", err))
 	require.NotNil(t, resp)
 	assert.Equal(t, constants.ErrTxTransactionExpired.Error(), resp.GetError(), "only the sentinel renders, never the chain")
-	assert.Same(t, rejected, resp.GetReceipt())
+	assert.Same(t, rejected, resp.GetEventReceipt())
 
-	executionFailure := &operatorv1.ActionReceipt{
+	executionFailure := &operatorv1.EventReceipt{
 		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED,
+		FailureCode: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED,
 	}
-	assert.Same(t, verifyErr, WithRejectionReceipt(executionFailure, verifyErr))
-	assert.Same(t, verifyErr, WithRejectionReceipt(nil, verifyErr))
-	assert.NoError(t, WithRejectionReceipt(rejected, nil))
+	assert.Same(t, verifyErr, WithRejectionEventReceipt(executionFailure, verifyErr))
+	assert.Same(t, verifyErr, WithRejectionEventReceipt(nil, verifyErr))
+	assert.NoError(t, WithRejectionEventReceipt(rejected, nil))
 	assert.Nil(t, RejectionResponse(verifyErr))
 }
 
-func TestWithFailedReceiptCarriesEveryFailedReceipt(t *testing.T) {
+func TestWithFailedEventReceiptCarriesEveryFailedEventReceipt(t *testing.T) {
 	providerErr := fmt.Errorf("dispatch: %w", constants.ErrInferenceBackendUnavailable)
-	failed := &operatorv1.ActionReceipt{
+	failed := &operatorv1.EventReceipt{
 		TransactionId: "tx-failed",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE,
+		FailureCode:   operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE,
 	}
 
-	err := WithFailedReceipt(failed, providerErr)
+	err := WithFailedEventReceipt(failed, providerErr)
 	require.ErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
-	assert.Same(t, failed, FailedReceipt(fmt.Errorf("gateway: %w", err)))
+	assert.Same(t, failed, FailedEventReceipt(fmt.Errorf("gateway: %w", err)))
 	assert.Nil(t, RejectionResponse(err), "an execution failure is not a governance rejection")
 
-	rejected := &operatorv1.ActionReceipt{
+	rejected := &operatorv1.EventReceipt{
 		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		FailureCode: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 	}
-	rejectedErr := WithFailedReceipt(rejected, providerErr)
-	assert.Same(t, rejected, FailedReceipt(rejectedErr))
+	rejectedErr := WithFailedEventReceipt(rejected, providerErr)
+	assert.Same(t, rejected, FailedEventReceipt(rejectedErr))
 	assert.NotNil(t, RejectionResponse(rejectedErr))
 
-	completed := &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
-	assert.Same(t, providerErr, WithFailedReceipt(completed, providerErr))
-	assert.Same(t, providerErr, WithFailedReceipt(nil, providerErr))
-	assert.NoError(t, WithFailedReceipt(failed, nil))
-	assert.Nil(t, FailedReceipt(providerErr))
+	completed := &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	assert.Same(t, providerErr, WithFailedEventReceipt(completed, providerErr))
+	assert.Same(t, providerErr, WithFailedEventReceipt(nil, providerErr))
+	assert.NoError(t, WithFailedEventReceipt(failed, nil))
+	assert.Nil(t, FailedEventReceipt(providerErr))
 }
 
-func TestRejectionResponseUnmappedErrorRendersReceiptCode(t *testing.T) {
-	rejected := &operatorv1.ActionReceipt{
+func TestRejectionResponseUnmappedErrorRendersEventReceiptCode(t *testing.T) {
+	rejected := &operatorv1.EventReceipt{
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		FailureCode:   operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE,
 	}
-	resp := RejectionResponse(WithRejectionReceipt(rejected, errors.New("relay: rejected")))
+	resp := RejectionResponse(WithRejectionEventReceipt(rejected, errors.New("relay: rejected")))
 	require.NotNil(t, resp)
 	assert.Equal(t, "GOVERNANCE_REJECTION_CODE_L1_DOCTRINE", resp.GetError())
 }

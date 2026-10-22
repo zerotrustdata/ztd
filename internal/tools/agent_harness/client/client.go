@@ -8,7 +8,7 @@
 // Package client is Agent Harness's thin, faithful client for a real ztd Gateway.
 // It speaks the actual wire surfaces (health/state-root, MCP & A2A JSON-RPC,
 // the governance envelope admission API, the OOB approve flow, and audit
-// receipts) and records every exchange so the run can be audited in detail.
+// event receipts) and records every exchange so the run can be audited in detail.
 package client
 
 import (
@@ -385,19 +385,19 @@ func (c *Client) AnnounceApproval(txHash string, decision ApprovalDecision) {
 }
 
 // WaitForApproval prints the human approval banner for txHash, asking for decision,
-// waits on sub for the decision, and returns the signed receipt: the resumed
-// receipt on approve, or the L3_DENIED rejection receipt on deny.
-func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string, decision ApprovalDecision) (*operatorv1.ActionReceipt, error) {
+// waits on sub for the decision, and returns the signed event_receipt: the resumed
+// event receipt on approve, or the L3_DENIED rejection event receipt on deny.
+func (c *Client) WaitForApproval(ctx context.Context, sub *auth.ApprovalSubscription, txHash, userID string, decision ApprovalDecision) (*operatorv1.EventReceipt, error) {
 	c.AnnounceApproval(txHash, decision)
 
-	receipt, err := sub.Wait(ctx, txHash, userID)
+	eventReceipt, err := sub.Wait(ctx, txHash, userID)
 	if err != nil {
 		return nil, err
 	}
-	if receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
-		fmt.Fprintf(os.Stderr, "  ✗ Human denied transaction %s (signed L3_DENIED receipt)\n\n", txHash)
-		return receipt, nil
+	if eventReceipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+		fmt.Fprintf(os.Stderr, "  ✗ Human denied transaction %s (signed L3_DENIED event receipt)\n\n", txHash)
+		return eventReceipt, nil
 	}
 	fmt.Fprintf(os.Stderr, "  ✓ Human approval confirmed for transaction %s\n\n", txHash)
-	return receipt, nil
+	return eventReceipt, nil
 }
