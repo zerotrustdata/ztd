@@ -93,23 +93,23 @@ func requireDocument(ctx context.Context, t *testing.T, collection, docID string
 }
 
 // submitEnvelope submits env and fails the test unless the Gateway answers
-// with a completed signed receipt for it.
+// with a completed signed event receipt for it.
 func submitEnvelope(ctx context.Context, t *testing.T, env *governance.GovernanceEnvelope, what string) {
 	t.Helper()
-	receipt, err := e2eClient.SubmitGovernanceEnvelope(ctx, env)
+	eventReceipt, err := e2eClient.SubmitGovernanceEnvelope(ctx, env)
 	require.NoError(t, err, "gateway must accept %s envelope", what)
-	require.Equal(t, env.GetTransactionHash(), receipt.GetTransactionId(), "%s receipt must name the submitted transaction", what)
-	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus(), "%s envelope must complete", what)
-	t.Logf("%s envelope admitted: tx=%s", what, receipt.GetTransactionId())
+	require.Equal(t, env.GetTransactionHash(), eventReceipt.GetTransactionId(), "%s event receipt must name the submitted transaction", what)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.GetStatus(), "%s envelope must complete", what)
+	t.Logf("%s envelope admitted: tx=%s", what, eventReceipt.GetTransactionId())
 }
 
 // TestGovernance_DocumentUpdateAndDelete verifies the governed document lifecycle
 // end to end against the running platform without requiring an LLM:
 //  1. Submits DOCUMENT_UPDATE (create with merge=false) via POST /api/v1/governance/envelopes.
-//  2. Correlates signed ActionReceipt with COMPLETED status, valid signature, and identity binding.
+//  2. Correlates signed EventReceipt with COMPLETED status, valid signature, and identity binding.
 //  3. Reads back the created document via GET /api/v1/data/{collection}/{id} and verifies fields.
 //  4. Submits DOCUMENT_UPDATE (merge=true) with partial update and verifies untouched fields survive.
-//  5. Submits DOCUMENT_DELETE, correlates signed ActionReceipt, and verifies the document returns 404.
+//  5. Submits DOCUMENT_DELETE, correlates signed EventReceipt, and verifies the document returns 404.
 func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -182,13 +182,13 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	notBeforeCreate := time.Now().Add(-2 * time.Second)
 	submitEnvelope(ctx, t, createEnv, "create")
 
-	// Correlate receipt for creation
-	createReceipt := requireRecordedReceipt(ctx, t, constants.ActionTypeDocumentUpdate, targetResource, notBeforeCreate)
+	// Correlate event receipt for creation
+	createEventReceipt := requireRecordedEventReceipt(ctx, t, constants.ActionTypeDocumentUpdate, targetResource, notBeforeCreate)
 
-	assert.GreaterOrEqual(t, len(createReceipt.Signature), 64, "create receipt must be signed")
-	assert.Equal(t, e2eClient.userID, createReceipt.RequestorUserID, "requestor_user_id must match")
-	assert.Equal(t, actingAppID, createReceipt.ActingAppID, "acting_app_id must match")
-	t.Logf("create receipt verified: tx=%s", createReceipt.TransactionID)
+	assert.GreaterOrEqual(t, len(createEventReceipt.Signature), 64, "create event receipt must be signed")
+	assert.Equal(t, e2eClient.userID, createEventReceipt.RequestorUserID, "requestor_user_id must match")
+	assert.Equal(t, actingAppID, createEventReceipt.ActingAppID, "acting_app_id must match")
+	t.Logf("create event receipt verified: tx=%s", createEventReceipt.TransactionID)
 
 	// Read back created document
 	doc := requireDocument(ctx, t, collection, docID)
@@ -236,12 +236,12 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	notBeforeMerge := time.Now().Add(-2 * time.Second)
 	submitEnvelope(ctx, t, mergeEnv, "merge")
 
-	// Correlate receipt for merge update
-	mergeReceipt := requireRecordedReceipt(ctx, t, constants.ActionTypeDocumentUpdate, targetResource, notBeforeMerge)
+	// Correlate event receipt for merge update
+	mergeEventReceipt := requireRecordedEventReceipt(ctx, t, constants.ActionTypeDocumentUpdate, targetResource, notBeforeMerge)
 
-	require.NotNil(t, mergeReceipt)
-	assert.GreaterOrEqual(t, len(mergeReceipt.Signature), 64, "merge receipt must be signed")
-	t.Logf("merge receipt verified: tx=%s", mergeReceipt.TransactionID)
+	require.NotNil(t, mergeEventReceipt)
+	assert.GreaterOrEqual(t, len(mergeEventReceipt.Signature), 64, "merge event receipt must be signed")
+	t.Logf("merge event receipt verified: tx=%s", mergeEventReceipt.TransactionID)
 
 	// Read back and verify untouched fields survived
 	doc = requireDocument(ctx, t, collection, docID)
@@ -282,12 +282,12 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	notBeforeDelete := time.Now().Add(-2 * time.Second)
 	submitEnvelope(ctx, t, deleteEnv, "delete")
 
-	// Correlate receipt for delete
-	deleteReceipt := requireRecordedReceipt(ctx, t, constants.ActionTypeDocumentDelete, targetResource, notBeforeDelete)
+	// Correlate event receipt for delete
+	deleteEventReceipt := requireRecordedEventReceipt(ctx, t, constants.ActionTypeDocumentDelete, targetResource, notBeforeDelete)
 
-	assert.GreaterOrEqual(t, len(deleteReceipt.Signature), 64, "delete receipt must be signed")
-	assert.Equal(t, e2eClient.userID, deleteReceipt.RequestorUserID, "requestor_user_id must match")
-	t.Logf("delete receipt verified: tx=%s", deleteReceipt.TransactionID)
+	assert.GreaterOrEqual(t, len(deleteEventReceipt.Signature), 64, "delete event receipt must be signed")
+	assert.Equal(t, e2eClient.userID, deleteEventReceipt.RequestorUserID, "requestor_user_id must match")
+	t.Logf("delete event receipt verified: tx=%s", deleteEventReceipt.TransactionID)
 
 	// Verify document is deleted (GET returns 404)
 	_, err = e2eClient.GetDocument(ctx, collection, docID)
@@ -295,25 +295,25 @@ func TestGovernance_DocumentUpdateAndDelete(t *testing.T) {
 	t.Logf("verified document %s returns 404 after deletion", targetResource)
 }
 
-// recordedReceipt is the part of an audit receipt the governance document tests
+// recordedEventReceipt is the part of an audit event receipt the governance document tests
 // assert on.
-type recordedReceipt struct {
+type recordedEventReceipt struct {
 	TransactionID   string
 	Signature       string
 	RequestorUserID string
 	ActingAppID     string
 }
 
-// requireRecordedReceipt reads the audit receipts once and returns the
-// completed, signed receipt of actionType for targetResource executed at or
+// requireRecordedEventReceipt reads the audit event receipts once and returns the
+// completed, signed event receipt of actionType for targetResource executed at or
 // after notBefore. The embedded Operator executes the envelope in-process and
-// the gateway returns only after the signed receipt is recorded, so the receipt
-// is listed when the submit has been answered; a missing receipt is a failure.
-func requireRecordedReceipt(ctx context.Context, t *testing.T, actionType constants.ActionType, targetResource string, notBefore time.Time) *recordedReceipt {
+// the gateway returns only after the signed event receipt is recorded, so the event_receipt
+// is listed when the submit has been answered; a missing event receipt is a failure.
+func requireRecordedEventReceipt(ctx context.Context, t *testing.T, actionType constants.ActionType, targetResource string, notBefore time.Time) *recordedEventReceipt {
 	t.Helper()
-	receiptsResp, err := e2eClient.GetAuditReceipts(ctx)
-	require.NoError(t, err, "audit receipts must be readable")
-	for _, r := range receiptsResp.EventReceipts {
+	eventReceiptsResp, err := e2eClient.GetAuditEventReceipts(ctx)
+	require.NoError(t, err, "audit event receipts must be readable")
+	for _, r := range eventReceiptsResp.EventReceipts {
 		if r.ActionType != actionType || r.TargetResource != targetResource {
 			continue
 		}
@@ -323,13 +323,13 @@ func requireRecordedReceipt(ctx context.Context, t *testing.T, actionType consta
 		if r.Signature == "" || r.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 			continue
 		}
-		return &recordedReceipt{
+		return &recordedEventReceipt{
 			TransactionID:   r.TransactionID,
 			Signature:       r.Signature,
 			RequestorUserID: r.RequestorUserID,
 			ActingAppID:     r.ActingAppID,
 		}
 	}
-	require.FailNow(t, "receipt not recorded", "no completed signed %s receipt for %s after %s", actionType, targetResource, notBefore)
+	require.FailNow(t, "event receipt not recorded", "no completed signed %s event receipt for %s after %s", actionType, targetResource, notBefore)
 	return nil
 }

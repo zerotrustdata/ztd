@@ -6,7 +6,7 @@
 // it renders: any held investigation from the previous repetition, the exact
 // model input, every model call (thinking, text, finish,
 // retries, failure), every tool call with its governance decision and signed
-// receipt, and the sentinel bracket around the run. Nothing is screened.
+// event receipt, and the sentinel bracket around the run. Nothing is screened.
 
 import { useEffect, useState } from 'react';
 import {
@@ -49,8 +49,8 @@ export function TextBlock({ title, text, copyLabel, json = false }: { title: str
   );
 }
 
-function stageEvidence(receipt: AgentTraceProto): { kind: string; outcome: string }[] {
-  const stages = receipt.deterministic_stage_evidence;
+function stageEvidence(eventReceipt: AgentTraceProto): { kind: string; outcome: string }[] {
+  const stages = eventReceipt.deterministic_stage_evidence;
   if (!Array.isArray(stages)) return [];
   return stages.flatMap((stage) =>
     stage && typeof stage === 'object'
@@ -62,13 +62,13 @@ function stageEvidence(receipt: AgentTraceProto): { kind: string; outcome: strin
   );
 }
 
-function Receipt({ receipt, title = 'Signed receipt' }: { receipt: AgentTraceProto; title?: string }) {
-  const status = field(receipt, 'status');
+function EventReceipt({ eventReceipt, title = 'Signed event receipt' }: { eventReceipt: AgentTraceProto; title?: string }) {
+  const status = field(eventReceipt, 'status');
   const succeeded = status === 'EXECUTION_STATUS_COMPLETED';
-  const raw = JSON.stringify(receipt, null, 2);
-  const stages = stageEvidence(receipt);
+  const raw = JSON.stringify(eventReceipt, null, 2);
+  const stages = stageEvidence(eventReceipt);
   return (
-    <div className="agent-trace-receipt">
+    <div className="agent-trace-event_receipt">
       <div className="transcript-field-label">
         {title}
         {status ? (
@@ -76,13 +76,13 @@ function Receipt({ receipt, title = 'Signed receipt' }: { receipt: AgentTracePro
         ) : null}
       </div>
       <dl className="agent-trace-facts">
-        {field(receipt, 'action_type') ? <><dt>Action</dt><dd><code>{field(receipt, 'action_type')}</code></dd></> : null}
-        {field(receipt, 'transaction_id') ? <><dt>Transaction</dt><dd><code>{field(receipt, 'transaction_id')}</code></dd></> : null}
-        {field(receipt, 'signer_key_id') ? <><dt>Signer</dt><dd><code>{field(receipt, 'signer_key_id')}</code></dd></> : null}
-        {field(receipt, 'l2_status') ? <><dt>L2 consensus</dt><dd>{enumLabel(field(receipt, 'l2_status'), 'L2_STATUS_')}</dd></> : null}
-        {field(receipt, 'l3_status') ? <><dt>L3 notary</dt><dd>{enumLabel(field(receipt, 'l3_status'), 'L3_STATUS_')}</dd></> : null}
-        {field(receipt, 'failure_code') ? <><dt>Failure</dt><dd><code>{field(receipt, 'failure_code')}</code></dd></> : null}
-        {field(receipt, 'rejection_code') ? <><dt>Rejection</dt><dd><code>{field(receipt, 'rejection_code')}</code></dd></> : null}
+        {field(eventReceipt, 'action_type') ? <><dt>Action</dt><dd><code>{field(eventReceipt, 'action_type')}</code></dd></> : null}
+        {field(eventReceipt, 'transaction_id') ? <><dt>Transaction</dt><dd><code>{field(eventReceipt, 'transaction_id')}</code></dd></> : null}
+        {field(eventReceipt, 'signer_key_id') ? <><dt>Signer</dt><dd><code>{field(eventReceipt, 'signer_key_id')}</code></dd></> : null}
+        {field(eventReceipt, 'l2_status') ? <><dt>L2 consensus</dt><dd>{enumLabel(field(eventReceipt, 'l2_status'), 'L2_STATUS_')}</dd></> : null}
+        {field(eventReceipt, 'l3_status') ? <><dt>L3 notary</dt><dd>{enumLabel(field(eventReceipt, 'l3_status'), 'L3_STATUS_')}</dd></> : null}
+        {field(eventReceipt, 'failure_code') ? <><dt>Failure</dt><dd><code>{field(eventReceipt, 'failure_code')}</code></dd></> : null}
+        {field(eventReceipt, 'rejection_code') ? <><dt>Rejection</dt><dd><code>{field(eventReceipt, 'rejection_code')}</code></dd></> : null}
       </dl>
       {stages.length > 0 ? (
         <ol className="agent-trace-stages" aria-label="Deterministic stage evidence">
@@ -92,8 +92,8 @@ function Receipt({ receipt, title = 'Signed receipt' }: { receipt: AgentTracePro
         </ol>
       ) : null}
       <details className="agent-trace-raw">
-        <summary>Receipt JSON</summary>
-        <CopyButton text={raw} label="receipt JSON" />
+        <summary>EventReceipt JSON</summary>
+        <CopyButton text={raw} label="event receipt JSON" />
         <pre className="model-response-text"><code>{raw}</code></pre>
       </details>
     </div>
@@ -119,7 +119,7 @@ function ToolCall({ call }: { call: AgentTraceToolCall }) {
       {call.command ? <TextBlock title="Resolved command" text={call.command} copyLabel={`${call.tool_name} command`} /> : null}
       {call.result_json ? <TextBlock title="Tool result" text={call.result_json} copyLabel={`${call.tool_name} result`} json /> : null}
       {call.error ? <TextBlock title="Error" text={call.error} copyLabel={`${call.tool_name} error`} /> : null}
-      {call.receipt ? <Receipt receipt={call.receipt} /> : null}
+      {call.event_receipt ? <EventReceipt eventReceipt={call.event_receipt} /> : null}
     </li>
   );
 }
@@ -153,7 +153,7 @@ function ModelCall({ call, index, toolCalls }: { call: AgentTraceModelCall; inde
           {toolCalls.map((tool) => <ToolCall key={tool.call_id} call={tool} />)}
         </ol>
       ) : null}
-      {call.receipt ? <Receipt receipt={call.receipt} title="Inference receipt" /> : null}
+      {call.event_receipt ? <EventReceipt eventReceipt={call.event_receipt} title="Inference event receipt" /> : null}
     </li>
   );
 }
@@ -292,8 +292,8 @@ function TraceBody({ trace }: { trace: AgentTrace }) {
         </div>
         {trace.bracket ? (
           <div className="agent-trace-bracket">
-            <Receipt receipt={trace.bracket.before} title="Sentinel before" />
-            <Receipt receipt={trace.bracket.after} title="Sentinel after" />
+            <EventReceipt eventReceipt={trace.bracket.before} title="Sentinel before" />
+            <EventReceipt eventReceipt={trace.bracket.after} title="Sentinel after" />
           </div>
         ) : <p className="model-response-empty">No sentinel bracket was recorded.</p>}
       </div>
@@ -353,7 +353,7 @@ export function AgentTraceSection({ id, bindings, runId, assignmentId }: {
         <CopyButton text={command} label="verify command" />
       </div>
       <p className="task-section-note">
-        Verified in this browser against its published SHA-256 and evidence digest before display. Receipt signatures and the
+        Verified in this browser against its published SHA-256 and evidence digest before display. EventReceipt signatures and the
         sentinel bracket verify offline with <code>{command}</code>.
       </p>
       {state.status === 'loading' ? <p className="model-response-empty">Loading and verifying the trace…</p> : null}

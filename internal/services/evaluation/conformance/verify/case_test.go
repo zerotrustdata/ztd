@@ -27,11 +27,11 @@ func TestVerifyErrorClassMapsEachVerificationSentinel(t *testing.T) {
 		wantClass evalv1.ConformanceFailureClass
 	}{
 		{"anchor unknown", constants.ErrConformanceAnchorUnknown, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN},
-		{"receipt unclassifiable", constants.ErrConformanceReceiptUnclassifiable, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE},
+		{"event receipt unclassifiable", constants.ErrConformanceEventReceiptUnclassifiable, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE},
 		{"stage chain invalid", constants.ErrInvalidEvidenceGraph, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID},
-		{"action receipt signature invalid", constants.ErrActionReceiptSignatureInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
-		{"attestation signature invalid", constants.ErrReceiptPersistenceAttestationInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
-		{"attestation digest mismatch", constants.ErrReceiptPersistenceSignatureMismatch, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+		{"action event receipt signature invalid", constants.ErrEventReceiptSignatureInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+		{"attestation signature invalid", constants.ErrEventReceiptPersistenceAttestationInvalid, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
+		{"attestation digest mismatch", constants.ErrEventReceiptPersistenceSignatureMismatch, evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
 		{"wrapped anchor unknown", fmt.Errorf("oracle: resolve: %w", constants.ErrConformanceAnchorUnknown), evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN},
 		{"unmapped error fails closed", errors.New("unrelated failure"), evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID},
 	}
@@ -47,7 +47,7 @@ func TestInvalidEvidenceClassSeparatesForgeryFromBehaviour(t *testing.T) {
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID,
-		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE,
+		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE,
 		evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH,
 	}
 	for _, class := range invalid {

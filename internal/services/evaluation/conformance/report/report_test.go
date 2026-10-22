@@ -31,7 +31,7 @@ var allPostures = []evalv1.EvaluationGovernancePosture{
 func l1Observation(bundleHash string) *evalv1.ConformanceObservation {
 	return &evalv1.ConformanceObservation{
 		Rejection: &operatorv1.GovernanceRejection{
-			Receipt: &operatorv1.ActionReceipt{
+			EventReceipt: &operatorv1.EventReceipt{
 				DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{
 					Kind:               operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE,
 					DoctrineBundleHash: bundleHash,
@@ -363,7 +363,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
 				run := runFor(t, runs, doctrine)
 				c := findCase(t, doctrine, isDoctrineL1Direct)
-				evidenceOf(t, run, c.ID).Observations[0].Rejection.Receipt.DeterministicStageEvidence[0].DoctrineBundleHash = "forged-bundle"
+				evidenceOf(t, run, c.ID).Observations[0].Rejection.EventReceipt.DeterministicStageEvidence[0].DoctrineBundleHash = "forged-bundle"
 				return runs
 			},
 			want: constants.ErrConformanceRecordInvalid,
@@ -373,7 +373,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
 				run := runFor(t, runs, doctrine)
 				c := findCase(t, doctrine, isDoctrineL1Direct)
-				evidenceOf(t, run, c.ID).Observations[0].Rejection.Receipt.DeterministicStageEvidence = nil
+				evidenceOf(t, run, c.ID).Observations[0].Rejection.EventReceipt.DeterministicStageEvidence = nil
 				return runs
 			},
 			want: constants.ErrConformanceRecordInvalid,
@@ -383,7 +383,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
 				run := runFor(t, runs, doctrine)
 				c := findCase(t, doctrine, isDoctrineL1Direct)
-				evidenceOf(t, run, c.ID).Observations[0].Rejection.Receipt.DeterministicStageEvidence[0].DoctrineBundleHash = ""
+				evidenceOf(t, run, c.ID).Observations[0].Rejection.EventReceipt.DeterministicStageEvidence[0].DoctrineBundleHash = ""
 				return runs
 			},
 			want: constants.ErrConformanceRecordInvalid,

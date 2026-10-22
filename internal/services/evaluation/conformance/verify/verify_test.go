@@ -41,7 +41,7 @@ const (
 
 // fixture builds a passing run record for a four-case list: a DIRECT executed
 // mutation, a DIRECT rejection, an outbound dispatch refusal and an attended MCP
-// case. Every receipt is signed by a key pinned in the record.
+// case. Every event receipt is signed by a key pinned in the record.
 type fixture struct {
 	t          *testing.T
 	gateway    oracletest.Signer
@@ -104,8 +104,8 @@ func runtimeFor(executor cases.Executor) string {
 	return oracle.GatewayRuntimeID
 }
 
-func receiptOpts(label, runtime, suffix string, l2 operatorv1.L2Status, l3 operatorv1.L3Status) oracletest.ReceiptOpts {
-	return oracletest.ReceiptOpts{
+func eventReceiptOpts(label, runtime, suffix string, l2 operatorv1.L2Status, l3 operatorv1.L3Status) oracletest.EventReceiptOpts {
+	return oracletest.EventReceiptOpts{
 		TransactionID: label + "-" + suffix,
 		OperatorID:    runtime,
 		SessionID:     fixtureSession,
@@ -115,12 +115,12 @@ func receiptOpts(label, runtime, suffix string, l2 operatorv1.L2Status, l3 opera
 	}
 }
 
-// executedReceipt builds the executed receipt of a case: its ledger link runs from
+// executedEventReceipt builds the executed event receipt of a case: its ledger link runs from
 // the case's before hash to its after hash, so the bracket holds exactly one claim.
-func (f *fixture) executedReceipt(c cases.Case, l2 operatorv1.L2Status, l3 operatorv1.L3Status) *operatorv1.ActionReceipt {
+func (f *fixture) executedEventReceipt(c cases.Case, l2 operatorv1.L2Status, l3 operatorv1.L3Status) *operatorv1.EventReceipt {
 	executor := c.Ingress.Executor()
 	return f.signerFor(executor).Executed(f.t,
-		receiptOpts(c.ID, runtimeFor(executor), "exec", l2, l3), "h0-"+c.ID, "h1-"+c.ID)
+		eventReceiptOpts(c.ID, runtimeFor(executor), "exec", l2, l3), "h0-"+c.ID, "h1-"+c.ID)
 }
 
 func canaryEntry(path, content string) *evalv1.CanaryEntry {
@@ -147,23 +147,23 @@ func (f *fixture) evidence(c cases.Case) *evalv1.ConformanceCaseEvidence {
 	marker := cases.Marker(fixtureRunID, attemptID)
 	targetRel := canary.TargetRel(attemptID)
 
-	before := signer.Executed(f.t, receiptOpts(c.ID, runtime, "before", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
+	before := signer.Executed(f.t, eventReceiptOpts(c.ID, runtime, "before", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 		"prior-"+c.ID, "h0-"+c.ID)
 	last := "h0-" + c.ID
 	var observations []*evalv1.ConformanceObservation
 	switch expect.Kind {
 	case cases.ExpectExecuted:
 		observations = []*evalv1.ConformanceObservation{{
-			Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
-			Receipt: f.executedReceipt(c, expect.L2Status, expect.L3Status),
+			Kind:         evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
+			EventReceipt: f.executedEventReceipt(c, expect.L2Status, expect.L3Status),
 		}}
 		last = "h1-" + c.ID
 	case cases.ExpectRejected:
 		observations = []*evalv1.ConformanceObservation{{
 			Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
 			Rejection: &operatorv1.GovernanceRejection{
-				Error:   "rejected",
-				Receipt: signer.Rejected(f.t, receiptOpts(c.ID, runtime, "reject", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED), expect.RejectionCode),
+				Error:        "rejected",
+				EventReceipt: signer.Rejected(f.t, eventReceiptOpts(c.ID, runtime, "reject", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED), expect.RejectionCode),
 			},
 		}}
 	case cases.ExpectRefused:
@@ -172,7 +172,7 @@ func (f *fixture) evidence(c cases.Case) *evalv1.ConformanceCaseEvidence {
 			Refusal: &operatorv1.IngressRefusal{Code: expect.RefusalCode, Error: "refused"},
 		}}
 	}
-	after := signer.Executed(f.t, receiptOpts(c.ID, runtime, "after", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
+	after := signer.Executed(f.t, eventReceiptOpts(c.ID, runtime, "after", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 		last, "h2-"+c.ID)
 
 	canaryBefore := &evalv1.CanaryManifest{Entries: []*evalv1.CanaryEntry{canaryEntry(fixtureCanary, "ztd canary alpha")}}
@@ -205,9 +205,9 @@ func (f *fixture) quiescence(executor cases.Executor) *evalv1.ConformanceQuiesce
 	label := "quiesce-" + string(executor)
 	runtime := runtimeFor(executor)
 	signer := f.signerFor(executor)
-	first := signer.Executed(f.t, receiptOpts(label, runtime, "1", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
+	first := signer.Executed(f.t, eventReceiptOpts(label, runtime, "1", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 		"quiesce-prior-"+string(executor), "quiesce-h1-"+string(executor))
-	second := signer.Executed(f.t, receiptOpts(label, runtime, "2", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
+	second := signer.Executed(f.t, eventReceiptOpts(label, runtime, "2", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 		"quiesce-h1-"+string(executor), "quiesce-h2-"+string(executor))
 	return &evalv1.ConformanceQuiescence{Executor: string(executor), First: first, Second: second}
 }
@@ -431,9 +431,9 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "wrong rejection code",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
-				receipt := caseEvidence(t, rec, caseRejected).GetObservations()[0].GetRejection().GetReceipt()
-				receipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING
-				f.gateway.Resign(t, receipt)
+				eventReceipt := caseEvidence(t, rec, caseRejected).GetObservations()[0].GetRejection().GetEventReceipt()
+				eventReceipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_PROOF_MISSING
+				f.gateway.Resign(t, eventReceipt)
 			},
 			wantSuite: suiteFail, wantCase: caseRejected, wantStatus: statusFail,
 			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_CODE_MISMATCH,
@@ -448,9 +448,9 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_CODE_MISMATCH,
 		},
 		{
-			name: "refusal carrying a receipt",
+			name: "refusal carrying an event receipt",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
-				caseEvidence(t, rec, caseRefused).GetObservations()[0].Receipt = caseEvidence(t, rec, caseDirect).GetSentinelBefore()
+				caseEvidence(t, rec, caseRefused).GetObservations()[0].EventReceipt = caseEvidence(t, rec, caseDirect).GetSentinelBefore()
 			},
 			wantSuite: suiteFail, wantCase: caseRefused, wantStatus: statusFail,
 			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH,
@@ -460,7 +460,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				obs := caseEvidence(t, rec, caseDirect).GetObservations()[0]
 				obs.Kind = evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED
-				obs.Receipt = nil
+				obs.EventReceipt = nil
 				obs.UntypedBody = []byte("<html>proxy error</html>")
 			},
 			wantSuite: suiteFail, wantCase: caseDirect, wantStatus: statusFail,
@@ -471,7 +471,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				obs := caseEvidence(t, rec, caseDirect).GetObservations()[0]
 				obs.Kind = evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED
-				obs.Receipt = nil
+				obs.EventReceipt = nil
 				obs.SuspendedTxHash = "tx-pending"
 			},
 			wantSuite: suiteFail, wantCase: caseDirect, wantStatus: statusFail,
@@ -518,8 +518,8 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 			name: "L2 status mismatch",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				c := f.applicable[0]
-				caseEvidence(t, rec, caseDirect).GetObservations()[0].Receipt =
-					f.executedReceipt(c, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED)
+				caseEvidence(t, rec, caseDirect).GetObservations()[0].EventReceipt =
+					f.executedEventReceipt(c, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED)
 			},
 			wantSuite: suiteFail, wantCase: caseDirect, wantStatus: statusFail,
 			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_L2_STATUS_MISMATCH,
@@ -528,8 +528,8 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 			name: "L3 status mismatch",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				c := f.applicable[0]
-				caseEvidence(t, rec, caseDirect).GetObservations()[0].Receipt =
-					f.executedReceipt(c, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID)
+				caseEvidence(t, rec, caseDirect).GetObservations()[0].EventReceipt =
+					f.executedEventReceipt(c, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID)
 			},
 			wantSuite: suiteFail, wantCase: caseDirect, wantStatus: statusFail,
 			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_L3_STATUS_MISMATCH,
@@ -537,21 +537,21 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "signature byte flipped without re-signing",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
-				receipt := caseEvidence(t, rec, caseRefused).GetSentinelBefore()
-				sig := []byte(receipt.GetSignature())
+				eventReceipt := caseEvidence(t, rec, caseRefused).GetSentinelBefore()
+				sig := []byte(eventReceipt.GetSignature())
 				sig[0] = flipHexDigit(sig[0])
-				receipt.Signature = string(sig)
+				eventReceipt.Signature = string(sig)
 			},
 			wantSuite: suiteInvalid, wantCase: caseRefused, wantStatus: statusInvalid,
 			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID,
 		},
 		{
-			name: "receipt signed by an unpinned key",
+			name: "event receipt signed by an unpinned key",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				stranger := oracletest.NewSigner(t)
 				c := f.applicable[0]
 				caseEvidence(t, rec, caseDirect).SentinelAfter = stranger.Executed(t,
-					receiptOpts(c.ID, oracle.GatewayRuntimeID, "after", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
+					eventReceiptOpts(c.ID, oracle.GatewayRuntimeID, "after", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 					"h1-"+c.ID, "h2-"+c.ID)
 			},
 			wantSuite: suiteInvalid, wantCase: caseDirect, wantStatus: statusInvalid,
@@ -567,10 +567,10 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 		{
 			name: "stage reordered and re-signed",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
-				receipt := caseEvidence(t, rec, caseDirect).GetSentinelAfter()
-				stages := receipt.GetDeterministicStageEvidence()
+				eventReceipt := caseEvidence(t, rec, caseDirect).GetSentinelAfter()
+				stages := eventReceipt.GetDeterministicStageEvidence()
 				stages[1], stages[2] = stages[2], stages[1]
-				f.gateway.Resign(t, receipt)
+				f.gateway.Resign(t, eventReceipt)
 			},
 			wantSuite: suiteInvalid, wantCase: caseDirect, wantStatus: statusInvalid,
 			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID,
@@ -579,18 +579,18 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 			name: "sentinel is a rejection, not an execution",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				caseEvidence(t, rec, caseDirect).SentinelBefore = f.gateway.Rejected(t,
-					receiptOpts(caseDirect, oracle.GatewayRuntimeID, "sentinel", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
+					eventReceiptOpts(caseDirect, oracle.GatewayRuntimeID, "sentinel", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 					operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
 			},
 			wantSuite: suiteInvalid, wantCase: caseDirect, wantStatus: statusInvalid,
-			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE,
+			wantClass: evalv1.ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE,
 		},
 		{
 			name: "extra link between the sentinels",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				c := f.applicable[0]
 				caseEvidence(t, rec, caseDirect).SentinelAfter = f.gateway.Executed(t,
-					receiptOpts(c.ID, oracle.GatewayRuntimeID, "after", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
+					eventReceiptOpts(c.ID, oracle.GatewayRuntimeID, "after", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 					"x-extra-"+c.ID, "h2-"+c.ID)
 			},
 			wantSuite: suiteFail, wantCase: caseDirect, wantStatus: statusFail,
@@ -600,8 +600,8 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 			name: "broken ledger link",
 			mutate: func(t *testing.T, f *fixture, rec *evalv1.ConformanceRunRecord) {
 				c := f.applicable[0]
-				caseEvidence(t, rec, caseDirect).GetObservations()[0].Receipt = f.gateway.Executed(t,
-					receiptOpts(c.ID, oracle.GatewayRuntimeID, "exec", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
+				caseEvidence(t, rec, caseDirect).GetObservations()[0].EventReceipt = f.gateway.Executed(t,
+					eventReceiptOpts(c.ID, oracle.GatewayRuntimeID, "exec", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED),
 					"bogus-prior", "h1-"+c.ID)
 			},
 			wantSuite: suiteFail, wantCase: caseDirect, wantStatus: statusFail,
@@ -834,9 +834,9 @@ func TestVerifyAgainstUnclassifiedRejectionNeverMatches(t *testing.T) {
 	f := newFixture(t)
 	f.applicable[1].Expect[0].RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED
 	rec := f.record()
-	receipt := caseEvidence(t, rec, caseRejected).GetObservations()[0].GetRejection().GetReceipt()
-	receipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED
-	f.gateway.Resign(t, receipt)
+	eventReceipt := caseEvidence(t, rec, caseRejected).GetObservations()[0].GetRejection().GetEventReceipt()
+	eventReceipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED
+	f.gateway.Resign(t, eventReceipt)
 
 	set := verifyRecord(t, rec, f.applicable)
 
@@ -931,13 +931,13 @@ func TestVerifyPersistedNonCanonicalRecordIsInvalidEvidence(t *testing.T) {
 	assert.Empty(t, set.GetVerdicts())
 }
 
-func TestVerifyPersistedReceiptSignatureFlipIsSignatureInvalid(t *testing.T) {
+func TestVerifyPersistedEventReceiptSignatureFlipIsSignatureInvalid(t *testing.T) {
 	f := newFixture(t)
 	rec := f.record()
-	receipt := caseEvidence(t, rec, caseDirect).GetSentinelBefore()
-	sig := []byte(receipt.GetSignature())
+	eventReceipt := caseEvidence(t, rec, caseDirect).GetSentinelBefore()
+	sig := []byte(eventReceipt.GetSignature())
 	sig[0] = flipHexDigit(sig[0])
-	receipt.Signature = string(sig)
+	eventReceipt.Signature = string(sig)
 	raw, err := evalv1.MarshalCanonical(rec)
 	require.NoError(t, err)
 
@@ -976,7 +976,7 @@ func sha256Hex(raw []byte) string {
 
 // doctrineRecordRunID is the run the pinned doctrine record came from.
 const (
-	doctrineRecordRunID = "c1f5cb4c-f285-4bfd-bcf0-303bcdbd327f"
+	doctrineRecordRunID = "934cb9d7-95ae-4bbc-b186-05318b345dd4"
 	pinnedCaseID        = "r01-none-direct-doctrine"
 	statusPass          = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 )
@@ -1034,12 +1034,12 @@ func TestVerifyPersistedPinnedDoctrineRecordIsPass(t *testing.T) {
 	}
 }
 
-func TestVerifyPersistedPinnedDoctrineRecordFlippedReceiptSignatureIsInvalidEvidenceForItsCase(t *testing.T) {
+func TestVerifyPersistedPinnedDoctrineRecordFlippedEventReceiptSignatureIsInvalidEvidenceForItsCase(t *testing.T) {
 	record, _, _ := pinnedDoctrineRecord(t)
-	receipt := caseEvidence(t, record, pinnedCaseID).GetSentinelBefore()
-	sig := []byte(receipt.GetSignature())
+	eventReceipt := caseEvidence(t, record, pinnedCaseID).GetSentinelBefore()
+	sig := []byte(eventReceipt.GetSignature())
 	sig[0] = flipHexDigit(sig[0])
-	receipt.Signature = string(sig)
+	eventReceipt.Signature = string(sig)
 	raw, digest := reencodePinnedRecord(t, record)
 
 	set, err := VerifyPersisted(raw, digest)

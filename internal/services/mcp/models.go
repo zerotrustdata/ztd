@@ -33,13 +33,13 @@ type CallToolRequest struct {
 }
 
 // CallToolResult is the result for the "tools/call" method. A successful call
-// carries the executing Operator's signed ActionReceipt; a suspended call
+// carries the executing Operator's signed EventReceipt; a suspended call
 // carries a GovernedSuspension instead.
 type CallToolResult struct {
 	Content []TextContent `json:"content"`
 	IsError bool          `json:"isError,omitempty"`
-	// Receipt is the executing Operator's signed ActionReceipt, canonical protojson.
-	Receipt json.RawMessage `json:"receipt,omitempty"`
+	// Event receipt is the executing Operator's signed EventReceipt, canonical protojson.
+	EventReceipt json.RawMessage `json:"event_receipt,omitempty"`
 	// Suspension is set when the call awaits L3 human approval.
 	Suspension *GovernedSuspension `json:"suspension,omitempty"`
 }
@@ -174,7 +174,7 @@ type GovernedSuspension struct {
 }
 
 // A2ASuccessResponse is returned when an A2A call succeeds. Result is the
-// executing Operator's signed ActionReceipt, canonical protojson.
+// executing Operator's signed EventReceipt, canonical protojson.
 type A2ASuccessResponse struct {
 	ID     string          `json:"id"`
 	Result json.RawMessage `json:"result"`

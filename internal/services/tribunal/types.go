@@ -10,7 +10,7 @@
 // deterministic vote with one anonymized regeneration round, Marshal's risk
 // block, and the Auditor's review. It owns no dispatch: every model call goes
 // through the caller's Inferer, which runs it as governed inference and
-// records its receipt. The chosen arguments then run through real L1-L5
+// records its event receipt. The chosen arguments then run through real L1-L5
 // governance like any other; the deliberation never stands in for an L2
 // quorum proof.
 package tribunal

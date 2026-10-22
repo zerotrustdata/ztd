@@ -170,7 +170,7 @@ $smokeRoot = ".ztd/operators/release-smoke-$([guid]::NewGuid().ToString('N'))"
 ./ztd test release-smoke --root $smokeRoot --binary "$PWD\ztd.exe"
 ```
 
-The command starts and owns an isolated Gateway and data Operator, submits a governed file edit through the Gateway command API, creates and merges a document through the embedded Operator path, verifies exact read-back and signed receipts, exports both runtimes' reports, and stops only its own processes. It requires no model service, provider key, or existing platform runtime. Inspect the `evidence/` and `reports/` outputs under `$smoke_root`; the run artifacts remain there for review.
+The command starts and owns an isolated Gateway and data Operator, submits a governed file edit through the Gateway command API, creates and merges a document through the embedded Operator path, verifies exact read-back and signed event receipts, exports both runtimes' reports, and stops only its own processes. It requires no model service, provider key, or existing platform runtime. Inspect the `evidence/` and `reports/` outputs under `$smoke_root`; the run artifacts remain there for review.
 
 ### Verify the stack is healthy
 

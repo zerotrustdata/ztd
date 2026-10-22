@@ -42,7 +42,7 @@ func DefaultAPIClientFactory(fileSvc fs.RuntimeFileService, cfg *config.Config) 
 	return api.NewClient(fileSvc, cfg)
 }
 
-// approvalAPIClientFactory waits for the resumed execution's final receipt.
+// approvalAPIClientFactory waits for the resumed execution's final event receipt.
 // Inference can take the full governed provider deadline after L3 approval.
 func approvalAPIClientFactory(fileSvc fs.RuntimeFileService, cfg *config.Config) (APIClient, error) {
 	return api.NewClientWithTimeout(fileSvc, cfg, inferencedispatch.RequestDeadline)
@@ -67,10 +67,10 @@ CLI certificate signature with --cli.
 By default, the CLI opens the Gateway approval page and waits for its completion event. With
 --cli, it signs the transaction hash using the enrolled CLI certificate and submits the signature
 over mTLS. Both flows require enrolled CLI credentials. The --cli flow waits for the final
-execution receipt and allows the governed inference request deadline for that response.
+execution event receipt and allows the governed inference request deadline for that response.
 
 With --deny, the enrolled CLI session denies the transaction over mTLS instead, and the command
-prints the Operator-signed L3_DENIED rejection receipt that ends it.`,
+prints the Operator-signed L3_DENIED rejection event receipt that ends it.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			txHash := args[0]
@@ -149,17 +149,17 @@ func denyWithCLI(cmd *cobra.Command, client APIClient, txHash string) error {
 	if err != nil {
 		return fmt.Errorf("approve: submit CLI deny: %w", err)
 	}
-	var receipt operatorv1.ActionReceipt
-	if err := protojson.Unmarshal(resp, &receipt); err != nil {
-		return fmt.Errorf("approve: parse CLI deny receipt: %w", err)
+	var eventReceipt operatorv1.EventReceipt
+	if err := protojson.Unmarshal(resp, &eventReceipt); err != nil {
+		return fmt.Errorf("approve: parse CLI deny event_receipt: %w", err)
 	}
-	if receipt.GetTransactionHash() != txHash {
-		return fmt.Errorf("approve: deny receipt transaction hash %q does not match requested hash: %w", receipt.GetTransactionHash(), constants.ErrTxTransactionHashMismatch)
+	if eventReceipt.GetTransactionHash() != txHash {
+		return fmt.Errorf("approve: deny event receipt transaction hash %q does not match requested hash: %w", eventReceipt.GetTransactionHash(), constants.ErrTxTransactionHashMismatch)
 	}
-	if receipt.GetRejectionCode() != operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
-		return fmt.Errorf("approve: transaction %s deny receipt carries rejection %s, want L3_DENIED: %w", txHash, receipt.GetRejectionCode(), constants.ErrValidationFailed)
+	if eventReceipt.GetRejectionCode() != operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+		return fmt.Errorf("approve: transaction %s deny event receipt carries rejection %s, want L3_DENIED: %w", txHash, eventReceipt.GetRejectionCode(), constants.ErrValidationFailed)
 	}
-	cmd.Printf("\n✗ Transaction %s denied (signed L3_DENIED receipt)\n", txHash)
+	cmd.Printf("\n✗ Transaction %s denied (signed L3_DENIED event receipt)\n", txHash)
 	return nil
 }
 
@@ -180,23 +180,23 @@ func approveWithCLI(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *conf
 	if err != nil {
 		return fmt.Errorf("approve: submit CLI approval: %w", err)
 	}
-	var receipt operatorv1.ActionReceipt
-	if err := protojson.Unmarshal(resp, &receipt); err != nil {
-		return fmt.Errorf("approve: parse CLI approval receipt: %w", err)
+	var eventReceipt operatorv1.EventReceipt
+	if err := protojson.Unmarshal(resp, &eventReceipt); err != nil {
+		return fmt.Errorf("approve: parse CLI approval event_receipt: %w", err)
 	}
-	if receipt.GetTransactionHash() != txHash {
-		return fmt.Errorf("approve: receipt transaction hash %q does not match requested hash: %w", receipt.GetTransactionHash(), constants.ErrTxTransactionHashMismatch)
+	if eventReceipt.GetTransactionHash() != txHash {
+		return fmt.Errorf("approve: event receipt transaction hash %q does not match requested hash: %w", eventReceipt.GetTransactionHash(), constants.ErrTxTransactionHashMismatch)
 	}
-	if receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return fmt.Errorf("approve: transaction %s did not complete (status %s): %w", txHash, receipt.GetStatus(), constants.ErrActionExecutionFailed)
+	if eventReceipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return fmt.Errorf("approve: transaction %s did not complete (status %s): %w", txHash, eventReceipt.GetStatus(), constants.ErrActionExecutionFailed)
 	}
-	if receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
-		return fmt.Errorf("approve: transaction %s did not confirm required L3 proof (status %s): %w", txHash, receipt.GetL3Status(), constants.ErrTxL3ProofInvalid)
+	if eventReceipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+		return fmt.Errorf("approve: transaction %s did not confirm required L3 proof (status %s): %w", txHash, eventReceipt.GetL3Status(), constants.ErrTxL3ProofInvalid)
 	}
 	cmd.Printf("\n✓ Transaction %s approved successfully\n", txHash)
-	cmd.Printf("  Receipt: %s (L3 %s)\n", receipt.GetStatus(), receipt.GetL3Status())
-	if receipt.GetResultSummary() != "" {
-		cmd.Printf("  Result: %s\n", receipt.GetResultSummary())
+	cmd.Printf("  event_receipt: %s (L3 %s)\n", eventReceipt.GetStatus(), eventReceipt.GetL3Status())
+	if eventReceipt.GetResultSummary() != "" {
+		cmd.Printf("  Result: %s\n", eventReceipt.GetResultSummary())
 	}
 	return nil
 }
@@ -229,12 +229,12 @@ func subscribeApproval(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *
 // then verifies the approval status via the mTLS status endpoint.
 func waitForApprovalAndVerify(ctx context.Context, cmd *cobra.Command, approvals *auth.ApprovalSubscription, client APIClient, txHash string) error {
 	cmd.Printf("\nWaiting for browser approval (SSE)...\n")
-	receipt, err := approvals.Wait(ctx, txHash, "")
+	eventReceipt, err := approvals.Wait(ctx, txHash, "")
 	if err != nil {
 		return fmt.Errorf("approve: %w", err)
 	}
 	// A deny resolves the wait with the Operator-signed L3_DENIED rejection.
-	if receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+	if eventReceipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
 		return fmt.Errorf("approve: transaction %s: %w", txHash, constants.ErrTxL3Denied)
 	}
 

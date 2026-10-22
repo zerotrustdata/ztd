@@ -48,7 +48,7 @@ func TestDoctrineRecordIsTheCanonicalRecordOfTheOutboundDataOperatorRun(t *testi
 
 	record := &evalv1.ConformanceRunRecord{}
 	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
-	assert.Equal(t, "c1f5cb4c-f285-4bfd-bcf0-303bcdbd327f", record.GetRunId())
+	assert.Equal(t, "934cb9d7-95ae-4bbc-b186-05318b345dd4", record.GetRunId())
 	assert.False(t, record.GetOutboundAbsent())
 	assert.Equal(t, doctrineRecordSHA256, digest)
 }
@@ -58,7 +58,7 @@ func TestEmbeddedDoctrineRecordRanEveryCaseOnTheEmbeddedExecutor(t *testing.T) {
 
 	record := &evalv1.ConformanceRunRecord{}
 	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
-	assert.Equal(t, "573603cf-0a56-4d42-a242-7a2d145b62dc", record.GetRunId())
+	assert.Equal(t, "d35c719f-6c86-4758-98df-9bbd4e2511bc", record.GetRunId())
 	assert.True(t, record.GetOutboundAbsent())
 	assert.Equal(t, embeddedDoctrineRecordSHA256, digest)
 	require.NotEmpty(t, record.GetCases())

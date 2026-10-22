@@ -216,8 +216,8 @@ func TestNativeToolHandler_HandleTool_Integration(t *testing.T) {
 			"run_shell_command",
 			"net_ssh_known_hosts",
 			"operator_deploy",
-			"audit_receipt_list",
-			"audit_receipt_get",
+			"audit_event_receipt_list",
+			"audit_event_receipt_get",
 		}
 
 		toolNames := make(map[string]bool)
@@ -1190,8 +1190,8 @@ func TestNativeTools(t *testing.T) {
 		"run_shell_command",
 		"net_ssh_known_hosts",
 		"operator_deploy",
-		"audit_receipt_list",
-		"audit_receipt_get",
+		"audit_event_receipt_list",
+		"audit_event_receipt_get",
 	}
 
 	toolNames := make(map[string]bool)

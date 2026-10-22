@@ -167,7 +167,7 @@ describe('assignmentEvidenceChain', () => {
     expect(step(assignment, 'tool_calls')).toMatchObject({ value: '2 calls', tone: 'warn', detail: '1 failed' });
   });
 
-  it('summarises policy outcomes and receipt coverage, and states unavailability with its reason', () => {
+  it('summarises policy outcomes and event receipt coverage, and states unavailability with its reason', () => {
     const assignment = assignmentResult({
       activity_summary: {
         model_activity: { availability: 'not_applicable' },
@@ -178,14 +178,14 @@ describe('assignmentEvidenceChain', () => {
           { tool_label: 'send_email', outcome: 'deny', evidence_source: 'bound_public_proof' },
         ] },
         governed_actions: { availability: 'observed', records: [
-          { action_label: 'INFERENCE', reported_policy_outcome: 'allow', receipt_status: 'reported', evidence_source: 'bound_public_proof' },
-          { action_label: 'FS_READ', reported_policy_outcome: 'deny', receipt_status: 'unavailable', evidence_source: 'bound_public_proof' },
+          { action_label: 'INFERENCE', reported_policy_outcome: 'allow', event_receipt_status: 'reported', evidence_source: 'bound_public_proof' },
+          { action_label: 'FS_READ', reported_policy_outcome: 'deny', event_receipt_status: 'unavailable', evidence_source: 'bound_public_proof' },
         ] },
       },
     });
     expect(step(assignment, 'tool_calls')).toMatchObject({ value: 'Unavailable', detail: 'source not captured' });
     expect(step(assignment, 'policy')).toMatchObject({ value: '1 allow · 1 deny', tone: 'warn', detail: '2 decisions' });
-    expect(step(assignment, 'governed_actions')).toMatchObject({ value: '2 actions', tone: 'warn', detail: '1 of 2 receipts reported' });
+    expect(step(assignment, 'governed_actions')).toMatchObject({ value: '2 actions', tone: 'warn', detail: '1 of 2 event receipts reported' });
   });
 
   it('marks verification and the audit slice from the published record', () => {

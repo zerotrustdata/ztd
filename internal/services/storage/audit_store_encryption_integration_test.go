@@ -71,15 +71,15 @@ func TestContentColumnsAreEncryptedAtRest(t *testing.T) {
 	record := sampleEventReceiptRecord(t, "enc-session")
 	record.TargetResource = "/target/" + marker
 	record.ResultSummary = "summary " + marker
-	record.ActionReceipt = &operatorv1.ActionReceipt{TransactionId: record.TransactionID, TransactionHash: record.TransactionHash}
+	record.EventReceipt = &operatorv1.EventReceipt{TransactionId: record.TransactionID, TransactionHash: record.TransactionHash}
 	require.NoError(t, ass.RecordEventReceipt(record))
 	rawTarget := rawColumn(t, ass, `SELECT event_receipt_target_resource FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, record.TransactionID)
 	require.NotContains(t, string(rawTarget), marker, "events.event_receipt_target_resource")
 	rawSummary := rawColumn(t, ass, `SELECT event_receipt_result_summary FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, record.TransactionID)
 	require.NotContains(t, string(rawSummary), marker, "events.event_receipt_result_summary")
 	// content_text carries the canonical event receipt, including the transaction ID; its ciphertext must not.
-	rawReceipt := rawColumn(t, ass, `SELECT content_text FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, record.TransactionID)
-	require.NotContains(t, string(rawReceipt), record.TransactionID, "events.content_text")
+	rawEventReceipt := rawColumn(t, ass, `SELECT content_text FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, record.TransactionID)
+	require.NotContains(t, string(rawEventReceipt), record.TransactionID, "events.content_text")
 
 	err = ass.CommitmentLedger().AppendCommitment(func(prior string) (*operatorv1.CommitmentAttestation, error) {
 		return &operatorv1.CommitmentAttestation{
@@ -144,7 +144,7 @@ func TestLockedVaultFailsContentWrites(t *testing.T) {
 	record.TargetResource = "/locked/target"
 	record.ResultSummary = "locked summary"
 	err = ass.RecordEventReceipt(record)
-	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "receipts: %v", err)
+	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "event_receipts: %v", err)
 
 	_, err = ass.RecordEvent(&Event{
 		OperatorSessionID: "locked-session",

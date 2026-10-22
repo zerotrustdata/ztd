@@ -36,15 +36,15 @@ func (c *laneTestClient) DispatchCommand(_ context.Context, _ client.Persona, re
 	return c.dispatchOutcome, c.dispatchErr
 }
 
-// TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsCompletedReceipt
+// TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsCompletedEventReceipt
 // guards the fixture-materialization path: WriteWorkspaceFile dispatches a real
 // governed file write for the fixture content at the given absolute path and
-// returns once the dispatch answer is a completed receipt. The lane has no
-// receipt lookup, so the fake client cannot be asked for one.
-func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsCompletedReceipt(t *testing.T) {
+// returns once the dispatch answer is a completed event receipt. The lane has no
+// event receipt lookup, so the fake client cannot be asked for one.
+func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsCompletedEventReceipt(t *testing.T) {
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	fakeClient := &laneTestClient{
-		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: laneCompletedReceipt()}),
+		dispatchOutcome: laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", EventReceipt: laneCompletedEventReceipt()}),
 	}
 	lane := NewCommandLane(fakeClient, client.Persona{CLISessionID: "cli-session-1"})
 	absPath := "/home/op/workspaces/ws-0123456789abcdef/net/network-summary.txt"
@@ -68,7 +68,7 @@ func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsComplete
 	assert.Equal(t, string(constants.FileOperationWrite), fileEdit.Operation)
 }
 
-func TestCommandLane_WriteWorkspaceFile_FailsClosedOnEveryAnswerThatIsNotACompletedReceipt(t *testing.T) {
+func TestCommandLane_WriteWorkspaceFile_FailsClosedOnEveryAnswerThatIsNotACompletedEventReceipt(t *testing.T) {
 	tests := []struct {
 		name    string
 		outcome *client.GovernedOutcome
@@ -81,8 +81,8 @@ func TestCommandLane_WriteWorkspaceFile_FailsClosedOnEveryAnswerThatIsNotAComple
 		{name: "refusal", outcome: laneRefusalOutcome(t, http.StatusBadRequest, &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST, Error: "malformed"})},
 		{name: "untyped answer", outcome: laneUntypedOutcome(), typed: constants.ErrIngressResponseUntyped},
 		{name: "suspended for approval", outcome: laneSuspendedOutcome("tx-suspended")},
-		{name: "receipt that failed", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}})},
-		{name: "receipt without a status", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1"}})},
+		{name: "event receipt that failed", outcome: laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", EventReceipt: &operatorv1.EventReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}})},
+		{name: "event receipt without a status", outcome: laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", EventReceipt: &operatorv1.EventReceipt{TransactionId: "tx-1"}})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestCommandLane_ReadWorkspaceFile_DispatchesGovernedFsReadAndReturnsContent
 	})
 	require.NoError(t, err)
 	fakeClient := &laneTestClient{
-		dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: payload, Receipt: laneCompletedReceipt()}),
+		dispatchOutcome: laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: payload, EventReceipt: laneCompletedEventReceipt()}),
 	}
 	lane := NewCommandLane(fakeClient, client.Persona{CLISessionID: "cli-session-1"})
 
@@ -135,7 +135,7 @@ func TestCommandLane_ReadWorkspaceFile_DispatchesGovernedFsReadAndReturnsContent
 	assert.Equal(t, "attempt-1", fsRead.ExecutionId)
 }
 
-// Setup and probe receipts must never appear when the scored investigation's
+// Setup and probe event receipts must never appear when the scored investigation's
 // ledger is queried, even when they share an attempt and Data Operator.
 func TestCommandLane_HarnessScopeIsSeparateFromScoredActions(t *testing.T) {
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
@@ -143,8 +143,8 @@ func TestCommandLane_HarnessScopeIsSeparateFromScoredActions(t *testing.T) {
 		Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, Content: "fixture",
 	})
 	require.NoError(t, err)
-	fakeClient := &laneTestClient{dispatchOutcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{
-		TransactionId: "tx-1", ResultPayload: readResult, Receipt: laneCompletedReceipt(),
+	fakeClient := &laneTestClient{dispatchOutcome: laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{
+		TransactionId: "tx-1", ResultPayload: readResult, EventReceipt: laneCompletedEventReceipt(),
 	})}
 	lane := NewCommandLane(fakeClient, client.Persona{})
 	ctx := context.Background()
@@ -166,7 +166,7 @@ func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	failed, err := proto.Marshal(&operatorv1.FsReadResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, ErrorMessage: "no such file"})
 	require.NoError(t, err)
-	completed := laneCompletedReceipt()
+	completed := laneCompletedEventReceipt()
 	tests := []struct {
 		name    string
 		outcome *client.GovernedOutcome
@@ -175,9 +175,9 @@ func TestCommandLane_ReadWorkspaceFile_FailsClosed(t *testing.T) {
 		{name: "transport error", err: errors.New("transport unavailable")},
 		{name: "dispatch rejected", outcome: laneRejectionOutcome(t)},
 		{name: "untyped answer", outcome: laneUntypedOutcome()},
-		{name: "receipt that failed", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}})},
-		{name: "no result payload", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: completed})},
-		{name: "operator read failed", outcome: laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: failed, Receipt: completed})},
+		{name: "event receipt that failed", outcome: laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", EventReceipt: &operatorv1.EventReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}})},
+		{name: "no result payload", outcome: laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", EventReceipt: completed})},
+		{name: "operator read failed", outcome: laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: failed, EventReceipt: completed})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -200,7 +200,7 @@ func TestCommandLane_ReadWorkspaceFile_RequiresOperatorTargetAndPath(t *testing.
 
 // TestCommandLane_DispatchAgentTool_MapsEachAnswerKindToItsOutcome checks that
 // a model-visible answer is handed back as the typed outcome it arrived as, with
-// the receipt's transaction and dispatch result read from that outcome.
+// the event receipt's transaction and dispatch result read from that outcome.
 func TestCommandLane_DispatchAgentTool_MapsEachAnswerKindToItsOutcome(t *testing.T) {
 	target := Target{OperatorID: "operator-1", SessionID: "session-1"}
 	tests := []struct {
@@ -211,9 +211,9 @@ func TestCommandLane_DispatchAgentTool_MapsEachAnswerKindToItsOutcome(t *testing
 		resultPayload []byte
 	}{
 		{
-			name:          "receipt",
-			outcome:       laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: []byte("result"), Receipt: laneCompletedReceipt()}),
-			kind:          evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+			name:          "event_receipt",
+			outcome:       laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ResultPayload: []byte("result"), EventReceipt: laneCompletedEventReceipt()}),
+			kind:          evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
 			transactionID: "tx-1",
 			resultPayload: []byte("result"),
 		},
@@ -284,7 +284,7 @@ func TestCommandLane_DispatchAgentTool_RequiresOperatorTargetScopeAndPayload(t *
 func TestCommandLane_AnswerMessageRendersTypedMessageNotHTTPStatus(t *testing.T) {
 	assert.Equal(t, "rejected", answerMessage(laneRejectionOutcome(t)))
 	assert.Equal(t, "INGRESS_REFUSAL_CODE_MALFORMED_REQUEST: malformed", answerMessage(laneRefusalOutcome(t, http.StatusBadRequest, &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST, Error: "malformed"})))
-	assert.Empty(t, answerMessage(laneReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", Receipt: laneCompletedReceipt()})))
+	assert.Empty(t, answerMessage(laneEventReceiptOutcome(t, &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", EventReceipt: laneCompletedEventReceipt()})))
 	assert.Empty(t, answerMessage(nil))
 }
 
@@ -297,16 +297,16 @@ func laneCanonicalBody(t *testing.T, msg proto.Message) []byte {
 	return body
 }
 
-// laneCompletedReceipt is the receipt of a completed execution of transaction tx-1.
-func laneCompletedReceipt() *operatorv1.ActionReceipt {
-	return &operatorv1.ActionReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+// laneCompletedEventReceipt is the event receipt of a completed execution of transaction tx-1.
+func laneCompletedEventReceipt() *operatorv1.EventReceipt {
+	return &operatorv1.EventReceipt{TransactionId: "tx-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 }
 
-// laneReceiptOutcome is the typed outcome of a 200 dispatch the Operator answered with a receipt.
-func laneReceiptOutcome(t *testing.T, dispatched *operatorv1.GovernedDispatchResult) *client.GovernedOutcome {
+// laneEventReceiptOutcome is the typed outcome of a 200 dispatch the Operator answered with an event receipt.
+func laneEventReceiptOutcome(t *testing.T, dispatched *operatorv1.GovernedDispatchResult) *client.GovernedOutcome {
 	t.Helper()
 	return &client.GovernedOutcome{
-		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, HttpStatus: http.StatusOK, Receipt: dispatched.GetReceipt()},
+		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, HttpStatus: http.StatusOK, EventReceipt: dispatched.GetEventReceipt()},
 		Dispatch:    dispatched,
 		Body:        laneCanonicalBody(t, dispatched),
 	}
@@ -348,5 +348,5 @@ func laneSuspendedOutcome(txHash string) *client.GovernedOutcome {
 
 // laneRejection is the governance rejection the Operator signs for a refused dispatch.
 func laneRejection() *operatorv1.GovernanceRejection {
-	return &operatorv1.GovernanceRejection{Error: "rejected", Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-rejected"}}
+	return &operatorv1.GovernanceRejection{Error: "rejected", EventReceipt: &operatorv1.EventReceipt{TransactionId: "tx-rejected"}}
 }

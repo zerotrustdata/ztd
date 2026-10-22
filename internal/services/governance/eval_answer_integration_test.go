@@ -30,7 +30,7 @@ import (
 )
 
 // TestEvalAnswerVerification tests that EVAL_ANSWER envelopes are accepted by the verifier
-// and can be executed by the Actuator with a signed receipt.
+// and can be executed by the Actuator with a signed event receipt.
 func TestEvalAnswerVerification(t *testing.T) {
 	// Generate test key
 	pubKey, privKey, err := ed25519.GenerateKey(nil)
@@ -130,11 +130,11 @@ func TestEvalAnswerVerification(t *testing.T) {
 	actuator.SigningKey = privKey
 	actuator.KeyID = keyID
 
-	receipt, err := actuator.Execute(context.Background(), verified, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), verified, nil)
 	require.NoError(t, err, "L5Actuator execution failed")
 
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status, "Expected status COMPLETED")
-	assert.Equal(t, payload.Answer, receipt.ResultSummary, "Expected result summary '%s'", payload.Answer)
-	assert.Equal(t, keyID, receipt.SignerKeyId, "Expected signer key ID %s", keyID)
-	assert.NotEmpty(t, receipt.Signature, "Expected non-empty signature in receipt")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status, "Expected status COMPLETED")
+	assert.Equal(t, payload.Answer, eventReceipt.ResultSummary, "Expected result summary '%s'", payload.Answer)
+	assert.Equal(t, keyID, eventReceipt.SignerKeyId, "Expected signer key ID %s", keyID)
+	assert.NotEmpty(t, eventReceipt.Signature, "Expected non-empty signature in event receipt")
 }

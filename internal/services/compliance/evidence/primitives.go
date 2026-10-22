@@ -253,7 +253,7 @@ func Contains(values []string, target string) bool {
 	return false
 }
 
-type ReceiptBinding struct {
+type EventReceiptBinding struct {
 	RunID                   string
 	ScenarioID              string
 	AttemptID               string
@@ -265,7 +265,7 @@ type ReceiptBinding struct {
 	ActionType              string
 }
 
-type ReceiptProjection struct {
+type EventReceiptProjection struct {
 	ExecutionID       string
 	TransactionID     string
 	TransactionHash   string
@@ -277,66 +277,66 @@ type ReceiptProjection struct {
 	Signature         string
 }
 
-type VerifiedReceiptEvidence struct {
-	Binding                ReceiptBinding
-	ReceiptReference       *compliancev1.ComplianceEvidenceReference
+type VerifiedEventReceiptEvidence struct {
+	Binding                EventReceiptBinding
+	EventReceiptReference  *compliancev1.ComplianceEvidenceReference
 	PersistenceReference   *compliancev1.ComplianceEvidenceReference
 	ProtocolChainReference string
-	Receipt                *operatorv1.ActionReceipt
+	EventReceipt           *operatorv1.EventReceipt
 }
 
-func BuildVerifiedReceiptEvidence(binding ReceiptBinding, projection ReceiptProjection, receipt *operatorv1.ActionReceipt) (*VerifiedReceiptEvidence, error) {
+func BuildVerifiedEventReceiptEvidence(binding EventReceiptBinding, projection EventReceiptProjection, eventReceipt *operatorv1.EventReceipt) (*VerifiedEventReceiptEvidence, error) {
 	if binding.RunID == "" || binding.ScenarioID == "" || binding.AttemptID == "" || binding.ExecutionID == "" || binding.InvestigationID == "" || binding.TransactionID == "" || binding.TargetOperatorID == "" || binding.TargetOperatorSessionID == "" || binding.ActionType == "" {
-		return nil, fmt.Errorf("%w: receipt binding is incomplete", constants.ErrInvalidEvidenceGraph)
+		return nil, fmt.Errorf("%w: event receipt binding is incomplete", constants.ErrInvalidEvidenceGraph)
 	}
 	if projection.ExecutionID != binding.ExecutionID || projection.InvestigationID != binding.InvestigationID || projection.TransactionID != binding.TransactionID || projection.OperatorID != binding.TargetOperatorID || projection.OperatorSessionID != binding.TargetOperatorSessionID || projection.ActionType != binding.ActionType || projection.TransactionHash == "" || projection.SignerKeyID == "" || projection.Signature == "" {
-		return nil, fmt.Errorf("%w: receipt projection does not match the declared binding", constants.ErrInvalidEvidenceGraph)
+		return nil, fmt.Errorf("%w: event receipt projection does not match the declared binding", constants.ErrInvalidEvidenceGraph)
 	}
-	if receipt == nil || receipt.GetTransactionId() != projection.TransactionID || receipt.GetTransactionHash() != projection.TransactionHash || receipt.GetSignerKeyId() != projection.SignerKeyID || receipt.GetSignature() != projection.Signature {
-		return nil, fmt.Errorf("%w: canonical receipt does not match the governed response projection", constants.ErrInvalidEvidenceGraph)
+	if eventReceipt == nil || eventReceipt.GetTransactionId() != projection.TransactionID || eventReceipt.GetTransactionHash() != projection.TransactionHash || eventReceipt.GetSignerKeyId() != projection.SignerKeyID || eventReceipt.GetSignature() != projection.Signature {
+		return nil, fmt.Errorf("%w: canonical event receipt does not match the governed response projection", constants.ErrInvalidEvidenceGraph)
 	}
-	attestation := receipt.GetFinalPersistenceAttestation()
-	if attestation == nil || attestation.GetTransactionId() != binding.TransactionID || attestation.GetAuditRecordId() != binding.TransactionID || attestation.GetSignerKeyId() != projection.SignerKeyID || attestation.GetReceiptSignatureDigest() == "" || attestation.GetPersistedAtUnixMs() <= 0 || attestation.GetSignature() == "" {
-		return nil, fmt.Errorf("%w: canonical receipt lacks a bound final-persistence attestation", constants.ErrInvalidEvidenceGraph)
+	attestation := eventReceipt.GetFinalPersistenceAttestation()
+	if attestation == nil || attestation.GetTransactionId() != binding.TransactionID || attestation.GetAuditRecordId() != binding.TransactionID || attestation.GetSignerKeyId() != projection.SignerKeyID || attestation.GetEventReceiptSignatureDigest() == "" || attestation.GetPersistedAtUnixMs() <= 0 || attestation.GetSignature() == "" {
+		return nil, fmt.Errorf("%w: canonical event receipt lacks a bound final-persistence attestation", constants.ErrInvalidEvidenceGraph)
 	}
-	chain, err := governance.ValidateDeterministicProtocolChain(receipt)
+	chain, err := governance.ValidateDeterministicProtocolChain(eventReceipt)
 	if err != nil {
 		return nil, fmt.Errorf("%w: validate deterministic protocol chain: %v", constants.ErrInvalidEvidenceGraph, err)
 	}
 	bound := false
-	for _, stage := range receipt.GetDeterministicStageEvidence() {
+	for _, stage := range eventReceipt.GetDeterministicStageEvidence() {
 		if stage.GetTransactionId() == binding.TransactionID && stage.GetTransactionHash() == projection.TransactionHash && stage.GetOperatorId() == binding.TargetOperatorID && stage.GetOperatorSessionId() == binding.TargetOperatorSessionID && stage.GetActionType() == binding.ActionType && stage.GetCaseId() == binding.RunID && stage.GetInvestigationId() == binding.InvestigationID && stage.GetTaskId() == binding.AttemptID {
 			bound = true
 			break
 		}
 	}
 	if !bound {
-		return nil, fmt.Errorf("%w: canonical receipt lacks the declared run, scenario, attempt, transaction, action, and target binding", constants.ErrEvidenceScopeMismatch)
+		return nil, fmt.Errorf("%w: canonical event receipt lacks the declared run, scenario, attempt, transaction, action, and target binding", constants.ErrEvidenceScopeMismatch)
 	}
-	receiptBody, err := MarshalCanonicalProto(receipt)
+	eventReceiptBody, err := MarshalCanonicalProto(eventReceipt)
 	if err != nil {
-		return nil, fmt.Errorf("%w: canonicalize action receipt: %v", constants.ErrInvalidEvidenceGraph, err)
+		return nil, fmt.Errorf("%w: canonicalize action event_receipt: %v", constants.ErrInvalidEvidenceGraph, err)
 	}
 	persistenceBody, err := MarshalCanonicalProto(attestation)
 	if err != nil {
-		return nil, fmt.Errorf("%w: canonicalize receipt persistence attestation: %v", constants.ErrInvalidEvidenceGraph, err)
+		return nil, fmt.Errorf("%w: canonicalize event receipt persistence attestation: %v", constants.ErrInvalidEvidenceGraph, err)
 	}
-	receiptID := ContentAddress(ArtifactTypeActionReceipt, receiptBody)
-	_, receiptDigest, _ := ParseContentAddress(receiptID)
-	persistenceID := ContentAddress(ArtifactTypeReceiptPersistence, persistenceBody)
+	eventReceiptID := ContentAddress(ArtifactTypeEventReceipt, eventReceiptBody)
+	_, eventReceiptDigest, _ := ParseContentAddress(eventReceiptID)
+	persistenceID := ContentAddress(ArtifactTypeEventReceiptPersistence, persistenceBody)
 	_, persistenceDigest, _ := ParseContentAddress(persistenceID)
-	return &VerifiedReceiptEvidence{
+	return &VerifiedEventReceiptEvidence{
 		Binding: binding,
-		ReceiptReference: &compliancev1.ComplianceEvidenceReference{
-			ArtifactId: receiptID, ArtifactType: string(ArtifactTypeActionReceipt), Sha256: receiptDigest, MediaType: constants.MediaTypeJSON,
+		EventReceiptReference: &compliancev1.ComplianceEvidenceReference{
+			ArtifactId: eventReceiptID, ArtifactType: string(ArtifactTypeEventReceipt), Sha256: eventReceiptDigest, MediaType: constants.MediaTypeJSON,
 			RunId: binding.RunID, AttemptId: binding.AttemptID, ScenarioId: binding.ScenarioID, TransactionId: binding.TransactionID,
 		},
 		PersistenceReference: &compliancev1.ComplianceEvidenceReference{
-			ArtifactId: persistenceID, ArtifactType: string(ArtifactTypeReceiptPersistence), Sha256: persistenceDigest, MediaType: constants.MediaTypeJSON,
+			ArtifactId: persistenceID, ArtifactType: string(ArtifactTypeEventReceiptPersistence), Sha256: persistenceDigest, MediaType: constants.MediaTypeJSON,
 			RunId: binding.RunID, AttemptId: binding.AttemptID, ScenarioId: binding.ScenarioID, TransactionId: binding.TransactionID,
 		},
 		ProtocolChainReference: chain.ContentReference,
-		Receipt:                receipt,
+		EventReceipt:           eventReceipt,
 	}, nil
 }
 

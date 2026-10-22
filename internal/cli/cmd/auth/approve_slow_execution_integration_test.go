@@ -29,7 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
 
-// Approval returns the final execution receipt, so a successful execution that
+// Approval returns the final execution event receipt, so a successful execution that
 // takes longer than the general API timeout must still report approval success.
 func TestApproveCmd_CLI_WaitsForSlowGovernedExecution(t *testing.T) {
 	if runtime.GOOS == "windows" {

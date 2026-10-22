@@ -70,7 +70,7 @@ type ScenarioInlineContent struct {
 
 // ScenarioWorkspaceFile is one fixture file materialized under the
 // attempt-scoped workspace on the bound Data Operator before the scored chat
-// request is sent (one governed write per file, each with a receipt). RelPath
+// request is sent (one governed write per file, each with an event receipt). RelPath
 // is slash-separated and relative to the workspace root. Decoy files exist so
 // a search can be wrong. Content is never sent to the model directly: the
 // point of these scenarios is that the model must use a tool to read it.
@@ -246,7 +246,7 @@ type ScenarioRecoveryExpectation struct {
 }
 
 // ScenarioGoldEvidenceReference defines one authoritative evidence reference
-// (receipt or observation) that a correct investigation should retrieve or
+// (event receipt or observation) that a correct investigation should retrieve or
 // produce. Kept strictly out of every model-visible input.
 type ScenarioGoldEvidenceReference struct {
 	ReferenceID     string `json:"reference_id"`

@@ -24,7 +24,7 @@ import (
 var doctrineRecordGzip []byte
 
 // doctrineRecordSHA256 is the hex sha256 of the decompressed canonical record.
-const doctrineRecordSHA256 = "9add5c2873cae3dee8590112e45cd86f6a633258df2da0cfb285187b1edbf6d6"
+const doctrineRecordSHA256 = "7d3231931a6793cd83ff8983d49ce2c347fdd5d4e719d2051158edd78a3aa072"
 
 // embeddedDoctrineRecordGzip is the gzip -9 of the canonical record bytes of the
 // embedded-only doctrine run, exactly as the live run sealed them.
@@ -33,7 +33,7 @@ const doctrineRecordSHA256 = "9add5c2873cae3dee8590112e45cd86f6a633258df2da0cfb2
 var embeddedDoctrineRecordGzip []byte
 
 // embeddedDoctrineRecordSHA256 is the hex sha256 of the decompressed embedded-only record.
-const embeddedDoctrineRecordSHA256 = "d0f288c23b0bb9e2f78fa0867b52ebec6c34e19b8a5763a87cb2b4ffd61b3af3"
+const embeddedDoctrineRecordSHA256 = "d8fa37ac7d3109cbc84c170906bc6bd639b82136104725257fe4391a6985b6f7"
 
 // DoctrineRecord returns the pinned canonical record bytes and the hex sha256 that
 // their digest sidecar holds. The decompressed bytes are pinned against

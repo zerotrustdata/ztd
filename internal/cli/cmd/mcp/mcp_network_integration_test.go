@@ -196,8 +196,8 @@ func TestProxySessionToGateway(t *testing.T) {
 // TestProxySessionToGateway_RelaysGatewayBytes pins that the proxy relays result
 // and error.data as the Gateway encoded them: key order and integers survive.
 func TestProxySessionToGateway_RelaysGatewayBytes(t *testing.T) {
-	const result = `{"z":1,"receipt":{"seq":9007199254740993,"a":"x"}}`
-	const data = `{"receipt":{"b":2,"a":1},"error":"TX_DOCTRINE_L1_FAILED"}`
+	const result = `{"z":1,"event_receipt":{"seq":9007199254740993,"a":"x"}}`
+	const data = `{"event_receipt":{"b":2,"a":1},"error":"TX_DOCTRINE_L1_FAILED"}`
 	for _, tc := range []struct{ name, body, raw string }{
 		{"result", `{"jsonrpc":"2.0","id":7,"result":` + result + `}`, result},
 		{"error data", `{"jsonrpc":"2.0","id":7,"error":{"code":-32005,"message":"denied","data":` + data + `}}`, data},

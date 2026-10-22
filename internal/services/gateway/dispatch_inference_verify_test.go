@@ -30,27 +30,27 @@ import (
 
 // --- helpers for verifyInferenceCompletion tests ---
 
-// signTestReceipt signs an ActionReceipt's canonical form and attaches a
-// signed ReceiptPersistenceAttestation, mirroring L5Actuator.signReceipt and
-// signReceiptPersistenceAttestation.
-func signTestReceipt(t *testing.T, receipt *operatorv1.ActionReceipt, signerPriv ed25519.PrivateKey, keyID string) {
+// signTestEventReceipt signs an EventReceipt's canonical form and attaches a
+// signed EventReceiptPersistenceAttestation, mirroring L5Actuator.signEventReceipt and
+// signEventReceiptPersistenceAttestation.
+func signTestEventReceipt(t *testing.T, eventReceipt *operatorv1.EventReceipt, signerPriv ed25519.PrivateKey, keyID string) {
 	t.Helper()
-	receipt.SignerKeyId = keyID
-	canonical, err := governance.CanonicalizeActionReceipt(receipt)
+	eventReceipt.SignerKeyId = keyID
+	canonical, err := governance.CanonicalizeEventReceipt(eventReceipt)
 	require.NoError(t, err)
-	receipt.Signature = hex.EncodeToString(ed25519.Sign(signerPriv, canonical))
+	eventReceipt.Signature = hex.EncodeToString(ed25519.Sign(signerPriv, canonical))
 
-	attestation := &operatorv1.ReceiptPersistenceAttestation{
-		TransactionId:          receipt.TransactionId,
-		ReceiptSignatureDigest: governance.SignatureDigest([]string{receipt.Signature}),
-		PersistedAtUnixMs:      time.Now().UnixMilli(),
-		AuditRecordId:          receipt.TransactionId,
-		SignerKeyId:            keyID,
+	attestation := &operatorv1.EventReceiptPersistenceAttestation{
+		TransactionId:               eventReceipt.TransactionId,
+		EventReceiptSignatureDigest: governance.SignatureDigest([]string{eventReceipt.Signature}),
+		PersistedAtUnixMs:           time.Now().UnixMilli(),
+		AuditRecordId:               eventReceipt.TransactionId,
+		SignerKeyId:                 keyID,
 	}
-	attestationPayload, err := governance.CanonicalizeReceiptPersistenceAttestation(attestation)
+	attestationPayload, err := governance.CanonicalizeEventReceiptPersistenceAttestation(attestation)
 	require.NoError(t, err)
 	attestation.Signature = hex.EncodeToString(ed25519.Sign(signerPriv, attestationPayload))
-	receipt.FinalPersistenceAttestation = attestation
+	eventReceipt.FinalPersistenceAttestation = attestation
 }
 
 // inferenceTestResult returns a complete InferenceResult with its canonical
@@ -81,7 +81,7 @@ func inferenceTestResult(t *testing.T) *operatorv1.InferenceResult {
 // newInferenceDispatchService builds a DispatchService whose signer store is
 // the given store; other dependencies are stubs that are not exercised by
 // verifyInferenceCompletion.
-func newInferenceDispatchService(t *testing.T, signerStore ReceiptSignerResolver) *DispatchService {
+func newInferenceDispatchService(t *testing.T, signerStore EventReceiptSignerResolver) *DispatchService {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	return NewDispatchService(
@@ -123,13 +123,13 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 		return &commonv1.GovernanceEnvelope{Id: txID, Payload: payload}
 	}
 
-	// completedReceipt returns a signed COMPLETED receipt whose
+	// completedEventReceipt returns a signed COMPLETED event receipt whose
 	// ResultSummary binds the given result's canonical digest.
-	completedReceipt := func(t *testing.T, result *operatorv1.InferenceResult) *operatorv1.ActionReceipt {
+	completedEventReceipt := func(t *testing.T, result *operatorv1.InferenceResult) *operatorv1.EventReceipt {
 		t.Helper()
 		digest, err := models.ComputeInferenceResultDigest(result)
 		require.NoError(t, err)
-		receipt := &operatorv1.ActionReceipt{
+		eventReceipt := &operatorv1.EventReceipt{
 			TransactionId:    txID,
 			TransactionHash:  txHash,
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -138,24 +138,24 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 			StateRootAfter:   "root-after",
 			ExecutedAtUnixMs: 1700000000000,
 		}
-		signTestReceipt(t, receipt, priv, keyID)
-		return receipt
+		signTestEventReceipt(t, eventReceipt, priv, keyID)
+		return eventReceipt
 	}
 
-	t.Run("success returns verified receipt and result", func(t *testing.T) {
+	t.Run("success returns verified event receipt and result", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
-		receipt := completedReceipt(t, result)
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+		eventReceipt := completedEventReceipt(t, result)
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 
 		out, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.NoError(t, err)
 		assert.Equal(t, txID, out.TransactionID)
 		assert.Same(t, resultEnv, out.ResultEnvelope)
-		require.NotNil(t, out.Receipt)
-		assert.Equal(t, receipt.TransactionId, out.Receipt.TransactionId)
-		assert.Equal(t, receipt.Signature, out.Receipt.Signature)
-		assert.Equal(t, receipt.ResultSummary, out.Receipt.ResultSummary)
+		require.NotNil(t, out.EventReceipt)
+		assert.Equal(t, eventReceipt.TransactionId, out.EventReceipt.TransactionId)
+		assert.Equal(t, eventReceipt.Signature, out.EventReceipt.Signature)
+		assert.Equal(t, eventReceipt.ResultSummary, out.EventReceipt.ResultSummary)
 		require.NotNil(t, out.InferenceResult)
 		assert.True(t, proto.Equal(result, out.InferenceResult))
 		assert.Equal(t, result.ResultDigest, out.InferenceResult.ResultDigest)
@@ -170,121 +170,121 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrInferenceResultDecode)
 	})
 
-	t.Run("missing receipt fails closed", func(t *testing.T) {
+	t.Run("missing event receipt fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Result: inferenceTestResult(t)})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceCompletionNoReceipt)
+		assert.ErrorIs(t, err, constants.ErrInferenceCompletionNoEventReceipt)
 	})
 
-	t.Run("receipt transaction identity mismatch fails closed", func(t *testing.T) {
+	t.Run("event receipt transaction identity mismatch fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
-		receipt := completedReceipt(t, result)
-		receipt.TransactionId = "tx-other"
-		signTestReceipt(t, receipt, priv, keyID)
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+		eventReceipt := completedEventReceipt(t, result)
+		eventReceipt.TransactionId = "tx-other"
+		signTestEventReceipt(t, eventReceipt, priv, keyID)
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceReceiptVerify)
+		assert.ErrorIs(t, err, constants.ErrInferenceEventReceiptVerify)
 	})
 
 	t.Run("nil signer store fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, nil)
 		result := inferenceTestResult(t)
-		receipt := completedReceipt(t, result)
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+		eventReceipt := completedEventReceipt(t, result)
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceReceiptVerify)
+		assert.ErrorIs(t, err, constants.ErrInferenceEventReceiptVerify)
 	})
 
 	t.Run("unknown signer key id fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
-		receipt := completedReceipt(t, result)
-		receipt.SignerKeyId = "unregistered-key"
-		signTestReceipt(t, receipt, priv, "unregistered-key")
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+		eventReceipt := completedEventReceipt(t, result)
+		eventReceipt.SignerKeyId = "unregistered-key"
+		signTestEventReceipt(t, eventReceipt, priv, "unregistered-key")
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceReceiptVerify)
+		assert.ErrorIs(t, err, constants.ErrInferenceEventReceiptVerify)
 	})
 
 	t.Run("signer store error fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{err: constants.ErrTrustedSignerKeyNotFound})
 		result := inferenceTestResult(t)
-		receipt := completedReceipt(t, result)
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+		eventReceipt := completedEventReceipt(t, result)
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceReceiptVerify)
+		assert.ErrorIs(t, err, constants.ErrInferenceEventReceiptVerify)
 	})
 
-	t.Run("receipt signature from wrong key fails closed", func(t *testing.T) {
+	t.Run("event receipt signature from wrong key fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		_, otherPriv, err := ed25519.GenerateKey(nil)
 		require.NoError(t, err)
 		result := inferenceTestResult(t)
-		receipt := completedReceipt(t, result)
-		signTestReceipt(t, receipt, otherPriv, keyID)
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+		eventReceipt := completedEventReceipt(t, result)
+		signTestEventReceipt(t, eventReceipt, otherPriv, keyID)
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 
 		_, err = svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceReceiptVerify)
+		assert.ErrorIs(t, err, constants.ErrInferenceEventReceiptVerify)
 	})
 
 	t.Run("missing persistence attestation fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
-		receipt := completedReceipt(t, result)
-		receipt.FinalPersistenceAttestation = nil
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+		eventReceipt := completedEventReceipt(t, result)
+		eventReceipt.FinalPersistenceAttestation = nil
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceReceiptVerify)
+		assert.ErrorIs(t, err, constants.ErrInferenceEventReceiptVerify)
 	})
 
-	t.Run("failed receipt terminates as typed failure", func(t *testing.T) {
+	t.Run("failed event receipt terminates as typed failure", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
-		receipt := &operatorv1.ActionReceipt{
+		eventReceipt := &operatorv1.EventReceipt{
 			TransactionId:    txID,
 			TransactionHash:  txHash,
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 			ResultSummary:    "backend unavailable",
 			ExecutedAtUnixMs: 1700000000000,
 		}
-		signTestReceipt(t, receipt, priv, keyID)
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt})
+		signTestEventReceipt(t, eventReceipt, priv, keyID)
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrInferenceReceiptFailed)
-		failed := governance.FailedReceipt(err)
+		assert.ErrorIs(t, err, constants.ErrInferenceEventReceiptFailed)
+		failed := governance.FailedEventReceipt(err)
 		require.NotNil(t, failed)
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.Status)
 		assert.Equal(t, txID, failed.TransactionId)
 	})
 
-	t.Run("completed receipt without result fails closed", func(t *testing.T) {
+	t.Run("completed event receipt without result fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
-		receipt := &operatorv1.ActionReceipt{
+		eventReceipt := &operatorv1.EventReceipt{
 			TransactionId:    txID,
 			TransactionHash:  txHash,
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary:    "digest",
 			ExecutedAtUnixMs: 1700000000000,
 		}
-		signTestReceipt(t, receipt, priv, keyID)
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt})
+		signTestEventReceipt(t, eventReceipt, priv, keyID)
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
@@ -294,24 +294,24 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	t.Run("result part substitution after digest fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
-		receipt := completedReceipt(t, result)
+		eventReceipt := completedEventReceipt(t, result)
 		// Substitute the text after the digest was computed: the recomputed
-		// digest no longer matches the stamped digest or the receipt summary.
+		// digest no longer matches the stamped digest or the event receipt summary.
 		result.Parts[0].Part = &operatorv1.InferenceResponsePart_Text{Text: "substituted output"}
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrInferenceResultDigestMismatch)
 	})
 
-	t.Run("receipt summary substitution fails closed", func(t *testing.T) {
+	t.Run("event receipt summary substitution fails closed", func(t *testing.T) {
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
-		receipt := completedReceipt(t, result)
-		receipt.ResultSummary = "truncated text summary"
-		signTestReceipt(t, receipt, priv, keyID)
-		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+		eventReceipt := completedEventReceipt(t, result)
+		eventReceipt.ResultSummary = "truncated text summary"
+		signTestEventReceipt(t, eventReceipt, priv, keyID)
+		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 
 		_, err := svc.verifyInferenceCompletion(context.Background(), cmdEnv, resultEnv)
 		require.Error(t, err)
@@ -320,10 +320,10 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 }
 
 // TestVerifyInferenceCompletion_FailureCodeMapping proves that a signed
-// FAILED receipt's typed failure_code maps back to the corresponding
+// FAILED event receipt's typed failure_code maps back to the corresponding
 // typed sentinel on the gateway side, so the controller can distinguish
 // governance rejections, client faults, and provider failures without
-// string-matching the receipt summary.
+// string-matching the event receipt summary.
 func TestVerifyInferenceCompletion_FailureCodeMapping(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -333,9 +333,9 @@ func TestVerifyInferenceCompletion_FailureCodeMapping(t *testing.T) {
 	const txHash = "hash-inference-001"
 	cmdEnv := &commonv1.GovernanceEnvelope{Id: txID, TransactionHash: txHash}
 
-	failedReceiptWithCode := func(t *testing.T, code operatorv1.ReceiptFailureCode) *operatorv1.ActionReceipt {
+	failedEventReceiptWithCode := func(t *testing.T, code operatorv1.EventReceiptFailureCode) *operatorv1.EventReceipt {
 		t.Helper()
-		receipt := &operatorv1.ActionReceipt{
+		eventReceipt := &operatorv1.EventReceipt{
 			TransactionId:    txID,
 			TransactionHash:  txHash,
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -343,43 +343,43 @@ func TestVerifyInferenceCompletion_FailureCodeMapping(t *testing.T) {
 			ExecutedAtUnixMs: 1700000000000,
 			FailureCode:      code,
 		}
-		signTestReceipt(t, receipt, priv, keyID)
-		return receipt
+		signTestEventReceipt(t, eventReceipt, priv, keyID)
+		return eventReceipt
 	}
 
 	tests := []struct {
 		name string
-		code operatorv1.ReceiptFailureCode
+		code operatorv1.EventReceiptFailureCode
 		want error
 	}{
-		{name: "governance rejected", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, want: constants.ErrInferenceGovernanceRejected},
-		{name: "model override denied", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED, want: constants.ErrInferenceModelOverrideDenied},
-		{name: "role invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_ROLE_INVALID, want: constants.ErrInferenceRoleInvalid},
-		{name: "model ref invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID, want: constants.ErrInferenceModelRefInvalid},
-		{name: "backend unavailable", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE, want: constants.ErrInferenceBackendUnavailable},
-		{name: "backend timeout", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT, want: constants.ErrInferenceBackendTimeout},
-		{name: "generate failed", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED, want: constants.ErrInferenceGenerateFailed},
-		{name: "model not found", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND, want: constants.ErrInferenceModelNotFound},
-		{name: "provider response invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID, want: constants.ErrInferenceProviderResponseInvalid},
-		{name: "generation options invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID, want: constants.ErrInferenceGenerationOptionsInvalid},
-		{name: "capability unsupported", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED, want: constants.ErrInferenceCapabilityUnsupported},
-		{name: "tools unsupported", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED, want: constants.ErrInferenceToolsUnsupported},
-		{name: "context overflow", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW, want: constants.ErrInferenceContextOverflow},
-		{name: "provider attempt required", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED, want: constants.ErrInferenceProviderAttemptRequired},
-		{name: "identity mismatch", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH, want: constants.ErrInferenceIdentityMismatch},
-		{name: "model digest mismatch", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH, want: constants.ErrInferenceModelDigestMismatch},
-		{name: "evidence hash invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID, want: constants.ErrInferenceEvidenceHashInvalid},
-		{name: "model registry invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID, want: constants.ErrInferenceModelRegistryInvalid},
-		{name: "campaign binding invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID, want: constants.ErrInferenceCampaignBindingInvalid},
-		{name: "generic execution failure", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, want: constants.ErrInferenceReceiptFailed},
-		{name: "unspecified code falls back to generic failure", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED, want: constants.ErrInferenceReceiptFailed},
+		{name: "governance rejected", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, want: constants.ErrInferenceGovernanceRejected},
+		{name: "model override denied", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED, want: constants.ErrInferenceModelOverrideDenied},
+		{name: "role invalid", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID, want: constants.ErrInferenceRoleInvalid},
+		{name: "model ref invalid", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID, want: constants.ErrInferenceModelRefInvalid},
+		{name: "backend unavailable", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE, want: constants.ErrInferenceBackendUnavailable},
+		{name: "backend timeout", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT, want: constants.ErrInferenceBackendTimeout},
+		{name: "generate failed", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED, want: constants.ErrInferenceGenerateFailed},
+		{name: "model not found", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND, want: constants.ErrInferenceModelNotFound},
+		{name: "provider response invalid", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID, want: constants.ErrInferenceProviderResponseInvalid},
+		{name: "generation options invalid", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID, want: constants.ErrInferenceGenerationOptionsInvalid},
+		{name: "capability unsupported", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED, want: constants.ErrInferenceCapabilityUnsupported},
+		{name: "tools unsupported", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED, want: constants.ErrInferenceToolsUnsupported},
+		{name: "context overflow", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW, want: constants.ErrInferenceContextOverflow},
+		{name: "provider attempt required", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED, want: constants.ErrInferenceProviderAttemptRequired},
+		{name: "identity mismatch", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH, want: constants.ErrInferenceIdentityMismatch},
+		{name: "model digest mismatch", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH, want: constants.ErrInferenceModelDigestMismatch},
+		{name: "evidence hash invalid", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID, want: constants.ErrInferenceEvidenceHashInvalid},
+		{name: "model registry invalid", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID, want: constants.ErrInferenceModelRegistryInvalid},
+		{name: "campaign binding invalid", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID, want: constants.ErrInferenceCampaignBindingInvalid},
+		{name: "generic execution failure", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, want: constants.ErrInferenceEventReceiptFailed},
+		{name: "unspecified code falls back to generic failure", code: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED, want: constants.ErrInferenceEventReceiptFailed},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
-			receipt := failedReceiptWithCode(t, tt.code)
-			payload, err := proto.Marshal(&operatorv1.InferenceCompletion{Receipt: receipt})
+			eventReceipt := failedEventReceiptWithCode(t, tt.code)
+			payload, err := proto.Marshal(&operatorv1.InferenceCompletion{EventReceipt: eventReceipt})
 			require.NoError(t, err)
 			resultEnv := &commonv1.GovernanceEnvelope{Id: txID, Payload: payload}
 

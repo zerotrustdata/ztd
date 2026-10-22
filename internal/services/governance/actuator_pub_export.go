@@ -22,7 +22,7 @@ import (
 )
 
 // ExportActuatorPublicKey writes the Actuator's public key as JSON in the PKI
-// directory, where the conformance oracle pins it to verify signed receipts.
+// directory, where the conformance oracle pins it to verify signed event receipts.
 func ExportActuatorPublicKey(fileSvc fs.RuntimeFileService, pubKey ed25519.PublicKey, keyID string, logger *slog.Logger) error {
 	if err := fileSvc.MkdirAll(context.Background(), constants.PkiDirname, constants.PermDirPrivate); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)

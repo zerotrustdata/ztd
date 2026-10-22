@@ -59,7 +59,7 @@ import type {
   PublicEvidenceSource,
   PublicFinishState,
   PublicGradeExplanationCode,
-  PublicReceiptStatus,
+  PublicEventReceiptStatus,
   PublicToolScoreDimension,
 } from '../contract/proto-enums.generated';
 import {
@@ -555,7 +555,7 @@ function mapGovernedActionRecord(record: WireGovernedActionActivityRecord): Publ
   return {
     action_label: record.action_label,
     reported_policy_outcome: mapReportedPolicyOutcome(record.reported_policy_outcome),
-    receipt_status: mapReceiptStatus(record.receipt_status),
+    event_receipt_status: mapEventReceiptStatus(record.event_receipt_status),
     evidence_source: mapEvidenceSource(record.evidence_source),
   };
 }
@@ -678,9 +678,9 @@ const HINT_ARGUMENT_SOURCE_TO_VIEW: Record<EvaluationHintArgumentSource, PublicH
   EVALUATION_HINT_ARGUMENT_SOURCE_OPERATOR_CONTEXT: 'operator_context',
   EVALUATION_HINT_ARGUMENT_SOURCE_MODEL_AUTHORED: 'model_authored',
 };
-const RECEIPT_STATUS_TO_VIEW: Record<PublicReceiptStatus, PublicGovernedActionActivityRecord['receipt_status']> = {
-  PUBLIC_RECEIPT_STATUS_UNAVAILABLE: 'unavailable',
-  PUBLIC_RECEIPT_STATUS_REPORTED: 'reported',
+const EVENT_RECEIPT_STATUS_TO_VIEW: Record<PublicEventReceiptStatus, PublicGovernedActionActivityRecord['event_receipt_status']> = {
+  PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE: 'unavailable',
+  PUBLIC_EVENT_RECEIPT_STATUS_REPORTED: 'reported',
 };
 const EVIDENCE_SOURCE_TO_VIEW: Record<PublicEvidenceSource, PublicGovernedActionActivityRecord['evidence_source']> = {
   PUBLIC_EVIDENCE_SOURCE_APPLICATION_REPORTED: 'application_reported',
@@ -708,7 +708,7 @@ function mapReportedPolicyOutcome(value: EvaluationPolicyDecisionOutcome): Publi
 function mapTrajectoryPolicy(value: EvaluationTrajectoryPolicy): PublicTrajectoryPolicy { return TRAJECTORY_POLICY_TO_VIEW[value]; }
 function mapTrajectoryOutcome(value: EvaluationTrajectoryOutcome): PublicTrajectoryOutcome { return TRAJECTORY_OUTCOME_TO_VIEW[value]; }
 function mapHintArgumentSource(value: EvaluationHintArgumentSource): PublicHintArgumentSource { return HINT_ARGUMENT_SOURCE_TO_VIEW[value]; }
-function mapReceiptStatus(value: PublicReceiptStatus): PublicGovernedActionActivityRecord['receipt_status'] { return RECEIPT_STATUS_TO_VIEW[value]; }
+function mapEventReceiptStatus(value: PublicEventReceiptStatus): PublicGovernedActionActivityRecord['event_receipt_status'] { return EVENT_RECEIPT_STATUS_TO_VIEW[value]; }
 function mapEvidenceSource(value: PublicEvidenceSource): PublicGovernedActionActivityRecord['evidence_source'] { return EVIDENCE_SOURCE_TO_VIEW[value]; }
 function mapVerificationState(value: EvaluationVerdictStatus): VerifierState {
   const status = mapNativeResultStatus(value);

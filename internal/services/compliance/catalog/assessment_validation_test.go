@@ -177,7 +177,7 @@ func TestValidateAssertionAssessmentEnforcesReferencesStatusAndFreshness(t *test
 			Status:          "satisfied",
 			EvidenceLevel:   "L3",
 			EvaluatedAt:     timestamppb.Now(),
-			VerifierRef:     &compliancev1.VersionedReference{Id: "receipt_integrity", Version: "1.0.0"},
+			VerifierRef:     &compliancev1.VersionedReference{Id: "event_receipt_integrity", Version: "1.0.0"},
 			EvidenceRefs:    []string{"artifact-1"},
 			FreshnessStatus: "fresh",
 		}
@@ -234,7 +234,7 @@ func TestValidateAssertionAssessmentAcceptsEveryStatus(t *testing.T) {
 				Status:          tt.status,
 				EvidenceLevel:   "L3",
 				EvaluatedAt:     timestamppb.Now(),
-				VerifierRef:     &compliancev1.VersionedReference{Id: "receipt_integrity", Version: "1.0.0"},
+				VerifierRef:     &compliancev1.VersionedReference{Id: "event_receipt_integrity", Version: "1.0.0"},
 				EvidenceRefs:    tt.evidence,
 				FreshnessStatus: tt.freshness,
 				FailureReason:   tt.failure,
@@ -254,7 +254,7 @@ func TestValidateAssertionAssessmentEnforcesOrderedMinimumEvidenceLevels(t *test
 				Status:          "satisfied",
 				EvidenceLevel:   level,
 				EvaluatedAt:     timestamppb.Now(),
-				VerifierRef:     &compliancev1.VersionedReference{Id: "receipt_integrity", Version: "1.0.0"},
+				VerifierRef:     &compliancev1.VersionedReference{Id: "event_receipt_integrity", Version: "1.0.0"},
 				EvidenceRefs:    []string{"artifact-1"},
 				FreshnessStatus: "fresh",
 			}

@@ -42,7 +42,7 @@ func TestDispatchService_ProcessEnvelope_PreservesAdmittedEnvelope(t *testing.T)
 	svc.stateRootProvider = &stubStateRootProvider{err: constants.ErrIngressStateRootUnavailable}
 	deliberator := &stubL2Deliberator{}
 	svc.l2Deliberator = deliberator
-	svc.embeddedProcessor = embeddedEnvelopeProcessorFunc(func(context.Context, []byte) (*operatorv1.ActionReceipt, error) {
+	svc.embeddedProcessor = embeddedEnvelopeProcessorFunc(func(context.Context, []byte) (*operatorv1.EventReceipt, error) {
 		t.Fatal("outbound resume reached the embedded processor")
 		return nil, nil
 	})
@@ -57,17 +57,17 @@ func TestDispatchService_ProcessEnvelope_PreservesAdmittedEnvelope(t *testing.T)
 		resultWire, err := protojson.Marshal(dispatchTestResultEnvelope(env, []byte("observed")))
 		require.NoError(t, err)
 		broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), resultWire)
-		publishDispatchTestReceipt(t, broker, op, env, key, keyID)
+		publishDispatchTestEventReceipt(t, broker, op, env, key, keyID)
 	})
 	defer unregister()
-	receipt, err := svc.ProcessEnvelope(t.Context(), wire)
+	eventReceipt, err := svc.ProcessEnvelope(t.Context(), wire)
 	require.NoError(t, err)
 	require.Equal(t, 1, delivered)
-	require.Equal(t, env.Id, receipt.GetTransactionId())
+	require.Equal(t, env.Id, eventReceipt.GetTransactionId())
 	require.False(t, deliberator.called, "resume must retain the original L2 proofs")
 	pub, _, _ := dispatchTestActuator()
-	require.NoError(t, governance.VerifyActionReceiptSignature(receipt, pub))
-	require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, pub))
+	require.NoError(t, governance.VerifyEventReceiptSignature(eventReceipt, pub))
+	require.NoError(t, governance.VerifyEventReceiptPersistenceAttestation(eventReceipt, pub))
 }
 
 func TestDispatchService_ProcessEnvelope_ReturnsSignedDenialWithoutResult(t *testing.T) {
@@ -77,31 +77,31 @@ func TestDispatchService_ProcessEnvelope_ReturnsSignedDenialWithoutResult(t *tes
 	env := resumeTestEnvelope(t, constants.Event.Operator.FsRead.Requested, fsReadPayload(t))
 	env.Governance.L3 = &commonv1.L3Metadata{Denied: true}
 	pub, key, keyID := dispatchTestActuator()
-	rejection := &operatorv1.ActionReceipt{
+	rejection := &operatorv1.EventReceipt{
 		TransactionId: env.Id, TransactionHash: env.TransactionHash,
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		FailureCode:   operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
 	}
-	signTestReceipt(t, rejection, key, keyID)
+	signTestEventReceipt(t, rejection, key, keyID)
 	unregister := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), func(_ string, _ []byte) {
 		payload, err := proto.Marshal(rejection)
 		require.NoError(t, err)
 		wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
-			EventType: string(constants.Event.Operator.Receipt.Recorded), OperatorId: op.Id, OperatorSessionId: op.OperatorSessionId, Payload: payload,
+			EventType: string(constants.Event.Operator.EventReceipt.Recorded), OperatorId: op.Id, OperatorSessionId: op.OperatorSessionId, Payload: payload,
 		})
 		require.NoError(t, err)
-		broker.Publish(pubsub.ReceiptsChannel(op.Id, op.OperatorSessionId), wire)
+		broker.Publish(pubsub.EventReceiptsChannel(op.Id, op.OperatorSessionId), wire)
 	})
 	defer unregister()
 	wire, err := protojson.Marshal(env)
 	require.NoError(t, err)
-	receipt, err := svc.ProcessEnvelope(t.Context(), wire)
+	eventReceipt, err := svc.ProcessEnvelope(t.Context(), wire)
 	require.ErrorIs(t, err, constants.ErrDispatchGovernanceRejected)
-	require.True(t, proto.Equal(rejection, receipt))
-	require.True(t, proto.Equal(receipt, governance.FailedReceipt(err)))
-	require.NoError(t, governance.VerifyActionReceiptSignature(receipt, pub))
-	require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, pub))
+	require.True(t, proto.Equal(rejection, eventReceipt))
+	require.True(t, proto.Equal(eventReceipt, governance.FailedEventReceipt(err)))
+	require.NoError(t, governance.VerifyEventReceiptSignature(eventReceipt, pub))
+	require.NoError(t, governance.VerifyEventReceiptPersistenceAttestation(eventReceipt, pub))
 }
 
 func TestDispatchService_ProcessEnvelope_RejectsChangedIdentityBeforeDelivery(t *testing.T) {
@@ -131,9 +131,9 @@ func TestDispatchService_ProcessEnvelope_RejectsChangedIdentityBeforeDelivery(t 
 			defer unregister()
 			wire, err := protojson.Marshal(env)
 			require.NoError(t, err)
-			receipt, err := svc.ProcessEnvelope(t.Context(), wire)
+			eventReceipt, err := svc.ProcessEnvelope(t.Context(), wire)
 			require.ErrorIs(t, err, tc.want)
-			require.Nil(t, receipt)
+			require.Nil(t, eventReceipt)
 		})
 	}
 }
@@ -152,9 +152,9 @@ func TestDispatchService_ProcessEnvelope_UnsignedResultCannotResumeApproval(t *t
 		defer unregister()
 		wire, err := protojson.Marshal(env)
 		require.NoError(t, err)
-		receipt, err := svc.ProcessEnvelope(t.Context(), wire)
+		eventReceipt, err := svc.ProcessEnvelope(t.Context(), wire)
 		require.ErrorIs(t, err, constants.ErrDispatchResultTimeout)
-		require.Nil(t, receipt)
+		require.Nil(t, eventReceipt)
 	})
 }
 
@@ -170,23 +170,23 @@ func TestDispatchService_ProcessEnvelope_InferenceCompletionIsVerified(t *testin
 			env := resumeTestEnvelope(t, constants.Event.Operator.Inference.Requested, payload)
 			result := inferenceTestResult(t)
 			_, key, keyID := dispatchTestActuator()
-			receipt := &operatorv1.ActionReceipt{
+			eventReceipt := &operatorv1.EventReceipt{
 				TransactionId: env.Id, TransactionHash: env.TransactionHash,
 				Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: result.ResultDigest,
 			}
 			if outcome == "denied" {
 				env.Governance.L3 = &commonv1.L3Metadata{Denied: true}
-				receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-				receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
-				receipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED
+				eventReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+				eventReceipt.FailureCode = operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
+				eventReceipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED
 				result = nil
 			}
-			signTestReceipt(t, receipt, key, keyID)
+			signTestEventReceipt(t, eventReceipt, key, keyID)
 			if outcome == "changed result" {
 				result.CompletionTokens++
 			}
 			unregister := broker.RegisterHandler(pubsub.CmdChannel(op.Id, op.OperatorSessionId), func(_ string, _ []byte) {
-				payload, err := proto.Marshal(&operatorv1.InferenceCompletion{Receipt: receipt, Result: result})
+				payload, err := proto.Marshal(&operatorv1.InferenceCompletion{EventReceipt: eventReceipt, Result: result})
 				require.NoError(t, err)
 				wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
 					Id: env.Id, ActionType: env.ActionType, EventType: string(constants.Event.Operator.Inference.Completed), Payload: payload,
@@ -201,10 +201,10 @@ func TestDispatchService_ProcessEnvelope_InferenceCompletionIsVerified(t *testin
 			switch outcome {
 			case "completed":
 				require.NoError(t, err)
-				require.True(t, proto.Equal(receipt, got))
+				require.True(t, proto.Equal(eventReceipt, got))
 			case "denied":
 				require.ErrorIs(t, err, constants.ErrInferenceGovernanceRejected)
-				require.True(t, proto.Equal(receipt, got))
+				require.True(t, proto.Equal(eventReceipt, got))
 			case "changed result":
 				require.ErrorIs(t, err, constants.ErrInferenceResultDigestMismatch)
 				require.Nil(t, got)
@@ -213,7 +213,7 @@ func TestDispatchService_ProcessEnvelope_InferenceCompletionIsVerified(t *testin
 	}
 }
 
-func TestDispatchService_ProcessEnvelope_ReceiptMustBindBothTransactionIdentifiers(t *testing.T) {
+func TestDispatchService_ProcessEnvelope_EventReceiptMustBindBothTransactionIdentifiers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
 		svc, broker := newTestDispatchService(t, "root-abc", op)
@@ -226,13 +226,13 @@ func TestDispatchService_ProcessEnvelope_ReceiptMustBindBothTransactionIdentifie
 			broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), wire)
 			wrongHash := proto.Clone(env).(*commonv1.GovernanceEnvelope)
 			wrongHash.TransactionHash = "another-transaction-hash"
-			publishDispatchTestReceipt(t, broker, op, wrongHash, key, keyID)
+			publishDispatchTestEventReceipt(t, broker, op, wrongHash, key, keyID)
 		})
 		defer unregister()
 		wire, err := protojson.Marshal(env)
 		require.NoError(t, err)
-		receipt, err := svc.ProcessEnvelope(t.Context(), wire)
+		eventReceipt, err := svc.ProcessEnvelope(t.Context(), wire)
 		require.ErrorIs(t, err, constants.ErrDispatchResultTimeout)
-		require.Nil(t, receipt, "a signed receipt for another hash is not approval evidence")
+		require.Nil(t, eventReceipt, "a signed event receipt for another hash is not approval evidence")
 	})
 }

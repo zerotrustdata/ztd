@@ -259,9 +259,9 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	}
 	// A model drives every non-platform lane's Data Operator actions, shell
 	// included, so the operator must run in a disposable directory, and every
-	// governed receipt is verified against its runtime's enrollment-bound key.
+	// governed event receipt is verified against its runtime's enrollment-bound key.
 	// The workspace is checked first because its refusal is the actionable
-	// error. A platform run reads no receipts, so it needs no anchors.
+	// error. A platform run reads no event receipts, so it needs no anchors.
 	if summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
 		if err := evaluation.ValidateAgentDataOperator(topology.DataWorkingDirectory, cfg.ProjectRoot); err != nil {
 			return 0, fmt.Errorf("evaluation: run execute: %w", err)

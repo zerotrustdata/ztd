@@ -74,9 +74,9 @@ func mustUUID(t *testing.T) string {
 	return id
 }
 
-func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) {
+func TestVerifyEventReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) {
 	actuator, publicKey := newTestActuator(t)
-	receipt := &operatorv1.ActionReceipt{
+	eventReceipt := &operatorv1.EventReceipt{
 		TransactionId:    "test-transaction",
 		TransactionHash:  "test-transaction-hash",
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -84,42 +84,42 @@ func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) 
 		ExecutedAtUnixMs: 1,
 		SignerKeyId:      actuator.KeyID,
 	}
-	signature, err := actuator.signReceipt(receipt)
+	signature, err := actuator.signEventReceipt(eventReceipt)
 	require.NoError(t, err)
-	receipt.Signature = signature
+	eventReceipt.Signature = signature
 	wrongPublicKey, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
 	tests := []struct {
-		name      string
-		receipt   *operatorv1.ActionReceipt
-		publicKey ed25519.PublicKey
-		wantErr   error
+		name         string
+		eventReceipt *operatorv1.EventReceipt
+		publicKey    ed25519.PublicKey
+		wantErr      error
 	}{
-		{name: "valid signature", receipt: receipt, publicKey: publicKey},
-		{name: "missing receipt", publicKey: publicKey, wantErr: constants.ErrActionReceiptMissing},
-		{name: "missing signature", receipt: func() *operatorv1.ActionReceipt {
-			candidate := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		{name: "valid signature", eventReceipt: eventReceipt, publicKey: publicKey},
+		{name: "missing event receipt", publicKey: publicKey, wantErr: constants.ErrEventReceiptMissing},
+		{name: "missing signature", eventReceipt: func() *operatorv1.EventReceipt {
+			candidate := proto.Clone(eventReceipt).(*operatorv1.EventReceipt)
 			candidate.Signature = ""
 			return candidate
-		}(), publicKey: publicKey, wantErr: constants.ErrActionReceiptSignatureInvalid},
-		{name: "malformed signature", receipt: func() *operatorv1.ActionReceipt {
-			candidate := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		}(), publicKey: publicKey, wantErr: constants.ErrEventReceiptSignatureInvalid},
+		{name: "malformed signature", eventReceipt: func() *operatorv1.EventReceipt {
+			candidate := proto.Clone(eventReceipt).(*operatorv1.EventReceipt)
 			candidate.Signature = "not-hex"
 			return candidate
-		}(), publicKey: publicKey, wantErr: constants.ErrActionReceiptSignatureInvalid},
-		{name: "tampered receipt", receipt: func() *operatorv1.ActionReceipt {
-			candidate := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+		}(), publicKey: publicKey, wantErr: constants.ErrEventReceiptSignatureInvalid},
+		{name: "tampered event receipt", eventReceipt: func() *operatorv1.EventReceipt {
+			candidate := proto.Clone(eventReceipt).(*operatorv1.EventReceipt)
 			candidate.ResultSummary = "tampered"
 			return candidate
-		}(), publicKey: publicKey, wantErr: constants.ErrActionReceiptSignatureInvalid},
-		{name: "wrong public key", receipt: receipt, publicKey: wrongPublicKey, wantErr: constants.ErrActionReceiptSignatureInvalid},
-		{name: "malformed public key", receipt: receipt, publicKey: ed25519.PublicKey("short"), wantErr: constants.ErrActionReceiptSignatureInvalid},
+		}(), publicKey: publicKey, wantErr: constants.ErrEventReceiptSignatureInvalid},
+		{name: "wrong public key", eventReceipt: eventReceipt, publicKey: wrongPublicKey, wantErr: constants.ErrEventReceiptSignatureInvalid},
+		{name: "malformed public key", eventReceipt: eventReceipt, publicKey: ed25519.PublicKey("short"), wantErr: constants.ErrEventReceiptSignatureInvalid},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := VerifyActionReceiptSignature(tt.receipt, tt.publicKey)
+			err := VerifyEventReceiptSignature(tt.eventReceipt, tt.publicKey)
 			if tt.wantErr == nil {
 				assert.NoError(t, err)
 				return
@@ -130,13 +130,13 @@ func TestVerifyActionReceiptSignatureFailsClosedOnInvalidEvidence(t *testing.T) 
 }
 
 type operatorAuditSummaryCommand struct {
-	result *models.OperatorAuditReceiptListResult
+	result *models.OperatorAuditEventReceiptListResult
 }
 
 func (*operatorAuditSummaryCommand) GetPayload() []byte            { return nil }
 func (*operatorAuditSummaryCommand) SetPayload([]byte)             {}
 func (*operatorAuditSummaryCommand) InferenceResultDigest() string { return "" }
-func (c *operatorAuditSummaryCommand) AuditReceiptListSummary() *models.OperatorAuditReceiptListResult {
+func (c *operatorAuditSummaryCommand) AuditEventReceiptListSummary() *models.OperatorAuditEventReceiptListResult {
 	return c.result
 }
 
@@ -146,21 +146,21 @@ func (*operatorAuditSummaryCommandWithoutTypedResult) GetPayload() []byte       
 func (*operatorAuditSummaryCommandWithoutTypedResult) SetPayload([]byte)             {}
 func (*operatorAuditSummaryCommandWithoutTypedResult) InferenceResultDigest() string { return "" }
 
-func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testing.T) {
+func TestL5AuditEventReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testing.T) {
 	actuator, publicKey := newTestActuator(t)
-	request, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_list"})
+	request, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_event_receipt_list"})
 	require.NoError(t, err)
-	receipt := &operatorv1.ActionReceipt{
+	eventReceipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-command",
 		TransactionHash: "hash-command",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		SignerKeyId:     actuator.KeyID,
 	}
-	receipt.Signature, err = actuator.signReceipt(receipt)
+	eventReceipt.Signature, err = actuator.signEventReceipt(eventReceipt)
 	require.NoError(t, err)
-	require.NoError(t, VerifyActionReceiptSignature(receipt, publicKey))
-	result := &models.OperatorAuditReceiptListResult{
-		Receipts:        []*operatorv1.ActionReceipt{receipt},
+	require.NoError(t, VerifyEventReceiptSignature(eventReceipt, publicKey))
+	result := &models.OperatorAuditEventReceiptListResult{
+		EventReceipts:   []*operatorv1.EventReceipt{eventReceipt},
 		Count:           1,
 		OperatorID:      "op-1",
 		Authority:       "operator_local_ledger",
@@ -179,48 +179,48 @@ func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testin
 	}
 	command := &operatorAuditSummaryCommand{result: result}
 
-	assert.Equal(t, summary, actuator.auditReceiptListSummary(vt, command, summary))
-	assert.Contains(t, summary, receipt.GetSignature())
-	assert.Empty(t, actuator.auditReceiptListSummary(vt, command, `{"authority":"operator_local_ledger"}`))
-	assert.Empty(t, actuator.auditReceiptListSummary(vt, &operatorAuditSummaryCommandWithoutTypedResult{}, summary))
+	assert.Equal(t, summary, actuator.auditEventReceiptListSummary(vt, command, summary))
+	assert.Contains(t, summary, eventReceipt.GetSignature())
+	assert.Empty(t, actuator.auditEventReceiptListSummary(vt, command, `{"authority":"operator_local_ledger"}`))
+	assert.Empty(t, actuator.auditEventReceiptListSummary(vt, &operatorAuditSummaryCommandWithoutTypedResult{}, summary))
 
 	tests := []struct {
 		name   string
-		mutate func(*VerifiedTransaction, *models.OperatorAuditReceiptListResult)
+		mutate func(*VerifiedTransaction, *models.OperatorAuditEventReceiptListResult)
 	}{
 		{
 			name: "wrong action",
-			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditReceiptListResult) {
+			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditEventReceiptListResult) {
 				v.ActionType = constants.ActionTypeExecuteBash
 			},
 		},
 		{
 			name: "wrong tool",
-			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditReceiptListResult) {
-				v.Envelope.Payload, _ = proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_receipt_get"})
+			mutate: func(v *VerifiedTransaction, _ *models.OperatorAuditEventReceiptListResult) {
+				v.Envelope.Payload, _ = proto.Marshal(&operatorv1.McpCallRequested{ToolName: "audit_event_receipt_get"})
 			},
 		},
 		{
 			name: "wrong authority",
-			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditEventReceiptListResult) {
 				r.Authority = "gateway_mirror"
 			},
 		},
 		{
 			name: "wrong operator",
-			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditEventReceiptListResult) {
 				r.OperatorID = "op-2"
 			},
 		},
 		{
 			name: "wrong investigation",
-			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditEventReceiptListResult) {
 				r.InvestigationID = "investigation-2"
 			},
 		},
 		{
 			name: "count mismatch",
-			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditReceiptListResult) {
+			mutate: func(_ *VerifiedTransaction, r *models.OperatorAuditEventReceiptListResult) {
 				r.Count = 2
 			},
 		},
@@ -230,54 +230,54 @@ func TestL5AuditReceiptListSummaryPreservesOnlyExactTypedLocalEvidence(t *testin
 			vtCopy := proto.Clone(vt.Envelope).(*govtypes.GovernanceEnvelope)
 			verified := *vt
 			verified.Envelope = vtCopy
-			resultCopy := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+			resultCopy := proto.Clone(eventReceipt).(*operatorv1.EventReceipt)
 			copied := *result
-			copied.Receipts = []*operatorv1.ActionReceipt{resultCopy}
+			copied.EventReceipts = []*operatorv1.EventReceipt{resultCopy}
 			commandCopy := &operatorAuditSummaryCommand{result: &copied}
 			tt.mutate(&verified, &copied)
 			mutatedSummary, marshalErr := json.Marshal(&copied)
 			require.NoError(t, marshalErr)
-			assert.Empty(t, actuator.auditReceiptListSummary(&verified, commandCopy, string(mutatedSummary)))
+			assert.Empty(t, actuator.auditEventReceiptListSummary(&verified, commandCopy, string(mutatedSummary)))
 		})
 	}
 }
 
-func TestVerifyReceiptPersistenceAttestationRejectsSemanticallyUnboundFields(t *testing.T) {
+func TestVerifyEventReceiptPersistenceAttestationRejectsSemanticallyUnboundFields(t *testing.T) {
 	t.Parallel()
 	actuator, publicKey := newTestActuator(t)
-	receipt := &operatorv1.ActionReceipt{
+	eventReceipt := &operatorv1.EventReceipt{
 		TransactionId: "test-transaction",
 		SignerKeyId:   actuator.KeyID,
 		Signature:     "abcd",
 	}
 	tests := []struct {
 		name   string
-		mutate func(*operatorv1.ReceiptPersistenceAttestation)
+		mutate func(*operatorv1.EventReceiptPersistenceAttestation)
 	}{
-		{name: "transaction mismatch", mutate: func(attestation *operatorv1.ReceiptPersistenceAttestation) {
+		{name: "transaction mismatch", mutate: func(attestation *operatorv1.EventReceiptPersistenceAttestation) {
 			attestation.TransactionId = "other-transaction"
 		}},
-		{name: "audit record mismatch", mutate: func(attestation *operatorv1.ReceiptPersistenceAttestation) {
+		{name: "audit record mismatch", mutate: func(attestation *operatorv1.EventReceiptPersistenceAttestation) {
 			attestation.AuditRecordId = "other-record"
 		}},
-		{name: "signer mismatch", mutate: func(attestation *operatorv1.ReceiptPersistenceAttestation) {
+		{name: "signer mismatch", mutate: func(attestation *operatorv1.EventReceiptPersistenceAttestation) {
 			attestation.SignerKeyId = "other-signer"
 		}},
-		{name: "missing persistence timestamp", mutate: func(attestation *operatorv1.ReceiptPersistenceAttestation) {
+		{name: "missing persistence timestamp", mutate: func(attestation *operatorv1.EventReceiptPersistenceAttestation) {
 			attestation.PersistedAtUnixMs = 0
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			attestation, err := actuator.signReceiptPersistenceAttestation(receipt)
+			attestation, err := actuator.signEventReceiptPersistenceAttestation(eventReceipt)
 			require.NoError(t, err)
 			tt.mutate(attestation)
-			canonical, err := CanonicalizeReceiptPersistenceAttestation(attestation)
+			canonical, err := CanonicalizeEventReceiptPersistenceAttestation(attestation)
 			require.NoError(t, err)
 			attestation.Signature = hex.EncodeToString(ed25519.Sign(actuator.SigningKey, canonical))
-			receipt.FinalPersistenceAttestation = attestation
+			eventReceipt.FinalPersistenceAttestation = attestation
 
-			assert.ErrorIs(t, VerifyReceiptPersistenceAttestation(receipt, publicKey), constants.ErrReceiptPersistenceAttestationInvalid)
+			assert.ErrorIs(t, VerifyEventReceiptPersistenceAttestation(eventReceipt, publicKey), constants.ErrEventReceiptPersistenceAttestationInvalid)
 		})
 	}
 }
@@ -303,10 +303,10 @@ func TestL5ActuatorExecuteMissingSigningKey(t *testing.T) {
 	}
 
 	// Execute - should fail immediately
-	receipt, err := actuator.Execute(context.Background(), vt, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "L5Actuator: signing key missing")
-	require.Nil(t, receipt)
+	require.Nil(t, eventReceipt)
 }
 
 func TestL5ActuatorExecuteMissingExecutionHandler(t *testing.T) {
@@ -330,10 +330,10 @@ func TestL5ActuatorExecuteMissingExecutionHandler(t *testing.T) {
 	}
 
 	// Execute - should fail immediately
-	receipt, err := actuator.Execute(context.Background(), vt, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "L5Actuator: ExecutionHandler not set")
-	require.Nil(t, receipt)
+	require.Nil(t, eventReceipt)
 }
 
 // rehydrationCommandMessage is a CommandMessage whose payload carries UEI placeholders.
@@ -393,18 +393,18 @@ func TestL5RehydratePayloadWithoutScrubberRefusesTokens(t *testing.T) {
 }
 
 // Both rehydration sentinels, wrapped the way rehydratePayload wraps them, classify as
-// REHYDRATION_FAILED so the signed receipt names the cause.
-func TestClassifyReceiptFailureRehydration(t *testing.T) {
+// REHYDRATION_FAILED so the signed event receipt names the cause.
+func TestClassifyEventReceiptFailureRehydration(t *testing.T) {
 	t.Parallel()
 	for _, sentinel := range []error{constants.ErrScrubbingTokenUnresolved, constants.ErrScrubbingKeyCollision} {
 		wrapped := fmt.Errorf("%w: %w", constants.ErrL5ActuatorRehydrate, sentinel)
-		assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, classifyReceiptFailure(wrapped), sentinel.Error())
+		assert.Equal(t, operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, classifyEventReceiptFailure(wrapped), sentinel.Error())
 	}
 }
 
-func TestCanonicalizeActionReceipt(t *testing.T) {
+func TestCanonicalizeEventReceipt(t *testing.T) {
 	t.Parallel()
-	receipt := &operatorv1.ActionReceipt{
+	eventReceipt := &operatorv1.EventReceipt{
 		TransactionId:    "test-tx-id",
 		TransactionHash:  "test-hash",
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -416,10 +416,10 @@ func TestCanonicalizeActionReceipt(t *testing.T) {
 	}
 
 	// Canonicalize twice and verify results are identical
-	bytes1, err := CanonicalizeActionReceipt(receipt)
+	bytes1, err := CanonicalizeEventReceipt(eventReceipt)
 	require.NoError(t, err)
 
-	bytes2, err := CanonicalizeActionReceipt(receipt)
+	bytes2, err := CanonicalizeEventReceipt(eventReceipt)
 	require.NoError(t, err)
 
 	require.Equal(t, bytes1, bytes2, "Canonicalization should be deterministic")
@@ -484,20 +484,20 @@ func TestSignatureDigest_ProtocolVectors(t *testing.T) {
 
 func TestDeterministicStageActionType_RequiresOneConsistentActionType(t *testing.T) {
 	tests := []struct {
-		name       string
-		receipt    *operatorv1.ActionReceipt
-		expected   string
-		expectsErr bool
+		name         string
+		eventReceipt *operatorv1.EventReceipt
+		expected     string
+		expectsErr   bool
 	}{
-		{name: "consistent action type", receipt: &operatorv1.ActionReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{ActionType: "FILE_EDIT"}, {}, {ActionType: "FILE_EDIT"}}}, expected: "FILE_EDIT"},
-		{name: "nil receipt", expectsErr: true},
-		{name: "missing stages", receipt: &operatorv1.ActionReceipt{}, expectsErr: true},
-		{name: "empty action types", receipt: &operatorv1.ActionReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{}, {}}}, expectsErr: true},
-		{name: "conflicting action types", receipt: &operatorv1.ActionReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{ActionType: "FILE_EDIT"}, {ActionType: "FILE_READ"}}}, expectsErr: true},
+		{name: "consistent action type", eventReceipt: &operatorv1.EventReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{ActionType: "FILE_EDIT"}, {}, {ActionType: "FILE_EDIT"}}}, expected: "FILE_EDIT"},
+		{name: "nil event receipt", expectsErr: true},
+		{name: "missing stages", eventReceipt: &operatorv1.EventReceipt{}, expectsErr: true},
+		{name: "empty action types", eventReceipt: &operatorv1.EventReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{}, {}}}, expectsErr: true},
+		{name: "conflicting action types", eventReceipt: &operatorv1.EventReceipt{DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{ActionType: "FILE_EDIT"}, {ActionType: "FILE_READ"}}}, expectsErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actionType, err := DeterministicStageActionType(test.receipt)
+			actionType, err := DeterministicStageActionType(test.eventReceipt)
 			if test.expectsErr {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
@@ -510,38 +510,38 @@ func TestDeterministicStageActionType_RequiresOneConsistentActionType(t *testing
 	}
 }
 
-func TestClassifyReceiptFailure_MapsTypedSentinelsToCodes(t *testing.T) {
+func TestClassifyEventReceiptFailure_MapsTypedSentinelsToCodes(t *testing.T) {
 	tests := []struct {
 		name    string
 		execErr error
-		want    operatorv1.ReceiptFailureCode
+		want    operatorv1.EventReceiptFailureCode
 	}{
-		{name: "nil error is unspecified", execErr: nil, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED},
-		{name: "model override denied", execErr: constants.ErrInferenceModelOverrideDenied, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED},
-		{name: "role invalid", execErr: constants.ErrInferenceRoleInvalid, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_ROLE_INVALID},
-		{name: "model ref invalid", execErr: constants.ErrInferenceModelRefInvalid, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID},
-		{name: "backend unavailable", execErr: constants.ErrInferenceBackendUnavailable, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE},
-		{name: "backend not registered", execErr: constants.ErrInferenceBackendNotRegistered, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE},
-		{name: "backend timeout", execErr: constants.ErrInferenceBackendTimeout, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT},
-		{name: "generate failed", execErr: constants.ErrInferenceGenerateFailed, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED},
-		{name: "model not found", execErr: constants.ErrInferenceModelNotFound, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND},
-		{name: "provider response invalid", execErr: constants.ErrInferenceProviderResponseInvalid, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID},
-		{name: "generation options invalid", execErr: constants.ErrInferenceGenerationOptionsInvalid, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID},
-		{name: "capability unsupported", execErr: constants.ErrInferenceCapabilityUnsupported, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED},
-		{name: "tools unsupported", execErr: constants.ErrInferenceToolsUnsupported, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED},
-		{name: "context overflow", execErr: constants.ErrInferenceContextOverflow, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW},
-		{name: "provider attempt required", execErr: constants.ErrInferenceProviderAttemptRequired, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED},
-		{name: "identity mismatch", execErr: constants.ErrInferenceIdentityMismatch, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH},
-		{name: "model digest mismatch", execErr: constants.ErrInferenceModelDigestMismatch, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH},
-		{name: "evidence hash invalid", execErr: constants.ErrInferenceEvidenceHashInvalid, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID},
-		{name: "model registry invalid", execErr: constants.ErrInferenceModelRegistryInvalid, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID},
-		{name: "campaign binding invalid", execErr: constants.ErrInferenceCampaignBindingInvalid, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID},
-		{name: "untyped error is generic execution failure", execErr: errors.New("boom"), want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED},
-		{name: "wrapped sentinel still classifies", execErr: fmt.Errorf("inference handler: %w", constants.ErrInferenceModelNotFound), want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND},
+		{name: "nil error is unspecified", execErr: nil, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED},
+		{name: "model override denied", execErr: constants.ErrInferenceModelOverrideDenied, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED},
+		{name: "role invalid", execErr: constants.ErrInferenceRoleInvalid, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID},
+		{name: "model ref invalid", execErr: constants.ErrInferenceModelRefInvalid, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID},
+		{name: "backend unavailable", execErr: constants.ErrInferenceBackendUnavailable, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE},
+		{name: "backend not registered", execErr: constants.ErrInferenceBackendNotRegistered, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE},
+		{name: "backend timeout", execErr: constants.ErrInferenceBackendTimeout, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT},
+		{name: "generate failed", execErr: constants.ErrInferenceGenerateFailed, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED},
+		{name: "model not found", execErr: constants.ErrInferenceModelNotFound, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND},
+		{name: "provider response invalid", execErr: constants.ErrInferenceProviderResponseInvalid, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID},
+		{name: "generation options invalid", execErr: constants.ErrInferenceGenerationOptionsInvalid, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID},
+		{name: "capability unsupported", execErr: constants.ErrInferenceCapabilityUnsupported, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED},
+		{name: "tools unsupported", execErr: constants.ErrInferenceToolsUnsupported, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED},
+		{name: "context overflow", execErr: constants.ErrInferenceContextOverflow, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW},
+		{name: "provider attempt required", execErr: constants.ErrInferenceProviderAttemptRequired, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED},
+		{name: "identity mismatch", execErr: constants.ErrInferenceIdentityMismatch, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH},
+		{name: "model digest mismatch", execErr: constants.ErrInferenceModelDigestMismatch, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH},
+		{name: "evidence hash invalid", execErr: constants.ErrInferenceEvidenceHashInvalid, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID},
+		{name: "model registry invalid", execErr: constants.ErrInferenceModelRegistryInvalid, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID},
+		{name: "campaign binding invalid", execErr: constants.ErrInferenceCampaignBindingInvalid, want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID},
+		{name: "untyped error is generic execution failure", execErr: errors.New("boom"), want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED},
+		{name: "wrapped sentinel still classifies", execErr: fmt.Errorf("inference handler: %w", constants.ErrInferenceModelNotFound), want: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, classifyReceiptFailure(test.execErr))
+			assert.Equal(t, test.want, classifyEventReceiptFailure(test.execErr))
 		})
 	}
 }

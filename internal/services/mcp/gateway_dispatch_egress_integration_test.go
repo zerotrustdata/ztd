@@ -31,12 +31,12 @@ const plantedSSN = "123-45-6789"
 
 func newNativeAuditGateway(t *testing.T, scrubber *scrubbing.ScrubbingService, recorder AuditEventRecorder) *GatewayService {
 	t.Helper()
-	rec := sampleReceiptRecord("tx-egress-1", "sess-1", "FILE_EDIT", time.Now().UTC(), operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
+	rec := sampleEventReceiptRecord("tx-egress-1", "sess-1", "FILE_EDIT", time.Now().UTC(), operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
 	rec.ResultSummary = "leaked " + plantedSSN
-	stub := &stubAuditReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-egress-1": rec}}
+	stub := &stubAuditEventReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-egress-1": rec}}
 
 	g := newTestGatewayService(t, withScrubbingService(scrubber), withAuditStore(recorder))
-	g.nativeToolHandler.SetAuditReceiptQuery(stub)
+	g.nativeToolHandler.SetAuditEventReceiptQuery(stub)
 	return g
 }
 
@@ -64,11 +64,11 @@ func downstreamServer(t *testing.T, text string) *httptest.Server {
 // read_field result and a downstream MCP result never leave this layer raw.
 func TestDispatchToDownstream_ScrubsEveryBranch(t *testing.T) {
 	scrubber := newTestScrubbingService(t)
-	args := mustMarshal(t, AuditReceiptGetRequest{TransactionID: "tx-egress-1"})
+	args := mustMarshal(t, AuditEventReceiptGetRequest{TransactionID: "tx-egress-1"})
 
 	t.Run("native tool", func(t *testing.T) {
 		g := newNativeAuditGateway(t, scrubber, &recordingAuditEventRecorder{})
-		out, err := g.DispatchToDownstream(context.Background(), "audit_receipt_get", args, "sess-1")
+		out, err := g.DispatchToDownstream(context.Background(), "audit_event_receipt_get", args, "sess-1")
 		require.NoError(t, err)
 		assert.NotContains(t, out, plantedSSN)
 		assert.Contains(t, out, "tx-egress-1")
@@ -111,12 +111,12 @@ func TestDispatchToDownstream_ScrubsEveryBranch(t *testing.T) {
 func TestDispatchToDownstream_NoScrubberWithholdsOutput(t *testing.T) {
 	disabled, err := scrubbing.NewScrubbingService(context.Background(), &scrubbing.Config{Enabled: false}, slog.Default(), nil)
 	require.NoError(t, err)
-	args := mustMarshal(t, AuditReceiptGetRequest{TransactionID: "tx-egress-1"})
+	args := mustMarshal(t, AuditEventReceiptGetRequest{TransactionID: "tx-egress-1"})
 
 	for name, scrubber := range map[string]*scrubbing.ScrubbingService{"nil scrubber": nil, "disabled scrubber": disabled} {
 		t.Run(name+" native tool", func(t *testing.T) {
 			g := newNativeAuditGateway(t, scrubber, &recordingAuditEventRecorder{})
-			out, err := g.DispatchToDownstream(context.Background(), "audit_receipt_get", args, "sess-1")
+			out, err := g.DispatchToDownstream(context.Background(), "audit_event_receipt_get", args, "sess-1")
 			require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
 			assert.Empty(t, out)
 		})

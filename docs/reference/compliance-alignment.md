@@ -57,7 +57,7 @@ The compliance engine decouples evidence collection, cryptographic verification,
 
 ```mermaid
 flowchart TD
-    A["Raw Evidence\n(Evaluations, Receipts, Audit Logs, Ledgers)"] --> B["Typed Importers\n(internal/services/compliance/evidence/)"]
+    A["Raw Evidence\n(Evaluations, Event receipts, Audit Logs, Ledgers)"] --> B["Typed Importers\n(internal/services/compliance/evidence/)"]
     B --> C["Content-Addressed Evidence Graph\n(Cycle-free DAG, Scoped Bindings)"]
     C --> D["Atomic Assertion Graders\n(13 Technical Assertions, L2-L3 Minimum Levels)"]
     D --> E["Crosswalk Projection\n(FedRAMP 20x & NIST SP 800-53)"]
@@ -66,7 +66,7 @@ flowchart TD
     G --> H["Deterministic Renderers\n(OSCAL 1.1.2, JSON, Markdown, CSV, HTML, CLI)"]
 ```
 
-1. **Read-Only Ingestion**: Dedicated importers decode persisted evaluation campaigns, action receipts, persistence attestations, SQLite audit records, commitment ledgers, git file ledgers, KSI records, and build metadata without modifying assessed runtime state.
+1. **Read-Only Ingestion**: Dedicated importers decode persisted evaluation campaigns, action event receipts, persistence attestations, SQLite audit records, commitment ledgers, git file ledgers, KSI records, and build metadata without modifying assessed runtime state.
 2. **Evidence Graph Construction**: The evidence graph validates content-addressed hashes, resolves cross-references, rejects cyclic dependencies, and verifies that all artifacts bind to the declared `AssessmentScope`.
 3. **Atomic Assertion Grading**: Registered, versioned graders evaluate evidence against the 13 catalog assertions, assigning achieved evidence levels based on reproducible cryptographic checks.
 4. **Crosswalk Projection**: The engine maps assertion outcomes through the reviewed crosswalk, preserving mapping classifications (`supporting`, `partial`, `full`) without altering underlying assertion grades.

@@ -60,22 +60,22 @@ func TestL5ActuatorRecordRejectedTransactionSignsFailedStageEvidence(t *testing.
 		DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{failedStage},
 	}
 
-	receipt, err := actuator.RecordRejectedTransaction(context.Background(), rejected, constants.ErrTxStateRootMismatch)
+	eventReceipt, err := actuator.RecordRejectedTransaction(context.Background(), rejected, constants.ErrTxStateRootMismatch)
 	require.NoError(t, err)
-	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
-	require.Contains(t, receipt.ResultSummary, constants.ErrTxStateRootMismatch.Error())
-	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH, receipt.RejectionCode, "the signed receipt names the failing check")
-	require.Len(t, receipt.DeterministicStageEvidence, 1)
-	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, receipt.DeterministicStageEvidence[0].Outcome)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, eventReceipt.Status)
+	require.Contains(t, eventReceipt.ResultSummary, constants.ErrTxStateRootMismatch.Error())
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH, eventReceipt.RejectionCode, "the signed event receipt names the failing check")
+	require.Len(t, eventReceipt.DeterministicStageEvidence, 1)
+	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, eventReceipt.DeterministicStageEvidence[0].Outcome)
 	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed)
 
-	canonical, err := CanonicalizeActionReceipt(receipt)
+	canonical, err := CanonicalizeEventReceipt(eventReceipt)
 	require.NoError(t, err)
-	signature, err := hex.DecodeString(receipt.Signature)
+	signature, err := hex.DecodeString(eventReceipt.Signature)
 	require.NoError(t, err)
 	assert.True(t, ed25519.Verify(publicKey, canonical, signature))
-	require.NotNil(t, receipt.FinalPersistenceAttestation)
-	assert.NoError(t, VerifyReceiptPersistenceAttestation(receipt, publicKey))
+	require.NotNil(t, eventReceipt.FinalPersistenceAttestation)
+	assert.NoError(t, VerifyEventReceiptPersistenceAttestation(eventReceipt, publicKey))
 }
 
 func TestL5ActuatorExecuteHappyPath(t *testing.T) {
@@ -103,43 +103,43 @@ func TestL5ActuatorExecuteHappyPath(t *testing.T) {
 	}
 
 	// Execute
-	receipt, err := actuator.Execute(context.Background(), vt, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.NoError(t, err)
-	require.NotNil(t, receipt)
+	require.NotNil(t, eventReceipt)
 
-	// Verify receipt fields
-	require.Equal(t, envelope.Id, receipt.TransactionId)
-	require.Equal(t, envelope.TransactionHash, receipt.TransactionHash)
-	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
-	require.Equal(t, "completed", receipt.ResultSummary)
-	require.Equal(t, "test-state-root-123", receipt.StateRootBefore)
-	require.Equal(t, "test-state-root-123", receipt.StateRootAfter)
-	require.Equal(t, "test-Actuator-key", receipt.SignerKeyId)
-	require.NotEmpty(t, receipt.Signature)
-	require.Len(t, receipt.DeterministicStageEvidence, 3)
-	assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE, receipt.DeterministicStageEvidence[0].Kind)
-	assert.NotEmpty(t, receipt.DeterministicStageEvidence[0].ReceiptSignatureDigest)
-	assert.Equal(t, envelope.Id, receipt.DeterministicStageEvidence[0].AuditRecordId)
-	assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND, receipt.DeterministicStageEvidence[1].Kind)
-	assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION, receipt.DeterministicStageEvidence[2].Kind)
-	assert.Equal(t, receipt.DeterministicStageEvidence[2].StageId, receipt.DeterministicStageEvidence[0].ParentStageId)
-	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED, receipt.DeterministicStageEvidence[2].Outcome)
-	assert.Equal(t, receipt.StateRootBefore, receipt.DeterministicStageEvidence[2].StateRootBefore)
-	assert.Equal(t, receipt.StateRootAfter, receipt.DeterministicStageEvidence[2].StateRootAfter)
+	// Verify event receipt fields
+	require.Equal(t, envelope.Id, eventReceipt.TransactionId)
+	require.Equal(t, envelope.TransactionHash, eventReceipt.TransactionHash)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
+	require.Equal(t, "completed", eventReceipt.ResultSummary)
+	require.Equal(t, "test-state-root-123", eventReceipt.StateRootBefore)
+	require.Equal(t, "test-state-root-123", eventReceipt.StateRootAfter)
+	require.Equal(t, "test-Actuator-key", eventReceipt.SignerKeyId)
+	require.NotEmpty(t, eventReceipt.Signature)
+	require.Len(t, eventReceipt.DeterministicStageEvidence, 3)
+	assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE, eventReceipt.DeterministicStageEvidence[0].Kind)
+	assert.NotEmpty(t, eventReceipt.DeterministicStageEvidence[0].EventReceiptSignatureDigest)
+	assert.Equal(t, envelope.Id, eventReceipt.DeterministicStageEvidence[0].AuditRecordId)
+	assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND, eventReceipt.DeterministicStageEvidence[1].Kind)
+	assert.Equal(t, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION, eventReceipt.DeterministicStageEvidence[2].Kind)
+	assert.Equal(t, eventReceipt.DeterministicStageEvidence[2].StageId, eventReceipt.DeterministicStageEvidence[0].ParentStageId)
+	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED, eventReceipt.DeterministicStageEvidence[2].Outcome)
+	assert.Equal(t, eventReceipt.StateRootBefore, eventReceipt.DeterministicStageEvidence[2].StateRootBefore)
+	assert.Equal(t, eventReceipt.StateRootAfter, eventReceipt.DeterministicStageEvidence[2].StateRootAfter)
 
 	// Verify signature
-	canonical, err := CanonicalizeActionReceipt(receipt)
+	canonical, err := CanonicalizeEventReceipt(eventReceipt)
 	require.NoError(t, err)
 
-	sigBytes, err := hex.DecodeString(receipt.Signature)
+	sigBytes, err := hex.DecodeString(eventReceipt.Signature)
 	require.NoError(t, err)
 
 	valid := ed25519.Verify(pubKey, canonical, sigBytes)
-	require.True(t, valid, "Receipt signature should verify against L5Actuator public key")
+	require.True(t, valid, "Event receipt signature should verify against L5Actuator public key")
 
-	tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+	tampered := proto.Clone(eventReceipt).(*operatorv1.EventReceipt)
 	tampered.DeterministicStageEvidence[2].StateRootAfter = "tampered-root"
-	tamperedCanonical, err := CanonicalizeActionReceipt(tampered)
+	tamperedCanonical, err := CanonicalizeEventReceipt(tampered)
 	require.NoError(t, err)
 	assert.False(t, ed25519.Verify(pubKey, tamperedCanonical, sigBytes))
 
@@ -148,8 +148,8 @@ func TestL5ActuatorExecuteHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.Status)
-	require.NotNil(t, receipt.FinalPersistenceAttestation)
-	require.NoError(t, VerifyReceiptPersistenceAttestation(receipt, pubKey))
+	require.NotNil(t, eventReceipt.FinalPersistenceAttestation)
+	require.NoError(t, VerifyEventReceiptPersistenceAttestation(eventReceipt, pubKey))
 }
 
 func TestL5ActuatorExecuteHandlerError(t *testing.T) {
@@ -178,27 +178,27 @@ func TestL5ActuatorExecuteHandlerError(t *testing.T) {
 	}
 
 	// Execute
-	receipt, err := actuator.Execute(context.Background(), vt, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "handler execution failed")
-	require.NotNil(t, receipt)
+	require.NotNil(t, eventReceipt)
 
-	// Verify receipt has FAILED status
-	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
-	require.Contains(t, receipt.ResultSummary, "handler execution failed")
+	// Verify event receipt has FAILED status
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, eventReceipt.Status)
+	require.Contains(t, eventReceipt.ResultSummary, "handler execution failed")
 
 	// Verify signature is still valid
-	canonical, err := CanonicalizeActionReceipt(receipt)
+	canonical, err := CanonicalizeEventReceipt(eventReceipt)
 	require.NoError(t, err)
 
-	sigBytes, err := hex.DecodeString(receipt.Signature)
+	sigBytes, err := hex.DecodeString(eventReceipt.Signature)
 	require.NoError(t, err)
 
 	valid := ed25519.Verify(pubKey, canonical, sigBytes)
-	require.True(t, valid, "Receipt signature should verify even when handler fails")
+	require.True(t, valid, "Event receipt signature should verify even when handler fails")
 
-	// Verify the persisted receipt carries the FAILED status
-	persisted, err := auditStore.GetEventReceipt(receipt.TransactionId)
+	// Verify the persisted event receipt carries the FAILED status
+	persisted, err := auditStore.GetEventReceipt(eventReceipt.TransactionId)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, persisted.Status)
@@ -206,43 +206,43 @@ func TestL5ActuatorExecuteHandlerError(t *testing.T) {
 
 func TestL5ActuatorExecuteAuditWriteFailInitial(t *testing.T) {
 	actuator, _, db := newPersistingActuator(t)
-	failReceiptWrites(t, db, "INSERT")
+	failEventReceiptWrites(t, db, "INSERT")
 
-	// Execute - the initial receipt cannot be persisted, so the handler must not run
-	receipt, err := actuator.Execute(context.Background(), newFailureTestVT(t, "test-initial-write-failure"), nil)
+	// Execute - the initial event receipt cannot be persisted, so the handler must not run
+	eventReceipt, err := actuator.Execute(context.Background(), newFailureTestVT(t, "test-initial-write-failure"), nil)
 	require.ErrorIs(t, err, constants.ErrL5ActuatorCommitmentPersist)
-	require.Nil(t, receipt)
-	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed, "handler must not run when the initial receipt is not persisted")
+	require.Nil(t, eventReceipt)
+	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed, "handler must not run when the initial event receipt is not persisted")
 }
 
 func TestL5ActuatorExecuteFinalPersistenceAttestationWriteFailure(t *testing.T) {
 	actuator, auditStore, db := newPersistingActuator(t)
-	failReceiptWrites(t, db, "UPDATE")
+	failEventReceiptWrites(t, db, "UPDATE")
 	vt := newFailureTestVT(t, "test-final-persistence-write-failure")
 
-	receipt, err := actuator.Execute(context.Background(), vt, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrL5ActuatorLogReceipt)
+	assert.ErrorIs(t, err, constants.ErrL5ActuatorLogEventReceipt)
 	assert.ErrorIs(t, err, constants.ErrL5ActuatorAuditStore)
-	require.NotNil(t, receipt)
-	assert.Nil(t, receipt.FinalPersistenceAttestation, "an unpersisted final receipt must not carry a persistence attestation")
+	require.NotNil(t, eventReceipt)
+	assert.Nil(t, eventReceipt.FinalPersistenceAttestation, "an unpersisted final event receipt must not carry a persistence attestation")
 	persisted, getErr := auditStore.GetEventReceipt(vt.Envelope.Id)
 	require.NoError(t, getErr)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING, persisted.Status, "only the initial receipt is persisted")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING, persisted.Status, "only the initial event receipt is persisted")
 }
 
-// TestL5ActuatorExecuteCallsReceiptPublisherOnSuccess verifies that Execute
-// calls ReceiptPublisher.PublishActionReceipt with the original command
-// envelope and the final signed receipt after successful execution.
-func TestL5ActuatorExecuteCallsReceiptPublisherOnSuccess(t *testing.T) {
+// TestL5ActuatorExecuteCallsEventReceiptPublisherOnSuccess verifies that Execute
+// calls EventReceiptPublisher.PublishEventReceipt with the original command
+// envelope and the final signed event receipt after successful execution.
+func TestL5ActuatorExecuteCallsEventReceiptPublisherOnSuccess(t *testing.T) {
 	actuator, _ := newCommitmentTestActuator(t)
-	publisher := &mockReceiptPublisher{}
-	actuator.ReceiptPublisher = publisher
+	publisher := &mockEventReceiptPublisher{}
+	actuator.EventReceiptPublisher = publisher
 
 	envelope := &govtypes.GovernanceEnvelope{
 		Id:                mustUUID(t),
-		TransactionHash:   "test-hash-receipt-pub",
+		TransactionHash:   "test-hash-event_receipt-pub",
 		OperatorId:        "test-operator",
 		OperatorSessionId: "test-operator-session",
 		EventType:         string(constants.EventOperatorCommandRequested),
@@ -258,42 +258,42 @@ func TestL5ActuatorExecuteCallsReceiptPublisherOnSuccess(t *testing.T) {
 		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
-	receipt, err := actuator.Execute(context.Background(), vt, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.NoError(t, err)
-	require.NotNil(t, receipt)
+	require.NotNil(t, eventReceipt)
 
-	require.Equal(t, 1, publisher.callCount(), "PublishActionReceipt must be called exactly once after successful execution")
+	require.Equal(t, 1, publisher.callCount(), "PublishEventReceipt must be called exactly once after successful execution")
 	require.Equal(t, envelope, publisher.envelope, "publisher must receive the original command envelope")
-	require.Equal(t, receipt.TransactionId, publisher.receipt.TransactionId, "publisher must receive the final receipt")
-	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, publisher.receipt.Status)
-	require.NotEmpty(t, publisher.receipt.Signature, "publisher must receive a signed receipt")
+	require.Equal(t, eventReceipt.TransactionId, publisher.eventReceipt.TransactionId, "publisher must receive the final event receipt")
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, publisher.eventReceipt.Status)
+	require.NotEmpty(t, publisher.eventReceipt.Signature, "publisher must receive a signed event receipt")
 }
 
-// TestL5ActuatorExecuteDoesNotCallReceiptPublisherWhenFinalReceiptFails
-// verifies that Execute does not call ReceiptPublisher.PublishActionReceipt
-// when signAndLogFinalReceipt fails (the receipt is not finalized).
-func TestL5ActuatorExecuteDoesNotCallReceiptPublisherWhenFinalReceiptFails(t *testing.T) {
+// TestL5ActuatorExecuteDoesNotCallEventReceiptPublisherWhenFinalEventReceiptFails
+// verifies that Execute does not call EventReceiptPublisher.PublishEventReceipt
+// when signAndLogFinalEventReceipt fails (the event receipt is not finalized).
+func TestL5ActuatorExecuteDoesNotCallEventReceiptPublisherWhenFinalEventReceiptFails(t *testing.T) {
 	actuator, _, db := newPersistingActuator(t)
 	// A later stage clears the previous current event receipt in the same
 	// transaction as the new chain event. Refuse that update so the final
-	// write rolls back before the ReceiptPublisher is reached.
-	failReceiptWrites(t, db, "UPDATE")
+	// write rolls back before the EventReceiptPublisher is reached.
+	failEventReceiptWrites(t, db, "UPDATE")
 
-	publisher := &mockReceiptPublisher{}
-	actuator.ReceiptPublisher = publisher
+	publisher := &mockEventReceiptPublisher{}
+	actuator.EventReceiptPublisher = publisher
 
-	_, err := actuator.Execute(context.Background(), newFailureTestVT(t, "test-hash-receipt-pub-fail"), nil)
-	require.Error(t, err, "Execute must return an error when signAndLogFinalReceipt fails")
-	require.Equal(t, 0, publisher.callCount(), "PublishActionReceipt must not be called when signAndLogFinalReceipt fails")
+	_, err := actuator.Execute(context.Background(), newFailureTestVT(t, "test-hash-event_receipt-pub-fail"), nil)
+	require.Error(t, err, "Execute must return an error when signAndLogFinalEventReceipt fails")
+	require.Equal(t, 0, publisher.callCount(), "PublishEventReceipt must not be called when signAndLogFinalEventReceipt fails")
 }
 
-// TestL5ActuatorExecuteNilReceiptPublisherDoesNotPanic verifies that a nil
-// ReceiptPublisher (the gateway in-process operator path) does not cause a
+// TestL5ActuatorExecuteNilEventReceiptPublisherDoesNotPanic verifies that a nil
+// EventReceiptPublisher (the gateway in-process operator path) does not cause a
 // panic and execution proceeds normally.
-func TestL5ActuatorExecuteNilReceiptPublisherDoesNotPanic(t *testing.T) {
+func TestL5ActuatorExecuteNilEventReceiptPublisherDoesNotPanic(t *testing.T) {
 	actuator, _ := newCommitmentTestActuator(t)
-	// ReceiptPublisher is nil by default (not set in newTestActuator).
-	require.Nil(t, actuator.ReceiptPublisher)
+	// EventReceiptPublisher is nil by default (not set in newTestActuator).
+	require.Nil(t, actuator.EventReceiptPublisher)
 
 	envelope := &govtypes.GovernanceEnvelope{
 		Id:                mustUUID(t),
@@ -312,19 +312,19 @@ func TestL5ActuatorExecuteNilReceiptPublisherDoesNotPanic(t *testing.T) {
 	}
 
 	assert.NotPanics(t, func() {
-		receipt, err := actuator.Execute(context.Background(), vt, nil)
+		eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 		require.NoError(t, err)
-		require.NotNil(t, receipt)
+		require.NotNil(t, eventReceipt)
 	})
 }
 
-// TestL5ActuatorExecuteReceiptPublisherErrorDoesNotFailExecution verifies
-// that a ReceiptPublisher publish error is best-effort: the execution
-// succeeds and the receipt is returned, with the publish error only logged.
-func TestL5ActuatorExecuteReceiptPublisherErrorDoesNotFailExecution(t *testing.T) {
+// TestL5ActuatorExecuteEventReceiptPublisherErrorDoesNotFailExecution verifies
+// that a EventReceiptPublisher publish error is best-effort: the execution
+// succeeds and the event receipt is returned, with the publish error only logged.
+func TestL5ActuatorExecuteEventReceiptPublisherErrorDoesNotFailExecution(t *testing.T) {
 	actuator, _ := newCommitmentTestActuator(t)
-	publisher := &mockReceiptPublisher{publishError: errors.New("publish failed")}
-	actuator.ReceiptPublisher = publisher
+	publisher := &mockEventReceiptPublisher{publishError: errors.New("publish failed")}
+	actuator.EventReceiptPublisher = publisher
 
 	envelope := &govtypes.GovernanceEnvelope{
 		Id:                mustUUID(t),
@@ -342,10 +342,10 @@ func TestL5ActuatorExecuteReceiptPublisherErrorDoesNotFailExecution(t *testing.T
 		L3Status:   operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}
 
-	receipt, err := actuator.Execute(context.Background(), vt, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.NoError(t, err, "publish error must not fail the execution")
-	require.NotNil(t, receipt)
-	require.Equal(t, 1, publisher.callCount(), "PublishActionReceipt must still be attempted")
+	require.NotNil(t, eventReceipt)
+	require.Equal(t, 1, publisher.callCount(), "PublishEventReceipt must still be attempted")
 }
 
 func l5ScrubTestVT(t *testing.T, target string) *VerifiedTransaction {
@@ -366,12 +366,12 @@ func l5ScrubTestVT(t *testing.T, target string) *VerifiedTransaction {
 	}
 }
 
-// The signed receipt, its published envelope and its commitment carry the scrubbed target and the
+// The signed event receipt, its published envelope and its commitment carry the scrubbed target and the
 // scrubbed failure text. The capability and the execution handler keep the real target.
 func TestL5Actuator_ScrubsTargetAndFailureSummaryBeforeSigning(t *testing.T) {
 	actuator, _ := newCommitmentTestActuator(t)
-	publisher := &mockReceiptPublisher{}
-	actuator.ReceiptPublisher = publisher
+	publisher := &mockEventReceiptPublisher{}
+	actuator.EventReceiptPublisher = publisher
 
 	target := "mailto:" + l5SecretEmail
 	var handlerTarget string
@@ -381,18 +381,18 @@ func TestL5Actuator_ScrubsTargetAndFailureSummaryBeforeSigning(t *testing.T) {
 		return "", fmt.Errorf("could not write to %s", l5SecretEmail)
 	}
 
-	receipt, err := actuator.Execute(context.Background(), l5ScrubTestVT(t, target), nil)
+	eventReceipt, err := actuator.Execute(context.Background(), l5ScrubTestVT(t, target), nil)
 	require.Error(t, err)
-	require.NotNil(t, receipt)
+	require.NotNil(t, eventReceipt)
 
 	assert.Equal(t, target, handlerTarget, "the handler keeps the real target")
-	assert.NotContains(t, receipt.ResultSummary, l5SecretEmail, "failure text is scrubbed before it is signed")
-	assert.Contains(t, receipt.ResultSummary, "failed: ")
+	assert.NotContains(t, eventReceipt.ResultSummary, l5SecretEmail, "failure text is scrubbed before it is signed")
+	assert.Contains(t, eventReceipt.ResultSummary, "failed: ")
 	require.NotNil(t, publisher.envelope)
 	assert.NotContains(t, publisher.envelope.TargetResource, l5SecretEmail, "published envelope carries the scrubbed target")
 }
 
-// Without an active scrubber a target is refused before any receipt is signed or the handler runs.
+// Without an active scrubber a target is refused before any event receipt is signed or the handler runs.
 func TestL5Actuator_WithoutScrubberRefusesTargetBeforeExecution(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -405,9 +405,9 @@ func TestL5Actuator_WithoutScrubberRefusesTargetBeforeExecution(t *testing.T) {
 			actuator, _ := newCommitmentTestActuator(t)
 			actuator.Scrubbing = tc.s
 
-			receipt, err := actuator.Execute(context.Background(), l5ScrubTestVT(t, "/srv/"+l5SecretEmail), nil)
+			eventReceipt, err := actuator.Execute(context.Background(), l5ScrubTestVT(t, "/srv/"+l5SecretEmail), nil)
 			require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
-			assert.Nil(t, receipt)
+			assert.Nil(t, eventReceipt)
 			assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed, "handler must not run")
 
 			rejected, err := actuator.RecordRejectedTransaction(context.Background(), l5ScrubTestVT(t, "/srv/"+l5SecretEmail), errors.New("denied"))
@@ -427,19 +427,19 @@ func TestL5Actuator_WithoutScrubberSignsFixedSummary(t *testing.T) {
 		return "", fmt.Errorf("could not write to %s", l5SecretEmail)
 	}
 
-	receipt, err := actuator.Execute(context.Background(), l5ScrubTestVT(t, ""), nil)
+	eventReceipt, err := actuator.Execute(context.Background(), l5ScrubTestVT(t, ""), nil)
 	require.Error(t, err)
-	require.NotNil(t, receipt)
-	assert.Equal(t, "failed: "+classifyReceiptFailure(err).String(), receipt.ResultSummary)
-	assert.NotContains(t, receipt.ResultSummary, l5SecretEmail)
+	require.NotNil(t, eventReceipt)
+	assert.Equal(t, "failed: "+classifyEventReceiptFailure(err).String(), eventReceipt.ResultSummary)
+	assert.NotContains(t, eventReceipt.ResultSummary, l5SecretEmail)
 
 	rejected, err := actuator.RecordRejectedTransaction(context.Background(), l5ScrubTestVT(t, ""), errors.New("state mismatch for "+l5SecretEmail))
 	require.NoError(t, err)
-	assert.Equal(t, "rejected: "+operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED.String(), rejected.ResultSummary)
+	assert.Equal(t, "rejected: "+operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED.String(), rejected.ResultSummary)
 }
 
 // A payload whose UEI token cannot be resolved is never dispatched. Rehydration runs after the
-// EXECUTING receipt is committed, so the receipt finalizes FAILED with the rehydration cause, the
+// EXECUTING event receipt is committed, so the event receipt finalizes FAILED with the rehydration cause, the
 // execution stage records the failure, and the handler never sees the placeholder.
 func TestL5ActuatorExecuteFailsClosedWhenRehydrationFails(t *testing.T) {
 	actuator, auditStore := newCommitmentTestActuator(t)
@@ -449,20 +449,20 @@ func TestL5ActuatorExecuteFailsClosedWhenRehydrationFails(t *testing.T) {
 	msg := &rehydrationCommandMessage{payload: original}
 	vt := newFailureTestVT(t, "test-hash-rehydrate-fail")
 
-	receipt, err := actuator.Execute(context.Background(), vt, msg)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, msg)
 	require.ErrorIs(t, err, constants.ErrL5ActuatorRehydrate)
 	require.ErrorIs(t, err, constants.ErrScrubbingTokenUnresolved)
-	require.NotNil(t, receipt)
+	require.NotNil(t, eventReceipt)
 
 	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed, "the handler must not run with an unrehydrated payload")
 	assert.Equal(t, original, msg.GetPayload(), "the payload is not replaced by a partial rehydration")
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
-	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, receipt.FailureCode, "the signed failure code classifies the rehydration cause")
-	assert.True(t, strings.HasPrefix(receipt.ResultSummary, "failed: "), receipt.ResultSummary)
-	assert.Contains(t, receipt.ResultSummary, constants.ErrScrubbingTokenUnresolved.Error(), "the signed summary records the rehydration cause")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, eventReceipt.Status)
+	assert.Equal(t, operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED, eventReceipt.FailureCode, "the signed failure code classifies the rehydration cause")
+	assert.True(t, strings.HasPrefix(eventReceipt.ResultSummary, "failed: "), eventReceipt.ResultSummary)
+	assert.Contains(t, eventReceipt.ResultSummary, constants.ErrScrubbingTokenUnresolved.Error(), "the signed summary records the rehydration cause")
 
 	var executionStage *operatorv1.DeterministicStageEvidence
-	for _, stage := range receipt.DeterministicStageEvidence {
+	for _, stage := range eventReceipt.DeterministicStageEvidence {
 		if stage.GetKind() == operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION {
 			executionStage = stage
 		}
@@ -470,11 +470,11 @@ func TestL5ActuatorExecuteFailsClosedWhenRehydrationFails(t *testing.T) {
 	require.NotNil(t, executionStage, "the execution stage is recorded")
 	assert.Equal(t, operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, executionStage.GetOutcome())
 
-	require.NoError(t, VerifyActionReceiptSignature(receipt, publicKey))
-	require.NotNil(t, receipt.FinalPersistenceAttestation)
-	assert.NoError(t, VerifyReceiptPersistenceAttestation(receipt, publicKey))
+	require.NoError(t, VerifyEventReceiptSignature(eventReceipt, publicKey))
+	require.NotNil(t, eventReceipt.FinalPersistenceAttestation)
+	assert.NoError(t, VerifyEventReceiptPersistenceAttestation(eventReceipt, publicKey))
 
-	persisted, err := auditStore.GetEventReceipt(receipt.TransactionId)
+	persisted, err := auditStore.GetEventReceipt(eventReceipt.TransactionId)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, persisted.Status)
@@ -490,7 +490,7 @@ func (m *digestCommandMessage) GetPayload() []byte            { return m.payload
 func (m *digestCommandMessage) SetPayload(p []byte)           { m.payload = p }
 func (m *digestCommandMessage) InferenceResultDigest() string { return m.digest }
 
-// The inference result digest is the one identifier the Gateway checks against the receipt. It
+// The inference result digest is the one identifier the Gateway checks against the event receipt. It
 // arrives on the typed channel of an INFERENCE action and is signed as is, with or without a scrubber.
 func TestL5Actuator_InferenceDigestRidesTheTypedChannel(t *testing.T) {
 	for _, tc := range []struct {
@@ -512,9 +512,9 @@ func TestL5Actuator_InferenceDigestRidesTheTypedChannel(t *testing.T) {
 			vt.ActionType = constants.ActionTypeInference
 			vt.Envelope.ActionType = string(constants.ActionTypeInference)
 
-			receipt, err := actuator.Execute(context.Background(), vt, &digestCommandMessage{digest: digest})
+			eventReceipt, err := actuator.Execute(context.Background(), vt, &digestCommandMessage{digest: digest})
 			require.NoError(t, err)
-			assert.Equal(t, digest, receipt.ResultSummary)
+			assert.Equal(t, digest, eventReceipt.ResultSummary)
 		})
 	}
 }
@@ -525,7 +525,7 @@ func TestL5Actuator_HexOutputIsNeverPassedThroughAsADigest(t *testing.T) {
 	hexSecret := models.SHA256Hex([]byte("hex-encoded key file contents"))
 	require.True(t, models.IsSHA256Hex(hexSecret))
 
-	run := func(t *testing.T, a *L5Actuator, actionType constants.ActionType, msg CommandMessage) *operatorv1.ActionReceipt {
+	run := func(t *testing.T, a *L5Actuator, actionType constants.ActionType, msg CommandMessage) *operatorv1.EventReceipt {
 		t.Helper()
 		handler := a.ExecutionHandler.(*mockExecutionHandler)
 		handler.ExecuteVerifiedTransactionFunc = func(context.Context, constants.EventType, CommandMessage) (string, error) {
@@ -534,9 +534,9 @@ func TestL5Actuator_HexOutputIsNeverPassedThroughAsADigest(t *testing.T) {
 		vt := l5ScrubTestVT(t, "")
 		vt.ActionType = actionType
 		vt.Envelope.ActionType = string(actionType)
-		receipt, err := a.Execute(context.Background(), vt, msg)
+		eventReceipt, err := a.Execute(context.Background(), vt, msg)
 		require.NoError(t, err)
-		return receipt
+		return eventReceipt
 	}
 
 	t.Run("native tool output with a scrubber is scrubbed text", func(t *testing.T) {
@@ -548,33 +548,33 @@ func TestL5Actuator_HexOutputIsNeverPassedThroughAsADigest(t *testing.T) {
 		actuator.Scrubbing = scrubber
 		require.NotEqual(t, hexSecret, scrubber.ScrubText(context.Background(), hexSecret), "the test scrubber must match a bare 64-hex string")
 
-		receipt := run(t, actuator, constants.ActionTypeExecuteBash, nil)
-		assert.NotContains(t, receipt.ResultSummary, hexSecret, "the hex output must not be signed verbatim")
-		assert.Equal(t, scrubber.ScrubText(context.Background(), hexSecret), receipt.ResultSummary, "the output goes through the scrubber like any text")
+		eventReceipt := run(t, actuator, constants.ActionTypeExecuteBash, nil)
+		assert.NotContains(t, eventReceipt.ResultSummary, hexSecret, "the hex output must not be signed verbatim")
+		assert.Equal(t, scrubber.ScrubText(context.Background(), hexSecret), eventReceipt.ResultSummary, "the output goes through the scrubber like any text")
 	})
 
 	for name, scrubber := range map[string]*scrubbing.ScrubbingService{"nil scrubber": nil, "disabled scrubber": disabledL5Scrubber(t)} {
 		t.Run("native tool output with "+name+" is fixed text", func(t *testing.T) {
 			actuator, _ := newCommitmentTestActuator(t)
 			actuator.Scrubbing = scrubber
-			receipt := run(t, actuator, constants.ActionTypeExecuteBash, nil)
-			assert.NotContains(t, receipt.ResultSummary, hexSecret)
-			assert.Equal(t, "completed", receipt.ResultSummary)
+			eventReceipt := run(t, actuator, constants.ActionTypeExecuteBash, nil)
+			assert.NotContains(t, eventReceipt.ResultSummary, hexSecret)
+			assert.Equal(t, "completed", eventReceipt.ResultSummary)
 		})
 	}
 
 	t.Run("an inference action whose handler produced no typed digest signs no hex text", func(t *testing.T) {
 		actuator, _ := newCommitmentTestActuator(t)
 		actuator.Scrubbing = nil
-		receipt := run(t, actuator, constants.ActionTypeInference, &digestCommandMessage{})
-		assert.NotContains(t, receipt.ResultSummary, hexSecret)
+		eventReceipt := run(t, actuator, constants.ActionTypeInference, &digestCommandMessage{})
+		assert.NotContains(t, eventReceipt.ResultSummary, hexSecret)
 	})
 
 	t.Run("a digest on the typed channel is ignored for every other action type", func(t *testing.T) {
 		actuator, _ := newCommitmentTestActuator(t)
 		actuator.Scrubbing = nil
-		receipt := run(t, actuator, constants.ActionTypeExecuteBash, &digestCommandMessage{digest: hexSecret})
-		assert.NotContains(t, receipt.ResultSummary, hexSecret)
+		eventReceipt := run(t, actuator, constants.ActionTypeExecuteBash, &digestCommandMessage{digest: hexSecret})
+		assert.NotContains(t, eventReceipt.ResultSummary, hexSecret)
 	})
 }
 
@@ -615,9 +615,9 @@ func TestL5Actuator_MintsAndDissolvesCapability(t *testing.T) {
 		ExpiresAt:  time.Now().Add(5 * time.Minute),
 	}
 
-	receipt, err := actuator.Execute(context.Background(), vt, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.NoError(t, err)
-	require.NotNil(t, receipt)
+	require.NotNil(t, eventReceipt)
 
 	// During execution, the handler should have received a valid capability
 	require.NotNil(t, capturedCap, "handler should have received a capability via context")
@@ -657,26 +657,26 @@ func TestL5Actuator_CapabilityDissolvedOnHandlerError(t *testing.T) {
 		ExpiresAt:  time.Now().Add(5 * time.Minute),
 	}
 
-	receipt, err := actuator.Execute(context.Background(), vt, nil)
+	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.Error(t, err)
-	require.NotNil(t, receipt)
+	require.NotNil(t, eventReceipt)
 
 	// Capability should still be dissolved even on handler error
 	require.NotNil(t, capturedCap)
 	assert.True(t, capturedCap.IsDissolved(), "capability must be dissolved even when handler fails")
 }
 
-// failReceiptWrites installs a trigger that aborts the event-receipt write at
+// failEventReceiptWrites installs a trigger that aborts the event-receipt write at
 // the named stage. INSERT refuses a new current event receipt. UPDATE refuses
 // clearing the previous current row, which is how a later stage replaces it.
-func failReceiptWrites(t *testing.T, db *sqliteutil.DB, op string) {
+func failEventReceiptWrites(t *testing.T, db *sqliteutil.DB, op string) {
 	t.Helper()
 	when := "OLD.event_receipt_status IS NOT NULL"
 	if strings.EqualFold(op, "INSERT") {
 		when = "NEW.event_receipt_status IS NOT NULL"
 	}
 	_, err := db.ExecWithRetry(context.Background(), fmt.Sprintf(
-		"CREATE TRIGGER fail_receipt_%s BEFORE %s ON events WHEN %s BEGIN SELECT RAISE(ABORT, 'event receipt write refused'); END",
+		"CREATE TRIGGER fail_event_receipt_%s BEFORE %s ON events WHEN %s BEGIN SELECT RAISE(ABORT, 'event receipt write refused'); END",
 		strings.ToLower(op), op, when,
 	))
 	require.NoError(t, err)
@@ -727,21 +727,21 @@ func rejectedForeignVT(t *testing.T) *VerifiedTransaction {
 	}
 }
 
-// TestL5ActuatorRejectionReceiptFilesUnderRuntimeSession proves a rejection of
+// TestL5ActuatorRejectionEventReceiptFilesUnderRuntimeSession proves a rejection of
 // an envelope that claims another Operator and an unknown session is recorded
 // under the runtime's own audit session, with the claimed identity preserved in
-// the signed receipt, instead of being lost to AUDIT_SESSION_UNKNOWN.
-func TestL5ActuatorRejectionReceiptFilesUnderRuntimeSession(t *testing.T) {
+// the signed event receipt, instead of being lost to AUDIT_SESSION_UNKNOWN.
+func TestL5ActuatorRejectionEventReceiptFilesUnderRuntimeSession(t *testing.T) {
 	actuator, auditStore := newCommitmentTestActuator(t)
-	publisher := &mockReceiptPublisher{}
-	actuator.ReceiptPublisher = publisher
+	publisher := &mockEventReceiptPublisher{}
+	actuator.EventReceiptPublisher = publisher
 	vt := rejectedForeignVT(t)
 
-	receipt, err := actuator.RecordRejectedTransaction(context.Background(), vt, fmt.Errorf("%w: %q", constants.ErrTxTargetOperatorMismatch, "remote-operator"))
+	eventReceipt, err := actuator.RecordRejectedTransaction(context.Background(), vt, fmt.Errorf("%w: %q", constants.ErrTxTargetOperatorMismatch, "remote-operator"))
 	require.NoError(t, err)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
-	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, receipt.FailureCode)
-	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH, receipt.RejectionCode, "a wrapped sentinel still classifies")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, eventReceipt.Status)
+	assert.Equal(t, operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, eventReceipt.FailureCode)
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_TARGET_OPERATOR_MISMATCH, eventReceipt.RejectionCode, "a wrapped sentinel still classifies")
 	assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed)
 
 	persisted, err := auditStore.GetEventReceipt(vt.Envelope.Id)
@@ -750,46 +750,46 @@ func TestL5ActuatorRejectionReceiptFilesUnderRuntimeSession(t *testing.T) {
 	assert.Equal(t, "test-operator-session", persisted.OperatorSessionID, "the audit row belongs to the runtime's own session")
 	assert.Equal(t, "test-operator", persisted.OperatorID)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, persisted.Status)
-	require.NotNil(t, persisted.ActionReceipt)
-	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, persisted.ActionReceipt.FailureCode)
+	require.NotNil(t, persisted.EventReceipt)
+	assert.Equal(t, operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, persisted.EventReceipt.FailureCode)
 
-	require.Len(t, receipt.DeterministicStageEvidence, 1)
-	assert.Equal(t, "remote-operator", receipt.DeterministicStageEvidence[0].OperatorId, "the claimed operator stays visible in the signed receipt")
-	assert.Equal(t, "foreign-cli-session", receipt.DeterministicStageEvidence[0].OperatorSessionId, "the claimed session stays visible in the signed receipt")
-	assert.NoError(t, VerifyActionReceiptSignature(receipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
+	require.Len(t, eventReceipt.DeterministicStageEvidence, 1)
+	assert.Equal(t, "remote-operator", eventReceipt.DeterministicStageEvidence[0].OperatorId, "the claimed operator stays visible in the signed event receipt")
+	assert.Equal(t, "foreign-cli-session", eventReceipt.DeterministicStageEvidence[0].OperatorSessionId, "the claimed session stays visible in the signed event receipt")
+	assert.NoError(t, VerifyEventReceiptSignature(eventReceipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
 
 	require.Equal(t, 1, publisher.callCount())
 	published := publisher.envelope
-	assert.Equal(t, "test-operator", published.OperatorId, "the receipt is published on the runtime's own receipts channel")
+	assert.Equal(t, "test-operator", published.OperatorId, "the event receipt is published on the runtime's own event receipts channel")
 	assert.Equal(t, "test-operator-session", published.OperatorSessionId)
 	assert.Equal(t, "remote-operator", vt.Envelope.OperatorId, "the rejected envelope is not mutated")
 }
 
 // TestL5ActuatorRejectionCodeIsSignatureBound proves the rejection code is part
-// of the signed bytes: the untouched receipt verifies, and a receipt whose
+// of the signed bytes: the untouched event receipt verifies, and an event receipt whose
 // rejection_code is changed after signing fails signature verification.
 func TestL5ActuatorRejectionCodeIsSignatureBound(t *testing.T) {
 	actuator, _ := newCommitmentTestActuator(t)
 	publicKey := actuator.SigningKey.Public().(ed25519.PublicKey)
 	vt := rejectedForeignVT(t)
 
-	receipt, err := actuator.RecordRejectedTransaction(context.Background(), vt, constants.ErrTxStateRootMismatch)
+	eventReceipt, err := actuator.RecordRejectedTransaction(context.Background(), vt, constants.ErrTxStateRootMismatch)
 	require.NoError(t, err)
-	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH, receipt.RejectionCode)
-	require.NoError(t, VerifyActionReceiptSignature(receipt, publicKey))
+	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_STATE_ROOT_MISMATCH, eventReceipt.RejectionCode)
+	require.NoError(t, VerifyEventReceiptSignature(eventReceipt, publicKey))
 
-	tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+	tampered := proto.Clone(eventReceipt).(*operatorv1.EventReceipt)
 	tampered.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE
-	assert.Error(t, VerifyActionReceiptSignature(tampered, publicKey), "a changed rejection_code must break the signature")
+	assert.Error(t, VerifyEventReceiptSignature(tampered, publicKey), "a changed rejection_code must break the signature")
 
-	cleared := proto.Clone(receipt).(*operatorv1.ActionReceipt)
+	cleared := proto.Clone(eventReceipt).(*operatorv1.EventReceipt)
 	cleared.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
-	assert.Error(t, VerifyActionReceiptSignature(cleared, publicKey), "clearing rejection_code must break the signature")
+	assert.Error(t, VerifyEventReceiptSignature(cleared, publicKey), "clearing rejection_code must break the signature")
 }
 
-// TestL5ActuatorRejectionReceiptRequiresRuntimeIdentity proves a runtime with no
+// TestL5ActuatorRejectionEventReceiptRequiresRuntimeIdentity proves a runtime with no
 // identity of its own refuses to record a rejection under the envelope's claim.
-func TestL5ActuatorRejectionReceiptRequiresRuntimeIdentity(t *testing.T) {
+func TestL5ActuatorRejectionEventReceiptRequiresRuntimeIdentity(t *testing.T) {
 	cases := map[string]RuntimeIdentityProvider{
 		"unwired":   nil,
 		"unclaimed": &testutil.MockExecutionTarget{OperatorIDs: []string{"test-operator"}},
@@ -800,10 +800,10 @@ func TestL5ActuatorRejectionReceiptRequiresRuntimeIdentity(t *testing.T) {
 			actuator.Identity = identity
 			vt := rejectedForeignVT(t)
 
-			receipt, err := actuator.RecordRejectedTransaction(context.Background(), vt, constants.ErrTxTargetOperatorMismatch)
+			eventReceipt, err := actuator.RecordRejectedTransaction(context.Background(), vt, constants.ErrTxTargetOperatorMismatch)
 
 			require.ErrorIs(t, err, constants.ErrL5ActuatorRuntimeIdentityMissing)
-			assert.Nil(t, receipt)
+			assert.Nil(t, eventReceipt)
 			persisted, getErr := auditStore.GetEventReceipt(vt.Envelope.Id)
 			require.NoError(t, getErr)
 			assert.Nil(t, persisted)
@@ -811,18 +811,18 @@ func TestL5ActuatorRejectionReceiptRequiresRuntimeIdentity(t *testing.T) {
 	}
 }
 
-// TestL5ActuatorRejectionReceiptPersistFailureIsNotAMutation proves a rejection
-// whose receipt cannot be persisted reports a rejection-receipt failure, never
+// TestL5ActuatorRejectionEventReceiptPersistFailureIsNotAMutation proves a rejection
+// whose event receipt cannot be persisted reports a rejection-event_receipt failure, never
 // the executed-mutation log failure.
-func TestL5ActuatorRejectionReceiptPersistFailureIsNotAMutation(t *testing.T) {
+func TestL5ActuatorRejectionEventReceiptPersistFailureIsNotAMutation(t *testing.T) {
 	actuator, _ := newCommitmentTestActuator(t)
 	actuator.Identity = &testutil.MockExecutionTarget{OperatorIDs: []string{"test-operator"}, SessionID: "session-the-runtime-never-started"}
 
-	receipt, err := actuator.RecordRejectedTransaction(context.Background(), rejectedForeignVT(t), constants.ErrTxTargetOperatorMismatch)
+	eventReceipt, err := actuator.RecordRejectedTransaction(context.Background(), rejectedForeignVT(t), constants.ErrTxTargetOperatorMismatch)
 
-	require.ErrorIs(t, err, constants.ErrL5ActuatorRejectionReceiptPersist)
-	assert.NotErrorIs(t, err, constants.ErrL5ActuatorLogReceipt)
-	assert.Nil(t, receipt)
+	require.ErrorIs(t, err, constants.ErrL5ActuatorRejectionEventReceiptPersist)
+	assert.NotErrorIs(t, err, constants.ErrL5ActuatorLogEventReceipt)
+	assert.Nil(t, eventReceipt)
 }
 
 // TestL5ActuatorExecuteUnboundEnvelopeFilesUnderRuntimeSession proves a verified
@@ -849,9 +849,9 @@ func TestL5ActuatorExecuteUnboundEnvelopeFilesUnderRuntimeSession(t *testing.T) 
 		actuator, auditStore := newCommitmentTestActuator(t)
 		vt := newUnboundVT(t)
 
-		receipt, err := actuator.Execute(context.Background(), vt, nil)
+		eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
 		require.NoError(t, err)
-		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		persisted, err := auditStore.GetEventReceipt(vt.Envelope.Id)
 		require.NoError(t, err)
@@ -864,9 +864,9 @@ func TestL5ActuatorExecuteUnboundEnvelopeFilesUnderRuntimeSession(t *testing.T) 
 		actuator, _ := newCommitmentTestActuator(t)
 		actuator.Identity = &testutil.MockExecutionTarget{OperatorIDs: []string{"test-operator"}}
 
-		receipt, err := actuator.Execute(context.Background(), newUnboundVT(t), nil)
+		eventReceipt, err := actuator.Execute(context.Background(), newUnboundVT(t), nil)
 		require.ErrorIs(t, err, constants.ErrL5ActuatorRuntimeIdentityMissing)
-		assert.Nil(t, receipt)
+		assert.Nil(t, eventReceipt)
 		assert.False(t, actuator.ExecutionHandler.(*mockExecutionHandler).executed, "nothing may execute without a session to record it under")
 	})
 }

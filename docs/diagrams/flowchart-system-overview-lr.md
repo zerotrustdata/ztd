@@ -30,7 +30,7 @@ flowchart LR
     Gateway["Governance Gateway (ztdg)<br/>Identity binding · Envelope admission<br/>L1 Doctrine · L2 Consensus · L3 Notary"]
     Operator["Executing Operator (ztdo)<br/>Embedded or Outbound"]
     L4Warden["L4 Warden<br/>Nonce · Hash · Expiry · State Root<br/>Local L1 · Posture-required L2/L3"]
-    L5Actuator["L5 Actuator<br/>EXECUTING receipt · Commitment<br/>JIT capability · Dispatch · Final receipt"]
+    L5Actuator["L5 Actuator<br/>EXECUTING event receipt · Commitment<br/>JIT capability · Dispatch · Final event receipt"]
     Vault["Local Audit Vault · Commitment Chain · LFAA Ledger"]
     Target["Operator-Visible Runtime<br/>(Host OS · Downstream MCP/A2A)"]
 
@@ -64,11 +64,11 @@ The Gateway receives governed work through distinct authenticated ingress paths:
    - Verifies the state Merkle root against local ledger roots.
    - Validates required L2 Consensus quorum signatures and L3 Notary WebAuthn assertions according to the active posture.
 2. **L5 Actuator Execution Boundary**:
-   - Signs and persists the initial `EXECUTING` `ActionReceipt`.
+   - Signs and persists the initial `EXECUTING` `EventReceipt`.
    - Appends a signed `CommitmentAttestation` to the local SQLite ledger.
    - Rehydrates scrubbed `{{UEI_N}}` tokens in place via `ScrubbingService`.
    - Mints a short-lived, transaction-bound JIT capability.
    - Dispatches the command to the registered execution handler.
    - Dissolves the capability immediately post-execution (zero standing privileges).
-   - Scrubs outbound results and signs the final `COMPLETED` or `FAILED` `ActionReceipt`.
-   - Publishes the final receipt to `receipts:<operator-id>:<operator-session-id>` as a best-effort mirror. Local storage remains strictly authoritative.
+   - Scrubs outbound results and signs the final `COMPLETED` or `FAILED` `EventReceipt`.
+   - Publishes the final event receipt to `event_receipts:<operator-id>:<operator-session-id>` as a best-effort mirror. Local storage remains strictly authoritative.

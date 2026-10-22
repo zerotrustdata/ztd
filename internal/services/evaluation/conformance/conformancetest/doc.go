@@ -6,12 +6,12 @@
 // released under the Apache License, Version 2.0.
 
 // Package conformancetest pins real governance conformance records as test data.
-// Both came from live doctrine runs (suite 1.1.0, suite PASS, every receipt signed
+// Both came from live doctrine runs (suite 1.1.0, suite PASS, every event receipt signed
 // by a key named in the record's own anchors) against the real eval stack with A2A
 // ingress configured:
 //
-//   - DoctrineRecord: run c1f5cb4c-f285-4bfd-bcf0-303bcdbd327f, outbound Data Operator.
-//   - EmbeddedDoctrineRecord: run 573603cf-0a56-4d42-a242-7a2d145b62dc, embedded
+//   - DoctrineRecord: run 934cb9d7-95ae-4bbc-b186-05318b345dd4, outbound Data Operator.
+//   - EmbeddedDoctrineRecord: run d35c719f-6c86-4758-98df-9bbd4e2511bc, embedded
 //     Operator as the Data Operator.
 //
 // They are regenerated only by a live run, never by hand. The package is imported

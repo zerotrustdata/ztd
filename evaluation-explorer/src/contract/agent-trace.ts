@@ -5,7 +5,7 @@
 // artifact: the Go `AgentTrace` (internal/services/evaluation/
 // campaign_agent_trace.go) byte for byte. The browser checks the body against
 // its binding and recomputes evidence_digest before rendering any of it.
-// Receipts and anchors are canonical protojson (proto field names) kept as
+// Event receipts and anchors are canonical protojson (proto field names) kept as
 // decoded objects; their signatures verify offline with
 // `ztd public verify-agent-trace`.
 
@@ -14,7 +14,7 @@ import { ValidationError, assert, assertBoolean, assertInteger, assertObject, as
 export const AGENT_TRACE_SCHEMA_VERSIONS = ['agent-trace.v3', 'agent-trace.v4', 'agent-trace.v5', 'agent-trace.v6', 'agent-trace.v7', 'agent-trace.v8'] as const;
 export type AgentTraceSchemaVersion = (typeof AGENT_TRACE_SCHEMA_VERSIONS)[number];
 
-/** One canonical protojson message (ActionReceipt or ConformanceAnchor). */
+/** One canonical protojson message (EventReceipt or ConformanceAnchor). */
 export type AgentTraceProto = Readonly<Record<string, unknown>>;
 
 export interface AgentTraceMessage {
@@ -85,8 +85,8 @@ export interface AgentTraceModelCall {
   text?: string;
   tool_call_count: number;
   error?: string;
-  receipt?: AgentTraceProto;
-  observation_receipts?: AgentTraceProto[];
+  event_receipt?: AgentTraceProto;
+  observation_event_receipts?: AgentTraceProto[];
 }
 
 export interface AgentTraceToolCall {
@@ -106,7 +106,7 @@ export interface AgentTraceToolCall {
   transaction_id?: string;
   policy_decision?: string;
   approved_arguments_json?: string;
-  receipt?: AgentTraceProto;
+  event_receipt?: AgentTraceProto;
   retrieval?: AgentTraceRetrieval;
 }
 
@@ -121,14 +121,14 @@ export interface AgentTraceRetrievalQuery {
   offset?: number;
 }
 
-export interface AgentTraceRetrievalReceipt {
-  receipt_id: string;
+export interface AgentTraceRetrievalEventReceipt {
+  event_receipt_id: string;
   sha256: string;
 }
 
 export interface AgentTraceRetrieval {
   query: AgentTraceRetrievalQuery;
-  receipts: AgentTraceRetrievalReceipt[];
+  event_receipts: AgentTraceRetrievalEventReceipt[];
 }
 
 export interface AgentTrace {
@@ -273,7 +273,7 @@ function parseHeldContext(value: unknown, path: string): AgentTraceHeldContext {
 const MODEL_CALL_FIELDS = [
   'provider_attempt_id', 'transaction_id', 'purpose', 'loop_turn', 'tools_declared', 'result_digest', 'usage_reported',
   'prompt_tokens', 'completion_tokens', 'ttft_nanos', 'generation_duration_nanos', 'finish_reason', 'load_state',
-  'retry_count', 'thinking', 'text', 'tool_call_count', 'error', 'receipt', 'observation_receipts',
+  'retry_count', 'thinking', 'text', 'tool_call_count', 'error', 'event_receipt', 'observation_event_receipts',
   'tool_call_id', 'persona',
 ] as const;
 
@@ -291,9 +291,9 @@ function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceS
   for (const key of ['finish_reason', 'load_state', 'thinking', 'text', 'error']) optionalString(value, key, path);
   optionalInteger(value, 'ttft_nanos', path);
   optionalInteger(value, 'generation_duration_nanos', path);
-  optionalProto(value, 'receipt', path);
-  if (value.observation_receipts !== undefined) {
-    list(value.observation_receipts, `${path}.observation_receipts`).forEach((receipt, index) => proto(receipt, `${path}.observation_receipts[${index}]`));
+  optionalProto(value, 'event_receipt', path);
+  if (value.observation_event_receipts !== undefined) {
+    list(value.observation_event_receipts, `${path}.observation_event_receipts`).forEach((eventReceipt, index) => proto(eventReceipt, `${path}.observation_event_receipts[${index}]`));
   }
   optionalString(value, 'tool_call_id', path);
   optionalString(value, 'persona', path);
@@ -311,7 +311,7 @@ function parseModelCall(value: unknown, path: string, schemaVersion: AgentTraceS
 
 const TOOL_CALL_FIELDS = [
   'call_id', 'model_call_id', 'provider_call_id', 'tool_name', 'arguments_json', 'command', 'result_json', 'error_type',
-  'error', 'success', 'is_operator_tool', 'loop_turn', 'action_type', 'transaction_id', 'policy_decision', 'receipt',
+  'error', 'success', 'is_operator_tool', 'loop_turn', 'action_type', 'transaction_id', 'policy_decision', 'event_receipt',
 ] as const;
 
 const RETRIEVAL_QUERY_FIELDS = [
@@ -320,21 +320,21 @@ const RETRIEVAL_QUERY_FIELDS = [
 
 function parseRetrieval(value: unknown, path: string, investigationId: string | undefined): AgentTraceRetrieval {
   assertObject(value, path);
-  rejectUnknown(value, ['query', 'receipts'], path);
+  rejectUnknown(value, ['query', 'event_receipts'], path);
   assertObject(value.query, `${path}.query`);
   rejectUnknown(value.query, RETRIEVAL_QUERY_FIELDS, `${path}.query`);
   for (const key of ['operator_session_id', 'investigation_id', 'action_type', 'not_before']) {
     optionalString(value.query, key, `${path}.query`);
   }
   for (const key of ['limit', 'offset']) optionalInteger(value.query, key, `${path}.query`);
-  const receipts = list(value.receipts, `${path}.receipts`).map((receipt, index) => {
-    const receiptPath = `${path}.receipts[${index}]`;
-    assertObject(receipt, receiptPath);
-    rejectUnknown(receipt, ['receipt_id', 'sha256'], receiptPath);
-    requiredStrings(receipt, ['receipt_id', 'sha256'], receiptPath);
-    assert((receipt.receipt_id as string).length > 0, `${receiptPath}.receipt_id`, 'expected non-empty receipt ID');
-    assert(SHA256.test(receipt.sha256 as string), `${receiptPath}.sha256`, 'expected lowercase SHA-256');
-    return receipt as unknown as AgentTraceRetrievalReceipt;
+  const eventReceipts = list(value.event_receipts, `${path}.event_receipts`).map((eventReceipt, index) => {
+    const eventReceiptPath = `${path}.event_receipts[${index}]`;
+    assertObject(eventReceipt, eventReceiptPath);
+    rejectUnknown(eventReceipt, ['event_receipt_id', 'sha256'], eventReceiptPath);
+    requiredStrings(eventReceipt, ['event_receipt_id', 'sha256'], eventReceiptPath);
+    assert((eventReceipt.event_receipt_id as string).length > 0, `${eventReceiptPath}.event_receipt_id`, 'expected non-empty event receipt ID');
+    assert(SHA256.test(eventReceipt.sha256 as string), `${eventReceiptPath}.sha256`, 'expected lowercase SHA-256');
+    return eventReceipt as unknown as AgentTraceRetrievalEventReceipt;
   });
   assertString(value.query.investigation_id, `${path}.query.investigation_id`);
   assert(value.query.investigation_id === investigationId, `${path}.query.investigation_id`, 'must match trace investigation_id');
@@ -345,7 +345,7 @@ function parseRetrieval(value: unknown, path: string, investigationId: string | 
   assert(value.query.action_type === undefined, `${path}.query.action_type`, 'operator-local query does not filter action type');
   assert(value.query.not_before === undefined, `${path}.query.not_before`, 'operator-local query does not filter by time');
   assert(value.query.offset === undefined, `${path}.query.offset`, 'operator-local query does not use an offset');
-  return { query: value.query as unknown as AgentTraceRetrievalQuery, receipts };
+  return { query: value.query as unknown as AgentTraceRetrievalQuery, event_receipts: eventReceipts };
 }
 
 function parseToolCall(value: unknown, path: string, schemaVersion: AgentTraceSchemaVersion, investigationId?: string): AgentTraceToolCall {
@@ -364,7 +364,7 @@ function parseToolCall(value: unknown, path: string, schemaVersion: AgentTraceSc
   assertBoolean(value.success, `${path}.success`);
   assertBoolean(value.is_operator_tool, `${path}.is_operator_tool`);
   assertInteger(value.loop_turn, `${path}.loop_turn`);
-  optionalProto(value, 'receipt', path);
+  optionalProto(value, 'event_receipt', path);
   let retrieval: AgentTraceRetrieval | undefined;
   if (value.retrieval !== undefined) retrieval = parseRetrieval(value.retrieval, `${path}.retrieval`, investigationId);
   return { ...(value as unknown as AgentTraceToolCall), retrieval };
@@ -378,7 +378,7 @@ const TRACE_FIELDS = [
 ] as const;
 
 const INVESTIGATION_CONTEXT_TOOL = 'query_investigation_context';
-const AUDIT_RECEIPT_LIST_TOOL = 'audit_receipt_list';
+const AUDIT_EVENT_RECEIPT_LIST_TOOL = 'audit_event_receipt_list';
 const INVESTIGATION_STATUS_TYPE = 'investigation_status';
 const COMPLETED_EXECUTION_STATUS = 'EXECUTION_STATUS_COMPLETED';
 
@@ -399,13 +399,13 @@ function parseContextCallArguments(call: AgentTraceToolCall, path: string): Reco
 function validateV6ContextRetrievals(calls: AgentTraceToolCall[], investigationId: string | undefined): void {
   calls.forEach((call, index) => {
     const path = `agent_trace.tool_calls[${index}]`;
-    if (call.tool_name !== INVESTIGATION_CONTEXT_TOOL && call.tool_name !== AUDIT_RECEIPT_LIST_TOOL) {
-      assert(call.retrieval === undefined, `${path}.retrieval`, 'retrieval is only valid for query_investigation_context or audit_receipt_list');
+    if (call.tool_name !== INVESTIGATION_CONTEXT_TOOL && call.tool_name !== AUDIT_EVENT_RECEIPT_LIST_TOOL) {
+      assert(call.retrieval === undefined, `${path}.retrieval`, 'retrieval is only valid for query_investigation_context or audit_event_receipt_list');
       return;
     }
-    const completedReceipt = call.receipt?.status === COMPLETED_EXECUTION_STATUS;
+    const completedEventReceipt = call.event_receipt?.status === COMPLETED_EXECUTION_STATUS;
     if (call.retrieval === undefined) {
-      assert(!completedReceipt, `${path}.retrieval`, 'a completed context query must carry retrieval evidence');
+      assert(!completedEventReceipt, `${path}.retrieval`, 'a completed context query must carry retrieval evidence');
       if (!call.success) return;
       if (call.tool_name === INVESTIGATION_CONTEXT_TOOL) {
         const args = parseContextCallArguments(call, path);
@@ -421,7 +421,7 @@ function validateV6ContextRetrievals(calls: AgentTraceToolCall[], investigationI
       assert(
         args.data_type === 'history_trail' || args.data_type === 'operator_actions',
         `${path}.retrieval`,
-        'only history_trail and operator_actions return receipt retrievals',
+        'only history_trail and operator_actions return event receipt retrievals',
       );
     }
   });

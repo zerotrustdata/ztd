@@ -82,12 +82,12 @@ func TestNativeToolsIntegration_DatabaseTools(t *testing.T) {
 		req := DBDiscoverTopologyRequest{DatabasePath: dbPath}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_discover_topology", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_discover_topology", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		// Verify result structure
 		var result DBDiscoverTopologyResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.Contains(t, result.Schema, "users")
@@ -95,7 +95,7 @@ func TestNativeToolsIntegration_DatabaseTools(t *testing.T) {
 		require.Equal(t, "TEXT", result.Schema["users"]["name"])
 
 		// Verify audit vault persistence
-		verifyAuditVaultPersistence(t, receipt.TransactionId, sessionID)
+		verifyAuditVaultPersistence(t, eventReceipt.TransactionId, sessionID)
 	})
 
 	t.Run("db_query_validate_full_scan_rejection", func(t *testing.T) {
@@ -116,11 +116,11 @@ func TestNativeToolsIntegration_DatabaseTools(t *testing.T) {
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_query_validate", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_query_validate", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result DBQueryValidateResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.True(t, result.Rejected, "full table scan should be rejected")
@@ -146,11 +146,11 @@ func TestNativeToolsIntegration_DatabaseTools(t *testing.T) {
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_isolated_read", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_isolated_read", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result DBIsolatedReadResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.Len(t, result.Rows, 1)
@@ -169,11 +169,11 @@ func TestNativeToolsIntegration_DatabaseTools(t *testing.T) {
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_isolated_read", reqJSON)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_isolated_read", reqJSON)
 		// Tool should complete but return error
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
-		require.Contains(t, strings.ToLower(receipt.ResultSummary), "error")
+		require.Contains(t, strings.ToLower(eventReceipt.ResultSummary), "error")
 	})
 }
 
@@ -208,11 +208,11 @@ WARN: database connection failed`
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, constants.MCPToolSearchFile, reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, constants.MCPToolSearchFile, reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result SearchFileResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.Positive(t, result.TotalMatches)
@@ -241,11 +241,11 @@ func TestNativeToolsIntegration_ProcessTools(t *testing.T) {
 		req := ProcMetricTopRequest{Limit: 5}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_metric_top", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_metric_top", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result ProcMetricTopResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.NotEmpty(t, result.Processes)
@@ -264,11 +264,11 @@ func TestNativeToolsIntegration_ProcessTools(t *testing.T) {
 			}
 			reqJSON, _ := json.Marshal(req)
 
-			receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_signal_safe", reqJSON)
-			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+			eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_signal_safe", reqJSON)
+			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 			var result ProcSignalSafeResult
-			err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+			err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 			require.NoError(t, err)
 
 			require.False(t, result.Sent, "protected PID should be rejected")
@@ -283,11 +283,11 @@ func TestNativeToolsIntegration_ProcessTools(t *testing.T) {
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_signal_safe", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_signal_safe", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result ProcSignalSafeResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.False(t, result.Sent)
@@ -313,11 +313,11 @@ func TestNativeToolsIntegration_ProcTree(t *testing.T) {
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_tree", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_tree", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result processTreeResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.Equal(t, 1, result.RootPID)
@@ -341,11 +341,11 @@ func TestNativeToolsIntegration_NetworkTools(t *testing.T) {
 		req := NetSocketAuditRequest{Protocol: "tcp"}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "net_socket_audit", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "net_socket_audit", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result NetSocketAuditResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.NotNil(t, result.Sockets)
@@ -358,11 +358,11 @@ func TestNativeToolsIntegration_NetworkTools(t *testing.T) {
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "net_endpoint_ping", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "net_endpoint_ping", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result NetEndpointPingResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.False(t, result.Reachable)
@@ -377,11 +377,11 @@ func TestNativeToolsIntegration_NetworkTools(t *testing.T) {
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "net_http_probe", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "net_http_probe", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result NetHTTPProbeResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.Equal(t, http.StatusOK, result.StatusCode)
@@ -395,11 +395,11 @@ func TestNativeToolsIntegration_NetworkTools(t *testing.T) {
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "net_dns_resolve", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "net_dns_resolve", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result NetDNSResolveResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.Equal(t, "example.com", result.Hostname)
@@ -450,14 +450,14 @@ func TestNativeToolsIntegration_Concurrency(t *testing.T) {
 				}
 				reqJSON, _ := json.Marshal(req)
 
-				receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_isolated_read", reqJSON)
-				if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-					errors <- fmt.Errorf("iteration %d: unexpected status %s", iteration, receipt.Status)
+				eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_isolated_read", reqJSON)
+				if eventReceipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+					errors <- fmt.Errorf("iteration %d: unexpected status %s", iteration, eventReceipt.Status)
 					return
 				}
 
 				var result DBIsolatedReadResult
-				err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+				err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 				if err != nil {
 					errors <- fmt.Errorf("iteration %d: failed to unmarshal result: %v", iteration, err)
 					return
@@ -524,8 +524,8 @@ func TestNativeToolsIntegration_PropertyBasedTests(t *testing.T) {
 			}
 			reqJSON, _ := json.Marshal(req)
 
-			receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_isolated_read", reqJSON)
-			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+			eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_isolated_read", reqJSON)
+			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 			// Verify database is unchanged
 			var currentCount int
@@ -548,11 +548,11 @@ func TestNativeToolsIntegration_PropertyBasedTests(t *testing.T) {
 				}
 				reqJSON, _ := json.Marshal(req)
 
-				receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_signal_safe", reqJSON)
-				require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+				eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "proc_signal_safe", reqJSON)
+				require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 				var result ProcSignalSafeResult
-				err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+				err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 				require.NoError(t, err)
 
 				require.False(t, result.Sent, "protected PID %d should never be killed with %s", pid, sig)
@@ -583,11 +583,11 @@ func TestNativeToolsIntegration_PropertyBasedTests(t *testing.T) {
 		}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, constants.MCPToolSearchFile, reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, constants.MCPToolSearchFile, reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
 
 		var result SearchFileResult
-		err = json.Unmarshal([]byte(receipt.ResultSummary), &result)
+		err = json.Unmarshal([]byte(eventReceipt.ResultSummary), &result)
 		require.NoError(t, err)
 
 		require.Positive(t, result.TotalMatches)
@@ -626,10 +626,10 @@ func TestNativeToolsIntegration_NegativeControls(t *testing.T) {
 		}
 
 		for _, tt := range tests {
-			receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, tt.toolName, tt.args)
+			eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, tt.toolName, tt.args)
 			// Tool should complete but return error
-			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
-			require.Contains(t, strings.ToLower(receipt.ResultSummary), "error")
+			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
+			require.Contains(t, strings.ToLower(eventReceipt.ResultSummary), "error")
 		}
 	})
 
@@ -637,9 +637,9 @@ func TestNativeToolsIntegration_NegativeControls(t *testing.T) {
 		// Test that tools reject malformed JSON
 		invalidJSON := json.RawMessage(`{invalid json`)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_discover_topology", invalidJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
-		require.Contains(t, strings.ToLower(receipt.ResultSummary), "error")
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_discover_topology", invalidJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
+		require.Contains(t, strings.ToLower(eventReceipt.ResultSummary), "error")
 	})
 
 	t.Run("nonexistent_paths", func(t *testing.T) {
@@ -647,9 +647,9 @@ func TestNativeToolsIntegration_NegativeControls(t *testing.T) {
 		req := DBDiscoverTopologyRequest{DatabasePath: "/nonexistent/path/to/database.db"}
 		reqJSON, _ := json.Marshal(req)
 
-		receipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_discover_topology", reqJSON)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
-		require.Contains(t, strings.ToLower(receipt.ResultSummary), "error")
+		eventReceipt := callNativeToolViaEnvelope(t, mtlsClient, operatorURL, sessionID, "db_discover_topology", reqJSON)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
+		require.Contains(t, strings.ToLower(eventReceipt.ResultSummary), "error")
 	})
 }
 
@@ -723,7 +723,7 @@ func setupMTLSClient(t *testing.T, _ string) (*http.Client, string, error) {
 	return client, sessionID, nil
 }
 
-func callNativeToolViaEnvelope(t *testing.T, client *http.Client, operatorURL, sessionID, toolName string, arguments json.RawMessage) *operatorv1.ActionReceipt {
+func callNativeToolViaEnvelope(t *testing.T, client *http.Client, operatorURL, sessionID, toolName string, arguments json.RawMessage) *operatorv1.EventReceipt {
 	// Build governance envelope with native tool call
 	now := time.Now()
 	envelope := &commonv1.GovernanceEnvelope{
@@ -769,11 +769,11 @@ func callNativeToolViaEnvelope(t *testing.T, client *http.Client, operatorURL, s
 	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err) //nolint:testifylint,require-error // called from goroutine
 
-	var receipt operatorv1.ActionReceipt
-	err = protojson.Unmarshal(body, &receipt)
+	var eventReceipt operatorv1.EventReceipt
+	err = protojson.Unmarshal(body, &eventReceipt)
 	assert.NoError(t, err) //nolint:testifylint,require-error // called from goroutine
 
-	return &receipt
+	return &eventReceipt
 }
 
 func buildToolCallPayload(t *testing.T, toolName string, arguments json.RawMessage) []byte {

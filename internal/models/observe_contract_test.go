@@ -112,7 +112,7 @@ func TestEvalRunCompletedPayloadRoundTrip(t *testing.T) {
 		ArmIDs:                    []string{"direct"},
 		TerminalAttempts:          10,
 		AssignedTasks:             10,
-		ReceiptCount:              10,
+		EventReceiptCount:         10,
 		VerificationStatus:        EvalVerificationProjectionValidated,
 		PublishedProjectionSHA256: "abc123",
 		CompletedAt:               completedAt,
@@ -248,7 +248,7 @@ func TestObserveTypedStatusEnums(t *testing.T) {
 
 	verificationStatuses := []EvalVerificationStatus{
 		EvalVerificationProjectionValidated,
-		EvalVerificationReceiptVerificationNotApplicable,
+		EvalVerificationEventReceiptVerificationNotApplicable,
 		EvalVerificationVerified,
 	}
 	for _, v := range verificationStatuses {

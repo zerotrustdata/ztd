@@ -40,7 +40,7 @@ The Gateway exposes a unified MCP interface at `/mcp`:
                             ▼
 ┌────────────────────────────────────────────────────────┐
 │ SQLAuditStore & Commitment Ledger                      │
-│ • Signed ActionReceipt emitted to client               │
+│ • Signed EventReceipt emitted to client               │
 │ • Attestation appended to local SQLite ledger          │
 └────────────────────────────────────────────────────────┘
 ```
@@ -154,7 +154,7 @@ Every MCP tool call undergoes strict 5-layer verification prior to invocation:
 │ • Mints scoped JIT execution capability                │
 │ • Invokes native handler OR forwards to downstream     │
 │ • Scrubs secrets & tokens from output at host boundary │
-│ • Signs canonical ActionReceipt & appends to ledger    │
+│ • Signs canonical EventReceipt & appends to ledger    │
 └────────────────────────────────────────────────────────┘
 ```
 

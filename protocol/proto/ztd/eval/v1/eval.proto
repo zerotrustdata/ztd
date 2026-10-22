@@ -64,7 +64,7 @@ enum EvaluationAssignmentLifecycleStatus {
   EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED = 9;
   EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_POLICY_REJECTED = 10;
   EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_UNAVAILABLE = 11;
-  // The attempt's governed tool evidence failed verification (a receipt that
+  // The attempt's governed tool evidence failed verification (an event receipt that
   // does not verify against the Data Operator anchor, or a ledger bracket that
   // does not connect). The model is never graded on such an attempt.
   EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE = 12;
@@ -214,10 +214,10 @@ enum PublicVerificationProvenance {
   PUBLIC_VERIFICATION_PROVENANCE_LEGACY_UNBOUND = 2;
 }
 
-enum PublicReceiptStatus {
-  PUBLIC_RECEIPT_STATUS_UNSPECIFIED = 0;
-  PUBLIC_RECEIPT_STATUS_UNAVAILABLE = 1;
-  PUBLIC_RECEIPT_STATUS_REPORTED = 2;
+enum PublicEventReceiptStatus {
+  PUBLIC_EVENT_RECEIPT_STATUS_UNSPECIFIED = 0;
+  PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE = 1;
+  PUBLIC_EVENT_RECEIPT_STATUS_REPORTED = 2;
 }
 
 enum PublicToolScoreDimension {
@@ -269,7 +269,7 @@ enum EvaluationAttemptStatus {
 enum EvaluationObservationSource {
   EVALUATION_OBSERVATION_SOURCE_UNSPECIFIED = 0;
   EVALUATION_OBSERVATION_SOURCE_TARGET_OBSERVER = 1;
-  EVALUATION_OBSERVATION_SOURCE_OPERATOR_RECEIPT = 2;
+  EVALUATION_OBSERVATION_SOURCE_OPERATOR_EVENT_RECEIPT = 2;
   EVALUATION_OBSERVATION_SOURCE_GATEWAY_ADMISSION = 3;
   EVALUATION_OBSERVATION_SOURCE_HARNESS_EXCHANGE = 4;
 }
@@ -859,7 +859,7 @@ message ModelInferenceRecord {
   optional uint32 retry_count = 27;
   string finish_reason = 28;
   bool privacy_attested = 29;
-  ztd.compliance.v1.ComplianceEvidenceReference governed_receipt_ref = 30;
+  ztd.compliance.v1.ComplianceEvidenceReference governed_event_receipt_ref = 30;
   string result_digest = 31;
   reserved 32;
   reserved "provider_boundary_observation_ref";
@@ -930,11 +930,11 @@ message GovernedActionBinding {
   string transaction_id = 3;
   string operator_id = 4;
   string operator_session_id = 5;
-  ztd.compliance.v1.ComplianceEvidenceReference receipt_ref = 6;
+  ztd.compliance.v1.ComplianceEvidenceReference event_receipt_ref = 6;
   ztd.compliance.v1.ComplianceEvidenceReference persistence_attestation_ref = 7;
   string policy_decision = 8;
   ztd.compliance.v1.ComplianceEvidenceReference effect_observation_ref = 9;
-  // The registry governance class the signed receipt names (INFERENCE,
+  // The registry governance class the signed event receipt names (INFERENCE,
   // FS_READ, FILE_EDIT, ...).
   string action_type = 10;
 }
@@ -1241,7 +1241,7 @@ message PublicPolicyDecisionActivityRecord {
 message PublicGovernedActionActivityRecord {
   string action_label = 1;
   EvaluationPolicyDecisionOutcome reported_policy_outcome = 2;
-  PublicReceiptStatus receipt_status = 3;
+  PublicEventReceiptStatus event_receipt_status = 3;
   PublicEvidenceSource evidence_source = 4;
 }
 
@@ -1389,7 +1389,7 @@ message CanaryManifest {
 
 enum ConformanceObservationKind {
   CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED = 0;
-  CONFORMANCE_OBSERVATION_KIND_RECEIPT = 1;          // success: signed receipt returned
+  CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT = 1;          // success: signed event receipt returned
   CONFORMANCE_OBSERVATION_KIND_REJECTION = 2;        // GovernanceRejection returned
   CONFORMANCE_OBSERVATION_KIND_REFUSAL = 3;          // IngressRefusal returned
   CONFORMANCE_OBSERVATION_KIND_SUSPENDED = 4;        // approval pending, tx hash returned
@@ -1401,12 +1401,12 @@ enum ConformanceObservationKind {
 }
 
 // ConformanceObservation is what one drive of one ingress returned. Exactly
-// one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
+// one of event receipt / rejection / refusal / suspended_tx_hash / untyped_body is
 // set, matching kind. NOT_RUN kinds carry no outcome fields.
 message ConformanceObservation {
   ConformanceObservationKind kind = 1;
   int32 http_status = 2;
-  ztd.operator.v1.ActionReceipt receipt = 3;
+  ztd.operator.v1.EventReceipt event_receipt = 3;
   ztd.operator.v1.GovernanceRejection rejection = 4;
   ztd.operator.v1.IngressRefusal refusal = 5;
   string suspended_tx_hash = 6;
@@ -1435,8 +1435,8 @@ message ConformanceCaseEvidence {
   string target_path = 4;                                 // relative to the canary root
   string marker = 5;
   repeated ConformanceObservation observations = 6;       // two for the replay case, else one
-  ztd.operator.v1.ActionReceipt sentinel_before = 7;
-  ztd.operator.v1.ActionReceipt sentinel_after = 8;
+  ztd.operator.v1.EventReceipt sentinel_before = 7;
+  ztd.operator.v1.EventReceipt sentinel_after = 8;
   CanaryManifest canary_before = 9;
   CanaryManifest canary_after = 10;
   repeated ConformanceA2ACall a2a_calls = 11;             // calls the stub received during this case
@@ -1447,8 +1447,8 @@ message ConformanceCaseEvidence {
 // executor whose commitment links must be adjacent.
 message ConformanceQuiescence {
   string executor = 1;
-  ztd.operator.v1.ActionReceipt first = 2;
-  ztd.operator.v1.ActionReceipt second = 3;
+  ztd.operator.v1.EventReceipt first = 2;
+  ztd.operator.v1.EventReceipt second = 3;
 }
 
 message ConformanceRunRecord {
@@ -1481,7 +1481,7 @@ enum ConformanceFailureClass {
   CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID = 5;
   CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN = 6;
   CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID = 7;
-  CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE = 8;
+  CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE = 8;
   CONFORMANCE_FAILURE_CLASS_LEDGER_GAP = 9;
   CONFORMANCE_FAILURE_CLASS_UNCLAIMED_EXECUTION = 10;
   CONFORMANCE_FAILURE_CLASS_CANARY_DELTA = 11;
@@ -1643,7 +1643,7 @@ enum ContainmentVerdict {
 
 enum ContainmentBreachClass {
   CONTAINMENT_BREACH_CLASS_UNSPECIFIED = 0;
-  CONTAINMENT_BREACH_CLASS_UNCLAIMED_EXECUTION = 1;  // a ledger link no verified tool-call receipt claims
+  CONTAINMENT_BREACH_CLASS_UNCLAIMED_EXECUTION = 1;  // a ledger link no verified tool-call event receipt claims
   CONTAINMENT_BREACH_CLASS_CANARY_MODIFIED = 2;      // a canary file differs from its seeded bytes
   CONTAINMENT_BREACH_CLASS_TOKEN_EXFILTRATED = 3;    // the exfil token left in a payload or the reply
 }

@@ -37,13 +37,13 @@ func sseApproveServer(t *testing.T, txHash string) *httptest.Server {
 	return sseDecisionServer(t, txHash, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED)
 }
 
-// sseDecisionServer serves one approval.completed event whose receipt carries
-// rejection, so a deny is the signed L3_DENIED receipt.
+// sseDecisionServer serves one approval.completed event whose event receipt carries
+// rejection, so a deny is the signed L3_DENIED event receipt.
 func sseDecisionServer(t *testing.T, txHash string, rejection operatorv1.GovernanceRejectionCode) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+		eventReceipt, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 			TransactionId:   "transaction-approve-test",
 			TransactionHash: txHash,
 			SignerKeyId:     "warden-key-approve-test",
@@ -52,10 +52,10 @@ func sseDecisionServer(t *testing.T, txHash string, rejection operatorv1.Governa
 		})
 		require.NoError(t, err)
 		eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-			Type:    constants.SSEEventTypeApprovalCompleted,
-			UserID:  "user-test",
-			TxHash:  txHash,
-			Receipt: receipt,
+			Type:         constants.SSEEventTypeApprovalCompleted,
+			UserID:       "user-test",
+			TxHash:       txHash,
+			EventReceipt: eventReceipt,
 		})
 		require.NoError(t, err)
 		envelope := models.SSEPushPayload{

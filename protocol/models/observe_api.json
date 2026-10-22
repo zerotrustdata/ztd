@@ -31,7 +31,7 @@
       "value": {"type": "number", "required": true},
       "unit": {"type": "string", "required": true},
       "denominator": {"type": "integer", "required": true},
-      "verification_status": {"type": "string", "required": true, "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]}
+      "verification_status": {"type": "string", "required": true, "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]}
     }},
     "generated_at": {"type": "string", "format": "iso8601", "required": true}
   },
@@ -47,7 +47,7 @@
   },
 
   "run_summary": {
-    "_description": "Paginated read-only run summary owned by the authenticated user. Uses stable run IDs, kinds, timestamps, terminal status, and evidence/receipt indicators.",
+    "_description": "Paginated read-only run summary owned by the authenticated user. Uses stable run IDs, kinds, timestamps, terminal status, and evidence/event-receipt indicators.",
     "schema_version": {"type": "string", "required": true},
     "run_id": {"type": "string", "required": true},
     "run_kind": {"type": "string", "required": true, "enum": ["investigation", "eval", "demo", "workflow"]},
@@ -58,7 +58,7 @@
     "total_tasks": {"type": "integer", "required": true},
     "started_at": {"type": "string", "format": "iso8601", "required": false},
     "ended_at": {"type": "string", "format": "iso8601", "required": false},
-    "has_receipts": {"type": "boolean", "required": true, "description": "Whether the run has at least one governance receipt"},
+    "has_event_receipts": {"type": "boolean", "required": true, "description": "Whether the run has at least one governance event receipt"},
     "evidence_count": {"type": "integer", "required": true, "description": "Number of evidence-safe artifacts associated with the run"},
     "observed_at": {"type": "string", "format": "iso8601", "required": true}
   },
@@ -110,8 +110,8 @@
     "arm_ids": {"type": "array", "items": "string", "required": true, "description": "All arm IDs in the campaign. A single-arm diagnostic carries one entry."},
     "model_cohort_ids": {"type": "array", "items": "string", "required": true, "description": "All model cohort IDs in the campaign. Empty for single-arm diagnostic runs without campaign records."},
     "status": {"type": "string", "required": true, "enum": ["queued", "running", "waiting", "completed", "failed", "cancelled"]},
-    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label. Never 'verified' until the complete verifier exists.", "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]},
-    "receipt_count": {"type": "integer", "required": true},
+    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label. Never 'verified' until the complete verifier exists.", "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]},
+    "event_receipt_count": {"type": "integer", "required": true},
     "metric_count": {"type": "integer", "required": true, "description": "Number of registered metrics in the projection"},
     "published_projection_sha256": {"type": "string", "required": false, "description": "SHA-256 hash of the persisted disclosure-safe projection. Omitted when no projection is published."},
     "completed_at": {"type": "string", "format": "iso8601", "required": false},
@@ -129,7 +129,7 @@
     "unit": {"type": "string", "required": true},
     "eligible": {"type": "integer", "required": true},
     "denominator": {"type": "integer", "required": true},
-    "verification_status": {"type": "string", "required": true, "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]},
+    "verification_status": {"type": "string", "required": true, "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]},
     "recorded_at": {"type": "string", "format": "iso8601", "required": false}
   },
 
@@ -143,8 +143,8 @@
     "arm_ids": {"type": "array", "items": "string", "required": true, "description": "All arm IDs in the campaign. A single-arm diagnostic carries one entry."},
     "model_cohort_ids": {"type": "array", "items": "string", "required": true, "description": "All model cohort IDs in the campaign. Empty for single-arm diagnostic runs without campaign records."},
     "status": {"type": "string", "required": true, "enum": ["queued", "running", "waiting", "completed", "failed", "cancelled"]},
-    "verification_status": {"type": "string", "required": true, "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]},
-    "receipt_count": {"type": "integer", "required": true},
+    "verification_status": {"type": "string", "required": true, "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]},
+    "event_receipt_count": {"type": "integer", "required": true},
     "assigned_tasks": {"type": "integer", "required": true},
     "terminal_attempts": {"type": "integer", "required": true},
     "metrics": {"type": "array", "items": "eval_metric_summary", "required": true},
@@ -273,7 +273,7 @@
     "campaign_revision": {"type": "string", "required": true, "description": "Campaign revision from the frozen profile hash"},
     "role_combination_id": {"type": "string", "required": true, "description": "Stable role-combination identifier binding exact Primary, Assistant, and Lite variant identities"},
     "status": {"type": "string", "required": true, "description": "Cycle lifecycle state", "enum": ["queued", "running", "completed", "failed", "superseded"]},
-    "verification_status": {"type": "string", "required": false, "description": "Honest verification boundary label. Omitted until the verifier runs.", "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]},
+    "verification_status": {"type": "string", "required": false, "description": "Honest verification boundary label. Omitted until the verifier runs.", "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]},
     "freshness": {"type": "string", "required": true, "description": "Campaign source freshness status", "enum": ["active", "delayed", "stale", "intentionally_stopped", "safety_stopped", "source_offline"]},
     "started_at": {"type": "string", "format": "iso8601", "required": false, "description": "UTC timestamp when the cycle started. Omitted when queued."},
     "completed_at": {"type": "string", "format": "iso8601", "required": false, "description": "UTC timestamp when the cycle completed. Omitted when not terminal."},
@@ -324,7 +324,7 @@
     "schema_version": {"type": "string", "required": true},
     "cycle_id": {"type": "string", "required": true, "description": "Campaign cycle identifier"},
     "campaign_id": {"type": "string", "required": true, "description": "Campaign identity from the campaign manifest"},
-    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label", "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]},
+    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label", "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]},
     "verified_index_generation_hash": {"type": "string", "required": false, "description": "SHA-256 hash of the verified index generation. Omitted until verification completes."},
     "layer_count": {"type": "integer", "required": true, "description": "Total number of verification layers checked"},
     "failure_count": {"type": "integer", "required": true, "description": "Number of verification failures produced"},

@@ -75,9 +75,9 @@ func writeCLIApprovalIdentity(t *testing.T, fileSvc fs.RuntimeFileService, cfg *
 	return certDER
 }
 
-func cliApprovalReceipt(t *testing.T, txHash string, status operatorv1.ExecutionStatus, l3 operatorv1.L3Status) []byte {
+func cliApprovalEventReceipt(t *testing.T, txHash string, status operatorv1.ExecutionStatus, l3 operatorv1.L3Status) []byte {
 	t.Helper()
-	body, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	body, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 		TransactionId:   "tx-approval-test",
 		TransactionHash: txHash,
 		Status:          status,
@@ -94,7 +94,7 @@ func TestApproveCmd_CLI_SignsExactHashAndSkipsBrowser(t *testing.T) {
 	txHashHex := hex.EncodeToString(txHash)
 	certDER := writeCLIApprovalIdentity(t, fileSvc, cfg)
 
-	mockClient := &cmdtest.MockAPIClient{PostResp: cliApprovalReceipt(t, txHashHex,
+	mockClient := &cmdtest.MockAPIClient{PostResp: cliApprovalEventReceipt(t, txHashHex,
 		operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		operatorv1.L3Status_L3_STATUS_REQUIRED_VALID)}
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -127,7 +127,7 @@ func TestApproveCmd_CLI_SignsExactHashAndSkipsBrowser(t *testing.T) {
 	assert.Contains(t, buf.String(), "approved successfully")
 }
 
-func TestApproveCmd_CLI_RejectsReceiptThatDoesNotConfirmRequestedApproval(t *testing.T) {
+func TestApproveCmd_CLI_RejectsEventReceiptThatDoesNotConfirmRequestedApproval(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		hash   string
@@ -142,7 +142,7 @@ func TestApproveCmd_CLI_RejectsReceiptThatDoesNotConfirmRequestedApproval(t *tes
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 			writeCLIApprovalIdentity(t, fileSvc, cfg)
 			txHash := hex.EncodeToString(bytes.Repeat([]byte("a"), sha256.Size))
-			mockClient := &cmdtest.MockAPIClient{PostResp: cliApprovalReceipt(t, tc.hash, tc.status, tc.l3)}
+			mockClient := &cmdtest.MockAPIClient{PostResp: cliApprovalEventReceipt(t, tc.hash, tc.status, tc.l3)}
 			cmd := approveCmdWithConfig(func(string) (*config.Config, error) { return cfg, nil },
 				func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil },
 				cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
@@ -175,9 +175,9 @@ func TestApproveCmd_CLI_RequiresEnrolledCredentials(t *testing.T) {
 	assert.Empty(t, mockClient.PostCalls)
 }
 
-func cliDenyReceipt(t *testing.T, txHash string, code operatorv1.GovernanceRejectionCode) []byte {
+func cliDenyEventReceipt(t *testing.T, txHash string, code operatorv1.GovernanceRejectionCode) []byte {
 	t.Helper()
-	body, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	body, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 		TransactionId:   "tx-deny-test",
 		TransactionHash: txHash,
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -190,7 +190,7 @@ func cliDenyReceipt(t *testing.T, txHash string, code operatorv1.GovernanceRejec
 func TestApproveCmd_Deny_SubmitsUnsignedDenyAndSkipsBrowser(t *testing.T) {
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	txHash := hex.EncodeToString(bytes.Repeat([]byte("a"), sha256.Size))
-	mockClient := &cmdtest.MockAPIClient{PostResp: cliDenyReceipt(t, txHash, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)}
+	mockClient := &cmdtest.MockAPIClient{PostResp: cliDenyEventReceipt(t, txHash, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)}
 	openedBrowser := false
 	cmd := approveCmdWithConfig(func(string) (*config.Config, error) { return cfg, nil },
 		func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil },
@@ -206,10 +206,10 @@ func TestApproveCmd_Deny_SubmitsUnsignedDenyAndSkipsBrowser(t *testing.T) {
 	assert.Equal(t, constants.APIPaths.ApprovalsRespond, mockClient.PostCalls[0].Path)
 	assert.Equal(t, models.ApprovalRespondRequest{ApprovalID: txHash}, mockClient.PostCalls[0].Body,
 		"a deny is grounded in the mTLS session and carries no approval signature")
-	assert.Contains(t, buf.String(), "denied (signed L3_DENIED receipt)")
+	assert.Contains(t, buf.String(), "denied (signed L3_DENIED event receipt)")
 }
 
-func TestApproveCmd_Deny_RejectsReceiptThatIsNotTheRequestedDeny(t *testing.T) {
+func TestApproveCmd_Deny_RejectsEventReceiptThatIsNotTheRequestedDeny(t *testing.T) {
 	txHash := hex.EncodeToString(bytes.Repeat([]byte("a"), sha256.Size))
 	for _, tc := range []struct {
 		name string
@@ -217,10 +217,10 @@ func TestApproveCmd_Deny_RejectsReceiptThatIsNotTheRequestedDeny(t *testing.T) {
 		want error
 	}{
 		{"wrong transaction hash", func(t *testing.T) []byte {
-			return cliDenyReceipt(t, hex.EncodeToString(bytes.Repeat([]byte("b"), sha256.Size)), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)
+			return cliDenyEventReceipt(t, hex.EncodeToString(bytes.Repeat([]byte("b"), sha256.Size)), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)
 		}, constants.ErrTxTransactionHashMismatch},
 		{"not an L3 deny", func(t *testing.T) []byte {
-			return cliApprovalReceipt(t, txHash, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID)
+			return cliApprovalEventReceipt(t, txHash, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID)
 		}, constants.ErrValidationFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

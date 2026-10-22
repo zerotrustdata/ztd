@@ -81,7 +81,7 @@ func TestA2AGateway_SkillCallEndToEnd(t *testing.T) {
 
 	// Test A2A Call (Suspends for L3, then Resume)
 	t.Run("a2a call", func(t *testing.T) {
-		receiptsBefore := getAuditReceipts(t, mtlsClient, fixture.Service.GetHTTPSPort(), identity.OperatorSessionID)
+		eventReceiptsBefore := getAuditEventReceipts(t, mtlsClient, fixture.Service.GetHTTPSPort(), identity.OperatorSessionID)
 
 		callReq := map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -120,8 +120,8 @@ func TestA2AGateway_SkillCallEndToEnd(t *testing.T) {
 		require.NotEmpty(t, a2aRes.Result.ApprovalURL)
 
 		// The call must have traversed the governance pipeline and been recorded.
-		receiptsAfter := getAuditReceipts(t, mtlsClient, fixture.Service.GetHTTPSPort(), identity.OperatorSessionID)
-		require.Greater(t, len(receiptsAfter.EventReceipts), len(receiptsBefore.EventReceipts),
+		eventReceiptsAfter := getAuditEventReceipts(t, mtlsClient, fixture.Service.GetHTTPSPort(), identity.OperatorSessionID)
+		require.Greater(t, len(eventReceiptsAfter.EventReceipts), len(eventReceiptsBefore.EventReceipts),
 			"a2a/call must record an event receipt for its governed execution")
 
 		// A suspended call must not have reached the downstream server yet.
@@ -133,16 +133,16 @@ func TestA2AGateway_SkillCallEndToEnd(t *testing.T) {
 		status, body := fixtures.ApproveWithPasskey(t, fixture, mtlsClient, session, identity, a2aRes.Result.TxHash)
 		require.Equal(t, http.StatusOK, status, "passkey approval must resume the transaction: %s", body)
 
-		receipt := &operatorv1.ActionReceipt{}
-		require.NoError(t, protojson.Unmarshal(body, receipt))
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status, "approved a2a/call must complete")
-		require.Equal(t, a2aRes.Result.TxHash, receipt.TransactionHash)
+		eventReceipt := &operatorv1.EventReceipt{}
+		require.NoError(t, protojson.Unmarshal(body, eventReceipt))
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status, "approved a2a/call must complete")
+		require.Equal(t, a2aRes.Result.TxHash, eventReceipt.TransactionHash)
 
 		// Verify returns after execution, so the downstream call has happened.
 		require.Equal(t, []string{"test-skill"}, snapshotSkills(),
 			"downstream must be called exactly once with skill_name test-skill")
-		require.True(t, hasCompletedReceipt(getAuditReceipts(t, mtlsClient, fixture.Service.GetHTTPSPort(), identity.OperatorSessionID).EventReceipts),
-			"approved a2a/call must record a COMPLETED audit receipt")
+		require.True(t, hasCompletedEventReceipt(getAuditEventReceipts(t, mtlsClient, fixture.Service.GetHTTPSPort(), identity.OperatorSessionID).EventReceipts),
+			"approved a2a/call must record a COMPLETED audit event receipt")
 	})
 }
 

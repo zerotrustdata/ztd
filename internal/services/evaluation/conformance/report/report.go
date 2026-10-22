@@ -246,7 +246,7 @@ func isL1Rejection(c cases.Case) bool {
 }
 
 // l1BundleHash returns the doctrine bundle hash of the single L1_DOCTRINE stage on
-// observations[0].rejection.receipt. A missing, duplicate or empty stage is invalid.
+// observations[0].rejection.event_receipt. A missing, duplicate or empty stage is invalid.
 func l1BundleHash(ev *evalv1.ConformanceCaseEvidence) (string, error) {
 	obs := ev.GetObservations()
 	if len(obs) == 0 {
@@ -254,7 +254,7 @@ func l1BundleHash(ev *evalv1.ConformanceCaseEvidence) (string, error) {
 	}
 	var hash string
 	var stages int
-	for _, st := range obs[0].GetRejection().GetReceipt().GetDeterministicStageEvidence() {
+	for _, st := range obs[0].GetRejection().GetEventReceipt().GetDeterministicStageEvidence() {
 		if st.GetKind() != operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE {
 			continue
 		}

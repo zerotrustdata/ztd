@@ -69,7 +69,7 @@ func TestObservePayloadsRejectUnknownFields(t *testing.T) {
 		{
 			name:    "EvalRunCompletedPayload rejects raw_output",
 			payload: &EvalRunCompletedPayload{},
-			json:    `{"schema_version":"1.0.0","run_id":"r","suite_id":"s","suite_version":"1.0.0","arm_id":"direct","terminal_attempts":1,"assigned_tasks":1,"receipt_count":1,"verification_status":"projection_validated","published_projection_sha256":"abc","completed_at":"2026-09-08T12:00:00Z","raw_output":"model output"}`,
+			json:    `{"schema_version":"1.0.0","run_id":"r","suite_id":"s","suite_version":"1.0.0","arm_id":"direct","terminal_attempts":1,"assigned_tasks":1,"event_receipt_count":1,"verification_status":"projection_validated","published_projection_sha256":"abc","completed_at":"2026-09-08T12:00:00Z","raw_output":"model output"}`,
 		},
 		{
 			name:    "EvalMetricRecordedPayload rejects session_id",
@@ -107,7 +107,7 @@ func TestObserveReadModelsRejectUnknownFields(t *testing.T) {
 		{
 			name:   "RunSummary rejects web_session_id",
 			target: &RunSummary{},
-			json:   `{"schema_version":"1.0.0","run_id":"r","run_kind":"investigation","display_name":"R","status":"running","completed_tasks":0,"total_tasks":1,"has_receipts":false,"evidence_count":0,"observed_at":"2026-09-08T12:00:00Z","web_session_id":"sess-123"}`,
+			json:   `{"schema_version":"1.0.0","run_id":"r","run_kind":"investigation","display_name":"R","status":"running","completed_tasks":0,"total_tasks":1,"has_event_receipts":false,"evidence_count":0,"observed_at":"2026-09-08T12:00:00Z","web_session_id":"sess-123"}`,
 		},
 		{
 			name:   "RunDetail rejects raw_prompt",
@@ -117,12 +117,12 @@ func TestObserveReadModelsRejectUnknownFields(t *testing.T) {
 		{
 			name:   "EvalSummary rejects evidence_key",
 			target: &EvalSummary{},
-			json:   `{"schema_version":"1.0.0","run_id":"r","suite_id":"s","suite_version":"1.0.0","arm_id":"direct","status":"completed","verification_status":"projection_validated","receipt_count":1,"metric_count":1,"observed_at":"2026-09-08T12:00:00Z","evidence_key":"restricted"}`,
+			json:   `{"schema_version":"1.0.0","run_id":"r","suite_id":"s","suite_version":"1.0.0","arm_id":"direct","status":"completed","verification_status":"projection_validated","event_receipt_count":1,"metric_count":1,"observed_at":"2026-09-08T12:00:00Z","evidence_key":"restricted"}`,
 		},
 		{
 			name:   "EvalDetail rejects host_path",
 			target: &EvalDetail{},
-			json:   `{"schema_version":"1.0.0","run_id":"r","suite_id":"s","suite_version":"1.0.0","arm_id":"direct","status":"completed","verification_status":"projection_validated","receipt_count":1,"assigned_tasks":1,"terminal_attempts":1,"metrics":[],"observed_at":"2026-09-08T12:00:00Z","host_path":"/home/user"}`,
+			json:   `{"schema_version":"1.0.0","run_id":"r","suite_id":"s","suite_version":"1.0.0","arm_id":"direct","status":"completed","verification_status":"projection_validated","event_receipt_count":1,"assigned_tasks":1,"terminal_attempts":1,"metrics":[],"observed_at":"2026-09-08T12:00:00Z","host_path":"/home/user"}`,
 		},
 		{
 			name:   "DownloadArtifact rejects raw_content",

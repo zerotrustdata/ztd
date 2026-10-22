@@ -261,7 +261,7 @@ var rowSpecs = []rowSpec{
 		postures: postureDoctrine, action: ActionMutation,
 		outcomes: []outcome{refused(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNKNOWN_EVENT_TYPE)}},
 	// Row 17 missing_field: DIRECT decodes the envelope, so the L4 payload-decode check
-	// rejects it with a signed receipt. Governed dispatch builds the envelope itself and
+	// rejects it with a signed event receipt. Governed dispatch builds the envelope itself and
 	// refuses before one exists.
 	{row: 17, faults: []Fault{FaultMissingField}, ingresses: []Ingress{IngressDirect},
 		postures: postureDoctrine, action: ActionMutation,
@@ -306,7 +306,7 @@ var rowSpecs = []rowSpec{
 	// decides: the request blocks for the approval TTL, so a suspension is not
 	// observable there and those ingresses carry only the attended rows. An approve
 	// executes (row 23). A deny is the Operator-signed L3_DENIED rejection (row 24), a
-	// rejection receipt on MCP and A2A, the same signed rejection in the dispatch
+	// rejection event receipt on MCP and A2A, the same signed rejection in the dispatch
 	// answer, and the JSON-RPC error data of the stdio bridge.
 	{row: 22, faults: []Fault{FaultUnattendedMutation}, ingresses: []Ingress{IngressMCP, IngressA2A}, postures: postureRatifyNotary,
 		action: ActionMutation, outcomes: []outcome{suspended()}},

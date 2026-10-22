@@ -52,7 +52,7 @@ We will not pursue legal action against researchers acting in good faith under t
 ### In Scope
 
 - **ztd Gateway (PDP)** — `GovernanceEnvelope` parsing, deterministic transaction hash binding, L1-L4 verification logic (Doctrine, Consensus, Notary, Warden), WebAuthn/Passkey L3 brokerage
-- **ztd Operator (PEP)** — execution boundary (L5 Actuator), signed `ActionReceipt` issuance, mTLS tunnel, `SQLAuditStore`, Sovereign Execution Boundary (scrubbing, rehydration)
+- **ztd Operator (PEP)** — execution boundary (L5 Actuator), signed `EventReceipt` issuance, mTLS tunnel, `SQLAuditStore`, Sovereign Execution Boundary (scrubbing, rehydration)
 - **ztd Protocol** — Protobuf schemas (`common.proto`, `operator.proto`), canonical JSON (protojson) serialization, envelope integrity
 - **Authentication** — WebAuthn/FIDO2 L3 Notary flow, Ed25519 signature verification (L2 Consensus, L4 Warden, L5 Actuator), replay protection (Nonce)
 - **CLI and bootstrap** — `ztd login`, mTLS credential and PKI handling

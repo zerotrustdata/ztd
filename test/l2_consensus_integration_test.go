@@ -18,7 +18,7 @@ pipeline through the in-process GatewayFixture. These integration tests prove:
 3. Consensus quorum reached (2-of-3 members vote affirmatively)
 4. Consensus quorum not reached (fewer votes than quorum threshold)
 5. MITRE veto (L1 doctrine detects malicious command, member votes false)
-6. Full L1–L5 walkthrough with receipt verification
+6. Full L1–L5 walkthrough with event receipt verification
 
 All tests use real GatewayFixture infrastructure — no mocks for PKI, consensus,
 or database. The only fiction is the client identity (generated test CSRs).
@@ -234,7 +234,7 @@ func TestL2Consensus_VetoByMITRE(t *testing.T) {
 
 // TestL2Consensus_L1ToL5Walkthrough performs a full L1–L5 governance
 // walkthrough: enrolls a client, makes a tools/call through the governance
-// pipeline, and verifies the receipt is recorded in the audit store.
+// pipeline, and verifies the event receipt is recorded in the audit store.
 func TestL2Consensus_L1ToL5Walkthrough(t *testing.T) {
 	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 		TestName: "consensus-l1-l5",
@@ -265,10 +265,10 @@ func TestL2Consensus_L1ToL5Walkthrough(t *testing.T) {
 	t.Logf("L1-L5 walkthrough result: %v", rpc.Result.Content[0].Text)
 
 	// Verify the audit store recorded the governed execution.
-	receipts := getAuditReceipts(t, apiClient, f.Service.GetHTTPSPort(), identity.OperatorSessionID)
-	require.NotEmpty(t, receipts.EventReceipts, "governed tools/call must leave at least one event receipt")
-	require.True(t, hasCompletedReceipt(receipts.EventReceipts),
-		"event receipts must include a COMPLETED execution, got %d receipt(s)", len(receipts.EventReceipts))
+	eventReceipts := getAuditEventReceipts(t, apiClient, f.Service.GetHTTPSPort(), identity.OperatorSessionID)
+	require.NotEmpty(t, eventReceipts.EventReceipts, "governed tools/call must leave at least one event receipt")
+	require.True(t, hasCompletedEventReceipt(eventReceipts.EventReceipts),
+		"event receipts must include a COMPLETED execution, got %d event receipt(s)", len(eventReceipts.EventReceipts))
 
 	// Also verify the health endpoint reports a valid state root (L5 state integrity)
 	mtlsURL := network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())
@@ -286,9 +286,9 @@ func TestL2Consensus_L1ToL5Walkthrough(t *testing.T) {
 	t.Logf("L5 state root: %v", health.StateMerkleRoot)
 }
 
-// hasCompletedReceipt reports whether any receipt carries EXECUTION_STATUS_COMPLETED.
-func hasCompletedReceipt(receipts []*models.EventReceiptRecord) bool {
-	for _, r := range receipts {
+// hasCompletedEventReceipt reports whether any event receipt carries EXECUTION_STATUS_COMPLETED.
+func hasCompletedEventReceipt(eventReceipts []*models.EventReceiptRecord) bool {
+	for _, r := range eventReceipts {
 		if r != nil && r.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 			return true
 		}

@@ -41,9 +41,9 @@ import (
 // smoke summary.
 const conformanceLoopEvidenceName = "conformance-loop.json"
 
-// conformanceLoopReceiptPage is one audit_receipt_list page of the receipts a
+// conformanceLoopEventReceiptPage is one audit_event_receipt_list page of the event receipts a
 // conformance run added to one Operator session.
-const conformanceLoopReceiptPage = 100
+const conformanceLoopEventReceiptPage = 100
 
 // This Tier 3 test starts actual OS processes. The Gateway, both Operators, the
 // stdio bridge and every conformance and report command are production code.
@@ -80,10 +80,10 @@ type conformanceLoopState struct {
 	owner     *conformanceLoopOwner
 	consensus *evalLoopConsensusApp
 	bridge    *drive.MCPStdio
-	// started is when the first conformance run began; receipts the runs added
+	// started is when the first conformance run began; event receipts the runs added
 	// are read from it on.
 	started time.Time
-	// completed holds, per runtime, the completed receipts the runs added.
+	// completed holds, per runtime, the completed event receipts the runs added.
 	completed map[string][]*models.EventReceiptRecord
 	evidence  conformanceLoopEvidence
 }
@@ -107,15 +107,15 @@ type conformanceLoopRunEvidence struct {
 	Verified     bool   `json:"verified_offline"`
 }
 
-// conformanceLoopAuditChain is one Operator session's receipt chain, read through
+// conformanceLoopAuditChain is one Operator session's event receipt chain, read through
 // the stdio bridge before and after the conformance runs.
 type conformanceLoopAuditChain struct {
-	Runtime           string `json:"runtime"`
-	OperatorSessionID string `json:"operator_session_id"`
-	HeadBefore        string `json:"head_before"`
-	HeadAfter         string `json:"head_after"`
-	AddedReceipts     int    `json:"added_receipts"`
-	AddedCompleted    int    `json:"added_completed"`
+	Runtime            string `json:"runtime"`
+	OperatorSessionID  string `json:"operator_session_id"`
+	HeadBefore         string `json:"head_before"`
+	HeadAfter          string `json:"head_after"`
+	AddedEventReceipts int    `json:"added_event_receipts"`
+	AddedCompleted     int    `json:"added_completed"`
 }
 
 // conformanceLoopPhases is the isolated stack for r's posture: a Gateway with A2A
@@ -193,20 +193,20 @@ func (st *conformanceLoopState) startBridge(ctx context.Context, r *releaseSmoke
 	return nil
 }
 
-// readHeads records the newest receipt of the Data and embedded sessions.
+// readHeads records the newest event receipt of the Data and embedded sessions.
 func (st *conformanceLoopState) readHeads(ctx context.Context, r *releaseSmokeRun) error {
 	_, embeddedSession, err := r.embeddedOperator(ctx)
 	if err != nil {
 		return err
 	}
 	for _, target := range []struct{ runtime, session string }{{"worker", r.workerSession}, {"gateway", embeddedSession}} {
-		list, err := st.listReceipts(ctx, target.session, time.Time{}, 1, 0)
+		list, err := st.listEventReceipts(ctx, target.session, time.Time{}, 1, 0)
 		if err != nil {
 			return err
 		}
 		chain := conformanceLoopAuditChain{Runtime: target.runtime, OperatorSessionID: target.session}
-		if len(list.Receipts) > 0 {
-			chain.HeadBefore = list.Receipts[0].TransactionID
+		if len(list.EventReceipts) > 0 {
+			chain.HeadBefore = list.EventReceipts[0].TransactionID
 		}
 		st.evidence.AuditChains = append(st.evidence.AuditChains, chain)
 	}
@@ -214,30 +214,30 @@ func (st *conformanceLoopState) readHeads(ctx context.Context, r *releaseSmokeRu
 	return nil
 }
 
-// listReceipts calls audit_receipt_list through the bridge for one page of a
-// session's receipts, newest first, without the audit reads themselves.
-func (st *conformanceLoopState) listReceipts(ctx context.Context, session string, notBefore time.Time, limit, offset int) (mcp.AuditReceiptListResult, error) {
-	req := mcp.AuditReceiptListRequest{OperatorSessionID: session, ExcludeAuditReads: true, Limit: limit, Offset: offset}
+// listEventReceipts calls audit_event_receipt_list through the bridge for one page of a
+// session's event receipts, newest first, without the audit reads themselves.
+func (st *conformanceLoopState) listEventReceipts(ctx context.Context, session string, notBefore time.Time, limit, offset int) (mcp.AuditEventReceiptListResult, error) {
+	req := mcp.AuditEventReceiptListRequest{OperatorSessionID: session, ExcludeAuditReads: true, Limit: limit, Offset: offset}
 	if !notBefore.IsZero() {
 		req.NotBefore = notBefore.Format(time.RFC3339)
 	}
 	args, err := json.Marshal(req)
 	if err != nil {
-		return mcp.AuditReceiptListResult{}, err
+		return mcp.AuditEventReceiptListResult{}, err
 	}
-	result, err := st.bridge.CallTool(ctx, mcp.CallToolRequest{Name: constants.MCPToolAuditReceiptList, Arguments: args})
+	result, err := st.bridge.CallTool(ctx, mcp.CallToolRequest{Name: constants.MCPToolAuditEventReceiptList, Arguments: args})
 	if err != nil {
-		return mcp.AuditReceiptListResult{}, err
+		return mcp.AuditEventReceiptListResult{}, err
 	}
 	if result.IsError || len(result.Content) != 1 {
-		return mcp.AuditReceiptListResult{}, fmt.Errorf("audit_receipt_list %s: tool error %v: %w", session, result.Content, constants.ErrValidationFailed)
+		return mcp.AuditEventReceiptListResult{}, fmt.Errorf("audit_event_receipt_list %s: tool error %v: %w", session, result.Content, constants.ErrValidationFailed)
 	}
-	var list mcp.AuditReceiptListResult
+	var list mcp.AuditEventReceiptListResult
 	if err := json.Unmarshal([]byte(result.Content[0].Text), &list); err != nil {
-		return mcp.AuditReceiptListResult{}, fmt.Errorf("audit_receipt_list %s: %w: %w (near %q)", session, constants.ErrInvalidJSONResponse, err, jsonErrorExcerpt(result.Content[0].Text, err))
+		return mcp.AuditEventReceiptListResult{}, fmt.Errorf("audit_event_receipt_list %s: %w: %w (near %q)", session, constants.ErrInvalidJSONResponse, err, jsonErrorExcerpt(result.Content[0].Text, err))
 	}
 	if list.Error != "" {
-		return mcp.AuditReceiptListResult{}, fmt.Errorf("audit_receipt_list %s: %s: %w", session, list.Error, constants.ErrValidationFailed)
+		return mcp.AuditEventReceiptListResult{}, fmt.Errorf("audit_event_receipt_list %s: %s: %w", session, list.Error, constants.ErrValidationFailed)
 	}
 	return list, nil
 }
@@ -365,8 +365,8 @@ func (o *conformanceLoopOwner) disarm() error {
 // decide answers one pending transaction for the approvals responder.
 func (o *conformanceLoopOwner) decide(transaction models.SuspendedTxResponse) releaseSmokeApprovalDecision {
 	// Every MCP tool call is a governed mutation, so under ratify and notary the
-	// bridge's audit_receipt_list reads wait for L3 like any other call.
-	if transaction.ToolName == constants.MCPToolAuditReceiptList {
+	// bridge's audit_event_receipt_list reads wait for L3 like any other call.
+	if transaction.ToolName == constants.MCPToolAuditEventReceiptList {
 		return releaseSmokeApprove
 	}
 	o.mu.Lock()
@@ -450,7 +450,7 @@ func checkConformanceLoopVerdicts(posture constants.Posture, set *evalv1.Conform
 }
 
 // checkChains requires each session's chain to have advanced: a new head, and
-// signed receipts the conformance runs added, some of them completed.
+// signed event receipts the conformance runs added, some of them completed.
 func (st *conformanceLoopState) checkChains(ctx context.Context) error {
 	var errs []error
 	st.completed = make(map[string][]*models.EventReceiptRecord, len(st.evidence.AuditChains))
@@ -458,29 +458,29 @@ func (st *conformanceLoopState) checkChains(ctx context.Context) error {
 		chain := &st.evidence.AuditChains[i]
 		// Pages keep each tool result, and under ratify and notary the approval
 		// event carrying it, a bounded size.
-		for offset, reachedHead := 0, false; !reachedHead; offset += conformanceLoopReceiptPage {
-			list, err := st.listReceipts(ctx, chain.OperatorSessionID, st.started.Truncate(time.Second), conformanceLoopReceiptPage, offset)
+		for offset, reachedHead := 0, false; !reachedHead; offset += conformanceLoopEventReceiptPage {
+			list, err := st.listEventReceipts(ctx, chain.OperatorSessionID, st.started.Truncate(time.Second), conformanceLoopEventReceiptPage, offset)
 			if err != nil {
 				return err
 			}
-			if offset == 0 && len(list.Receipts) > 0 {
-				chain.HeadAfter = list.Receipts[0].TransactionID
+			if offset == 0 && len(list.EventReceipts) > 0 {
+				chain.HeadAfter = list.EventReceipts[0].TransactionID
 			}
-			for _, rec := range list.Receipts {
+			for _, rec := range list.EventReceipts {
 				if rec.TransactionID == chain.HeadBefore {
 					reachedHead = true
 					break
 				}
 				if rec.Signature == "" || rec.SignerKeyID == "" {
-					errs = append(errs, fmt.Errorf("%s receipt %s is unsigned: %w", chain.Runtime, rec.TransactionID, constants.ErrValidationFailed))
+					errs = append(errs, fmt.Errorf("%s event receipt %s is unsigned: %w", chain.Runtime, rec.TransactionID, constants.ErrValidationFailed))
 				}
-				chain.AddedReceipts++
+				chain.AddedEventReceipts++
 				if rec.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 					chain.AddedCompleted++
 					st.completed[chain.Runtime] = append(st.completed[chain.Runtime], rec)
 				}
 			}
-			reachedHead = reachedHead || len(list.Receipts) < conformanceLoopReceiptPage
+			reachedHead = reachedHead || len(list.EventReceipts) < conformanceLoopEventReceiptPage
 		}
 		if chain.HeadAfter == "" || chain.HeadAfter == chain.HeadBefore || chain.AddedCompleted == 0 {
 			errs = append(errs, fmt.Errorf("%s session %s chain did not advance (head %q to %q, %d completed): %w", chain.Runtime, chain.OperatorSessionID, chain.HeadBefore, chain.HeadAfter, chain.AddedCompleted, constants.ErrValidationFailed))
@@ -490,7 +490,7 @@ func (st *conformanceLoopState) checkChains(ctx context.Context) error {
 }
 
 // verifyReports applies the smoke evidence rules to both runtimes' `report all`
-// exports, and requires each runtime's own export to hold the completed receipts
+// exports, and requires each runtime's own export to hold the completed event_receipts
 // the Gateway listed for it: the Operator's local store is the authority.
 func (st *conformanceLoopState) verifyReports(ctx context.Context, r *releaseSmokeRun) error {
 	if err := ctx.Err(); err != nil {
@@ -507,7 +507,7 @@ func (st *conformanceLoopState) verifyReports(ctx context.Context, r *releaseSmo
 	for _, chain := range st.evidence.AuditChains {
 		var txs []string
 		for _, rec := range st.completed[chain.Runtime] {
-			reports[chain.Runtime].requireCompletedReceipt(string(rec.ActionType), rec.TransactionID)
+			reports[chain.Runtime].requireCompletedEventReceipt(string(rec.ActionType), rec.TransactionID)
 			txs = append(txs, rec.TransactionID)
 		}
 		r.recordScenario("conformance-"+chain.Runtime, txs)

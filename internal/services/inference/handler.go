@@ -29,7 +29,7 @@ import (
 
 const inferenceJSONMediaType = "application/json"
 
-// InferenceExecutionHandler implements governance.ExecutionHandler. It decodes and validates the governed typed conversation, recursively scrubs data-bearing values, calls Backend.Generate, and returns the digest the L5 actuator records in the receipt.
+// InferenceExecutionHandler implements governance.ExecutionHandler. It decodes and validates the governed typed conversation, recursively scrubs data-bearing values, calls Backend.Generate, and returns the digest the L5 actuator records in the event receipt.
 type InferenceExecutionHandler struct {
 	decisionBackend DecisionBackend
 	backend         Backend
@@ -56,8 +56,8 @@ func NewInferenceExecutionHandler(backend Backend, cfg *config.Config, scrubbing
 
 // ExecuteVerifiedTransaction implements governance.ExecutionHandler. It is
 // called by the L5 actuator after L1–L4 verification passes. It delegates to
-// ExecuteInference and returns the canonical result digest as the receipt
-// summary so the signed ActionReceipt binds the complete InferenceResult
+// ExecuteInference and returns the canonical result digest as the event_receipt
+// summary so the signed EventReceipt binds the complete InferenceResult
 // (see operator.proto InferenceResult.result_digest).
 func (h *InferenceExecutionHandler) ExecuteVerifiedTransaction(ctx context.Context, eventType constants.EventType, cmdMsg governance.CommandMessage) (string, error) {
 	resp, err := h.ExecuteInference(ctx, cmdMsg)
@@ -212,7 +212,7 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 	if !models.IsSHA256Hex(resp.NormalizedRequestHash) || !models.IsSHA256Hex(resp.OutputHash) {
 		return nil, fmt.Errorf("inference handler: %w", constants.ErrInferenceEvidenceHashInvalid)
 	}
-	// The output is digest-bound (InferenceResult.result_digest, signed into the L5 receipt), so it is
+	// The output is digest-bound (InferenceResult.result_digest, signed into the L5 event receipt), so it is
 	// scrubbed here, before ExecuteVerifiedTransaction computes that digest. OutputHash is recomputed over
 	// the scrubbed parts so every hash the Gateway checks describes the text that leaves the Operator.
 	// Streamed output was already scrubbed segment by segment at the source (stream_segmenter.go); ScrubText is

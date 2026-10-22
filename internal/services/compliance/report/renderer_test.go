@@ -68,11 +68,11 @@ func rendererTestAnalysis() *compliancev1.ComplianceAnalysis {
 func rendererTestOSCALInvalidAnalysis() *compliancev1.ComplianceAnalysis {
 	analysis := rendererTestAnalysis()
 	analysis.EvidenceResources = []*compliancev1.ComplianceEvidenceReference{{
-		ArtifactId:         "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		ArtifactType:       "action-receipt",
+		ArtifactId:         "event-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ArtifactType:       "event-receipt",
 		Sha256:             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		MediaType:          "invalid/media-type",
-		SchemaRef:          "ztd.operator.v1.ActionReceipt",
+		SchemaRef:          "ztd.operator.v1.EventReceipt",
 		ProducerIdentity:   "gateway",
 		ScopeId:            analysis.GetScopeRef(),
 		VerificationStatus: "verified",
@@ -116,7 +116,7 @@ func TestRenderComplianceAnalysis_RendersEveryViewFromCanonicalAnalysis(t *testi
 
 func TestRenderComplianceAnalysis_ProjectionIncludesCoverageDiagnosticsAndEvidenceLinks(t *testing.T) {
 	analysis := rendererTestAnalysis()
-	artifactID := "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	artifactID := "event-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	analysis.AssertionAssessments[0].EvidenceRefs = []string{artifactID}
 	analysis.AssertionAssessments[0].Coverage = &compliancev1.AssessmentCoverage{
 		SelectedSubjectCount:    2,
@@ -128,7 +128,7 @@ func TestRenderComplianceAnalysis_ProjectionIncludesCoverageDiagnosticsAndEviden
 	analysis.AssertionAssessments[0].Diagnostics = []*compliancev1.AssessmentDiagnostic{{Code: "missing_observation", Severity: "warning", SourceAdmissionId: "source-1", Subject: &compliancev1.AssessmentSubjectSelection{RunId: "run-1", ScenarioId: "scenario-2"}, Message: "independent observation was not captured"}}
 	analysis.Diagnostics = append(analysis.Diagnostics, analysis.AssertionAssessments[0].Diagnostics...)
 	analysis.EvidenceResources = []*compliancev1.ComplianceEvidenceReference{{
-		ArtifactId: artifactID, ArtifactType: "action-receipt", Sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.ActionReceipt", ProducerIdentity: "operator-1", ScopeId: "scope-1", RunId: "run-1", ScenarioId: "scenario-1", SourceAdmissionId: "source-1", VerificationStatus: "verified", VerifierId: "receipt-verifier", VerifierVersion: "1.0.0", BundlePath: "sources/operator-1/receipt.json",
+		ArtifactId: artifactID, ArtifactType: "event-receipt", Sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.EventReceipt", ProducerIdentity: "operator-1", ScopeId: "scope-1", RunId: "run-1", ScenarioId: "scenario-1", SourceAdmissionId: "source-1", VerificationStatus: "verified", VerifierId: "event_receipt-verifier", VerifierVersion: "1.0.0", BundlePath: "sources/operator-1/event-receipt.json",
 	}}
 
 	for _, format := range []Format{FormatCSV, FormatMarkdown, FormatHTML, FormatCLI, FormatOSCAL} {
@@ -143,10 +143,10 @@ func TestRenderComplianceAnalysis_ProjectionIncludesCoverageDiagnosticsAndEviden
 
 func TestRenderPublicReleaseProjection_ExcludesPrivateAnalysisFields(t *testing.T) {
 	analysis := rendererTestAnalysis()
-	artifactID := "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	artifactID := "event-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	analysis.AssertionAssessments[0].EvidenceRefs = []string{artifactID}
 	analysis.EvidenceResources = []*compliancev1.ComplianceEvidenceReference{{
-		ArtifactId: artifactID, ArtifactType: "action-receipt", Sha256: strings.Repeat("a", 64), SourceAdmissionId: "private-admission", RunId: "private-run", AttemptId: "private-attempt", ScenarioId: "private-scenario", TransactionId: "private-transaction", VerificationStatus: "verified", VerifierId: "receipt-verifier", VerifierVersion: "1.0.0", BundlePath: "sources/private/runtime/receipt.json",
+		ArtifactId: artifactID, ArtifactType: "event-receipt", Sha256: strings.Repeat("a", 64), SourceAdmissionId: "private-admission", RunId: "private-run", AttemptId: "private-attempt", ScenarioId: "private-scenario", TransactionId: "private-transaction", VerificationStatus: "verified", VerifierId: "event_receipt-verifier", VerifierVersion: "1.0.0", BundlePath: "sources/private/runtime/event-receipt.json",
 	}}
 	analysis.Diagnostics = []*compliancev1.AssessmentDiagnostic{
 		{Code: "assessment_context_unavailable", Severity: "warning", SourceAdmissionId: "private-admission", Subject: &compliancev1.AssessmentSubjectSelection{RunId: "private-run"}, Message: "private operator path was not captured"},
@@ -162,7 +162,7 @@ func TestRenderPublicReleaseProjection_ExcludesPrivateAnalysisFields(t *testing.
 		assert.Contains(t, body, artifactID)
 		assert.Contains(t, body, "assessment_context_unavailable")
 		assert.Contains(t, body, "assessment_diagnostic")
-		for _, privateValue := range []string{"private-admission", "private-run", "private-attempt", "private-scenario", "private-transaction", "sources/private/runtime/receipt.json", "private operator path was not captured", "private deployment limitation", "private-diagnostic-code", "private-severity", "private diagnostic message"} {
+		for _, privateValue := range []string{"private-admission", "private-run", "private-attempt", "private-scenario", "private-transaction", "sources/private/runtime/event-receipt.json", "private operator path was not captured", "private deployment limitation", "private-diagnostic-code", "private-severity", "private diagnostic message"} {
 			assert.NotContains(t, body, privateValue)
 		}
 	}

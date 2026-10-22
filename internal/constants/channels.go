@@ -12,7 +12,7 @@ package constants
 //	cmd:{operator_id}:{operator_session_id}        Agent -> Operator
 //	results:{operator_id}:{operator_session_id}    Operator -> Agent
 //	heartbeat:{operator_id}:{operator_session_id}  Operator -> Agent
-//	receipts:{operator_id}:{operator_session_id}   Operator -> Gateway (intercepted)
+//	event_receipts:{operator_id}:{operator_session_id}   Operator -> Gateway (intercepted)
 //	audit:{operator_id}:{operator_session_id}      Gateway -> Operator (LFAA ingest)
 //	renewal:{operator_id}:{operator_session_id}    Operator <-> Gateway (cert renewal; requests intercepted)
 //
@@ -49,12 +49,12 @@ const (
 
 // Session channel prefixes (for operator session communication).
 const (
-	ChannelPrefixCmd       = "cmd"
-	ChannelPrefixResults   = "results"
-	ChannelPrefixHeartbeat = "heartbeat"
-	ChannelPrefixReceipts  = "receipts"
-	ChannelPrefixAudit     = "audit"
-	ChannelPrefixRenewal   = "renewal"
+	ChannelPrefixCmd           = "cmd"
+	ChannelPrefixResults       = "results"
+	ChannelPrefixHeartbeat     = "heartbeat"
+	ChannelPrefixEventReceipts = "event_receipts"
+	ChannelPrefixAudit         = "audit"
+	ChannelPrefixRenewal       = "renewal"
 )
 
 // SSE stream channel prefixes (the in-process channel of a connected CLI or

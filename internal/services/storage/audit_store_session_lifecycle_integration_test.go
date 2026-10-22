@@ -47,7 +47,7 @@ func requireSessionRow(t *testing.T, ass *SQLAuditStore, id string, want bool) {
 }
 
 // TestPrune_LiveIdleSessionSurvivesAndStillRecords pins H1: a session its runtime
-// still owns has no events or receipts while idle, and the pruner must not remove it.
+// still owns has no events or event receipts while idle, and the pruner must not remove it.
 func TestPrune_LiveIdleSessionSurvivesAndStillRecords(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.StartSession("live-idle", constants.SessionTypeOperator, "Operator Session", "operator-1"))

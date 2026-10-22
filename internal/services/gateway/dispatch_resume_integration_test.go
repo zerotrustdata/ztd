@@ -80,18 +80,18 @@ func TestSuspendedOutboundDeny_ReachesExecutingOperatorAndRetiresSuspension(t *t
 	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	receipt, err := gateway.DenySuspendedTransaction(ctx, env.Id, userID)
+	eventReceipt, err := gateway.DenySuspendedTransaction(ctx, env.Id, userID)
 	require.NoError(t, err)
-	require.Equal(t, env.Id, receipt.GetTransactionId())
-	require.Equal(t, env.TransactionHash, receipt.GetTransactionHash())
-	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, receipt.GetRejectionCode())
-	require.NoError(t, govsvc.VerifyActionReceiptSignature(receipt, publicKey))
-	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(receipt, publicKey))
+	require.Equal(t, env.Id, eventReceipt.GetTransactionId())
+	require.Equal(t, env.TransactionHash, eventReceipt.GetTransactionHash())
+	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, eventReceipt.GetRejectionCode())
+	require.NoError(t, govsvc.VerifyEventReceiptSignature(eventReceipt, publicKey))
+	require.NoError(t, govsvc.VerifyEventReceiptPersistenceAttestation(eventReceipt, publicKey))
 	persisted, err := infra.AuditStore.GetEventReceipt(env.Id)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, sessionID, persisted.OperatorSessionID)
-	require.Equal(t, receipt.Signature, persisted.ActionReceipt.Signature)
+	require.Equal(t, eventReceipt.Signature, persisted.EventReceipt.Signature)
 	_, pending, err := gateway.GetSuspendedTransaction(t.Context(), env.Id)
 	require.NoError(t, err)
 	require.False(t, pending)
@@ -123,7 +123,7 @@ type recordingPendingDispatchResumer struct {
 	last  *commonv1.GovernanceEnvelope
 }
 
-func (r *recordingPendingDispatchResumer) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, bool, error) {
+func (r *recordingPendingDispatchResumer) ResumePendingDispatch(ctx context.Context, env *commonv1.GovernanceEnvelope) (*operatorv1.EventReceipt, bool, error) {
 	r.mu.Lock()
 	r.last = proto.Clone(env).(*commonv1.GovernanceEnvelope)
 	r.mu.Unlock()
@@ -275,9 +275,9 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 			require.True(t, pendingL3.GetPendingDispatch())
 			require.Nil(t, pendingL3.GetProof(), "no L3 proof exists before the human acts")
 			require.False(t, pendingL3.GetDenied())
-			var receipt *operatorv1.ActionReceipt
+			var eventReceipt *operatorv1.EventReceipt
 			if mechanism == "deny" {
-				receipt, err = gateway.DenySuspendedTransaction(ctx, suspended.TransactionHash, userID)
+				eventReceipt, err = gateway.DenySuspendedTransaction(ctx, suspended.TransactionHash, userID)
 			} else {
 				var proof *commonv1.L3Proof
 				if mechanism == "passkey" || isInference {
@@ -312,11 +312,11 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 				}
 				_, err = gateway.ResumeWithL3Proof(ctx, suspended.TransactionHash, userID, bad)
 				require.Error(t, err, "invalid human proof must not dispatch")
-				receipt, err = gateway.ResumeWithL3Proof(ctx, suspended.TransactionHash, userID, proof)
+				eventReceipt, err = gateway.ResumeWithL3Proof(ctx, suspended.TransactionHash, userID, proof)
 			}
 			require.NoError(t, err)
-			require.NoError(t, govsvc.VerifyActionReceiptSignature(receipt, publicKey))
-			require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(receipt, publicKey))
+			require.NoError(t, govsvc.VerifyEventReceiptSignature(eventReceipt, publicKey))
+			require.NoError(t, govsvc.VerifyEventReceiptPersistenceAttestation(eventReceipt, publicKey))
 			var original outcome
 			select {
 			case original = <-resultCh:
@@ -335,24 +335,24 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 			}
 			if mechanism == "deny" {
 				require.ErrorIs(t, original.err, constants.ErrDispatchGovernanceRejected)
-				require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, receipt.GetRejectionCode())
+				require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, eventReceipt.GetRejectionCode())
 				require.True(t, resumedEnvelope.GetGovernance().GetL3().GetDenied())
 			} else {
 				require.NoError(t, original.err)
 				require.NotNil(t, original.result.ResultEnvelope)
-				require.Equal(t, receipt.Signature, original.result.Receipt.Signature)
-				require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
+				require.Equal(t, eventReceipt.Signature, original.result.EventReceipt.Signature)
+				require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.GetStatus())
 				if enforcesL2 {
-					require.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, receipt.GetL2Status())
-					require.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, original.result.Receipt.GetL2Status())
+					require.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, eventReceipt.GetL2Status())
+					require.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, original.result.EventReceipt.GetL2Status())
 				} else {
-					require.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, receipt.GetL2Status())
+					require.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, eventReceipt.GetL2Status())
 				}
-				require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, receipt.GetL3Status())
-				require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, original.result.Receipt.GetL3Status())
+				require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, eventReceipt.GetL3Status())
+				require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, original.result.EventReceipt.GetL3Status())
 				if isInference {
 					require.NotNil(t, original.result.InferenceResult)
-					require.Equal(t, original.result.InferenceResult.ResultDigest, receipt.ResultSummary)
+					require.Equal(t, original.result.InferenceResult.ResultDigest, eventReceipt.ResultSummary)
 					calls, _ := backend.snapshot()
 					require.Equal(t, 1, calls)
 				}

@@ -17,6 +17,6 @@ const (
 	PubSubFieldType    = "type"
 	PubSubFieldSender  = "sender"
 
-	// ReceiptSummaryMaxBytes is the maximum size for receipt summary text (4 KiB)
-	ReceiptSummaryMaxBytes = 4096
+	// EventReceiptSummaryMaxBytes is the maximum size for event receipt summary text (4 KiB)
+	EventReceiptSummaryMaxBytes = 4096
 )

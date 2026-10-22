@@ -188,7 +188,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Operator Architecture](../architecture/operator.md): Outbound and embedded Operator architecture, task execution, and host lifecycle.
 - [Governance Architecture](../architecture/governance.md): Five-layer governance framework (L1 doctrine to L5 audit), posture policies, and enforcement.
 - [AI Agents and Governance Boundary](../architecture/agents.md): AI agent integration patterns, tool boundaries, and trust limits.
-- [Consensus Architecture](../architecture/consensus.md): L2 K-of-N bound-member deliberation, verification, and receipt evidence.
+- [Consensus Architecture](../architecture/consensus.md): L2 K-of-N bound-member deliberation, verification, and event receipt evidence.
 - [Storage Architecture](../architecture/storage.md): SQLite persistence, schema migrations, and storage service layout.
 - [Events Architecture](../architecture/events.md): Event taxonomy, delivery guarantees, and event bus lifecycle.
 - [Evaluation Architecture](../architecture/evals.md): Native evaluation framework, campaign specifications, scoring, and evidence capture.
@@ -250,7 +250,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Generated Common API](../../protocol/docs/reference/api/ztd/common/v1/index.md): Common protocol messages, error envelopes, and base types.
 - [Generated Compliance API](../../protocol/docs/reference/api/ztd/compliance/v1/index.md): Compliance report, evidence, and audit messages.
 - [Generated Eval API](../../protocol/docs/reference/api/ztd/eval/v1/index.md): Evaluation campaign, scenario, and metrics messages.
-- [Generated Operator API](../../protocol/docs/reference/api/ztd/operator/v1/index.md): Operator task, execution, and receipt messages.
+- [Generated Operator API](../../protocol/docs/reference/api/ztd/operator/v1/index.md): Operator task, execution, and event receipt messages.
 - [Generated PubSub API](../../protocol/docs/reference/api/ztd/pubsub/v1/index.md): Pub/sub message contracts and event envelopes.
 - [Generated Tribunal API](../../protocol/docs/reference/api/ztd/tribunal/v1/index.md): Tribunal intent request and result, member call, outcome, and stage messages.
 - [Protocol Conformance](../../protocol/conformance/README.md): Conformance test harness and cross-language compatibility tests.

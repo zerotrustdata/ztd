@@ -80,7 +80,7 @@ describe('enums', () => {
   describe('EvalVerificationStatus', () => {
     it('contains the three Go enum values in order', () => {
       expect([...EVAL_VERIFICATION_STATUSES]).toEqual([
-        'projection_validated', 'receipt_verification_not_applicable', 'verified',
+        'projection_validated', 'event_receipt_verification_not_applicable', 'verified',
       ]);
     });
 

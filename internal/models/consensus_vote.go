@@ -30,7 +30,7 @@ const (
 type ConsensusVoteRecord struct {
 	VoteKind         string                      `json:"vote_kind,omitempty"`
 	DecisionEvidence []ConsensusDecisionEvidence `json:"decision_evidence,omitempty"`
-	// TransactionID is the envelope ID, the ID its receipts carry.
+	// TransactionID is the envelope ID, the ID its event receipts carry.
 	TransactionID   string               `json:"transaction_id"`
 	TransactionHash string               `json:"transaction_hash"`
 	ConsensusSetID  string               `json:"consensus_set_id"`

@@ -115,7 +115,7 @@ const (
 type EvidenceType string
 
 const (
-	EvidenceTypeReceiptID           EvidenceType = "receipt_id"
+	EvidenceTypeEventReceiptID      EvidenceType = "event_receipt_id"
 	EvidenceTypeLedgerCommit        EvidenceType = "ledger_commit"
 	EvidenceTypeExecutionID         EvidenceType = "execution_id"
 	EvidenceTypeMerkleRoot          EvidenceType = "merkle_root"
@@ -135,15 +135,15 @@ type AutomatedMethod struct {
 type KSIArtifactIdentity string
 
 const (
-	KSIArtifactAuditEvents             KSIArtifactIdentity = "audit_events"
-	KSIArtifactActionReceipts          KSIArtifactIdentity = "action_receipts"
-	KSIArtifactFileMutations           KSIArtifactIdentity = "file_mutations"
-	KSIArtifactLedgerCommits           KSIArtifactIdentity = "ledger_commits"
-	KSIArtifactCommitments             KSIArtifactIdentity = "commitments"
-	KSIArtifactReceiptStateTransitions KSIArtifactIdentity = "receipt_state_transitions"
-	KSIArtifactGraderResults           KSIArtifactIdentity = "grader_results"
-	KSIArtifactHistorySnapshots        KSIArtifactIdentity = "ksi_history_snapshots"
-	KSIArtifactLedgerStateRoot         KSIArtifactIdentity = "ledger_state_root"
+	KSIArtifactAuditEvents                  KSIArtifactIdentity = "audit_events"
+	KSIArtifactEventReceipts                KSIArtifactIdentity = "event_receipts"
+	KSIArtifactFileMutations                KSIArtifactIdentity = "file_mutations"
+	KSIArtifactLedgerCommits                KSIArtifactIdentity = "ledger_commits"
+	KSIArtifactCommitments                  KSIArtifactIdentity = "commitments"
+	KSIArtifactEventReceiptStateTransitions KSIArtifactIdentity = "event_receipt_state_transitions"
+	KSIArtifactGraderResults                KSIArtifactIdentity = "grader_results"
+	KSIArtifactHistorySnapshots             KSIArtifactIdentity = "ksi_history_snapshots"
+	KSIArtifactLedgerStateRoot              KSIArtifactIdentity = "ledger_state_root"
 )
 
 // KSICollectionBoundary identifies the independently queried evidence source.
@@ -173,14 +173,14 @@ const (
 type KSIMeasuredProperty string
 
 const (
-	KSIPropertyPresence                    KSIMeasuredProperty = "presence"
-	KSIPropertyChainLinkage                KSIMeasuredProperty = "chain_linkage"
-	KSIPropertySignatureValidity           KSIMeasuredProperty = "signature_validity"
-	KSIPropertyReceiptPersistenceIntegrity KSIMeasuredProperty = "receipt_persistence_integrity"
-	KSIPropertyStateTransitionBinding      KSIMeasuredProperty = "state_transition_binding"
-	KSIPropertyStateRootMatchesHead        KSIMeasuredProperty = "state_root_matches_head"
-	KSIPropertyEvidenceContentAddressing   KSIMeasuredProperty = "evidence_content_addressing"
-	KSIPropertyFreshness                   KSIMeasuredProperty = "freshness"
+	KSIPropertyPresence                         KSIMeasuredProperty = "presence"
+	KSIPropertyChainLinkage                     KSIMeasuredProperty = "chain_linkage"
+	KSIPropertySignatureValidity                KSIMeasuredProperty = "signature_validity"
+	KSIPropertyEventReceiptPersistenceIntegrity KSIMeasuredProperty = "event_receipt_persistence_integrity"
+	KSIPropertyStateTransitionBinding           KSIMeasuredProperty = "state_transition_binding"
+	KSIPropertyStateRootMatchesHead             KSIMeasuredProperty = "state_root_matches_head"
+	KSIPropertyEvidenceContentAddressing        KSIMeasuredProperty = "evidence_content_addressing"
+	KSIPropertyFreshness                        KSIMeasuredProperty = "freshness"
 )
 
 type ksiMethodEvaluator func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error)
@@ -214,7 +214,7 @@ func (m KSIMethod) validate() error {
 
 func (a KSIArtifactIdentity) valid() bool {
 	switch a {
-	case KSIArtifactAuditEvents, KSIArtifactActionReceipts, KSIArtifactFileMutations, KSIArtifactLedgerCommits, KSIArtifactCommitments, KSIArtifactReceiptStateTransitions, KSIArtifactGraderResults, KSIArtifactHistorySnapshots, KSIArtifactLedgerStateRoot:
+	case KSIArtifactAuditEvents, KSIArtifactEventReceipts, KSIArtifactFileMutations, KSIArtifactLedgerCommits, KSIArtifactCommitments, KSIArtifactEventReceiptStateTransitions, KSIArtifactGraderResults, KSIArtifactHistorySnapshots, KSIArtifactLedgerStateRoot:
 		return true
 	default:
 		return false
@@ -241,7 +241,7 @@ func (v KSIVerifierFamily) valid() bool {
 
 func (p KSIMeasuredProperty) valid() bool {
 	switch p {
-	case KSIPropertyPresence, KSIPropertyChainLinkage, KSIPropertySignatureValidity, KSIPropertyReceiptPersistenceIntegrity, KSIPropertyStateTransitionBinding, KSIPropertyStateRootMatchesHead, KSIPropertyEvidenceContentAddressing, KSIPropertyFreshness:
+	case KSIPropertyPresence, KSIPropertyChainLinkage, KSIPropertySignatureValidity, KSIPropertyEventReceiptPersistenceIntegrity, KSIPropertyStateTransitionBinding, KSIPropertyStateRootMatchesHead, KSIPropertyEvidenceContentAddressing, KSIPropertyFreshness:
 		return true
 	default:
 		return false

@@ -1,0 +1,20 @@
+{
+  "canonical_utf8": "{\"transaction_id\":\"tx-rejection-code-001\",\"transaction_hash\":\"sha256:3c9909afec25354d551dae21590bb26e38d53f2173b8d3dc3eee4c047e7ab1c1\",\"status\":3,\"result_summary\":\"rejected: EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED\",\"state_root_before\":\"sha256:before-rc\",\"state_root_after\":\"sha256:after-rc\",\"executed_at_unix_ms\":1777777777789,\"signer_key_id\":\"warden-rejection-code-key\",\"l2_status\":3,\"l3_status\":1,\"failure_code\":1,\"rejection_code\":19}",
+  "event_receipt": {
+    "executed_at_unix_ms": "1777777777789",
+    "failure_code": "EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED",
+    "l2_status": "L2_STATUS_REQUIRED_FAILED",
+    "l3_status": "L3_STATUS_NOT_REQUIRED",
+    "rejection_code": "GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET",
+    "result_summary": "rejected: EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED",
+    "signature": "a2338e7980e0344d30b064f920d940c7d39efbca5e0d5f8b3c00703436b236b32f0cb91b2922dfccb1694fb25e46f36e5d4b0fb539728e9d23b77af77ed9de09",
+    "signer_key_id": "warden-rejection-code-key",
+    "state_root_after": "sha256:after-rc",
+    "state_root_before": "sha256:before-rc",
+    "status": "EXECUTION_STATUS_FAILED",
+    "transaction_hash": "sha256:3c9909afec25354d551dae21590bb26e38d53f2173b8d3dc3eee4c047e7ab1c1",
+    "transaction_id": "tx-rejection-code-001"
+  },
+  "name": "failed_with_governance_rejection_code",
+  "public_key_hex": "b4b4d903dd7cd6f61eeb3f111370b50f342b883b38d2f5004b74181041dac6de"
+}

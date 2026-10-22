@@ -14,7 +14,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// OutcomeKind names the single shape a verified receipt can take.
+// OutcomeKind names the single shape a verified event receipt can take.
 type OutcomeKind int
 
 const (
@@ -24,7 +24,7 @@ const (
 	OutcomeRejected                    // FAILED, failure_code GOVERNANCE_REJECTED, no L5_EXECUTION stage
 )
 
-// Outcome is what a verified receipt says happened.
+// Outcome is what a verified event receipt says happened.
 type Outcome struct {
 	Kind          OutcomeKind
 	RejectionCode operatorv1.GovernanceRejectionCode
@@ -36,34 +36,34 @@ type Outcome struct {
 // Link is one commitment-ledger step taken from a COMMITMENT_APPEND stage.
 type Link struct{ Prior, Hash, TransactionID string }
 
-// Classify reads what a verified receipt says happened. Call it only on a
-// receipt VerifyReceipt accepted.
-func Classify(receipt *operatorv1.ActionReceipt) (Outcome, error) {
-	if receipt == nil {
-		return Outcome{}, unclassifiable("receipt is nil")
+// Classify reads what a verified event receipt says happened. Call it only on a
+// event receipt VerifyEventReceipt accepted.
+func Classify(eventReceipt *operatorv1.EventReceipt) (Outcome, error) {
+	if eventReceipt == nil {
+		return Outcome{}, unclassifiable("event receipt is nil")
 	}
-	stages, err := stagesByKind(receipt)
+	stages, err := stagesByKind(eventReceipt)
 	if err != nil {
 		return Outcome{}, err
 	}
 	l5 := stages[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION]
 	commit := stages[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND]
-	failure := receipt.GetFailureCode()
-	rejection := receipt.GetRejectionCode()
-	base := Outcome{L2Status: receipt.GetL2Status(), L3Status: receipt.GetL3Status()}
+	failure := eventReceipt.GetFailureCode()
+	rejection := eventReceipt.GetRejectionCode()
+	base := Outcome{L2Status: eventReceipt.GetL2Status(), L3Status: eventReceipt.GetL3Status()}
 
-	switch receipt.GetStatus() {
+	switch eventReceipt.GetStatus() {
 	case operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED:
-		if failure != operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED {
-			return Outcome{}, unclassifiable("completed receipt carries a failure code")
+		if failure != operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED {
+			return Outcome{}, unclassifiable("completed event receipt carries a failure code")
 		}
 		if rejection != operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED {
 			return Outcome{}, unclassifiable("rejection code on a non-rejection")
 		}
 		if l5 == nil || l5.GetOutcome() != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED {
-			return Outcome{}, unclassifiable("completed receipt has no completed L5 execution stage")
+			return Outcome{}, unclassifiable("completed event receipt has no completed L5 execution stage")
 		}
-		link, err := commitmentLink(receipt, commit)
+		link, err := commitmentLink(eventReceipt, commit)
 		if err != nil {
 			return Outcome{}, err
 		}
@@ -72,7 +72,7 @@ func Classify(receipt *operatorv1.ActionReceipt) (Outcome, error) {
 		return base, nil
 
 	case operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED:
-		if failure == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
+		if failure == operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
 			if l5 != nil || commit != nil {
 				return Outcome{}, unclassifiable("governance rejection carries an L5 execution or commitment stage")
 			}
@@ -86,7 +86,7 @@ func Classify(receipt *operatorv1.ActionReceipt) (Outcome, error) {
 		if l5 == nil || l5.GetOutcome() != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED {
 			return Outcome{}, unclassifiable("failed execution has no failed L5 execution stage")
 		}
-		link, err := commitmentLink(receipt, commit)
+		link, err := commitmentLink(eventReceipt, commit)
 		if err != nil {
 			return Outcome{}, err
 		}
@@ -95,14 +95,14 @@ func Classify(receipt *operatorv1.ActionReceipt) (Outcome, error) {
 		return base, nil
 
 	default:
-		return Outcome{}, unclassifiable(fmt.Sprintf("status %s is not terminal", receipt.GetStatus().String()))
+		return Outcome{}, unclassifiable(fmt.Sprintf("status %s is not terminal", eventReceipt.GetStatus().String()))
 	}
 }
 
-// stagesByKind indexes a receipt's stages by kind and rejects a duplicate kind.
-func stagesByKind(receipt *operatorv1.ActionReceipt) (map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, error) {
-	stages := make(map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, len(receipt.GetDeterministicStageEvidence()))
-	for _, stage := range receipt.GetDeterministicStageEvidence() {
+// stagesByKind indexes an event receipt's stages by kind and rejects a duplicate kind.
+func stagesByKind(eventReceipt *operatorv1.EventReceipt) (map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, error) {
+	stages := make(map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, len(eventReceipt.GetDeterministicStageEvidence()))
+	for _, stage := range eventReceipt.GetDeterministicStageEvidence() {
 		if _, exists := stages[stage.GetKind()]; exists {
 			return nil, unclassifiable(fmt.Sprintf("duplicate %s stage", stage.GetKind().String()))
 		}
@@ -111,14 +111,14 @@ func stagesByKind(receipt *operatorv1.ActionReceipt) (map[operatorv1.Determinist
 	return stages, nil
 }
 
-// commitmentLink returns the ledger step an executed receipt took. Every
-// executed receipt appends exactly one commitment, so a missing commitment
+// commitmentLink returns the ledger step an executed event receipt took. Every
+// executed event receipt appends exactly one commitment, so a missing commitment
 // stage or hash is unclassifiable. An empty prior hash is the runtime's first
 // commitment (the ledger's genesis rule); VerifyBracket rejects it anywhere a
 // prior link is expected.
-func commitmentLink(receipt *operatorv1.ActionReceipt, commit *operatorv1.DeterministicStageEvidence) (*Link, error) {
+func commitmentLink(eventReceipt *operatorv1.EventReceipt, commit *operatorv1.DeterministicStageEvidence) (*Link, error) {
 	if commit == nil {
-		return nil, unclassifiable("executed receipt has no commitment-append stage")
+		return nil, unclassifiable("executed event receipt has no commitment-append stage")
 	}
 	if commit.GetOutcome() != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED {
 		return nil, unclassifiable("commitment-append stage is not completed")
@@ -129,10 +129,10 @@ func commitmentLink(receipt *operatorv1.ActionReceipt, commit *operatorv1.Determ
 	return &Link{
 		Prior:         commit.GetPriorCommitmentHash(),
 		Hash:          commit.GetCommitmentHash(),
-		TransactionID: receipt.GetTransactionId(),
+		TransactionID: eventReceipt.GetTransactionId(),
 	}, nil
 }
 
 func unclassifiable(reason string) error {
-	return fmt.Errorf("oracle: classify receipt: %s: %w", reason, constants.ErrConformanceReceiptUnclassifiable)
+	return fmt.Errorf("oracle: classify event_receipt: %s: %w", reason, constants.ErrConformanceEventReceiptUnclassifiable)
 }

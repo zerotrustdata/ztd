@@ -237,7 +237,7 @@ export interface RunPresentation {
   readonly statusLabel: string;
   readonly completedTasks: number;
   readonly totalTasks: number;
-  readonly hasReceipts: boolean;
+  readonly hasEventReceipts: boolean;
   readonly evidenceCount: number;
   readonly viewState: ViewState;
 }
@@ -260,7 +260,7 @@ export function presentRun(run: RunSummary): RunPresentation {
     statusLabel: RUN_STATUS_LABELS[run.status] ?? run.status,
     completedTasks: run.completed_tasks,
     totalTasks: run.total_tasks,
-    hasReceipts: run.has_receipts,
+    hasEventReceipts: run.has_event_receipts,
     evidenceCount: run.evidence_count,
     viewState: VIEW_STATES.ready,
   };
@@ -276,14 +276,14 @@ export interface EvalPresentation {
   readonly statusLabel: string;
   readonly verificationStatus: string;
   readonly verificationLabel: string;
-  readonly receiptCount: number;
+  readonly eventReceiptCount: number;
   readonly metricCount: number;
   readonly viewState: ViewState;
 }
 
 const EVAL_VERIFICATION_LABELS: Record<string, string> = {
   projection_validated: 'Projection validated',
-  receipt_verification_not_applicable: 'Receipt verification not applicable',
+  event_receipt_verification_not_applicable: 'Event receipt verification not applicable',
   verified: 'Verified',
 };
 
@@ -299,7 +299,7 @@ export function presentEval(eval_: EvalSummary): EvalPresentation {
     statusLabel: RUN_STATUS_LABELS[eval_.status] ?? eval_.status,
     verificationStatus: eval_.verification_status,
     verificationLabel: EVAL_VERIFICATION_LABELS[eval_.verification_status] ?? eval_.verification_status,
-    receiptCount: eval_.receipt_count,
+    eventReceiptCount: eval_.event_receipt_count,
     metricCount: eval_.metric_count,
     viewState,
   };

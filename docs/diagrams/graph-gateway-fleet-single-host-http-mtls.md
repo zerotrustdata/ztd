@@ -45,10 +45,10 @@ graph TD
     CLI -. "mTLS · HTTPS :8443" .-> GW
     Browser -. "HTTPS :8443 · WebAuthn Cookie" .-> GW
 
-    GW -. "Outbound-only mTLS WSS<br/>publish cmd:* · subscribe receipts:*" .-> O1
+    GW -. "Outbound-only mTLS WSS<br/>publish cmd:* · subscribe event_receipts:*" .-> O1
     GW -. "Outbound-only mTLS WSS" .-> O2
-    O1 -. "Signed ActionReceipt<br/>(best-effort mirror)" .-> GW
-    O2 -. "Signed ActionReceipt" .-> GW
+    O1 -. "Signed EventReceipt<br/>(best-effort mirror)" .-> GW
+    O2 -. "Signed EventReceipt" .-> GW
 ```
 
 ## Ingress Paths
@@ -64,4 +64,4 @@ graph TD
 
 - **Unified Binary, Distinct Modes**: A single static binary (`ztd`) runs as Gateway (`ztd gw start`) or Operator (`ztd operator start`). Gateway mode embeds an in-process Operator substrate for local execution.
 - **Listener Isolation**: Remote Operators establish outbound-only mTLS WebSocket connections to the Gateway pub/sub broker (`/api/v1/pubsub/stream`). Managed operator hosts expose **zero inbound listening ports**.
-- **Sovereign Audit Storage (LFAA)**: Each Operator strictly owns its local SQLite audit database and Merkle state root under `.ztd/`. Receipts published back to the Gateway are best-effort projections and never override local state.
+- **Sovereign Audit Storage (LFAA)**: Each Operator strictly owns its local SQLite audit database and Merkle state root under `.ztd/`. Event receipts published back to the Gateway are best-effort projections and never override local state.

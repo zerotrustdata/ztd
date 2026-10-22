@@ -835,7 +835,7 @@
         "description": "Honest verification boundary label. Omitted until the verifier runs.",
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": false,
@@ -1120,7 +1120,7 @@
         "description": "Honest verification boundary label",
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,
@@ -1249,6 +1249,10 @@
         "required": false,
         "type": "string"
       },
+      "event_receipt_count": {
+        "required": true,
+        "type": "integer"
+      },
       "lite_variant_id": {
         "description": "Exact Lite model variant ID. Omitted when the combination has no Lite role.",
         "required": false,
@@ -1294,10 +1298,6 @@
         "description": "Quantization policy. Omitted when no quantization is applied.",
         "required": false,
         "type": "string"
-      },
-      "receipt_count": {
-        "required": true,
-        "type": "integer"
       },
       "repetition_count": {
         "description": "Frozen repetition count. Omitted for single-arm diagnostic runs.",
@@ -1354,7 +1354,7 @@
       "verification_status": {
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,
@@ -1473,7 +1473,7 @@
         "description": "Honest verification boundary label",
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,
@@ -1542,7 +1542,7 @@
         "description": "Honest verification boundary label. Never 'verified' until the complete verifier exists.",
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,
@@ -1598,7 +1598,7 @@
       "verification_status": {
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,
@@ -1804,15 +1804,15 @@
         "required": true,
         "type": "string"
       },
+      "event_receipt_count": {
+        "description": "Number of event receipts in the report",
+        "required": true,
+        "type": "integer"
+      },
       "published_projection_sha256": {
         "description": "SHA-256 hash of the persisted disclosure-safe projection",
         "required": true,
         "type": "string"
-      },
-      "receipt_count": {
-        "description": "Number of receipts in the report",
-        "required": true,
-        "type": "integer"
       },
       "run_id": {
         "description": "Stable eval run identifier",
@@ -1843,7 +1843,7 @@
         "description": "Honest verification boundary label. Never 'verified' until the complete verifier exists.",
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,
@@ -1932,6 +1932,10 @@
         "required": false,
         "type": "string"
       },
+      "event_receipt_count": {
+        "required": true,
+        "type": "integer"
+      },
       "metric_count": {
         "description": "Number of registered metrics in the projection",
         "required": true,
@@ -1952,10 +1956,6 @@
         "description": "SHA-256 hash of the persisted disclosure-safe projection. Omitted when no projection is published.",
         "required": false,
         "type": "string"
-      },
-      "receipt_count": {
-        "required": true,
-        "type": "integer"
       },
       "run_id": {
         "required": true,
@@ -1989,7 +1989,7 @@
         "description": "Honest verification boundary label. Never 'verified' until the complete verifier exists.",
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,
@@ -2049,7 +2049,7 @@
         "description": "Honest verification boundary label",
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,
@@ -2281,7 +2281,7 @@
           "verification_status": {
             "enum": [
               "projection_validated",
-              "receipt_verification_not_applicable",
+              "event_receipt_verification_not_applicable",
               "verified"
             ],
             "required": true,
@@ -2640,7 +2640,7 @@
       }
     },
     "run_summary": {
-      "_description": "Paginated read-only run summary owned by the authenticated user. Uses stable run IDs, kinds, timestamps, terminal status, and evidence/receipt indicators.",
+      "_description": "Paginated read-only run summary owned by the authenticated user. Uses stable run IDs, kinds, timestamps, terminal status, and evidence/event-receipt indicators.",
       "active_task_id": {
         "required": false,
         "type": "string"
@@ -2663,8 +2663,8 @@
         "required": true,
         "type": "integer"
       },
-      "has_receipts": {
-        "description": "Whether the run has at least one governance receipt",
+      "has_event_receipts": {
+        "description": "Whether the run has at least one governance event receipt",
         "required": true,
         "type": "boolean"
       },
@@ -2933,7 +2933,7 @@
         "description": "Honest verification boundary label",
         "enum": [
           "projection_validated",
-          "receipt_verification_not_applicable",
+          "event_receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,

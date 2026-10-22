@@ -45,7 +45,7 @@ function evalRunCompletedPayload(overrides: Record<string, unknown> = {}): Recor
     arm_id: 'a1',
     terminal_attempts: 10,
     assigned_tasks: 10,
-    receipt_count: 5,
+    event_receipt_count: 5,
     verification_status: 'projection_validated',
     published_projection_sha256: 'abc',
     completed_at: '2026-01-01T00:00:00Z',

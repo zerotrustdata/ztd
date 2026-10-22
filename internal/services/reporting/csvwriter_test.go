@@ -69,11 +69,11 @@ func TestWriteCSV(t *testing.T) {
 		path := filepath.Join(dir, "test.csv")
 
 		rows := []Row{
-			ReceiptRow{TransactionID: "tx-1", ActionType: "FS_READ", Status: "OK"},
-			ReceiptRow{TransactionID: "tx-2", ActionType: "FS_WRITE", Status: "OK"},
+			EventReceiptRow{TransactionID: "tx-1", ActionType: "FS_READ", Status: "OK"},
+			EventReceiptRow{TransactionID: "tx-2", ActionType: "FS_WRITE", Status: "OK"},
 		}
 
-		res, err := writeCSV(path, ReceiptRow{}.Columns(), rows)
+		res, err := writeCSV(path, EventReceiptRow{}.Columns(), rows)
 		require.NoError(t, err)
 		assert.Equal(t, 2, res.RowCount)
 		assert.NotEmpty(t, res.SHA256)
@@ -86,7 +86,7 @@ func TestWriteCSV(t *testing.T) {
 		records, err := r.ReadAll()
 		require.NoError(t, err)
 		require.Len(t, records, 3)
-		assert.Equal(t, ReceiptRow{}.Columns(), records[0])
+		assert.Equal(t, EventReceiptRow{}.Columns(), records[0])
 		assert.Equal(t, "tx-1", records[1][0])
 		assert.Equal(t, "tx-2", records[2][0])
 	})
@@ -115,7 +115,7 @@ func TestWriteCSV(t *testing.T) {
 		blocker := filepath.Join(dir, "blocker")
 		require.NoError(t, os.WriteFile(blocker, []byte("x"), 0644))
 
-		_, err := writeCSV(filepath.Join(blocker, "file.csv"), ReceiptRow{}.Columns(), nil)
+		_, err := writeCSV(filepath.Join(blocker, "file.csv"), EventReceiptRow{}.Columns(), nil)
 		require.Error(t, err)
 	})
 }

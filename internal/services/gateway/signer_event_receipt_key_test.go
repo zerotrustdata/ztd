@@ -18,34 +18,34 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestReceiptSignerKey_EmbeddedOperatorResolvesToGatewayActuatorKey(t *testing.T) {
+func TestEventReceiptSignerKey_EmbeddedOperatorResolvesToGatewayActuatorKey(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := hex.EncodeToString(pub)
 	svc := NewSignerStoreService(nil, nil, nil, pub, keyID)
 
-	got, err := svc.ReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),
-		&operatorv1.ActionReceipt{SignerKeyId: keyID})
+	got, err := svc.EventReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),
+		&operatorv1.EventReceipt{SignerKeyId: keyID})
 	require.NoError(t, err)
 	assert.Equal(t, pub, got)
 }
 
-func TestReceiptSignerKey_EmbeddedOperatorRejectsMismatchedSignerKeyID(t *testing.T) {
+func TestEventReceiptSignerKey_EmbeddedOperatorRejectsMismatchedSignerKeyID(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	other, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	svc := NewSignerStoreService(nil, nil, nil, pub, hex.EncodeToString(pub))
 
-	_, err = svc.ReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),
-		&operatorv1.ActionReceipt{SignerKeyId: hex.EncodeToString(other)})
-	assert.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)
+	_, err = svc.EventReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),
+		&operatorv1.EventReceipt{SignerKeyId: hex.EncodeToString(other)})
+	assert.ErrorIs(t, err, constants.ErrEventReceiptSignerNotBound)
 }
 
-func TestReceiptSignerKey_EmbeddedOperatorWithoutGatewayKeyIsNotBound(t *testing.T) {
+func TestEventReceiptSignerKey_EmbeddedOperatorWithoutGatewayKeyIsNotBound(t *testing.T) {
 	svc := NewSignerStoreService(nil, nil, nil, nil, "")
 
-	_, err := svc.ReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),
-		&operatorv1.ActionReceipt{SignerKeyId: ""})
-	assert.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)
+	_, err := svc.EventReceiptSignerKey(t.Context(), string(constants.DocIDEmbeddedOperator),
+		&operatorv1.EventReceipt{SignerKeyId: ""})
+	assert.ErrorIs(t, err, constants.ErrEventReceiptSignerNotBound)
 }

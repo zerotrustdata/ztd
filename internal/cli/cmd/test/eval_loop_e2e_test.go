@@ -39,7 +39,7 @@ import (
 )
 
 // This Tier 3 test starts actual OS processes. All Gateway and Operator code,
-// identities, enrollment, transport, execution and receipts are production code.
+// identities, enrollment, transport, execution and event receipts are production code.
 func TestEvalLoopCrossProcess(t *testing.T) {
 	for _, posture := range []constants.Posture{constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(posture), func(t *testing.T) {
@@ -475,7 +475,7 @@ func (r *releaseSmokeRun) bindEvalAnchors(ctx context.Context, files fs.RuntimeF
 }
 
 // verifyEvalRun checks one campaign's trace against the runtimes that produced
-// it, then verifies every receipt the trace carries against the Operator that
+// it, then verifies every event receipt the trace carries against the Operator that
 // signed it: the harness sentinels and the governed command on the Data runtime,
 // and each model call on the Inference runtime.
 func (r *releaseSmokeRun) verifyEvalRun(ctx context.Context, run evalLoopRun, inferenceRoot, inferenceID, inferenceSession string) error {
@@ -490,7 +490,7 @@ func (r *releaseSmokeRun) verifyEvalRun(ctx context.Context, run evalLoopRun, in
 	} else if trace.FinalOutput != evalLoopDirectAnswer || len(trace.ModelCalls) != 1 {
 		return fmt.Errorf("eval trace answer: %w", constants.ErrValidationFailed)
 	}
-	txs, err := r.verifyEvalReceipts(ctx, trace, inferenceRoot, inferenceID, inferenceSession)
+	txs, err := r.verifyEvalEventReceipts(ctx, trace, inferenceRoot, inferenceID, inferenceSession)
 	if err != nil {
 		return err
 	}
@@ -507,45 +507,45 @@ func (r *releaseSmokeRun) verifyEvalTraceRuntimes(trace *evaluation.AgentTrace, 
 	return nil
 }
 
-// verifyEvalReceipts verifies every receipt a trace carries against the Operator
+// verifyEvalEventReceipts verifies every event receipt a trace carries against the Operator
 // that signed it: the harness sentinels and each EXECUTE_BASH command on the
 // Data runtime, and each model call on the Inference runtime. It returns the
 // transaction IDs it verified.
-func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluation.AgentTrace, inferenceRoot, inferenceID, inferenceSession string) ([]string, error) {
+func (r *releaseSmokeRun) verifyEvalEventReceipts(ctx context.Context, trace *evaluation.AgentTrace, inferenceRoot, inferenceID, inferenceSession string) ([]string, error) {
 	var txs []string
-	for _, receipt := range []*operatorv1.ActionReceipt{trace.Bracket.Before.ActionReceipt, trace.Bracket.After.ActionReceipt} {
-		if receipt == nil {
+	for _, eventReceipt := range []*operatorv1.EventReceipt{trace.Bracket.Before.EventReceipt, trace.Bracket.After.EventReceipt} {
+		if eventReceipt == nil {
 			return nil, constants.ErrEvidenceArtifactMalformed
 		}
-		if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, receipt.GetTransactionId()); err != nil {
+		if err := r.verifyEventReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, eventReceipt.GetTransactionId()); err != nil {
 			return nil, err
 		}
-		txs = append(txs, receipt.GetTransactionId())
+		txs = append(txs, eventReceipt.GetTransactionId())
 	}
 	for _, call := range trace.ModelCalls {
-		receipt := call.Receipt
-		if receipt == nil || receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+		eventReceipt := call.EventReceipt
+		if eventReceipt == nil || eventReceipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
 			return nil, fmt.Errorf("eval inference %s requires L3: %w", call.Purpose, constants.ErrValidationFailed)
 		}
-		if r.opts.Posture == constants.PostureNotary && receipt.GetL2Status() != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
+		if r.opts.Posture == constants.PostureNotary && eventReceipt.GetL2Status() != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
 			return nil, fmt.Errorf("eval inference %s requires L2: %w", call.Purpose, constants.ErrValidationFailed)
 		}
-		if err := r.verifyReceipt(ctx, inferenceRoot, inferenceID, inferenceSession, receipt.GetTransactionId()); err != nil {
+		if err := r.verifyEventReceipt(ctx, inferenceRoot, inferenceID, inferenceSession, eventReceipt.GetTransactionId()); err != nil {
 			return nil, err
 		}
-		txs = append(txs, receipt.GetTransactionId())
+		txs = append(txs, eventReceipt.GetTransactionId())
 	}
 	for _, call := range trace.ToolCalls {
 		if call.ActionType != string(constants.ActionTypeExecuteBash) {
 			continue
 		}
-		if call.Receipt == nil {
-			return nil, fmt.Errorf("eval command %s has no receipt: %w", call.ToolName, constants.ErrValidationFailed)
+		if call.EventReceipt == nil {
+			return nil, fmt.Errorf("eval command %s has no event_receipt: %w", call.ToolName, constants.ErrValidationFailed)
 		}
-		if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, call.Receipt.GetTransactionId()); err != nil {
+		if err := r.verifyEventReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, call.EventReceipt.GetTransactionId()); err != nil {
 			return nil, err
 		}
-		txs = append(txs, call.Receipt.GetTransactionId())
+		txs = append(txs, call.EventReceipt.GetTransactionId())
 	}
 	return txs, nil
 }

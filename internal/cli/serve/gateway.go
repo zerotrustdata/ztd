@@ -221,7 +221,7 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 		}
 	}
 
-	// Export Actuator public key for receipt verification by evals harness
+	// Export Actuator public key for event receipt verification by evals harness
 	sm, err := svc.GetSecretManager()
 	if err != nil {
 		return fmt.Errorf("gateway: get secret manager: %w", err)
