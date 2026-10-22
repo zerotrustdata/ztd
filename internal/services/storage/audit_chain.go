@@ -220,7 +220,7 @@ func AppendPreparedAuditEvent(ctx context.Context, conn *sql.Conn, prepared Prep
 		sessionID = sql.NullString{String: prepared.Event.OperatorSessionID, Valid: true}
 	}
 
-	eventReceiptArgs, err := eventReceiptInsertArgs(prepared.Vault, rowID, prepared.EventReceipt)
+	receiptArgs, err := eventReceiptInsertArgs(prepared.Vault, rowID, prepared.EventReceipt)
 	if err != nil {
 		return 0, 0, "", err
 	}
@@ -258,7 +258,7 @@ func AppendPreparedAuditEvent(ctx context.Context, conn *sql.Conn, prepared Prep
 			contentDigest,
 			hash,
 			prepared.Event.TransactionID,
-		}, eventReceiptArgs...)...,
+		}, receiptArgs...)...,
 	)
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordEventFailed, err)

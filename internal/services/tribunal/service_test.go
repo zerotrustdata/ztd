@@ -31,7 +31,7 @@ const (
 // fakeMemberDispatcher answers each governed member dispatch the way
 // fakeInferer answers a deliberation call, routing on the system prompt, and
 // records every request in order. Each answered dispatch gets the transaction
-// id "txn-<n>" and an event receipt carrying it.
+// id "txn-<n>" and a receipt carrying it.
 type fakeMemberDispatcher struct {
 	generate   func(round uint32, member Member) string
 	marshal    string
@@ -44,17 +44,17 @@ type fakeMemberDispatcher struct {
 func (f *fakeMemberDispatcher) DispatchMember(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, *operatorv1.InferenceDispatchFailure) {
 	f.requests = append(f.requests, req)
 	txn := fmt.Sprintf("txn-%d", len(f.requests))
-	eventReceipt := &operatorv1.EventReceipt{TransactionId: txn}
+	receipt := &operatorv1.ActionReceipt{TransactionId: txn}
 	stage, answer := f.answer(req)
 	if f.fail != "" && stage == f.fail {
-		return nil, &operatorv1.InferenceDispatchFailure{Error: testFailureMessage, EventReceipt: eventReceipt}
+		return nil, &operatorv1.InferenceDispatchFailure{Error: testFailureMessage, Receipt: receipt}
 	}
 	return &operatorv1.InferenceDispatchResponse{
 		TransactionId: txn,
 		Result: &operatorv1.InferenceResult{Parts: []*operatorv1.InferenceResponsePart{
 			{Part: &operatorv1.InferenceResponsePart_Text{Text: answer}},
 		}},
-		EventReceipt: eventReceipt,
+		Receipt: receipt,
 	}, nil
 }
 
@@ -173,7 +173,7 @@ func TestDeliberateApproved(t *testing.T) {
 		assert.Equal(t, uint32(1), calls[i].GetRound())
 		txn := fmt.Sprintf("txn-%d", i+1)
 		assert.Equal(t, txn, calls[i].GetTransactionId())
-		assert.Equal(t, txn, calls[i].GetEventReceipt().GetTransactionId())
+		assert.Equal(t, txn, calls[i].GetReceipt().GetTransactionId())
 		assert.Nil(t, calls[i].GetFailure())
 	}
 	assert.True(t, proto.Equal(original, template), "member template must not be mutated")
@@ -199,7 +199,7 @@ func TestDeliberateMemberFailure(t *testing.T) {
 			assert.Equal(t, stage.Proto(), last.GetStage())
 			assert.Equal(t, dispatcher.requests[len(calls)-1].GetProviderAttemptId(), last.GetProviderAttemptId())
 			assert.Equal(t, testFailureMessage, last.GetFailure().GetError())
-			assert.Equal(t, fmt.Sprintf("txn-%d", len(calls)), last.GetEventReceipt().GetTransactionId())
+			assert.Equal(t, fmt.Sprintf("txn-%d", len(calls)), last.GetReceipt().GetTransactionId())
 			assert.Empty(t, last.GetTransactionId())
 		})
 	}

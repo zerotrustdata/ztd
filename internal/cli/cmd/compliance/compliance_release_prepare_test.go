@@ -155,7 +155,7 @@ func (f *releasePrepareFixture) flagValue(t *testing.T, call, flag string) strin
 // The schema carries only the columns the read-only snapshot queries. Content
 // columns hold ciphertext sealed by the fixture's runtime vault, as the runtime
 // writes them.
-func (f *releasePrepareFixture) seedRuntimeDatabase(t *testing.T, eventReceiptSigner, auditor string, eventReceiptsAt, commitmentsAt []time.Time) {
+func (f *releasePrepareFixture) seedRuntimeDatabase(t *testing.T, receiptSigner, auditor string, receiptsAt, commitmentsAt []time.Time) {
 	t.Helper()
 	fileSvc, err := fs.NewRuntimeFileService(f.projectRoot, testutil.NewTestLogger())
 	require.NoError(t, err)
@@ -173,13 +173,13 @@ func (f *releasePrepareFixture) seedRuntimeDatabase(t *testing.T, eventReceiptSi
 		CREATE TABLE events (seq INTEGER, prev_hash TEXT, hash TEXT, type TEXT, operator_session_id TEXT, timestamp TEXT, content_digest TEXT, transaction_id TEXT, content_text BLOB, command_raw BLOB, command_exit_code INTEGER, command_stdout BLOB, command_stderr BLOB, execution_duration_ms INTEGER, execution_id TEXT, event_receipt_status INTEGER, event_receipt_executed_at_ms INTEGER);
 	`)
 	require.NoError(t, err)
-	for index, executedAt := range eventReceiptsAt {
+	for index, executedAt := range receiptsAt {
 		transactionID := fmt.Sprintf("tx-%d", index)
-		body, marshalErr := compliancev1.MarshalCanonical(&operatorv1.EventReceipt{TransactionId: transactionID, SignerKeyId: eventReceiptSigner})
+		body, marshalErr := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{TransactionId: transactionID, SignerKeyId: receiptSigner})
 		require.NoError(t, marshalErr)
 		seq := int64(index + 1)
 		sealed := storagetest.EncryptEventContent(t, encryptionVault, seq, body)
-		_, err = db.Exec(`INSERT INTO events (seq, type, transaction_id, content_text, event_receipt_status, event_receipt_executed_at_ms) VALUES (?, ?, ?, ?, ?, ?)`, seq, string(constants.EventOperatorEventReceiptRecorded), transactionID, sealed, int64(operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED), executedAt.UnixMilli())
+		_, err = db.Exec(`INSERT INTO events (seq, type, transaction_id, content_text, event_receipt_status, event_receipt_executed_at_ms) VALUES (?, ?, ?, ?, ?, ?)`, seq, string(constants.EventOperatorReceiptRecorded), transactionID, sealed, int64(operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED), executedAt.UnixMilli())
 		require.NoError(t, err)
 	}
 	for index, committedAt := range commitmentsAt {
@@ -201,9 +201,9 @@ func releasePrepareSignerKey(t *testing.T) string {
 
 func TestRunReleasePrepare_DerivesInputsThenGeneratesExportsVerifiesAndProjectsInOrder(t *testing.T) {
 	fixture := newReleasePrepareFixture(t)
-	eventReceiptSigner, auditor := releasePrepareSignerKey(t), releasePrepareSignerKey(t)
+	receiptSigner, auditor := releasePrepareSignerKey(t), releasePrepareSignerKey(t)
 	commitAt := time.Date(2026, 9, 28, 2, 58, 52, 999_000_000, time.UTC)
-	fixture.seedRuntimeDatabase(t, eventReceiptSigner, auditor,
+	fixture.seedRuntimeDatabase(t, receiptSigner, auditor,
 		[]time.Time{commitAt.Add(-3 * time.Second), commitAt.Add(-time.Second)}, []time.Time{commitAt.Add(-2 * time.Second), commitAt})
 
 	var stdout, stderr bytes.Buffer
@@ -237,7 +237,7 @@ func TestRunReleasePrepare_DerivesInputsThenGeneratesExportsVerifiesAndProjectsI
 	for _, key := range evidenceTrust.GetTrustedKeys() {
 		trusted = append(trusted, key.GetKeyId())
 	}
-	assert.ElementsMatch(t, []string{eventReceiptSigner, auditor}, trusted, "source trust covers exactly the signers present in the exported evidence")
+	assert.ElementsMatch(t, []string{receiptSigner, auditor}, trusted, "source trust covers exactly the signers present in the exported evidence")
 
 	assert.Equal(t, constants.ComplianceBundleProfilePublic, fixture.flagValue(t, "generate", "--profile"))
 	assert.Equal(t, filepath.Join(workDir, constants.ComplianceReleaseScopeFilename), fixture.flagValue(t, "generate", "--scope"))
@@ -271,7 +271,7 @@ func TestRunReleasePrepare_StopsBeforeProjectionWhenVerificationFails(t *testing
 	assert.NotContains(t, fixture.calls, "project", "an unverified bundle must never be projected into the release notes")
 }
 
-func TestRunReleasePrepare_RejectsWindowWithoutEventReceiptsBeforeGenerating(t *testing.T) {
+func TestRunReleasePrepare_RejectsWindowWithoutReceiptsBeforeGenerating(t *testing.T) {
 	fixture := newReleasePrepareFixture(t)
 	commitAt := time.Date(2026, 9, 28, 2, 58, 52, 0, time.UTC)
 	fixture.seedRuntimeDatabase(t, releasePrepareSignerKey(t), releasePrepareSignerKey(t), []time.Time{commitAt.Add(-time.Hour)}, []time.Time{commitAt})

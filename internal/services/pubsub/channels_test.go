@@ -77,24 +77,24 @@ func TestHeartbeatChannel(t *testing.T) {
 	})
 }
 
-func TestEventReceiptsChannel(t *testing.T) {
+func TestReceiptsChannel(t *testing.T) {
 	t.Parallel()
 	t.Run("formats channel with operator ID and session ID", func(t *testing.T) {
 		t.Parallel()
-		ch := EventReceiptsChannel("op-1", "session-1")
-		assert.Equal(t, "event_receipts:op-1:session-1", ch)
+		ch := ReceiptsChannel("op-1", "session-1")
+		assert.Equal(t, "receipts:op-1:session-1", ch)
 	})
 
 	t.Run("formats with empty strings", func(t *testing.T) {
 		t.Parallel()
-		ch := EventReceiptsChannel("", "")
-		assert.Equal(t, "event_receipts::", ch)
+		ch := ReceiptsChannel("", "")
+		assert.Equal(t, "receipts::", ch)
 	})
 
 	t.Run("uses correct prefix", func(t *testing.T) {
 		t.Parallel()
-		ch := EventReceiptsChannel("op-1", "session-1")
-		assert.Contains(t, ch, constants.ChannelPrefixEventReceipts)
+		ch := ReceiptsChannel("op-1", "session-1")
+		assert.Contains(t, ch, constants.ChannelPrefixReceipts)
 	})
 }
 
@@ -111,7 +111,7 @@ func TestChannelsAreDistinct(t *testing.T) {
 		CmdChannel(opID, sessionID),
 		ResultsChannel(opID, sessionID),
 		HeartbeatChannel(opID, sessionID),
-		EventReceiptsChannel(opID, sessionID),
+		ReceiptsChannel(opID, sessionID),
 		RenewalChannel(opID, sessionID),
 	}
 

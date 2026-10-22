@@ -19,7 +19,7 @@
     "ComplianceBundleEvalManifestsFilename": {"_go_const": "ComplianceBundleEvalManifestsFilename", "value": "manifests.jsonl"},
     "ComplianceBundleEvalTasksFilename": {"_go_const": "ComplianceBundleEvalTasksFilename", "value": "tasks.jsonl"},
     "ComplianceBundleEvalAttemptsFilename": {"_go_const": "ComplianceBundleEvalAttemptsFilename", "value": "attempts.jsonl"},
-    "ComplianceBundleEvalEventReceiptsFilename": {"_go_const": "ComplianceBundleEvalEventReceiptsFilename", "value": "event_receipts.jsonl"},
+    "ComplianceBundleEvalReceiptsFilename": {"_go_const": "ComplianceBundleEvalReceiptsFilename", "value": "receipts.jsonl"},
     "ComplianceBundleEvalStagesFilename": {"_go_const": "ComplianceBundleEvalStagesFilename", "value": "stages.jsonl"},
     "ComplianceBundleEvalMetricsFilename": {"_go_const": "ComplianceBundleEvalMetricsFilename", "value": "metrics.jsonl"},
     "ComplianceBundleEvalStateFilename": {"_go_const": "ComplianceBundleEvalStateFilename", "value": "state-observations.jsonl"},

@@ -22,7 +22,7 @@ var deterministicStageOrder = []operatorv1.DeterministicStageKind{
 	operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2,
 	operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY,
 	operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION,
-	operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE,
+	operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE,
 	operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND,
 	operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION,
 }
@@ -46,8 +46,8 @@ type DeterministicProtocolChain struct {
 	ContentReference string
 }
 
-func ValidateDeterministicProtocolChain(eventReceipt *operatorv1.EventReceipt) (*DeterministicProtocolChain, error) {
-	stages, err := NormalizeDeterministicStages(eventReceipt)
+func ValidateDeterministicProtocolChain(receipt *operatorv1.ActionReceipt) (*DeterministicProtocolChain, error) {
+	stages, err := NormalizeDeterministicStages(receipt)
 	if err != nil {
 		return nil, err
 	}
@@ -62,15 +62,15 @@ func ValidateDeterministicProtocolChain(eventReceipt *operatorv1.EventReceipt) (
 	if failure := validateDeterministicIdentityConsistency(stages); failure != "" {
 		return nil, fmt.Errorf("%w: %s", constants.ErrInvalidEvidenceGraph, failure)
 	}
-	if failure := validateDeterministicPostureStageOutcomes(stagesByKind, eventReceipt); failure != "" {
+	if failure := validateDeterministicPostureStageOutcomes(stagesByKind, receipt); failure != "" {
 		return nil, fmt.Errorf("%w: %s", constants.ErrInvalidEvidenceGraph, failure)
 	}
 	var failure string
 	switch l4.GetOutcome() {
 	case operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED:
-		failure = validateVerifiedDeterministicChain(eventReceipt, stagesByKind)
+		failure = validateVerifiedDeterministicChain(receipt, stagesByKind)
 	case operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED:
-		failure = validateRejectedDeterministicChain(eventReceipt, stages)
+		failure = validateRejectedDeterministicChain(receipt, stages)
 	default:
 		failure = "L4 verification stage has an invalid outcome"
 	}
@@ -84,15 +84,15 @@ func ValidateDeterministicProtocolChain(eventReceipt *operatorv1.EventReceipt) (
 	return &DeterministicProtocolChain{Stages: stages, StagesByKind: stagesByKind, L4: l4, ContentReference: contentReference}, nil
 }
 
-func NormalizeDeterministicStages(eventReceipt *operatorv1.EventReceipt) ([]*operatorv1.DeterministicStageEvidence, error) {
-	if eventReceipt == nil {
-		return nil, fmt.Errorf("%w: event receipt is nil", constants.ErrInvalidEvidenceGraph)
+func NormalizeDeterministicStages(receipt *operatorv1.ActionReceipt) ([]*operatorv1.DeterministicStageEvidence, error) {
+	if receipt == nil {
+		return nil, fmt.Errorf("%w: receipt is nil", constants.ErrInvalidEvidenceGraph)
 	}
-	stages := eventReceipt.GetDeterministicStageEvidence()
+	stages := receipt.GetDeterministicStageEvidence()
 	if len(stages) == 0 {
 		return nil, fmt.Errorf("%w: deterministic stage evidence is missing", constants.ErrInvalidEvidenceGraph)
 	}
-	if _, err := DeterministicStageActionType(eventReceipt); err != nil {
+	if _, err := DeterministicStageActionType(receipt); err != nil {
 		return nil, fmt.Errorf("%w: %v", constants.ErrInvalidEvidenceGraph, err)
 	}
 	seenIDs := make(map[string]struct{}, len(stages))
@@ -105,8 +105,8 @@ func NormalizeDeterministicStages(eventReceipt *operatorv1.EventReceipt) ([]*ope
 			return nil, fmt.Errorf("%w: duplicate deterministic stage_id %s", constants.ErrInvalidEvidenceGraph, stage.GetStageId())
 		}
 		seenIDs[stage.GetStageId()] = struct{}{}
-		if stage.GetTransactionId() != eventReceipt.GetTransactionId() || stage.GetTransactionHash() != eventReceipt.GetTransactionHash() {
-			return nil, fmt.Errorf("%w: deterministic stage %s transaction does not match event receipt", constants.ErrInvalidEvidenceGraph, stage.GetStageId())
+		if stage.GetTransactionId() != receipt.GetTransactionId() || stage.GetTransactionHash() != receipt.GetTransactionHash() {
+			return nil, fmt.Errorf("%w: deterministic stage %s transaction does not match receipt", constants.ErrInvalidEvidenceGraph, stage.GetStageId())
 		}
 		kind := stage.GetKind()
 		if deterministicStageKindIndex(kind) < 0 {
@@ -155,7 +155,7 @@ func deterministicStageKindIndex(kind operatorv1.DeterministicStageKind) int {
 	return -1
 }
 
-func validateVerifiedDeterministicChain(eventReceipt *operatorv1.EventReceipt, stagesByKind map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence) string {
+func validateVerifiedDeterministicChain(receipt *operatorv1.ActionReceipt, stagesByKind map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence) string {
 	for _, kind := range deterministicStageOrder {
 		if stagesByKind[kind] == nil {
 			return "verified protocol chain is missing required stages"
@@ -164,38 +164,38 @@ func validateVerifiedDeterministicChain(eventReceipt *operatorv1.EventReceipt, s
 	if stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE].GetOutcome() != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED {
 		return "L1 doctrine stage is not verified"
 	}
-	if stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE].GetOutcome() != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED {
-		return "event_receipt-persistence stage is not completed"
+	if stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE].GetOutcome() != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED {
+		return "receipt-persistence stage is not completed"
 	}
 	if stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND].GetOutcome() != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED {
 		return "commitment-append stage is not completed"
 	}
 	l5 := stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION]
 	var expectedOutcome operatorv1.DeterministicStageOutcome
-	switch eventReceipt.GetStatus() {
+	switch receipt.GetStatus() {
 	case operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED:
 		expectedOutcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED
 	case operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED:
 		expectedOutcome = operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
 	default:
-		return "L5 execution outcome does not match the signed event receipt status"
+		return "L5 execution outcome does not match the signed receipt status"
 	}
 	if l5.GetOutcome() != expectedOutcome {
-		return "L5 execution outcome does not match the signed event receipt status"
+		return "L5 execution outcome does not match the signed receipt status"
 	}
-	if l5.GetStateRootBefore() != eventReceipt.GetStateRootBefore() || l5.GetStateRootAfter() != eventReceipt.GetStateRootAfter() {
-		return "L5 execution state roots do not match the signed event receipt"
+	if l5.GetStateRootBefore() != receipt.GetStateRootBefore() || l5.GetStateRootAfter() != receipt.GetStateRootAfter() {
+		return "L5 execution state roots do not match the signed receipt"
 	}
 	l4ID := stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION].GetStageId()
 	l5ID := l5.GetStageId()
 	expectedParents := map[operatorv1.DeterministicStageKind]string{
-		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE:               l4ID,
-		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2:               l4ID,
-		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY:                 l4ID,
-		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION:           l5ID,
-		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE: l5ID,
-		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND:         l5ID,
-		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION:              "",
+		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE:         l4ID,
+		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2:         l4ID,
+		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY:           l4ID,
+		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION:     l5ID,
+		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE: l5ID,
+		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND:   l5ID,
+		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION:        "",
 	}
 	for kind, parentID := range expectedParents {
 		if stagesByKind[kind].GetParentStageId() != parentID {
@@ -205,9 +205,9 @@ func validateVerifiedDeterministicChain(eventReceipt *operatorv1.EventReceipt, s
 	return ""
 }
 
-func validateRejectedDeterministicChain(eventReceipt *operatorv1.EventReceipt, stages []*operatorv1.DeterministicStageEvidence) string {
-	if eventReceipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
-		return "rejected protocol chain does not have a failed event receipt status"
+func validateRejectedDeterministicChain(receipt *operatorv1.ActionReceipt, stages []*operatorv1.DeterministicStageEvidence) string {
+	if receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
+		return "rejected protocol chain does not have a failed receipt status"
 	}
 	allowedPrefixes := [][]operatorv1.DeterministicStageKind{
 		{},
@@ -233,8 +233,8 @@ func validateRejectedDeterministicChain(eventReceipt *operatorv1.EventReceipt, s
 	}
 	expectedOutcomes := map[operatorv1.DeterministicStageKind]operatorv1.DeterministicStageOutcome{
 		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED,
-		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2: deterministicL2StatusOutcome[eventReceipt.GetL2Status()],
-		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY:   deterministicL3StatusOutcome[eventReceipt.GetL3Status()],
+		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2: deterministicL2StatusOutcome[receipt.GetL2Status()],
+		operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY:   deterministicL3StatusOutcome[receipt.GetL3Status()],
 	}
 	completedPrerequisites := stages[:len(stages)-1]
 	if len(failedPrerequisites) > 0 {
@@ -282,12 +282,12 @@ func validateDeterministicIdentityConsistency(stages []*operatorv1.Deterministic
 	return ""
 }
 
-func validateDeterministicPostureStageOutcomes(stagesByKind map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, eventReceipt *operatorv1.EventReceipt) string {
-	if stage := stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2]; stage != nil && stage.GetOutcome() != deterministicL2StatusOutcome[eventReceipt.GetL2Status()] {
-		return "L2 stage outcome does not match the signed event receipt status"
+func validateDeterministicPostureStageOutcomes(stagesByKind map[operatorv1.DeterministicStageKind]*operatorv1.DeterministicStageEvidence, receipt *operatorv1.ActionReceipt) string {
+	if stage := stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2]; stage != nil && stage.GetOutcome() != deterministicL2StatusOutcome[receipt.GetL2Status()] {
+		return "L2 stage outcome does not match the signed receipt status"
 	}
-	if stage := stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY]; stage != nil && stage.GetOutcome() != deterministicL3StatusOutcome[eventReceipt.GetL3Status()] {
-		return "L3 stage outcome does not match the signed event receipt status"
+	if stage := stagesByKind[operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY]; stage != nil && stage.GetOutcome() != deterministicL3StatusOutcome[receipt.GetL3Status()] {
+		return "L3 stage outcome does not match the signed receipt status"
 	}
 	return ""
 }

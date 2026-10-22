@@ -52,7 +52,7 @@ var wireEnums = []protoreflect.EnumDescriptor{
 	evalv1.EvaluationLoadState(0).Descriptor(),
 	evalv1.EvaluationUsageAvailability(0).Descriptor(),
 	evalv1.EvaluationPolicyDecisionOutcome(0).Descriptor(),
-	evalv1.PublicEventReceiptStatus(0).Descriptor(),
+	evalv1.PublicReceiptStatus(0).Descriptor(),
 	evalv1.PublicEvidenceSource(0).Descriptor(),
 	evalv1.PublicGradeExplanationCode(0).Descriptor(),
 	evalv1.EvaluationTrajectoryPolicy(0).Descriptor(),

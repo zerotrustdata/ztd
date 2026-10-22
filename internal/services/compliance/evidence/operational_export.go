@@ -60,7 +60,7 @@ type OperationalSourceInventory struct {
 	VerifierVersion              string                      `json:"verifier_version"`
 	WindowStartUTC               string                      `json:"window_start_utc"`
 	WindowEndUTC                 string                      `json:"window_end_utc"`
-	EventReceiptCount            int                         `json:"event_receipt_count"`
+	ReceiptCount                 int                         `json:"receipt_count"`
 	CommitmentCount              int                         `json:"commitment_count"`
 	PersistenceCount             int                         `json:"persistence_count"`
 	CommitmentFirstSequence      int64                       `json:"commitment_first_sequence,omitempty"`
@@ -98,7 +98,7 @@ func ExportOperationalEvidence(ctx context.Context, snapshot *storage.Operationa
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(snapshot.EventReceipts) > request.MaxRows || len(snapshot.Commitments) > request.MaxRows || len(snapshot.AuditChain) > request.MaxRows {
+	if len(snapshot.Receipts) > request.MaxRows || len(snapshot.Commitments) > request.MaxRows || len(snapshot.AuditChain) > request.MaxRows {
 		return nil, fmt.Errorf("%w: operational export exceeds row bound %d", constants.ErrEvidenceArtifactTooLarge, request.MaxRows)
 	}
 	if err := os.MkdirAll(request.OutputDir, constants.PermDirPrivate); err != nil {
@@ -119,39 +119,39 @@ func ExportOperationalEvidence(ctx context.Context, snapshot *storage.Operationa
 		VerifierVersion:      request.VerifierVersion,
 		WindowStartUTC:       request.WindowStart.UTC().Format(time.RFC3339Nano),
 		WindowEndUTC:         request.WindowEnd.UTC().Format(time.RFC3339Nano),
-		EventReceiptCount:    len(snapshot.EventReceipts),
+		ReceiptCount:         len(snapshot.Receipts),
 		CommitmentCount:      len(snapshot.Commitments),
 		AuditChainCount:      len(snapshot.AuditChain),
-		Artifacts:            make([]OperationalExportArtifact, 0, len(snapshot.EventReceipts)+len(snapshot.Commitments)+len(snapshot.AuditChain)),
+		Artifacts:            make([]OperationalExportArtifact, 0, len(snapshot.Receipts)+len(snapshot.Commitments)+len(snapshot.AuditChain)),
 	}
-	for _, eventReceipt := range snapshot.EventReceipts {
+	for _, receipt := range snapshot.Receipts {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		artifact, err := writeOperationalArtifact(request.OutputDir, constants.ComplianceOperationalEventReceiptsDirname, ArtifactTypeEventReceipt, eventReceipt.TransactionID, 0, eventReceipt.ExecutedAt, eventReceipt.Body)
+		artifact, err := writeOperationalArtifact(request.OutputDir, constants.ComplianceOperationalReceiptsDirname, ArtifactTypeActionReceipt, receipt.TransactionID, 0, receipt.ExecutedAt, receipt.Body)
 		if err != nil {
 			return nil, err
 		}
 		inventory.Artifacts = append(inventory.Artifacts, artifact)
-		if len(eventReceipt.Body) == 0 {
-			inventory.Limitations = append(inventory.Limitations, fmt.Sprintf("event receipt %s has no canonical body", eventReceipt.TransactionID))
+		if len(receipt.Body) == 0 {
+			inventory.Limitations = append(inventory.Limitations, fmt.Sprintf("receipt %s has no canonical body", receipt.TransactionID))
 			continue
 		}
-		eventReceiptMessage := &operatorv1.EventReceipt{}
-		if err := compliancev1.UnmarshalCanonical(eventReceipt.Body, eventReceiptMessage); err != nil {
-			inventory.Limitations = append(inventory.Limitations, fmt.Sprintf("event receipt %s could not yield persistence evidence: %v", eventReceipt.TransactionID, err))
+		receiptMessage := &operatorv1.ActionReceipt{}
+		if err := compliancev1.UnmarshalCanonical(receipt.Body, receiptMessage); err != nil {
+			inventory.Limitations = append(inventory.Limitations, fmt.Sprintf("receipt %s could not yield persistence evidence: %v", receipt.TransactionID, err))
 			continue
 		}
-		attestation := eventReceiptMessage.GetFinalPersistenceAttestation()
+		attestation := receiptMessage.GetFinalPersistenceAttestation()
 		if attestation == nil {
-			inventory.Limitations = append(inventory.Limitations, fmt.Sprintf("event receipt %s has no final persistence attestation", eventReceipt.TransactionID))
+			inventory.Limitations = append(inventory.Limitations, fmt.Sprintf("receipt %s has no final persistence attestation", receipt.TransactionID))
 			continue
 		}
 		body, err := compliancev1.MarshalCanonical(attestation)
 		if err != nil {
-			return nil, fmt.Errorf("operational export: canonicalize persistence attestation %s: %w", eventReceipt.TransactionID, err)
+			return nil, fmt.Errorf("operational export: canonicalize persistence attestation %s: %w", receipt.TransactionID, err)
 		}
-		persistenceArtifact, err := writeOperationalArtifact(request.OutputDir, constants.ComplianceOperationalPersistenceDirname, ArtifactTypeEventReceiptPersistence, eventReceipt.TransactionID, 0, time.UnixMilli(attestation.GetPersistedAtUnixMs()), body)
+		persistenceArtifact, err := writeOperationalArtifact(request.OutputDir, constants.ComplianceOperationalPersistenceDirname, ArtifactTypeReceiptPersistence, receipt.TransactionID, 0, time.UnixMilli(attestation.GetPersistedAtUnixMs()), body)
 		if err != nil {
 			return nil, err
 		}

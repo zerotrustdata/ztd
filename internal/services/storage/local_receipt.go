@@ -20,43 +20,43 @@ import (
 )
 
 // ReadLocalEventReceipt opens one runtime's canonical audit database through
-// fileSvc and returns the signed event receipt that runtime recorded for
+// fileSvc and returns the signed receipt that runtime recorded for
 // transactionID, decrypted with the runtime's own vault key from the key store
 // opts selects (zero Options select the OS key store). It reads only the local, authoritative store and
-// never consults a Gateway mirror. It returns nil, nil when no event receipt exists.
+// never consults a Gateway mirror. It returns nil, nil when no receipt exists.
 func ReadLocalEventReceipt(fileSvc fs.RuntimeFileService, logger *slog.Logger, opts keystore.Options, transactionID string) (*models.EventReceiptRecord, error) {
 	if fileSvc == nil {
-		return nil, fmt.Errorf("local event_receipt: file service: %w", constants.ErrMissingRequiredField)
+		return nil, fmt.Errorf("local receipt: file service: %w", constants.ErrMissingRequiredField)
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	ks, err := keystore.Open(fileSvc, logger, opts)
 	if err != nil {
-		return nil, fmt.Errorf("local event_receipt: open runtime keystore: %w", err)
+		return nil, fmt.Errorf("local receipt: open runtime keystore: %w", err)
 	}
 	key, err := ks.LoadVaultKey()
 	if err != nil {
-		return nil, fmt.Errorf("local event_receipt: %w: %w", constants.ErrVaultKeyReadFailed, err)
+		return nil, fmt.Errorf("local receipt: %w: %w", constants.ErrVaultKeyReadFailed, err)
 	}
 	defer vault.SecureZero(key)
 	v, err := vault.NewVault(&vault.VaultConfig{FileSvc: fileSvc, Logger: logger})
 	if err != nil {
-		return nil, fmt.Errorf("local event_receipt: %w", err)
+		return nil, fmt.Errorf("local receipt: %w", err)
 	}
 	if err := v.Unlock(key); err != nil {
-		return nil, fmt.Errorf("local event_receipt: unlock vault: %w", err)
+		return nil, fmt.Errorf("local receipt: unlock vault: %w", err)
 	}
 	db, err := sqliteutil.OpenDB(sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), logger)
 	if err != nil {
-		return nil, fmt.Errorf("local event_receipt: %w", err)
+		return nil, fmt.Errorf("local receipt: %w", err)
 	}
 	defer db.Close()
 	cfg := DefaultAuditStoreConfig()
 	cfg.EncryptionVault = v
 	store, err := NewSQLAuditStore(cfg, db, logger, fileSvc)
 	if err != nil {
-		return nil, fmt.Errorf("local event_receipt: %w", err)
+		return nil, fmt.Errorf("local receipt: %w", err)
 	}
 	defer store.Close()
 	return store.GetEventReceipt(transactionID)

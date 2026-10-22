@@ -316,11 +316,11 @@ func TestBundleVerifier_VerifyOperationalSourcesReplaysProtectedInventory(t *tes
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	signerKeyID := hex.EncodeToString(publicKey)
-	eventReceipt := &operatorv1.EventReceipt{TransactionId: "transaction-1", TransactionHash: "hash-1", SignerKeyId: signerKeyID, ExecutedAtUnixMs: assessmentAsOf.Add(-time.Minute).UnixMilli()}
-	payload, err := governance.CanonicalizeEventReceipt(eventReceipt)
+	receipt := &operatorv1.ActionReceipt{TransactionId: "transaction-1", TransactionHash: "hash-1", SignerKeyId: signerKeyID, ExecutedAtUnixMs: assessmentAsOf.Add(-time.Minute).UnixMilli()}
+	payload, err := governance.CanonicalizeActionReceipt(receipt)
 	require.NoError(t, err)
-	eventReceipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
-	eventReceiptBody, err := compliancev1.MarshalCanonical(eventReceipt)
+	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
+	receiptBody, err := compliancev1.MarshalCanonical(receipt)
 	require.NoError(t, err)
 	scope := validGenerationScope(assessmentAsOf.Add(-time.Hour), assessmentAsOf)
 	scope.AssessmentAsOf = timestamppb.New(assessmentAsOf)
@@ -332,7 +332,7 @@ func TestBundleVerifier_VerifyOperationalSourcesReplaysProtectedInventory(t *tes
 	admission.AcquisitionBoundary = "operator-local-export"
 	admission.RunId = "run-1"
 	sourceDir := testutil.TempDir(t)
-	_, err = evidence.ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{EventReceipts: []storage.OperationalEventReceiptSource{{TransactionID: eventReceipt.GetTransactionId(), ExecutedAt: time.UnixMilli(eventReceipt.GetExecutedAtUnixMs()), Body: eventReceiptBody}}}, evidence.OperationalExportRequest{
+	_, err = evidence.ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{Receipts: []storage.OperationalReceiptSource{{TransactionID: receipt.GetTransactionId(), ExecutedAt: time.UnixMilli(receipt.GetExecutedAtUnixMs()), Body: receiptBody}}}, evidence.OperationalExportRequest{
 		ScopeID:              scope.GetScopeId(),
 		AdmissionID:          admission.GetAdmissionId(),
 		SourceKind:           admission.GetSourceKind(),
@@ -426,24 +426,24 @@ func operationalReplaySourceFixture(t *testing.T, admission *compliancev1.Assess
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	signerKeyID := hex.EncodeToString(publicKey)
-	eventReceipt := &operatorv1.EventReceipt{
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:    "transaction-1",
 		TransactionHash:  "hash-1",
 		SignerKeyId:      signerKeyID,
 		ExecutedAtUnixMs: assessmentAsOf.Add(-time.Minute).UnixMilli(),
 	}
-	payload, err := governance.CanonicalizeEventReceipt(eventReceipt)
+	payload, err := governance.CanonicalizeActionReceipt(receipt)
 	require.NoError(t, err)
-	eventReceipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
-	eventReceiptBody, err := compliancev1.MarshalCanonical(eventReceipt)
+	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
+	receiptBody, err := compliancev1.MarshalCanonical(receipt)
 	require.NoError(t, err)
 
 	sourceDir := testutil.TempDir(t)
 	_, err = evidence.ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
-		EventReceipts: []storage.OperationalEventReceiptSource{{
-			TransactionID: eventReceipt.GetTransactionId(),
-			ExecutedAt:    time.UnixMilli(eventReceipt.GetExecutedAtUnixMs()),
-			Body:          eventReceiptBody,
+		Receipts: []storage.OperationalReceiptSource{{
+			TransactionID: receipt.GetTransactionId(),
+			ExecutedAt:    time.UnixMilli(receipt.GetExecutedAtUnixMs()),
+			Body:          receiptBody,
 		}},
 	}, evidence.OperationalExportRequest{
 		ScopeID:              scope.GetScopeId(),

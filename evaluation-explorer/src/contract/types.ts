@@ -81,8 +81,8 @@ export type PublicSemanticOutcome = (typeof PUBLIC_SEMANTIC_OUTCOMES)[number];
 export const PUBLIC_REPORTED_POLICY_OUTCOMES = ['allow', 'deny', 'refused'] as const;
 export type PublicReportedPolicyOutcome = (typeof PUBLIC_REPORTED_POLICY_OUTCOMES)[number];
 
-export const PUBLIC_EVENT_RECEIPT_STATUSES = ['unavailable', 'reported'] as const;
-export type PublicEventReceiptStatus = (typeof PUBLIC_EVENT_RECEIPT_STATUSES)[number];
+export const PUBLIC_RECEIPT_STATUSES = ['unavailable', 'reported'] as const;
+export type PublicReceiptStatus = (typeof PUBLIC_RECEIPT_STATUSES)[number];
 
 /** How the grader reads a scenario's tool trajectory. */
 export const PUBLIC_TRAJECTORY_POLICIES = ['answer', 'first_choice', 'guided', 'governed'] as const;
@@ -242,7 +242,7 @@ export const REPEATABILITY_CLASSES = [
 export type RepeatabilityClass = (typeof REPEATABILITY_CLASSES)[number];
 
 /** Canonical verifier disposition for a suite or run. `not_applicable`
- *  covers historical ungoverned-arm runs where event receipt coverage does not apply. */
+ *  covers historical ungoverned-arm runs where receipt coverage does not apply. */
 export const VERIFIER_STATES = [
   'not_run',
   'passed',
@@ -661,10 +661,10 @@ export interface PublicPolicyDecisionActivityRecord {
 }
 
 export interface PublicGovernedActionActivityRecord {
-  /** The registry action type the signed event receipt names (INFERENCE, FS_READ, FILE_EDIT, ...). */
+  /** The registry action type the signed receipt names (INFERENCE, FS_READ, FILE_EDIT, ...). */
   action_label: string;
   reported_policy_outcome: PublicReportedPolicyOutcome;
-  event_receipt_status: PublicEventReceiptStatus;
+  receipt_status: PublicReceiptStatus;
   evidence_source: PublicActivityEvidenceSource;
 }
 

@@ -50,7 +50,7 @@ func TestOperatorRun_ExecutesThroughGovernedPipeline(t *testing.T) {
 	// Audit client over the same production CLI transport the command uses.
 	auditClient, err := defaultOperatorRunClientFactory(fileSvc, cliCfg, api.ClientOptions{})
 	require.NoError(t, err)
-	before := countExecutedBashEventReceipts(t, auditClient, identity.OperatorSessionID)
+	before := countExecutedBashReceipts(t, auditClient, identity.OperatorSessionID)
 
 	cmd := operatorRunCmdWithConfig(cmdtest.ConfigLoaderFor(cliCfg), defaultOperatorRunClientFactory, cmdtest.FileSvcFactoryFor(fileSvc))
 	var out bytes.Buffer
@@ -62,22 +62,22 @@ func TestOperatorRun_ExecutesThroughGovernedPipeline(t *testing.T) {
 	assert.Contains(t, out.String(), "ztd-operator-run-it")
 	assert.Contains(t, out.String(), identity.OperatorSessionID)
 
-	after := countExecutedBashEventReceipts(t, auditClient, identity.OperatorSessionID)
-	assert.Greater(t, after, before, "governed EXECUTE_BASH must append a COMPLETED action event receipt for the embedded operator session")
+	after := countExecutedBashReceipts(t, auditClient, identity.OperatorSessionID)
+	assert.Greater(t, after, before, "governed EXECUTE_BASH must append a COMPLETED action receipt for the embedded operator session")
 }
 
-// countExecutedBashEventReceipts counts COMPLETED EXECUTE_BASH event receipts recorded for
-// operatorSessionID through the Gateway audit event receipts endpoint.
-func countExecutedBashEventReceipts(t *testing.T, client authcmd.APIClient, operatorSessionID string) int {
+// countExecutedBashReceipts counts COMPLETED EXECUTE_BASH receipts recorded for
+// operatorSessionID through the Gateway audit receipts endpoint.
+func countExecutedBashReceipts(t *testing.T, client authcmd.APIClient, operatorSessionID string) int {
 	t.Helper()
 	raw, err := client.Get(constants.APIPaths.AuditEventReceipts + "?operator_session_id=" + url.QueryEscape(operatorSessionID) + "&limit=500")
 	require.NoError(t, err)
 	var resp models.AuditEventReceiptsResponse
 	require.NoError(t, json.Unmarshal(raw, &resp))
-	require.True(t, resp.Success, "audit event receipts response must report success")
+	require.True(t, resp.Success, "audit receipts response must report success")
 	count := 0
-	for _, eventReceipt := range resp.EventReceipts {
-		if eventReceipt.ActionType == constants.ActionTypeExecuteBash && eventReceipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+	for _, receipt := range resp.EventReceipts {
+		if receipt.ActionType == constants.ActionTypeExecuteBash && receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 			count++
 		}
 	}

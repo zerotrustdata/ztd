@@ -36,10 +36,10 @@ import (
 // governance actions through the canonical L4/L5 gauntlet. Each handler
 // decodes the PlatformEnrollmentGovernancePayload from the envelope
 // payload, performs the typed mutation against the document store (or
-// delegates to a session service), and returns an event receipt summary string
-// that the L5Actuator stamps into the signed final event receipt.
+// delegates to a session service), and returns a receipt summary string
+// that the L5Actuator stamps into the signed final receipt.
 //
-// Event receipt summaries contain only public identifiers and attribution
+// Receipt summaries contain only public identifiers and attribution
 // metadata: request ID, component kind, instance ID, fingerprints,
 // decision, actor user ID, and resulting document/session IDs. CSR PEM,
 // token hashes, and private keys never appear in summaries or audit
@@ -49,7 +49,7 @@ type platformEnrollmentCompletionUpdate struct {
 	Issued                 *models.PlatformEnrollmentCompleteResponse `json:"issued"`
 	CompletedAt            time.Time                                  `json:"completed_at"`
 	IssuanceEnvelopeID     string                                     `json:"issuance_envelope_id"`
-	IssuanceEventReceiptID string                                     `json:"issuance_event_receipt_id"`
+	IssuanceReceiptID      string                                     `json:"issuance_receipt_id"`
 	CertificateSerial      string                                     `json:"certificate_serial"`
 	CertificateFingerprint string                                     `json:"certificate_fingerprint"`
 	OperatorID             string                                     `json:"operator_id,omitempty"`
@@ -58,11 +58,11 @@ type platformEnrollmentCompletionUpdate struct {
 }
 
 type platformEnrollmentRevocationUpdate struct {
-	RevokedAt                time.Time `json:"revoked_at"`
-	RevokedByUserID          string    `json:"revoked_by_user_id"`
-	RevocationReason         string    `json:"revocation_reason"`
-	RevocationEnvelopeID     string    `json:"revocation_envelope_id"`
-	RevocationEventReceiptID string    `json:"revocation_event_receipt_id"`
+	RevokedAt            time.Time `json:"revoked_at"`
+	RevokedByUserID      string    `json:"revoked_by_user_id"`
+	RevocationReason     string    `json:"revocation_reason"`
+	RevocationEnvelopeID string    `json:"revocation_envelope_id"`
+	RevocationReceiptID  string    `json:"revocation_receipt_id"`
 }
 
 type platformOperatorTerminationUpdate struct {
@@ -129,7 +129,7 @@ func protoDecision(d commonv1.PlatformEnrollmentDecision) (models.PlatformEnroll
 // writes the pending request document directly via DocSet before
 // submitting this envelope (CREATE is classified as non-mutation in
 // IsMutation, so invariant 17 does not apply to that initial write).
-// This handler decodes the payload, returns an event receipt summary, and
+// This handler decodes the payload, returns a receipt summary, and
 // writes nothing to the doc store.
 func (h *PlatformEnrollmentHandler) HandleCreate(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	if err := ctx.Err(); err != nil {
@@ -185,8 +185,8 @@ func (h *PlatformEnrollmentHandler) HandleDecide(ctx context.Context, msg *PubSu
 // approved -> issuing before submitting this envelope), reads the CSR
 // PEM from the stored document, calls the PKI signer, stores the issued
 // cert material and generated IDs, and performs the issuing -> completed
-// transition. The envelope/event-receipt ID (msg.ID) is stamped as
-// issuance_envelope_id and issuance_event_receipt_id. Operator issuance signs
+// transition. The envelope/receipt ID (msg.ID) is stamped as
+// issuance_envelope_id and issuance_receipt_id. Operator issuance signs
 // both the operator and CLI CSRs and persists the operator document;
 // app issuance uses SignPlatformAppCSR for the dual-SAN app certificate.
 func (h *PlatformEnrollmentHandler) HandleIssue(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
@@ -248,7 +248,7 @@ func (h *PlatformEnrollmentHandler) HandleIssue(ctx context.Context, msg *PubSub
 		Issued:                 issued,
 		CompletedAt:            time.Now().UTC(),
 		IssuanceEnvelopeID:     msg.ID,
-		IssuanceEventReceiptID: msg.ID,
+		IssuanceReceiptID:      msg.ID,
 		CertificateSerial:      certSerial,
 		CertificateFingerprint: certFingerprint,
 		OperatorID:             operatorID,
@@ -399,8 +399,8 @@ func (h *PlatformEnrollmentHandler) signOperatorComponent(ctx context.Context, r
 		OperatorSessionId: operatorSessionID,
 		OperatorType:      string(constants.OperatorTypeRemote),
 		SystemFingerprint: req.SystemFingerprint,
-		// The Actuator key bound at enrollment. Event receipts from this Operator
-		// verify against it alone (SignerStoreService.EventReceiptSignerKey in the Gateway).
+		// The Actuator key bound at enrollment. Receipts from this Operator
+		// verify against it alone (SignerStoreService.ReceiptSignerKey in the Gateway).
 		ActuatorPublicKey: actuatorKeyHex,
 		ActuatorKeyId:     actuatorKeyHex,
 		Claimed:           true,
@@ -822,11 +822,11 @@ func (h *PlatformEnrollmentHandler) HandleRevoke(ctx context.Context, msg *PubSu
 		return "", constants.ErrPlatformEnrollmentInvalidComponent
 	}
 	revocationUpdate, err := json.Marshal(platformEnrollmentRevocationUpdate{
-		RevokedAt:                time.Now().UTC(),
-		RevokedByUserID:          payload.GetActorUserId(),
-		RevocationReason:         reason,
-		RevocationEnvelopeID:     msg.ID,
-		RevocationEventReceiptID: msg.ID,
+		RevokedAt:            time.Now().UTC(),
+		RevokedByUserID:      payload.GetActorUserId(),
+		RevocationReason:     reason,
+		RevocationEnvelopeID: msg.ID,
+		RevocationReceiptID:  msg.ID,
 	})
 	if err != nil {
 		return "", fmt.Errorf("platform enrollment: marshal revocation %s: %w", requestID, err)

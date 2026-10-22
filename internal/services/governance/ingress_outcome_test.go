@@ -29,10 +29,10 @@ func marshalIngressFailure(t *testing.T, msg proto.Message) []byte {
 func TestDecodeIngressFailure(t *testing.T) {
 	signedRejection := &operatorv1.GovernanceRejection{
 		Error: "rejected",
-		EventReceipt: &operatorv1.EventReceipt{
+		Receipt: &operatorv1.ActionReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-			FailureCode:   operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+			FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		},
 	}
 	refusal := &operatorv1.IngressRefusal{
@@ -63,7 +63,7 @@ func TestDecodeIngressFailure(t *testing.T) {
 			wantUntyped: true,
 		},
 		{
-			name:        "rejection without an event receipt is untyped",
+			name:        "rejection without a receipt is untyped",
 			body:        []byte(`{"error":"dispatch: no delivery"}`),
 			wantUntyped: true,
 		},
@@ -74,7 +74,7 @@ func TestDecodeIngressFailure(t *testing.T) {
 		},
 		{
 			name:        "rejection with an unknown field is untyped",
-			body:        []byte(`{"error":"x","event_receipt":{"transaction_id":"tx-1"},"future_field":1}`),
+			body:        []byte(`{"error":"x","receipt":{"transaction_id":"tx-1"},"future_field":1}`),
 			wantUntyped: true,
 		},
 		{
@@ -102,7 +102,7 @@ func TestDecodeIngressFailure(t *testing.T) {
 			if tt.wantRejection {
 				require.NotNil(t, rejection)
 				assert.Nil(t, gotRefusal)
-				assert.Equal(t, "tx-1", rejection.GetEventReceipt().GetTransactionId())
+				assert.Equal(t, "tx-1", rejection.GetReceipt().GetTransactionId())
 				return
 			}
 			require.NotNil(t, gotRefusal)

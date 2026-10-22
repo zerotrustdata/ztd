@@ -27,10 +27,10 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestGetEventReceiptQueriesCanonicalEventReceiptByTransactionID(t *testing.T) {
-	expected := &operatorv1.EventReceipt{
+func TestGetActionReceiptQueriesCanonicalReceiptByTransactionID(t *testing.T) {
+	expected := &operatorv1.ActionReceipt{
 		TransactionId: "transaction/1", TransactionHash: "hash-1", SignerKeyId: "signer-1", Signature: "signature-1",
-		FinalPersistenceAttestation: &operatorv1.EventReceiptPersistenceAttestation{TransactionId: "transaction/1", AuditRecordId: "transaction/1", SignerKeyId: "signer-1", Signature: "persistence-signature-1"},
+		FinalPersistenceAttestation: &operatorv1.ReceiptPersistenceAttestation{TransactionId: "transaction/1", AuditRecordId: "transaction/1", SignerKeyId: "signer-1", Signature: "persistence-signature-1"},
 	}
 	body, err := protojson.Marshal(expected)
 	require.NoError(t, err)
@@ -45,15 +45,15 @@ func TestGetEventReceiptQueriesCanonicalEventReceiptByTransactionID(t *testing.T
 	client, err := New(config.Config{MTLSBaseURL: server.URL})
 	require.NoError(t, err)
 
-	eventReceipt, raw, err := client.GetEventReceipt(context.Background(), "transaction/1")
+	receipt, raw, err := client.GetEventReceipt(context.Background(), "transaction/1")
 
 	require.NoError(t, err)
 	assert.Equal(t, body, raw)
-	assert.Equal(t, expected.GetTransactionId(), eventReceipt.GetTransactionId())
-	assert.Equal(t, expected.GetFinalPersistenceAttestation().GetSignature(), eventReceipt.GetFinalPersistenceAttestation().GetSignature())
+	assert.Equal(t, expected.GetTransactionId(), receipt.GetTransactionId())
+	assert.Equal(t, expected.GetFinalPersistenceAttestation().GetSignature(), receipt.GetFinalPersistenceAttestation().GetSignature())
 }
 
-func TestGetEventReceiptFailsClosedOnMalformedCanonicalEventReceipt(t *testing.T) {
+func TestGetActionReceiptFailsClosedOnMalformedCanonicalReceipt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, writeErr := w.Write([]byte(`{"unknown_field":true}`))
 		assert.NoError(t, writeErr)
@@ -62,13 +62,13 @@ func TestGetEventReceiptFailsClosedOnMalformedCanonicalEventReceipt(t *testing.T
 	client, err := New(config.Config{MTLSBaseURL: server.URL})
 	require.NoError(t, err)
 
-	eventReceipt, _, err := client.GetEventReceipt(context.Background(), "transaction-1")
+	receipt, _, err := client.GetEventReceipt(context.Background(), "transaction-1")
 
 	require.Error(t, err)
-	assert.Nil(t, eventReceipt)
+	assert.Nil(t, receipt)
 }
 
-func TestGetEventReceiptReturnsNilForMissingTransaction(t *testing.T) {
+func TestGetActionReceiptReturnsNilForMissingTransaction(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -76,10 +76,10 @@ func TestGetEventReceiptReturnsNilForMissingTransaction(t *testing.T) {
 	client, err := New(config.Config{MTLSBaseURL: server.URL})
 	require.NoError(t, err)
 
-	eventReceipt, _, err := client.GetEventReceipt(context.Background(), "missing-transaction")
+	receipt, _, err := client.GetEventReceipt(context.Background(), "missing-transaction")
 
 	require.NoError(t, err)
-	assert.Nil(t, eventReceipt)
+	assert.Nil(t, receipt)
 }
 
 func TestGetTrustedSignerPublicKeyValidatesGatewayResponse(t *testing.T) {

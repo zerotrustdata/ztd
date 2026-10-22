@@ -209,7 +209,7 @@ describe('AssignmentActivitySummary', () => {
     const actionRecord: PublicGovernedActionActivityRecord = {
       action_label: 'FS_READ',
       reported_policy_outcome: 'allow',
-      event_receipt_status: 'reported',
+      receipt_status: 'reported',
       evidence_source: 'application_reported',
     };
 
@@ -228,6 +228,6 @@ describe('AssignmentActivitySummary', () => {
     await user.click(screen.getByText(/FS_READ.*Policy: Allow/));
     expect(screen.getByText('Action label')).toBeInTheDocument();
     expect(screen.getByText('Reported policy outcome')).toBeInTheDocument();
-    expect(screen.getByText('Event receipt status')).toBeInTheDocument();
+    expect(screen.getByText('Receipt status')).toBeInTheDocument();
   });
 });

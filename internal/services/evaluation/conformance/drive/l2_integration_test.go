@@ -79,7 +79,7 @@ func testDeliberatedL2(t *testing.T, members int) {
 				got := driven.Observations[i]
 				assertObservation(t, want, got)
 				if want.Kind == cases.ExpectExecuted {
-					assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, got.GetEventReceipt().GetL2Status(), "answer: %s", answerText(got))
+					assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, got.GetReceipt().GetL2Status(), "answer: %s", answerText(got))
 				}
 				if c.Row == 18 {
 					t.Logf("Row 18 pin fault=%s kind=%s answer=%s", c.Fault, got.GetKind(), answerText(got))
@@ -114,7 +114,7 @@ func TestL2SyntheticProofExecutesRow19UnderDoctrine(t *testing.T) {
 			for i, want := range c.Expect {
 				got := driven.Observations[i]
 				assertObservation(t, want, got)
-				assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, got.GetEventReceipt().GetL2Status(), "answer: %s", answerText(got))
+				assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, got.GetReceipt().GetL2Status(), "answer: %s", answerText(got))
 			}
 		})
 	}

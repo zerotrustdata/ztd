@@ -76,7 +76,7 @@ func (t *SearchDirectoryTool) InputSchema() *InputSchema {
 }
 
 // Execute implements the tool logic. Every failure returns an error so the
-// Actuator records a FAILED event receipt.
+// Actuator records a FAILED receipt.
 func (t *SearchDirectoryTool) Execute(ctx context.Context, args json.RawMessage) (CallToolResult, error) {
 	var req SearchDirectoryRequest
 	if err := json.Unmarshal(args, &req); err != nil {

@@ -186,7 +186,7 @@ func TestModelProvenanceObservationCoordinator_NotifyAttemptBegin_FailsWithoutCm
 
 // With no provenance Operator connected, the coordinator reports the NotFound
 // sentinel for both phases. Campaign authority is decided by the dispatch layer,
-// so the coordinator must never turn the miss into a silent nil event receipt.
+// so the coordinator must never turn the miss into a silent nil receipt.
 func TestModelProvenanceObservationCoordinator_ZeroProvenanceOperatorReportsNotFound(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))

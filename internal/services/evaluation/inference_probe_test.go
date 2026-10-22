@@ -86,7 +86,7 @@ func TestValidateInferenceProbeResponse_BindsIdentityAndDigest(t *testing.T) {
 				Part: &operatorv1.InferenceResponsePart_Text{Text: "ok"},
 			}},
 		},
-		EventReceipt: &operatorv1.EventReceipt{ResultSummary: "digest-1"},
+		Receipt: &operatorv1.ActionReceipt{ResultSummary: "digest-1"},
 	}
 	require.NoError(t, ValidateInferenceProbeResponse(req, resp))
 }
@@ -104,7 +104,7 @@ func TestValidateInferenceProbeResponse_RejectsMismatchedBindings(t *testing.T) 
 	}{
 		{
 			name: "missing result",
-			resp: &operatorv1.InferenceDispatchResponse{EventReceipt: &operatorv1.EventReceipt{}},
+			resp: &operatorv1.InferenceDispatchResponse{Receipt: &operatorv1.ActionReceipt{}},
 			want: constants.ErrMissingRequiredField,
 		},
 		{
@@ -118,7 +118,7 @@ func TestValidateInferenceProbeResponse_RejectsMismatchedBindings(t *testing.T) 
 						Part: &operatorv1.InferenceResponsePart_Text{Text: "ok"},
 					}},
 				},
-				EventReceipt: &operatorv1.EventReceipt{ResultSummary: "digest-1"},
+				Receipt: &operatorv1.ActionReceipt{ResultSummary: "digest-1"},
 			},
 			want: constants.ErrIdentityBindingFailed,
 		},
@@ -133,7 +133,7 @@ func TestValidateInferenceProbeResponse_RejectsMismatchedBindings(t *testing.T) 
 						Part: &operatorv1.InferenceResponsePart_Text{Text: "ok"},
 					}},
 				},
-				EventReceipt: &operatorv1.EventReceipt{ResultSummary: "digest-2"},
+				Receipt: &operatorv1.ActionReceipt{ResultSummary: "digest-2"},
 			},
 			want: constants.ErrInferenceResultDigest,
 		},
@@ -163,7 +163,7 @@ func TestValidateInferenceProbeStream_RequiresProgressEvents(t *testing.T) {
 				Part: &operatorv1.InferenceResponsePart_Text{Text: "ok"},
 			}},
 		},
-		EventReceipt: &operatorv1.EventReceipt{ResultSummary: "digest-1"},
+		Receipt: &operatorv1.ActionReceipt{ResultSummary: "digest-1"},
 	}
 	err := ValidateInferenceProbeStream(req, nil, resp)
 	require.ErrorIs(t, err, constants.ErrInferenceProgressHashMismatch)

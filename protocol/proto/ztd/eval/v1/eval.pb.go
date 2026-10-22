@@ -274,7 +274,7 @@ const (
 	EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED   EvaluationAssignmentLifecycleStatus = 9
 	EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_POLICY_REJECTED EvaluationAssignmentLifecycleStatus = 10
 	EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_UNAVAILABLE     EvaluationAssignmentLifecycleStatus = 11
-	// The attempt's governed tool evidence failed verification (an event receipt that
+	// The attempt's governed tool evidence failed verification (a receipt that
 	// does not verify against the Data Operator anchor, or a ledger bracket that
 	// does not connect). The model is never graded on such an attempt.
 	EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE EvaluationAssignmentLifecycleStatus = 12
@@ -1194,52 +1194,52 @@ func (PublicVerificationProvenance) EnumDescriptor() ([]byte, []int) {
 	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{19}
 }
 
-type PublicEventReceiptStatus int32
+type PublicReceiptStatus int32
 
 const (
-	PublicEventReceiptStatus_PUBLIC_EVENT_RECEIPT_STATUS_UNSPECIFIED PublicEventReceiptStatus = 0
-	PublicEventReceiptStatus_PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE PublicEventReceiptStatus = 1
-	PublicEventReceiptStatus_PUBLIC_EVENT_RECEIPT_STATUS_REPORTED    PublicEventReceiptStatus = 2
+	PublicReceiptStatus_PUBLIC_RECEIPT_STATUS_UNSPECIFIED PublicReceiptStatus = 0
+	PublicReceiptStatus_PUBLIC_RECEIPT_STATUS_UNAVAILABLE PublicReceiptStatus = 1
+	PublicReceiptStatus_PUBLIC_RECEIPT_STATUS_REPORTED    PublicReceiptStatus = 2
 )
 
-// Enum value maps for PublicEventReceiptStatus.
+// Enum value maps for PublicReceiptStatus.
 var (
-	PublicEventReceiptStatus_name = map[int32]string{
-		0: "PUBLIC_EVENT_RECEIPT_STATUS_UNSPECIFIED",
-		1: "PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE",
-		2: "PUBLIC_EVENT_RECEIPT_STATUS_REPORTED",
+	PublicReceiptStatus_name = map[int32]string{
+		0: "PUBLIC_RECEIPT_STATUS_UNSPECIFIED",
+		1: "PUBLIC_RECEIPT_STATUS_UNAVAILABLE",
+		2: "PUBLIC_RECEIPT_STATUS_REPORTED",
 	}
-	PublicEventReceiptStatus_value = map[string]int32{
-		"PUBLIC_EVENT_RECEIPT_STATUS_UNSPECIFIED": 0,
-		"PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE": 1,
-		"PUBLIC_EVENT_RECEIPT_STATUS_REPORTED":    2,
+	PublicReceiptStatus_value = map[string]int32{
+		"PUBLIC_RECEIPT_STATUS_UNSPECIFIED": 0,
+		"PUBLIC_RECEIPT_STATUS_UNAVAILABLE": 1,
+		"PUBLIC_RECEIPT_STATUS_REPORTED":    2,
 	}
 )
 
-func (x PublicEventReceiptStatus) Enum() *PublicEventReceiptStatus {
-	p := new(PublicEventReceiptStatus)
+func (x PublicReceiptStatus) Enum() *PublicReceiptStatus {
+	p := new(PublicReceiptStatus)
 	*p = x
 	return p
 }
 
-func (x PublicEventReceiptStatus) String() string {
+func (x PublicReceiptStatus) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (PublicEventReceiptStatus) Descriptor() protoreflect.EnumDescriptor {
+func (PublicReceiptStatus) Descriptor() protoreflect.EnumDescriptor {
 	return file_ztd_eval_v1_eval_proto_enumTypes[20].Descriptor()
 }
 
-func (PublicEventReceiptStatus) Type() protoreflect.EnumType {
+func (PublicReceiptStatus) Type() protoreflect.EnumType {
 	return &file_ztd_eval_v1_eval_proto_enumTypes[20]
 }
 
-func (x PublicEventReceiptStatus) Number() protoreflect.EnumNumber {
+func (x PublicReceiptStatus) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use PublicEventReceiptStatus.Descriptor instead.
-func (PublicEventReceiptStatus) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use PublicReceiptStatus.Descriptor instead.
+func (PublicReceiptStatus) EnumDescriptor() ([]byte, []int) {
 	return file_ztd_eval_v1_eval_proto_rawDescGZIP(), []int{20}
 }
 
@@ -1539,11 +1539,11 @@ func (EvaluationAttemptStatus) EnumDescriptor() ([]byte, []int) {
 type EvaluationObservationSource int32
 
 const (
-	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_UNSPECIFIED            EvaluationObservationSource = 0
-	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_TARGET_OBSERVER        EvaluationObservationSource = 1
-	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_OPERATOR_EVENT_RECEIPT EvaluationObservationSource = 2
-	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_GATEWAY_ADMISSION      EvaluationObservationSource = 3
-	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_HARNESS_EXCHANGE       EvaluationObservationSource = 4
+	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_UNSPECIFIED       EvaluationObservationSource = 0
+	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_TARGET_OBSERVER   EvaluationObservationSource = 1
+	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_OPERATOR_RECEIPT  EvaluationObservationSource = 2
+	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_GATEWAY_ADMISSION EvaluationObservationSource = 3
+	EvaluationObservationSource_EVALUATION_OBSERVATION_SOURCE_HARNESS_EXCHANGE  EvaluationObservationSource = 4
 )
 
 // Enum value maps for EvaluationObservationSource.
@@ -1551,16 +1551,16 @@ var (
 	EvaluationObservationSource_name = map[int32]string{
 		0: "EVALUATION_OBSERVATION_SOURCE_UNSPECIFIED",
 		1: "EVALUATION_OBSERVATION_SOURCE_TARGET_OBSERVER",
-		2: "EVALUATION_OBSERVATION_SOURCE_OPERATOR_EVENT_RECEIPT",
+		2: "EVALUATION_OBSERVATION_SOURCE_OPERATOR_RECEIPT",
 		3: "EVALUATION_OBSERVATION_SOURCE_GATEWAY_ADMISSION",
 		4: "EVALUATION_OBSERVATION_SOURCE_HARNESS_EXCHANGE",
 	}
 	EvaluationObservationSource_value = map[string]int32{
-		"EVALUATION_OBSERVATION_SOURCE_UNSPECIFIED":            0,
-		"EVALUATION_OBSERVATION_SOURCE_TARGET_OBSERVER":        1,
-		"EVALUATION_OBSERVATION_SOURCE_OPERATOR_EVENT_RECEIPT": 2,
-		"EVALUATION_OBSERVATION_SOURCE_GATEWAY_ADMISSION":      3,
-		"EVALUATION_OBSERVATION_SOURCE_HARNESS_EXCHANGE":       4,
+		"EVALUATION_OBSERVATION_SOURCE_UNSPECIFIED":       0,
+		"EVALUATION_OBSERVATION_SOURCE_TARGET_OBSERVER":   1,
+		"EVALUATION_OBSERVATION_SOURCE_OPERATOR_RECEIPT":  2,
+		"EVALUATION_OBSERVATION_SOURCE_GATEWAY_ADMISSION": 3,
+		"EVALUATION_OBSERVATION_SOURCE_HARNESS_EXCHANGE":  4,
 	}
 )
 
@@ -2402,7 +2402,7 @@ type ConformanceObservationKind int32
 
 const (
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED      ConformanceObservationKind = 0
-	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT    ConformanceObservationKind = 1 // success: signed event receipt returned
+	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT          ConformanceObservationKind = 1 // success: signed receipt returned
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION        ConformanceObservationKind = 2 // GovernanceRejection returned
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL          ConformanceObservationKind = 3 // IngressRefusal returned
 	ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED        ConformanceObservationKind = 4 // approval pending, tx hash returned
@@ -2415,7 +2415,7 @@ const (
 var (
 	ConformanceObservationKind_name = map[int32]string{
 		0: "CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED",
-		1: "CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT",
+		1: "CONFORMANCE_OBSERVATION_KIND_RECEIPT",
 		2: "CONFORMANCE_OBSERVATION_KIND_REJECTION",
 		3: "CONFORMANCE_OBSERVATION_KIND_REFUSAL",
 		4: "CONFORMANCE_OBSERVATION_KIND_SUSPENDED",
@@ -2425,7 +2425,7 @@ var (
 	}
 	ConformanceObservationKind_value = map[string]int32{
 		"CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED":      0,
-		"CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT":    1,
+		"CONFORMANCE_OBSERVATION_KIND_RECEIPT":          1,
 		"CONFORMANCE_OBSERVATION_KIND_REJECTION":        2,
 		"CONFORMANCE_OBSERVATION_KIND_REFUSAL":          3,
 		"CONFORMANCE_OBSERVATION_KIND_SUSPENDED":        4,
@@ -2518,23 +2518,23 @@ func (ConformanceApprovalDecision) EnumDescriptor() ([]byte, []int) {
 type ConformanceFailureClass int32
 
 const (
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNSPECIFIED                  ConformanceFailureClass = 0
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH             ConformanceFailureClass = 1
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_CODE_MISMATCH                ConformanceFailureClass = 2
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_L2_STATUS_MISMATCH           ConformanceFailureClass = 3
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_L3_STATUS_MISMATCH           ConformanceFailureClass = 4
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID            ConformanceFailureClass = 5
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN               ConformanceFailureClass = 6
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID          ConformanceFailureClass = 7
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE ConformanceFailureClass = 8
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_LEDGER_GAP                   ConformanceFailureClass = 9
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNCLAIMED_EXECUTION          ConformanceFailureClass = 10
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_CANARY_DELTA                 ConformanceFailureClass = 11
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING               ConformanceFailureClass = 12
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNTYPED_OUTCOME              ConformanceFailureClass = 13
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING          ConformanceFailureClass = 14
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH       ConformanceFailureClass = 15
-	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH              ConformanceFailureClass = 16 // recorded target is not the attempt's canary case file
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNSPECIFIED            ConformanceFailureClass = 0
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH       ConformanceFailureClass = 1
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_CODE_MISMATCH          ConformanceFailureClass = 2
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_L2_STATUS_MISMATCH     ConformanceFailureClass = 3
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_L3_STATUS_MISMATCH     ConformanceFailureClass = 4
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID      ConformanceFailureClass = 5
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN         ConformanceFailureClass = 6
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID    ConformanceFailureClass = 7
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE ConformanceFailureClass = 8
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_LEDGER_GAP             ConformanceFailureClass = 9
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNCLAIMED_EXECUTION    ConformanceFailureClass = 10
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_CANARY_DELTA           ConformanceFailureClass = 11
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING         ConformanceFailureClass = 12
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_UNTYPED_OUTCOME        ConformanceFailureClass = 13
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING    ConformanceFailureClass = 14
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH ConformanceFailureClass = 15
+	ConformanceFailureClass_CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH        ConformanceFailureClass = 16 // recorded target is not the attempt's canary case file
 )
 
 // Enum value maps for ConformanceFailureClass.
@@ -2548,7 +2548,7 @@ var (
 		5:  "CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID",
 		6:  "CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN",
 		7:  "CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID",
-		8:  "CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE",
+		8:  "CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE",
 		9:  "CONFORMANCE_FAILURE_CLASS_LEDGER_GAP",
 		10: "CONFORMANCE_FAILURE_CLASS_UNCLAIMED_EXECUTION",
 		11: "CONFORMANCE_FAILURE_CLASS_CANARY_DELTA",
@@ -2559,23 +2559,23 @@ var (
 		16: "CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH",
 	}
 	ConformanceFailureClass_value = map[string]int32{
-		"CONFORMANCE_FAILURE_CLASS_UNSPECIFIED":                  0,
-		"CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH":             1,
-		"CONFORMANCE_FAILURE_CLASS_CODE_MISMATCH":                2,
-		"CONFORMANCE_FAILURE_CLASS_L2_STATUS_MISMATCH":           3,
-		"CONFORMANCE_FAILURE_CLASS_L3_STATUS_MISMATCH":           4,
-		"CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID":            5,
-		"CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN":               6,
-		"CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID":          7,
-		"CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE": 8,
-		"CONFORMANCE_FAILURE_CLASS_LEDGER_GAP":                   9,
-		"CONFORMANCE_FAILURE_CLASS_UNCLAIMED_EXECUTION":          10,
-		"CONFORMANCE_FAILURE_CLASS_CANARY_DELTA":                 11,
-		"CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING":               12,
-		"CONFORMANCE_FAILURE_CLASS_UNTYPED_OUTCOME":              13,
-		"CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING":          14,
-		"CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH":       15,
-		"CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH":              16,
+		"CONFORMANCE_FAILURE_CLASS_UNSPECIFIED":            0,
+		"CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH":       1,
+		"CONFORMANCE_FAILURE_CLASS_CODE_MISMATCH":          2,
+		"CONFORMANCE_FAILURE_CLASS_L2_STATUS_MISMATCH":     3,
+		"CONFORMANCE_FAILURE_CLASS_L3_STATUS_MISMATCH":     4,
+		"CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID":      5,
+		"CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN":         6,
+		"CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID":    7,
+		"CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE": 8,
+		"CONFORMANCE_FAILURE_CLASS_LEDGER_GAP":             9,
+		"CONFORMANCE_FAILURE_CLASS_UNCLAIMED_EXECUTION":    10,
+		"CONFORMANCE_FAILURE_CLASS_CANARY_DELTA":           11,
+		"CONFORMANCE_FAILURE_CLASS_EFFECT_MISSING":         12,
+		"CONFORMANCE_FAILURE_CLASS_UNTYPED_OUTCOME":        13,
+		"CONFORMANCE_FAILURE_CLASS_OBSERVATION_MISSING":    14,
+		"CONFORMANCE_FAILURE_CLASS_RECORD_DIGEST_MISMATCH": 15,
+		"CONFORMANCE_FAILURE_CLASS_TARGET_MISMATCH":        16,
 	}
 )
 
@@ -2944,7 +2944,7 @@ type ContainmentBreachClass int32
 
 const (
 	ContainmentBreachClass_CONTAINMENT_BREACH_CLASS_UNSPECIFIED         ContainmentBreachClass = 0
-	ContainmentBreachClass_CONTAINMENT_BREACH_CLASS_UNCLAIMED_EXECUTION ContainmentBreachClass = 1 // a ledger link no verified tool-call event receipt claims
+	ContainmentBreachClass_CONTAINMENT_BREACH_CLASS_UNCLAIMED_EXECUTION ContainmentBreachClass = 1 // a ledger link no verified tool-call receipt claims
 	ContainmentBreachClass_CONTAINMENT_BREACH_CLASS_CANARY_MODIFIED     ContainmentBreachClass = 2 // a canary file differs from its seeded bytes
 	ContainmentBreachClass_CONTAINMENT_BREACH_CLASS_TOKEN_EXFILTRATED   ContainmentBreachClass = 3 // the exfil token left in a payload or the reply
 )
@@ -6638,7 +6638,7 @@ type ModelInferenceRecord struct {
 	RetryCount                *uint32                         `protobuf:"varint,27,opt,name=retry_count,json=retryCount,proto3,oneof" json:"retry_count,omitempty"`
 	FinishReason              string                          `protobuf:"bytes,28,opt,name=finish_reason,json=finishReason,proto3" json:"finish_reason,omitempty"`
 	PrivacyAttested           bool                            `protobuf:"varint,29,opt,name=privacy_attested,json=privacyAttested,proto3" json:"privacy_attested,omitempty"`
-	GovernedEventReceiptRef   *v1.ComplianceEvidenceReference `protobuf:"bytes,30,opt,name=governed_event_receipt_ref,json=governedEventReceiptRef,proto3" json:"governed_event_receipt_ref,omitempty"`
+	GovernedReceiptRef        *v1.ComplianceEvidenceReference `protobuf:"bytes,30,opt,name=governed_receipt_ref,json=governedReceiptRef,proto3" json:"governed_receipt_ref,omitempty"`
 	ResultDigest              string                          `protobuf:"bytes,31,opt,name=result_digest,json=resultDigest,proto3" json:"result_digest,omitempty"`
 	// Tool names as sent to the provider for this call, captured at the
 	// provider boundary. tools_declared_reported distinguishes "none declared"
@@ -6885,9 +6885,9 @@ func (x *ModelInferenceRecord) GetPrivacyAttested() bool {
 	return false
 }
 
-func (x *ModelInferenceRecord) GetGovernedEventReceiptRef() *v1.ComplianceEvidenceReference {
+func (x *ModelInferenceRecord) GetGovernedReceiptRef() *v1.ComplianceEvidenceReference {
 	if x != nil {
-		return x.GovernedEventReceiptRef
+		return x.GovernedReceiptRef
 	}
 	return nil
 }
@@ -7381,11 +7381,11 @@ type GovernedActionBinding struct {
 	TransactionId             string                          `protobuf:"bytes,3,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	OperatorId                string                          `protobuf:"bytes,4,opt,name=operator_id,json=operatorId,proto3" json:"operator_id,omitempty"`
 	OperatorSessionId         string                          `protobuf:"bytes,5,opt,name=operator_session_id,json=operatorSessionId,proto3" json:"operator_session_id,omitempty"`
-	EventReceiptRef           *v1.ComplianceEvidenceReference `protobuf:"bytes,6,opt,name=event_receipt_ref,json=eventReceiptRef,proto3" json:"event_receipt_ref,omitempty"`
+	ReceiptRef                *v1.ComplianceEvidenceReference `protobuf:"bytes,6,opt,name=receipt_ref,json=receiptRef,proto3" json:"receipt_ref,omitempty"`
 	PersistenceAttestationRef *v1.ComplianceEvidenceReference `protobuf:"bytes,7,opt,name=persistence_attestation_ref,json=persistenceAttestationRef,proto3" json:"persistence_attestation_ref,omitempty"`
 	PolicyDecision            string                          `protobuf:"bytes,8,opt,name=policy_decision,json=policyDecision,proto3" json:"policy_decision,omitempty"`
 	EffectObservationRef      *v1.ComplianceEvidenceReference `protobuf:"bytes,9,opt,name=effect_observation_ref,json=effectObservationRef,proto3" json:"effect_observation_ref,omitempty"`
-	// The registry governance class the signed event receipt names (INFERENCE,
+	// The registry governance class the signed receipt names (INFERENCE,
 	// FS_READ, FILE_EDIT, ...).
 	ActionType    string `protobuf:"bytes,10,opt,name=action_type,json=actionType,proto3" json:"action_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -7457,9 +7457,9 @@ func (x *GovernedActionBinding) GetOperatorSessionId() string {
 	return ""
 }
 
-func (x *GovernedActionBinding) GetEventReceiptRef() *v1.ComplianceEvidenceReference {
+func (x *GovernedActionBinding) GetReceiptRef() *v1.ComplianceEvidenceReference {
 	if x != nil {
-		return x.EventReceiptRef
+		return x.ReceiptRef
 	}
 	return nil
 }
@@ -9860,7 +9860,7 @@ type PublicGovernedActionActivityRecord struct {
 	state                 protoimpl.MessageState          `protogen:"open.v1"`
 	ActionLabel           string                          `protobuf:"bytes,1,opt,name=action_label,json=actionLabel,proto3" json:"action_label,omitempty"`
 	ReportedPolicyOutcome EvaluationPolicyDecisionOutcome `protobuf:"varint,2,opt,name=reported_policy_outcome,json=reportedPolicyOutcome,proto3,enum=ztd.eval.v1.EvaluationPolicyDecisionOutcome" json:"reported_policy_outcome,omitempty"`
-	EventReceiptStatus    PublicEventReceiptStatus        `protobuf:"varint,3,opt,name=event_receipt_status,json=eventReceiptStatus,proto3,enum=ztd.eval.v1.PublicEventReceiptStatus" json:"event_receipt_status,omitempty"`
+	ReceiptStatus         PublicReceiptStatus             `protobuf:"varint,3,opt,name=receipt_status,json=receiptStatus,proto3,enum=ztd.eval.v1.PublicReceiptStatus" json:"receipt_status,omitempty"`
 	EvidenceSource        PublicEvidenceSource            `protobuf:"varint,4,opt,name=evidence_source,json=evidenceSource,proto3,enum=ztd.eval.v1.PublicEvidenceSource" json:"evidence_source,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
@@ -9910,11 +9910,11 @@ func (x *PublicGovernedActionActivityRecord) GetReportedPolicyOutcome() Evaluati
 	return EvaluationPolicyDecisionOutcome_EVALUATION_POLICY_DECISION_OUTCOME_UNSPECIFIED
 }
 
-func (x *PublicGovernedActionActivityRecord) GetEventReceiptStatus() PublicEventReceiptStatus {
+func (x *PublicGovernedActionActivityRecord) GetReceiptStatus() PublicReceiptStatus {
 	if x != nil {
-		return x.EventReceiptStatus
+		return x.ReceiptStatus
 	}
-	return PublicEventReceiptStatus_PUBLIC_EVENT_RECEIPT_STATUS_UNSPECIFIED
+	return PublicReceiptStatus_PUBLIC_RECEIPT_STATUS_UNSPECIFIED
 }
 
 func (x *PublicGovernedActionActivityRecord) GetEvidenceSource() PublicEvidenceSource {
@@ -11122,13 +11122,13 @@ func (x *CanaryManifest) GetEntries() []*CanaryEntry {
 }
 
 // ConformanceObservation is what one drive of one ingress returned. Exactly
-// one of event receipt / rejection / refusal / suspended_tx_hash / untyped_body is
+// one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
 // set, matching kind. NOT_RUN kinds carry no outcome fields.
 type ConformanceObservation struct {
 	state           protoimpl.MessageState     `protogen:"open.v1"`
 	Kind            ConformanceObservationKind `protobuf:"varint,1,opt,name=kind,proto3,enum=ztd.eval.v1.ConformanceObservationKind" json:"kind,omitempty"`
 	HttpStatus      int32                      `protobuf:"varint,2,opt,name=http_status,json=httpStatus,proto3" json:"http_status,omitempty"`
-	EventReceipt    *v11.EventReceipt          `protobuf:"bytes,3,opt,name=event_receipt,json=eventReceipt,proto3" json:"event_receipt,omitempty"`
+	Receipt         *v11.ActionReceipt         `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	Rejection       *v11.GovernanceRejection   `protobuf:"bytes,4,opt,name=rejection,proto3" json:"rejection,omitempty"`
 	Refusal         *v11.IngressRefusal        `protobuf:"bytes,5,opt,name=refusal,proto3" json:"refusal,omitempty"`
 	SuspendedTxHash string                     `protobuf:"bytes,6,opt,name=suspended_tx_hash,json=suspendedTxHash,proto3" json:"suspended_tx_hash,omitempty"`
@@ -11181,9 +11181,9 @@ func (x *ConformanceObservation) GetHttpStatus() int32 {
 	return 0
 }
 
-func (x *ConformanceObservation) GetEventReceipt() *v11.EventReceipt {
+func (x *ConformanceObservation) GetReceipt() *v11.ActionReceipt {
 	if x != nil {
-		return x.EventReceipt
+		return x.Receipt
 	}
 	return nil
 }
@@ -11354,8 +11354,8 @@ type ConformanceCaseEvidence struct {
 	TargetPath     string                    `protobuf:"bytes,4,opt,name=target_path,json=targetPath,proto3" json:"target_path,omitempty"` // relative to the canary root
 	Marker         string                    `protobuf:"bytes,5,opt,name=marker,proto3" json:"marker,omitempty"`
 	Observations   []*ConformanceObservation `protobuf:"bytes,6,rep,name=observations,proto3" json:"observations,omitempty"` // two for the replay case, else one
-	SentinelBefore *v11.EventReceipt         `protobuf:"bytes,7,opt,name=sentinel_before,json=sentinelBefore,proto3" json:"sentinel_before,omitempty"`
-	SentinelAfter  *v11.EventReceipt         `protobuf:"bytes,8,opt,name=sentinel_after,json=sentinelAfter,proto3" json:"sentinel_after,omitempty"`
+	SentinelBefore *v11.ActionReceipt        `protobuf:"bytes,7,opt,name=sentinel_before,json=sentinelBefore,proto3" json:"sentinel_before,omitempty"`
+	SentinelAfter  *v11.ActionReceipt        `protobuf:"bytes,8,opt,name=sentinel_after,json=sentinelAfter,proto3" json:"sentinel_after,omitempty"`
 	CanaryBefore   *CanaryManifest           `protobuf:"bytes,9,opt,name=canary_before,json=canaryBefore,proto3" json:"canary_before,omitempty"`
 	CanaryAfter    *CanaryManifest           `protobuf:"bytes,10,opt,name=canary_after,json=canaryAfter,proto3" json:"canary_after,omitempty"`
 	A2ACalls       []*ConformanceA2ACall     `protobuf:"bytes,11,rep,name=a2a_calls,json=a2aCalls,proto3" json:"a2a_calls,omitempty"` // calls the stub received during this case
@@ -11436,14 +11436,14 @@ func (x *ConformanceCaseEvidence) GetObservations() []*ConformanceObservation {
 	return nil
 }
 
-func (x *ConformanceCaseEvidence) GetSentinelBefore() *v11.EventReceipt {
+func (x *ConformanceCaseEvidence) GetSentinelBefore() *v11.ActionReceipt {
 	if x != nil {
 		return x.SentinelBefore
 	}
 	return nil
 }
 
-func (x *ConformanceCaseEvidence) GetSentinelAfter() *v11.EventReceipt {
+func (x *ConformanceCaseEvidence) GetSentinelAfter() *v11.ActionReceipt {
 	if x != nil {
 		return x.SentinelAfter
 	}
@@ -11483,8 +11483,8 @@ func (x *ConformanceCaseEvidence) GetExchanges() []*ConformanceExchange {
 type ConformanceQuiescence struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Executor      string                 `protobuf:"bytes,1,opt,name=executor,proto3" json:"executor,omitempty"`
-	First         *v11.EventReceipt      `protobuf:"bytes,2,opt,name=first,proto3" json:"first,omitempty"`
-	Second        *v11.EventReceipt      `protobuf:"bytes,3,opt,name=second,proto3" json:"second,omitempty"`
+	First         *v11.ActionReceipt     `protobuf:"bytes,2,opt,name=first,proto3" json:"first,omitempty"`
+	Second        *v11.ActionReceipt     `protobuf:"bytes,3,opt,name=second,proto3" json:"second,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11526,14 +11526,14 @@ func (x *ConformanceQuiescence) GetExecutor() string {
 	return ""
 }
 
-func (x *ConformanceQuiescence) GetFirst() *v11.EventReceipt {
+func (x *ConformanceQuiescence) GetFirst() *v11.ActionReceipt {
 	if x != nil {
 		return x.First
 	}
 	return nil
 }
 
-func (x *ConformanceQuiescence) GetSecond() *v11.EventReceipt {
+func (x *ConformanceQuiescence) GetSecond() *v11.ActionReceipt {
 	if x != nil {
 		return x.Second
 	}
@@ -13209,7 +13209,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\vcampaign_id\x18\v \x01(\tR\n" +
 	"campaignId\"l\n" +
 	"#ModelProvenanceObservationCompleted\x12E\n" +
-	"\x06window\x18\x01 \x01(\v2-.ztd.eval.v1.ModelProvenanceAttestationWindowR\x06window\"\xfc\r\n" +
+	"\x06window\x18\x01 \x01(\v2-.ztd.eval.v1.ModelProvenanceAttestationWindowR\x06window\"\xf1\r\n" +
 	"\x14ModelInferenceRecord\x12.\n" +
 	"\x13inference_record_id\x18\x01 \x01(\tR\x11inferenceRecordId\x12.\n" +
 	"\x13provider_attempt_id\x18\x02 \x01(\tR\x11providerAttemptId\x12#\n" +
@@ -13245,8 +13245,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\vretry_count\x18\x1b \x01(\rH\x05R\n" +
 	"retryCount\x88\x01\x01\x12#\n" +
 	"\rfinish_reason\x18\x1c \x01(\tR\ffinishReason\x12)\n" +
-	"\x10privacy_attested\x18\x1d \x01(\bR\x0fprivacyAttested\x12k\n" +
-	"\x1agoverned_event_receipt_ref\x18\x1e \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x17governedEventReceiptRef\x12#\n" +
+	"\x10privacy_attested\x18\x1d \x01(\bR\x0fprivacyAttested\x12`\n" +
+	"\x14governed_receipt_ref\x18\x1e \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x12governedReceiptRef\x12#\n" +
 	"\rresult_digest\x18\x1f \x01(\tR\fresultDigest\x12%\n" +
 	"\x0etools_declared\x18! \x03(\tR\rtoolsDeclared\x126\n" +
 	"\x17tools_declared_reported\x18\" \x01(\bR\x15toolsDeclaredReported\x12Q\n" +
@@ -13304,7 +13304,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\rassignment_id\x18\x02 \x01(\tR\fassignmentId\x12#\n" +
 	"\rrecovery_kind\x18\x03 \x01(\tR\frecoveryKind\x12>\n" +
 	"\aoutcome\x18\x04 \x01(\x0e2$.ztd.eval.v1.EvaluationVerdictStatusR\aoutcome\x12\x16\n" +
-	"\x06detail\x18\x05 \x01(\tR\x06detail\"\xcf\x04\n" +
+	"\x06detail\x18\x05 \x01(\tR\x06detail\"\xc4\x04\n" +
 	"\x15GovernedActionBinding\x12\x1d\n" +
 	"\n" +
 	"binding_id\x18\x01 \x01(\tR\tbindingId\x12#\n" +
@@ -13312,8 +13312,9 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x0etransaction_id\x18\x03 \x01(\tR\rtransactionId\x12\x1f\n" +
 	"\voperator_id\x18\x04 \x01(\tR\n" +
 	"operatorId\x12.\n" +
-	"\x13operator_session_id\x18\x05 \x01(\tR\x11operatorSessionId\x12Z\n" +
-	"\x11event_receipt_ref\x18\x06 \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x0feventReceiptRef\x12n\n" +
+	"\x13operator_session_id\x18\x05 \x01(\tR\x11operatorSessionId\x12O\n" +
+	"\vreceipt_ref\x18\x06 \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\n" +
+	"receiptRef\x12n\n" +
 	"\x1bpersistence_attestation_ref\x18\a \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x19persistenceAttestationRef\x12'\n" +
 	"\x0fpolicy_decision\x18\b \x01(\tR\x0epolicyDecision\x12d\n" +
 	"\x16effect_observation_ref\x18\t \x01(\v2..ztd.compliance.v1.ComplianceEvidenceReferenceR\x14effectObservationRef\x12\x1f\n" +
@@ -13592,11 +13593,11 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\n" +
 	"tool_label\x18\x01 \x01(\tR\ttoolLabel\x12F\n" +
 	"\aoutcome\x18\x02 \x01(\x0e2,.ztd.eval.v1.EvaluationPolicyDecisionOutcomeR\aoutcome\x12J\n" +
-	"\x0fevidence_source\x18\x03 \x01(\x0e2!.ztd.eval.v1.PublicEvidenceSourceR\x0eevidenceSource\"\xd2\x02\n" +
+	"\x0fevidence_source\x18\x03 \x01(\x0e2!.ztd.eval.v1.PublicEvidenceSourceR\x0eevidenceSource\"\xc2\x02\n" +
 	"\"PublicGovernedActionActivityRecord\x12!\n" +
 	"\faction_label\x18\x01 \x01(\tR\vactionLabel\x12d\n" +
-	"\x17reported_policy_outcome\x18\x02 \x01(\x0e2,.ztd.eval.v1.EvaluationPolicyDecisionOutcomeR\x15reportedPolicyOutcome\x12W\n" +
-	"\x14event_receipt_status\x18\x03 \x01(\x0e2%.ztd.eval.v1.PublicEventReceiptStatusR\x12eventReceiptStatus\x12J\n" +
+	"\x17reported_policy_outcome\x18\x02 \x01(\x0e2,.ztd.eval.v1.EvaluationPolicyDecisionOutcomeR\x15reportedPolicyOutcome\x12G\n" +
+	"\x0ereceipt_status\x18\x03 \x01(\x0e2 .ztd.eval.v1.PublicReceiptStatusR\rreceiptStatus\x12J\n" +
 	"\x0fevidence_source\x18\x04 \x01(\x0e2!.ztd.eval.v1.PublicEvidenceSourceR\x0eevidenceSource\"\xf9\x01\n" +
 	"\x13PublicModelActivity\x12K\n" +
 	"\favailability\x18\x01 \x01(\x0e2'.ztd.eval.v1.PublicActivityAvailabilityR\favailability\x12S\n" +
@@ -13716,12 +13717,12 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x06sha256\x18\x02 \x01(\tR\x06sha256\x12\x12\n" +
 	"\x04size\x18\x03 \x01(\x03R\x04size\"D\n" +
 	"\x0eCanaryManifest\x122\n" +
-	"\aentries\x18\x01 \x03(\v2\x18.ztd.eval.v1.CanaryEntryR\aentries\"\x88\x03\n" +
+	"\aentries\x18\x01 \x03(\v2\x18.ztd.eval.v1.CanaryEntryR\aentries\"\xfe\x02\n" +
 	"\x16ConformanceObservation\x12;\n" +
 	"\x04kind\x18\x01 \x01(\x0e2'.ztd.eval.v1.ConformanceObservationKindR\x04kind\x12\x1f\n" +
 	"\vhttp_status\x18\x02 \x01(\x05R\n" +
-	"httpStatus\x12B\n" +
-	"\revent_receipt\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\feventReceipt\x12B\n" +
+	"httpStatus\x128\n" +
+	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12B\n" +
 	"\trejection\x18\x04 \x01(\v2$.ztd.operator.v1.GovernanceRejectionR\trejection\x129\n" +
 	"\arefusal\x18\x05 \x01(\v2\x1f.ztd.operator.v1.IngressRefusalR\arefusal\x12*\n" +
 	"\x11suspended_tx_hash\x18\x06 \x01(\tR\x0fsuspendedTxHash\x12!\n" +
@@ -13735,7 +13736,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\x05R\x06status\x12!\n" +
 	"\frequest_body\x18\x04 \x01(\fR\vrequestBody\x12#\n" +
-	"\rresponse_body\x18\x05 \x01(\fR\fresponseBody\"\xfd\x04\n" +
+	"\rresponse_body\x18\x05 \x01(\fR\fresponseBody\"\xff\x04\n" +
 	"\x17ConformanceCaseEvidence\x12\x17\n" +
 	"\acase_id\x18\x01 \x01(\tR\x06caseId\x12\x1d\n" +
 	"\n" +
@@ -13744,18 +13745,18 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\vtarget_path\x18\x04 \x01(\tR\n" +
 	"targetPath\x12\x16\n" +
 	"\x06marker\x18\x05 \x01(\tR\x06marker\x12G\n" +
-	"\fobservations\x18\x06 \x03(\v2#.ztd.eval.v1.ConformanceObservationR\fobservations\x12F\n" +
-	"\x0fsentinel_before\x18\a \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\x0esentinelBefore\x12D\n" +
-	"\x0esentinel_after\x18\b \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\rsentinelAfter\x12@\n" +
+	"\fobservations\x18\x06 \x03(\v2#.ztd.eval.v1.ConformanceObservationR\fobservations\x12G\n" +
+	"\x0fsentinel_before\x18\a \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x0esentinelBefore\x12E\n" +
+	"\x0esentinel_after\x18\b \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\rsentinelAfter\x12@\n" +
 	"\rcanary_before\x18\t \x01(\v2\x1b.ztd.eval.v1.CanaryManifestR\fcanaryBefore\x12>\n" +
 	"\fcanary_after\x18\n" +
 	" \x01(\v2\x1b.ztd.eval.v1.CanaryManifestR\vcanaryAfter\x12<\n" +
 	"\ta2a_calls\x18\v \x03(\v2\x1f.ztd.eval.v1.ConformanceA2ACallR\ba2aCalls\x12>\n" +
-	"\texchanges\x18\f \x03(\v2 .ztd.eval.v1.ConformanceExchangeR\texchanges\"\x9f\x01\n" +
+	"\texchanges\x18\f \x03(\v2 .ztd.eval.v1.ConformanceExchangeR\texchanges\"\xa1\x01\n" +
 	"\x15ConformanceQuiescence\x12\x1a\n" +
-	"\bexecutor\x18\x01 \x01(\tR\bexecutor\x123\n" +
-	"\x05first\x18\x02 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\x05first\x125\n" +
-	"\x06second\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\x06second\"\xad\x05\n" +
+	"\bexecutor\x18\x01 \x01(\tR\bexecutor\x124\n" +
+	"\x05first\x18\x02 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x05first\x126\n" +
+	"\x06second\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\x06second\"\xad\x05\n" +
 	"\x14ConformanceRunRecord\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x19\n" +
 	"\bsuite_id\x18\x02 \x01(\tR\asuiteId\x12#\n" +
@@ -14000,11 +14001,11 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x1cPublicVerificationProvenance\x12.\n" +
 	"*PUBLIC_VERIFICATION_PROVENANCE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$PUBLIC_VERIFICATION_PROVENANCE_BOUND\x10\x01\x121\n" +
-	"-PUBLIC_VERIFICATION_PROVENANCE_LEGACY_UNBOUND\x10\x02*\x9e\x01\n" +
-	"\x18PublicEventReceiptStatus\x12+\n" +
-	"'PUBLIC_EVENT_RECEIPT_STATUS_UNSPECIFIED\x10\x00\x12+\n" +
-	"'PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE\x10\x01\x12(\n" +
-	"$PUBLIC_EVENT_RECEIPT_STATUS_REPORTED\x10\x02*\xbb\x04\n" +
+	"-PUBLIC_VERIFICATION_PROVENANCE_LEGACY_UNBOUND\x10\x02*\x87\x01\n" +
+	"\x13PublicReceiptStatus\x12%\n" +
+	"!PUBLIC_RECEIPT_STATUS_UNSPECIFIED\x10\x00\x12%\n" +
+	"!PUBLIC_RECEIPT_STATUS_UNAVAILABLE\x10\x01\x12\"\n" +
+	"\x1ePUBLIC_RECEIPT_STATUS_REPORTED\x10\x02*\xbb\x04\n" +
 	"\x18PublicToolScoreDimension\x12+\n" +
 	"'PUBLIC_TOOL_SCORE_DIMENSION_UNSPECIFIED\x10\x00\x120\n" +
 	",PUBLIC_TOOL_SCORE_DIMENSION_TOOL_RECOGNITION\x10\x01\x12.\n" +
@@ -14041,11 +14042,11 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" EVALUATION_ATTEMPT_STATUS_FAILED\x10\x03\x12)\n" +
 	"%EVALUATION_ATTEMPT_STATUS_UNAVAILABLE\x10\x04\x12)\n" +
 	"%EVALUATION_ATTEMPT_STATUS_UNSUPPORTED\x10\x05\x12.\n" +
-	"*EVALUATION_ATTEMPT_STATUS_INVALID_EVIDENCE\x10\x06*\xa2\x02\n" +
+	"*EVALUATION_ATTEMPT_STATUS_INVALID_EVIDENCE\x10\x06*\x9c\x02\n" +
 	"\x1bEvaluationObservationSource\x12-\n" +
 	")EVALUATION_OBSERVATION_SOURCE_UNSPECIFIED\x10\x00\x121\n" +
-	"-EVALUATION_OBSERVATION_SOURCE_TARGET_OBSERVER\x10\x01\x128\n" +
-	"4EVALUATION_OBSERVATION_SOURCE_OPERATOR_EVENT_RECEIPT\x10\x02\x123\n" +
+	"-EVALUATION_OBSERVATION_SOURCE_TARGET_OBSERVER\x10\x01\x122\n" +
+	".EVALUATION_OBSERVATION_SOURCE_OPERATOR_RECEIPT\x10\x02\x123\n" +
 	"/EVALUATION_OBSERVATION_SOURCE_GATEWAY_ADMISSION\x10\x03\x122\n" +
 	".EVALUATION_OBSERVATION_SOURCE_HARNESS_EXCHANGE\x10\x04*\xae\x02\n" +
 	"\x1bEvaluationEvidenceAuthority\x12-\n" +
@@ -14125,10 +14126,10 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" PUBLIC_RELEASE_BASIS_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dPUBLIC_RELEASE_BASIS_RECORDED\x10\x01\x12!\n" +
 	"\x1dPUBLIC_RELEASE_BASIS_ASSERTED\x10\x02\x12 \n" +
-	"\x1cPUBLIC_RELEASE_BASIS_UNKNOWN\x10\x03*\xbc\x03\n" +
+	"\x1cPUBLIC_RELEASE_BASIS_UNKNOWN\x10\x03*\xb6\x03\n" +
 	"\x1aConformanceObservationKind\x12,\n" +
-	"(CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED\x10\x00\x12.\n" +
-	"*CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT\x10\x01\x12*\n" +
+	"(CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED\x10\x00\x12(\n" +
+	"$CONFORMANCE_OBSERVATION_KIND_RECEIPT\x10\x01\x12*\n" +
 	"&CONFORMANCE_OBSERVATION_KIND_REJECTION\x10\x02\x12(\n" +
 	"$CONFORMANCE_OBSERVATION_KIND_REFUSAL\x10\x03\x12*\n" +
 	"&CONFORMANCE_OBSERVATION_KIND_SUSPENDED\x10\x04\x121\n" +
@@ -14139,7 +14140,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	")CONFORMANCE_APPROVAL_DECISION_UNSPECIFIED\x10\x00\x12)\n" +
 	"%CONFORMANCE_APPROVAL_DECISION_APPROVE\x10\x01\x12&\n" +
 	"\"CONFORMANCE_APPROVAL_DECISION_DENY\x10\x02\x12/\n" +
-	"+CONFORMANCE_APPROVAL_DECISION_LEAVE_PENDING\x10\x03*\xd1\x06\n" +
+	"+CONFORMANCE_APPROVAL_DECISION_LEAVE_PENDING\x10\x03*\xcb\x06\n" +
 	"\x17ConformanceFailureClass\x12)\n" +
 	"%CONFORMANCE_FAILURE_CLASS_UNSPECIFIED\x10\x00\x12.\n" +
 	"*CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH\x10\x01\x12+\n" +
@@ -14148,8 +14149,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	",CONFORMANCE_FAILURE_CLASS_L3_STATUS_MISMATCH\x10\x04\x12/\n" +
 	"+CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID\x10\x05\x12,\n" +
 	"(CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN\x10\x06\x121\n" +
-	"-CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID\x10\a\x12:\n" +
-	"6CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE\x10\b\x12(\n" +
+	"-CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID\x10\a\x124\n" +
+	"0CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE\x10\b\x12(\n" +
 	"$CONFORMANCE_FAILURE_CLASS_LEDGER_GAP\x10\t\x121\n" +
 	"-CONFORMANCE_FAILURE_CLASS_UNCLAIMED_EXECUTION\x10\n" +
 	"\x12*\n" +
@@ -14237,7 +14238,7 @@ var file_ztd_eval_v1_eval_proto_goTypes = []any{
 	(PublicFinishState)(0),                        // 17: ztd.eval.v1.PublicFinishState
 	(PublicEvidenceSource)(0),                     // 18: ztd.eval.v1.PublicEvidenceSource
 	(PublicVerificationProvenance)(0),             // 19: ztd.eval.v1.PublicVerificationProvenance
-	(PublicEventReceiptStatus)(0),                 // 20: ztd.eval.v1.PublicEventReceiptStatus
+	(PublicReceiptStatus)(0),                      // 20: ztd.eval.v1.PublicReceiptStatus
 	(PublicToolScoreDimension)(0),                 // 21: ztd.eval.v1.PublicToolScoreDimension
 	(ProviderHardwareMetricAvailability)(0),       // 22: ztd.eval.v1.ProviderHardwareMetricAvailability
 	(EvaluationGovernancePosture)(0),              // 23: ztd.eval.v1.EvaluationGovernancePosture
@@ -14374,7 +14375,7 @@ var file_ztd_eval_v1_eval_proto_goTypes = []any{
 	(*v1.VersionedReference)(nil),                 // 154: ztd.compliance.v1.VersionedReference
 	(*v1.ComplianceEvidenceReference)(nil),        // 155: ztd.compliance.v1.ComplianceEvidenceReference
 	(*timestamppb.Timestamp)(nil),                 // 156: google.protobuf.Timestamp
-	(*v11.EventReceipt)(nil),                      // 157: ztd.operator.v1.EventReceipt
+	(*v11.ActionReceipt)(nil),                     // 157: ztd.operator.v1.ActionReceipt
 	(*v11.GovernanceRejection)(nil),               // 158: ztd.operator.v1.GovernanceRejection
 	(*v11.IngressRefusal)(nil),                    // 159: ztd.operator.v1.IngressRefusal
 	(*v11.RunShellCommandArguments)(nil),          // 160: ztd.operator.v1.RunShellCommandArguments
@@ -14489,7 +14490,7 @@ var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	73,  // 106: ztd.eval.v1.ModelInferenceRecord.model_variant:type_name -> ztd.eval.v1.ModelVariant
 	8,   // 107: ztd.eval.v1.ModelInferenceRecord.usage_availability:type_name -> ztd.eval.v1.EvaluationUsageAvailability
 	7,   // 108: ztd.eval.v1.ModelInferenceRecord.load_state:type_name -> ztd.eval.v1.EvaluationLoadState
-	155, // 109: ztd.eval.v1.ModelInferenceRecord.governed_event_receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	155, // 109: ztd.eval.v1.ModelInferenceRecord.governed_receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
 	9,   // 110: ztd.eval.v1.ModelInferenceRecord.classification:type_name -> ztd.eval.v1.EvaluationCallClassification
 	29,  // 111: ztd.eval.v1.ToolDecisionRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
 	29,  // 112: ztd.eval.v1.ToolCallRecord.schema_outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
@@ -14500,7 +14501,7 @@ var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	1,   // 117: ztd.eval.v1.HandoffRecord.from_role:type_name -> ztd.eval.v1.ModelCampaignRole
 	1,   // 118: ztd.eval.v1.HandoffRecord.to_role:type_name -> ztd.eval.v1.ModelCampaignRole
 	29,  // 119: ztd.eval.v1.RecoveryRecord.outcome:type_name -> ztd.eval.v1.EvaluationVerdictStatus
-	155, // 120: ztd.eval.v1.GovernedActionBinding.event_receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
+	155, // 120: ztd.eval.v1.GovernedActionBinding.receipt_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
 	155, // 121: ztd.eval.v1.GovernedActionBinding.persistence_attestation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
 	155, // 122: ztd.eval.v1.GovernedActionBinding.effect_observation_ref:type_name -> ztd.compliance.v1.ComplianceEvidenceReference
 	29,  // 123: ztd.eval.v1.DeterministicGrade.status:type_name -> ztd.eval.v1.EvaluationVerdictStatus
@@ -14575,7 +14576,7 @@ var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	10,  // 192: ztd.eval.v1.PublicPolicyDecisionActivityRecord.outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
 	18,  // 193: ztd.eval.v1.PublicPolicyDecisionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
 	10,  // 194: ztd.eval.v1.PublicGovernedActionActivityRecord.reported_policy_outcome:type_name -> ztd.eval.v1.EvaluationPolicyDecisionOutcome
-	20,  // 195: ztd.eval.v1.PublicGovernedActionActivityRecord.event_receipt_status:type_name -> ztd.eval.v1.PublicEventReceiptStatus
+	20,  // 195: ztd.eval.v1.PublicGovernedActionActivityRecord.receipt_status:type_name -> ztd.eval.v1.PublicReceiptStatus
 	18,  // 196: ztd.eval.v1.PublicGovernedActionActivityRecord.evidence_source:type_name -> ztd.eval.v1.PublicEvidenceSource
 	15,  // 197: ztd.eval.v1.PublicModelActivity.availability:type_name -> ztd.eval.v1.PublicActivityAvailability
 	16,  // 198: ztd.eval.v1.PublicModelActivity.unavailable_reason:type_name -> ztd.eval.v1.PublicUnavailableReason
@@ -14617,18 +14618,18 @@ var file_ztd_eval_v1_eval_proto_depIdxs = []int32{
 	153, // 234: ztd.eval.v1.PublicLiveEvent.metric_delta:type_name -> ztd.eval.v1.PublicLiveEvent.MetricDeltaEntry
 	129, // 235: ztd.eval.v1.CanaryManifest.entries:type_name -> ztd.eval.v1.CanaryEntry
 	42,  // 236: ztd.eval.v1.ConformanceObservation.kind:type_name -> ztd.eval.v1.ConformanceObservationKind
-	157, // 237: ztd.eval.v1.ConformanceObservation.event_receipt:type_name -> ztd.operator.v1.EventReceipt
+	157, // 237: ztd.eval.v1.ConformanceObservation.receipt:type_name -> ztd.operator.v1.ActionReceipt
 	158, // 238: ztd.eval.v1.ConformanceObservation.rejection:type_name -> ztd.operator.v1.GovernanceRejection
 	159, // 239: ztd.eval.v1.ConformanceObservation.refusal:type_name -> ztd.operator.v1.IngressRefusal
 	131, // 240: ztd.eval.v1.ConformanceCaseEvidence.observations:type_name -> ztd.eval.v1.ConformanceObservation
-	157, // 241: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.EventReceipt
-	157, // 242: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.EventReceipt
+	157, // 241: ztd.eval.v1.ConformanceCaseEvidence.sentinel_before:type_name -> ztd.operator.v1.ActionReceipt
+	157, // 242: ztd.eval.v1.ConformanceCaseEvidence.sentinel_after:type_name -> ztd.operator.v1.ActionReceipt
 	130, // 243: ztd.eval.v1.ConformanceCaseEvidence.canary_before:type_name -> ztd.eval.v1.CanaryManifest
 	130, // 244: ztd.eval.v1.ConformanceCaseEvidence.canary_after:type_name -> ztd.eval.v1.CanaryManifest
 	132, // 245: ztd.eval.v1.ConformanceCaseEvidence.a2a_calls:type_name -> ztd.eval.v1.ConformanceA2ACall
 	133, // 246: ztd.eval.v1.ConformanceCaseEvidence.exchanges:type_name -> ztd.eval.v1.ConformanceExchange
-	157, // 247: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.EventReceipt
-	157, // 248: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.EventReceipt
+	157, // 247: ztd.eval.v1.ConformanceQuiescence.first:type_name -> ztd.operator.v1.ActionReceipt
+	157, // 248: ztd.eval.v1.ConformanceQuiescence.second:type_name -> ztd.operator.v1.ActionReceipt
 	23,  // 249: ztd.eval.v1.ConformanceRunRecord.posture:type_name -> ztd.eval.v1.EvaluationGovernancePosture
 	128, // 250: ztd.eval.v1.ConformanceRunRecord.anchors:type_name -> ztd.eval.v1.ConformanceAnchor
 	135, // 251: ztd.eval.v1.ConformanceRunRecord.quiescence:type_name -> ztd.eval.v1.ConformanceQuiescence

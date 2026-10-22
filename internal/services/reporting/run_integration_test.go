@@ -98,7 +98,7 @@ func seedReportingData(t *testing.T, store *storage.SQLAuditStore, rs *storage.R
 	ctx := context.Background()
 	now := time.Now().UTC()
 
-	// Session + events + event receipts + file mutations.
+	// Session + events + receipts + file mutations.
 	require.NoError(t, store.CreateSession("sess-run-1", "operator", "Run Test", "user@test.com"))
 
 	require.NoError(t, store.RecordEventReceipt(&models.EventReceiptRecord{
@@ -159,7 +159,7 @@ func TestRun_PopulatedStores_AllCSVFilesWritten(t *testing.T) {
 
 	// Verify all expected CSV files exist.
 	expectedFiles := []string{
-		constants.ReportEventReceiptsFilename,
+		constants.ReportReceiptsFilename,
 		constants.ReportSessionsFilename,
 		constants.ReportEventsFilename,
 		constants.ReportFileMutationsFilename,
@@ -187,16 +187,16 @@ func TestRun_PopulatedStores_AllCSVFilesWritten(t *testing.T) {
 	// Header + at least 10 data rows (all reporters + verification).
 	assert.GreaterOrEqual(t, len(records), 2, "manifest should have header + data rows")
 
-	// Verify event receipts CSV has 1 row.
-	eventReceiptsPath := filepath.Join(opts.OutDir, constants.ReportEventReceiptsFilename)
-	f2, err := os.Open(eventReceiptsPath)
+	// Verify receipts CSV has 1 row.
+	receiptsPath := filepath.Join(opts.OutDir, constants.ReportReceiptsFilename)
+	f2, err := os.Open(receiptsPath)
 	require.NoError(t, err)
 	defer f2.Close()
 	r2 := csv.NewReader(f2)
-	eventReceiptRecords, err := r2.ReadAll()
+	receiptRecords, err := r2.ReadAll()
 	require.NoError(t, err)
-	require.Len(t, eventReceiptRecords, 2, "header + 1 event receipt row")
-	assert.Equal(t, "tx-run-1", eventReceiptRecords[1][0])
+	require.Len(t, receiptRecords, 2, "header + 1 receipt row")
+	assert.Equal(t, "tx-run-1", receiptRecords[1][0])
 
 	// Verify replay nonces CSV has 1 row.
 	noncePath := filepath.Join(opts.OutDir, constants.ReportReplayNoncesFilename)
@@ -235,7 +235,7 @@ func TestRun_EmptyStores_AllCSVFilesWritten(t *testing.T) {
 
 	// All files should still exist with header-only rows.
 	expectedFiles := []string{
-		constants.ReportEventReceiptsFilename,
+		constants.ReportReceiptsFilename,
 		constants.ReportSessionsFilename,
 		constants.ReportEventsFilename,
 		constants.ReportFileMutationsFilename,
@@ -260,7 +260,7 @@ func TestRun_LockedVault_NilKeystore(t *testing.T) {
 
 	_, err := Run(context.Background(), opts)
 	require.ErrorIs(t, err, constants.ErrReportVaultUnavailable)
-	_, statErr := os.Stat(filepath.Join(opts.OutDir, constants.ReportEventReceiptsFilename))
+	_, statErr := os.Stat(filepath.Join(opts.OutDir, constants.ReportReceiptsFilename))
 	assert.True(t, os.IsNotExist(statErr), "no CSV may be written when the vault is unavailable")
 }
 
@@ -283,7 +283,7 @@ func TestRun_CancelledContext(t *testing.T) {
 	require.NoError(t, err) // Run itself doesn't return error on cancelled ctx; individual reporters skip.
 	// No files should be written because the run closure checks ctx.Err() before each reporter.
 	// However, the OutDir is still created.
-	_, statErr := os.Stat(filepath.Join(opts.OutDir, constants.ReportEventReceiptsFilename))
+	_, statErr := os.Stat(filepath.Join(opts.OutDir, constants.ReportReceiptsFilename))
 	assert.True(t, os.IsNotExist(statErr), "no CSV files should be written with cancelled context")
 }
 

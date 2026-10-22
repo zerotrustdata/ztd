@@ -457,7 +457,7 @@ func TestAgentEvidenceIntegration_SharedRuntimeEmbeddedOperator(t *testing.T) {
 		assert.True(t, trace.SharedRuntime(), "shared runtime trace must report SharedRuntime() == true")
 		require.NotEmpty(t, trace.ModelCalls)
 		for _, mc := range trace.ModelCalls {
-			assert.NotNil(t, mc.EventReceipt, "every model call must carry an event receipt")
+			assert.NotNil(t, mc.Receipt, "every model call must carry a receipt")
 		}
 	}
 
@@ -487,7 +487,7 @@ func TestAgentEvidenceIntegration_DistinctRuntimes(t *testing.T) {
 		assert.False(t, trace.SharedRuntime(), "distinct runtimes must report SharedRuntime() == false")
 		require.NotEmpty(t, trace.ModelCalls)
 		for _, mc := range trace.ModelCalls {
-			assert.NotNil(t, mc.EventReceipt)
+			assert.NotNil(t, mc.Receipt)
 		}
 	}
 
@@ -512,8 +512,8 @@ func TestAgentEvidenceIntegration_ProviderFailureAfterExecution(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, trace.ProviderFailure)
 	require.NotEmpty(t, trace.ModelCalls)
-	require.NotNil(t, trace.ModelCalls[0].EventReceipt)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, trace.ModelCalls[0].EventReceipt.Status)
+	require.NotNil(t, trace.ModelCalls[0].Receipt)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, trace.ModelCalls[0].Receipt.Status)
 
 	exportReport, err := evaluation.NewCampaignExporter(env.clock).ExportRun(ctx, env.store, env.files, env.req.RunID, constants.EvaluationCampaignExportDirname)
 	require.NoError(t, err)

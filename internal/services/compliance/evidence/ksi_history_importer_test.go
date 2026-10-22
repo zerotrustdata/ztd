@@ -74,7 +74,7 @@ func newKSIHistoryImporterFixture(t *testing.T) *ksiHistoryImporterFixture {
 					ID:                  "KSI-CMT-01",
 					Status:              compliance.KSIStatusSatisfied,
 					Outcome:             compliance.KSIOutcomeSatisfied,
-					Evidence:            []*compliancev1.ComplianceEvidenceReference{{ArtifactType: string(compliance.EvidenceTypeEventReceiptID), ArtifactId: "transaction-1", ScopeId: "scope-1", RunId: "run-1"}},
+					Evidence:            []*compliancev1.ComplianceEvidenceReference{{ArtifactType: string(compliance.EvidenceTypeReceiptID), ArtifactId: "transaction-1", ScopeId: "scope-1", RunId: "run-1"}},
 					LastValidatedUnixMs: 1_700_000_099_000,
 					MethodCount:         2,
 					Binding:             binding,

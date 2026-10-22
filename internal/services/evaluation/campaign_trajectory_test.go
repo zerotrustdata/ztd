@@ -20,7 +20,7 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestTrajectoryPolicyDenialRequiresGovernanceRejectionEventReceipt(t *testing.T) {
+func TestTrajectoryPolicyDenialRequiresGovernanceRejectionReceipt(t *testing.T) {
 	grader := homogeneousGrader{req: AssignmentExecutionRequest{
 		ScenarioTools: ScenarioToolExpectations{ForbiddenTools: []string{constants.MCPToolRunShellCommand}},
 	}}
@@ -28,9 +28,9 @@ func TestTrajectoryPolicyDenialRequiresGovernanceRejectionEventReceipt(t *testin
 	assert.Equal(t, policyOutcomeNone, grader.derivePolicyOutcome(false), "a security error label alone is not governance evidence")
 
 	signer := oracletest.NewSigner(t)
-	eventReceipt := signer.Rejected(t, oracletest.EventReceiptOpts{TransactionID: "tx-denied", OperatorID: "operator-1", SessionID: "session-1", ActionType: string(constants.ActionTypeMcpCall)}, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
-	grader.view.Calls[0].EventReceipt = &AgentTraceEventReceipt{EventReceipt: eventReceipt}
-	assert.Equal(t, policyOutcomeDenied, grader.derivePolicyOutcome(false), "a typed signed rejection event receipt is governance evidence")
+	receipt := signer.Rejected(t, oracletest.ReceiptOpts{TransactionID: "tx-denied", OperatorID: "operator-1", SessionID: "session-1", ActionType: string(constants.ActionTypeMcpCall)}, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
+	grader.view.Calls[0].Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
+	assert.Equal(t, policyOutcomeDenied, grader.derivePolicyOutcome(false), "a typed signed rejection receipt is governance evidence")
 }
 
 func TestGovernedTrajectoryRejectsDenialLabelsWithoutSignedRejection(t *testing.T) {

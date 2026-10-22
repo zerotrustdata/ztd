@@ -175,7 +175,7 @@ func successDispatchResultForRequest(t *testing.T, req *operatorv1.InferenceDisp
 	return &dispatch.CommandDispatchResult{
 		TransactionID: "tx-inference-001",
 		ResultPayload: payload,
-		EventReceipt: &operatorv1.EventReceipt{
+		Receipt: &operatorv1.ActionReceipt{
 			TransactionId: "tx-inference-001",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: digest,
@@ -404,15 +404,15 @@ func TestInferenceDispatchController_SuccessReturnsVerifiedProtoContract(t *test
 	require.Equal(t, http.StatusOK, rr.Code, "body: %s", rr.Body.String())
 
 	// The response must be the protocol-owned InferenceDispatchResponse in
-	// proto field-name JSON form, carrying the verified event receipt and result.
+	// proto field-name JSON form, carrying the verified receipt and result.
 	var resp operatorv1.InferenceDispatchResponse
 	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), &resp))
 	assert.Equal(t, "tx-inference-001", resp.TransactionId)
 	require.NotNil(t, resp.Result)
 	require.Len(t, resp.Result.Parts, 1)
 	assert.Equal(t, "generated output", resp.Result.Parts[0].GetText())
-	require.NotNil(t, resp.EventReceipt, "the verified final signed event receipt must be returned to the caller")
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, resp.EventReceipt.Status)
+	require.NotNil(t, resp.Receipt, "the verified final signed receipt must be returned to the caller")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, resp.Receipt.Status)
 
 	// The response must not carry a second success/error envelope shape.
 	assert.NotContains(t, rr.Body.String(), "\"success\"", "the protocol contract has no ad-hoc success field")
@@ -493,12 +493,12 @@ func TestInferenceDispatchController_ErrorStatusMapping(t *testing.T) {
 		{name: "model override denied", dispatchErr: constants.ErrInferenceModelOverrideDenied, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED},
 		{name: "model registry invalid", dispatchErr: constants.ErrInferenceModelRegistryInvalid, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID},
 		{name: "campaign binding invalid", dispatchErr: constants.ErrInferenceCampaignBindingInvalid, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID},
-		{name: "governance rejected event receipt", dispatchErr: constants.ErrInferenceGovernanceRejected, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED},
+		{name: "governance rejected receipt", dispatchErr: constants.ErrInferenceGovernanceRejected, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED},
 		{name: "l1 doctrine rejection", dispatchErr: constants.ErrTxL1ValidationFailed, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED},
 		{name: "l3 proof unmintable under posture", dispatchErr: constants.ErrTxL3ProofUnmintable, wantStatus: http.StatusForbidden, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED},
 		{name: "zero delivery", dispatchErr: constants.ErrDispatchNoDelivery, wantStatus: http.StatusServiceUnavailable, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY},
-		{name: "event receipt execution failed", dispatchErr: constants.ErrInferenceEventReceiptFailed, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_FAILED},
-		{name: "event receipt verification failed", dispatchErr: constants.ErrInferenceEventReceiptVerify, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_VERIFY},
+		{name: "receipt execution failed", dispatchErr: constants.ErrInferenceReceiptFailed, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED},
+		{name: "receipt verification failed", dispatchErr: constants.ErrInferenceReceiptVerify, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY},
 		{name: "result digest mismatch", dispatchErr: constants.ErrInferenceResultDigestMismatch, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH},
 		{name: "backend timeout", dispatchErr: constants.ErrInferenceBackendTimeout, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT},
 		{name: "model not found", dispatchErr: constants.ErrInferenceModelNotFound, wantStatus: http.StatusBadGateway, wantCode: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND},
@@ -675,14 +675,14 @@ func TestInferenceDispatchController_ContextCanceledWritesNothing(t *testing.T) 
 	assert.Empty(t, rr.Body.String(), "no response is written when the caller is gone")
 }
 
-func TestInferenceDispatchController_FailedEventReceiptPropagatedOnProviderFailure(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+func TestInferenceDispatchController_FailedReceiptPropagatedOnProviderFailure(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-inference-failed-001",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		Signature:     "sig-failed-001",
 		ResultSummary: "ollama provider timeout",
 	}
-	providerErr := governance.WithFailedEventReceipt(eventReceipt, constants.ErrInferenceBackendTimeout)
+	providerErr := governance.WithFailedReceipt(receipt, constants.ErrInferenceBackendTimeout)
 	dispatcher := &stubInferenceCommandDispatcher{err: providerErr}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -699,19 +699,19 @@ func TestInferenceDispatchController_FailedEventReceiptPropagatedOnProviderFailu
 	failure := &operatorv1.InferenceDispatchFailure{}
 	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), failure))
 	assert.Equal(t, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT, failure.GetCode())
-	require.NotNil(t, failure.GetEventReceipt(), "the HTTP failure body must carry the Operator's FAILED event receipt")
-	assert.Equal(t, "tx-inference-failed-001", failure.GetEventReceipt().GetTransactionId())
-	assert.Equal(t, "sig-failed-001", failure.GetEventReceipt().GetSignature())
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failure.GetEventReceipt().GetStatus())
-	require.NotNil(t, governance.FailedEventReceipt(providerErr))
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, governance.FailedEventReceipt(providerErr).GetStatus())
+	require.NotNil(t, failure.GetReceipt(), "the HTTP failure body must carry the Operator's FAILED receipt")
+	assert.Equal(t, "tx-inference-failed-001", failure.GetReceipt().GetTransactionId())
+	assert.Equal(t, "sig-failed-001", failure.GetReceipt().GetSignature())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failure.GetReceipt().GetStatus())
+	require.NotNil(t, governance.FailedReceipt(providerErr))
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, governance.FailedReceipt(providerErr).GetStatus())
 }
 
 func TestInferenceDispatchController_ProviderFailureLogCarriesEvidenceIDsWithoutContent(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream=%v", stream), func(t *testing.T) {
-			eventReceipt := &operatorv1.EventReceipt{TransactionId: "tx-backend-failure", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
-			dispatcher := &stubInferenceCommandDispatcher{err: governance.WithFailedEventReceipt(eventReceipt, fmt.Errorf("private provider detail: %w", constants.ErrInferenceBackendUnavailable))}
+			receipt := &operatorv1.ActionReceipt{TransactionId: "tx-backend-failure", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+			dispatcher := &stubInferenceCommandDispatcher{err: governance.WithFailedReceipt(receipt, fmt.Errorf("private provider detail: %w", constants.ErrInferenceBackendUnavailable))}
 			ctrl := newInferenceDispatchControllerForTest(t, dispatcher, &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}, 4096)
 			var output bytes.Buffer
 			logger, err := logging.NewLogger("info", &output)
@@ -730,7 +730,7 @@ func TestInferenceDispatchController_ProviderFailureLogCarriesEvidenceIDsWithout
 	}
 }
 
-func TestInferenceDispatchController_GovernanceRejectionCarriesNoFailedEventReceipt(t *testing.T) {
+func TestInferenceDispatchController_GovernanceRejectionCarriesNoFailedReceipt(t *testing.T) {
 	dispatcher := &stubInferenceCommandDispatcher{err: constants.ErrInferenceGovernanceRejected}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -747,5 +747,5 @@ func TestInferenceDispatchController_GovernanceRejectionCarriesNoFailedEventRece
 	failure := &operatorv1.InferenceDispatchFailure{}
 	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), failure))
 	assert.Equal(t, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED, failure.GetCode())
-	assert.Nil(t, failure.GetEventReceipt(), "governance rejection without execution must carry no FAILED event receipt")
+	assert.Nil(t, failure.GetReceipt(), "governance rejection without execution must carry no FAILED receipt")
 }

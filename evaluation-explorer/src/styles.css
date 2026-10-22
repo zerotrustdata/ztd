@@ -3045,7 +3045,7 @@ a.evidence-step-body:focus-visible { outline: 2px solid var(--accent); outline-o
   color: var(--fg-muted);
   font-size: var(--fs-label);
 }
-.agent-trace-event_receipt {
+.agent-trace-receipt {
   display: grid;
   gap: 6px;
   margin-top: 8px;

@@ -1,6 +1,6 @@
 {
   "name": "completed_with_ordered_stage_evidence",
-  "event_receipt": {
+  "receipt": {
     "transaction_id": "tx-stage-golden-001",
     "transaction_hash": "sha256:stage-transaction",
     "status": "EXECUTION_STATUS_COMPLETED",

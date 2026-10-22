@@ -32,7 +32,7 @@ The protocol has several source types with distinct responsibilities:
 - `docs/`: Governance, MCP, A2A, constants, and generated protobuf reference documentation.
 - `conformance/`: Shared transaction-hash vectors (`hash_vectors.json`, `hash_vectors_v2.json`) and their conformance guide.
 - `test-fixtures/`: Shared JSON fixtures consumed by Go and console tests, such as `operator-document.json`.
-- `vectors/`: Cross-language event receipt, persistence-attestation, compliance, and evaluation canonicalization vectors.
+- `vectors/`: Cross-language receipt, persistence-attestation, compliance, and evaluation canonicalization vectors.
 
 ## Protocol Surfaces
 
@@ -41,7 +41,7 @@ The protocol has several source types with distinct responsibilities:
 The protobuf module is `buf.build/ztd/platform`, configured in `proto/buf.yaml`.
 
 - `ztd/common/v1/common.proto` defines governance envelopes and metadata, component identifiers, command intent, and platform enrollment messages.
-- `ztd/operator/v1/operator.proto` defines the `OperatorService`, operator request and result payloads, execution and governance status enums, deterministic stage evidence, action event receipts, commitment attestations, and persistence attestations.
+- `ztd/operator/v1/operator.proto` defines the `OperatorService`, operator request and result payloads, execution and governance status enums, deterministic stage evidence, action receipts, commitment attestations, and persistence attestations.
 - `ztd/pubsub/v1/pubsub.proto` defines the shared pub/sub message and event envelopes.
 - `ztd/compliance/v1/compliance.proto` defines compliance catalogs, assessment scope and evidence, control assessments, trust policies, signed report bundles, verification results, analysis records, framework profiles.
 - `ztd/eval/v1/eval.proto` defines eval-native campaign specs, provider-boundary observation, storage-side model provenance, bundle verification, publication metadata, and agent trace, conformance, and containment records.
@@ -49,7 +49,7 @@ The protobuf module is `buf.build/ztd/platform`, configured in `proto/buf.yaml`.
 
 Generated Go code lives beside each schema, generated TypeScript modules live under `node/src/gen/`, and generated Markdown references live under `docs/reference/api/`.
 
-### Governance and event receipts
+### Governance and receipts
 
 `GovernanceEnvelope` carries identity, intent, replay-protection, state, and governance proof data for governed mutations. The [protocol specification](docs/spec.md) defines its wire contract and canonical transaction hash.
 
@@ -59,7 +59,7 @@ The execution path uses five interlocked layers:
 2. **L2 Consensus** verifies K-of-N Ed25519 quorum signatures over `<transaction_hash>|<decision>`.
 3. **L3 Notary** verifies human authorization through WebAuthn or signed CLI proofs.
 4. **L4 Warden** performs pre-dispatch transaction-hash recompute, expiry, nonce reservation for replay protection, state-root, and posture-required L2 and L3 proof checks.
-5. **L5 Actuator** dispatches the registered action handler, mints just-in-time capabilities, and produces signed event receipts.
+5. **L5 Actuator** dispatches the registered action handler, mints just-in-time capabilities, and produces signed receipts.
 
 ### Constants and models
 

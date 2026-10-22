@@ -347,8 +347,8 @@ func (r GenerateResponse) ToProtoInferenceResult() *operatorv1.InferenceResult {
 // ComputeInferenceResultDigest returns the canonical digest of an
 // InferenceResult: lowercase hex SHA-256 over the deterministic protobuf
 // serialization with result_digest cleared. The Inference Node computes it
-// at execution time and returns it as the event receipt summary so the signed
-// EventReceipt binds the complete result; the User Gateway recomputes it
+// at execution time and returns it as the receipt summary so the signed
+// ActionReceipt binds the complete result; the User Gateway recomputes it
 // and requires equality before reporting dispatch success.
 func ComputeInferenceResultDigest(result *operatorv1.InferenceResult) (string, error) {
 	if result == nil {

@@ -162,7 +162,7 @@ func insertCommitmentDirect(t *testing.T, db *sqliteutil.DB, testVault *vault.Va
 }
 
 // createSessionAndEvent creates a session and an event, returning the event ID.
-// Needed because file_mutations and event receipts have FK constraints on events/sessions.
+// Needed because file_mutations and receipts have FK constraints on events/sessions.
 func createSessionAndEvent(t *testing.T, store *storage.SQLAuditStore) int64 {
 	t.Helper()
 	sessionID := "test-session-verify"
@@ -503,14 +503,14 @@ func TestReportVerification_ReadOperationDoesNotRequireHash(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Check 5: Event receipt/commitment cross-link
+// Check 5: Receipt/commitment cross-link
 // ---------------------------------------------------------------------------
 
-func TestReportVerification_AllEventReceiptsPresent_Pass(t *testing.T) {
+func TestReportVerification_AllReceiptsPresent_Pass(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 	auditStore := setupTestAuditStore(t)
-	sessionID := "test-session-event_receipts"
+	sessionID := "test-session-receipts"
 	err := auditStore.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
 	require.NoError(t, err)
 
@@ -533,17 +533,17 @@ func TestReportVerification_AllEventReceiptsPresent_Pass(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, vr.FailCount)
 
-	crossRow := findRow(vr, "event_receipt_commitment_crosslink")
+	crossRow := findRow(vr, "receipt_commitment_crosslink")
 	require.NotNil(t, crossRow)
 	assert.Equal(t, verifyResultPass, crossRow.Result)
-	assert.Contains(t, crossRow.Detail, "all 1 commitments have matching event receipts")
+	assert.Contains(t, crossRow.Detail, "all 1 commitments have matching receipts")
 }
 
-func TestReportVerification_MissingEventReceipt_Fails(t *testing.T) {
+func TestReportVerification_MissingReceipt_Fails(t *testing.T) {
 	outDir := testutil.TempDir(t)
 	cl, _, _ := setupTestCommitmentLedger(t)
 	auditStore := setupTestAuditStore(t)
-	sessionID := "test-session-missing-event_receipt"
+	sessionID := "test-session-missing-receipt"
 	err := auditStore.CreateSession(sessionID, "operator", "Test Session", "user@test.com")
 	require.NoError(t, err)
 
@@ -567,10 +567,10 @@ func TestReportVerification_MissingEventReceipt_Fails(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, vr.FailCount, 0)
 
-	crossRow := findRow(vr, "event_receipt_commitment_crosslink")
+	crossRow := findRow(vr, "receipt_commitment_crosslink")
 	require.NotNil(t, crossRow)
 	assert.Equal(t, verifyResultFail, crossRow.Result)
-	assert.Contains(t, crossRow.Detail, "1 committed transaction_ids have no matching event receipt")
+	assert.Contains(t, crossRow.Detail, "1 committed transaction_ids have no matching receipt")
 }
 
 func TestReportVerification_EmptyCommitments_NoCrossLinkNeeded(t *testing.T) {
@@ -582,7 +582,7 @@ func TestReportVerification_EmptyCommitments_NoCrossLinkNeeded(t *testing.T) {
 	require.NoError(t, err)
 
 	// An empty ledger still produces an explicit successful cross-link result.
-	crossRow := findRow(vr, "event_receipt_commitment_crosslink")
+	crossRow := findRow(vr, "receipt_commitment_crosslink")
 	require.NotNil(t, crossRow)
 	assert.Equal(t, verifyResultPass, crossRow.Result)
 	assert.Equal(t, "no commitments to cross-link", crossRow.Detail)

@@ -17,8 +17,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 )
 
-func reportEventReceipts(ctx context.Context, outDir string, store *storage.SQLAuditStore) (FileResult, error) {
-	path := filepath.Join(outDir, constants.ReportEventReceiptsFilename)
+func reportReceipts(ctx context.Context, outDir string, store *storage.SQLAuditStore) (FileResult, error) {
+	path := filepath.Join(outDir, constants.ReportReceiptsFilename)
 
 	var rows []Row
 	offset := 0
@@ -29,10 +29,10 @@ func reportEventReceipts(ctx context.Context, outDir string, store *storage.SQLA
 		}
 		batch, err := store.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, batchSize, offset)
 		if err != nil {
-			return FileResult{}, fmt.Errorf("%w: event_receipts: %w", constants.ErrReportStoreUnavailable, err)
+			return FileResult{}, fmt.Errorf("%w: receipts: %w", constants.ErrReportStoreUnavailable, err)
 		}
 		for _, r := range batch {
-			rows = append(rows, EventReceiptRow{
+			rows = append(rows, ReceiptRow{
 				TransactionID:   r.TransactionID,
 				TransactionHash: r.TransactionHash,
 				OperatorID:      r.OperatorID,
@@ -52,10 +52,10 @@ func reportEventReceipts(ctx context.Context, outDir string, store *storage.SQLA
 		offset += batchSize
 	}
 
-	res, err := writeCSV(path, EventReceiptRow{}.Columns(), rows)
+	res, err := writeCSV(path, ReceiptRow{}.Columns(), rows)
 	if err != nil {
-		return FileResult{}, fmt.Errorf("%w: event_receipts: %w", constants.ErrReportWriteFailed, err)
+		return FileResult{}, fmt.Errorf("%w: receipts: %w", constants.ErrReportWriteFailed, err)
 	}
-	res.Filename = constants.ReportEventReceiptsFilename
+	res.Filename = constants.ReportReceiptsFilename
 	return res, nil
 }

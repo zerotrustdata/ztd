@@ -108,7 +108,7 @@ export function validateObservePayload(type: ObserveEventType, payload: unknown)
         isEvalVerificationStatus(payload.verification_status) &&
         typeof payload.terminal_attempts === 'number' &&
         typeof payload.assigned_tasks === 'number' &&
-        typeof payload.event_receipt_count === 'number' &&
+        typeof payload.receipt_count === 'number' &&
         typeof payload.completed_at === 'string';
 
     case 'ai.eval.metric.recorded':

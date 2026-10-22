@@ -90,7 +90,7 @@ type pubsubFixture struct {
 	SignerPub  ed25519.PublicKey
 }
 
-// testAuditBackend is the real SQLAuditStore and auditor identity an L5Actuator commits event_receipts
+// testAuditBackend is the real SQLAuditStore and auditor identity an L5Actuator commits receipts
 // through. The actuator fails closed without it, so every test that executes through the actuator
 // attaches one over a fresh runtime root.
 type testAuditBackend struct {
@@ -102,7 +102,7 @@ type testAuditBackend struct {
 }
 
 // newTestAuditBackend opens the audit store and pre-creates the operator sessions the executed
-// envelopes reference; the store rejects event receipts for unknown sessions.
+// envelopes reference; the store rejects receipts for unknown sessions.
 func newTestAuditBackend(t *testing.T, sessionIDs ...string) testAuditBackend {
 	t.Helper()
 	store := storagetest.NewTestAuditStore(t, sessionIDs...)
@@ -164,7 +164,7 @@ func newPubsubFixture(t *testing.T) *pubsubFixture {
 	// Set up a mock actuator for tests that require execution
 	mockHandler := &mockExecutionHandler{
 		ExecuteVerifiedTransactionFunc: func(ctx context.Context, eventType constants.EventType, cmdMsg governance.CommandMessage) (string, error) {
-			return "test-event_receipt-id", nil
+			return "test-receipt-id", nil
 		},
 	}
 	mockActuator := &governance.L5Actuator{

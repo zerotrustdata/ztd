@@ -63,16 +63,16 @@ type GatewayWebSocketHandler struct {
 	onCommandSubscribedMu sync.RWMutex
 	onCommandSubscribed   func(operatorID, sessionID, deploymentID string)
 
-	// eventReceiptRelayDeps are wired by SetEventReceiptRelayDeps for the event_receipts:
-	// relay path. When set, publishes to event_receipts: channels from
-	// authorized operators are intercepted, the EventReceipt signature is
-	// verified against the operator's actuator public key, the event receipt is
+	// receiptRelayDeps are wired by SetReceiptRelayDeps for the receipts:
+	// relay path. When set, publishes to receipts: channels from
+	// authorized operators are intercepted, the ActionReceipt signature is
+	// verified against the operator's actuator public key, the receipt is
 	// recorded in the gateway's SQLAuditStore, and the envelope is fanned
-	// out to subscribers. When nil (the default), the event_receipts: relay path
-	// is disabled and publishes to event_receipts: are rejected fail-closed.
-	eventReceiptRelayMu       sync.RWMutex
-	eventReceiptSignerStore   EventReceiptSignerResolver
-	eventReceiptAuditRecorder EventReceiptRecorder
+	// out to subscribers. When nil (the default), the receipts: relay path
+	// is disabled and publishes to receipts: are rejected fail-closed.
+	receiptRelayMu       sync.RWMutex
+	receiptSignerStore   ReceiptSignerResolver
+	receiptAuditRecorder EventReceiptRecorder
 
 	// certRenewal answers Operator requests on renewal: channels, wired by
 	// SetCertRenewalService. Nil refuses every request as unavailable.
@@ -225,20 +225,20 @@ func NewGatewayWebSocketHandler(logger *slog.Logger) *GatewayWebSocketHandler {
 	}
 }
 
-// SetEventReceiptRelayDeps wires the SignerStore and EventReceiptRecorder required for
-// the event_receipts: EventReceipt relay. When set, publishes to event_receipts:
-// channels from authorized operators are intercepted, the EventReceipt
+// SetReceiptRelayDeps wires the SignerStore and EventReceiptRecorder required for
+// the receipts: ActionReceipt relay. When set, publishes to receipts:
+// channels from authorized operators are intercepted, the ActionReceipt
 // signature is verified against the operator's actuator public key (looked up
-// via the SignerStore), the event receipt is recorded in the gateway's
+// via the SignerStore), the receipt is recorded in the gateway's
 // SQLAuditStore via the EventReceiptRecorder, and the envelope is fanned out to
-// subscribers. When nil (the default), the event_receipts: relay path is disabled
-// and publishes to event_receipts: are rejected fail-closed. Called once during
+// subscribers. When nil (the default), the receipts: relay path is disabled
+// and publishes to receipts: are rejected fail-closed. Called once during
 // gateway startup after the SignerStore and AuditStore are constructed.
-func (b *GatewayWebSocketHandler) SetEventReceiptRelayDeps(signerStore EventReceiptSignerResolver, recorder EventReceiptRecorder) {
-	b.eventReceiptRelayMu.Lock()
-	b.eventReceiptSignerStore = signerStore
-	b.eventReceiptAuditRecorder = recorder
-	b.eventReceiptRelayMu.Unlock()
+func (b *GatewayWebSocketHandler) SetReceiptRelayDeps(signerStore ReceiptSignerResolver, recorder EventReceiptRecorder) {
+	b.receiptRelayMu.Lock()
+	b.receiptSignerStore = signerStore
+	b.receiptAuditRecorder = recorder
+	b.receiptRelayMu.Unlock()
 }
 
 // SetCertRenewalService wires the service that answers Operator certificate
@@ -590,11 +590,11 @@ func (h *pubSubSessionHandler) handlePublish(msg *pubsubv1.PubSubMessage) {
 		return
 	}
 
-	// event_receipts: channels from operators are intercepted: the gateway
-	// verifies the EventReceipt signature, records the event receipt in its
+	// receipts: channels from operators are intercepted: the gateway
+	// verifies the ActionReceipt signature, records the receipt in its
 	// SQLAuditStore, and fans out the envelope to subscribers.
-	if strings.HasPrefix(msg.Channel, constants.ChannelPrefixEventReceipts+":") {
-		h.relayEventReceipt(msg.Channel, msg.Data)
+	if strings.HasPrefix(msg.Channel, constants.ChannelPrefixReceipts+":") {
+		h.relayActionReceipt(msg.Channel, msg.Data)
 		return
 	}
 
@@ -610,21 +610,21 @@ func (h *pubSubSessionHandler) handlePublish(msg *pubsubv1.PubSubMessage) {
 	h.broker.Publish(msg.Channel, msg.Data)
 }
 
-// relayEventReceipt decodes a GovernanceEnvelope published by an authorized
-// operator to a event_receipts: channel, verifies the embedded EventReceipt
-// signature against the operator's actuator public key, records the event_receipt
+// relayActionReceipt decodes a GovernanceEnvelope published by an authorized
+// operator to a receipts: channel, verifies the embedded ActionReceipt
+// signature against the operator's actuator public key, records the receipt
 // in the gateway's SQLAuditStore, and fans out the original envelope to
 // subscribers. Fail-closed on any error: a malformed envelope, identity
 // mismatch, unknown signer, or invalid signature is dropped and logged.
-func (h *pubSubSessionHandler) relayEventReceipt(channel string, data []byte) {
+func (h *pubSubSessionHandler) relayActionReceipt(channel string, data []byte) {
 	b := h.broker
-	b.eventReceiptRelayMu.RLock()
-	signerStore := b.eventReceiptSignerStore
-	recorder := b.eventReceiptAuditRecorder
-	b.eventReceiptRelayMu.RUnlock()
+	b.receiptRelayMu.RLock()
+	signerStore := b.receiptSignerStore
+	recorder := b.receiptAuditRecorder
+	b.receiptRelayMu.RUnlock()
 
 	if signerStore == nil || recorder == nil {
-		b.logger.Warn("PubSub event_receipts: relay disabled: signer store or recorder not configured",
+		b.logger.Warn("PubSub receipts: relay disabled: signer store or recorder not configured",
 			"channel", channel)
 		return
 	}
@@ -632,19 +632,19 @@ func (h *pubSubSessionHandler) relayEventReceipt(channel string, data []byte) {
 	// 1. Decode the protojson GovernanceEnvelope from the published data.
 	env := &commonv1.GovernanceEnvelope{}
 	if err := protojson.Unmarshal(data, env); err != nil {
-		b.logger.Warn("PubSub event_receipts: relay: failed to decode governance envelope",
+		b.logger.Warn("PubSub receipts: relay: failed to decode governance envelope",
 			"channel", channel, "error", err.Error())
 		return
 	}
 
 	// 2. Validate the channel matches the envelope's operator identifiers.
-	// The channel is event_receipts:<operator_id>:<operator_session_id>; the
+	// The channel is receipts:<operator_id>:<operator_session_id>; the
 	// envelope must carry the same operator and session. This prevents an
-	// operator from publishing an event receipt claiming to be from a different
+	// operator from publishing a receipt claiming to be from a different
 	// operator session.
-	expectedChannel := pubsub.EventReceiptsChannel(env.OperatorId, env.OperatorSessionId)
+	expectedChannel := pubsub.ReceiptsChannel(env.OperatorId, env.OperatorSessionId)
 	if channel != expectedChannel {
-		b.logger.Warn("PubSub event_receipts: relay: channel does not match envelope operator identifiers",
+		b.logger.Warn("PubSub receipts: relay: channel does not match envelope operator identifiers",
 			"channel", channel,
 			"expected", expectedChannel,
 			"envelope_operator_id", env.OperatorId,
@@ -652,47 +652,47 @@ func (h *pubSubSessionHandler) relayEventReceipt(channel string, data []byte) {
 		return
 	}
 
-	// 3. Unmarshal the envelope payload as an EventReceipt.
+	// 3. Unmarshal the envelope payload as an ActionReceipt.
 	if len(env.Payload) == 0 {
-		b.logger.Warn("PubSub event_receipts: relay: envelope missing EventReceipt payload",
+		b.logger.Warn("PubSub receipts: relay: envelope missing ActionReceipt payload",
 			"channel", channel, "transaction_id", env.Id)
 		return
 	}
-	eventReceipt := &operatorv1.EventReceipt{}
-	if err := proto.Unmarshal(env.Payload, eventReceipt); err != nil {
-		b.logger.Warn("PubSub event_receipts: relay: failed to decode EventReceipt payload",
+	receipt := &operatorv1.ActionReceipt{}
+	if err := proto.Unmarshal(env.Payload, receipt); err != nil {
+		b.logger.Warn("PubSub receipts: relay: failed to decode ActionReceipt payload",
 			"channel", channel, "error", err.Error())
 		return
 	}
 
-	// 4. Verify the event receipt signature. The verification key is the one bound
+	// 4. Verify the receipt signature. The verification key is the one bound
 	// to the executing Operator (the envelope's operator_id, already bound to
-	// this channel above), never the key id the event receipt declares. Fail-closed
+	// this channel above), never the key id the receipt declares. Fail-closed
 	// if no key is bound or the signature is invalid.
 	// Broker callbacks carry no request context, so the signer lookup runs
 	// under Background; it is a bounded local read with no caller to cancel.
-	pubKey, err := signerStore.EventReceiptSignerKey(context.Background(), env.OperatorId, eventReceipt)
+	pubKey, err := signerStore.ReceiptSignerKey(context.Background(), env.OperatorId, receipt)
 	if err != nil {
-		b.logger.Warn("PubSub event_receipts: relay: event receipt signer not bound to executing operator",
+		b.logger.Warn("PubSub receipts: relay: receipt signer not bound to executing operator",
 			"channel", channel,
 			"operator_id", env.OperatorId,
-			"signer_key_id", eventReceipt.SignerKeyId,
+			"signer_key_id", receipt.SignerKeyId,
 			"error", err.Error())
 		return
 	}
-	if err := governance.VerifyEventReceiptSignature(eventReceipt, pubKey); err != nil {
-		b.logger.Warn("PubSub event_receipts: relay: invalid event receipt signature",
+	if err := governance.VerifyActionReceiptSignature(receipt, pubKey); err != nil {
+		b.logger.Warn("PubSub receipts: relay: invalid receipt signature",
 			"channel", channel,
-			"transaction_id", eventReceipt.TransactionId,
-			"signer_key_id", eventReceipt.SignerKeyId,
+			"transaction_id", receipt.TransactionId,
+			"signer_key_id", receipt.SignerKeyId,
 			"error", err.Error())
 		return
 	}
-	if err := governance.VerifyEventReceiptPersistenceAttestation(eventReceipt, pubKey); err != nil {
-		b.logger.Warn("PubSub event_receipts: relay: invalid event receipt persistence attestation",
+	if err := governance.VerifyReceiptPersistenceAttestation(receipt, pubKey); err != nil {
+		b.logger.Warn("PubSub receipts: relay: invalid receipt persistence attestation",
 			"channel", channel,
-			"transaction_id", eventReceipt.TransactionId,
-			"signer_key_id", eventReceipt.SignerKeyId,
+			"transaction_id", receipt.TransactionId,
+			"signer_key_id", receipt.SignerKeyId,
 			"error", err.Error())
 		return
 	}
@@ -700,30 +700,30 @@ func (h *pubSubSessionHandler) relayEventReceipt(channel string, data []byte) {
 	// 5. Build the EventReceiptRecord via the shared single source of
 	// truth, reusing the same construction the operator's L5Actuator uses.
 	// The audit session is the channel-validated publisher session (step 2).
-	record := governance.BuildEventReceiptRecord(env, govtypes.RuntimeIdentity{OperatorID: env.OperatorId, SessionID: env.OperatorSessionId}, eventReceipt)
+	record := governance.BuildEventReceiptRecord(env, govtypes.RuntimeIdentity{OperatorID: env.OperatorId, SessionID: env.OperatorSessionId}, receipt)
 
-	// 6. Record the event receipt in the gateway's SQLAuditStore. Log on error
-	// but do not block fan-out: the event receipt is still useful to subscribers
+	// 6. Record the receipt in the gateway's SQLAuditStore. Log on error
+	// but do not block fan-out: the receipt is still useful to subscribers
 	// even if the gateway's local recording fails.
 	if err := recorder.RecordEventReceipt(record); err != nil {
-		b.logger.Error("PubSub event_receipts: relay: failed to record event receipt in audit store",
+		b.logger.Error("PubSub receipts: relay: failed to record receipt in audit store",
 			"channel", channel,
-			"transaction_id", eventReceipt.TransactionId,
+			"transaction_id", receipt.TransactionId,
 			"error", err.Error())
 	} else {
-		b.logger.Info("PubSub event_receipts: relay: recorded operator event receipt in gateway audit store",
+		b.logger.Info("PubSub receipts: relay: recorded operator receipt in gateway audit store",
 			"channel", channel,
-			"transaction_id", eventReceipt.TransactionId,
-			"status", eventReceipt.Status.String())
+			"transaction_id", receipt.TransactionId,
+			"status", receipt.Status.String())
 	}
 
-	// 7. Fan out the original envelope to subscribers on the event_receipts:
+	// 7. Fan out the original envelope to subscribers on the receipts:
 	// channel. The gateway records as-is (preserving the operator's
 	// signature) so downstream consumers can independently verify offline.
 	delivered := b.Publish(channel, data)
-	b.logger.Info("PubSub event_receipts: relay: verified and fanned out action event receipt",
+	b.logger.Info("PubSub receipts: relay: verified and fanned out action receipt",
 		"channel", channel,
-		"transaction_id", eventReceipt.TransactionId,
+		"transaction_id", receipt.TransactionId,
 		"delivered", delivered)
 }
 
@@ -1039,7 +1039,7 @@ func verifyPatternACL(pattern, operatorID string) error {
 // verifyPublishACL enforces publish-time authorization for all PUBLISH
 // actions. The gateway is the relay and enforcement point for operator
 // command dispatch: operators may publish only to their own heartbeat:,
-// results:, event_receipts:, and renewal: channels. cmd: dispatch is gateway-internal
+// results:, receipts:, and renewal: channels. cmd: dispatch is gateway-internal
 // only (HTTP POST /api/v1/operators/commands); WebSocket publishers must
 // not inject command intent on cmd: channels. All unauthorized publish
 // attempts fail closed with ErrPubSubPublishUnauthorized.
@@ -1049,7 +1049,7 @@ func verifyPatternACL(pattern, operatorID string) error {
 //	cmd:<operator_id>:<operator_session_id>       Gateway-internal dispatch only
 //	results:<operator_id>:<operator_session_id>   Operator -> App (verbatim)
 //	heartbeat:<operator_id>:<operator_session_id> Operator -> App (verbatim)
-//	event_receipts:<operator_id>:<operator_session_id>  Operator -> Gateway (intercepted)
+//	receipts:<operator_id>:<operator_session_id>  Operator -> Gateway (intercepted)
 //	renewal:<operator_id>:<operator_session_id>   Operator -> Gateway (intercepted; own session only)
 func verifyPublishACL(channel, publisherOperatorID, publisherSPIFFEID string) error {
 	parts := strings.Split(channel, ":")
@@ -1069,9 +1069,9 @@ func verifyPublishACL(channel, publisherOperatorID, publisherSPIFFEID string) er
 	case constants.ChannelPrefixAudit:
 		return fmt.Errorf("%w: audit channel publish is gateway-internal only", constants.ErrPubSubPublishUnauthorized)
 
-	case constants.ChannelPrefixResults, constants.ChannelPrefixHeartbeat, constants.ChannelPrefixEventReceipts:
+	case constants.ChannelPrefixResults, constants.ChannelPrefixHeartbeat, constants.ChannelPrefixReceipts:
 		// Operators may publish only to their own heartbeat:, results:, and
-		// event_receipts: channels.
+		// receipts: channels.
 		if publisherOperatorID == "" {
 			return constants.ErrPubSubCertificateMissingOperatorID
 		}

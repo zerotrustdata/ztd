@@ -251,7 +251,7 @@ func (s *PlatformEnrollmentService) CreateRequest(ctx context.Context, req model
 	}
 
 	// Submit the CREATE envelope for audit. The handler is audit-only:
-	// it decodes the payload, returns an event receipt summary, and writes
+	// it decodes the payload, returns a receipt summary, and writes
 	// nothing to the doc store.
 	_, err = s.submitEnvelope(ctx, constants.PlatformEnrollmentActionCreate, &commonv1.PlatformEnrollmentGovernancePayload{
 		Action:        string(constants.PlatformEnrollmentActionCreate),
@@ -422,7 +422,7 @@ func (s *PlatformEnrollmentService) watchEnrollmentChanges() (<-chan struct{}, f
 // first user. The decision is submitted as a PLATFORM_ENROLLMENT_DECIDE
 // envelope through the governance gauntlet. The handler performs the
 // conditional pending -> approved|denied transition and stamps the
-// approving user ID and envelope/event-receipt IDs.
+// approving user ID and envelope/receipt IDs.
 func (s *PlatformEnrollmentService) Decide(ctx context.Context, actorUserID string, req models.PlatformEnrollmentDecisionRequest) (*models.PlatformEnrollmentDecisionResponse, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -455,7 +455,7 @@ func (s *PlatformEnrollmentService) Decide(ctx context.Context, actorUserID stri
 	// Load the request to verify it exists and is pending before
 	// submitting the envelope. The handler re-checks the state via
 	// conditional update, but an early check gives a precise error
-	// without consuming a governance event receipt.
+	// without consuming a governance receipt.
 	existing, err := s.loadByID(ctx, req.RequestID)
 	if err != nil {
 		return nil, err
@@ -559,7 +559,7 @@ func (s *PlatformEnrollmentService) DecideBatch(ctx context.Context, actorUserID
 		}
 		return nil, fmt.Errorf("platform enrollment: batch decision envelope: %w", err)
 	}
-	resp := &models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: env.GetId(), Requests: make([]models.PlatformEnrollmentDecisionResponse, len(req.Requests))}
+	resp := &models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: env.GetId(), Requests: make([]models.PlatformEnrollmentDecisionResponse, len(req.Requests))}
 	for i, target := range req.Requests {
 		resp.Requests[i] = models.PlatformEnrollmentDecisionResponse{RequestID: target.RequestID, State: state}
 	}
@@ -1139,9 +1139,9 @@ func (s *PlatformEnrollmentService) submitEnvelope(ctx context.Context, action c
 			submitCtx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, stateRoot)
 		}
 
-		eventReceipt, err := s.envProc.ProcessEnvelope(submitCtx, wire)
+		receipt, err := s.envProc.ProcessEnvelope(submitCtx, wire)
 		if err == nil {
-			if eventReceipt == nil {
+			if receipt == nil {
 				return nil, constants.ErrPlatformEnrollmentGovernanceRejected
 			}
 			return env, nil

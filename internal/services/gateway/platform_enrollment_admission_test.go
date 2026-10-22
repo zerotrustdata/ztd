@@ -29,12 +29,12 @@ type cancelAfterCreateProcessor struct {
 	afterCreate func()
 }
 
-func (p *cancelAfterCreateProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
-	eventReceipt, err := p.inner.ProcessEnvelope(ctx, payload)
+func (p *cancelAfterCreateProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+	receipt, err := p.inner.ProcessEnvelope(ctx, payload)
 	if err == nil && decodeActionTypeFromWire(payload) == string(constants.PlatformEnrollmentActionCreate) {
 		p.afterCreate()
 	}
-	return eventReceipt, err
+	return receipt, err
 }
 
 type cancelDuringIssueProcessor struct {
@@ -42,12 +42,12 @@ type cancelDuringIssueProcessor struct {
 	cancel context.CancelFunc
 }
 
-func (p *cancelDuringIssueProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
-	eventReceipt, err := p.inner.ProcessEnvelope(ctx, payload)
+func (p *cancelDuringIssueProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
+	receipt, err := p.inner.ProcessEnvelope(ctx, payload)
 	if err == nil && decodeActionTypeFromWire(payload) == string(constants.PlatformEnrollmentActionIssue) {
 		p.cancel()
 	}
-	return eventReceipt, err
+	return receipt, err
 }
 
 func TestPlatformEnrollmentService_CanceledCreateReleasesOnlyPendingReservation(t *testing.T) {

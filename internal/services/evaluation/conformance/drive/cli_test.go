@@ -63,19 +63,19 @@ func newTestCLI(t *testing.T, poster operator.CommandPoster) *CLI {
 // text. RunOnce's own decoding is covered in internal/cli/operator; this checks the
 // CLI's mapping of those results to observation kinds.
 func TestCLIObservationMapsEachRunResultKind(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{TransactionId: "tx-1"}
-	rejection := &operatorv1.GovernanceRejection{EventReceipt: &operatorv1.EventReceipt{TransactionId: "tx-2"}}
+	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-1"}
+	rejection := &operatorv1.GovernanceRejection{Receipt: &operatorv1.ActionReceipt{TransactionId: "tx-2"}}
 	refusal := &operatorv1.IngressRefusal{Code: operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST}
 	tests := []struct {
-		name             string
-		result           operator.RunResult
-		want             evalv1.ConformanceObservationKind
-		wantEventReceipt *operatorv1.EventReceipt
-		wantRejected     *operatorv1.GovernanceRejection
-		wantRefusal      *operatorv1.IngressRefusal
-		wantBody         string
+		name         string
+		result       operator.RunResult
+		want         evalv1.ConformanceObservationKind
+		wantReceipt  *operatorv1.ActionReceipt
+		wantRejected *operatorv1.GovernanceRejection
+		wantRefusal  *operatorv1.IngressRefusal
+		wantBody     string
 	}{
-		{name: "event_receipt", result: operator.RunResult{EventReceipt: eventReceipt}, want: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, wantEventReceipt: eventReceipt},
+		{name: "receipt", result: operator.RunResult{Receipt: receipt}, want: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, wantReceipt: receipt},
 		{name: "rejection", result: operator.RunResult{Rejection: rejection}, want: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, wantRejected: rejection},
 		{name: "refusal", result: operator.RunResult{Refusal: refusal}, want: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL, wantRefusal: refusal},
 		{name: "no typed field is untyped", result: operator.RunResult{Error: "status 502: <html>bad gateway</html>"}, want: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED, wantBody: "status 502: <html>bad gateway</html>"},
@@ -85,7 +85,7 @@ func TestCLIObservationMapsEachRunResultKind(t *testing.T) {
 			obs := cliObservation(tt.result)
 			assert.Equal(t, tt.want, obs.GetKind())
 			assert.Equal(t, int32(0), obs.GetHttpStatus(), "the CLI answer has no HTTP status")
-			assert.Same(t, tt.wantEventReceipt, obs.GetEventReceipt())
+			assert.Same(t, tt.wantReceipt, obs.GetReceipt())
 			assert.Same(t, tt.wantRejected, obs.GetRejection())
 			assert.Same(t, tt.wantRefusal, obs.GetRefusal())
 			assert.Equal(t, tt.wantBody, string(obs.GetUntypedBody()))

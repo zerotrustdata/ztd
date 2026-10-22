@@ -28,9 +28,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type embeddedEnvelopeProcessorFunc func(context.Context, []byte) (*operatorv1.EventReceipt, error)
+type embeddedEnvelopeProcessorFunc func(context.Context, []byte) (*operatorv1.ActionReceipt, error)
 
-func (f embeddedEnvelopeProcessorFunc) ProcessEnvelope(ctx context.Context, wire []byte) (*operatorv1.EventReceipt, error) {
+func (f embeddedEnvelopeProcessorFunc) ProcessEnvelope(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
 	return f(ctx, wire)
 }
 
@@ -40,7 +40,7 @@ func TestEmbeddedDispatchUsesGovernanceProcessorAndCorrelatesResult(t *testing.T
 	broker := NewGatewayWebSocketHandler(logger)
 	op := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: "embedded-session", OperatorType: string(constants.OperatorTypeEmbedded), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityObserver})}}
 	called := false
-	processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.EventReceipt, error) {
+	processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
 		called = true
 		env := &commonv1.GovernanceEnvelope{}
 		require.NoError(t, protojson.Unmarshal(wire, env))
@@ -52,9 +52,9 @@ func TestEmbeddedDispatchUsesGovernanceProcessorAndCorrelatesResult(t *testing.T
 		payload, err := protojson.Marshal(completion)
 		require.NoError(t, err)
 		broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), payload)
-		eventReceipt := &operatorv1.EventReceipt{TransactionId: env.Id, TransactionHash: env.TransactionHash, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
-		signTestEventReceipt(t, eventReceipt, actuatorPriv, actuatorKeyID)
-		return eventReceipt, nil
+		receipt := &operatorv1.ActionReceipt{TransactionId: env.Id, TransactionHash: env.TransactionHash, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+		signTestReceipt(t, receipt, actuatorPriv, actuatorKeyID)
+		return receipt, nil
 	})
 	signers := &stubSignerStore{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPub}}
 	svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, signers, processor, nil)
@@ -66,11 +66,11 @@ func TestEmbeddedDispatchUsesGovernanceProcessorAndCorrelatesResult(t *testing.T
 	require.NotNil(t, result)
 }
 
-// DispatchObservation waits for the observer's verified final event_receipt: an
-// observation publishes no result envelope, so the event receipt alone completes it.
+// DispatchObservation waits for the observer's verified final receipt: an
+// observation publishes no result envelope, so the receipt alone completes it.
 // A failed observation, a non-observation event, and an undeliverable command
 // all fail closed.
-func TestDispatchObservationReturnsEmbeddedObserverEventReceipt(t *testing.T) {
+func TestDispatchObservationReturnsEmbeddedObserverReceipt(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	actuatorPub, actuatorPriv, actuatorKeyID := dispatchTestActuator()
 	broker := NewGatewayWebSocketHandler(logger)
@@ -88,26 +88,26 @@ func TestDispatchObservationReturnsEmbeddedObserverEventReceipt(t *testing.T) {
 		Payload:                 payload,
 	}
 	serviceWithStatus := func(status operatorv1.ExecutionStatus) *DispatchService {
-		processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.EventReceipt, error) {
+		processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
 			env := &commonv1.GovernanceEnvelope{}
 			require.NoError(t, protojson.Unmarshal(wire, env))
-			eventReceipt := &operatorv1.EventReceipt{TransactionId: env.Id, TransactionHash: env.TransactionHash, Status: status, ActionType: env.ActionType}
+			receipt := &operatorv1.ActionReceipt{TransactionId: env.Id, TransactionHash: env.TransactionHash, Status: status, ActionType: env.ActionType}
 			if status == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
-				eventReceipt.FailureCode = operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
-				eventReceipt.DeterministicStageEvidence = []*operatorv1.DeterministicStageEvidence{{
+				receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
+				receipt.DeterministicStageEvidence = []*operatorv1.DeterministicStageEvidence{{
 					Kind:    operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION,
 					Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
 				}}
 			}
-			signTestEventReceipt(t, eventReceipt, actuatorPriv, actuatorKeyID)
-			return eventReceipt, nil
+			signTestReceipt(t, receipt, actuatorPriv, actuatorKeyID)
+			return receipt, nil
 		})
 		return NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, signers, processor, nil)
 	}
 
-	eventReceipt, err := serviceWithStatus(operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED).DispatchObservation(t.Context(), request)
+	receipt, err := serviceWithStatus(operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED).DispatchObservation(t.Context(), request)
 	require.NoError(t, err)
-	require.Equal(t, string(constants.ActionTypeProviderBoundaryObservation), eventReceipt.GetActionType())
+	require.Equal(t, string(constants.ActionTypeProviderBoundaryObservation), receipt.GetActionType())
 
 	_, err = serviceWithStatus(operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED).DispatchObservation(t.Context(), request)
 	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
@@ -135,14 +135,14 @@ func TestEmbeddedInferenceDispatchDrainsProgressWhileProcessing(t *testing.T) {
 		want            error
 	}{
 		{name: "processing failure", processingError: errProcessing, want: errProcessing},
-		{name: "completion verification", want: constants.ErrInferenceCompletionNoEventReceipt},
+		{name: "completion verification", want: constants.ErrInferenceCompletionNoReceipt},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				logger := testutil.NewTestLogger()
 				broker := NewGatewayWebSocketHandler(logger)
 				op := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: "embedded-session", OperatorType: string(constants.OperatorTypeEmbedded)}
-				processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.EventReceipt, error) {
+				processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
 					env := &commonv1.GovernanceEnvelope{}
 					require.NoError(t, protojson.Unmarshal(wire, env))
 					// More events than the result buffer holds, all published before
@@ -160,7 +160,7 @@ func TestEmbeddedInferenceDispatchDrainsProgressWhileProcessing(t *testing.T) {
 					}
 
 					if tc.processingError == nil {
-						// An unsigned completion must still reach event receipt verification after
+						// An unsigned completion must still reach receipt verification after
 						// every queued progress event has been delivered in order.
 						out, err := protojson.Marshal(&commonv1.GovernanceEnvelope{Id: env.Id, EventType: string(constants.Event.Operator.Inference.Completed), ActionType: env.ActionType})
 						require.NoError(t, err)
@@ -216,7 +216,7 @@ func TestEmbeddedInferenceDispatchCancelsAndJoinsProcessor(t *testing.T) {
 				broker := NewGatewayWebSocketHandler(logger)
 				op := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: "embedded-session", OperatorType: string(constants.OperatorTypeEmbedded)}
 				joined := false
-				processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.EventReceipt, error) {
+				processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
 					defer func() { joined = true }()
 					env := &commonv1.GovernanceEnvelope{}
 					if err := protojson.Unmarshal(wire, env); err != nil {
@@ -263,7 +263,7 @@ func TestEmbeddedDispatchDeadlineWhileAwaitingProcessor(t *testing.T) {
 		broker := NewGatewayWebSocketHandler(logger)
 		op := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: "embedded-session", OperatorType: string(constants.OperatorTypeEmbedded)}
 		joined := false
-		processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.EventReceipt, error) {
+		processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
 			defer func() { joined = true }()
 			env := &commonv1.GovernanceEnvelope{}
 			if err := protojson.Unmarshal(wire, env); err != nil {
@@ -304,23 +304,23 @@ func TestEmbeddedDispatchReturnsHandlerFailureResult(t *testing.T) {
 			logger := testutil.NewTestLogger()
 			broker := NewGatewayWebSocketHandler(logger)
 			op := &operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorSessionId: "embedded-session", OperatorType: string(constants.OperatorTypeEmbedded)}
-			processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.EventReceipt, error) {
+			processor := embeddedEnvelopeProcessorFunc(func(ctx context.Context, wire []byte) (*operatorv1.ActionReceipt, error) {
 				env := &commonv1.GovernanceEnvelope{}
 				require.NoError(t, protojson.Unmarshal(wire, env))
-				eventReceipt := &operatorv1.EventReceipt{TransactionId: env.Id, TransactionHash: env.TransactionHash, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, FailureCode: operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED}
+				receipt := &operatorv1.ActionReceipt{TransactionId: env.Id, TransactionHash: env.TransactionHash, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, FailureCode: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED}
 				if tc.executed {
 					result, err := proto.Marshal(&operatorv1.FileEditResult{ExecutionId: "execution", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, ErrorMessage: "content required"})
 					require.NoError(t, err)
 					out, err := protojson.Marshal(&commonv1.GovernanceEnvelope{Id: env.Id, EventType: string(constants.EventOperatorFileEditFailed), ActionType: env.ActionType, Payload: result})
 					require.NoError(t, err)
 					broker.Publish(pubsub.ResultsChannel(op.Id, op.OperatorSessionId), out)
-					eventReceipt.DeterministicStageEvidence = []*operatorv1.DeterministicStageEvidence{{
+					receipt.DeterministicStageEvidence = []*operatorv1.DeterministicStageEvidence{{
 						Kind:    operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION,
 						Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED,
 					}}
 				}
-				signTestEventReceipt(t, eventReceipt, actuatorPriv, actuatorKeyID)
-				return eventReceipt, constants.ErrFileEditContentRequired
+				signTestReceipt(t, receipt, actuatorPriv, actuatorKeyID)
+				return receipt, constants.ErrFileEditContentRequired
 			})
 			signers := &stubSignerStore{keys: map[string]ed25519.PublicKey{actuatorKeyID: actuatorPub}}
 			svc := NewDispatchService(logger, broker, &stubStateRootProvider{root: "root"}, &stubOperatorSessionValidator{op: op}, constants.PostureDoctrine, governance.NewL1Doctrine(), nil, signers, processor, nil)

@@ -182,7 +182,7 @@ func usedExecutors(cfg Config, stack cases.Stack, applicable []cases.Case) ([]ca
 // Gateway's own runtime, so its key comes from its own PKI export and no bound
 // anchor is accepted. The outbound executor's key was bound at enrollment, and
 // its export only cross-checks that binding, so the Operator cannot choose the
-// key its event receipts verify against.
+// key its receipts verify against.
 func executorAnchor(ctx context.Context, ex cases.Executor, root Root) (*evalv1.ConformanceAnchor, error) {
 	switch ex {
 	case cases.ExecutorEmbedded:
@@ -201,7 +201,7 @@ func executorAnchor(ctx context.Context, ex cases.Executor, root Root) (*evalv1.
 }
 
 // quiesce reads two sentinels in a row on one executor and records both. The
-// stack is quiet only when both event receipts are executed and nothing else was
+// stack is quiet only when both receipts are executed and nothing else was
 // committed between them.
 func quiesce(ctx context.Context, cfg Config, anchors *oracle.AnchorSet, ex cases.Executor, set *canary.Set) (*evalv1.ConformanceQuiescence, error) {
 	root := cfg.Roots[ex]
@@ -228,18 +228,18 @@ func quiesce(ctx context.Context, cfg Config, anchors *oracle.AnchorSet, ex case
 	return &evalv1.ConformanceQuiescence{Executor: string(ex), First: first, Second: second}, nil
 }
 
-// executedOutcome verifies a sentinel event receipt and requires it to be an executed
+// executedOutcome verifies a sentinel receipt and requires it to be an executed
 // outcome, which is the only shape a sentinel read may take.
-func executedOutcome(anchors *oracle.AnchorSet, runtimeID string, eventReceipt *operatorv1.EventReceipt) (oracle.Outcome, error) {
-	if _, err := oracle.VerifyEventReceipt(anchors, runtimeID, eventReceipt); err != nil {
+func executedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *operatorv1.ActionReceipt) (oracle.Outcome, error) {
+	if _, err := oracle.VerifyReceipt(anchors, runtimeID, receipt); err != nil {
 		return oracle.Outcome{}, err
 	}
-	outcome, err := oracle.Classify(eventReceipt)
+	outcome, err := oracle.Classify(receipt)
 	if err != nil {
 		return oracle.Outcome{}, err
 	}
 	if outcome.Kind != oracle.OutcomeExecuted {
-		return oracle.Outcome{}, fmt.Errorf("sentinel event receipt outcome %d is not executed", outcome.Kind)
+		return oracle.Outcome{}, fmt.Errorf("sentinel receipt outcome %d is not executed", outcome.Kind)
 	}
 	return outcome, nil
 }

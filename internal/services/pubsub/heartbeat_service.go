@@ -332,7 +332,7 @@ func (hs *HeartbeatService) HandleRequest(ctx context.Context, msg *PubSubComman
 //
 // An automatic heartbeat is Operator-originated liveness, not a governed
 // operation: it has no ingress, envelope, or L1 through L4 verification, so it
-// is published directly and produces no event receipt or ledger commitment. Routing
+// is published directly and produces no receipt or ledger commitment. Routing
 // it through the L5 actuator would fabricate execution evidence for a
 // transaction that was never verified.
 func (hs *HeartbeatService) SendAutomatic() error {

@@ -165,11 +165,11 @@ To build a custom ztd-compatible Gateway, your implementation must satisfy the f
 
 1. **PKI and Trust Management**: Act as the platform CA, maintaining root and intermediate CAs (Hub, Operator, Gateway Peer), CSR-based enrollment with SPIFFE URI SANs, revocation checking, and trust bundle distribution.
 2. **Persistence Layer**: Maintain canonical platform state, ephemeral state, binary attachments, a deterministic state root, and replay nonces.
-3. **Messaging Broker**: Provide WebSocket pub/sub fan-out on identity- and session-scoped channels. Governed mutation channels accept `GovernanceEnvelope` transactions; direct messages handle heartbeats and event receipts.
+3. **Messaging Broker**: Provide WebSocket pub/sub fan-out on identity- and session-scoped channels. Governed mutation channels accept `GovernanceEnvelope` transactions; direct messages handle heartbeats and receipts.
 4. **Admission and Enrollment**: Expose bootstrap, recovery, platform enrollment, governance, PKI management, MCP, and A2A surfaces.
 5. **Protocol Translation**: Translate MCP JSON-RPC tool calls and A2A skill invocations into governed `GovernanceEnvelope` transactions.
-6. **Governance Pipeline Integration**: Apply L1-L3 according to active posture, dispatch to an Operator, and record signed event receipts.
-7. **Audit and Event receipt Access**: Expose authenticated audit event and event receipt query surfaces.
+6. **Governance Pipeline Integration**: Apply L1-L3 according to active posture, dispatch to an Operator, and record signed receipts.
+7. **Audit and Receipt Access**: Expose authenticated audit event and receipt query surfaces.
 
 ### Protocol Invariants
 
@@ -179,7 +179,7 @@ To build a custom ztd-compatible Gateway, your implementation must satisfy the f
 4. **Expiry enforcement**: L4 rejects expired envelopes.
 5. **Doctrine enforcement**: L1 validates payload against forbidden patterns in all postures.
 6. **Posture-aware proofs**: L2 signatures and L3 authorization are mandatory when posture requires them.
-7. **Execution boundary**: Only L5 dispatches admitted mutations with signed event receipts.
+7. **Execution boundary**: Only L5 dispatches admitted mutations with signed receipts.
 8. **Fail-closed behavior**: Any malformed envelope, unknown session, stale state, or failed proof halts execution with a typed rejection.
 
 ### Two-Port Architecture

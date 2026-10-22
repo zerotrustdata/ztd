@@ -21,7 +21,7 @@ import (
 // strict protojson (no DiscardUnknown).
 func DecodeIngressFailure(body []byte) (*operatorv1.GovernanceRejection, *operatorv1.IngressRefusal, error) {
 	rejection := &operatorv1.GovernanceRejection{}
-	if err := (protojson.UnmarshalOptions{}).Unmarshal(body, rejection); err == nil && rejection.GetEventReceipt() != nil {
+	if err := (protojson.UnmarshalOptions{}).Unmarshal(body, rejection); err == nil && rejection.GetReceipt() != nil {
 		return rejection, nil, nil
 	}
 	refusal := &operatorv1.IngressRefusal{}

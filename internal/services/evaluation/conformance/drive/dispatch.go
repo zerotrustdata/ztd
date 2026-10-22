@@ -49,7 +49,7 @@ func NewDispatch(c *client.Client, p client.Persona, targets map[cases.Executor]
 // Drive submits one attempt and returns its one observation. A transport error
 // (no HTTP answer) is returned as an error. Under ratify and notary a mutation does
 // not answer until a human decides: the Gateway holds the request for the approval
-// TTL, then answers with the executing Operator's event receipt (approve) or its signed
+// TTL, then answers with the executing Operator's receipt (approve) or its signed
 // L3_DENIED rejection (deny). Only the Attended wrapper submits such a case.
 func (d *Dispatch) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) {
 	if a.Case.Ingress != cases.IngressDispatchEmbedded && a.Case.Ingress != cases.IngressDispatchOutbound {

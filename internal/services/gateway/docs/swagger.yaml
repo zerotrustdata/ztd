@@ -143,7 +143,6 @@ definitions:
     - ztd.v1.operator.context.changed
     - ztd.v1.operator.device.registered
     - ztd.v1.operator.eval.answer.requested
-    - ztd.v1.operator.event_receipt.recorded
     - ztd.v1.operator.field.read.access.denied
     - ztd.v1.operator.field.read.access.granted
     - ztd.v1.operator.field.read.requested
@@ -239,6 +238,7 @@ definitions:
     - ztd.v1.operator.panel.list.updated
     - ztd.v1.operator.provider.boundary.observation.completed
     - ztd.v1.operator.provider.boundary.observation.requested
+    - ztd.v1.operator.receipt.recorded
     - ztd.v1.operator.reputation.commitment.created
     - ztd.v1.operator.reputation.commitment.failed
     - ztd.v1.operator.reputation.commitment.verified
@@ -369,7 +369,6 @@ definitions:
     - EventOperatorContextChanged
     - EventOperatorDeviceRegistered
     - EventOperatorEvalAnswerRequested
-    - EventOperatorEventReceiptRecorded
     - EventOperatorFieldReadAccessDenied
     - EventOperatorFieldReadAccessGranted
     - EventOperatorFieldReadRequested
@@ -465,6 +464,7 @@ definitions:
     - EventOperatorPanelListUpdated
     - EventOperatorProviderBoundaryObservationCompleted
     - EventOperatorProviderBoundaryObservationRequested
+    - EventOperatorReceiptRecorded
     - EventOperatorReputationCommitmentCreated
     - EventOperatorReputationCommitmentFailed
     - EventOperatorReputationCommitmentVerified
@@ -789,7 +789,7 @@ definitions:
       transaction_hash:
         type: string
       transaction_id:
-        description: TransactionID is the envelope ID, the ID its event receipts carry.
+        description: TransactionID is the envelope ID, the ID its receipts carry.
         type: string
       vote_kind:
         type: string
@@ -858,8 +858,6 @@ definitions:
         type: string
       environment_class:
         type: string
-      event_receipt_count:
-        type: integer
       lite_variant_id:
         type: string
       metrics:
@@ -884,6 +882,8 @@ definitions:
         type: integer
       quantization:
         type: string
+      receipt_count:
+        type: integer
       repetition_count:
         type: integer
       role_combination_id:
@@ -942,8 +942,6 @@ definitions:
         type: string
       completed_at:
         type: string
-      event_receipt_count:
-        type: integer
       metric_count:
         type: integer
       model_cohort_ids:
@@ -954,6 +952,8 @@ definitions:
         type: string
       published_projection_sha256:
         type: string
+      receipt_count:
+        type: integer
       run_id:
         type: string
       schema_version:
@@ -970,21 +970,21 @@ definitions:
   models.EvalVerificationStatus:
     enum:
     - projection_validated
-    - event_receipt_verification_not_applicable
+    - receipt_verification_not_applicable
     - verified
     type: string
     x-enum-varnames:
     - EvalVerificationProjectionValidated
-    - EvalVerificationEventReceiptVerificationNotApplicable
+    - EvalVerificationReceiptVerificationNotApplicable
     - EvalVerificationVerified
   models.EventReceiptRecord:
     properties:
       acting_app_id:
         type: string
+      action_receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
       action_type:
         $ref: '#/definitions/constants.ActionType'
-      event_receipt:
-        $ref: '#/definitions/operatorv1.EventReceipt'
       event_type:
         $ref: '#/definitions/constants.EventType'
       executed_at:
@@ -1849,7 +1849,7 @@ definitions:
         type: string
       evidence_count:
         type: integer
-      has_event_receipts:
+      has_receipts:
         type: boolean
       observed_at:
         type: string
@@ -2065,6 +2065,75 @@ definitions:
       web_session_id:
         type: string
     type: object
+  operatorv1.ActionReceipt:
+    properties:
+      action_type:
+        description: The registry-derived governance class for the request event.
+        type: string
+      deterministic_stage_evidence:
+        items:
+          $ref: '#/definitions/operatorv1.DeterministicStageEvidence'
+        type: array
+      event_type:
+        description: The semantic request event that produced this receipt.
+        type: string
+      executed_at_unix_ms:
+        description: Timestamp when execution finished
+        type: integer
+      failure_code:
+        allOf:
+        - $ref: '#/definitions/operatorv1.ReceiptFailureCode'
+        description: |-
+          Typed classification of a FAILED receipt. UNSPECIFIED on non-failed
+          receipts. Bound into the signature via canonicalization.
+      final_persistence_attestation:
+        $ref: '#/definitions/operatorv1.ReceiptPersistenceAttestation'
+      l2_status:
+        allOf:
+        - $ref: '#/definitions/operatorv1.L2Status'
+        description: |-
+          Status of L2 (Consensus) signature verification.
+          Distinguishes between "not required" vs "required but failed" for compliance.
+      l3_status:
+        allOf:
+        - $ref: '#/definitions/operatorv1.L3Status'
+        description: |-
+          Status of L3 (Notary/Human) proof verification.
+          Distinguishes between "not required" vs "required but failed" for compliance.
+      rejection_code:
+        allOf:
+        - $ref: '#/definitions/operatorv1.GovernanceRejectionCode'
+        description: |-
+          The verification check that rejected the transaction. Set exactly when
+          failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the
+          signature via canonicalization.
+      result_summary:
+        description: Concise summary of the result (e.g. "exit code 0", "file written")
+        type: string
+      signature:
+        description: ED25519 signature over the canonical receipt fields and deterministic
+          stage evidence hash.
+        type: string
+      signer_key_id:
+        description: ID of the Warden's signing key
+        type: string
+      state_root_after:
+        description: State root after execution
+        type: string
+      state_root_before:
+        description: State root before execution
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/operatorv1.ExecutionStatus'
+        description: Final execution status
+      transaction_hash:
+        description: Original GovernanceEnvelope hash
+        type: string
+      transaction_id:
+        description: Original GovernanceEnvelope ID
+        type: string
+    type: object
   operatorv1.DeterministicStageEvidence:
     properties:
       acting_app_id:
@@ -2082,8 +2151,6 @@ definitions:
       doctrine_bundle_hash:
         type: string
       doctrine_bundle_version:
-        type: string
-      event_receipt_signature_digest:
         type: string
       investigation_id:
         type: string
@@ -2106,6 +2173,8 @@ definitions:
       parent_stage_id:
         type: string
       prior_commitment_hash:
+        type: string
+      receipt_signature_digest:
         type: string
       requestor_user_id:
         type: string
@@ -2144,7 +2213,7 @@ definitions:
     - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2
     - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY
     - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION
-    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE
+    - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE
     - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND
     - DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION
   operatorv1.DeterministicStageOutcome:
@@ -2162,147 +2231,6 @@ definitions:
     - DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED
     - DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED
     - DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED
-  operatorv1.EventReceipt:
-    properties:
-      action_type:
-        description: The registry-derived governance class for the request event.
-        type: string
-      deterministic_stage_evidence:
-        items:
-          $ref: '#/definitions/operatorv1.DeterministicStageEvidence'
-        type: array
-      event_type:
-        description: The semantic request event that produced this event receipt.
-        type: string
-      executed_at_unix_ms:
-        description: Timestamp when execution finished
-        type: integer
-      failure_code:
-        allOf:
-        - $ref: '#/definitions/operatorv1.EventReceiptFailureCode'
-        description: |-
-          Typed classification of a FAILED event receipt. UNSPECIFIED on non-failed
-          event receipts. Bound into the signature via canonicalization.
-      final_persistence_attestation:
-        $ref: '#/definitions/operatorv1.EventReceiptPersistenceAttestation'
-      l2_status:
-        allOf:
-        - $ref: '#/definitions/operatorv1.L2Status'
-        description: |-
-          Status of L2 (Consensus) signature verification.
-          Distinguishes between "not required" vs "required but failed" for compliance.
-      l3_status:
-        allOf:
-        - $ref: '#/definitions/operatorv1.L3Status'
-        description: |-
-          Status of L3 (Notary/Human) proof verification.
-          Distinguishes between "not required" vs "required but failed" for compliance.
-      rejection_code:
-        allOf:
-        - $ref: '#/definitions/operatorv1.GovernanceRejectionCode'
-        description: |-
-          The verification check that rejected the transaction. Set exactly when
-          failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the
-          signature via canonicalization.
-      result_summary:
-        description: Concise summary of the result (e.g. "exit code 0", "file written")
-        type: string
-      signature:
-        description: ED25519 signature over the canonical event receipt fields and
-          deterministic stage evidence hash.
-        type: string
-      signer_key_id:
-        description: ID of the Warden's signing key
-        type: string
-      state_root_after:
-        description: State root after execution
-        type: string
-      state_root_before:
-        description: State root before execution
-        type: string
-      status:
-        allOf:
-        - $ref: '#/definitions/operatorv1.ExecutionStatus'
-        description: Final execution status
-      transaction_hash:
-        description: Original GovernanceEnvelope hash
-        type: string
-      transaction_id:
-        description: Original GovernanceEnvelope ID
-        type: string
-    type: object
-  operatorv1.EventReceiptFailureCode:
-    enum:
-    - 0
-    - 1
-    - 2
-    - 3
-    - 4
-    - 5
-    - 6
-    - 7
-    - 8
-    - 9
-    - 10
-    - 11
-    - 12
-    - 13
-    - 14
-    - 15
-    - 16
-    - 17
-    - 18
-    - 19
-    - 20
-    - 21
-    - 22
-    - 23
-    - 24
-    - 25
-    format: int32
-    type: integer
-    x-enum-varnames:
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED
-    - EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED
-  operatorv1.EventReceiptPersistenceAttestation:
-    properties:
-      audit_record_id:
-        type: string
-      event_receipt_signature_digest:
-        type: string
-      persisted_at_unix_ms:
-        type: integer
-      signature:
-        type: string
-      signer_key_id:
-        type: string
-      transaction_id:
-        type: string
-    type: object
   operatorv1.ExecutionStatus:
     enum:
     - 0
@@ -2324,8 +2252,8 @@ definitions:
     properties:
       error:
         type: string
-      event_receipt:
-        $ref: '#/definitions/operatorv1.EventReceipt'
+      receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
     type: object
   operatorv1.GovernanceRejectionCode:
     enum:
@@ -2388,12 +2316,12 @@ definitions:
     properties:
       action_type:
         type: string
-      event_receipt:
-        $ref: '#/definitions/operatorv1.EventReceipt'
       event_type:
         type: string
       inference_result:
         $ref: '#/definitions/operatorv1.InferenceResult'
+      receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
       result_payload:
         description: |-
           result_payload is the proto-marshaled terminal operator result for event_type
@@ -2446,12 +2374,12 @@ definitions:
         $ref: '#/definitions/operatorv1.InferenceDispatchFailureCode'
       error:
         type: string
-      event_receipt:
-        $ref: '#/definitions/operatorv1.EventReceipt'
-      observation_event_receipts:
+      observation_receipts:
         items:
-          $ref: '#/definitions/operatorv1.EventReceipt'
+          $ref: '#/definitions/operatorv1.ActionReceipt'
         type: array
+      receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
     type: object
   operatorv1.InferenceDispatchFailureCode:
     enum:
@@ -2530,15 +2458,15 @@ definitions:
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY
-    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_FAILED
-    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_VERIFY
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE
-    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_EVENT_RECEIPT
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED
@@ -2667,25 +2595,25 @@ definitions:
     type: object
   operatorv1.InferenceDispatchResponse:
     properties:
-      event_receipt:
-        allOf:
-        - $ref: '#/definitions/operatorv1.EventReceipt'
-        description: The verified final signed EventReceipt for the transaction.
-      observation_event_receipts:
+      observation_receipts:
         description: |-
-          The observers' verified final signed event receipts for this attempt's
+          The observers' verified final signed receipts for this attempt's
           provider-boundary and model provenance BEGIN and FINALIZE commands, in
           dispatch order. Each was signed before the response was returned, so a
           trace bracket closing after the dispatch can claim its commitment.
         items:
-          $ref: '#/definitions/operatorv1.EventReceipt'
+          $ref: '#/definitions/operatorv1.ActionReceipt'
         type: array
+      receipt:
+        allOf:
+        - $ref: '#/definitions/operatorv1.ActionReceipt'
+        description: The verified final signed ActionReceipt for the transaction.
       result:
         allOf:
         - $ref: '#/definitions/operatorv1.InferenceResult'
         description: |-
           The complete inference result whose result_digest is bound into the
-          signed event receipt.
+          signed receipt.
       transaction_id:
         description: Transaction ID correlating the dispatch with the audit chain.
         type: string
@@ -2824,7 +2752,7 @@ definitions:
           Canonical digest of the complete result: lowercase hex SHA-256 over the
           deterministic protobuf serialization of this message with result_digest
           cleared. The Inference Node computes it at execution time; the signed
-          EventReceipt's result_summary binds it, and the User Gateway verifies
+          ActionReceipt's result_summary binds it, and the User Gateway verifies
           digest equality before returning success to the caller.
         type: string
       retry_classification:
@@ -3020,6 +2948,78 @@ definitions:
     - ModelRole_MODEL_ROLE_PRIMARY
     - ModelRole_MODEL_ROLE_ASSISTANT
     - ModelRole_MODEL_ROLE_LITE
+  operatorv1.ReceiptFailureCode:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+    - 22
+    - 23
+    - 24
+    - 25
+    format: int32
+    type: integer
+    x-enum-varnames:
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_ROLE_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED
+  operatorv1.ReceiptPersistenceAttestation:
+    properties:
+      audit_record_id:
+        type: string
+      persisted_at_unix_ms:
+        type: integer
+      receipt_signature_digest:
+        type: string
+      signature:
+        type: string
+      signer_key_id:
+        type: string
+      transaction_id:
+        type: string
+    type: object
   operatorv1.RunShellCommandArguments:
     properties:
       args:
@@ -3536,25 +3536,25 @@ definitions:
     type: object
   tribunalv1.TribunalMemberCall:
     properties:
-      event_receipt:
-        allOf:
-        - $ref: '#/definitions/operatorv1.EventReceipt'
-        description: event receipt is the Inference Operator's signed final EventReceipt.
       failure:
         allOf:
         - $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         description: failure is set on a call that did not complete.
-      observation_event_receipts:
+      observation_receipts:
         description: |-
-          observation_event_receipts are the observers' signed final event receipts for the
+          observation_receipts are the observers' signed final receipts for the
           call's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).
         items:
-          $ref: '#/definitions/operatorv1.EventReceipt'
+          $ref: '#/definitions/operatorv1.ActionReceipt'
         type: array
       persona:
         type: string
       provider_attempt_id:
         type: string
+      receipt:
+        allOf:
+        - $ref: '#/definitions/operatorv1.ActionReceipt'
+        description: receipt is the Inference Operator's signed final ActionReceipt.
       result:
         allOf:
         - $ref: '#/definitions/operatorv1.InferenceResult'
@@ -3749,9 +3749,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: Canonical protojson EventReceipt
+          description: Canonical protojson ActionReceipt
           schema:
-            $ref: '#/definitions/operatorv1.EventReceipt'
+            $ref: '#/definitions/operatorv1.ActionReceipt'
         "403":
           description: Forbidden — verification failed
           schema:
@@ -3781,7 +3781,7 @@ paths:
         that dispatch completes, so clients allow the approval TTL plus the dispatch deadline.
         The envelope is re-submitted to its executing
         Operator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and
-        L5 signs the rejection event receipt. The event receipt is returned and published as `approval.completed` to
+        L5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to
         the CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must
         present an mTLS client certificate and a web caller must hold a registered passkey.
         Browser approval requires a WebAuthn assertion through `/api/v1/approvals/{txHash}/verify`.
@@ -3796,11 +3796,10 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Canonical protojson EventReceipt: the signed GOVERNANCE_REJECTED
-            event receipt of a deny, or the executing Operator''s signed event receipt
-            of an approval'
+          description: 'Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED
+            receipt of a deny, or the executing Operator''s signed receipt of an approval'
           schema:
-            $ref: '#/definitions/operatorv1.EventReceipt'
+            $ref: '#/definitions/operatorv1.ActionReceipt'
         "400":
           description: Invalid request body
           schema:
@@ -3819,7 +3818,7 @@ paths:
           schema:
             type: string
         "500":
-          description: The deny produced no signed rejection event receipt
+          description: The deny produced no signed rejection receipt
           schema:
             type: string
         "503":
@@ -3836,7 +3835,7 @@ paths:
         reason, failure) for one governed transaction, oldest first. Reason and failure
         text is scrubbed.
       parameters:
-      - description: Governed transaction ID (the envelope ID event receipts carry)
+      - description: Governed transaction ID (the envelope ID receipts carry)
         in: query
         name: tx_id
         required: true
@@ -3870,12 +3869,12 @@ paths:
       - audit
   /api/v1/audit/event-receipts:
     get:
-      description: Returns one canonical protojson EventReceipt when tx_id is set
+      description: Returns one canonical protojson ActionReceipt when tx_id is set
         or when investigation_id and action_type uniquely correlate an event receipt.
         Without those selectors, returns searchable event receipt records with the
-        complete EventReceipt nested under event_receipt.
+        complete ActionReceipt nested under action_receipt.
       parameters:
-      - description: Transaction ID for a single canonical EventReceipt
+      - description: Transaction ID for a single canonical ActionReceipt
         in: query
         name: tx_id
         type: string
@@ -3907,7 +3906,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: List wrapper; unique selectors instead return a bare operatorv1.EventReceipt
+          description: List wrapper; unique selectors instead return a bare operatorv1.ActionReceipt
           schema:
             $ref: '#/definitions/models.AuditEventReceiptsResponse'
         "400":
@@ -3915,7 +3914,7 @@ paths:
           schema:
             type: string
         "404":
-          description: Event receipt not found
+          description: Receipt not found
           schema:
             type: string
         "405":
@@ -3923,7 +3922,7 @@ paths:
           schema:
             type: string
         "409":
-          description: Conflict — correlation matched multiple event receipts
+          description: Conflict — correlation matched multiple receipts
           schema:
             type: string
         "500":
@@ -3941,9 +3940,9 @@ paths:
   /api/v1/audit/event-receipts/export:
     get:
       description: Returns an AuditEventReceiptsResponse list wrapper. Every searchable
-        record embeds the complete canonical protojson event receipt under event_receipt.
+        record embeds the complete canonical protojson receipt under action_receipt.
       parameters:
-      - description: Inclusive event receipt timestamp in RFC3339 format
+      - description: Inclusive receipt timestamp in RFC3339 format
         in: query
         name: since
         type: string
@@ -4240,7 +4239,7 @@ paths:
       - application/json
       description: |-
         Accepts a GovernanceEnvelope, verifies it through the 5-layer gauntlet (L1–L3 pre-flight,
-        L4 warden, L5 actuator), and returns the signed EventReceipt. Transport-to-envelope
+        L4 warden, L5 actuator), and returns the signed ActionReceipt. Transport-to-envelope
         identity binding is enforced via mTLS certificate URI SAN matching.
       parameters:
       - description: GovernanceEnvelope (protojson)
@@ -4255,9 +4254,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: Canonical protojson EventReceipt
+          description: Canonical protojson ActionReceipt
           schema:
-            $ref: '#/definitions/operatorv1.EventReceipt'
+            $ref: '#/definitions/operatorv1.ActionReceipt'
         "400":
           description: Bad Request — malformed envelope
           schema:
@@ -4265,7 +4264,7 @@ paths:
         "403":
           description: Forbidden — IngressRefusal when refused before L4 (identity
             binding, outcome, L3 proof unmintable); GovernanceRejection carrying the
-            signed event receipt when L4 rejects
+            signed receipt when L4 rejects
           schema:
             $ref: '#/definitions/operatorv1.IngressRefusal'
         "405":
@@ -4274,8 +4273,8 @@ paths:
             $ref: '#/definitions/operatorv1.IngressRefusal'
         "503":
           description: Service Unavailable — IngressRefusal when the processor is
-            not configured; GovernanceRejection carrying the signed event receipt
-            when L4 cannot run
+            not configured; GovernanceRejection carrying the signed receipt when L4
+            cannot run
           schema:
             $ref: '#/definitions/operatorv1.IngressRefusal'
       summary: Submit governance envelope
@@ -4287,7 +4286,7 @@ paths:
       - application/json
       description: Platform-internal endpoint (mTLS, app workload) that routes an
         inference request through the L1-L5 governance gauntlet to the Inference Node
-        and returns the verified result plus final signed event receipt.
+        and returns the verified result plus final signed receipt.
       parameters:
       - description: Governed inference dispatch request
         in: body
@@ -4299,7 +4298,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Verified inference result and final signed event receipt
+          description: Verified inference result and final signed receipt
           schema:
             $ref: '#/definitions/operatorv1.InferenceDispatchResponse'
         "400":
@@ -4343,7 +4342,7 @@ paths:
           schema:
             $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "502":
-          description: Bad Gateway — provider or event receipt verification failure
+          description: Bad Gateway — provider or receipt verification failure
           schema:
             $ref: '#/definitions/operatorv1.InferenceDispatchFailure'
         "503":
@@ -4753,7 +4752,7 @@ paths:
       - application/json
       description: |-
         Constructs a governed envelope for the target Operator session, waits for the
-        terminal result and the Operator's verified final event receipt, and returns both.
+        terminal result and the Operator's verified final receipt, and returns both.
         Under ratify or notary posture a mutation is suspended and the request stays open
         until a human approves or denies it, up to the approval TTL, in addition to the
         dispatch deadline; clients allow both. The Gateway never mints the approval proof.
@@ -4768,7 +4767,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Terminal result with the verified final EventReceipt
+          description: Terminal result with the verified final ActionReceipt
           schema:
             $ref: '#/definitions/operatorv1.GovernedDispatchResult'
         "400":
@@ -4776,7 +4775,7 @@ paths:
           schema:
             $ref: '#/definitions/operatorv1.IngressRefusal'
         "403":
-          description: Forbidden — GovernanceRejection carrying the signed L4 EventReceipt;
+          description: Forbidden — GovernanceRejection carrying the signed L4 receipt;
             IngressRefusal when refused before L4
           schema:
             $ref: '#/definitions/operatorv1.GovernanceRejection'
@@ -4798,8 +4797,8 @@ paths:
           schema:
             $ref: '#/definitions/operatorv1.GovernanceRejection'
         "504":
-          description: Gateway Timeout — no terminal result and event receipt before
-            the deadline
+          description: Gateway Timeout — no terminal result and receipt before the
+            deadline
           schema:
             $ref: '#/definitions/operatorv1.IngressRefusal'
       summary: Dispatch governed operator command

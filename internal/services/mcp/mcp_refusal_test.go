@@ -297,7 +297,7 @@ func TestWrapDispatch_UnmappedError_RendersSentinelOnly(t *testing.T) {
 func TestWrapDispatch_Rejection_KeepsGovernanceRejection(t *testing.T) {
 	t.Parallel()
 	g := newEndpointTestGatewayService()
-	eventReceipt, err := invalidL3ProofRejection(t)
+	receipt, err := invalidL3ProofRejection(t)
 
 	_, dErr := g.wrapDispatch(nil, err)
 
@@ -306,8 +306,8 @@ func TestWrapDispatch_Rejection_KeepsGovernanceRejection(t *testing.T) {
 	var rejection operatorv1.GovernanceRejection
 	require.NoError(t, protojson.Unmarshal(dErr.data, &rejection))
 	require.Equal(t, dErr.message, rejection.GetError())
-	require.Equal(t, eventReceipt.GetSignature(), rejection.GetEventReceipt().GetSignature())
+	require.Equal(t, receipt.GetSignature(), rejection.GetReceipt().GetSignature())
 	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID,
-		rejection.GetEventReceipt().GetRejectionCode())
-	require.True(t, governance.IsGovernanceRejectionEventReceipt(rejection.GetEventReceipt()))
+		rejection.GetReceipt().GetRejectionCode())
+	require.True(t, governance.IsGovernanceRejectionReceipt(rejection.GetReceipt()))
 }

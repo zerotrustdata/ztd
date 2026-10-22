@@ -63,12 +63,12 @@ type OwnerConsole struct {
 	events  *eventLog[OwnerEvent]
 	faults  *eventLog[error]
 
-	mu                    sync.Mutex
-	requested             map[string]struct{}
-	approvalEventReceipts *eventLog[*operatorv1.EventReceipt]
-	decisions             sync.WaitGroup
-	l3Responder           bool
-	closed                bool
+	mu               sync.Mutex
+	requested        map[string]struct{}
+	approvalReceipts *eventLog[*operatorv1.ActionReceipt]
+	decisions        sync.WaitGroup
+	l3Responder      bool
+	closed           bool
 	// deniedTool names the tool whose transactions the CLI responder denies;
 	// every other transaction is still approved. It is set after setup.
 	deniedTool atomic.Pointer[string]
@@ -112,14 +112,14 @@ func AttachOwnerConsole(t *testing.T, f *GatewayFixture, ownerID, cliSessionID s
 	require.Equal(t, firstUserID, ownerID, "owner console must be the first user")
 
 	c := &OwnerConsole{
-		UserID:                ownerID,
-		CLISessionID:          cliSessionID,
-		gateway:               f,
-		policy:                policy,
-		events:                newEventLog[OwnerEvent](),
-		faults:                newEventLog[error](),
-		requested:             make(map[string]struct{}),
-		approvalEventReceipts: newEventLog[*operatorv1.EventReceipt](),
+		UserID:           ownerID,
+		CLISessionID:     cliSessionID,
+		gateway:          f,
+		policy:           policy,
+		events:           newEventLog[OwnerEvent](),
+		faults:           newEventLog[error](),
+		requested:        make(map[string]struct{}),
+		approvalReceipts: newEventLog[*operatorv1.ActionReceipt](),
 	}
 	unregister := f.Service.GetGatewayWebSocketHandler().RegisterHandler(pubsub.SSECLIChannel(cliSessionID), c.receive)
 

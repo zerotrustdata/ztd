@@ -32,22 +32,22 @@ import (
 )
 
 type mockMCPServiceProvider struct {
-	suspendedTx  *models.SuspendedTransaction
-	found        bool
-	eventReceipt *operatorv1.EventReceipt
-	err          error
+	suspendedTx *models.SuspendedTransaction
+	found       bool
+	receipt     *operatorv1.ActionReceipt
+	err         error
 }
 
 func (m *mockMCPServiceProvider) GetSuspendedTransaction(_ context.Context, _ string) (*models.SuspendedTransaction, bool, error) {
 	return m.suspendedTx, m.found, nil
 }
 
-func (m *mockMCPServiceProvider) ResumeWithL3Proof(_ context.Context, _, _ string, _ *commonv1.L3Proof) (*operatorv1.EventReceipt, error) {
-	return m.eventReceipt, m.err
+func (m *mockMCPServiceProvider) ResumeWithL3Proof(_ context.Context, _, _ string, _ *commonv1.L3Proof) (*operatorv1.ActionReceipt, error) {
+	return m.receipt, m.err
 }
 
-func (m *mockMCPServiceProvider) DenySuspendedTransaction(_ context.Context, _, _ string) (*operatorv1.EventReceipt, error) {
-	return m.eventReceipt, m.err
+func (m *mockMCPServiceProvider) DenySuspendedTransaction(_ context.Context, _, _ string) (*operatorv1.ActionReceipt, error) {
+	return m.receipt, m.err
 }
 
 func TestPasskeyService_HandleApprovalAction(t *testing.T) {
@@ -460,13 +460,13 @@ func TestEmitApprovalCompletedSSE(t *testing.T) {
 		const userID = "u-approval-sse-1"
 		const txHash = "tx-approval-sse-1"
 
-		eventReceipt := &operatorv1.EventReceipt{
+		receipt := &operatorv1.ActionReceipt{
 			TransactionId: "transaction-approval-sse-1", TransactionHash: txHash,
 			SignerKeyId: "warden-key-approval-sse-1", Signature: "signature-approval-sse-1",
 		}
-		eventReceiptJSON, err := response.MarshalProtoJSONCanonical(eventReceipt)
+		receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
 		require.NoError(t, err)
-		handler.orchestrator.EmitApprovalCompletedSSE(userID, "cli-approval-sse-1", txHash, eventReceiptJSON)
+		handler.orchestrator.EmitApprovalCompletedSSE(userID, "cli-approval-sse-1", txHash, receiptJSON)
 
 		route := SSERoute{UserID: userID, CLISessionID: "cli-approval-sse-1"}
 		events, err := sseStore.SSEEventsListSince(route, 0, 10)
@@ -485,7 +485,7 @@ func TestEmitApprovalCompletedSSE(t *testing.T) {
 		assert.Equal(t, constants.SSEEventTypeApprovalCompleted, inner.Type)
 		assert.Equal(t, userID, inner.UserID)
 		assert.Equal(t, txHash, inner.TxHash)
-		assert.JSONEq(t, string(eventReceiptJSON), string(inner.EventReceipt), "approval.completed must carry the canonical event receipt bytes")
+		assert.JSONEq(t, string(receiptJSON), string(inner.Receipt), "approval.completed must carry the canonical receipt bytes")
 	})
 
 	t.Run("no-ops when SSE dependencies not set", func(t *testing.T) {
@@ -578,7 +578,7 @@ func TestHandleApprovalVerify_SSE_EmittedToApproverWhenSuspendedTxUserIDEmpty(t 
 			ExpiresAt:             time.Now().Add(5 * time.Minute),
 		},
 		found: true,
-		eventReceipt: &operatorv1.EventReceipt{
+		receipt: &operatorv1.ActionReceipt{
 			TransactionId: "transaction-approval-sse-test", TransactionHash: txHash,
 			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			SignerKeyId: "warden-key-approval-sse-test", Signature: "signature-approval-sse-test",
@@ -619,15 +619,15 @@ func TestHandleApprovalVerify_SSE_EmittedToApproverWhenSuspendedTxUserIDEmpty(t 
 	assert.Equal(t, constants.SSEEventTypeApprovalCompleted, inner.Type)
 	assert.Equal(t, approverUserID, inner.UserID)
 	assert.Equal(t, txHash, inner.TxHash)
-	var eventReceipt operatorv1.EventReceipt
-	require.NoError(t, protojson.Unmarshal(inner.EventReceipt, &eventReceipt), "approval.completed must carry the strict protojson event receipt")
-	assert.Equal(t, "transaction-approval-sse-test", eventReceipt.GetTransactionId())
-	assert.Equal(t, txHash, eventReceipt.GetTransactionHash())
-	assert.Equal(t, "warden-key-approval-sse-test", eventReceipt.GetSignerKeyId())
-	assert.Equal(t, "signature-approval-sse-test", eventReceipt.GetSignature())
+	var receipt operatorv1.ActionReceipt
+	require.NoError(t, protojson.Unmarshal(inner.Receipt, &receipt), "approval.completed must carry the strict protojson receipt")
+	assert.Equal(t, "transaction-approval-sse-test", receipt.GetTransactionId())
+	assert.Equal(t, txHash, receipt.GetTransactionHash())
+	assert.Equal(t, "warden-key-approval-sse-test", receipt.GetSignerKeyId())
+	assert.Equal(t, "signature-approval-sse-test", receipt.GetSignature())
 }
 
-func TestHandleApprovalVerify_FailsClosedWhenResumedEventReceiptIsForAnotherTransaction(t *testing.T) {
+func TestHandleApprovalVerify_FailsClosedWhenResumedReceiptIsForAnotherTransaction(t *testing.T) {
 	db := newTestDB(t)
 	logger := testutil.NewTestLogger()
 	webSessionSvc := NewWebSessionService(db.GetDocStore(), logger)
@@ -659,8 +659,8 @@ func TestHandleApprovalVerify_FailsClosedWhenResumedEventReceiptIsForAnotherTran
 			ExpiresAt:             time.Now().Add(5 * time.Minute),
 		},
 		found: true,
-		// The resumed event receipt names a different transaction than the suspended one.
-		eventReceipt: &operatorv1.EventReceipt{
+		// The resumed receipt names a different transaction than the suspended one.
+		receipt: &operatorv1.ActionReceipt{
 			TransactionId: "transaction-other", TransactionHash: "tx-other-transaction",
 			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			SignerKeyId: "warden-key-mismatch", Signature: "signature-mismatch",
@@ -683,10 +683,10 @@ func TestHandleApprovalVerify_FailsClosedWhenResumedEventReceiptIsForAnotherTran
 
 	handler.handleApprovalVerify(rr, req, txHash, approverUserID)
 
-	assert.Equal(t, http.StatusInternalServerError, rr.Code, "an event receipt for another transaction must not be reported as this approval")
+	assert.Equal(t, http.StatusInternalServerError, rr.Code, "a receipt for another transaction must not be reported as this approval")
 	events, err := sseStore.SSEEventsListSince(SSERoute{UserID: approverUserID, CLISessionID: submitterCLISessionID}, 0, 10)
 	require.NoError(t, err)
-	assert.Empty(t, events, "no approval.completed event may be emitted for a mismatched event receipt")
+	assert.Empty(t, events, "no approval.completed event may be emitted for a mismatched receipt")
 }
 
 func TestPasskeyService_HandleListSuspendedTransactions(t *testing.T) {

@@ -74,7 +74,7 @@ func newTribunalIntentController(d TribunalIntentControllerDeps) *TribunalIntent
 // HandleIntent is the HTTP handler for POST /api/v1/operators/intents.
 //
 // A deliberated intent is always a 200 TribunalIntentResult: the outcome, the
-// persona steps, every member inference with its signed event receipt, and for an
+// persona steps, every member inference with its signed receipt, and for an
 // approved command its governed MCP_CALL run_shell_command outcome. Only a request refused
 // before deliberation is an IngressRefusal.
 //
@@ -150,11 +150,11 @@ func (c *TribunalIntentController) dispatchCommand(ctx context.Context, req *tri
 		return
 	}
 	// As on POST /api/v1/operators/commands, the caller receives the signed
-	// rejection event receipt or the typed sentinel, never the wrapped chain.
-	// The typed code and event receipt ID name the failure without the command text
+	// rejection receipt or the typed sentinel, never the wrapped chain.
+	// The typed code and receipt ID name the failure without the command text
 	// the wrapped chain carries (INV-STOR-ENC-01).
 	if rejection := governance.RejectionResponse(err); rejection != nil {
-		c.logger.Error("tribunal intent: command dispatch rejected", slog.String("transaction_id", rejection.GetEventReceipt().GetTransactionId()), logging.ErrorKind(err))
+		c.logger.Error("tribunal intent: command dispatch rejected", slog.String("transaction_id", rejection.GetReceipt().GetTransactionId()), logging.ErrorKind(err))
 		result.CommandOutcome = &tribunalv1.TribunalIntentResult_Rejection{Rejection: rejection}
 		return
 	}
@@ -209,7 +209,7 @@ func (m *tribunalMemberDispatcher) DispatchMember(ctx context.Context, req *oper
 	if err != nil {
 		_, failure := inferenceDispatchFailure(err)
 		m.logger.Error("tribunal intent: member inference failed", slog.String("failure_code", failure.GetCode().String()),
-			slog.String("provider_attempt_id", req.GetProviderAttemptId()), slog.String("transaction_id", failure.GetEventReceipt().GetTransactionId()), logging.ErrorKind(err))
+			slog.String("provider_attempt_id", req.GetProviderAttemptId()), slog.String("transaction_id", failure.GetReceipt().GetTransactionId()), logging.ErrorKind(err))
 		return nil, failure
 	}
 	return result.Response(), nil

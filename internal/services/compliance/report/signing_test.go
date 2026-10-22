@@ -71,10 +71,8 @@ func TestNewComplianceReportSigningIdentity_RejectsKeyMetadataMismatch(t *testin
 		mutate func(*compliancev1.ComplianceReportSigningKeyMetadata)
 	}{
 		{name: "missing key identifier", mutate: func(value *compliancev1.ComplianceReportSigningKeyMetadata) { value.KeyId = "" }},
-		{name: "wrong algorithm", mutate: func(value *compliancev1.ComplianceReportSigningKeyMetadata) {
-			value.Algorithm = "event_receipt-ed25519"
-		}},
-		{name: "wrong purpose", mutate: func(value *compliancev1.ComplianceReportSigningKeyMetadata) { value.Purpose = "event-receipt" }},
+		{name: "wrong algorithm", mutate: func(value *compliancev1.ComplianceReportSigningKeyMetadata) { value.Algorithm = "receipt-ed25519" }},
+		{name: "wrong purpose", mutate: func(value *compliancev1.ComplianceReportSigningKeyMetadata) { value.Purpose = "action-receipt" }},
 		{name: "wrong public key digest", mutate: func(value *compliancev1.ComplianceReportSigningKeyMetadata) {
 			value.PublicKeySha256 = strings.Repeat("0", 64)
 		}},

@@ -28,7 +28,7 @@ Core terminology for the ztd Governance Suite, including the protocol, Governanc
 
 ## A2A (Agent2Agent)
 
-A JSON-RPC protocol surface for agent-to-agent skill invocation exposed at `POST /api/v1/a2a/call`. The Gateway converts an `a2a/call` request into a typed `ztd.operator.v1.A2aCallRequested` (`A2ACallRequested`) protobuf payload, associates it with action type `A2A_CALL` and event type `ztd.v1.operator.a2a.call.requested`, wraps it inside a **Governance Envelope**, and processes it through the governance pipeline. It returns either a signed event receipt or a structured suspension response containing an approval URL (`<public base URL>/api/v1/approve/<txHash>`). When admitted under the active governance posture, the request dispatches to the configured downstream A2A server.
+A JSON-RPC protocol surface for agent-to-agent skill invocation exposed at `POST /api/v1/a2a/call`. The Gateway converts an `a2a/call` request into a typed `ztd.operator.v1.A2aCallRequested` (`A2ACallRequested`) protobuf payload, associates it with action type `A2A_CALL` and event type `ztd.v1.operator.a2a.call.requested`, wraps it inside a **Governance Envelope**, and processes it through the governance pipeline. It returns either a signed receipt or a structured suspension response containing an approval URL (`<public base URL>/api/v1/approve/<txHash>`). When admitted under the active governance posture, the request dispatches to the configured downstream A2A server.
 
 ---
 
@@ -38,15 +38,15 @@ The `acting_app_id` field in a **Governance Envelope**. It identifies the applic
 
 ---
 
-## Action Event receipt
+## Action Receipt
 
-The canonical protobuf `ztd.operator.v1.EventReceipt`, signed with Ed25519 by the **L5 Actuator** as evidence of an executing, completed, or failed transaction. It binds the transaction ID and hash, execution status (`ExecutionStatus`: `EXECUTION_STATUS_EXECUTING`, `EXECUTION_STATUS_COMPLETED`, `EXECUTION_STATUS_FAILED`, `EXECUTION_STATUS_CANCELLED`, or `EXECUTION_STATUS_TIMEOUT`), failure code (`EventReceiptFailureCode`), result summary, state roots before and after execution, completion timestamp (`executed_at_unix_ms`), signer key ID, signature, L2 and L3 verification status, deterministic stage evidence, and persistence attestation. L5 signs and persists an initial `EXECUTING` event receipt to the SQLite audit store before dispatch (failing closed on signing or storage error), then signs and persists the final event receipt and attaches a **Event receipt Persistence Attestation** upon completion.
+The canonical protobuf `ztd.operator.v1.ActionReceipt`, signed with Ed25519 by the **L5 Actuator** as evidence of an executing, completed, or failed transaction. It binds the transaction ID and hash, execution status (`ExecutionStatus`: `EXECUTION_STATUS_EXECUTING`, `EXECUTION_STATUS_COMPLETED`, `EXECUTION_STATUS_FAILED`, `EXECUTION_STATUS_CANCELLED`, or `EXECUTION_STATUS_TIMEOUT`), failure code (`ReceiptFailureCode`), result summary, state roots before and after execution, completion timestamp (`executed_at_unix_ms`), signer key ID, signature, L2 and L3 verification status, deterministic stage evidence, and persistence attestation. L5 signs and persists an initial `EXECUTING` receipt to the SQLite audit store before dispatch (failing closed on signing or storage error), then signs and persists the final receipt and attaches a **Receipt Persistence Attestation** upon completion.
 
 ---
 
 ## Actuator (L5 Actuator)
 
-The singular execution boundary in the Operator substrate (`internal/services/governance/l5_actuator.go`). After the **L4 Warden** returns a verified transaction, L5 executes a fail-closed sequence: it signs and persists an initial `EXECUTING` **Action Event receipt**, appends a signed **Commitment Attestation** to the SQLite **Commitment Ledger**, rehydrates scrubbed tokens locally through the **Sovereign Execution Boundary**, mints a just-in-time single-action **Capability**, dispatches the action to the registered execution handler, captures deterministic stage evidence, dissolves the capability, finalizes and signs the final event receipt, and persists a signed **Event receipt Persistence Attestation**. Signing, initial event receipt persistence, or commitment persistence failure halts execution immediately.
+The singular execution boundary in the Operator substrate (`internal/services/governance/l5_actuator.go`). After the **L4 Warden** returns a verified transaction, L5 executes a fail-closed sequence: it signs and persists an initial `EXECUTING` **Action Receipt**, appends a signed **Commitment Attestation** to the SQLite **Commitment Ledger**, rehydrates scrubbed tokens locally through the **Sovereign Execution Boundary**, mints a just-in-time single-action **Capability**, dispatches the action to the registered execution handler, captures deterministic stage evidence, dissolves the capability, finalizes and signs the final receipt, and persists a signed **Receipt Persistence Attestation**. Signing, initial receipt persistence, or commitment persistence failure halts execution immediately.
 
 ---
 
@@ -58,7 +58,7 @@ A typed compliance record defined in `ztd.compliance.v1.AssessmentScope` that fi
 
 ## Audit Store
 
-The append-only SQLite record (`internal/services/storage/audit_store.go`, `SQLAuditStore`) of Operator sessions, events, file mutations, complete canonical **Action Event receipts**, deterministic stage evidence, and persistence attestations. Every content column (event text and command fields, event receipt bodies, file paths and diff stats, session titles) is encrypted at rest using AES-256-GCM through the local vault (`vault.Vault`), with no plaintext branch: a locked or absent vault fails the write with `ErrAuditStoreVaultLocked`. Records are scoped to existing sessions: record paths never create a session row, and an unknown session fails with `ErrAuditSessionUnknown`. The owning runtime starts its session with `StartSession` (atomic and idempotent) and marks it ended with `EndSession`. Retention prunes records older than `RetentionDays` (default 90) and prunes only ended sessions past retention that no event or event receipt references, so a live session is never pruned. In Gateway mode, these tables are part of `ztd.db`; each remote Governed Operator retains its own authoritative local audit database.
+The append-only SQLite record (`internal/services/storage/audit_store.go`, `SQLAuditStore`) of Operator sessions, events, file mutations, complete canonical **Action Receipts**, deterministic stage evidence, and persistence attestations. Every content column (event text and command fields, receipt bodies, file paths and diff stats, session titles) is encrypted at rest using AES-256-GCM through the local vault (`vault.Vault`), with no plaintext branch: a locked or absent vault fails the write with `ErrAuditStoreVaultLocked`. Records are scoped to existing sessions: record paths never create a session row, and an unknown session fails with `ErrAuditSessionUnknown`. The owning runtime starts its session with `StartSession` (atomic and idempotent) and marks it ended with `EndSession`. Retention prunes records older than `RetentionDays` (default 90) and prunes only ended sessions past retention that no event or receipt references, so a live session is never pruned. In Gateway mode, these tables are part of `ztd.db`; each remote Governed Operator retains its own authoritative local audit database.
 
 ---
 
@@ -106,7 +106,7 @@ The canonical protobuf `ztd.operator.v1.CommitmentAttestation`. Before execution
 
 ## Commitment Ledger
 
-The append-only SQLite hash chain of signed **Commitment Attestations** (`internal/services/storage/commitment_ledger.go`, table `commitment_ledger`). L5 builds and appends each commitment against the current chain head while holding the database write lock, preventing concurrent writers from selecting the same predecessor. Compliance and reporting tools independently verify chain order, hashes, signatures, structured columns, and event receipt cross-links. This is distinct from the git-backed **Ledger** used for file history.
+The append-only SQLite hash chain of signed **Commitment Attestations** (`internal/services/storage/commitment_ledger.go`, table `commitment_ledger`). L5 builds and appends each commitment against the current chain head while holding the database write lock, preventing concurrent writers from selecting the same predecessor. Compliance and reporting tools independently verify chain order, hashes, signatures, structured columns, and receipt cross-links. This is distinct from the git-backed **Ledger** used for file history.
 
 ---
 
@@ -136,7 +136,7 @@ A framework-neutral, atomic statement of technical behavior defined in the proto
 
 ## Deterministic Stage Evidence
 
-The canonical protobuf `ztd.operator.v1.DeterministicStageEvidence`, which records a typed governance or execution stage with monotonic timing (`monotonic_start_ns`, `monotonic_end_ns`), clock domain, timing source, outcome (`DeterministicStageOutcome`), transaction and identity bindings, state roots before and after execution, signer and signature digests, commitment hashes, doctrine bundle identity, audit record references, and parent-stage linkage. Stage kinds cover `L1_DOCTRINE`, `PROTOCOL_L2`, `L3_NOTARY`, `L4_VERIFICATION`, `EVENT_RECEIPT_PERSISTENCE`, `COMMITMENT_APPEND`, and `L5_EXECUTION`.
+The canonical protobuf `ztd.operator.v1.DeterministicStageEvidence`, which records a typed governance or execution stage with monotonic timing (`monotonic_start_ns`, `monotonic_end_ns`), clock domain, timing source, outcome (`DeterministicStageOutcome`), transaction and identity bindings, state roots before and after execution, signer and signature digests, commitment hashes, doctrine bundle identity, audit record references, and parent-stage linkage. Stage kinds cover `L1_DOCTRINE`, `PROTOCOL_L2`, `L3_NOTARY`, `L4_VERIFICATION`, `RECEIPT_PERSISTENCE`, `COMMITMENT_APPEND`, and `L5_EXECUTION`.
 
 ---
 
@@ -164,7 +164,7 @@ The standardized strength hierarchy assigned to compliance evidence:
 - **L0 (Documented)**: Architecture, policy, or implementation reference describes the control.
 - **L1 (Implemented)**: Focused source and test evidence verifies the implementation contract.
 - **L2 (Deterministically Evaluated)**: A registered versioned grader passes against typed evidence.
-- **L3 (Demonstrated)**: A real-stack scenario passes with verified event receipts and independently observed terminal state.
+- **L3 (Demonstrated)**: A real-stack scenario passes with verified receipts and independently observed terminal state.
 - **L4 (Continuously Evidenced)**: Fresh historical evidence satisfies the control's declared validation cycle across the assessment window.
 - **L5 (Externally Attested)**: An independent assessor or authority accepts the evidence for the declared scope.
 
@@ -364,15 +364,15 @@ A client or service that translates a principal's intent into a conformant **Gov
 
 ---
 
-## Event receipt Failure Code
+## Receipt Failure Code
 
-A strongly typed classification enum (`EventReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `EventReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID`, `EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED`), missing models (`EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), prompts that fill the model context window (`EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), general execution failures (`EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED`), and payloads withheld because a UEI placeholder could not be rehydrated (`EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`). The failure code is bound into the event receipt signature.
+A strongly typed classification enum (`ReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `ActionReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `RECEIPT_FAILURE_CODE_ROLE_INVALID`, `RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `RECEIPT_FAILURE_CODE_GENERATE_FAILED`), missing models (`RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), prompts that fill the model context window (`RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), general execution failures (`RECEIPT_FAILURE_CODE_EXECUTION_FAILED`), and payloads withheld because a UEI placeholder could not be rehydrated (`RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`). The failure code is bound into the receipt signature.
 
 ---
 
-## Event receipt Persistence Attestation
+## Receipt Persistence Attestation
 
-The canonical protobuf `ztd.operator.v1.EventReceiptPersistenceAttestation`, signed by the Actuator key together with the final `EventReceipt` and persisted with it in the same SQLite audit store write; the attestation is dropped if that write fails. It binds the transaction ID, event receipt signature digest, persistence timestamp, audit record ID, signer key ID, and signature. Upstream event receipt relays verify both the event receipt signature and this persistence attestation.
+The canonical protobuf `ztd.operator.v1.ReceiptPersistenceAttestation`, signed by the Actuator key together with the final `ActionReceipt` and persisted with it in the same SQLite audit store write; the attestation is dropped if that write fails. It binds the transaction ID, receipt signature digest, persistence timestamp, audit record ID, signer key ID, and signature. Upstream receipt relays verify both the receipt signature and this persistence attestation.
 
 ---
 
@@ -408,7 +408,7 @@ The Gateway real-time event delivery mechanism for browser and CLI sessions. The
 
 ## State Root
 
-A deterministic SHA-256 digest representing authoritative state. `envelope.state_merkle_root` binds the admission snapshot under which the Gateway constructed a transaction; outbound Operators verify that envelope locally without re-fetching the Gateway root or substituting their own root. Direct submissions without Gateway-dispatch context must match the executing runtime's current authoritative root. L5 event receipt roots describe the executing runtime's local state before and after execution. See **Bound State Root** and **Observed-State Root**.
+A deterministic SHA-256 digest representing authoritative state. `envelope.state_merkle_root` binds the admission snapshot under which the Gateway constructed a transaction; outbound Operators verify that envelope locally without re-fetching the Gateway root or substituting their own root. Direct submissions without Gateway-dispatch context must match the executing runtime's current authoritative root. L5 receipt roots describe the executing runtime's local state before and after execution. See **Bound State Root** and **Observed-State Root**.
 
 ---
 
@@ -454,7 +454,7 @@ The operational pattern in which an AI agent selects an MCP tool or A2A skill, s
 
 ## Transaction Hash
 
-The deterministic SHA-256 digest computed from normalized **Governance Envelope** fields via `GenerateMessageID(env)`. The envelope `id` and `transaction_hash` must both match this value. The calculation dispatches on protocol version: V1 hashes the canonical field string; V2 hashes `ztd-tx-v2|<action_type>|<event_type>|<V1 canonical string>` and requires a nonempty event type. L2 consensus votes, L3 human approvals, replay checks, capabilities, event receipts, and commitment attestations bind cryptographically to this hash. Dynamic policy metadata, including the active governance posture, is excluded from hash canonicalization.
+The deterministic SHA-256 digest computed from normalized **Governance Envelope** fields via `GenerateMessageID(env)`. The envelope `id` and `transaction_hash` must both match this value. The calculation dispatches on protocol version: V1 hashes the canonical field string; V2 hashes `ztd-tx-v2|<action_type>|<event_type>|<V1 canonical string>` and requires a nonempty event type. L2 consensus votes, L3 human approvals, replay checks, capabilities, receipts, and commitment attestations bind cryptographically to this hash. Dynamic policy metadata, including the active governance posture, is excluded from hash canonicalization.
 
 ---
 
@@ -492,4 +492,4 @@ The statically linked Go executable (`cmd/ztd/main.go`) that operates as a **Gov
 
 ## ztd Protocol
 
-The canonical wire contract and invariant set for ztd (`protocol/`). It defines protobuf schemas (`ztd.common.v1`, `ztd.operator.v1`, `ztd.compliance.v1`, `ztd.eval.v1`, `ztd.pubsub.v1`, `ztd.tribunal.v1`), Go protocol libraries and TypeScript bindings, JSON constant registries (`protocol/constants/`, such as `events.json`, `status.json`, and `intents.json`), JSON model schemas, doctrine definitions, SPIFFE workload-identity helpers, event receipt verification routines, and compliance crosswalks. Client-facing protobuf messages use protojson on wire boundaries.
+The canonical wire contract and invariant set for ztd (`protocol/`). It defines protobuf schemas (`ztd.common.v1`, `ztd.operator.v1`, `ztd.compliance.v1`, `ztd.eval.v1`, `ztd.pubsub.v1`, `ztd.tribunal.v1`), Go protocol libraries and TypeScript bindings, JSON constant registries (`protocol/constants/`, such as `events.json`, `status.json`, and `intents.json`), JSON model schemas, doctrine definitions, SPIFFE workload-identity helpers, receipt verification routines, and compliance crosswalks. Client-facing protobuf messages use protojson on wire boundaries.

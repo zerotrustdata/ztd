@@ -221,7 +221,7 @@ export interface ApprovalOutcome {
 
 /**
  * L3 Notary approval of a suspended transaction. The verify body is the flat
- * assertion itself, not nested (INV-FE-APPROVAL-01). A 403 may carry an event receipt
+ * assertion itself, not nested (INV-FE-APPROVAL-01). A 403 may carry a receipt
  * describing the rejected result; its message is surfaced as-is.
  */
 export async function approveTransaction(txHash: string): Promise<ApprovalOutcome> {

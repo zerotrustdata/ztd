@@ -39,8 +39,8 @@ const (
 // by the approval handlers. This interface is satisfied by *mcp.GatewayService.
 type MCPServiceProvider interface {
 	GetSuspendedTransaction(ctx context.Context, txHash string) (*models.SuspendedTransaction, bool, error)
-	ResumeWithL3Proof(ctx context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.EventReceipt, error)
-	DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.EventReceipt, error)
+	ResumeWithL3Proof(ctx context.Context, txHash, userID string, proof *commonv1.L3Proof) (*operatorv1.ActionReceipt, error)
+	DenySuspendedTransaction(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error)
 }
 
 // userStore defines the interface for user storage operations.

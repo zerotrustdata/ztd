@@ -16,5 +16,5 @@ import (
 // EnvelopeProcessor is the minimal interface for envelope processing.
 // This allows test doubles in tests while using the concrete OperatorPubSubService in production.
 type EnvelopeProcessor interface {
-	ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error)
+	ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error)
 }

@@ -387,11 +387,11 @@ func TestPublicAssignmentProjectionOmitsPrivateEvidenceFields(t *testing.T) {
 		"prompt",
 		"output",
 		"thinking",
-		"event_receipt",
+		"receipt",
 		"transaction_id",
 		"operator_session_id",
 		"operator_id",
-		"governed_event_receipt_ref",
+		"governed_receipt_ref",
 		"model_inferences",
 		"tool_calls",
 		"governed_actions",
@@ -411,8 +411,8 @@ func TestEvaluationAssignmentResultRetainsPrivateInferenceBindings(t *testing.T)
 
 func TestEvaluationValuePreservesTypedArtifactReference(t *testing.T) {
 	reference := &compliancev1.ComplianceEvidenceReference{
-		ArtifactId:   "event-receipt:sha256:abc",
-		ArtifactType: "event-receipt",
+		ArtifactId:   "action-receipt:sha256:abc",
+		ArtifactType: "action-receipt",
 		Sha256:       "abc",
 	}
 	value := &evalv1.EvaluationValue{Value: &evalv1.EvaluationValue_ArtifactReference{ArtifactReference: reference}}

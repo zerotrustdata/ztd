@@ -54,7 +54,7 @@ type harness struct {
 	attempts  []cases.Attempt         // attempts handed to a driver, in order
 	driveErr  error                   // returned by every driver when set
 	extraLink map[cases.Executor]bool // commit an unclaimed link after the first sentinel read
-	forged    map[cases.Executor]bool // return an event receipt whose signature does not verify
+	forged    map[cases.Executor]bool // return a receipt whose signature does not verify
 
 	signers map[cases.Executor]oracletest.Signer
 	heads   map[cases.Executor]string
@@ -123,13 +123,13 @@ func (f loggingFiles) Lstat(ctx context.Context, relPath string) (os.FileInfo, e
 }
 
 // commit appends one executed commitment link to ex's ledger and returns its
-// signed event receipt.
-func (h *harness) commit(ex cases.Executor, actionType string) *operatorv1.EventReceipt {
+// signed receipt.
+func (h *harness) commit(ex cases.Executor, actionType string) *operatorv1.ActionReceipt {
 	h.seq++
 	prior := h.heads[ex]
 	hash := fmt.Sprintf("hash-%s-%d", ex, h.seq)
 	runtimeID := h.roots[ex].RuntimeID
-	eventReceipt := h.signers[ex].Executed(h.t, oracletest.EventReceiptOpts{
+	receipt := h.signers[ex].Executed(h.t, oracletest.ReceiptOpts{
 		TransactionID: fmt.Sprintf("tx-%s-%d", ex, h.seq),
 		OperatorID:    runtimeID,
 		SessionID:     "sess-1",
@@ -138,22 +138,22 @@ func (h *harness) commit(ex cases.Executor, actionType string) *operatorv1.Event
 		L3:            operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 	}, prior, hash)
 	h.heads[ex] = hash
-	return eventReceipt
+	return receipt
 }
 
 // Read is the cases.Sentinel fake: every read commits one link, and an extra
 // unclaimed link follows the first read when extraLink is set for ex.
-func (h *harness) Read(_ context.Context, ex cases.Executor, _ string) (*operatorv1.EventReceipt, error) {
+func (h *harness) Read(_ context.Context, ex cases.Executor, _ string) (*operatorv1.ActionReceipt, error) {
 	h.log = append(h.log, "sentinel:"+string(ex))
 	h.reads[ex]++
-	eventReceipt := h.commit(ex, "FS_READ")
+	receipt := h.commit(ex, "FS_READ")
 	if h.extraLink[ex] && h.reads[ex] == 1 {
 		h.commit(ex, "FILE_EDIT")
 	}
 	if h.forged[ex] {
-		eventReceipt.Signature = "00" + eventReceipt.Signature[2:]
+		receipt.Signature = "00" + receipt.Signature[2:]
 	}
-	return eventReceipt, nil
+	return receipt, nil
 }
 
 // driver is the cases.Driver fake for one ingress. It records the attempt and
@@ -407,7 +407,7 @@ func TestRunAbortsWhenStackIsNotQuiescent(t *testing.T) {
 	assert.Nil(t, record)
 }
 
-func TestRunAbortsWhenSentinelEventReceiptIsForged(t *testing.T) {
+func TestRunAbortsWhenSentinelReceiptIsForged(t *testing.T) {
 	h := newHarness(t)
 	h.forged[cases.ExecutorOutbound] = true
 

@@ -165,20 +165,20 @@ func (rr *PubSubResultsService) PublishInferenceProgress(ctx context.Context, or
 }
 
 // PublishInferenceCompletion publishes the protocol-owned InferenceCompletion
-// — the final signed EventReceipt plus, on success, the complete
+// — the final signed ActionReceipt plus, on success, the complete
 // InferenceResult — via Operator pub/sub. The completion envelope is
 // correlated with the original command by transaction ID (the command
-// envelope's Id) on the results channel. A completion whose event receipt status
+// envelope's Id) on the results channel. A completion whose receipt status
 // is not EXECUTION_STATUS_COMPLETED is published under the inference.failed
 // event type so the waiting Gateway dispatch terminates immediately with a
 // typed failure.
 func (rr *PubSubResultsService) PublishInferenceCompletion(ctx context.Context, env *commonv1.GovernanceEnvelope, completion *operatorv1.InferenceCompletion) error {
-	if env == nil || completion == nil || completion.EventReceipt == nil {
+	if env == nil || completion == nil || completion.Receipt == nil {
 		return fmt.Errorf("pubsub: publish inference completion: %w", constants.ErrMissingRequiredField)
 	}
 
 	eventType := constants.Event.Operator.Inference.Completed
-	if completion.EventReceipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+	if completion.Receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 		eventType = constants.Event.Operator.Inference.Failed
 	}
 
@@ -198,7 +198,7 @@ func (rr *PubSubResultsService) PublishInferenceCompletion(ctx context.Context, 
 	rr.logger.Info("Inference completion transmitted to ztd",
 		"operator_session_id", env.OperatorSessionId,
 		"event_type", eventType,
-		"transaction_id", completion.EventReceipt.TransactionId)
+		"transaction_id", completion.Receipt.TransactionId)
 	return nil
 }
 
@@ -364,27 +364,27 @@ func (rr *PubSubResultsService) PublishHeartbeat(ctx context.Context, heartbeat 
 	return nil
 }
 
-// PublishEventReceipt publishes a signed EventReceipt to the gateway's
-// event_receipts:<operator_id>:<operator_session_id> channel. The event receipt is wrapped
+// PublishActionReceipt publishes a signed ActionReceipt to the gateway's
+// receipts:<operator_id>:<operator_session_id> channel. The receipt is wrapped
 // as the payload of a GovernanceEnvelope that copies the identity fields
 // (operator_id, operator_session_id, requestor_user_id, acting_app_id,
 // action_type, target_resource, case_id, investigation_id, task_id) from the
 // original command envelope env, so the gateway can build a complete
-// EventReceiptRecord without the EventReceipt proto carrying those fields.
-// The gateway intercepts the publish, verifies the event receipt signature against
-// the operator's actuator public key, records the event receipt in its
+// EventReceiptRecord without the ActionReceipt proto carrying those fields.
+// The gateway intercepts the publish, verifies the receipt signature against
+// the operator's actuator public key, records the receipt in its
 // SQLAuditStore, and fans out the envelope to subscribers.
-func (rr *PubSubResultsService) PublishEventReceipt(ctx context.Context, env *commonv1.GovernanceEnvelope, eventReceipt *operatorv1.EventReceipt) error {
-	if env == nil || eventReceipt == nil {
-		return fmt.Errorf("pubsub: publish action event_receipt: %w", constants.ErrMissingRequiredField)
+func (rr *PubSubResultsService) PublishActionReceipt(ctx context.Context, env *commonv1.GovernanceEnvelope, receipt *operatorv1.ActionReceipt) error {
+	if env == nil || receipt == nil {
+		return fmt.Errorf("pubsub: publish action receipt: %w", constants.ErrMissingRequiredField)
 	}
 
-	eventReceiptBytes, err := proto.Marshal(eventReceipt)
+	receiptBytes, err := proto.Marshal(receipt)
 	if err != nil {
-		return fmt.Errorf("pubsub: publish action event_receipt: marshal event_receipt: %w", err)
+		return fmt.Errorf("pubsub: publish action receipt: marshal receipt: %w", err)
 	}
 
-	eventReceiptEnv := &commonv1.GovernanceEnvelope{
+	receiptEnv := &commonv1.GovernanceEnvelope{
 		ProtocolVersion:   govpkg.GovernanceProtocolVersionV2,
 		Timestamp:         env.Timestamp,
 		SourceComponent:   commonv1.Component_COMPONENT_ZTDO,
@@ -392,8 +392,8 @@ func (rr *PubSubResultsService) PublishEventReceipt(ctx context.Context, env *co
 		OperatorSessionId: env.OperatorSessionId,
 		ActionType:        env.ActionType,
 		TargetResource:    env.TargetResource,
-		EventType:         string(constants.Event.Operator.EventReceipt.Recorded),
-		Payload:           eventReceiptBytes,
+		EventType:         string(constants.Event.Operator.Receipt.Recorded),
+		Payload:           receiptBytes,
 		RequestorUserId:   env.RequestorUserId,
 		ActingAppId:       env.ActingAppId,
 		CaseId:            env.CaseId,
@@ -403,18 +403,18 @@ func (rr *PubSubResultsService) PublishEventReceipt(ctx context.Context, env *co
 		CliSessionId:      env.CliSessionId,
 	}
 
-	wire, err := protojson.Marshal(eventReceiptEnv)
+	wire, err := protojson.Marshal(receiptEnv)
 	if err != nil {
-		return fmt.Errorf("pubsub: publish action event_receipt: marshal envelope: %w", err)
+		return fmt.Errorf("pubsub: publish action receipt: marshal envelope: %w", err)
 	}
 
-	channel := EventReceiptsChannel(env.OperatorId, env.OperatorSessionId)
-	rr.logger.Info("Publishing action event receipt to gateway event receipts channel",
+	channel := ReceiptsChannel(env.OperatorId, env.OperatorSessionId)
+	rr.logger.Info("Publishing action receipt to gateway receipts channel",
 		"channel", channel,
-		"transaction_id", eventReceipt.TransactionId,
-		"event_type", eventReceiptEnv.EventType)
+		"transaction_id", receipt.TransactionId,
+		"event_type", receiptEnv.EventType)
 	if err := rr.client.Publish(ctx, channel, wire); err != nil {
-		return fmt.Errorf("pubsub: publish action event_receipt: %w", err)
+		return fmt.Errorf("pubsub: publish action receipt: %w", err)
 	}
 	return nil
 }

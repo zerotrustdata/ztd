@@ -5,6 +5,7 @@
 
 - [ztd/operator/v1/operator.proto](#ztd_operator_v1_operator-proto)
     - [A2aCallRequested](#ztd-operator-v1-A2aCallRequested)
+    - [ActionReceipt](#ztd-operator-v1-ActionReceipt)
     - [AssertionResponse](#ztd-operator-v1-AssertionResponse)
     - [AttestationResponse](#ztd-operator-v1-AttestationResponse)
     - [AuditEvent](#ztd-operator-v1-AuditEvent)
@@ -31,8 +32,6 @@
     - [DocumentUpdateRequested](#ztd-operator-v1-DocumentUpdateRequested)
     - [EnvironmentDetails](#ztd-operator-v1-EnvironmentDetails)
     - [EvalAnswerRequested](#ztd-operator-v1-EvalAnswerRequested)
-    - [EventReceipt](#ztd-operator-v1-EventReceipt)
-    - [EventReceiptPersistenceAttestation](#ztd-operator-v1-EventReceiptPersistenceAttestation)
     - [ExecutionStatusUpdate](#ztd-operator-v1-ExecutionStatusUpdate)
     - [FetchFileDiffRequested](#ztd-operator-v1-FetchFileDiffRequested)
     - [FetchFileDiffResult](#ztd-operator-v1-FetchFileDiffResult)
@@ -135,6 +134,7 @@
     - [PortCheckEntry](#ztd-operator-v1-PortCheckEntry)
     - [PortCheckResult](#ztd-operator-v1-PortCheckResult)
     - [ProviderModelInventoryEntry](#ztd-operator-v1-ProviderModelInventoryEntry)
+    - [ReceiptPersistenceAttestation](#ztd-operator-v1-ReceiptPersistenceAttestation)
     - [RestoreFileRequested](#ztd-operator-v1-RestoreFileRequested)
     - [RestoreFileResult](#ztd-operator-v1-RestoreFileResult)
     - [RevokeCertificateRequested](#ztd-operator-v1-RevokeCertificateRequested)
@@ -158,7 +158,6 @@
   
     - [DeterministicStageKind](#ztd-operator-v1-DeterministicStageKind)
     - [DeterministicStageOutcome](#ztd-operator-v1-DeterministicStageOutcome)
-    - [EventReceiptFailureCode](#ztd-operator-v1-EventReceiptFailureCode)
     - [ExecutionStatus](#ztd-operator-v1-ExecutionStatus)
     - [GovernanceRejectionCode](#ztd-operator-v1-GovernanceRejectionCode)
     - [HeartbeatType](#ztd-operator-v1-HeartbeatType)
@@ -173,6 +172,7 @@
     - [L2Status](#ztd-operator-v1-L2Status)
     - [L3Status](#ztd-operator-v1-L3Status)
     - [ModelRole](#ztd-operator-v1-ModelRole)
+    - [ReceiptFailureCode](#ztd-operator-v1-ReceiptFailureCode)
   
     - [OperatorService](#ztd-operator-v1-OperatorService)
   
@@ -199,6 +199,37 @@ Mirrors McpCallRequested for the Agent-to-Agent JSON protocol.
 | skill_name | [string](#string) |  | Target agent skill / capability name. |
 | payload_json | [string](#string) |  | JSON-encoded A2A task payload. |
 | execution_id | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-ActionReceipt"></a>
+
+### ActionReceipt
+ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| transaction_id | [string](#string) |  | Original GovernanceEnvelope ID |
+| transaction_hash | [string](#string) |  | Original GovernanceEnvelope hash |
+| status | [ExecutionStatus](#ztd-operator-v1-ExecutionStatus) |  | Final execution status |
+| result_summary | [string](#string) |  | Concise summary of the result (e.g. &#34;exit code 0&#34;, &#34;file written&#34;) |
+| state_root_before | [string](#string) |  | State root before execution |
+| state_root_after | [string](#string) |  | State root after execution |
+| executed_at_unix_ms | [int64](#int64) |  | Timestamp when execution finished |
+| signer_key_id | [string](#string) |  | ID of the Warden&#39;s signing key |
+| signature | [string](#string) |  | ED25519 signature over the canonical receipt fields and deterministic stage evidence hash. |
+| l2_status | [L2Status](#ztd-operator-v1-L2Status) |  | Status of L2 (Consensus) signature verification. Distinguishes between &#34;not required&#34; vs &#34;required but failed&#34; for compliance. |
+| l3_status | [L3Status](#ztd-operator-v1-L3Status) |  | Status of L3 (Notary/Human) proof verification. Distinguishes between &#34;not required&#34; vs &#34;required but failed&#34; for compliance. |
+| deterministic_stage_evidence | [DeterministicStageEvidence](#ztd-operator-v1-DeterministicStageEvidence) | repeated |  |
+| final_persistence_attestation | [ReceiptPersistenceAttestation](#ztd-operator-v1-ReceiptPersistenceAttestation) |  |  |
+| failure_code | [ReceiptFailureCode](#ztd-operator-v1-ReceiptFailureCode) |  | Typed classification of a FAILED receipt. UNSPECIFIED on non-failed receipts. Bound into the signature via canonicalization. |
+| event_type | [string](#string) |  | The semantic request event that produced this receipt. |
+| action_type | [string](#string) |  | The registry-derived governance class for the request event. |
+| rejection_code | [GovernanceRejectionCode](#ztd-operator-v1-GovernanceRejectionCode) |  | The verification check that rejected the transaction. Set exactly when failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the signature via canonicalization. |
 
 
 
@@ -547,7 +578,7 @@ authorized to be executed.
 | state_root_before | [string](#string) |  |  |
 | state_root_after | [string](#string) |  |  |
 | signer_key_id | [string](#string) |  |  |
-| event_receipt_signature_digest | [string](#string) |  |  |
+| receipt_signature_digest | [string](#string) |  |  |
 | commitment_hash | [string](#string) |  |  |
 | prior_commitment_hash | [string](#string) |  |  |
 | l2_signature_digest | [string](#string) |  |  |
@@ -735,57 +766,6 @@ for L1-L5 verification before the gateway persists them via DocSet.
 | benchmark | [string](#string) |  | Benchmark name (e.g., &#34;ifeval&#34;, &#34;simpleqa&#34;, &#34;gpqa&#34;) |
 | answer | [string](#string) |  | The model&#39;s answer text (opaque to the Gateway) |
 | model | [string](#string) |  | Model identifier (provider:model format, e.g., &#34;openai:gpt-4&#34;) |
-
-
-
-
-
-
-<a name="ztd-operator-v1-EventReceipt"></a>
-
-### EventReceipt
-EventReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| transaction_id | [string](#string) |  | Original GovernanceEnvelope ID |
-| transaction_hash | [string](#string) |  | Original GovernanceEnvelope hash |
-| status | [ExecutionStatus](#ztd-operator-v1-ExecutionStatus) |  | Final execution status |
-| result_summary | [string](#string) |  | Concise summary of the result (e.g. &#34;exit code 0&#34;, &#34;file written&#34;) |
-| state_root_before | [string](#string) |  | State root before execution |
-| state_root_after | [string](#string) |  | State root after execution |
-| executed_at_unix_ms | [int64](#int64) |  | Timestamp when execution finished |
-| signer_key_id | [string](#string) |  | ID of the Warden&#39;s signing key |
-| signature | [string](#string) |  | ED25519 signature over the canonical event receipt fields and deterministic stage evidence hash. |
-| l2_status | [L2Status](#ztd-operator-v1-L2Status) |  | Status of L2 (Consensus) signature verification. Distinguishes between &#34;not required&#34; vs &#34;required but failed&#34; for compliance. |
-| l3_status | [L3Status](#ztd-operator-v1-L3Status) |  | Status of L3 (Notary/Human) proof verification. Distinguishes between &#34;not required&#34; vs &#34;required but failed&#34; for compliance. |
-| deterministic_stage_evidence | [DeterministicStageEvidence](#ztd-operator-v1-DeterministicStageEvidence) | repeated |  |
-| final_persistence_attestation | [EventReceiptPersistenceAttestation](#ztd-operator-v1-EventReceiptPersistenceAttestation) |  |  |
-| failure_code | [EventReceiptFailureCode](#ztd-operator-v1-EventReceiptFailureCode) |  | Typed classification of a FAILED event receipt. UNSPECIFIED on non-failed event receipts. Bound into the signature via canonicalization. |
-| event_type | [string](#string) |  | The semantic request event that produced this event receipt. |
-| action_type | [string](#string) |  | The registry-derived governance class for the request event. |
-| rejection_code | [GovernanceRejectionCode](#ztd-operator-v1-GovernanceRejectionCode) |  | The verification check that rejected the transaction. Set exactly when failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the signature via canonicalization. |
-
-
-
-
-
-
-<a name="ztd-operator-v1-EventReceiptPersistenceAttestation"></a>
-
-### EventReceiptPersistenceAttestation
-EventReceiptPersistenceAttestation is the signed proof that an event receipt signature was durably associated with an audit record at a specific timestamp.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| transaction_id | [string](#string) |  |  |
-| event_receipt_signature_digest | [string](#string) |  |  |
-| persisted_at_unix_ms | [int64](#int64) |  |  |
-| audit_record_id | [string](#string) |  |  |
-| signer_key_id | [string](#string) |  |  |
-| signature | [string](#string) |  |  |
 
 
 
@@ -1282,8 +1262,8 @@ EventReceiptPersistenceAttestation is the signed proof that an event receipt sig
 ### GovernanceRejection
 GovernanceRejection is the client-facing body every governed ingress
 (direct envelope submission, governed dispatch, MCP, A2A) returns when the
-executing Operator rejected a transaction at L4. event receipt is the Operator&#39;s
-signed FAILED event receipt with failure_code GOVERNANCE_REJECTED; its
+executing Operator rejected a transaction at L4. receipt is the Operator&#39;s
+signed FAILED receipt with failure_code GOVERNANCE_REJECTED; its
 transaction_id and rejection_code are the authoritative identity and
 attribution of the rejection. error is the governance sentinel text, for
 display only.
@@ -1292,7 +1272,7 @@ display only.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | error | [string](#string) |  |  |
-| event_receipt | [EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
 
 
 
@@ -1303,7 +1283,7 @@ display only.
 
 ### GovernedDispatchResult
 GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
-event receipt is the executing Operator&#39;s signed final EventReceipt. Failures are
+receipt is the executing Operator&#39;s signed final ActionReceipt. Failures are
 GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
 
 
@@ -1314,7 +1294,7 @@ GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
 | action_type | [string](#string) |  |  |
 | result_payload | [bytes](#bytes) |  | result_payload is the proto-marshaled terminal operator result for event_type (for example FsReadResult), the same bytes the dispatch response carries today. |
 | inference_result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
-| event_receipt | [EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
 
 
 
@@ -1403,16 +1383,16 @@ Empty message - just the event type matters
 InferenceCompletion is the protocol-owned completion publication for a
 governed inference request. The Inference Node publishes it to the
 results channel only after the L5 Actuator has finalized and signed the
-EventReceipt, so the complete result and its verified event receipt are a
-single correlated outcome. A failed execution carries the FAILED event_receipt
+ActionReceipt, so the complete result and its verified receipt are a
+single correlated outcome. A failed execution carries the FAILED receipt
 and no result, which terminates the Gateway&#39;s dispatch wait immediately
 instead of at the dispatch deadline.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| event_receipt | [EventReceipt](#ztd-operator-v1-EventReceipt) |  | The signed final EventReceipt for the inference transaction. |
-| result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  | The complete inference result. Absent when the event receipt status is not EXECUTION_STATUS_COMPLETED. |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  | The signed final ActionReceipt for the inference transaction. |
+| result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  | The complete inference result. Absent when the receipt status is not EXECUTION_STATUS_COMPLETED. |
 
 
 
@@ -1527,12 +1507,12 @@ Decision inference uses named, typed questions; no generated text or tools.
 InferenceDispatchFailure is the protocol-owned error body for a non-2xx
 POST /api/v1/inference/dispatch. Error is a public-safe centralized
 sentinel; code classifies it, and is UNSPECIFIED for request faults the
-handler rejects before dispatch (method, identity, body size). Event receipt is
-the executing Operator&#39;s verified signed FAILED event receipt when the dispatch
+handler rejects before dispatch (method, identity, body size). Receipt is
+the executing Operator&#39;s verified signed FAILED receipt when the dispatch
 reached it: a governance rejection, or a failed execution whose commitment
 the Operator&#39;s ledger holds. It is absent for every failure that ended
-before the Operator signed an outcome. Observation_event_receipts are the
-observers&#39; verified signed BEGIN and FINALIZE event receipts the failed attempt
+before the Operator signed an outcome. Observation_receipts are the
+observers&#39; verified signed BEGIN and FINALIZE receipts the failed attempt
 produced, in dispatch order, so a trace bracket can claim their
 commitments as it does for InferenceDispatchResponse.
 
@@ -1541,8 +1521,8 @@ commitments as it does for InferenceDispatchResponse.
 | ----- | ---- | ----- | ----------- |
 | error | [string](#string) |  |  |
 | code | [InferenceDispatchFailureCode](#ztd-operator-v1-InferenceDispatchFailureCode) |  |  |
-| event_receipt | [EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
-| observation_event_receipts | [EventReceipt](#ztd-operator-v1-EventReceipt) | repeated |  |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| observation_receipts | [ActionReceipt](#ztd-operator-v1-ActionReceipt) | repeated |  |
 
 
 
@@ -1607,7 +1587,7 @@ inference request to the Inference Node.
 ### InferenceDispatchResponse
 InferenceDispatchResponse is the protocol-owned success response for
 POST /api/v1/inference/dispatch. The Gateway returns it only after
-verifying the final event receipt signature, persistence attestation,
+verifying the final receipt signature, persistence attestation,
 transaction identity, and result digest equality. Failure responses use
 the gateway&#39;s standard typed error envelope with a public-safe code.
 
@@ -1615,9 +1595,9 @@ the gateway&#39;s standard typed error envelope with a public-safe code.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | transaction_id | [string](#string) |  | Transaction ID correlating the dispatch with the audit chain. |
-| result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  | The complete inference result whose result_digest is bound into the signed event receipt. |
-| event_receipt | [EventReceipt](#ztd-operator-v1-EventReceipt) |  | The verified final signed EventReceipt for the transaction. |
-| observation_event_receipts | [EventReceipt](#ztd-operator-v1-EventReceipt) | repeated | The observers&#39; verified final signed event receipts for this attempt&#39;s provider-boundary and model provenance BEGIN and FINALIZE commands, in dispatch order. Each was signed before the response was returned, so a trace bracket closing after the dispatch can claim its commitment. |
+| result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  | The complete inference result whose result_digest is bound into the signed receipt. |
+| receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  | The verified final signed ActionReceipt for the transaction. |
+| observation_receipts | [ActionReceipt](#ztd-operator-v1-ActionReceipt) | repeated | The observers&#39; verified final signed receipts for this attempt&#39;s provider-boundary and model provenance BEGIN and FINALIZE commands, in dispatch order. Each was signed before the response was returned, so a trace bracket closing after the dispatch can claim its commitment. |
 
 
 
@@ -1630,7 +1610,7 @@ the gateway&#39;s standard typed error envelope with a public-safe code.
 InferenceDispatchStreamFailure is the protocol-owned terminal failure
 frame for a streaming dispatch that already started NDJSON delivery.
 Reason is a public-safe centralized sentinel; it never carries raw
-prompts, model output, or event receipt bodies. Code classifies it.
+prompts, model output, or receipt bodies. Code classifies it.
 
 
 | Field | Type | Label | Description |
@@ -1648,7 +1628,7 @@ prompts, model output, or event receipt bodies. Code classifies it.
 ### InferenceDispatchStreamFrame
 InferenceDispatchStreamFrame is one NDJSON line in a streaming dispatch
 response. Progress frames are delivery telemetry only. The completion
-frame carries the verified terminal result and signed event receipt. A failure
+frame carries the verified terminal result and signed receipt. A failure
 frame is the explicit terminal outcome when cancellation, disconnect,
 backpressure, or event-to-terminal hash reconciliation prevents a
 verified completion after the HTTP response has started.
@@ -1668,7 +1648,7 @@ verified completion after the HTTP response has started.
 <a name="ztd-operator-v1-InferenceHostedEgressAttestation"></a>
 
 ### InferenceHostedEgressAttestation
-Included in result_digest and therefore bound by the Operator&#39;s signed L5 event receipt.
+Included in result_digest and therefore bound by the Operator&#39;s signed L5 receipt.
 
 
 | Field | Type | Label | Description |
@@ -1775,7 +1755,7 @@ signed InferenceCompletion remains the sole terminal outcome.
 ### InferenceProviderAttemptRecord
 InferenceProviderAttemptRecord is the durable operator-local record for one
 governed provider attempt. It is written before provider contact and
-finalized only after terminal event receipt/result evidence is available.
+finalized only after terminal receipt/result evidence is available.
 
 
 | Field | Type | Label | Description |
@@ -1876,7 +1856,7 @@ InferenceResponsePart carries exactly one typed model response part.
 <a name="ztd-operator-v1-InferenceResult"></a>
 
 ### InferenceResult
-InferenceResult carries ordered response parts, usage metadata, and the finish reason returned by the backend. The governed envelope carries this for the event receipt and audit chain.
+InferenceResult carries ordered response parts, usage metadata, and the finish reason returned by the backend. The governed envelope carries this for the receipt and audit chain.
 
 
 | Field | Type | Label | Description |
@@ -1886,7 +1866,7 @@ InferenceResult carries ordered response parts, usage metadata, and the finish r
 | total_tokens | [int32](#int32) |  | Total tokens (prompt &#43; completion). |
 | finish_reason | [string](#string) |  | Finish reason (e.g., &#34;stop&#34;, &#34;length&#34;). |
 | model | [string](#string) |  | Model that produced the result (echoed from the request or resolved by the backend). |
-| result_digest | [string](#string) |  | Canonical digest of the complete result: lowercase hex SHA-256 over the deterministic protobuf serialization of this message with result_digest cleared. The Inference Node computes it at execution time; the signed EventReceipt&#39;s result_summary binds it, and the User Gateway verifies digest equality before returning success to the caller. |
+| result_digest | [string](#string) |  | Canonical digest of the complete result: lowercase hex SHA-256 over the deterministic protobuf serialization of this message with result_digest cleared. The Inference Node computes it at execution time; the signed ActionReceipt&#39;s result_summary binds it, and the User Gateway verifies digest equality before returning success to the caller. |
 | parts | [InferenceResponsePart](#ztd-operator-v1-InferenceResponsePart) | repeated | Ordered model response parts covered by result_digest. |
 | usage_reported | [bool](#bool) |  |  |
 | thinking_tokens | [int32](#int32) | optional |  |
@@ -2464,7 +2444,7 @@ persists it; every other component reads it through this contract.
 | operator_cert_chain | [string](#string) |  | Chain of operator certificates for zero-trust verification. |
 | termination_reason | [string](#string) |  | Reason for operator termination (e.g., &#34;user_requested&#34;, &#34;max_duration_exceeded&#34;). |
 | stale_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Instant after which an active remote Operator that stays silent reads as stale: its last sign of life plus the stale window for its declared heartbeat interval. The Gateway derives it on every read and never stores it; it is unset for an Operator that cannot read as stale. |
-| actuator_public_key | [string](#string) |  | actuator_public_key is the hex Ed25519 public key of this Operator&#39;s L5 Actuator, bound once at enrollment over the authenticated bootstrap channel. Event receipts executed by this Operator verify only against this key. |
+| actuator_public_key | [string](#string) |  | actuator_public_key is the hex Ed25519 public key of this Operator&#39;s L5 Actuator, bound once at enrollment over the authenticated bootstrap channel. Receipts executed by this Operator verify only against this key. |
 | actuator_key_id | [string](#string) |  | actuator_key_id equals actuator_public_key (key_id == hex(pub)). |
 
 
@@ -2814,6 +2794,26 @@ A stored passkey credential for a user
 | format | [string](#string) |  |  |
 | context_limit | [uint32](#uint32) |  |  |
 | advertised_capabilities | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-ReceiptPersistenceAttestation"></a>
+
+### ReceiptPersistenceAttestation
+ReceiptPersistenceAttestation is the signed proof that a receipt signature was durably associated with an audit record at a specific timestamp.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| transaction_id | [string](#string) |  |  |
+| receipt_signature_digest | [string](#string) |  |  |
+| persisted_at_unix_ms | [int64](#int64) |  |  |
+| audit_record_id | [string](#string) |  |  |
+| signer_key_id | [string](#string) |  |  |
+| signature | [string](#string) |  |  |
 
 
 
@@ -3185,7 +3185,7 @@ run_shell_command MCP tool and Tribunal-authored commands.
 | DETERMINISTIC_STAGE_KIND_PROTOCOL_L2 | 2 |  |
 | DETERMINISTIC_STAGE_KIND_L3_NOTARY | 3 |  |
 | DETERMINISTIC_STAGE_KIND_L4_VERIFICATION | 4 |  |
-| DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE | 5 |  |
+| DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE | 5 |  |
 | DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND | 6 |  |
 | DETERMINISTIC_STAGE_KIND_L5_EXECUTION | 7 |  |
 
@@ -3203,45 +3203,6 @@ run_shell_command MCP tool and Tribunal-authored commands.
 | DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED | 2 |  |
 | DETERMINISTIC_STAGE_OUTCOME_COMPLETED | 3 |  |
 | DETERMINISTIC_STAGE_OUTCOME_FAILED | 4 |  |
-
-
-
-<a name="ztd-operator-v1-EventReceiptFailureCode"></a>
-
-### EventReceiptFailureCode
-EventReceiptFailureCode is the typed classification of a FAILED EventReceipt.
-The L5 actuator stamps it at finalization so verifiers can distinguish
-governance rejections, client faults, and provider failures without
-string-matching the result_summary. It is bound into the event receipt signature.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED | 0 |  |
-| EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED | 1 | The transaction failed governance verification before execution (L1 doctrine, L2 consensus, L3 notary, identity, replay, expiry). |
-| EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED | 2 | The request model did not equal the configured role model. |
-| EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID | 3 | The request carried an unspecified or unknown model role. |
-| EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID | 4 | The request carried a malformed model reference. |
-| EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE | 5 | The inference backend was unreachable or not registered. |
-| EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT | 6 | The inference backend request timed out. |
-| EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED | 7 | The inference backend failed generation. |
-| EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED | 8 | Any other execution failure. |
-| EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND | 9 | The requested or configured model is absent from the provider&#39;s model store. |
-| EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID | 10 | The provider returned a malformed or oversized response. |
-| EVENT_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID | 11 |  |
-| EVENT_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED | 12 |  |
-| EVENT_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED | 13 |  |
-| EVENT_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH | 14 |  |
-| EVENT_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH | 15 |  |
-| EVENT_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID | 16 |  |
-| EVENT_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID | 17 |  |
-| EVENT_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID | 18 |  |
-| EVENT_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED | 19 |  |
-| EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW | 20 | The prompt filled the provider&#39;s context window, so the provider truncated it or left no room to generate. |
-| EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED | 21 | A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch. |
-| EVENT_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID | 22 |  |
-| EVENT_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID | 23 |  |
-| EVENT_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED | 24 |  |
-| EVENT_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED | 25 |  |
 
 
 
@@ -3266,13 +3227,13 @@ Execution status enum for command and operation results
 ### GovernanceRejectionCode
 GovernanceRejectionCode names the verification check that rejected a
 transaction before execution. The L5 actuator stamps it on every
-GOVERNANCE_REJECTED event receipt, so a verifier can attribute a rejection to a
+GOVERNANCE_REJECTED receipt, so a verifier can attribute a rejection to a
 layer from signed evidence alone, without parsing result_summary. It is
-bound into the event receipt signature.
+bound into the receipt signature.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
-| GOVERNANCE_REJECTION_CODE_UNSPECIFIED | 0 | The event receipt is not a governance rejection. |
+| GOVERNANCE_REJECTION_CODE_UNSPECIFIED | 0 | The receipt is not a governance rejection. |
 | GOVERNANCE_REJECTION_CODE_UNCLASSIFIED | 1 | The rejection error is not mapped to a check. A verifier treats it as a defect. |
 | GOVERNANCE_REJECTION_CODE_RUNTIME_VAULT_LOCKED | 2 | The runtime vault is locked or absent, so nothing may execute. |
 | GOVERNANCE_REJECTION_CODE_VERIFIER_MISCONFIGURED | 3 | A verifier dependency (doctrine, replay store, signer store, consensus, notary, state root provider) is absent. |
@@ -3349,15 +3310,15 @@ the error text.
 | INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID | 21 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED | 22 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY | 23 |  |
-| INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_FAILED | 24 |  |
-| INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_VERIFY | 25 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED | 24 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY | 25 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH | 26 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST | 27 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH | 28 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH | 29 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID | 30 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE | 31 |  |
-| INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_EVENT_RECEIPT | 32 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT | 32 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT | 33 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE | 34 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED | 35 |  |
@@ -3463,7 +3424,7 @@ InferenceMessageRole identifies the semantic role of one ordered conversation tu
 ### IngressRefusalCode
 IngressRefusalCode classifies a refusal that happens before a GovernanceEnvelope
 exists. It is the pre-envelope counterpart of GovernanceRejectionCode. A refusal
-never carries an event receipt, because nothing was executed or rejected by L4.
+never carries a receipt, because nothing was executed or rejected by L4.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
@@ -3532,6 +3493,45 @@ ModelRole identifies the chat-tier role for a governed inference request.
 | MODEL_ROLE_PRIMARY | 1 |  |
 | MODEL_ROLE_ASSISTANT | 2 |  |
 | MODEL_ROLE_LITE | 3 |  |
+
+
+
+<a name="ztd-operator-v1-ReceiptFailureCode"></a>
+
+### ReceiptFailureCode
+ReceiptFailureCode is the typed classification of a FAILED ActionReceipt.
+The L5 actuator stamps it at finalization so verifiers can distinguish
+governance rejections, client faults, and provider failures without
+string-matching the result_summary. It is bound into the receipt signature.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| RECEIPT_FAILURE_CODE_UNSPECIFIED | 0 |  |
+| RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED | 1 | The transaction failed governance verification before execution (L1 doctrine, L2 consensus, L3 notary, identity, replay, expiry). |
+| RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED | 2 | The request model did not equal the configured role model. |
+| RECEIPT_FAILURE_CODE_ROLE_INVALID | 3 | The request carried an unspecified or unknown model role. |
+| RECEIPT_FAILURE_CODE_MODEL_REF_INVALID | 4 | The request carried a malformed model reference. |
+| RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE | 5 | The inference backend was unreachable or not registered. |
+| RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT | 6 | The inference backend request timed out. |
+| RECEIPT_FAILURE_CODE_GENERATE_FAILED | 7 | The inference backend failed generation. |
+| RECEIPT_FAILURE_CODE_EXECUTION_FAILED | 8 | Any other execution failure. |
+| RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND | 9 | The requested or configured model is absent from the provider&#39;s model store. |
+| RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID | 10 | The provider returned a malformed or oversized response. |
+| RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID | 11 |  |
+| RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED | 12 |  |
+| RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED | 13 |  |
+| RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH | 14 |  |
+| RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH | 15 |  |
+| RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID | 16 |  |
+| RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID | 17 |  |
+| RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID | 18 |  |
+| RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED | 19 |  |
+| RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW | 20 | The prompt filled the provider&#39;s context window, so the provider truncated it or left no room to generate. |
+| RECEIPT_FAILURE_CODE_REHYDRATION_FAILED | 21 | A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch. |
+| RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID | 22 |  |
+| RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID | 23 |  |
+| RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED | 24 |  |
+| RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED | 25 |  |
 
 
  

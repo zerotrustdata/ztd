@@ -49,26 +49,26 @@ type RunResult struct {
 	Stdout            string `json:"stdout,omitempty"`
 	Stderr            string `json:"stderr,omitempty"`
 	Error             string `json:"error,omitempty"`
-	// RejectionCode is the signed event receipt's rejection_code when the executing
+	// RejectionCode is the signed receipt's rejection_code when the executing
 	// Operator rejected the command at L4.
 	RejectionCode string `json:"rejection_code,omitempty"`
 	// RefusalCode is the IngressRefusal code when the Gateway refused the
 	// request before an envelope was built.
 	RefusalCode string `json:"refusal_code,omitempty"`
-	// SignerKeyID, EventReceiptStatus come from the executing Operator's verified
-	// final event receipt on success.
-	SignerKeyID        string `json:"signer_key_id,omitempty"`
-	EventReceiptStatus string `json:"event_receipt_status,omitempty"`
+	// SignerKeyID, ReceiptStatus come from the executing Operator's verified
+	// final receipt on success.
+	SignerKeyID   string `json:"signer_key_id,omitempty"`
+	ReceiptStatus string `json:"receipt_status,omitempty"`
 	// ConsensusVotes are the recorded L2 member votes behind an
 	// L2_QUORUM_NOT_MET rejection; ConsensusVotesError is why they could not
 	// be read. Set by AttachConsensusVotes.
 	ConsensusVotes      []models.ConsensusVoteRecord `json:"consensus_votes,omitempty"`
 	ConsensusVotesError string                       `json:"consensus_votes_error,omitempty"`
-	// Event receipt, Rejection and Refusal are the typed bodies behind the fields
+	// Receipt, Rejection and Refusal are the typed bodies behind the fields
 	// above, for callers that need the signed evidence itself.
-	EventReceipt *operatorv1.EventReceipt        `json:"-"`
-	Rejection    *operatorv1.GovernanceRejection `json:"-"`
-	Refusal      *operatorv1.IngressRefusal      `json:"-"`
+	Receipt   *operatorv1.ActionReceipt       `json:"-"`
+	Rejection *operatorv1.GovernanceRejection `json:"-"`
+	Refusal   *operatorv1.IngressRefusal      `json:"-"`
 	// TransportErr is the Post error when the Gateway sent no HTTP answer, so
 	// callers can tell an unreachable Gateway from an untyped response.
 	TransportErr error `json:"-"`
@@ -197,7 +197,7 @@ func ParseCommandResult(response *operatorv1.GovernedDispatchResult) (*operatorv
 
 // RunOnce dispatches one EXECUTE_BASH command and decodes the typed outcome.
 // A 2xx body is the GovernedDispatchResult, which carries the executing
-// Operator's final event receipt. A non-2xx body is decoded by
+// Operator's final receipt. A non-2xx body is decoded by
 // governance.DecodeIngressFailure into a signed rejection or a typed refusal;
 // an untyped body leaves the transport error as the result's error.
 func RunOnce(client CommandPoster, target Target, command, executionID, cliSessionID string) (result RunResult) {
@@ -234,13 +234,13 @@ func RunOnce(client CommandPoster, target Target, command, executionID, cliSessi
 		return result
 	}
 	result.TransactionID = response.GetTransactionId()
-	result.EventReceipt = response.GetEventReceipt()
-	if result.EventReceipt == nil {
-		result.Error = fmt.Errorf("operator dispatch: %w: dispatch result carries no event receipt", constants.ErrMissingRequiredField).Error()
+	result.Receipt = response.GetReceipt()
+	if result.Receipt == nil {
+		result.Error = fmt.Errorf("operator dispatch: %w: dispatch result carries no receipt", constants.ErrMissingRequiredField).Error()
 		return result
 	}
-	result.SignerKeyID = result.EventReceipt.GetSignerKeyId()
-	result.EventReceiptStatus = result.EventReceipt.GetStatus().String()
+	result.SignerKeyID = result.Receipt.GetSignerKeyId()
+	result.ReceiptStatus = result.Receipt.GetStatus().String()
 
 	commandResult, err := ParseCommandResult(response)
 	if err != nil {
@@ -272,9 +272,9 @@ func applyIngressFailure(result *RunResult, body []byte) {
 	switch {
 	case rejection != nil:
 		result.Rejection = rejection
-		result.TransactionID = rejection.GetEventReceipt().GetTransactionId()
-		result.RejectionCode = rejection.GetEventReceipt().GetRejectionCode().String()
-		if summary := rejection.GetEventReceipt().GetResultSummary(); summary != "" {
+		result.TransactionID = rejection.GetReceipt().GetTransactionId()
+		result.RejectionCode = rejection.GetReceipt().GetRejectionCode().String()
+		if summary := rejection.GetReceipt().GetResultSummary(); summary != "" {
 			result.Error = summary
 		}
 	case refusal != nil:

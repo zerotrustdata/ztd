@@ -188,7 +188,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Operator Architecture](../architecture/operator.md): Outbound and embedded Operator architecture, task execution, and host lifecycle.
 - [Governance Architecture](../architecture/governance.md): Five-layer governance framework (L1 doctrine to L5 audit), posture policies, and enforcement.
 - [AI Agents and Governance Boundary](../architecture/agents.md): AI agent integration patterns, tool boundaries, and trust limits.
-- [Consensus Architecture](../architecture/consensus.md): L2 K-of-N bound-member deliberation, verification, and event receipt evidence.
+- [Consensus Architecture](../architecture/consensus.md): L2 K-of-N bound-member deliberation, verification, and receipt evidence.
 - [Storage Architecture](../architecture/storage.md): SQLite persistence, schema migrations, and storage service layout.
 - [Events Architecture](../architecture/events.md): Event taxonomy, delivery guarantees, and event bus lifecycle.
 - [Evaluation Architecture](../architecture/evals.md): Native evaluation framework, campaign specifications, scoring, and evidence capture.
@@ -250,7 +250,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Generated Common API](../../protocol/docs/reference/api/ztd/common/v1/index.md): Common protocol messages, error envelopes, and base types.
 - [Generated Compliance API](../../protocol/docs/reference/api/ztd/compliance/v1/index.md): Compliance report, evidence, and audit messages.
 - [Generated Eval API](../../protocol/docs/reference/api/ztd/eval/v1/index.md): Evaluation campaign, scenario, and metrics messages.
-- [Generated Operator API](../../protocol/docs/reference/api/ztd/operator/v1/index.md): Operator task, execution, and event receipt messages.
+- [Generated Operator API](../../protocol/docs/reference/api/ztd/operator/v1/index.md): Operator task, execution, and receipt messages.
 - [Generated PubSub API](../../protocol/docs/reference/api/ztd/pubsub/v1/index.md): Pub/sub message contracts and event envelopes.
 - [Generated Tribunal API](../../protocol/docs/reference/api/ztd/tribunal/v1/index.md): Tribunal intent request and result, member call, outcome, and stage messages.
 - [Protocol Conformance](../../protocol/conformance/README.md): Conformance test harness and cross-language compatibility tests.
@@ -302,14 +302,10 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.1.3 Release Notes](../release_notes/v1.1.x/v1.1.3.md): v1.1.3 release scope and changes.
 - [v1.1.3 Compliance Evidence](../release_notes/v1.1.x/v1.1.3-compliance-evidence.md): Generated compliance evidence projection for v1.1.3.
 - [v1.1.3 Compliance Evidence CSV](../release_notes/v1.1.x/v1.1.3-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.1.3.
-<<<<<<< HEAD
 - [v1.3.0 Release Notes](../release_notes/v1.3.x/v1.3.0.md): Tribunal consensus, the single shell execution contract, event receipts, and evidence compatibility changes.
 - [v1.3.0 Compliance Evidence](../release_notes/v1.3.x/v1.3.0-compliance-evidence.md): Generated compliance evidence projection for v1.3.0.
 - [v1.3.0 Compliance Evidence CSV](../release_notes/v1.3.x/v1.3.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.3.0.
-=======
->>>>>>> 4acc1c884d6b0db56b0c6e7dee991c84280cd470
 - [v1.2.0 Release Notes](../release_notes/v1.2.x/v1.2.0.md): Release preparation draft; final qualification and signed compliance evidence pending.
-- [v1.3.0 Release Notes](../release_notes/v1.3.x/v1.3.0.md): Unreleased shell execution contract, and event receipts that require a fresh runtime root.
 
 ## Procedures
 

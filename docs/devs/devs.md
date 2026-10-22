@@ -85,7 +85,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-BOUND-01 | A governed operation MUST enter as typed intent or a canonical protobuf `GovernanceEnvelope`. The active posture determines whether L2 consensus and L3 notary evidence gate execution. L1 doctrine, L4 verification, and L5 actuation stay on every governed execution path. |
-| INV-BOUND-02 | The governance guarantee MUST apply only to operations that traverse a ztd ingress. There is no CLI-side MCP wrapper or reverse proxy: third-party MCP servers are governed only as Gateway downstream egress (`INV-AGT-07`), and any forwarding path that does not cross a ztd ingress MUST NOT be described as adding an envelope, L2 through L5, a signed event receipt, or Gateway audit. Client-native tools and other side channels stay outside the boundary. |
+| INV-BOUND-02 | The governance guarantee MUST apply only to operations that traverse a ztd ingress. There is no CLI-side MCP wrapper or reverse proxy: third-party MCP servers are governed only as Gateway downstream egress (`INV-AGT-07`), and any forwarding path that does not cross a ztd ingress MUST NOT be described as adding an envelope, L2 through L5, a signed receipt, or Gateway audit. Client-native tools and other side channels stay outside the boundary. |
 | INV-BOUND-03 | A mutation added to a governed ingress MUST be classified with the canonical action and event registries, represented by a typed payload, wrapped in a `GovernanceEnvelope`, verified by L4, and dispatched by L5. MUST NOT call mutation handlers directly to skip envelope construction or the verification gauntlet. |
 | INV-BOUND-04 | The Gateway in-process Operator substrate MUST stay in `internal/services/gateway/embedded/`. The outbound Operator runtime is `ZtdoService` in `internal/services/ztdo.go`. `ZtdoService` MUST NOT construct `mcp.GatewayService`. |
 
@@ -142,7 +142,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | :--- | :--- |
 | INV-TYPE-01 | A known shape MUST use a typed model. MUST NOT replace a protobuf or domain model with an untyped map or an ad hoc JSON object. |
 | INV-TYPE-02 | MUST NOT use protobuf `Any`, `map[string]interface{}`, or an equivalent untyped container for a known contract. |
-| INV-TYPE-03 | Schemas under `protocol/proto/ztd/` own governance envelopes, proofs, Operator messages, pub/sub messages, event receipts, and compliance messages. Governance and transport code MUST keep those payloads typed. |
+| INV-TYPE-03 | Schemas under `protocol/proto/ztd/` own governance envelopes, proofs, Operator messages, pub/sub messages, receipts, and compliance messages. Governance and transport code MUST keep those payloads typed. |
 | INV-TYPE-04 | An internal envelope payload MUST use protobuf binary encoding where the execution path expects it. A protobuf-owned JSON boundary MUST use `protojson`. |
 | INV-TYPE-05 | A non-protobuf HTTP surface MUST use named request and response structs. |
 | INV-TYPE-06 | Runtime Go constants live under `internal/constants/`. External registries and schemas live under `protocol/constants/`, `protocol/models/`, and `protocol/schemas/`. When a public registry has both a Go and a JSON representation, MUST update both through the established owner and run owning contract or conformance tests. |
@@ -234,7 +234,7 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 | ID | Rule |
 | :--- | :--- |
 | INV-MCP-01 | A native MCP tool MUST implement `mcp.NativeTool` and MUST execute only for a verified `MCP_CALL` envelope, on the executing runtime's own native tool host: the Gateway's embedded Operator, or an outbound Operator's `mcp.NewOperatorNativeToolHandler`. Tool names referenced outside the tool's own file MUST come from the `constants.MCPTool*` names. |
-| INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the audit event-receipt reads (`INV-OP-CAP-01` in `docs/architecture/operator.md`). |
+| INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the audit-receipt reads (`INV-OP-CAP-01` in `docs/architecture/operator.md`). |
 | INV-MCP-03 | `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go` is the inventory. Documentation MUST NOT duplicate the tool list. |
 | INV-MCP-04 | Registration MUST be explicit in `RegisterNativeTools`. MUST NOT register a native tool from `init`. Registry construction MUST return errors. |
 

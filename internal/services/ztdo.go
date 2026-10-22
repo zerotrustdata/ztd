@@ -251,7 +251,7 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 
 	// Gateway-dispatched verification uses the admission snapshot already
 	// bound into the envelope. The provider captures this runtime's local
-	// state for L5 event receipt evidence; execution never queries Gateway state.
+	// state for L5 receipt evidence; execution never queries Gateway state.
 	stateRootProvider := vs.gatewayDB.GetStateRootSvc()
 	transactionAudit := auditStore
 	// Human proofs are independently verified against the same pinned CA pool
@@ -270,8 +270,8 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrKeyReadFailed, err)
 	}
-	// The Actuator public key is exported for event receipt verification. A failed
-	// export fails startup: event receipts must be verifiable by the file on disk.
+	// The Actuator public key is exported for receipt verification. A failed
+	// export fails startup: receipts must be verifiable by the file on disk.
 	actuatorPub := actuatorPriv.Public().(ed25519.PublicKey)
 	if err := governance.ExportActuatorPublicKey(vs.fileSvc, actuatorPub, actuatorKeyID, vs.logger); err != nil {
 		return fmt.Errorf("ztdo: export actuator public key: %w", err)

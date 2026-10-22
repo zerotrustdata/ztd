@@ -108,9 +108,9 @@ func TestVerifyDigest_RejectsIncorrectDigest(t *testing.T) {
 
 func TestContentReferenceForBody_FormatAndDeterminism(t *testing.T) {
 	body := []byte(`{"ref":"test"}`)
-	ref := ContentReferenceForBody("event-receipt", body)
+	ref := ContentReferenceForBody("action-receipt", body)
 	digest := sha256.Sum256(body)
-	expected := "event-receipt:sha256:" + hex.EncodeToString(digest[:])
+	expected := "action-receipt:sha256:" + hex.EncodeToString(digest[:])
 	assert.Equal(t, expected, ref)
 }
 
@@ -146,16 +146,16 @@ func TestParseContentReference_InvalidReferences(t *testing.T) {
 
 func TestParseExpectedContentReference_MatchesPrefix(t *testing.T) {
 	body := []byte(`{}`)
-	ref := ContentReferenceForBody("event-receipt", body)
-	prefix, digest, ok := ParseExpectedContentReference(ref, "event-receipt")
+	ref := ContentReferenceForBody("action-receipt", body)
+	prefix, digest, ok := ParseExpectedContentReference(ref, "action-receipt")
 	require.True(t, ok)
-	assert.Equal(t, "event-receipt", prefix)
+	assert.Equal(t, "action-receipt", prefix)
 	assert.Len(t, digest, 64)
 }
 
 func TestParseExpectedContentReference_RejectsWrongPrefix(t *testing.T) {
 	body := []byte(`{}`)
-	ref := ContentReferenceForBody("event-receipt", body)
+	ref := ContentReferenceForBody("action-receipt", body)
 	_, _, ok := ParseExpectedContentReference(ref, "demo-manifest")
 	assert.False(t, ok)
 }
@@ -199,7 +199,7 @@ func TestValidPathElement_RejectsUnsafeElements(t *testing.T) {
 }
 
 func TestValidRelativePath_AcceptsSafeRelativePath(t *testing.T) {
-	assert.True(t, ValidRelativePath("event_receipts/abc.json"))
+	assert.True(t, ValidRelativePath("receipts/abc.json"))
 	assert.True(t, ValidRelativePath("a/b/c.json"))
 }
 
@@ -229,8 +229,8 @@ func TestContains_FindsTarget(t *testing.T) {
 	assert.False(t, Contains([]string{}, "a"))
 }
 
-func TestBuildVerifiedEventReceiptEvidence_RequiresExactScopeAndTargetBinding(t *testing.T) {
-	binding := EventReceiptBinding{
+func TestBuildVerifiedReceiptEvidence_RequiresExactScopeAndTargetBinding(t *testing.T) {
+	binding := ReceiptBinding{
 		RunID:                   "run-1",
 		ScenarioID:              "scenario-1",
 		AttemptID:               "attempt-1",
@@ -241,7 +241,7 @@ func TestBuildVerifiedEventReceiptEvidence_RequiresExactScopeAndTargetBinding(t 
 		TargetOperatorSessionID: "session-1",
 		ActionType:              "GOVERNANCE_ACTION",
 	}
-	projection := EventReceiptProjection{
+	projection := ReceiptProjection{
 		ExecutionID:       binding.ExecutionID,
 		TransactionID:     binding.TransactionID,
 		TransactionHash:   "tx-hash",
@@ -250,51 +250,51 @@ func TestBuildVerifiedEventReceiptEvidence_RequiresExactScopeAndTargetBinding(t 
 		OperatorSessionID: binding.TargetOperatorSessionID,
 		ActionType:        binding.ActionType,
 		SignerKeyID:       "signer-1",
-		Signature:         "event_receipt-signature",
+		Signature:         "receipt-signature",
 	}
-	newEventReceipt := func() *operatorv1.EventReceipt {
-		eventReceipt := newEvalVerifiedChainEventReceipt(projection.SignerKeyID)
-		eventReceipt.Signature = projection.Signature
-		eventReceipt.FinalPersistenceAttestation = &operatorv1.EventReceiptPersistenceAttestation{
-			TransactionId: binding.TransactionID, EventReceiptSignatureDigest: "signature-digest", PersistedAtUnixMs: 1,
+	newReceipt := func() *operatorv1.ActionReceipt {
+		receipt := newEvalVerifiedChainReceipt(projection.SignerKeyID)
+		receipt.Signature = projection.Signature
+		receipt.FinalPersistenceAttestation = &operatorv1.ReceiptPersistenceAttestation{
+			TransactionId: binding.TransactionID, ReceiptSignatureDigest: "signature-digest", PersistedAtUnixMs: 1,
 			AuditRecordId: binding.TransactionID, SignerKeyId: projection.SignerKeyID, Signature: "persistence-signature",
 		}
-		for _, stage := range eventReceipt.DeterministicStageEvidence {
+		for _, stage := range receipt.DeterministicStageEvidence {
 			stage.OperatorId = binding.TargetOperatorID
 			stage.OperatorSessionId = binding.TargetOperatorSessionID
 			stage.CaseId = binding.RunID
 			stage.InvestigationId = binding.InvestigationID
 			stage.TaskId = binding.AttemptID
 		}
-		return eventReceipt
+		return receipt
 	}
 
-	evidence, err := BuildVerifiedEventReceiptEvidence(binding, projection, newEventReceipt())
+	evidence, err := BuildVerifiedReceiptEvidence(binding, projection, newReceipt())
 	require.NoError(t, err)
-	assert.Equal(t, binding.TransactionID, evidence.EventReceiptReference.GetTransactionId())
+	assert.Equal(t, binding.TransactionID, evidence.ReceiptReference.GetTransactionId())
 	assert.Equal(t, binding.AttemptID, evidence.PersistenceReference.GetAttemptId())
 	assert.NotEmpty(t, evidence.ProtocolChainReference)
 
 	tests := []struct {
 		name   string
-		mutate func(*operatorv1.EventReceipt)
+		mutate func(*operatorv1.ActionReceipt)
 	}{
-		{name: "target session mismatch", mutate: func(eventReceipt *operatorv1.EventReceipt) {
-			for _, stage := range eventReceipt.DeterministicStageEvidence {
+		{name: "target session mismatch", mutate: func(receipt *operatorv1.ActionReceipt) {
+			for _, stage := range receipt.DeterministicStageEvidence {
 				stage.OperatorSessionId = "session-other"
 			}
 		}},
-		{name: "attempt mismatch", mutate: func(eventReceipt *operatorv1.EventReceipt) {
-			for _, stage := range eventReceipt.DeterministicStageEvidence {
+		{name: "attempt mismatch", mutate: func(receipt *operatorv1.ActionReceipt) {
+			for _, stage := range receipt.DeterministicStageEvidence {
 				stage.TaskId = "attempt-other"
 			}
 		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			eventReceipt := newEventReceipt()
-			test.mutate(eventReceipt)
-			_, err := BuildVerifiedEventReceiptEvidence(binding, projection, eventReceipt)
+			receipt := newReceipt()
+			test.mutate(receipt)
+			_, err := BuildVerifiedReceiptEvidence(binding, projection, receipt)
 			assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 		})
 	}

@@ -96,7 +96,7 @@ func (r *releaseSmokeRun) executeLiveEvalLoop(ctx context.Context, t *testing.T,
 // verifyLiveEvalRun checks one live run's evidence. It asserts nothing about the
 // model's answer, command or verdict; the verdict and the model-call purposes
 // are logged. It binds the trace to its runtimes and the frozen digest, requires
-// the Tribunal stage to have run, and verifies every event receipt the trace carries.
+// the Tribunal stage to have run, and verifies every receipt the trace carries.
 func (r *releaseSmokeRun) verifyLiveEvalRun(ctx context.Context, t *testing.T, store *evaluation.Store, run evalLoopRun, digest, inferenceRoot, inferenceID, inferenceSession string) error {
 	trace := run.trace
 	if err := r.verifyEvalTraceRuntimes(trace, inferenceID, inferenceSession); err != nil {
@@ -124,7 +124,7 @@ func (r *releaseSmokeRun) verifyLiveEvalRun(ctx context.Context, t *testing.T, s
 	if purposes[evalLoopPurposeGenerate] == 0 || purposes[evalLoopPurposeMarshal] == 0 {
 		return fmt.Errorf("live Tribunal stage lacked %s or %s calls (%d, %d): %w", evalLoopPurposeGenerate, evalLoopPurposeMarshal, purposes[evalLoopPurposeGenerate], purposes[evalLoopPurposeMarshal], constants.ErrValidationFailed)
 	}
-	txs, err := r.verifyEvalEventReceipts(ctx, trace, inferenceRoot, inferenceID, inferenceSession)
+	txs, err := r.verifyEvalReceipts(ctx, trace, inferenceRoot, inferenceID, inferenceSession)
 	if err != nil {
 		return err
 	}

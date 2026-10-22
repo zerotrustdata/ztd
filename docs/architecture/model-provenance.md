@@ -110,7 +110,7 @@ Campaign Coordinator (Gateway)
 
 ## Attestation Flow and Storage Verification
 
-Each inference attempt with a served tag and expected digest triggers governed BEGIN and FINALIZE commands over the Provenance Operator's existing outbound WebSocket connection. The Gateway waits for each command's verified signed event receipt and returns them with the inference response, so an agent trace can claim them in the Data ledger bracket when the Provenance Operator is also the Data runtime (`INV-EVAL-WIT-03`, `INV-EVAL-CAMP-36`). Campaign execution starts without a separate storage-attestation preflight or synchronous HTTP attestation request. The first FINALIZE hashes uncached blobs; later attempts reuse verified file identities. HTTP evidence reads retrieve windows already persisted by the Gateway and never trigger an attestation.
+Each inference attempt with a served tag and expected digest triggers governed BEGIN and FINALIZE commands over the Provenance Operator's existing outbound WebSocket connection. The Gateway waits for each command's verified signed receipt and returns them with the inference response, so an agent trace can claim them in the Data ledger bracket when the Provenance Operator is also the Data runtime (`INV-EVAL-WIT-03`, `INV-EVAL-CAMP-36`). Campaign execution starts without a separate storage-attestation preflight or synchronous HTTP attestation request. The first FINALIZE hashes uncached blobs; later attempts reuse verified file identities. HTTP evidence reads retrieve windows already persisted by the Gateway and never trigger an attestation.
 
 ```text
 1. Campaign Gateway sends BEGIN (provider_attempt_id, served_tag, expected_digest)

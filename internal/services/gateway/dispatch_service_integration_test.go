@@ -144,7 +144,7 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 	cliSessionID, cliCert := seedCLISessionForDispatch(t, infra, requestorUserID)
 
 	// The simulated operator's Actuator key is bound on its document, so the
-	// final event receipt it signs verifies against the operator's bound key.
+	// final receipt it signs verifies against the operator's bound key.
 	actuatorPub, actuatorPriv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	actuatorKeyID := hex.EncodeToString(actuatorPub)
@@ -154,7 +154,7 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 	// unmarshals the command, asserts the envelope carries the gateway's
 	// state root and targets the right session, then publishes a result
 	// envelope on the results channel with Id == command TransactionHash,
-	// and its signed final event receipt on the event receipts channel.
+	// and its signed final receipt on the receipts channel.
 	broker := infra.Pubsub
 	cmdChannel := pubsub.CmdChannel(operatorID, operatorSessionID)
 	resultsChannel := pubsub.ResultsChannel(operatorID, operatorSessionID)
@@ -180,12 +180,12 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 		assert.Equal(t, requestorUserID, cmdEnv.RequestorUserId, "envelope must carry the requestor user ID from mTLS context")
 
 		// Publish a correlated result envelope on the results channel, then
-		// the signed final event receipt on the event receipts channel.
+		// the signed final receipt on the receipts channel.
 		resultEnv := dispatchTestResultEnvelope(cmdEnv, nil)
 		resultWire, err := protojson.Marshal(resultEnv)
 		require.NoError(t, err)
 		broker.Publish(resultsChannel, resultWire)
-		publishDispatchTestEventReceipt(t, broker, simulatedOperator, cmdEnv, actuatorPriv, actuatorKeyID)
+		publishDispatchTestReceipt(t, broker, simulatedOperator, cmdEnv, actuatorPriv, actuatorKeyID)
 	})
 	t.Cleanup(unregisterOperator)
 
@@ -222,9 +222,9 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), resp), "response body: %s", rr.Body.String())
 	assert.NotEmpty(t, resp.GetTransactionId(), "response must carry the transaction ID")
 	assert.Equal(t, string(constants.ActionTypeFsRead), resp.GetActionType(), "response action type must echo FS_READ")
-	require.NotNil(t, resp.GetEventReceipt(), "the 200 body must carry the executing Operator's final event receipt")
-	assert.NoError(t, govsvc.VerifyEventReceiptSignature(resp.GetEventReceipt(), actuatorPub), "the event receipt must verify against the operator's actuator key")
-	assert.NoError(t, govsvc.VerifyEventReceiptPersistenceAttestation(resp.GetEventReceipt(), actuatorPub))
+	require.NotNil(t, resp.GetReceipt(), "the 200 body must carry the executing Operator's final receipt")
+	assert.NoError(t, govsvc.VerifyActionReceiptSignature(resp.GetReceipt(), actuatorPub), "the receipt must verify against the operator's actuator key")
+	assert.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(resp.GetReceipt(), actuatorPub))
 
 	// The simulated operator must have received the command.
 	select {
@@ -240,7 +240,7 @@ func TestDispatchController_HandleDispatch_RoundTrip(t *testing.T) {
 // dispatching to an unregistered operator session fails closed with a 500
 // error (the dispatch service wraps the auth error) and does not publish to
 // any cmd channel.
-func TestDispatchService_ShutdownPublishesEventReceiptThenAcknowledgementBeforeCancellation(t *testing.T) {
+func TestDispatchService_ShutdownPublishesReceiptThenAcknowledgementBeforeCancellation(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	_, _, userID := seedOperatorForDispatch(t, infra)
 	operatorID := "shutdown-lifecycle-operator"
@@ -255,7 +255,7 @@ func TestDispatchService_ShutdownPublishesEventReceiptThenAcknowledgementBeforeC
 	require.NoError(t, err)
 	keyID := hex.EncodeToString(publicKey)
 	require.NoError(t, infra.SignerStore.AddTrustedSigner(t.Context(), models.TrustedSigner{ID: keyID, PublicKey: keyID, AddedAt: time.Now().UTC(), Enabled: true}))
-	// The final event receipt is accepted only under the Operator's bound Actuator key.
+	// The final receipt is accepted only under the Operator's bound Actuator key.
 	bindOperatorActuatorKey(t, infra, operatorID, keyID)
 	client := pubsub.NewInProcessPubSubClient(infra.Pubsub, infra.Logger)
 	scrubbingSvc, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), infra.Logger, storagetest.NewTestTokenStore())
@@ -298,9 +298,9 @@ func TestDispatchService_ShutdownPublishesEventReceiptThenAcknowledgementBeforeC
 		order = append(order, step)
 		orderMu.Unlock()
 	}
-	unregisterEventReceipt := infra.Pubsub.RegisterHandler(pubsub.EventReceiptsChannel(operatorID, sessionID), func(_ string, _ []byte) { record("event_receipt") })
+	unregisterReceipt := infra.Pubsub.RegisterHandler(pubsub.ReceiptsChannel(operatorID, sessionID), func(_ string, _ []byte) { record("receipt") })
 	unregisterResult := infra.Pubsub.RegisterHandler(pubsub.ResultsChannel(operatorID, sessionID), func(_ string, _ []byte) { record("result") })
-	t.Cleanup(unregisterEventReceipt)
+	t.Cleanup(unregisterReceipt)
 	t.Cleanup(unregisterResult)
 	shutdownObserved := make(chan string, 1)
 	go func() {
@@ -329,7 +329,7 @@ func TestDispatchService_ShutdownPublishesEventReceiptThenAcknowledgementBeforeC
 	assert.Equal(t, "planned maintenance", <-shutdownObserved)
 	require.Eventually(t, func() bool { return handlerCount(infra.Pubsub, cmdChannel) == 0 }, time.Second, 10*time.Millisecond)
 	orderMu.Lock()
-	assert.Equal(t, []string{"event_receipt", "result", "shutdown"}, order)
+	assert.Equal(t, []string{"receipt", "result", "shutdown"}, order)
 	orderMu.Unlock()
 }
 
@@ -380,7 +380,7 @@ func TestDispatch_UnknownSession_ReturnsIngressRefusal(t *testing.T) {
 
 // TestDispatch_DoctrineViolation_ReturnsIngressRefusal proves an EXECUTE_BASH
 // whose command matches a doctrine prohibition is refused L1_DOCTRINE with 403
-// at build time: no event receipt is returned and nothing reaches the operator's
+// at build time: no receipt is returned and nothing reaches the operator's
 // command channel.
 func TestDispatch_DoctrineViolation_ReturnsIngressRefusal(t *testing.T) {
 	h, _, infra := setupTestHTTPHandler(t)
@@ -762,18 +762,18 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 	})
 	t.Cleanup(unregisterCommandCapture)
 
-	eventReceipts := make(chan *operatorv1.EventReceipt, 8)
-	unregisterEventReceiptCapture := infra.Pubsub.RegisterHandler(pubsub.EventReceiptsChannel(operatorID, sessionID), func(_ string, data []byte) {
+	receipts := make(chan *operatorv1.ActionReceipt, 8)
+	unregisterReceiptCapture := infra.Pubsub.RegisterHandler(pubsub.ReceiptsChannel(operatorID, sessionID), func(_ string, data []byte) {
 		envelope := &commonv1.GovernanceEnvelope{}
 		if err := protojson.Unmarshal(data, envelope); err != nil {
 			return
 		}
-		eventReceipt := &operatorv1.EventReceipt{}
-		if err := proto.Unmarshal(envelope.Payload, eventReceipt); err == nil {
-			eventReceipts <- eventReceipt
+		receipt := &operatorv1.ActionReceipt{}
+		if err := proto.Unmarshal(envelope.Payload, receipt); err == nil {
+			receipts <- receipt
 		}
 	})
-	t.Cleanup(unregisterEventReceiptCapture)
+	t.Cleanup(unregisterReceiptCapture)
 
 	payload, err := proto.Marshal(&operatorv1.FileEditRequested{
 		FilePath:    targetPath,
@@ -812,30 +812,30 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 		t.Fatal("governed file mutation was not captured")
 	}
 
-	waitForEventReceipt := func(transactionID string) *operatorv1.EventReceipt {
+	waitForReceipt := func(transactionID string) *operatorv1.ActionReceipt {
 		t.Helper()
 		timer := time.NewTimer(time.Second)
 		defer timer.Stop()
 		for {
 			select {
-			case eventReceipt := <-eventReceipts:
-				if eventReceipt.TransactionId == transactionID {
-					return eventReceipt
+			case receipt := <-receipts:
+				if receipt.TransactionId == transactionID {
+					return receipt
 				}
 			case <-timer.C:
-				t.Fatalf("event receipt for transaction %s was not captured", transactionID)
+				t.Fatalf("receipt for transaction %s was not captured", transactionID)
 				return nil
 			}
 		}
 	}
 
-	completedEventReceipt := waitForEventReceipt(result.TransactionID)
-	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, completedEventReceipt.Status)
-	require.NoError(t, govsvc.VerifyEventReceiptSignature(completedEventReceipt, pubKey))
-	require.NoError(t, govsvc.VerifyEventReceiptPersistenceAttestation(completedEventReceipt, pubKey))
-	_, err = govsvc.ValidateDeterministicProtocolChain(completedEventReceipt)
+	completedReceipt := waitForReceipt(result.TransactionID)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, completedReceipt.Status)
+	require.NoError(t, govsvc.VerifyActionReceiptSignature(completedReceipt, pubKey))
+	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(completedReceipt, pubKey))
+	_, err = govsvc.ValidateDeterministicProtocolChain(completedReceipt)
 	require.NoError(t, err)
-	for _, stage := range completedEventReceipt.DeterministicStageEvidence {
+	for _, stage := range completedReceipt.DeterministicStageEvidence {
 		assert.Equal(t, operatorID, stage.OperatorId)
 		assert.Equal(t, sessionID, stage.OperatorSessionId)
 		assert.Equal(t, runID, stage.CaseId)
@@ -847,10 +847,10 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 	persisted, err := infra.AuditStore.GetEventReceipt(result.TransactionID)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
-	require.NotNil(t, persisted.EventReceipt)
+	require.NotNil(t, persisted.ActionReceipt)
 	assert.Equal(t, operatorID, persisted.OperatorID)
 	assert.Equal(t, sessionID, persisted.OperatorSessionID)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.EventReceipt.Status)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.ActionReceipt.Status)
 	commitments, err := infra.AuditStore.CommitmentLedger().ListCommitments()
 	require.NoError(t, err)
 	matchingCommitments := 0
@@ -864,11 +864,11 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 
 	deliveries := infra.Pubsub.Publish(pubsub.CmdChannel(operatorID, sessionID), wire)
 	require.Positive(t, deliveries)
-	rejectedEventReceipt := waitForEventReceipt(result.TransactionID)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, rejectedEventReceipt.Status)
-	assert.Equal(t, operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, rejectedEventReceipt.FailureCode)
-	require.NoError(t, govsvc.VerifyEventReceiptSignature(rejectedEventReceipt, pubKey))
-	require.NoError(t, govsvc.VerifyEventReceiptPersistenceAttestation(rejectedEventReceipt, pubKey))
+	rejectedReceipt := waitForReceipt(result.TransactionID)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, rejectedReceipt.Status)
+	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, rejectedReceipt.FailureCode)
+	require.NoError(t, govsvc.VerifyActionReceiptSignature(rejectedReceipt, pubKey))
+	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(rejectedReceipt, pubKey))
 
 	body, err = os.ReadFile(targetPath)
 	require.NoError(t, err)
@@ -879,7 +879,7 @@ func TestDispatch_FileMutationExecutesOnceAndReplayProducesSignedRejection(t *te
 // the executing-runtime half of the FILE_EDIT runtime-state boundary: a path
 // that passes Gateway L1 lexically but resolves into the Operator's runtime
 // control/evidence tree must be refused by the Operator, recorded as a signed
-// FAILED event receipt, and leave the protected file untouched.
+// FAILED receipt, and leave the protected file untouched.
 func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *testing.T) {
 	const (
 		userID      = "user-protected-runtime"
@@ -920,7 +920,7 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 	require.NoError(t, dispatchErr)
 	require.NotNil(t, result)
 	require.NotNil(t, result.ResultEnvelope)
-	require.NotNil(t, result.EventReceipt)
+	require.NotNil(t, result.Receipt)
 	assert.Equal(t, string(constants.Event.Operator.FileEdit.Failed), result.ResultEnvelope.GetEventType())
 	fileResult := &operatorv1.FileEditResult{}
 	require.NoError(t, proto.Unmarshal(result.ResultEnvelope.Payload, fileResult))
@@ -928,10 +928,10 @@ func TestDispatch_FileEditIntoProtectedRuntimeStateProducesSignedFailure(t *test
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, fileResult.GetStatus())
 	assert.Equal(t, "validation_error", fileResult.GetErrorType())
 	assert.Contains(t, fileResult.GetErrorMessage(), constants.ErrFileEditProtectedRuntimePath.Error())
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.EventReceipt.GetStatus())
-	assert.Equal(t, operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, result.EventReceipt.GetFailureCode())
-	require.NoError(t, govsvc.VerifyEventReceiptSignature(result.EventReceipt, pubKey))
-	require.NoError(t, govsvc.VerifyEventReceiptPersistenceAttestation(result.EventReceipt, pubKey))
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Receipt.GetStatus())
+	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, result.Receipt.GetFailureCode())
+	require.NoError(t, govsvc.VerifyActionReceiptSignature(result.Receipt, pubKey))
+	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(result.Receipt, pubKey))
 
 	body, err := os.ReadFile(protectedPath)
 	require.NoError(t, err)
@@ -1026,9 +1026,9 @@ func TestDispatch_EmbeddedFileEditRecordsLocalEvidence(t *testing.T) {
 		RequestorUserID:         "owner",
 	})
 	require.NoError(t, err)
-	require.NotNil(t, read.EventReceipt)
+	require.NotNil(t, read.Receipt)
 	assert.Equal(t, string(constants.Event.Operator.FsRead.Failed), read.ResultEnvelope.GetEventType())
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, read.EventReceipt.GetStatus())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, read.Receipt.GetStatus())
 }
 
 func TestDispatch_FailedActionsProduceSignedFailures(t *testing.T) {
@@ -1061,12 +1061,12 @@ func TestDispatch_FailedActionsProduceSignedFailures(t *testing.T) {
 				TargetResource: workDir, RequestorUserID: userID,
 			})
 			require.NoError(t, err)
-			require.NotNil(t, result.EventReceipt)
+			require.NotNil(t, result.Receipt)
 			assert.Equal(t, string(test.failed), result.ResultEnvelope.GetEventType())
-			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.EventReceipt.GetStatus())
-			assert.Equal(t, operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, result.EventReceipt.GetFailureCode())
-			require.NoError(t, govsvc.VerifyEventReceiptSignature(result.EventReceipt, pubKey))
-			require.NoError(t, govsvc.VerifyEventReceiptPersistenceAttestation(result.EventReceipt, pubKey))
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Receipt.GetStatus())
+			assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED, result.Receipt.GetFailureCode())
+			require.NoError(t, govsvc.VerifyActionReceiptSignature(result.Receipt, pubKey))
+			require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(result.Receipt, pubKey))
 		})
 	}
 }
@@ -1130,7 +1130,7 @@ func TestDispatchController_HandleDispatch_DoctrineProhibitedRequestRejectedBefo
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestInferenceDispatch_RealBrokerAndOutboundOperator_VerifiesEventReceiptAuditAndCommitment(t *testing.T) {
+func TestInferenceDispatch_RealBrokerAndOutboundOperator_VerifiesReceiptAuditAndCommitment(t *testing.T) {
 	infra := setupTestInfrastructure(t, false)
 	userID := "user-inference-boundary"
 	seedActiveUser(t, infra, userID)
@@ -1155,23 +1155,23 @@ func TestInferenceDispatch_RealBrokerAndOutboundOperator_VerifiesEventReceiptAud
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.Result)
-	require.NotNil(t, result.EventReceipt)
+	require.NotNil(t, result.Receipt)
 	assert.Equal(t, "governed boundary response", boundaryInferenceResultText(t, result.Result))
-	assert.Equal(t, result.TransactionID, result.EventReceipt.TransactionId)
-	assert.Equal(t, result.Result.ResultDigest, result.EventReceipt.ResultSummary)
-	assert.NotEmpty(t, result.EventReceipt.Signature)
-	assert.NotNil(t, result.EventReceipt.FinalPersistenceAttestation)
+	assert.Equal(t, result.TransactionID, result.Receipt.TransactionId)
+	assert.Equal(t, result.Result.ResultDigest, result.Receipt.ResultSummary)
+	assert.NotEmpty(t, result.Receipt.Signature)
+	assert.NotNil(t, result.Receipt.FinalPersistenceAttestation)
 
 	calls, request := backend.snapshot()
 	assert.Equal(t, 1, calls)
 	assert.Equal(t, "primary-boundary", request.Model)
 	assert.Equal(t, "boundary prompt", boundaryInferenceText(t, request.Messages))
 
-	eventReceipt, err := infra.AuditStore.GetEventReceipt(result.TransactionID)
+	receipt, err := infra.AuditStore.GetEventReceipt(result.TransactionID)
 	require.NoError(t, err)
-	require.NotNil(t, eventReceipt)
-	assert.Equal(t, constants.ActionTypeInference, eventReceipt.ActionType)
-	assert.Equal(t, result.EventReceipt.ResultSummary, eventReceipt.ResultSummary)
+	require.NotNil(t, receipt)
+	assert.Equal(t, constants.ActionTypeInference, receipt.ActionType)
+	assert.Equal(t, result.Receipt.ResultSummary, receipt.ResultSummary)
 
 	commitments, err := infra.AuditStore.CommitmentLedger().ListCommitments()
 	require.NoError(t, err)
@@ -1223,7 +1223,7 @@ func TestInferenceDispatch_HTTPRouterAppMTLSIdentityTraversesRealBrokerAndOutbou
 	response := &operatorv1.InferenceDispatchResponse{}
 	require.NoError(t, protojson.Unmarshal(rr.Body.Bytes(), response))
 	assert.Equal(t, "governed boundary response", boundaryInferenceResultText(t, response.Result))
-	assert.Equal(t, response.Result.ResultDigest, response.EventReceipt.ResultSummary)
+	assert.Equal(t, response.Result.ResultDigest, response.Receipt.ResultSummary)
 	calls, backendRequest := backend.snapshot()
 	assert.Equal(t, 1, calls)
 	assert.Equal(t, "assistant-boundary", backendRequest.Model)
@@ -1435,8 +1435,8 @@ func TestInferenceDispatch_CallerCancellationRemovesHandlerWhileRemoteExecutionC
 
 	close(release)
 	require.Eventually(t, func() bool {
-		eventReceipt, err := infra.AuditStore.GetEventReceipt(transactionID)
-		return err == nil && eventReceipt != nil && eventReceipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
+		receipt, err := infra.AuditStore.GetEventReceipt(transactionID)
+		return err == nil && receipt != nil && receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	}, time.Second, 10*time.Millisecond)
 	assert.Zero(t, resultHandlerCount(infra.Pubsub, &operatorv1.OperatorDocument{Id: operatorID, OperatorSessionId: sessionID}))
 	calls, _ := backend.snapshot()
@@ -1586,7 +1586,7 @@ func TestInferenceDispatch_ReplayedEnvelopeIsRejectedWithoutSecondBackendInvocat
 	}
 	select {
 	case first := <-completions:
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, first.EventReceipt.Status)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, first.Receipt.Status)
 	case <-time.After(time.Second):
 		t.Fatal("successful completion was not captured")
 	}
@@ -1595,10 +1595,10 @@ func TestInferenceDispatch_ReplayedEnvelopeIsRejectedWithoutSecondBackendInvocat
 	require.Positive(t, deliveries)
 	select {
 	case replay := <-completions:
-		require.NotNil(t, replay.EventReceipt)
-		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, replay.EventReceipt.Status)
-		assert.Equal(t, operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, replay.EventReceipt.FailureCode)
-		assert.NotEmpty(t, replay.EventReceipt.Signature)
+		require.NotNil(t, replay.Receipt)
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, replay.Receipt.Status)
+		assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, replay.Receipt.FailureCode)
+		assert.NotEmpty(t, replay.Receipt.Signature)
 	case <-time.After(time.Second):
 		t.Fatal("signed replay rejection was not captured")
 	}

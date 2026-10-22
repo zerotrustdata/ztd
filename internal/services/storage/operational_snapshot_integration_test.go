@@ -24,7 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/timesvc"
 )
 
-// Event receipt facts interleave with other chained events (command audit records, for
+// Receipt facts interleave with other chained events (command audit records, for
 // example). The exported segment must carry those events too, or it has sequence
 // gaps and cannot verify offline.
 func TestReadOnlyOperationalEvidence_AuditChainSpansInterleavedEvents(t *testing.T) {
@@ -34,9 +34,9 @@ func TestReadOnlyOperationalEvidence_AuditChainSpansInterleavedEvents(t *testing
 		return recordOperationalChainEvent(t, ass, now.Add(offset), eventType, transactionID, content)
 	}
 	record(-3*time.Second, constants.EventOperatorAuditCommandRecorded, "", "before")
-	firstSeq := record(-2*time.Second, constants.EventOperatorEventReceiptRecorded, "tx-a", `{"transactionId":"tx-a"}`)
+	firstSeq := record(-2*time.Second, constants.EventOperatorReceiptRecorded, "tx-a", `{"transactionId":"tx-a"}`)
 	record(-time.Second, constants.EventOperatorAuditCommandRecorded, "", "between")
-	lastSeq := record(0, constants.EventOperatorEventReceiptRecorded, "tx-b", `{"transactionId":"tx-b"}`)
+	lastSeq := record(0, constants.EventOperatorReceiptRecorded, "tx-b", `{"transactionId":"tx-b"}`)
 	record(time.Second, constants.EventOperatorAuditCommandRecorded, "", "after")
 
 	reader, err := OpenReadOnlyOperationalEvidence(dbPath, testVault, testutil.NewTestLogger())
@@ -49,10 +49,10 @@ func TestReadOnlyOperationalEvidence_AuditChainSpansInterleavedEvents(t *testing
 	segment := make([]AuditChainSegmentEntry, 0, len(snapshot.AuditChain))
 	for index, entry := range snapshot.AuditChain {
 		assert.Equal(t, firstSeq+int64(index), entry.Seq)
-		if entry.EventType == string(constants.EventOperatorEventReceiptRecorded) {
-			assert.NotEmpty(t, entry.ContentSHA256, "an event receipt fact carries the hash its exported event receipt is matched against")
+		if entry.EventType == string(constants.EventOperatorReceiptRecorded) {
+			assert.NotEmpty(t, entry.ContentSHA256, "a receipt fact carries the hash its exported receipt is matched against")
 		} else {
-			assert.Empty(t, entry.ContentSHA256, "non-event_receipt content is never exported, so neither is its hash")
+			assert.Empty(t, entry.ContentSHA256, "non-receipt content is never exported, so neither is its hash")
 		}
 		segment = append(segment, AuditChainSegmentEntry{
 			Seq:               entry.Seq,
@@ -76,8 +76,8 @@ func TestReadOnlyOperationalEvidence_AuditChainSpansInterleavedEvents(t *testing
 func TestReadOnlyOperationalEvidence_AuditChainWindowEndIsExact(t *testing.T) {
 	ass, dbPath, testVault := newOperationalSnapshotAuditStore(t)
 	windowEnd := time.Now().UTC().Truncate(time.Millisecond)
-	insideSeq := recordOperationalChainEvent(t, ass, windowEnd.Add(-time.Millisecond), constants.EventOperatorEventReceiptRecorded, "tx-inside", `{"transactionId":"tx-inside"}`)
-	recordOperationalChainEvent(t, ass, windowEnd.Add(389*time.Microsecond), constants.EventOperatorEventReceiptRecorded, "tx-after", `{"transactionId":"tx-after"}`)
+	insideSeq := recordOperationalChainEvent(t, ass, windowEnd.Add(-time.Millisecond), constants.EventOperatorReceiptRecorded, "tx-inside", `{"transactionId":"tx-inside"}`)
+	recordOperationalChainEvent(t, ass, windowEnd.Add(389*time.Microsecond), constants.EventOperatorReceiptRecorded, "tx-after", `{"transactionId":"tx-after"}`)
 
 	reader, err := OpenReadOnlyOperationalEvidence(dbPath, testVault, testutil.NewTestLogger())
 	require.NoError(t, err)

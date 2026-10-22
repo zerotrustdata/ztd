@@ -406,51 +406,51 @@ func DefaultMethods(deps EvaluatorDeps) map[string][]KSIMethod {
 		return true, []*compliancev1.ComplianceEvidenceReference{newKSIEvidenceReference(EvidenceTypeExecutionID, fmt.Sprintf("events:%d", len(events)))}, nil
 	}
 
-	eventReceiptsExist := func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
+	receiptsExist := func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
 		if deps.Audit == nil {
 			return false, nil, nil
 		}
-		eventReceipts, err := deps.Audit.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 1, 0)
+		receipts, err := deps.Audit.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 1, 0)
 		if err != nil {
 			return false, nil, err
 		}
-		if len(eventReceipts) == 0 {
+		if len(receipts) == 0 {
 			return false, nil, nil
 		}
-		return true, []*compliancev1.ComplianceEvidenceReference{newKSIEvidenceReference(EvidenceTypeEventReceiptID, eventReceipts[0].TransactionID)}, nil
+		return true, []*compliancev1.ComplianceEvidenceReference{newKSIEvidenceReference(EvidenceTypeReceiptID, receipts[0].TransactionID)}, nil
 	}
 
-	eventReceiptsCryptographicallyVerified := func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
+	receiptsCryptographicallyVerified := func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
 		if deps.Audit == nil {
 			return false, nil, nil
 		}
-		eventReceipts, err := deps.Audit.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
+		receipts, err := deps.Audit.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
 		if err != nil {
 			return false, nil, err
 		}
-		if len(eventReceipts) == 0 {
+		if len(receipts) == 0 {
 			return false, nil, nil
 		}
-		evidence := make([]*compliancev1.ComplianceEvidenceReference, 0, len(eventReceipts))
-		for _, record := range eventReceipts {
+		evidence := make([]*compliancev1.ComplianceEvidenceReference, 0, len(receipts))
+		for _, record := range receipts {
 			if err := ctx.Err(); err != nil {
 				return false, evidence, err
 			}
 			if record == nil {
 				return false, evidence, nil
 			}
-			reference := newKSIEvidenceReference(EvidenceTypeEventReceiptID, record.TransactionID)
+			reference := newKSIEvidenceReference(EvidenceTypeReceiptID, record.TransactionID)
 			evidence = append(evidence, reference)
-			eventReceipt := record.EventReceipt
-			if eventReceipt == nil || eventReceipt.GetTransactionId() != record.TransactionID || eventReceipt.GetSignerKeyId() != record.SignerKeyID || eventReceipt.GetSignature() != record.Signature {
+			receipt := record.ActionReceipt
+			if receipt == nil || receipt.GetTransactionId() != record.TransactionID || receipt.GetSignerKeyId() != record.SignerKeyID || receipt.GetSignature() != record.Signature {
 				return false, evidence, nil
 			}
-			publicKey, err := governance.SignerPublicKey(eventReceipt.GetSignerKeyId())
+			publicKey, err := governance.SignerPublicKey(receipt.GetSignerKeyId())
 			if err != nil {
 				//nolint:nilerr // intentional fallback: unknown signer key marks compliance check unsatisfied
 				return false, evidence, nil
 			}
-			if governance.VerifyEventReceiptSignature(eventReceipt, publicKey) != nil || governance.VerifyEventReceiptPersistenceAttestation(eventReceipt, publicKey) != nil {
+			if governance.VerifyActionReceiptSignature(receipt, publicKey) != nil || governance.VerifyReceiptPersistenceAttestation(receipt, publicKey) != nil {
 				//nolint:nilerr // intentional fallback: signature verification failure marks check unsatisfied
 				return false, evidence, nil
 			}
@@ -526,8 +526,8 @@ func DefaultMethods(deps EvaluatorDeps) map[string][]KSIMethod {
 	}
 
 	auditEventsExistMethod := newKSIMethod("auditEventsExist", KSIArtifactAuditEvents, KSICollectionAuditStore, KSIVerifierExistence, KSIPropertyPresence, auditEventsExist)
-	eventReceiptsExistMethod := newKSIMethod("eventReceiptsExist", KSIArtifactEventReceipts, KSICollectionAuditStore, KSIVerifierExistence, KSIPropertyPresence, eventReceiptsExist)
-	eventReceiptsCryptographicallyVerifiedMethod := newKSIMethod("eventReceiptsCryptographicallyVerified", KSIArtifactEventReceipts, KSICollectionAuditStore, KSIVerifierCryptographic, KSIPropertyEventReceiptPersistenceIntegrity, eventReceiptsCryptographicallyVerified)
+	receiptsExistMethod := newKSIMethod("receiptsExist", KSIArtifactActionReceipts, KSICollectionAuditStore, KSIVerifierExistence, KSIPropertyPresence, receiptsExist)
+	receiptsCryptographicallyVerifiedMethod := newKSIMethod("receiptsCryptographicallyVerified", KSIArtifactActionReceipts, KSICollectionAuditStore, KSIVerifierCryptographic, KSIPropertyReceiptPersistenceIntegrity, receiptsCryptographicallyVerified)
 	fileMutationsTrackedMethod := newKSIMethod("fileMutationsTracked", KSIArtifactFileMutations, KSICollectionAuditStore, KSIVerifierExistence, KSIPropertyPresence, fileMutationsTracked)
 	ledgerCommitsExistMethod := newKSIMethod("ledgerCommitsExist", KSIArtifactLedgerCommits, KSICollectionLedgerStore, KSIVerifierExistence, KSIPropertyPresence, ledgerCommitsExist)
 	commitmentChainExistsMethod := newKSIMethod("commitmentChainExists", KSIArtifactCommitments, KSICollectionCommitmentStore, KSIVerifierExistence, KSIPropertyPresence, commitmentChainExists)
@@ -542,12 +542,12 @@ func DefaultMethods(deps EvaluatorDeps) map[string][]KSIMethod {
 
 	methods["KSI-CMT-01"] = []KSIMethod{auditEventsExistMethod, newKSIHistoryFreshnessMethod(deps.History, "KSI-CMT-01", 7*24*time.Hour)}
 	methods["KSI-CMT-03"] = []KSIMethod{ledgerCommitsExistMethod, ledgerMerkleRootMatchesHead}
-	methods["KSI-CNA-01"] = []KSIMethod{eventReceiptsExistMethod, independentStateObserved}
-	methods["KSI-IAM-05"] = []KSIMethod{eventReceiptsExistMethod, deterministicGraderResultsVerified}
+	methods["KSI-CNA-01"] = []KSIMethod{receiptsExistMethod, independentStateObserved}
+	methods["KSI-IAM-05"] = []KSIMethod{receiptsExistMethod, deterministicGraderResultsVerified}
 	methods["KSI-IAM-07"] = []KSIMethod{fileMutationsTrackedMethod, independentStateObserved}
 	methods["KSI-MLA-03"] = []KSIMethod{auditEventsExistMethod, deterministicGraderResultsVerified}
 	methods["KSI-MLA-07"] = []KSIMethod{commitmentChainExistsMethod, commitmentsCryptographicallyVerified}
-	methods["KSI-MLA-08"] = []KSIMethod{eventReceiptsCryptographicallyVerifiedMethod, newKSIHistoryFreshnessMethod(deps.History, "KSI-MLA-08", 7*24*time.Hour)}
+	methods["KSI-MLA-08"] = []KSIMethod{receiptsCryptographicallyVerifiedMethod, newKSIHistoryFreshnessMethod(deps.History, "KSI-MLA-08", 7*24*time.Hour)}
 	methods["KSI-SVC-04"] = []KSIMethod{fileMutationsTrackedMethod, deterministicGraderResultsVerified}
 	methods["KSI-SVC-05"] = []KSIMethod{commitmentChainIntactMethod, ledgerMerkleRootMatchesHead}
 
@@ -643,23 +643,23 @@ func newLedgerMerkleRootMatchesHeadMethod(reader LedgerEvidenceReader) KSIMethod
 }
 
 func newIndependentStateObservedMethod(reader AuditEvidenceReader) KSIMethod {
-	return newKSIMethod("independentStateObserved", KSIArtifactEventReceiptStateTransitions, KSICollectionAuditStore, KSIVerifierStateObservation, KSIPropertyStateTransitionBinding, func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
+	return newKSIMethod("independentStateObserved", KSIArtifactReceiptStateTransitions, KSICollectionAuditStore, KSIVerifierStateObservation, KSIPropertyStateTransitionBinding, func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
 		if reader == nil {
 			return false, nil, nil
 		}
-		eventReceipts, err := reader.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
+		receipts, err := reader.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
 		if err != nil {
 			return false, nil, err
 		}
-		if len(eventReceipts) == 0 {
+		if len(receipts) == 0 {
 			return false, nil, nil
 		}
-		evidence := make([]*compliancev1.ComplianceEvidenceReference, 0, len(eventReceipts))
-		for _, record := range eventReceipts {
+		evidence := make([]*compliancev1.ComplianceEvidenceReference, 0, len(receipts))
+		for _, record := range receipts {
 			if err := ctx.Err(); err != nil {
 				return false, evidence, err
 			}
-			if !eventReceiptDeclaresStateTransition(record) {
+			if !receiptDeclaresStateTransition(record) {
 				return false, evidence, nil
 			}
 			evidence = append(evidence, newVerifiedKSIEvidenceReference(EvidenceTypeStateObservation, record.TransactionID, "", record.ExecutedAt))
@@ -668,11 +668,11 @@ func newIndependentStateObservedMethod(reader AuditEvidenceReader) KSIMethod {
 	})
 }
 
-func eventReceiptDeclaresStateTransition(record *models.EventReceiptRecord) bool {
+func receiptDeclaresStateTransition(record *models.EventReceiptRecord) bool {
 	return record != nil && record.TransactionID != "" && record.StateRootBefore != "" && record.StateRootAfter != "" &&
-		record.StateRootBefore != record.StateRootAfter && record.EventReceipt != nil &&
-		record.EventReceipt.GetTransactionId() == record.TransactionID && record.EventReceipt.GetStateRootBefore() == record.StateRootBefore &&
-		record.EventReceipt.GetStateRootAfter() == record.StateRootAfter
+		record.StateRootBefore != record.StateRootAfter && record.ActionReceipt != nil &&
+		record.ActionReceipt.GetTransactionId() == record.TransactionID && record.ActionReceipt.GetStateRootBefore() == record.StateRootBefore &&
+		record.ActionReceipt.GetStateRootAfter() == record.StateRootAfter
 }
 
 func newDeterministicGraderResultsVerifiedMethod(reader EvalGraderReader) KSIMethod {

@@ -55,8 +55,8 @@ func TestRegisterNativeTools_Success(t *testing.T) {
 		"net_ssh_known_hosts",
 		"operator_deploy",
 		"read_file",
-		"audit_event_receipt_list",
-		"audit_event_receipt_get",
+		"audit_receipt_list",
+		"audit_receipt_get",
 	}
 
 	count := registry.Count()

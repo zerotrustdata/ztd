@@ -156,7 +156,7 @@
         "description": "Honest verification boundary label. Never 'verified' until the complete verifier exists.",
         "enum": [
           "projection_validated",
-          "event_receipt_verification_not_applicable",
+          "receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,
@@ -187,15 +187,15 @@
         "required": true,
         "type": "string"
       },
-      "event_receipt_count": {
-        "description": "Number of event receipts in the report",
-        "required": true,
-        "type": "integer"
-      },
       "published_projection_sha256": {
         "description": "SHA-256 hash of the persisted disclosure-safe projection",
         "required": true,
         "type": "string"
+      },
+      "receipt_count": {
+        "description": "Number of receipts in the report",
+        "required": true,
+        "type": "integer"
       },
       "run_id": {
         "description": "Stable eval run identifier",
@@ -226,7 +226,7 @@
         "description": "Honest verification boundary label. Never 'verified' until the complete verifier exists.",
         "enum": [
           "projection_validated",
-          "event_receipt_verification_not_applicable",
+          "receipt_verification_not_applicable",
           "verified"
         ],
         "required": true,

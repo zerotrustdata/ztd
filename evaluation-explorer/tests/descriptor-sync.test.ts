@@ -30,7 +30,7 @@ import {
   PUBLIC_GRADE_EXPLANATION_CODES,
   PUBLIC_HINT_ARGUMENT_SOURCES,
   PUBLIC_LOAD_STATES,
-  PUBLIC_EVENT_RECEIPT_STATUSES,
+  PUBLIC_RECEIPT_STATUSES,
   PUBLIC_SEMANTIC_OUTCOMES,
   PUBLIC_TOOL_EXECUTION_OUTCOMES,
   PUBLIC_TOOL_OUTCOMES,
@@ -91,7 +91,7 @@ type EnumName =
   | 'PublicToolExecutionOutcome'
   | 'PublicSemanticOutcome'
   | 'PublicReportedPolicyOutcome'
-  | 'PublicEventReceiptStatus'
+  | 'PublicReceiptStatus'
   | 'PublicTrajectoryPolicy'
   | 'PublicTrajectoryOutcome'
   | 'PublicHintArgumentSource';
@@ -134,7 +134,7 @@ const tsEnums: Record<EnumName, readonly string[]> = {
   PublicToolExecutionOutcome: PUBLIC_TOOL_EXECUTION_OUTCOMES,
   PublicSemanticOutcome: PUBLIC_SEMANTIC_OUTCOMES,
   PublicReportedPolicyOutcome: PUBLIC_TOOL_OUTCOMES,
-  PublicEventReceiptStatus: PUBLIC_EVENT_RECEIPT_STATUSES,
+  PublicReceiptStatus: PUBLIC_RECEIPT_STATUSES,
   PublicTrajectoryPolicy: PUBLIC_TRAJECTORY_POLICIES,
   PublicTrajectoryOutcome: PUBLIC_TRAJECTORY_OUTCOMES,
   PublicHintArgumentSource: PUBLIC_HINT_ARGUMENT_SOURCES,

@@ -32,7 +32,7 @@ The compliance engine resolves five foundational inquiries for every evaluated c
 
 1. **Exact Technical Assertion**: What discrete, machine-testable assertion does the platform evaluate?
 2. **Framework Mapping**: Which regulatory standards map to that assertion under specific framework revisions?
-3. **Immutable Evidence**: What cryptographic artifacts (event receipts, commit hashes, state Merkle roots, execution logs) prove or disprove the assertion for the declared assessment window?
+3. **Immutable Evidence**: What cryptographic artifacts (receipts, commit hashes, state Merkle roots, execution logs) prove or disprove the assertion for the declared assessment window?
 4. **Independent Reproducibility**: Which versioned verifiers and graders evaluated the evidence, and can an air-gapped verifier independently reproduce the identical outcome?
 5. **Operational Scope and Boundaries**: Which controls remain outside platform scope or mandate customer-operated evidence?
 
@@ -94,14 +94,14 @@ Context that cannot be captured as a content-addressed artifact (e.g. physical p
 
 ## Atomic Control Assertions
 
-The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, catalog `ztd-control-assertions` v2.1.0, declared SHA-256 `3b9a74f1add9511540ce0eaa908de9fa6a2f66f8cf64c28f2ab6471c2fa76b00`) defines 13 atomic, framework-neutral assertions:
+The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, catalog `ztd-control-assertions` v2.1.0, declared SHA-256 `995bf5fe2176706c7a8d329b1a3495b99a0a77fe110bb2afb47ed1e792ba22a1`) defines 13 atomic, framework-neutral assertions:
 
 | Assertion ID | Assertion Title | Version | Component Scope | Minimum Evidence Level | Core Operational Verification |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`ZTD-GOV-ALLOW-001`** | Governed Allow Outcome | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Confirms that valid mutations clearing L1–L5 execute and emit terminal event receipts. |
+| **`ZTD-GOV-ALLOW-001`** | Governed Allow Outcome | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Confirms that valid mutations clearing L1–L5 execute and emit terminal receipts. |
 | **`ZTD-GOV-BLOCK-001`** | Governed Block Outcome | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Confirms that prohibited mutations fail closed at the expected layer and that the prohibited terminal state is independently observed absent. |
-| **`ZTD-AU-EVENT_RECEIPT-001`** | Event receipt Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates Ed25519 signatures on `EventReceipt` records bound to action, identity, transaction, and state-root fields. |
-| **`ZTD-AU-PERSIST-001`** | Event receipt Persistence | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates atomic SQLite audit persistence and signed `EventReceiptPersistenceAttestation`. |
+| **`ZTD-AU-RECEIPT-001`** | Receipt Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates Ed25519 signatures on `ActionReceipt` records bound to action, identity, transaction, and state-root fields. |
+| **`ZTD-AU-PERSIST-001`** | Receipt Persistence | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates atomic SQLite audit persistence and signed `ReceiptPersistenceAttestation`. |
 | **`ZTD-AU-CHAIN-001`** | Protocol Chain Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates unbroken cryptographic hash chains across sequential deterministic stage events. |
 | **`ZTD-AU-COMMIT-001`** | Commitment Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates signatures and canonical bindings, including the declared predecessor hash, for `commitment_ledger` records. |
 | **`ZTD-CM-STATE-001`** | Independently Observed State | 2.1.0 | `gateway`, `operator` | L3 (Demonstrated) | Verifies a subject-bound independent observation and deterministic measurement of the declared terminal state for governed configuration or file mutations. |
@@ -121,7 +121,7 @@ Evidence strength is categorized according to an explicit, non-inflatable hierar
 | **L0** | Documented | Architecture documentation, policy manuals, or schema specifications describe the control. |
 | **L1** | Implemented | Source code inspection and unit test assertions confirm that the control logic exists. |
 | **L2** | Deterministically Evaluated | A registered, versioned grader verifies cryptographic signatures, hashes, and schemas against raw evidence. |
-| **L3** | Demonstrated | An end-to-end execution scenario passes with verified event receipts and independent terminal-state observation. |
+| **L3** | Demonstrated | An end-to-end execution scenario passes with verified receipts and independent terminal-state observation. |
 | **L4** | Continuously Evidenced | Historical evidence collectors prove control operation across recurring cycles within the assessment window. |
 | **L5** | Externally Attested | An accredited, independent third-party assessor inspects evidence and issues a formal attestation. |
 
@@ -129,7 +129,7 @@ The automated `ztd` platform pipeline produces evidence up to **L3 (Demonstrated
 
 ## Framework Crosswalk Mappings
 
-The canonical crosswalk (`protocol/constants/compliance/fedramp-nist-crosswalk.json`, declared SHA-256 `91edf4217e8c3f23ddbd4cc2cada9a767b10a828638995abb5a8eb3c3c33959a`) maps the 13 atomic assertions to external regulatory controls:
+The canonical crosswalk (`protocol/constants/compliance/fedramp-nist-crosswalk.json`, declared SHA-256 `9a3435d4b6bd84416f608889325fbcc4fd4aac91dbce9d0c8b875baba0975df9`) maps the 13 atomic assertions to external regulatory controls:
 
 | Framework | Revision | Total Controls | Mapped Controls | Unsupported Controls | Reviewed Mappings |
 | :--- | :--- | :--- | :--- | :--- | :--- |

@@ -70,7 +70,7 @@ func TestValidateWitnessCommand(t *testing.T) {
 			capabilities := ResolveOperatorCapabilities(tt.cfg)
 			commandErr := ValidateWitnessCommand(capabilities, "ollama ps")
 			nativeToolErr := ValidateWitnessNativeTool(capabilities, constants.MCPToolRunShellCommand)
-			for _, ledgerRead := range []string{constants.MCPToolAuditEventReceiptList, constants.MCPToolAuditEventReceiptGet} {
+			for _, ledgerRead := range []string{constants.MCPToolAuditReceiptList, constants.MCPToolAuditReceiptGet} {
 				require.NoError(t, ValidateWitnessNativeTool(capabilities, ledgerRead), ledgerRead)
 			}
 			if tt.want {

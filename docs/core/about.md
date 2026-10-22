@@ -48,9 +48,9 @@ ztd enforces a disciplined seven-stage operating method for high-consequence sys
 4. **Present Explicit Intent**: Format proposed mutations, affected targets, and cryptographic justifications for accountable review.
 5. **Bind Human Authorization**: Bind cryptographic human approval to the canonical transaction hash when required by policy.
 6. **Execute at the Local Boundary**: Dispatch verified mutations through a constrained, host-local execution boundary at the system owning the data.
-7. **Preserve Signed Evidence**: Record cryptographically signed pre-execution and post-execution event receipts, commit audit ledger entries, and verify completion.
+7. **Preserve Signed Evidence**: Record cryptographically signed pre-execution and post-execution receipts, commit audit ledger entries, and verify completion.
 
-Reasoning workflows—whether powered by proprietary frontier models, local open-weights engines, or human operators—operate strictly as proposers outside the trusted computing base. The platform supplies the identity, policy enforcement, verification, execution, and event receipt boundary between proposed intent and target systems.
+Reasoning workflows—whether powered by proprietary frontier models, local open-weights engines, or human operators—operate strictly as proposers outside the trusted computing base. The platform supplies the identity, policy enforcement, verification, execution, and receipt boundary between proposed intent and target systems.
 
 ## What ztd Is
 
@@ -60,11 +60,11 @@ The platform enforces a strict separation of concerns between Policy Decision Po
 
 | Component | Architecture Role | Responsibilities |
 | :--- | :--- | :--- |
-| **`ztd Protocol`** | Wire Contract & Standards | Canonical Protobuf contracts (`GovernanceEnvelope`, `EventReceipt`, `CommitmentAttestation`), canonical hashing, identity bindings, replay defenses, and proof schemas. |
+| **`ztd Protocol`** | Wire Contract & Standards | Canonical Protobuf contracts (`GovernanceEnvelope`, `ActionReceipt`, `CommitmentAttestation`), canonical hashing, identity bindings, replay defenses, and proof schemas. |
 | **`Governance Gateway (ztdg)`** | Policy Decision Point (PDP) | Workload authentication, PKI CA management, envelope construction, L1 Doctrine enforcement, L2 Consensus coordination, L3 Notary ceremonies, routing, and platform APIs. Hosts an in-process Operator substrate strictly for Gateway-local operations. |
 | **`Governed Operator (ztdo)`** | Policy Execution Point (PEP) | Host-side execution daemon running on managed infrastructure. Connects outbound over mTLS, pulls work from session-specific channels, re-verifies envelopes at L4 Warden, executes via L5 Actuator, and retains authoritative local audit records and git file ledgers. Exposes no inbound listening ports. |
 | **`Consensus Service`** | Quorum Decision Body | Collects transaction proposals and emits Ed25519 signature votes over `<tx_hash>\|<decision>`. Evaluates configured quorum and membership rules. |
-| **`Clients & Interfaces`** | Proposers & Observers | AI agents, Model Context Protocol (MCP) clients, Agent-to-Agent (A2A) callers, CLI sessions, and the embedded browser console propose actions and inspect event receipts without joining the trusted execution boundary. |
+| **`Clients & Interfaces`** | Proposers & Observers | AI agents, Model Context Protocol (MCP) clients, Agent-to-Agent (A2A) callers, CLI sessions, and the embedded browser console propose actions and inspect receipts without joining the trusted execution boundary. |
 
 The reference Gateway and Operator runtimes are packaged within a single statically linked Go binary (`ztd`). The repository also embeds the browser console SPA directly into the Gateway binary. These components represent modular reference implementations of separable protocol roles.
 
@@ -76,7 +76,7 @@ Every governed mutation must clear the five-layer governance pipeline before exe
 2. **L2 Consensus**: Verifies Ed25519 quorum signatures from enrolled consensus members against configured policy thresholds when multi-agent agreement is required.
 3. **L3 Notary**: Verifies transaction-bound human approval. Gateway workflows enforce WebAuthn passkey ceremonies; outbound Operator workflows verify signed cryptographic approval proofs.
 4. **L4 Warden**: Executes host-side pre-dispatch verification. Durably reserves nonces, checks TTL expiration, recomputes the canonical transaction hash, verifies the bound state root, re-runs L1 Doctrine, and verifies posture-required L2 and L3 proofs.
-5. **L5 Actuator**: The sole authorized execution boundary on the host. Signs and persists an initial `EXECUTING` event receipt, appends a signed commitment to the SQLite commitment ledger, rehydrates scrubbed tokens locally, mints a single-use transaction capability, dispatches the handler, dissolves the capability, and persists the signed final event receipt and persistence attestation.
+5. **L5 Actuator**: The sole authorized execution boundary on the host. Signs and persists an initial `EXECUTING` receipt, appends a signed commitment to the SQLite commitment ledger, rehydrates scrubbed tokens locally, mints a single-use transaction capability, dispatches the handler, dissolves the capability, and persists the signed final receipt and persistence attestation.
 
 The startup-selected **Governance Posture** establishes whether L2 and L3 operate as blocking gates or non-blocking audited observations:
 
@@ -98,7 +98,7 @@ ztd anchors execution authority and authoritative forensic evidence at the data 
 - **Sovereign Execution Boundary**: Sensitive values (tokens, credentials, PII) are redacted or converted to reversible placeholders (`{{UEI_<owner>_N}}`) before crossing network boundaries. Token rehydration occurs strictly at L5 Actuator on the runtime that minted the token, immediately prior to dispatch; another runtime's token never resolves locally.
 - **Local-First Audit Architecture (LFAA)**: Each Operator maintains an authoritative local SQLite audit database and a git-backed file history ledger. Gateway audit stores maintain mirrored projections, but the target host remains the authoritative root of forensic truth.
 - **Vault Encryption**: Local audit stores, execution events, and token maps are encrypted at rest using AES-256-GCM via the local vault service.
-- **Explicit Claim Boundary**: Cryptographic event receipts attest strictly to operations that traversed the governed ztd pipeline. ztd does not sandbox unmanaged host processes, client-native shell access, external MCP servers, or unmonitored side channels outside its boundary.
+- **Explicit Claim Boundary**: Cryptographic receipts attest strictly to operations that traversed the governed ztd pipeline. ztd does not sandbox unmanaged host processes, client-native shell access, external MCP servers, or unmonitored side channels outside its boundary.
 
 ## Reference Implementation
 
@@ -106,7 +106,7 @@ The v1.0.0 reference implementation delivers:
 
 - **Unified Ingress Surfaces**: Model Context Protocol (MCP) over HTTP and stdio, Agent-to-Agent (A2A) JSON-RPC endpoints (`POST /api/v1/a2a/call`), governed HTTP command dispatch (`POST /api/v1/operators/commands`), direct envelope ingestion (`POST /api/v1/governance/envelopes`), and CLI execution (`ztd operator run`).
 - **Comprehensive Cryptographic Security**: Strict TLS 1.3 with post-quantum hybrid key exchange (`X25519MLKEM768`), SPIFFE workload identity, X.509 PKI hierarchy, and pure-Go FIPS 140-3 cryptographic module linkage.
-- **Governed Native Tooling**: 32 compiled native tools for filesystem inspection, process telemetry, network diagnostics, database queries, container and Kubernetes management, cloud metadata extraction, shell execution, and audit event receipt verification.
+- **Governed Native Tooling**: 32 compiled native tools for filesystem inspection, process telemetry, network diagnostics, database queries, container and Kubernetes management, cloud metadata extraction, shell execution, and audit receipt verification.
 - **Embedded Browser Console**: React and TypeScript SPA embedded directly into the Gateway binary, providing WebAuthn authentication, real-time approval queues, and Operator inventory management.
 - **Real-Time Streaming**: High-throughput Server-Sent Events (SSE) bus with sequence-tracked reconnection replay for browser and CLI sessions.
 
@@ -114,7 +114,7 @@ The v1.0.0 reference implementation delivers:
 
 - [Position Paper](position_paper.md): The architectural and philosophical thesis on agentic execution and data custody.
 - [System Architecture Overview](../architecture/overview.md): System topology, component interactions, and transaction lifecycles.
-- [Governance Architecture](../architecture/governance.md): Detailed five-layer pipeline specifications, posture policies, and event receipts.
+- [Governance Architecture](../architecture/governance.md): Detailed five-layer pipeline specifications, posture policies, and receipts.
 - [AI Agents and Governance Boundary](../architecture/agents.md): Agent integration patterns, tool boundaries, and bypass limits.
 - [Gateway Architecture](../architecture/gateway.md): Gateway control plane, routing, PKI, and embedded operator substrates.
 - [Operator Architecture](../architecture/operator.md): Host execution mechanics, native tools, and local audit storage.

@@ -35,17 +35,17 @@ type swaggerOperation struct {
 
 type swaggerContract struct {
 	Definitions struct {
-		EventReceipt struct {
+		ActionReceipt struct {
 			Properties struct {
 				DeterministicStageEvidence struct {
 					Items swaggerSchemaReference `json:"items"`
 				} `json:"deterministic_stage_evidence"`
 				FinalPersistenceAttestation swaggerSchemaReference `json:"final_persistence_attestation"`
 			} `json:"properties"`
-		} `json:"operatorv1.EventReceipt"`
+		} `json:"operatorv1.ActionReceipt"`
 		EventReceiptRecord struct {
 			Properties struct {
-				EventReceipt swaggerSchemaReference `json:"event_receipt"`
+				ActionReceipt swaggerSchemaReference `json:"action_receipt"`
 			} `json:"properties"`
 		} `json:"models.EventReceiptRecord"`
 	} `json:"definitions"`
@@ -68,7 +68,7 @@ type swaggerContract struct {
 	} `json:"paths"`
 }
 
-func TestSwaggerContract_DocumentsCanonicalEventReceiptsAndOperatorValidation(t *testing.T) {
+func TestSwaggerContract_DocumentsCanonicalReceiptsAndOperatorValidation(t *testing.T) {
 	var contract swaggerContract
 	require.NoError(t, json.Unmarshal(SwaggerJSON, &contract))
 
@@ -77,10 +77,10 @@ func TestSwaggerContract_DocumentsCanonicalEventReceiptsAndOperatorValidation(t 
 		operation swaggerOperation
 		wantRef   string
 	}{
-		{name: "approval canonical event receipt", operation: contract.Paths.ApprovalVerify.Post, wantRef: "#/definitions/operatorv1.EventReceipt"},
-		{name: "audit event receipt list wrapper", operation: contract.Paths.AuditEventReceipts.Get, wantRef: "#/definitions/models.AuditEventReceiptsResponse"},
-		{name: "audit event receipt export wrapper", operation: contract.Paths.AuditEventReceiptsExport.Get, wantRef: "#/definitions/models.AuditEventReceiptsResponse"},
-		{name: "governance canonical event receipt", operation: contract.Paths.GovernanceEnvelopes.Post, wantRef: "#/definitions/operatorv1.EventReceipt"},
+		{name: "approval canonical receipt", operation: contract.Paths.ApprovalVerify.Post, wantRef: "#/definitions/operatorv1.ActionReceipt"},
+		{name: "audit receipt list wrapper", operation: contract.Paths.AuditEventReceipts.Get, wantRef: "#/definitions/models.AuditEventReceiptsResponse"},
+		{name: "audit receipt export wrapper", operation: contract.Paths.AuditEventReceiptsExport.Get, wantRef: "#/definitions/models.AuditEventReceiptsResponse"},
+		{name: "governance canonical receipt", operation: contract.Paths.GovernanceEnvelopes.Post, wantRef: "#/definitions/operatorv1.ActionReceipt"},
 		{name: "operator validation response", operation: contract.Paths.OperatorsValidate.Post, wantRef: "#/definitions/models.OperatorSessionValidationResponse"},
 	}
 	for _, tc := range responseCases {
@@ -92,7 +92,7 @@ func TestSwaggerContract_DocumentsCanonicalEventReceiptsAndOperatorValidation(t 
 	require.Len(t, contract.Paths.OperatorsValidate.Post.Parameters, 1)
 	assert.Equal(t, "binding", contract.Paths.OperatorsValidate.Post.Parameters[0].Name)
 	assert.Equal(t, "#/definitions/models.OperatorSessionValidationRequest", contract.Paths.OperatorsValidate.Post.Parameters[0].Schema.Ref)
-	assert.Equal(t, "#/definitions/operatorv1.DeterministicStageEvidence", contract.Definitions.EventReceipt.Properties.DeterministicStageEvidence.Items.Ref)
-	assert.Equal(t, "#/definitions/operatorv1.EventReceiptPersistenceAttestation", contract.Definitions.EventReceipt.Properties.FinalPersistenceAttestation.Ref)
-	assert.Equal(t, "#/definitions/operatorv1.EventReceipt", contract.Definitions.EventReceiptRecord.Properties.EventReceipt.Ref)
+	assert.Equal(t, "#/definitions/operatorv1.DeterministicStageEvidence", contract.Definitions.ActionReceipt.Properties.DeterministicStageEvidence.Items.Ref)
+	assert.Equal(t, "#/definitions/operatorv1.ReceiptPersistenceAttestation", contract.Definitions.ActionReceipt.Properties.FinalPersistenceAttestation.Ref)
+	assert.Equal(t, "#/definitions/operatorv1.ActionReceipt", contract.Definitions.EventReceiptRecord.Properties.ActionReceipt.Ref)
 }

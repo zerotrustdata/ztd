@@ -31,28 +31,28 @@ func (m *mockExecutionHandler) ExecuteVerifiedTransaction(ctx context.Context, e
 	return "", m.err
 }
 
-// mockEventReceiptPublisher is a test-only implementation of EventReceiptPublisher.
-// It records the envelope and event receipt passed to PublishEventReceipt so
+// mockReceiptPublisher is a test-only implementation of ReceiptPublisher.
+// It records the envelope and receipt passed to PublishActionReceipt so
 // tests can assert that Execute calls the publisher after successful
-// execution and does not call it when signAndLogFinalEventReceipt fails.
-type mockEventReceiptPublisher struct {
+// execution and does not call it when signAndLogFinalReceipt fails.
+type mockReceiptPublisher struct {
 	mu           sync.Mutex
 	calls        int
 	envelope     *govtypes.GovernanceEnvelope
-	eventReceipt *operatorv1.EventReceipt
+	receipt      *operatorv1.ActionReceipt
 	publishError error
 }
 
-func (m *mockEventReceiptPublisher) PublishEventReceipt(_ context.Context, env *govtypes.GovernanceEnvelope, eventReceipt *operatorv1.EventReceipt) error {
+func (m *mockReceiptPublisher) PublishActionReceipt(_ context.Context, env *govtypes.GovernanceEnvelope, receipt *operatorv1.ActionReceipt) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls++
 	m.envelope = env
-	m.eventReceipt = eventReceipt
+	m.receipt = receipt
 	return m.publishError
 }
 
-func (m *mockEventReceiptPublisher) callCount() int {
+func (m *mockReceiptPublisher) callCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.calls

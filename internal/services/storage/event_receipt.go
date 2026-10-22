@@ -60,35 +60,35 @@ UPDATE events SET
 	event_receipt_signature = NULL
 WHERE transaction_id = ? AND event_receipt_status IS NOT NULL AND seq != ?`
 
-func eventReceiptInsertArgs(v *vault.Vault, rowID string, eventReceipt *EventReceiptColumns) ([]any, error) {
-	if eventReceipt == nil {
+func eventReceiptInsertArgs(v *vault.Vault, rowID string, receipt *EventReceiptColumns) ([]any, error) {
+	if receipt == nil {
 		return []any{nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil}, nil
 	}
-	target, err := encryptAuditContent(v, auditColumnEventReceiptTarget, rowID, eventReceipt.TargetResource)
+	target, err := encryptAuditContent(v, auditColumnEventReceiptTarget, rowID, receipt.TargetResource)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreEncryptContentFailed, err)
 	}
-	summary, err := encryptAuditContent(v, auditColumnEventReceiptSummary, rowID, eventReceipt.ResultSummary)
+	summary, err := encryptAuditContent(v, auditColumnEventReceiptSummary, rowID, receipt.ResultSummary)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreEncryptContentFailed, err)
 	}
 	return []any{
-		eventReceipt.TransactionHash,
-		eventReceipt.InvestigationID,
-		eventReceipt.OperatorID,
-		eventReceipt.OperatorSessionID,
-		eventReceipt.RequestorUserID,
-		eventReceipt.ActingAppID,
-		eventReceipt.EventType,
-		eventReceipt.ActionType,
+		receipt.TransactionHash,
+		receipt.InvestigationID,
+		receipt.OperatorID,
+		receipt.OperatorSessionID,
+		receipt.RequestorUserID,
+		receipt.ActingAppID,
+		receipt.EventType,
+		receipt.ActionType,
 		target,
-		int64(eventReceipt.Status),
+		int64(receipt.Status),
 		summary,
-		eventReceipt.StateRootBefore,
-		eventReceipt.StateRootAfter,
-		eventReceipt.ExecutedAtMs,
-		eventReceipt.SignerKeyID,
-		eventReceipt.Signature,
+		receipt.StateRootBefore,
+		receipt.StateRootAfter,
+		receipt.ExecutedAtMs,
+		receipt.SignerKeyID,
+		receipt.Signature,
 	}, nil
 }
 
@@ -120,18 +120,18 @@ func eventReceiptColumnsFromRecord(record *models.EventReceiptRecord) *EventRece
 	}
 }
 
-func eventEventReceiptStatusNonTerminal(status operatorv1.ExecutionStatus) bool {
+func eventReceiptStatusNonTerminal(status operatorv1.ExecutionStatus) bool {
 	return status == operatorv1.ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED ||
 		status == operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
 }
 
 // eventReceiptMovesForward reports whether next replaces the current event
-// event receipt. A terminal event receipt is never replaced by a later non-terminal stage.
+// receipt. A terminal receipt is never replaced by a later non-terminal stage.
 func eventReceiptMovesForward(prev, next operatorv1.ExecutionStatus) bool {
-	if !eventEventReceiptStatusNonTerminal(next) {
+	if !eventReceiptStatusNonTerminal(next) {
 		return true
 	}
-	return eventEventReceiptStatusNonTerminal(prev)
+	return eventReceiptStatusNonTerminal(prev)
 }
 
 func mergeForwardEventReceipt(prev, next *models.EventReceiptRecord) *models.EventReceiptRecord {
@@ -149,11 +149,11 @@ func mergeForwardEventReceipt(prev, next *models.EventReceiptRecord) *models.Eve
 	return &merged
 }
 
-// RecordEventReceipt appends a chained operator.event_receipt.recorded fact and, when
+// RecordEventReceipt appends a chained operator.receipt.recorded fact and, when
 // the stage moves the projection forward, stores that event receipt on the new
 // event. The canonical body is the event's content_text.
 func (ass *SQLAuditStore) RecordEventReceipt(record *models.EventReceiptRecord) error {
-	return ass.recordEventReceipt(record, nil)
+	return ass.recordActionReceipt(record, nil)
 }
 
 // RecordEventReceiptWithCommitment records the event receipt exactly as
@@ -161,12 +161,12 @@ func (ass *SQLAuditStore) RecordEventReceipt(record *models.EventReceiptRecord) 
 // head in the same write transaction: both commit or neither does.
 func (ass *SQLAuditStore) RecordEventReceiptWithCommitment(record *models.EventReceiptRecord, build CommitmentBuilder) error {
 	if build == nil {
-		return constants.ErrAuditStoreRecordEventReceiptFailed
+		return constants.ErrAuditStoreRecordReceiptFailed
 	}
-	return ass.recordEventReceipt(record, build)
+	return ass.recordActionReceipt(record, build)
 }
 
-func (ass *SQLAuditStore) recordEventReceipt(record *models.EventReceiptRecord, build CommitmentBuilder) error {
+func (ass *SQLAuditStore) recordActionReceipt(record *models.EventReceiptRecord, build CommitmentBuilder) error {
 	if ass == nil {
 		return constants.ErrAuditStoreDisabled
 	}
@@ -174,24 +174,24 @@ func (ass *SQLAuditStore) recordEventReceipt(record *models.EventReceiptRecord, 
 		return constants.ErrAuditStoreDBNotInitialized
 	}
 	if record == nil {
-		return constants.ErrAuditStoreRecordEventReceiptFailed
+		return constants.ErrAuditStoreRecordReceiptFailed
 	}
 	if build != nil && ass.commitmentLedger == nil {
 		return constants.ErrAuditStoreDBNotInitialized
 	}
 	if record.OperatorSessionID == "" || strings.TrimSpace(record.OperatorSessionID) != record.OperatorSessionID {
-		return fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordEventReceiptFailed, constants.ErrAuditSessionMissing)
+		return fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordReceiptFailed, constants.ErrAuditSessionMissing)
 	}
 
 	ass.muWrites.Add(1)
 	defer ass.muWrites.Done()
 
-	eventReceiptJSON := []byte(nil)
-	if record.EventReceipt != nil {
+	receiptJSON := []byte(nil)
+	if record.ActionReceipt != nil {
 		var err error
-		eventReceiptJSON, err = compliancev1.MarshalCanonical(record.EventReceipt)
+		receiptJSON, err = compliancev1.MarshalCanonical(record.ActionReceipt)
 		if err != nil {
-			return fmt.Errorf("%w: marshal canonical event_receipt: %w", constants.ErrAuditStoreRecordEventReceiptFailed, err)
+			return fmt.Errorf("%w: marshal canonical receipt: %w", constants.ErrAuditStoreRecordReceiptFailed, err)
 		}
 	}
 
@@ -203,13 +203,13 @@ func (ass *SQLAuditStore) recordEventReceipt(record *models.EventReceiptRecord, 
 	chainEvent := &Event{
 		OperatorSessionID: record.OperatorSessionID,
 		Timestamp:         timestamp,
-		Type:              constants.EventOperatorEventReceiptRecorded,
-		ContentText:       string(eventReceiptJSON),
+		Type:              constants.EventOperatorReceiptRecorded,
+		ContentText:       string(receiptJSON),
 		TransactionID:     record.TransactionID,
 	}
 	prepared, err := ass.prepareAuditEventInsert(chainEvent)
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordEventReceiptFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordReceiptFailed, err)
 	}
 
 	var commitment *CommitmentRow
@@ -250,7 +250,7 @@ func (ass *SQLAuditStore) recordEventReceipt(record *models.EventReceiptRecord, 
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordEventReceiptFailed, err)
+		return fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordReceiptFailed, err)
 	}
 
 	if commitment != nil {
@@ -278,7 +278,7 @@ func (ass *SQLAuditStore) loadCurrentEventReceiptConn(conn *sql.Conn, transactio
 	var found *models.EventReceiptRecord
 	for rows.Next() {
 		if found != nil {
-			return nil, fmt.Errorf("%w: transaction %s", constants.ErrAuditStoreEventReceiptCorrelationDuplicate, transactionID)
+			return nil, fmt.Errorf("%w: transaction %s", constants.ErrAuditStoreReceiptCorrelationDuplicate, transactionID)
 		}
 		record, err := scanEventReceiptRow(rows)
 		if err != nil {
@@ -296,13 +296,13 @@ func (ass *SQLAuditStore) loadCurrentEventReceiptConn(conn *sql.Conn, transactio
 }
 
 type scannedEventReceipt struct {
-	record            *models.EventReceiptRecord
-	executedAtMs      int64
-	timestampStr      string
-	seq               int64
-	targetBytes       []byte
-	summaryBytes      []byte
-	eventReceiptBytes []byte
+	record       *models.EventReceiptRecord
+	executedAtMs int64
+	timestampStr string
+	seq          int64
+	targetBytes  []byte
+	summaryBytes []byte
+	receiptBytes []byte
 }
 
 func scanEventReceiptRow(scanner interface {
@@ -317,7 +317,7 @@ func scanEventReceiptRow(scanner interface {
 		&row.record.RequestorUserID, &row.record.ActingAppID, &row.record.EventType,
 		&row.record.ActionType, &row.targetBytes, &status, &row.summaryBytes,
 		&row.record.StateRootBefore, &row.record.StateRootAfter, &row.executedAtMs,
-		&row.record.SignerKeyID, &row.record.Signature, &row.eventReceiptBytes, &row.timestampStr, &row.seq,
+		&row.record.SignerKeyID, &row.record.Signature, &row.receiptBytes, &row.timestampStr, &row.seq,
 	)
 	row.record.Status = operatorv1.ExecutionStatus(status)
 	return row, err
@@ -332,37 +332,37 @@ func (ass *SQLAuditStore) decryptEventReceipt(row scannedEventReceipt) error {
 	if row.record.ResultSummary, err = ass.decryptColumn(auditColumnEventReceiptSummary, rowID, row.summaryBytes); err != nil {
 		return err
 	}
-	eventReceiptJSON, err := ass.decryptColumn(auditColumnEventContentText, rowID, row.eventReceiptBytes)
+	receiptJSON, err := ass.decryptColumn(auditColumnEventContentText, rowID, row.receiptBytes)
 	if err != nil {
 		return err
 	}
-	return hydrateEventReceiptRecord(row.record, row.executedAtMs, row.timestampStr, eventReceiptJSON)
+	return hydrateEventReceiptRecord(row.record, row.executedAtMs, row.timestampStr, receiptJSON)
 }
 
-func hydrateEventReceiptRecord(r *models.EventReceiptRecord, executedAtMs int64, timestampStr, eventReceiptJSON string) error {
+func hydrateEventReceiptRecord(r *models.EventReceiptRecord, executedAtMs int64, timestampStr, receiptJSON string) error {
 	r.ExecutedAt = time.UnixMilli(executedAtMs)
 	r.Timestamp, _ = timesvc.ParseTimestamp(timestampStr)
-	eventReceipt, err := parseStoredEventReceipt(eventReceiptJSON)
+	receipt, err := parseStoredActionReceipt(receiptJSON)
 	if err != nil {
 		return err
 	}
-	r.EventReceipt = eventReceipt
-	if eventReceipt != nil {
-		r.L2Valid = eventReceipt.GetL2Status() == operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
-		r.L3Valid = eventReceipt.GetL3Status() == operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
+	r.ActionReceipt = receipt
+	if receipt != nil {
+		r.L2Valid = receipt.GetL2Status() == operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
+		r.L3Valid = receipt.GetL3Status() == operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
 	}
 	return nil
 }
 
-func parseStoredEventReceipt(eventReceiptJSON string) (*operatorv1.EventReceipt, error) {
-	if eventReceiptJSON == "" {
+func parseStoredActionReceipt(receiptJSON string) (*operatorv1.ActionReceipt, error) {
+	if receiptJSON == "" {
 		return nil, nil
 	}
-	eventReceipt := &operatorv1.EventReceipt{}
-	if err := compliancev1.UnmarshalCanonical([]byte(eventReceiptJSON), eventReceipt); err != nil {
+	receipt := &operatorv1.ActionReceipt{}
+	if err := compliancev1.UnmarshalCanonical([]byte(receiptJSON), receipt); err != nil {
 		return nil, err
 	}
-	return eventReceipt, nil
+	return receipt, nil
 }
 
 // GetEventReceipt retrieves the current event receipt for one transaction.
@@ -376,13 +376,13 @@ func (ass *SQLAuditStore) GetEventReceipt(transactionID string) (*models.EventRe
 		WHERE transaction_id = ? AND event_receipt_status IS NOT NULL
 	`, []any{transactionID})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreGetEventReceiptFailed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreGetReceiptFailed, err)
 	}
 	if len(records) == 0 {
 		return nil, nil
 	}
 	if len(records) > 1 {
-		return nil, fmt.Errorf("%w: transaction %s", constants.ErrAuditStoreEventReceiptCorrelationDuplicate, transactionID)
+		return nil, fmt.Errorf("%w: transaction %s", constants.ErrAuditStoreReceiptCorrelationDuplicate, transactionID)
 	}
 	return records[0], nil
 }
@@ -410,13 +410,13 @@ func (ass *SQLAuditStore) GetEventReceiptByInvestigationID(
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("%w: investigation correlation: %w", constants.ErrAuditStoreGetEventReceiptFailed, err)
+		return nil, fmt.Errorf("%w: investigation correlation: %w", constants.ErrAuditStoreGetReceiptFailed, err)
 	}
 	if len(rows) == 0 {
 		return nil, nil
 	}
 	if len(rows) > 1 {
-		return nil, constants.ErrAuditStoreEventReceiptCorrelationDuplicate
+		return nil, constants.ErrAuditStoreReceiptCorrelationDuplicate
 	}
 	return ass.GetEventReceipt(rows[0])
 }
@@ -427,7 +427,7 @@ func isAuditReadEventReceipt(r *models.EventReceiptRecord) bool {
 	if r == nil || r.ActionType != constants.ActionTypeMcpCall {
 		return false
 	}
-	return r.TargetResource == constants.MCPToolAuditEventReceiptList || r.TargetResource == constants.MCPToolAuditEventReceiptGet
+	return r.TargetResource == constants.MCPToolAuditReceiptList || r.TargetResource == constants.MCPToolAuditReceiptGet
 }
 
 // ListEventReceipts retrieves current event receipts with optional filtering and pagination.
@@ -505,12 +505,12 @@ func (ass *SQLAuditStore) queryEventReceiptRows(query string, args []any) ([]*mo
 		return scanEventReceiptRow(r)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreQueryEventReceiptsFailed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreQueryReceiptsFailed, err)
 	}
 	var results []*models.EventReceiptRecord
 	for _, row := range rows {
 		if err := ass.decryptEventReceipt(row); err != nil {
-			return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreQueryEventReceiptsFailed, err)
+			return nil, fmt.Errorf("%w: %w", constants.ErrAuditStoreQueryReceiptsFailed, err)
 		}
 		results = append(results, row.record)
 	}
@@ -533,7 +533,7 @@ func (ass *SQLAuditStore) ListEventReceiptsSince(since time.Time, limit int) ([]
 		LIMIT ?
 	`, []any{timesvc.FormatTimestamp(since), limit})
 	if err != nil {
-		return nil, fmt.Errorf("%w %v: %w", constants.ErrAuditStoreQueryEventReceiptsSinceFailed, since, err)
+		return nil, fmt.Errorf("%w %v: %w", constants.ErrAuditStoreQueryReceiptsSinceFailed, since, err)
 	}
 	return records, nil
 }

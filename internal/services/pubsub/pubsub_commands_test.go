@@ -56,7 +56,7 @@ func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) 
 			handler, ok := fixture.Svc.actionHandlers[action]
 			require.True(t, ok)
 			_, err := handler(t.Context(), &PubSubCommandMessage{ID: "decode-failure", Payload: []byte{0xff}})
-			require.Error(t, err, "a handler failure must reach L5 instead of producing a completed event receipt")
+			require.Error(t, err, "a handler failure must reach L5 instead of producing a completed receipt")
 			assert.ErrorIs(t, err, proto.Error, "the original protobuf decoding failure must remain in the error chain")
 		})
 	}
@@ -108,7 +108,7 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 		t.Run(tt.name, func(t *testing.T) {
 			tool := tt.tool
 			if tool == "" {
-				tool = "audit_event_receipt_list"
+				tool = "audit_receipt_list"
 			}
 			useLocal := gateway.useLocalNativeToolRoute(tool, json.RawMessage(tt.args))
 			assert.Equal(t, tt.wantLocal, useLocal)
@@ -117,19 +117,19 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 	}
 }
 
-// unreachableAuditEventReceiptQuery satisfies the Operator native tool host's
+// unreachableAuditReceiptQuery satisfies the Operator native tool host's
 // required store; the witness gate refuses or passes before any query runs.
-type unreachableAuditEventReceiptQuery struct{}
+type unreachableAuditReceiptQuery struct{}
 
-func (unreachableAuditEventReceiptQuery) ListEventReceipts(models.AuditScope, int, int) ([]*models.EventReceiptRecord, error) {
+func (unreachableAuditReceiptQuery) ListEventReceipts(models.AuditScope, int, int) ([]*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (unreachableAuditEventReceiptQuery) ListEventReceiptsSince(time.Time, int) ([]*models.EventReceiptRecord, error) {
+func (unreachableAuditReceiptQuery) ListEventReceiptsSince(time.Time, int) ([]*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (unreachableAuditEventReceiptQuery) GetEventReceipt(string) (*models.EventReceiptRecord, error) {
+func (unreachableAuditReceiptQuery) GetEventReceipt(string) (*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
@@ -140,7 +140,7 @@ func (unreachableAuditEventReceiptQuery) GetEventReceipt(string) (*models.EventR
 func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
 	grep, err := execution.NewFsGrepService(testutil.TempDir(t), testutil.NewTestLogger())
 	require.NoError(t, err)
-	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditEventReceiptQuery{}, grep)
+	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditReceiptQuery{}, grep)
 	require.NoError(t, err)
 	tests := []struct {
 		name         string
@@ -150,8 +150,8 @@ func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
 	}{
 		{name: "observer refuses run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolRunShellCommand, wantRefused: true},
 		{name: "provenance refuses run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolRunShellCommand, wantRefused: true},
-		{name: "observer serves its own audit_event_receipt_get", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolAuditEventReceiptGet},
-		{name: "provenance serves its own audit_event_receipt_list", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolAuditEventReceiptList},
+		{name: "observer serves its own audit_receipt_get", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityObserver}, tool: constants.MCPToolAuditReceiptGet},
+		{name: "provenance serves its own audit_receipt_list", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}, tool: constants.MCPToolAuditReceiptList},
 		{name: "data runs run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData}, tool: constants.MCPToolRunShellCommand},
 		{name: "provenance with inference runs run_shell_command", capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityProvenance, constants.OperatorCapabilityInference}, tool: constants.MCPToolRunShellCommand},
 	}
@@ -492,7 +492,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope_AcceptsPDPBoundRootDespi
 	assert.True(t, executed, "gateway-dispatched envelope must execute despite live state-root drift")
 }
 
-func TestOperatorPubSubService_handleGovernanceEnvelope_ActuatorFailClosedNilEventReceiptDoesNotPanic(t *testing.T) {
+func TestOperatorPubSubService_handleGovernanceEnvelope_ActuatorFailClosedNilReceiptDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
 	const stateRoot = "state-root"
@@ -526,8 +526,8 @@ func TestOperatorPubSubService_handleGovernanceEnvelope_ActuatorFailClosedNilEve
 	require.NoError(t, err)
 	svc.ctx = context.Background()
 
-	// A nil ExecutionHandler makes Execute fail closed and return a nil event receipt,
-	// the same shape as a event_receipt-persistence (SQLITE_BUSY) failure.
+	// A nil ExecutionHandler makes Execute fail closed and return a nil receipt,
+	// the same shape as a receipt-persistence (SQLITE_BUSY) failure.
 	svc.SetActuator(&governance.L5Actuator{
 		Logger:     logger,
 		Scrubbing:  mustNewScrubbingSvc(t, logger),
@@ -535,7 +535,7 @@ func TestOperatorPubSubService_handleGovernanceEnvelope_ActuatorFailClosedNilEve
 		KeyID:      "actuator-key",
 	})
 
-	env := buildGatewayDispatchedDoctrineEnvelope(t, stateRoot, "nonce-actuator-nil-event_receipt")
+	env := buildGatewayDispatchedDoctrineEnvelope(t, stateRoot, "nonce-actuator-nil-receipt")
 	assert.NotPanics(t, func() { svc.handleGovernanceEnvelope(env) })
 }
 
@@ -579,7 +579,7 @@ func newL4RejectionPubsubService(t *testing.T) (*OperatorPubSubService, *mockExe
 
 	handler := &mockExecutionHandler{
 		ExecuteVerifiedTransactionFunc: func(ctx context.Context, eventType constants.EventType, cmdMsg governance.CommandMessage) (string, error) {
-			return "l4-rejection-event_receipt", nil
+			return "l4-rejection-receipt", nil
 		},
 	}
 	actuator := &governance.L5Actuator{
@@ -765,11 +765,11 @@ func buildGatewayDispatchedDoctrineEnvelope(t *testing.T, stateRoot, nonce strin
 	return env
 }
 
-func TestOperatorPubSubService_AllActionTypesProduceEventReceipts(t *testing.T) {
-	// §4.2: event_receipt-coverage test - drive each action type through ProcessEnvelope
-	// and assert an event receipt is written EXECUTING before and terminal status after.
-	// This locks the invariant that every execution path produces an event receipt.
-	t.Run("all action types produce event receipts through Actuator", func(t *testing.T) {
+func TestOperatorPubSubService_AllActionTypesProduceReceipts(t *testing.T) {
+	// §4.2: Receipt-coverage test - drive each action type through ProcessEnvelope
+	// and assert a receipt is written EXECUTING before and terminal status after.
+	// This locks the invariant that every execution path produces a receipt.
+	t.Run("all action types produce receipts through Actuator", func(t *testing.T) {
 		t.Parallel()
 		f := newPubsubFixture(t)
 
@@ -880,25 +880,25 @@ func TestOperatorPubSubService_AllActionTypesProduceEventReceipts(t *testing.T) 
 
 				envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
 
-				eventReceipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+				receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 				require.NoError(t, err, "ProcessEnvelope should succeed")
-				require.NotNil(t, eventReceipt, "event receipt must not be nil")
-				require.Equal(t, env.Id, eventReceipt.TransactionId, "event receipt transaction ID must match")
-				require.NotEmpty(t, eventReceipt.Signature, "event receipt must be signed")
+				require.NotNil(t, receipt, "receipt must not be nil")
+				require.Equal(t, env.Id, receipt.TransactionId, "receipt transaction ID must match")
+				require.NotEmpty(t, receipt.Signature, "receipt must be signed")
 
-				// Event receipt should have a terminal status (COMPLETED or FAILED)
+				// Receipt should have a terminal status (COMPLETED or FAILED)
 				// EXECUTING is only the initial status before handler execution
 				require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING,
-					eventReceipt.Status, "event receipt should have terminal status after execution")
+					receipt.Status, "receipt should have terminal status after execution")
 			})
 		}
 	})
 }
 
-func TestOperatorPubSubService_CancellationEventReceipt(t *testing.T) {
-	// BUG-2 §4.3: Cancellation test - assert a cancel produces an event receipt for both
+func TestOperatorPubSubService_CancellationReceipt(t *testing.T) {
+	// BUG-2 §4.3: Cancellation test - assert a cancel produces a receipt for both
 	// the real-kill and already-finished cases, with distinguishable status.
-	t.Run("CANCEL action type produces event receipt through Actuator", func(t *testing.T) {
+	t.Run("CANCEL action type produces receipt through Actuator", func(t *testing.T) {
 		t.Parallel()
 		f := newPubsubFixture(t)
 
@@ -952,22 +952,22 @@ func TestOperatorPubSubService_CancellationEventReceipt(t *testing.T) {
 
 		envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
 
-		eventReceipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 		require.NoError(t, err, "ProcessEnvelope should succeed")
-		require.NotNil(t, eventReceipt, "event receipt must not be nil")
-		require.Equal(t, env.Id, eventReceipt.TransactionId, "event receipt transaction ID must match")
-		require.NotEmpty(t, eventReceipt.Signature, "event receipt must be signed")
+		require.NotNil(t, receipt, "receipt must not be nil")
+		require.Equal(t, env.Id, receipt.TransactionId, "receipt transaction ID must match")
+		require.NotEmpty(t, receipt.Signature, "receipt must be signed")
 
-		// Event receipt should have a terminal status (COMPLETED or FAILED)
+		// Receipt should have a terminal status (COMPLETED or FAILED)
 		// The handler distinguishes real kill (CANCELLED) from no-op on already-finished
 		require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING,
-			eventReceipt.Status, "event receipt should have terminal status after execution")
+			receipt.Status, "receipt should have terminal status after execution")
 	})
 }
 
 func TestOperatorPubSubService_SinglePathEnforcement(t *testing.T) {
 	// BUG-1 regression test: enforce that handlers map is only reachable through Actuator
-	// This ensures no event_receipt-less execution paths can be added in the future.
+	// This ensures no receipt-less execution paths can be added in the future.
 	// The source-scan approach will actually fail CI if either function is re-added.
 	t.Run("bypass functions do not exist", func(t *testing.T) {
 		t.Parallel()
@@ -1414,9 +1414,9 @@ func TestOperatorPubSubService_handleEvalAnswerRequestSync(t *testing.T) {
 		assert.Equal(t, "short answer", summary)
 	})
 
-	t.Run("truncates answer exceeding EventReceiptSummaryMaxBytes", func(t *testing.T) {
+	t.Run("truncates answer exceeding ReceiptSummaryMaxBytes", func(t *testing.T) {
 		t.Parallel()
-		longAnswer := make([]byte, constants.EventReceiptSummaryMaxBytes+1000)
+		longAnswer := make([]byte, constants.ReceiptSummaryMaxBytes+1000)
 		for i := range longAnswer {
 			longAnswer[i] = 'A'
 		}
@@ -1434,7 +1434,7 @@ func TestOperatorPubSubService_handleEvalAnswerRequestSync(t *testing.T) {
 		}
 		summary, err := f.Svc.handleEvalAnswerRequestSync(context.Background(), msg)
 		require.NoError(t, err)
-		assert.Len(t, summary, constants.EventReceiptSummaryMaxBytes)
+		assert.Len(t, summary, constants.ReceiptSummaryMaxBytes)
 	})
 }
 
@@ -1496,11 +1496,11 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 
 		envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
 
-		eventReceipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 		require.NoError(t, err)
-		require.NotNil(t, eventReceipt)
-		require.Equal(t, env.Id, eventReceipt.TransactionId)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
+		require.NotNil(t, receipt)
+		require.Equal(t, env.Id, receipt.TransactionId)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
 	})
 
 	t.Run("rejects empty payload", func(t *testing.T) {
@@ -1526,7 +1526,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("rejects event and action_type mismatch in L4 with a signed event receipt", func(t *testing.T) {
+	t.Run("rejects event and action_type mismatch in L4 with a signed receipt", func(t *testing.T) {
 		t.Parallel()
 		req := &operatorv1.FsListRequested{Path: ".", ExecutionId: "exec-mismatch"}
 		payload, _ := proto.Marshal(req)
@@ -1545,16 +1545,16 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
-		eventReceipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrTxEventActionMismatch)
-		var rejection *governance.EventReceiptError
-		require.ErrorAs(t, err, &rejection, "the mismatch must be an L4 rejection carrying an event receipt")
-		require.NotNil(t, eventReceipt)
-		assert.Same(t, rejection.EventReceipt, eventReceipt)
-		assert.True(t, governance.IsGovernanceRejectionEventReceipt(eventReceipt))
-		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH, eventReceipt.GetRejectionCode())
-		assert.NotEmpty(t, eventReceipt.GetSignature(), "the L4 rejection event receipt must be signed by the Actuator")
+		var rejection *governance.ReceiptError
+		require.ErrorAs(t, err, &rejection, "the mismatch must be an L4 rejection carrying a receipt")
+		require.NotNil(t, receipt)
+		assert.Same(t, rejection.Receipt, receipt)
+		assert.True(t, governance.IsGovernanceRejectionReceipt(receipt))
+		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_EVENT_ACTION_MISMATCH, receipt.GetRejectionCode())
+		assert.NotEmpty(t, receipt.GetSignature(), "the L4 rejection receipt must be signed by the Actuator")
 	})
 
 	t.Run("refuses a registered event that is not governed before L4", func(t *testing.T) {
@@ -1573,10 +1573,10 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		}
 		envelopeBytes, _ := protojson.Marshal(env)
 
-		eventReceipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 		require.ErrorIs(t, err, constants.ErrTxEventNotGoverned)
-		assert.Nil(t, eventReceipt, "a pre-L4 refusal has no action to sign, so it carries no event receipt")
-		var rejection *governance.EventReceiptError
+		assert.Nil(t, receipt, "a pre-L4 refusal has no action to sign, so it carries no receipt")
+		var rejection *governance.ReceiptError
 		assert.False(t, errors.As(err, &rejection), "a pre-L4 refusal must not be an L4 rejection")
 	})
 
@@ -1628,7 +1628,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 
 // TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism
 // asserts the EventType stamped on the emitted PubSubCommandMessage and the
-// EventType derived by the L5 actuator for the signed event receipt are stable
+// EventType derived by the L5 actuator for the signed receipt are stable
 // across repeated ProcessEnvelope calls for both DOCUMENT_UPDATE and
 // DOCUMENT_DELETE. The constants-level test (mappings_test.go) covers the
 // MapActionTypeToEventType choke point in isolation; this test covers the
@@ -1722,9 +1722,9 @@ func TestOperatorPubSubService_ProcessEnvelope_DocumentDispatchDeterminism(t *te
 				env.Governance.L2.Votes[0].ConsensusSignature = hex.EncodeToString(sig)
 				envelopeBytes, _ := (protojson.MarshalOptions{}).Marshal(env)
 
-				eventReceipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
+				receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 				require.NoError(t, err, "iteration %d", i)
-				require.NotNil(t, eventReceipt, "iteration %d", i)
+				require.NotNil(t, receipt, "iteration %d", i)
 
 				capturedMu.Lock()
 				assert.Equal(t, tc.wantEvent, capturedActuatorEvent, "iteration %d: actuator-derived EventType must be the canonical event", i)

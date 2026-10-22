@@ -89,13 +89,13 @@ command.`,
 	}
 	cmd.Flags().StringVar(&scopePath, "scope", "", "Canonical assessment scope selecting the runtime source and evidence window")
 	cmd.Flags().StringVar(&outputDir, "out", "", "Output directory for the operational source package")
-	cmd.Flags().IntVar(&maxRows, "max-rows", constants.ComplianceOperationalExportDefaultMaxRows, "Maximum event receipts and commitments to export")
+	cmd.Flags().IntVar(&maxRows, "max-rows", constants.ComplianceOperationalExportDefaultMaxRows, "Maximum receipts and commitments to export")
 	return cmd
 }
 
 // exportOperationalEvidence reads the scope's single operational source
 // admission from a read-only database snapshot and writes its bounded source
-// package. encryptionVault must be unlocked: the event receipt and commitment content
+// package. encryptionVault must be unlocked: the receipt and commitment content
 // columns are encrypted, and the snapshot fails with ErrAuditStoreVaultLocked
 // otherwise. It returns the snapshot so callers can derive signer trust from
 // the exact rows that were exported.

@@ -175,7 +175,7 @@ func TestRealStackEpisode_TerminalClassifications(t *testing.T) {
 		call := trace.ToolCalls[0]
 		assert.Contains(t, call.Error, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE.String(), "the doctrine refuses the call before any governed envelope is built")
 		assert.False(t, call.Success, "the refused command never executes")
-		assert.Nil(t, call.EventReceipt, "an ingress refusal carries no event receipt")
+		assert.Nil(t, call.Receipt, "an ingress refusal carries no receipt")
 		assert.Empty(t, call.PolicyDecision, "an ingress refusal records no policy decision")
 		assert.Equal(t, 2, env.stack.Provider.ChatCount(), "the model receives the refusal and answers")
 	})
@@ -224,8 +224,8 @@ func TestRealStackEpisode_HumanDenialIsPolicyDenial(t *testing.T) {
 	call := trace.ToolCalls[0]
 	assert.False(t, call.Success, "a denied command never executes")
 	assert.Equal(t, evaluation.ExportedAgentPolicyDecisionDeny, call.PolicyDecision)
-	require.NotNil(t, call.EventReceipt, "the governance rejection is recorded with its signed event receipt")
-	assert.True(t, governance.IsGovernanceRejectionEventReceipt(call.EventReceipt.EventReceipt), "the event receipt is a signed governance rejection")
+	require.NotNil(t, call.Receipt, "the governance rejection is recorded with its signed receipt")
+	assert.True(t, governance.IsGovernanceRejectionReceipt(call.Receipt.ActionReceipt), "the receipt is a signed governance rejection")
 	assert.Equal(t, evaluation.AgentTerminalClassificationPolicyDenial, trace.TerminalClassification)
 	assert.Equal(t, 2, env.stack.Provider.ChatCount(), "the model receives the denial and answers")
 }

@@ -37,7 +37,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines ztd's Layer 2 (L2) machine consensus architecture: the bound consensus provider that produces K-of-N Ed25519 votes over an envelope's transaction hash, the two providers (`application` and `tribunal`), enrollment and binding of consensus members through `PLATFORM_ENROLLMENT_BIND_CONSENSUS`, the Tribunal vote contract, HTTPS protobuf deliberation for the `application` provider, L4 Warden and outbound Operator (`OperatorL2Trust`) signature verification, and L5 Actuator event receipt evidence. Every member is an enrolled application with an enabled Ed25519 signer. The `tribunal` provider's members are the Gateway-hosted Tribunal panel, which votes with its sealed app signing keys. The `application` provider's members are third-party applications reached over HTTPS. Binding records the provider, member IDs, quorum, and (for `tribunal`) the pinned model through the governed L5 handler.
+Defines ztd's Layer 2 (L2) machine consensus architecture: the bound consensus provider that produces K-of-N Ed25519 votes over an envelope's transaction hash, the two providers (`application` and `tribunal`), enrollment and binding of consensus members through `PLATFORM_ENROLLMENT_BIND_CONSENSUS`, the Tribunal vote contract, HTTPS protobuf deliberation for the `application` provider, L4 Warden and outbound Operator (`OperatorL2Trust`) signature verification, and L5 Actuator receipt evidence. Every member is an enrolled application with an enabled Ed25519 signer. The `tribunal` provider's members are the Gateway-hosted Tribunal panel, which votes with its sealed app signing keys. The `application` provider's members are third-party applications reached over HTTPS. Binding records the provider, member IDs, quorum, and (for `tribunal`) the pinned model through the governed L5 handler.
 
 ## Quick index
 
@@ -47,7 +47,7 @@ Defines ztd's Layer 2 (L2) machine consensus architecture: the bound consensus p
   - [Application Enrollment and Binding (`INV-CON-POL`)](#application-enrollment-and-binding-inv-con-pol)
   - [Deliberation and Proof Production (`INV-CON-VOTE`)](#deliberation-and-proof-production-inv-con-vote)
   - [L4 Verification and Authorization (`INV-CON-WARD`)](#l4-verification-and-authorization-inv-con-ward)
-  - [Event receipt and Audit Evidence (`INV-CON-RCPT`)](#event_receipt-and-audit-evidence-inv-con-rcpt)
+  - [Receipt and Audit Evidence (`INV-CON-RCPT`)](#receipt-and-audit-evidence-inv-con-rcpt)
 - [Owned surfaces](#owned-surfaces)
 - [Procedures](#procedures)
   - [Place in the Five-Layer Interlock](#place-in-the-five-layer-interlock)
@@ -59,7 +59,7 @@ Defines ztd's Layer 2 (L2) machine consensus architecture: the bound consensus p
   - [Decision Model Votes (Opt-in)](#decision-model-votes-opt-in)
   - [Gateway Ingress Deliberation Routing](#gateway-ingress-deliberation-routing)
   - [L4 Warden and Outbound Operator Verification](#l4-warden-and-outbound-operator-verification)
-  - [Event receipt Evidence and Deterministic Stages](#event_receipt-evidence-and-deterministic-stages)
+  - [Receipt Evidence and Deterministic Stages](#receipt-evidence-and-deterministic-stages)
 - [Anti-patterns](#anti-patterns)
 - [Links out](#links-out)
 
@@ -112,11 +112,11 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSING`. A proof naming an enabled, known set with fewer than K affirmative member votes yields `L2_QUORUM_NOT_MET`. A proof naming an unknown or disabled set yields `L2_CONSENSUS_SET_UNKNOWN`. All of these reject execution when L2 is enforced.
 
-### Event receipt and Audit Evidence (`INV-CON-RCPT`)
+### Receipt and Audit Evidence (`INV-CON-RCPT`)
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 EventReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, the action is bootstrap-exempt, or the action is not a state change on its target under INV-CON-WARD-11), and when no valid proof is present. L5 never recomputes it from posture. |
+| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 ActionReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, the action is bootstrap-exempt, or the action is not a state change on its target under INV-CON-WARD-11), and when no valid proof is present. L5 never recomputes it from posture. |
 | INV-CON-RCPT-02 | L4 verification MUST produce `DeterministicStageEvidence` for protocol L2 recording stage outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`) and the SHA-256 `L2SignatureDigest` over the sorted, canonically encoded set of `L2Vote.consensus_signature` values. |
 
 ## Owned surfaces
@@ -134,7 +134,7 @@ An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSIN
 | Tribunal member signer | `internal/cli/auth/tribunal_consensus_signer.go` (`TribunalConsensusSigner`) | `tribunal_consensus_signer_integration_test.go` |
 | L2 wire fields | `protocol/proto/ztd/common/v1/common.proto` (payload `consensus_provider`, `consensus_model_tag`, `consensus_model_digest`) | `make proto-generate` |
 | L4 Warden L2 verification & `OperatorL2Trust` | `internal/services/governance/l2_consensus.go`, `internal/services/governance/l4_warden.go` | Integration tests in `l4_warden_consensus_test.go` |
-| L5 Actuator event receipt evidence | `internal/services/governance/l5_actuator.go` | Event receipt tests in `l4_warden_test.go` |
+| L5 Actuator receipt evidence | `internal/services/governance/l5_actuator.go` | Receipt tests in `l4_warden_test.go` |
 | Ingress deliberation integration | `internal/services/mcp/gateway.go`, `internal/services/gateway/dispatch_service.go` | End-to-end tests in `test/l2_consensus_integration_test.go` |
 
 ## Procedures
@@ -146,11 +146,11 @@ L2 Consensus occupies the second layer of the platform governance interlock:
 2. **L2 Consensus**: Verifies K distinct bound-member Ed25519 signatures over `<transaction_hash>|<decision>`.
 3. **L3 Notary**: Verifies human authorization proofs (a WebAuthn passkey assertion or an enrolled CLI certificate's ECDSA P-256 signature) for mutating actions.
 4. **L4 Warden**: Executes pre-dispatch verification (replay check, hash match, state root, L1-L3 proofs).
-5. **L5 Actuator**: Mints single-action JIT capabilities, executes actions, and writes local signed event receipts.
+5. **L5 Actuator**: Mints single-action JIT capabilities, executes actions, and writes local signed receipts.
 
 `constants.Posture.RequiresL2()` (`internal/constants/posture.go`) governs whether L2 verification gates execution:
 
-| Posture | `posture.RequiresL2()` | L2 Gate Status | Event receipt `L2Status` Value | Deterministic Stage Outcome |
+| Posture | `posture.RequiresL2()` | L2 Gate Status | Receipt `L2Status` Value | Deterministic Stage Outcome |
 | :--- | :--- | :--- | :--- | :--- |
 | **`doctrine`** | `false` | Non-gating (audited only) | `L2_STATUS_REQUIRED_VALID` (if valid) or `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
 | **`consensus`** | `true` | Strictly required for non-bootstrap state changes (INV-CON-WARD-11) | `L2_STATUS_REQUIRED_VALID` (`L2_STATUS_REQUIRED_FAILED` on rejection) | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (`FAILED` on rejection) |
@@ -227,7 +227,7 @@ An `INFERENCE` dispatched through `DispatchService` is not a state change, so it
 
 ### Decision Model Votes (Opt-in)
 
-Tribunal bindings default to generative votes. A binding with `vote_kind: decision` instead sends typed System One questions through the same governed `INFERENCE` action and signed event receipt path. This implementation is available for future evaluation; no decision model has been qualified to replace the generative baseline, and no hosted Jev production rollout is planned.
+Tribunal bindings default to generative votes. A binding with `vote_kind: decision` instead sends typed System One questions through the same governed `INFERENCE` action and signed receipt path. This implementation is available for future evaluation; no decision model has been qualified to replace the generative baseline, and no hosted Jev production rollout is planned.
 
 The binding freezes a stable `inference_operator_id`, model identity, and five member thresholds. Local models require a SHA-256 digest; hosted Jev requires an explicit version (`jev-X.Y.Z`), an empty digest, and `allow_hosted`. Thresholds default to 0.9 at enrollment and require a rebind to change. The pinned Operator MUST be active and advertise the bound decision model and backend. An unavailable or ambiguous pinned Operator produces no vote; dispatch MUST NOT fall back to another Operator.
 
@@ -281,13 +281,13 @@ flowchart TD
 4. **Decision Check**: Requires at least K distinct affirmative (`decision=true`) member votes; otherwise rejects with `ErrTxL2QuorumNotMet`.
 5. **Outbound Operator Verification (`OperatorL2Trust`)**: Remote Operators receive each bound consensus member's identity and Ed25519 public key in their signed enrollment bundle (and upon in-band certificate renewal), served in memory via `governance.L2TrustStore` (`OperatorL2Trust`), and independently verify the envelope's `L2Metadata` votes in their local L4 Warden.
 
-### Event receipt Evidence and Deterministic Stages
+### Receipt Evidence and Deterministic Stages
 
-When L4 verification concludes, the Warden emits deterministic stage evidence, and the L5 Actuator embeds the final L2 outcome into the signed `EventReceipt`:
+When L4 verification concludes, the Warden emits deterministic stage evidence, and the L5 Actuator embeds the final L2 outcome into the signed `ActionReceipt`:
 - **Deterministic Stage Evidence**: A stage record with `DETERMINISTIC_STAGE_KIND_PROTOCOL_L2` records the outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`).
-- **Rejection Attribution**: A rejected L2 proof produces a signed `FAILED` event receipt whose signed `rejection_code` names the L2 check. The enum is defined in `protocol/proto/ztd/operator/v1/operator.proto`.
+- **Rejection Attribution**: A rejected L2 proof produces a signed `FAILED` receipt whose signed `rejection_code` names the L2 check. The enum is defined in `protocol/proto/ztd/operator/v1/operator.proto`.
 - **Signature Digest**: `L2SignatureDigest` computes a SHA-256 digest over the sorted set of `L2Vote.consensus_signature` values, binding the cryptographic proof into the audit trail.
-- **Event receipt Status**: The signed event receipt records `L2Status`: `L2_STATUS_REQUIRED_VALID`, `L2_STATUS_REQUIRED_FAILED`, or `L2_STATUS_NOT_REQUIRED`.
+- **Receipt Status**: The signed receipt records `L2Status`: `L2_STATUS_REQUIRED_VALID`, `L2_STATUS_REQUIRED_FAILED`, or `L2_STATUS_NOT_REQUIRED`.
 
 ## Anti-patterns
 
@@ -302,9 +302,9 @@ When L4 verification concludes, the Warden emits deterministic stage evidence, a
 ## Links out
 
 - [Platform Architecture Overview](overview.md): High-level system architecture and node topologies.
-- [Governance Architecture](governance.md): Five-layer governance interlock, posture definitions, and event receipt validation.
+- [Governance Architecture](governance.md): Five-layer governance interlock, posture definitions, and receipt validation.
 - [Gateway Architecture](gateway.md): Gateway initialization, service wiring, and in-process execution.
-- [Operator Architecture](operator.md): Outbound pub/sub execution, L4 Warden verification, and L5 Actuator event receipts.
+- [Operator Architecture](operator.md): Outbound pub/sub execution, L4 Warden verification, and L5 Actuator receipts.
 - [Authentication Architecture](auth.md): SPIFFE workload identities, trusted signers, and L3 human proofs.
 - [Evaluation Architecture](evals.md): Native evaluation campaigns executed under the frozen governance posture.
 - [Storage Architecture](storage.md): Canonical SQLite document store and encrypted persistence boundaries.

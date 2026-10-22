@@ -75,7 +75,7 @@ func TestA2APayloadPerFault(t *testing.T) {
 }
 
 // TestA2AAllowedCallReachesStubAndClosesAttempt checks that an allowed call runs on a real
-// Gateway: the Gateway forwards the skill to the stub, the answer is an event receipt, and the
+// Gateway: the Gateway forwards the skill to the stub, the answer is a receipt, and the
 // attempt is closed once Drive returns.
 func TestA2AAllowedCallReachesStubAndClosesAttempt(t *testing.T) {
 	all, _, err := cases.Catalogue()

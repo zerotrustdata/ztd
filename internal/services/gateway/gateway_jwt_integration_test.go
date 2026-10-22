@@ -45,9 +45,9 @@ type mockEnvelopeProcessor struct {
 	Captured []byte
 }
 
-func (m *mockEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
+func (m *mockEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
 	m.Captured = payload
-	return &operatorv1.EventReceipt{TransactionHash: "mocked-hash"}, nil
+	return &operatorv1.ActionReceipt{TransactionHash: "mocked-hash"}, nil
 }
 
 func setupTestIdP(t *testing.T) (*rsa.PrivateKey, *httptest.Server) {
@@ -319,7 +319,7 @@ func TestGateway_JWTIntegration(t *testing.T) {
 	// Wait, the MCP Tools Call endpoint will process the envelope. The response might be 503 if downstream is not set up, or it might return success if mocked right.
 	// We really only care that the envelope was captured by the mock processor, or at least passed through `processGatewayTransaction`.
 
-	// Because tools/call waits for the envelope processor to return an event receipt, and our mock returns an event receipt with hash "mocked-hash",
+	// Because tools/call waits for the envelope processor to return a receipt, and our mock returns a receipt with hash "mocked-hash",
 	// the code might then look for pubsub results. But processGatewayTransaction comes FIRST before DispatchToDownstream.
 	// Oh, `DispatchToDownstream` calls `processGatewayTransaction`. Let's check `mockEnvProc.Captured`.
 

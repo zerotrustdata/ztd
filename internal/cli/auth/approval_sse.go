@@ -187,7 +187,7 @@ func (s *ApprovalSubscription) recordCompleted(raw json.RawMessage) {
 }
 
 // Wait blocks until the approval.completed event for txHash arrives, then returns the
-// event's resumed, signed event receipt after strict protojson decoding and a transaction
+// event's resumed, signed receipt after strict protojson decoding and a transaction
 // hash check. An event recorded before Wait is called is returned from the backlog.
 //
 // userID selects the approval tagged with that user. When userID is empty the newest
@@ -195,11 +195,11 @@ func (s *ApprovalSubscription) recordCompleted(raw json.RawMessage) {
 // is bound to the CLI's mTLS identity, so the stream carries only that user's events.
 //
 // Wait refuses an empty txHash with constants.ErrMissingRequiredField. It returns
-// constants.ErrEventReceiptMissing when the event receipt is missing or belongs to another
+// constants.ErrActionReceiptMissing when the receipt is missing or belongs to another
 // transaction, and constants.ErrSSEStreamClosed (or the stream error) when the stream
 // ends before the approval arrives. It returns constants.ErrApprovalSSETimeout when ctx
 // or ApprovalSSETimeout ends first.
-func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) (*operatorv1.EventReceipt, error) {
+func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) (*operatorv1.ActionReceipt, error) {
 	if txHash == "" {
 		return nil, fmt.Errorf("L3 approval: transaction hash: %w", constants.ErrMissingRequiredField)
 	}
@@ -213,7 +213,7 @@ func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) 
 		arrived := s.arrived
 		s.mu.Unlock()
 		if ok {
-			return approvalEventReceipt(event, txHash)
+			return approvalReceipt(event, txHash)
 		}
 
 		select {
@@ -223,7 +223,7 @@ func (s *ApprovalSubscription) Wait(ctx context.Context, txHash, userID string) 
 			event, ok = s.lookupLocked(txHash, userID)
 			s.mu.Unlock()
 			if ok {
-				return approvalEventReceipt(event, txHash)
+				return approvalReceipt(event, txHash)
 			}
 			// A stream bound to the caller's context ends when that context
 			// does; both channels are then ready, and the deadline is the cause.
@@ -286,18 +286,18 @@ func (s *ApprovalSubscription) lookupLocked(txHash, userID string) (models.Appro
 	return models.ApprovalCompletedEvent{}, false
 }
 
-// approvalEventReceipt decodes the resumed, signed event receipt carried by an approval.completed
+// approvalReceipt decodes the resumed, signed receipt carried by an approval.completed
 // event and checks that it belongs to txHash.
-func approvalEventReceipt(event models.ApprovalCompletedEvent, txHash string) (*operatorv1.EventReceipt, error) {
-	if !event.HasEventReceipt() {
-		return nil, fmt.Errorf("L3 approval: %w", constants.ErrEventReceiptMissing)
+func approvalReceipt(event models.ApprovalCompletedEvent, txHash string) (*operatorv1.ActionReceipt, error) {
+	if !event.HasReceipt() {
+		return nil, fmt.Errorf("L3 approval: %w", constants.ErrActionReceiptMissing)
 	}
-	eventReceipt := &operatorv1.EventReceipt{}
-	if err := protojson.Unmarshal(event.EventReceipt, eventReceipt); err != nil {
-		return nil, fmt.Errorf("L3 approval: decode resumed event_receipt: %w", err)
+	receipt := &operatorv1.ActionReceipt{}
+	if err := protojson.Unmarshal(event.Receipt, receipt); err != nil {
+		return nil, fmt.Errorf("L3 approval: decode resumed receipt: %w", err)
 	}
-	if eventReceipt.GetTransactionHash() != txHash {
-		return nil, fmt.Errorf("L3 approval: event receipt transaction %s does not match %s: %w", eventReceipt.GetTransactionHash(), txHash, constants.ErrEventReceiptMissing)
+	if receipt.GetTransactionHash() != txHash {
+		return nil, fmt.Errorf("L3 approval: receipt transaction %s does not match %s: %w", receipt.GetTransactionHash(), txHash, constants.ErrActionReceiptMissing)
 	}
-	return eventReceipt, nil
+	return receipt, nil
 }

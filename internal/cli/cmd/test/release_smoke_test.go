@@ -38,7 +38,7 @@ const (
 // writeSmokeReportFixture writes a `report all` output directory. The defaults
 // satisfy every INV-REL-SMOKE-04 requirement, so each test breaks one thing.
 type smokeFixture struct {
-	eventReceiptRows []string
+	receiptRows      []string
 	commitmentRows   []string
 	mutationRows     []string
 	verificationRows []string
@@ -47,7 +47,7 @@ type smokeFixture struct {
 func completeSmokeFixture() smokeFixture {
 	completed := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED.String()
 	return smokeFixture{
-		eventReceiptRows: []string{
+		receiptRows: []string{
 			testSmokeTxFile + ",FILE_EDIT," + completed,
 			testSmokeTxDoc + ",DOCUMENT_UPDATE," + completed,
 		},
@@ -57,7 +57,7 @@ func completeSmokeFixture() smokeFixture {
 			"commitment_chain,commitment_ledger,all,PASS,ok",
 			"git_merkle_root,ledger,HEAD,PASS,ok",
 			"file_mutation_linkage,audit_store,all,PASS,ok",
-			"event_receipt_commitment_crosslink,audit_store+commitment_ledger,all,PASS,ok",
+			"receipt_commitment_crosslink,audit_store+commitment_ledger,all,PASS,ok",
 		},
 	}
 }
@@ -68,7 +68,7 @@ func writeSmokeReport(t *testing.T, dir string, f smokeFixture) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		constants.ReportEventReceiptsFilename: "transaction_id,action_type,status\n" + strings.Join(f.eventReceiptRows, "\n") + "\n",
+		constants.ReportReceiptsFilename:      "transaction_id,action_type,status\n" + strings.Join(f.receiptRows, "\n") + "\n",
 		constants.ReportCommitmentsFilename:   "seq,transaction_id,hash\n" + strings.Join(f.commitmentRows, "\n") + "\n",
 		constants.ReportFileMutationsFilename: "id,file\n" + strings.Join(f.mutationRows, "\n") + "\n",
 		constants.ReportVerificationFilename:  "check,scope,subject,result,detail\n" + strings.Join(f.verificationRows, "\n") + "\n",
@@ -94,9 +94,9 @@ func TestEvaluateSmokeReportAcceptsCompleteWorkerExport(t *testing.T) {
 	if len(ev.PassedChecks) != len(smokeRequiredChecks) {
 		t.Fatalf("passed checks = %v, want all %d required", ev.PassedChecks, len(smokeRequiredChecks))
 	}
-	ev.requireCompletedEventReceipt(releaseSmokeFileActionType, testSmokeTxFile)
+	ev.requireCompletedReceipt(releaseSmokeFileActionType, testSmokeTxFile)
 	if len(ev.Failures) != 0 {
-		t.Fatalf("file event receipt not correlated: %v", ev.Failures)
+		t.Fatalf("file receipt not correlated: %v", ev.Failures)
 	}
 }
 
@@ -129,14 +129,14 @@ func TestEvaluateSmokeReportRejectsMissingRequiredCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("evaluate: %v", err)
 	}
-	if !strings.Contains(strings.Join(ev.Failures, "\n"), "required check missing: event_receipt_commitment_crosslink") {
+	if !strings.Contains(strings.Join(ev.Failures, "\n"), "required check missing: receipt_commitment_crosslink") {
 		t.Fatalf("missing-check failure not reported: %v", ev.Failures)
 	}
 }
 
 func TestEvaluateSmokeReportRejectsEmptyEvidence(t *testing.T) {
 	f := completeSmokeFixture()
-	f.eventReceiptRows = nil
+	f.receiptRows = nil
 	f.commitmentRows = nil
 	f.mutationRows = nil
 	dir := testutil.TempDir(t)
@@ -146,7 +146,7 @@ func TestEvaluateSmokeReportRejectsEmptyEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("evaluate: %v", err)
 	}
-	for _, want := range []string{constants.ReportEventReceiptsFilename + " is empty", "commitments.csv is empty", "file_mutations.csv is empty"} {
+	for _, want := range []string{constants.ReportReceiptsFilename + " is empty", "commitments.csv is empty", "file_mutations.csv is empty"} {
 		if !strings.Contains(strings.Join(ev.Failures, "\n"), want) {
 			t.Errorf("failures missing %q: %v", want, ev.Failures)
 		}
@@ -168,23 +168,23 @@ func TestEvaluateSmokeReportRejectsGatewayWithoutFileMutations(t *testing.T) {
 	}
 }
 
-func TestRequireCompletedEventReceiptFailsClosedWhenNotExported(t *testing.T) {
+func TestRequireCompletedReceiptFailsClosedWhenNotExported(t *testing.T) {
 	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, completeSmokeFixture())
 	ev, err := evaluateSmokeReport("gateway", dir)
 	if err != nil {
 		t.Fatalf("evaluate: %v", err)
 	}
-	ev.requireCompletedEventReceipt(releaseSmokeDocAction, "tx-not-exported")
+	ev.requireCompletedReceipt(releaseSmokeDocAction, "tx-not-exported")
 	if len(ev.Failures) != 1 || !strings.Contains(ev.Failures[0], "tx-not-exported") {
-		t.Fatalf("expected one uncorrelated event receipt failure, got %v", ev.Failures)
+		t.Fatalf("expected one uncorrelated receipt failure, got %v", ev.Failures)
 	}
 }
 
 func TestEvaluateSmokeReportFailsOnMalformedCSV(t *testing.T) {
 	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, completeSmokeFixture())
-	if err := os.WriteFile(filepath.Join(dir, constants.ReportEventReceiptsFilename), []byte("a,b,c\n1,2\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, constants.ReportReceiptsFilename), []byte("a,b,c\n1,2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := evaluateSmokeReport("worker", dir)
@@ -392,7 +392,7 @@ func TestReleaseSmokeCmdDefaultPermitsGovernedFileEdits(t *testing.T) {
 	}
 }
 
-func TestSmokeEventReceiptAnchorsRejectUnboundWorkerKeyAndStayPinned(t *testing.T) {
+func TestSmokeReceiptAnchorsRejectUnboundWorkerKeyAndStayPinned(t *testing.T) {
 	ctx := context.Background()
 	gatewayKey, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -420,11 +420,11 @@ func TestSmokeEventReceiptAnchorsRejectUnboundWorkerKeyAndStayPinned(t *testing.
 		t.Fatal(err)
 	}
 	worker := &operatorv1.OperatorDocument{Id: "smoke-worker", ActuatorKeyId: gatewayID, ActuatorPublicKey: gatewayID}
-	if err := r.pinEventReceiptAnchors(ctx, worker); !errors.Is(err, constants.ErrConformanceAnchorInvalid) {
+	if err := r.pinReceiptAnchors(ctx, worker); !errors.Is(err, constants.ErrConformanceAnchorInvalid) {
 		t.Fatalf("mismatched worker key accepted: %v", err)
 	}
 	worker.ActuatorKeyId, worker.ActuatorPublicKey = workerID, workerID
-	if err := r.pinEventReceiptAnchors(ctx, worker); err != nil {
+	if err := r.pinReceiptAnchors(ctx, worker); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.anchors.Key(workerID, releaseSmokeEmbeddedOpID); !errors.Is(err, constants.ErrConformanceAnchorUnknown) {

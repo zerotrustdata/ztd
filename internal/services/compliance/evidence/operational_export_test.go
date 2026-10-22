@@ -24,15 +24,15 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestExportOperationalEvidence_PreservesEventReceiptsPersistenceAndCommitments(t *testing.T) {
+func TestExportOperationalEvidence_PreservesReceiptsPersistenceAndCommitments(t *testing.T) {
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
-	attestation := &operatorv1.EventReceiptPersistenceAttestation{TransactionId: "tx-1", PersistedAtUnixMs: executedAt.Add(time.Second).UnixMilli(), SignerKeyId: "signer-1"}
-	eventReceiptBody, err := compliancev1.MarshalCanonical(&operatorv1.EventReceipt{TransactionId: "tx-1", ExecutedAtUnixMs: executedAt.UnixMilli(), FinalPersistenceAttestation: attestation})
+	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: "tx-1", PersistedAtUnixMs: executedAt.Add(time.Second).UnixMilli(), SignerKeyId: "signer-1"}
+	receiptBody, err := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{TransactionId: "tx-1", ExecutedAtUnixMs: executedAt.UnixMilli(), FinalPersistenceAttestation: attestation})
 	require.NoError(t, err)
 	outputDir := testutil.TempDir(t)
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
-		EventReceipts: []storage.OperationalEventReceiptSource{{TransactionID: "tx-1", ExecutedAt: executedAt, Body: eventReceiptBody}},
-		Commitments:   []storage.OperationalCommitmentSource{{Sequence: 1, TransactionID: "tx-1", CommittedAt: executedAt.Add(2 * time.Second), Body: []byte(`{"transactionId":"tx-1"}`)}},
+		Receipts:    []storage.OperationalReceiptSource{{TransactionID: "tx-1", ExecutedAt: executedAt, Body: receiptBody}},
+		Commitments: []storage.OperationalCommitmentSource{{Sequence: 1, TransactionID: "tx-1", CommittedAt: executedAt.Add(2 * time.Second), Body: []byte(`{"transactionId":"tx-1"}`)}},
 	}, OperationalExportRequest{
 		ScopeID:              "scope-1",
 		AdmissionID:          "source-1",
@@ -53,7 +53,7 @@ func TestExportOperationalEvidence_PreservesEventReceiptsPersistenceAndCommitmen
 	assert.Equal(t, "source-1", inventory.AdmissionID)
 	assert.Equal(t, "operator-scope-1", inventory.SourceScopeID)
 	assert.Equal(t, "run-1", inventory.RunID)
-	assert.Equal(t, 1, inventory.EventReceiptCount)
+	assert.Equal(t, 1, inventory.ReceiptCount)
 	assert.Equal(t, 1, inventory.PersistenceCount)
 	assert.Equal(t, 1, inventory.CommitmentCount)
 	assert.Len(t, inventory.Artifacts, 3)
@@ -69,7 +69,7 @@ func TestExportOperationalEvidence_PreservesEventReceiptsPersistenceAndCommitmen
 func TestExportOperationalEvidence_RecordsUnavailablePersistenceWithoutInventingAttestation(t *testing.T) {
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
-		EventReceipts: []storage.OperationalEventReceiptSource{{TransactionID: "tx-1", ExecutedAt: executedAt, Body: []byte(`{"transactionId":"tx-1"}`)}},
+		Receipts: []storage.OperationalReceiptSource{{TransactionID: "tx-1", ExecutedAt: executedAt, Body: []byte(`{"transactionId":"tx-1"}`)}},
 	}, OperationalExportRequest{
 		ScopeID:              "scope-1",
 		AdmissionID:          "source-1",
@@ -89,9 +89,9 @@ func TestExportOperationalEvidence_RecordsUnavailablePersistenceWithoutInventing
 	require.NoError(t, err)
 	assert.Zero(t, inventory.PersistenceCount)
 	require.Len(t, inventory.Limitations, 1)
-	assert.Contains(t, inventory.Limitations[0], "event receipt tx-1 could not yield persistence evidence")
+	assert.Contains(t, inventory.Limitations[0], "receipt tx-1 could not yield persistence evidence")
 }
 
 func exportDigestHex(body []byte) string {
-	return ContentAddress(ArtifactTypeEventReceipt, body)[len(string(ArtifactTypeEventReceipt))+len(":sha256:"):]
+	return ContentAddress(ArtifactTypeActionReceipt, body)[len(string(ArtifactTypeActionReceipt))+len(":sha256:"):]
 }

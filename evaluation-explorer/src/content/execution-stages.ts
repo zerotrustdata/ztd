@@ -21,7 +21,7 @@ export const EXECUTION_STAGES = [
     label: 'Execute',
     system: 'Operator · PEP',
     detail: 'The exact bound Operator independently re-runs L1–L4, then performs L5 against its own runtime boundary.',
-    output: 'Signed local event receipt',
+    output: 'Signed local receipt',
   },
   {
     label: 'Witness',
@@ -38,7 +38,7 @@ export const EXECUTION_STAGES = [
   {
     label: 'Project',
     system: 'Public mirror',
-    detail: 'Emits an allowlisted, public-safe projection. Private prompts, outputs, identities, paths, and event receipt bodies stay owner-local.',
+    detail: 'Emits an allowlisted, public-safe projection. Private prompts, outputs, identities, paths, and receipt bodies stay owner-local.',
     output: 'Bootstrap + history + SSE',
   },
 ] as const;

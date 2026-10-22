@@ -34,7 +34,7 @@ const (
 //  3. steps_to_diagnosis: model turns and governed actions before the terminal response.
 //  4. diagnosis_correctness: deterministic content correctness (1.0 or 0.0).
 //  5. evidence_backed_conclusion: claims in the diagnosis are traceable to
-//     observations from this run or to retrieved event receipts (1.0 or 0.0).
+//     observations from this run or to retrieved receipts (1.0 or 0.0).
 func ComputeInvestigationMetrics(assignmentID string, trace *AgentTrace, gold ScenarioGoldCriteria, contentPassed bool, input ScenarioInputFixture) []*evalv1.DecomposedScoreRecord {
 	if assignmentID == "" || trace == nil {
 		return nil
@@ -107,7 +107,7 @@ func computeRetrievalHitRate(trace *AgentTrace, references []ScenarioGoldEvidenc
 
 			// 1. Check if retrieved via context retrieval
 			if call.Retrieval != nil {
-				if len(call.Retrieval.EventReceipts) > 0 {
+				if len(call.Retrieval.Receipts) > 0 {
 					refMatches := true
 					if ref.ActionType != "" && !strings.Contains(resLower, strings.ToLower(ref.ActionType)) && !strings.EqualFold(call.Retrieval.Query.ActionType, ref.ActionType) {
 						refMatches = false
@@ -160,7 +160,7 @@ func computeRedundantCommandRate(trace *AgentTrace) float64 {
 
 	for _, call := range trace.ToolCalls {
 		// Populate known history from context retrieval
-		if call.Retrieval != nil && len(call.Retrieval.EventReceipts) > 0 {
+		if call.Retrieval != nil && len(call.Retrieval.Receipts) > 0 {
 			retrievedHistory = append(retrievedHistory, strings.ToLower(call.ResultJSON))
 		}
 

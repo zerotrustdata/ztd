@@ -110,31 +110,31 @@ func (c *OwnerConsole) approvesTool(toolName string) bool {
 	return denied == nil || *denied != toolName
 }
 
-// ApprovalEventReceipts returns the validated event receipts produced by the
+// ApprovalReceipts returns the validated receipts produced by the
 // owner's CLI approvals, in the order the Gateway returned them.
-func (c *OwnerConsole) ApprovalEventReceipts() []*operatorv1.EventReceipt {
-	recorded := c.approvalEventReceipts.snapshot()
-	eventReceipts := make([]*operatorv1.EventReceipt, 0, len(recorded))
-	for _, eventReceipt := range recorded {
-		eventReceipts = append(eventReceipts, proto.Clone(eventReceipt).(*operatorv1.EventReceipt))
+func (c *OwnerConsole) ApprovalReceipts() []*operatorv1.ActionReceipt {
+	recorded := c.approvalReceipts.snapshot()
+	receipts := make([]*operatorv1.ActionReceipt, 0, len(recorded))
+	for _, receipt := range recorded {
+		receipts = append(receipts, proto.Clone(receipt).(*operatorv1.ActionReceipt))
 	}
-	return eventReceipts
+	return receipts
 }
 
-// AwaitApprovalEventReceipts blocks until n CLI approval event receipts have been
+// AwaitApprovalReceipts blocks until n CLI approval receipts have been
 // validated and recorded.
-func (c *OwnerConsole) AwaitApprovalEventReceipts(ctx context.Context, n int) ([]*operatorv1.EventReceipt, error) {
-	recorded, err := c.approvalEventReceipts.awaitAll(ctx, func(eventReceipts []*operatorv1.EventReceipt) bool {
-		return len(eventReceipts) >= n
+func (c *OwnerConsole) AwaitApprovalReceipts(ctx context.Context, n int) ([]*operatorv1.ActionReceipt, error) {
+	recorded, err := c.approvalReceipts.awaitAll(ctx, func(receipts []*operatorv1.ActionReceipt) bool {
+		return len(receipts) >= n
 	})
 	if err != nil {
-		return nil, fmt.Errorf("owner console: await %d CLI approval event receipts (have %d): %w", n, len(recorded), err)
+		return nil, fmt.Errorf("owner console: await %d CLI approval receipts (have %d): %w", n, len(recorded), err)
 	}
-	eventReceipts := make([]*operatorv1.EventReceipt, 0, len(recorded))
-	for _, eventReceipt := range recorded {
-		eventReceipts = append(eventReceipts, proto.Clone(eventReceipt).(*operatorv1.EventReceipt))
+	receipts := make([]*operatorv1.ActionReceipt, 0, len(recorded))
+	for _, receipt := range recorded {
+		receipts = append(receipts, proto.Clone(receipt).(*operatorv1.ActionReceipt))
 	}
-	return eventReceipts, nil
+	return receipts, nil
 }
 
 func transactionApprovalNotification(data []byte, userID, cliSessionID string) bool {
@@ -210,7 +210,7 @@ func respondSuspendedTransactions(ctx context.Context, client *http.Client, base
 }
 
 // respondSuspendedTransaction answers one pending transaction with the owner's
-// decision for its tool and records the validated event receipt on success.
+// decision for its tool and records the validated receipt on success.
 func respondSuspendedTransaction(ctx context.Context, client *http.Client, baseURL string, cliCert *tls.Certificate, owner *OwnerConsole, transaction models.SuspendedTxResponse) error {
 	approved := owner.approvesTool(transaction.ToolName)
 	proof, err := governance.SignCLIApproval(transaction.TransactionHash, cliCert)
@@ -242,28 +242,28 @@ func respondSuspendedTransaction(ctx context.Context, client *http.Client, baseU
 	approvalWire, readErr := io.ReadAll(approvalResponse.Body)
 	closeErr := approvalResponse.Body.Close()
 	if readErr != nil {
-		return fmt.Errorf("read transaction %s event_receipt: %w", transaction.TransactionHash, readErr)
+		return fmt.Errorf("read transaction %s receipt: %w", transaction.TransactionHash, readErr)
 	}
 	if closeErr != nil {
-		return fmt.Errorf("close transaction %s event_receipt: %w", transaction.TransactionHash, closeErr)
+		return fmt.Errorf("close transaction %s receipt: %w", transaction.TransactionHash, closeErr)
 	}
 	if approvalResponse.StatusCode != http.StatusOK {
 		return fmt.Errorf("approve transaction %s: HTTP %d: %s", transaction.TransactionHash, approvalResponse.StatusCode, approvalWire)
 	}
-	var eventReceipt operatorv1.EventReceipt
-	if err := protojson.Unmarshal(approvalWire, &eventReceipt); err != nil {
-		return fmt.Errorf("decode transaction %s event_receipt: %w", transaction.TransactionHash, err)
+	var receipt operatorv1.ActionReceipt
+	if err := protojson.Unmarshal(approvalWire, &receipt); err != nil {
+		return fmt.Errorf("decode transaction %s receipt: %w", transaction.TransactionHash, err)
 	}
 	if approved {
-		if eventReceipt.GetTransactionHash() != transaction.TransactionHash ||
-			eventReceipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED ||
-			eventReceipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
-			return fmt.Errorf("transaction %s approval returned an invalid completed L3 event receipt", transaction.TransactionHash)
+		if receipt.GetTransactionHash() != transaction.TransactionHash ||
+			receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED ||
+			receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+			return fmt.Errorf("transaction %s approval returned an invalid completed L3 receipt", transaction.TransactionHash)
 		}
-	} else if eventReceipt.GetTransactionHash() != transaction.TransactionHash ||
-		eventReceipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return fmt.Errorf("transaction %s denial returned an event receipt that is not a signed rejection", transaction.TransactionHash)
+	} else if receipt.GetTransactionHash() != transaction.TransactionHash ||
+		receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return fmt.Errorf("transaction %s denial returned a receipt that is not a signed rejection", transaction.TransactionHash)
 	}
-	owner.approvalEventReceipts.append(&eventReceipt)
+	owner.approvalReceipts.append(&receipt)
 	return nil
 }

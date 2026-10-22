@@ -1951,9 +1951,9 @@
         "OperatorProviderBoundaryObservationCompleted"
       ]
     },
-    "OperatorEventReceiptRecorded": {
-      "_go_const": "EventOperatorEventReceiptRecorded",
-      "value": "ztd.v1.operator.event_receipt.recorded",
+    "OperatorReceiptRecorded": {
+      "_go_const": "EventOperatorReceiptRecorded",
+      "value": "ztd.v1.operator.receipt.recorded",
       "kind": "fact",
       "producers": [
         "gateway",

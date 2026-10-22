@@ -19,48 +19,48 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// TestCompliance_AuditEventReceiptsRecorded verifies that the gateway-side audit
-// surface has signed EventReceipts from governance transactions processed
+// TestCompliance_AuditReceiptsRecorded verifies that the gateway-side audit
+// surface has signed ActionReceipts from governance transactions processed
 // through the gateway's L5 actuator. After platform setup (owner bootstrap
-// and enrollment approval), the gateway's audit store contains event receipts for
+// and enrollment approval), the gateway's audit store contains receipts for
 // platform enrollment operations (CREATE, DECIDE, ISSUE, CREATE_SESSION).
-// Each event receipt must carry a transaction ID, action type, governance
+// Each receipt must carry a transaction ID, action type, governance
 // signature, state roots, and a non-zero execution timestamp.
 //
-// Command dispatch event receipts are recorded in the operator's audit store by
+// Command dispatch receipts are recorded in the operator's audit store by
 // the operator's L5 actuator, not the gateway's, because the operator
 // executes dispatched commands. The gateway's audit surface covers
 // gateway-side governance transactions. This test asserts on those
-// event receipts, not on command dispatch event receipts.
-func TestCompliance_AuditEventReceiptsRecorded(t *testing.T) {
+// receipts, not on command dispatch receipts.
+func TestCompliance_AuditReceiptsRecorded(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultClientTimeout)
 	defer cancel()
 
-	eventReceipts, err := e2eClient.GetAuditEventReceipts(ctx)
-	require.NoError(t, err, "audit event receipts endpoint must succeed on an approved stack")
-	require.True(t, eventReceipts.Success, "audit event receipts response must report success")
-	require.NotEmpty(t, eventReceipts.EventReceipts,
+	receipts, err := e2eClient.GetAuditReceipts(ctx)
+	require.NoError(t, err, "audit receipts endpoint must succeed on an approved stack")
+	require.True(t, receipts.Success, "audit receipts response must report success")
+	require.NotEmpty(t, receipts.EventReceipts,
 		"gateway must have at least one event receipt from platform enrollment operations")
 
-	r := eventReceipts.EventReceipts[0]
-	assert.NotEmpty(t, r.TransactionID, "audit event receipt must carry a transaction ID")
-	assert.NotEmpty(t, r.ActionType, "audit event receipt must carry an action type")
-	assert.NotEmpty(t, r.Signature, "audit event receipt must carry the governance signature")
-	assert.NotEmpty(t, r.SignerKeyID, "audit event receipt must carry the signer key ID")
+	r := receipts.EventReceipts[0]
+	assert.NotEmpty(t, r.TransactionID, "audit receipt must carry a transaction ID")
+	assert.NotEmpty(t, r.ActionType, "audit receipt must carry an action type")
+	assert.NotEmpty(t, r.Signature, "audit receipt must carry the governance signature")
+	assert.NotEmpty(t, r.SignerKeyID, "audit receipt must carry the signer key ID")
 	assert.NotEmpty(t, r.StateRootBefore,
-		"audit event receipt must record the pre-execution state root")
+		"audit receipt must record the pre-execution state root")
 	assert.False(t, r.ExecutedAt.IsZero(),
-		"audit event receipt must have a non-zero execution timestamp")
+		"audit receipt must have a non-zero execution timestamp")
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, r.Status,
-		"audit event receipt must have completed execution status")
-	t.Logf("audit event receipt verified: txn=%s action=%s status=%s",
+		"audit receipt must have completed execution status")
+	t.Logf("audit receipt verified: txn=%s action=%s status=%s",
 		r.TransactionID, r.ActionType, r.Status.String())
 }
 
 // TestCompliance_AuditSummaryConsistent verifies the audit summary endpoint
 // returns a typed response whose total counts are non-negative. The summary
-// breaks down events and event receipts by type; the totals must be non-negative
-// and the event receipts total must be at least 1 after platform enrollment
+// breaks down events and receipts by type; the totals must be non-negative
+// and the receipts total must be at least 1 after platform enrollment
 // operations have been processed through the gateway's L5 actuator.
 func TestCompliance_AuditSummaryConsistent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultClientTimeout)
@@ -70,12 +70,12 @@ func TestCompliance_AuditSummaryConsistent(t *testing.T) {
 	require.NoError(t, err, "audit summary endpoint must succeed on an approved stack")
 	require.True(t, summary.Success, "audit summary response must report success")
 	assert.GreaterOrEqual(t, summary.EventReceiptsTotal, 0,
-		"event receipts total must be non-negative")
+		"receipts total must be non-negative")
 	assert.GreaterOrEqual(t, summary.EventsTotal, 0,
 		"events total must be non-negative")
 	assert.GreaterOrEqual(t, summary.TotalRecords, 0,
 		"total records must be non-negative")
-	t.Logf("audit summary: events=%d event receipts=%d total=%d",
+	t.Logf("audit summary: events=%d receipts=%d total=%d",
 		summary.EventsTotal, summary.EventReceiptsTotal, summary.TotalRecords)
 }
 

@@ -1031,7 +1031,7 @@ func TestHandleIssue_AppComponentSignsCSRAndCompletesRequest(t *testing.T) {
 	wantFP := fingerprintFromPEM(env.pki.appCertPEM)
 	assert.Equal(t, "platform enrollment issue request_id=req-1 component=dashboard cert_fingerprint="+wantFP, summary)
 	assert.NotContains(t, summary, "operator_id=", "app issuance has no operator id")
-	assert.NotContains(t, summary, "secret-csr-body", "event receipt summaries must never carry CSR material")
+	assert.NotContains(t, summary, "secret-csr-body", "receipt summaries must never carry CSR material")
 
 	require.Len(t, env.pki.appCalls, 1)
 	assert.Equal(t, enrollTestAppSign{CSR: enrollTestCSR, AppName: "dashboard-app", UserID: enrollTestOwnerID}, env.pki.appCalls[0])
@@ -1040,7 +1040,7 @@ func TestHandleIssue_AppComponentSignsCSRAndCompletesRequest(t *testing.T) {
 	assert.Equal(t, models.PlatformEnrollmentStateCompleted, env.requestState(t))
 	coll := platformEnrollmentCollection()
 	assert.Equal(t, enrollTestEnvelope, env.store.field(t, coll, enrollTestRequest, "issuance_envelope_id"))
-	assert.Equal(t, enrollTestEnvelope, env.store.field(t, coll, enrollTestRequest, "issuance_event_receipt_id"))
+	assert.Equal(t, enrollTestEnvelope, env.store.field(t, coll, enrollTestRequest, "issuance_receipt_id"))
 	assert.Equal(t, "4242", env.store.field(t, coll, enrollTestRequest, "certificate_serial"))
 	assert.Equal(t, wantFP, env.store.field(t, coll, enrollTestRequest, "certificate_fingerprint"))
 
@@ -2172,7 +2172,7 @@ func TestHandleRevoke_AppComponentRevokesCertificateDeletesPolicyAndDisconnects(
 	assert.Equal(t, enrollTestOwnerID, env.store.field(t, coll, enrollTestRequest, "revoked_by_user_id"))
 	assert.Equal(t, "key compromise", env.store.field(t, coll, enrollTestRequest, "revocation_reason"))
 	assert.Equal(t, enrollTestEnvelope, env.store.field(t, coll, enrollTestRequest, "revocation_envelope_id"))
-	assert.Equal(t, enrollTestEnvelope, env.store.field(t, coll, enrollTestRequest, "revocation_event_receipt_id"))
+	assert.Equal(t, enrollTestEnvelope, env.store.field(t, coll, enrollTestRequest, "revocation_receipt_id"))
 	assert.Equal(t, models.PlatformEnrollmentStateCompleted, env.store.transitions[len(env.store.transitions)-1].From)
 }
 
@@ -2488,7 +2488,7 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 // Cross-cutting
 // ---------------------------------------------------------------------------
 
-func TestEventReceiptSummaries_NeverContainCredentialMaterial(t *testing.T) {
+func TestReceiptSummaries_NeverContainCredentialMaterial(t *testing.T) {
 	env := newEnrollTestEnv(t)
 	env.seedRequest(t, enrollTestOperatorRequest(models.PlatformEnrollmentStateIssuing))
 
@@ -2497,7 +2497,7 @@ func TestEventReceiptSummaries_NeverContainCredentialMaterial(t *testing.T) {
 
 	require.NoError(t, err)
 	for _, secret := range []string{"operator-csr", "cli-csr", "BEGIN CERTIFICATE", "trust-bundle-pem", "operator-chain", "cli-chain"} {
-		assert.NotContainsf(t, summary, secret, "event receipt summary must not contain %q", secret)
+		assert.NotContainsf(t, summary, secret, "receipt summary must not contain %q", secret)
 	}
 	assert.False(t, strings.Contains(summary, "\n"), "summary must be a single audit line")
 }

@@ -184,29 +184,29 @@ func reportVerification(ctx context.Context, outDir string, auditStore *storage.
 		addRow("file_mutation_linkage", "audit_store", "all", verifyResultSkipped, "audit store not configured")
 	}
 
-	// Check 5: Event receipt/commitment cross-link (every committed transaction_id has an event receipt)
+	// Check 5: Receipt/commitment cross-link (every committed transaction_id has a receipt)
 	if ctx.Err() != nil {
 		return FileResult{}, vr, ctx.Err()
 	}
 	if auditStore != nil && commitmentsErr == nil {
-		missingEventReceipts := 0
+		missingReceipts := 0
 		for _, c := range commitments {
 			if c.TransactionID == "" {
 				continue
 			}
 			r, err := auditStore.GetEventReceipt(c.TransactionID)
 			if err != nil || r == nil {
-				missingEventReceipts++
+				missingReceipts++
 			}
 		}
-		if missingEventReceipts > 0 {
-			addRow("event_receipt_commitment_crosslink", "audit_store+commitment_ledger", "all", verifyResultFail,
-				fmt.Sprintf("%d committed transaction_ids have no matching event receipt", missingEventReceipts))
+		if missingReceipts > 0 {
+			addRow("receipt_commitment_crosslink", "audit_store+commitment_ledger", "all", verifyResultFail,
+				fmt.Sprintf("%d committed transaction_ids have no matching receipt", missingReceipts))
 		} else if len(commitments) > 0 {
-			addRow("event_receipt_commitment_crosslink", "audit_store+commitment_ledger", "all", verifyResultPass,
-				fmt.Sprintf("all %d commitments have matching event receipts", len(commitments)))
+			addRow("receipt_commitment_crosslink", "audit_store+commitment_ledger", "all", verifyResultPass,
+				fmt.Sprintf("all %d commitments have matching receipts", len(commitments)))
 		} else {
-			addRow("event_receipt_commitment_crosslink", "audit_store+commitment_ledger", "all", verifyResultPass, "no commitments to cross-link")
+			addRow("receipt_commitment_crosslink", "audit_store+commitment_ledger", "all", verifyResultPass, "no commitments to cross-link")
 		}
 	}
 

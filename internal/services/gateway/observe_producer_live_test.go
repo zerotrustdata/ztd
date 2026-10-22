@@ -1133,7 +1133,7 @@ func TestEvalDetail_ExtendedFields(t *testing.T) {
 		ModelCohortIDs:      []string{"cohort-ext"},
 		Status:              models.RunLifecycleStatusCompleted,
 		VerificationStatus:  models.EvalVerificationVerified,
-		EventReceiptCount:   5,
+		ReceiptCount:        5,
 		AssignedTasks:       10,
 		TerminalAttempts:    10,
 		Metrics:             []models.EvalMetricSummary{},

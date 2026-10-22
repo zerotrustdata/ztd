@@ -19,7 +19,7 @@ import (
 // BuildPublicAssignmentTranscripts fills the role_transcripts summary of the
 // feed record from digest-checked evidence: final response, finish state, and
 // each tool call verbatim. The complete trace (exact input, thinking, every
-// turn, event receipts, anchors) is published separately as the content-addressed
+// turn, receipts, anchors) is published separately as the content-addressed
 // assignment_agent_trace proof artifact. The shared disclosure validator
 // checks the closed schema and byte bounds; content is never screened. A
 // transcript past those bounds is omitted rather than truncated: the agent

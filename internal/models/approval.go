@@ -17,14 +17,14 @@ type ApprovalCompletedEvent struct {
 	Type   string `json:"type"`
 	UserID string `json:"user_id"`
 	TxHash string `json:"tx_hash"`
-	// Event receipt is the canonical protojson EventReceipt of the resumed transaction,
+	// Receipt is the canonical protojson ActionReceipt of the resumed transaction,
 	// signed by the executing Operator.
-	EventReceipt json.RawMessage `json:"event_receipt"`
+	Receipt json.RawMessage `json:"receipt"`
 }
 
-// HasEventReceipt reports whether the completion event carries an event receipt. A JSON null
-// event receipt is absent: an approval.completed event without its signed event_receipt
+// HasReceipt reports whether the completion event carries a receipt. A JSON null
+// receipt is absent: an approval.completed event without its signed receipt
 // never proves the resumed transaction ran.
-func (e ApprovalCompletedEvent) HasEventReceipt() bool {
-	return len(e.EventReceipt) > 0 && string(e.EventReceipt) != "null"
+func (e ApprovalCompletedEvent) HasReceipt() bool {
+	return len(e.Receipt) > 0 && string(e.Receipt) != "null"
 }

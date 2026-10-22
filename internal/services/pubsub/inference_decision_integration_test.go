@@ -39,7 +39,7 @@ func (b *governedDecisionBackend) Decide(_ context.Context, req models.DecisionR
 	return &models.DecisionResponse{Model: req.Model, Decision: result, OutputHash: hash, NormalizedRequestHash: models.SHA256Hex([]byte("decision request")), FinishReason: "stop", PromptTokens: 10, CompletionTokens: 1, TotalTokens: 11, UsageReported: true}, nil
 }
 
-func TestDecisionInferenceGovernedEventReceiptBindsTypedResult(t *testing.T) {
+func TestDecisionInferenceGovernedReceiptBindsTypedResult(t *testing.T) {
 	svc, _, auditStore, results := newInferenceIntegrationFixture(t)
 	cfg := testutil.NewTestConfig(t)
 	cfg.Inference.Enabled = true
@@ -64,10 +64,10 @@ func TestDecisionInferenceGovernedEventReceiptBindsTypedResult(t *testing.T) {
 	wire, err := protojson.Marshal(&envelope)
 	require.NoError(t, err)
 
-	eventReceipt, err := svc.ProcessEnvelope(t.Context(), wire)
+	receipt, err := svc.ProcessEnvelope(t.Context(), wire)
 	require.NoError(t, err)
-	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
-	require.NotEmpty(t, eventReceipt.Signature)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+	require.NotEmpty(t, receipt.Signature)
 	require.True(t, backend.calledDecision)
 	require.False(t, backend.called, "decision must not call chat generation")
 	require.Len(t, results.inferenceCompletions, 1)
@@ -78,9 +78,9 @@ func TestDecisionInferenceGovernedEventReceiptBindsTypedResult(t *testing.T) {
 	digest, err := models.ComputeInferenceResultDigest(result)
 	require.NoError(t, err)
 	require.Equal(t, digest, result.ResultDigest)
-	require.Equal(t, digest, eventReceipt.ResultSummary)
-	eventReceipts, err := auditStore.ListEventReceipts(models.AuditScope{}, 10, 0)
+	require.Equal(t, digest, receipt.ResultSummary)
+	receipts, err := auditStore.ListEventReceipts(models.AuditScope{}, 10, 0)
 	require.NoError(t, err)
-	require.Len(t, eventReceipts, 1)
-	require.Equal(t, digest, eventReceipts[0].ResultSummary)
+	require.Len(t, receipts, 1)
+	require.Equal(t, digest, receipts[0].ResultSummary)
 }

@@ -73,7 +73,7 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureHeldContext
 	case errors.Is(err, constants.ErrEvaluationScenarioContractInvalid):
 		return ExecutionFailureScenarioContract
-	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceEventReceiptFailed),
+	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
 	case errors.Is(err, constants.ErrFormationRegistryBinding), errors.Is(err, constants.ErrFormationStackMismatch), errors.Is(err, constants.ErrFormationInvalid),

@@ -18,11 +18,11 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestBuilderEventReceiptsVerifyAndClassify(t *testing.T) {
+func TestBuilderReceiptsVerifyAndClassify(t *testing.T) {
 	signer := NewSigner(t)
 	anchors, err := oracle.NewAnchorSet([]*evalv1.ConformanceAnchor{signer.Anchor("op-1")})
 	require.NoError(t, err)
-	opts := EventReceiptOpts{
+	opts := ReceiptOpts{
 		TransactionID: "tx-1",
 		OperatorID:    "op-1",
 		SessionID:     "sess-1",
@@ -32,7 +32,7 @@ func TestBuilderEventReceiptsVerifyAndClassify(t *testing.T) {
 	}
 
 	executed := signer.Executed(t, opts, "prior-0", "hash-1")
-	_, err = oracle.VerifyEventReceipt(anchors, "op-1", executed)
+	_, err = oracle.VerifyReceipt(anchors, "op-1", executed)
 	require.NoError(t, err)
 	outcome, err := oracle.Classify(executed)
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestBuilderEventReceiptsVerifyAndClassify(t *testing.T) {
 	assert.Equal(t, oracle.Link{Prior: "prior-0", Hash: "hash-1", TransactionID: "tx-1"}, *outcome.Commitment)
 
 	rejected := signer.Rejected(t, opts, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
-	_, err = oracle.VerifyEventReceipt(anchors, "op-1", rejected)
+	_, err = oracle.VerifyReceipt(anchors, "op-1", rejected)
 	require.NoError(t, err)
 	outcome, err = oracle.Classify(rejected)
 	require.NoError(t, err)

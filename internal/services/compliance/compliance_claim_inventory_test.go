@@ -88,7 +88,7 @@ var phase0ClaimInventory = []ClaimInventoryEntry{
 	// --- NIST SP 800-53 ---
 	{Framework: "NIST SP 800-53", ControlID: "AC-1-AC-20", Claim: "Access control policy, account management, access enforcement, least privilege, session management, remote access", Classification: ClaimClassPlatformTechnical, Notes: "gateway, governance, PKI code"},
 	{Framework: "NIST SP 800-53", ControlID: "AC-18", Claim: "Wireless access", Classification: ClaimClassCustomer, Notes: "explicitly marked customer-controlled infrastructure"},
-	{Framework: "NIST SP 800-53", ControlID: "AU-1-AU-12", Claim: "Audit policy, events, record content, retention, fail-closed, review, timestamps, encryption, non-repudiation, generation", Classification: ClaimClassPlatformTechnical, Notes: "audit store, ledger, event receipts"},
+	{Framework: "NIST SP 800-53", ControlID: "AU-1-AU-12", Claim: "Audit policy, events, record content, retention, fail-closed, review, timestamps, encryption, non-repudiation, generation", Classification: ClaimClassPlatformTechnical, Notes: "audit store, ledger, receipts"},
 	{Framework: "NIST SP 800-53", ControlID: "SC-1-SC-23", Claim: "Boundary protection, transmission confidentiality/integrity, PKI, cryptography, session authenticity", Classification: ClaimClassPlatformTechnical, Notes: "scrubbing, mTLS, PKI"},
 	{Framework: "NIST SP 800-53", ControlID: "SC-13", Claim: "FIPS 140-3 approved cryptographic module (Go CMVP Cert #5247)", Classification: ClaimClassPlatformTechnical, Notes: "FIPS build and runtime attestation"},
 	{Framework: "NIST SP 800-53", ControlID: "SC-21", Claim: "Domain name services", Classification: ClaimClassCustomer, Notes: "explicitly marked customer-controlled DNS"},
@@ -115,7 +115,7 @@ var phase0ClaimInventory = []ClaimInventoryEntry{
 
 	// --- FedRAMP 20x ---
 	{Framework: "FedRAMP 20x", ControlID: "KSI catalog", Claim: "31 KSIs across 10 categories with typed evaluator, OSCAL export, history, COSAiS overlays", Classification: ClaimClassPlatformTechnical, Notes: "compliance package"},
-	{Framework: "FedRAMP 20x", ControlID: "KSI-MLA-08", Claim: "Event receipt and final-persistence signatures are cryptographically verified", Classification: ClaimClassPlatformTechnical, Notes: "canonical Ed25519 verification fails closed on missing, malformed, or tampered event receipt evidence"},
+	{Framework: "FedRAMP 20x", ControlID: "KSI-MLA-08", Claim: "Receipt and final-persistence signatures are cryptographically verified", Classification: ClaimClassPlatformTechnical, Notes: "canonical Ed25519 verification fails closed on missing, malformed, or tampered receipt evidence"},
 	{Framework: "FedRAMP 20x", ControlID: "Class D", Claim: "Class D (high) certification", Classification: ClaimClassPlanned, Notes: "explicitly marked out-of-scope until FedRAMP opens Phase 4"},
 	{Framework: "FedRAMP 20x", ControlID: "Certification", Claim: "FedRAMP authorization", Classification: ClaimClassAssessor, Notes: "platform produces evidence; FedRAMP 3PAO authorization is assessor-dependent"},
 
@@ -126,7 +126,7 @@ var phase0ClaimInventory = []ClaimInventoryEntry{
 	{Framework: "All", ControlID: "Third-party assessment", Claim: "Third-party security assessment", Classification: ClaimClassPlanned, Notes: "Planned Enhancements: Q4 2026"},
 	{Framework: "All", ControlID: "Penetration testing", Claim: "Formal penetration testing", Classification: ClaimClassPlanned, Notes: "Planned Enhancements: Q4 2026"},
 	{Framework: "All", ControlID: "Automated compliance reporting", Claim: "Automated compliance reporting", Classification: ClaimClassPlanned, Notes: "Planned Enhancements: Q2 2027; this plan (v2.1.3) implements it"},
-	{Framework: "All", ControlID: "Event receipt key distribution", Claim: "Attested Actuator public key distribution channel", Classification: ClaimClassPlanned, Notes: "Known Limitations: attested bootstrap flow planned"},
+	{Framework: "All", ControlID: "Receipt key distribution", Claim: "Attested Actuator public key distribution channel", Classification: ClaimClassPlanned, Notes: "Known Limitations: attested bootstrap flow planned"},
 }
 
 // TestPhase0ClaimInventory_EveryEntryHasValidClassification validates that

@@ -88,7 +88,7 @@ func (t *FileReadTool) Execute(ctx context.Context, args json.RawMessage) (CallT
 
 	// Every failure below returns an error, never a success result carrying
 	// an error field: the Actuator records a failed tool call as a FAILED
-	// event receipt, and a COMPLETED event receipt must mean the file was read.
+	// receipt, and a COMPLETED receipt must mean the file was read.
 
 	if security.IsSensitiveReadPath(absPath) {
 		return CallToolResult{}, fmt.Errorf("read_file: %w: %w: %s", constants.ErrMCPSensitiveFile, constants.ErrSensitivePath, absPath)

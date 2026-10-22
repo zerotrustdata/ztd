@@ -79,7 +79,7 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	}
 	defer mainDB.Close()
 
-	// Open audit store (sessions, events, file_mutations, event receipts, commitment_ledger).
+	// Open audit store (sessions, events, file_mutations, receipts, commitment_ledger).
 	auditStoreCfg := storage.DefaultAuditStoreConfig()
 	auditStoreCfg.EncryptionVault = v
 	auditStore, err := storage.NewSQLAuditStore(auditStoreCfg, mainDB, logger, fileSvc)
@@ -126,7 +126,7 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 	}
 
 	// Per-store reporters.
-	run("event_receipts", func() (FileResult, error) { return reportEventReceipts(ctx, opts.OutDir, auditStore) })
+	run("receipts", func() (FileResult, error) { return reportReceipts(ctx, opts.OutDir, auditStore) })
 	run("sessions", func() (FileResult, error) { return reportSessions(ctx, opts.OutDir, auditStore) })
 	run("events", func() (FileResult, error) { return reportEvents(ctx, opts.OutDir, auditStore) })
 	run("file_mutations", func() (FileResult, error) { return reportFileMutations(ctx, opts.OutDir, auditStore) })

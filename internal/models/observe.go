@@ -59,9 +59,9 @@ const (
 type EvalVerificationStatus string
 
 const (
-	EvalVerificationProjectionValidated                   EvalVerificationStatus = "projection_validated"
-	EvalVerificationEventReceiptVerificationNotApplicable EvalVerificationStatus = "event_receipt_verification_not_applicable"
-	EvalVerificationVerified                              EvalVerificationStatus = "verified"
+	EvalVerificationProjectionValidated              EvalVerificationStatus = "projection_validated"
+	EvalVerificationReceiptVerificationNotApplicable EvalVerificationStatus = "receipt_verification_not_applicable"
+	EvalVerificationVerified                         EvalVerificationStatus = "verified"
 )
 
 // MeasurementStatus is the freshness status for an ObservedMeasurement.
@@ -234,7 +234,7 @@ type EvalRunCompletedPayload struct {
 	ArmIDs                    []string               `json:"arm_ids"`
 	TerminalAttempts          int                    `json:"terminal_attempts"`
 	AssignedTasks             int                    `json:"assigned_tasks"`
-	EventReceiptCount         int                    `json:"event_receipt_count"`
+	ReceiptCount              int                    `json:"receipt_count"`
 	VerificationStatus        EvalVerificationStatus `json:"verification_status"`
 	PublishedProjectionSHA256 string                 `json:"published_projection_sha256"`
 	CompletedAt               time.Time              `json:"completed_at"`
@@ -349,21 +349,21 @@ type OverviewMeasurements struct {
 
 // RunSummary is the paginated read-only run summary owned by the authenticated
 // user. It uses stable run IDs, kinds, timestamps, terminal status, and
-// evidence/event-receipt indicators.
+// evidence/receipt indicators.
 type RunSummary struct {
-	SchemaVersion    string             `json:"schema_version"`
-	RunID            string             `json:"run_id"`
-	RunKind          RunKind            `json:"run_kind"`
-	DisplayName      string             `json:"display_name"`
-	Status           RunLifecycleStatus `json:"status"`
-	ActiveTaskID     string             `json:"active_task_id,omitempty"`
-	CompletedTasks   int                `json:"completed_tasks"`
-	TotalTasks       int                `json:"total_tasks"`
-	StartedAt        *time.Time         `json:"started_at,omitempty"`
-	EndedAt          *time.Time         `json:"ended_at,omitempty"`
-	HasEventReceipts bool               `json:"has_event_receipts"`
-	EvidenceCount    int                `json:"evidence_count"`
-	ObservedAt       time.Time          `json:"observed_at"`
+	SchemaVersion  string             `json:"schema_version"`
+	RunID          string             `json:"run_id"`
+	RunKind        RunKind            `json:"run_kind"`
+	DisplayName    string             `json:"display_name"`
+	Status         RunLifecycleStatus `json:"status"`
+	ActiveTaskID   string             `json:"active_task_id,omitempty"`
+	CompletedTasks int                `json:"completed_tasks"`
+	TotalTasks     int                `json:"total_tasks"`
+	StartedAt      *time.Time         `json:"started_at,omitempty"`
+	EndedAt        *time.Time         `json:"ended_at,omitempty"`
+	HasReceipts    bool               `json:"has_receipts"`
+	EvidenceCount  int                `json:"evidence_count"`
+	ObservedAt     time.Time          `json:"observed_at"`
 }
 
 // RunTask is a single task within a run detail projection.
@@ -420,7 +420,7 @@ type EvalSummary struct {
 	ModelCohortIDs            []string               `json:"model_cohort_ids"`
 	Status                    RunLifecycleStatus     `json:"status"`
 	VerificationStatus        EvalVerificationStatus `json:"verification_status"`
-	EventReceiptCount         int                    `json:"event_receipt_count"`
+	ReceiptCount              int                    `json:"receipt_count"`
 	MetricCount               int                    `json:"metric_count"`
 	PublishedProjectionSHA256 string                 `json:"published_projection_sha256,omitempty"`
 	CompletedAt               *time.Time             `json:"completed_at,omitempty"`
@@ -457,7 +457,7 @@ type EvalDetail struct {
 	ModelCohortIDs            []string               `json:"model_cohort_ids"`
 	Status                    RunLifecycleStatus     `json:"status"`
 	VerificationStatus        EvalVerificationStatus `json:"verification_status"`
-	EventReceiptCount         int                    `json:"event_receipt_count"`
+	ReceiptCount              int                    `json:"receipt_count"`
 	AssignedTasks             int                    `json:"assigned_tasks"`
 	TerminalAttempts          int                    `json:"terminal_attempts"`
 	Metrics                   []EvalMetricSummary    `json:"metrics"`

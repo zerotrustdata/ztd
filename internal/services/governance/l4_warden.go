@@ -34,8 +34,8 @@ type VerifiedTransaction struct {
 	StateRoot                  string
 	Nonce                      string
 	ExpiresAt                  time.Time
-	L2Status                   operatorv1.L2Status // Warden's L2 decision; L5 copies it into the event_receipt
-	L3Status                   operatorv1.L3Status // Warden's L3 decision; L5 copies it into the event_receipt
+	L2Status                   operatorv1.L2Status // Warden's L2 decision; L5 copies it into the receipt
+	L3Status                   operatorv1.L3Status // Warden's L3 decision; L5 copies it into the receipt
 	Posture                    constants.Posture
 	DeterministicStageEvidence []*operatorv1.DeterministicStageEvidence
 }
@@ -81,7 +81,7 @@ func newDeterministicStageEvidence(
 
 // RuntimeVault reports whether this runtime's encryption vault is unlocked. The
 // Warden checks it before dispatch: a locked vault means the local execution record
-// and the L5 event receipts cannot be written, so nothing may execute.
+// and the L5 receipts cannot be written, so nothing may execute.
 type RuntimeVault interface {
 	IsUnlocked() bool
 }
@@ -265,7 +265,7 @@ func (tv *L4Warden) VerifyEnvelope(ctx context.Context, envelope *govtypes.Gover
 	decodedPayload, err := tv.verifyPreDoctrine(ctx, envelope)
 	if err != nil {
 		// The error can embed violating payload content (paths, patterns). The full
-		// reason is carried by the signed rejection event receipt, not the plaintext log.
+		// reason is carried by the signed rejection receipt, not the plaintext log.
 		tv.logger.Error("Transaction rejected: STATELESS_VALIDATION_FAILED",
 			slog.Any("nonce", envelope.Nonce),
 			slog.Any("action_type", envelope.ActionType),
@@ -599,7 +599,7 @@ func (tv *L4Warden) verifyStateful(ctx context.Context, envelope *govtypes.Gover
 // status each layer records. L2 is evaluated before L3, and L2 gates L3 only when
 // the active posture requires L2 consensus. Each stage outcome is derived from
 // its status through the same table ValidateDeterministicProtocolChain reads, so
-// a stage and the event receipt status it is checked against cannot disagree.
+// a stage and the receipt status it is checked against cannot disagree.
 func (tv *L4Warden) verifyPosture(ctx context.Context, envelope *govtypes.GovernanceEnvelope, computedHash string, posture constants.Posture) (operatorv1.L2Status, operatorv1.L3Status, []*operatorv1.DeterministicStageEvidence, error) {
 	actionType := constants.ActionType(envelope.ActionType)
 	l2Start := governanceMonotonicNow()
@@ -662,7 +662,7 @@ func L3Required(actionType constants.ActionType, posture constants.Posture) bool
 	return actionType.IsMutation() && !actionType.AuthorizedByDecision() && posture.RequiresL3()
 }
 
-// l3StatusFor maps the L3 result of one envelope to the status its event_receipt
+// l3StatusFor maps the L3 result of one envelope to the status its receipt
 // records. A valid proof is REQUIRED_VALID even where L3 is not required, because
 // its verified stage is recorded as audit evidence. A required proof that did not
 // verify is REQUIRED_FAILED. Everything else is NOT_REQUIRED.
@@ -744,7 +744,7 @@ func verifyDocumentCollection(payload proto.Message) error {
 }
 
 // verifyMcpCallTarget admits an MCP_CALL only when its target_resource is the
-// payload's tool name. The signed event receipt records target_resource, and audit
+// payload's tool name. The signed receipt records target_resource, and audit
 // reads are told apart from other tool calls by it, so a caller-chosen target
 // could hide a call from, or slip it into, investigation context. Other payload
 // types pass.

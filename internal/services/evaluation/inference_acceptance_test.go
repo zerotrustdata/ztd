@@ -73,7 +73,7 @@ func TestValidateInferenceAcceptanceCase_StructuredJSON(t *testing.T) {
 				Part: &operatorv1.InferenceResponsePart_Text{Text: `{"answer":"structured-ok"}`},
 			}},
 		},
-		EventReceipt: &operatorv1.EventReceipt{ResultSummary: "ignored"},
+		Receipt: &operatorv1.ActionReceipt{ResultSummary: "ignored"},
 	}
 	require.NoError(t, ValidateInferenceAcceptanceCase(InferenceAcceptanceCaseStructuredJSON, resp))
 }

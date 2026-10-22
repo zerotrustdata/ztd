@@ -23,8 +23,8 @@ import (
 // attended call is submitted, waits on it once the call suspends, and closes it.
 type approvalStream interface {
 	// Wait asks the human for decision on txHash, blocks until the human decides, and
-	// returns the signed event_receipt: resumed on approve, L3_DENIED rejection on deny.
-	Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.EventReceipt, error)
+	// returns the signed receipt: resumed on approve, L3_DENIED rejection on deny.
+	Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.ActionReceipt, error)
 	// Close ends the subscription.
 	Close()
 }
@@ -64,7 +64,7 @@ type bannerStream struct {
 }
 
 // Wait prints the banner for txHash and waits for the human decision.
-func (s bannerStream) Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.EventReceipt, error) {
+func (s bannerStream) Wait(ctx context.Context, txHash, userID string, decision client.ApprovalDecision) (*operatorv1.ActionReceipt, error) {
 	return s.c.WaitForApproval(ctx, s.sub, txHash, userID, decision)
 }
 
@@ -81,9 +81,9 @@ func (s bannerStream) Close() {
 // The approve or deny decision is the human's. The driver never approves or denies
 // anything itself: the banner asks for the decision the case names. MCP and A2A
 // answer with a suspension, so the driver waits for the decision over SSE and
-// reports the signed event receipt it produced. Governed dispatch and the CLI hold the
+// reports the signed receipt it produced. Governed dispatch and the CLI hold the
 // request open until the decision, so the inner driver's answer already is the
-// signed event receipt or L3_DENIED rejection and no second wait is needed.
+// signed receipt or L3_DENIED rejection and no second wait is needed.
 type Attended struct {
 	inner          cases.Driver
 	persona        client.Persona
@@ -125,7 +125,7 @@ func (d *Attended) request(a cases.Attempt, decision evalv1.ConformanceApprovalD
 
 // Drive subscribes to approvals, then submits the attempt through the inner driver.
 // For an attended MCP or A2A case whose submission is suspended, it waits for the human decision
-// and returns it in place of the suspension: the resumed event receipt on approve (row 23),
+// and returns it in place of the suspension: the resumed receipt on approve (row 23),
 // or the Operator-signed L3_DENIED rejection on deny (row 24). Every other answer is
 // returned as the inner driver gave it.
 //
@@ -178,7 +178,7 @@ func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 	if onA2A {
 		a2a.stub.Begin(a.AttemptID)
 	}
-	eventReceipt, waitErr := stream.Wait(ctx, txHash, d.approverUserID, decision)
+	receipt, waitErr := stream.Wait(ctx, txHash, d.approverUserID, decision)
 	var waitCalls []*evalv1.ConformanceA2ACall
 	if onA2A {
 		waitCalls = a2a.stub.End(a.AttemptID)
@@ -188,7 +188,7 @@ func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 	}
 
 	return cases.Driven{
-		Observations: []*evalv1.ConformanceObservation{decisionObservation(eventReceipt)},
+		Observations: []*evalv1.ConformanceObservation{decisionObservation(receipt)},
 		A2ACalls:     append(append([]*evalv1.ConformanceA2ACall{}, driven.A2ACalls...), waitCalls...),
 	}, nil
 }
@@ -206,19 +206,19 @@ func blocksUntilDecision(ingress cases.Ingress) bool {
 	}
 }
 
-// decisionObservation records the signed event receipt of a human decision. A governance
+// decisionObservation records the signed receipt of a human decision. A governance
 // rejection (the L3_DENIED deny) is a REJECTION, as every ingress reports one; any
-// other event receipt is an event-receipt observation.
-func decisionObservation(eventReceipt *operatorv1.EventReceipt) *evalv1.ConformanceObservation {
-	if rejection := governance.EventReceiptRejection(eventReceipt); rejection != nil {
+// other receipt is a RECEIPT.
+func decisionObservation(receipt *operatorv1.ActionReceipt) *evalv1.ConformanceObservation {
+	if rejection := governance.ReceiptRejection(receipt); rejection != nil {
 		return &evalv1.ConformanceObservation{
 			Kind:      evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
 			Rejection: rejection,
 		}
 	}
 	return &evalv1.ConformanceObservation{
-		Kind:         evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
-		EventReceipt: eventReceipt,
+		Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+		Receipt: receipt,
 	}
 }
 

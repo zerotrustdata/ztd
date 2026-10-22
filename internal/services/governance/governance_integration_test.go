@@ -75,7 +75,7 @@ func TestGovernanceFlow(t *testing.T) {
 	}
 
 	// 3. L5Actuator Execution
-	eventReceipt, err := actuator.Execute(context.Background(), vt, nil)
+	receipt, err := actuator.Execute(context.Background(), vt, nil)
 	if err != nil {
 		t.Fatalf("L5Actuator execution failed: %v", err)
 	}
@@ -84,8 +84,8 @@ func TestGovernanceFlow(t *testing.T) {
 		t.Error("Expected handler to be executed")
 	}
 
-	if eventReceipt.TransactionId != env.Id {
-		t.Errorf("Expected event receipt tx id %s, got %s", env.Id, eventReceipt.TransactionId)
+	if receipt.TransactionId != env.Id {
+		t.Errorf("Expected receipt tx id %s, got %s", env.Id, receipt.TransactionId)
 	}
 }
 

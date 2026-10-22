@@ -164,7 +164,7 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 		constants.MCPToolSearchFile,
 		constants.MCPToolSearchDirectory,
 		constants.MCPToolRunShellCommand,
-		constants.MCPToolAuditEventReceiptList,
+		constants.MCPToolAuditReceiptList,
 	}
 
 	gold := baseGold(

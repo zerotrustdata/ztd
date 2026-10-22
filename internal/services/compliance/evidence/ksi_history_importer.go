@@ -195,7 +195,7 @@ func validKSIStatus(status compliance.KSIStatus) bool {
 
 func validKSIEvidenceArtifactType(artifactType string) bool {
 	switch compliance.EvidenceType(artifactType) {
-	case compliance.EvidenceTypeEventReceiptID, compliance.EvidenceTypeLedgerCommit, compliance.EvidenceTypeExecutionID, compliance.EvidenceTypeMerkleRoot:
+	case compliance.EvidenceTypeReceiptID, compliance.EvidenceTypeLedgerCommit, compliance.EvidenceTypeExecutionID, compliance.EvidenceTypeMerkleRoot:
 		return true
 	default:
 		return false

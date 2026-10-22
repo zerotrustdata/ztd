@@ -199,9 +199,9 @@ func (af adapterFixture) postAdapterWithStatus(t *testing.T, adapter protocolAda
 	return resp.StatusCode, out
 }
 
-// getAuditEventReceipts queries the Gateway audit event receipts list over mTLS and returns
+// getAuditReceipts queries the Gateway audit receipts list over mTLS and returns
 // the typed AuditEventReceiptsResponse. Any non-200 response fails the test.
-func getAuditEventReceipts(t *testing.T, client *http.Client, httpsPort int, sessionID string) models.AuditEventReceiptsResponse {
+func getAuditReceipts(t *testing.T, client *http.Client, httpsPort int, sessionID string) models.AuditEventReceiptsResponse {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, network.LocalhostHTTPSURL(httpsPort)+constants.APIPaths.AuditEventReceipts, nil)
 	require.NoError(t, err)
@@ -209,10 +209,10 @@ func getAuditEventReceipts(t *testing.T, client *http.Client, httpsPort int, ses
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode, "audit event receipts request must return HTTP 200")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "audit receipts request must return HTTP 200")
 
 	var out models.AuditEventReceiptsResponse
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
-	require.True(t, out.Success, "audit event receipts response must report success")
+	require.True(t, out.Success, "audit receipts response must report success")
 	return out
 }

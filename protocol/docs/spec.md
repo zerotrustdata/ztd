@@ -12,7 +12,7 @@ The **ztd Protocol** is a zero-trust execution and evidence platform for autonom
 ## 1. Architectural Foundations
 
 ### 1.1 Wire Format and Serialization
-- **External Wire Ingress & Egress**: Canonical JSON (`protojson`) is mandatory for all client-facing and external interfaces, including HTTP REST endpoints, WebSocket pub/sub command/result channels, Server-Sent Events (SSE), and audit event receipt exports.
+- **External Wire Ingress & Egress**: Canonical JSON (`protojson`) is mandatory for all client-facing and external interfaces, including HTTP REST endpoints, WebSocket pub/sub command/result channels, Server-Sent Events (SSE), and audit receipt exports.
 - **Internal Execution Substrate**: Binary Protocol Buffers (proto3) schemas defined in `protocol/proto/ztd/` serve as the single authoritative schema source. Runtimes decode canonical JSON into strongly typed protobuf messages immediately upon ingress.
 - **Fail-Closed Principle**: Any structural invalidity, missing required field, unsupported field type, expired timestamp, reused nonce, stale state root, or failed cryptographic verification immediately rejects the envelope prior to dispatch.
 
@@ -200,13 +200,13 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Layer 5: Actuator Boundary (Sole Execution Target)                  │
 │ • Deterministic stage evidence assembly & hash commitment           │
-│ • Initial EventReceipt signed & persisted to SQLAuditStore         │
+│ • Initial ActionReceipt signed & persisted to SQLAuditStore         │
 │ • Atomic append of CommitmentAttestation to SQLite ledger           │
 │ • JIT scoped capability minted (dissolved immediately post-call)    │
 │ • Native handler execution (shell, file, tool dispatch)             │
 │ • Output scrubbing (token redaction) at sovereign boundary          │
-│ • Final EventReceipt signed (COMPLETED/FAILED) with post-state root│
-│ • Signed EventReceiptPersistenceAttestation attached & published         │
+│ • Final ActionReceipt signed (COMPLETED/FAILED) with post-state root│
+│ • Signed ReceiptPersistenceAttestation attached & published         │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -241,11 +241,11 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 #### L5 Actuator: Sovereign Execution & Evidence Boundary
 - The sole subsystem authorized to perform mutations on the host runtime.
 - **Evidence Binding**: Compiles `DeterministicStageEvidence` across all previous gates.
-- **Initial Event receipt**: Signs an `EXECUTING` event receipt and records it to `SQLAuditStore`.
+- **Initial Receipt**: Signs an `EXECUTING` receipt and records it to `SQLAuditStore`.
 - **Ledger Commitment**: Atomically appends a `CommitmentAttestation` to the local commitment chain.
 - **JIT Capability**: Mints an ephemeral execution token restricted strictly to the verified `action_type` and `target_resource`, revoked immediately upon handler return.
-- **Sovereign Scrubbing**: When a scrubber is active, redacts secrets, tokens, and PII from execution outputs before they are signed into the event receipt. Without a scrubber, the signed summary is fixed text.
-- **Final Event receipt**: Updates event receipt status (`COMPLETED` or `FAILED`), records post-execution state root, signs canonical event receipt bytes, and persists a `EventReceiptPersistenceAttestation`.
+- **Sovereign Scrubbing**: When a scrubber is active, redacts secrets, tokens, and PII from execution outputs before they are signed into the receipt. Without a scrubber, the signed summary is fixed text.
+- **Final Receipt**: Updates receipt status (`COMPLETED` or `FAILED`), records post-execution state root, signs canonical receipt bytes, and persists a `ReceiptPersistenceAttestation`.
 
 ### 4.2 Governance Postures
 
@@ -260,11 +260,11 @@ Posture is configured at Gateway startup via `--posture <mode>` and is immutable
 
 ---
 
-## 5. EventReceipt & Attestation Ledger Model
+## 5. ActionReceipt & Attestation Ledger Model
 
-Execution produces an immutable cryptographic event receipt defined in `protocol/proto/ztd/operator/v1/operator.proto`.
+Execution produces an immutable cryptographic receipt defined in `protocol/proto/ztd/operator/v1/operator.proto`.
 
-### 5.1 EventReceipt Schema
+### 5.1 ActionReceipt Schema
 
 | Field Name | Type | Description |
 |:---|:---|:---|
@@ -276,19 +276,19 @@ Execution produces an immutable cryptographic event receipt defined in `protocol
 | `state_root_after` | `string` | State Merkle root immediately after execution. |
 | `executed_at_unix_ms` | `int64` | Millisecond Unix timestamp of completion. |
 | `signer_key_id` | `string` | Public key ID of the signing Operator Actuator. |
-| `signature` | `string` | Hex-encoded Ed25519 signature over canonical event receipt bytes. |
+| `signature` | `string` | Hex-encoded Ed25519 signature over canonical receipt bytes. |
 | `l2_status` | `L2Status` (enum) | `L2_STATUS_NOT_REQUIRED`, `L2_STATUS_REQUIRED_VALID`, `L2_STATUS_REQUIRED_FAILED`. |
 | `l3_status` | `L3Status` (enum) | `L3_STATUS_NOT_REQUIRED`, `L3_STATUS_REQUIRED_VALID`, `L3_STATUS_REQUIRED_FAILED`. |
 | `deterministic_stage_evidence`| `repeated DeterministicStageEvidence` | Ordered stage proofs emitted by L1, L2, L3, and L4. |
-| `final_persistence_attestation`| `EventReceiptPersistenceAttestation` | Cryptographic proof binding event receipt to audit storage. |
-| `failure_code` | `EventReceiptFailureCode` (enum) | Failure classification (UNSPECIFIED on success). |
-| `rejection_code` | `GovernanceRejectionCode` (enum) | Verification check that rejected the transaction. Set exactly when `failure_code` is `EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`. |
+| `final_persistence_attestation`| `ReceiptPersistenceAttestation` | Cryptographic proof binding receipt to audit storage. |
+| `failure_code` | `ReceiptFailureCode` (enum) | Failure classification (UNSPECIFIED on success). |
+| `rejection_code` | `GovernanceRejectionCode` (enum) | Verification check that rejected the transaction. Set exactly when `failure_code` is `RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`. |
 | `event_type` | `string` | Originating request event name. |
 | `action_type` | `string` | Originating governance action class. |
 
-### 5.2 Deterministic Event receipt Signing
+### 5.2 Deterministic Receipt Signing
 
-The event receipt signature is generated over a canonical JSON serialization of the event receipt fields (`CanonicalizeEventReceipt`):
+The receipt signature is generated over a canonical JSON serialization of the receipt fields (`CanonicalizeActionReceipt`):
 
 ```json
 {
@@ -446,7 +446,7 @@ JSON-RPC error codes are returned on validation and governance failures. The `-3
 }
 ```
 
-### 9.2 Corresponding Completed EventReceipt
+### 9.2 Corresponding Completed ActionReceipt
 
 ```json
 {

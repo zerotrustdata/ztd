@@ -34,8 +34,8 @@ import (
 
 const outcomeTestSkill = "list_directory"
 
-func outcomeEventReceipt(txID string) *operatorv1.EventReceipt {
-	return &operatorv1.EventReceipt{
+func outcomeReceipt(txID string) *operatorv1.ActionReceipt {
+	return &operatorv1.ActionReceipt{
 		TransactionId:   txID,
 		TransactionHash: "hash-" + txID,
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -61,7 +61,7 @@ func outcomeDispatchRequest() models.OperatorCommandRequest {
 }
 
 func outcomeRejection(txID string) *operatorv1.GovernanceRejection {
-	return &operatorv1.GovernanceRejection{Error: "L4 rejected the envelope", EventReceipt: outcomeEventReceipt(txID)}
+	return &operatorv1.GovernanceRejection{Error: "L4 rejected the envelope", Receipt: outcomeReceipt(txID)}
 }
 
 func outcomeRefusal(code operatorv1.IngressRefusalCode) *operatorv1.IngressRefusal {
@@ -117,7 +117,7 @@ func TestGovernedOutcomeTyped(t *testing.T) {
 		outcome     *GovernedOutcome
 		wantUntyped bool
 	}{
-		{name: "event receipt is typed", outcome: eventReceiptOutcome(outcomeEventReceipt("tx-1"))},
+		{name: "receipt is typed", outcome: receiptOutcome(outcomeReceipt("tx-1"))},
 		{name: "rejection is typed", outcome: rejectionOutcome(outcomeRejection("tx-1"))},
 		{name: "refusal is typed", outcome: refusalOutcome(outcomeRefusal(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MALFORMED_REQUEST))},
 		{name: "suspension is typed", outcome: suspendedOutcome(&mcp.GovernedSuspension{TxHash: "tx-2"})},
@@ -147,10 +147,10 @@ func TestSubmitEnvelope_ClassifiesDirectAnswers(t *testing.T) {
 		wantKind evalv1.ConformanceObservationKind
 	}{
 		{
-			name:     "200 event receipt",
+			name:     "200 receipt",
 			status:   http.StatusOK,
-			body:     canonicalBody(t, outcomeEventReceipt("tx-1")),
-			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
+			body:     canonicalBody(t, outcomeReceipt("tx-1")),
+			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 		},
 		{
 			name:     "403 rejection",
@@ -177,9 +177,9 @@ func TestSubmitEnvelope_ClassifiesDirectAnswers(t *testing.T) {
 			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED,
 		},
 		{
-			name:     "200 event receipt with trailing text",
+			name:     "200 receipt with trailing text",
 			status:   http.StatusOK,
-			body:     append(canonicalBody(t, outcomeEventReceipt("tx-1")), []byte(" trailing")...),
+			body:     append(canonicalBody(t, outcomeReceipt("tx-1")), []byte(" trailing")...),
 			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED,
 		},
 	}
@@ -208,8 +208,8 @@ func TestSubmitEnvelope_TransportFailureIsError(t *testing.T) {
 }
 
 func TestDispatchCommand_ClassifiesDispatchAnswers(t *testing.T) {
-	dispatched := &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ActionType: string(constants.ActionTypeFileEdit), EventReceipt: outcomeEventReceipt("tx-1")}
-	noEventReceipt := &operatorv1.GovernedDispatchResult{TransactionId: "tx-1"}
+	dispatched := &operatorv1.GovernedDispatchResult{TransactionId: "tx-1", ActionType: string(constants.ActionTypeFileEdit), Receipt: outcomeReceipt("tx-1")}
+	noReceipt := &operatorv1.GovernedDispatchResult{TransactionId: "tx-1"}
 	tests := []struct {
 		name     string
 		status   int
@@ -217,15 +217,15 @@ func TestDispatchCommand_ClassifiesDispatchAnswers(t *testing.T) {
 		wantKind evalv1.ConformanceObservationKind
 	}{
 		{
-			name:     "200 dispatch result with event receipt",
+			name:     "200 dispatch result with receipt",
 			status:   http.StatusOK,
 			body:     canonicalBody(t, dispatched),
-			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
+			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 		},
 		{
-			name:     "200 dispatch result without event receipt",
+			name:     "200 dispatch result without receipt",
 			status:   http.StatusOK,
-			body:     canonicalBody(t, noEventReceipt),
+			body:     canonicalBody(t, noReceipt),
 			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED,
 		},
 		{
@@ -248,7 +248,7 @@ func TestDispatchCommand_ClassifiesDispatchAnswers(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, outcome)
 			assert.Equal(t, tt.wantKind, outcome.Observation.GetKind())
-			if tt.wantKind == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT {
+			if tt.wantKind == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 				require.NotNil(t, outcome.Dispatch)
 				assert.Equal(t, "tx-1", outcome.Dispatch.GetTransactionId())
 			} else {
@@ -290,7 +290,7 @@ func TestDispatchCommand_TransportFailureIsError(t *testing.T) {
 }
 
 func TestMCPToolsCall_ClassifiesResults(t *testing.T) {
-	eventReceiptJSON := canonicalBody(t, outcomeEventReceipt("tx-1"))
+	receiptJSON := canonicalBody(t, outcomeReceipt("tx-1"))
 	suspension := &mcp.GovernedSuspension{ID: "tx-2", Status: "suspended", TxHash: "tx-2", ApprovalURL: "https://example.test/approve/tx-2", Message: "approval pending"}
 	tests := []struct {
 		name     string
@@ -298,9 +298,9 @@ func TestMCPToolsCall_ClassifiesResults(t *testing.T) {
 		wantKind evalv1.ConformanceObservationKind
 	}{
 		{
-			name:     "result carries event receipt",
-			body:     rpcAnswer(t, mustJSON(t, mcp.CallToolResult{Content: []mcp.TextContent{{Type: "text", Text: "ok"}}, EventReceipt: eventReceiptJSON}), nil),
-			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
+			name:     "result carries receipt",
+			body:     rpcAnswer(t, mustJSON(t, mcp.CallToolResult{Content: []mcp.TextContent{{Type: "text", Text: "ok"}}, Receipt: receiptJSON}), nil),
+			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 		},
 		{
 			name:     "result carries suspension",
@@ -328,7 +328,7 @@ func TestMCPToolsCall_ClassifiesResults(t *testing.T) {
 			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED,
 		},
 		{
-			name:     "result without event receipt or suspension is untyped",
+			name:     "result without receipt or suspension is untyped",
 			body:     rpcAnswer(t, json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`), nil),
 			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED,
 		},
@@ -357,7 +357,7 @@ func TestMCPToolsCall_ClassifiesResults(t *testing.T) {
 }
 
 func TestA2ACall_ClassifiesResults(t *testing.T) {
-	eventReceiptJSON := canonicalBody(t, outcomeEventReceipt("tx-1"))
+	receiptJSON := canonicalBody(t, outcomeReceipt("tx-1"))
 	suspension := &mcp.GovernedSuspension{ID: "tx-2", Status: "suspended", TxHash: "tx-2", ApprovalURL: "https://example.test/approve/tx-2", Message: "approval pending"}
 	tests := []struct {
 		name     string
@@ -365,9 +365,9 @@ func TestA2ACall_ClassifiesResults(t *testing.T) {
 		wantKind evalv1.ConformanceObservationKind
 	}{
 		{
-			name:     "success wraps event receipt",
-			body:     rpcAnswer(t, mustJSON(t, mcp.A2ASuccessResponse{ID: "tx-1", Result: eventReceiptJSON}), nil),
-			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
+			name:     "success wraps receipt",
+			body:     rpcAnswer(t, mustJSON(t, mcp.A2ASuccessResponse{ID: "tx-1", Result: receiptJSON}), nil),
+			wantKind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 		},
 		{
 			name:     "result is suspension",

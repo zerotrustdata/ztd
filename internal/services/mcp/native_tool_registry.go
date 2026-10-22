@@ -52,8 +52,8 @@ func RegisterNativeTools(registry *ToolRegistry) error {
 		&FileReadTool{},
 		&SearchFileTool{},
 		&SearchDirectoryTool{},
-		&AuditEventReceiptListTool{},
-		&AuditEventReceiptGetTool{},
+		&AuditReceiptListTool{},
+		&AuditReceiptGetTool{},
 	}
 
 	for _, tool := range tools {

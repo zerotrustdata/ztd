@@ -178,7 +178,7 @@ func TestBundleVerifierConformanceSourceInventoryGateFailsClosed(t *testing.T) {
 	recordPath := path.Join(runtimeDir, constants.ConformanceRecordFilename)
 	digestPath := path.Join(runtimeDir, constants.ConformanceRecordDigestFilename)
 	legacyReportPath := path.Join(runtimeDir, "report.json")
-	legacyEvidencePath := path.Join(runtimeDir, "evidence", "event_receipt.json")
+	legacyEvidencePath := path.Join(runtimeDir, "evidence", "receipt.json")
 	nestedRecordPath := path.Join(runtimeDir, "archive", constants.ConformanceRecordFilename)
 	tests := []struct {
 		name    string

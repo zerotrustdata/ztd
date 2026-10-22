@@ -20,8 +20,8 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func verifyOpts(operatorID string) oracletest.EventReceiptOpts {
-	return oracletest.EventReceiptOpts{
+func verifyOpts(operatorID string) oracletest.ReceiptOpts {
+	return oracletest.ReceiptOpts{
 		TransactionID: "tx-1",
 		OperatorID:    operatorID,
 		SessionID:     "sess-1",
@@ -31,8 +31,8 @@ func verifyOpts(operatorID string) oracletest.EventReceiptOpts {
 	}
 }
 
-func findStage(eventReceipt *operatorv1.EventReceipt, kind operatorv1.DeterministicStageKind) *operatorv1.DeterministicStageEvidence {
-	for _, stage := range eventReceipt.GetDeterministicStageEvidence() {
+func findStage(receipt *operatorv1.ActionReceipt, kind operatorv1.DeterministicStageKind) *operatorv1.DeterministicStageEvidence {
+	for _, stage := range receipt.GetDeterministicStageEvidence() {
 		if stage.GetKind() == kind {
 			return stage
 		}
@@ -40,12 +40,12 @@ func findStage(eventReceipt *operatorv1.EventReceipt, kind operatorv1.Determinis
 	return nil
 }
 
-func TestVerifyEventReceipt(t *testing.T) {
+func TestVerifyReceipt(t *testing.T) {
 	type verifyCase struct {
 		name      string
 		anchors   []*evalv1.ConformanceAnchor
 		runtimeID string
-		mutate    func(t *testing.T, signer oracletest.Signer, eventReceipt *operatorv1.EventReceipt)
+		mutate    func(t *testing.T, signer oracletest.Signer, receipt *operatorv1.ActionReceipt)
 		want      error
 	}
 	signer := oracletest.NewSigner(t)
@@ -53,24 +53,24 @@ func TestVerifyEventReceipt(t *testing.T) {
 	pinned := []*evalv1.ConformanceAnchor{signer.Anchor("op-1")}
 
 	tests := []verifyCase{
-		{name: "valid event receipt", anchors: pinned, runtimeID: "op-1"},
+		{name: "valid receipt", anchors: pinned, runtimeID: "op-1"},
 		{
 			name: "flipped signature byte", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, _ oracletest.Signer, eventReceipt *operatorv1.EventReceipt) {
-				sig, err := hex.DecodeString(eventReceipt.Signature)
+			mutate: func(t *testing.T, _ oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+				sig, err := hex.DecodeString(receipt.Signature)
 				require.NoError(t, err)
 				sig[0] ^= 0x01
-				eventReceipt.Signature = hex.EncodeToString(sig)
+				receipt.Signature = hex.EncodeToString(sig)
 			},
-			want: constants.ErrEventReceiptSignatureInvalid,
+			want: constants.ErrActionReceiptSignatureInvalid,
 		},
 		{
-			name: "event receipt signed by a foreign key under the pinned key id", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, _ oracletest.Signer, eventReceipt *operatorv1.EventReceipt) {
-				eventReceipt.SignerKeyId = signer.KeyID
-				foreign.Resign(t, eventReceipt)
+			name: "receipt signed by a foreign key under the pinned key id", anchors: pinned, runtimeID: "op-1",
+			mutate: func(t *testing.T, _ oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+				receipt.SignerKeyId = signer.KeyID
+				foreign.Resign(t, receipt)
 			},
-			want: constants.ErrEventReceiptSignatureInvalid,
+			want: constants.ErrActionReceiptSignatureInvalid,
 		},
 		{name: "signer key not pinned", anchors: nil, runtimeID: "op-1", want: constants.ErrConformanceAnchorUnknown},
 		{
@@ -79,61 +79,61 @@ func TestVerifyEventReceipt(t *testing.T) {
 		},
 		{
 			name: "attestation removed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, _ oracletest.Signer, eventReceipt *operatorv1.EventReceipt) {
-				eventReceipt.FinalPersistenceAttestation = nil
+			mutate: func(t *testing.T, _ oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+				receipt.FinalPersistenceAttestation = nil
 			},
-			want: constants.ErrEventReceiptPersistenceAttestationMissing,
+			want: constants.ErrReceiptPersistenceAttestationMissing,
 		},
 		{
 			name: "stages reordered and re-signed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, s oracletest.Signer, eventReceipt *operatorv1.EventReceipt) {
-				stages := eventReceipt.DeterministicStageEvidence
+			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+				stages := receipt.DeterministicStageEvidence
 				stages[0], stages[1] = stages[1], stages[0]
-				s.Resign(t, eventReceipt)
+				s.Resign(t, receipt)
 			},
 			want: constants.ErrInvalidEvidenceGraph,
 		},
 		{
 			name: "wrong parent stage id and re-signed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, s oracletest.Signer, eventReceipt *operatorv1.EventReceipt) {
-				findStage(eventReceipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE).ParentStageId = "tx-1:bogus"
-				s.Resign(t, eventReceipt)
+			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE).ParentStageId = "tx-1:bogus"
+				s.Resign(t, receipt)
 			},
 			want: constants.ErrInvalidEvidenceGraph,
 		},
 		{
 			name: "one stage operator id cleared and re-signed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, s oracletest.Signer, eventReceipt *operatorv1.EventReceipt) {
-				findStage(eventReceipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).OperatorId = ""
-				s.Resign(t, eventReceipt)
+			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).OperatorId = ""
+				s.Resign(t, receipt)
 			},
-			want: constants.ErrConformanceEventReceiptUnclassifiable,
+			want: constants.ErrConformanceReceiptUnclassifiable,
 		},
 		{
 			// The chain validator rejects a stage that names a different operator
 			// before the identity check runs, so the failure is an evidence-graph error.
 			name: "one stage operator id changed to another operator and re-signed", anchors: pinned, runtimeID: "op-1",
-			mutate: func(t *testing.T, s oracletest.Signer, eventReceipt *operatorv1.EventReceipt) {
-				findStage(eventReceipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).OperatorId = "op-2"
-				s.Resign(t, eventReceipt)
+			mutate: func(t *testing.T, s oracletest.Signer, receipt *operatorv1.ActionReceipt) {
+				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).OperatorId = "op-2"
+				s.Resign(t, receipt)
 			},
 			want: constants.ErrInvalidEvidenceGraph,
 		},
 		{
 			name: "stages name an operator other than the pinned runtime", anchors: []*evalv1.ConformanceAnchor{signer.Anchor("op-2")}, runtimeID: "op-2",
-			want: constants.ErrConformanceEventReceiptUnclassifiable,
+			want: constants.ErrConformanceReceiptUnclassifiable,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			eventReceipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
+			receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 			if tt.mutate != nil {
-				tt.mutate(t, signer, eventReceipt)
+				tt.mutate(t, signer, receipt)
 			}
 			set, err := NewAnchorSet(tt.anchors)
 			require.NoError(t, err)
 
-			chain, err := VerifyEventReceipt(set, tt.runtimeID, eventReceipt)
+			chain, err := VerifyReceipt(set, tt.runtimeID, receipt)
 			if tt.want == nil {
 				require.NoError(t, err)
 				assert.Len(t, chain.Stages, 7)
@@ -142,28 +142,28 @@ func TestVerifyEventReceipt(t *testing.T) {
 			require.Error(t, err)
 			assert.Nil(t, chain)
 			assert.ErrorIs(t, err, tt.want)
-			if tt.want != constants.ErrConformanceEventReceiptUnclassifiable {
-				assert.NotErrorIs(t, err, constants.ErrConformanceEventReceiptUnclassifiable)
+			if tt.want != constants.ErrConformanceReceiptUnclassifiable {
+				assert.NotErrorIs(t, err, constants.ErrConformanceReceiptUnclassifiable)
 			}
 		})
 	}
 }
 
-func TestVerifyEventReceiptAcceptsAnyOperatorUnderGatewayRuntime(t *testing.T) {
+func TestVerifyReceiptAcceptsAnyOperatorUnderGatewayRuntime(t *testing.T) {
 	signer := oracletest.NewSigner(t)
 	set, err := NewAnchorSet([]*evalv1.ConformanceAnchor{signer.Anchor(GatewayRuntimeID)})
 	require.NoError(t, err)
-	eventReceipt := signer.Executed(t, verifyOpts("gateway-operator"), "prior-0", "hash-1")
+	receipt := signer.Executed(t, verifyOpts("gateway-operator"), "prior-0", "hash-1")
 
-	_, err = VerifyEventReceipt(set, GatewayRuntimeID, eventReceipt)
+	_, err = VerifyReceipt(set, GatewayRuntimeID, receipt)
 	require.NoError(t, err)
 }
 
-func TestVerifyEventReceiptRejectsNilEventReceipt(t *testing.T) {
+func TestVerifyReceiptRejectsNilReceipt(t *testing.T) {
 	signer := oracletest.NewSigner(t)
 	set, err := NewAnchorSet([]*evalv1.ConformanceAnchor{signer.Anchor("op-1")})
 	require.NoError(t, err)
 
-	_, err = VerifyEventReceipt(set, "op-1", nil)
+	_, err = VerifyReceipt(set, "op-1", nil)
 	assert.ErrorIs(t, err, constants.ErrConformanceAnchorUnknown)
 }

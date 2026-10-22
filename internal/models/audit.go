@@ -14,7 +14,7 @@ import (
 // AuditScope selects evidence by ingress identity and investigation. Empty
 // fields leave that dimension unrestricted; app records need not have an
 // Operator session. ExcludeAuditReads drops the audit-read tools' own MCP_CALL
-// event receipts before pagination; every other event receipt stays in scope.
+// receipts before pagination; every other receipt stays in scope.
 type AuditScope struct {
 	OperatorID        string
 	OperatorSessionID string

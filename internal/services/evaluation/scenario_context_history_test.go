@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestToolSelectInvestigationChecksCurrentHistoryWithoutSeededEventReceipts(t *testing.T) {
+func TestToolSelectInvestigationChecksCurrentHistoryWithoutSeededReceipts(t *testing.T) {
 	t.Parallel()
 	blueprint := toolSelectInvestigation()
 
@@ -25,7 +25,7 @@ func TestToolSelectInvestigationChecksCurrentHistoryWithoutSeededEventReceipts(t
 	check := *blueprint.Gold.ContentCheck
 	for _, output := range []string{
 		"There are no recorded actions in the current investigation history.",
-		"Event receipt 7f2a records the operator action that checked the service status.",
+		"Receipt 7f2a records the operator action that checked the service status.",
 	} {
 		passed, detail := evaluateContentCheck(output, check, ScenarioWorkspace{})
 		assert.True(t, passed, "%q: %s", output, detail)

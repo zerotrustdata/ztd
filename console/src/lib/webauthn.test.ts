@@ -74,7 +74,7 @@ describe('ceremonies', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { publicKey: { challenge: 'AQ', allowCredentials: [] } }))
-      .mockResolvedValueOnce(jsonResponse(200, { event_receipt: {} }));
+      .mockResolvedValueOnce(jsonResponse(200, { receipt: {} }));
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('navigator', { credentials: { get: vi.fn().mockResolvedValue(fakeAssertion()) } });
 

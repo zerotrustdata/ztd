@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestKSIEventReceiptVerification_RejectsSignedFieldTampering(t *testing.T) {
+func TestKSIReceiptVerification_RejectsSignedFieldTampering(t *testing.T) {
 	deps := fullDeps(t)
-	record := deps.Audit.(*mockAuditReader).eventReceipts[0]
-	record.EventReceipt.ResultSummary = "tampered-after-signing"
+	record := deps.Audit.(*mockAuditReader).receipts[0]
+	record.ActionReceipt.ResultSummary = "tampered-after-signing"
 
 	methods := DefaultMethods(deps)
 	mla08Methods, ok := methods["KSI-MLA-08"]
@@ -30,10 +30,10 @@ func TestKSIEventReceiptVerification_RejectsSignedFieldTampering(t *testing.T) {
 	assert.False(t, satisfied, phase0RegressionAfterFix+": signed-field tampering fails cryptographic KSI verification")
 }
 
-func TestKSIEventReceiptVerification_RejectsMissingFinalPersistenceAttestation(t *testing.T) {
+func TestKSIReceiptVerification_RejectsMissingFinalPersistenceAttestation(t *testing.T) {
 	deps := fullDeps(t)
-	record := deps.Audit.(*mockAuditReader).eventReceipts[0]
-	record.EventReceipt.FinalPersistenceAttestation = nil
+	record := deps.Audit.(*mockAuditReader).receipts[0]
+	record.ActionReceipt.FinalPersistenceAttestation = nil
 
 	methods := DefaultMethods(deps)
 	mla08Methods := methods["KSI-MLA-08"]
@@ -43,5 +43,5 @@ func TestKSIEventReceiptVerification_RejectsMissingFinalPersistenceAttestation(t
 	require.NoError(t, err)
 	assert.False(t, satisfied, phase0RegressionAfterFix+": missing final-persistence evidence fails cryptographic KSI verification")
 	require.NotEmpty(t, evidence)
-	assert.Equal(t, string(EvidenceTypeEventReceiptID), evidence[0].GetArtifactType())
+	assert.Equal(t, string(EvidenceTypeReceiptID), evidence[0].GetArtifactType())
 }

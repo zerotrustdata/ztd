@@ -63,7 +63,7 @@ func L2Enforced(envelope *govtypes.GovernanceEnvelope, posture constants.Posture
 		actionType.ChangesState(envelope.GetTargetResource())
 }
 
-// l2StatusFor maps the L2 result of one envelope to the status its event_receipt
+// l2StatusFor maps the L2 result of one envelope to the status its receipt
 // records. A valid proof is REQUIRED_VALID even where L2 is not enforced, because
 // its verified stage is recorded as audit evidence. A failed enforced proof is
 // REQUIRED_FAILED. Everything else is NOT_REQUIRED.

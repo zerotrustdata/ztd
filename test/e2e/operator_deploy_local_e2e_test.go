@@ -186,7 +186,7 @@ func TestOperatorDeploy_LocalLifecycle(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stopOutput), &stopped))
 	require.True(t, stopped.Success)
 	require.Equal(t, added[0].OperatorSessionID, stopped.OperatorSessionID)
-	require.NotEmpty(t, stopped.TransactionID, "targeted stop must carry a governed shutdown event receipt")
+	require.NotEmpty(t, stopped.TransactionID, "targeted stop must carry a governed shutdown receipt")
 
 	// A CLI cancellation can leave a worker that has never reached the registry.
 	// Exercise teardown of that exact failure, alongside the healthy cohort.
@@ -366,28 +366,28 @@ func verifyDeploymentFanOut(t *testing.T, bin, root string, sessions []string) {
 		require.WithinDuration(t, time.Now(), op.Operator.LastHeartbeatAt.AsTime(), constants.OperatorHeartbeatStaleAfter)
 		rel, err := filepath.Rel(root, op.Operator.LocalDir)
 		require.NoError(t, err)
-		require.False(t, filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)), "event receipt evidence must belong to this fleet")
+		require.False(t, filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)), "receipt evidence must belong to this fleet")
 		fileSvc, err := fs.NewRuntimeFileService(op.Operator.LocalDir, testutil.NewTestLogger())
 		require.NoError(t, err)
-		// The Operator's local event receipt is authoritative; its content columns are
+		// The Operator's local receipt is authoritative; its content columns are
 		// sealed with the Operator's vault key, so read through the audit store.
 		record, err := storage.ReadLocalEventReceipt(fileSvc, testutil.NewTestLogger(), keystore.Options{}, result.TransactionID)
 		require.NoError(t, err)
-		require.NotNil(t, record, "the Operator must hold its own local event receipt")
-		eventReceipt := record.EventReceipt
-		require.NotNil(t, eventReceipt, "the local event receipt must carry its signed canonical body")
-		require.Equal(t, result.TransactionID, eventReceipt.TransactionId)
+		require.NotNil(t, record, "the Operator must hold its own local receipt")
+		receipt := record.ActionReceipt
+		require.NotNil(t, receipt, "the local receipt must carry its signed canonical body")
+		require.Equal(t, result.TransactionID, receipt.TransactionId)
 		require.Equal(t, result.OperatorID, record.OperatorID)
 		require.Equal(t, result.OperatorSessionID, record.OperatorSessionID)
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
-		key, err := governance.SignerPublicKey(eventReceipt.SignerKeyId)
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+		key, err := governance.SignerPublicKey(receipt.SignerKeyId)
 		require.NoError(t, err)
-		require.NoError(t, governance.VerifyEventReceiptSignature(eventReceipt, key))
+		require.NoError(t, governance.VerifyActionReceiptSignature(receipt, key))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		require.Eventually(t, func() bool {
 			projected, err := e2eClient.GetEventReceipt(ctx, result.TransactionID)
-			return err == nil && proto.Equal(projected, eventReceipt)
-		}, 10*time.Second, 50*time.Millisecond, "Gateway must project the same signed local event receipt")
+			return err == nil && proto.Equal(projected, receipt)
+		}, 10*time.Second, 50*time.Millisecond, "Gateway must project the same signed local receipt")
 		cancel()
 	}
 }

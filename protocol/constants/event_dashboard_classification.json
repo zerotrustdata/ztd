@@ -154,10 +154,10 @@
       "dashboard_safe": true,
       "description": "Port check request events. Emitted by the operator. Safe for narrative display."
     },
-    "ztd.v1.operator.event_receipt": {
+    "ztd.v1.operator.receipt": {
       "classification": "governed_record_only",
       "dashboard_safe": false,
-      "description": "Event receipt recorded events. Persisted as governed records, not emitted as browser telemetry. Dashboard state derives from projections."
+      "description": "Receipt recorded events. Persisted as governed records, not emitted as browser telemetry. Dashboard state derives from projections."
     },
     "ztd.v1.operator.reputation": {
       "classification": "produced_to_sse",

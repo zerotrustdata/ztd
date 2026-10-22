@@ -315,7 +315,7 @@ function validateRunSummary(value: unknown, endpoint: string): RunSummary {
     total_tasks: requireNumber(obj, 'total_tasks', endpoint),
     started_at: optionalString(obj, 'started_at'),
     ended_at: optionalString(obj, 'ended_at'),
-    has_event_receipts: requireBoolean(obj, 'has_event_receipts', endpoint),
+    has_receipts: requireBoolean(obj, 'has_receipts', endpoint),
     evidence_count: requireNumber(obj, 'evidence_count', endpoint),
     observed_at: requireString(obj, 'observed_at', endpoint),
   };
@@ -395,7 +395,7 @@ function validateEvalSummary(value: unknown, endpoint: string): EvalSummary {
     arm_id: requireString(obj, 'arm_id', endpoint),
     status: requireEnum(obj, 'status', endpoint, isRunLifecycleStatus),
     verification_status: requireEnum(obj, 'verification_status', endpoint, isEvalVerificationStatus),
-    event_receipt_count: requireNumber(obj, 'event_receipt_count', endpoint),
+    receipt_count: requireNumber(obj, 'receipt_count', endpoint),
     metric_count: requireNumber(obj, 'metric_count', endpoint),
     published_projection_sha256: optionalString(obj, 'published_projection_sha256'),
     completed_at: optionalString(obj, 'completed_at'),
@@ -422,7 +422,7 @@ function validateEvalDetail(body: Record<string, unknown>): EvalDetail {
   requireString(body, 'suite_version', 'eval_detail');
   requireString(body, 'arm_id', 'eval_detail');
   requireString(body, 'observed_at', 'eval_detail');
-  requireNumber(body, 'event_receipt_count', 'eval_detail');
+  requireNumber(body, 'receipt_count', 'eval_detail');
   requireNumber(body, 'assigned_tasks', 'eval_detail');
   requireNumber(body, 'terminal_attempts', 'eval_detail');
   const metrics = requireArray(body.metrics, 'eval_detail', 'metrics').map((m) => validateEvalMetric(m, 'eval_detail'));
@@ -436,7 +436,7 @@ function validateEvalDetail(body: Record<string, unknown>): EvalDetail {
     model_provider: optionalString(body, 'model_provider'),
     status: requireEnum(body, 'status', 'eval_detail', isRunLifecycleStatus),
     verification_status: requireEnum(body, 'verification_status', 'eval_detail', isEvalVerificationStatus),
-    event_receipt_count: body.event_receipt_count as number,
+    receipt_count: body.receipt_count as number,
     assigned_tasks: body.assigned_tasks as number,
     terminal_attempts: body.terminal_attempts as number,
     metrics,

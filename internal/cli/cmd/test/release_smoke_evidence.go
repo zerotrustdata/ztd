@@ -25,7 +25,7 @@ var smokeRequiredChecks = []string{
 	"commitment_chain",
 	"git_merkle_root",
 	"file_mutation_linkage",
-	"event_receipt_commitment_crosslink",
+	"receipt_commitment_crosslink",
 }
 
 // smokeReportEvidence is the typed outcome of checking one `report all` output
@@ -33,7 +33,7 @@ var smokeRequiredChecks = []string{
 type smokeReportEvidence struct {
 	Name             string   `json:"name"`
 	Dir              string   `json:"dir"`
-	EventReceiptRows int      `json:"event_receipt_rows"`
+	ReceiptRows      int      `json:"receipt_rows"`
 	CommitmentRows   int      `json:"commitment_rows"`
 	FileMutationRows int      `json:"file_mutation_rows"`
 	VerificationRows int      `json:"verification_rows"`
@@ -42,32 +42,32 @@ type smokeReportEvidence struct {
 	PassedChecks     []string `json:"passed_checks"`
 	Failures         []string `json:"failures,omitempty"`
 
-	// eventReceiptTransactions maps each completed event receipt row's action type to its
-	// transaction IDs, so scenario event receipts can be correlated to the export.
-	eventReceiptTransactions map[string][]string
+	// receiptTransactions maps each completed receipt row's action type to its
+	// transaction IDs, so scenario receipts can be correlated to the export.
+	receiptTransactions map[string][]string
 }
 
-// hasCompletedEventReceipt reports whether the export holds a completed event receipt for
+// hasCompletedReceipt reports whether the export holds a completed receipt for
 // txID, the transaction the scenario observed through the Gateway.
-func (ev *smokeReportEvidence) hasCompletedEventReceipt(actionType, txID string) bool {
-	return slices.Contains(ev.eventReceiptTransactions[actionType], txID)
+func (ev *smokeReportEvidence) hasCompletedReceipt(actionType, txID string) bool {
+	return slices.Contains(ev.receiptTransactions[actionType], txID)
 }
 
 // evaluateSmokeReport reads the CSV exports and the verification summary that
 // `report all` wrote into dir. Every requirement is checked, and every failed
 // requirement is recorded so the runner can report all of them at once.
 func evaluateSmokeReport(name, dir string) (smokeReportEvidence, error) {
-	ev := smokeReportEvidence{Name: name, Dir: dir, eventReceiptTransactions: map[string][]string{}}
+	ev := smokeReportEvidence{Name: name, Dir: dir, receiptTransactions: map[string][]string{}}
 
-	eventReceipts, err := readSmokeCSV(filepath.Join(dir, constants.ReportEventReceiptsFilename))
+	receipts, err := readSmokeCSV(filepath.Join(dir, constants.ReportReceiptsFilename))
 	if err != nil {
 		return ev, err
 	}
-	ev.EventReceiptRows = len(eventReceipts.rows)
+	ev.ReceiptRows = len(receipts.rows)
 	completed := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED.String()
-	for _, row := range eventReceipts.rows {
+	for _, row := range receipts.rows {
 		if row["status"] == completed {
-			ev.eventReceiptTransactions[row["action_type"]] = append(ev.eventReceiptTransactions[row["action_type"]], row["transaction_id"])
+			ev.receiptTransactions[row["action_type"]] = append(ev.receiptTransactions[row["action_type"]], row["transaction_id"])
 		}
 	}
 
@@ -90,8 +90,8 @@ func evaluateSmokeReport(name, dir string) (smokeReportEvidence, error) {
 	ev.VerificationRows = len(verification.rows)
 	ev.checkVerification(verification.rows)
 
-	if ev.EventReceiptRows == 0 {
-		ev.Failures = append(ev.Failures, constants.ReportEventReceiptsFilename+" is empty")
+	if ev.ReceiptRows == 0 {
+		ev.Failures = append(ev.Failures, constants.ReportReceiptsFilename+" is empty")
 	}
 	if ev.CommitmentRows == 0 {
 		ev.Failures = append(ev.Failures, "commitments.csv is empty")
@@ -141,11 +141,11 @@ func (ev *smokeReportEvidence) checkVerification(rows []map[string]string) {
 	}
 }
 
-// requireCompletedEventReceipt records a failure unless the export holds a completed
-// event receipt of actionType for txID.
-func (ev *smokeReportEvidence) requireCompletedEventReceipt(actionType, txID string) {
-	if !ev.hasCompletedEventReceipt(actionType, txID) {
-		ev.Failures = append(ev.Failures, fmt.Sprintf("no completed %s event receipt %s in %s export", actionType, txID, ev.Name))
+// requireCompletedReceipt records a failure unless the export holds a completed
+// receipt of actionType for txID.
+func (ev *smokeReportEvidence) requireCompletedReceipt(actionType, txID string) {
+	if !ev.hasCompletedReceipt(actionType, txID) {
+		ev.Failures = append(ev.Failures, fmt.Sprintf("no completed %s receipt %s in %s export", actionType, txID, ev.Name))
 	}
 }
 

@@ -106,7 +106,7 @@ func (h *PasskeyHandler) handleApprovalChallenge(w http.ResponseWriter, r *http.
 // @Produce		json
 // @Param		txHash	path		string						true	"Transaction hash"
 // @Param		body	body		models.WebAuthnAssertionResponse	true	"WebAuthn assertion response"
-// @Success		200		{object}	operatorv1.EventReceipt				"Canonical protojson EventReceipt"
+// @Success		200		{object}	operatorv1.ActionReceipt				"Canonical protojson ActionReceipt"
 // @Failure		403		{string}	string						"Forbidden — verification failed"
 // @Failure		404		{string}	string						"Transaction not found or expired"
 // @Failure		503		{string}	string						"Service Unavailable — runtime vault locked; the proof can be resubmitted"
@@ -153,7 +153,7 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 	}
 
 	h.clearApprovalWriteDeadline(w)
-	eventReceipt, err := h.orchestrator.ResumeWithL3Proof(r.Context(), txHash, userID, proof)
+	receipt, err := h.orchestrator.ResumeWithL3Proof(r.Context(), txHash, userID, proof)
 	if err != nil {
 		// A locked runtime vault is a Gateway availability fault, not a proof
 		// rejection. The suspension stays in place, so the same proof can be
@@ -163,24 +163,24 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked.Error())
 			return
 		}
-		if eventReceipt != nil {
-			h.responder.JSON(w, http.StatusForbidden, eventReceipt)
+		if receipt != nil {
+			h.responder.JSON(w, http.StatusForbidden, receipt)
 			return
 		}
 		h.responder.Error(w, http.StatusForbidden, err.Error())
 		return
 	}
 
-	// The resumed transaction must produce the event receipt for the suspended hash. A
+	// The resumed transaction must produce the receipt for the suspended hash. A
 	// mismatch means the Gateway cannot vouch for this approval, so it fails closed.
-	if eventReceipt == nil || eventReceipt.GetTransactionHash() != suspendedTx.TransactionHash {
-		h.logger.Error("Resumed event receipt does not match suspended transaction", "txHash", txHash)
+	if receipt == nil || receipt.GetTransactionHash() != suspendedTx.TransactionHash {
+		h.logger.Error("Resumed receipt does not match suspended transaction", "txHash", txHash)
 		h.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
 		return
 	}
-	eventReceiptJSON, err := response.MarshalProtoJSONCanonical(eventReceipt)
+	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
 	if err != nil {
-		h.logger.Error("Failed to encode approval event receipt", "error", err, "txHash", txHash)
+		h.logger.Error("Failed to encode approval receipt", "error", err, "txHash", txHash)
 		h.responder.Error(w, http.StatusInternalServerError, constants.ErrResponseEncodeJSON.Error())
 		return
 	}
@@ -189,9 +189,9 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 	if sseUserID == "" {
 		sseUserID = suspendedTx.UserID
 	}
-	h.orchestrator.EmitApprovalCompletedSSE(sseUserID, suspendedTx.SubmitterCLISessionID, txHash, eventReceiptJSON)
+	h.orchestrator.EmitApprovalCompletedSSE(sseUserID, suspendedTx.SubmitterCLISessionID, txHash, receiptJSON)
 
-	h.responder.JSON(w, http.StatusOK, eventReceipt)
+	h.responder.JSON(w, http.StatusOK, receipt)
 }
 
 // @Summary		Approve or deny a suspended transaction
@@ -203,7 +203,7 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 // @Description	that dispatch completes, so clients allow the approval TTL plus the dispatch deadline.
 // @Description	The envelope is re-submitted to its executing
 // @Description	Operator with the L3 deny marker, so L4 rejects it with `GOVERNANCE_REJECTION_CODE_L3_DENIED` and
-// @Description	L5 signs the rejection event receipt. The event receipt is returned and published as `approval.completed` to
+// @Description	L5 signs the rejection receipt. The receipt is returned and published as `approval.completed` to
 // @Description	the CLI session that submitted the transaction. Under ratify or notary posture a CLI caller must
 // @Description	present an mTLS client certificate and a web caller must hold a registered passkey.
 // @Description	Browser approval requires a WebAuthn assertion through `/api/v1/approvals/{txHash}/verify`.
@@ -211,12 +211,12 @@ func (h *PasskeyHandler) handleApprovalVerify(w http.ResponseWriter, r *http.Req
 // @Accept		json
 // @Produce		json
 // @Param		body	body		models.ApprovalRespondRequest	true	"Approval decision"
-// @Success		200		{object}	operatorv1.EventReceipt	"Canonical protojson EventReceipt: the signed GOVERNANCE_REJECTED event receipt of a deny, or the executing Operator's signed event receipt of an approval"
+// @Success		200		{object}	operatorv1.ActionReceipt	"Canonical protojson ActionReceipt: the signed GOVERNANCE_REJECTED receipt of a deny, or the executing Operator's signed receipt of an approval"
 // @Failure		400		{string}	string	"Invalid request body"
 // @Failure		401		{string}	string	"Unauthorized"
 // @Failure		403		{string}	string	"Forbidden — approval requested, session not grounded for posture, or transaction belongs to another user"
 // @Failure		404		{string}	string	"Transaction not found or expired"
-// @Failure		500		{string}	string	"The deny produced no signed rejection event receipt"
+// @Failure		500		{string}	string	"The deny produced no signed rejection receipt"
 // @Failure		503		{string}	string	"Service Unavailable — runtime vault locked; the deny can be resubmitted"
 // @Router			/api/v1/approvals/respond [post]
 func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +277,7 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 	}
 
 	h.clearApprovalWriteDeadline(w)
-	eventReceipt, err := h.orchestrator.DenySuspendedTransaction(r.Context(), req.ApprovalID, userID)
+	receipt, err := h.orchestrator.DenySuspendedTransaction(r.Context(), req.ApprovalID, userID)
 	if err != nil {
 		switch {
 		case errors.Is(err, constants.ErrTransactionExpired):
@@ -294,19 +294,19 @@ func (h *PasskeyHandler) handleApprovalRespond(w http.ResponseWriter, r *http.Re
 
 	// The deny must produce the signed rejection for the suspended hash. A
 	// mismatch means the Gateway cannot vouch for this deny, so it fails closed.
-	if eventReceipt == nil || eventReceipt.GetTransactionHash() != tx.TransactionHash {
-		h.logger.Error("Deny event receipt does not match suspended transaction", "txHash", req.ApprovalID)
+	if receipt == nil || receipt.GetTransactionHash() != tx.TransactionHash {
+		h.logger.Error("Deny receipt does not match suspended transaction", "txHash", req.ApprovalID)
 		h.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
 		return
 	}
-	eventReceiptJSON, err := response.MarshalProtoJSONCanonical(eventReceipt)
+	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
 	if err != nil {
-		h.logger.Error("Failed to encode deny event receipt", "error", err, "txHash", req.ApprovalID)
+		h.logger.Error("Failed to encode deny receipt", "error", err, "txHash", req.ApprovalID)
 		h.responder.Error(w, http.StatusInternalServerError, constants.ErrResponseEncodeJSON.Error())
 		return
 	}
-	h.orchestrator.EmitApprovalCompletedSSE(userID, tx.SubmitterCLISessionID, req.ApprovalID, eventReceiptJSON)
-	h.responder.JSON(w, http.StatusOK, eventReceipt)
+	h.orchestrator.EmitApprovalCompletedSSE(userID, tx.SubmitterCLISessionID, req.ApprovalID, receiptJSON)
+	h.responder.JSON(w, http.StatusOK, receipt)
 }
 
 // handleSignedCLIApproval takes the signing certificate exclusively from the
@@ -349,28 +349,28 @@ func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.
 		return
 	}
 	h.clearApprovalWriteDeadline(w)
-	eventReceipt, err := h.orchestrator.ResumeWithL3Proof(r.Context(), req.ApprovalID, userID, proof)
+	receipt, err := h.orchestrator.ResumeWithL3Proof(r.Context(), req.ApprovalID, userID, proof)
 	if err != nil {
 		if errors.Is(err, constants.ErrAuditStoreVaultLocked) {
 			h.responder.Error(w, http.StatusServiceUnavailable, constants.ErrAuditStoreVaultLocked.Error())
-		} else if eventReceipt != nil {
-			h.responder.ProtoJSONCanonical(w, http.StatusForbidden, eventReceipt)
+		} else if receipt != nil {
+			h.responder.ProtoJSONCanonical(w, http.StatusForbidden, receipt)
 		} else {
 			h.responder.Error(w, http.StatusForbidden, constants.ErrTxL3ProofInvalid.Error())
 		}
 		return
 	}
-	if eventReceipt == nil || eventReceipt.GetTransactionHash() != tx.TransactionHash || eventReceipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+	if receipt == nil || receipt.GetTransactionHash() != tx.TransactionHash || receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
 		h.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
 		return
 	}
-	body, err := response.MarshalProtoJSONCanonical(eventReceipt)
+	body, err := response.MarshalProtoJSONCanonical(receipt)
 	if err != nil {
 		h.responder.Error(w, http.StatusInternalServerError, constants.ErrResponseEncodeJSON.Error())
 		return
 	}
 	h.orchestrator.EmitApprovalCompletedSSE(userID, tx.SubmitterCLISessionID, tx.TransactionHash, body)
-	h.responder.ProtoJSONCanonical(w, http.StatusOK, eventReceipt)
+	h.responder.ProtoJSONCanonical(w, http.StatusOK, receipt)
 }
 
 func (h *PasskeyHandler) clearApprovalWriteDeadline(w http.ResponseWriter) {

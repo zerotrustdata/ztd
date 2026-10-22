@@ -19,8 +19,8 @@ type Row interface {
 	Record() []string
 }
 
-// EventReceiptRow maps to event_receipts.csv.
-type EventReceiptRow struct {
+// ReceiptRow maps to event_receipts.csv.
+type ReceiptRow struct {
 	TransactionID   string
 	TransactionHash string
 	OperatorID      string
@@ -34,7 +34,7 @@ type EventReceiptRow struct {
 	ExecutedAtUTC   string
 }
 
-func (EventReceiptRow) Columns() []string {
+func (ReceiptRow) Columns() []string {
 	return []string{
 		"transaction_id", "transaction_hash", "operator_id", "session_id", "action_type",
 		"status", "state_root_before", "state_root_after",
@@ -42,7 +42,7 @@ func (EventReceiptRow) Columns() []string {
 	}
 }
 
-func (r EventReceiptRow) Record() []string {
+func (r ReceiptRow) Record() []string {
 	return []string{
 		r.TransactionID, r.TransactionHash, r.OperatorID, r.SessionID, r.ActionType,
 		r.Status, r.StateRootBefore, r.StateRootAfter,

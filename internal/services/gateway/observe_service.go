@@ -97,7 +97,7 @@ type runProjection struct {
 	EvidenceSafeLinks []models.EvidenceSafeLink `json:"evidence_safe_links"`
 	StartedAt         *time.Time                `json:"started_at,omitempty"`
 	EndedAt           *time.Time                `json:"ended_at,omitempty"`
-	HasEventReceipts  bool                      `json:"has_event_receipts"`
+	HasReceipts       bool                      `json:"has_receipts"`
 	EvidenceCount     int                       `json:"evidence_count"`
 	ObservedAt        time.Time                 `json:"observed_at"`
 }
@@ -105,19 +105,19 @@ type runProjection struct {
 // toSummary derives a RunSummary from the projection.
 func (r *runProjection) toSummary() models.RunSummary {
 	return models.RunSummary{
-		SchemaVersion:    r.SchemaVersion,
-		RunID:            r.RunID,
-		RunKind:          r.RunKind,
-		DisplayName:      r.DisplayName,
-		Status:           r.Status,
-		ActiveTaskID:     r.ActiveTaskID,
-		CompletedTasks:   r.CompletedTasks,
-		TotalTasks:       r.TotalTasks,
-		StartedAt:        r.StartedAt,
-		EndedAt:          r.EndedAt,
-		HasEventReceipts: r.HasEventReceipts,
-		EvidenceCount:    r.EvidenceCount,
-		ObservedAt:       r.ObservedAt,
+		SchemaVersion:  r.SchemaVersion,
+		RunID:          r.RunID,
+		RunKind:        r.RunKind,
+		DisplayName:    r.DisplayName,
+		Status:         r.Status,
+		ActiveTaskID:   r.ActiveTaskID,
+		CompletedTasks: r.CompletedTasks,
+		TotalTasks:     r.TotalTasks,
+		StartedAt:      r.StartedAt,
+		EndedAt:        r.EndedAt,
+		HasReceipts:    r.HasReceipts,
+		EvidenceCount:  r.EvidenceCount,
+		ObservedAt:     r.ObservedAt,
 	}
 }
 
@@ -185,7 +185,7 @@ func (e *evalProjection) toSummary() models.EvalSummary {
 		ModelCohortIDs:            modelCohortIDs,
 		Status:                    e.Status,
 		VerificationStatus:        e.VerificationStatus,
-		EventReceiptCount:         e.EventReceiptCount,
+		ReceiptCount:              e.ReceiptCount,
 		MetricCount:               len(e.Metrics),
 		PublishedProjectionSHA256: e.PublishedProjectionSHA256,
 		CompletedAt:               e.CompletedAt,

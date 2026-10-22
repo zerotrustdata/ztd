@@ -32,10 +32,10 @@ func TestSubmitEnvelope_ReturnsTypedOutcomeAndRecordsPath(t *testing.T) {
 		wantKind     evalv1.ConformanceObservationKind
 	}{
 		{
-			name:         "accepted event receipt",
+			name:         "accepted receipt",
 			responseCode: http.StatusOK,
-			responseBody: canonicalBody(t, outcomeEventReceipt("tx-1")),
-			wantKind:     evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
+			responseBody: canonicalBody(t, outcomeReceipt("tx-1")),
+			wantKind:     evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 		},
 		{
 			name:         "governance rejection",

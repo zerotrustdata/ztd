@@ -26,10 +26,10 @@ type AuditChainSegmentEntry struct {
 	OperatorSessionID string
 	Timestamp         string
 	ContentDigest     string
-	// ContentSHA256 is the plain SHA-256 of the exported event receipt body for a
-	// event_receipt-recorded entry, written by the exporting runtime after it verified the
+	// ContentSHA256 is the plain SHA-256 of the exported receipt body for a
+	// receipt-recorded entry, written by the exporting runtime after it verified the
 	// keyed ContentDigest. The keyed digest cannot be recomputed without the runtime
-	// vault, so an offline importer links the event receipt to the entry through this field.
+	// vault, so an offline importer links the receipt to the entry through this field.
 	ContentSHA256 string
 	TransactionID string
 }

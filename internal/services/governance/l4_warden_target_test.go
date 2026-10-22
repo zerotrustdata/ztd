@@ -31,7 +31,7 @@ func TestL4Warden_RejectsForeignExecutionTarget(t *testing.T) {
 
 func TestL4Warden_RejectsMcpCallTargetOtherThanItsTool(t *testing.T) {
 	warden, key := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
-	for _, target := range []string{constants.MCPToolAuditEventReceiptList, ""} {
+	for _, target := range []string{constants.MCPToolAuditReceiptList, ""} {
 		env := signedEnvelope(t, constants.ActionTypeMcpCall, typedPayload(t, constants.ActionTypeMcpCall), key, constants.PostureDoctrine)
 		env.TargetResource = target
 		rehash(t, env)

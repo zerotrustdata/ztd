@@ -165,7 +165,7 @@ describe('ApprovalsView platform enrollment decisions', () => {
       ],
       'POST /api/v1/approvals/tx-decide-1/verify': () => {
         verified = true;
-        return [200, { event_receipt: {} }];
+        return [200, { receipt: {} }];
       },
     };
 

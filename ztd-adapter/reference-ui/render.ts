@@ -162,11 +162,11 @@ export function renderEvalsSection(state: AdapterState): string {
         return `<tr>
       <td>${boundString(p.runId, 40)}</td>
       <td class="status-label" data-status="${p.viewState.status}">${escapeHtml(p.verificationLabel)}</td>
-      <td>${p.eventReceiptCount}</td>
+      <td>${p.receiptCount}</td>
       <td>${p.metricCount}</td>
     </tr>`;
       }).join('');
-      body = `<table class="data-table"><thead><tr><th>Run</th><th>Verification</th><th>Event receipts</th><th>Metrics</th></tr></thead><tbody>${rows}</tbody></table>`;
+      body = `<table class="data-table"><thead><tr><th>Run</th><th>Verification</th><th>Receipts</th><th>Metrics</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
   }
   return `<section id="evals" aria-label="Latest evals" class="section-evals">

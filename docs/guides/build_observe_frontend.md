@@ -140,7 +140,7 @@ Generated UI MUST populate its sections strictly from typed stores:
 - Overview measurements: observed throughput appears only when a `total_throughput` measurement is present.
 - Agent roster: display name, role, status label, and freshness.
 - Active run and recent runs: run kind, status, completed/total tasks.
-- Latest evaluations: run ID, verification status, event receipt count, metric count.
+- Latest evaluations: run ID, verification status, receipt count, metric count.
 - Downloads: filename, media type, size, SHA-256, and authenticated URL.
 - Live narrative: virtualized scrollable log of normalized safe events.
 

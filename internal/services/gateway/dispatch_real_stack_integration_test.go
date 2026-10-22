@@ -53,7 +53,7 @@ func TestDispatchRealStack(t *testing.T) {
 			stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{Posture: tc.posture})
 			workload, err := stack.Data.Workload()
 			require.NoError(t, err)
-			approvalCount := len(stack.Owner.ApprovalEventReceipts())
+			approvalCount := len(stack.Owner.ApprovalReceipts())
 
 			client := fixtures.CreateCLIMTLSClient(t, stack.Gateway, stack.Identity)
 			payload, err := proto.Marshal(&operatorv1.CommandRequested{
@@ -86,37 +86,37 @@ func TestDispatchRealStack(t *testing.T) {
 			require.NoError(t, protojson.Unmarshal(respBody, &result), "dispatch response: %s", respBody)
 			require.Equal(t, string(constants.Event.Operator.Command.Completed), result.GetEventType())
 			require.NotEmpty(t, result.GetTransactionId())
-			require.NotNil(t, result.GetEventReceipt())
+			require.NotNil(t, result.GetReceipt())
 			var commandResult operatorv1.CommandResult
 			require.NoError(t, proto.Unmarshal(result.GetResultPayload(), &commandResult))
 			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, commandResult.GetStatus())
 			require.Equal(t, "ztd-real-dispatch-marker\n", commandResult.GetStdout())
 			require.Equal(t, int32(0), commandResult.GetReturnCode())
-			require.Equal(t, tc.wantL2, result.GetEventReceipt().GetL2Status())
-			require.Equal(t, tc.wantL3, result.GetEventReceipt().GetL3Status())
+			require.Equal(t, tc.wantL2, result.GetReceipt().GetL2Status())
+			require.Equal(t, tc.wantL3, result.GetReceipt().GetL3Status())
 
 			approvalCtx, approvalCancel := context.WithTimeout(ctx, 10*time.Second)
-			approvals, err := stack.Owner.AwaitApprovalEventReceipts(approvalCtx, approvalCount+1)
+			approvals, err := stack.Owner.AwaitApprovalReceipts(approvalCtx, approvalCount+1)
 			approvalCancel()
 			require.NoError(t, err)
 			require.NotEmpty(t, approvals)
 			approval := approvals[len(approvals)-1]
-			require.Equal(t, result.GetEventReceipt().GetTransactionHash(), approval.GetTransactionHash())
+			require.Equal(t, result.GetReceipt().GetTransactionHash(), approval.GetTransactionHash())
 			require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, approval.GetL3Status())
 
 			operatorDoc, err := stack.Gateway.Service.GetRegistrationService().GetOperator(ctx, workload.OperatorID)
 			require.NoError(t, err)
 			actuatorPublicKey, err := models.DecodeActuatorPublicKey(operatorDoc.GetActuatorPublicKey())
 			require.NoError(t, err)
-			require.NoError(t, governance.VerifyEventReceiptSignature(result.GetEventReceipt(), actuatorPublicKey))
-			require.NoError(t, governance.VerifyEventReceiptPersistenceAttestation(result.GetEventReceipt(), actuatorPublicKey))
+			require.NoError(t, governance.VerifyActionReceiptSignature(result.GetReceipt(), actuatorPublicKey))
+			require.NoError(t, governance.VerifyReceiptPersistenceAttestation(result.GetReceipt(), actuatorPublicKey))
 
 			dataFiles, err := fs.NewRuntimeFileService(stack.DataHost.WorkingDir, testutil.NewTestLogger())
 			require.NoError(t, err)
 			local, err := storage.ReadLocalEventReceipt(dataFiles, slog.Default(), keystore.Options{Keyring: stack.DataHost.Keyring}, result.GetTransactionId())
 			require.NoError(t, err)
 			require.NotNil(t, local)
-			require.True(t, proto.Equal(result.GetEventReceipt(), local.EventReceipt), "returned event receipt must equal Data Operator's authoritative local record")
+			require.True(t, proto.Equal(result.GetReceipt(), local.ActionReceipt), "returned receipt must equal Data Operator's authoritative local record")
 
 			commitments := readDataCommitments(t, dataFiles, stack.DataHost.Keyring)
 			found := false

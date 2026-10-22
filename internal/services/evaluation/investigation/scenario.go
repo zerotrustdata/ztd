@@ -88,7 +88,7 @@ type FileState struct {
 }
 
 // GovernedProbe is a harness-owned command run in the workspace root after the
-// attempt. It passes when its signed event receipt shows a successful execution.
+// attempt. It passes when its signed receipt shows a successful execution.
 // Like run_shell_command, it names one executable and its argv; it never
 // runs through a shell.
 type GovernedProbe struct {

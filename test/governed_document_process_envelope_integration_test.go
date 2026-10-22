@@ -144,11 +144,11 @@ func TestProcessEnvelope_ConcurrentInvestigationTitleMergePreservesFields(t *tes
 		testUserID,
 		testAppID,
 	)
-	eventReceipt, err := envProc.ProcessEnvelope(ctx, createWire)
+	receipt, err := envProc.ProcessEnvelope(ctx, createWire)
 	require.NoError(t, err, "ProcessEnvelope should succeed for initial document creation")
-	require.NotNil(t, eventReceipt)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
-	assert.NotEmpty(t, eventReceipt.Signature, "Event receipt must be signed by actuator")
+	require.NotNil(t, receipt)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+	assert.NotEmpty(t, receipt.Signature, "Receipt must be signed by actuator")
 
 	// Verify initial document was stored in the real SQLite document store.
 	doc, err := f.Service.GetDocStore().DocGet(t.Context(), collection, documentID)
@@ -186,10 +186,10 @@ func TestProcessEnvelope_ConcurrentInvestigationTitleMergePreservesFields(t *tes
 		testUserID,
 		testAppID,
 	)
-	mergeEventReceipt, err := envProc.ProcessEnvelope(ctx, mergeWire)
+	mergeReceipt, err := envProc.ProcessEnvelope(ctx, mergeWire)
 	require.NoError(t, err, "ProcessEnvelope should succeed for merge update")
-	require.NotNil(t, mergeEventReceipt)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, mergeEventReceipt.Status)
+	require.NotNil(t, mergeReceipt)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, mergeReceipt.Status)
 
 	// Step 3: Read back the document and verify untouched fields survived (Bug 10 regression assertion).
 	docAfterMerge, err := f.Service.GetDocStore().DocGet(t.Context(), collection, documentID)
@@ -221,10 +221,10 @@ func TestProcessEnvelope_ConcurrentInvestigationTitleMergePreservesFields(t *tes
 		testUserID,
 		testAppID,
 	)
-	deleteEventReceipt, err := envProc.ProcessEnvelope(ctx, deleteWire)
+	deleteReceipt, err := envProc.ProcessEnvelope(ctx, deleteWire)
 	require.NoError(t, err, "ProcessEnvelope should succeed for document deletion")
-	require.NotNil(t, deleteEventReceipt)
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, deleteEventReceipt.Status)
+	require.NotNil(t, deleteReceipt)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, deleteReceipt.Status)
 
 	// Verify document is deleted from store.
 	deletedDoc, err := f.Service.GetDocStore().DocGet(t.Context(), collection, documentID)

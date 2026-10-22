@@ -88,12 +88,12 @@ export const ABOUT_PRINCIPLES = [
   {
     label: 'Verify where execution happens',
     detail:
-      'The Gateway admits work; the Operator independently verifies it at the managed system. Execution authority and authoritative event receipts stay at the data owner’s boundary.',
+      'The Gateway admits work; the Operator independently verifies it at the managed system. Execution authority and authoritative receipts stay at the data owner’s boundary.',
   },
   {
     label: 'Show the evidence',
     detail:
-      'Signed event receipts record execution attempts and outcomes. Claims follow the evidence: ztd governs its execution path, not tools or side channels that bypass it.',
+      'Signed receipts record execution attempts and outcomes. Claims follow the evidence: ztd governs its execution path, not tools or side channels that bypass it.',
   },
 ] as const;
 
@@ -165,7 +165,7 @@ export const ZTD_DIFFERENTIATORS = [
   {
     headline: 'Proof, not promises',
     detail:
-      'Every governed mutation is a typed, signed, state-bound GovernanceEnvelope. The Gateway admits it; the Operator independently re-verifies hash, nonce, expiry, and posture proofs before any side effect. Signed event receipts and content-addressed evidence land in report.json and verification.json — reproducible offline with ztd eval runs verify, not trust in this browser.',
+      'Every governed mutation is a typed, signed, state-bound GovernanceEnvelope. The Gateway admits it; the Operator independently re-verifies hash, nonce, expiry, and posture proofs before any side effect. Signed receipts and content-addressed evidence land in report.json and verification.json — reproducible offline with ztd eval runs verify, not trust in this browser.',
   },
   {
     headline: 'Five-layer fail-closed governance',
@@ -190,7 +190,7 @@ export const ZTD_MEASURED_TOGETHER = [
   'A bounded tool-calling agent loop: every turn is a governed Inference Operator dispatch and every tool call a governed Data Operator action',
   'Governed inference dispatch to Ollama — never a direct provider API shortcut',
   'Provenance attestation of model weights and provider-boundary hardware observation around each inference',
-  'Deterministic pass/fail, a sealed agent trace with signed event receipts, and timing when observed',
+  'Deterministic pass/fail, a sealed agent trace with signed receipts, and timing when observed',
   'Signed campaign evidence with explicit verified, incomplete, legacy, live, and failed quality states',
 ] as const;
 

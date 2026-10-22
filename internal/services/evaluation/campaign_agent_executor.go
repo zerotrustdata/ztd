@@ -140,7 +140,7 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: read closing ledger sentinel", err)
 	}
-	run.trace.Bracket = &AgentTraceBracket{Before: AgentTraceEventReceipt{EventReceipt: before}, After: AgentTraceEventReceipt{EventReceipt: after}}
+	run.trace.Bracket = &AgentTraceBracket{Before: AgentTraceReceipt{ActionReceipt: before}, After: AgentTraceReceipt{ActionReceipt: after}}
 	persistCtx := assignmentPersistContext(ctx)
 	body, err := SealAgentTrace(run.trace)
 	if err != nil {
@@ -180,10 +180,10 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 				result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
 					BindingId:         e.newID("judge-binding"),
 					AssignmentId:      assignment.GetAssignmentId(),
-					TransactionId:     strings.TrimPrefix(sg.GraderCallRef.ArtifactId, "event_receipt:"),
+					TransactionId:     strings.TrimPrefix(sg.GraderCallRef.ArtifactId, "receipt:"),
 					OperatorId:        run.trace.Inference.OperatorID,
 					OperatorSessionId: run.trace.Inference.SessionID,
-					EventReceiptRef:   sg.GraderCallRef,
+					ReceiptRef:        sg.GraderCallRef,
 					PolicyDecision:    agentPolicyDecisionAllow,
 					ActionType:        string(constants.ActionTypeInference),
 				})
@@ -268,7 +268,7 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	if len(scores) == 0 {
 		return nil, nil
 	}
-	// Judge event receipts verify against the same pinned anchors as the traced model
+	// Judge receipts verify against the same pinned anchors as the traced model
 	// calls, so the anchor set is built once for the whole loop.
 	anchors, anchorsErr := agentTraceAnchorSet(trace)
 	now := e.now().UTC()
@@ -285,21 +285,21 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 		}
 		gradeID := fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), criterionID)
 		var graderCallRef *compliancev1.ComplianceEvidenceReference
-		var eventReceiptErr error
-		if sc.Status == judge.StatusScored && (sc.TransactionID == "" || sc.EventReceipt == nil) {
+		var receiptErr error
+		if sc.Status == judge.StatusScored && (sc.TransactionID == "" || sc.Receipt == nil) {
 			// A scored judge whose response carries no transaction or no signed
-			// event receipt has nothing to verify, so its grade cannot be attributed to
+			// receipt has nothing to verify, so its grade cannot be attributed to
 			// a governed inference.
-			eventReceiptErr = fmt.Errorf("judge score has no signed governed event_receipt: %w", constants.ErrMissingRequiredField)
+			receiptErr = fmt.Errorf("judge score has no signed governed receipt: %w", constants.ErrMissingRequiredField)
 		} else if sc.TransactionID != "" {
-			eventReceiptErr = anchorsErr
-			if eventReceiptErr == nil {
-				eventReceiptErr = verifyJudgeEventReceipt(anchors, trace.Inference, sc)
+			receiptErr = anchorsErr
+			if receiptErr == nil {
+				receiptErr = verifyJudgeReceipt(anchors, trace.Inference, sc)
 			}
-			if eventReceiptErr == nil {
+			if receiptErr == nil {
 				graderCallRef = &compliancev1.ComplianceEvidenceReference{
-					ArtifactId:         "event_receipt:" + sc.TransactionID,
-					ArtifactType:       "event_receipt",
+					ArtifactId:         "receipt:" + sc.TransactionID,
+					ArtifactType:       "action_receipt",
 					ProducerIdentity:   "ztd-eval-judge",
 					ProducedAt:         timestamppb.New(now),
 					ScopeId:            req.Assignment.GetCampaignId(),
@@ -314,12 +314,12 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 		}
 		status := evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 		var detail string
-		if eventReceiptErr != nil {
-			// An unverifiable judge event receipt fails only this semantic grade. Like a
+		if receiptErr != nil {
+			// An unverifiable judge receipt fails only this semantic grade. Like a
 			// judge failure, it records no decomposed score and never overrides the
 			// deterministic verdicts.
 			status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
-			detail = fmt.Sprintf("judge event receipt verification failed: %v", eventReceiptErr)
+			detail = fmt.Sprintf("judge receipt verification failed: %v", receiptErr)
 		} else if sc.Status == judge.StatusFailed {
 			status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
 			detail = fmt.Sprintf("judge failed: %s", sc.Detail)
@@ -746,7 +746,7 @@ func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*
 // for a Tribunal call its tool call and persona); dispatch fills the rest.
 func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, *AgentModelCall) {
 	result, call, err := r.dispatchInference(ctx, call, messages, tools)
-	if err != nil && call.EventReceipt != nil && isL2GovernanceDenial(call.EventReceipt.EventReceipt, err) {
+	if err != nil && call.Receipt != nil && isL2GovernanceDenial(call.Receipt.ActionReceipt, err) {
 		// Required L2 refused the turn and the Inference runtime signed that
 		// rejection: a governance outcome, not a provider failure.
 		call.Error = modelCallGovernanceRejected
@@ -759,7 +759,7 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 		r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
 		call.Error = r.trace.ProviderFailure
 	}
-	if err == nil || call.EventReceipt != nil {
+	if err == nil || call.Receipt != nil {
 		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
 	}
 	if err != nil {
@@ -770,7 +770,7 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 
 // dispatchInference dispatches one governed inference for the designated model
 // and records its telemetry. The returned call carries the Inference runtime's
-// signed event receipt whenever the runtime executed the dispatch, including when err
+// signed receipt whenever the runtime executed the dispatch, including when err
 // reports its failure.
 func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
 	purpose, turn := call.Purpose, call.LoopTurn
@@ -788,11 +788,11 @@ func (r *agentRun) dispatchInference(ctx context.Context, call AgentModelCall, m
 	}
 	response, err := r.executor.inference.DispatchInference(ctx, dispatch)
 	if err != nil {
-		if eventReceipt := governance.FailedEventReceipt(err); eventReceipt != nil {
-			call.TransactionID = eventReceipt.GetTransactionId()
-			call.EventReceipt = &AgentTraceEventReceipt{EventReceipt: eventReceipt}
+		if receipt := governance.FailedReceipt(err); receipt != nil {
+			call.TransactionID = receipt.GetTransactionId()
+			call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
 		}
-		recordObservationEventReceipts(&call, inferencedispatch.ObservationEventReceipts(err))
+		recordObservationReceipts(&call, inferencedispatch.ObservationReceipts(err))
 		return nil, call, fmt.Errorf("%s inference turn %d: %w", purpose, turn, err)
 	}
 	if err := recordInferenceResponse(&call, probe, response); err != nil {
@@ -850,24 +850,24 @@ func (r *agentRun) inferenceDispatchRequest(probe InferenceProbeRequest) (*opera
 	return dispatch, nil
 }
 
-// recordObservationEventReceipts records the observers' signed event receipts a dispatch
+// recordObservationReceipts records the observers' signed receipts a dispatch
 // returned, on success or failure, so the bracket claims their commitments.
-func recordObservationEventReceipts(call *AgentModelCall, eventReceipts []*operatorv1.EventReceipt) {
-	for _, eventReceipt := range eventReceipts {
-		call.ObservationEventReceipts = append(call.ObservationEventReceipts, AgentTraceEventReceipt{EventReceipt: eventReceipt})
+func recordObservationReceipts(call *AgentModelCall, receipts []*operatorv1.ActionReceipt) {
+	for _, receipt := range receipts {
+		call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{ActionReceipt: receipt})
 	}
 }
 
 // recordInferenceResponse verifies a governed inference response against probe
-// and records its event receipt and telemetry on call. The event receipt is recorded before
+// and records its receipt and telemetry on call. The receipt is recorded before
 // verification so a response that fails it still claims its ledger commitment.
 func recordInferenceResponse(call *AgentModelCall, probe InferenceProbeRequest, response *operatorv1.InferenceDispatchResponse) error {
 	result := response.GetResult()
 	call.TransactionID = response.GetTransactionId()
-	if eventReceipt := response.GetEventReceipt(); eventReceipt != nil {
-		call.EventReceipt = &AgentTraceEventReceipt{EventReceipt: eventReceipt}
+	if receipt := response.GetReceipt(); receipt != nil {
+		call.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
 	}
-	recordObservationEventReceipts(call, response.GetObservationEventReceipts())
+	recordObservationReceipts(call, response.GetObservationReceipts())
 	call.ResultDigest = result.GetResultDigest()
 	if err := ValidateInferenceProbeResponse(probe, response); err != nil {
 		return err
@@ -969,8 +969,8 @@ func (r *agentRun) succeed(record AgentToolCall, value any) (AgentToolCall, erro
 
 // runNativeMCPTool maps one native MCP tool onto its governed MCP_CALL action.
 func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, tool string, args agentToolArguments) (AgentToolCall, error) {
-	if tool == constants.MCPToolAuditEventReceiptList {
-		r.injectAuditEventReceiptListDefaults(args)
+	if tool == constants.MCPToolAuditReceiptList {
+		r.injectAuditReceiptListDefaults(args)
 	}
 	var argsJSON []byte
 	if tool == constants.MCPToolRunShellCommand {
@@ -1004,33 +1004,33 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, t
 	if err != nil || denied {
 		return record, err
 	}
-	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT {
+	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(tool, dispatched)})
 	}
-	if record.EventReceipt != nil && record.EventReceipt.EventReceipt != nil && record.EventReceipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
-		message := record.EventReceipt.GetResultSummary()
+	if record.Receipt != nil && record.Receipt.ActionReceipt != nil && record.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
+		message := record.Receipt.GetResultSummary()
 		if message == "" {
 			message = "tool execution failed"
 		}
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: message})
 	}
-	if tool == constants.MCPToolAuditEventReceiptList {
+	if tool == constants.MCPToolAuditReceiptList {
 		limit := args.Int("limit", agentToolDefaultHistoryLimit)
-		query := mcp.AuditEventReceiptListRequest{
+		query := mcp.AuditReceiptListRequest{
 			InvestigationID:   args.String("investigation_id"),
 			Limit:             limit,
 			ExcludeAuditReads: args.Bool("exclude_audit_reads"),
 		}
-		result, refs, err := decodeInvestigationEventReceipts(r.trace, query, record.EventReceipt)
+		result, refs, err := decodeInvestigationReceipts(r.trace, query, record.Receipt)
 		if err != nil {
 			return AgentToolCall{}, err
 		}
-		record.Retrieval = &AgentContextRetrieval{Query: query, EventReceipts: refs}
+		record.Retrieval = &AgentContextRetrieval{Query: query, Receipts: refs}
 		return r.succeed(record, result)
 	}
 	summary := ""
-	if record.EventReceipt != nil && record.EventReceipt.EventReceipt != nil {
-		summary = record.EventReceipt.GetResultSummary()
+	if record.Receipt != nil && record.Receipt.ActionReceipt != nil {
+		summary = record.Receipt.GetResultSummary()
 	}
 	if summary == "" {
 		summary = "{}"
@@ -1058,7 +1058,7 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, t
 	return r.succeed(record, map[string]any{"result": summary})
 }
 
-func (r *agentRun) injectAuditEventReceiptListDefaults(args agentToolArguments) {
+func (r *agentRun) injectAuditReceiptListDefaults(args agentToolArguments) {
 	if args.String("investigation_id") == "" {
 		args.Set("investigation_id", r.trace.InvestigationID)
 	}
@@ -1083,18 +1083,18 @@ func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action c
 	return dispatched, denied, err
 }
 
-// recordDispatch records one governed answer's event receipt and policy decision on
+// recordDispatch records one governed answer's receipt and policy decision on
 // record. It returns denied=true with the record already completed for a
 // governance rejection or an ingress refusal.
 func (r *agentRun) recordDispatch(record *AgentToolCall, dispatched GovernedToolDispatch) (bool, error) {
-	if eventReceipt := answerEventReceipt(dispatched.Outcome); eventReceipt != nil {
-		record.EventReceipt = &AgentTraceEventReceipt{EventReceipt: eventReceipt}
+	if receipt := answerReceipt(dispatched.Outcome); receipt != nil {
+		record.Receipt = &AgentTraceReceipt{ActionReceipt: receipt}
 	}
 	record.TransactionID = dispatched.TransactionID
 	switch answerKind(dispatched.Outcome) {
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION:
 		rejection := dispatched.Outcome.Observation.GetRejection()
-		if rejection != nil && governance.IsGovernanceRejectionEventReceipt(rejection.GetEventReceipt()) {
+		if rejection != nil && governance.IsGovernanceRejectionReceipt(rejection.GetReceipt()) {
 			record.PolicyDecision = agentPolicyDecisionDeny
 		}
 		reason := answerMessage(dispatched.Outcome)
@@ -1115,20 +1115,20 @@ func (r *agentRun) recordDispatch(record *AgentToolCall, dispatched GovernedTool
 		}
 		*record = completed
 		return true, nil
-	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT:
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
 		record.PolicyDecision = agentPolicyDecisionAllow
 	}
 	return false, nil
 }
 
-// answerEventReceipt is the signed event receipt a governed answer carries: the executed
-// event receipt, or the event receipt of a governance rejection. A refusal carries none.
-func answerEventReceipt(outcome *client.GovernedOutcome) *operatorv1.EventReceipt {
+// answerReceipt is the signed receipt a governed answer carries: the executed
+// receipt, or the receipt of a governance rejection. A refusal carries none.
+func answerReceipt(outcome *client.GovernedOutcome) *operatorv1.ActionReceipt {
 	switch answerKind(outcome) {
-	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT:
-		return outcome.Observation.GetEventReceipt()
+	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT:
+		return outcome.Observation.GetReceipt()
 	case evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION:
-		return outcome.Observation.GetRejection().GetEventReceipt()
+		return outcome.Observation.GetRejection().GetReceipt()
 	default:
 		return nil
 	}
@@ -1143,7 +1143,7 @@ func agentDispatchErrorText(tool string, dispatched GovernedToolDispatch) string
 }
 
 // shellCommandFailure returns the model-visible failure for a run_shell_command
-// result that did not run to a zero exit, or nil. The event receipt is COMPLETED
+// result that did not run to a zero exit, or nil. The receipt is COMPLETED
 // either way: it records that the command ran, and the exit code is the
 // command's outcome, as for run_commands.
 func shellCommandFailure(summary string) (*agentToolFailure, error) {
@@ -1204,7 +1204,7 @@ func agentTraceSchemaPinError(trace *AgentTrace) error {
 }
 
 // agentTraceEvidenceError is every evidence rule an agent trace must pass
-// before it is graded: the sealed schema pin, the signed event receipt evidence, and
+// before it is graded: the sealed schema pin, the signed receipt evidence, and
 // the binding of each inference to the frozen campaign models. Live import and
 // the assignment verifier both apply it, so a stored INVALID_EVIDENCE verdict is
 // recomputed from the same rules.
@@ -1319,7 +1319,7 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	// the tool calls it returned, each after the Tribunal inferences it
 	// dispatched.
 	for _, call := range trace.ModelCalls {
-		if evidenceErr != nil || !call.IsTurn() || call.EventReceipt == nil {
+		if evidenceErr != nil || !call.IsTurn() || call.Receipt == nil {
 			continue
 		}
 		binding, err := agentModelCallGovernedAction(traceEvidence, trace, assignmentID, call)
@@ -1332,7 +1332,7 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 				continue
 			}
 			for _, dispatched := range trace.ModelCalls {
-				if dispatched.ToolCallID != tool.CallID || dispatched.EventReceipt == nil {
+				if dispatched.ToolCallID != tool.CallID || dispatched.Receipt == nil {
 					continue
 				}
 				binding, err := agentModelCallGovernedAction(traceEvidence, trace, assignmentID, dispatched)
@@ -1377,8 +1377,8 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 			ErrorType:       call.ErrorType,
 			GuidanceShown:   call.ShowedGuidance(),
 		}
-		if evidenceErr == nil && call.EventReceipt != nil {
-			ref, err := agentEventReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.EventReceipt)
+		if evidenceErr == nil && call.Receipt != nil {
+			ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.Receipt)
 			if err != nil {
 				return nil, err
 			}
@@ -1407,14 +1407,14 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 }
 
 // agentModelCallGovernedAction binds one governed inference to its Inference
-// runtime event receipt.
+// runtime receipt.
 func agentModelCallGovernedAction(traceEvidence *compliancev1.ComplianceEvidenceReference, trace *AgentTrace, assignmentID string, call AgentModelCall) (*evalv1.GovernedActionBinding, error) {
-	ref, err := agentEventReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.EventReceipt)
+	ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.Receipt)
 	if err != nil {
 		return nil, err
 	}
 	decision := agentPolicyDecisionAllow
-	if call.EventReceipt.GetFailureCode() == operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
+	if call.Receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED {
 		decision = agentPolicyDecisionDeny
 	}
 	return &evalv1.GovernedActionBinding{
@@ -1423,9 +1423,9 @@ func agentModelCallGovernedAction(traceEvidence *compliancev1.ComplianceEvidence
 		TransactionId:     call.TransactionID,
 		OperatorId:        trace.Inference.OperatorID,
 		OperatorSessionId: trace.Inference.SessionID,
-		EventReceiptRef:   ref,
+		ReceiptRef:        ref,
 		PolicyDecision:    decision,
-		ActionType:        call.EventReceipt.GetActionType(),
+		ActionType:        call.Receipt.GetActionType(),
 	}, nil
 }
 
@@ -1473,7 +1473,7 @@ func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *
 		// A governance-rejected inference never reached the provider, so it has
 		// no provider attempt and no observation or provenance window.
 		attemptID := call.ProviderAttemptID
-		if call.EventReceipt != nil && governance.IsGovernanceRejectionEventReceipt(call.EventReceipt.EventReceipt) {
+		if call.Receipt != nil && governance.IsGovernanceRejectionReceipt(call.Receipt.ActionReceipt) {
 			attemptID = ""
 		}
 		record := &evalv1.ModelInferenceRecord{

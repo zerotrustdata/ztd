@@ -175,7 +175,7 @@ func (s *RegistrationService) UpdateOperatorRuntimeConfig(ctx context.Context, o
 }
 
 // RecordEmbeddedActuatorKey binds the Gateway's Actuator public key, which
-// signs the embedded Operator's event receipts, on the embedded Operator document.
+// signs the embedded Operator's receipts, on the embedded Operator document.
 // keyID is the lowercase hex public key (key_id == hex(pub)).
 func (s *RegistrationService) RecordEmbeddedActuatorKey(ctx context.Context, keyID string) error {
 	if keyID == "" {

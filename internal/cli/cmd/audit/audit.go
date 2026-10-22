@@ -34,7 +34,7 @@ func Cmd() *cobra.Command {
 		Use:     "audit",
 		Aliases: []string{"audits"},
 		Short:   "Run audit reports for compliance",
-		Long:    `Audit commands for compliance evidence, signed event receipts, and event logs.`,
+		Long:    `Audit commands for compliance evidence, signed receipts, and event logs.`,
 	}
 
 	cmd.AddCommand(
@@ -64,7 +64,7 @@ func auditEventReceiptsCmdWithConfig(configLoader func(string) (*config.Config, 
 		Short: "List signed event receipts from the running Gateway",
 		Long: `List signed event receipts from the running Gateway over mTLS. Use
 --session to filter by operator session ID or --app to select an acting app, --tx-id to look up a specific
-transaction (returns the canonical EventReceipt as JSON), and --json to output
+transaction (returns the canonical ActionReceipt as JSON), and --json to output
 list results as raw JSON instead of a table. Without either identity selector, includes
 Gateway-local app records that have no Operator session.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -91,19 +91,19 @@ Gateway-local app records that have no Operator session.`,
 
 			resp, err := client.Get(path)
 			if err != nil {
-				return fmt.Errorf("audit: fetch event_receipts: %w", err)
+				return fmt.Errorf("audit: fetch receipts: %w", err)
 			}
 
 			if output.JSONEnabled(cmd) || txID != "" {
 				return output.WriteRawJSON(cmd.OutOrStdout(), resp)
 			}
 
-			var eventReceiptsResp models.AuditEventReceiptsResponse
-			if err := json.Unmarshal(resp, &eventReceiptsResp); err != nil {
+			var receiptsResp models.AuditEventReceiptsResponse
+			if err := json.Unmarshal(resp, &receiptsResp); err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
 			}
 
-			if len(eventReceiptsResp.EventReceipts) == 0 {
+			if len(receiptsResp.EventReceipts) == 0 {
 				cmd.Println("No event receipts found")
 				return nil
 			}
@@ -123,7 +123,7 @@ Gateway-local app records that have no Operator session.`,
 
 			l2Valid := 0
 			l3Valid := 0
-			for _, r := range eventReceiptsResp.EventReceipts {
+			for _, r := range receiptsResp.EventReceipts {
 				txHash := r.TransactionHash
 				if len(txHash) > 12 {
 					txHash = txHash[:12] + "…"
@@ -148,7 +148,7 @@ Gateway-local app records that have no Operator session.`,
 
 			cmd.Println(strings.Repeat("-", 110))
 			cmd.Printf("%d event receipts  |  L2 valid: %d  |  L3 valid: %d\n",
-				len(eventReceiptsResp.EventReceipts), l2Valid, l3Valid)
+				len(receiptsResp.EventReceipts), l2Valid, l3Valid)
 
 			return nil
 		},
@@ -156,7 +156,7 @@ Gateway-local app records that have no Operator session.`,
 
 	cmd.Flags().StringVar(&actingAppID, "app", "", "Filter by acting app identity (exact envelope acting_app_id)")
 	cmd.Flags().StringVar(&operatorSessionID, "session", "", "Filter by operator session ID (shows all if omitted)")
-	cmd.Flags().StringVar(&txID, "tx-id", "", "Get a single event receipt by transaction ID")
+	cmd.Flags().StringVar(&txID, "tx-id", "", "Get a single receipt by transaction ID")
 
 	cmd.MarkFlagsMutuallyExclusive("tx-id", "session", "app")
 	return cmd
@@ -209,14 +209,14 @@ file path (defaults to stdout).`,
 				return fmt.Errorf("%w: %w", constants.ErrFileWriteFailed, err)
 			}
 
-			cmd.Printf("Event receipts export written to: %s (%d bytes)\n", outPath, len(resp))
+			cmd.Printf("Receipts export written to: %s (%d bytes)\n", outPath, len(resp))
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&actingAppID, "app", "", "Filter by acting app identity (exact envelope acting_app_id)")
 	cmd.Flags().StringVar(&operatorSessionID, "session", "", "Operator session ID")
-	cmd.Flags().StringVar(&outPath, "out", constants.EventReceiptsExportFilename, "Output file path")
+	cmd.Flags().StringVar(&outPath, "out", constants.ReceiptsExportFilename, "Output file path")
 
 	cmd.MarkFlagsMutuallyExclusive("session", "app")
 	return cmd
@@ -415,7 +415,7 @@ func auditVotesCmdWithConfig(configLoader func(string) (*config.Config, error), 
 		Long: `Show every recorded L2 consensus member vote on one governed transaction from the
 running Gateway over mTLS: the member, its outcome (approve, deny, or no_vote), its
 own stated reason, and why an answer was read as deny or no vote was cast. --tx is
-the transaction ID that 'ztd operator run' and event receipts report. --json outputs the
+the transaction ID that 'ztd operator run' and receipts report. --json outputs the
 raw response.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := configLoader("")
@@ -462,7 +462,7 @@ func auditSummaryCmdWithConfig(configLoader func(string) (*config.Config, error)
 
 	cmd := &cobra.Command{
 		Use:   "summary",
-		Short: "Aggregate audit events and event receipts by type",
+		Short: "Aggregate audit events and receipts by type",
 		Long: `Show an aggregated summary of audit events grouped by type from the running
 Gateway over mTLS. Use --session to filter by operator session ID or --app to filter by acting app identity.`,
 		RunE: func(cmd *cobra.Command, args []string) error {

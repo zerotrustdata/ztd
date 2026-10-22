@@ -28,8 +28,8 @@ import (
 type ArtifactType string
 
 const (
-	ArtifactTypeEventReceipt                     ArtifactType = "event-receipt"
-	ArtifactTypeEventReceiptPersistence          ArtifactType = "event_receipt-persistence"
+	ArtifactTypeActionReceipt                    ArtifactType = "action-receipt"
+	ArtifactTypeReceiptPersistence               ArtifactType = "receipt-persistence"
 	ArtifactTypeStateObservation                 ArtifactType = "state-observation"
 	ArtifactTypeProtocolChain                    ArtifactType = "protocol-chain"
 	ArtifactTypeEvalManifest                     ArtifactType = "eval-manifest"
@@ -39,7 +39,7 @@ const (
 	ArtifactTypeEvalObservation                  ArtifactType = "eval-observation"
 	ArtifactTypeEvalExchange                     ArtifactType = "eval-exchange"
 	ArtifactTypeEvalStage                        ArtifactType = "eval-stage"
-	ArtifactTypeEvalEventReceipt                 ArtifactType = "eval-event_receipt"
+	ArtifactTypeEvalReceipt                      ArtifactType = "eval-receipt"
 	ArtifactTypeEvaluationScenarioInput          ArtifactType = "evaluation-scenario-input"
 	ArtifactTypeEvaluationScenarioGold           ArtifactType = "evaluation-scenario-gold"
 	ArtifactTypeEvaluationAssignmentTrace        ArtifactType = "evaluation-assignment-trace"
@@ -64,8 +64,8 @@ func EvalScopeID(suiteID string) string {
 
 func SupportedArtifactTypes() []ArtifactType {
 	return []ArtifactType{
-		ArtifactTypeEventReceipt,
-		ArtifactTypeEventReceiptPersistence,
+		ArtifactTypeActionReceipt,
+		ArtifactTypeReceiptPersistence,
 		ArtifactTypeStateObservation,
 		ArtifactTypeProtocolChain,
 		ArtifactTypeEvalManifest,
@@ -75,7 +75,7 @@ func SupportedArtifactTypes() []ArtifactType {
 		ArtifactTypeEvalObservation,
 		ArtifactTypeEvalExchange,
 		ArtifactTypeEvalStage,
-		ArtifactTypeEvalEventReceipt,
+		ArtifactTypeEvalReceipt,
 		ArtifactTypeAuditRecord,
 		ArtifactTypeAuditChainEntry,
 		ArtifactTypeLedgerCommit,

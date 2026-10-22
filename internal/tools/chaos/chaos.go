@@ -549,21 +549,21 @@ func Run(cfg Config) error {
 		encryptionVault,
 	)
 
-	// Event receipts and commitments carry the scrubbed target resource, so the chaos actuator needs an
+	// Receipts and commitments carry the scrubbed target resource, so the chaos actuator needs an
 	// active scrubber, as the production Operator wires one. Its UEI tokens live for the run only.
 	chaosScrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), logger, storagetest.NewTestTokenStore())
 	if err != nil {
 		return fmt.Errorf("chaos: scrubbing service: %w", err)
 	}
 
-	// The actuator commits every event receipt with an auditor-signed commitment attestation,
+	// The actuator commits every receipt with an auditor-signed commitment attestation,
 	// so the chaos run carries an ephemeral auditor key as the production Operator does.
 	auditorPub, auditorPriv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		return fmt.Errorf("failed to generate auditor signing key: %w", err)
 	}
 
-	// L5Actuator replaces Actuator - execution boundary with event receipt signing
+	// L5Actuator replaces Actuator - execution boundary with receipt signing
 	act := &governance.L5Actuator{
 		Logger:            logger,
 		SQLAuditStore:     av,

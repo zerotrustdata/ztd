@@ -15,9 +15,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestEventReceiptRow(t *testing.T) {
+func TestReceiptRow(t *testing.T) {
 	t.Run("Columns returns expected headers", func(t *testing.T) {
-		cols := EventReceiptRow{}.Columns()
+		cols := ReceiptRow{}.Columns()
 		assert.Contains(t, cols, "transaction_id")
 		assert.Contains(t, cols, "transaction_hash")
 		assert.Contains(t, cols, "action_type")
@@ -27,7 +27,7 @@ func TestEventReceiptRow(t *testing.T) {
 	})
 
 	t.Run("Record returns values in column order", func(t *testing.T) {
-		r := EventReceiptRow{
+		r := ReceiptRow{
 			TransactionID:   "tx-001",
 			TransactionHash: "hash123",
 			OperatorID:      "op-1",

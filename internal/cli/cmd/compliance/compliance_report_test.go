@@ -254,14 +254,14 @@ func TestBuildOperationalReportSources_BindsProtectedAdmissionAndBundlePaths(t *
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	signerKeyID := hex.EncodeToString(publicKey)
-	eventReceipt := &operatorv1.EventReceipt{TransactionId: "transaction-1", TransactionHash: "hash-1", SignerKeyId: signerKeyID, ExecutedAtUnixMs: assessmentAsOf.Add(-time.Minute).UnixMilli()}
-	payload, err := governance.CanonicalizeEventReceipt(eventReceipt)
+	receipt := &operatorv1.ActionReceipt{TransactionId: "transaction-1", TransactionHash: "hash-1", SignerKeyId: signerKeyID, ExecutedAtUnixMs: assessmentAsOf.Add(-time.Minute).UnixMilli()}
+	payload, err := governance.CanonicalizeActionReceipt(receipt)
 	require.NoError(t, err)
-	eventReceipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
-	eventReceiptBody, err := compliancev1.MarshalCanonical(eventReceipt)
+	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, payload))
+	receiptBody, err := compliancev1.MarshalCanonical(receipt)
 	require.NoError(t, err)
 	sourceDir := testutil.TempDir(t)
-	_, err = evidence.ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{EventReceipts: []storage.OperationalEventReceiptSource{{TransactionID: eventReceipt.GetTransactionId(), ExecutedAt: time.UnixMilli(eventReceipt.GetExecutedAtUnixMs()), Body: eventReceiptBody}}}, evidence.OperationalExportRequest{
+	_, err = evidence.ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{Receipts: []storage.OperationalReceiptSource{{TransactionID: receipt.GetTransactionId(), ExecutedAt: time.UnixMilli(receipt.GetExecutedAtUnixMs()), Body: receiptBody}}}, evidence.OperationalExportRequest{
 		ScopeID:              "scope-1",
 		AdmissionID:          "source-1",
 		SourceKind:           "operator-audit",

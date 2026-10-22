@@ -189,7 +189,7 @@ type sseEventEnvelope struct {
 // The producer never mutates governance state. Projections are read-only
 // documents in the observe collections; they are not governed records and do
 // not flow through the GovernanceEnvelope. SSE events are telemetry, not
-// event receipts — consumers reconcile against read API snapshots, not against the
+// receipts — consumers reconcile against read API snapshots, not against the
 // event stream alone.
 type ObserveProducerService struct {
 	docStore  *DocumentStoreService
@@ -388,7 +388,7 @@ func (s *ObserveProducerService) updateRunState(ctx context.Context, userID stri
 	if existingProj != nil {
 		proj.Tasks = existingProj.Tasks
 		proj.EvidenceSafeLinks = existingProj.EvidenceSafeLinks
-		proj.HasEventReceipts = existingProj.HasEventReceipts
+		proj.HasReceipts = existingProj.HasReceipts
 		proj.EvidenceCount = existingProj.EvidenceCount
 	}
 	projBytes, err := json.Marshal(proj)

@@ -153,20 +153,20 @@ func TestOperatorPubSubService_L3Rejection_FailClosed(t *testing.T) {
 	}
 
 	// Process envelope through command service
-	eventReceipt, err := cmdSvc.ProcessEnvelope(context.Background(), envelopeBytes)
+	receipt, err := cmdSvc.ProcessEnvelope(context.Background(), envelopeBytes)
 
 	// Verify fail-closed behavior: L3 rejection should return error
 	if err == nil {
 		t.Error("Expected L3 rejection error, got nil")
 	}
-	if eventReceipt == nil {
-		t.Fatal("Expected signed failed event receipt on L3 rejection, got nil")
+	if receipt == nil {
+		t.Fatal("Expected signed failed receipt on L3 rejection, got nil")
 	}
-	if eventReceipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED || eventReceipt.Signature == "" {
-		t.Fatalf("Expected signed failed event receipt on L3 rejection, got: %#v", eventReceipt)
+	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED || receipt.Signature == "" {
+		t.Fatalf("Expected signed failed receipt on L3 rejection, got: %#v", receipt)
 	}
-	if len(eventReceipt.DeterministicStageEvidence) < 2 || eventReceipt.DeterministicStageEvidence[len(eventReceipt.DeterministicStageEvidence)-2].Kind != operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY || eventReceipt.DeterministicStageEvidence[len(eventReceipt.DeterministicStageEvidence)-2].Outcome != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED {
-		t.Fatalf("Expected failed L3 stage evidence, got: %#v", eventReceipt.DeterministicStageEvidence)
+	if len(receipt.DeterministicStageEvidence) < 2 || receipt.DeterministicStageEvidence[len(receipt.DeterministicStageEvidence)-2].Kind != operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY || receipt.DeterministicStageEvidence[len(receipt.DeterministicStageEvidence)-2].Outcome != operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED {
+		t.Fatalf("Expected failed L3 stage evidence, got: %#v", receipt.DeterministicStageEvidence)
 	}
 
 	// Verify the error is an L3-related error
@@ -300,23 +300,23 @@ func TestOperatorPubSubService_L3Acceptance_Success(t *testing.T) {
 	}
 
 	// Process envelope through command service
-	eventReceipt, err := cmdSvc.ProcessEnvelope(context.Background(), envelopeBytes)
+	receipt, err := cmdSvc.ProcessEnvelope(context.Background(), envelopeBytes)
 
-	// Verify success: L3 acceptance should return event_receipt
+	// Verify success: L3 acceptance should return receipt
 	if err != nil {
 		t.Errorf("Expected success with L3 acceptance, got error: %v", err)
 	}
-	if eventReceipt == nil {
-		t.Error("Expected event receipt on L3 acceptance, got nil")
+	if receipt == nil {
+		t.Error("Expected receipt on L3 acceptance, got nil")
 	}
 
-	// Verify event receipt fields
-	if eventReceipt != nil {
-		if eventReceipt.TransactionId != txHash {
-			t.Errorf("Expected transaction ID %s, got %s", txHash, eventReceipt.TransactionId)
+	// Verify receipt fields
+	if receipt != nil {
+		if receipt.TransactionId != txHash {
+			t.Errorf("Expected transaction ID %s, got %s", txHash, receipt.TransactionId)
 		}
-		if eventReceipt.TransactionHash != txHash {
-			t.Errorf("Expected transaction hash %s, got %s", txHash, eventReceipt.TransactionHash)
+		if receipt.TransactionHash != txHash {
+			t.Errorf("Expected transaction hash %s, got %s", txHash, receipt.TransactionHash)
 		}
 	}
 }
@@ -442,7 +442,7 @@ func TestOperatorPubSubService_L3NilNotary_FailClosed(t *testing.T) {
 	}
 
 	// Process envelope through command service
-	eventReceipt, err := cmdSvc.ProcessEnvelope(context.Background(), envelopeBytes)
+	receipt, err := cmdSvc.ProcessEnvelope(context.Background(), envelopeBytes)
 
 	// Verify fail-closed behavior: nil L3 notary should return ErrL3NotaryNotConfigured
 	if err == nil {
@@ -451,11 +451,11 @@ func TestOperatorPubSubService_L3NilNotary_FailClosed(t *testing.T) {
 	if !errors.Is(err, governance.ErrL3NotaryNotConfigured) {
 		t.Fatalf("Expected ErrL3NotaryNotConfigured, got: %v", err)
 	}
-	if eventReceipt == nil {
-		t.Fatal("Expected signed failed event receipt with nil L3 notary, got nil")
+	if receipt == nil {
+		t.Fatal("Expected signed failed receipt with nil L3 notary, got nil")
 	}
-	if eventReceipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED || eventReceipt.Signature == "" {
-		t.Fatalf("Expected signed failed event receipt with nil L3 notary, got: %#v", eventReceipt)
+	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED || receipt.Signature == "" {
+		t.Fatalf("Expected signed failed receipt with nil L3 notary, got: %#v", receipt)
 	}
 }
 

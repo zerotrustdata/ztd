@@ -520,9 +520,9 @@ func TestObserveProducer_UpdateRunState_PreservesTasksAndEvidenceFromExisting(t 
 		EvidenceSafeLinks: []models.EvidenceSafeLink{
 			{ArtifactID: "art-1", Label: "Evidence", MediaType: "application/jsonl"},
 		},
-		HasEventReceipts: true,
-		EvidenceCount:    1,
-		ObservedAt:       now,
+		HasReceipts:   true,
+		EvidenceCount: 1,
+		ObservedAt:    now,
 	}
 	b, err := json.Marshal(initialProj)
 	require.NoError(t, err)
@@ -549,7 +549,7 @@ func TestObserveProducer_UpdateRunState_PreservesTasksAndEvidenceFromExisting(t 
 	assert.Equal(t, models.RunLifecycleStatusCompleted, proj.Status)
 	assert.Len(t, proj.Tasks, 2, "tasks must be preserved from existing projection")
 	assert.Len(t, proj.EvidenceSafeLinks, 1, "evidence links must be preserved")
-	assert.True(t, proj.HasEventReceipts, "has_event_receipts must be preserved")
+	assert.True(t, proj.HasReceipts, "has_receipts must be preserved")
 	assert.Equal(t, 1, proj.EvidenceCount, "evidence_count must be preserved")
 }
 

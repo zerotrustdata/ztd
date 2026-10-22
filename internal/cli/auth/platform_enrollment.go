@@ -42,7 +42,7 @@ func PostPlatformEnrollmentBatchDecision(client PlatformEnrollmentDecisionClient
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("decode batch decision: %w", err)
 	}
-	if len(resp.Requests) != len(req.Requests) || resp.EventReceiptID == "" {
+	if len(resp.Requests) != len(req.Requests) || resp.ReceiptID == "" {
 		return nil, constants.ErrPlatformEnrollmentInvalidDecision
 	}
 	for i, result := range resp.Requests {

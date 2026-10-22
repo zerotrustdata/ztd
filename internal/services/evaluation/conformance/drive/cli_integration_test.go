@@ -92,11 +92,11 @@ func assertExpect(t *testing.T, want cases.Expect, got *evalv1.ConformanceObserv
 	t.Helper()
 	switch want.Kind {
 	case cases.ExpectExecuted:
-		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, got.GetKind())
-		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, got.GetEventReceipt().GetStatus())
+		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, got.GetKind())
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, got.GetReceipt().GetStatus())
 	case cases.ExpectRejected:
 		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, got.GetKind())
-		assert.Equal(t, want.RejectionCode, got.GetRejection().GetEventReceipt().GetRejectionCode())
+		assert.Equal(t, want.RejectionCode, got.GetRejection().GetReceipt().GetRejectionCode())
 	case cases.ExpectRefused:
 		assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL, got.GetKind())
 		assert.Equal(t, want.RefusalCode, got.GetRefusal().GetCode())

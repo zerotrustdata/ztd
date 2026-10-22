@@ -49,7 +49,7 @@ To address these vulnerabilities, ztd enforces three core architectural proposit
 
 1. **Reasoning is not authority.** An AI model, agentic workflow, or human operator produces proposals. An independent, deterministic policy enforcement authority decides whether a proposal may mutate state.
 2. **Governance attaches to the action.** Identity, canonical intent, target resource, payload, state Merkle binding, temporal freshness, and policy proofs are cryptographically bound to a single transaction rather than an open-ended session.
-3. **Claims follow evidence.** Cryptographically signed event receipts and independently verifiable hash chains determine what occurred on the governed path. High-level architecture claims or isolated benchmark demonstrations do not substitute for reproducible cryptographic proofs.
+3. **Claims follow evidence.** Cryptographically signed receipts and independently verifiable hash chains determine what occurred on the governed path. High-level architecture claims or isolated benchmark demonstrations do not substitute for reproducible cryptographic proofs.
 
 The ztd architecture operationalizes these propositions through clear protocol roles: Governance Gateway (Policy Decision Point), Governed Operator (Policy Execution Point), L1 Doctrine, L2 Consensus, L3 Notary, L4 Warden, and L5 Actuator.
 
@@ -64,9 +64,9 @@ ztd encodes this discipline into an automated seven-stage method:
 4. Format the proposed mutation, affected target, and cryptographic rationale for review.
 5. Cryptographically bind human authorization to the canonical transaction hash when policy requires.
 6. Execute strictly through a constrained, host-local boundary at the system owning the data.
-7. Verify outcome state, preserve signed pre- and post-execution evidence, and record immutable event receipts.
+7. Verify outcome state, preserve signed pre- and post-execution evidence, and record immutable receipts.
 
-Reasoning workflows—whether powered by proprietary frontier models, local open-weights engines, or human operators—operate strictly as proposers outside the trusted computing base. The platform supplies the identity, policy enforcement, verification, execution, and event receipt boundary between proposed intent and target systems.
+Reasoning workflows—whether powered by proprietary frontier models, local open-weights engines, or human operators—operate strictly as proposers outside the trusted computing base. The platform supplies the identity, policy enforcement, verification, execution, and receipt boundary between proposed intent and target systems.
 
 ## 3. The Coupling Problem in Agent Architectures
 
@@ -98,8 +98,8 @@ NIST SP 800-207 defines Zero Trust Architecture around dynamic, least-privilege 
 2. **Bind Policy to Canonical Intent**: Governed intent must explicitly encode action type, target resource, typed payload, requesting identities, Merkle state binding, nonce, expiration, and governance metadata. Canonical serialization and deterministic hashing guarantee that signatures over one intent cannot authorize a modified mutation.
 3. **Verify at the Execution Site**: A remote admission decision must not compel a local host mutation. The component resident on the target system must independently verify freshness, replay state, canonical intent, state Merkle roots, and posture-mandated proofs prior to execution.
 4. **Minimize Standing Authority**: Handlers receive ephemeral, transaction-bound capabilities that dissolve immediately upon execution completion. Ambient credentials are eliminated from the execution layer.
-5. **Preserve Evidence Before and After Dispatch**: A system recording only completed outcomes cannot distinguish between an unexecuted request and a crashed execution. The execution boundary must persist signed pre-execution (`EXECUTING`) and post-execution (`COMPLETED`/`FAILED`) event receipts, backed by durable storage attestations.
-6. **Make Claim Boundaries Explicit**: Cryptographic event receipts attest strictly to operations traversing the governed path. They do not attest to activity on ungoverned shell sessions, unmanaged tools, or compromised host accounts.
+5. **Preserve Evidence Before and After Dispatch**: A system recording only completed outcomes cannot distinguish between an unexecuted request and a crashed execution. The execution boundary must persist signed pre-execution (`EXECUTING`) and post-execution (`COMPLETED`/`FAILED`) receipts, backed by durable storage attestations.
+6. **Make Claim Boundaries Explicit**: Cryptographic receipts attest strictly to operations traversing the governed path. They do not attest to activity on ungoverned shell sessions, unmanaged tools, or compromised host accounts.
 
 ## 5. The ztd System Model
 
@@ -140,14 +140,14 @@ flowchart LR
     G -->|"Outbound mTLS"| H["Operator (PEP)"]
     H --> I["L4 Warden\n(Local Re-verify)"]
     I --> J["L5 Actuator\n(Capability & Exec)"]
-    J --> K["Authoritative Event receipts\n& File Ledger"]
+    J --> K["Authoritative Receipts\n& File Ledger"]
 ```
 
 1. **L1 Doctrine**: Evaluates decoded typed payloads against field-level constraints, forbidden-pattern regex, and deterministic MITRE ATT&CK heuristics. Enforced across all postures.
 2. **L2 Consensus**: Validates Ed25519 signatures from enrolled consensus members against configured quorum rules when multi-agent agreement is required.
 3. **L3 Notary**: Validates transaction-bound human approval. Gateway workflows enforce WebAuthn passkeys; outbound Operator workflows verify signed cryptographic approval proofs.
 4. **L4 Warden**: Pre-dispatch gate executed on the target host. Durably reserves the nonce, validates TTL expiration, recomputes the transaction hash, verifies the state Merkle root, re-runs L1 Doctrine, and verifies posture-required L2 and L3 proofs.
-5. **L5 Actuator**: Sole execution boundary. Persists an initial signed `EXECUTING` event receipt, appends a signed commitment to the SQLite commitment ledger, rehydrates scrubbed tokens locally, mints a single-use transaction capability, dispatches the handler, dissolves the capability, and persists the signed final event receipt and persistence attestation.
+5. **L5 Actuator**: Sole execution boundary. Persists an initial signed `EXECUTING` receipt, appends a signed commitment to the SQLite commitment ledger, rehydrates scrubbed tokens locally, mints a single-use transaction capability, dispatches the handler, dissolves the capability, and persists the signed final receipt and persistence attestation.
 
 ### 5.4 Sovereign Execution Boundary and Token Rehydration
 
@@ -157,11 +157,11 @@ To safeguard sensitive operational data, the Operator deploys a Sovereign Execut
 
 L3 Notary binds human approval to the specific transaction hash rather than granting standing session access. In WebAuthn workflows, the authenticator signs client data containing the transaction hash as a challenge [12]. In outbound Operator workflows, a cryptographic approval proof is signed and linked to the suspended transaction. This design prevents authorization replay and ensures that approval is cryptographically inseparable from the exact mutation parameters.
 
-### 5.6 Event receipts, Commitments, and Forensic Memory
+### 5.6 Receipts, Commitments, and Forensic Memory
 
-L5 Actuator signs and persists an initial `EXECUTING` event receipt to local SQLite storage before invoking execution handlers. Upon completion, L5 signs and persists the final `EventReceipt` along with a `EventReceiptPersistenceAttestation`. When enabled, the SQLite `commitment_ledger` appends hash-chained `CommitmentAttestation` records, and the git file ledger creates encrypted pre- and post-mutation snapshots.
+L5 Actuator signs and persists an initial `EXECUTING` receipt to local SQLite storage before invoking execution handlers. Upon completion, L5 signs and persists the final `ActionReceipt` along with a `ReceiptPersistenceAttestation`. When enabled, the SQLite `commitment_ledger` appends hash-chained `CommitmentAttestation` records, and the git file ledger creates encrypted pre- and post-mutation snapshots.
 
-These artifacts establish an immutable, verifiable memory substrate. Autonomous workflows and human operators can query signed event receipts to establish exactly what was proposed, verified, and executed.
+These artifacts establish an immutable, verifiable memory substrate. Autonomous workflows and human operators can query signed receipts to establish exactly what was proposed, verified, and executed.
 
 ### 5.7 Confidential Edge Execution and Governed Mutation
 
@@ -199,7 +199,7 @@ Empirical studies demonstrate the systemic necessity of an external execution bo
 ### 6.2 Published ztd Evidence
 
 ztd maintains a verifiable, proof-backed compliance and evidence engine:
-- The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, v2.1.0) defines 13 atomic, framework-neutral technical assertions covering identity, least privilege, allow/block outcomes, event receipt integrity, persistence, Merkle state tracking, DLP scrubbing, and FIPS cryptographic modes.
+- The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, v2.1.0) defines 13 atomic, framework-neutral technical assertions covering identity, least privilege, allow/block outcomes, receipt integrity, persistence, Merkle state tracking, DLP scrubbing, and FIPS cryptographic modes.
 - The framework catalog covers FedRAMP 20x CR26 (31 controls: 14 mapped, 17 unsupported) and NIST SP 800-53 Rev. 5 (100 controls: 20 mapped, 80 unsupported).
 - Catalog coverage is strictly distinguished from customer compliance; unsupported controls are explicitly reported rather than hidden.
 - The evidence hierarchy enforces strict levels from L0 (Documented) to L5 (Externally Attested); the automated platform pipeline generates evidence up to L3 (Demonstrated).
@@ -207,7 +207,7 @@ ztd maintains a verifiable, proof-backed compliance and evidence engine:
 ### 6.3 Explicit Boundaries and Non-Claims
 
 ztd explicitly disclaims universal security guarantees:
-- Event receipts attest strictly to mutations processed across the governed path; they do not attest to side channels, unmanaged local shells, or client-native tools.
+- Receipts attest strictly to mutations processed across the governed path; they do not attest to side channels, unmanaged local shells, or client-native tools.
 - Token scrubbing and local rehydration reduce exposure but do not guarantee zero prompt leakage across unconstrained analytical queries.
 - Cryptographic verification cannot compensate for compromised host operating-system credentials, stolen private keys, or root-level host tampering.
 - Compliance reports reflect point-in-time technical evaluations and do not constitute legal compliance, organizational certification, or auditor accreditation.
@@ -215,7 +215,7 @@ ztd explicitly disclaims universal security guarantees:
 ## 7. Reasoning Topology and Governance Economics
 
 Governing execution does not imply running expensive frontier models at every verification layer. Within ztd:
-- L1 Doctrine, transaction canonicalization, signature verification, nonce reservation, Merkle state root checking, capability minting, and event receipt persistence are fully deterministic, microsecond-scale algorithmic operations.
+- L1 Doctrine, transaction canonicalization, signature verification, nonce reservation, Merkle state root checking, capability minting, and receipt persistence are fully deterministic, microsecond-scale algorithmic operations.
 - L2 Consensus involves model deliberation only when the deployment explicitly configures multi-agent consensus.
 - L3 Notary is a human cryptographic ceremony, incurring zero model inference cost.
 
@@ -255,7 +255,7 @@ ztd's thesis is that the data owner must retain custody of authoritative state, 
 
 - [About ztd](about.md): The operating method, platform overview, and reference implementation.
 - [System Architecture Overview](../architecture/overview.md): Component topology, trust boundaries, and transaction lifecycles.
-- [Governance Architecture](../architecture/governance.md): Five-layer pipeline specifications, posture policies, and event receipts.
+- [Governance Architecture](../architecture/governance.md): Five-layer pipeline specifications, posture policies, and receipts.
 - [AI Agents and Governance Boundary](../architecture/agents.md): Agent integration patterns, tool boundaries, and bypass limits.
 - [Authentication Architecture](../architecture/auth.md): mTLS, SPIFFE workload identities, WebAuthn, and CLI proofs.
 - [Encryption Architecture](../architecture/encryption.md): Vault hierarchy, envelope encryption, token scrubbing, and key management.

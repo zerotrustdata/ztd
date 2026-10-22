@@ -27,7 +27,7 @@
     "app_name": {
       "type": "string",
       "title": "Application identity",
-      "description": "Enrolled application name the bridge authenticates as ('ztd auth enroll app <name>'). Event receipts record it as spiffe://ztd.local/app/<name>.",
+      "description": "Enrolled application name the bridge authenticates as ('ztd auth enroll app <name>'). Receipts record it as spiffe://ztd.local/app/<name>.",
       "default": "claude"
     }
   }

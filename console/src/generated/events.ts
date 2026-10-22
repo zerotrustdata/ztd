@@ -70,7 +70,6 @@ export const EventType = Object.freeze({
     OPERATOR_CONTEXT_CHANGED: 'ztd.v1.operator.context.changed',
     OPERATOR_DEVICE_REGISTERED: 'ztd.v1.operator.device.registered',
     OPERATOR_EVAL_ANSWER_REQUESTED: 'ztd.v1.operator.eval.answer.requested',
-    OPERATOR_EVENT_RECEIPT_RECORDED: 'ztd.v1.operator.event_receipt.recorded',
     OPERATOR_FIELD_READ_ACCESS_DENIED: 'ztd.v1.operator.field.read.access.denied',
     OPERATOR_FIELD_READ_ACCESS_GRANTED: 'ztd.v1.operator.field.read.access.granted',
     OPERATOR_FIELD_READ_REQUESTED: 'ztd.v1.operator.field.read.requested',
@@ -166,6 +165,7 @@ export const EventType = Object.freeze({
     OPERATOR_PANEL_LIST_UPDATED: 'ztd.v1.operator.panel.list.updated',
     OPERATOR_PROVIDER_BOUNDARY_OBSERVATION_COMPLETED: 'ztd.v1.operator.provider.boundary.observation.completed',
     OPERATOR_PROVIDER_BOUNDARY_OBSERVATION_REQUESTED: 'ztd.v1.operator.provider.boundary.observation.requested',
+    OPERATOR_RECEIPT_RECORDED: 'ztd.v1.operator.receipt.recorded',
     OPERATOR_REPUTATION_COMMITMENT_CREATED: 'ztd.v1.operator.reputation.commitment.created',
     OPERATOR_REPUTATION_COMMITMENT_FAILED: 'ztd.v1.operator.reputation.commitment.failed',
     OPERATOR_REPUTATION_COMMITMENT_VERIFIED: 'ztd.v1.operator.reputation.commitment.verified',
@@ -625,11 +625,6 @@ export const EventRegistry = Object.freeze({
         persistence: 'ephemeral',
         actionType: 'EVAL_ANSWER',
         payload: 'ztd.operator.v1.EvalAnswerRequested',
-    }),
-    OPERATOR_EVENT_RECEIPT_RECORDED: Object.freeze({
-        kind: 'fact',
-        producers: ['gateway', 'operator'],
-        persistence: 'operator.audit_log',
     }),
     OPERATOR_FIELD_READ_ACCESS_DENIED: Object.freeze({
         kind: 'outcome',
@@ -1224,6 +1219,11 @@ export const EventRegistry = Object.freeze({
         actionType: 'PROVIDER_BOUNDARY_OBSERVATION',
         payload: 'ztd.eval.v1.ProviderBoundaryObservationCommand',
         reserved: true,
+    }),
+    OPERATOR_RECEIPT_RECORDED: Object.freeze({
+        kind: 'fact',
+        producers: ['gateway', 'operator'],
+        persistence: 'operator.audit_log',
     }),
     OPERATOR_REPUTATION_COMMITMENT_CREATED: Object.freeze({
         kind: 'outcome',

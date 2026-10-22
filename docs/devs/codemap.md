@@ -187,7 +187,7 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `autochthon` | `autochthoncmd` | `internal/cli/cmd/autochthon/` | | Gateway-less foreground runtime: host sampling and local prior under `.ztd/autochthon/`, and read-only `status` reporting. Not an Operator mode; refuses Gateway-facing flags. |
 | `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, and reset. |
 | `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, `release-smoke`, and `eval-loop`. |
-| `audit` | `audit` | `internal/cli/cmd/audit/` | `audits` | Event receipt, event, summary, export, report, and verify queries against a running Gateway. |
+| `audit` | `audit` | `internal/cli/cmd/audit/` | `audits` | Receipt, event, summary, export, report, and verify queries against a running Gateway. |
 | `report` | `report` | `internal/cli/cmd/report/` | `reports` | Deterministic CSV evidence generation and offline verification. |
 | `public` | `public` | `internal/cli/cmd/public/` | | Public spectator feed. `restore` is constructed in eval package (`INV-PKG-02`). |
 | `swagger` | `swagger` | `internal/cli/cmd/swagger/` | | OpenAPI generation, serving, and validation. |
@@ -308,7 +308,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `GetBlobStore` | `BlobStoreService` |
 | `GetAuditStore` | `storage.SQLAuditStore` |
 
-`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. `storage.ReadLocalEventReceipt` (`local_event_receipt.go`) reads one runtime's signed event receipt from its own audit store with that runtime's vault key, never a Gateway mirror. Storage architecture: [Storage Architecture](../architecture/storage.md).
+`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. `storage.ReadLocalEventReceipt` (`local_receipt.go`) reads one runtime's signed event receipt from its own audit store with that runtime's vault key, never a Gateway mirror. Storage architecture: [Storage Architecture](../architecture/storage.md).
 
 ### Internal services
 
@@ -318,7 +318,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/autochthon/` | Gateway-less `ztd autochthon` command (CLI: `internal/cli/cmd/autochthon/`): host sampling, local predictor population, `.ztd/autochthon/` hash-chained tally, and read-only status report. No governance path. |
 | `internal/services/compliance/` | KSI evaluation and history, OSCAL support, catalog validation, evidence import and graph verification, and signed report bundles. |
 | `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. |
-| `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.1.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, event receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
+| `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.1.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
 | `internal/services/execution/` | Command execution and governed file edits. |
 | `internal/services/fs/` | Scoped `.ztd/` runtime file operations. |
 | `internal/services/ztdbinaries/` | Deployment-binary catalog, reader, and publisher. CLI wrapper: `internal/tools/ztdbinaries/`. |
@@ -354,7 +354,7 @@ Schemas reside in `protocol/proto/ztd/`. Wire requirements: [Protocol Specificat
 | `common/v1` | Governance envelopes, layer metadata, shared enums, and common messages. |
 | `compliance/v1` | Compliance evidence, assessment, and report messages. |
 | `eval/v1` | Evaluation campaign, scenario catalog, assignment, run verification, witness (provider-boundary and model-provenance) evidence, public projection, governance-conformance record and verdict, and agent system-under-test messages. |
-| `operator/v1` | Operator commands, execution results, telemetry, event receipts, and service RPC definitions. |
+| `operator/v1` | Operator commands, execution results, telemetry, receipts, and service RPC definitions. |
 | `pubsub/v1` | Pub/sub event and message envelopes. |
 | `tribunal/v1` | Tribunal intent request, member-call, and result messages for `POST /api/v1/operators/intents`. |
 

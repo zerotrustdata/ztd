@@ -136,7 +136,7 @@ func probeResponse(attemptID, text string) *operatorv1.InferenceDispatchResponse
 		Parts:             []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: text}}},
 	}
 	return &operatorv1.InferenceDispatchResponse{
-		Result:       result,
-		EventReceipt: &operatorv1.EventReceipt{ResultSummary: result.GetResultDigest()},
+		Result:  result,
+		Receipt: &operatorv1.ActionReceipt{ResultSummary: result.GetResultDigest()},
 	}
 }

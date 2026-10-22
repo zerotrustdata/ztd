@@ -38,7 +38,7 @@ do_not_use_for:
 
 Defines the Gateway's Server-Sent Events (SSE) delivery channel for session-targeted events. The Gateway is the sole SSE publisher for browsers and CLIs. It publishes from its internal services (approvals, Operator status, heartbeats, model provenance evidence) and from the observe producer endpoints that application workloads call over mTLS.
 
-SSE is a session-scoped delivery channel for asynchronous notifications and telemetry. Publishing an event neither mutates governed state nor alters the five-layer governance interlock; authoritative outcomes reside in signed event receipts and platform records.
+SSE is a session-scoped delivery channel for asynchronous notifications and telemetry. Publishing an event neither mutates governed state nor alters the five-layer governance interlock; authoritative outcomes reside in signed receipts and platform records.
 
 ## Quick index
 
@@ -159,7 +159,7 @@ Persisted Event             Ephemeral Event
 | `ztd.v1.app.agent.status.updated` | per registry | `observe_producer.go` | Agent state emitted by registered application workloads |
 | `ztd.v1.app.run.status.updated` | per registry | `observe_producer.go` | Run state emitted by registered application workloads |
 | `ztd.v1.ai.eval.stop.requested` | ephemeral | `observe_producer.go` | Run-scoped stop request from an app workload; carries `campaign_id` and `run_id`. Sent to the named session's open stream only and never stored |
-| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct CLI notification when a suspended L3 transaction is approved or denied. Its `event_receipt` is the canonical protojson signed `EventReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
+| `approval.completed` | persisted | `passkey_orchestrator.go` | Direct CLI notification when a suspended L3 transaction is approved or denied. Its `receipt` is the canonical protojson signed `ActionReceipt` of the resumed transaction on approval or the `L3_DENIED` rejection on denial (`INV-GOV-ACT-13`) |
 | `passkey.registered` | persisted | `passkey_orchestrator.go` | Direct CLI notification of completed passkey registration |
 
 ## Observe Producers
@@ -202,7 +202,7 @@ Browser / CLI Client                          Gateway SSE Controller
 
 The CLI SSE client (`internal/cli/sse`) is used by auth flows that wait for approval or passkey-registration events. For example, `ztd auth approve` opens the browser approval page and waits for its completion event:
 
-`ztd auth approve <transaction_hash>` opens the Gateway approval page and waits for the `approval.completed` event for that transaction. The `--cli` flag signs the transaction hash with the enrolled CLI certificate instead, and `--deny` denies it from the enrolled CLI session (`./ztd auth approve --help`). Both read the final event receipt from the HTTP response, not the stream. A stream line may hold up to `SSEClientMaxLineSize` bytes (`internal/constants/paths.go`), enough for an `approval.completed` event whose event receipt carries both escaped execution output streams.
+`ztd auth approve <transaction_hash>` opens the Gateway approval page and waits for the `approval.completed` event for that transaction. The `--cli` flag signs the transaction hash with the enrolled CLI certificate instead, and `--deny` denies it from the enrolled CLI session (`./ztd auth approve --help`). Both read the final receipt from the HTTP response, not the stream. A stream line may hold up to `SSEClientMaxLineSize` bytes (`internal/constants/paths.go`), enough for an `approval.completed` event whose receipt carries both escaped execution output streams.
 
 ### Consuming Polled Events
 

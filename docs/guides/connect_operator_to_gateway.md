@@ -26,7 +26,7 @@ do_not_use_for:
 
 ## Overview
 
-The ztd Operator is the Policy Execution Point (PEP) for the runtime environment visible to its process. It opens an outbound mTLS WebSocket connection to the Gateway, subscribes to its identity- and session-scoped command channel, verifies governed transactions, executes approved actions in its local runtime, and publishes signed event receipts and heartbeats. The Operator exposes no inbound application listener.
+The ztd Operator is the Policy Execution Point (PEP) for the runtime environment visible to its process. It opens an outbound mTLS WebSocket connection to the Gateway, subscribes to its identity- and session-scoped command channel, verifies governed transactions, executes approved actions in its local runtime, and publishes signed receipts and heartbeats. The Operator exposes no inbound application listener.
 
 Connecting a new Operator follows five steps:
 
@@ -59,7 +59,7 @@ No inbound port is required on the Operator host.
 
 ### Endpoint Requirements
 
-Use a hostname with `ztd operator start --endpoint`, without an `http://` or `https://` scheme. The Operator uses Gateway port 8080 for enrollment and port 8443 for mTLS WebSocket pub/sub channels carrying commands, heartbeats, results, and event receipts. A `host:port` endpoint sets the enrollment port; set the pub/sub port with `--gateway-https-port`. The Operator uses WebSocket connections for bootstrap and active pub/sub; it does not call the Gateway's ordinary HTTP APIs. Command verification uses the admission snapshot already bound into the envelope; event receipt state roots come from the Operator's local store.
+Use a hostname with `ztd operator start --endpoint`, without an `http://` or `https://` scheme. The Operator uses Gateway port 8080 for enrollment and port 8443 for mTLS WebSocket pub/sub channels carrying commands, heartbeats, results, and receipts. A `host:port` endpoint sets the enrollment port; set the pub/sub port with `--gateway-https-port`. The Operator uses WebSocket connections for bootstrap and active pub/sub; it does not call the Gateway's ordinary HTTP APIs. Command verification uses the admission snapshot already bound into the envelope; receipt state roots come from the Operator's local store.
 
 The Gateway HTTP and HTTPS listeners bind `127.0.0.1` by default. Start the Gateway with `make up-public` or `make gw-public` (or `./ztd gw start --listen-host 0.0.0.0`) before connecting Operators from other hosts. If a default port is busy, background `./ztd gw start` moves both listeners to the next free pair and prints the bound ports; give the Operator `--endpoint <gateway-host>:<http-port> --port <https-port>` with those ports.
 

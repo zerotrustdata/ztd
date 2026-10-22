@@ -243,7 +243,7 @@ export type L3Metadata = Message<"ztd.common.v1.L3Metadata"> & {
   /**
    * The human declined the suspended transaction. L4 rejects a denied
    * envelope with GOVERNANCE_REJECTION_CODE_L3_DENIED in every posture, so
-   * the deny is an Operator-signed rejection event receipt. A deny can only stop
+   * the deny is an Operator-signed rejection receipt. A deny can only stop
    * execution, so it needs no proof.
    *
    * @generated from field: bool denied = 2;

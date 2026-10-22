@@ -912,7 +912,7 @@ func TestPlatformEnrollmentRouter_BatchDecisionAuthorizationAndAtomicResult(t *t
 				var resp models.PlatformEnrollmentBatchDecisionResponse
 				require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 				require.Len(t, resp.Requests, 2)
-				require.NotEmpty(t, resp.EventReceiptID)
+				require.NotEmpty(t, resp.ReceiptID)
 			}
 		})
 	}

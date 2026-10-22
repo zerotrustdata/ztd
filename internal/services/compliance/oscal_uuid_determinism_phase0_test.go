@@ -73,7 +73,7 @@ func TestPhase0OSCAL_IdentifiersBindCanonicalRecordIdentities(t *testing.T) {
 		}},
 		{name: "evidence identity", mutate: func(analysis *compliancev1.ComplianceAnalysis) {
 			const changedDigest = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-			changedArtifactID := "event-receipt:sha256:" + changedDigest
+			changedArtifactID := "action-receipt:sha256:" + changedDigest
 			analysis.EvidenceResources[0].ArtifactId = changedArtifactID
 			analysis.EvidenceResources[0].Sha256 = changedDigest
 			analysis.AssertionAssessments[0].EvidenceRefs[0] = changedArtifactID

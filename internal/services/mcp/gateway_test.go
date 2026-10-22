@@ -42,14 +42,14 @@ import (
 )
 
 type fakeEnvelopeProcessor struct {
-	eventReceipt *operatorv1.EventReceipt
-	err          error
-	gotPayload   []byte
+	receipt    *operatorv1.ActionReceipt
+	err        error
+	gotPayload []byte
 }
 
-func (f *fakeEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
+func (f *fakeEnvelopeProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
 	f.gotPayload = append([]byte(nil), payload...)
-	return f.eventReceipt, f.err
+	return f.receipt, f.err
 }
 
 type fakeStateRootProvider struct {
@@ -167,8 +167,8 @@ func suspendableEnvelope(t *testing.T, operatorSessionID string) []byte {
 	return wire
 }
 
-func TestGatewayService_HandleToolsCall_ReturnsSignedEventReceiptProtojson(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+func TestGatewayService_HandleToolsCall_ReturnsSignedReceiptProtojson(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-1",
 		TransactionHash: "hash-1",
 		SignerKeyId:     "warden-key-1",
@@ -176,7 +176,7 @@ func TestGatewayService_HandleToolsCall_ReturnsSignedEventReceiptProtojson(t *te
 		ResultSummary:   "tool result",
 		Signature:       "signature-1",
 	}
-	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{eventReceipt: eventReceipt}))
+	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{receipt: receipt}))
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test-tool","arguments":{},"execution_id":"execution-1","investigation_id":"investigation-1"}}`))
 	w := httptest.NewRecorder()
 
@@ -185,19 +185,19 @@ func TestGatewayService_HandleToolsCall_ReturnsSignedEventReceiptProtojson(t *te
 	require.Equal(t, http.StatusOK, w.Code)
 	var resp struct {
 		Result struct {
-			Content      []TextContent   `json:"content"`
-			EventReceipt json.RawMessage `json:"event_receipt"`
+			Content []TextContent   `json:"content"`
+			Receipt json.RawMessage `json:"receipt"`
 		} `json:"result"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "tool result", resp.Result.Content[0].Text)
-	var decoded operatorv1.EventReceipt
-	require.NoError(t, protojson.Unmarshal(resp.Result.EventReceipt, &decoded), "event receipt must be strict protojson")
-	assert.True(t, proto.Equal(eventReceipt, &decoded), "the wire event receipt must be the executing Operator's signed event receipt")
+	var decoded operatorv1.ActionReceipt
+	require.NoError(t, protojson.Unmarshal(resp.Result.Receipt, &decoded), "receipt must be strict protojson")
+	assert.True(t, proto.Equal(receipt, &decoded), "the wire receipt must be the executing Operator's signed receipt")
 }
 
 func TestGatewayService_HandleToolsCall_GeneratesInvestigationIDWhenOmitted(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-2",
 		TransactionHash: "hash-2",
 		SignerKeyId:     "warden-key-2",
@@ -205,7 +205,7 @@ func TestGatewayService_HandleToolsCall_GeneratesInvestigationIDWhenOmitted(t *t
 		ResultSummary:   "tool result",
 		Signature:       "signature-2",
 	}
-	proc := &fakeEnvelopeProcessor{eventReceipt: eventReceipt}
+	proc := &fakeEnvelopeProcessor{receipt: receipt}
 	g := newTestGatewayService(t, withEnvProc(proc))
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test-tool","arguments":{},"execution_id":"execution-2"}}`))
 	w := httptest.NewRecorder()
@@ -220,7 +220,7 @@ func TestGatewayService_HandleToolsCall_GeneratesInvestigationIDWhenOmitted(t *t
 }
 
 func TestGatewayService_HandleToolsCall_BindsInvestigationIDIntoGovernanceEnvelope(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-3",
 		TransactionHash: "hash-3",
 		SignerKeyId:     "warden-key-3",
@@ -228,7 +228,7 @@ func TestGatewayService_HandleToolsCall_BindsInvestigationIDIntoGovernanceEnvelo
 		ResultSummary:   "tool result",
 		Signature:       "signature-3",
 	}
-	proc := &fakeEnvelopeProcessor{eventReceipt: eventReceipt}
+	proc := &fakeEnvelopeProcessor{receipt: receipt}
 	g := newTestGatewayService(t, withEnvProc(proc))
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"test-tool","arguments":{},"execution_id":"execution-3","investigation_id":"investigation-3"}}`))
 	w := httptest.NewRecorder()
@@ -325,10 +325,10 @@ func TestGatewayService_HandleToolsCall_ErrorMapping(t *testing.T) {
 	}
 }
 
-// TestGatewayService_RejectionEventReceiptIsErrorData proves MCP tools/call and
-// A2A return the Operator's signed rejection event receipt as typed
+// TestGatewayService_RejectionReceiptIsErrorData proves MCP tools/call and
+// A2A return the Operator's signed rejection receipt as typed
 // GovernanceRejection error data, with its rejection_code.
-func TestGatewayService_RejectionEventReceiptIsErrorData(t *testing.T) {
+func TestGatewayService_RejectionReceiptIsErrorData(t *testing.T) {
 	cases := []struct {
 		name    string
 		path    string
@@ -356,18 +356,18 @@ func TestGatewayService_RejectionEventReceiptIsErrorData(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			eventReceipt := &operatorv1.EventReceipt{
+			receipt := &operatorv1.ActionReceipt{
 				TransactionId:   "tx-blocked-1",
 				TransactionHash: "tx-blocked-1",
 				SignerKeyId:     "warden-key-blocked",
 				Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-				FailureCode:     operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+				FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 				RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE,
 				ResultSummary:   "rejected: L1 doctrine",
 				Signature:       "sig-blocked-1",
 			}
 			verifyErr := fmt.Errorf("%w: destroy_rm_recursive_wide_target", governance.ErrL1ValidationFailed)
-			proc := &fakeEnvelopeProcessor{eventReceipt: eventReceipt, err: governance.WithRejectionEventReceipt(eventReceipt, verifyErr)}
+			proc := &fakeEnvelopeProcessor{receipt: receipt, err: governance.WithRejectionReceipt(receipt, verifyErr)}
 			g := newTestGatewayService(t, withEnvProc(proc), withA2ADownstreamURL("http://a2a.invalid"))
 			w := httptest.NewRecorder()
 
@@ -381,14 +381,14 @@ func TestGatewayService_RejectionEventReceiptIsErrorData(t *testing.T) {
 			rejection := &operatorv1.GovernanceRejection{}
 			require.NoError(t, protojson.Unmarshal(resp.Error.Data, rejection))
 			assert.Equal(t, governance.ErrL1ValidationFailed.Error(), rejection.GetError())
-			assert.Equal(t, "tx-blocked-1", rejection.GetEventReceipt().GetTransactionId())
-			assert.Equal(t, "sig-blocked-1", rejection.GetEventReceipt().GetSignature())
-			assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE, rejection.GetEventReceipt().GetRejectionCode())
+			assert.Equal(t, "tx-blocked-1", rejection.GetReceipt().GetTransactionId())
+			assert.Equal(t, "sig-blocked-1", rejection.GetReceipt().GetSignature())
+			assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE, rejection.GetReceipt().GetRejectionCode())
 		})
 	}
 }
 
-func TestGatewayService_HandleToolsCall_NoFailedStageDataWhenEventReceiptIsNil(t *testing.T) {
+func TestGatewayService_HandleToolsCall_NoFailedStageDataWhenReceiptIsNil(t *testing.T) {
 	proc := &fakeEnvelopeProcessor{err: governance.ErrL1ValidationFailed}
 	g := newTestGatewayService(t, withEnvProc(proc))
 
@@ -410,7 +410,7 @@ func TestGatewayService_HandleToolsCall_NoFailedStageDataWhenEventReceiptIsNil(t
 	require.NotNil(t, resp.Error)
 	assert.Equal(t, constants.ErrCodeL1ValidationFailed, resp.Error.Code)
 	assert.Equal(t, operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE,
-		decodeRefusal(t, resp.Error.Data).GetCode(), "a governed error without an event receipt must carry an IngressRefusal")
+		decodeRefusal(t, resp.Error.Data).GetCode(), "a governed error without a receipt must carry an IngressRefusal")
 }
 
 func TestGatewayService_HandleToolsCall_Suspension(t *testing.T) {
@@ -456,8 +456,8 @@ func TestGatewayService_HandleToolsCall_Suspension(t *testing.T) {
 	require.JSONEq(t, `{"jsonrpc":"2.0","id":1,"result":`+string(expectedJSON)+`}`, w.Body.String())
 }
 
-func TestCallToolSuccessReturnsCanonicalSignedEventReceipt(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+func TestCallToolSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-call-1",
 		TransactionHash: "hash-call-1",
 		SignerKeyId:     "warden-key-call-1",
@@ -465,7 +465,7 @@ func TestCallToolSuccessReturnsCanonicalSignedEventReceipt(t *testing.T) {
 		ResultSummary:   "tool result",
 		Signature:       "signature-call-1",
 	}
-	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{eventReceipt: eventReceipt}))
+	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{receipt: receipt}))
 	params := json.RawMessage(`{"name":"test-tool","arguments":{},"execution_id":"execution-1","investigation_id":"investigation-1"}`)
 
 	res, err := g.callTool(context.Background(), httptest.NewRequest(http.MethodPost, "/mcp", nil), params)
@@ -475,16 +475,16 @@ func TestCallToolSuccessReturnsCanonicalSignedEventReceipt(t *testing.T) {
 	assert.False(t, result.IsError)
 	assert.Nil(t, result.Suspension)
 
-	var decoded operatorv1.EventReceipt
-	require.NoError(t, protojson.Unmarshal(result.EventReceipt, &decoded), "event receipt must be strict protojson")
-	assert.True(t, proto.Equal(eventReceipt, &decoded))
-	canonical, err := response.MarshalProtoJSONCanonical(eventReceipt)
+	var decoded operatorv1.ActionReceipt
+	require.NoError(t, protojson.Unmarshal(result.Receipt, &decoded), "receipt must be strict protojson")
+	assert.True(t, proto.Equal(receipt, &decoded))
+	canonical, err := response.MarshalProtoJSONCanonical(receipt)
 	require.NoError(t, err)
-	assert.Equal(t, canonical, []byte(result.EventReceipt), "the embedded event receipt must be the canonical bytes")
+	assert.Equal(t, canonical, []byte(result.Receipt), "the embedded receipt must be the canonical bytes")
 }
 
-func TestA2ACallSuccessReturnsCanonicalSignedEventReceipt(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+func TestA2ACallSuccessReturnsCanonicalSignedReceipt(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-a2a-1",
 		TransactionHash: "hash-a2a-1",
 		SignerKeyId:     "warden-key-a2a-1",
@@ -492,7 +492,7 @@ func TestA2ACallSuccessReturnsCanonicalSignedEventReceipt(t *testing.T) {
 		ResultSummary:   "a2a result",
 		Signature:       "signature-a2a-1",
 	}
-	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{eventReceipt: eventReceipt}))
+	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{receipt: receipt}))
 	params := json.RawMessage(`{"skill_name":"test-skill","payload":{"arg":"val"}}`)
 
 	res, err := g.a2aCall(context.Background(), httptest.NewRequest(http.MethodPost, "/api/v1/a2a/call", nil), params)
@@ -500,18 +500,18 @@ func TestA2ACallSuccessReturnsCanonicalSignedEventReceipt(t *testing.T) {
 	success, ok := res.(A2ASuccessResponse)
 	require.True(t, ok)
 
-	var decoded operatorv1.EventReceipt
+	var decoded operatorv1.ActionReceipt
 	require.NoError(t, protojson.Unmarshal(success.Result, &decoded), "result must be strict protojson")
-	assert.True(t, proto.Equal(eventReceipt, &decoded))
-	canonical, err := response.MarshalProtoJSONCanonical(eventReceipt)
+	assert.True(t, proto.Equal(receipt, &decoded))
+	canonical, err := response.MarshalProtoJSONCanonical(receipt)
 	require.NoError(t, err)
-	assert.Equal(t, canonical, []byte(success.Result), "the result must be the canonical event receipt bytes")
+	assert.Equal(t, canonical, []byte(success.Result), "the result must be the canonical receipt bytes")
 }
 
-func TestEncodeEventReceipt_FailsClosedOnNilEventReceipt(t *testing.T) {
-	encoded, err := encodeEventReceipt(nil)
+func TestEncodeActionReceipt_FailsClosedOnNilReceipt(t *testing.T) {
+	encoded, err := encodeActionReceipt(nil)
 	require.ErrorIs(t, err, constants.ErrInternal)
-	assert.Nil(t, encoded, "a governed success must never be returned without its event receipt")
+	assert.Nil(t, encoded, "a governed success must never be returned without its receipt")
 }
 
 func TestGovernedSuspension_MCPAndA2AShareTypedShape(t *testing.T) {
@@ -557,19 +557,19 @@ func suspendedCallFixture(t *testing.T, proc *fakeEnvelopeProcessor, store *fake
 	return hash
 }
 
-func invalidL3ProofRejection(t *testing.T) (*operatorv1.EventReceipt, error) {
+func invalidL3ProofRejection(t *testing.T) (*operatorv1.ActionReceipt, error) {
 	t.Helper()
-	eventReceipt := &operatorv1.EventReceipt{
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-l3-invalid",
 		TransactionHash: "hash-l3-invalid",
 		SignerKeyId:     "warden-key-l3",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:     operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID,
 		ResultSummary:   "rejected: L3 proof invalid",
 		Signature:       "sig-l3-invalid",
 	}
-	return eventReceipt, governance.WithRejectionEventReceipt(eventReceipt, governance.ErrL3ProofInvalid)
+	return receipt, governance.WithRejectionReceipt(receipt, governance.ErrL3ProofInvalid)
 }
 
 func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForMCPCall(t *testing.T) {
@@ -605,24 +605,24 @@ func TestResumeWithL3Proof_InvalidProofReturnsSignedRejectionForA2ACall(t *testi
 func assertInvalidProofRejectionKeepsSuspension(t *testing.T, g *GatewayService, proc *fakeEnvelopeProcessor, store *fakeSuspendedStore, txHash string) {
 	t.Helper()
 	rejection, procErr := invalidL3ProofRejection(t)
-	proc.eventReceipt = rejection
+	proc.receipt = rejection
 	proc.err = procErr
 
-	eventReceipt, err := g.ResumeWithL3Proof(context.Background(), txHash, "user-1", &commonv1.L3Proof{CredentialId: "cred-bad"})
+	receipt, err := g.ResumeWithL3Proof(context.Background(), txHash, "user-1", &commonv1.L3Proof{CredentialId: "cred-bad"})
 	require.ErrorIs(t, err, governance.ErrL3ProofInvalid)
-	require.NotNil(t, eventReceipt, "an invalid proof must return the signed rejection event receipt")
-	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID, eventReceipt.GetRejectionCode())
-	assert.NotEmpty(t, eventReceipt.GetSignature(), "the rejection event receipt must be signed")
+	require.NotNil(t, receipt, "an invalid proof must return the signed rejection receipt")
+	assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_PROOF_INVALID, receipt.GetRejectionCode())
+	assert.NotEmpty(t, receipt.GetSignature(), "the rejection receipt must be signed")
 	assert.Contains(t, store.txs, txHash, "a rejected proof keeps the suspension so it can be retried")
 }
 
 func TestGatewayService_ResumeWithL3Proof(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		ResultSummary: "tool result",
 	}
-	proc := &fakeEnvelopeProcessor{eventReceipt: eventReceipt}
+	proc := &fakeEnvelopeProcessor{receipt: receipt}
 	store := &fakeSuspendedStore{}
 
 	txHash := "hash-1"
@@ -639,9 +639,9 @@ func TestGatewayService_ResumeWithL3Proof(t *testing.T) {
 		CredentialId: "cred-1",
 	}
 
-	gotEventReceipt, err := g.ResumeWithL3Proof(context.Background(), txHash, "user-1", proof)
+	gotReceipt, err := g.ResumeWithL3Proof(context.Background(), txHash, "user-1", proof)
 	require.NoError(t, err)
-	require.Equal(t, eventReceipt, gotEventReceipt)
+	require.Equal(t, receipt, gotReceipt)
 
 	// Verify it was deleted from store
 	require.Empty(t, store.txs)
@@ -670,18 +670,18 @@ func TestGatewayService_ResumeWithL3Proof_ExpiredTransaction(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrTransactionExpired)
 }
 
-func l3DeniedRejection() (*operatorv1.EventReceipt, error) {
-	eventReceipt := &operatorv1.EventReceipt{
+func l3DeniedRejection() (*operatorv1.ActionReceipt, error) {
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-l3-denied",
 		TransactionHash: "hash-l3-denied",
 		SignerKeyId:     "warden-key-l3",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:     operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
 		ResultSummary:   "rejected: L3 denied",
 		Signature:       "sig-l3-denied",
 	}
-	return eventReceipt, governance.WithRejectionEventReceipt(eventReceipt, constants.ErrTxL3Denied)
+	return receipt, governance.WithRejectionReceipt(receipt, constants.ErrTxL3Denied)
 }
 
 func TestDenySuspendedTransaction_ReturnsSignedRejectionForMCPAndA2ACalls(t *testing.T) {
@@ -713,12 +713,12 @@ func TestDenySuspendedTransaction_ReturnsSignedRejectionForMCPAndA2ACalls(t *tes
 			g.posture = constants.PostureRatify
 			txHash := suspendedCallFixture(t, proc, store, call(g))
 
-			proc.eventReceipt, proc.err = l3DeniedRejection()
-			eventReceipt, err := g.DenySuspendedTransaction(context.Background(), txHash, "user-1")
+			proc.receipt, proc.err = l3DeniedRejection()
+			receipt, err := g.DenySuspendedTransaction(context.Background(), txHash, "user-1")
 			require.NoError(t, err)
-			require.NotNil(t, eventReceipt)
-			assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, eventReceipt.GetRejectionCode())
-			assert.NotEmpty(t, eventReceipt.GetSignature(), "the deny must be an Operator-signed event receipt")
+			require.NotNil(t, receipt)
+			assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, receipt.GetRejectionCode())
+			assert.NotEmpty(t, receipt.GetSignature(), "the deny must be an Operator-signed receipt")
 			assert.Contains(t, string(proc.gotPayload), `"denied":true`, "the deny must reach L4 as the L3 denied marker")
 			assert.NotContains(t, store.txs, txHash, "a signed deny ends the suspension")
 		})
@@ -738,7 +738,7 @@ func TestDenySuspendedTransaction_ExecutionIsNeverADeny(t *testing.T) {
 		return res.(CallToolResult).Suspension.TxHash, nil
 	})
 
-	proc.eventReceipt = &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	proc.receipt = &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 	proc.err = nil
 	_, err := g.DenySuspendedTransaction(context.Background(), txHash, "user-1")
 	require.ErrorIs(t, err, constants.ErrL3DenyNotRejected)
@@ -757,11 +757,11 @@ func TestDenySuspendedTransaction_UnsignedFailureReleasesTheClaim(t *testing.T) 
 		return res.(CallToolResult).Suspension.TxHash, nil
 	})
 
-	proc.eventReceipt = nil
+	proc.receipt = nil
 	proc.err = constants.ErrGatewayNotReady
-	eventReceipt, err := g.DenySuspendedTransaction(context.Background(), txHash, "user-1")
+	receipt, err := g.DenySuspendedTransaction(context.Background(), txHash, "user-1")
 	require.ErrorIs(t, err, constants.ErrGatewayNotReady)
-	assert.Nil(t, eventReceipt)
+	assert.Nil(t, receipt)
 	assert.Contains(t, store.txs, txHash, "an unsigned failure keeps the suspension so the deny can be retried")
 }
 
@@ -924,12 +924,12 @@ func TestGatewayService_RunMaintenanceSweep_DeletesOnlyAuditedExpiredTransaction
 }
 
 func TestGatewayService_HandleResourcesRead(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		ResultSummary: "resource content",
 	}
-	proc := &fakeEnvelopeProcessor{eventReceipt: eventReceipt}
+	proc := &fakeEnvelopeProcessor{receipt: receipt}
 
 	g := newTestGatewayService(t, withEnvProc(proc))
 
@@ -951,12 +951,12 @@ func TestGatewayService_HandleResourcesRead(t *testing.T) {
 }
 
 func TestGatewayService_HandlePromptsGet(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		ResultSummary: "prompt template",
 	}
-	proc := &fakeEnvelopeProcessor{eventReceipt: eventReceipt}
+	proc := &fakeEnvelopeProcessor{receipt: receipt}
 
 	g := newTestGatewayService(t, withEnvProc(proc))
 
@@ -2153,12 +2153,12 @@ func newTestGatewayService(t *testing.T, opts ...testGatewayOption) *GatewayServ
 func TestGatewayService_HandleA2aCall(t *testing.T) {
 
 	t.Run("successful call", func(t *testing.T) {
-		eventReceipt := &operatorv1.EventReceipt{
+		receipt := &operatorv1.ActionReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "a2a result",
 		}
-		proc := &fakeEnvelopeProcessor{eventReceipt: eventReceipt}
+		proc := &fakeEnvelopeProcessor{receipt: receipt}
 		g := newTestGatewayService(t, withEnvProc(proc))
 
 		reqBody := `{"jsonrpc":"2.0","id":1,"method":"a2a/call","params":{"skill_name":"test-skill","payload":{"arg":"val"}}}`

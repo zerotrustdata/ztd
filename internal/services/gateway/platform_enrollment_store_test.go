@@ -256,7 +256,7 @@ func TestEnrollmentDecisionAtomicAuthorityAndRollback(t *testing.T) {
 			if scenario == "canceled" {
 				cancel()
 			}
-			err = store.DecidePlatformEnrollments(ctx, actor, req, "event_receipt-1")
+			err = store.DecidePlatformEnrollments(ctx, actor, req, "receipt-1")
 			want := models.PlatformEnrollmentStatePending
 			switch scenario {
 			case "approve":
@@ -280,7 +280,7 @@ func TestEnrollmentDecisionAtomicAuthorityAndRollback(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, want, record.State, "a rejected later member must roll back earlier writes")
 			if want != models.PlatformEnrollmentStatePending {
-				require.Equal(t, "event_receipt-1", record.DecisionEventReceiptID)
+				require.Equal(t, "receipt-1", record.DecisionReceiptID)
 				require.Equal(t, "reviewed cohort", record.DecisionReason)
 				require.Equal(t, "owner", record.ApprovedByUserID)
 			}
@@ -288,7 +288,7 @@ func TestEnrollmentDecisionAtomicAuthorityAndRollback(t *testing.T) {
 	}
 }
 
-func TestEnrollmentBatchDecisionGovernedEventReceipt(t *testing.T) {
+func TestEnrollmentBatchDecisionGovernedReceipt(t *testing.T) {
 	env := setupPlatformEnrollmentEnv(t, true)
 	req := models.PlatformEnrollmentBatchDecisionRequest{Decision: models.PlatformEnrollmentDecisionApprove, Reason: "fixed cohort"}
 	for i := 0; i < 2; i++ {
@@ -303,12 +303,12 @@ func TestEnrollmentBatchDecisionGovernedEventReceipt(t *testing.T) {
 	result, err := env.enrollSvc.DecideBatch(t.Context(), env.ownerID, req)
 	require.NoError(t, err)
 	require.Len(t, result.Requests, 2)
-	require.NotEmpty(t, result.EventReceiptID)
+	require.NotEmpty(t, result.ReceiptID)
 	for _, target := range req.Requests {
 		stored, err := env.enrollSvc.loadByID(t.Context(), target.RequestID)
 		require.NoError(t, err)
 		require.Equal(t, models.PlatformEnrollmentStateApproved, stored.State)
-		require.Equal(t, result.EventReceiptID, stored.DecisionEventReceiptID)
+		require.Equal(t, result.ReceiptID, stored.DecisionReceiptID)
 		require.Equal(t, req.Reason, stored.DecisionReason)
 	}
 }

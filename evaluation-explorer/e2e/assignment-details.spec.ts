@@ -132,7 +132,7 @@ function expectPublicOnly(requests: string[]): void {
     const url = new URL(request);
     return url.origin === mirrorOrigin && ['/bootstrap', '/history', '/snapshot', '/stream', '/proof-catalog'].some((path) => url.pathname === path);
   })).toBe(true);
-  expect(requests.some((request) => /api|gateway|operator|ensemble|audit|event_receipt|event-receipt|tool/i.test(request))).toBe(false);
+  expect(requests.some((request) => /api|gateway|operator|ensemble|audit|receipt|tool/i.test(request))).toBe(false);
 }
 
 test('renders rich assignment evidence from mirror history and follows sibling repetition links', async ({ page }, testInfo) => {

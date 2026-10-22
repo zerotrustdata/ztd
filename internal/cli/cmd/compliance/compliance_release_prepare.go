@@ -127,7 +127,7 @@ command; it does not commit or tag.`,
 	flags.StringVar(&opts.windowStart, "window-start", "", "Assessment window start, RFC 3339 (set with --window-end, or omit both to end the window at the newest ledger commitment)")
 	flags.StringVar(&opts.windowEnd, "window-end", "", "Assessment window end, RFC 3339 (set with --window-start, or omit both to end the window at the newest ledger commitment)")
 	flags.DurationVar(&opts.windowSpan, "window-span", constants.ComplianceReleaseDefaultWindowSpan, "Window length used when the window is selected automatically")
-	flags.IntVar(&opts.maxRows, "max-rows", constants.ComplianceOperationalExportDefaultMaxRows, "Maximum event receipts and commitments to export")
+	flags.IntVar(&opts.maxRows, "max-rows", constants.ComplianceOperationalExportDefaultMaxRows, "Maximum receipts and commitments to export")
 	flags.StringVar(&opts.organization, "organization", constants.ComplianceReleaseDefaultOrganization, "Organization recorded in the assessment scope")
 	flags.StringVar(&opts.deploymentID, "deployment-id", "", "Deployment recorded in the assessment scope (defaults to "+constants.ComplianceReleaseDeploymentIDPrefix+"<window date>)")
 	flags.StringVar(&opts.binaryDigest, "binary-digest", "", "SHA-256 digest of the assessed ztd binary (defaults to the running executable)")
@@ -231,8 +231,8 @@ func runReleasePrepare(ctx context.Context, deps releasePrepareDeps, opts releas
 	if err != nil {
 		return err
 	}
-	if inventory.EventReceiptCount == 0 || inventory.CommitmentCount == 0 {
-		return fmt.Errorf("%w: assessment window %s to %s holds %d event receipts and %d commitments; select a window with governed activity", constants.ErrValidationFailed, prepared.windowStart.Format(time.RFC3339Nano), prepared.windowEnd.Format(time.RFC3339Nano), inventory.EventReceiptCount, inventory.CommitmentCount)
+	if inventory.ReceiptCount == 0 || inventory.CommitmentCount == 0 {
+		return fmt.Errorf("%w: assessment window %s to %s holds %d receipts and %d commitments; select a window with governed activity", constants.ErrValidationFailed, prepared.windowStart.Format(time.RFC3339Nano), prepared.windowEnd.Format(time.RFC3339Nano), inventory.ReceiptCount, inventory.CommitmentCount)
 	}
 	signerKeys, err := compliancereport.CollectOperationalSignerKeys(snapshot)
 	if err != nil {
@@ -637,11 +637,11 @@ func runComplianceSubcommand(ctx context.Context, cmd *cobra.Command, args []str
 
 func releasePrepareSummary(prepared *releasePrepareContext, scope *compliancev1.AssessmentScope, inventory *evidence.OperationalSourceInventory, signerKeys []string, bundle string, report *compliancev1.ComplianceVerificationReport) string {
 	return fmt.Sprintf(`release evidence prepared for %s
-  scope:        %s (window %s to %s, %d event receipts, %d commitments, %d source signer keys)
+  scope:        %s (window %s to %s, %d receipts, %d commitments, %d source signer keys)
   bundle:       %s
   verification: %s@%s valid=%t failures=%d checksum root %s
   work dir:     %s`,
-		prepared.version, scope.GetScopeId(), prepared.windowStart.Format(time.RFC3339Nano), prepared.windowEnd.Format(time.RFC3339Nano), inventory.EventReceiptCount, inventory.CommitmentCount, len(signerKeys),
+		prepared.version, scope.GetScopeId(), prepared.windowStart.Format(time.RFC3339Nano), prepared.windowEnd.Format(time.RFC3339Nano), inventory.ReceiptCount, inventory.CommitmentCount, len(signerKeys),
 		bundle, report.GetVerifierId(), report.GetVerifierVersion(), report.GetValid(), len(report.GetFailures()), report.GetReproducedChecksumRoot(), prepared.workDir)
 }
 

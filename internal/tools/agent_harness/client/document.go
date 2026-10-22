@@ -229,7 +229,7 @@ func (c *Client) SubmitDocumentDelete(ctx context.Context, p Persona, req Docume
 // GetDocument retrieves a governed document from the gateway's document store
 // via GET /api/v1/data/{collection}/{id}. This is the read-back path for
 // document scenarios: the harness verifies the actual stored document, not
-// just an event receipt claiming the mutation occurred. Returns (nil, nil) when the
+// just a receipt claiming the mutation occurred. Returns (nil, nil) when the
 // document does not exist (HTTP 404), so callers can distinguish absence from
 // an error.
 func (c *Client) GetDocument(ctx context.Context, p Persona, collection, documentID string) (DocumentResponse, []byte, error) {

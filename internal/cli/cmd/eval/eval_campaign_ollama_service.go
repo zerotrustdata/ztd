@@ -89,7 +89,7 @@ func (d *harnessOllamaModelCommandDispatcher) DispatchOllamaModelCommand(ctx con
 	}
 	result := &evaluation.OllamaModelCommandDispatchResult{
 		Status:       int(outcome.Observation.GetHttpStatus()),
-		Success:      outcome.Observation.GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT,
+		Success:      outcome.Observation.GetKind() == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
 		ActionType:   actionType,
 		ResponseBody: outcome.Body,
 	}

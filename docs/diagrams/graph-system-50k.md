@@ -37,7 +37,7 @@ graph TD
             Surfaces["Protocol Surfaces<br/>HTTP :8080 Discovery · HTTPS :8443 mTLS"]
             Services["Core Services<br/>PKI · Auth · Registration · Passkeys"]
             Persistence["Persistence<br/>SQLite Stores · Audit · Merkle Roots"]
-            Broker["Pub/Sub Broker<br/>WebSocket Fan-out · cmd:* · event_receipts:*"]
+            Broker["Pub/Sub Broker<br/>WebSocket Fan-out · cmd:* · receipts:*"]
             MCP["MCP / A2A Gateway<br/>/mcp · /api/v1/a2a/call"]
             Gov["Governance Surface<br/>Envelope Admission · Consensus · Dispatch"]
             SSE["SSE Event Bridge<br/>Push · Poll · Stream"]
@@ -47,7 +47,7 @@ graph TD
             direction TB
             Loopback["Loopback Pub/Sub Bridge"]
             L4["L4 Warden<br/>Re-validates L1 · State Root · L2 · L3"]
-            L5["L5 Actuator<br/>JIT Capability · Commitment · Signed Event receipt"]
+            L5["L5 Actuator<br/>JIT Capability · Commitment · Signed Receipt"]
             Loopback --> L4 --> L5
         end
 
@@ -60,7 +60,7 @@ graph TD
         direction TB
         RemoteOp["Governed Operator (PEP)<br/>Same Binary · operator start"]
         RemoteL4["L4 Warden<br/>Re-validates L1–L4 locally"]
-        RemoteL5["L5 Actuator<br/>Execution + Signed event receipt"]
+        RemoteL5["L5 Actuator<br/>Execution + Signed receipt"]
         RemoteLedger[("Local LFAA Ledger<br/>& Audit Vault")]
         RemoteOp --> RemoteL4 --> RemoteL5 --> RemoteLedger
     end
@@ -76,7 +76,7 @@ graph TD
     Browser -. "HTTPS :8443 · Session Cookie" .-> Surfaces
 
     Broker -. "Outbound-only mTLS WSS<br/>cmd:&lt;id&gt;:&lt;session&gt;" .-> RemoteOp
-    RemoteOp -. "event_receipts:&lt;id&gt;:&lt;session&gt;<br/>Signed EventReceipt" .-> Broker
+    RemoteOp -. "receipts:&lt;id&gt;:&lt;session&gt;<br/>Signed ActionReceipt" .-> Broker
 ```
 
 ## Architecture Zoom Series
@@ -94,5 +94,5 @@ This diagram anchors the platform architecture zoom series:
 - **Single Binary Architecture**: The single static binary (`ztd`) runs as Gateway (`ztd gw start --posture <posture>`) or Operator (`ztd operator start`).
 - **Layered Substrate**: The Gateway is not an isolated service; it is an administrative service stack layered directly over the in-process Operator substrate. Local commands never traverse external network stacks.
 - **Listener Isolation**: Remote Operators open **no inbound listening ports**, connecting strictly outbound to the Gateway via mTLS WebSockets.
-- **Session-Scoped Channels**: Work is multiplexed across dedicated session channels (`cmd:<id>:<session>`, `event_receipts:<id>:<session>`), eliminating cross-tenant broadcast risks.
-- **Local-First Audit Architecture (LFAA)**: Each executing Operator is the sole authority for its local audit database and state Merkle root. Gateway event receipt copies are verified mirrors.
+- **Session-Scoped Channels**: Work is multiplexed across dedicated session channels (`cmd:<id>:<session>`, `receipts:<id>:<session>`), eliminating cross-tenant broadcast risks.
+- **Local-First Audit Architecture (LFAA)**: Each executing Operator is the sole authority for its local audit database and state Merkle root. Gateway receipt copies are verified mirrors.

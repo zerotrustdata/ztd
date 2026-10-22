@@ -26,13 +26,13 @@ var expectedDefaultMethodMetadata = map[string]expectedMethodMetadata{
 		artifact: KSIArtifactAuditEvents, boundary: KSICollectionAuditStore,
 		verifier: KSIVerifierExistence, property: KSIPropertyPresence,
 	},
-	"eventReceiptsExist": {
-		artifact: KSIArtifactEventReceipts, boundary: KSICollectionAuditStore,
+	"receiptsExist": {
+		artifact: KSIArtifactActionReceipts, boundary: KSICollectionAuditStore,
 		verifier: KSIVerifierExistence, property: KSIPropertyPresence,
 	},
-	"eventReceiptsCryptographicallyVerified": {
-		artifact: KSIArtifactEventReceipts, boundary: KSICollectionAuditStore,
-		verifier: KSIVerifierCryptographic, property: KSIPropertyEventReceiptPersistenceIntegrity,
+	"receiptsCryptographicallyVerified": {
+		artifact: KSIArtifactActionReceipts, boundary: KSICollectionAuditStore,
+		verifier: KSIVerifierCryptographic, property: KSIPropertyReceiptPersistenceIntegrity,
 	},
 	"fileMutationsTracked": {
 		artifact: KSIArtifactFileMutations, boundary: KSICollectionAuditStore,
@@ -59,7 +59,7 @@ var expectedDefaultMethodMetadata = map[string]expectedMethodMetadata{
 		verifier: KSIVerifierStateObservation, property: KSIPropertyStateRootMatchesHead,
 	},
 	"independentStateObserved": {
-		artifact: KSIArtifactEventReceiptStateTransitions, boundary: KSICollectionAuditStore,
+		artifact: KSIArtifactReceiptStateTransitions, boundary: KSICollectionAuditStore,
 		verifier: KSIVerifierStateObservation, property: KSIPropertyStateTransitionBinding,
 	},
 	"deterministicGraderResultsVerified": {

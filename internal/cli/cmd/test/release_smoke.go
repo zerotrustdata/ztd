@@ -71,25 +71,25 @@ type releaseSmokeOptions struct {
 }
 
 type releaseSmokeSummary struct {
-	SchemaVersion string                      `json:"schema_version"`
-	Result        string                      `json:"result"`
-	Source        releaseSmokeSource          `json:"source"`
-	Platform      string                      `json:"platform"`
-	BuildVersion  string                      `json:"build_version"`
-	Posture       string                      `json:"posture"`
-	Ingress       []string                    `json:"ingress"`
-	StartedAt     time.Time                   `json:"started_at"`
-	FinishedAt    time.Time                   `json:"finished_at"`
-	RunDir        string                      `json:"run_dir"`
-	Gateway       releaseSmokeGateway         `json:"gateway"`
-	Worker        releaseSmokeWorker          `json:"worker"`
-	Scenarios     []releaseSmokeScenario      `json:"scenarios"`
-	EventReceipts []smokeEventReceiptEvidence `json:"local_event_receipts"`
-	Reports       []smokeReportEvidence       `json:"reports"`
-	Commands      []releaseSmokeCommand       `json:"commands"`
-	Errors        []string                    `json:"errors,omitempty"`
+	SchemaVersion string                 `json:"schema_version"`
+	Result        string                 `json:"result"`
+	Source        releaseSmokeSource     `json:"source"`
+	Platform      string                 `json:"platform"`
+	BuildVersion  string                 `json:"build_version"`
+	Posture       string                 `json:"posture"`
+	Ingress       []string               `json:"ingress"`
+	StartedAt     time.Time              `json:"started_at"`
+	FinishedAt    time.Time              `json:"finished_at"`
+	RunDir        string                 `json:"run_dir"`
+	Gateway       releaseSmokeGateway    `json:"gateway"`
+	Worker        releaseSmokeWorker     `json:"worker"`
+	Scenarios     []releaseSmokeScenario `json:"scenarios"`
+	Receipts      []smokeReceiptEvidence `json:"local_receipts"`
+	Reports       []smokeReportEvidence  `json:"reports"`
+	Commands      []releaseSmokeCommand  `json:"commands"`
+	Errors        []string               `json:"errors,omitempty"`
 }
-type smokeEventReceiptEvidence struct {
+type smokeReceiptEvidence struct {
 	Runtime         string `json:"runtime"`
 	TransactionID   string `json:"transaction_id"`
 	OperatorID      string `json:"operator_id"`
@@ -161,7 +161,7 @@ func releaseSmokeCmdWithRunner(runner func(context.Context, releaseSmokeOptions)
 	cmd := &cobra.Command{
 		Use:   "release-smoke",
 		Short: "Run an isolated governed release smoke and verify local evidence",
-		Long: `Start an isolated Gateway and dedicated data Operator. Exercise a typed governed FILE_EDIT through the supported command dispatch API and verify exact read-back. Create and merge a document through the embedded governed execution path, preserving untouched fields. Export Gateway and Operator evidence from their own runtimes and require nonempty event receipts, commitments, and file mutations in both runtimes, with all verification rows passing and none skipped.
+		Long: `Start an isolated Gateway and dedicated data Operator. Exercise a typed governed FILE_EDIT through the supported command dispatch API and verify exact read-back. Create and merge a document through the embedded governed execution path, preserving untouched fields. Export Gateway and Operator evidence from their own runtimes and require nonempty receipts, commitments, and file mutations in both runtimes, with all verification rows passing and none skipped.
 
 The command runs on Unix-like hosts (process groups) and Windows (Job Objects) and stops every process it started. It needs a built ztd binary and the checked-in Go modules; it does not use an LLM or provider key. All run artifacts are retained under --root.`,
 		Args: cobra.NoArgs,
@@ -448,8 +448,8 @@ func (r *releaseSmokeRun) deployWorker(ctx context.Context) error {
 	for _, op := range ops {
 		if op.GetOperatorSessionId() == session && op.GetStatus() == string(constants.OperatorStatusActive) {
 			r.workerOperatorID = op.GetId()
-			if err := r.pinEventReceiptAnchors(ctx, op); err != nil {
-				return fmt.Errorf("pin smoke event receipt keys: %w", err)
+			if err := r.pinReceiptAnchors(ctx, op); err != nil {
+				return fmt.Errorf("pin smoke receipt keys: %w", err)
 			}
 		}
 	}
@@ -460,9 +460,9 @@ func (r *releaseSmokeRun) deployWorker(ctx context.Context) error {
 	return nil
 }
 
-// pinEventReceiptAnchors fixes the event receipt trust inputs before any smoke mutation.
+// pinReceiptAnchors fixes the receipt trust inputs before any smoke mutation.
 // The Gateway owns its local export; the outbound key must also match enrollment.
-func (r *releaseSmokeRun) pinEventReceiptAnchors(ctx context.Context, worker *operatorv1.OperatorDocument) error {
+func (r *releaseSmokeRun) pinReceiptAnchors(ctx context.Context, worker *operatorv1.OperatorDocument) error {
 	gatewayFiles, err := fs.NewRuntimeFileService(r.gwRoot, slog.Default())
 	if err != nil {
 		return err
@@ -502,12 +502,12 @@ func (r *releaseSmokeRun) scenarioFileCreate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT || outcome.Dispatch.GetTransactionId() == "" {
+	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT || outcome.Dispatch.GetTransactionId() == "" {
 		return fmt.Errorf("governed FILE_EDIT failed: status=%d response=%s", outcome.Observation.GetHttpStatus(), strings.TrimSpace(string(outcome.Body)))
 	}
 	r.fileTx = outcome.Dispatch.GetTransactionId()
-	if err := r.verifyEventReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, r.fileTx); err != nil {
-		return fmt.Errorf("FILE_EDIT event_receipt: %w", err)
+	if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, r.fileTx); err != nil {
+		return fmt.Errorf("FILE_EDIT receipt: %w", err)
 	}
 	readTx, err := r.readBackFile(ctx)
 	if err != nil {
@@ -517,7 +517,7 @@ func (r *releaseSmokeRun) scenarioFileCreate(ctx context.Context) error {
 	return nil
 }
 
-func (r *releaseSmokeRun) verifyEventReceipt(ctx context.Context, runtimeRoot, expectedOperator, expectedSession, tx string) error {
+func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expectedOperator, expectedSession, tx string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -530,36 +530,36 @@ func (r *releaseSmokeRun) verifyEventReceipt(ctx context.Context, runtimeRoot, e
 		return err
 	}
 	if record == nil {
-		return fmt.Errorf("local event receipt %s: %w", tx, constants.ErrNotFound)
+		return fmt.Errorf("local receipt %s: %w", tx, constants.ErrNotFound)
 	}
-	eventReceipt := record.EventReceipt
-	if eventReceipt == nil {
-		return fmt.Errorf("local event receipt %s has no signed canonical body: %w", tx, constants.ErrMissingRequiredField)
+	receipt := record.ActionReceipt
+	if receipt == nil {
+		return fmt.Errorf("local receipt %s has no signed canonical body: %w", tx, constants.ErrMissingRequiredField)
 	}
 	if record.OperatorID != expectedOperator || record.OperatorSessionID != expectedSession {
-		return fmt.Errorf("event receipt %s belongs to Operator %s/%s, want %s/%s", tx, record.OperatorID, record.OperatorSessionID, expectedOperator, expectedSession)
+		return fmt.Errorf("receipt %s belongs to Operator %s/%s, want %s/%s", tx, record.OperatorID, record.OperatorSessionID, expectedOperator, expectedSession)
 	}
-	if eventReceipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return fmt.Errorf("event receipt %s status %s, want COMPLETED", tx, eventReceipt.Status)
+	if receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return fmt.Errorf("receipt %s status %s, want COMPLETED", tx, receipt.Status)
 	}
-	if eventReceipt.TransactionId != tx {
-		return fmt.Errorf("event receipt transaction %s does not match %s", eventReceipt.TransactionId, tx)
+	if receipt.TransactionId != tx {
+		return fmt.Errorf("receipt transaction %s does not match %s", receipt.TransactionId, tx)
 	}
-	pub, err := r.anchors.Key(eventReceipt.SignerKeyId, expectedOperator)
+	pub, err := r.anchors.Key(receipt.SignerKeyId, expectedOperator)
 	if err != nil {
 		return err
 	}
-	if err := govservice.VerifyEventReceiptSignature(eventReceipt, pub); err != nil {
+	if err := govservice.VerifyActionReceiptSignature(receipt, pub); err != nil {
 		return err
 	}
-	if err := govservice.VerifyEventReceiptPersistenceAttestation(eventReceipt, pub); err != nil {
+	if err := govservice.VerifyReceiptPersistenceAttestation(receipt, pub); err != nil {
 		return err
 	}
 	runtimeName := "worker"
 	if runtimeRoot == r.gwRoot {
 		runtimeName = "gateway"
 	}
-	r.summary.EventReceipts = append(r.summary.EventReceipts, smokeEventReceiptEvidence{runtimeName, tx, record.OperatorID, record.OperatorSessionID, eventReceipt.SignerKeyId, eventReceipt.Signature, eventReceipt.Status.String()})
+	r.summary.Receipts = append(r.summary.Receipts, smokeReceiptEvidence{runtimeName, tx, record.OperatorID, record.OperatorSessionID, receipt.SignerKeyId, receipt.Signature, receipt.Status.String()})
 	return nil
 }
 
@@ -580,8 +580,8 @@ func (r *releaseSmokeRun) readBackFile(ctx context.Context) (string, error) {
 	if got := resp.Results[0].Stdout; got != r.fileContent {
 		return "", fmt.Errorf("read-back mismatch for %s: got %q, want exact %q", r.fileName, got, r.fileContent)
 	}
-	if err := r.verifyEventReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, resp.Results[0].TransactionID); err != nil {
-		return "", fmt.Errorf("read-back event_receipt: %w", err)
+	if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, resp.Results[0].TransactionID); err != nil {
+		return "", fmt.Errorf("read-back receipt: %w", err)
 	}
 	return resp.Results[0].TransactionID, nil
 }
@@ -607,8 +607,8 @@ func (r *releaseSmokeRun) scenarioDocument(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := r.verifyEventReceipt(ctx, r.gwRoot, id, session, createTx); err != nil {
-		return fmt.Errorf("document create event_receipt: %w", err)
+	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, createTx); err != nil {
+		return fmt.Errorf("document create receipt: %w", err)
 	}
 	stateRoot, err = r.client.StateRootFromMTLS(ctx)
 	if err != nil {
@@ -618,8 +618,8 @@ func (r *releaseSmokeRun) scenarioDocument(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := r.verifyEventReceipt(ctx, r.gwRoot, id, session, mergeTx); err != nil {
-		return fmt.Errorf("document merge event_receipt: %w", err)
+	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, mergeTx); err != nil {
+		return fmt.Errorf("document merge receipt: %w", err)
 	}
 	doc, _, err := r.client.GetDocument(ctx, r.persona, releaseSmokeCollection, docID)
 	if err != nil {
@@ -656,11 +656,11 @@ func (r *releaseSmokeRun) scenarioEmbeddedFile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT || outcome.Dispatch.GetTransactionId() == "" {
+	if outcome.Observation.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT || outcome.Dispatch.GetTransactionId() == "" {
 		return fmt.Errorf("embedded governed FILE_EDIT failed: status=%d response=%s", outcome.Observation.GetHttpStatus(), strings.TrimSpace(string(outcome.Body)))
 	}
-	if err := r.verifyEventReceipt(ctx, r.gwRoot, id, session, outcome.Dispatch.GetTransactionId()); err != nil {
-		return fmt.Errorf("embedded FILE_EDIT event_receipt: %w", err)
+	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, outcome.Dispatch.GetTransactionId()); err != nil {
+		return fmt.Errorf("embedded FILE_EDIT receipt: %w", err)
 	}
 	out, err := r.ztdGateway(ctx, "embedded-file-read-back", "--json", "operator", "run", session, "--cmd", "cat -- "+name, "--timeout", "60")
 	if err != nil {
@@ -675,8 +675,8 @@ func (r *releaseSmokeRun) scenarioEmbeddedFile(ctx context.Context) error {
 	if len(result.Results) != 1 || !result.Results[0].Success || result.Results[0].ExitCode != 0 || result.Results[0].Stdout != content {
 		return fmt.Errorf("embedded governed read-back did not match exact content: %w", constants.ErrValidationFailed)
 	}
-	if err := r.verifyEventReceipt(ctx, r.gwRoot, id, session, result.Results[0].TransactionID); err != nil {
-		return fmt.Errorf("embedded read-back event_receipt: %w", err)
+	if err := r.verifyReceipt(ctx, r.gwRoot, id, session, result.Results[0].TransactionID); err != nil {
+		return fmt.Errorf("embedded read-back receipt: %w", err)
 	}
 	r.recordScenario("embedded-file-create", []string{outcome.Dispatch.GetTransactionId(), result.Results[0].TransactionID})
 	return nil
@@ -743,12 +743,12 @@ func (r *releaseSmokeRun) verifyEvidence(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	worker.requireCompletedEventReceipt(releaseSmokeFileActionType, r.fileTx)
+	worker.requireCompletedReceipt(releaseSmokeFileActionType, r.fileTx)
 	for _, tx := range r.documentTransactions() {
-		gateway.requireCompletedEventReceipt(releaseSmokeDocAction, tx)
+		gateway.requireCompletedReceipt(releaseSmokeDocAction, tx)
 	}
 	for _, tx := range r.embeddedFileTransactions() {
-		gateway.requireCompletedEventReceipt(releaseSmokeFileActionType, tx)
+		gateway.requireCompletedReceipt(releaseSmokeFileActionType, tx)
 	}
 	r.summary.Reports = []smokeReportEvidence{worker, gateway}
 	var errs []error

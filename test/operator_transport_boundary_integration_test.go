@@ -152,7 +152,7 @@ func TestOperatorTransportBoundary_IdentityNeverTouchesDisk(t *testing.T) {
 
 	// The identity and its L2 signer trust live in memory only. The one file
 	// under pki/ is the Actuator public-key export (INV-OP-ACT-06), which the
-	// conformance oracle pins to verify event receipts; it carries no identity.
+	// conformance oracle pins to verify receipts; it carries no identity.
 	actuatorExport := filepath.Join(constants.RuntimeDirname, constants.PkiDirname, constants.ActuatorPubJSONFilename)
 	pemMarker := []byte("-----BEGIN ")
 	var violations []string

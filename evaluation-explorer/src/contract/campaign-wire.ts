@@ -24,7 +24,7 @@ import {
   PUBLIC_EVIDENCE_SOURCE_VALUES,
   PUBLIC_FINISH_STATE_VALUES,
   PUBLIC_GRADE_EXPLANATION_CODE_VALUES,
-  PUBLIC_EVENT_RECEIPT_STATUS_VALUES,
+  PUBLIC_RECEIPT_STATUS_VALUES,
   PUBLIC_RELEASE_BASIS_VALUES,
   PUBLIC_TOOL_SCORE_DIMENSION_VALUES,
   type PublicReleaseBasis,
@@ -51,7 +51,7 @@ const USAGE_AVAILABILITIES = EVALUATION_USAGE_AVAILABILITY_VALUES;
 const POLICY_OUTCOMES = EVALUATION_POLICY_DECISION_OUTCOME_VALUES;
 const EXECUTION_OUTCOMES = EVALUATION_VERDICT_STATUS_VALUES;
 const SEMANTIC_OUTCOMES = EVALUATION_VERDICT_STATUS_VALUES;
-const EVENT_RECEIPT_STATUSES = PUBLIC_EVENT_RECEIPT_STATUS_VALUES;
+const RECEIPT_STATUSES = PUBLIC_RECEIPT_STATUS_VALUES;
 const EVIDENCE_SOURCES = PUBLIC_EVIDENCE_SOURCE_VALUES;
 const EXPLANATION_CODES = PUBLIC_GRADE_EXPLANATION_CODE_VALUES;
 const TRAJECTORY_POLICIES = EVALUATION_TRAJECTORY_POLICY_VALUES;
@@ -213,7 +213,7 @@ export interface WirePolicyDecisionActivityRecord {
 export interface WireGovernedActionActivityRecord {
   action_label: string;
   reported_policy_outcome: (typeof POLICY_OUTCOMES)[number];
-  event_receipt_status: (typeof EVENT_RECEIPT_STATUSES)[number];
+  receipt_status: (typeof RECEIPT_STATUSES)[number];
   evidence_source: (typeof EVIDENCE_SOURCES)[number];
 }
 
@@ -611,12 +611,12 @@ function assertPolicyDecisionRecord(value: unknown, path: string): void {
 
 function assertGovernedActionRecord(value: unknown, path: string): void {
   assertObject(value, path);
-  rejectUnknown(value, ['action_label', 'reported_policy_outcome', 'event_receipt_status', 'evidence_source'], path);
+  rejectUnknown(value, ['action_label', 'reported_policy_outcome', 'receipt_status', 'evidence_source'], path);
   assertString(value.action_label, `${path}.action_label`);
   assertEnum(value.reported_policy_outcome, POLICY_OUTCOMES, `${path}.reported_policy_outcome`);
-  assertEnum(value.event_receipt_status, EVENT_RECEIPT_STATUSES, `${path}.event_receipt_status`);
+  assertEnum(value.receipt_status, RECEIPT_STATUSES, `${path}.receipt_status`);
   assertEnum(value.evidence_source, EVIDENCE_SOURCES, `${path}.evidence_source`);
-  if (value.event_receipt_status === 'PUBLIC_EVENT_RECEIPT_STATUS_REPORTED') assert(value.evidence_source === 'PUBLIC_EVIDENCE_SOURCE_BOUND_PUBLIC_PROOF', `${path}.evidence_source`, 'reported event receipt status requires bound public proof');
+  if (value.receipt_status === 'PUBLIC_RECEIPT_STATUS_REPORTED') assert(value.evidence_source === 'PUBLIC_EVIDENCE_SOURCE_BOUND_PUBLIC_PROOF', `${path}.evidence_source`, 'reported receipt status requires bound public proof');
 }
 
 function assertEvidenceBindings(value: unknown, path: string): void {

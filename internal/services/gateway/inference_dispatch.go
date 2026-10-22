@@ -63,7 +63,7 @@ func (a *gatewayDispatcherAdapter) Dispatch(ctx context.Context, req dispatch.Co
 	if result.InferenceResult != nil {
 		// The verified InferenceResult is the result payload for inference
 		// dispatches; the containing envelope payload is the
-		// InferenceCompletion (result plus signed event receipt).
+		// InferenceCompletion (result plus signed receipt).
 		payload, err = proto.Marshal(result.InferenceResult)
 		if err != nil {
 			return nil, fmt.Errorf("dispatch: marshal inference result: %w", err)
@@ -74,7 +74,7 @@ func (a *gatewayDispatcherAdapter) Dispatch(ctx context.Context, req dispatch.Co
 	return &dispatch.CommandDispatchResult{
 		TransactionID: result.TransactionID,
 		ResultPayload: payload,
-		EventReceipt:  result.EventReceipt,
+		Receipt:       result.Receipt,
 	}, nil
 }
 
@@ -131,16 +131,16 @@ func newInferenceDispatchController(d InferenceDispatchControllerDeps) *Inferenc
 // an authenticated app workload with a delegated user identity; a body
 // acting_app_id that contradicts the authenticated app identity is
 // rejected. The success response is returned only after the gateway
-// verifies the final event receipt signature, persistence attestation,
+// verifies the final receipt signature, persistence attestation,
 // transaction identity, and result digest equality.
 //
 // @Summary		Dispatch a governed inference request
-// @Description	Platform-internal endpoint (mTLS, app workload) that routes an inference request through the L1-L5 governance gauntlet to the Inference Node and returns the verified result plus final signed event receipt.
+// @Description	Platform-internal endpoint (mTLS, app workload) that routes an inference request through the L1-L5 governance gauntlet to the Inference Node and returns the verified result plus final signed receipt.
 // @Tags			inference
 // @Accept			json
 // @Produce		json
 // @Param			request	body		operatorv1.InferenceDispatchRequest	true	"Governed inference dispatch request"
-// @Success		200		{object}	operatorv1.InferenceDispatchResponse	"Verified inference result and final signed event receipt"
+// @Success		200		{object}	operatorv1.InferenceDispatchResponse	"Verified inference result and final signed receipt"
 // @Failure		400		{object}	operatorv1.InferenceDispatchFailure	"Bad Request — malformed body, unknown field, missing messages, invalid role, or acting_app_id identity mismatch"
 // @Failure		401		{object}	operatorv1.InferenceDispatchFailure	"Unauthorized — missing delegated user identity"
 // @Failure		403		{object}	operatorv1.InferenceDispatchFailure	"Forbidden — not an app workload, model override denied, or governance rejection"
@@ -149,7 +149,7 @@ func newInferenceDispatchController(d InferenceDispatchControllerDeps) *Inferenc
 // @Failure		409		{object}	operatorv1.InferenceDispatchFailure	"Conflict — multiple inference-capable operators; explicit target required"
 // @Failure		413		{object}	operatorv1.InferenceDispatchFailure	"Request Entity Too Large — body exceeds the payload limit"
 // @Failure		422		{object}	operatorv1.InferenceDispatchFailure	"Unprocessable Entity — context overflow, unsupported tools, or target operator session is not inference-capable"
-// @Failure		502		{object}	operatorv1.InferenceDispatchFailure	"Bad Gateway — provider or event receipt verification failure"
+// @Failure		502		{object}	operatorv1.InferenceDispatchFailure	"Bad Gateway — provider or receipt verification failure"
 // @Failure		503		{object}	operatorv1.InferenceDispatchFailure	"Service Unavailable — command delivered to no operator subscribers"
 // @Failure		504		{object}	operatorv1.InferenceDispatchFailure	"Gateway Timeout — request deadline exceeded; remote provider outcome unknown"
 // @Failure		500		{object}	operatorv1.InferenceDispatchFailure	"Internal Error"
@@ -229,7 +229,7 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 		}
 		status, failure := inferenceDispatchFailure(err)
 		c.logger.Error("inference dispatch: dispatch failed", slog.Any("status", status), slog.String("failure_code", failure.GetCode().String()),
-			slog.String("provider_attempt_id", req.GetProviderAttemptId()), slog.String("transaction_id", failure.GetEventReceipt().GetTransactionId()), logging.ErrorKind(err))
+			slog.String("provider_attempt_id", req.GetProviderAttemptId()), slog.String("transaction_id", failure.GetReceipt().GetTransactionId()), logging.ErrorKind(err))
 		c.responder.ProtoJSONCanonical(w, status, failure)
 		return
 	}
@@ -303,22 +303,22 @@ func newDispatchInferenceRequest(req *operatorv1.InferenceDispatchRequest, appID
 
 // inferenceDispatchFailure renders a dispatched inference failure as its HTTP
 // status and typed body: the public sentinel's code and text, the Operator's
-// signed FAILED event receipt when one was produced, and the observers' signed
-// event receipts for the attempt.
+// signed FAILED receipt when one was produced, and the observers' signed
+// receipts for the attempt.
 func inferenceDispatchFailure(err error) (int, *operatorv1.InferenceDispatchFailure) {
 	status, publicErr := classifyInferenceDispatchError(err)
 	return status, &operatorv1.InferenceDispatchFailure{
-		Error:                    publicErr.Error(),
-		Code:                     dispatch.FailureCode(publicErr),
-		EventReceipt:             governance.FailedEventReceipt(err),
-		ObservationEventReceipts: dispatch.ObservationEventReceipts(err),
+		Error:               publicErr.Error(),
+		Code:                dispatch.FailureCode(publicErr),
+		Receipt:             governance.FailedReceipt(err),
+		ObservationReceipts: dispatch.ObservationReceipts(err),
 	}
 }
 
 // writeFailure writes the typed InferenceDispatchFailure body for a public
 // sentinel rejected before dispatch, so a caller classifies the failure by
 // code, not by text. A dispatched failure also carries the Operator's signed
-// FAILED event receipt (see HandleDispatch).
+// FAILED receipt (see HandleDispatch).
 func (c *InferenceDispatchController) writeFailure(w http.ResponseWriter, status int, sentinel error) {
 	c.responder.ProtoJSONCanonical(w, status, &operatorv1.InferenceDispatchFailure{
 		Error: sentinel.Error(),
@@ -335,7 +335,7 @@ func writeInferenceDispatchStreamFailure(c *InferenceDispatchController, w http.
 		c.logger.Info("inference dispatch: streaming caller left", slog.String("provider_attempt_id", providerAttemptID), logging.ErrorKind(err))
 	} else {
 		c.logger.Error("inference dispatch: streaming dispatch failed after response started", slog.String("failure_code", dispatch.FailureCode(publicErr).String()),
-			slog.String("provider_attempt_id", providerAttemptID), slog.String("transaction_id", governance.FailedEventReceipt(err).GetTransactionId()), logging.ErrorKind(err))
+			slog.String("provider_attempt_id", providerAttemptID), slog.String("transaction_id", governance.FailedReceipt(err).GetTransactionId()), logging.ErrorKind(err))
 	}
 	if writeErr := writeInferenceDispatchStreamFrame(w, flusher, &operatorv1.InferenceDispatchStreamFrame{
 		Frame: &operatorv1.InferenceDispatchStreamFrame_Failure{
@@ -369,8 +369,8 @@ func writeInferenceDispatchStreamFrame(w http.ResponseWriter, flusher http.Flush
 // Routing: missing target -> 404, ambiguous -> 409, not capable -> 422.
 // Client faults: invalid role/model reference -> 400; model override denied
 // and governance rejections (envelope construction failures, signed
-// GOVERNANCE_REJECTED event receipts) -> 403. Transport/provider: zero delivery ->
-// 503; provider execution and event receipt verification failures -> 502.
+// GOVERNANCE_REJECTED receipts) -> 403. Transport/provider: zero delivery ->
+// 503; provider execution and receipt verification failures -> 502.
 // Deadline/unknown outcome -> 504. Everything else -> 500 with the generic
 // internal error.
 func classifyInferenceDispatchError(err error) (int, error) {
@@ -405,15 +405,15 @@ func classifyInferenceDispatchError(err error) (int, error) {
 		{constants.ErrInferenceCampaignBindingInvalid, http.StatusForbidden},
 		{constants.ErrInferenceGovernanceRejected, http.StatusForbidden},
 		{constants.ErrDispatchNoDelivery, http.StatusServiceUnavailable},
-		{constants.ErrInferenceEventReceiptFailed, http.StatusBadGateway},
-		{constants.ErrInferenceEventReceiptVerify, http.StatusBadGateway},
+		{constants.ErrInferenceReceiptFailed, http.StatusBadGateway},
+		{constants.ErrInferenceReceiptVerify, http.StatusBadGateway},
 		{constants.ErrInferenceResultDigestMismatch, http.StatusBadGateway},
 		{constants.ErrInferenceResultDigest, http.StatusBadGateway},
 		{constants.ErrInferenceIdentityMismatch, http.StatusBadGateway},
 		{constants.ErrInferenceModelDigestMismatch, http.StatusBadGateway},
 		{constants.ErrInferenceEvidenceHashInvalid, http.StatusBadGateway},
 		{constants.ErrInferenceResultDecode, http.StatusBadGateway},
-		{constants.ErrInferenceCompletionNoEventReceipt, http.StatusBadGateway},
+		{constants.ErrInferenceCompletionNoReceipt, http.StatusBadGateway},
 		{constants.ErrInferenceCompletionNoResult, http.StatusBadGateway},
 		{constants.ErrInferenceBackendUnavailable, http.StatusBadGateway},
 		{constants.ErrInferenceBackendNotRegistered, http.StatusBadGateway},

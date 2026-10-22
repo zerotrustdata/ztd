@@ -86,7 +86,7 @@ const inferenceIntegrationSessionID = "session-inference-int"
 // foreign_keys enforced) and a stub inference backend wired through the
 // governed execution handler. Returns the service, the stub backend, the
 // audit store, and the capturing results publisher so the test can assert
-// on persisted event receipts and published InferenceCompletion envelopes.
+// on persisted receipts and published InferenceCompletion envelopes.
 func newInferenceIntegrationFixture(t *testing.T) (*OperatorPubSubService, *stubInferenceBackend, *storage.SQLAuditStore, *mockResultsPublisher) {
 	t.Helper()
 
@@ -209,56 +209,56 @@ func buildInferenceEnvelope(t *testing.T, role operatorv1.ModelRole, model, prom
 	return wire
 }
 
-// TestInferenceDispatch_ProcessEnvelope_PrimaryRole_PersistsEventReceiptAndAudit
+// TestInferenceDispatch_ProcessEnvelope_PrimaryRole_PersistsReceiptAndAudit
 // verifies the full governed inference path: a GovernanceEnvelope carrying an
 // InferenceRequested payload traverses L1–L5 verification, the
 // InferenceExecutionHandler calls the stub backend, the L5 actuator stamps a
-// signed EventReceipt whose result_summary is the canonical result digest,
-// the event receipt is persisted in the real SQLAuditStore with the INFERENCE
-// action type, and an InferenceCompletion carrying the final event receipt plus
+// signed ActionReceipt whose result_summary is the canonical result digest,
+// the receipt is persisted in the real SQLAuditStore with the INFERENCE
+// action type, and an InferenceCompletion carrying the final receipt plus
 // the complete digest-bound result is published to the results channel.
 // This exercises real SQLite, real vault, foreign_keys enforcement, and the
 // real L4 warden — no mocks for governance internals.
-func TestInferenceDispatch_ProcessEnvelope_PrimaryRole_PersistsEventReceiptAndAudit(t *testing.T) {
+func TestInferenceDispatch_ProcessEnvelope_PrimaryRole_PersistsReceiptAndAudit(t *testing.T) {
 	svc, backend, auditStore, results := newInferenceIntegrationFixture(t)
 
 	wire := buildInferenceEnvelope(t, operatorv1.ModelRole_MODEL_ROLE_PRIMARY, "gemma3:4b", "What is 2+2?")
 
-	eventReceipt, err := svc.ProcessEnvelope(context.Background(), wire)
+	receipt, err := svc.ProcessEnvelope(context.Background(), wire)
 
 	require.NoError(t, err, "governed inference envelope must execute successfully")
-	require.NotNil(t, eventReceipt, "actuator must return a signed event receipt")
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status, "event receipt status must be COMPLETED")
-	assert.NotEmpty(t, eventReceipt.Signature, "event receipt must carry a non-empty actuator signature")
+	require.NotNil(t, receipt, "actuator must return a signed receipt")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status, "receipt status must be COMPLETED")
+	assert.NotEmpty(t, receipt.Signature, "receipt must carry a non-empty actuator signature")
 
 	require.True(t, backend.called, "stub backend must be invoked by the inference handler")
 	assert.Equal(t, "gemma3:4b", backend.lastReq.Model, "backend must receive the primary model name")
 	require.Len(t, backend.lastReq.Messages, 1)
 	assert.Equal(t, "What is 2+2?", backend.lastReq.Messages[0].GetParts()[0].GetText(), "backend must receive the user message text")
 
-	// The signed event receipt's result_summary is the canonical digest of the
+	// The signed receipt's result_summary is the canonical digest of the
 	// complete InferenceResult — not the (possibly truncated) text.
 	require.Len(t, results.inferenceCompletions, 1, "exactly one inference completion must be published")
 	completion := results.inferenceCompletions[0]
-	require.NotNil(t, completion.EventReceipt, "completion must carry the final signed event receipt")
-	require.NotNil(t, completion.Result, "completed event receipt must carry the full result")
+	require.NotNil(t, completion.Receipt, "completion must carry the final signed receipt")
+	require.NotNil(t, completion.Result, "completed receipt must carry the full result")
 	require.Len(t, completion.Result.GetParts(), 1)
 	assert.Equal(t, "governed inference output", completion.Result.GetParts()[0].GetText())
-	assert.Equal(t, eventReceipt.TransactionId, completion.EventReceipt.TransactionId, "completion event receipt must correlate to the executed transaction")
-	assert.Equal(t, eventReceipt.Signature, completion.EventReceipt.Signature, "completion event receipt must be the signed final event receipt")
+	assert.Equal(t, receipt.TransactionId, completion.Receipt.TransactionId, "completion receipt must correlate to the executed transaction")
+	assert.Equal(t, receipt.Signature, completion.Receipt.Signature, "completion receipt must be the signed final receipt")
 
 	wantDigest, err := models.ComputeInferenceResultDigest(completion.Result)
 	require.NoError(t, err)
 	assert.Equal(t, wantDigest, completion.Result.ResultDigest, "result must carry its canonical digest")
-	assert.Equal(t, wantDigest, eventReceipt.ResultSummary, "event receipt result_summary must be the result digest")
-	assert.Equal(t, wantDigest, completion.EventReceipt.ResultSummary, "completion event receipt must bind the result digest")
+	assert.Equal(t, wantDigest, receipt.ResultSummary, "receipt result_summary must be the result digest")
+	assert.Equal(t, wantDigest, completion.Receipt.ResultSummary, "completion receipt must bind the result digest")
 
-	eventReceipts, err := auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
+	receipts, err := auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: ""}, 10, 0)
 	require.NoError(t, err)
-	require.Len(t, eventReceipts, 1, "exactly one inference event receipt must be persisted in the audit store")
-	persisted := eventReceipts[0]
-	assert.Equal(t, constants.ActionTypeInference, persisted.ActionType, "persisted event receipt action type must be INFERENCE")
-	assert.Equal(t, wantDigest, persisted.ResultSummary, "persisted event receipt summary must be the result digest")
+	require.Len(t, receipts, 1, "exactly one inference receipt must be persisted in the audit store")
+	persisted := receipts[0]
+	assert.Equal(t, constants.ActionTypeInference, persisted.ActionType, "persisted receipt action type must be INFERENCE")
+	assert.Equal(t, wantDigest, persisted.ResultSummary, "persisted receipt summary must be the result digest")
 }
 
 // TestInferenceDispatch_ProcessEnvelope_AllThreeRoles_ServesRequestedModel
@@ -285,10 +285,10 @@ func TestInferenceDispatch_ProcessEnvelope_AllThreeRoles_ServesRequestedModel(t 
 			backend.lastReq = models.GenerateRequest{}
 
 			wire := buildInferenceEnvelope(t, tc.protoRole, tc.wantModel, "test prompt")
-			eventReceipt, err := svc.ProcessEnvelope(context.Background(), wire)
+			receipt, err := svc.ProcessEnvelope(context.Background(), wire)
 
 			require.NoError(t, err)
-			require.NotNil(t, eventReceipt)
+			require.NotNil(t, receipt)
 			assert.True(t, backend.called, "backend must be invoked for role %s", tc.name)
 			assert.Equal(t, tc.wantModel, backend.lastReq.Model, "backend must receive the %s model", tc.name)
 		})
@@ -338,17 +338,17 @@ func TestInferenceDispatch_ProcessEnvelope_NilInferenceHandler_FailsClosed(t *te
 	require.NoError(t, err)
 
 	wire := buildInferenceEnvelope(t, operatorv1.ModelRole_MODEL_ROLE_PRIMARY, "gemma3:4b", "test")
-	eventReceipt, err := svc.ProcessEnvelope(context.Background(), wire)
+	receipt, err := svc.ProcessEnvelope(context.Background(), wire)
 
 	require.Error(t, err, "nil inference handler must fail closed")
-	require.NotNil(t, eventReceipt, "actuator must return a signed failed event receipt")
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, eventReceipt.Status, "event receipt status must be FAILED")
+	require.NotNil(t, receipt, "actuator must return a signed failed receipt")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status, "receipt status must be FAILED")
 	assert.ErrorIs(t, err, constants.ErrInferenceBackendNotRegistered, "error must wrap ErrInferenceBackendNotRegistered")
 }
 
 // TestInferenceDispatch_ProcessEnvelope_BackendFailure_PublishesFailedCompletion
-// verifies that a backend failure produces a FAILED signed event receipt and an
-// InferenceCompletion carrying that event receipt with no result, so the waiting
+// verifies that a backend failure produces a FAILED signed receipt and an
+// InferenceCompletion carrying that receipt with no result, so the waiting
 // Gateway dispatch terminates immediately with a typed failure instead of
 // the generic dispatch timeout.
 func TestInferenceDispatch_ProcessEnvelope_BackendFailure_PublishesFailedCompletion(t *testing.T) {
@@ -357,17 +357,17 @@ func TestInferenceDispatch_ProcessEnvelope_BackendFailure_PublishesFailedComplet
 
 	wire := buildInferenceEnvelope(t, operatorv1.ModelRole_MODEL_ROLE_PRIMARY, "gemma3:4b", "test")
 
-	eventReceipt, err := svc.ProcessEnvelope(context.Background(), wire)
+	receipt, err := svc.ProcessEnvelope(context.Background(), wire)
 
 	require.Error(t, err, "backend failure must fail the transaction")
 	assert.ErrorIs(t, err, constants.ErrInferenceGenerateFailed)
-	require.NotNil(t, eventReceipt, "actuator must return a signed failed event receipt")
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, eventReceipt.Status)
+	require.NotNil(t, receipt, "actuator must return a signed failed receipt")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
 
 	require.Len(t, results.inferenceCompletions, 1, "a failed execution must still publish a completion")
 	completion := results.inferenceCompletions[0]
-	require.NotNil(t, completion.EventReceipt, "failed completion must carry the FAILED event receipt")
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, completion.EventReceipt.Status)
-	assert.Equal(t, eventReceipt.Signature, completion.EventReceipt.Signature, "completion must carry the final signed event receipt")
+	require.NotNil(t, completion.Receipt, "failed completion must carry the FAILED receipt")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, completion.Receipt.Status)
+	assert.Equal(t, receipt.Signature, completion.Receipt.Signature, "completion must carry the final signed receipt")
 	assert.Nil(t, completion.Result, "failed completion must not carry a result")
 }

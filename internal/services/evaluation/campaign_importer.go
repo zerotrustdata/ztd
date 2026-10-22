@@ -60,14 +60,14 @@ func reviewedCampaignAssertionMappings() []campaignAssertionMapping {
 			EvidenceKind: "governed_action_binding",
 			NativeAssertionRefs: []*compliancev1.VersionedReference{
 				{Id: "ZTD-AU-PERSIST-001", Version: "2.0.0"},
-				{Id: "ZTD-AU-EVENT_RECEIPT-001", Version: "2.0.0"},
+				{Id: "ZTD-AU-RECEIPT-001", Version: "2.0.0"},
 				{Id: "ZTD-CM-STATE-001", Version: "2.1.0"},
 				{Id: "ZTD-GOV-ALLOW-001", Version: "2.0.0"},
 				{Id: "ZTD-GOV-BLOCK-001", Version: "2.0.0"},
 			},
 			RequiredEvidenceTypes: []complianceevidence.ArtifactType{
-				complianceevidence.ArtifactTypeEventReceipt,
-				complianceevidence.ArtifactTypeEventReceiptPersistence,
+				complianceevidence.ArtifactTypeActionReceipt,
+				complianceevidence.ArtifactTypeReceiptPersistence,
 				complianceevidence.ArtifactTypeProtocolChain,
 				complianceevidence.ArtifactTypeStateObservation,
 			},

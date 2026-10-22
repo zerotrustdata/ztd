@@ -105,12 +105,12 @@ export const EVALUATION_POLICY_DECISION_OUTCOME_VALUES = [
 ] as const;
 export type EvaluationPolicyDecisionOutcome = (typeof EVALUATION_POLICY_DECISION_OUTCOME_VALUES)[number];
 
-/** ztd.eval.v1.PublicEventReceiptStatus */
-export const PUBLIC_EVENT_RECEIPT_STATUS_VALUES = [
-  'PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE',
-  'PUBLIC_EVENT_RECEIPT_STATUS_REPORTED',
+/** ztd.eval.v1.PublicReceiptStatus */
+export const PUBLIC_RECEIPT_STATUS_VALUES = [
+  'PUBLIC_RECEIPT_STATUS_UNAVAILABLE',
+  'PUBLIC_RECEIPT_STATUS_REPORTED',
 ] as const;
-export type PublicEventReceiptStatus = (typeof PUBLIC_EVENT_RECEIPT_STATUS_VALUES)[number];
+export type PublicReceiptStatus = (typeof PUBLIC_RECEIPT_STATUS_VALUES)[number];
 
 /** ztd.eval.v1.PublicEvidenceSource */
 export const PUBLIC_EVIDENCE_SOURCE_VALUES = [

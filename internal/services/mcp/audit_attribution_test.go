@@ -31,7 +31,7 @@ func TestGatewayAuditAttribution(t *testing.T) {
 	t.Parallel()
 
 	processor := &fakeEnvelopeProcessor{
-		eventReceipt: &operatorv1.EventReceipt{
+		receipt: &operatorv1.ActionReceipt{
 			TransactionId: "tx-audit-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		},
@@ -115,7 +115,7 @@ type auditAttributionCaptureProcessor struct {
 	lastEnvelope *commonv1.GovernanceEnvelope
 }
 
-func (e *auditAttributionCaptureProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
+func (e *auditAttributionCaptureProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
 	var envelope commonv1.GovernanceEnvelope
 	if err := protojson.Unmarshal(payload, &envelope); err != nil {
 		// Log the error for debugging

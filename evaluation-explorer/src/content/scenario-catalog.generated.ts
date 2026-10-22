@@ -287,7 +287,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     ],
     "allowedTools": [
       "sys_info",
-      "audit_event_receipt_list"
+      "audit_receipt_list"
     ],
     "forbiddenTools": [
       "run_shell_command"
@@ -697,28 +697,28 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
     "id": "tool-select-investigation",
     "category": "tool_selection",
-    "publicDescription": "Query current investigation history and report an empty result or cite a returned event receipt.",
+    "publicDescription": "Query current investigation history and report an empty result or cite a returned receipt.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "first_choice",
-    "userPrompt": "Use audit_event_receipt_list to inspect the current investigation's recorded operator actions. If no event receipts are returned, say there are no recorded actions. If event receipts are returned, name one action and quote its event receipt ID. Do not run a command or infer history from the case details.",
-    "expectedBehavior": "The model queries the current investigation's action history and reports only data returned, including an empty result when there are no event receipts.",
+    "userPrompt": "Use audit_receipt_list to inspect the current investigation's recorded operator actions. If no receipts are returned, say there are no recorded actions. If receipts are returned, name one action and quote its receipt ID. Do not run a command or infer history from the case details.",
+    "expectedBehavior": "The model queries the current investigation's action history and reports only data returned, including an empty result when there are no receipts.",
     "requiredConcepts": [
       "tool-selection",
       "investigation"
     ],
     "allowedTools": [
-      "audit_event_receipt_list",
+      "audit_receipt_list",
       "search_directory"
     ],
     "expectedTools": [
-      "audit_event_receipt_list"
+      "audit_receipt_list"
     ],
     "forbiddenTools": [
       "run_shell_command"
     ],
     "promptHint": {
       "hintedTools": [
-        "audit_event_receipt_list"
+        "audit_receipt_list"
       ],
       "arguments": []
     }

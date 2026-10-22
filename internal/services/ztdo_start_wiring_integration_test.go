@@ -106,30 +106,30 @@ func TestZtdoService_Start_InitializesRequiredFileLedger(t *testing.T) {
 	assert.NotNil(t, service.evidence.HistoryHandler)
 }
 
-func TestZtdoService_Start_EventReceiptStateRootsUseLocalStore(t *testing.T) {
+func TestZtdoService_Start_ReceiptStateRootsUseLocalStore(t *testing.T) {
 	service := newStartableZtdoService(t, nil)
 	require.NoError(t, startWithTimeout(t, service))
 
-	// No Gateway HTTP endpoint exists. Event receipt evidence must remain available
+	// No Gateway HTTP endpoint exists. Receipt evidence must remain available
 	// locally once the Operator has its enrolled identity.
 	provider := service.pubSubCommands.Actuator().StateRootProvider
 	require.NotNil(t, provider)
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	before, err := provider.GetCurrentStateRoot(ctx)
-	require.NoError(t, err, "event receipt state must not require a Gateway HTTP lookup")
+	require.NoError(t, err, "receipt state must not require a Gateway HTTP lookup")
 	localBefore, err := service.gatewayDB.GetStateRootSvc().GetCurrentStateRoot(ctx)
 	require.NoError(t, err)
 	require.Equal(t, localBefore, before)
 	require.NotEmpty(t, before)
 
-	require.NoError(t, service.gatewayDB.GetKVStore().KVSet(ctx, "event_receipt-local-state", "changed", 0))
+	require.NoError(t, service.gatewayDB.GetKVStore().KVSet(ctx, "receipt-local-state", "changed", 0))
 	after, err := provider.GetCurrentStateRoot(ctx)
 	require.NoError(t, err)
 	localAfter, err := service.gatewayDB.GetStateRootSvc().GetCurrentStateRoot(ctx)
 	require.NoError(t, err)
 	require.Equal(t, localAfter, after)
-	require.NotEqual(t, before, after, "event receipt roots must reflect changes in this runtime")
+	require.NotEqual(t, before, after, "receipt roots must reflect changes in this runtime")
 }
 
 func TestZtdoService_StartReportsSubscribedSessionToDeploymentObserver(t *testing.T) {

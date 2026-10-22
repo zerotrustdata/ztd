@@ -68,8 +68,8 @@ func (c *CLI) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) 
 // with no typed field is UNTYPED, and its error text is kept as the body.
 func cliObservation(r operator.RunResult) *evalv1.ConformanceObservation {
 	switch {
-	case r.EventReceipt != nil:
-		return &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, EventReceipt: r.EventReceipt}
+	case r.Receipt != nil:
+		return &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: r.Receipt}
 	case r.Rejection != nil:
 		return &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, Rejection: r.Rejection}
 	case r.Refusal != nil:

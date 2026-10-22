@@ -137,16 +137,16 @@ function PolicyRecord({ record }: { record: PublicPolicyDecisionActivityRecord }
 
 function GovernedActionRecord({ record }: { record: PublicGovernedActionActivityRecord }) {
   const summary = `${record.action_label} · Policy: ${label(record.reported_policy_outcome)}`;
-  const tone: RecordTone = record.event_receipt_status === 'reported' ? policyTone(record.reported_policy_outcome) : 'neutral';
+  const tone: RecordTone = record.receipt_status === 'reported' ? policyTone(record.reported_policy_outcome) : 'neutral';
   return (
     <details className="activity-record-details" data-tone={tone}>
       <summary className="activity-record-summary">{summary}</summary>
       <div className="activity-record-expanded">
         <DetailRow label="Action label">{record.action_label}</DetailRow>
         <DetailRow label="Reported policy outcome">{label(record.reported_policy_outcome)}</DetailRow>
-        <DetailRow label="Event receipt status">{label(record.event_receipt_status)}</DetailRow>
+        <DetailRow label="Receipt status">{label(record.receipt_status)}</DetailRow>
         <DetailRow label="Evidence source">{label(record.evidence_source)}</DetailRow>
-        <small className="activity-record-note">Application-reported observation; event receipt status is not independently verified here</small>
+        <small className="activity-record-note">Application-reported observation; receipt status is not independently verified here</small>
       </div>
     </details>
   );

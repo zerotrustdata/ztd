@@ -221,9 +221,9 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandDispatchesModelWrittenA
 	// cat reads the absolute path the prompt rendered, so the result is the
 	// workspace fixture's own content as the Data Operator returned it.
 	assert.Contains(t, call.ResultJSON, "HEALTHY")
-	require.NotNil(t, call.EventReceipt, "the executed MCP_CALL keeps its signed event receipt")
-	assert.Equal(t, call.TransactionID, call.EventReceipt.GetTransactionId())
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, call.EventReceipt.GetStatus())
+	require.NotNil(t, call.Receipt, "the executed MCP_CALL keeps its signed receipt")
+	assert.Equal(t, call.TransactionID, call.Receipt.GetTransactionId())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, call.Receipt.GetStatus())
 }
 
 func TestCampaignAgentExecutorIntegration_DeclaresScenarioAllowedAndForbiddenToolsInCatalogOrder(t *testing.T) {
@@ -297,7 +297,7 @@ func TestCampaignAgentExecutorIntegration_UndeclaredToolCallFailsWithoutDispatch
 	assert.Equal(t, evaluation.ExportedAgentToolErrorExecution, call.ErrorType)
 	assert.Equal(t, `ZTD-1607: Unknown tool "run_shell_command"; use one of: read_file`, call.Error)
 	assert.Empty(t, call.TransactionID, "an undeclared tool dispatches nothing")
-	assert.Nil(t, call.EventReceipt, "an undeclared tool dispatches nothing, so there is no event receipt")
+	assert.Nil(t, call.Receipt, "an undeclared tool dispatches nothing, so there is no receipt")
 	for _, action := range res.GetGovernedActions() {
 		assert.NotEqual(t, string(constants.ActionTypeMcpCall), action.GetActionType(), "no MCP_CALL is claimed for an undeclared tool")
 	}
@@ -359,7 +359,7 @@ func TestCampaignAgentExecutorIntegration_MissingRequiredArgumentFailsValidation
 	assert.Equal(t, evaluation.ExportedAgentToolErrorExecution, call.ErrorType)
 	assert.Contains(t, call.Error, "path")
 	assert.Empty(t, call.TransactionID, "an invalid tool call must not reach governed dispatch")
-	assert.Nil(t, call.EventReceipt, "an invalid tool call must not reach governed dispatch")
+	assert.Nil(t, call.Receipt, "an invalid tool call must not reach governed dispatch")
 }
 
 func TestCampaignAgentExecutorIntegration_BracketsToolLoopWithSentinelReadsInOrder(t *testing.T) {
@@ -369,25 +369,25 @@ func TestCampaignAgentExecutorIntegration_BracketsToolLoopWithSentinelReadsInOrd
 
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
 	trace := executorLoadTrace(t, env, res)
-	require.NotNil(t, trace.Bracket, "the trace holds the sentinel event receipts read before and after the loop")
-	before := trace.Bracket.Before.EventReceipt
-	after := trace.Bracket.After.EventReceipt
+	require.NotNil(t, trace.Bracket, "the trace holds the sentinel receipts read before and after the loop")
+	before := trace.Bracket.Before.ActionReceipt
+	after := trace.Bracket.After.ActionReceipt
 	require.NotNil(t, before)
 	require.NotNil(t, after)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, before.GetStatus())
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, after.GetStatus())
 	require.Len(t, trace.ModelCalls, 2)
 	require.Len(t, trace.ToolCalls, 1)
-	require.NotNil(t, trace.ModelCalls[0].EventReceipt)
-	require.NotNil(t, trace.ToolCalls[0].EventReceipt)
-	require.NotNil(t, trace.ModelCalls[1].EventReceipt)
+	require.NotNil(t, trace.ModelCalls[0].Receipt)
+	require.NotNil(t, trace.ToolCalls[0].Receipt)
+	require.NotNil(t, trace.ModelCalls[1].Receipt)
 	// The ledger order is opening sentinel, first turn, tool call, final turn,
-	// closing sentinel. Event receipts carry the Operator's execution time in ms.
+	// closing sentinel. Receipts carry the Operator's execution time in ms.
 	assert.IsNonDecreasing(t, []int64{
 		before.GetExecutedAtUnixMs(),
-		trace.ModelCalls[0].EventReceipt.GetExecutedAtUnixMs(),
-		trace.ToolCalls[0].EventReceipt.GetExecutedAtUnixMs(),
-		trace.ModelCalls[1].EventReceipt.GetExecutedAtUnixMs(),
+		trace.ModelCalls[0].Receipt.GetExecutedAtUnixMs(),
+		trace.ToolCalls[0].Receipt.GetExecutedAtUnixMs(),
+		trace.ModelCalls[1].Receipt.GetExecutedAtUnixMs(),
 		after.GetExecutedAtUnixMs(),
 	}, "sentinel reads bracket the tool loop in execution order")
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
@@ -439,7 +439,7 @@ func TestCampaignAgentExecutorIntegration_HarnessDispatchFailuresFailTheAssignme
 }
 
 // L1 doctrine screens at ingress, before any envelope exists, so a doctrine block
-// returns as an IngressRefusal with no transaction and no signed event receipt. The
+// returns as an IngressRefusal with no transaction and no signed receipt. The
 // trace records it as a tool execution error with no policy decision. It is not
 // the L4 security.violation/deny path, which needs a signed governance rejection.
 func TestCampaignAgentExecutorIntegration_L1DoctrineDenialSurfacesAsIngressRefusal(t *testing.T) {
@@ -470,12 +470,12 @@ func TestCampaignAgentExecutorIntegration_L1DoctrineDenialSurfacesAsIngressRefus
 		"the doctrine block is the ingress refusal code: %q", call.Error)
 	assert.Empty(t, call.PolicyDecision, "an ingress refusal carries no signed policy decision")
 	assert.Empty(t, call.TransactionID)
-	assert.Nil(t, call.EventReceipt, "an ingress refusal has no event receipt")
+	assert.Nil(t, call.Receipt, "an ingress refusal has no receipt")
 	assert.NotEqual(t, evaluation.AgentTerminalClassificationPolicyDenial, trace.TerminalClassification, "a refusal is not a policy denial")
 }
 
-func TestCampaignAgentExecutorIntegration_VerifiedToolCallCarriesEventReceiptReference(t *testing.T) {
-	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, suffix: "event_receipt-ref", replies: shellReplies()})
+func TestCampaignAgentExecutorIntegration_VerifiedToolCallCarriesReceiptReference(t *testing.T) {
+	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, suffix: "receipt-ref", replies: shellReplies()})
 
 	res := env.executeNext(t)
 
@@ -495,18 +495,18 @@ func TestCampaignAgentExecutorIntegration_VerifiedToolCallCarriesEventReceiptRef
 		assert.Equal(t, evaluation.ExportedAgentPolicyDecisionAllow, actions[i].GetPolicyDecision())
 	}
 	assert.NotEmpty(t, actions[1].GetActionType())
-	assert.Equal(t, trace.ToolCalls[0].EventReceipt.GetActionType(), actions[1].GetActionType())
+	assert.Equal(t, trace.ToolCalls[0].Receipt.GetActionType(), actions[1].GetActionType())
 	assert.Equal(t, trace.Data.OperatorID, actions[1].GetOperatorId())
-	eventReceiptRef := actions[1].GetEventReceiptRef()
-	assert.Equal(t, res.GetEvidenceRefs()[0].GetArtifactId(), eventReceiptRef.GetArtifactId(), "the event receipt lives inside the sealed trace")
-	assert.Equal(t, "ztd.operator.v1.EventReceipt", eventReceiptRef.GetSchemaRef())
-	assert.Equal(t, trace.ToolCalls[0].TransactionID, eventReceiptRef.GetTransactionId())
-	assert.Equal(t, trace.RunID, eventReceiptRef.GetRunId())
-	assert.Len(t, eventReceiptRef.GetSha256(), 64)
-	assert.Equal(t, eventReceiptRef.GetSha256(), res.GetToolCalls()[0].GetGovernedBindingRef().GetSha256())
+	receiptRef := actions[1].GetReceiptRef()
+	assert.Equal(t, res.GetEvidenceRefs()[0].GetArtifactId(), receiptRef.GetArtifactId(), "the receipt lives inside the sealed trace")
+	assert.Equal(t, "ztd.operator.v1.ActionReceipt", receiptRef.GetSchemaRef())
+	assert.Equal(t, trace.ToolCalls[0].TransactionID, receiptRef.GetTransactionId())
+	assert.Equal(t, trace.RunID, receiptRef.GetRunId())
+	assert.Len(t, receiptRef.GetSha256(), 64)
+	assert.Equal(t, receiptRef.GetSha256(), res.GetToolCalls()[0].GetGovernedBindingRef().GetSha256())
 }
 
-func TestCampaignAgentExecutorIntegration_TamperedEventReceiptImportsAsInvalidEvidenceWithoutGrades(t *testing.T) {
+func TestCampaignAgentExecutorIntegration_TamperedReceiptImportsAsInvalidEvidenceWithoutGrades(t *testing.T) {
 	env := newRealStackAgentRun(t, realStackOptions{singleRole: true, suffix: "tampered", replies: shellReplies()})
 	res := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
@@ -515,17 +515,17 @@ func TestCampaignAgentExecutorIntegration_TamperedEventReceiptImportsAsInvalidEv
 	require.Len(t, trace.ToolCalls, 1)
 	callID := trace.ToolCalls[0].CallID
 
-	// Tamper the stored event receipt's signature, then re-seal so the trace digest
+	// Tamper the stored receipt's signature, then re-seal so the trace digest
 	// matches: the failure must come from the signed evidence, not the digest.
-	eventReceipt := trace.ToolCalls[0].EventReceipt.EventReceipt
-	eventReceipt.Signature = flipHexDigit(eventReceipt.Signature)
+	receipt := trace.ToolCalls[0].Receipt.ActionReceipt
+	receipt.Signature = flipHexDigit(receipt.Signature)
 	body, err := evaluation.SealAgentTrace(trace)
 	require.NoError(t, err)
 	ref, err := evaluation.BuildAssignmentAgentTraceEvidenceReference(env.req.RunID, trace.EvaluationAttemptID, body, env.clock())
 	require.NoError(t, err)
 
 	req := executorImportRequest(t, env, res.GetAssignmentId(), trace)
-	// This test is about event receipt tampering, not the schema pin, so the import
+	// This test is about receipt tampering, not the schema pin, so the import
 	// runs without a version pin.
 	result, err := evaluation.ImportAssignmentResultFromAgentTrace(req, trace, ref, env.clock(), func(prefix string) string { return prefix })
 
@@ -552,7 +552,7 @@ func TestCampaignAgentExecutorIntegration_SharedRuntimeMustPinOneKeyToStart(t *t
 	assert.Zero(t, env.stack.Provider.ChatCount(), "nothing is dispatched when the shared runtime pins two keys")
 }
 
-func TestCampaignAgentExecutorIntegration_ProviderFailureKeepsFailedEventReceiptAndVerifies(t *testing.T) {
+func TestCampaignAgentExecutorIntegration_ProviderFailureKeepsFailedReceiptAndVerifies(t *testing.T) {
 	for _, shared := range []bool{false, true} {
 		t.Run(fmt.Sprintf("shared runtime %t", shared), func(t *testing.T) {
 			env := newRealStackAgentRun(t, realStackOptions{
@@ -575,10 +575,10 @@ func TestCampaignAgentExecutorIntegration_ProviderFailureKeepsFailedEventReceipt
 			assert.False(t, failed.Completed())
 			assert.NotEmpty(t, failed.Error)
 			assert.NotEmpty(t, failed.TransactionID)
-			require.NotNil(t, failed.EventReceipt)
-			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.EventReceipt.GetStatus())
-			assert.Len(t, failed.ObservationEventReceipts, len(trace.ModelCalls[0].ObservationEventReceipts),
-				"the failed attempt keeps its observers' signed BEGIN and FINALIZE event receipts")
+			require.NotNil(t, failed.Receipt)
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, failed.Receipt.GetStatus())
+			assert.Len(t, failed.ObservationReceipts, len(trace.ModelCalls[0].ObservationReceipts),
+				"the failed attempt keeps its observers' signed BEGIN and FINALIZE receipts")
 			require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 		})
 	}

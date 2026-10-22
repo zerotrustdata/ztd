@@ -21,20 +21,20 @@ import (
 func TestParseAgentToolArguments_RejectsNullArguments(t *testing.T) {
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
-	spec, ok := catalog.Tool(constants.MCPToolAuditEventReceiptList)
+	spec, ok := catalog.Tool(constants.MCPToolAuditReceiptList)
 	require.True(t, ok)
 
 	_, failure := parseAgentToolArguments(spec, "null")
 	require.NotNil(t, failure)
 	assert.Equal(t, agentToolErrorExecution, failure.ErrorType)
-	assert.Contains(t, failure.Error, constants.MCPToolAuditEventReceiptList)
+	assert.Contains(t, failure.Error, constants.MCPToolAuditReceiptList)
 	assert.Contains(t, failure.Error, "null")
 }
 
 func TestParseAgentToolArguments_EmptyArgumentsAcceptInjectedDefaults(t *testing.T) {
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
-	spec, ok := catalog.Tool(constants.MCPToolAuditEventReceiptList)
+	spec, ok := catalog.Tool(constants.MCPToolAuditReceiptList)
 	require.True(t, ok)
 
 	args, failure := parseAgentToolArguments(spec, "")

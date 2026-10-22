@@ -64,10 +64,10 @@ func (c *E2EClient) newAuthenticatedRequest(ctx context.Context, method, path st
 }
 
 // SubmitGovernanceEnvelope posts a GovernanceEnvelope to
-// /api/v1/governance/envelopes and returns the signed EventReceipt the Gateway
+// /api/v1/governance/envelopes and returns the signed ActionReceipt the Gateway
 // answers with. Any status other than 200 (an IngressRefusal or a
 // GovernanceRejection) is an error carrying the response body.
-func (c *E2EClient) SubmitGovernanceEnvelope(ctx context.Context, env *governance.GovernanceEnvelope) (*operatorv1.EventReceipt, error) {
+func (c *E2EClient) SubmitGovernanceEnvelope(ctx context.Context, env *governance.GovernanceEnvelope) (*operatorv1.ActionReceipt, error) {
 	wire, err := protojson.Marshal(env)
 	if err != nil {
 		return nil, fmt.Errorf("marshal governance envelope: %w", err)
@@ -82,11 +82,11 @@ func (c *E2EClient) SubmitGovernanceEnvelope(ctx context.Context, env *governanc
 	if err != nil {
 		return nil, fmt.Errorf("submit governance envelope %s: %w", env.GetId(), err)
 	}
-	eventReceipt := &operatorv1.EventReceipt{}
-	if err := protojson.Unmarshal(body, eventReceipt); err != nil {
-		return nil, fmt.Errorf("decode governance envelope event_receipt: %w", err)
+	receipt := &operatorv1.ActionReceipt{}
+	if err := protojson.Unmarshal(body, receipt); err != nil {
+		return nil, fmt.Errorf("decode governance envelope receipt: %w", err)
 	}
-	return eventReceipt, nil
+	return receipt, nil
 }
 
 // GetDocument reads a document from /api/v1/data/{collection}/{id} and returns

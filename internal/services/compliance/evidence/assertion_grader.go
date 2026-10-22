@@ -562,10 +562,10 @@ func nodeMatchesEvidenceType(node *EvidenceNode, required string) bool {
 		return true
 	}
 	switch normalized {
-	case "event_receipt":
-		return node.ArtifactType == ArtifactTypeEvalEventReceipt
+	case "action_receipt":
+		return node.ArtifactType == ArtifactTypeEvalReceipt
 	case "final_persistence_attestation":
-		return node.ArtifactType == ArtifactTypeEventReceiptPersistence
+		return node.ArtifactType == ArtifactTypeReceiptPersistence
 	case "deterministic_stage":
 		return node.ArtifactType == ArtifactTypeEvalStage || node.ArtifactType == ArtifactTypeProtocolChain
 	case "state_observation":
@@ -582,10 +582,10 @@ func nodeMatchesVerifier(node *EvidenceNode, required *compliancev1.VersionedRef
 		return false
 	}
 	switch required.GetId() {
-	case "event_receipt_integrity":
-		return node.ArtifactType == ArtifactTypeEventReceipt || node.ArtifactType == ArtifactTypeEvalEventReceipt
-	case "event_receipt_persistence":
-		return node.ArtifactType == ArtifactTypeEventReceiptPersistence
+	case "receipt_integrity":
+		return node.ArtifactType == ArtifactTypeActionReceipt || node.ArtifactType == ArtifactTypeEvalReceipt
+	case "receipt_persistence":
+		return node.ArtifactType == ArtifactTypeReceiptPersistence
 	case "deterministic_stage_chain":
 		return node.ArtifactType == ArtifactTypeProtocolChain || node.ArtifactType == ArtifactTypeEvalStage
 	case "commitment_attestation", "commitment_chain":
@@ -613,10 +613,10 @@ func nodeMatchesGrader(node *EvidenceNode, required *compliancev1.VersionedRefer
 		return metricNodePassed(node, required)
 	}
 	switch required.GetId() {
-	case "event_receipt_integrity":
-		return nodeMatchesVerifier(node, &compliancev1.VersionedReference{Id: "event_receipt_integrity", Version: required.GetVersion()}), true
-	case "event_receipt_persistence":
-		return nodeMatchesVerifier(node, &compliancev1.VersionedReference{Id: "event_receipt_persistence", Version: required.GetVersion()}), true
+	case "receipt_integrity":
+		return nodeMatchesVerifier(node, &compliancev1.VersionedReference{Id: "receipt_integrity", Version: required.GetVersion()}), true
+	case "receipt_persistence":
+		return nodeMatchesVerifier(node, &compliancev1.VersionedReference{Id: "receipt_persistence", Version: required.GetVersion()}), true
 	case "commitment_attestation", "commitment_chain":
 		return nodeMatchesVerifier(node, &compliancev1.VersionedReference{Id: required.GetId(), Version: required.GetVersion()}), true
 	case "protocol_chain":

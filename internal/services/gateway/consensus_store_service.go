@@ -311,7 +311,7 @@ func (d *ConsensusAppDeliberator) Deliberate(ctx context.Context, envelopeBytes 
 	if updated.GetGovernance() == nil || updated.GetGovernance().GetL2() == nil || len(updated.GetGovernance().GetL2().GetVotes()) == 0 {
 		return nil, constants.ErrTxL2SignatureMissing
 	}
-	// Dispatch publishes this response while keying screening and the event_receipt
+	// Dispatch publishes this response while keying screening and the receipt
 	// wait on the envelope it sent, so the application may add L2 votes only.
 	if !sameEnvelopeExceptL2(&outgoing, &updated) {
 		return nil, constants.ErrTxL2EnvelopeAltered

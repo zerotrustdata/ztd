@@ -83,7 +83,7 @@ func TestCLIRefresh_ExpiredSessionRecoverable(t *testing.T) {
 	))
 
 	// 2. Verify the expired session is rejected on a non-refresh endpoint
-	//    (fail-closed). Use the audit event receipts endpoint as a stand-in.
+	//    (fail-closed). Use the audit receipts endpoint as a stand-in.
 	preRefreshReq, _ := http.NewRequest(http.MethodGet, mtlsURL+constants.APIPaths.AuditEventReceipts, nil)
 	preRefreshResp, err := cliClient.Do(preRefreshReq)
 	require.NoError(t, err)

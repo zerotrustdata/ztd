@@ -46,7 +46,7 @@ import (
 
 // TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline
 // dispatches one real governed command through the real Gateway. The outbound
-// Data Operator executes it and writes its own signed event receipt, commitment, and
+// Data Operator executes it and writes its own signed receipt, commitment, and
 // audit rows. The test then reads that Operator's authoritative store, exports
 // it as an operational source, and generates and verifies the bundle offline.
 // Only the model provider is scripted, and this path makes no model call.
@@ -89,7 +89,7 @@ func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(
 	require.NoError(t, protojson.Unmarshal(respBody, &result), "dispatch response: %s", respBody)
 	require.Equal(t, string(constants.Event.Operator.Command.Completed), result.GetEventType())
 	require.NotEmpty(t, result.GetTransactionId())
-	require.NotNil(t, result.GetEventReceipt())
+	require.NotNil(t, result.GetReceipt())
 	var commandResult operatorv1.CommandResult
 	require.NoError(t, proto.Unmarshal(result.GetResultPayload(), &commandResult))
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, commandResult.GetStatus())
@@ -106,7 +106,7 @@ func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(
 	require.NoError(t, err)
 	require.NoError(t, dataVault.Unlock(vaultKey))
 
-	// The actuator key signs event receipts; it is the key the Gateway registered for
+	// The actuator key signs receipts; it is the key the Gateway registered for
 	// this Operator. The auditor key signs commitments and is the Operator's own
 	// keystore secret, derived the same way its secret manager derives it.
 	operatorDoc, err := stack.Gateway.Service.GetRegistrationService().GetOperator(ctx, dataWorkload.OperatorID)
@@ -114,7 +114,7 @@ func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(
 	actuatorPublicKey, err := models.DecodeActuatorPublicKey(operatorDoc.GetActuatorPublicKey())
 	require.NoError(t, err)
 	actuatorKeyID := hex.EncodeToString(actuatorPublicKey)
-	require.Equal(t, actuatorKeyID, result.GetEventReceipt().GetSignerKeyId(), "the dispatched event receipt must be signed by the registered actuator key")
+	require.Equal(t, actuatorKeyID, result.GetReceipt().GetSignerKeyId(), "the dispatched receipt must be signed by the registered actuator key")
 	auditorSeedHex, err := ks.DecryptSecret(constants.SecretsFileAuditorSigningKey)
 	require.NoError(t, err)
 	auditorSeed, err := hex.DecodeString(auditorSeedHex)
@@ -132,13 +132,13 @@ func TestOperationalOperatorEvidence_GeneratesNativeAssuranceAndVerifiesOffline(
 	require.NoError(t, err)
 	require.NoError(t, reader.Close())
 
-	eventReceiptFound := false
-	for _, eventReceipt := range snapshot.EventReceipts {
-		if eventReceipt.TransactionID == result.GetTransactionId() {
-			eventReceiptFound = true
+	receiptFound := false
+	for _, receipt := range snapshot.Receipts {
+		if receipt.TransactionID == result.GetTransactionId() {
+			receiptFound = true
 		}
 	}
-	require.True(t, eventReceiptFound, "the Data Operator's event receipt for the dispatched transaction must be in the window")
+	require.True(t, receiptFound, "the Data Operator's receipt for the dispatched transaction must be in the window")
 	commitmentFound := false
 	for _, commitment := range snapshot.Commitments {
 		if commitment.TransactionID == result.GetTransactionId() {

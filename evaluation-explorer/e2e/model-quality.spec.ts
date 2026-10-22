@@ -115,7 +115,7 @@ function expectPublicOnly(requests: string[]): void {
     const url = new URL(request);
     return url.origin === mirrorOrigin && ['/bootstrap', '/history', '/snapshot', '/stream'].some((path) => url.pathname === path);
   })).toBe(true);
-  expect(requests.some((request) => /api|gateway|operator|ensemble|audit|event_receipt|event-receipt|tool/i.test(request))).toBe(false);
+  expect(requests.some((request) => /api|gateway|operator|ensemble|audit|receipt|tool/i.test(request))).toBe(false);
 }
 
 test('replaces partial model revisions with verified revisions and keeps scope isolated', async ({ page }) => {

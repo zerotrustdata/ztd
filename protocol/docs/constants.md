@@ -144,7 +144,7 @@ Permitted terminals come from the closed `allowedTerminals` list in `internal/to
 The governance engine determines the action class of any governed request via `constants.Registry.ActionFor(event)`. Hand-coded mapping tables are strictly prohibited.
 
 ### 3.4 Hierarchical Go Accessors
-The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`. Every other event is referenced by its flat `Event<Name>` constant. The nested groups under `Event.Operator` are `A2a`, `Audit`, `Bootstrap`, `Command` (including `Command.StatusUpdated`), `Eval`, `FetchFileDiff`, `FetchFileHistory`, `FetchHistory`, `FetchLogs`, `FileEdit`, `FsGrep`, `FsList`, `FsRead`, `Inference`, `Intent`, `Mcp`, `ModelProvenanceObservation`, `NetworkPing`, `Notary`, `OllamaModelInventory`, `OllamaModelRelease`, `OllamaModelResidency`, `PortCheck`, `ProviderBoundaryObservation`, `Event receipt`, `RestoreFile`, and `StatusUpdated`. Ungrouped operator events, such as `Event.Operator.Bound`, are `EventType` fields.
+The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`. Every other event is referenced by its flat `Event<Name>` constant. The nested groups under `Event.Operator` are `A2a`, `Audit`, `Bootstrap`, `Command` (including `Command.StatusUpdated`), `Eval`, `FetchFileDiff`, `FetchFileHistory`, `FetchHistory`, `FetchLogs`, `FileEdit`, `FsGrep`, `FsList`, `FsRead`, `Inference`, `Intent`, `Mcp`, `ModelProvenanceObservation`, `NetworkPing`, `Notary`, `OllamaModelInventory`, `OllamaModelRelease`, `OllamaModelResidency`, `PortCheck`, `ProviderBoundaryObservation`, `Receipt`, `RestoreFile`, and `StatusUpdated`. Ungrouped operator events, such as `Event.Operator.Bound`, are `EventType` fields.
 
 ---
 
@@ -194,7 +194,7 @@ Action types define the coarse-grained operational classes evaluated by L1 Doctr
 | `ActionTypeProviderBoundaryObservation` | `"PROVIDER_BOUNDARY_OBSERVATION"` | No | No | Provider boundary observation |
 
 ### 4.2 Mutation Gating
-`IsMutation()` is consumed only by `governance.L3Required`. Under postures that require L3 (`ratify`, `notary`), a mutation action that is not `AuthorizedByDecision()` MUST carry an L3 notary proof. The L4 state-root check (`verifyStateful`), JIT capability minting, and L5 signed event receipts do not depend on the mutation flag.
+`IsMutation()` is consumed only by `governance.L3Required`. Under postures that require L3 (`ratify`, `notary`), a mutation action that is not `AuthorizedByDecision()` MUST carry an L3 notary proof. The L4 state-root check (`verifyStateful`), JIT capability minting, and L5 signed receipts do not depend on the mutation flag.
 
 ### 4.3 State-Change Gating
 `ChangesState(targetResource)` is consumed by `governance.L2Enforced`, the single L2 gate. Under postures that require L2 (`consensus`, `notary`), only a non-bootstrap action for which it holds is voted on. The `_state_change` flag in `status.json` requires `_mutation` and marks `A2A_CALL`, `CANCEL`, `DOCUMENT_DELETE`, `DOCUMENT_UPDATE`, `EXECUTE_BASH`, `FILE_EDIT`, `MCP_CALL`, `RESTORE_FILE`, `SHUTDOWN`, and the bootstrap enrollment mutations. `_read_only_targets` lists the native MCP tools whose `MCP_CALL` changes no state; any other target, including an empty or unknown one, is a state change. `INFERENCE` and `OLLAMA_MODEL_RELEASE` are mutations but not state changes, so L3 gates them and L2 does not.
@@ -264,7 +264,7 @@ Pub/Sub channels enforce structured naming conventions:
 - **Result Channels**: `results:{operator_id}:{operator_session_id}` (`ChannelPrefixResults = "results"`)
 - **Heartbeat Channels**: `heartbeat:{operator_id}:{operator_session_id}` (`ChannelPrefixHeartbeat = "heartbeat"`)
 - **System Channels**: `ChannelStorageDocument`, `ChannelStorageKv`, `ChannelStorageBlob`, `ChannelGovernance`, `ChannelOperatorIntent`, `ChannelOperatorDevice`, `ChannelSseEvent`
-- **Additional Prefixes**: `event receipts`, `audit`, and `renewal` (`ChannelPrefixEventReceipts`, `ChannelPrefixAudit`, `ChannelPrefixRenewal`); SSE channels `sse:cli` and `sse:web` (`ChannelPrefixSSECLI`, `ChannelPrefixSSEWeb`)
+- **Additional Prefixes**: `receipts`, `audit`, and `renewal` (`ChannelPrefixReceipts`, `ChannelPrefixAudit`, `ChannelPrefixRenewal`); SSE channels `sse:cli` and `sse:web` (`ChannelPrefixSSECLI`, `ChannelPrefixSSEWeb`)
 
 ### 7.2 Network Ports (`ports.json` / `ports.go`)
 - `OperatorHttp` (`8080`): Plain HTTP listener for health, PKI discovery and bootstrap, CLI recovery and platform enrollment discovery, and deploy script distribution. All other paths redirect to HTTPS.

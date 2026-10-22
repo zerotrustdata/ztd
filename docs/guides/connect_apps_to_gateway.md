@@ -105,7 +105,7 @@ Configure downstream MCP servers when starting the Gateway:
   --mcp-downstream-url http://localhost:3000
 ```
 
-`--mcp-downstream-cmd` and `--mcp-downstream-url` are mutually exclusive. All downstream tool executions are governed by the Gateway; outputs are scrubbed for sensitive data and event receipts are recorded in the audit vault.
+`--mcp-downstream-cmd` and `--mcp-downstream-url` are mutually exclusive. All downstream tool executions are governed by the Gateway; outputs are scrubbed for sensitive data and receipts are recorded in the audit vault.
 
 ---
 
@@ -156,7 +156,7 @@ The Gateway provides mTLS-authenticated real-time pub/sub at `wss://<gateway>:84
 Canonical channels include:
 - `cmd:<operator_id>:<operator_session_id>`: Gateway-to-Operator governed envelope delivery.
 - `results:<operator_id>:<operator_session_id>`: Operator execution results.
-- `event_receipts:<operator_id>:<operator_session_id>`: Operator event receipts, intercepted by the Gateway.
+- `receipts:<operator_id>:<operator_session_id>`: Operator receipts, intercepted by the Gateway.
 - `heartbeat:<operator_id>:<operator_session_id>`: Operator liveness telemetry.
 
 ---
@@ -216,11 +216,11 @@ In `ratify` and `notary` postures, operations requiring human authorization with
 2. Gateway returns approval URL: `https://<gateway>:8443/api/v1/approve/{tx_hash}` (redirects to console).
 3. User completes WebAuthn passkey assertion.
 4. Gateway attaches L3 proof and resumes execution.
-5. Signed event receipt is returned to client.
+5. Signed receipt is returned to client.
 
 ---
 
-## Audit Event receipts
+## Audit Receipts
 
 List audit events for an operator session with `./ztd gw data audit list --operator-session-id <session-id>`, or aggregate them by type with `./ztd gw data audit summary`. Query one application's records with `--app`, which matches the exact `acting_app_id`, the application's SPIFFE URI (`spiffe://ztd.local/app/<name>`):
 

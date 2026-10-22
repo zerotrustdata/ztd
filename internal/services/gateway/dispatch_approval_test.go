@@ -98,7 +98,7 @@ func TestDispatchApprovalCoordinator_DeliveredFailureReportsHandOff(t *testing.T
 		store := &captureEnvelopeSuspender{}
 		coordinator, err := NewDispatchApprovalCoordinator(store)
 		require.NoError(t, err)
-		failed := &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+		failed := &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
 		go func() {
 			_, pending, err := coordinator.await(t.Context(), resumeTestEnvelope(t, constants.Event.Operator.FsRead.Requested, fsReadPayload(t)))
 			if err == nil {
@@ -108,10 +108,10 @@ func TestDispatchApprovalCoordinator_DeliveredFailureReportsHandOff(t *testing.T
 		synctest.Wait()
 		decided := proto.Clone(store.envelope).(*commonv1.GovernanceEnvelope)
 		decided.Governance.L3 = &commonv1.L3Metadata{Denied: true}
-		eventReceipt, handedOff, err := coordinator.ResumePendingDispatch(t.Context(), decided)
+		receipt, handedOff, err := coordinator.ResumePendingDispatch(t.Context(), decided)
 		require.ErrorIs(t, err, constants.ErrDispatchResultTimeout)
 		require.True(t, handedOff)
-		require.Same(t, failed, eventReceipt)
+		require.Same(t, failed, receipt)
 		require.Empty(t, coordinator.pending)
 	})
 }

@@ -82,7 +82,7 @@ posture:
 | L2 Consensus | Gateway coord., Operator verify | K-of-N Ed25519 quorum over `<tx_hash>\|<decision>`. |
 | L3 Notary | Gateway coord., Operator verify | Human authorization (WebAuthn, or signed CLI proof for outbound Operators). |
 | L4 Warden | Executing Operator | Pre-dispatch gate: nonce reservation, expiry, hash recompute, state-root check, posture-required L2/L3 proof. |
-| L5 Actuator | Executing Operator | Sole execution boundary: signs `EXECUTING`/`COMPLETED`/`FAILED` event receipts, mints a short-lived capability, dispatches the handler, appends to the local commitment ledger. |
+| L5 Actuator | Executing Operator | Sole execution boundary: signs `EXECUTING`/`COMPLETED`/`FAILED` receipts, mints a short-lived capability, dispatches the handler, appends to the local commitment ledger. |
 
 Governance **posture** (`--posture doctrine|consensus|ratify|notary`, set at Gateway startup, immutable at
 runtime) decides whether L2/L3 gate execution or are merely audited. L1, L4, and L5 always run.
@@ -107,7 +107,7 @@ they fail closed at L4 instead. Client-native tools, external MCP wrappers, and 
 ### Storage: Local-First Audit Architecture (LFAA)
 
 Each executing runtime (Gateway, each Operator) is authoritative for its own SQLite audit DB (which holds the execution events), and
-state root under `.ztd/`. Gateway-mirrored event receipts are best-effort projections only — never treat them as the
+state root under `.ztd/`. Gateway-mirrored receipts are best-effort projections only — never treat them as the
 source of truth over an Operator's local store. All `.ztd/` I/O must go through `RuntimeFileService`
 (`internal/services/fs/`), never raw `os` calls or hardcoded paths.
 
@@ -161,7 +161,7 @@ the linked docs above.
   services/utilities/constants.
 - Sentinel errors live only in `internal/constants/errors.go`; wrap errors with `%w` and operation context; never
   compare rendered error strings when `errors.Is`/`errors.As` works.
-- Known shapes (envelopes, proofs, event receipts, HTTP contracts) must stay typed — no protobuf `Any` or
+- Known shapes (envelopes, proofs, receipts, HTTP contracts) must stay typed — no protobuf `Any` or
   `map[string]interface{}` for a known contract.
 - `.ztd/` runtime state goes through `fs.RuntimeFileService` only; path strings come from
   `internal/constants/paths.go`.

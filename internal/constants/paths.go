@@ -198,9 +198,9 @@ const (
 
 // Storage constants for database filenames and paths.
 const (
-	DbFilename                  = "ztd.db"
-	VaultHeaderFilename         = "vault.header"
-	EventReceiptsExportFilename = "event-receipts-export.json"
+	DbFilename             = "ztd.db"
+	VaultHeaderFilename    = "vault.header"
+	ReceiptsExportFilename = "event-receipts-export.json"
 
 	// Storage DB filenames (used with filepath.Join)
 	ChaosDBFilename = "chaos.db"
@@ -542,7 +542,7 @@ const (
 
 	// SSEClientInitialLineSize and SSEClientMaxLineSize bound one line of the
 	// CLI's Gateway SSE stream. An approval.completed event carries the resumed
-	// transaction's signed event receipt, whose tool result can hold both execution
+	// transaction's signed receipt, whose tool result can hold both execution
 	// output streams; JSON escaping can grow each byte up to six, so a smaller
 	// cap would drop the stream after the approved call already executed.
 	SSEClientInitialLineSize = 64 * 1024
@@ -560,7 +560,7 @@ const (
 // Reporting constants for output directory and filenames.
 const (
 	ReportsDirname                 = "reports"
-	ReportEventReceiptsFilename    = "event_receipts.csv"
+	ReportReceiptsFilename         = "event_receipts.csv"
 	ReportSessionsFilename         = "sessions.csv"
 	ReportEventsFilename           = "events.csv"
 	ReportFileMutationsFilename    = "file_mutations.csv"
@@ -602,7 +602,7 @@ const (
 	ComplianceBundleEvalManifestsFilename        = "manifests.jsonl"
 	ComplianceBundleEvalTasksFilename            = "tasks.jsonl"
 	ComplianceBundleEvalAttemptsFilename         = "attempts.jsonl"
-	ComplianceBundleEvalEventReceiptsFilename    = "event_receipts.jsonl"
+	ComplianceBundleEvalReceiptsFilename         = "receipts.jsonl"
 	ComplianceBundleEvalStagesFilename           = "stages.jsonl"
 	ComplianceBundleEvalMetricsFilename          = "metrics.jsonl"
 	ComplianceBundleEvalStateFilename            = "state-observations.jsonl"
@@ -622,7 +622,7 @@ const (
 	ComplianceBundleSignaturesFilename           = "signatures.json"
 	ComplianceOperationalExportDirname           = "operational"
 	ComplianceOperationalInventoryFilename       = "inventory.json"
-	ComplianceOperationalEventReceiptsDirname    = "event_receipts"
+	ComplianceOperationalReceiptsDirname         = "receipts"
 	ComplianceOperationalPersistenceDirname      = "persistence"
 	ComplianceOperationalCommitmentsDirname      = "commitments"
 	ComplianceOperationalAuditChainDirname       = "audit-chain"
@@ -647,10 +647,10 @@ const (
 	AssertionGraderVersion                        = "2.2.0"
 	FrameworkGraderID                             = "framework_assessment"
 	FrameworkGraderVersion                        = "1.0.0"
-	EventReceiptEvidenceVerifierID                = "ztd-event-receipt-evidence-importer"
-	EventReceiptEvidenceVerifierVersion           = "1.0.0"
-	EventReceiptReferencePrefix                   = "event-receipt"
-	EventReceiptPersistenceReferencePrefix        = "event_receipt-persistence"
+	ReceiptEvidenceVerifierID                     = "ztd-receipt-evidence-importer"
+	ReceiptEvidenceVerifierVersion                = "1.0.0"
+	ActionReceiptReferencePrefix                  = "action-receipt"
+	ReceiptPersistenceReferencePrefix             = "receipt-persistence"
 	DeterministicStagesReferencePrefix            = "deterministic-stages"
 	AuditRecordReferencePrefix                    = "audit-record"
 	AuditRecordsDirname                           = "audit-records"

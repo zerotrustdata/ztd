@@ -191,20 +191,20 @@ func TestOperationalExportImporter_RejectsCommitmentSegmentSequenceGap(t *testin
 	assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
 }
 
-func TestOperationalExportImporter_RejectsRetainedEventReceiptAndStageSubstitutions(t *testing.T) {
+func TestOperationalExportImporter_RejectsRetainedReceiptAndStageSubstitutions(t *testing.T) {
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	tests := []struct {
 		name   string
-		mutate func(*operatorv1.EventReceipt)
+		mutate func(*operatorv1.ActionReceipt)
 	}{
-		{name: "event receipt transaction hash", mutate: func(eventReceipt *operatorv1.EventReceipt) {
-			eventReceipt.TransactionHash = "substituted-transaction-hash"
-			for _, stage := range eventReceipt.DeterministicStageEvidence {
-				stage.TransactionHash = eventReceipt.TransactionHash
+		{name: "receipt transaction hash", mutate: func(receipt *operatorv1.ActionReceipt) {
+			receipt.TransactionHash = "substituted-transaction-hash"
+			for _, stage := range receipt.DeterministicStageEvidence {
+				stage.TransactionHash = receipt.TransactionHash
 			}
 		}},
-		{name: "commitment stage signer", mutate: func(eventReceipt *operatorv1.EventReceipt) {
-			for _, stage := range eventReceipt.DeterministicStageEvidence {
+		{name: "commitment stage signer", mutate: func(receipt *operatorv1.ActionReceipt) {
+			for _, stage := range receipt.DeterministicStageEvidence {
 				if stage.GetKind() == operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND {
 					stage.SignerKeyId = "substituted-auditor"
 				}
@@ -215,10 +215,10 @@ func TestOperationalExportImporter_RejectsRetainedEventReceiptAndStageSubstituti
 		t.Run(test.name, func(t *testing.T) {
 			signer := newOperationalCommitmentSigner(t)
 			commitment := signer.commitment(t, "tx-1", "external-prior", executedAt)
-			eventReceipt := newEvalVerifiedChainEventReceipt(signer.keyID)
-			eventReceipt.TransactionHash = commitment.GetTransactionHash()
-			for _, stage := range eventReceipt.DeterministicStageEvidence {
-				stage.TransactionHash = eventReceipt.GetTransactionHash()
+			receipt := newEvalVerifiedChainReceipt(signer.keyID)
+			receipt.TransactionHash = commitment.GetTransactionHash()
+			for _, stage := range receipt.DeterministicStageEvidence {
+				stage.TransactionHash = receipt.GetTransactionHash()
 				stage.ActionType = commitment.GetActionType()
 				if stage.GetKind() == operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND {
 					stage.CommitmentHash = commitment.GetHash()
@@ -228,16 +228,16 @@ func TestOperationalExportImporter_RejectsRetainedEventReceiptAndStageSubstituti
 					stage.L3SignatureDigest = commitment.GetHumanSignatureDigest()
 				}
 			}
-			test.mutate(eventReceipt)
-			eventReceiptPayload, err := governance.CanonicalizeEventReceipt(eventReceipt)
+			test.mutate(receipt)
+			receiptPayload, err := governance.CanonicalizeActionReceipt(receipt)
 			require.NoError(t, err)
-			eventReceipt.Signature = hex.EncodeToString(ed25519.Sign(signer.privateKey, eventReceiptPayload))
-			eventReceiptBody, err := compliancev1.MarshalCanonical(eventReceipt)
+			receipt.Signature = hex.EncodeToString(ed25519.Sign(signer.privateKey, receiptPayload))
+			receiptBody, err := compliancev1.MarshalCanonical(receipt)
 			require.NoError(t, err)
 			outputDir := testutil.TempDir(t)
 			inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
-				EventReceipts: []storage.OperationalEventReceiptSource{{TransactionID: eventReceipt.GetTransactionId(), ExecutedAt: executedAt, Body: eventReceiptBody}},
-				Commitments:   []storage.OperationalCommitmentSource{{Sequence: 10, TransactionID: commitment.GetTransactionId(), CommittedAt: executedAt, Body: canonicalOperationalCommitment(t, commitment)}},
+				Receipts:    []storage.OperationalReceiptSource{{TransactionID: receipt.GetTransactionId(), ExecutedAt: executedAt, Body: receiptBody}},
+				Commitments: []storage.OperationalCommitmentSource{{Sequence: 10, TransactionID: commitment.GetTransactionId(), CommittedAt: executedAt, Body: canonicalOperationalCommitment(t, commitment)}},
 			}, operationalExportRequestForTest(outputDir, executedAt))
 			require.NoError(t, err)
 			files := operationalExportFiles(t, outputDir, inventory)
@@ -250,12 +250,12 @@ func TestOperationalExportImporter_RejectsRetainedEventReceiptAndStageSubstituti
 	}
 }
 
-func TestOperationalExportImporter_ReplaysExportedEventReceiptAndPersistenceBodies(t *testing.T) {
+func TestOperationalExportImporter_ReplaysExportedReceiptAndPersistenceBodies(t *testing.T) {
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	signerKeyID := hex.EncodeToString(publicKey)
-	eventReceipt := &operatorv1.EventReceipt{
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:    "tx-1",
 		TransactionHash:  "hash-tx-1",
 		SignerKeyId:      signerKeyID,
@@ -268,18 +268,18 @@ func TestOperationalExportImporter_ReplaysExportedEventReceiptAndPersistenceBodi
 			{StageId: "tx-1:L4", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION, Outcome: operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, TransactionId: "tx-1", TransactionHash: "hash-tx-1", InvestigationId: "investigation-1", ActionType: "FILE_EDIT"},
 		},
 	}
-	eventReceiptPayload, err := governance.CanonicalizeEventReceipt(eventReceipt)
+	receiptPayload, err := governance.CanonicalizeActionReceipt(receipt)
 	require.NoError(t, err)
-	eventReceipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, eventReceiptPayload))
-	attestation := &operatorv1.EventReceiptPersistenceAttestation{TransactionId: "tx-1", EventReceiptSignatureDigest: governance.SignatureDigest([]string{eventReceipt.Signature}), PersistedAtUnixMs: executedAt.Add(time.Second).UnixMilli(), AuditRecordId: "tx-1", SignerKeyId: signerKeyID}
-	attestationPayload, err := governance.CanonicalizeEventReceiptPersistenceAttestation(attestation)
+	receipt.Signature = hex.EncodeToString(ed25519.Sign(privateKey, receiptPayload))
+	attestation := &operatorv1.ReceiptPersistenceAttestation{TransactionId: "tx-1", ReceiptSignatureDigest: governance.SignatureDigest([]string{receipt.Signature}), PersistedAtUnixMs: executedAt.Add(time.Second).UnixMilli(), AuditRecordId: "tx-1", SignerKeyId: signerKeyID}
+	attestationPayload, err := governance.CanonicalizeReceiptPersistenceAttestation(attestation)
 	require.NoError(t, err)
 	attestation.Signature = hex.EncodeToString(ed25519.Sign(privateKey, attestationPayload))
-	eventReceipt.FinalPersistenceAttestation = attestation
-	eventReceiptBody, err := compliancev1.MarshalCanonical(eventReceipt)
+	receipt.FinalPersistenceAttestation = attestation
+	receiptBody, err := compliancev1.MarshalCanonical(receipt)
 	require.NoError(t, err)
 	outputDir := testutil.TempDir(t)
-	_, err = ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{EventReceipts: []storage.OperationalEventReceiptSource{{TransactionID: "tx-1", ExecutedAt: executedAt, Body: eventReceiptBody}}}, OperationalExportRequest{
+	_, err = ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{Receipts: []storage.OperationalReceiptSource{{TransactionID: "tx-1", ExecutedAt: executedAt, Body: receiptBody}}}, OperationalExportRequest{
 		ScopeID:              "scope-1",
 		AdmissionID:          "source-1",
 		SourceKind:           "operator-audit",
@@ -315,9 +315,9 @@ func TestOperationalExportImporter_ReplaysExportedEventReceiptAndPersistenceBodi
 	nodes, err := importer.Import(context.Background())
 	require.NoError(t, err)
 	require.Len(t, nodes, 3)
-	assert.Equal(t, ArtifactTypeEventReceipt, nodes[0].ArtifactType)
+	assert.Equal(t, ArtifactTypeActionReceipt, nodes[0].ArtifactType)
 	assert.Equal(t, ArtifactTypeProtocolChain, nodes[1].ArtifactType)
-	assert.Equal(t, ArtifactTypeEventReceiptPersistence, nodes[2].ArtifactType)
+	assert.Equal(t, ArtifactTypeReceiptPersistence, nodes[2].ArtifactType)
 	assert.Equal(t, VerificationStatusVerified, nodes[0].VerificationStatus)
 	assert.Equal(t, VerificationStatusVerified, nodes[1].VerificationStatus)
 	assert.Equal(t, []string{nodes[0].ArtifactID}, nodes[1].References)
@@ -333,14 +333,14 @@ func TestOperationalExportImporter_ReplaysExportedEventReceiptAndPersistenceBodi
 	assert.Equal(t, "operational-export", importer.SourceID())
 }
 
-func TestOperationalExportImporter_VerifiesAuditChainAndCrossLinksEventReceipts(t *testing.T) {
+func TestOperationalExportImporter_VerifiesAuditChainAndCrossLinksReceipts(t *testing.T) {
 	executedAt := time.UnixMilli(1_700_000_001_000).UTC()
 	signer := newOperationalCommitmentSigner(t)
 	commitment := signer.commitment(t, "tx-1", "external-prior", executedAt)
-	eventReceipt := newEvalVerifiedChainEventReceipt(signer.keyID)
-	eventReceipt.TransactionHash = commitment.GetTransactionHash()
-	for _, stage := range eventReceipt.DeterministicStageEvidence {
-		stage.TransactionHash = eventReceipt.GetTransactionHash()
+	receipt := newEvalVerifiedChainReceipt(signer.keyID)
+	receipt.TransactionHash = commitment.GetTransactionHash()
+	for _, stage := range receipt.DeterministicStageEvidence {
+		stage.TransactionHash = receipt.GetTransactionHash()
 		if stage.GetKind() == operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND {
 			stage.CommitmentHash = commitment.GetHash()
 			stage.PriorCommitmentHash = commitment.GetPriorCommitmentHash()
@@ -349,35 +349,35 @@ func TestOperationalExportImporter_VerifiesAuditChainAndCrossLinksEventReceipts(
 			stage.L3SignatureDigest = commitment.GetHumanSignatureDigest()
 		}
 	}
-	eventReceiptPayload, err := governance.CanonicalizeEventReceipt(eventReceipt)
+	receiptPayload, err := governance.CanonicalizeActionReceipt(receipt)
 	require.NoError(t, err)
-	eventReceipt.Signature = hex.EncodeToString(ed25519.Sign(signer.privateKey, eventReceiptPayload))
-	eventReceiptBody, err := compliancev1.MarshalCanonical(eventReceipt)
+	receipt.Signature = hex.EncodeToString(ed25519.Sign(signer.privateKey, receiptPayload))
+	receiptBody, err := compliancev1.MarshalCanonical(receipt)
 	require.NoError(t, err)
 
 	timestamp := timesvc.FormatTimestamp(executedAt.UTC())
 	// content_digest is keyed under the exporting runtime's vault and opaque to the
-	// importer; the exporter records the event receipt body's SHA-256 for offline linking.
+	// importer; the exporter records the receipt body's SHA-256 for offline linking.
 	digest := strings.Repeat("ab", 32)
-	bodySum := sha256.Sum256(eventReceiptBody)
+	bodySum := sha256.Sum256(receiptBody)
 	contentSHA256 := hex.EncodeToString(bodySum[:])
 	prevHash := strings.Repeat("0", 64)
-	hash := storage.AuditEventChainHash(7, prevHash, string(constants.EventOperatorEventReceiptRecorded), "session-1", timestamp, digest, eventReceipt.GetTransactionId())
+	hash := storage.AuditEventChainHash(7, prevHash, string(constants.EventOperatorReceiptRecorded), "session-1", timestamp, digest, receipt.GetTransactionId())
 
 	outputDir := testutil.TempDir(t)
 	inventory, err := ExportOperationalEvidence(context.Background(), &storage.OperationalEvidenceSnapshot{
-		EventReceipts: []storage.OperationalEventReceiptSource{{TransactionID: eventReceipt.GetTransactionId(), ExecutedAt: executedAt, Body: eventReceiptBody}},
-		Commitments:   []storage.OperationalCommitmentSource{{Sequence: 10, TransactionID: commitment.GetTransactionId(), CommittedAt: executedAt, Body: canonicalOperationalCommitment(t, commitment)}},
+		Receipts:    []storage.OperationalReceiptSource{{TransactionID: receipt.GetTransactionId(), ExecutedAt: executedAt, Body: receiptBody}},
+		Commitments: []storage.OperationalCommitmentSource{{Sequence: 10, TransactionID: commitment.GetTransactionId(), CommittedAt: executedAt, Body: canonicalOperationalCommitment(t, commitment)}},
 		AuditChain: []storage.OperationalAuditChainSource{{
 			Seq:               7,
 			PrevHash:          prevHash,
 			Hash:              hash,
-			EventType:         string(constants.EventOperatorEventReceiptRecorded),
+			EventType:         string(constants.EventOperatorReceiptRecorded),
 			OperatorSessionID: "session-1",
 			Timestamp:         executedAt,
 			ContentDigest:     digest,
 			ContentSHA256:     contentSHA256,
-			TransactionID:     eventReceipt.GetTransactionId(),
+			TransactionID:     receipt.GetTransactionId(),
 		}},
 	}, operationalExportRequestForTest(outputDir, executedAt))
 	require.NoError(t, err)
@@ -389,22 +389,22 @@ func TestOperationalExportImporter_VerifiesAuditChainAndCrossLinksEventReceipts(
 	nodes, err := importer.Import(context.Background())
 	require.NoError(t, err)
 
-	var eventReceiptNode, chainNode, commitmentNode *EvidenceNode
+	var receiptNode, chainNode, commitmentNode *EvidenceNode
 	for index := range nodes {
 		switch nodes[index].ArtifactType {
-		case ArtifactTypeEventReceipt:
-			eventReceiptNode = &nodes[index]
+		case ArtifactTypeActionReceipt:
+			receiptNode = &nodes[index]
 		case ArtifactTypeAuditChainEntry:
 			chainNode = &nodes[index]
 		case ArtifactTypeCommitment:
 			commitmentNode = &nodes[index]
 		}
 	}
-	require.NotNil(t, eventReceiptNode)
+	require.NotNil(t, receiptNode)
 	require.NotNil(t, chainNode)
 	require.NotNil(t, commitmentNode)
-	// The chain fact references the event receipt; the reverse edge would be a reference cycle.
-	assert.NotContains(t, eventReceiptNode.References, chainNode.ArtifactID)
-	assert.Contains(t, chainNode.References, eventReceiptNode.ArtifactID)
-	assert.Contains(t, commitmentNode.References, eventReceiptNode.ArtifactID)
+	// The chain fact references the receipt; the reverse edge would be a reference cycle.
+	assert.NotContains(t, receiptNode.References, chainNode.ArtifactID)
+	assert.Contains(t, chainNode.References, receiptNode.ArtifactID)
+	assert.Contains(t, commitmentNode.References, receiptNode.ArtifactID)
 }

@@ -11,7 +11,7 @@ The **Agent-to-Agent (A2A)** protocol defines a cryptographically governed mecha
 
 Autonomous workflows frequently require agents to collaborate across boundaries of authority. In ztd, peer agent delegation is never unmediated:
 - **Zero-Trust Boundary**: Inbound agent skill requests are treated as untrusted intent.
-- **Unified Governance**: Every skill call undergoes identical validation to host-native commands, requiring state Merkle root verification, policy evaluation, and cryptographic audit event receipt generation.
+- **Unified Governance**: Every skill call undergoes identical validation to host-native commands, requiring state Merkle root verification, policy evaluation, and cryptographic audit receipt generation.
 - **Fail-Closed Execution**: Downstream skill providers receive invocations only after all governance layers confirm validity.
 
 ```text
@@ -35,8 +35,8 @@ Autonomous workflows frequently require agents to collaborate across boundaries 
 │ 1. Reserve nonce & verify host state Merkle root       │
 │ 2. Mint ephemeral capability bound to skill & payload  │
 │ 3. Forward to downstream (DispatchToA2ADownstream)     │
-│ 4. Apply output scrubbing & event receipt summary truncation │
-│ 5. Produce signed EventReceipt & commit to ledger     │
+│ 4. Apply output scrubbing & receipt summary truncation │
+│ 5. Produce signed ActionReceipt & commit to ledger     │
 └───────────────────────────┬────────────────────────────┘
                             │ HTTP / JSON
                             ▼
@@ -88,7 +88,7 @@ Requests use standard JSON-RPC 2.0 framing:
 
 ## 3. Governance Envelope Translation
 
-Upon event receipt, the Gateway translates the A2A call into a canonical `GovernanceEnvelope` with action type `A2A_CALL`.
+Upon receipt, the Gateway translates the A2A call into a canonical `GovernanceEnvelope` with action type `A2A_CALL`.
 
 ### 3.1 Protobuf Contract (`operatorv1.A2aCallRequested`)
 The typed payload message is defined in `protocol/proto/ztd/operator/v1/operator.proto`:
@@ -150,11 +150,11 @@ message A2aCallRequested {
 
 ### 4.5 Layer 5: Actuator Execution Boundary
 - Assembles deterministic stage proofs across L1–L4.
-- Signs an initial `EXECUTING` event receipt and appends a `CommitmentAttestation` to the local commitment chain.
+- Signs an initial `EXECUTING` receipt and appends a `CommitmentAttestation` to the local commitment chain.
 - Mints an ephemeral execution capability scoped strictly to `A2A_CALL` and `target_resource`.
 - Invokes downstream dispatch via `DispatchToA2ADownstream`.
-- Truncates event receipt summary to `EventReceiptSummaryMaxBytes` (4096 bytes).
-- Signs final `EventReceipt` (`COMPLETED` or `FAILED`) and persists it to `SQLAuditStore`.
+- Truncates receipt summary to `ReceiptSummaryMaxBytes` (4096 bytes).
+- Signs final `ActionReceipt` (`COMPLETED` or `FAILED`) and persists it to `SQLAuditStore`.
 
 ---
 
@@ -229,12 +229,12 @@ The Gateway issues an HTTP `POST` to the configured `--a2a-downstream-url` with 
 ```
 
 ### 6.2 Downstream Response Processing
-The Gateway decodes the downstream response to populate the `EventReceipt`:
+The Gateway decodes the downstream response to populate the `ActionReceipt`:
 - Reads `summary`: Used as primary execution summary if present.
 - Reads `result`: Used as fallback summary if `summary` is empty.
 - Defaults to `"completed"` if neither field is provided.
 - If `error` is populated or HTTP status is non-200, execution is marked as `FAILED`.
-- Summary text is bounded to `EventReceiptSummaryMaxBytes` (`4096` bytes) to prevent unbounded memory growth on verbose tool outputs.
+- Summary text is bounded to `ReceiptSummaryMaxBytes` (`4096` bytes) to prevent unbounded memory growth on verbose tool outputs.
 
 ### 6.3 Shared Circuit Breaker
 Downstream A2A egress shares the Gateway's stateful circuit breaker:
@@ -246,7 +246,7 @@ Downstream A2A egress shares the Gateway's stateful circuit breaker:
 
 ## 7. Execution Success Response
 
-When execution completes successfully, the Gateway returns `A2ASuccessResponse` as the JSON-RPC `result`. Its `id` is the transaction hash and its `result` is the executing Operator's signed `EventReceipt`, encoded as canonical protojson with proto field names:
+When execution completes successfully, the Gateway returns `A2ASuccessResponse` as the JSON-RPC `result`. Its `id` is the transaction hash and its `result` is the executing Operator's signed `ActionReceipt`, encoded as canonical protojson with proto field names:
 
 ```json
 {

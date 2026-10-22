@@ -133,12 +133,12 @@ func (r *agentRun) runApprovedShellCommand(record AgentToolCall, result *tribuna
 		}
 		return record, nil
 	}
-	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT {
+	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(constants.MCPToolRunShellCommand, dispatched)})
 	}
 	summary := "{}"
-	if record.EventReceipt != nil && record.EventReceipt.EventReceipt != nil && record.EventReceipt.GetResultSummary() != "" {
-		summary = record.EventReceipt.GetResultSummary()
+	if record.Receipt != nil && record.Receipt.ActionReceipt != nil && record.Receipt.GetResultSummary() != "" {
+		summary = record.Receipt.GetResultSummary()
 	}
 	failure, err := shellCommandFailure(summary)
 	if err != nil {
@@ -186,20 +186,20 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 		}
 		if err == nil {
 			err = recordInferenceResponse(&call, probe, &operatorv1.InferenceDispatchResponse{
-				TransactionId:            member.GetTransactionId(),
-				Result:                   member.GetResult(),
-				EventReceipt:             member.GetEventReceipt(),
-				ObservationEventReceipts: member.GetObservationEventReceipts(),
+				TransactionId:       member.GetTransactionId(),
+				Result:              member.GetResult(),
+				Receipt:             member.GetReceipt(),
+				ObservationReceipts: member.GetObservationReceipts(),
 			})
 		}
 		if err != nil {
-			if call.EventReceipt == nil && member.GetEventReceipt() != nil {
-				call.TransactionID = member.GetEventReceipt().GetTransactionId()
-				call.EventReceipt = &AgentTraceEventReceipt{EventReceipt: member.GetEventReceipt()}
+			if call.Receipt == nil && member.GetReceipt() != nil {
+				call.TransactionID = member.GetReceipt().GetTransactionId()
+				call.Receipt = &AgentTraceReceipt{ActionReceipt: member.GetReceipt()}
 			}
-			if isL2GovernanceDenial(member.GetEventReceipt(), err) {
+			if isL2GovernanceDenial(member.GetReceipt(), err) {
 				call.Error = modelCallGovernanceRejected
-				if call.EventReceipt != nil {
+				if call.Receipt != nil {
 					r.trace.ModelCalls = append(r.trace.ModelCalls, call)
 				}
 				return tribunalGovernanceRejected
@@ -207,7 +207,7 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 			r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
 			r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
 			call.Error = r.trace.ProviderFailure
-			if call.EventReceipt != nil {
+			if call.Receipt != nil {
 				r.trace.ModelCalls = append(r.trace.ModelCalls, call)
 			}
 			return r.trace.ProviderFailure
@@ -221,19 +221,19 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 const tribunalGovernanceRejected = "governance_rejected"
 
 // isL2GovernanceDenial recognizes only the typed inference rejection
-// represented by a signed failed INFERENCE event receipt for a required L2 quorum
+// represented by a signed failed INFERENCE receipt for a required L2 quorum
 // failure, whether the inference was a Tribunal member call or a scored agent
-// turn. Event receipt authenticity is verified by canonical trace evidence
+// turn. Receipt authenticity is verified by canonical trace evidence
 // verification before the outcome is accepted.
-func isL2GovernanceDenial(eventReceipt *operatorv1.EventReceipt, err error) bool {
+func isL2GovernanceDenial(receipt *operatorv1.ActionReceipt, err error) bool {
 	if !errors.Is(err, constants.ErrInferenceGovernanceRejected) {
 		return false
 	}
-	return governance.IsGovernanceRejectionEventReceipt(eventReceipt) &&
-		eventReceipt.GetActionType() == string(constants.ActionTypeInference) &&
-		eventReceipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET &&
-		eventReceipt.GetL2Status() == operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED &&
-		eventReceipt.GetSignerKeyId() != "" && eventReceipt.GetSignature() != ""
+	return governance.IsGovernanceRejectionReceipt(receipt) &&
+		receipt.GetActionType() == string(constants.ActionTypeInference) &&
+		receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET &&
+		receipt.GetL2Status() == operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED &&
+		receipt.GetSignerKeyId() != "" && receipt.GetSignature() != ""
 }
 
 // memberCallError is the failure a member call carries, mapped to its public

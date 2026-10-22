@@ -27,7 +27,7 @@ func v7EvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 	inference := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
 	before := data.executed("tx-before", string(constants.ActionTypeFsRead))
 	after := data.executed("tx-after", string(constants.ActionTypeFsRead))
-	eventReceipt := inference.inference("tx-model")
+	receipt := inference.inference("tx-model")
 	trace := evidenceTrace(inference.runtime(), data.runtime())
 	trace.SchemaVersion = agentTraceSchemaVersion
 	trace.CampaignID = "campaign-1"
@@ -62,11 +62,11 @@ func v7EvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 	digest, err := models.ComputeInferenceResultDigest(result)
 	require.NoError(t, err)
 	result.ResultDigest = digest
-	eventReceipt.ResultSummary = digest
-	inference.signer.Resign(t, eventReceipt)
+	receipt.ResultSummary = digest
+	inference.signer.Resign(t, receipt)
 	trace.ModelCalls = []AgentModelCall{{
 		ProviderAttemptID: "attempt-model",
-		TransactionID:     eventReceipt.GetTransactionId(),
+		TransactionID:     receipt.GetTransactionId(),
 		Purpose:           agentModelCallPurposeTurn,
 		LoopTurn:          1,
 		ModelVariantID:    "variant-a",
@@ -82,7 +82,7 @@ func v7EvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 		LoadState:         operatorLoadStateToEvaluation(result.GetLoadState()).String(),
 		Text:              "answer",
 		Thinking:          "reasoning",
-		EventReceipt:      &AgentTraceEventReceipt{EventReceipt: eventReceipt},
+		Receipt:           &AgentTraceReceipt{ActionReceipt: receipt},
 		InferenceResult:   &AgentTraceInferenceResult{InferenceResult: result},
 	}}
 	return trace, inference.signer
@@ -143,8 +143,8 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 				require.NoError(t, err)
 				result.ResultDigest = digest
 				call.ResultDigest = digest
-				call.EventReceipt.ResultSummary = digest
-				signer.Resign(t, call.EventReceipt.EventReceipt)
+				call.Receipt.ResultSummary = digest
+				signer.Resign(t, call.Receipt.ActionReceipt)
 			},
 		},
 		{
@@ -159,8 +159,8 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 				digest, err := models.ComputeInferenceResultDigest(result)
 				require.NoError(t, err)
 				result.ResultDigest = digest
-				call.EventReceipt.ResultSummary = digest
-				signer.Resign(t, call.EventReceipt.EventReceipt)
+				call.Receipt.ResultSummary = digest
+				signer.Resign(t, call.Receipt.ActionReceipt)
 			},
 		},
 		{
@@ -197,8 +197,8 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 				require.NoError(t, err)
 				result.ResultDigest = digest
 				call.ResultDigest = digest
-				call.EventReceipt.ResultSummary = digest
-				signer.Resign(t, call.EventReceipt.EventReceipt)
+				call.Receipt.ResultSummary = digest
+				signer.Resign(t, call.Receipt.ActionReceipt)
 			},
 		},
 		{

@@ -163,7 +163,7 @@ func mustMarshalDispatchSuccess(t *testing.T, stdout string) []byte {
 		EventType:     "ztd.v1.operator.command.completed",
 		ActionType:    "EXECUTE_BASH",
 		ResultPayload: resultPayload,
-		EventReceipt: &operatorv1.EventReceipt{
+		Receipt: &operatorv1.ActionReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			SignerKeyId:   "key-1",

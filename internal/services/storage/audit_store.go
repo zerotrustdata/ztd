@@ -268,7 +268,7 @@ CREATE TABLE IF NOT EXISTS events (
 	stored_locally INTEGER DEFAULT 1,
 	execution_id TEXT,
 	-- Event receipt columns are null on events that are not the current event
-	-- event receipt for a transaction. The canonical signed body is content_text.
+	-- receipt for a transaction. The canonical signed body is content_text.
 	-- event_receipt_status IS NOT NULL marks the one current row. A later
 	-- non-terminal stage stays on the chain with these columns null.
 	event_receipt_transaction_hash TEXT,
@@ -441,7 +441,7 @@ func (ass *SQLAuditStore) StartSession(id string, sessionType constants.SessionT
 }
 
 // EndSession marks a session ended: its owning runtime session is over and the
-// pruner may remove the row once retention has passed and no events or event_receipts
+// pruner may remove the row once retention has passed and no events or receipts
 // reference it. Ending an unknown session fails with ErrAuditSessionUnknown.
 func (ass *SQLAuditStore) EndSession(id string) error {
 	if ass == nil || ass.db == nil {
@@ -780,11 +780,11 @@ func (ass *SQLAuditStore) DocSet(_ context.Context, collection, id string, data 
 	if ass == nil || ass.db == nil {
 		return constants.ErrAuditStoreDisabled
 	}
-	var eventReceipt models.EventReceiptRecord
-	if err := json.Unmarshal(data, &eventReceipt); err != nil {
-		return fmt.Errorf("%w: SQLAuditStore.DocSet: failed to decode action event receipt record: %w", constants.ErrInvalidJSONBody, err)
+	var receipt models.EventReceiptRecord
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		return fmt.Errorf("%w: SQLAuditStore.DocSet: failed to decode action receipt record: %w", constants.ErrInvalidJSONBody, err)
 	}
-	return ass.RecordEventReceipt(&eventReceipt)
+	return ass.RecordEventReceipt(&receipt)
 }
 
 // DocDelete implements governance.TransactionAuditStore for outbound mode.
@@ -828,7 +828,7 @@ func decryptEventContentWith(v *vault.Vault, event *Event, contentText, commandR
 
 // GetEvents retrieves newest events for the explicit audit scope with pagination.
 // An empty scope includes records without an Operator session. App identity is
-// resolved through the transaction event receipt, never inferred from a session.
+// resolved through the transaction receipt, never inferred from a session.
 // Content columns are always encrypted; they are decrypted here and a locked vault fails the read.
 func (ass *SQLAuditStore) GetEvents(scope models.AuditScope, limit, offset int) ([]*Event, error) {
 	if ass == nil || ass.db == nil {

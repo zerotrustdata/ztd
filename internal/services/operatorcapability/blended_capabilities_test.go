@@ -52,7 +52,7 @@ func TestEveryOperatorCapabilityCombinationPreservesMembership(t *testing.T) {
 					require.ErrorIs(t, commandErr, constants.ErrWitnessCommandNotCapable)
 					require.ErrorIs(t, nativeToolErr, constants.ErrWitnessCommandNotCapable)
 				}
-				require.NoError(t, ValidateWitnessNativeTool(ResolveOperatorCapabilities(cfg), constants.MCPToolAuditEventReceiptList))
+				require.NoError(t, ValidateWitnessNativeTool(ResolveOperatorCapabilities(cfg), constants.MCPToolAuditReceiptList))
 			})
 		}
 	}

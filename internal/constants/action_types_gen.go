@@ -185,8 +185,8 @@ func (a ActionType) readOnlyTarget(targetResource string) bool {
 	switch a {
 	case ActionTypeMcpCall:
 		switch targetResource {
-		case MCPToolAuditEventReceiptGet,
-			MCPToolAuditEventReceiptList,
+		case MCPToolAuditReceiptGet,
+			MCPToolAuditReceiptList,
 			MCPToolCloudMetadata,
 			MCPToolConfigDiffMask,
 			MCPToolDBDiscoverTopology,

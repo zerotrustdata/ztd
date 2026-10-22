@@ -251,14 +251,14 @@ func (HeartbeatType) EnumDescriptor() ([]byte, []int) {
 type DeterministicStageKind int32
 
 const (
-	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_UNSPECIFIED               DeterministicStageKind = 0
-	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE               DeterministicStageKind = 1
-	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2               DeterministicStageKind = 2
-	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY                 DeterministicStageKind = 3
-	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION           DeterministicStageKind = 4
-	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE DeterministicStageKind = 5
-	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND         DeterministicStageKind = 6
-	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION              DeterministicStageKind = 7
+	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_UNSPECIFIED         DeterministicStageKind = 0
+	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE         DeterministicStageKind = 1
+	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_PROTOCOL_L2         DeterministicStageKind = 2
+	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L3_NOTARY           DeterministicStageKind = 3
+	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION     DeterministicStageKind = 4
+	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE DeterministicStageKind = 5
+	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND   DeterministicStageKind = 6
+	DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION        DeterministicStageKind = 7
 )
 
 // Enum value maps for DeterministicStageKind.
@@ -269,19 +269,19 @@ var (
 		2: "DETERMINISTIC_STAGE_KIND_PROTOCOL_L2",
 		3: "DETERMINISTIC_STAGE_KIND_L3_NOTARY",
 		4: "DETERMINISTIC_STAGE_KIND_L4_VERIFICATION",
-		5: "DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE",
+		5: "DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE",
 		6: "DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND",
 		7: "DETERMINISTIC_STAGE_KIND_L5_EXECUTION",
 	}
 	DeterministicStageKind_value = map[string]int32{
-		"DETERMINISTIC_STAGE_KIND_UNSPECIFIED":               0,
-		"DETERMINISTIC_STAGE_KIND_L1_DOCTRINE":               1,
-		"DETERMINISTIC_STAGE_KIND_PROTOCOL_L2":               2,
-		"DETERMINISTIC_STAGE_KIND_L3_NOTARY":                 3,
-		"DETERMINISTIC_STAGE_KIND_L4_VERIFICATION":           4,
-		"DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE": 5,
-		"DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND":         6,
-		"DETERMINISTIC_STAGE_KIND_L5_EXECUTION":              7,
+		"DETERMINISTIC_STAGE_KIND_UNSPECIFIED":         0,
+		"DETERMINISTIC_STAGE_KIND_L1_DOCTRINE":         1,
+		"DETERMINISTIC_STAGE_KIND_PROTOCOL_L2":         2,
+		"DETERMINISTIC_STAGE_KIND_L3_NOTARY":           3,
+		"DETERMINISTIC_STAGE_KIND_L4_VERIFICATION":     4,
+		"DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE": 5,
+		"DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND":   6,
+		"DETERMINISTIC_STAGE_KIND_L5_EXECUTION":        7,
 	}
 )
 
@@ -367,150 +367,150 @@ func (DeterministicStageOutcome) EnumDescriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{5}
 }
 
-// EventReceiptFailureCode is the typed classification of a FAILED EventReceipt.
+// ReceiptFailureCode is the typed classification of a FAILED ActionReceipt.
 // The L5 actuator stamps it at finalization so verifiers can distinguish
 // governance rejections, client faults, and provider failures without
-// string-matching the result_summary. It is bound into the event receipt signature.
-type EventReceiptFailureCode int32
+// string-matching the result_summary. It is bound into the receipt signature.
+type ReceiptFailureCode int32
 
 const (
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED EventReceiptFailureCode = 0
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED ReceiptFailureCode = 0
 	// The transaction failed governance verification before execution
 	// (L1 doctrine, L2 consensus, L3 notary, identity, replay, expiry).
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED EventReceiptFailureCode = 1
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED ReceiptFailureCode = 1
 	// The request model did not equal the configured role model.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED EventReceiptFailureCode = 2
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED ReceiptFailureCode = 2
 	// The request carried an unspecified or unknown model role.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID EventReceiptFailureCode = 3
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_ROLE_INVALID ReceiptFailureCode = 3
 	// The request carried a malformed model reference.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID EventReceiptFailureCode = 4
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID ReceiptFailureCode = 4
 	// The inference backend was unreachable or not registered.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE EventReceiptFailureCode = 5
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE ReceiptFailureCode = 5
 	// The inference backend request timed out.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT EventReceiptFailureCode = 6
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT ReceiptFailureCode = 6
 	// The inference backend failed generation.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED EventReceiptFailureCode = 7
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED ReceiptFailureCode = 7
 	// Any other execution failure.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED EventReceiptFailureCode = 8
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED ReceiptFailureCode = 8
 	// The requested or configured model is absent from the provider's model store.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND EventReceiptFailureCode = 9
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND ReceiptFailureCode = 9
 	// The provider returned a malformed or oversized response.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID  EventReceiptFailureCode = 10
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID EventReceiptFailureCode = 11
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED     EventReceiptFailureCode = 12
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED  EventReceiptFailureCode = 13
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH          EventReceiptFailureCode = 14
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH      EventReceiptFailureCode = 15
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID      EventReceiptFailureCode = 16
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID     EventReceiptFailureCode = 17
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID   EventReceiptFailureCode = 18
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED          EventReceiptFailureCode = 19
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID  ReceiptFailureCode = 10
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID ReceiptFailureCode = 11
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED     ReceiptFailureCode = 12
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED  ReceiptFailureCode = 13
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH          ReceiptFailureCode = 14
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH      ReceiptFailureCode = 15
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID      ReceiptFailureCode = 16
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID     ReceiptFailureCode = 17
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID   ReceiptFailureCode = 18
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED          ReceiptFailureCode = 19
 	// The prompt filled the provider's context window, so the provider truncated it or left no room to generate.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW EventReceiptFailureCode = 20
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW ReceiptFailureCode = 20
 	// A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch.
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED        EventReceiptFailureCode = 21
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID  EventReceiptFailureCode = 22
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID EventReceiptFailureCode = 23
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED      EventReceiptFailureCode = 24
-	EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED        EventReceiptFailureCode = 25
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED        ReceiptFailureCode = 21
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID  ReceiptFailureCode = 22
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID ReceiptFailureCode = 23
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED      ReceiptFailureCode = 24
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED        ReceiptFailureCode = 25
 )
 
-// Enum value maps for EventReceiptFailureCode.
+// Enum value maps for ReceiptFailureCode.
 var (
-	EventReceiptFailureCode_name = map[int32]string{
-		0:  "EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED",
-		1:  "EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED",
-		2:  "EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED",
-		3:  "EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID",
-		4:  "EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID",
-		5:  "EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE",
-		6:  "EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT",
-		7:  "EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED",
-		8:  "EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED",
-		9:  "EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND",
-		10: "EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID",
-		11: "EVENT_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID",
-		12: "EVENT_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED",
-		13: "EVENT_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED",
-		14: "EVENT_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH",
-		15: "EVENT_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH",
-		16: "EVENT_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID",
-		17: "EVENT_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID",
-		18: "EVENT_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID",
-		19: "EVENT_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED",
-		20: "EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW",
-		21: "EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED",
-		22: "EVENT_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID",
-		23: "EVENT_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID",
-		24: "EVENT_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED",
-		25: "EVENT_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED",
+	ReceiptFailureCode_name = map[int32]string{
+		0:  "RECEIPT_FAILURE_CODE_UNSPECIFIED",
+		1:  "RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED",
+		2:  "RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED",
+		3:  "RECEIPT_FAILURE_CODE_ROLE_INVALID",
+		4:  "RECEIPT_FAILURE_CODE_MODEL_REF_INVALID",
+		5:  "RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE",
+		6:  "RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT",
+		7:  "RECEIPT_FAILURE_CODE_GENERATE_FAILED",
+		8:  "RECEIPT_FAILURE_CODE_EXECUTION_FAILED",
+		9:  "RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND",
+		10: "RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID",
+		11: "RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID",
+		12: "RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED",
+		13: "RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED",
+		14: "RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH",
+		15: "RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH",
+		16: "RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID",
+		17: "RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID",
+		18: "RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID",
+		19: "RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED",
+		20: "RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW",
+		21: "RECEIPT_FAILURE_CODE_REHYDRATION_FAILED",
+		22: "RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID",
+		23: "RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID",
+		24: "RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED",
+		25: "RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED",
 	}
-	EventReceiptFailureCode_value = map[string]int32{
-		"EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED":                0,
-		"EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED":        1,
-		"EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED":      2,
-		"EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID":               3,
-		"EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID":          4,
-		"EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE":        5,
-		"EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT":            6,
-		"EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED":            7,
-		"EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED":           8,
-		"EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND":            9,
-		"EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID":  10,
-		"EVENT_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID": 11,
-		"EVENT_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED":     12,
-		"EVENT_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED":  13,
-		"EVENT_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH":          14,
-		"EVENT_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH":      15,
-		"EVENT_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID":      16,
-		"EVENT_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID":     17,
-		"EVENT_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID":   18,
-		"EVENT_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED":          19,
-		"EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW":           20,
-		"EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED":         21,
-		"EVENT_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID":   22,
-		"EVENT_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID":  23,
-		"EVENT_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED":       24,
-		"EVENT_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED":         25,
+	ReceiptFailureCode_value = map[string]int32{
+		"RECEIPT_FAILURE_CODE_UNSPECIFIED":                0,
+		"RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED":        1,
+		"RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED":      2,
+		"RECEIPT_FAILURE_CODE_ROLE_INVALID":               3,
+		"RECEIPT_FAILURE_CODE_MODEL_REF_INVALID":          4,
+		"RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE":        5,
+		"RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT":            6,
+		"RECEIPT_FAILURE_CODE_GENERATE_FAILED":            7,
+		"RECEIPT_FAILURE_CODE_EXECUTION_FAILED":           8,
+		"RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND":            9,
+		"RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID":  10,
+		"RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID": 11,
+		"RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED":     12,
+		"RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED":  13,
+		"RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH":          14,
+		"RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH":      15,
+		"RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID":      16,
+		"RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID":     17,
+		"RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID":   18,
+		"RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED":          19,
+		"RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW":           20,
+		"RECEIPT_FAILURE_CODE_REHYDRATION_FAILED":         21,
+		"RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID":   22,
+		"RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID":  23,
+		"RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED":       24,
+		"RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED":         25,
 	}
 )
 
-func (x EventReceiptFailureCode) Enum() *EventReceiptFailureCode {
-	p := new(EventReceiptFailureCode)
+func (x ReceiptFailureCode) Enum() *ReceiptFailureCode {
+	p := new(ReceiptFailureCode)
 	*p = x
 	return p
 }
 
-func (x EventReceiptFailureCode) String() string {
+func (x ReceiptFailureCode) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (EventReceiptFailureCode) Descriptor() protoreflect.EnumDescriptor {
+func (ReceiptFailureCode) Descriptor() protoreflect.EnumDescriptor {
 	return file_ztd_operator_v1_operator_proto_enumTypes[6].Descriptor()
 }
 
-func (EventReceiptFailureCode) Type() protoreflect.EnumType {
+func (ReceiptFailureCode) Type() protoreflect.EnumType {
 	return &file_ztd_operator_v1_operator_proto_enumTypes[6]
 }
 
-func (x EventReceiptFailureCode) Number() protoreflect.EnumNumber {
+func (x ReceiptFailureCode) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use EventReceiptFailureCode.Descriptor instead.
-func (EventReceiptFailureCode) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use ReceiptFailureCode.Descriptor instead.
+func (ReceiptFailureCode) EnumDescriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{6}
 }
 
 // GovernanceRejectionCode names the verification check that rejected a
 // transaction before execution. The L5 actuator stamps it on every
-// GOVERNANCE_REJECTED event receipt, so a verifier can attribute a rejection to a
+// GOVERNANCE_REJECTED receipt, so a verifier can attribute a rejection to a
 // layer from signed evidence alone, without parsing result_summary. It is
-// bound into the event receipt signature.
+// bound into the receipt signature.
 type GovernanceRejectionCode int32
 
 const (
-	// The event receipt is not a governance rejection.
+	// The receipt is not a governance rejection.
 	GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED GovernanceRejectionCode = 0
 	// The rejection error is not mapped to a check. A verifier treats it as a defect.
 	GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED GovernanceRejectionCode = 1
@@ -637,7 +637,7 @@ func (GovernanceRejectionCode) EnumDescriptor() ([]byte, []int) {
 
 // IngressRefusalCode classifies a refusal that happens before a GovernanceEnvelope
 // exists. It is the pre-envelope counterpart of GovernanceRejectionCode. A refusal
-// never carries an event receipt, because nothing was executed or rejected by L4.
+// never carries a receipt, because nothing was executed or rejected by L4.
 type IngressRefusalCode int32
 
 const (
@@ -1109,54 +1109,54 @@ func (InferenceProviderAttemptStatus) EnumDescriptor() ([]byte, []int) {
 type InferenceDispatchFailureCode int32
 
 const (
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED                 InferenceDispatchFailureCode = 0
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL                    InferenceDispatchFailureCode = 1
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN             InferenceDispatchFailureCode = 2
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT              InferenceDispatchFailureCode = 3
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND          InferenceDispatchFailureCode = 4
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS          InferenceDispatchFailureCode = 5
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE        InferenceDispatchFailureCode = 6
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID                InferenceDispatchFailureCode = 7
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED           InferenceDispatchFailureCode = 8
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED   InferenceDispatchFailureCode = 9
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID             InferenceDispatchFailureCode = 10
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID                InferenceDispatchFailureCode = 11
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL          InferenceDispatchFailureCode = 12
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID         InferenceDispatchFailureCode = 13
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID  InferenceDispatchFailureCode = 14
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED      InferenceDispatchFailureCode = 15
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED           InferenceDispatchFailureCode = 16
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW            InferenceDispatchFailureCode = 17
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID           InferenceDispatchFailureCode = 18
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED       InferenceDispatchFailureCode = 19
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID      InferenceDispatchFailureCode = 20
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID    InferenceDispatchFailureCode = 21
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED         InferenceDispatchFailureCode = 22
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY                 InferenceDispatchFailureCode = 23
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_FAILED        InferenceDispatchFailureCode = 24
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_VERIFY        InferenceDispatchFailureCode = 25
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH      InferenceDispatchFailureCode = 26
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST               InferenceDispatchFailureCode = 27
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH           InferenceDispatchFailureCode = 28
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH       InferenceDispatchFailureCode = 29
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID       InferenceDispatchFailureCode = 30
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE               InferenceDispatchFailureCode = 31
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_EVENT_RECEIPT InferenceDispatchFailureCode = 32
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT        InferenceDispatchFailureCode = 33
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE         InferenceDispatchFailureCode = 34
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED      InferenceDispatchFailureCode = 35
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT             InferenceDispatchFailureCode = 36
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED             InferenceDispatchFailureCode = 37
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND             InferenceDispatchFailureCode = 38
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID   InferenceDispatchFailureCode = 39
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CANCELED                    InferenceDispatchFailureCode = 40
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED         InferenceDispatchFailureCode = 41
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE       InferenceDispatchFailureCode = 42
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH      InferenceDispatchFailureCode = 43
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID    InferenceDispatchFailureCode = 44
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID   InferenceDispatchFailureCode = 45
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED        InferenceDispatchFailureCode = 46
-	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED          InferenceDispatchFailureCode = 47
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED                InferenceDispatchFailureCode = 0
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL                   InferenceDispatchFailureCode = 1
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN            InferenceDispatchFailureCode = 2
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT             InferenceDispatchFailureCode = 3
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND         InferenceDispatchFailureCode = 4
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS         InferenceDispatchFailureCode = 5
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE       InferenceDispatchFailureCode = 6
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID               InferenceDispatchFailureCode = 7
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED          InferenceDispatchFailureCode = 8
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED  InferenceDispatchFailureCode = 9
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID            InferenceDispatchFailureCode = 10
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID               InferenceDispatchFailureCode = 11
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL         InferenceDispatchFailureCode = 12
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID        InferenceDispatchFailureCode = 13
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID InferenceDispatchFailureCode = 14
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED     InferenceDispatchFailureCode = 15
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED          InferenceDispatchFailureCode = 16
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW           InferenceDispatchFailureCode = 17
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID          InferenceDispatchFailureCode = 18
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED      InferenceDispatchFailureCode = 19
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID     InferenceDispatchFailureCode = 20
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID   InferenceDispatchFailureCode = 21
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED        InferenceDispatchFailureCode = 22
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY                InferenceDispatchFailureCode = 23
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED             InferenceDispatchFailureCode = 24
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY             InferenceDispatchFailureCode = 25
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH     InferenceDispatchFailureCode = 26
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST              InferenceDispatchFailureCode = 27
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH          InferenceDispatchFailureCode = 28
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH      InferenceDispatchFailureCode = 29
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID      InferenceDispatchFailureCode = 30
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE              InferenceDispatchFailureCode = 31
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT      InferenceDispatchFailureCode = 32
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT       InferenceDispatchFailureCode = 33
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE        InferenceDispatchFailureCode = 34
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED     InferenceDispatchFailureCode = 35
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT            InferenceDispatchFailureCode = 36
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED            InferenceDispatchFailureCode = 37
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND            InferenceDispatchFailureCode = 38
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID  InferenceDispatchFailureCode = 39
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CANCELED                   InferenceDispatchFailureCode = 40
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED        InferenceDispatchFailureCode = 41
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE      InferenceDispatchFailureCode = 42
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH     InferenceDispatchFailureCode = 43
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID   InferenceDispatchFailureCode = 44
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID  InferenceDispatchFailureCode = 45
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED       InferenceDispatchFailureCode = 46
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED         InferenceDispatchFailureCode = 47
 )
 
 // Enum value maps for InferenceDispatchFailureCode.
@@ -1186,15 +1186,15 @@ var (
 		21: "INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID",
 		22: "INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED",
 		23: "INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY",
-		24: "INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_FAILED",
-		25: "INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_VERIFY",
+		24: "INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED",
+		25: "INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY",
 		26: "INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH",
 		27: "INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST",
 		28: "INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH",
 		29: "INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH",
 		30: "INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID",
 		31: "INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE",
-		32: "INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_EVENT_RECEIPT",
+		32: "INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT",
 		33: "INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT",
 		34: "INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE",
 		35: "INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED",
@@ -1212,54 +1212,54 @@ var (
 		47: "INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED",
 	}
 	InferenceDispatchFailureCode_value = map[string]int32{
-		"INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED":                 0,
-		"INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL":                    1,
-		"INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN":             2,
-		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT":              3,
-		"INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND":          4,
-		"INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS":          5,
-		"INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE":        6,
-		"INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID":                7,
-		"INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED":           8,
-		"INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED":   9,
-		"INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID":             10,
-		"INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID":                11,
-		"INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL":          12,
-		"INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID":         13,
-		"INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID":  14,
-		"INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED":      15,
-		"INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED":           16,
-		"INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW":            17,
-		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID":           18,
-		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED":       19,
-		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID":      20,
-		"INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID":    21,
-		"INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED":         22,
-		"INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY":                 23,
-		"INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_FAILED":        24,
-		"INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_VERIFY":        25,
-		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH":      26,
-		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST":               27,
-		"INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH":           28,
-		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH":       29,
-		"INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID":       30,
-		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE":               31,
-		"INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_EVENT_RECEIPT": 32,
-		"INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT":        33,
-		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE":         34,
-		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED":      35,
-		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT":             36,
-		"INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED":             37,
-		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND":             38,
-		"INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID":   39,
-		"INFERENCE_DISPATCH_FAILURE_CODE_CANCELED":                    40,
-		"INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED":         41,
-		"INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE":       42,
-		"INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH":      43,
-		"INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID":    44,
-		"INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID":   45,
-		"INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED":        46,
-		"INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED":          47,
+		"INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED":                0,
+		"INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL":                   1,
+		"INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN":            2,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT":             3,
+		"INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_FOUND":         4,
+		"INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_AMBIGUOUS":         5,
+		"INFERENCE_DISPATCH_FAILURE_CODE_OPERATOR_NOT_CAPABLE":       6,
+		"INFERENCE_DISPATCH_FAILURE_CODE_ROLE_INVALID":               7,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MESSAGES_REQUIRED":          8,
+		"INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED":  9,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MESSAGE_INVALID":            10,
+		"INFERENCE_DISPATCH_FAILURE_CODE_JSON_INVALID":               11,
+		"INFERENCE_DISPATCH_FAILURE_CODE_JSON_NON_CANONICAL":         12,
+		"INFERENCE_DISPATCH_FAILURE_CODE_TOOL_SCHEMA_INVALID":        13,
+		"INFERENCE_DISPATCH_FAILURE_CODE_GENERATION_OPTIONS_INVALID": 14,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CAPABILITY_UNSUPPORTED":     15,
+		"INFERENCE_DISPATCH_FAILURE_CODE_TOOLS_UNSUPPORTED":          16,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CONTEXT_OVERFLOW":           17,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REF_INVALID":          18,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_OVERRIDE_DENIED":      19,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID":     20,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID":   21,
+		"INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED":        22,
+		"INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY":                23,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED":             24,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY":             25,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH":     26,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST":              27,
+		"INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH":          28,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH":      29,
+		"INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID":      30,
+		"INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE":              31,
+		"INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT":      32,
+		"INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT":       33,
+		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE":        34,
+		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED":     35,
+		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT":            36,
+		"INFERENCE_DISPATCH_FAILURE_CODE_GENERATE_FAILED":            37,
+		"INFERENCE_DISPATCH_FAILURE_CODE_MODEL_NOT_FOUND":            38,
+		"INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_RESPONSE_INVALID":  39,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CANCELED":                   40,
+		"INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED":        41,
+		"INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE":      42,
+		"INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH":     43,
+		"INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID":   44,
+		"INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID":  45,
+		"INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED":       46,
+		"INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED":         47,
 	}
 )
 
@@ -4286,7 +4286,7 @@ type OperatorDocument struct {
 	StaleAt *timestamppb.Timestamp `protobuf:"bytes,35,opt,name=stale_at,json=staleAt,proto3" json:"stale_at,omitempty"`
 	// actuator_public_key is the hex Ed25519 public key of this Operator's L5
 	// Actuator, bound once at enrollment over the authenticated bootstrap channel.
-	// Event receipts executed by this Operator verify only against this key.
+	// Receipts executed by this Operator verify only against this key.
 	ActuatorPublicKey string `protobuf:"bytes,36,opt,name=actuator_public_key,json=actuatorPublicKey,proto3" json:"actuator_public_key,omitempty"`
 	// actuator_key_id equals actuator_public_key (key_id == hex(pub)).
 	ActuatorKeyId string `protobuf:"bytes,37,opt,name=actuator_key_id,json=actuatorKeyId,proto3" json:"actuator_key_id,omitempty"`
@@ -5020,38 +5020,38 @@ func (x *McpPromptGetRequested) GetExecutionId() string {
 }
 
 type DeterministicStageEvidence struct {
-	state                       protoimpl.MessageState    `protogen:"open.v1"`
-	StageId                     string                    `protobuf:"bytes,1,opt,name=stage_id,json=stageId,proto3" json:"stage_id,omitempty"`
-	Kind                        DeterministicStageKind    `protobuf:"varint,2,opt,name=kind,proto3,enum=ztd.operator.v1.DeterministicStageKind" json:"kind,omitempty"`
-	MonotonicStartNs            int64                     `protobuf:"varint,3,opt,name=monotonic_start_ns,json=monotonicStartNs,proto3" json:"monotonic_start_ns,omitempty"`
-	MonotonicEndNs              int64                     `protobuf:"varint,4,opt,name=monotonic_end_ns,json=monotonicEndNs,proto3" json:"monotonic_end_ns,omitempty"`
-	ClockDomain                 string                    `protobuf:"bytes,5,opt,name=clock_domain,json=clockDomain,proto3" json:"clock_domain,omitempty"`
-	TimingSource                string                    `protobuf:"bytes,6,opt,name=timing_source,json=timingSource,proto3" json:"timing_source,omitempty"`
-	Outcome                     DeterministicStageOutcome `protobuf:"varint,7,opt,name=outcome,proto3,enum=ztd.operator.v1.DeterministicStageOutcome" json:"outcome,omitempty"`
-	TransactionId               string                    `protobuf:"bytes,8,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
-	TransactionHash             string                    `protobuf:"bytes,9,opt,name=transaction_hash,json=transactionHash,proto3" json:"transaction_hash,omitempty"`
-	ActionType                  string                    `protobuf:"bytes,10,opt,name=action_type,json=actionType,proto3" json:"action_type,omitempty"`
-	OperatorId                  string                    `protobuf:"bytes,11,opt,name=operator_id,json=operatorId,proto3" json:"operator_id,omitempty"`
-	OperatorSessionId           string                    `protobuf:"bytes,12,opt,name=operator_session_id,json=operatorSessionId,proto3" json:"operator_session_id,omitempty"`
-	RequestorUserId             string                    `protobuf:"bytes,13,opt,name=requestor_user_id,json=requestorUserId,proto3" json:"requestor_user_id,omitempty"`
-	ActingAppId                 string                    `protobuf:"bytes,14,opt,name=acting_app_id,json=actingAppId,proto3" json:"acting_app_id,omitempty"`
-	CaseId                      string                    `protobuf:"bytes,15,opt,name=case_id,json=caseId,proto3" json:"case_id,omitempty"`
-	InvestigationId             string                    `protobuf:"bytes,16,opt,name=investigation_id,json=investigationId,proto3" json:"investigation_id,omitempty"`
-	TaskId                      string                    `protobuf:"bytes,17,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	StateRootBefore             string                    `protobuf:"bytes,18,opt,name=state_root_before,json=stateRootBefore,proto3" json:"state_root_before,omitempty"`
-	StateRootAfter              string                    `protobuf:"bytes,19,opt,name=state_root_after,json=stateRootAfter,proto3" json:"state_root_after,omitempty"`
-	SignerKeyId                 string                    `protobuf:"bytes,20,opt,name=signer_key_id,json=signerKeyId,proto3" json:"signer_key_id,omitempty"`
-	EventReceiptSignatureDigest string                    `protobuf:"bytes,21,opt,name=event_receipt_signature_digest,json=eventReceiptSignatureDigest,proto3" json:"event_receipt_signature_digest,omitempty"`
-	CommitmentHash              string                    `protobuf:"bytes,22,opt,name=commitment_hash,json=commitmentHash,proto3" json:"commitment_hash,omitempty"`
-	PriorCommitmentHash         string                    `protobuf:"bytes,23,opt,name=prior_commitment_hash,json=priorCommitmentHash,proto3" json:"prior_commitment_hash,omitempty"`
-	L2SignatureDigest           string                    `protobuf:"bytes,24,opt,name=l2_signature_digest,json=l2SignatureDigest,proto3" json:"l2_signature_digest,omitempty"`
-	L3SignatureDigest           string                    `protobuf:"bytes,25,opt,name=l3_signature_digest,json=l3SignatureDigest,proto3" json:"l3_signature_digest,omitempty"`
-	AuditRecordId               string                    `protobuf:"bytes,26,opt,name=audit_record_id,json=auditRecordId,proto3" json:"audit_record_id,omitempty"`
-	ParentStageId               string                    `protobuf:"bytes,27,opt,name=parent_stage_id,json=parentStageId,proto3" json:"parent_stage_id,omitempty"`
-	DoctrineBundleHash          string                    `protobuf:"bytes,28,opt,name=doctrine_bundle_hash,json=doctrineBundleHash,proto3" json:"doctrine_bundle_hash,omitempty"`
-	DoctrineBundleVersion       string                    `protobuf:"bytes,29,opt,name=doctrine_bundle_version,json=doctrineBundleVersion,proto3" json:"doctrine_bundle_version,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+	state                  protoimpl.MessageState    `protogen:"open.v1"`
+	StageId                string                    `protobuf:"bytes,1,opt,name=stage_id,json=stageId,proto3" json:"stage_id,omitempty"`
+	Kind                   DeterministicStageKind    `protobuf:"varint,2,opt,name=kind,proto3,enum=ztd.operator.v1.DeterministicStageKind" json:"kind,omitempty"`
+	MonotonicStartNs       int64                     `protobuf:"varint,3,opt,name=monotonic_start_ns,json=monotonicStartNs,proto3" json:"monotonic_start_ns,omitempty"`
+	MonotonicEndNs         int64                     `protobuf:"varint,4,opt,name=monotonic_end_ns,json=monotonicEndNs,proto3" json:"monotonic_end_ns,omitempty"`
+	ClockDomain            string                    `protobuf:"bytes,5,opt,name=clock_domain,json=clockDomain,proto3" json:"clock_domain,omitempty"`
+	TimingSource           string                    `protobuf:"bytes,6,opt,name=timing_source,json=timingSource,proto3" json:"timing_source,omitempty"`
+	Outcome                DeterministicStageOutcome `protobuf:"varint,7,opt,name=outcome,proto3,enum=ztd.operator.v1.DeterministicStageOutcome" json:"outcome,omitempty"`
+	TransactionId          string                    `protobuf:"bytes,8,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	TransactionHash        string                    `protobuf:"bytes,9,opt,name=transaction_hash,json=transactionHash,proto3" json:"transaction_hash,omitempty"`
+	ActionType             string                    `protobuf:"bytes,10,opt,name=action_type,json=actionType,proto3" json:"action_type,omitempty"`
+	OperatorId             string                    `protobuf:"bytes,11,opt,name=operator_id,json=operatorId,proto3" json:"operator_id,omitempty"`
+	OperatorSessionId      string                    `protobuf:"bytes,12,opt,name=operator_session_id,json=operatorSessionId,proto3" json:"operator_session_id,omitempty"`
+	RequestorUserId        string                    `protobuf:"bytes,13,opt,name=requestor_user_id,json=requestorUserId,proto3" json:"requestor_user_id,omitempty"`
+	ActingAppId            string                    `protobuf:"bytes,14,opt,name=acting_app_id,json=actingAppId,proto3" json:"acting_app_id,omitempty"`
+	CaseId                 string                    `protobuf:"bytes,15,opt,name=case_id,json=caseId,proto3" json:"case_id,omitempty"`
+	InvestigationId        string                    `protobuf:"bytes,16,opt,name=investigation_id,json=investigationId,proto3" json:"investigation_id,omitempty"`
+	TaskId                 string                    `protobuf:"bytes,17,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	StateRootBefore        string                    `protobuf:"bytes,18,opt,name=state_root_before,json=stateRootBefore,proto3" json:"state_root_before,omitempty"`
+	StateRootAfter         string                    `protobuf:"bytes,19,opt,name=state_root_after,json=stateRootAfter,proto3" json:"state_root_after,omitempty"`
+	SignerKeyId            string                    `protobuf:"bytes,20,opt,name=signer_key_id,json=signerKeyId,proto3" json:"signer_key_id,omitempty"`
+	ReceiptSignatureDigest string                    `protobuf:"bytes,21,opt,name=receipt_signature_digest,json=receiptSignatureDigest,proto3" json:"receipt_signature_digest,omitempty"`
+	CommitmentHash         string                    `protobuf:"bytes,22,opt,name=commitment_hash,json=commitmentHash,proto3" json:"commitment_hash,omitempty"`
+	PriorCommitmentHash    string                    `protobuf:"bytes,23,opt,name=prior_commitment_hash,json=priorCommitmentHash,proto3" json:"prior_commitment_hash,omitempty"`
+	L2SignatureDigest      string                    `protobuf:"bytes,24,opt,name=l2_signature_digest,json=l2SignatureDigest,proto3" json:"l2_signature_digest,omitempty"`
+	L3SignatureDigest      string                    `protobuf:"bytes,25,opt,name=l3_signature_digest,json=l3SignatureDigest,proto3" json:"l3_signature_digest,omitempty"`
+	AuditRecordId          string                    `protobuf:"bytes,26,opt,name=audit_record_id,json=auditRecordId,proto3" json:"audit_record_id,omitempty"`
+	ParentStageId          string                    `protobuf:"bytes,27,opt,name=parent_stage_id,json=parentStageId,proto3" json:"parent_stage_id,omitempty"`
+	DoctrineBundleHash     string                    `protobuf:"bytes,28,opt,name=doctrine_bundle_hash,json=doctrineBundleHash,proto3" json:"doctrine_bundle_hash,omitempty"`
+	DoctrineBundleVersion  string                    `protobuf:"bytes,29,opt,name=doctrine_bundle_version,json=doctrineBundleVersion,proto3" json:"doctrine_bundle_version,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *DeterministicStageEvidence) Reset() {
@@ -5224,9 +5224,9 @@ func (x *DeterministicStageEvidence) GetSignerKeyId() string {
 	return ""
 }
 
-func (x *DeterministicStageEvidence) GetEventReceiptSignatureDigest() string {
+func (x *DeterministicStageEvidence) GetReceiptSignatureDigest() string {
 	if x != nil {
-		return x.EventReceiptSignatureDigest
+		return x.ReceiptSignatureDigest
 	}
 	return ""
 }
@@ -5287,33 +5287,33 @@ func (x *DeterministicStageEvidence) GetDoctrineBundleVersion() string {
 	return ""
 }
 
-// EventReceiptPersistenceAttestation is the signed proof that an event receipt signature was durably associated with an audit record at a specific timestamp.
-type EventReceiptPersistenceAttestation struct {
-	state                       protoimpl.MessageState `protogen:"open.v1"`
-	TransactionId               string                 `protobuf:"bytes,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
-	EventReceiptSignatureDigest string                 `protobuf:"bytes,2,opt,name=event_receipt_signature_digest,json=eventReceiptSignatureDigest,proto3" json:"event_receipt_signature_digest,omitempty"`
-	PersistedAtUnixMs           int64                  `protobuf:"varint,3,opt,name=persisted_at_unix_ms,json=persistedAtUnixMs,proto3" json:"persisted_at_unix_ms,omitempty"`
-	AuditRecordId               string                 `protobuf:"bytes,4,opt,name=audit_record_id,json=auditRecordId,proto3" json:"audit_record_id,omitempty"`
-	SignerKeyId                 string                 `protobuf:"bytes,5,opt,name=signer_key_id,json=signerKeyId,proto3" json:"signer_key_id,omitempty"`
-	Signature                   string                 `protobuf:"bytes,6,opt,name=signature,proto3" json:"signature,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+// ReceiptPersistenceAttestation is the signed proof that a receipt signature was durably associated with an audit record at a specific timestamp.
+type ReceiptPersistenceAttestation struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	TransactionId          string                 `protobuf:"bytes,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	ReceiptSignatureDigest string                 `protobuf:"bytes,2,opt,name=receipt_signature_digest,json=receiptSignatureDigest,proto3" json:"receipt_signature_digest,omitempty"`
+	PersistedAtUnixMs      int64                  `protobuf:"varint,3,opt,name=persisted_at_unix_ms,json=persistedAtUnixMs,proto3" json:"persisted_at_unix_ms,omitempty"`
+	AuditRecordId          string                 `protobuf:"bytes,4,opt,name=audit_record_id,json=auditRecordId,proto3" json:"audit_record_id,omitempty"`
+	SignerKeyId            string                 `protobuf:"bytes,5,opt,name=signer_key_id,json=signerKeyId,proto3" json:"signer_key_id,omitempty"`
+	Signature              string                 `protobuf:"bytes,6,opt,name=signature,proto3" json:"signature,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
-func (x *EventReceiptPersistenceAttestation) Reset() {
-	*x = EventReceiptPersistenceAttestation{}
+func (x *ReceiptPersistenceAttestation) Reset() {
+	*x = ReceiptPersistenceAttestation{}
 	mi := &file_ztd_operator_v1_operator_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *EventReceiptPersistenceAttestation) String() string {
+func (x *ReceiptPersistenceAttestation) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*EventReceiptPersistenceAttestation) ProtoMessage() {}
+func (*ReceiptPersistenceAttestation) ProtoMessage() {}
 
-func (x *EventReceiptPersistenceAttestation) ProtoReflect() protoreflect.Message {
+func (x *ReceiptPersistenceAttestation) ProtoReflect() protoreflect.Message {
 	mi := &file_ztd_operator_v1_operator_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -5325,55 +5325,55 @@ func (x *EventReceiptPersistenceAttestation) ProtoReflect() protoreflect.Message
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use EventReceiptPersistenceAttestation.ProtoReflect.Descriptor instead.
-func (*EventReceiptPersistenceAttestation) Descriptor() ([]byte, []int) {
+// Deprecated: Use ReceiptPersistenceAttestation.ProtoReflect.Descriptor instead.
+func (*ReceiptPersistenceAttestation) Descriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{52}
 }
 
-func (x *EventReceiptPersistenceAttestation) GetTransactionId() string {
+func (x *ReceiptPersistenceAttestation) GetTransactionId() string {
 	if x != nil {
 		return x.TransactionId
 	}
 	return ""
 }
 
-func (x *EventReceiptPersistenceAttestation) GetEventReceiptSignatureDigest() string {
+func (x *ReceiptPersistenceAttestation) GetReceiptSignatureDigest() string {
 	if x != nil {
-		return x.EventReceiptSignatureDigest
+		return x.ReceiptSignatureDigest
 	}
 	return ""
 }
 
-func (x *EventReceiptPersistenceAttestation) GetPersistedAtUnixMs() int64 {
+func (x *ReceiptPersistenceAttestation) GetPersistedAtUnixMs() int64 {
 	if x != nil {
 		return x.PersistedAtUnixMs
 	}
 	return 0
 }
 
-func (x *EventReceiptPersistenceAttestation) GetAuditRecordId() string {
+func (x *ReceiptPersistenceAttestation) GetAuditRecordId() string {
 	if x != nil {
 		return x.AuditRecordId
 	}
 	return ""
 }
 
-func (x *EventReceiptPersistenceAttestation) GetSignerKeyId() string {
+func (x *ReceiptPersistenceAttestation) GetSignerKeyId() string {
 	if x != nil {
 		return x.SignerKeyId
 	}
 	return ""
 }
 
-func (x *EventReceiptPersistenceAttestation) GetSignature() string {
+func (x *ReceiptPersistenceAttestation) GetSignature() string {
 	if x != nil {
 		return x.Signature
 	}
 	return ""
 }
 
-// EventReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
-type EventReceipt struct {
+// ActionReceipt is the signed proof of an executing, completed, or failed mutation. L5 emits and persists it before execution, then updates and attests it after execution.
+type ActionReceipt struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Original GovernanceEnvelope ID
 	TransactionId string `protobuf:"bytes,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
@@ -5391,45 +5391,45 @@ type EventReceipt struct {
 	ExecutedAtUnixMs int64 `protobuf:"varint,7,opt,name=executed_at_unix_ms,json=executedAtUnixMs,proto3" json:"executed_at_unix_ms,omitempty"`
 	// ID of the Warden's signing key
 	SignerKeyId string `protobuf:"bytes,8,opt,name=signer_key_id,json=signerKeyId,proto3" json:"signer_key_id,omitempty"`
-	// ED25519 signature over the canonical event receipt fields and deterministic stage evidence hash.
+	// ED25519 signature over the canonical receipt fields and deterministic stage evidence hash.
 	Signature string `protobuf:"bytes,9,opt,name=signature,proto3" json:"signature,omitempty"`
 	// Status of L2 (Consensus) signature verification.
 	// Distinguishes between "not required" vs "required but failed" for compliance.
-	L2Status L2Status `protobuf:"varint,10,opt,name=l2_status,json=l2Status,proto3,enum=ztd.operator.v1.L2Status" json:"l2_status,omitempty"`
+	L2Status L2Status `protobuf:"varint,11,opt,name=l2_status,json=l2Status,proto3,enum=ztd.operator.v1.L2Status" json:"l2_status,omitempty"`
 	// Status of L3 (Notary/Human) proof verification.
 	// Distinguishes between "not required" vs "required but failed" for compliance.
-	L3Status                    L3Status                            `protobuf:"varint,11,opt,name=l3_status,json=l3Status,proto3,enum=ztd.operator.v1.L3Status" json:"l3_status,omitempty"`
-	DeterministicStageEvidence  []*DeterministicStageEvidence       `protobuf:"bytes,12,rep,name=deterministic_stage_evidence,json=deterministicStageEvidence,proto3" json:"deterministic_stage_evidence,omitempty"`
-	FinalPersistenceAttestation *EventReceiptPersistenceAttestation `protobuf:"bytes,13,opt,name=final_persistence_attestation,json=finalPersistenceAttestation,proto3" json:"final_persistence_attestation,omitempty"`
-	// Typed classification of a FAILED event receipt. UNSPECIFIED on non-failed
-	// event receipts. Bound into the signature via canonicalization.
-	FailureCode EventReceiptFailureCode `protobuf:"varint,14,opt,name=failure_code,json=failureCode,proto3,enum=ztd.operator.v1.EventReceiptFailureCode" json:"failure_code,omitempty"`
-	// The semantic request event that produced this event receipt.
-	EventType string `protobuf:"bytes,15,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	L3Status                    L3Status                       `protobuf:"varint,12,opt,name=l3_status,json=l3Status,proto3,enum=ztd.operator.v1.L3Status" json:"l3_status,omitempty"`
+	DeterministicStageEvidence  []*DeterministicStageEvidence  `protobuf:"bytes,13,rep,name=deterministic_stage_evidence,json=deterministicStageEvidence,proto3" json:"deterministic_stage_evidence,omitempty"`
+	FinalPersistenceAttestation *ReceiptPersistenceAttestation `protobuf:"bytes,14,opt,name=final_persistence_attestation,json=finalPersistenceAttestation,proto3" json:"final_persistence_attestation,omitempty"`
+	// Typed classification of a FAILED receipt. UNSPECIFIED on non-failed
+	// receipts. Bound into the signature via canonicalization.
+	FailureCode ReceiptFailureCode `protobuf:"varint,15,opt,name=failure_code,json=failureCode,proto3,enum=ztd.operator.v1.ReceiptFailureCode" json:"failure_code,omitempty"`
+	// The semantic request event that produced this receipt.
+	EventType string `protobuf:"bytes,16,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
 	// The registry-derived governance class for the request event.
-	ActionType string `protobuf:"bytes,16,opt,name=action_type,json=actionType,proto3" json:"action_type,omitempty"`
+	ActionType string `protobuf:"bytes,17,opt,name=action_type,json=actionType,proto3" json:"action_type,omitempty"`
 	// The verification check that rejected the transaction. Set exactly when
 	// failure_code is GOVERNANCE_REJECTED; UNSPECIFIED otherwise. Bound into the
 	// signature via canonicalization.
-	RejectionCode GovernanceRejectionCode `protobuf:"varint,17,opt,name=rejection_code,json=rejectionCode,proto3,enum=ztd.operator.v1.GovernanceRejectionCode" json:"rejection_code,omitempty"`
+	RejectionCode GovernanceRejectionCode `protobuf:"varint,18,opt,name=rejection_code,json=rejectionCode,proto3,enum=ztd.operator.v1.GovernanceRejectionCode" json:"rejection_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *EventReceipt) Reset() {
-	*x = EventReceipt{}
+func (x *ActionReceipt) Reset() {
+	*x = ActionReceipt{}
 	mi := &file_ztd_operator_v1_operator_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *EventReceipt) String() string {
+func (x *ActionReceipt) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*EventReceipt) ProtoMessage() {}
+func (*ActionReceipt) ProtoMessage() {}
 
-func (x *EventReceipt) ProtoReflect() protoreflect.Message {
+func (x *ActionReceipt) ProtoReflect() protoreflect.Message {
 	mi := &file_ztd_operator_v1_operator_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -5441,124 +5441,124 @@ func (x *EventReceipt) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use EventReceipt.ProtoReflect.Descriptor instead.
-func (*EventReceipt) Descriptor() ([]byte, []int) {
+// Deprecated: Use ActionReceipt.ProtoReflect.Descriptor instead.
+func (*ActionReceipt) Descriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{53}
 }
 
-func (x *EventReceipt) GetTransactionId() string {
+func (x *ActionReceipt) GetTransactionId() string {
 	if x != nil {
 		return x.TransactionId
 	}
 	return ""
 }
 
-func (x *EventReceipt) GetTransactionHash() string {
+func (x *ActionReceipt) GetTransactionHash() string {
 	if x != nil {
 		return x.TransactionHash
 	}
 	return ""
 }
 
-func (x *EventReceipt) GetStatus() ExecutionStatus {
+func (x *ActionReceipt) GetStatus() ExecutionStatus {
 	if x != nil {
 		return x.Status
 	}
 	return ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED
 }
 
-func (x *EventReceipt) GetResultSummary() string {
+func (x *ActionReceipt) GetResultSummary() string {
 	if x != nil {
 		return x.ResultSummary
 	}
 	return ""
 }
 
-func (x *EventReceipt) GetStateRootBefore() string {
+func (x *ActionReceipt) GetStateRootBefore() string {
 	if x != nil {
 		return x.StateRootBefore
 	}
 	return ""
 }
 
-func (x *EventReceipt) GetStateRootAfter() string {
+func (x *ActionReceipt) GetStateRootAfter() string {
 	if x != nil {
 		return x.StateRootAfter
 	}
 	return ""
 }
 
-func (x *EventReceipt) GetExecutedAtUnixMs() int64 {
+func (x *ActionReceipt) GetExecutedAtUnixMs() int64 {
 	if x != nil {
 		return x.ExecutedAtUnixMs
 	}
 	return 0
 }
 
-func (x *EventReceipt) GetSignerKeyId() string {
+func (x *ActionReceipt) GetSignerKeyId() string {
 	if x != nil {
 		return x.SignerKeyId
 	}
 	return ""
 }
 
-func (x *EventReceipt) GetSignature() string {
+func (x *ActionReceipt) GetSignature() string {
 	if x != nil {
 		return x.Signature
 	}
 	return ""
 }
 
-func (x *EventReceipt) GetL2Status() L2Status {
+func (x *ActionReceipt) GetL2Status() L2Status {
 	if x != nil {
 		return x.L2Status
 	}
 	return L2Status_L2_STATUS_UNSPECIFIED
 }
 
-func (x *EventReceipt) GetL3Status() L3Status {
+func (x *ActionReceipt) GetL3Status() L3Status {
 	if x != nil {
 		return x.L3Status
 	}
 	return L3Status_L3_STATUS_UNSPECIFIED
 }
 
-func (x *EventReceipt) GetDeterministicStageEvidence() []*DeterministicStageEvidence {
+func (x *ActionReceipt) GetDeterministicStageEvidence() []*DeterministicStageEvidence {
 	if x != nil {
 		return x.DeterministicStageEvidence
 	}
 	return nil
 }
 
-func (x *EventReceipt) GetFinalPersistenceAttestation() *EventReceiptPersistenceAttestation {
+func (x *ActionReceipt) GetFinalPersistenceAttestation() *ReceiptPersistenceAttestation {
 	if x != nil {
 		return x.FinalPersistenceAttestation
 	}
 	return nil
 }
 
-func (x *EventReceipt) GetFailureCode() EventReceiptFailureCode {
+func (x *ActionReceipt) GetFailureCode() ReceiptFailureCode {
 	if x != nil {
 		return x.FailureCode
 	}
-	return EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED
+	return ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED
 }
 
-func (x *EventReceipt) GetEventType() string {
+func (x *ActionReceipt) GetEventType() string {
 	if x != nil {
 		return x.EventType
 	}
 	return ""
 }
 
-func (x *EventReceipt) GetActionType() string {
+func (x *ActionReceipt) GetActionType() string {
 	if x != nil {
 		return x.ActionType
 	}
 	return ""
 }
 
-func (x *EventReceipt) GetRejectionCode() GovernanceRejectionCode {
+func (x *ActionReceipt) GetRejectionCode() GovernanceRejectionCode {
 	if x != nil {
 		return x.RejectionCode
 	}
@@ -5567,15 +5567,15 @@ func (x *EventReceipt) GetRejectionCode() GovernanceRejectionCode {
 
 // GovernanceRejection is the client-facing body every governed ingress
 // (direct envelope submission, governed dispatch, MCP, A2A) returns when the
-// executing Operator rejected a transaction at L4. event receipt is the Operator's
-// signed FAILED event receipt with failure_code GOVERNANCE_REJECTED; its
+// executing Operator rejected a transaction at L4. receipt is the Operator's
+// signed FAILED receipt with failure_code GOVERNANCE_REJECTED; its
 // transaction_id and rejection_code are the authoritative identity and
 // attribution of the rejection. error is the governance sentinel text, for
 // display only.
 type GovernanceRejection struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Error         string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
-	EventReceipt  *EventReceipt          `protobuf:"bytes,2,opt,name=event_receipt,json=eventReceipt,proto3" json:"event_receipt,omitempty"`
+	Receipt       *ActionReceipt         `protobuf:"bytes,2,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5617,9 +5617,9 @@ func (x *GovernanceRejection) GetError() string {
 	return ""
 }
 
-func (x *GovernanceRejection) GetEventReceipt() *EventReceipt {
+func (x *GovernanceRejection) GetReceipt() *ActionReceipt {
 	if x != nil {
-		return x.EventReceipt
+		return x.Receipt
 	}
 	return nil
 }
@@ -5679,7 +5679,7 @@ func (x *IngressRefusal) GetError() string {
 }
 
 // GovernedDispatchResult is the HTTP 200 body of POST /api/v1/operators/commands.
-// event receipt is the executing Operator's signed final EventReceipt. Failures are
+// receipt is the executing Operator's signed final ActionReceipt. Failures are
 // GovernanceRejection (signed L4 rejection) or IngressRefusal (pre-envelope).
 type GovernedDispatchResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -5690,7 +5690,7 @@ type GovernedDispatchResult struct {
 	// (for example FsReadResult), the same bytes the dispatch response carries today.
 	ResultPayload   []byte           `protobuf:"bytes,4,opt,name=result_payload,json=resultPayload,proto3" json:"result_payload,omitempty"`
 	InferenceResult *InferenceResult `protobuf:"bytes,5,opt,name=inference_result,json=inferenceResult,proto3" json:"inference_result,omitempty"`
-	EventReceipt    *EventReceipt    `protobuf:"bytes,6,opt,name=event_receipt,json=eventReceipt,proto3" json:"event_receipt,omitempty"`
+	Receipt         *ActionReceipt   `protobuf:"bytes,6,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -5760,9 +5760,9 @@ func (x *GovernedDispatchResult) GetInferenceResult() *InferenceResult {
 	return nil
 }
 
-func (x *GovernedDispatchResult) GetEventReceipt() *EventReceipt {
+func (x *GovernedDispatchResult) GetReceipt() *ActionReceipt {
 	if x != nil {
-		return x.EventReceipt
+		return x.Receipt
 	}
 	return nil
 }
@@ -12109,7 +12109,7 @@ func (x *InferenceRequested) GetDecision() *InferenceDecisionRequest {
 
 // InferenceProviderAttemptRecord is the durable operator-local record for one
 // governed provider attempt. It is written before provider contact and
-// finalized only after terminal event receipt/result evidence is available.
+// finalized only after terminal receipt/result evidence is available.
 type InferenceProviderAttemptRecord struct {
 	state               protoimpl.MessageState         `protogen:"open.v1"`
 	ProviderAttemptId   string                         `protobuf:"bytes,1,opt,name=provider_attempt_id,json=providerAttemptId,proto3" json:"provider_attempt_id,omitempty"`
@@ -12239,7 +12239,7 @@ func (x *InferenceProviderAttemptRecord) GetRawResponseSizeBytes() uint64 {
 	return 0
 }
 
-// InferenceResult carries ordered response parts, usage metadata, and the finish reason returned by the backend. The governed envelope carries this for the event receipt and audit chain.
+// InferenceResult carries ordered response parts, usage metadata, and the finish reason returned by the backend. The governed envelope carries this for the receipt and audit chain.
 type InferenceResult struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Number of prompt tokens consumed.
@@ -12256,7 +12256,7 @@ type InferenceResult struct {
 	// Canonical digest of the complete result: lowercase hex SHA-256 over the
 	// deterministic protobuf serialization of this message with result_digest
 	// cleared. The Inference Node computes it at execution time; the signed
-	// EventReceipt's result_summary binds it, and the User Gateway verifies
+	// ActionReceipt's result_summary binds it, and the User Gateway verifies
 	// digest equality before returning success to the caller.
 	ResultDigest string `protobuf:"bytes,7,opt,name=result_digest,json=resultDigest,proto3" json:"result_digest,omitempty"`
 	// Ordered model response parts covered by result_digest.
@@ -12642,15 +12642,15 @@ func (x *InferenceProgressEvent) GetServedModel() string {
 // InferenceCompletion is the protocol-owned completion publication for a
 // governed inference request. The Inference Node publishes it to the
 // results channel only after the L5 Actuator has finalized and signed the
-// EventReceipt, so the complete result and its verified event receipt are a
-// single correlated outcome. A failed execution carries the FAILED event_receipt
+// ActionReceipt, so the complete result and its verified receipt are a
+// single correlated outcome. A failed execution carries the FAILED receipt
 // and no result, which terminates the Gateway's dispatch wait immediately
 // instead of at the dispatch deadline.
 type InferenceCompletion struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The signed final EventReceipt for the inference transaction.
-	EventReceipt *EventReceipt `protobuf:"bytes,1,opt,name=event_receipt,json=eventReceipt,proto3" json:"event_receipt,omitempty"`
-	// The complete inference result. Absent when the event receipt status is not
+	// The signed final ActionReceipt for the inference transaction.
+	Receipt *ActionReceipt `protobuf:"bytes,1,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	// The complete inference result. Absent when the receipt status is not
 	// EXECUTION_STATUS_COMPLETED.
 	Result        *InferenceResult `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -12687,9 +12687,9 @@ func (*InferenceCompletion) Descriptor() ([]byte, []int) {
 	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{139}
 }
 
-func (x *InferenceCompletion) GetEventReceipt() *EventReceipt {
+func (x *InferenceCompletion) GetReceipt() *ActionReceipt {
 	if x != nil {
-		return x.EventReceipt
+		return x.Receipt
 	}
 	return nil
 }
@@ -13052,22 +13052,22 @@ func (x *InferenceDispatchRequest) GetDecision() *InferenceDecisionRequest {
 // InferenceDispatchFailure is the protocol-owned error body for a non-2xx
 // POST /api/v1/inference/dispatch. Error is a public-safe centralized
 // sentinel; code classifies it, and is UNSPECIFIED for request faults the
-// handler rejects before dispatch (method, identity, body size). Event receipt is
-// the executing Operator's verified signed FAILED event receipt when the dispatch
+// handler rejects before dispatch (method, identity, body size). Receipt is
+// the executing Operator's verified signed FAILED receipt when the dispatch
 // reached it: a governance rejection, or a failed execution whose commitment
 // the Operator's ledger holds. It is absent for every failure that ended
-// before the Operator signed an outcome. Observation_event_receipts are the
-// observers' verified signed BEGIN and FINALIZE event receipts the failed attempt
+// before the Operator signed an outcome. Observation_receipts are the
+// observers' verified signed BEGIN and FINALIZE receipts the failed attempt
 // produced, in dispatch order, so a trace bracket can claim their
 // commitments as it does for InferenceDispatchResponse.
 type InferenceDispatchFailure struct {
-	state                    protoimpl.MessageState       `protogen:"open.v1"`
-	Error                    string                       `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
-	Code                     InferenceDispatchFailureCode `protobuf:"varint,2,opt,name=code,proto3,enum=ztd.operator.v1.InferenceDispatchFailureCode" json:"code,omitempty"`
-	EventReceipt             *EventReceipt                `protobuf:"bytes,3,opt,name=event_receipt,json=eventReceipt,proto3" json:"event_receipt,omitempty"`
-	ObservationEventReceipts []*EventReceipt              `protobuf:"bytes,4,rep,name=observation_event_receipts,json=observationEventReceipts,proto3" json:"observation_event_receipts,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state               protoimpl.MessageState       `protogen:"open.v1"`
+	Error               string                       `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	Code                InferenceDispatchFailureCode `protobuf:"varint,2,opt,name=code,proto3,enum=ztd.operator.v1.InferenceDispatchFailureCode" json:"code,omitempty"`
+	Receipt             *ActionReceipt               `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	ObservationReceipts []*ActionReceipt             `protobuf:"bytes,4,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *InferenceDispatchFailure) Reset() {
@@ -13114,16 +13114,16 @@ func (x *InferenceDispatchFailure) GetCode() InferenceDispatchFailureCode {
 	return InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED
 }
 
-func (x *InferenceDispatchFailure) GetEventReceipt() *EventReceipt {
+func (x *InferenceDispatchFailure) GetReceipt() *ActionReceipt {
 	if x != nil {
-		return x.EventReceipt
+		return x.Receipt
 	}
 	return nil
 }
 
-func (x *InferenceDispatchFailure) GetObservationEventReceipts() []*EventReceipt {
+func (x *InferenceDispatchFailure) GetObservationReceipts() []*ActionReceipt {
 	if x != nil {
-		return x.ObservationEventReceipts
+		return x.ObservationReceipts
 	}
 	return nil
 }
@@ -13131,7 +13131,7 @@ func (x *InferenceDispatchFailure) GetObservationEventReceipts() []*EventReceipt
 // InferenceDispatchStreamFailure is the protocol-owned terminal failure
 // frame for a streaming dispatch that already started NDJSON delivery.
 // Reason is a public-safe centralized sentinel; it never carries raw
-// prompts, model output, or event receipt bodies. Code classifies it.
+// prompts, model output, or receipt bodies. Code classifies it.
 type InferenceDispatchStreamFailure struct {
 	state         protoimpl.MessageState       `protogen:"open.v1"`
 	Reason        string                       `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
@@ -13186,7 +13186,7 @@ func (x *InferenceDispatchStreamFailure) GetCode() InferenceDispatchFailureCode 
 
 // InferenceDispatchStreamFrame is one NDJSON line in a streaming dispatch
 // response. Progress frames are delivery telemetry only. The completion
-// frame carries the verified terminal result and signed event receipt. A failure
+// frame carries the verified terminal result and signed receipt. A failure
 // frame is the explicit terminal outcome when cancellation, disconnect,
 // backpressure, or event-to-terminal hash reconciliation prevents a
 // verified completion after the HTTP response has started.
@@ -13290,7 +13290,7 @@ func (*InferenceDispatchStreamFrame_Failure) isInferenceDispatchStreamFrame_Fram
 
 // InferenceDispatchResponse is the protocol-owned success response for
 // POST /api/v1/inference/dispatch. The Gateway returns it only after
-// verifying the final event receipt signature, persistence attestation,
+// verifying the final receipt signature, persistence attestation,
 // transaction identity, and result digest equality. Failure responses use
 // the gateway's standard typed error envelope with a public-safe code.
 type InferenceDispatchResponse struct {
@@ -13298,17 +13298,17 @@ type InferenceDispatchResponse struct {
 	// Transaction ID correlating the dispatch with the audit chain.
 	TransactionId string `protobuf:"bytes,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	// The complete inference result whose result_digest is bound into the
-	// signed event receipt.
+	// signed receipt.
 	Result *InferenceResult `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
-	// The verified final signed EventReceipt for the transaction.
-	EventReceipt *EventReceipt `protobuf:"bytes,3,opt,name=event_receipt,json=eventReceipt,proto3" json:"event_receipt,omitempty"`
-	// The observers' verified final signed event receipts for this attempt's
+	// The verified final signed ActionReceipt for the transaction.
+	Receipt *ActionReceipt `protobuf:"bytes,3,opt,name=receipt,proto3" json:"receipt,omitempty"`
+	// The observers' verified final signed receipts for this attempt's
 	// provider-boundary and model provenance BEGIN and FINALIZE commands, in
 	// dispatch order. Each was signed before the response was returned, so a
 	// trace bracket closing after the dispatch can claim its commitment.
-	ObservationEventReceipts []*EventReceipt `protobuf:"bytes,4,rep,name=observation_event_receipts,json=observationEventReceipts,proto3" json:"observation_event_receipts,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	ObservationReceipts []*ActionReceipt `protobuf:"bytes,4,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *InferenceDispatchResponse) Reset() {
@@ -13355,21 +13355,21 @@ func (x *InferenceDispatchResponse) GetResult() *InferenceResult {
 	return nil
 }
 
-func (x *InferenceDispatchResponse) GetEventReceipt() *EventReceipt {
+func (x *InferenceDispatchResponse) GetReceipt() *ActionReceipt {
 	if x != nil {
-		return x.EventReceipt
+		return x.Receipt
 	}
 	return nil
 }
 
-func (x *InferenceDispatchResponse) GetObservationEventReceipts() []*EventReceipt {
+func (x *InferenceDispatchResponse) GetObservationReceipts() []*ActionReceipt {
 	if x != nil {
-		return x.ObservationEventReceipts
+		return x.ObservationReceipts
 	}
 	return nil
 }
 
-// Included in result_digest and therefore bound by the Operator's signed L5 event receipt.
+// Included in result_digest and therefore bound by the Operator's signed L5 receipt.
 type InferenceHostedEgressAttestation struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	ProviderOrigin        string                 `protobuf:"bytes,1,opt,name=provider_origin,json=providerOrigin,proto3" json:"provider_origin,omitempty"`
@@ -13987,8 +13987,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\"N\n" +
 	"\x15McpPromptGetRequested\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
-	"\fexecution_id\x18\x02 \x01(\tR\vexecutionId\"\x81\n" +
-	"\n" +
+	"\fexecution_id\x18\x02 \x01(\tR\vexecutionId\"\xf6\t\n" +
 	"\x1aDeterministicStageEvidence\x12\x19\n" +
 	"\bstage_id\x18\x01 \x01(\tR\astageId\x12;\n" +
 	"\x04kind\x18\x02 \x01(\x0e2'.ztd.operator.v1.DeterministicStageKindR\x04kind\x12,\n" +
@@ -14012,8 +14011,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\atask_id\x18\x11 \x01(\tR\x06taskId\x12*\n" +
 	"\x11state_root_before\x18\x12 \x01(\tR\x0fstateRootBefore\x12(\n" +
 	"\x10state_root_after\x18\x13 \x01(\tR\x0estateRootAfter\x12\"\n" +
-	"\rsigner_key_id\x18\x14 \x01(\tR\vsignerKeyId\x12C\n" +
-	"\x1eevent_receipt_signature_digest\x18\x15 \x01(\tR\x1beventReceiptSignatureDigest\x12'\n" +
+	"\rsigner_key_id\x18\x14 \x01(\tR\vsignerKeyId\x128\n" +
+	"\x18receipt_signature_digest\x18\x15 \x01(\tR\x16receiptSignatureDigest\x12'\n" +
 	"\x0fcommitment_hash\x18\x16 \x01(\tR\x0ecommitmentHash\x122\n" +
 	"\x15prior_commitment_hash\x18\x17 \x01(\tR\x13priorCommitmentHash\x12.\n" +
 	"\x13l2_signature_digest\x18\x18 \x01(\tR\x11l2SignatureDigest\x12.\n" +
@@ -14021,15 +14020,15 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x0faudit_record_id\x18\x1a \x01(\tR\rauditRecordId\x12&\n" +
 	"\x0fparent_stage_id\x18\x1b \x01(\tR\rparentStageId\x120\n" +
 	"\x14doctrine_bundle_hash\x18\x1c \x01(\tR\x12doctrineBundleHash\x126\n" +
-	"\x17doctrine_bundle_version\x18\x1d \x01(\tR\x15doctrineBundleVersion\"\xab\x02\n" +
-	"\"EventReceiptPersistenceAttestation\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12C\n" +
-	"\x1eevent_receipt_signature_digest\x18\x02 \x01(\tR\x1beventReceiptSignatureDigest\x12/\n" +
+	"\x17doctrine_bundle_version\x18\x1d \x01(\tR\x15doctrineBundleVersion\"\x9b\x02\n" +
+	"\x1dReceiptPersistenceAttestation\x12%\n" +
+	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x128\n" +
+	"\x18receipt_signature_digest\x18\x02 \x01(\tR\x16receiptSignatureDigest\x12/\n" +
 	"\x14persisted_at_unix_ms\x18\x03 \x01(\x03R\x11persistedAtUnixMs\x12&\n" +
 	"\x0faudit_record_id\x18\x04 \x01(\tR\rauditRecordId\x12\"\n" +
 	"\rsigner_key_id\x18\x05 \x01(\tR\vsignerKeyId\x12\x1c\n" +
-	"\tsignature\x18\x06 \x01(\tR\tsignature\"\xbe\a\n" +
-	"\fEventReceipt\x12%\n" +
+	"\tsignature\x18\x06 \x01(\tR\tsignature\"\xb5\a\n" +
+	"\rActionReceipt\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12)\n" +
 	"\x10transaction_hash\x18\x02 \x01(\tR\x0ftransactionHash\x128\n" +
 	"\x06status\x18\x03 \x01(\x0e2 .ztd.operator.v1.ExecutionStatusR\x06status\x12%\n" +
@@ -14039,23 +14038,22 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x13executed_at_unix_ms\x18\a \x01(\x03R\x10executedAtUnixMs\x12\"\n" +
 	"\rsigner_key_id\x18\b \x01(\tR\vsignerKeyId\x12\x1c\n" +
 	"\tsignature\x18\t \x01(\tR\tsignature\x126\n" +
-	"\tl2_status\x18\n" +
-	" \x01(\x0e2\x19.ztd.operator.v1.L2StatusR\bl2Status\x126\n" +
-	"\tl3_status\x18\v \x01(\x0e2\x19.ztd.operator.v1.L3StatusR\bl3Status\x12m\n" +
-	"\x1cdeterministic_stage_evidence\x18\f \x03(\v2+.ztd.operator.v1.DeterministicStageEvidenceR\x1adeterministicStageEvidence\x12w\n" +
-	"\x1dfinal_persistence_attestation\x18\r \x01(\v23.ztd.operator.v1.EventReceiptPersistenceAttestationR\x1bfinalPersistenceAttestation\x12K\n" +
-	"\ffailure_code\x18\x0e \x01(\x0e2(.ztd.operator.v1.EventReceiptFailureCodeR\vfailureCode\x12\x1d\n" +
+	"\tl2_status\x18\v \x01(\x0e2\x19.ztd.operator.v1.L2StatusR\bl2Status\x126\n" +
+	"\tl3_status\x18\f \x01(\x0e2\x19.ztd.operator.v1.L3StatusR\bl3Status\x12m\n" +
+	"\x1cdeterministic_stage_evidence\x18\r \x03(\v2+.ztd.operator.v1.DeterministicStageEvidenceR\x1adeterministicStageEvidence\x12r\n" +
+	"\x1dfinal_persistence_attestation\x18\x0e \x01(\v2..ztd.operator.v1.ReceiptPersistenceAttestationR\x1bfinalPersistenceAttestation\x12F\n" +
+	"\ffailure_code\x18\x0f \x01(\x0e2#.ztd.operator.v1.ReceiptFailureCodeR\vfailureCode\x12\x1d\n" +
 	"\n" +
-	"event_type\x18\x0f \x01(\tR\teventType\x12\x1f\n" +
-	"\vaction_type\x18\x10 \x01(\tR\n" +
+	"event_type\x18\x10 \x01(\tR\teventType\x12\x1f\n" +
+	"\vaction_type\x18\x11 \x01(\tR\n" +
 	"actionType\x12O\n" +
-	"\x0erejection_code\x18\x11 \x01(\x0e2(.ztd.operator.v1.GovernanceRejectionCodeR\rrejectionCode\"o\n" +
+	"\x0erejection_code\x18\x12 \x01(\x0e2(.ztd.operator.v1.GovernanceRejectionCodeR\rrejectionCode\"e\n" +
 	"\x13GovernanceRejection\x12\x14\n" +
-	"\x05error\x18\x01 \x01(\tR\x05error\x12B\n" +
-	"\revent_receipt\x18\x02 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\feventReceipt\"_\n" +
+	"\x05error\x18\x01 \x01(\tR\x05error\x128\n" +
+	"\areceipt\x18\x02 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\"_\n" +
 	"\x0eIngressRefusal\x127\n" +
 	"\x04code\x18\x01 \x01(\x0e2#.ztd.operator.v1.IngressRefusalCodeR\x04code\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\xb7\x02\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\xad\x02\n" +
 	"\x16GovernedDispatchResult\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12\x1d\n" +
 	"\n" +
@@ -14063,8 +14061,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\vaction_type\x18\x03 \x01(\tR\n" +
 	"actionType\x12%\n" +
 	"\x0eresult_payload\x18\x04 \x01(\fR\rresultPayload\x12K\n" +
-	"\x10inference_result\x18\x05 \x01(\v2 .ztd.operator.v1.InferenceResultR\x0finferenceResult\x12B\n" +
-	"\revent_receipt\x18\x06 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\feventReceipt\"\xcc\x04\n" +
+	"\x10inference_result\x18\x05 \x01(\v2 .ztd.operator.v1.InferenceResultR\x0finferenceResult\x128\n" +
+	"\areceipt\x18\x06 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\"\xcc\x04\n" +
 	"\x15CommitmentAttestation\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12)\n" +
 	"\x10transaction_hash\x18\x02 \x01(\tR\x0ftransactionHash\x122\n" +
@@ -14720,9 +14718,9 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x05parts\x18\x03 \x03(\v2&.ztd.operator.v1.InferenceResponsePartR\x05parts\x127\n" +
 	"\x16time_to_first_token_ns\x18\x04 \x01(\x03H\x00R\x12timeToFirstTokenNs\x88\x01\x01\x12!\n" +
 	"\fserved_model\x18\x05 \x01(\tR\vservedModelB\x19\n" +
-	"\x17_time_to_first_token_ns\"\x93\x01\n" +
-	"\x13InferenceCompletion\x12B\n" +
-	"\revent_receipt\x18\x01 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\feventReceipt\x128\n" +
+	"\x17_time_to_first_token_ns\"\x89\x01\n" +
+	"\x13InferenceCompletion\x128\n" +
+	"\areceipt\x18\x01 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x128\n" +
 	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\"\x91\r\n" +
 	"\x18InferenceDispatchRequest\x12.\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x1a.ztd.operator.v1.ModelRoleR\x04role\x12\x14\n" +
@@ -14772,12 +14770,12 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x06_top_kB\x16\n" +
 	"\x14_parallel_tool_callsB\x10\n" +
 	"\x0e_context_limitB\a\n" +
-	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"\x94\x02\n" +
+	"\x05_seedJ\x04\b\x02\x10\x03R\x06prompt\"\x80\x02\n" +
 	"\x18InferenceDispatchFailure\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error\x12A\n" +
-	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\x12B\n" +
-	"\revent_receipt\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\feventReceipt\x12[\n" +
-	"\x1aobservation_event_receipts\x18\x04 \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x18observationEventReceipts\"{\n" +
+	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\x128\n" +
+	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12Q\n" +
+	"\x14observation_receipts\x18\x04 \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"{\n" +
 	"\x1eInferenceDispatchStreamFailure\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12A\n" +
 	"\x04code\x18\x02 \x01(\x0e2-.ztd.operator.v1.InferenceDispatchFailureCodeR\x04code\"\x89\x02\n" +
@@ -14787,12 +14785,12 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"completion\x18\x02 \x01(\v2*.ztd.operator.v1.InferenceDispatchResponseH\x00R\n" +
 	"completion\x12K\n" +
 	"\afailure\x18\x03 \x01(\v2/.ztd.operator.v1.InferenceDispatchStreamFailureH\x00R\afailureB\a\n" +
-	"\x05frame\"\x9d\x02\n" +
+	"\x05frame\"\x89\x02\n" +
 	"\x19InferenceDispatchResponse\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x128\n" +
-	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x12B\n" +
-	"\revent_receipt\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\feventReceipt\x12[\n" +
-	"\x1aobservation_event_receipts\x18\x04 \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x18observationEventReceipts\"\xf3\x01\n" +
+	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x128\n" +
+	"\areceipt\x18\x03 \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12Q\n" +
+	"\x14observation_receipts\x18\x04 \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"\xf3\x01\n" +
 	" InferenceHostedEgressAttestation\x12'\n" +
 	"\x0fprovider_origin\x18\x01 \x01(\tR\x0eproviderOrigin\x12#\n" +
 	"\rmodel_version\x18\x02 \x01(\tR\fmodelVersion\x12\x1e\n" +
@@ -14821,14 +14819,14 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\rHeartbeatType\x12\x1e\n" +
 	"\x1aHEARTBEAT_TYPE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18HEARTBEAT_TYPE_AUTOMATIC\x10\x01\x12\x19\n" +
-	"\x15HEARTBEAT_TYPE_MANUAL\x10\x02*\xff\x02\n" +
+	"\x15HEARTBEAT_TYPE_MANUAL\x10\x02*\xf9\x02\n" +
 	"\x16DeterministicStageKind\x12(\n" +
 	"$DETERMINISTIC_STAGE_KIND_UNSPECIFIED\x10\x00\x12(\n" +
 	"$DETERMINISTIC_STAGE_KIND_L1_DOCTRINE\x10\x01\x12(\n" +
 	"$DETERMINISTIC_STAGE_KIND_PROTOCOL_L2\x10\x02\x12&\n" +
 	"\"DETERMINISTIC_STAGE_KIND_L3_NOTARY\x10\x03\x12,\n" +
-	"(DETERMINISTIC_STAGE_KIND_L4_VERIFICATION\x10\x04\x126\n" +
-	"2DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE\x10\x05\x12.\n" +
+	"(DETERMINISTIC_STAGE_KIND_L4_VERIFICATION\x10\x04\x120\n" +
+	",DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE\x10\x05\x12.\n" +
 	"*DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND\x10\x06\x12)\n" +
 	"%DETERMINISTIC_STAGE_KIND_L5_EXECUTION\x10\a*\xf3\x01\n" +
 	"\x19DeterministicStageOutcome\x12+\n" +
@@ -14836,36 +14834,35 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"$DETERMINISTIC_STAGE_OUTCOME_VERIFIED\x10\x01\x12,\n" +
 	"(DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED\x10\x02\x12)\n" +
 	"%DETERMINISTIC_STAGE_OUTCOME_COMPLETED\x10\x03\x12&\n" +
-	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\xe8\n" +
-	"\n" +
-	"\x17EventReceiptFailureCode\x12*\n" +
-	"&EVENT_RECEIPT_FAILURE_CODE_UNSPECIFIED\x10\x00\x122\n" +
-	".EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED\x10\x01\x124\n" +
-	"0EVENT_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED\x10\x02\x12+\n" +
-	"'EVENT_RECEIPT_FAILURE_CODE_ROLE_INVALID\x10\x03\x120\n" +
-	",EVENT_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID\x10\x04\x122\n" +
-	".EVENT_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE\x10\x05\x12.\n" +
-	"*EVENT_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT\x10\x06\x12.\n" +
-	"*EVENT_RECEIPT_FAILURE_CODE_GENERATE_FAILED\x10\a\x12/\n" +
-	"+EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED\x10\b\x12.\n" +
-	"*EVENT_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND\x10\t\x128\n" +
-	"4EVENT_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID\x10\n" +
-	"\x129\n" +
-	"5EVENT_RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID\x10\v\x125\n" +
-	"1EVENT_RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED\x10\f\x128\n" +
-	"4EVENT_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED\x10\r\x120\n" +
-	",EVENT_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH\x10\x0e\x124\n" +
-	"0EVENT_RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH\x10\x0f\x124\n" +
-	"0EVENT_RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID\x10\x10\x125\n" +
-	"1EVENT_RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID\x10\x11\x127\n" +
-	"3EVENT_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID\x10\x12\x120\n" +
-	",EVENT_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED\x10\x13\x12/\n" +
-	"+EVENT_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW\x10\x14\x121\n" +
-	"-EVENT_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED\x10\x15\x127\n" +
-	"3EVENT_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID\x10\x16\x128\n" +
-	"4EVENT_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID\x10\x17\x123\n" +
-	"/EVENT_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED\x10\x18\x121\n" +
-	"-EVENT_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED\x10\x19*\xb2\n" +
+	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\xc7\t\n" +
+	"\x12ReceiptFailureCode\x12$\n" +
+	" RECEIPT_FAILURE_CODE_UNSPECIFIED\x10\x00\x12,\n" +
+	"(RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED\x10\x01\x12.\n" +
+	"*RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED\x10\x02\x12%\n" +
+	"!RECEIPT_FAILURE_CODE_ROLE_INVALID\x10\x03\x12*\n" +
+	"&RECEIPT_FAILURE_CODE_MODEL_REF_INVALID\x10\x04\x12,\n" +
+	"(RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE\x10\x05\x12(\n" +
+	"$RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT\x10\x06\x12(\n" +
+	"$RECEIPT_FAILURE_CODE_GENERATE_FAILED\x10\a\x12)\n" +
+	"%RECEIPT_FAILURE_CODE_EXECUTION_FAILED\x10\b\x12(\n" +
+	"$RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND\x10\t\x122\n" +
+	".RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID\x10\n" +
+	"\x123\n" +
+	"/RECEIPT_FAILURE_CODE_GENERATION_OPTIONS_INVALID\x10\v\x12/\n" +
+	"+RECEIPT_FAILURE_CODE_CAPABILITY_UNSUPPORTED\x10\f\x122\n" +
+	".RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED\x10\r\x12*\n" +
+	"&RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH\x10\x0e\x12.\n" +
+	"*RECEIPT_FAILURE_CODE_MODEL_DIGEST_MISMATCH\x10\x0f\x12.\n" +
+	"*RECEIPT_FAILURE_CODE_EVIDENCE_HASH_INVALID\x10\x10\x12/\n" +
+	"+RECEIPT_FAILURE_CODE_MODEL_REGISTRY_INVALID\x10\x11\x121\n" +
+	"-RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID\x10\x12\x12*\n" +
+	"&RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED\x10\x13\x12)\n" +
+	"%RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW\x10\x14\x12+\n" +
+	"'RECEIPT_FAILURE_CODE_REHYDRATION_FAILED\x10\x15\x121\n" +
+	"-RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID\x10\x16\x122\n" +
+	".RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID\x10\x17\x12-\n" +
+	")RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED\x10\x18\x12+\n" +
+	"'RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED\x10\x19*\xb2\n" +
 	"\n" +
 	"\x17GovernanceRejectionCode\x12)\n" +
 	"%GOVERNANCE_REJECTION_CODE_UNSPECIFIED\x10\x00\x12*\n" +
@@ -14950,7 +14947,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"-INFERENCE_PROVIDER_ATTEMPT_STATUS_UNSPECIFIED\x10\x00\x121\n" +
 	"-INFERENCE_PROVIDER_ATTEMPT_STATUS_IN_PROGRESS\x10\x01\x12/\n" +
 	"+INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED\x10\x02\x12,\n" +
-	"(INFERENCE_PROVIDER_ATTEMPT_STATUS_FAILED\x10\x03*\xad\x15\n" +
+	"(INFERENCE_PROVIDER_ATTEMPT_STATUS_FAILED\x10\x03*\x9b\x15\n" +
 	"\x1cInferenceDispatchFailureCode\x12/\n" +
 	"+INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED\x10\x00\x12,\n" +
 	"(INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL\x10\x01\x123\n" +
@@ -14976,16 +14973,16 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"6INFERENCE_DISPATCH_FAILURE_CODE_MODEL_REGISTRY_INVALID\x10\x14\x12<\n" +
 	"8INFERENCE_DISPATCH_FAILURE_CODE_CAMPAIGN_BINDING_INVALID\x10\x15\x127\n" +
 	"3INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED\x10\x16\x12/\n" +
-	"+INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY\x10\x17\x128\n" +
-	"4INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_FAILED\x10\x18\x128\n" +
-	"4INFERENCE_DISPATCH_FAILURE_CODE_EVENT_RECEIPT_VERIFY\x10\x19\x12:\n" +
+	"+INFERENCE_DISPATCH_FAILURE_CODE_NO_DELIVERY\x10\x17\x122\n" +
+	".INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_FAILED\x10\x18\x122\n" +
+	".INFERENCE_DISPATCH_FAILURE_CODE_RECEIPT_VERIFY\x10\x19\x12:\n" +
 	"6INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST_MISMATCH\x10\x1a\x121\n" +
 	"-INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DIGEST\x10\x1b\x125\n" +
 	"1INFERENCE_DISPATCH_FAILURE_CODE_IDENTITY_MISMATCH\x10\x1c\x129\n" +
 	"5INFERENCE_DISPATCH_FAILURE_CODE_MODEL_DIGEST_MISMATCH\x10\x1d\x129\n" +
 	"5INFERENCE_DISPATCH_FAILURE_CODE_EVIDENCE_HASH_INVALID\x10\x1e\x121\n" +
-	"-INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE\x10\x1f\x12?\n" +
-	";INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_EVENT_RECEIPT\x10 \x128\n" +
+	"-INFERENCE_DISPATCH_FAILURE_CODE_RESULT_DECODE\x10\x1f\x129\n" +
+	"5INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RECEIPT\x10 \x128\n" +
 	"4INFERENCE_DISPATCH_FAILURE_CODE_COMPLETION_NO_RESULT\x10!\x127\n" +
 	"3INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_UNAVAILABLE\x10\"\x12:\n" +
 	"6INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_NOT_REGISTERED\x10#\x123\n" +
@@ -15029,7 +15026,7 @@ var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(HeartbeatType)(0),                                                   // 3: ztd.operator.v1.HeartbeatType
 	(DeterministicStageKind)(0),                                          // 4: ztd.operator.v1.DeterministicStageKind
 	(DeterministicStageOutcome)(0),                                       // 5: ztd.operator.v1.DeterministicStageOutcome
-	(EventReceiptFailureCode)(0),                                         // 6: ztd.operator.v1.EventReceiptFailureCode
+	(ReceiptFailureCode)(0),                                              // 6: ztd.operator.v1.ReceiptFailureCode
 	(GovernanceRejectionCode)(0),                                         // 7: ztd.operator.v1.GovernanceRejectionCode
 	(IngressRefusalCode)(0),                                              // 8: ztd.operator.v1.IngressRefusalCode
 	(ModelRole)(0),                                                       // 9: ztd.operator.v1.ModelRole
@@ -15092,8 +15089,8 @@ var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(*McpPromptListRequested)(nil),                                       // 66: ztd.operator.v1.McpPromptListRequested
 	(*McpPromptGetRequested)(nil),                                        // 67: ztd.operator.v1.McpPromptGetRequested
 	(*DeterministicStageEvidence)(nil),                                   // 68: ztd.operator.v1.DeterministicStageEvidence
-	(*EventReceiptPersistenceAttestation)(nil),                           // 69: ztd.operator.v1.EventReceiptPersistenceAttestation
-	(*EventReceipt)(nil),                                                 // 70: ztd.operator.v1.EventReceipt
+	(*ReceiptPersistenceAttestation)(nil),                                // 69: ztd.operator.v1.ReceiptPersistenceAttestation
+	(*ActionReceipt)(nil),                                                // 70: ztd.operator.v1.ActionReceipt
 	(*GovernanceRejection)(nil),                                          // 71: ztd.operator.v1.GovernanceRejection
 	(*IngressRefusal)(nil),                                               // 72: ztd.operator.v1.IngressRefusal
 	(*GovernedDispatchResult)(nil),                                       // 73: ztd.operator.v1.GovernedDispatchResult
@@ -15210,17 +15207,17 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	169, // 12: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
 	4,   // 13: ztd.operator.v1.DeterministicStageEvidence.kind:type_name -> ztd.operator.v1.DeterministicStageKind
 	5,   // 14: ztd.operator.v1.DeterministicStageEvidence.outcome:type_name -> ztd.operator.v1.DeterministicStageOutcome
-	0,   // 15: ztd.operator.v1.EventReceipt.status:type_name -> ztd.operator.v1.ExecutionStatus
-	2,   // 16: ztd.operator.v1.EventReceipt.l2_status:type_name -> ztd.operator.v1.L2Status
-	1,   // 17: ztd.operator.v1.EventReceipt.l3_status:type_name -> ztd.operator.v1.L3Status
-	68,  // 18: ztd.operator.v1.EventReceipt.deterministic_stage_evidence:type_name -> ztd.operator.v1.DeterministicStageEvidence
-	69,  // 19: ztd.operator.v1.EventReceipt.final_persistence_attestation:type_name -> ztd.operator.v1.EventReceiptPersistenceAttestation
-	6,   // 20: ztd.operator.v1.EventReceipt.failure_code:type_name -> ztd.operator.v1.EventReceiptFailureCode
-	7,   // 21: ztd.operator.v1.EventReceipt.rejection_code:type_name -> ztd.operator.v1.GovernanceRejectionCode
-	70,  // 22: ztd.operator.v1.GovernanceRejection.event_receipt:type_name -> ztd.operator.v1.EventReceipt
+	0,   // 15: ztd.operator.v1.ActionReceipt.status:type_name -> ztd.operator.v1.ExecutionStatus
+	2,   // 16: ztd.operator.v1.ActionReceipt.l2_status:type_name -> ztd.operator.v1.L2Status
+	1,   // 17: ztd.operator.v1.ActionReceipt.l3_status:type_name -> ztd.operator.v1.L3Status
+	68,  // 18: ztd.operator.v1.ActionReceipt.deterministic_stage_evidence:type_name -> ztd.operator.v1.DeterministicStageEvidence
+	69,  // 19: ztd.operator.v1.ActionReceipt.final_persistence_attestation:type_name -> ztd.operator.v1.ReceiptPersistenceAttestation
+	6,   // 20: ztd.operator.v1.ActionReceipt.failure_code:type_name -> ztd.operator.v1.ReceiptFailureCode
+	7,   // 21: ztd.operator.v1.ActionReceipt.rejection_code:type_name -> ztd.operator.v1.GovernanceRejectionCode
+	70,  // 22: ztd.operator.v1.GovernanceRejection.receipt:type_name -> ztd.operator.v1.ActionReceipt
 	8,   // 23: ztd.operator.v1.IngressRefusal.code:type_name -> ztd.operator.v1.IngressRefusalCode
 	154, // 24: ztd.operator.v1.GovernedDispatchResult.inference_result:type_name -> ztd.operator.v1.InferenceResult
-	70,  // 25: ztd.operator.v1.GovernedDispatchResult.event_receipt:type_name -> ztd.operator.v1.EventReceipt
+	70,  // 25: ztd.operator.v1.GovernedDispatchResult.receipt:type_name -> ztd.operator.v1.ActionReceipt
 	0,   // 26: ztd.operator.v1.CommandResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 27: ztd.operator.v1.FsListResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	76,  // 28: ztd.operator.v1.FsListResult.entries:type_name -> ztd.operator.v1.FsEntry
@@ -15295,7 +15292,7 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	147, // 97: ztd.operator.v1.InferenceResult.decision:type_name -> ztd.operator.v1.InferenceDecisionResult
 	162, // 98: ztd.operator.v1.InferenceResult.hosted_egress:type_name -> ztd.operator.v1.InferenceHostedEgressAttestation
 	139, // 99: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
-	70,  // 100: ztd.operator.v1.InferenceCompletion.event_receipt:type_name -> ztd.operator.v1.EventReceipt
+	70,  // 100: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.ActionReceipt
 	154, // 101: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
 	9,   // 102: ztd.operator.v1.InferenceDispatchRequest.role:type_name -> ztd.operator.v1.ModelRole
 	134, // 103: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
@@ -15306,15 +15303,15 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	140, // 108: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
 	141, // 109: ztd.operator.v1.InferenceDispatchRequest.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
 	16,  // 110: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	70,  // 111: ztd.operator.v1.InferenceDispatchFailure.event_receipt:type_name -> ztd.operator.v1.EventReceipt
-	70,  // 112: ztd.operator.v1.InferenceDispatchFailure.observation_event_receipts:type_name -> ztd.operator.v1.EventReceipt
+	70,  // 111: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	70,  // 112: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
 	16,  // 113: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
 	155, // 114: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
 	161, // 115: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
 	159, // 116: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
 	154, // 117: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
-	70,  // 118: ztd.operator.v1.InferenceDispatchResponse.event_receipt:type_name -> ztd.operator.v1.EventReceipt
-	70,  // 119: ztd.operator.v1.InferenceDispatchResponse.observation_event_receipts:type_name -> ztd.operator.v1.EventReceipt
+	70,  // 118: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.ActionReceipt
+	70,  // 119: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
 	18,  // 120: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
 	19,  // 121: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
 	20,  // 122: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested

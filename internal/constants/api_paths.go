@@ -79,8 +79,8 @@ var APIPaths = struct {
 	PKICABundle           string `json:"pki_ca_bundle"`
 	PKIFingerprint        string `json:"pki_fingerprint"`
 	// Audit routes
-	AuditEventReceipts       string `json:"audit_event_receipts"`
-	AuditEventReceiptsExport string `json:"audit_event_receipts_export"`
+	AuditEventReceipts       string `json:"audit_receipts"`
+	AuditEventReceiptsExport string `json:"audit_receipts_export"`
 	AuditRecords             string `json:"audit_records"`
 	AuditEvents              string `json:"audit_events"`
 	AuditConsensusVotes      string `json:"audit_consensus_votes"`

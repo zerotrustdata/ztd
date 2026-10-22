@@ -80,7 +80,7 @@ func textInferenceResponseParts(text string) []*operatorv1.InferenceResponsePart
 }
 
 // wantDigest returns the canonical result digest the handler must return as
-// the event receipt summary for the given backend response.
+// the receipt summary for the given backend response.
 func wantDigest(t *testing.T, resp *models.GenerateResponse) string {
 	t.Helper()
 	digest, err := models.ComputeInferenceResultDigest(resp.ToProtoInferenceResult())
@@ -561,8 +561,8 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_ScrubsPromptBeforeBackend(t
 }
 
 // TestInferenceHandler_ExecuteVerifiedTransaction_LongOutputStillBindsDigest
-// proves that an output larger than EventReceiptSummaryMaxBytes still produces a
-// fixed-width canonical digest as the event receipt summary — the digest binds the
+// proves that an output larger than ReceiptSummaryMaxBytes still produces a
+// fixed-width canonical digest as the receipt summary — the digest binds the
 // complete result rather than a truncated text prefix.
 func TestInferenceHandler_ExecuteVerifiedTransaction_ScrubsTypedMessagesAndCanonicalJSONLeaves(t *testing.T) {
 	t.Parallel()
@@ -1068,7 +1068,7 @@ func TestComputeInferenceResultDigest_CoversUsageAndTimingEvidence(t *testing.T)
 func TestInferenceHandler_ExecuteVerifiedTransaction_LongOutputStillBindsDigest(t *testing.T) {
 	t.Parallel()
 	logger := testutil.NewTestLogger()
-	longText := make([]byte, constants.EventReceiptSummaryMaxBytes+100)
+	longText := make([]byte, constants.ReceiptSummaryMaxBytes+100)
 	for i := range longText {
 		longText[i] = 'a'
 	}
@@ -1131,7 +1131,7 @@ func outputScrubConfig() *config.Config {
 	return &config.Config{Inference: config.InferenceConfig{Enabled: true, KeepAlive: "-1"}}
 }
 
-// The output is scrubbed before the digest is computed: the digest and the event receipt summary cover the
+// The output is scrubbed before the digest is computed: the digest and the receipt summary cover the
 // scrubbed text, never the raw provider output.
 func TestInferenceHandler_ExecuteVerifiedTransaction_DigestCoversScrubbedOutput(t *testing.T) {
 	t.Parallel()
@@ -1156,7 +1156,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_DigestCoversScrubbedOutput(
 	require.NoError(t, err)
 	assert.Equal(t, scrubbedHash, resp.OutputHash, "output hash describes the scrubbed parts")
 
-	// The event receipt summary the actuator signs is the digest of the scrubbed result.
+	// The receipt summary the actuator signs is the digest of the scrubbed result.
 	summaryBackend := &stubBackend{generateResp: outputScrubResponse()}
 	summaryHandler := mustNewHandler(t, summaryBackend, outputScrubConfig(), scrubber, logger)
 	summary, err := summaryHandler.ExecuteVerifiedTransaction(context.Background(), constants.Event.Operator.Inference.Requested, outputScrubCommand(t))

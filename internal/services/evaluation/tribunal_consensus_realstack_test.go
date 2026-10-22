@@ -128,7 +128,7 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 		bindConsensus: bindTribunalConsensus,
 	})
 
-	// A no-tool inference is not a state change. The event receipt records L2 NOT_REQUIRED,
+	// A no-tool inference is not a state change. The receipt records L2 NOT_REQUIRED,
 	// and only its own provider request runs: no Tribunal vote inference is added.
 	inference, _, err := env.appClient.DispatchInference(ctx, &operatorv1.InferenceDispatchRequest{
 		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
@@ -144,13 +144,13 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, inference)
-	require.NotNil(t, inference.GetEventReceipt())
-	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, inference.GetEventReceipt().GetL2Status(), "a no-tool inference must not be voted on")
+	require.NotNil(t, inference.GetReceipt())
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, inference.GetReceipt().GetL2Status(), "a no-tool inference must not be voted on")
 	assert.Equal(t, 1, env.stack.Provider.ChatCount(), "the no-tool inference must run without Tribunal vote inferences")
 
-	// A read-only tool is not a state change: the Operator signs its event_receipt
+	// A read-only tool is not a state change: the Operator signs its receipt
 	// with L2 NOT_REQUIRED and no member inference runs. The path is absent,
-	// so the Actuator signs a FAILED event receipt; only its L2 status matters here.
+	// so the Actuator signs a FAILED receipt; only its L2 status matters here.
 	readArgs, err := json.Marshal(map[string]string{"path": filepath.Join(env.workingDirectory, "tribunal-consensus-absent.txt")})
 	require.NoError(t, err)
 	readPayload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolReadFile, ArgumentsJson: string(readArgs)})
@@ -161,10 +161,10 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 		constants.ActionTypeMcpCall, constants.MCPToolReadFile, readPayload,
 	)
 	require.NoError(t, err)
-	readEventReceipt := read.Outcome.Observation.GetEventReceipt()
-	require.NotNil(t, readEventReceipt, "read_file must answer with a signed event receipt, got %s: rejection=%q refusal=%q",
+	readReceipt := read.Outcome.Observation.GetReceipt()
+	require.NotNil(t, readReceipt, "read_file must answer with a signed receipt, got %s: rejection=%q refusal=%q",
 		read.Outcome.Observation.GetKind(), read.Outcome.Observation.GetRejection().GetError(), read.Outcome.Observation.GetRefusal().GetError())
-	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, readEventReceipt.GetL2Status(), "a read-only tool must not be voted on")
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, readReceipt.GetL2Status(), "a read-only tool must not be voted on")
 	assert.Equal(t, 1, env.stack.Provider.ChatCount(), "a read-only tool must run no additional vote inference")
 
 	// One governed state change through the governed HTTP dispatch path the eval lane uses.
@@ -179,11 +179,11 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, out.Outcome.Typed())
 
-	eventReceipt := out.Outcome.Observation.GetEventReceipt()
-	require.NotNil(t, eventReceipt, "the governed action must answer with a signed event receipt, got %s: rejection=%q refusal=%q",
+	receipt := out.Outcome.Observation.GetReceipt()
+	require.NotNil(t, receipt, "the governed action must answer with a signed receipt, got %s: rejection=%q refusal=%q",
 		out.Outcome.Observation.GetKind(), out.Outcome.Observation.GetRejection().GetError(), out.Outcome.Observation.GetRefusal().GetError())
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.GetStatus(), "the action must execute")
-	assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, eventReceipt.GetL2Status(), "the Tribunal quorum proof must be valid")
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus(), "the action must execute")
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, receipt.GetL2Status(), "the Tribunal quorum proof must be valid")
 
 	// The no-tool inference used one provider request, while read_file added none.
 	// The shell mutation adds exactly three member inferences, each on the pinned model.

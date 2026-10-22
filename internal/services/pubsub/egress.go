@@ -32,10 +32,10 @@ const (
 	// messages, model names, error text or other content. Its content fields are scrubbed.
 	egressContent
 	// egressDigestBound: the type is verified by the Gateway against a digest or signature that
-	// covers its fields (InferenceCompletion result_digest bound by the L5 event receipt, observation
+	// covers its fields (InferenceCompletion result_digest bound by the L5 receipt, observation
 	// and attestation digests, InferenceProgressEvent parts bound to the terminal output hash).
 	// Scrubbing at egress would break verification. Inference output must be scrubbed at its
-	// source before its digest is computed and the event receipt signed, not at egress.
+	// source before its digest is computed and the receipt signed, not at egress.
 	egressDigestBound
 )
 
@@ -179,7 +179,7 @@ func egressContentFields(payload proto.Message) (fields []*string, class egressC
 		// Gateway inventory consumes verbatim. It is not command, output or file content.
 		return nil, egressNoContent, nil
 	case *operatorv1.InferenceCompletion:
-		// Digest-bound: the event receipt signs result_summary = result_digest over the unscrubbed result.
+		// Digest-bound: the receipt signs result_summary = result_digest over the unscrubbed result.
 		return nil, egressDigestBound, nil
 	case *evalv1.ProviderBoundaryObservationCompleted:
 		// Digest-bound observation window: observation_digest covers every field.

@@ -218,7 +218,7 @@ type memberVote struct {
 }
 
 // recordVote appends memberAppID's vote to the Gateway audit chain under the
-// envelope's transaction ID, the ID its event receipts carry.
+// envelope's transaction ID, the ID its receipts carry.
 func (d *TribunalConsensusDeliberator) recordVote(env *commonv1.GovernanceEnvelope, bound *models.ConsensusPolicy, memberAppID string, vote memberVote) error {
 	record := models.ConsensusVoteRecord{
 		TransactionID:          env.GetId(),

@@ -83,7 +83,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-ARCH-PIPE-01 | Every operation entering a governed platform path MUST pass through the five-layer verification pipeline (L1 Doctrine, L2 Consensus, L3 Notary, L4 Warden, L5 Actuator). Universal checks (hash integrity, replay nonce reservation, expiration, state Merkle root, payload decode) and posture-required proofs fail closed. Optional L2/L3 proofs are verified and recorded as audit evidence without gating execution. |
 | INV-ARCH-PIPE-02 | The Gateway selects one of four immutable governance postures (`doctrine`, `consensus`, `ratify`, `notary`) at startup via `--posture` and stamps it into its constructed `GovernanceEnvelope`. The executing Operator's L4 Warden applies the posture carried in that Gateway-built envelope; client-supplied posture is not authoritative. |
-| INV-ARCH-PIPE-03 | The L5 Actuator is the sole execution boundary. It MUST sign an `EXECUTING` event receipt, append to the commitment chain when SQL audit is active, rehydrate scrubbed secrets at the execution site, mint a short-lived capability bound to the transaction hash, dispatch the action, dissolve the capability, and persist a final `COMPLETED` or `FAILED` event receipt. |
+| INV-ARCH-PIPE-03 | The L5 Actuator is the sole execution boundary. It MUST sign an `EXECUTING` receipt, append to the commitment chain when SQL audit is active, rehydrate scrubbed secrets at the execution site, mint a short-lived capability bound to the transaction hash, dispatch the action, dissolve the capability, and persist a final `COMPLETED` or `FAILED` receipt. |
 
 ### Node Topology and Operating Modes (`INV-ARCH-NODE`)
 
@@ -113,7 +113,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-ARCH-STOR-01 | Under the Local-First Audit Architecture (LFAA), each executing runtime (Gateway and remote Operators) is authoritative for its sovereign SQLite audit database, execution events, and local state root. Gateway event receipt copies mirrored over pub/sub are best-effort projections. |
+| INV-ARCH-STOR-01 | Under the Local-First Audit Architecture (LFAA), each executing runtime (Gateway and remote Operators) is authoritative for its sovereign SQLite audit database, execution events, and local state root. Gateway receipt copies mirrored over pub/sub are best-effort projections. |
 | INV-ARCH-STOR-02 | Sensitive command results, diffs, and governed file contents MUST be encrypted at rest using AES-256-GCM via a three-tier vault key hierarchy (vault key sealed under the platform master key, HKDF-derived KEK, and wrapped DEK). |
 
 ## Owned surfaces
@@ -158,8 +158,8 @@ Every transaction entering a governed platform path traverses five distinct veri
 | **L1 Doctrine** | Gateway (PDP) & Operator (PEP) | Static forbidden-pattern matching, MITRE ATT&CK heuristics, and command safety analysis. Detects privilege escalation, destructive disk operations, reverse shells, and credential access. | Fails closed with `ErrTxL1ValidationFailed` across all postures. |
 | **L2 Consensus** | Gateway (Coord.) & Operator (Verify) | $K$-of-$N$ Ed25519 multi-agent machine quorum over `<transaction_hash>\|<decision>`. Members independently deliberate and sign affirmative or negative votes. | Fails closed with `ErrTxL2QuorumNotMet`, or `ErrTxL2SignatureInvalid` for a forged member vote, under `consensus` and `notary`. Audited under `doctrine` and `ratify`. |
 | **L3 Notary** | Gateway (Coord.) & Operator (Verify) | Human authorization for mutating operations. Gateway challenges require WebAuthn passkey assertions. Operator verification checks approved suspended transactions with authorized cryptographic proofs. | Fails closed with `ErrTxL3ProofMissing` for mutations under `ratify` and `notary`. Audited under `doctrine` and `consensus`. |
-| **L4 Warden** | Executing Operator (PEP) | Pre-dispatch verification gate: reserves nonce in durable SQLite replay store, verifies TTL expiry, decodes typed payload, validates target ownership, re-runs L1 Doctrine, recalculates transaction hash, checks state Merkle root, and enforces posture-required L2/L3 proofs. | Fails closed; releases reserved nonce and records a signed failed event receipt. |
-| **L5 Actuator** | Executing Operator (PEP) | Sole execution boundary: signs and persists an initial `EXECUTING` event receipt, appends signed commitment to SQL ledger, rehydrates its own `{{UEI_<owner>_N}}` tokens through `ScrubbingService` (foreign tokens stay opaque in `INFERENCE` and fail closed elsewhere), mints a short-lived JIT capability, dispatches typed action handler, dissolves capability, and persists signed `COMPLETED` or `FAILED` event receipt. | Fails closed; execution aborts if event receipt signing, commitment append, or capability minting fails. A token that cannot be rehydrated, including any token when no `ScrubbingService` is configured, is never dispatched: the event receipt finalizes as a signed `FAILED` event receipt. |
+| **L4 Warden** | Executing Operator (PEP) | Pre-dispatch verification gate: reserves nonce in durable SQLite replay store, verifies TTL expiry, decodes typed payload, validates target ownership, re-runs L1 Doctrine, recalculates transaction hash, checks state Merkle root, and enforces posture-required L2/L3 proofs. | Fails closed; releases reserved nonce and records a signed failed receipt. |
+| **L5 Actuator** | Executing Operator (PEP) | Sole execution boundary: signs and persists an initial `EXECUTING` receipt, appends signed commitment to SQL ledger, rehydrates its own `{{UEI_<owner>_N}}` tokens through `ScrubbingService` (foreign tokens stay opaque in `INFERENCE` and fail closed elsewhere), mints a short-lived JIT capability, dispatches typed action handler, dissolves capability, and persists signed `COMPLETED` or `FAILED` receipt. | Fails closed; execution aborts if receipt signing, commitment append, or capability minting fails. A token that cannot be rehydrated, including any token when no `ScrubbingService` is configured, is never dispatched: the receipt finalizes as a signed `FAILED` receipt. |
 
 ### Governance Postures and Enforcement Matrix
 
@@ -200,14 +200,14 @@ sequenceDiagram
     end
     GW->>OP: Publish Envelope (cmd:<op_id>:<session_id>)
     Note over OP: L4 Warden Pre-Dispatch Gate:<br/>1. Durable Nonce Reservation<br/>2. Expiry & Stateless Validation<br/>3. Recompute Hash & State Root<br/>4. Posture-Required L2/L3 Proofs
-    Note over OP: L5 Actuator Execution Boundary:<br/>1. Sign & Persist EXECUTING Event receipt<br/>2. Append Commitment to SQL Ledger<br/>3. Rehydrate Scrubbed Tokens via Vault<br/>4. Mint JIT Single-Action Capability
+    Note over OP: L5 Actuator Execution Boundary:<br/>1. Sign & Persist EXECUTING Receipt<br/>2. Append Commitment to SQL Ledger<br/>3. Rehydrate Scrubbed Tokens via Vault<br/>4. Mint JIT Single-Action Capability
     OP->>Vault: Execute Action & Capture State Root
-    Note over OP: 5. Dissolve JIT Capability<br/>6. Sign & Persist COMPLETED Event receipt<br/>7. Attach Persistence Attestation
-    OP-->>GW: Publish Event receipt (event_receipts:<op_id>:<session_id>)
-    GW-->>Client: Return Result & Signed EventReceipt
+    Note over OP: 5. Dissolve JIT Capability<br/>6. Sign & Persist COMPLETED Receipt<br/>7. Attach Persistence Attestation
+    OP-->>GW: Publish Receipt (receipts:<op_id>:<session_id>)
+    GW-->>Client: Return Result & Signed ActionReceipt
 ```
 
-A caller can instead deny a suspended transaction through `POST /api/v1/approvals/respond`. The Gateway resubmits it with an L3 deny marker; the Operator rejects it and returns a signed `L3_DENIED` event receipt, which the Gateway returns and publishes as `approval.completed`. The denied transaction does not continue through normal execution.
+A caller can instead deny a suspended transaction through `POST /api/v1/approvals/respond`. The Gateway resubmits it with an L3 deny marker; the Operator rejects it and returns a signed `L3_DENIED` receipt, which the Gateway returns and publishes as `approval.completed`. The denied transaction does not continue through normal execution.
 
 ### Client Ingress Surfaces and Protocol Adapters
 
@@ -273,10 +273,10 @@ ztd protects sensitive data using a three-tier encryption hierarchy:
 ### Local-First Audit Architecture (LFAA)
 
 Under the Local-First Audit Architecture (LFAA), each executing runtime is authoritative for its own local execution evidence:
-- **Primary SQLite Database (`ztd.db`)**: Located in `.ztd/data/` for each runtime. Contains audit logs, nonce replay tables, event receipts, and commitment ledgers.
+- **Primary SQLite Database (`ztd.db`)**: Located in `.ztd/data/` for each runtime. Contains audit logs, nonce replay tables, receipts, and commitment ledgers.
 - **Commitment Ledger**: Hash-chained SQLite table linking consecutive execution commitments cryptographically to prove historical tamper resistance.
 - **Git-Backed File Ledger**: Tracks all governed file mutations under `.ztd/data/ledger/` as encrypted Git commits, exposing the repository HEAD commit as a verifiable state snapshot.
-- **Gateway Projection**: Event receipts mirrored to the Gateway over WebSocket channels are best-effort projections and do not supersede local Operator evidence.
+- **Gateway Projection**: Receipts mirrored to the Gateway over WebSocket channels are best-effort projections and do not supersede local Operator evidence.
 
 ### Server-Sent Events (SSE) Infrastructure
 
@@ -320,7 +320,7 @@ The primary deployment model is host-native execution using the single static bi
 - **Bypassing the Five-Layer Pipeline for Client-Native Tools**: Assuming client-native tools or directly reached MCP servers provide governance without traversing a ztd ingress (INV-ARCH-INGR-01).
 - **Mutating Governance Posture at Runtime**: Attempting to alter `--posture` after Gateway startup without a process restart (INV-ARCH-PIPE-02).
 - **Synthesizing Missing L2/L3 Proofs on Direct Ingress**: Allowing direct envelope submissions or HTTP command dispatch to fabricate missing consensus votes or notary proofs (INV-ARCH-INGR-02).
-- **Treating Gateway Mirrors as Authoritative Execution Truth**: Relying on Gateway event receipt mirrors rather than the executing Operator's sovereign local audit store (INV-ARCH-STOR-01).
+- **Treating Gateway Mirrors as Authoritative Execution Truth**: Relying on Gateway receipt mirrors rather than the executing Operator's sovereign local audit store (INV-ARCH-STOR-01).
 - **Opening Inbound Management Listeners on Operators**: Exposing inbound network ports on remote Operators instead of maintaining outbound-only mTLS connections (INV-ARCH-NODE-02).
 - **Dispatching Mutating Actions to Witness Operators**: Routing general command execution to Provenance or Observer operators rather than Data operators (INV-ARCH-NODE-03).
 - **Exposing Internal Gateway Routes to Public Spectators**: Routing public traffic directly to the private Gateway on port 8443 rather than through the isolated public mirror on port 8082 (`INV-SPEC-ISO-01` in [Public Spectator Architecture](public_spectator.md)).

@@ -130,7 +130,7 @@ func assertUnprovenEnvelopeRejectedBeforeExecution(t *testing.T, f *fixtures.Gat
 
 // assertEnvelopeRejectedAtIngress posts a prepared envelope through the direct
 // envelope endpoint and asserts HTTP 403 carrying the sentinel, no EXECUTING or
-// COMPLETED event receipt, and no written target document.
+// COMPLETED receipt, and no written target document.
 func assertEnvelopeRejectedAtIngress(t *testing.T, f *fixtures.GatewayFixture, client *http.Client, env *commonv1.GovernanceEnvelope, documentID string, sentinel error) {
 	t.Helper()
 	ctx := t.Context()
@@ -156,8 +156,8 @@ func assertEnvelopeRejectedAtIngress(t *testing.T, f *fixtures.GatewayFixture, c
 	persisted, err := f.Service.GetAuditStore().GetEventReceipt(env.Id)
 	require.NoError(t, err)
 	if persisted != nil {
-		require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING, persisted.EventReceipt.GetStatus(), "L5 must not start execution for rejected transaction")
-		require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.EventReceipt.GetStatus(), "L5 must not complete execution for rejected transaction")
+		require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING, persisted.ActionReceipt.GetStatus(), "L5 must not start execution for rejected transaction")
+		require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, persisted.ActionReceipt.GetStatus(), "L5 must not complete execution for rejected transaction")
 	}
 	doc, err := f.Service.GetDocStore().DocGet(ctx, string(constants.CollectionInvestigations), documentID)
 	require.NoError(t, err)

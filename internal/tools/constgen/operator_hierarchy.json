@@ -127,7 +127,7 @@
   "EventOperatorPanelListUpdated": "PanelListUpdated",
   "EventOperatorProviderBoundaryObservationCompleted": "ProviderBoundaryObservation.Completed",
   "EventOperatorProviderBoundaryObservationRequested": "ProviderBoundaryObservation.Requested",
-  "EventOperatorEventReceiptRecorded": "EventReceipt.Recorded",
+  "EventOperatorReceiptRecorded": "Receipt.Recorded",
   "EventOperatorShutdownAcknowledged": "ShutdownAcknowledged",
   "EventOperatorShutdownRequested": "ShutdownRequested",
   "EventOperatorSlotInitializationFailed": "SlotInitializationFailed",

@@ -134,13 +134,13 @@ describe('observe wire shapes', () => {
       total_tasks: 2,
       started_at: '2026-01-01T00:00:00Z',
       ended_at: undefined,
-      has_event_receipts: true,
+      has_receipts: true,
       evidence_count: 3,
       observed_at: '2026-01-01T00:00:00Z',
     };
     expect(keysOf(r)).toEqual([
       'active_task_id', 'completed_tasks', 'display_name', 'ended_at',
-      'evidence_count', 'has_event_receipts', 'observed_at', 'run_id', 'run_kind',
+      'evidence_count', 'has_receipts', 'observed_at', 'run_id', 'run_kind',
       'schema_version', 'started_at', 'status', 'total_tasks',
     ]);
   });
@@ -206,15 +206,15 @@ describe('observe wire shapes', () => {
       arm_id: 'a1',
       status: 'completed',
       verification_status: 'projection_validated',
-      event_receipt_count: 5,
+      receipt_count: 5,
       metric_count: 3,
       published_projection_sha256: 'abc',
       completed_at: '2026-01-01T00:00:00Z',
       observed_at: '2026-01-01T00:00:00Z',
     };
     expect(keysOf(e)).toEqual([
-      'arm_id', 'completed_at', 'event_receipt_count', 'metric_count', 'observed_at',
-      'published_projection_sha256', 'run_id', 'schema_version',
+      'arm_id', 'completed_at', 'metric_count', 'observed_at',
+      'published_projection_sha256', 'receipt_count', 'run_id', 'schema_version',
       'status', 'suite_id', 'suite_version', 'verification_status',
     ]);
   });
@@ -248,7 +248,7 @@ describe('observe wire shapes', () => {
       model_provider: 'p1',
       status: 'completed',
       verification_status: 'projection_validated',
-      event_receipt_count: 5,
+      receipt_count: 5,
       assigned_tasks: 10,
       terminal_attempts: 10,
       metrics: [],
@@ -257,9 +257,9 @@ describe('observe wire shapes', () => {
       observed_at: '2026-01-01T00:00:00Z',
     };
     expect(keysOf(d)).toEqual([
-      'arm_id', 'assigned_tasks', 'completed_at', 'event_receipt_count', 'metrics', 'model_id',
+      'arm_id', 'assigned_tasks', 'completed_at', 'metrics', 'model_id',
       'model_provider', 'observed_at', 'published_projection_sha256',
-      'run_id', 'schema_version', 'status', 'suite_id',
+      'receipt_count', 'run_id', 'schema_version', 'status', 'suite_id',
       'suite_version', 'terminal_attempts', 'verification_status',
     ]);
   });
@@ -363,14 +363,14 @@ describe('observe wire shapes', () => {
       arm_id: 'a1',
       terminal_attempts: 10,
       assigned_tasks: 10,
-      event_receipt_count: 5,
+      receipt_count: 5,
       verification_status: 'projection_validated',
       published_projection_sha256: 'abc',
       completed_at: '2026-01-01T00:00:00Z',
     };
     expect(keysOf(p)).toEqual([
-      'arm_id', 'assigned_tasks', 'completed_at', 'event_receipt_count',
-      'published_projection_sha256', 'run_id', 'schema_version', 'suite_id', 'suite_version',
+      'arm_id', 'assigned_tasks', 'completed_at', 'published_projection_sha256',
+      'receipt_count', 'run_id', 'schema_version', 'suite_id', 'suite_version',
       'terminal_attempts', 'verification_status',
     ]);
   });

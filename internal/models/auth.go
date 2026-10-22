@@ -155,7 +155,7 @@ type OperatorHeartbeatReceivedPayload struct {
 // ApprovalsChangedPayload is the SSE payload of ztd.v1.platform.approvals.changed.
 // It announces that the owner's pending approval set (suspended L3 transactions
 // or platform enrollment requests) changed; it carries no approval content.
-// The approval stores stay the source of truth: consumers re-list on event receipt.
+// The approval stores stay the source of truth: consumers re-list on receipt.
 //
 // DeploymentID and RequestID are set only when a request created by a worker
 // launched by `operator deploy` became pending, so that CLI can learn the
@@ -539,7 +539,7 @@ type AdminAuditDetails struct {
 }
 
 // Admin audit action constants. Keep these stable - downstream tooling and
-// event receipts join on the string value.
+// receipts join on the string value.
 const (
 	AdminAuditActionRetireLocalOwner = "retire_local_owner"
 )

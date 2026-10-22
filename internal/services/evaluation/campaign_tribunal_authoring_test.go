@@ -57,9 +57,9 @@ func (f *tribunalAuthoringTools) WriteWorkspaceFile(context.Context, Target, str
 func (f *tribunalAuthoringTools) DispatchAgentTool(_ context.Context, _ Target, _, _, _ string, action constants.ActionType, resource string, payload []byte) (GovernedToolDispatch, error) {
 	f.dispatches++
 	f.action, f.resource, f.payload = action, resource, append([]byte(nil), payload...)
-	eventReceipt := f.outcome.Observation.GetEventReceipt()
+	receipt := f.outcome.Observation.GetReceipt()
 	return GovernedToolDispatch{
-		Outcome: f.outcome, TransactionID: eventReceipt.GetTransactionId(),
+		Outcome: f.outcome, TransactionID: receipt.GetTransactionId(),
 		ResultPayload: f.outcome.Dispatch.GetResultPayload(),
 	}, nil
 }
@@ -93,20 +93,20 @@ func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunal
 	}
 }
 
-func TestRecordMemberCallsClassifiesOnlyEventReceiptBackedL2DenialAsPolicyOutcome(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-denied",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:   operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		ActionType:    string(constants.ActionTypeInference),
 		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET,
 		L2Status:      operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
 		SignerKeyId:   "operator-key",
-		Signature:     "signed-event_receipt",
+		Signature:     "signed-receipt",
 	}
 	member := &tribunalv1.TribunalMemberCall{
 		ProviderAttemptId: "attempt-member",
-		EventReceipt:      eventReceipt,
+		Receipt:           receipt,
 		Failure: &operatorv1.InferenceDispatchFailure{
 			Code: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED,
 		},
@@ -124,15 +124,15 @@ func TestRecordMemberCallsClassifiesOnlyEventReceiptBackedL2DenialAsPolicyOutcom
 		require.Len(t, run.trace.ModelCalls, 1)
 		assert.Equal(t, modelCallGovernanceRejected, run.trace.ModelCalls[0].Error)
 		assert.Equal(t, "tx-denied", run.trace.ModelCalls[0].TransactionID)
-		require.NotNil(t, run.trace.ModelCalls[0].EventReceipt)
-		assert.Same(t, eventReceipt, run.trace.ModelCalls[0].EventReceipt.EventReceipt)
+		require.NotNil(t, run.trace.ModelCalls[0].Receipt)
+		assert.Same(t, receipt, run.trace.ModelCalls[0].Receipt.ActionReceipt)
 	})
 
-	t.Run("missing event receipt remains an internal failure", func(t *testing.T) {
+	t.Run("missing receipt remains an internal failure", func(t *testing.T) {
 		run := newRun()
-		withoutEventReceipt := proto.Clone(member).(*tribunalv1.TribunalMemberCall)
-		withoutEventReceipt.EventReceipt = nil
-		failure := run.recordMemberCalls(AgentToolCall{CallID: "tool-1"}, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, []*tribunalv1.TribunalMemberCall{withoutEventReceipt})
+		withoutReceipt := proto.Clone(member).(*tribunalv1.TribunalMemberCall)
+		withoutReceipt.Receipt = nil
+		failure := run.recordMemberCalls(AgentToolCall{CallID: "tool-1"}, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, []*tribunalv1.TribunalMemberCall{withoutReceipt})
 		assert.Equal(t, string(ExecutionFailureInternal), failure)
 		assert.Equal(t, string(ExecutionFailureInternal), run.trace.ProviderFailure)
 		assert.Empty(t, run.trace.ProviderFailureClass)
@@ -231,18 +231,18 @@ func TestRunApprovedShellCommandShowsRevisedArgumentsOnSuccessAndFailure(t *test
 }
 
 func shellToolOutcome(summary string) *client.GovernedOutcome {
-	eventReceipt := &operatorv1.EventReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
+	receipt := &operatorv1.ActionReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
 	return &client.GovernedOutcome{
-		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, EventReceipt: eventReceipt},
-		Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: "txn-1", EventReceipt: eventReceipt},
+		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, Receipt: receipt},
+		Dispatch:    &operatorv1.GovernedDispatchResult{TransactionId: "txn-1", Receipt: receipt},
 	}
 }
 
 func approvedDispatchResult(argumentsJSON, summary string) *tribunalv1.TribunalIntentResult {
-	eventReceipt := &operatorv1.EventReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
+	receipt := &operatorv1.ActionReceipt{TransactionId: "txn-1", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: summary}
 	return &tribunalv1.TribunalIntentResult{
 		Outcome:        tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED,
 		ArgumentsJson:  argumentsJSON,
-		CommandOutcome: &tribunalv1.TribunalIntentResult_Dispatched{Dispatched: &operatorv1.GovernedDispatchResult{TransactionId: "txn-1", EventReceipt: eventReceipt}},
+		CommandOutcome: &tribunalv1.TribunalIntentResult_Dispatched{Dispatched: &operatorv1.GovernedDispatchResult{TransactionId: "txn-1", Receipt: receipt}},
 	}
 }

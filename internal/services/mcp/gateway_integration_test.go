@@ -32,7 +32,7 @@ import (
 )
 
 // TestMCPGatewayEndToEndIntegration tests the full flow from MCP gateway
-// through envelope processing to event receipt generation, verifying that the
+// through envelope processing to receipt generation, verifying that the
 // envelope is properly constructed and processed.
 func TestMCPGatewayEndToEndIntegration(t *testing.T) {
 	// Setup: Create a real envelope processor that will verify the envelope
@@ -40,7 +40,7 @@ func TestMCPGatewayEndToEndIntegration(t *testing.T) {
 	var receivedEnvelope *commonv1.GovernanceEnvelope
 
 	processor := &fakeEnvelopeProcessor{
-		eventReceipt: &operatorv1.EventReceipt{
+		receipt: &operatorv1.ActionReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "test result",
@@ -98,7 +98,7 @@ type envelopeCaptureProcessor struct {
 	capture  func(*commonv1.GovernanceEnvelope)
 }
 
-func (e *envelopeCaptureProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
+func (e *envelopeCaptureProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
 	// Parse the envelope to capture it
 	var envelope commonv1.GovernanceEnvelope
 	err := protojson.Unmarshal(payload, &envelope)
@@ -108,11 +108,11 @@ func (e *envelopeCaptureProcessor) ProcessEnvelope(ctx context.Context, payload 
 	return e.delegate.ProcessEnvelope(ctx, payload)
 }
 
-// TestEventReceiptIntegration tests that an event receipt is properly returned by the
+// TestReceiptIntegration tests that a receipt is properly returned by the
 // envelope processor after MCP gateway processing.
-func TestEventReceiptIntegration(t *testing.T) {
+func TestReceiptIntegration(t *testing.T) {
 	processor := &fakeEnvelopeProcessor{
-		eventReceipt: &operatorv1.EventReceipt{
+		receipt: &operatorv1.ActionReceipt{
 			TransactionId:    "tx-1",
 			TransactionHash:  "hash-1",
 			Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -154,15 +154,15 @@ func TestEventReceiptIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, resp.Error)
 
-	// Verify the event receipt was returned successfully
-	require.NotNil(t, processor.eventReceipt)
-	require.Equal(t, "tx-1", processor.eventReceipt.TransactionId)
+	// Verify the receipt was returned successfully
+	require.NotNil(t, processor.receipt)
+	require.Equal(t, "tx-1", processor.receipt.TransactionId)
 }
 
-// TestCanonicalizationIntegration tests that the canonical form used for event_receipt
+// TestCanonicalizationIntegration tests that the canonical form used for receipt
 // signing is deterministic and does not include gateway_signed (deleted concept).
 func TestCanonicalizationIntegration(t *testing.T) {
-	eventReceipt := &operatorv1.EventReceipt{
+	receipt := &operatorv1.ActionReceipt{
 		TransactionId:    "tx-1",
 		TransactionHash:  "hash-1",
 		Status:           operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -175,8 +175,8 @@ func TestCanonicalizationIntegration(t *testing.T) {
 		L3Status:         operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
 	}
 
-	// Canonicalize the event_receipt
-	canonical, err := governance.CanonicalizeEventReceipt(eventReceipt)
+	// Canonicalize the receipt
+	canonical, err := governance.CanonicalizeActionReceipt(receipt)
 	require.NoError(t, err)
 
 	// Parse the canonical form to verify gateway_signed is NOT present
@@ -188,7 +188,7 @@ func TestCanonicalizationIntegration(t *testing.T) {
 	require.False(t, ok, "gateway_signed should not be in canonical form")
 
 	// Verify it's deterministic
-	canonical2, err := governance.CanonicalizeEventReceipt(eventReceipt)
+	canonical2, err := governance.CanonicalizeActionReceipt(receipt)
 	require.NoError(t, err)
 	require.Equal(t, canonical, canonical2, "Canonicalization should be deterministic")
 }
@@ -271,14 +271,14 @@ func TestGatewayErrorCodesIntegration(t *testing.T) {
 			name:          "L2 signature invalid",
 			errorToReturn: governance.ErrL2SignatureInvalid,
 			expectedCode:  -32006,
-			// No signed event receipt reaches the ingress, so the refusal is UNCLASSIFIED.
+			// No signed receipt reaches the ingress, so the refusal is UNCLASSIFIED.
 			expectedMsg: constants.ErrInternal.Error(),
 		},
 		{
 			name:          "L3 proof invalid",
 			errorToReturn: governance.ErrL3ProofInvalid,
 			expectedCode:  -32007,
-			// No signed event receipt reaches the ingress, so the refusal is UNCLASSIFIED.
+			// No signed receipt reaches the ingress, so the refusal is UNCLASSIFIED.
 			expectedMsg: constants.ErrInternal.Error(),
 		},
 		{
@@ -334,7 +334,7 @@ func TestNativeToolExecutionIntegration(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	processor := &fakeEnvelopeProcessor{
-		eventReceipt: &operatorv1.EventReceipt{
+		receipt: &operatorv1.ActionReceipt{
 			TransactionId: "tx-native-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "native tool executed",
@@ -377,7 +377,7 @@ type errorReturningProcessor struct {
 	err error
 }
 
-func (e *errorReturningProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.EventReceipt, error) {
+func (e *errorReturningProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*operatorv1.ActionReceipt, error) {
 	return nil, e.err
 }
 
@@ -418,7 +418,7 @@ func TestReadFieldIntegration(t *testing.T) {
 	require.NoError(t, err, "Failed to initialize field path registry")
 
 	envProc := &fakeEnvelopeProcessor{
-		eventReceipt: &operatorv1.EventReceipt{
+		receipt: &operatorv1.ActionReceipt{
 			TransactionId: "readfield-tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "read_field result",
@@ -442,7 +442,7 @@ func TestReadFieldIntegration(t *testing.T) {
 
 	// Verify read_field flows through the governance pipeline (envProc).
 	// handleReadField is called inside DispatchToDownstream, inside the real pipeline.
-	// With a fake processor, the event receipt summary is what's returned — field value
+	// With a fake processor, the receipt summary is what's returned — field value
 	// extraction and audit logging happen inside the pipeline, not before it.
 	t.Run("routes through pipeline", func(t *testing.T) {
 		reqBody := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_field","arguments":{"collection":"investigations","document_id":"investigation-123","field_path":"status","operator_session_id":"valid-session-123"}}}`
@@ -459,9 +459,9 @@ func TestReadFieldIntegration(t *testing.T) {
 		var result CallToolResult
 		err = json.Unmarshal(resp.Result, &result)
 		require.NoError(t, err)
-		// Response is the fake processor's event receipt summary — confirms read_field
+		// Response is the fake processor's receipt summary — confirms read_field
 		// went through ProcessEnvelope rather than bypassing the pipeline.
-		require.Equal(t, envProc.eventReceipt.ResultSummary, result.Content[0].Text)
+		require.Equal(t, envProc.receipt.ResultSummary, result.Content[0].Text)
 	})
 }
 
@@ -611,12 +611,12 @@ func (f *integrationTestAuditLogger) LogFieldRead(operatorSessionID, collection,
 }
 
 // TestNativeToolSingleAudit verifies that native tool calls produce exactly one
-// audit record (the L5 signed event receipt), not double-auditing with a raw event.
+// audit record (the L5 signed receipt), not double-auditing with a raw event.
 // This test verifies the removal of the double-audit block from DispatchToDownstream.
 func TestNativeToolSingleAudit(t *testing.T) {
 
 	processor := &fakeEnvelopeProcessor{
-		eventReceipt: &operatorv1.EventReceipt{
+		receipt: &operatorv1.ActionReceipt{
 			TransactionId: "tx-1",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 			ResultSummary: "native tool executed",
@@ -654,23 +654,23 @@ func TestNativeToolSingleAudit(t *testing.T) {
 	// this would produce a duplicate audit event via the no-op recorder
 }
 
-// TestAuditEventReceiptListTool_DispatchToDownstream verifies the governed native
-// tool dispatch path for audit_event_receipt_list: when the GatewayService has an
-// AuditEventReceiptQuery wired into its NativeToolHandler, DispatchToDownstream
-// executes the tool locally and returns the event receipts as a textual summary
+// TestAuditReceiptListTool_DispatchToDownstream verifies the governed native
+// tool dispatch path for audit_receipt_list: when the GatewayService has an
+// AuditReceiptQuery wired into its NativeToolHandler, DispatchToDownstream
+// executes the tool locally and returns the receipts as a textual summary
 // without forwarding to a downstream MCP server.
-func TestAuditEventReceiptListTool_DispatchToDownstream(t *testing.T) {
+func TestAuditReceiptListTool_DispatchToDownstream(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	stub := &stubAuditEventReceiptQuery{
+	stub := &stubAuditReceiptQuery{
 		listBySession: []*models.EventReceiptRecord{
-			sampleEventReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
+			sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 		},
 	}
 
 	nativeHandler, err := NewNativeToolHandler(slog.Default())
 	require.NoError(t, err)
-	nativeHandler.SetAuditEventReceiptQuery(stub)
+	nativeHandler.SetAuditReceiptQuery(stub)
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
@@ -684,27 +684,27 @@ func TestAuditEventReceiptListTool_DispatchToDownstream(t *testing.T) {
 		envProc:           &fakeEnvelopeProcessor{},
 	}
 
-	args, err := json.Marshal(AuditEventReceiptListRequest{OperatorSessionID: "sess-1"})
+	args, err := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1"})
 	require.NoError(t, err)
 
-	summary, err := g.DispatchToDownstream(context.Background(), "audit_event_receipt_list", args, "sess-1")
+	summary, err := g.DispatchToDownstream(context.Background(), "audit_receipt_list", args, "sess-1")
 	require.NoError(t, err)
 	require.Contains(t, summary, "tx-1")
 	require.Contains(t, summary, "FILE_EDIT")
 	require.Equal(t, "sess-1", stub.lastListSession)
 }
 
-// TestAuditEventReceiptGetTool_DispatchToDownstream verifies the governed native
-// tool dispatch path for audit_event_receipt_get.
-func TestAuditEventReceiptGetTool_DispatchToDownstream(t *testing.T) {
+// TestAuditReceiptGetTool_DispatchToDownstream verifies the governed native
+// tool dispatch path for audit_receipt_get.
+func TestAuditReceiptGetTool_DispatchToDownstream(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	rec := sampleEventReceiptRecord("tx-get-1", "sess-1", "DOCUMENT_UPDATE", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
-	stub := &stubAuditEventReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-get-1": rec}}
+	rec := sampleReceiptRecord("tx-get-1", "sess-1", "DOCUMENT_UPDATE", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
+	stub := &stubAuditReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-get-1": rec}}
 
 	nativeHandler, err := NewNativeToolHandler(slog.Default())
 	require.NoError(t, err)
-	nativeHandler.SetAuditEventReceiptQuery(stub)
+	nativeHandler.SetAuditReceiptQuery(stub)
 
 	registry, _ := NewFieldPathRegistry(slog.Default())
 	g := &GatewayService{
@@ -718,20 +718,20 @@ func TestAuditEventReceiptGetTool_DispatchToDownstream(t *testing.T) {
 		envProc:           &fakeEnvelopeProcessor{},
 	}
 
-	args, err := json.Marshal(AuditEventReceiptGetRequest{TransactionID: "tx-get-1"})
+	args, err := json.Marshal(AuditReceiptGetRequest{TransactionID: "tx-get-1"})
 	require.NoError(t, err)
 
-	summary, err := g.DispatchToDownstream(context.Background(), "audit_event_receipt_get", args, "sess-1")
+	summary, err := g.DispatchToDownstream(context.Background(), "audit_receipt_get", args, "sess-1")
 	require.NoError(t, err)
 	require.Contains(t, summary, "tx-get-1")
 	require.Contains(t, summary, "DOCUMENT_UPDATE")
 	require.Equal(t, "tx-get-1", stub.lastGetID)
 }
 
-// TestAuditEventReceiptListTool_DispatchNotConfigured verifies the gateway fails
-// closed when no AuditEventReceiptQuery is wired, proving the audit event receipt tools
+// TestAuditReceiptListTool_DispatchNotConfigured verifies the gateway fails
+// closed when no AuditReceiptQuery is wired, proving the audit receipt tools
 // cannot bypass governance to return ungoverned data.
-func TestAuditEventReceiptListTool_DispatchNotConfigured(t *testing.T) {
+func TestAuditReceiptListTool_DispatchNotConfigured(t *testing.T) {
 
 	nativeHandler, err := NewNativeToolHandler(slog.Default())
 	require.NoError(t, err)
@@ -747,10 +747,10 @@ func TestAuditEventReceiptListTool_DispatchNotConfigured(t *testing.T) {
 		envProc:           &fakeEnvelopeProcessor{},
 	}
 
-	args, err := json.Marshal(AuditEventReceiptListRequest{OperatorSessionID: "sess-1"})
+	args, err := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1"})
 	require.NoError(t, err)
 
-	_, err = g.DispatchToDownstream(context.Background(), "audit_event_receipt_list", args, "sess-1")
+	_, err = g.DispatchToDownstream(context.Background(), "audit_receipt_list", args, "sess-1")
 	require.Error(t, err)
-	require.True(t, errors.Is(err, constants.ErrMCPAuditEventReceiptQueryNotConfigured))
+	require.True(t, errors.Is(err, constants.ErrMCPAuditReceiptQueryNotConfigured))
 }

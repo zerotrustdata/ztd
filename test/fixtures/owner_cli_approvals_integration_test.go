@@ -33,7 +33,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
-	gov "github.com/zerotrustdata/ztd/internal/services/governance"
+	receiptgov "github.com/zerotrustdata/ztd/internal/services/governance"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -44,9 +44,9 @@ func TestEvalStackOwnerCLIApprovals(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 
-			eventReceipts, err := stack.Owner.AwaitApprovalEventReceipts(ctx, 2)
+			receipts, err := stack.Owner.AwaitApprovalReceipts(ctx, 2)
 			require.NoError(t, err)
-			require.Len(t, eventReceipts, 2, "each outbound Operator enrollment must be approved through the owner's CLI identity")
+			require.Len(t, receipts, 2, "each outbound Operator enrollment must be approved through the owner's CLI identity")
 
 			enrollmentIDs, err := stack.Owner.AwaitEnrollmentRequests(ctx, 2)
 			require.NoError(t, err)
@@ -72,26 +72,26 @@ func TestEvalStackOwnerCLIApprovals(t *testing.T) {
 			require.Empty(t, wantOperators, "both outbound Operators must complete enrollment")
 
 			publicKey := stack.Gateway.ActuatorPriv.Public().(ed25519.PublicKey)
-			seenHashes := make(map[string]struct{}, len(eventReceipts))
-			for _, eventReceipt := range eventReceipts {
-				require.NotEmpty(t, eventReceipt.GetTransactionHash())
-				_, duplicate := seenHashes[eventReceipt.GetTransactionHash()]
-				require.False(t, duplicate, "each enrollment must yield a distinct transaction event receipt")
-				seenHashes[eventReceipt.GetTransactionHash()] = struct{}{}
-				require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.GetStatus())
-				require.Equal(t, string(constants.ActionTypePlatformEnrollmentDecide), eventReceipt.GetActionType())
+			seenHashes := make(map[string]struct{}, len(receipts))
+			for _, receipt := range receipts {
+				require.NotEmpty(t, receipt.GetTransactionHash())
+				_, duplicate := seenHashes[receipt.GetTransactionHash()]
+				require.False(t, duplicate, "each enrollment must yield a distinct transaction receipt")
+				seenHashes[receipt.GetTransactionHash()] = struct{}{}
+				require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
+				require.Equal(t, string(constants.ActionTypePlatformEnrollmentDecide), receipt.GetActionType())
 				// Platform enrollment is a bootstrap action, so L2 stays exempt in
 				// notary even though ordinary mutations require a valid consensus proof.
-				require.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, eventReceipt.GetL2Status())
-				require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, eventReceipt.GetL3Status())
-				require.Equal(t, stack.Gateway.ActuatorKeyID, eventReceipt.GetSignerKeyId())
-				require.NoError(t, gov.VerifyEventReceipt(eventReceipt, publicKey), "event receipt must verify with the Gateway actuator key")
+				require.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, receipt.GetL2Status())
+				require.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, receipt.GetL3Status())
+				require.Equal(t, stack.Gateway.ActuatorKeyID, receipt.GetSignerKeyId())
+				require.NoError(t, receiptgov.VerifyActionReceipt(receipt, publicKey), "receipt must verify with the Gateway actuator key")
 
-				persisted, err := stack.Gateway.Service.GetAuditStore().GetEventReceipt(eventReceipt.GetTransactionId())
+				persisted, err := stack.Gateway.Service.GetAuditStore().GetEventReceipt(receipt.GetTransactionId())
 				require.NoError(t, err)
-				require.NotNil(t, persisted, "approval event receipt must be present in the Gateway's authoritative audit store")
-				require.NotNil(t, persisted.EventReceipt)
-				require.True(t, proto.Equal(eventReceipt, persisted.EventReceipt), "the API event receipt must equal the Gateway's persisted event receipt")
+				require.NotNil(t, persisted, "approval receipt must be present in the Gateway's authoritative audit store")
+				require.NotNil(t, persisted.ActionReceipt)
+				require.True(t, proto.Equal(receipt, persisted.ActionReceipt), "the API receipt must equal the Gateway's persisted receipt")
 			}
 
 			stack.RequireOutboundMTLS(t, stack.Data)
@@ -134,7 +134,7 @@ func TestRespondSuspendedTransactionsContinuesAfterFailedApproval(t *testing.T) 
 				http.Error(w, "approval store unavailable", http.StatusInternalServerError)
 				return
 			}
-			wire, err := protojson.Marshal(&operatorv1.EventReceipt{
+			wire, err := protojson.Marshal(&operatorv1.ActionReceipt{
 				TransactionHash: req.ApprovalID,
 				Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 				L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
@@ -151,7 +151,7 @@ func TestRespondSuspendedTransactionsContinuesAfterFailedApproval(t *testing.T) 
 	}))
 	t.Cleanup(server.Close)
 
-	owner := &OwnerConsole{approvalEventReceipts: newEventLog[*operatorv1.EventReceipt]()}
+	owner := &OwnerConsole{approvalReceipts: newEventLog[*operatorv1.ActionReceipt]()}
 	err := respondSuspendedTransactions(t.Context(), server.Client(), server.URL, identity, owner)
 	require.ErrorContains(t, err, failedHash, "the failed approval must be reported")
 
@@ -160,9 +160,9 @@ func TestRespondSuspendedTransactionsContinuesAfterFailedApproval(t *testing.T) 
 	mu.Unlock()
 	require.Equal(t, []string{failedHash, approvedHash}, gotResponded, "a failed approval must not stop the remaining pending transactions")
 
-	eventReceipts := owner.ApprovalEventReceipts()
-	require.Len(t, eventReceipts, 1, "only the successful approval produces a recorded event receipt")
-	require.Equal(t, approvedHash, eventReceipts[0].GetTransactionHash())
+	receipts := owner.ApprovalReceipts()
+	require.Len(t, receipts, 1, "only the successful approval produces a recorded receipt")
+	require.Equal(t, approvedHash, receipts[0].GetTransactionHash())
 }
 
 // newOwnerCLIApprovalTestIdentity builds a CLI approval identity whose

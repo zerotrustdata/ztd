@@ -28,16 +28,16 @@ func (testOutboundProofPreparer) PrepareOutboundL3Proof(_ context.Context, _, _,
 }
 
 func TestResubmitSuspended_OutboundTargetNeverUsesEmbeddedProcessor(t *testing.T) {
-	local := &fakeEnvelopeProcessor{eventReceipt: &operatorv1.EventReceipt{}}
+	local := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{}}
 	g := newTestGatewayService(t, withEnvProc(local))
 	wire, err := protojson.Marshal(&commonv1.GovernanceEnvelope{
 		Id: "tx-remote", TransactionHash: "tx-remote", OperatorId: "remote-operator", OperatorSessionId: "remote-session",
 	})
 	require.NoError(t, err)
-	eventReceipt, handedOff, err := g.resubmitSuspended(t.Context(), &models.SuspendedTransaction{TransactionHash: "tx-remote", Envelope: wire}, &commonv1.L3Metadata{Denied: true})
+	receipt, handedOff, err := g.resubmitSuspended(t.Context(), &models.SuspendedTransaction{TransactionHash: "tx-remote", Envelope: wire}, &commonv1.L3Metadata{Denied: true})
 	require.ErrorIs(t, err, constants.ErrGatewayNotReady)
 	require.False(t, handedOff)
-	require.Nil(t, eventReceipt)
+	require.Nil(t, receipt)
 	require.Empty(t, local.gotPayload, "an outbound target must never execute on the Gateway")
 }
 
@@ -58,9 +58,9 @@ func TestSuspendedDecision_RoutesToEnvelopeExecutionTarget(t *testing.T) {
 				if embedded {
 					selected, unused = local, outbound
 				}
-				selected.eventReceipt = &operatorv1.EventReceipt{TransactionId: "tx-target", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+				selected.receipt = &operatorv1.ActionReceipt{TransactionId: "tx-target", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
 				if deny {
-					selected.eventReceipt, selected.err = l3DeniedRejection()
+					selected.receipt, selected.err = l3DeniedRejection()
 				}
 				store := &fakeSuspendedStore{}
 				g := newTestGatewayService(t, withEnvProc(local), withSuspendedStore(store))
@@ -74,14 +74,14 @@ func TestSuspendedDecision_RoutesToEnvelopeExecutionTarget(t *testing.T) {
 				_, err := g.SuspendGovernanceEnvelope(t.Context(), env)
 				require.NoError(t, err)
 				proof := &commonv1.L3Proof{CredentialId: "credential-1"}
-				var eventReceipt *operatorv1.EventReceipt
+				var receipt *operatorv1.ActionReceipt
 				if deny {
-					eventReceipt, err = g.DenySuspendedTransaction(t.Context(), env.Id, "user-1")
+					receipt, err = g.DenySuspendedTransaction(t.Context(), env.Id, "user-1")
 				} else {
-					eventReceipt, err = g.ResumeWithL3Proof(t.Context(), env.Id, "user-1", proof)
+					receipt, err = g.ResumeWithL3Proof(t.Context(), env.Id, "user-1", proof)
 				}
 				require.NoError(t, err)
-				require.Same(t, selected.eventReceipt, eventReceipt)
+				require.Same(t, selected.receipt, receipt)
 				require.Empty(t, unused.gotPayload)
 				require.Empty(t, store.txs, "a completed decision must retire its suspension")
 				resumed := &commonv1.GovernanceEnvelope{}
@@ -112,20 +112,20 @@ func TestResubmitSuspended_MissingTargetFailsClosed(t *testing.T) {
 }
 
 type fakePendingDispatchResumer struct {
-	eventReceipt *operatorv1.EventReceipt
-	handedOff    bool
-	err          error
+	receipt   *operatorv1.ActionReceipt
+	handedOff bool
+	err       error
 }
 
-func (f fakePendingDispatchResumer) ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (*operatorv1.EventReceipt, bool, error) {
-	return f.eventReceipt, f.handedOff, f.err
+func (f fakePendingDispatchResumer) ResumePendingDispatch(context.Context, *commonv1.GovernanceEnvelope) (*operatorv1.ActionReceipt, bool, error) {
+	return f.receipt, f.handedOff, f.err
 }
 
 // A decision the waiting dispatch took cannot be retried, so a failed outcome
 // retires the suspension instead of leaving it for the expiry sweep. A decision
 // that never reached the dispatch keeps the row for retry.
 func TestPendingDispatchFailure_RetiresOnlyHandedOffDecisions(t *testing.T) {
-	failed := &operatorv1.EventReceipt{TransactionId: "tx-pending", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
+	failed := &operatorv1.ActionReceipt{TransactionId: "tx-pending", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
 	for _, handedOff := range []bool{true, false} {
 		for _, deny := range []bool{true, false} {
 			name := "not handed off"
@@ -140,7 +140,7 @@ func TestPendingDispatchFailure_RetiresOnlyHandedOffDecisions(t *testing.T) {
 				g := newTestGatewayService(t, withSuspendedStore(store))
 				g.outboundEnvProc = &fakeEnvelopeProcessor{}
 				g.outboundProofPreparer = testOutboundProofPreparer{}
-				g.pendingDispatchResumer = fakePendingDispatchResumer{eventReceipt: failed, handedOff: handedOff, err: constants.ErrDispatchResultTimeout}
+				g.pendingDispatchResumer = fakePendingDispatchResumer{receipt: failed, handedOff: handedOff, err: constants.ErrDispatchResultTimeout}
 				env := &commonv1.GovernanceEnvelope{
 					Id: "tx-pending", TransactionHash: "tx-pending", OperatorId: "remote-operator", OperatorSessionId: "remote-session",
 					RequestorUserId: "user-1", Governance: &commonv1.GovernanceMetadata{L3: &commonv1.L3Metadata{PendingDispatch: true}},

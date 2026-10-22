@@ -22,8 +22,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/timesvc"
 )
 
-// seedHistoryDocuments inserts n event_receipt-sized documents in one transaction,
-// standing in for accumulated audit/event-receipt history.
+// seedHistoryDocuments inserts n receipt-sized documents in one transaction,
+// standing in for accumulated audit/receipt history.
 func seedHistoryDocuments(t testing.TB, db *CanonicalDBService, n int) {
 	t.Helper()
 	body := strings.Repeat("x", 4096)

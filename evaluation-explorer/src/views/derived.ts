@@ -697,11 +697,11 @@ function policyChainValue(records: PublicPolicyDecisionActivityRecord[]): ChainV
 
 function governedActionChainValue(records: PublicGovernedActionActivityRecord[]): ChainValue {
   if (records.length === 0) return { value: '0 actions', tone: 'neutral' };
-  const reported = records.filter((record) => record.event_receipt_status === 'reported').length;
+  const reported = records.filter((record) => record.receipt_status === 'reported').length;
   return {
     value: countLabel(records.length, 'action'),
     tone: reported === records.length ? 'ok' : 'warn',
-    detail: `${reported} of ${records.length} event receipts reported`,
+    detail: `${reported} of ${records.length} receipts reported`,
   };
 }
 

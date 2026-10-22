@@ -126,7 +126,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, auth.WriteTrustBundleFS(files, cliConfig, trust, constants.PermFilePublic))
 	// The saved binding must never become an implicit audit filter. The Gateway
-	// files governed app event receipts under its embedded Operator session, which is the
+	// files governed app receipts under its embedded Operator session, which is the
 	// session this CLI is bound to, so the explicit --session filter sees them.
 	require.NoError(t, auth.SaveCredentials(files, cliConfig, &auth.Credentials{OperatorSessionID: bootstrap.OperatorSessionID, OperatorID: bootstrap.OperatorID, CLISessionID: bootstrap.CLISessionID, UserID: bootstrap.UserID}))
 	policy, err := json.Marshal(&models.AppPolicy{AppID: "spiffe://ztd.local/app/test-app", CreatedAt: time.Now(), UpdatedAt: time.Now()})
@@ -166,23 +166,23 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 		require.NoError(t, resp.Body.Close())
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-		eventReceipt := &operatorv1.EventReceipt{}
-		require.NoError(t, protojson.Unmarshal(body, eventReceipt))
-		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status)
+		receipt := &operatorv1.ActionReceipt{}
+		require.NoError(t, protojson.Unmarshal(body, receipt))
+		require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
 		secretManager, err := svc.GetSecretManager()
 		require.NoError(t, err)
 		signingKey, _, err := secretManager.GetActuatorKey()
 		require.NoError(t, err)
-		require.NoError(t, governance.VerifyEventReceiptSignature(eventReceipt, signingKey.Public().(ed25519.PublicKey)))
-		require.NoError(t, governance.VerifyEventReceiptPersistenceAttestation(eventReceipt, signingKey.Public().(ed25519.PublicKey)))
+		require.NoError(t, governance.VerifyActionReceiptSignature(receipt, signingKey.Public().(ed25519.PublicKey)))
+		require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, signingKey.Public().(ed25519.PublicKey)))
 		persisted, err := svc.GetAuditStore().GetEventReceipt(env.Id)
 		require.NoError(t, err)
 		require.NotNil(t, persisted)
-		// The event receipt is filed under the executing runtime's own audit session (the
+		// The receipt is filed under the executing runtime's own audit session (the
 		// Gateway's embedded Operator), never under the envelope's claim.
 		require.Equal(t, bootstrap.OperatorSessionID, persisted.OperatorSessionID)
 		require.Equal(t, "test-app", persisted.ActingAppID)
-		require.True(t, proto.Equal(eventReceipt, persisted.EventReceipt))
+		require.True(t, proto.Equal(receipt, persisted.ActionReceipt))
 		transactionIDs = append(transactionIDs, env.Id)
 	}
 	readClient, err := api.NewClientWithURL(files, cliConfig, server.URL)
@@ -208,17 +208,17 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 		return files, nil
 	}
 	for _, scope := range []struct {
-		name, flag, value     string
-		eventReceipts, events int
+		name, flag, value string
+		receipts, events  int
 	}{
 		{"all", "", "", 2, 4}, {"app", "app", "test-app", 2, 4}, {"different app", "app", "other-app", 0, 0}, {"embedded Operator session", "session", bootstrap.OperatorSessionID, 2, 4},
 	} {
 		t.Run(scope.name, func(t *testing.T) {
-			for _, name := range []string{"event_receipts", "events", "export", "summary", "report"} {
+			for _, name := range []string{"receipts", "events", "export", "summary", "report"} {
 				t.Run(name, func(t *testing.T) {
 					var cmd *cobra.Command
 					switch name {
-					case "event_receipts":
+					case "receipts":
 						cmd = auditEventReceiptsCmdWithConfig(loader, factory, fileFactory)
 					case "events":
 						cmd = auditEventsCmdWithConfig(loader, factory, fileFactory)
@@ -234,7 +234,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 					}
 					out := &bytes.Buffer{}
 					cmd.SetOut(out)
-					if name == "event_receipts" || name == "events" {
+					if name == "receipts" || name == "events" {
 						cmdtest.EnableGlobalJSON(t, cmd)
 					}
 					outputDir := testutil.TempDir(t)
@@ -247,7 +247,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 					}
 					require.NoError(t, cmd.RunE(cmd, nil))
 					switch name {
-					case "event_receipts", "export":
+					case "receipts", "export":
 						data := out.Bytes()
 						if name == "export" {
 							data, err = os.ReadFile(outputFile)
@@ -255,7 +255,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 						}
 						var result models.AuditEventReceiptsResponse
 						require.NoError(t, json.Unmarshal(data, &result))
-						require.Len(t, result.EventReceipts, scope.eventReceipts)
+						require.Len(t, result.EventReceipts, scope.receipts)
 						for _, r := range result.EventReceipts {
 							require.Contains(t, transactionIDs, r.TransactionID)
 							require.Equal(t, "test-app", r.ActingAppID)
@@ -270,16 +270,16 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 							require.Equal(t, bootstrap.OperatorSessionID, e.OperatorSessionID)
 						}
 					case "summary":
-						require.Contains(t, out.String(), map[bool]string{true: "No audit records found", false: fmt.Sprintf("Total records: %d", scope.events+scope.eventReceipts)}[scope.events == 0])
+						require.Contains(t, out.String(), map[bool]string{true: "No audit records found", false: fmt.Sprintf("Total records: %d", scope.events+scope.receipts)}[scope.events == 0])
 					case "report":
 						require.Contains(t, out.String(), fmt.Sprintf("Events:   %d", scope.events))
-						require.Contains(t, out.String(), fmt.Sprintf("Event receipts: %d", scope.eventReceipts))
+						require.Contains(t, out.String(), fmt.Sprintf("Event receipts: %d", scope.receipts))
 						reportBytes, err := os.ReadFile(filepath.Join(outputDir, constants.ComplianceReportFilename))
 						require.NoError(t, err)
 						var result models.AuditReportResponse
 						require.NoError(t, json.Unmarshal(reportBytes, &result))
 						require.Len(t, result.Report.Events, scope.events)
-						require.Len(t, result.Report.EventReceipts, scope.eventReceipts)
+						require.Len(t, result.Report.EventReceipts, scope.receipts)
 						if scope.flag == "app" {
 							require.Equal(t, scope.value, result.Report.ActingAppID)
 						}
@@ -288,7 +288,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 			}
 		})
 	}
-	t.Run("transaction lookup displays canonical event receipt", func(t *testing.T) {
+	t.Run("transaction lookup displays canonical receipt", func(t *testing.T) {
 		cmd := auditEventReceiptsCmdWithConfig(loader, factory, fileFactory)
 		require.NoError(t, cmd.Flags().Set("tx-id", transactionIDs[0]))
 		out := &bytes.Buffer{}
@@ -299,7 +299,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 	t.Run("event pagination and local report include runtime-session records", func(t *testing.T) {
 		events, err := svc.GetAuditStore().ListEvents("", 100, 0)
 		require.NoError(t, err)
-		// One event receipt.recorded event per stage write: EXECUTING and the final event receipt, for each of two transactions.
+		// One receipt.recorded event per stage write: EXECUTING and the final receipt, for each of two transactions.
 		require.Len(t, events, 4)
 		first, err := svc.GetAuditStore().GetEvents(models.AuditScope{ActingAppID: "test-app"}, 1, 0)
 		require.NoError(t, err)

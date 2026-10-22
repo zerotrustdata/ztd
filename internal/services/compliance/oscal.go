@@ -111,7 +111,7 @@ type OSCALSubject struct {
 	Title       string `json:"title,omitempty"`
 }
 
-// OSCALRelevantEvidence anchors evidence to ztd artifacts (event receipts, ledger, LFAA).
+// OSCALRelevantEvidence anchors evidence to ztd artifacts (receipts, ledger, LFAA).
 type OSCALRelevantEvidence struct {
 	Href        string `json:"href"`
 	Description string `json:"description"`

@@ -294,7 +294,7 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 			)
 
 			// Register an operator handler that publishes a result and its
-			// signed final event receipt so the dispatch completes (or fails before
+			// signed final receipt so the dispatch completes (or fails before
 			// publish depending on posture).
 			cmdChannel := pubsub.CmdChannel(op.Id, op.OperatorSessionId)
 			resultsChannel := pubsub.ResultsChannel(op.Id, op.OperatorSessionId)
@@ -308,7 +308,7 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 					return
 				}
 				broker.Publish(resultsChannel, resultWire)
-				publishDispatchTestEventReceipt(t, broker, op, cmdEnv, actuatorPriv, actuatorKeyID)
+				publishDispatchTestReceipt(t, broker, op, cmdEnv, actuatorPriv, actuatorKeyID)
 			})
 			defer unreg()
 

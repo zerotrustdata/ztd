@@ -27,10 +27,10 @@ const (
 	judgeTestModel     = "judge-model"
 )
 
-// judgeScoreFixture returns a scored judge whose governed inference event receipt is
+// judgeScoreFixture returns a scored judge whose governed inference receipt is
 // signed by the Inference runtime's key and binds the digest of the result it
 // was read from, with the anchor set that pins that runtime. The signer is
-// returned so a case can re-sign an event receipt it mutates.
+// returned so a case can re-sign a receipt it mutates.
 func judgeScoreFixture(t *testing.T) (*oracle.AnchorSet, oracletest.Signer, judge.Score) {
 	t.Helper()
 	ledger := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
@@ -38,23 +38,23 @@ func judgeScoreFixture(t *testing.T) (*oracle.AnchorSet, oracletest.Signer, judg
 	require.NoError(t, err)
 	result := oracletest.InferenceResult(t, &operatorv1.InferenceDispatchRequest{Model: judgeTestModel},
 		[]*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: judgeTestScoreFour}}})
-	eventReceipt := ledger.inference(judgeTestTxID)
-	eventReceipt.ResultSummary = result.GetResultDigest()
-	ledger.signer.Resign(t, eventReceipt)
+	receipt := ledger.inference(judgeTestTxID)
+	receipt.ResultSummary = result.GetResultDigest()
+	ledger.signer.Resign(t, receipt)
 	return anchors, ledger.signer, judge.Score{
 		Subject:       judge.SubjectFinalReply,
 		Status:        judge.StatusScored,
 		Value:         4,
 		TransactionID: judgeTestTxID,
-		EventReceipt:  eventReceipt,
+		Receipt:       receipt,
 		Result:        result,
 	}
 }
 
-// TestVerifyJudgeEventReceipt_BindsScoreToSignedResult proves a judge score is
+// TestVerifyJudgeReceipt_BindsScoreToSignedResult proves a judge score is
 // labelled verified only when the result body it was read from is the one the
-// signed event receipt commits to. Each case alters one thing the score depends on.
-func TestVerifyJudgeEventReceipt_BindsScoreToSignedResult(t *testing.T) {
+// signed receipt commits to. Each case alters one thing the score depends on.
+func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 	tests := []struct {
 		name     string
 		mutate   func(t *testing.T, s oracletest.Signer, sc *judge.Score)
@@ -80,15 +80,15 @@ func TestVerifyJudgeEventReceipt_BindsScoreToSignedResult(t *testing.T) {
 			wantErr: constants.ErrInferenceResultDigest,
 		},
 		{
-			name: "event receipt summary is not the result digest",
+			name: "receipt summary is not the result digest",
 			mutate: func(t *testing.T, s oracletest.Signer, sc *judge.Score) {
-				sc.EventReceipt.ResultSummary = "digest-other"
-				s.Resign(t, sc.EventReceipt)
+				sc.Receipt.ResultSummary = "digest-other"
+				s.Resign(t, sc.Receipt)
 			},
 			wantErr: constants.ErrInferenceResultDigest,
 		},
 		{
-			name: "event receipt for another transaction",
+			name: "receipt for another transaction",
 			mutate: func(_ *testing.T, _ oracletest.Signer, sc *judge.Score) {
 				sc.TransactionID = "tx-other"
 			},
@@ -102,33 +102,33 @@ func TestVerifyJudgeEventReceipt_BindsScoreToSignedResult(t *testing.T) {
 			wantErr: constants.ErrMissingRequiredField,
 		},
 		{
-			name: "failed judge with no inference result keeps the event receipt check",
+			name: "failed judge with no inference result keeps the receipt check",
 			mutate: func(_ *testing.T, _ oracletest.Signer, sc *judge.Score) {
 				sc.Status = judge.StatusFailed
 				sc.Result = nil
 			},
 		},
 		{
-			name: "event receipt signature stripped",
+			name: "receipt signature stripped",
 			mutate: func(_ *testing.T, _ oracletest.Signer, sc *judge.Score) {
-				sc.EventReceipt.Signature = ""
+				sc.Receipt.Signature = ""
 			},
 			wantFail: true,
 		},
 		{
-			name: "event receipt signed by a key the anchors do not pin",
+			name: "receipt signed by a key the anchors do not pin",
 			mutate: func(t *testing.T, _ oracletest.Signer, sc *judge.Score) {
-				oracletest.NewSigner(t).Resign(t, sc.EventReceipt)
+				oracletest.NewSigner(t).Resign(t, sc.Receipt)
 			},
 			wantFail: true,
 		},
 		{
-			name: "event receipt from another operator session",
+			name: "receipt from another operator session",
 			mutate: func(t *testing.T, s oracletest.Signer, sc *judge.Score) {
-				for _, stage := range sc.EventReceipt.GetDeterministicStageEvidence() {
+				for _, stage := range sc.Receipt.GetDeterministicStageEvidence() {
 					stage.OperatorSessionId = "session-other"
 				}
-				s.Resign(t, sc.EventReceipt)
+				s.Resign(t, sc.Receipt)
 			},
 			wantErr: constants.ErrEvaluationEvidenceTraceMismatch,
 		},
@@ -139,7 +139,7 @@ func TestVerifyJudgeEventReceipt_BindsScoreToSignedResult(t *testing.T) {
 			tc.mutate(t, signer, &sc)
 
 			inference := AgentTraceRuntime{OperatorID: evidenceInferenceOperatorID, SessionID: evidenceInferenceSessionID}
-			err := verifyJudgeEventReceipt(anchors, inference, sc)
+			err := verifyJudgeReceipt(anchors, inference, sc)
 			switch {
 			case tc.wantErr != nil:
 				require.ErrorIs(t, err, tc.wantErr)

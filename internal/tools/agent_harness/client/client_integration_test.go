@@ -501,11 +501,11 @@ func TestClient_do_Verbose(t *testing.T) {
 	}
 }
 
-// resumedEventReceiptJSON returns the canonical signed event receipt of txHash's resumed
+// resumedReceiptJSON returns the canonical signed receipt of txHash's resumed
 // transaction, as the Gateway embeds it in approval.completed.
-func resumedEventReceiptJSON(t *testing.T, txHash string) json.RawMessage {
+func resumedReceiptJSON(t *testing.T, txHash string) json.RawMessage {
 	t.Helper()
-	eventReceiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
+	receiptJSON, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
 		TransactionId:   "transaction-" + txHash,
 		TransactionHash: txHash,
 		SignerKeyId:     "warden-key-resumed",
@@ -514,18 +514,18 @@ func resumedEventReceiptJSON(t *testing.T, txHash string) json.RawMessage {
 		Signature:       "signature-resumed",
 	})
 	require.NoError(t, err)
-	return eventReceiptJSON
+	return receiptJSON
 }
 
-// approvalCompletedSSE serves one approval.completed SSE frame carrying event receipt.
-func approvalCompletedSSE(t *testing.T, w http.ResponseWriter, userID, txHash string, eventReceipt json.RawMessage) {
+// approvalCompletedSSE serves one approval.completed SSE frame carrying receipt.
+func approvalCompletedSSE(t *testing.T, w http.ResponseWriter, userID, txHash string, receipt json.RawMessage) {
 	t.Helper()
 	w.Header().Set("Content-Type", "text/event-stream")
 	eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-		Type:         constants.SSEEventTypeApprovalCompleted,
-		UserID:       userID,
-		TxHash:       txHash,
-		EventReceipt: eventReceipt,
+		Type:    constants.SSEEventTypeApprovalCompleted,
+		UserID:  userID,
+		TxHash:  txHash,
+		Receipt: receipt,
 	})
 	require.NoError(t, err)
 	envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, Event: eventPayload})
@@ -543,7 +543,7 @@ func TestClient_ApprovalSubscription_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
-			approvalCompletedSSE(t, w, userID, txHash, resumedEventReceiptJSON(t, txHash))
+			approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, txHash))
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(models.ApprovalStatusResponse{
@@ -571,9 +571,9 @@ func TestClient_ApprovalSubscription_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer sub.Close()
 
-	eventReceipt, err := client.WaitForApproval(ctx, sub, txHash, userID, ApprovalDecisionApprove)
+	receipt, err := client.WaitForApproval(ctx, sub, txHash, userID, ApprovalDecisionApprove)
 	require.NoError(t, err)
-	assert.Equal(t, txHash, eventReceipt.GetTransactionHash())
+	assert.Equal(t, txHash, receipt.GetTransactionHash())
 }
 
 func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
@@ -590,7 +590,7 @@ func TestClient_ApprovalSubscription_TimeoutNoMatchingEvent(t *testing.T) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
 			sseCLISessionID = r.Header.Get(constants.HeaderCLISessionID)
-			approvalCompletedSSE(t, w, userID, sentTxHash, resumedEventReceiptJSON(t, sentTxHash))
+			approvalCompletedSSE(t, w, userID, sentTxHash, resumedReceiptJSON(t, sentTxHash))
 			// Hold the stream open so Wait ends on its timeout, not on a dropped stream.
 			<-r.Context().Done()
 		default:

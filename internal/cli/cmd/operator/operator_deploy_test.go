@@ -316,7 +316,7 @@ func TestOperatorDeployStagesFleetBeforeOneApprovalAndReportsSessions(t *testing
 	dirs := operatorDeployDirs(remoteDir, 2)
 
 	pending := models.PlatformEnrollmentPendingResponse{}
-	response := models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "batch-event_receipt"}
+	response := models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "batch-receipt"}
 	for i := range dirs {
 		id := fmt.Sprintf("req-%d", i+1)
 		pending.Requests = append(pending.Requests, models.PlatformEnrollmentPendingRequest{RequestID: id, Fingerprints: testWorkerFingerprints})
@@ -388,8 +388,8 @@ func TestOperatorDeployDoesNotCallASubscriptionOnAStoppedOperatorReady(t *testin
 	})
 	require.NoError(t, err)
 	decisionBody, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{
-		EventReceiptID: "batch-event_receipt",
-		Requests:       []models.PlatformEnrollmentDecisionResponse{{RequestID: "req-1", State: models.PlatformEnrollmentStateApproved}},
+		ReceiptID: "batch-receipt",
+		Requests:  []models.PlatformEnrollmentDecisionResponse{{RequestID: "req-1", State: models.PlatformEnrollmentStateApproved}},
 	})
 	require.NoError(t, err)
 
@@ -728,7 +728,7 @@ func (g echoingGateway) Post(path string, body interface{}) ([]byte, error) {
 }
 
 func approvedDecision(req models.PlatformEnrollmentBatchDecisionRequest) ([]byte, error) {
-	resp := models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "batch-event_receipt"}
+	resp := models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "batch-receipt"}
 	for _, target := range req.Requests {
 		resp.Requests = append(resp.Requests, models.PlatformEnrollmentDecisionResponse{RequestID: target.RequestID, State: models.PlatformEnrollmentStateApproved})
 	}

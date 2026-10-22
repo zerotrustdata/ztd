@@ -53,7 +53,7 @@ When the plugin is enabled, Claude Code asks for its options. `/config` changes 
 | --- | --- | --- |
 | `ztd_root` | (required) | Directory that contains `.ztd/`, where you ran `ztd gw start` and enrolled. ztd resolves credentials from its working directory, so the bridge runs from here. |
 | `ztd_binary` | `ztd` | Path to the `ztd` binary, or a name on `PATH`. |
-| `app_name` | `claude` | Enrolled application identity. Event receipts record it as `spiffe://ztd.local/app/<app_name>`. |
+| `app_name` | `claude` | Enrolled application identity. Receipts record it as `spiffe://ztd.local/app/<app_name>`. |
 
 Install the plugin at project scope (`claude plugin install ztd@ztd --scope project`) when only some repositories should
 be governed. Installed at user scope, it governs every session.

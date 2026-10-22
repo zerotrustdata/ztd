@@ -24,7 +24,7 @@ import (
 )
 
 // SignerStoreService provides trusted signer CRUD operations and resolves the
-// verification key for EventReceipts by the executing Operator's identity.
+// verification key for ActionReceipts by the executing Operator's identity.
 type SignerStoreService struct {
 	db     *sqliteutil.DB
 	logger *slog.Logger
@@ -37,10 +37,10 @@ type SignerStoreService struct {
 	embeddedActuatorKeyID string
 }
 
-// EventReceiptSignerResolver resolves the verification key for an EventReceipt by
+// ReceiptSignerResolver resolves the verification key for an ActionReceipt by
 // the identity of the Operator that executed it. SignerStoreService implements it.
-type EventReceiptSignerResolver interface {
-	EventReceiptSignerKey(ctx context.Context, operatorID string, eventReceipt *operatorv1.EventReceipt) (ed25519.PublicKey, error)
+type ReceiptSignerResolver interface {
+	ReceiptSignerKey(ctx context.Context, operatorID string, receipt *operatorv1.ActionReceipt) (ed25519.PublicKey, error)
 }
 
 // NewSignerStoreService creates a new signer store service.
@@ -159,19 +159,19 @@ func (s *SignerStoreService) HasTrustedSigners(ctx context.Context) (bool, error
 	return len(docs) > 0, nil
 }
 
-// EventReceiptSignerKey resolves the verification key for an event receipt executed by the
+// ReceiptSignerKey resolves the verification key for a receipt executed by the
 // Operator identified by operatorID. The key comes from the Gateway's own
 // actuator key (embedded Operator) or from the key bound on the Operator's
-// document at enrollment. The event receipt's own signer_key_id is never trusted:
+// document at enrollment. The receipt's own signer_key_id is never trusted:
 // it must equal the bound key id.
-func (s *SignerStoreService) EventReceiptSignerKey(ctx context.Context, operatorID string, eventReceipt *operatorv1.EventReceipt) (ed25519.PublicKey, error) {
+func (s *SignerStoreService) ReceiptSignerKey(ctx context.Context, operatorID string, receipt *operatorv1.ActionReceipt) (ed25519.PublicKey, error) {
 	boundPub, boundKeyID, err := s.boundActuatorKey(ctx, operatorID)
 	if err != nil {
-		return nil, fmt.Errorf("signer store: event receipt signer key: %w", err)
+		return nil, fmt.Errorf("signer store: receipt signer key: %w", err)
 	}
-	if eventReceipt.GetSignerKeyId() != boundKeyID {
-		return nil, fmt.Errorf("signer store: event receipt signer key: %w: signer %q, bound %q",
-			constants.ErrEventReceiptSignerNotBound, eventReceipt.GetSignerKeyId(), boundKeyID)
+	if receipt.GetSignerKeyId() != boundKeyID {
+		return nil, fmt.Errorf("signer store: receipt signer key: %w: signer %q, bound %q",
+			constants.ErrReceiptSignerNotBound, receipt.GetSignerKeyId(), boundKeyID)
 	}
 	return boundPub, nil
 }
@@ -181,7 +181,7 @@ func (s *SignerStoreService) EventReceiptSignerKey(ctx context.Context, operator
 func (s *SignerStoreService) boundActuatorKey(ctx context.Context, operatorID string) (ed25519.PublicKey, string, error) {
 	if operatorID == string(constants.DocIDEmbeddedOperator) {
 		if len(s.embeddedActuatorPub) != ed25519.PublicKeySize || s.embeddedActuatorKeyID == "" {
-			return nil, "", fmt.Errorf("embedded operator: %w", constants.ErrEventReceiptSignerNotBound)
+			return nil, "", fmt.Errorf("embedded operator: %w", constants.ErrReceiptSignerNotBound)
 		}
 		return s.embeddedActuatorPub, s.embeddedActuatorKeyID, nil
 	}
@@ -191,21 +191,21 @@ func (s *SignerStoreService) boundActuatorKey(ctx context.Context, operatorID st
 		return nil, "", fmt.Errorf("load operator %s: %w", operatorID, err)
 	}
 	if doc == nil {
-		return nil, "", fmt.Errorf("operator %s: %w", operatorID, constants.ErrEventReceiptSignerNotBound)
+		return nil, "", fmt.Errorf("operator %s: %w", operatorID, constants.ErrReceiptSignerNotBound)
 	}
 	operatorDoc, err := models.OperatorDocumentFromStore(doc)
 	if err != nil {
 		return nil, "", fmt.Errorf("decode operator %s: %w", operatorID, err)
 	}
 	if operatorDoc.GetActuatorPublicKey() == "" || operatorDoc.GetActuatorKeyId() == "" {
-		return nil, "", fmt.Errorf("operator %s: %w", operatorID, constants.ErrEventReceiptSignerNotBound)
+		return nil, "", fmt.Errorf("operator %s: %w", operatorID, constants.ErrReceiptSignerNotBound)
 	}
 	pub, err := models.DecodeActuatorPublicKey(operatorDoc.GetActuatorPublicKey())
 	if err != nil {
 		return nil, "", fmt.Errorf("operator %s: %w", operatorID, err)
 	}
 	if hex.EncodeToString(pub) != operatorDoc.GetActuatorKeyId() {
-		return nil, "", fmt.Errorf("operator %s: %w: key id does not match bound key", operatorID, constants.ErrEventReceiptSignerNotBound)
+		return nil, "", fmt.Errorf("operator %s: %w: key id does not match bound key", operatorID, constants.ErrReceiptSignerNotBound)
 	}
 	return pub, operatorDoc.GetActuatorKeyId(), nil
 }

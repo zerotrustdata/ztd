@@ -151,10 +151,10 @@
     - [ProviderBoundaryObservationPhase](#ztd-eval-v1-ProviderBoundaryObservationPhase)
     - [ProviderHardwareMetricAvailability](#ztd-eval-v1-ProviderHardwareMetricAvailability)
     - [PublicActivityAvailability](#ztd-eval-v1-PublicActivityAvailability)
-    - [PublicEventReceiptStatus](#ztd-eval-v1-PublicEventReceiptStatus)
     - [PublicEvidenceSource](#ztd-eval-v1-PublicEvidenceSource)
     - [PublicFinishState](#ztd-eval-v1-PublicFinishState)
     - [PublicGradeExplanationCode](#ztd-eval-v1-PublicGradeExplanationCode)
+    - [PublicReceiptStatus](#ztd-eval-v1-PublicReceiptStatus)
     - [PublicReleaseBasis](#ztd-eval-v1-PublicReleaseBasis)
     - [PublicToolScoreDimension](#ztd-eval-v1-PublicToolScoreDimension)
     - [PublicUnavailableReason](#ztd-eval-v1-PublicUnavailableReason)
@@ -397,8 +397,8 @@ ConformanceCaseEvidence is the raw evidence for one case. It holds no verdict.
 | target_path | [string](#string) |  | relative to the canary root |
 | marker | [string](#string) |  |  |
 | observations | [ConformanceObservation](#ztd-eval-v1-ConformanceObservation) | repeated | two for the replay case, else one |
-| sentinel_before | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
-| sentinel_after | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
+| sentinel_before | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| sentinel_after | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
 | canary_before | [CanaryManifest](#ztd-eval-v1-CanaryManifest) |  |  |
 | canary_after | [CanaryManifest](#ztd-eval-v1-CanaryManifest) |  |  |
 | a2a_calls | [ConformanceA2ACall](#ztd-eval-v1-ConformanceA2ACall) | repeated | calls the stub received during this case |
@@ -432,7 +432,7 @@ ConformanceCaseEvidence is the raw evidence for one case. It holds no verdict.
 
 ### ConformanceObservation
 ConformanceObservation is what one drive of one ingress returned. Exactly
-one of event receipt / rejection / refusal / suspended_tx_hash / untyped_body is
+one of receipt / rejection / refusal / suspended_tx_hash / untyped_body is
 set, matching kind. NOT_RUN kinds carry no outcome fields.
 
 
@@ -440,7 +440,7 @@ set, matching kind. NOT_RUN kinds carry no outcome fields.
 | ----- | ---- | ----- | ----------- |
 | kind | [ConformanceObservationKind](#ztd-eval-v1-ConformanceObservationKind) |  |  |
 | http_status | [int32](#int32) |  |  |
-| event_receipt | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
+| receipt | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
 | rejection | [ztd.operator.v1.GovernanceRejection](#ztd-operator-v1-GovernanceRejection) |  |  |
 | refusal | [ztd.operator.v1.IngressRefusal](#ztd-operator-v1-IngressRefusal) |  |  |
 | suspended_tx_hash | [string](#string) |  |  |
@@ -461,8 +461,8 @@ executor whose commitment links must be adjacent.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | executor | [string](#string) |  |  |
-| first | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
-| second | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
+| first | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
+| second | [ztd.operator.v1.ActionReceipt](#ztd-operator-v1-ActionReceipt) |  |  |
 
 
 
@@ -1175,11 +1175,11 @@ EvaluationVerificationReport independently verifies one run or assignment.
 | transaction_id | [string](#string) |  |  |
 | operator_id | [string](#string) |  |  |
 | operator_session_id | [string](#string) |  |  |
-| event_receipt_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
+| receipt_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | persistence_attestation_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | policy_decision | [string](#string) |  |  |
 | effect_observation_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
-| action_type | [string](#string) |  | The registry governance class the signed event receipt names (INFERENCE, FS_READ, FILE_EDIT, ...). |
+| action_type | [string](#string) |  | The registry governance class the signed receipt names (INFERENCE, FS_READ, FILE_EDIT, ...). |
 
 
 
@@ -1364,7 +1364,7 @@ ModelInferenceRecord captures one governed scored inference call.
 | retry_count | [uint32](#uint32) | optional |  |
 | finish_reason | [string](#string) |  |  |
 | privacy_attested | [bool](#bool) |  |  |
-| governed_event_receipt_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
+| governed_receipt_ref | [ztd.compliance.v1.ComplianceEvidenceReference](#ztd-compliance-v1-ComplianceEvidenceReference) |  |  |
 | result_digest | [string](#string) |  |  |
 | tools_declared | [string](#string) | repeated | Tool names as sent to the provider for this call, captured at the provider boundary. tools_declared_reported distinguishes &#34;none declared&#34; from &#34;not reported&#34;. |
 | tools_declared_reported | [bool](#bool) |  |  |
@@ -1794,7 +1794,7 @@ to one governed inference provider attempt.
 | ----- | ---- | ----- | ----------- |
 | action_label | [string](#string) |  |  |
 | reported_policy_outcome | [EvaluationPolicyDecisionOutcome](#ztd-eval-v1-EvaluationPolicyDecisionOutcome) |  |  |
-| event_receipt_status | [PublicEventReceiptStatus](#ztd-eval-v1-PublicEventReceiptStatus) |  |  |
+| receipt_status | [PublicReceiptStatus](#ztd-eval-v1-PublicReceiptStatus) |  |  |
 | evidence_source | [PublicEvidenceSource](#ztd-eval-v1-PublicEvidenceSource) |  |  |
 
 
@@ -2470,7 +2470,7 @@ ConformanceApprovalDecision is the human decision a suspending case asks for.
 | CONFORMANCE_FAILURE_CLASS_SIGNATURE_INVALID | 5 |  |
 | CONFORMANCE_FAILURE_CLASS_ANCHOR_UNKNOWN | 6 |  |
 | CONFORMANCE_FAILURE_CLASS_STAGE_CHAIN_INVALID | 7 |  |
-| CONFORMANCE_FAILURE_CLASS_EVENT_RECEIPT_UNCLASSIFIABLE | 8 |  |
+| CONFORMANCE_FAILURE_CLASS_RECEIPT_UNCLASSIFIABLE | 8 |  |
 | CONFORMANCE_FAILURE_CLASS_LEDGER_GAP | 9 |  |
 | CONFORMANCE_FAILURE_CLASS_UNCLAIMED_EXECUTION | 10 |  |
 | CONFORMANCE_FAILURE_CLASS_CANARY_DELTA | 11 |  |
@@ -2490,7 +2490,7 @@ ConformanceApprovalDecision is the human decision a suspending case asks for.
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED | 0 |  |
-| CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT | 1 | success: signed event receipt returned |
+| CONFORMANCE_OBSERVATION_KIND_RECEIPT | 1 | success: signed receipt returned |
 | CONFORMANCE_OBSERVATION_KIND_REJECTION | 2 | GovernanceRejection returned |
 | CONFORMANCE_OBSERVATION_KIND_REFUSAL | 3 | IngressRefusal returned |
 | CONFORMANCE_OBSERVATION_KIND_SUSPENDED | 4 | approval pending, tx hash returned |
@@ -2523,7 +2523,7 @@ ConformanceApprovalDecision is the human decision a suspending case asks for.
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | CONTAINMENT_BREACH_CLASS_UNSPECIFIED | 0 |  |
-| CONTAINMENT_BREACH_CLASS_UNCLAIMED_EXECUTION | 1 | a ledger link no verified tool-call event receipt claims |
+| CONTAINMENT_BREACH_CLASS_UNCLAIMED_EXECUTION | 1 | a ledger link no verified tool-call receipt claims |
 | CONTAINMENT_BREACH_CLASS_CANARY_MODIFIED | 2 | a canary file differs from its seeded bytes |
 | CONTAINMENT_BREACH_CLASS_TOKEN_EXFILTRATED | 3 | the exfil token left in a payload or the reply |
 
@@ -2562,7 +2562,7 @@ ConformanceApprovalDecision is the human decision a suspending case asks for.
 | EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED | 9 |  |
 | EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_POLICY_REJECTED | 10 |  |
 | EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_UNAVAILABLE | 11 |  |
-| EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE | 12 | The attempt&#39;s governed tool evidence failed verification (an event receipt that does not verify against the Data Operator anchor, or a ledger bracket that does not connect). The model is never graded on such an attempt. |
+| EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE | 12 | The attempt&#39;s governed tool evidence failed verification (a receipt that does not verify against the Data Operator anchor, or a ledger bracket that does not connect). The model is never graded on such an attempt. |
 
 
 
@@ -2769,7 +2769,7 @@ derivable from, so catalog lint can prove a prompt is answerable.
 | ---- | ------ | ----------- |
 | EVALUATION_OBSERVATION_SOURCE_UNSPECIFIED | 0 |  |
 | EVALUATION_OBSERVATION_SOURCE_TARGET_OBSERVER | 1 |  |
-| EVALUATION_OBSERVATION_SOURCE_OPERATOR_EVENT_RECEIPT | 2 |  |
+| EVALUATION_OBSERVATION_SOURCE_OPERATOR_RECEIPT | 2 |  |
 | EVALUATION_OBSERVATION_SOURCE_GATEWAY_ADMISSION | 3 |  |
 | EVALUATION_OBSERVATION_SOURCE_HARNESS_EXCHANGE | 4 |  |
 
@@ -3068,19 +3068,6 @@ governed provider attempt on the remote observer operator.
 
 
 
-<a name="ztd-eval-v1-PublicEventReceiptStatus"></a>
-
-### PublicEventReceiptStatus
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| PUBLIC_EVENT_RECEIPT_STATUS_UNSPECIFIED | 0 |  |
-| PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE | 1 |  |
-| PUBLIC_EVENT_RECEIPT_STATUS_REPORTED | 2 |  |
-
-
-
 <a name="ztd-eval-v1-PublicEvidenceSource"></a>
 
 ### PublicEvidenceSource
@@ -3124,6 +3111,19 @@ governed provider attempt on the remote observer operator.
 | PUBLIC_GRADE_EXPLANATION_CODE_UNSUPPORTED | 4 |  |
 | PUBLIC_GRADE_EXPLANATION_CODE_INVALID_EVIDENCE | 5 |  |
 | PUBLIC_GRADE_EXPLANATION_CODE_GRADER_UNAVAILABLE | 6 |  |
+
+
+
+<a name="ztd-eval-v1-PublicReceiptStatus"></a>
+
+### PublicReceiptStatus
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| PUBLIC_RECEIPT_STATUS_UNSPECIFIED | 0 |  |
+| PUBLIC_RECEIPT_STATUS_UNAVAILABLE | 1 |  |
+| PUBLIC_RECEIPT_STATUS_REPORTED | 2 |  |
 
 
 

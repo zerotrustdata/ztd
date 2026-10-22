@@ -79,7 +79,7 @@ Every governed mutation is represented as a canonical protobuf `GovernanceEnvelo
 | **L2 Consensus** | Gateway (coord.), Operator (verify) | $K$-of-$N$ Ed25519 quorum signature check over `<tx_hash>\|<decision>`. |
 | **L3 Notary** | Gateway (coord.), Operator (verify) | Human authorization gate (WebAuthn, or signed CLI cryptographic proof for outbound Operators). |
 | **L4 Warden** | Executing Operator | Pre-dispatch gate: nonce reservation, TTL expiry, hash recalculation, state-root check, and posture-required L2/L3 proofs. |
-| **L5 Actuator** | Executing Operator | Sole execution boundary: signs `EXECUTING`/`COMPLETED`/`FAILED` event receipts, mints short-lived capabilities, dispatches handler, appends to local commitment ledger. |
+| **L5 Actuator** | Executing Operator | Sole execution boundary: signs `EXECUTING`/`COMPLETED`/`FAILED` receipts, mints short-lived capabilities, dispatches handler, appends to local commitment ledger. |
 
 #### Governance Postures
 Set via `--posture doctrine|consensus|ratify|notary` at Gateway startup (immutable at runtime). Posture determines whether L2/L3 gate execution or are merely audited. **L1, L4, and L5 are unconditionally enforced.**
@@ -100,7 +100,7 @@ Do not conflate these three runtime execution modes:
 ### Storage: Local-First Audit Architecture (LFAA)
 
 Each executing runtime (Gateway, each Operator) is strictly authoritative for its own SQLite audit DB (which holds the execution events), and state root under `.ztd/`.
-- Gateway-mirrored event receipts are best-effort projections only — never treat them as authoritative over an Operator's local store.
+- Gateway-mirrored receipts are best-effort projections only — never treat them as authoritative over an Operator's local store.
 - All `.ztd/` filesystem I/O **must** route through `RuntimeFileService` (`internal/services/fs/`). Never use raw `os` file operations or hardcoded path literals.
 
 ---
@@ -157,7 +157,7 @@ These rules prevent frequent architectural, security, and runtime regressions:
    - Never inspect or match rendered error strings (`err.Error() == ...`); always use `errors.Is` or `errors.As`.
 
 4. **Strictly Typed Wire Contracts**:
-   - Known schemas (envelopes, proofs, event receipts, HTTP payloads) must remain strongly typed.
+   - Known schemas (envelopes, proofs, receipts, HTTP payloads) must remain strongly typed.
    - Never use `google.protobuf.Any` or `map[string]any` / `map[string]interface{}` when a typed contract exists or can be defined.
 
 5. **Filesystem Isolation**:

@@ -5,15 +5,15 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-// Package oracletest builds signed action event receipts that pass oracle.VerifyEventReceipt,
+// Package oracletest builds signed action receipts that pass oracle.VerifyReceipt,
 // and the complete inference results they bind, as inputs to verifier tests in
 // the oracle and its callers. It is imported only from _test.go files.
 //
-// Each Signer is a fresh test key. An event receipt built here shows only that a
+// Each Signer is a fresh test key. A receipt built here shows only that a
 // verifier accepts well-formed, correctly signed bytes and rejects tampered
 // ones; it is never Operator output. An end-to-end test that needs an
-// Operator's event receipts must run a real Operator and read them from its audit
-// store. It must not sign event receipts with a Signer to stand in for that Operator.
+// Operator's receipts must run a real Operator and read them from its audit
+// store. It must not sign receipts with a Signer to stand in for that Operator.
 package oracletest
 
 import (
@@ -35,15 +35,15 @@ const (
 	persistedAtUnixMs = 1_700_000_002_000
 )
 
-// Signer holds one actuator key and signs event receipts the way an L5 actuator does.
+// Signer holds one actuator key and signs receipts the way an L5 actuator does.
 type Signer struct {
 	Priv  ed25519.PrivateKey
 	Pub   ed25519.PublicKey
 	KeyID string
 }
 
-// EventReceiptOpts names the identity and posture a built event receipt carries.
-type EventReceiptOpts struct {
+// ReceiptOpts names the identity and posture a built receipt carries.
+type ReceiptOpts struct {
 	TransactionID, OperatorID, SessionID, ActionType string
 	ResultSummary                                    string
 	L2                                               operatorv1.L2Status
@@ -65,74 +65,74 @@ func (s Signer) Anchor(runtimeID string) *evalv1.ConformanceAnchor {
 	return &evalv1.ConformanceAnchor{RuntimeId: runtimeID, KeyId: s.KeyID, PublicKeyHex: hex.EncodeToString(s.Pub)}
 }
 
-// Executed returns a COMPLETED event receipt whose commitment link is prior -> hash.
-func (s Signer) Executed(t testing.TB, opts EventReceiptOpts, prior, hash string) *operatorv1.EventReceipt {
+// Executed returns a COMPLETED receipt whose commitment link is prior -> hash.
+func (s Signer) Executed(t testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.ActionReceipt {
 	t.Helper()
-	eventReceipt := s.newEventReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
-	eventReceipt.StateRootBefore = rootBefore
-	eventReceipt.StateRootAfter = rootAfter
-	eventReceipt.DeterministicStageEvidence = executedStages(opts, s.KeyID, prior, hash,
+	receipt := s.newReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
+	receipt.StateRootBefore = rootBefore
+	receipt.StateRootAfter = rootAfter
+	receipt.DeterministicStageEvidence = executedStages(opts, s.KeyID, prior, hash,
 		operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED)
-	s.Resign(t, eventReceipt)
-	return eventReceipt
+	s.Resign(t, receipt)
+	return receipt
 }
 
-// ExecutionFailed returns a FAILED event receipt whose handler ran and failed: it
+// ExecutionFailed returns a FAILED receipt whose handler ran and failed: it
 // carries a failed L5 execution stage and still appends the commitment link
 // prior -> hash.
-func (s Signer) ExecutionFailed(t testing.TB, opts EventReceiptOpts, prior, hash string) *operatorv1.EventReceipt {
+func (s Signer) ExecutionFailed(t testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.ActionReceipt {
 	t.Helper()
-	eventReceipt := s.newEventReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
-	eventReceipt.FailureCode = operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
-	eventReceipt.StateRootBefore = rootBefore
-	eventReceipt.StateRootAfter = rootAfter
-	eventReceipt.DeterministicStageEvidence = executedStages(opts, s.KeyID, prior, hash,
+	receipt := s.newReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
+	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
+	receipt.StateRootBefore = rootBefore
+	receipt.StateRootAfter = rootAfter
+	receipt.DeterministicStageEvidence = executedStages(opts, s.KeyID, prior, hash,
 		operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED)
-	s.Resign(t, eventReceipt)
-	return eventReceipt
+	s.Resign(t, receipt)
+	return receipt
 }
 
-// Rejected returns a signed GOVERNANCE_REJECTED event receipt with code and no commitment.
-func (s Signer) Rejected(t testing.TB, opts EventReceiptOpts, code operatorv1.GovernanceRejectionCode) *operatorv1.EventReceipt {
+// Rejected returns a signed GOVERNANCE_REJECTED receipt with code and no commitment.
+func (s Signer) Rejected(t testing.TB, opts ReceiptOpts, code operatorv1.GovernanceRejectionCode) *operatorv1.ActionReceipt {
 	t.Helper()
-	eventReceipt := s.newEventReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
-	eventReceipt.FailureCode = operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
-	eventReceipt.RejectionCode = code
+	receipt := s.newReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
+	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
+	receipt.RejectionCode = code
 	l4 := stage(opts, "L4", operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION,
 		operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, "")
-	eventReceipt.DeterministicStageEvidence = []*operatorv1.DeterministicStageEvidence{l4}
-	s.Resign(t, eventReceipt)
-	return eventReceipt
+	receipt.DeterministicStageEvidence = []*operatorv1.DeterministicStageEvidence{l4}
+	s.Resign(t, receipt)
+	return receipt
 }
 
-// Resign re-signs an event receipt after a test mutates it (signature and attestation).
-func (s Signer) Resign(t testing.TB, eventReceipt *operatorv1.EventReceipt) {
+// Resign re-signs a receipt after a test mutates it (signature and attestation).
+func (s Signer) Resign(t testing.TB, receipt *operatorv1.ActionReceipt) {
 	t.Helper()
-	eventReceipt.FinalPersistenceAttestation = nil
-	payload, err := governance.CanonicalizeEventReceipt(eventReceipt)
+	receipt.FinalPersistenceAttestation = nil
+	payload, err := governance.CanonicalizeActionReceipt(receipt)
 	if err != nil {
-		t.Fatalf("canonicalize event_receipt: %v", err)
+		t.Fatalf("canonicalize receipt: %v", err)
 	}
-	eventReceipt.Signature = hex.EncodeToString(ed25519.Sign(s.Priv, payload))
+	receipt.Signature = hex.EncodeToString(ed25519.Sign(s.Priv, payload))
 
-	attestation := &operatorv1.EventReceiptPersistenceAttestation{
-		TransactionId:               eventReceipt.TransactionId,
-		EventReceiptSignatureDigest: governance.SignatureDigest([]string{eventReceipt.Signature}),
-		PersistedAtUnixMs:           persistedAtUnixMs,
-		AuditRecordId:               eventReceipt.TransactionId,
-		SignerKeyId:                 eventReceipt.SignerKeyId,
+	attestation := &operatorv1.ReceiptPersistenceAttestation{
+		TransactionId:          receipt.TransactionId,
+		ReceiptSignatureDigest: governance.SignatureDigest([]string{receipt.Signature}),
+		PersistedAtUnixMs:      persistedAtUnixMs,
+		AuditRecordId:          receipt.TransactionId,
+		SignerKeyId:            receipt.SignerKeyId,
 	}
-	attestationPayload, err := governance.CanonicalizeEventReceiptPersistenceAttestation(attestation)
+	attestationPayload, err := governance.CanonicalizeReceiptPersistenceAttestation(attestation)
 	if err != nil {
 		t.Fatalf("canonicalize persistence attestation: %v", err)
 	}
 	attestation.Signature = hex.EncodeToString(ed25519.Sign(s.Priv, attestationPayload))
-	eventReceipt.FinalPersistenceAttestation = attestation
+	receipt.FinalPersistenceAttestation = attestation
 }
 
 // InferenceResult returns the complete result an Inference Operator returns for
 // req: it echoes the request's campaign binding and model identity, answers
-// with parts and carries its computed result digest. An event receipt for it binds
+// with parts and carries its computed result digest. A receipt for it binds
 // that digest as its result summary.
 func InferenceResult(t testing.TB, req *operatorv1.InferenceDispatchRequest, parts []*operatorv1.InferenceResponsePart) *operatorv1.InferenceResult {
 	t.Helper()
@@ -161,12 +161,12 @@ func InferenceResult(t testing.TB, req *operatorv1.InferenceDispatchRequest, par
 	return result
 }
 
-func (s Signer) newEventReceipt(t testing.TB, opts EventReceiptOpts, status operatorv1.ExecutionStatus) *operatorv1.EventReceipt {
+func (s Signer) newReceipt(t testing.TB, opts ReceiptOpts, status operatorv1.ExecutionStatus) *operatorv1.ActionReceipt {
 	t.Helper()
 	if opts.TransactionID == "" || opts.OperatorID == "" || opts.ActionType == "" {
-		t.Fatalf("event receipt opts need transaction, operator and action type")
+		t.Fatalf("receipt opts need transaction, operator and action type")
 	}
-	return &operatorv1.EventReceipt{
+	return &operatorv1.ActionReceipt{
 		TransactionId:    opts.TransactionID,
 		TransactionHash:  transactionHash(opts.TransactionID),
 		Status:           status,
@@ -179,11 +179,11 @@ func (s Signer) newEventReceipt(t testing.TB, opts EventReceiptOpts, status oper
 	}
 }
 
-// executedStages returns the seven-stage chain of an executed event receipt, in the
+// executedStages returns the seven-stage chain of an executed receipt, in the
 // order governance.ValidateDeterministicProtocolChain requires. l5 is the
-// outcome of the L5 execution stage: COMPLETED for an executed event receipt, FAILED
+// outcome of the L5 execution stage: COMPLETED for an executed receipt, FAILED
 // for an execution failure.
-func executedStages(opts EventReceiptOpts, signerKeyID, prior, hash string, l5 operatorv1.DeterministicStageOutcome) []*operatorv1.DeterministicStageEvidence {
+func executedStages(opts ReceiptOpts, signerKeyID, prior, hash string, l5 operatorv1.DeterministicStageOutcome) []*operatorv1.DeterministicStageEvidence {
 	l5Stage := stage(opts, "L5", operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION, l5, "")
 	l5Stage.StateRootBefore = rootBefore
 	l5Stage.StateRootAfter = rootAfter
@@ -201,7 +201,7 @@ func executedStages(opts EventReceiptOpts, signerKeyID, prior, hash string, l5 o
 			l3Outcome(opts.L3), "L4"),
 		stage(opts, "L4", operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION,
 			operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_VERIFIED, "L5"),
-		stage(opts, "PERSIST", operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_EVENT_RECEIPT_PERSISTENCE,
+		stage(opts, "PERSIST", operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_RECEIPT_PERSISTENCE,
 			operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED, "L5"),
 		commit,
 		l5Stage,
@@ -210,7 +210,7 @@ func executedStages(opts EventReceiptOpts, signerKeyID, prior, hash string, l5 o
 
 // stage builds one stage whose id is "<transaction>:<suffix>". parent names the
 // suffix of the parent stage, or is empty for a root.
-func stage(opts EventReceiptOpts, suffix string, kind operatorv1.DeterministicStageKind, outcome operatorv1.DeterministicStageOutcome, parent string) *operatorv1.DeterministicStageEvidence {
+func stage(opts ReceiptOpts, suffix string, kind operatorv1.DeterministicStageKind, outcome operatorv1.DeterministicStageOutcome, parent string) *operatorv1.DeterministicStageEvidence {
 	evidence := &operatorv1.DeterministicStageEvidence{
 		StageId:           stageID(opts.TransactionID, suffix),
 		Kind:              kind,

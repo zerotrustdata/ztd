@@ -39,11 +39,11 @@ export const RUN_KINDS: readonly RunKind[] = [
 
 export type EvalVerificationStatus =
   | 'projection_validated'
-  | 'event_receipt_verification_not_applicable'
+  | 'receipt_verification_not_applicable'
   | 'verified';
 
 export const EVAL_VERIFICATION_STATUSES: readonly EvalVerificationStatus[] = [
-  'projection_validated', 'event_receipt_verification_not_applicable', 'verified',
+  'projection_validated', 'receipt_verification_not_applicable', 'verified',
 ] as const;
 
 export type MeasurementStatus =

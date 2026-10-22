@@ -14,7 +14,7 @@ Before contributing, review the core platform architecture:
     - **L2 Consensus (L2Consensus)**: Multi-agent consensus via Ed25519 signatures.
     - **L3 Notary (L3Notary)**: Human-in-the-loop authorization through WebAuthn or signed CLI proofs.
     - **L4 Warden (L4Warden)**: Pre-dispatch verification gate (transaction hash, expiry, nonce, state root).
-    - **L5 Actuator (L5Actuator)**: Execution boundary issuing signed `EventReceipts`.
+    - **L5 Actuator (L5Actuator)**: Execution boundary issuing signed `ActionReceipts`.
 
 ## Finding Work
 
