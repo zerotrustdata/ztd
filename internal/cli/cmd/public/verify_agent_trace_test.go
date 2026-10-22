@@ -30,12 +30,12 @@ import (
 func sealedBracketOnlyTrace(t *testing.T) []byte {
 	t.Helper()
 	data, inference := oracletest.NewSigner(t), oracletest.NewSigner(t)
-	sentinel := func(txID, prior, hash string) evaluation.AgentTraceReceipt {
-		opts := oracletest.ReceiptOpts{
+	sentinel := func(txID, prior, hash string) evaluation.AgentTraceEventReceipt {
+		opts := oracletest.EventReceiptOpts{
 			TransactionID: txID, OperatorID: "operator-data", SessionID: "session-data", ActionType: string(constants.ActionTypeFsRead),
 			L2: operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, L3: operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
 		}
-		return evaluation.AgentTraceReceipt{ActionReceipt: data.Executed(t, opts, prior, hash)}
+		return evaluation.AgentTraceEventReceipt{EventReceipt: data.Executed(t, opts, prior, hash)}
 	}
 	body, err := evaluation.SealAgentTrace(&evaluation.AgentTrace{
 		RunID: "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1",

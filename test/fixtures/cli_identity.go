@@ -36,7 +36,7 @@ import (
 
 // BootstrapCLIIdentity enrolls the first human through the real bootstrap
 // endpoint. Its CLI session binds to the Gateway's certless embedded Operator,
-// which owns Gateway-local MCP/A2A execution and its receipts.
+// which owns Gateway-local MCP/A2A execution and its event receipts.
 func BootstrapCLIIdentity(t *testing.T, f *GatewayFixture, systemFingerprint string) *ClientIdentity {
 	t.Helper()
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

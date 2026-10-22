@@ -35,9 +35,9 @@ func seedReadFile(t *testing.T, fx *directFixture) string {
 	return readAbs
 }
 
-// TestSentinelReadReturnsReceiptOfAnExecutedRead checks that a read on the embedded
-// executor returns the signed receipt of a completed execution.
-func TestSentinelReadReturnsReceiptOfAnExecutedRead(t *testing.T) {
+// TestSentinelReadReturnsEventReceiptOfAnExecutedRead checks that a read on the embedded
+// executor returns the signed event receipt of a completed execution.
+func TestSentinelReadReturnsEventReceiptOfAnExecutedRead(t *testing.T) {
 	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-sentinel-read",
 		Posture:  constants.PostureDoctrine,
@@ -46,14 +46,14 @@ func TestSentinelReadReturnsReceiptOfAnExecutedRead(t *testing.T) {
 	require.NoError(t, err)
 	fx := &directFixture{f: gw.f}
 
-	receipt, err := s.Read(context.Background(), cases.ExecutorEmbedded, seedReadFile(t, fx))
+	eventReceipt, err := s.Read(context.Background(), cases.ExecutorEmbedded, seedReadFile(t, fx))
 	require.NoError(t, err)
-	assert.NotEmpty(t, receipt.GetTransactionId())
-	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
+	assert.NotEmpty(t, eventReceipt.GetTransactionId())
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.GetStatus())
 }
 
 // TestSentinelEachReadIsAFreshExecution checks that two reads of the same path each run as
-// their own execution and return their own signed receipt.
+// their own execution and return their own signed event receipt.
 func TestSentinelEachReadIsAFreshExecution(t *testing.T) {
 	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-sentinel-fresh",
@@ -72,7 +72,7 @@ func TestSentinelEachReadIsAFreshExecution(t *testing.T) {
 }
 
 // TestSentinelReadErrorsOnRefusal checks that a read the Gateway refuses returns an error
-// and no receipt. The session is unknown to the Gateway, so the dispatch ingress refuses it.
+// and no event receipt. The session is unknown to the Gateway, so the dispatch ingress refuses it.
 func TestSentinelReadErrorsOnRefusal(t *testing.T) {
 	gw := bootLiveGateway(t, fixtures.GatewayFixtureOptions{
 		TestName: "conformance-sentinel-refusal",
@@ -85,10 +85,10 @@ func TestSentinelReadErrorsOnRefusal(t *testing.T) {
 	require.NoError(t, err)
 	fx := &directFixture{f: gw.f}
 
-	receipt, err := s.Read(context.Background(), cases.ExecutorEmbedded, seedReadFile(t, fx))
+	eventReceipt, err := s.Read(context.Background(), cases.ExecutorEmbedded, seedReadFile(t, fx))
 	require.Error(t, err)
-	assert.Nil(t, receipt)
-	assert.True(t, errors.Is(err, constants.ErrActionReceiptMissing), "got %v", err)
+	assert.Nil(t, eventReceipt)
+	assert.True(t, errors.Is(err, constants.ErrEventReceiptMissing), "got %v", err)
 }
 
 // TestNewSentinelRequiresATargetAndRefusesAnUntargetedExecutor checks that construction
@@ -105,8 +105,8 @@ func TestNewSentinelRequiresATargetAndRefusesAnUntargetedExecutor(t *testing.T) 
 
 	s, err := NewSentinel(c, persona, map[cases.Executor]operator.Target{cases.ExecutorEmbedded: embedded})
 	require.NoError(t, err)
-	receipt, err := s.Read(context.Background(), cases.ExecutorOutbound, "/work/canary.txt")
-	assert.Nil(t, receipt)
+	eventReceipt, err := s.Read(context.Background(), cases.ExecutorOutbound, "/work/canary.txt")
+	assert.Nil(t, eventReceipt)
 	assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported), "untargeted executor: %v", err)
 
 	_, err = NewSentinel(nil, persona, map[cases.Executor]operator.Target{cases.ExecutorEmbedded: embedded})

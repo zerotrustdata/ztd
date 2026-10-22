@@ -61,7 +61,7 @@ function runSummary(id: string): RunSummary {
     status: 'running',
     completed_tasks: 0,
     total_tasks: 0,
-    has_receipts: false,
+    has_event_receipts: false,
     evidence_count: 0,
     observed_at: '2026-01-01T00:00:00Z',
   };
@@ -76,7 +76,7 @@ function evalSummary(id: string): EvalSummary {
     arm_id: 'arm-1',
     status: 'completed',
     verification_status: 'verified',
-    receipt_count: 1,
+    event_receipt_count: 1,
     metric_count: 1,
     observed_at: '2026-01-01T00:00:00Z',
   };

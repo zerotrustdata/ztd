@@ -50,7 +50,7 @@ import {
   PUBLIC_FINISH_STATES,
   PUBLIC_GRADE_EXPLANATION_CODES,
   PUBLIC_LOAD_STATES,
-  PUBLIC_RECEIPT_STATUSES,
+  PUBLIC_EVENT_RECEIPT_STATUSES,
   PUBLIC_SEMANTIC_OUTCOMES,
   PUBLIC_TOOL_EXECUTION_OUTCOMES,
   PUBLIC_TOOL_OUTCOMES,
@@ -765,13 +765,13 @@ function assertPublicPolicyDecisionRecord(value: unknown, path: string): void {
 
 function assertPublicGovernedActionRecord(value: unknown, path: string): void {
   assertObject(value, path);
-  rejectUnknown(value, ['action_label', 'reported_policy_outcome', 'receipt_status', 'evidence_source'], path);
+  rejectUnknown(value, ['action_label', 'reported_policy_outcome', 'event_receipt_status', 'evidence_source'], path);
   assertPublicIdentifier(value.action_label, `${path}.action_label`);
-  assert(value.action_label !== '', `${path}.action_label`, 'expected the receipt action type');
+  assert(value.action_label !== '', `${path}.action_label`, 'expected the event receipt action type');
   assertEnum(value.reported_policy_outcome, PUBLIC_TOOL_OUTCOMES, `${path}.reported_policy_outcome`);
-  assertEnum(value.receipt_status, PUBLIC_RECEIPT_STATUSES, `${path}.receipt_status`);
+  assertEnum(value.event_receipt_status, PUBLIC_EVENT_RECEIPT_STATUSES, `${path}.event_receipt_status`);
   assertEnum(value.evidence_source, PUBLIC_ACTIVITY_EVIDENCE_SOURCES, `${path}.evidence_source`);
-  if (value.receipt_status === 'reported') assert(value.evidence_source === 'bound_public_proof', `${path}.evidence_source`, 'reported receipt status requires bound public proof');
+  if (value.event_receipt_status === 'reported') assert(value.evidence_source === 'bound_public_proof', `${path}.evidence_source`, 'reported event receipt status requires bound public proof');
 }
 
 function assertPublicActivitySummary(value: unknown, path: string): void {

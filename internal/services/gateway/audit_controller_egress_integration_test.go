@@ -34,7 +34,7 @@ const (
 	egressEmail     = "alice.secret@example.com"
 )
 
-// seedEgressAudit records an event and a receipt whose content-bearing fields carry planted
+// seedEgressAudit records an event and an event receipt whose content-bearing fields carry planted
 // secrets, the way the raw local store holds them.
 func seedEgressAudit(t *testing.T, store *storage.SQLAuditStore) {
 	t.Helper()
@@ -67,7 +67,7 @@ func seedEgressAudit(t *testing.T, store *storage.SQLAuditStore) {
 	})
 	require.NoError(t, err)
 
-	receipt := &operatorv1.ActionReceipt{
+	eventReceipt := &operatorv1.EventReceipt{
 		TransactionId:   "tx-egress",
 		TransactionHash: "hash-egress",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
@@ -75,20 +75,20 @@ func seedEgressAudit(t *testing.T, store *storage.SQLAuditStore) {
 		Signature:       "signature",
 	}
 	require.NoError(t, store.RecordEventReceipt(&models.EventReceiptRecord{
-		TransactionID:     receipt.TransactionId,
-		TransactionHash:   receipt.TransactionHash,
+		TransactionID:     eventReceipt.TransactionId,
+		TransactionHash:   eventReceipt.TransactionHash,
 		InvestigationID:   "investigation-egress",
 		OperatorID:        "operator-1",
 		OperatorSessionID: egressSessionID,
 		ActionType:        constants.ActionTypeExecuteBash,
 		TargetResource:    "/home/alice/" + egressEmail,
-		Status:            receipt.Status,
+		Status:            eventReceipt.Status,
 		ResultSummary:     "wrote " + egressMarker,
 		ExecutedAt:        time.Now(),
-		SignerKeyID:       receipt.SignerKeyId,
-		Signature:         receipt.Signature,
+		SignerKeyID:       eventReceipt.SignerKeyId,
+		Signature:         eventReceipt.Signature,
 		Timestamp:         time.Now(),
-		ActionReceipt:     receipt,
+		EventReceipt:      eventReceipt,
 	}))
 }
 
@@ -155,7 +155,7 @@ func TestAuditController_EventsAndReportNeverReturnRawContent(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rr.Code, "tx_id is required")
 	})
 
-	t.Run("receipt list and export", func(t *testing.T) {
+	t.Run("event receipt list and export", func(t *testing.T) {
 		for path, call := range map[string]func(http.ResponseWriter, *http.Request){
 			"/api/v1/audit/event-receipts?operator_session_id=" + egressSessionID:        controller.handleAuditEventReceipts,
 			"/api/v1/audit/event-receipts/export?operator_session_id=" + egressSessionID: controller.handleAuditEventReceiptsExport,
@@ -178,11 +178,11 @@ func TestAuditController_DisabledScrubberWithholds(t *testing.T) {
 	controller := newEgressController(t, disabled)
 
 	for name, call := range map[string]func(http.ResponseWriter, *http.Request){
-		"events":          controller.handleAuditEvents,
-		"report":          controller.handleAuditReport,
-		"receipts":        controller.handleAuditEventReceipts,
-		"receipt export":  controller.handleAuditEventReceiptsExport,
-		"consensus votes": controller.handleAuditConsensusVotes,
+		"events":               controller.handleAuditEvents,
+		"report":               controller.handleAuditReport,
+		"event_receipts":       controller.handleAuditEventReceipts,
+		"event receipt export": controller.handleAuditEventReceiptsExport,
+		"consensus votes":      controller.handleAuditConsensusVotes,
 	} {
 		t.Run(name, func(t *testing.T) {
 			rr := httptest.NewRecorder()

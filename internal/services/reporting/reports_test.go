@@ -40,20 +40,20 @@ func newReportingTestFileSvc(t *testing.T, baseDir string) fs.RuntimeFileService
 }
 
 // ---------------------------------------------------------------------------
-// reportReceipts
+// reportEventReceipts
 // ---------------------------------------------------------------------------
 
-func TestReportReceipts_EmptyStore(t *testing.T) {
+func TestReportEventReceipts_EmptyStore(t *testing.T) {
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
-	res, err := reportReceipts(context.Background(), outDir, store)
+	res, err := reportEventReceipts(context.Background(), outDir, store)
 	require.NoError(t, err)
-	assert.Equal(t, constants.ReportReceiptsFilename, res.Filename)
+	assert.Equal(t, constants.ReportEventReceiptsFilename, res.Filename)
 	assert.Equal(t, 0, res.RowCount)
 	assert.NotEmpty(t, res.SHA256)
 
-	csvPath := filepath.Join(outDir, constants.ReportReceiptsFilename)
+	csvPath := filepath.Join(outDir, constants.ReportEventReceiptsFilename)
 	f, err := os.Open(csvPath)
 	require.NoError(t, err)
 	defer f.Close()
@@ -62,12 +62,12 @@ func TestReportReceipts_EmptyStore(t *testing.T) {
 	records, err := r.ReadAll()
 	require.NoError(t, err)
 	require.Len(t, records, 1, "header only")
-	assert.Equal(t, ReceiptRow{}.Columns(), records[0])
+	assert.Equal(t, EventReceiptRow{}.Columns(), records[0])
 }
 
-func TestReportReceipts_WithRecords(t *testing.T) {
+func TestReportEventReceipts_WithRecords(t *testing.T) {
 	store := setupTestAuditStore(t)
-	sessionID := "test-session-receipts"
+	sessionID := "test-session-event_receipts"
 	require.NoError(t, store.CreateSession(sessionID, "operator", "Test", "user@test.com"))
 
 	now := time.Now().UTC()
@@ -97,11 +97,11 @@ func TestReportReceipts_WithRecords(t *testing.T) {
 	}))
 
 	outDir := testutil.TempDir(t)
-	res, err := reportReceipts(context.Background(), outDir, store)
+	res, err := reportEventReceipts(context.Background(), outDir, store)
 	require.NoError(t, err)
 	assert.Equal(t, 2, res.RowCount)
 
-	f, err := os.Open(filepath.Join(outDir, constants.ReportReceiptsFilename))
+	f, err := os.Open(filepath.Join(outDir, constants.ReportEventReceiptsFilename))
 	require.NoError(t, err)
 	defer f.Close()
 
@@ -115,14 +115,14 @@ func TestReportReceipts_WithRecords(t *testing.T) {
 	assert.ElementsMatch(t, []string{"EXECUTION_STATUS_COMPLETED", "EXECUTION_STATUS_FAILED"}, statuses)
 }
 
-func TestReportReceipts_CancelledContext(t *testing.T) {
+func TestReportEventReceipts_CancelledContext(t *testing.T) {
 	store := setupTestAuditStore(t)
 	outDir := testutil.TempDir(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := reportReceipts(ctx, outDir, store)
+	_, err := reportEventReceipts(ctx, outDir, store)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }

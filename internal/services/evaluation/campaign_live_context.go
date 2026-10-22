@@ -20,20 +20,20 @@ import (
 )
 
 const (
-	investigationContextMaxReceipts = 50
-	agentToolInvestigationCtx       = "query_investigation_context"
+	investigationContextMaxEventReceipts = 50
+	agentToolInvestigationCtx            = "query_investigation_context"
 )
 
-// AgentContextRetrieval records the exact query and receipt references returned
-// by the Data Operator. The signed query receipt retains the full response.
+// AgentContextRetrieval records the exact query and event receipt references returned
+// by the Data Operator. The signed query event receipt retains the full response.
 type AgentContextRetrieval struct {
-	Query    mcp.AuditReceiptListRequest `json:"query"`
-	Receipts []AgentContextReceiptRef    `json:"receipts"`
+	Query         mcp.AuditEventReceiptListRequest `json:"query"`
+	EventReceipts []AgentContextEventReceiptRef    `json:"event_receipts"`
 }
 
-type AgentContextReceiptRef struct {
-	ReceiptID string `json:"receipt_id"`
-	Digest    string `json:"sha256"`
+type AgentContextEventReceiptRef struct {
+	EventReceiptID string `json:"event_receipt_id"`
+	Digest         string `json:"sha256"`
 }
 
 type agentInvestigationContextResult struct {
@@ -48,11 +48,11 @@ type agentInvestigationContextResult struct {
 }
 
 type agentInvestigationEvent struct {
-	ReceiptID     string `json:"receipt_id"`
-	ReceiptDigest string `json:"receipt_digest"`
-	EventType     string `json:"event_type"`
-	Actor         string `json:"actor"`
-	Summary       string `json:"summary"`
+	EventReceiptID     string `json:"event_receipt_id"`
+	EventReceiptDigest string `json:"event_receipt_digest"`
+	EventType          string `json:"event_type"`
+	Actor              string `json:"actor"`
+	Summary            string `json:"summary"`
 }
 
 func (e *CampaignAgentExecutor) investigationID(req AssignmentExecutionRequest) (string, error) {
@@ -72,65 +72,65 @@ func (e *CampaignAgentExecutor) investigationID(req AssignmentExecutionRequest) 
 	return id, nil
 }
 
-// decodeInvestigationReceipts trusts only the selected runtime's signed answer,
-// then checks each returned receipt against the same enrollment-bound key. The
-// signed receipt has no target resource, so the audit-read exclusion is the
+// decodeInvestigationEventReceipts trusts only the selected runtime's signed answer,
+// then checks each returned event receipt against the same enrollment-bound key. The
+// signed event receipt has no target resource, so the audit-read exclusion is the
 // Operator's answer under the query's scope and is not re-derived here.
-func decodeInvestigationReceipts(trace *AgentTrace, query mcp.AuditReceiptListRequest, receipt *AgentTraceReceipt) (mcp.OperatorAuditReceiptListResult, []AgentContextReceiptRef, error) {
-	fail := func(err error) (mcp.OperatorAuditReceiptListResult, []AgentContextReceiptRef, error) {
-		return mcp.OperatorAuditReceiptListResult{}, nil, fmt.Errorf("evaluation: authoritative investigation context: %w", err)
+func decodeInvestigationEventReceipts(trace *AgentTrace, query mcp.AuditEventReceiptListRequest, eventReceipt *AgentTraceEventReceipt) (mcp.OperatorAuditEventReceiptListResult, []AgentContextEventReceiptRef, error) {
+	fail := func(err error) (mcp.OperatorAuditEventReceiptListResult, []AgentContextEventReceiptRef, error) {
+		return mcp.OperatorAuditEventReceiptListResult{}, nil, fmt.Errorf("evaluation: authoritative investigation context: %w", err)
 	}
-	if receipt == nil || receipt.ActionReceipt == nil {
-		return fail(constants.ErrActionReceiptMissing)
+	if eventReceipt == nil || eventReceipt.EventReceipt == nil {
+		return fail(constants.ErrEventReceiptMissing)
 	}
-	if trace.InvestigationID == "" || query.InvestigationID != trace.InvestigationID || query.OperatorSessionID != "" || query.Limit < 1 || query.Limit > investigationContextMaxReceipts {
+	if trace.InvestigationID == "" || query.InvestigationID != trace.InvestigationID || query.OperatorSessionID != "" || query.Limit < 1 || query.Limit > investigationContextMaxEventReceipts {
 		return fail(constants.ErrEvidenceScopeMismatch)
 	}
 	anchors, err := agentTraceAnchorSet(trace)
 	if err != nil {
 		return fail(err)
 	}
-	if _, err := oracle.VerifyReceipt(anchors, trace.Data.OperatorID, receipt.ActionReceipt); err != nil {
+	if _, err := oracle.VerifyEventReceipt(anchors, trace.Data.OperatorID, eventReceipt.EventReceipt); err != nil {
 		return fail(err)
 	}
-	if receipt.GetActionType() != string(constants.ActionTypeMcpCall) || receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+	if eventReceipt.GetActionType() != string(constants.ActionTypeMcpCall) || eventReceipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 		return fail(constants.ErrEvaluationEvidenceTraceMismatch)
 	}
-	var result mcp.OperatorAuditReceiptListResult
-	if err := json.Unmarshal([]byte(receipt.GetResultSummary()), &result); err != nil {
+	var result mcp.OperatorAuditEventReceiptListResult
+	if err := json.Unmarshal([]byte(eventReceipt.GetResultSummary()), &result); err != nil {
 		return fail(err)
 	}
-	if result.OperatorID != trace.Data.OperatorID || result.Authority != "operator_local_ledger" || result.InvestigationID != query.InvestigationID || result.Count != len(result.Receipts) || result.Count > query.Limit {
+	if result.OperatorID != trace.Data.OperatorID || result.Authority != "operator_local_ledger" || result.InvestigationID != query.InvestigationID || result.Count != len(result.EventReceipts) || result.Count > query.Limit {
 		return fail(constants.ErrEvidenceScopeMismatch)
 	}
-	refs := make([]AgentContextReceiptRef, 0, len(result.Receipts))
-	seen := make(map[string]bool, len(result.Receipts))
-	for _, row := range result.Receipts {
+	refs := make([]AgentContextEventReceiptRef, 0, len(result.EventReceipts))
+	seen := make(map[string]bool, len(result.EventReceipts))
+	for _, row := range result.EventReceipts {
 		if row == nil {
-			return fail(constants.ErrActionReceiptMissing)
+			return fail(constants.ErrEventReceiptMissing)
 		}
 		r := row
 		if r.GetTransactionId() == "" || seen[r.GetTransactionId()] {
 			return fail(constants.ErrEvidenceScopeMismatch)
 		}
-		if _, err := oracle.VerifyReceipt(anchors, trace.Data.OperatorID, r); err != nil {
+		if _, err := oracle.VerifyEventReceipt(anchors, trace.Data.OperatorID, r); err != nil {
 			return fail(err)
 		}
 		body, err := evalv1.MarshalCanonical(r)
 		if err != nil {
 			return fail(err)
 		}
-		refs = append(refs, AgentContextReceiptRef{ReceiptID: r.GetTransactionId(), Digest: models.SHA256Hex(body)})
+		refs = append(refs, AgentContextEventReceiptRef{EventReceiptID: r.GetTransactionId(), Digest: models.SHA256Hex(body)})
 		seen[r.GetTransactionId()] = true
 	}
 	return result, refs, nil
 }
 
-func investigationReceiptContext(dataType, investigationID string, result mcp.OperatorAuditReceiptListResult, refs []AgentContextReceiptRef) agentInvestigationContextResult {
+func investigationEventReceiptContext(dataType, investigationID string, result mcp.OperatorAuditEventReceiptListResult, refs []AgentContextEventReceiptRef) agentInvestigationContextResult {
 	answer := agentInvestigationContextResult{Success: true, DataType: dataType, InvestigationID: investigationID, OperatorID: result.OperatorID, Authority: result.Authority, Events: []agentInvestigationEvent{}}
-	for i, row := range result.Receipts {
+	for i, row := range result.EventReceipts {
 		answer.Events = append(answer.Events, agentInvestigationEvent{
-			ReceiptID: refs[i].ReceiptID, ReceiptDigest: refs[i].Digest,
+			EventReceiptID: refs[i].EventReceiptID, EventReceiptDigest: refs[i].Digest,
 			EventType: row.GetActionType(), Actor: investigationOperatorActor,
 			Summary: truncateToolText(row.GetResultSummary()),
 		})
@@ -142,10 +142,10 @@ func investigationReceiptContext(dataType, investigationID string, result mcp.Op
 // signed query answer, so a resealed trace cannot invent retrieved evidence.
 func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 	if call.Retrieval == nil {
-		if (trace.CarriesModelIdentity() || trace.SchemaVersion == agentTraceSchemaVersionV6) && (call.ToolName == agentToolInvestigationCtx || call.ToolName == constants.MCPToolAuditReceiptList) {
+		if (trace.CarriesModelIdentity() || trace.SchemaVersion == agentTraceSchemaVersionV6) && (call.ToolName == agentToolInvestigationCtx || call.ToolName == constants.MCPToolAuditEventReceiptList) {
 			// A completed query cannot suppress its evidence by changing the
 			// unsigned Success flag. Denied and failed calls have no retrieval.
-			if call.Receipt != nil && call.Receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+			if call.EventReceipt != nil && call.EventReceipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 				return constants.ErrEvaluationEvidenceTraceMismatch
 			}
 			if !call.Success {
@@ -163,23 +163,23 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 		}
 		return nil
 	}
-	if (call.ToolName != agentToolInvestigationCtx && call.ToolName != constants.MCPToolAuditReceiptList) || !call.Success || call.ActionType != string(constants.ActionTypeMcpCall) {
+	if (call.ToolName != agentToolInvestigationCtx && call.ToolName != constants.MCPToolAuditEventReceiptList) || !call.Success || call.ActionType != string(constants.ActionTypeMcpCall) {
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
-	result, refs, err := decodeInvestigationReceipts(trace, call.Retrieval.Query, call.Receipt)
+	result, refs, err := decodeInvestigationEventReceipts(trace, call.Retrieval.Query, call.EventReceipt)
 	if err != nil {
 		return err
 	}
-	if len(refs) != len(call.Retrieval.Receipts) {
+	if len(refs) != len(call.Retrieval.EventReceipts) {
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
 	for i := range refs {
-		if refs[i] != call.Retrieval.Receipts[i] {
+		if refs[i] != call.Retrieval.EventReceipts[i] {
 			return constants.ErrEvaluationEvidenceTraceMismatch
 		}
 	}
-	if call.ToolName == constants.MCPToolAuditReceiptList {
-		var req mcp.AuditReceiptListRequest
+	if call.ToolName == constants.MCPToolAuditEventReceiptList {
+		var req mcp.AuditEventReceiptListRequest
 		if err := json.Unmarshal([]byte(call.ArgumentsJSON), &req); err != nil {
 			return err
 		}
@@ -189,7 +189,7 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 		if req.InvestigationID == "" {
 			req.InvestigationID = trace.InvestigationID
 		}
-		// Mirrors injectAuditReceiptListDefaults: the context query always excludes audit reads.
+		// Mirrors injectAuditEventReceiptListDefaults: the context query always excludes audit reads.
 		req.ExcludeAuditReads = true
 		if call.Retrieval.Query != req {
 			return constants.ErrEvaluationEvidenceTraceMismatch
@@ -217,13 +217,13 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 	if limit < 1 {
 		limit = agentToolDefaultHistoryLimit
 	}
-	if limit > investigationContextMaxReceipts {
-		limit = investigationContextMaxReceipts
+	if limit > investigationContextMaxEventReceipts {
+		limit = investigationContextMaxEventReceipts
 	}
-	if call.Retrieval.Query != (mcp.AuditReceiptListRequest{InvestigationID: trace.InvestigationID, Limit: limit, ExcludeAuditReads: true}) {
+	if call.Retrieval.Query != (mcp.AuditEventReceiptListRequest{InvestigationID: trace.InvestigationID, Limit: limit, ExcludeAuditReads: true}) {
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
-	want, err := canonicalToolJSON(investigationReceiptContext(args.DataType, trace.InvestigationID, result, refs))
+	want, err := canonicalToolJSON(investigationEventReceiptContext(args.DataType, trace.InvestigationID, result, refs))
 	if err != nil {
 		return err
 	}

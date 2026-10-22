@@ -29,12 +29,12 @@ ztd (Zero Trust Data) is a zero-trust execution platform. A Gateway admits typed
 re-verifies that intent on its own and executes it. Operators connect outbound only, over mTLS, and listen on
 nothing. Governed mutations ride in signed envelopes through five layers: doctrine, consensus, notary, warden,
 actuator. Every run here used doctrine posture, so doctrine, warden and actuator are enforced, while consensus and
-human ratification aren't gating each dispatched command. The actuator signs receipts and appends them to a
+human ratification aren't gating each dispatched command. The actuator signs event receipts and appends them to a
 commitment ledger on whichever host did the work.
 
 Enrolling an Operator is one of those mutations. Two, really. The Operator generates a key pair and files a
 request. An owner approves it. The Operator completes enrollment, and the Gateway issues its certificate and creates
-its session, each as a governed envelope with its own receipts and state-root reads. When I started, one completion
+its session, each as a governed envelope with its own event receipts and state-root reads. When I started, one completion
 cost about 25 write transactions across the Gateway and audit SQLite databases. That's nothing once. A thousand of
 them landing in the same few seconds is a different animal.
 
@@ -103,7 +103,7 @@ numbers come from a normal build.
 
 L5 reads the Gateway's state root around every governed mutation, about three times per envelope. That root was a
 hash over a scan of every document, recomputed under one global mutex any time a global version counter moved.
-Let's see what one write followed by a root read costs at 100, 1,000 and 10,000 receipt-sized documents:
+Let's see what one write followed by a root read costs at 100, 1,000 and 10,000 event_receipt-sized documents:
 
 | History rows | Full-scan root | Incremental root |
 | --- | --- | --- |
@@ -112,7 +112,7 @@ Let's see what one write followed by a root read costs at 100, 1,000 and 10,000 
 | 10,000 | 317 ms | 5.6 ms |
 
 Both columns come from the same race-enabled harness, so ignore the absolute values and look at the shape. The old
-cost is linear in history. Every receipt we'd ever written made the next one more expensive.
+cost is linear in history. Every event receipt we'd ever written made the next one more expensive.
 
 The replacement is a persisted incremental Merkle commitment. Leaves are SHA-256 identities over (source, key), with
 length-prefixed fields and a domain tag per hash type. They land in 65,536 buckets under a fixed 16-ary tree four
@@ -154,7 +154,7 @@ Deployment held a shared mutex around each worker's approval request, so approva
 `auth enroll approve --all` was a loop of single POSTs. I replaced both. At this stage, deployment staged the whole
 cohort, then one typed request approved a fixed snapshot of request IDs and displayed fingerprints as a single
 governed action. The executing side rechecks authority, pending state, expiry and fingerprints in one transaction,
-and one bad member rolls back the whole cohort. Every member records the same receipt and envelope ID. A batch
+and one bad member rolls back the whole cohort. Every member records the same event receipt and envelope ID. A batch
 decision takes about 25 ms for 100 requests and about 240 ms for 1,000.
 
 Two supporting changes went in with it. Pending capacity became 2,048, decoupled from the then-current CLI
@@ -172,8 +172,8 @@ then releases N synchronized completions. Every call runs under a context that m
 the time, and the report gives p50, p95, p99 and max per phase. It runs in process, so HTTP, subscription readiness
 and heartbeat traffic aren't in it.
 
-With the gates gone, I folded the per-completion work: receipt and ledger commitment in one audit transaction, final
-receipt and persistence attestation in one write, nonce reservation as a single INSERT keyed on the primary key. By
+With the gates gone, I folded the per-completion work: event receipt and ledger commitment in one audit transaction, final
+event receipt and persistence attestation in one write, nonce reservation as a single INSERT keyed on the primary key. By
 code count that's about 25 write transactions down to about 19. Then N=100 ran at 13 completions/s. Creation ran at
 15 to 21/s, where the gated runs had done over 100.
 
@@ -255,7 +255,7 @@ out. Issued identities are not a ready fleet. The CLI decides success by whether
 command, and that's staying the criterion.
 
 Then I reran N=1,000 with the auth fix, and partway through, the root volume (97 GiB) filled to zero bytes. SQLite
-writes failed, worker logs got truncated, completion returned 500 while L5 was persisting receipts, and deployment
+writes failed, worker logs got truncated, completion returned 500 while L5 was persisting event receipts, and deployment
 failed waiting for readiness. Retained fleet directories from earlier runs had eaten about 13 GiB, and in an earlier
 live run the Gateway database and WAL had peaked around 125 MB and 840 MB. With truncated logs I can't derive a
 success count, so that run is garbage and I'm not citing anything from it.
@@ -362,12 +362,12 @@ There were two causes. The top-level `RunOperator` waited on service errors or O
 service's own external-shutdown cancellation, so an acknowledged shutdown never turned into a process exit. The
 Operator agreed to shut down and then just kept running. `ZtdoService` now exposes a `Done()` signal and
 `RunOperator` observes it. A live single-Operator stop with `--reason` then came back `method: exited` in 30 ms,
-with `EXECUTING` and `COMPLETED` SHUTDOWN receipts in the Operator's log.
+with `EXECUTING` and `COMPLETED` SHUTDOWN event receipts in the Operator's log.
 
 The second cause was that a stop *without* a reason never reached execution at all. A `ShutdownRequested` message
 with every field at its default marshals to zero bytes. Two checks treated zero bytes as a missing payload. L4 only
-exempted heartbeats, so it rejected the envelope and recorded a rejected-transaction receipt. Behind that sat a
-duplicate check in the pub/sub handler that dropped the envelope with no receipt, after nonce reservation. The CLI
+exempted heartbeats, so it rejected the envelope and recorded a rejected-transaction event receipt. Behind that sat a
+duplicate check in the pub/sub handler that dropped the envelope with no event receipt, after nonce reservation. The CLI
 waited out its 5 s API timeout and fell back to TERM. The browser's stop route sends exactly that empty message, so
 this was the common case, not an edge. One function now owns the zero-byte exemption (heartbeat and shutdown), the
 duplicate check is gone, and a stop with no reason returned `exited` in 94 ms.
@@ -441,7 +441,7 @@ write the response with an I/O timeout. Removing the client's short timeout had 
 Gateway's 30-second HTTP write deadline. The mutation could commit after the response window had already closed.
 
 One trace made it clear I couldn't treat handler completion as request completion. The CREATE_SESSION handler
-returned, but its COMPLETED receipt was recorded 18.5 seconds later. The response write failed in that same
+returned, but its COMPLETED event receipt was recorded 18.5 seconds later. The response write failed in that same
 millisecond. I didn't finish attributing that interval to database waits, signing and scheduling, so I'm not going
 to pretend I have a precise breakdown.
 

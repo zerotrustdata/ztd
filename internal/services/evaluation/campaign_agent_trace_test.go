@@ -20,81 +20,81 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing.T) {
+func TestAgentTrace_SealRoundTripsEventReceiptsAnchorAndBracketByteForByte(t *testing.T) {
 	trace := v7EvidenceTraceWithToolCalls(t)
 	// <, > and & are escaped by encoding/json inside nested canonical bytes; the
 	// round trip must survive that.
-	trace.ToolCalls[0].Receipt.ResultSummary = "2>&1 <out> & done"
+	trace.ToolCalls[0].EventReceipt.ResultSummary = "2>&1 <out> & done"
 
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	decoded := &AgentTrace{}
 	require.NoError(t, json.Unmarshal(body, decoded))
 
-	require.NotNil(t, decoded.ToolCalls[0].Receipt)
-	assert.True(t, proto.Equal(trace.ToolCalls[0].Receipt.ActionReceipt, decoded.ToolCalls[0].Receipt.ActionReceipt))
+	require.NotNil(t, decoded.ToolCalls[0].EventReceipt)
+	assert.True(t, proto.Equal(trace.ToolCalls[0].EventReceipt.EventReceipt, decoded.ToolCalls[0].EventReceipt.EventReceipt))
 	assert.True(t, proto.Equal(trace.Inference.Anchor.ConformanceAnchor, decoded.Inference.Anchor.ConformanceAnchor))
 	assert.True(t, proto.Equal(trace.Data.Anchor.ConformanceAnchor, decoded.Data.Anchor.ConformanceAnchor))
-	assert.True(t, proto.Equal(trace.ModelCalls[0].Receipt.ActionReceipt, decoded.ModelCalls[0].Receipt.ActionReceipt))
+	assert.True(t, proto.Equal(trace.ModelCalls[0].EventReceipt.EventReceipt, decoded.ModelCalls[0].EventReceipt.EventReceipt))
 	require.NotNil(t, decoded.Bracket)
-	assert.True(t, proto.Equal(trace.Bracket.After.ActionReceipt, decoded.Bracket.After.ActionReceipt))
+	assert.True(t, proto.Equal(trace.Bracket.After.EventReceipt, decoded.Bracket.After.EventReceipt))
 
 	again, err := SealAgentTrace(decoded)
 	require.NoError(t, err)
 	assert.Equal(t, body, again)
 }
 
-func TestAgentTrace_ReceiptDecodeRejectsUnknownField(t *testing.T) {
-	receipt := &AgentTraceReceipt{}
+func TestAgentTrace_EventReceiptDecodeRejectsUnknownField(t *testing.T) {
+	eventReceipt := &AgentTraceEventReceipt{}
 
-	err := receipt.UnmarshalJSON([]byte(`{"transaction_id":"tx-1","not_a_receipt_field":"x"}`))
+	err := eventReceipt.UnmarshalJSON([]byte(`{"transaction_id":"tx-1","not_an_event_receipt_field":"x"}`))
 
 	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }
 
-func TestAgentTrace_ReceiptDecodeRejectsNonCanonicalSpelling(t *testing.T) {
+func TestAgentTrace_EventReceiptDecodeRejectsNonCanonicalSpelling(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
-	canonical, err := evalv1.MarshalCanonical(trace.ToolCalls[0].Receipt.ActionReceipt)
+	canonical, err := evalv1.MarshalCanonical(trace.ToolCalls[0].EventReceipt.EventReceipt)
 	require.NoError(t, err)
 	// Same value, different bytes: protojson accepts it, the trace does not.
 	spaced := strings.Replace(string(canonical), `":"`, `": "`, 1)
 	require.NotEqual(t, string(canonical), spaced)
 
-	err = (&AgentTraceReceipt{}).UnmarshalJSON([]byte(spaced))
+	err = (&AgentTraceEventReceipt{}).UnmarshalJSON([]byte(spaced))
 
 	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }
 
-func TestAgentTrace_ReceiptMarshalRejectsAbsentReceipt(t *testing.T) {
-	_, err := AgentTraceReceipt{}.MarshalJSON()
+func TestAgentTrace_EventReceiptMarshalRejectsAbsentEventReceipt(t *testing.T) {
+	_, err := AgentTraceEventReceipt{}.MarshalJSON()
 
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
-func TestAgentTrace_SealRejectsBracketWithAbsentSentinelReceipt(t *testing.T) {
+func TestAgentTrace_SealRejectsBracketWithAbsentSentinelEventReceipt(t *testing.T) {
 	trace := v7EvidenceTraceWithToolCalls(t)
-	trace.Bracket.Before = AgentTraceReceipt{}
+	trace.Bracket.Before = AgentTraceEventReceipt{}
 
 	_, err := SealAgentTrace(trace)
 
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
-func TestAgentTrace_SealedBodyCarriesReceiptsAsCanonicalProtojson(t *testing.T) {
+func TestAgentTrace_SealedBodyCarriesEventReceiptsAsCanonicalProtojson(t *testing.T) {
 	trace := v7EvidenceTraceWithToolCalls(t)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 
 	var raw struct {
 		ToolCalls []struct {
-			Receipt json.RawMessage `json:"receipt"`
+			EventReceipt json.RawMessage `json:"event_receipt"`
 		} `json:"tool_calls"`
 	}
 	require.NoError(t, json.Unmarshal(body, &raw))
 	require.Len(t, raw.ToolCalls, 2)
-	want, err := evalv1.MarshalCanonical(trace.ToolCalls[0].Receipt.ActionReceipt)
+	want, err := evalv1.MarshalCanonical(trace.ToolCalls[0].EventReceipt.EventReceipt)
 	require.NoError(t, err)
-	assert.JSONEq(t, string(want), string(raw.ToolCalls[0].Receipt))
+	assert.JSONEq(t, string(want), string(raw.ToolCalls[0].EventReceipt))
 	assert.Equal(t, agentTraceSchemaVersion, trace.SchemaVersion)
 }
 

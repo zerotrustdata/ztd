@@ -60,7 +60,7 @@ graph TD
         end
 
         subgraph Broker ["4 — Pub/Sub Broker"]
-            WSSHandler["WebSocket Handler<br/>cmd:* · receipts:* · heartbeats"]
+            WSSHandler["WebSocket Handler<br/>cmd:* · event_receipts:* · heartbeats"]
         end
 
         subgraph Data ["5 — Persistence Layer"]
@@ -97,14 +97,14 @@ graph TD
         direction TB
         LoopbackBridge["Loopback Pub/Sub<br/>(In-process dispatch)"]
         Warden["L4 Warden<br/>Pre-dispatch verification"]
-        Actuator["L5 Actuator<br/>Execution + Signed receipt"]
+        Actuator["L5 Actuator<br/>Execution + Signed event receipt"]
         LoopbackBridge --> Warden --> Actuator
     end
 
     EnvelopeRx -- "ProcessEnvelope (synchronous)" --> LoopbackBridge
     MCPEndpoint -- "Gateway-local path" --> LoopbackBridge
     WSSHandler -- "Loopback publish" --> LoopbackBridge
-    Actuator -- "ActionReceipt" --> AuditDB
+    Actuator -- "EventReceipt" --> AuditDB
 ```
 
 ## Service Stack Composition
@@ -122,6 +122,6 @@ The Gateway coordinates policy decisions through five structured tiers:
    - MCP and A2A gateways normalize incoming tool invocations into typed `GovernanceEnvelope` messages.
    - Governance coordinators deliberate L2 consensus or hold suspended transactions for L3 notary signatures.
 4. **Pub/Sub Brokering**:
-   - Coordinates outbound WebSocket connections from remote Operators, multiplexing session-isolated channels (`cmd:`, `results:`, `heartbeat:`, `receipts:`).
+   - Coordinates outbound WebSocket connections from remote Operators, multiplexing session-isolated channels (`cmd:`, `results:`, `heartbeat:`, `event_receipts:`).
 5. **Operator Substrate**:
    - The Gateway process embeds an in-process Operator substrate. Gateway-local operations route through a loopback pub/sub bridge, executing through L4 Warden and L5 Actuator without traversing network sockets.

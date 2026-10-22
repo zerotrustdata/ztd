@@ -59,10 +59,10 @@ func toolsList(t *testing.T, names ...string) json.RawMessage {
 }
 
 func TestMCPStdioHandshakeThenToolsCall(t *testing.T) {
-	receipt := &operatorv1.ActionReceipt{TransactionHash: "tx-read", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
-	receiptJSON, err := response.MarshalProtoJSONCanonical(receipt)
+	eventReceipt := &operatorv1.EventReceipt{TransactionHash: "tx-read", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+	eventReceiptJSON, err := response.MarshalProtoJSONCanonical(eventReceipt)
 	require.NoError(t, err)
-	callResult, err := json.Marshal(mcp.CallToolResult{Content: []mcp.TextContent{}, Receipt: receiptJSON})
+	callResult, err := json.Marshal(mcp.CallToolResult{Content: []mcp.TextContent{}, EventReceipt: eventReceiptJSON})
 	require.NoError(t, err)
 
 	var methods []string
@@ -89,21 +89,21 @@ func TestMCPStdioHandshakeThenToolsCall(t *testing.T) {
 	assert.Equal(t, mcpReadTool, call.Name)
 	require.Len(t, driven.Observations, 1)
 	obs := driven.Observations[0]
-	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, obs.GetKind())
-	assert.Equal(t, "tx-read", obs.GetReceipt().GetTransactionHash())
+	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_EVENT_RECEIPT, obs.GetKind())
+	assert.Equal(t, "tx-read", obs.GetEventReceipt().GetTransactionHash())
 	assert.Zero(t, obs.GetHttpStatus(), "a stdio answer has no HTTP status")
 }
 
 // TestMCPStdioDenyIsRejection checks that the typed rejection the bridge returns
 // for a denied approval is observed as a REJECTION.
 func TestMCPStdioDenyIsRejection(t *testing.T) {
-	denied := &operatorv1.ActionReceipt{
+	denied := &operatorv1.EventReceipt{
 		TransactionHash: "tx-deny",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		FailureCode:     operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 		RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
 	}
-	data, err := response.MarshalProtoJSONCanonical(governance.ReceiptRejection(denied))
+	data, err := response.MarshalProtoJSONCanonical(governance.EventReceiptRejection(denied))
 	require.NoError(t, err)
 
 	m, err := stdioBridge(t, func(_ context.Context, req mcptransport.JSONRPCRequest) (mcptransport.JSONRPCResponse, error) {
@@ -125,7 +125,7 @@ func TestMCPStdioDenyIsRejection(t *testing.T) {
 	require.Len(t, driven.Observations, 1)
 	obs := driven.Observations[0]
 	assert.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION, obs.GetKind())
-	assert.Equal(t, "tx-deny", obs.GetRejection().GetReceipt().GetTransactionHash())
+	assert.Equal(t, "tx-deny", obs.GetRejection().GetEventReceipt().GetTransactionHash())
 }
 
 func TestMCPStdioCallToolReturnsTypedResult(t *testing.T) {
@@ -148,9 +148,9 @@ func TestMCPStdioCallToolReturnsTypedResult(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := m.CallTool(context.Background(), mcp.CallToolRequest{Name: constants.MCPToolAuditReceiptList, Arguments: json.RawMessage(`{"operator_session_id":"s1"}`)})
+	result, err := m.CallTool(context.Background(), mcp.CallToolRequest{Name: constants.MCPToolAuditEventReceiptList, Arguments: json.RawMessage(`{"operator_session_id":"s1"}`)})
 	require.NoError(t, err)
-	assert.Equal(t, constants.MCPToolAuditReceiptList, call.Name)
+	assert.Equal(t, constants.MCPToolAuditEventReceiptList, call.Name)
 	assert.JSONEq(t, `{"operator_session_id":"s1"}`, string(call.Arguments))
 	require.Len(t, result.Content, 1)
 	assert.Equal(t, `{"count":2}`, result.Content[0].Text)

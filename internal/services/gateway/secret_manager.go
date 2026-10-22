@@ -53,7 +53,7 @@ func (m *SecretManager) GetKeystore() *keystore.Keystore {
 // InitAppSettings creates secrets on first boot and validates them on later
 // boots. Missing or incomplete secrets on a later boot fail closed: silently
 // regenerating them would rotate the Actuator and Auditor signing identities
-// and orphan every receipt and session signed under the old keys.
+// and orphan every event receipt and session signed under the old keys.
 func (m *SecretManager) InitAppSettings() error {
 	var exists bool
 	err := m.db.QueryRowWithRetry(context.Background(),

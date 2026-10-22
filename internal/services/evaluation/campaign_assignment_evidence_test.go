@@ -45,7 +45,7 @@ func TestBuildPublicAssignmentEvidence(t *testing.T) {
 	assert.Len(t, activity.Summary.ModelActivity.Records, 1)
 	assert.Equal(t, "variant-a", activity.Summary.ModelActivity.Records[0].GetVariantId())
 	assert.Equal(t, "FS_READ", activity.Summary.GovernedActions.Records[0].GetActionLabel())
-	assert.Equal(t, evalv1.PublicReceiptStatus_PUBLIC_RECEIPT_STATUS_UNAVAILABLE, activity.Summary.GovernedActions.Records[0].GetReceiptStatus())
+	assert.Equal(t, evalv1.PublicEventReceiptStatus_PUBLIC_EVENT_RECEIPT_STATUS_UNAVAILABLE, activity.Summary.GovernedActions.Records[0].GetEventReceiptStatus())
 	assert.Len(t, bindings, 1)
 	assert.Equal(t, "primary", activity.Summary.ModelActivity.Records[0].GetAgentPersona())
 }

@@ -80,7 +80,7 @@ type AgentTraceWorkspace struct {
 }
 
 // AgentModelCall is one governed inference the agent executor dispatched. A
-// call the Inference Operator executed carries its signed receipt: COMPLETED
+// call the Inference Operator executed carries its signed event_receipt: COMPLETED
 // with the result digest as result_summary, or FAILED when the provider
 // failed after the Operator committed the execution (Error then names the
 // failure). Either way the execution sits on the Inference runtime's ledger.
@@ -96,7 +96,7 @@ type AgentModelCall struct {
 	ServedModelTag string `json:"served_model_tag,omitempty"`
 	ModelDigest    string `json:"model_digest,omitempty"`
 	// InferenceResult is the complete response covered by ResultDigest and the
-	// signed receipt. Earlier trace versions did not retain it.
+	// signed event receipt. Earlier trace versions did not retain it.
 	InferenceResult *AgentTraceInferenceResult `json:"inference_result,omitempty"`
 	// ToolCallID and Persona are set on a Tribunal call: the tool call whose
 	// deliberation dispatched it and the persona that answered.
@@ -118,17 +118,17 @@ type AgentModelCall struct {
 	Text          string `json:"text,omitempty"`
 	ToolCallCount int    `json:"tool_call_count"`
 	// Error is the public failure of a call that did not complete.
-	Error   string             `json:"error,omitempty"`
-	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
-	// ObservationReceipts are the observers' signed final receipts for this
+	Error        string                  `json:"error,omitempty"`
+	EventReceipt *AgentTraceEventReceipt `json:"event_receipt,omitempty"`
+	// ObservationEventReceipts are the observers' signed final event receipts for this
 	// attempt's BEGIN and FINALIZE commands. The Gateway waits for each before
 	// the dispatch returns, so a shared runtime claims their commitments in the
 	// trace bracket.
-	ObservationReceipts []AgentTraceReceipt `json:"observation_receipts,omitempty"`
+	ObservationEventReceipts []AgentTraceEventReceipt `json:"observation_event_receipts,omitempty"`
 }
 
 // AgentTraceInferenceResult carries a complete inference result as canonical
-// protojson, like AgentTraceReceipt.
+// protojson, like AgentTraceEventReceipt.
 type AgentTraceInferenceResult struct{ *operatorv1.InferenceResult }
 
 // MarshalJSON writes the result as canonical protojson.
@@ -182,10 +182,10 @@ type AgentToolCall struct {
 	ActionType            string `json:"action_type,omitempty"`
 	TransactionID         string `json:"transaction_id,omitempty"`
 	PolicyDecision        string `json:"policy_decision,omitempty"`
-	// Receipt is the signed receipt the Gateway answered the dispatch with: the
-	// executed receipt, or a governance rejection's receipt. A refusal has none.
-	Receipt *AgentTraceReceipt `json:"receipt,omitempty"`
-	// Retrieval binds the authoritative query and the receipts it returned.
+	// Event receipt is the signed event receipt the Gateway answered the dispatch with: the
+	// executed event receipt, or a governance rejection's event receipt. A refusal has none.
+	EventReceipt *AgentTraceEventReceipt `json:"event_receipt,omitempty"`
+	// Retrieval binds the authoritative query and the event receipts it returned.
 	Retrieval *AgentContextRetrieval `json:"retrieval,omitempty"`
 }
 
@@ -247,7 +247,7 @@ type AgentTrace struct {
 	// (capability_unsupported, backend_timeout, ...) when the provider
 	// classified the failure. Traces sealed before it existed omit it.
 	ProviderFailureClass string `json:"provider_failure_class,omitempty"`
-	// Bracket holds the harness sentinel receipts read on the Data runtime
+	// Bracket holds the harness sentinel event receipts read on the Data runtime
 	// before and after the attempt. Import fails closed when it is missing.
 	Bracket *AgentTraceBracket `json:"bracket,omitempty"`
 	Steps   AgentTraceSteps    `json:"steps,omitempty"`
@@ -427,7 +427,7 @@ func newAgentTraceInput(messages []*operatorv1.InferenceMessage, tools []*operat
 
 // AgentTraceRuntime is one Operator runtime a role executed on, with its
 // actuator key pinned as bound at enrollment. VerifyAgentTraceEvidence checks
-// each receipt against the anchor of the runtime that signed it.
+// each event receipt against the anchor of the runtime that signed it.
 type AgentTraceRuntime struct {
 	OperatorID string            `json:"operator_id"`
 	SessionID  string            `json:"session_id"`
@@ -486,30 +486,30 @@ func (t *AgentTrace) ToProto() *evalv1.AgentTrace {
 	}
 }
 
-// AgentTraceReceipt is a signed ActionReceipt carried in the trace as
+// AgentTraceEventReceipt is a signed EventReceipt carried in the trace as
 // canonical protojson. It is decoded strictly; unknown fields fail.
-type AgentTraceReceipt struct{ *operatorv1.ActionReceipt }
+type AgentTraceEventReceipt struct{ *operatorv1.EventReceipt }
 
-// MarshalJSON writes the receipt as canonical protojson.
-func (r AgentTraceReceipt) MarshalJSON() ([]byte, error) {
-	if r.ActionReceipt == nil {
-		return nil, fmt.Errorf("evaluation: encode agent trace receipt: %w", constants.ErrMissingRequiredField)
+// MarshalJSON writes the event receipt as canonical protojson.
+func (r AgentTraceEventReceipt) MarshalJSON() ([]byte, error) {
+	if r.EventReceipt == nil {
+		return nil, fmt.Errorf("evaluation: encode agent trace event_receipt: %w", constants.ErrMissingRequiredField)
 	}
-	return evalv1.MarshalCanonical(r.ActionReceipt)
+	return evalv1.MarshalCanonical(r.EventReceipt)
 }
 
 // UnmarshalJSON decodes canonical protojson strictly.
-func (r *AgentTraceReceipt) UnmarshalJSON(b []byte) error {
-	receipt := &operatorv1.ActionReceipt{}
-	if err := unmarshalAgentTraceCanonical(b, receipt); err != nil {
-		return fmt.Errorf("evaluation: decode agent trace receipt: %w", err)
+func (r *AgentTraceEventReceipt) UnmarshalJSON(b []byte) error {
+	eventReceipt := &operatorv1.EventReceipt{}
+	if err := unmarshalAgentTraceCanonical(b, eventReceipt); err != nil {
+		return fmt.Errorf("evaluation: decode agent trace event_receipt: %w", err)
 	}
-	r.ActionReceipt = receipt
+	r.EventReceipt = eventReceipt
 	return nil
 }
 
 // AgentTraceAnchor is one runtime's pinned actuator key, carried in the trace
-// as canonical protojson like a receipt.
+// as canonical protojson like an event receipt.
 type AgentTraceAnchor struct{ *evalv1.ConformanceAnchor }
 
 // MarshalJSON writes the anchor as canonical protojson.
@@ -531,7 +531,7 @@ func (a *AgentTraceAnchor) UnmarshalJSON(b []byte) error {
 }
 
 // AgentTraceSteps are the persona steps of the attempt, carried in the trace
-// as an array of canonical protojson values like a receipt: a step's output is
+// as an array of canonical protojson values like a event_receipt: a step's output is
 // a protobuf oneof, which encoding/json cannot decode.
 type AgentTraceSteps []*evalv1.AgentStep
 
@@ -571,8 +571,8 @@ func (s *AgentTraceSteps) UnmarshalJSON(b []byte) error {
 
 // AgentTraceBracket is the pair of harness sentinels around the attempt.
 type AgentTraceBracket struct {
-	Before AgentTraceReceipt `json:"before"`
-	After  AgentTraceReceipt `json:"after"`
+	Before AgentTraceEventReceipt `json:"before"`
+	After  AgentTraceEventReceipt `json:"after"`
 }
 
 // unmarshalAgentTraceCanonical decodes one canonical protojson value embedded in

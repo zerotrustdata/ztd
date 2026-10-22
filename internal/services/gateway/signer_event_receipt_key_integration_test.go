@@ -38,44 +38,44 @@ func seedOperatorDocument(t *testing.T, svc *SignerStoreService, operatorID, act
 	require.NoError(t, svc.docSvc.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), operatorID, raw))
 }
 
-func TestReceiptSignerKey_OutboundOperatorResolvesToBoundKey(t *testing.T) {
+func TestEventReceiptSignerKey_OutboundOperatorResolvesToBoundKey(t *testing.T) {
 	svc := setupSignerStore(t)
 	pubKey := generateTestPublicKey(t)
 	keyID := hex.EncodeToString(pubKey)
 	seedOperatorDocument(t, svc, "operator-bound", keyID)
 
-	got, err := svc.ReceiptSignerKey(t.Context(), "operator-bound", &operatorv1.ActionReceipt{SignerKeyId: keyID})
+	got, err := svc.EventReceiptSignerKey(t.Context(), "operator-bound", &operatorv1.EventReceipt{SignerKeyId: keyID})
 	require.NoError(t, err)
 	assert.Equal(t, pubKey, got)
 }
 
-func TestReceiptSignerKey_OutboundOperatorWithoutBoundKeyIsNotBound(t *testing.T) {
+func TestEventReceiptSignerKey_OutboundOperatorWithoutBoundKeyIsNotBound(t *testing.T) {
 	svc := setupSignerStore(t)
 	pubKey := generateTestPublicKey(t)
 	seedOperatorDocument(t, svc, "operator-unbound", "")
 
-	_, err := svc.ReceiptSignerKey(t.Context(), "operator-unbound", &operatorv1.ActionReceipt{SignerKeyId: hex.EncodeToString(pubKey)})
-	assert.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)
+	_, err := svc.EventReceiptSignerKey(t.Context(), "operator-unbound", &operatorv1.EventReceipt{SignerKeyId: hex.EncodeToString(pubKey)})
+	assert.ErrorIs(t, err, constants.ErrEventReceiptSignerNotBound)
 
-	_, err = svc.ReceiptSignerKey(t.Context(), "operator-missing", &operatorv1.ActionReceipt{SignerKeyId: hex.EncodeToString(pubKey)})
-	assert.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)
+	_, err = svc.EventReceiptSignerKey(t.Context(), "operator-missing", &operatorv1.EventReceipt{SignerKeyId: hex.EncodeToString(pubKey)})
+	assert.ErrorIs(t, err, constants.ErrEventReceiptSignerNotBound)
 }
 
-func TestReceiptSignerKey_OutboundOperatorRejectsSignerOutsideBinding(t *testing.T) {
+func TestEventReceiptSignerKey_OutboundOperatorRejectsSignerOutsideBinding(t *testing.T) {
 	svc := setupSignerStore(t)
 	bound := generateTestPublicKey(t)
 	fresh := generateTestPublicKey(t)
 	seedOperatorDocument(t, svc, "operator-bound", hex.EncodeToString(bound))
 
-	_, err := svc.ReceiptSignerKey(t.Context(), "operator-bound", &operatorv1.ActionReceipt{SignerKeyId: hex.EncodeToString(fresh)})
-	assert.ErrorIs(t, err, constants.ErrReceiptSignerNotBound)
+	_, err := svc.EventReceiptSignerKey(t.Context(), "operator-bound", &operatorv1.EventReceipt{SignerKeyId: hex.EncodeToString(fresh)})
+	assert.ErrorIs(t, err, constants.ErrEventReceiptSignerNotBound)
 }
 
-// TestRelayActionReceipt_BoundOperatorKeyAcceptedUnboundKeyRejected relays two
-// receipts through the real SignerStoreService: one signed by the key bound to
+// TestRelayEventReceipt_BoundOperatorKeyAcceptedUnboundKeyRejected relays two
+// event receipts through the real SignerStoreService: one signed by the key bound to
 // the publishing Operator, and one signed by a fresh key the Operator never
-// bound. Only the bound receipt is recorded.
-func TestRelayActionReceipt_BoundOperatorKeyAcceptedUnboundKeyRejected(t *testing.T) {
+// bound. Only the bound event receipt is recorded.
+func TestRelayEventReceipt_BoundOperatorKeyAcceptedUnboundKeyRejected(t *testing.T) {
 	svc := setupSignerStore(t)
 	boundPub, boundPriv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -86,10 +86,10 @@ func TestRelayActionReceipt_BoundOperatorKeyAcceptedUnboundKeyRejected(t *testin
 	seedOperatorDocument(t, svc, "op-001", boundKeyID)
 
 	broker := NewGatewayWebSocketHandler(testutil.NewTestLogger())
-	recorder := &stubReceiptRecorder{}
-	broker.SetReceiptRelayDeps(svc, recorder)
+	recorder := &stubEventReceiptRecorder{}
+	broker.SetEventReceiptRelayDeps(svc, recorder)
 	handler := newOperatorSessionHandler(broker, "op-001")
-	channel := pubsub.ReceiptsChannel("op-001", "sess-001")
+	channel := pubsub.EventReceiptsChannel("op-001", "sess-001")
 
 	publish := func(wire []byte) {
 		handler.handleAction(&pubsubv1.PubSubMessage{
@@ -99,13 +99,13 @@ func TestRelayActionReceipt_BoundOperatorKeyAcceptedUnboundKeyRejected(t *testin
 		})
 	}
 
-	boundWire, _ := buildSignedReceiptEnvelope(t, boundPriv, boundKeyID, "op-001", "sess-001",
+	boundWire, _ := buildSignedEventReceiptEnvelope(t, boundPriv, boundKeyID, "op-001", "sess-001",
 		string(constants.ActionTypeFileEdit), "/tmp/bound.txt", "user-001", "spiffe://ztd.local/app/app-001", "tx-bound")
 	publish(boundWire)
-	require.Len(t, recorder.recorded(), 1, "receipt signed by the bound key must be recorded")
+	require.Len(t, recorder.recorded(), 1, "event receipt signed by the bound key must be recorded")
 
-	freshWire, _ := buildSignedReceiptEnvelope(t, freshPriv, freshKeyID, "op-001", "sess-001",
+	freshWire, _ := buildSignedEventReceiptEnvelope(t, freshPriv, freshKeyID, "op-001", "sess-001",
 		string(constants.ActionTypeFileEdit), "/tmp/fresh.txt", "user-001", "spiffe://ztd.local/app/app-001", "tx-fresh")
 	publish(freshWire)
-	assert.Len(t, recorder.recorded(), 1, "receipt signed by an unbound key must be rejected")
+	assert.Len(t, recorder.recorded(), 1, "event receipt signed by an unbound key must be rejected")
 }

@@ -105,7 +105,7 @@ func TestApprovePlatformEnrollmentCmd_ApproveWithYes(t *testing.T) {
 		RequestID: "req-operator-001",
 		State:     models.PlatformEnrollmentStateApproved,
 	}
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{decisionResp}})
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{decisionResp}})
 	require.NoError(t, err)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: pendingBody, PostResp: postResp}
@@ -140,7 +140,7 @@ func TestDenyPlatformEnrollmentCmd_WithYes(t *testing.T) {
 		RequestID: "req-dashboard-002",
 		State:     models.PlatformEnrollmentStateDenied,
 	}
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{decisionResp}})
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{decisionResp}})
 	require.NoError(t, err)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: pendingBody, PostResp: postResp}
@@ -169,7 +169,7 @@ func TestApprovePlatformEnrollmentCmd_ReasonIncludedInBody(t *testing.T) {
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
 
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
 		RequestID: "req-operator-001",
 		State:     models.PlatformEnrollmentStateApproved,
 	}}})
@@ -201,7 +201,7 @@ func TestApprovePlatformEnrollmentCmd_DisplaysRequestDetails(t *testing.T) {
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
 
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
 		RequestID: "req-operator-001",
 		State:     models.PlatformEnrollmentStateApproved,
 	}}})
@@ -325,7 +325,7 @@ func TestApprovePlatformEnrollmentCmd_OutputNeverContainsTokens(t *testing.T) {
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
 
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
 		RequestID: "req-operator-001",
 		State:     models.PlatformEnrollmentStateApproved,
 	}}})
@@ -438,7 +438,7 @@ func runApproveWithYes(t *testing.T, flags map[string]string, args []string) (*c
 	if flags["all"] != "true" {
 		targets, _ = selectPendingRequests(targets, args)
 	}
-	response := models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt"}
+	response := models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt"}
 	for _, target := range targets {
 		response.Requests = append(response.Requests, models.PlatformEnrollmentDecisionResponse{RequestID: target.RequestID, State: models.PlatformEnrollmentStateApproved})
 	}
@@ -507,7 +507,7 @@ func TestApprovePlatformEnrollmentCmd_HostnameMatchingSeveralRequests(t *testing
 	pending.Requests[1].Hostname = pending.Requests[0].Hostname
 	pendingBody, err := json.Marshal(pending)
 	require.NoError(t, err)
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{RequestID: "req-operator-001", State: models.PlatformEnrollmentStateApproved}, {RequestID: "req-dashboard-002", State: models.PlatformEnrollmentStateApproved}}})
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{RequestID: "req-operator-001", State: models.PlatformEnrollmentStateApproved}, {RequestID: "req-dashboard-002", State: models.PlatformEnrollmentStateApproved}}})
 	require.NoError(t, err)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: pendingBody, PostResp: postResp}
@@ -597,7 +597,7 @@ func TestApprovePlatformEnrollmentCmd_InteractiveBatchPromptsOnce(t *testing.T) 
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{RequestID: "req-operator-001", State: models.PlatformEnrollmentStateApproved}, {RequestID: "req-dashboard-002", State: models.PlatformEnrollmentStateApproved}}})
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{RequestID: "req-operator-001", State: models.PlatformEnrollmentStateApproved}, {RequestID: "req-dashboard-002", State: models.PlatformEnrollmentStateApproved}}})
 	require.NoError(t, err)
 	mockClient := &cmdtest.MockAPIClient{GetResp: pendingBody, PostResp: postResp}
 
@@ -624,7 +624,7 @@ func TestDenyPlatformEnrollmentCmd_AllDeniesEveryPending(t *testing.T) {
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{RequestID: "req-operator-001", State: models.PlatformEnrollmentStateDenied}, {RequestID: "req-dashboard-002", State: models.PlatformEnrollmentStateDenied}}})
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{RequestID: "req-operator-001", State: models.PlatformEnrollmentStateDenied}, {RequestID: "req-dashboard-002", State: models.PlatformEnrollmentStateDenied}}})
 	require.NoError(t, err)
 	mockClient := &cmdtest.MockAPIClient{GetResp: pendingBody, PostResp: postResp}
 
@@ -888,7 +888,7 @@ func TestApprovePlatformEnrollmentCmd_DisplaysSystemFingerprint(t *testing.T) {
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
 
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
 		RequestID: "req-operator-001",
 		State:     models.PlatformEnrollmentStateApproved,
 	}}})
@@ -954,7 +954,7 @@ func TestApprovePlatformEnrollmentCmd_ApproveWithYes_FetchesPendingFirst(t *test
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
 
-	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
+	postResp, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{EventReceiptID: "event_receipt", Requests: []models.PlatformEnrollmentDecisionResponse{{
 		RequestID: "req-operator-001",
 		State:     models.PlatformEnrollmentStateApproved,
 	}}})

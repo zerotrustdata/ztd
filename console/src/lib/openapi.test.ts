@@ -20,7 +20,7 @@ const SPEC = {
         ],
         responses: {
           '404': { description: 'Not found', schema: { type: 'string' } },
-          '200': { description: 'OK', schema: { $ref: '#/definitions/models.Receipt' } },
+          '200': { description: 'OK', schema: { $ref: '#/definitions/models.event_receipt' } },
         },
       },
     },
@@ -39,10 +39,10 @@ const SPEC = {
         id: { type: 'string', description: 'Credential ID' },
         kind: { allOf: [{ $ref: '#/definitions/constants.Kind' }], description: 'Kind' },
         tags: { type: 'array', items: { type: 'string' } },
-        children: { type: 'array', items: { $ref: '#/definitions/models.Receipt' } },
+        children: { type: 'array', items: { $ref: '#/definitions/models.event_receipt' } },
       },
     },
-    'models.Receipt': { type: 'object', properties: { at: { type: 'integer', format: 'int64' } } },
+    'models.event_receipt': { type: 'object', properties: { at: { type: 'integer', format: 'int64' } } },
     'constants.Kind': { type: 'string', enum: ['A', 'B'] },
   },
 };
@@ -105,7 +105,7 @@ describe('schema helpers', () => {
     expect(props.map((p) => p.name)).toEqual(['children', 'id', 'kind', 'tags']);
     expect(props.find((p) => p.name === 'id')).toMatchObject({ required: true, type: 'string', description: 'Credential ID' });
     expect(props.find((p) => p.name === 'kind')).toMatchObject({ ref: 'constants.Kind', required: false });
-    expect(props.find((p) => p.name === 'children')).toMatchObject({ ref: 'models.Receipt', type: 'models.Receipt[]' });
+    expect(props.find((p) => p.name === 'children')).toMatchObject({ ref: 'models.event_receipt', type: 'models.event_receipt[]' });
     expect(props.find((p) => p.name === 'tags')?.ref).toBeUndefined();
     expect(definitionProperties(definitions, 'missing')).toEqual([]);
     expect(definitionEnum(definitions, 'constants.Kind')).toEqual(['A', 'B']);

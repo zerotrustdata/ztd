@@ -34,10 +34,10 @@ import (
 // governed HTTP-style dispatch never synthesizes missing L2/L3 proof. A FILE_EDIT
 // mutation carries neither proof, so under each posture that requires one it
 // must fail closed and leave the target file untouched with no COMPLETED
-// receipt. Under ratify and notary the Gateway rejects the mutation before any
+// event receipt. Under ratify and notary the Gateway rejects the mutation before any
 // envelope is published (L3 is unmintable on the dispatch path). Under consensus
 // the envelope is published with no L2 votes, the Operator's L4 warden rejects
-// it with a signed FAILED receipt, and that receipt ends the dispatch as a typed
+// it with a signed FAILED event receipt, and that event receipt ends the dispatch as a typed
 // rejection rather than a result timeout.
 func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T) {
 	const (
@@ -52,7 +52,7 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 		// Gateway rejects the mutation at envelope construction.
 		upFrontErr error
 		// l4Sentinel is the sentinel carried by the Operator's signed FAILED
-		// receipt when the envelope reaches the L4 warden and is rejected there.
+		// event receipt when the envelope reaches the L4 warden and is rejected there.
 		l4Sentinel error
 	}{
 		{
@@ -98,18 +98,18 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 			})
 			t.Cleanup(unregisterCmd)
 
-			receipts := make(chan *operatorv1.ActionReceipt, 16)
-			unregisterReceipt := infra.Pubsub.RegisterHandler(pubsub.ReceiptsChannel(operatorID, sessionID), func(_ string, data []byte) {
+			eventReceipts := make(chan *operatorv1.EventReceipt, 16)
+			unregisterEventReceipt := infra.Pubsub.RegisterHandler(pubsub.EventReceiptsChannel(operatorID, sessionID), func(_ string, data []byte) {
 				envelope := &commonv1.GovernanceEnvelope{}
 				if err := protojson.Unmarshal(data, envelope); err != nil {
 					return
 				}
-				receipt := &operatorv1.ActionReceipt{}
-				if err := proto.Unmarshal(envelope.Payload, receipt); err == nil {
-					receipts <- receipt
+				eventReceipt := &operatorv1.EventReceipt{}
+				if err := proto.Unmarshal(envelope.Payload, eventReceipt); err == nil {
+					eventReceipts <- eventReceipt
 				}
 			})
-			t.Cleanup(unregisterReceipt)
+			t.Cleanup(unregisterEventReceipt)
 
 			payload, err := proto.Marshal(&operatorv1.FileEditRequested{
 				FilePath:    targetPath,
@@ -146,15 +146,15 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 
 			if tc.l4Sentinel != nil {
 				// Published with no proof; the Operator's L4 warden rejects it and
-				// its signed receipt ends the wait with the L4 sentinel's text.
+				// its signed event receipt ends the wait with the L4 sentinel's text.
 				assert.ErrorIs(t, dispatchErr, constants.ErrDispatchGovernanceRejected)
 				assert.NotErrorIs(t, dispatchErr, constants.ErrDispatchResultTimeout)
 				assert.Contains(t, dispatchErr.Error(), tc.l4Sentinel.Error())
 				status, _ := dispatchErrorCode(dispatchErr)
 				assert.Equal(t, http.StatusForbidden, status)
 				rejection := govsvc.RejectionResponse(dispatchErr)
-				require.NotNil(t, rejection, "the rejection carries the Operator's signed receipt to the caller")
-				assert.Equal(t, govsvc.ClassifyGovernanceRejection(tc.l4Sentinel), rejection.GetReceipt().GetRejectionCode())
+				require.NotNil(t, rejection, "the rejection carries the Operator's signed event receipt to the caller")
+				assert.Equal(t, govsvc.ClassifyGovernanceRejection(tc.l4Sentinel), rejection.GetEventReceipt().GetRejectionCode())
 				require.Eventually(t, func() bool {
 					select {
 					case <-published:
@@ -165,34 +165,34 @@ func TestDispatch_MutationWithoutRequiredProofFailsClosedPerPosture(t *testing.T
 				}, time.Second, 10*time.Millisecond, "envelope must reach the operator for L4 rejection")
 			}
 
-			// Collect the receipts emitted for this mutation.
-			var failed *operatorv1.ActionReceipt
+			// Collect the event receipts emitted for this mutation.
+			var failed *operatorv1.EventReceipt
 			if tc.l4Sentinel != nil {
 				timer := time.NewTimer(time.Second)
 				defer timer.Stop()
 				for failed == nil {
 					select {
-					case receipt := <-receipts:
-						require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status, "unproven mutation must not complete")
-						if receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
-							failed = receipt
+					case eventReceipt := <-eventReceipts:
+						require.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status, "unproven mutation must not complete")
+						if eventReceipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
+							failed = eventReceipt
 						}
 					case <-timer.C:
-						t.Fatal("signed FAILED receipt for unproven mutation was not published")
+						t.Fatal("signed FAILED event receipt for unproven mutation was not published")
 					}
 				}
-				assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, failed.FailureCode)
-				assert.Contains(t, failed.ResultSummary, tc.l4Sentinel.Error(), "receipt must carry the missing-proof sentinel")
-				require.NoError(t, govsvc.VerifyActionReceiptSignature(failed, pubKey))
-				require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(failed, pubKey))
+				assert.Equal(t, operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED, failed.FailureCode)
+				assert.Contains(t, failed.ResultSummary, tc.l4Sentinel.Error(), "event receipt must carry the missing-proof sentinel")
+				require.NoError(t, govsvc.VerifyEventReceiptSignature(failed, pubKey))
+				require.NoError(t, govsvc.VerifyEventReceiptPersistenceAttestation(failed, pubKey))
 			}
 
-			// (c) No COMPLETED receipt may have been emitted.
+			// (c) No COMPLETED event receipt may have been emitted.
 			drained := true
 			for drained {
 				select {
-				case receipt := <-receipts:
-					assert.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status, "unproven mutation must not complete")
+				case eventReceipt := <-eventReceipts:
+					assert.NotEqual(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, eventReceipt.Status, "unproven mutation must not complete")
 				default:
 					drained = false
 				}

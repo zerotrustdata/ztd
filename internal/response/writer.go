@@ -166,7 +166,7 @@ func (w *Writer) RPCError(rw http.ResponseWriter, id interface{}, code int, msg 
 }
 
 // RPCErrorWithData writes a JSON-RPC 2.0 error response with a Data field
-// carrying structured metadata (e.g. a failed-stage receipt reference on
+// carrying structured metadata (e.g. a failed-stage event receipt reference on
 // governed L1/L2 rejections).
 func (w *Writer) RPCErrorWithData(rw http.ResponseWriter, id interface{}, code int, msg string, data json.RawMessage) {
 	res := JSONRPCResponse{

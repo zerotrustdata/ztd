@@ -22,8 +22,8 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// receiptFor builds a sample receipt with its own transaction id, session, app, and timestamp.
-func receiptFor(t *testing.T, txID, sessionID, appID string, ts time.Time) *models.EventReceiptRecord {
+// eventReceiptFor builds a sample event receipt with its own transaction id, session, app, and timestamp.
+func eventReceiptFor(t *testing.T, txID, sessionID, appID string, ts time.Time) *models.EventReceiptRecord {
 	t.Helper()
 	record := sampleEventReceiptRecord(t, sessionID)
 	record.TransactionID = txID
@@ -31,28 +31,28 @@ func receiptFor(t *testing.T, txID, sessionID, appID string, ts time.Time) *mode
 	record.ActingAppID = appID
 	record.Timestamp = ts
 	record.ExecutedAt = ts
-	record.ActionReceipt.TransactionId = txID
+	record.EventReceipt.TransactionId = txID
 	return record
 }
 
-// TestRecordActionReceipt_SameTransactionTwiceKeepsOneRow verifies that recording the same
-// transaction id twice leaves exactly one receipts row carrying the latest status and summary,
+// TestRecordEventReceipt_SameTransactionTwiceKeepsOneRow verifies that recording the same
+// transaction id twice leaves exactly one event receipts row carrying the latest status and summary,
 // while the transaction hash stays the first-recorded value.
-func TestRecordActionReceipt_SameTransactionTwiceKeepsOneRow(t *testing.T) {
+func TestRecordEventReceipt_SameTransactionTwiceKeepsOneRow(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.CreateSession("upsert-session", constants.SessionTypeOperator, "Upsert", "user-upsert"))
 
 	now := time.Now().UTC()
-	executing := receiptFor(t, "tx-upsert-once", "upsert-session", "app-upsert", now)
+	executing := eventReceiptFor(t, "tx-upsert-once", "upsert-session", "app-upsert", now)
 	executing.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
-	executing.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
+	executing.EventReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
 	executing.ResultSummary = "executing"
 	executing.TransactionHash = "hash-first"
 	require.NoError(t, ass.RecordEventReceipt(executing))
 
-	completed := receiptFor(t, "tx-upsert-once", "upsert-session", "app-upsert", now.Add(time.Second))
+	completed := eventReceiptFor(t, "tx-upsert-once", "upsert-session", "app-upsert", now.Add(time.Second))
 	completed.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
-	completed.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
+	completed.EventReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	completed.ResultSummary = "completed"
 	completed.TransactionHash = "hash-second"
 	require.NoError(t, ass.RecordEventReceipt(completed))
@@ -60,7 +60,7 @@ func TestRecordActionReceipt_SameTransactionTwiceKeepsOneRow(t *testing.T) {
 	var rows int
 	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM events WHERE transaction_id = ? AND event_receipt_status IS NOT NULL`, "tx-upsert-once").Scan(&rows))
 	assert.Equal(t, 1, rows, "one current event receipt")
-	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM events WHERE transaction_id = ? AND type = ?`, "tx-upsert-once", string(constants.EventOperatorReceiptRecorded)).Scan(&rows))
+	require.NoError(t, ass.db.QueryRowWithRetry(t.Context(), `SELECT COUNT(*) FROM events WHERE transaction_id = ? AND type = ?`, "tx-upsert-once", string(constants.EventOperatorEventReceiptRecorded)).Scan(&rows))
 	assert.Equal(t, 2, rows, "each stage remains a chain event")
 
 	got, err := ass.GetEventReceipt("tx-upsert-once")
@@ -71,18 +71,18 @@ func TestRecordActionReceipt_SameTransactionTwiceKeepsOneRow(t *testing.T) {
 	assert.Equal(t, "hash-first", got.TransactionHash, "transaction_hash is not rewritten by the upsert")
 }
 
-// TestListActionReceipts_FiltersBySessionInvestigationAndActingApp verifies
+// TestListEventReceipts_FiltersBySessionInvestigationAndActingApp verifies
 // intersected identity scopes, including stable Operator filtering before pagination.
-func TestListActionReceipts_FiltersBySessionInvestigationAndActingApp(t *testing.T) {
+func TestListEventReceipts_FiltersBySessionInvestigationAndActingApp(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.CreateSession("scope-a", constants.SessionTypeOperator, "A", "user-a"))
 	require.NoError(t, ass.CreateSession("scope-b", constants.SessionTypeOperator, "B", "user-b"))
 
 	now := time.Now().UTC()
 	fixtures := []*models.EventReceiptRecord{
-		receiptFor(t, "tx-scope-1", "scope-a", "app-x", now.Add(-3*time.Minute)),
-		receiptFor(t, "tx-scope-2", "scope-a", "app-y", now.Add(-2*time.Minute)),
-		receiptFor(t, "tx-scope-3", "scope-b", "app-y", now.Add(-1*time.Minute)),
+		eventReceiptFor(t, "tx-scope-1", "scope-a", "app-x", now.Add(-3*time.Minute)),
+		eventReceiptFor(t, "tx-scope-2", "scope-a", "app-y", now.Add(-2*time.Minute)),
+		eventReceiptFor(t, "tx-scope-3", "scope-b", "app-y", now.Add(-1*time.Minute)),
 	}
 	fixtures[0].InvestigationID = "investigation-shared"
 	fixtures[1].InvestigationID = "investigation-other"
@@ -130,11 +130,11 @@ func TestListActionReceipts_FiltersBySessionInvestigationAndActingApp(t *testing
 	assert.Len(t, unfiltered, 3)
 }
 
-// TestListActionReceipts_ExcludeAuditReadsFiltersBeforePagination verifies that
-// ExcludeAuditReads drops only the audit-read tools' own receipts, keeps every other
-// MCP_CALL, and applies limit and offset to the filtered sequence. The newest receipt
+// TestListEventReceipts_ExcludeAuditReadsFiltersBeforePagination verifies that
+// ExcludeAuditReads drops only the audit-read tools' own event receipts, keeps every other
+// MCP_CALL, and applies limit and offset to the filtered sequence. The newest event_receipt
 // is an audit read, so an unfiltered page would start with it.
-func TestListActionReceipts_ExcludeAuditReadsFiltersBeforePagination(t *testing.T) {
+func TestListEventReceipts_ExcludeAuditReadsFiltersBeforePagination(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.CreateSession("mixed-session", constants.SessionTypeOperator, "Mixed", "mixed-user"))
 
@@ -146,10 +146,10 @@ func TestListActionReceipts_ExcludeAuditReadsFiltersBeforePagination(t *testing.
 	}{
 		{"tx-mixed-command", constants.ActionTypeExecuteBash, "localhost"},
 		{"tx-mixed-shell", constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand},
-		{"tx-mixed-read", constants.ActionTypeMcpCall, constants.MCPToolAuditReceiptList},
+		{"tx-mixed-read", constants.ActionTypeMcpCall, constants.MCPToolAuditEventReceiptList},
 	}
 	for i, f := range fixtures {
-		record := receiptFor(t, f.txID, "mixed-session", "", base.Add(time.Duration(i)*time.Minute))
+		record := eventReceiptFor(t, f.txID, "mixed-session", "", base.Add(time.Duration(i)*time.Minute))
 		record.InvestigationID = "investigation-mixed"
 		record.ActionType = f.action
 		record.TargetResource = f.target
@@ -180,27 +180,27 @@ func TestListActionReceipts_ExcludeAuditReadsFiltersBeforePagination(t *testing.
 
 	unfiltered, err := ass.ListEventReceipts(models.AuditScope{InvestigationID: "investigation-mixed"}, 10, 0)
 	require.NoError(t, err)
-	assert.Len(t, unfiltered, 3, "without the flag every receipt in the investigation is returned")
+	assert.Len(t, unfiltered, 3, "without the flag every event receipt in the investigation is returned")
 }
 
-// TestListActionReceipts_ExcludeAuditReadsPagesPastFullBatches verifies that the filtered scan
-// keeps reading SQL batches while they are full of audit reads, and reaches older receipts.
-func TestListActionReceipts_ExcludeAuditReadsPagesPastFullBatches(t *testing.T) {
+// TestListEventReceipts_ExcludeAuditReadsPagesPastFullBatches verifies that the filtered scan
+// keeps reading SQL batches while they are full of audit reads, and reaches older event receipts.
+func TestListEventReceipts_ExcludeAuditReadsPagesPastFullBatches(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.CreateSession("batch-session", constants.SessionTypeOperator, "Batch", "batch-user"))
 
 	base := time.Now().UTC().Add(-2 * time.Hour)
 	for i, txID := range []string{"tx-batch-command-old", "tx-batch-command-new"} {
-		record := receiptFor(t, txID, "batch-session", "", base.Add(time.Duration(i)*time.Minute))
+		record := eventReceiptFor(t, txID, "batch-session", "", base.Add(time.Duration(i)*time.Minute))
 		record.InvestigationID = "investigation-batch"
 		record.ActionType = constants.ActionTypeExecuteBash
 		require.NoError(t, ass.RecordEventReceipt(record))
 	}
 	for i := range auditReadScanBatchSize + 5 {
-		record := receiptFor(t, fmt.Sprintf("tx-batch-read-%03d", i), "batch-session", "", base.Add(time.Hour+time.Duration(i)*time.Second))
+		record := eventReceiptFor(t, fmt.Sprintf("tx-batch-read-%03d", i), "batch-session", "", base.Add(time.Hour+time.Duration(i)*time.Second))
 		record.InvestigationID = "investigation-batch"
 		record.ActionType = constants.ActionTypeMcpCall
-		record.TargetResource = constants.MCPToolAuditReceiptList
+		record.TargetResource = constants.MCPToolAuditEventReceiptList
 		require.NoError(t, ass.RecordEventReceipt(record))
 	}
 
@@ -211,39 +211,39 @@ func TestListActionReceipts_ExcludeAuditReadsPagesPastFullBatches(t *testing.T) 
 	assert.Equal(t, "tx-batch-command-old", rows[1].TransactionID)
 }
 
-// TestListActionReceipts_PaginatesNewestFirst verifies limit/offset paging returns receipts
+// TestListEventReceipts_PaginatesNewestFirst verifies limit/offset paging returns event_receipts
 // newest first with no overlap between pages.
-func TestListActionReceipts_PaginatesNewestFirst(t *testing.T) {
+func TestListEventReceipts_PaginatesNewestFirst(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
-	require.NoError(t, ass.CreateSession("page-receipts", constants.SessionTypeOperator, "Page", "user-page"))
+	require.NoError(t, ass.CreateSession("page-event_receipts", constants.SessionTypeOperator, "Page", "user-page"))
 
 	base := time.Now().UTC().Add(-time.Hour)
 	for i, txID := range []string{"tx-page-oldest", "tx-page-middle", "tx-page-newest"} {
-		require.NoError(t, ass.RecordEventReceipt(receiptFor(t, txID, "page-receipts", "app-page", base.Add(time.Duration(i)*time.Minute))))
+		require.NoError(t, ass.RecordEventReceipt(eventReceiptFor(t, txID, "page-event_receipts", "app-page", base.Add(time.Duration(i)*time.Minute))))
 	}
 
-	first, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "page-receipts"}, 2, 0)
+	first, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "page-event_receipts"}, 2, 0)
 	require.NoError(t, err)
 	require.Len(t, first, 2)
 	assert.Equal(t, "tx-page-newest", first[0].TransactionID)
 	assert.Equal(t, "tx-page-middle", first[1].TransactionID)
 
-	second, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "page-receipts"}, 2, 2)
+	second, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "page-event_receipts"}, 2, 2)
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	assert.Equal(t, "tx-page-oldest", second[0].TransactionID)
 }
 
-// TestListActionReceiptsSince_ReturnsOnlyNewerReceiptsAscending verifies the time-range listing
-// excludes receipts at or before the cutoff and returns the rest oldest first.
-func TestListActionReceiptsSince_ReturnsOnlyNewerReceiptsAscending(t *testing.T) {
+// TestListEventReceiptsSince_ReturnsOnlyNewerEventReceiptsAscending verifies the time-range listing
+// excludes event receipts at or before the cutoff and returns the rest oldest first.
+func TestListEventReceiptsSince_ReturnsOnlyNewerEventReceiptsAscending(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
 	require.NoError(t, ass.CreateSession("since-session", constants.SessionTypeOperator, "Since", "user-since"))
 
 	now := time.Now().UTC()
-	require.NoError(t, ass.RecordEventReceipt(receiptFor(t, "tx-since-old", "since-session", "app-since", now.Add(-3*time.Hour))))
-	require.NoError(t, ass.RecordEventReceipt(receiptFor(t, "tx-since-late", "since-session", "app-since", now.Add(-10*time.Minute))))
-	require.NoError(t, ass.RecordEventReceipt(receiptFor(t, "tx-since-recent", "since-session", "app-since", now.Add(-5*time.Minute))))
+	require.NoError(t, ass.RecordEventReceipt(eventReceiptFor(t, "tx-since-old", "since-session", "app-since", now.Add(-3*time.Hour))))
+	require.NoError(t, ass.RecordEventReceipt(eventReceiptFor(t, "tx-since-late", "since-session", "app-since", now.Add(-10*time.Minute))))
+	require.NoError(t, ass.RecordEventReceipt(eventReceiptFor(t, "tx-since-recent", "since-session", "app-since", now.Add(-5*time.Minute))))
 
 	since, err := ass.ListEventReceiptsSince(now.Add(-2*time.Hour), 10)
 	require.NoError(t, err)
@@ -256,12 +256,12 @@ func TestListActionReceiptsSince_ReturnsOnlyNewerReceiptsAscending(t *testing.T)
 	assert.Empty(t, none)
 }
 
-// TestReceiptReads_LockedVaultFailsRead verifies that receipt reads fail closed with
+// TestEventReceiptReads_LockedVaultFailsRead verifies that event receipt reads fail closed with
 // ErrAuditStoreVaultLocked once the vault is locked, rather than returning ciphertext.
-func TestReceiptReads_LockedVaultFailsRead(t *testing.T) {
+func TestEventReceiptReads_LockedVaultFailsRead(t *testing.T) {
 	ass := newIntegrationAuditStore(t)
-	require.NoError(t, ass.CreateSession("locked-receipts", constants.SessionTypeOperator, "Locked", "user-locked"))
-	require.NoError(t, ass.RecordEventReceipt(receiptFor(t, "tx-locked-read", "locked-receipts", "app-locked", time.Now().UTC())))
+	require.NoError(t, ass.CreateSession("locked-event_receipts", constants.SessionTypeOperator, "Locked", "user-locked"))
+	require.NoError(t, ass.RecordEventReceipt(eventReceiptFor(t, "tx-locked-read", "locked-event_receipts", "app-locked", time.Now().UTC())))
 
 	ass.GetEncryptionVault().Lock()
 
@@ -269,7 +269,7 @@ func TestReceiptReads_LockedVaultFailsRead(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
 	assert.Nil(t, got)
 
-	listed, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "locked-receipts"}, 10, 0)
+	listed, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "locked-event_receipts"}, 10, 0)
 	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
 	assert.Nil(t, listed)
 

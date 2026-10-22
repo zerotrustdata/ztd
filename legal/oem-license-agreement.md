@@ -132,7 +132,7 @@ requirements, when it distributes ztd.
 4. **Governing law.** Oregon law governs this Agreement, without regard to its conflict-of-laws rules. The state
    and federal courts in Multnomah County, Oregon, have exclusive jurisdiction.
 5. **Notices.** Notices must be in writing and sent by email to the addresses below. Notice takes effect when the
-   recipient acknowledges receipt or one business day after sending, whichever comes first.
+   recipient acknowledges event receipt or one business day after sending, whichever comes first.
 6. **Entire agreement.** This Agreement, including Exhibit A, is the entire agreement about its subject matter and
    overrides Licensor's Commercial License and Services Terms where they conflict. Any amendment must be in writing
    and signed by both parties. Purchase order terms have no effect.

@@ -592,7 +592,7 @@ func TestDataAuditSummaryCmdWithConfig_ValidResponse(t *testing.T) {
 	env := newDataTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return env.cfg, nil }
-	client := &cmdtest.MockAPIClient{GetResp: []byte(`{"success":true,"events_summary":{"logout":1,"login":2},"events_total":3,"receipts_summary":{},"receipts_total":0,"total_records":3}`)}
+	client := &cmdtest.MockAPIClient{GetResp: []byte(`{"success":true,"events_summary":{"logout":1,"login":2},"events_total":3,"event_receipts_summary":{},"event_receipts_total":0,"total_records":3}`)}
 	cmd := dataAuditSummaryCmdWithConfig(loader, authcmd.MockClientFactory(client), cmdtest.FileSvcFactoryFor(env.fileSvc))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)

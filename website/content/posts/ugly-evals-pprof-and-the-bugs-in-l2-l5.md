@@ -32,11 +32,11 @@ I found bugs across L2 through L5:
 - **L2 Consensus:** Quorum verification and signer binding had subtle timing gaps under heavy evaluation fan-out.
 - **L3 Notary:** Cryptographic proof validation and passkey approval handoffs weren't failing closed cleanly when sessions were interrupted.
 - **L4 Warden:** State-root recalculation and nonce reservation hit race conditions under rapid, repeated scenario dispatch.
-- **L5 Actuator:** Action handler errors were occasionally getting swallowed instead of propagating back as authoritative, signed `FAILED` terminal receipts on the local commitment ledger.
+- **L5 Actuator:** Action handler errors were occasionally getting swallowed instead of propagating back as authoritative, signed `FAILED` terminal event receipts on the local commitment ledger.
 
 To track down the memory churn and lock contention under this load, I wired loopback-only `net/http/pprof` directly into the Gateway (`ztd gw start --pprof-listen 127.0.0.1:6060`). I've spent days staring at heap allocations, goroutine dumps, and mutex blocking profiles, hunting down the bottlenecks.
 
-If nothing else, these evals have dragged every performance kink and lazy assumption into the light. Releases v1.1.2 through the upcoming v1.2.0 are addressing those issues head-on: fixing failure receipt integrity, cleaning up posture enforcement codepaths, and making sure the five-layer pipeline actually holds under fire.
+If nothing else, these evals have dragged every performance kink and lazy assumption into the light. Releases v1.1.2 through the upcoming v1.2.0 are addressing those issues head-on: fixing failure event receipt integrity, cleaning up posture enforcement codepaths, and making sure the five-layer pipeline actually holds under fire.
 
 ## Burning the last tokens
 
@@ -48,7 +48,7 @@ I need unambiguous data: does a zero-trust, five-layer governance pipeline make 
 
 Otherwise, I'm going to keep pushing for zero-trust, data-sovereign AI. Specifically, in support of local, open-source models that can run on consumer hardware.
 
-I believe that the right system of small, specialized models—operating locally with strict boundary controls, signed receipts, and verifiable memory—can be more accurate, secure, auditable, and flexible than a monolithic cloud API. More importantly, a system like that can actually learn and adapt over time without shipping your private data off to someone else's datacenter. That is what I hope to make available for everyday users.
+I believe that the right system of small, specialized models—operating locally with strict boundary controls, signed event receipts, and verifiable memory—can be more accurate, secure, auditable, and flexible than a monolithic cloud API. More importantly, a system like that can actually learn and adapt over time without shipping your private data off to someone else's datacenter. That is what I hope to make available for everyday users.
 
 ## Moving on
 

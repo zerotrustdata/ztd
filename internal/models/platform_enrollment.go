@@ -400,8 +400,8 @@ func (r PlatformEnrollmentBatchDecisionRequest) Validate() error {
 }
 
 type PlatformEnrollmentBatchDecisionResponse struct {
-	Requests  []PlatformEnrollmentDecisionResponse `json:"requests"`
-	ReceiptID string                               `json:"receipt_id"`
+	Requests       []PlatformEnrollmentDecisionResponse `json:"requests"`
+	EventReceiptID string                               `json:"event_receipt_id"`
 }
 
 type PlatformEnrollmentDecisionResponse struct {
@@ -500,45 +500,45 @@ type PlatformEnrollmentCompleteResponse struct {
 }
 
 type PlatformEnrollmentRequest struct {
-	ID                     string                              `json:"request_id"`
-	TokenHash              string                              `json:"token_hash"`
-	ComponentKind          PlatformComponentKind               `json:"component_kind"`
-	ComponentName          string                              `json:"component_name"`
-	AppName                string                              `json:"app_name,omitempty"`
-	InstanceID             string                              `json:"instance_id"`
-	Hostname               string                              `json:"hostname"`
-	SystemFingerprint      string                              `json:"system_fingerprint,omitempty"`
-	App                    *PlatformAppCSRPayload              `json:"app,omitempty"`
-	Operator               *PlatformOperatorCSRPayload         `json:"operator,omitempty"`
-	Fingerprints           PlatformEnrollmentCSRFingerprints   `json:"fingerprints"`
-	State                  PlatformEnrollmentState             `json:"state"`
-	AttemptCount           int                                 `json:"attempt_count"`
-	CreatedAt              time.Time                           `json:"created_at"`
-	ExpiresAt              time.Time                           `json:"expires_at"`
-	LastTransitionAt       time.Time                           `json:"last_transition_at"`
-	ApprovedByUserID       string                              `json:"approved_by_user_id,omitempty"`
-	DecidedAt              *time.Time                          `json:"decided_at,omitempty"`
-	DecisionReason         string                              `json:"decision_reason,omitempty"`
-	DecisionEnvelopeID     string                              `json:"decision_envelope_id,omitempty"`
-	DecisionReceiptID      string                              `json:"decision_receipt_id,omitempty"`
-	IssuanceEnvelopeID     string                              `json:"issuance_envelope_id,omitempty"`
-	IssuanceReceiptID      string                              `json:"issuance_receipt_id,omitempty"`
-	IssuanceLeaseOwner     string                              `json:"issuance_lease_owner,omitempty"`
-	IssuanceLeaseExpiresAt *time.Time                          `json:"issuance_lease_expires_at,omitempty"`
-	OperatorID             string                              `json:"operator_id,omitempty"`
-	OperatorSessionID      string                              `json:"operator_session_id,omitempty"`
-	CLISessionID           string                              `json:"cli_session_id,omitempty"`
-	PolicyID               string                              `json:"policy_id,omitempty"`
-	CertificateSerial      string                              `json:"certificate_serial,omitempty"`
-	CertificateFingerprint string                              `json:"certificate_fingerprint,omitempty"`
-	Issued                 *PlatformEnrollmentCompleteResponse `json:"issued,omitempty"`
-	CompletedAt            *time.Time                          `json:"completed_at,omitempty"`
-	RevokedAt              *time.Time                          `json:"revoked_at,omitempty"`
-	RevokedByUserID        string                              `json:"revoked_by_user_id,omitempty"`
-	RevocationReason       string                              `json:"revocation_reason,omitempty"`
-	RevocationEnvelopeID   string                              `json:"revocation_envelope_id,omitempty"`
-	RevocationReceiptID    string                              `json:"revocation_receipt_id,omitempty"`
-	FailureReason          string                              `json:"failure_reason,omitempty"`
+	ID                       string                              `json:"request_id"`
+	TokenHash                string                              `json:"token_hash"`
+	ComponentKind            PlatformComponentKind               `json:"component_kind"`
+	ComponentName            string                              `json:"component_name"`
+	AppName                  string                              `json:"app_name,omitempty"`
+	InstanceID               string                              `json:"instance_id"`
+	Hostname                 string                              `json:"hostname"`
+	SystemFingerprint        string                              `json:"system_fingerprint,omitempty"`
+	App                      *PlatformAppCSRPayload              `json:"app,omitempty"`
+	Operator                 *PlatformOperatorCSRPayload         `json:"operator,omitempty"`
+	Fingerprints             PlatformEnrollmentCSRFingerprints   `json:"fingerprints"`
+	State                    PlatformEnrollmentState             `json:"state"`
+	AttemptCount             int                                 `json:"attempt_count"`
+	CreatedAt                time.Time                           `json:"created_at"`
+	ExpiresAt                time.Time                           `json:"expires_at"`
+	LastTransitionAt         time.Time                           `json:"last_transition_at"`
+	ApprovedByUserID         string                              `json:"approved_by_user_id,omitempty"`
+	DecidedAt                *time.Time                          `json:"decided_at,omitempty"`
+	DecisionReason           string                              `json:"decision_reason,omitempty"`
+	DecisionEnvelopeID       string                              `json:"decision_envelope_id,omitempty"`
+	DecisionEventReceiptID   string                              `json:"decision_event_receipt_id,omitempty"`
+	IssuanceEnvelopeID       string                              `json:"issuance_envelope_id,omitempty"`
+	IssuanceEventReceiptID   string                              `json:"issuance_event_receipt_id,omitempty"`
+	IssuanceLeaseOwner       string                              `json:"issuance_lease_owner,omitempty"`
+	IssuanceLeaseExpiresAt   *time.Time                          `json:"issuance_lease_expires_at,omitempty"`
+	OperatorID               string                              `json:"operator_id,omitempty"`
+	OperatorSessionID        string                              `json:"operator_session_id,omitempty"`
+	CLISessionID             string                              `json:"cli_session_id,omitempty"`
+	PolicyID                 string                              `json:"policy_id,omitempty"`
+	CertificateSerial        string                              `json:"certificate_serial,omitempty"`
+	CertificateFingerprint   string                              `json:"certificate_fingerprint,omitempty"`
+	Issued                   *PlatformEnrollmentCompleteResponse `json:"issued,omitempty"`
+	CompletedAt              *time.Time                          `json:"completed_at,omitempty"`
+	RevokedAt                *time.Time                          `json:"revoked_at,omitempty"`
+	RevokedByUserID          string                              `json:"revoked_by_user_id,omitempty"`
+	RevocationReason         string                              `json:"revocation_reason,omitempty"`
+	RevocationEnvelopeID     string                              `json:"revocation_envelope_id,omitempty"`
+	RevocationEventReceiptID string                              `json:"revocation_event_receipt_id,omitempty"`
+	FailureReason            string                              `json:"failure_reason,omitempty"`
 }
 
 func (r PlatformEnrollmentRequest) PendingMetadata() PlatformEnrollmentPendingRequest {

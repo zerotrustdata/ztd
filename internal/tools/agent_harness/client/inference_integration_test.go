@@ -26,17 +26,17 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestClient_DispatchInference_FailedReceiptPreserved(t *testing.T) {
-	expectedReceipt := &operatorv1.ActionReceipt{
+func TestClient_DispatchInference_FailedEventReceiptPreserved(t *testing.T) {
+	expectedEventReceipt := &operatorv1.EventReceipt{
 		TransactionId: "tx-inference-failed-002",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 		Signature:     "sig-failed-002",
 		ResultSummary: "provider timeout",
 	}
 	body, err := protojson.Marshal(&operatorv1.InferenceDispatchFailure{
-		Error:   constants.ErrInferenceBackendTimeout.Error(),
-		Code:    operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT,
-		Receipt: expectedReceipt,
+		Error:        constants.ErrInferenceBackendTimeout.Error(),
+		Code:         operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TIMEOUT,
+		EventReceipt: expectedEventReceipt,
 	})
 	require.NoError(t, err)
 
@@ -58,12 +58,12 @@ func TestClient_DispatchInference_FailedReceiptPreserved(t *testing.T) {
 	require.Error(t, dispatchErr)
 	assert.ErrorIs(t, dispatchErr, constants.ErrInferenceBackendTimeout)
 
-	failedReceipt := governance.FailedReceipt(dispatchErr)
-	require.NotNil(t, failedReceipt)
-	assert.True(t, proto.Equal(expectedReceipt, failedReceipt))
+	failedEventReceipt := governance.FailedEventReceipt(dispatchErr)
+	require.NotNil(t, failedEventReceipt)
+	assert.True(t, proto.Equal(expectedEventReceipt, failedEventReceipt))
 }
 
-func TestClient_DispatchInference_NoReceiptYieldsNilFailedReceipt(t *testing.T) {
+func TestClient_DispatchInference_NoEventReceiptYieldsNilFailedEventReceipt(t *testing.T) {
 	body, err := protojson.Marshal(&operatorv1.InferenceDispatchFailure{
 		Error: constants.ErrInferenceGovernanceRejected.Error(),
 		Code:  operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED,
@@ -87,5 +87,5 @@ func TestClient_DispatchInference_NoReceiptYieldsNilFailedReceipt(t *testing.T) 
 	require.Error(t, dispatchErr)
 	assert.ErrorIs(t, dispatchErr, constants.ErrInferenceGovernanceRejected)
 
-	assert.Nil(t, governance.FailedReceipt(dispatchErr))
+	assert.Nil(t, governance.FailedEventReceipt(dispatchErr))
 }

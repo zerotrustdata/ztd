@@ -1,6 +1,6 @@
 {
   "name": "completed_with_non_default_l2_l3",
-  "receipt": {
+  "event_receipt": {
     "transaction_id": "tx-golden-001",
     "transaction_hash": "sha256:8d969eef6ecad3c29a3a629280e686cff8ca6a85acebf4c7f2c5c8d5e6f7a8b9",
     "status": "EXECUTION_STATUS_COMPLETED",

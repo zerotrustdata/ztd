@@ -22,9 +22,9 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func receiptBody(t *testing.T) []byte {
+func eventReceiptBody(t *testing.T) []byte {
 	t.Helper()
-	body, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	body, err := response.MarshalProtoJSONCanonical(&operatorv1.EventReceipt{
 		TransactionId: "tx-1",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 	})
@@ -36,7 +36,7 @@ func rejectionBody(t *testing.T) []byte {
 	t.Helper()
 	body, err := response.MarshalProtoJSONCanonical(&operatorv1.GovernanceRejection{
 		Error: "L4 rejected the envelope",
-		Receipt: &operatorv1.ActionReceipt{
+		EventReceipt: &operatorv1.EventReceipt{
 			TransactionId: "tx-2",
 			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
 			RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_REPLAY,

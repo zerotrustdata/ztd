@@ -35,7 +35,7 @@ import (
 )
 
 // suspendedCallResponse is the tools/call response the Gateway returns when a call
-// awaits L3 approval: a typed GovernedSuspension and no receipt.
+// awaits L3 approval: a typed GovernedSuspension and no event receipt.
 func suspendedCallResponse(txHash string) JSONRPCResponse {
 	message := "Execution paused. Please authorize."
 	return JSONRPCResponse{
@@ -55,12 +55,12 @@ func suspendedCallResponse(txHash string) JSONRPCResponse {
 }
 
 // approvalCompletedFrame is an approval.completed SSE frame for txHash whose
-// receipt reports receiptTxHash as the resumed transaction's hash.
-func approvalCompletedFrame(t *testing.T, userID, txHash, receiptTxHash string) string {
+// event receipt reports eventReceiptTxHash as the resumed transaction's hash.
+func approvalCompletedFrame(t *testing.T, userID, txHash, eventReceiptTxHash string) string {
 	t.Helper()
-	return approvalReceiptFrame(t, userID, txHash, &operatorv1.ActionReceipt{
-		TransactionId:   "transaction-" + receiptTxHash,
-		TransactionHash: receiptTxHash,
+	return approvalEventReceiptFrame(t, userID, txHash, &operatorv1.EventReceipt{
+		TransactionId:   "transaction-" + eventReceiptTxHash,
+		TransactionHash: eventReceiptTxHash,
 		SignerKeyId:     "warden-key-bridge",
 		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
 		ResultSummary:   "resumed result",
@@ -68,16 +68,16 @@ func approvalCompletedFrame(t *testing.T, userID, txHash, receiptTxHash string) 
 	})
 }
 
-// approvalReceiptFrame is an approval.completed SSE frame for txHash carrying receipt.
-func approvalReceiptFrame(t *testing.T, userID, txHash string, signed *operatorv1.ActionReceipt) string {
+// approvalEventReceiptFrame is an approval.completed SSE frame for txHash carrying event receipt.
+func approvalEventReceiptFrame(t *testing.T, userID, txHash string, signed *operatorv1.EventReceipt) string {
 	t.Helper()
-	receipt, err := response.MarshalProtoJSONCanonical(signed)
+	eventReceipt, err := response.MarshalProtoJSONCanonical(signed)
 	require.NoError(t, err)
 	eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
-		Type:    constants.SSEEventTypeApprovalCompleted,
-		UserID:  userID,
-		TxHash:  txHash,
-		Receipt: receipt,
+		Type:         constants.SSEEventTypeApprovalCompleted,
+		UserID:       userID,
+		TxHash:       txHash,
+		EventReceipt: eventReceipt,
 	})
 	require.NoError(t, err)
 	envelopeJSON, err := json.Marshal(models.SSEPushPayload{UserID: userID, Event: eventPayload})
@@ -130,7 +130,7 @@ func publishDuringCall(frames chan<- string, written <-chan struct{}, frame stri
 }
 
 func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
-	t.Run("approval completed while the call is in flight still returns the resumed receipt", func(t *testing.T) {
+	t.Run("approval completed while the call is in flight still returns the resumed event receipt", func(t *testing.T) {
 		var attempts, connections atomic.Int32
 		frames := make(chan string)
 		written := make(chan struct{}, 1)
@@ -167,9 +167,9 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 		result, ok := resp.Result.(mcp.CallToolResult)
 		require.True(t, ok, "the approved call must return a CallToolResult")
 		assert.Nil(t, result.Suspension)
-		var receipt operatorv1.ActionReceipt
-		require.NoError(t, protojson.Unmarshal(result.Receipt, &receipt))
-		assert.Equal(t, "tx-sse-success", receipt.GetTransactionHash())
+		var eventReceipt operatorv1.EventReceipt
+		require.NoError(t, protojson.Unmarshal(result.EventReceipt, &eventReceipt))
+		assert.Equal(t, "tx-sse-success", eventReceipt.GetTransactionHash())
 		assert.Equal(t, "resumed result", result.Content[0].Text)
 	})
 
@@ -178,12 +178,12 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 		frames := make(chan string)
 		written := make(chan struct{}, 1)
 		sseServer := approvalStreamServer(t, frames, written, &connections)
-		frame := approvalReceiptFrame(t, "user-sse-deny", "tx-sse-deny", &operatorv1.ActionReceipt{
+		frame := approvalEventReceiptFrame(t, "user-sse-deny", "tx-sse-deny", &operatorv1.EventReceipt{
 			TransactionId:   "transaction-tx-sse-deny",
 			TransactionHash: "tx-sse-deny",
 			SignerKeyId:     "warden-key-bridge",
 			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-			FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+			FailureCode:     operatorv1.EventReceiptFailureCode_EVENT_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
 			RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
 			Signature:       "signature-bridge",
 		})
@@ -216,11 +216,11 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 		rejection, refusal, err := governance.DecodeIngressFailure(data)
 		require.NoError(t, err)
 		require.Nil(t, refusal)
-		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, rejection.GetReceipt().GetRejectionCode())
-		assert.Equal(t, "tx-sse-deny", rejection.GetReceipt().GetTransactionHash())
+		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, rejection.GetEventReceipt().GetRejectionCode())
+		assert.Equal(t, "tx-sse-deny", rejection.GetEventReceipt().GetTransactionHash())
 	})
 
-	t.Run("SSE receipt for another transaction fails closed", func(t *testing.T) {
+	t.Run("SSE event receipt for another transaction fails closed", func(t *testing.T) {
 		var connections atomic.Int32
 		frames := make(chan string)
 		written := make(chan struct{}, 1)
@@ -249,7 +249,7 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 
 		_, err := proxySessionToGatewayWithRetryContext(context.Background(), conn, JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "tools/call"}, nil)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrActionReceiptMissing)
+		assert.ErrorIs(t, err, constants.ErrEventReceiptMissing)
 	})
 
 	t.Run("suspension without a transaction hash fails closed", func(t *testing.T) {

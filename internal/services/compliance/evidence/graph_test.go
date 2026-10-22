@@ -60,10 +60,10 @@ func TestContentAddress_FormatAndDeterminism(t *testing.T) {
 
 func TestParseContentAddress_ValidAddress(t *testing.T) {
 	body := []byte(`{}`)
-	addr := ContentAddress(ArtifactTypeActionReceipt, body)
+	addr := ContentAddress(ArtifactTypeEventReceipt, body)
 	artifactType, digest, ok := ParseContentAddress(addr)
 	require.True(t, ok)
-	assert.Equal(t, ArtifactTypeActionReceipt, artifactType)
+	assert.Equal(t, ArtifactTypeEventReceipt, artifactType)
 	assert.Len(t, digest, 64)
 }
 
@@ -213,7 +213,7 @@ func TestEvidenceGraph_AddNode_RejectsDuplicateWithConflictingScope(t *testing.T
 func TestEvidenceGraph_AddNode_DeduplicatesMirroredArtifactAcrossSourceAdmissions(t *testing.T) {
 	g := NewEvidenceGraph(0, nil)
 	body := []byte(`{"id":"mirrored"}`)
-	node1 := validNode(ArtifactTypeActionReceipt, "scope-1", body)
+	node1 := validNode(ArtifactTypeEventReceipt, "scope-1", body)
 	node1.SourceAdmissionID = "operator-local"
 	require.NoError(t, g.AddNode(node1))
 	node2 := node1
@@ -340,7 +340,7 @@ func TestEvidenceGraph_ValidateScopeBinding_AllowsAttemptIdentityToRepeatAcrossS
 
 func TestEvidenceGraph_ValidateScopeBinding_DetectsTransactionRunConflictWithinSource(t *testing.T) {
 	g := NewEvidenceGraph(0, nil)
-	node1 := validNode(ArtifactTypeActionReceipt, "scope-1", []byte(`{"1":1}`))
+	node1 := validNode(ArtifactTypeEventReceipt, "scope-1", []byte(`{"1":1}`))
 	node1.SourceAdmissionID = "source-1"
 	node1.RunID = "run-1"
 	node1.TransactionID = "transaction-1"
@@ -572,7 +572,7 @@ func TestEvidenceGraph_NodesByScope_ReturnsBoundNodes(t *testing.T) {
 }
 
 func TestEvidenceNode_ToProto_RoundTripsCoreFields(t *testing.T) {
-	node := validNode(ArtifactTypeActionReceipt, "scope-1", []byte(`{}`))
+	node := validNode(ArtifactTypeEventReceipt, "scope-1", []byte(`{}`))
 	node.TransactionID = "tx-001"
 	node.Encryption = &EncryptionMetadata{
 		Algorithm:                   "aes-256-gcm",
@@ -631,6 +631,6 @@ func TestValidBundlePath_RejectsUnsafePaths(t *testing.T) {
 
 func TestValidBundlePath_AcceptsSafePaths(t *testing.T) {
 	assert.True(t, validBundlePath("manifest.json"))
-	assert.True(t, validBundlePath("receipts/abc.json"))
+	assert.True(t, validBundlePath("event_receipts/abc.json"))
 	assert.True(t, validBundlePath("a/b/c.json"))
 }

@@ -92,7 +92,7 @@ func BoundAnchor(doc *operatorv1.OperatorDocument) (*evalv1.ConformanceAnchor, e
 // cross-checking it against that Operator's own PKI export, read through its
 // RuntimeFileService. The export must name the same key id and public key as
 // bound, so an Operator that rewrites its export cannot choose the key its
-// receipts verify against. A differing key fails with ErrConformanceAnchorInvalid
+// event receipts verify against. A differing key fails with ErrConformanceAnchorInvalid
 // and a missing export with ErrConformanceAnchorMissing. The result is the bound
 // key with the export's SHA-256 as provenance.
 func CheckedBoundAnchor(ctx context.Context, files fs.RuntimeFileService, runtimeID string, bound *evalv1.ConformanceAnchor) (*evalv1.ConformanceAnchor, error) {

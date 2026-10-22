@@ -99,25 +99,25 @@ func releaseKeyID(t *testing.T) string {
 }
 
 func TestCollectOperationalSignerKeys_ReturnsDistinctSortedKeysFromEverySignedSurface(t *testing.T) {
-	receiptSigner, persistenceSigner, stageSigner, auditor := "cc", "aa", "dd", "bb"
-	receipt, err := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{
+	eventReceiptSigner, persistenceSigner, stageSigner, auditor := "cc", "aa", "dd", "bb"
+	eventReceipt, err := compliancev1.MarshalCanonical(&operatorv1.EventReceipt{
 		TransactionId: "tx-1",
-		SignerKeyId:   receiptSigner,
-		FinalPersistenceAttestation: &operatorv1.ReceiptPersistenceAttestation{
+		SignerKeyId:   eventReceiptSigner,
+		FinalPersistenceAttestation: &operatorv1.EventReceiptPersistenceAttestation{
 			SignerKeyId: persistenceSigner,
 		},
 		DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{SignerKeyId: stageSigner}},
 	})
 	require.NoError(t, err)
-	duplicateReceipt, err := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{TransactionId: "tx-2", SignerKeyId: receiptSigner})
+	duplicateEventReceipt, err := compliancev1.MarshalCanonical(&operatorv1.EventReceipt{TransactionId: "tx-2", SignerKeyId: eventReceiptSigner})
 	require.NoError(t, err)
 	commitment, err := compliancev1.MarshalCanonical(&operatorv1.CommitmentAttestation{AuditorKeyId: auditor})
 	require.NoError(t, err)
 
 	keys, err := CollectOperationalSignerKeys(&storage.OperationalEvidenceSnapshot{
-		Receipts: []storage.OperationalReceiptSource{
-			{TransactionID: "tx-1", Body: receipt},
-			{TransactionID: "tx-2", Body: duplicateReceipt},
+		EventReceipts: []storage.OperationalEventReceiptSource{
+			{TransactionID: "tx-1", Body: eventReceipt},
+			{TransactionID: "tx-2", Body: duplicateEventReceipt},
 			{TransactionID: "tx-3"},
 		},
 		Commitments: []storage.OperationalCommitmentSource{{TransactionID: "tx-1", Body: commitment}, {TransactionID: "tx-4"}},
@@ -131,7 +131,7 @@ func TestCollectOperationalSignerKeys_RejectsMissingSnapshotAndMalformedBodies(t
 	require.ErrorIs(t, err, constants.ErrValidationFailed)
 
 	_, err = CollectOperationalSignerKeys(&storage.OperationalEvidenceSnapshot{
-		Receipts: []storage.OperationalReceiptSource{{TransactionID: "tx-1", Body: []byte("not canonical json")}},
+		EventReceipts: []storage.OperationalEventReceiptSource{{TransactionID: "tx-1", Body: []byte("not canonical json")}},
 	})
 	require.Error(t, err)
 }

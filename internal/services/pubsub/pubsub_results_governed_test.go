@@ -185,22 +185,22 @@ func inferenceCommandEnvelope() *commonv1.GovernanceEnvelope {
 	}
 }
 
-func TestPubSubResultsService_PublishInferenceCompletion_MapsReceiptStatusToTerminalEvent(t *testing.T) {
+func TestPubSubResultsService_PublishInferenceCompletion_MapsEventReceiptStatusToTerminalEvent(t *testing.T) {
 	tests := []struct {
 		name      string
 		status    operatorv1.ExecutionStatus
 		wantEvent constants.EventType
 	}{
-		{"completed receipt publishes inference.completed", operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, constants.Event.Operator.Inference.Completed},
-		{"failed receipt publishes inference.failed", operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, constants.Event.Operator.Inference.Failed},
-		{"timed-out receipt publishes inference.failed", operatorv1.ExecutionStatus_EXECUTION_STATUS_TIMEOUT, constants.Event.Operator.Inference.Failed},
-		{"cancelled receipt publishes inference.failed", operatorv1.ExecutionStatus_EXECUTION_STATUS_CANCELLED, constants.Event.Operator.Inference.Failed},
+		{"completed event receipt publishes inference.completed", operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, constants.Event.Operator.Inference.Completed},
+		{"failed event receipt publishes inference.failed", operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, constants.Event.Operator.Inference.Failed},
+		{"timed-out event receipt publishes inference.failed", operatorv1.ExecutionStatus_EXECUTION_STATUS_TIMEOUT, constants.Event.Operator.Inference.Failed},
+		{"cancelled event receipt publishes inference.failed", operatorv1.ExecutionStatus_EXECUTION_STATUS_CANCELLED, constants.Event.Operator.Inference.Failed},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, client, _ := newResultsTestService(t)
 			completion := &operatorv1.InferenceCompletion{
-				Receipt: &operatorv1.ActionReceipt{TransactionId: "txn-1", Status: tt.status},
+				EventReceipt: &operatorv1.EventReceipt{TransactionId: "txn-1", Status: tt.status},
 			}
 
 			require.NoError(t, svc.PublishInferenceCompletion(t.Context(), inferenceCommandEnvelope(), completion))
@@ -215,14 +215,14 @@ func TestPubSubResultsService_PublishInferenceCompletion_MapsReceiptStatusToTerm
 			assert.Equal(t, "task-77", env.TaskId)
 			var decoded operatorv1.InferenceCompletion
 			require.NoError(t, proto.Unmarshal(env.Payload, &decoded))
-			assert.Equal(t, "txn-1", decoded.Receipt.TransactionId)
-			assert.Equal(t, tt.status, decoded.Receipt.Status)
+			assert.Equal(t, "txn-1", decoded.EventReceipt.TransactionId)
+			assert.Equal(t, tt.status, decoded.EventReceipt.Status)
 		})
 	}
 }
 
 func TestPubSubResultsService_PublishInferenceCompletion_RejectsIncompleteInput(t *testing.T) {
-	completed := &operatorv1.InferenceCompletion{Receipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
+	completed := &operatorv1.InferenceCompletion{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
 
 	tests := []struct {
 		name       string
@@ -231,7 +231,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_RejectsIncompleteInput(
 	}{
 		{"nil envelope", nil, completed},
 		{"nil completion", inferenceCommandEnvelope(), nil},
-		{"completion without a signed receipt", inferenceCommandEnvelope(), &operatorv1.InferenceCompletion{}},
+		{"completion without a signed event receipt", inferenceCommandEnvelope(), &operatorv1.InferenceCompletion{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -249,7 +249,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_RejectsEnvelopeWhoseAct
 	svc, client, _ := newResultsTestService(t)
 	env := inferenceCommandEnvelope()
 	env.ActionType = string(constants.ActionTypeExecuteBash)
-	completion := &operatorv1.InferenceCompletion{Receipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
+	completion := &operatorv1.InferenceCompletion{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
 
 	err := svc.PublishInferenceCompletion(t.Context(), env, completion)
 
@@ -260,7 +260,7 @@ func TestPubSubResultsService_PublishInferenceCompletion_RejectsEnvelopeWhoseAct
 func TestPubSubResultsService_PublishInferenceCompletion_SurfacesTransportFailure(t *testing.T) {
 	svc, client, _ := newResultsTestService(t)
 	client.SetPublishError(true)
-	completion := &operatorv1.InferenceCompletion{Receipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
+	completion := &operatorv1.InferenceCompletion{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}
 
 	err := svc.PublishInferenceCompletion(t.Context(), inferenceCommandEnvelope(), completion)
 

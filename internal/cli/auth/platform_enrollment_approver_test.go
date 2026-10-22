@@ -38,8 +38,8 @@ func ownerApproverTarget() models.PlatformEnrollmentDecisionTarget {
 func TestOwnerAppEnrollmentApprover_ApprovesMatchingRequest(t *testing.T) {
 	target := ownerApproverTarget()
 	decision, err := json.Marshal(models.PlatformEnrollmentBatchDecisionResponse{
-		ReceiptID: "receipt-1",
-		Requests:  []models.PlatformEnrollmentDecisionResponse{{RequestID: target.RequestID, State: models.PlatformEnrollmentStateApproved}},
+		EventReceiptID: "event_receipt-1",
+		Requests:       []models.PlatformEnrollmentDecisionResponse{{RequestID: target.RequestID, State: models.PlatformEnrollmentStateApproved}},
 	})
 	require.NoError(t, err)
 	client := &cmdtest.MockAPIClient{

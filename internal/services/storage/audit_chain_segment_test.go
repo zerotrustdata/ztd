@@ -26,7 +26,7 @@ func sampleAuditChainSegmentEntries(t *testing.T) []AuditChainSegmentEntry {
 	first := AuditChainSegmentEntry{
 		Seq:           1,
 		PrevHash:      auditChainGenesisPrevHash,
-		EventType:     string(constants.EventOperatorReceiptRecorded),
+		EventType:     string(constants.EventOperatorEventReceiptRecorded),
 		Timestamp:     timestamp,
 		ContentDigest: digest,
 		TransactionID: "tx-1",
@@ -37,7 +37,7 @@ func sampleAuditChainSegmentEntries(t *testing.T) []AuditChainSegmentEntry {
 	second := AuditChainSegmentEntry{
 		Seq:           2,
 		PrevHash:      first.Hash,
-		EventType:     string(constants.EventOperatorReceiptRecorded),
+		EventType:     string(constants.EventOperatorEventReceiptRecorded),
 		Timestamp:     timestamp,
 		ContentDigest: secondDigest,
 		TransactionID: "tx-2",

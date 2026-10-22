@@ -239,12 +239,12 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	auth := NewAuthService(docStore, pki, logger, userSvc, personaSvc, res, jwksProvider, jwtRoleClaim, jwtIssuer, jwtAudience)
 	userSvc.SetAuthService(auth)
 
-	// Wire the pubsub receipt relay dependencies: the gateway intercepts
-	// operator-published signed ActionReceipts on receipts: channels,
-	// verifies the receipt signature against the operator's actuator public
-	// key (via the SignerStore), records the receipt in the gateway's
+	// Wire the pubsub event receipt relay dependencies: the gateway intercepts
+	// operator-published signed EventReceipts on event_receipts: channels,
+	// verifies the event receipt signature against the operator's actuator public
+	// key (via the SignerStore), records the event receipt in the gateway's
 	// SQLAuditStore, and fans out the envelope to subscribers.
-	wsHandler.SetReceiptRelayDeps(signerStore, auditStore)
+	wsHandler.SetEventReceiptRelayDeps(signerStore, auditStore)
 
 	// Outbound Operators renew their leaf, and refresh their L2 trust, over
 	// their own renewal: channel.
@@ -334,7 +334,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway: load actuator signing key: %w", err)
 	}
-	// The embedded Operator signs receipts with the Gateway's Actuator key;
+	// The embedded Operator signs event receipts with the Gateway's Actuator key;
 	// recording it binds that key the way enrollment binds an outbound one.
 	if err := reg.RecordEmbeddedActuatorKey(ctx, actuatorKeyID); err != nil {
 		return nil, fmt.Errorf("gateway: embedded actuator key: %w", err)
@@ -480,7 +480,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		A2ADownstreamURL:       cfg.Gateway.A2ADownstreamURL,
 		PublicBaseURL:          publicBaseURL,
 		AuditStore:             auditStore,
-		AuditReceiptQuery:      auditStore,
+		AuditEventReceiptQuery: auditStore,
 		FsGrep:                 fsGrep,
 		EnvProc:                cmdSvc,
 		OutboundEnvProc:        dispatchSvc,

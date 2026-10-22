@@ -63,7 +63,7 @@ func TestNewOperatorController(t *testing.T) {
 
 // seedStopOperator stores an active user and its Operator with a freshly
 // generated Actuator key bound, and returns that key's private half so a fake
-// Operator can sign the receipts the dispatch waits for.
+// Operator can sign the event receipts the dispatch waits for.
 func seedStopOperator(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, userID string, operatorType constants.OperatorType, status constants.OperatorStatus) ed25519.PrivateKey {
 	t.Helper()
 	actuatorPub, actuatorPriv, err := ed25519.GenerateKey(rand.Reader)
@@ -151,7 +151,7 @@ func TestOperatorController_HandleStopOperatorAuthorizationAndDelivery(t *testin
 	t.Run("acknowledged delivery records reason and stopped state", func(t *testing.T) {
 		channel := pubsub.CmdChannel("stop-remote", "stop-remote-session")
 		resultsChannel := pubsub.ResultsChannel("stop-remote", "stop-remote-session")
-		receiptsChannel := pubsub.ReceiptsChannel("stop-remote", "stop-remote-session")
+		eventReceiptsChannel := pubsub.EventReceiptsChannel("stop-remote", "stop-remote-session")
 		remoteKeyID := hex.EncodeToString(remoteActuatorKey.Public().(ed25519.PublicKey))
 		unregister := infra.Pubsub.RegisterHandler(channel, func(_ string, data []byte) {
 			envelope := &commonv1.GovernanceEnvelope{}
@@ -166,9 +166,9 @@ func TestOperatorController_HandleStopOperatorAuthorizationAndDelivery(t *testin
 			require.NoError(t, err)
 			infra.Pubsub.Publish(resultsChannel, wire)
 			// The dispatch completes only on the result plus the Operator's
-			// verified final receipt for the same transaction.
-			receiptWire, _ := buildSignedReceiptEnvelope(t, remoteActuatorKey, remoteKeyID, "stop-remote", "stop-remote-session", "", "", "stop-owner", "", envelope.Id)
-			infra.Pubsub.Publish(receiptsChannel, receiptWire)
+			// verified final event receipt for the same transaction.
+			eventReceiptWire, _ := buildSignedEventReceiptEnvelope(t, remoteActuatorKey, remoteKeyID, "stop-remote", "stop-remote-session", "", "", "stop-owner", "", envelope.Id)
+			infra.Pubsub.Publish(eventReceiptsChannel, eventReceiptWire)
 		})
 		t.Cleanup(unregister)
 

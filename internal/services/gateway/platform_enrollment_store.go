@@ -207,7 +207,7 @@ func platformEnrollmentTransitionStatement(t models.PlatformEnrollmentTransition
 // DecidePlatformEnrollments is the executing handler's atomic decision boundary.
 // It rechecks the active owner, expiry, state, and displayed keys under the same
 // SQLite write reservation as all transitions. A stale member rolls back the
-// entire cohort; every member records the enclosing governed receipt ID.
+// entire cohort; every member records the enclosing governed event receipt ID.
 func (s *DocumentStoreService) DecidePlatformEnrollments(ctx context.Context, actorID string, req models.PlatformEnrollmentBatchDecisionRequest, envelopeID string) error {
 	if err := req.Validate(); err != nil {
 		return err
@@ -239,11 +239,11 @@ func (s *DocumentStoreService) DecidePlatformEnrollments(ctx context.Context, ac
 		}
 		now := time.Now().UTC()
 		update, err := json.Marshal(struct {
-			Owner      string    `json:"approved_by_user_id"`
-			DecidedAt  time.Time `json:"decided_at"`
-			Reason     string    `json:"decision_reason"`
-			EnvelopeID string    `json:"decision_envelope_id"`
-			ReceiptID  string    `json:"decision_receipt_id"`
+			Owner          string    `json:"approved_by_user_id"`
+			DecidedAt      time.Time `json:"decided_at"`
+			Reason         string    `json:"decision_reason"`
+			EnvelopeID     string    `json:"decision_envelope_id"`
+			EventReceiptID string    `json:"decision_event_receipt_id"`
 		}{actorID, now, req.Reason, envelopeID, envelopeID})
 		if err != nil {
 			return fmt.Errorf("encode enrollment decision: %w", err)

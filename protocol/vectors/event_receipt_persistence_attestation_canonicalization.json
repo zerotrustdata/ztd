@@ -1,8 +1,8 @@
 {
-  "name": "final_receipt_persistence",
+  "name": "final_event_receipt_persistence",
   "attestation": {
     "transaction_id": "tx-golden-001",
-    "receipt_signature_digest": "1545e4ab2c67f481d133c2f8a9e1fe3538e666e07285b1a7ba3e1bbcbe29acf9",
+    "event_receipt_signature_digest": "1545e4ab2c67f481d133c2f8a9e1fe3538e666e07285b1a7ba3e1bbcbe29acf9",
     "persisted_at_unix_ms": "1777777777456",
     "audit_record_id": "tx-golden-001",
     "signer_key_id": "warden-golden-key",

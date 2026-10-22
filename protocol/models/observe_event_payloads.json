@@ -162,16 +162,16 @@
       "required": true,
       "description": "Number of tasks assigned to the run"
     },
-    "receipt_count": {
+    "event_receipt_count": {
       "type": "integer",
       "required": true,
-      "description": "Number of receipts in the report"
+      "description": "Number of event receipts in the report"
     },
     "verification_status": {
       "type": "string",
       "required": true,
       "description": "Honest verification boundary label. Never 'verified' until the complete verifier exists.",
-      "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]
+      "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]
     },
     "published_projection_sha256": {
       "type": "string",
@@ -242,7 +242,7 @@
       "type": "string",
       "required": true,
       "description": "Honest verification boundary label. Never 'verified' until the complete verifier exists.",
-      "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]
+      "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]
     },
     "recorded_at": {
       "type": "string",
@@ -341,7 +341,7 @@
     "campaign_id": {"type": "string", "required": true, "description": "Campaign identity from the campaign manifest"},
     "campaign_revision": {"type": "string", "required": true, "description": "Campaign revision from the frozen profile hash"},
     "role_combination_id": {"type": "string", "required": true, "description": "Stable role-combination identifier"},
-    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label", "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]},
+    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label", "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]},
     "terminal_attempts": {"type": "integer", "required": true, "description": "Number of attempts that reached a terminal state"},
     "assigned_tasks": {"type": "integer", "required": true, "description": "Number of tasks assigned in the cycle"},
     "completed_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the cycle completed"},
@@ -415,7 +415,7 @@
     "denominator": {"type": "integer", "required": true, "description": "Total count of measured outcomes for this variant"},
     "rate": {"type": "number", "required": false, "description": "Numerator divided by denominator. Omitted when denominator is zero."},
     "unit": {"type": "string", "required": true, "description": "Metric unit"},
-    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label", "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]},
+    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label", "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]},
     "available_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the metric became available"},
     "observed_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp of the observation"}
   },
@@ -427,7 +427,7 @@
     "event_id": {"type": "string", "required": true, "description": "Unique event identifier for duplicate suppression"},
     "cycle_id": {"type": "string", "required": true, "description": "Campaign cycle identifier"},
     "campaign_id": {"type": "string", "required": true, "description": "Campaign identity from the campaign manifest"},
-    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label", "enum": ["projection_validated", "receipt_verification_not_applicable", "verified"]},
+    "verification_status": {"type": "string", "required": true, "description": "Honest verification boundary label", "enum": ["projection_validated", "event_receipt_verification_not_applicable", "verified"]},
     "verified_index_generation_hash": {"type": "string", "required": true, "description": "SHA-256 hash of the verified index generation"},
     "layer_count": {"type": "integer", "required": true, "description": "Total number of verification layers checked"},
     "failure_count": {"type": "integer", "required": true, "description": "Number of verification failures produced"},

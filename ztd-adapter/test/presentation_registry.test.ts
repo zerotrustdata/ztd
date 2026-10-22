@@ -73,7 +73,7 @@ function evalCompletedEvent(id: number): string {
         arm_id: 'arm-1',
         terminal_attempts: 1,
         assigned_tasks: 1,
-        receipt_count: 1,
+        event_receipt_count: 1,
         verification_status: 'verified',
         published_projection_sha256: 'abc',
         completed_at: '2026-01-01T00:00:00Z',
@@ -303,7 +303,7 @@ describe('presentRun', () => {
       status: 'running',
       completed_tasks: 1,
       total_tasks: 3,
-      has_receipts: true,
+      has_event_receipts: true,
       evidence_count: 2,
       observed_at: '2026-01-01T00:00:00Z',
     };
@@ -324,7 +324,7 @@ describe('presentRun', () => {
       status: 'cancelled',
       completed_tasks: 0,
       total_tasks: 0,
-      has_receipts: false,
+      has_event_receipts: false,
       evidence_count: 0,
       observed_at: '2026-01-01T00:00:00Z',
     };
@@ -343,7 +343,7 @@ describe('presentEval', () => {
       arm_id: 'arm-1',
       status: 'completed',
       verification_status: 'verified',
-      receipt_count: 1,
+      event_receipt_count: 1,
       metric_count: 1,
       observed_at: '2026-01-01T00:00:00Z',
     };
@@ -361,7 +361,7 @@ describe('presentEval', () => {
       arm_id: 'arm-1',
       status: 'completed',
       verification_status: 'projection_validated',
-      receipt_count: 1,
+      event_receipt_count: 1,
       metric_count: 1,
       observed_at: '2026-01-01T00:00:00Z',
     };
@@ -370,7 +370,7 @@ describe('presentEval', () => {
     expect(p.viewState.status).toBe('partial_verification');
   });
 
-  it('presents receipt_verification_not_applicable', () => {
+  it('presents event_receipt_verification_not_applicable', () => {
     const eval_: EvalSummary = {
       schema_version: '1.0.0',
       run_id: 'eval-1',
@@ -378,13 +378,13 @@ describe('presentEval', () => {
       suite_version: '1.0.0',
       arm_id: 'arm-1',
       status: 'completed',
-      verification_status: 'receipt_verification_not_applicable',
-      receipt_count: 0,
+      verification_status: 'event_receipt_verification_not_applicable',
+      event_receipt_count: 0,
       metric_count: 0,
       observed_at: '2026-01-01T00:00:00Z',
     };
     const p = presentEval(eval_);
-    expect(p.verificationLabel).toBe('Receipt verification not applicable');
+    expect(p.verificationLabel).toBe('Event receipt verification not applicable');
   });
 });
 

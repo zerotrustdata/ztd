@@ -76,9 +76,9 @@
       "_go_const": "ChannelPrefixHeartbeat",
       "value": "heartbeat"
     },
-    "PrefixReceipts": {
-      "_go_const": "ChannelPrefixReceipts",
-      "value": "receipts"
+    "PrefixEventReceipts": {
+      "_go_const": "ChannelPrefixEventReceipts",
+      "value": "event_receipts"
     },
     "PrefixRenewal": {
       "_go_const": "ChannelPrefixRenewal",

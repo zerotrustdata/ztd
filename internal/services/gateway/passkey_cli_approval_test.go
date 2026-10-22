@@ -90,7 +90,7 @@ func newCLIApprovalMCP(owner string) *approvalRespondMCP {
 			ExpiresAt:         time.Now().Add(5 * time.Minute),
 		},
 		found: true,
-		receipt: &operatorv1.ActionReceipt{
+		eventReceipt: &operatorv1.EventReceipt{
 			TransactionId:   "transaction-cli-approval-1",
 			TransactionHash: cliApprovalTestHash,
 			L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
@@ -116,7 +116,7 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 			require.NotNil(t, mcp.resumedProof)
 			assert.NotEmpty(t, mcp.resumedProof.GetCliSignature())
 			assert.Equal(t, cert.Certificate[0], mcp.resumedProof.GetCliCertificateDer())
-			assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, mcp.receipt.GetL3Status())
+			assert.Equal(t, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID, mcp.eventReceipt.GetL3Status())
 		})
 	}
 
@@ -238,10 +238,10 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 		assert.Zero(t, mcp.resumeCalls)
 	})
 
-	t.Run("receipt hash mismatch is rejected", func(t *testing.T) {
+	t.Run("event receipt hash mismatch is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
-		mcp.receipt.TransactionHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		mcp.eventReceipt.TransactionHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 		rr := httptest.NewRecorder()
 
 		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
@@ -249,10 +249,10 @@ func TestHandleSignedCLIApproval(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, rr.Code)
 	})
 
-	t.Run("receipt without valid L3 status is rejected", func(t *testing.T) {
+	t.Run("event receipt without valid L3 status is rejected", func(t *testing.T) {
 		cert := newCLIApprovalTestCertificate(t, cliApprovalTestUser, cliApprovalTestSession)
 		mcp := newCLIApprovalMCP(cliApprovalTestUser)
-		mcp.receipt.L3Status = operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
+		mcp.eventReceipt.L3Status = operatorv1.L3Status_L3_STATUS_NOT_REQUIRED
 		rr := httptest.NewRecorder()
 
 		newApprovalRespondHandler(mcp, &approvalRespondStore{}).handleApprovalRespond(rr, signedCLIApprovalRequest(t, cliApprovalTestHash, cert, cliApprovalTestSession))
