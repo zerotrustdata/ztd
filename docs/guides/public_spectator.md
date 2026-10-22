@@ -48,6 +48,14 @@ For an existing run, use verified catch-up after the verification report is pers
 
 During catch-up, the publication coordinator checks the Gateway-owned dataset with one server-filtered mirror history request; a withdrawn dataset reads as absent. If the dataset is absent while host publication idempotency still lists records, it clears stale state and republishes the canonical run. Use `--force` only when the mirror was wiped or is known to be missing records.
 
+To republish every run that is not archived, run:
+
+```bash
+./ztd eval runs publish --all
+```
+
+`--all` clears each run's host publication idempotency first, as `--force` does, so runs already published are published again. A run a live process holds is skipped, because that process publishes it. A run that fails to publish does not stop the others; the command lists each failure and exits with an error.
+
 The mirror is a visibility boundary, not a Policy Decision Point or Policy Execution Point. The executing Operator retains authoritative local execution evidence in its local audit store.
 
 ## Start a fresh source chain

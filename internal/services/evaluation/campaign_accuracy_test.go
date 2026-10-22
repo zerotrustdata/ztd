@@ -47,7 +47,7 @@ func TestAccuracy_HistoryRequiresRetrievedEvidence(t *testing.T) {
 	empty := failed
 	empty.Success = true
 	empty.ErrorType = ""
-	empty.Receipt.ActionReceipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
+	empty.Receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
 	empty.Retrieval = &AgentContextRetrieval{}
 	result = accuracyGrade(t, toolSelectInvestigation(), "No recorded actions", []AgentToolCall{empty})
 	require.Equal(t, verdictPass, verdictFromGrades(result.DeterministicGrades))
