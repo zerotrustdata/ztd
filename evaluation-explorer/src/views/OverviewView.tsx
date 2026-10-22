@@ -10,7 +10,7 @@ import { useStoreState } from '../state/store';
 import { LiveEventStream } from '../components/LiveEventStream';
 import { formatNumber } from '../components/shared';
 import { formatDuration, formatRelativeTime, formatTimestamp } from '../utils/format';
-import { recentCampaignRows, roleLabel, type RecentCampaignRow } from './derived';
+import { recentCampaignRows, roleLabel, terminalOutcomeBreakdown, type RecentCampaignRow } from './derived';
 import type { CatalogSnapshot, EvaluationSummary, ModelSummary } from '../contract/types';
 
 function formatClock(iso: string | undefined): string {
@@ -55,9 +55,11 @@ function Runs({
         </Link>
       </div>
       <ul className="campaign-legend" aria-label="Assignment outcome legend">
-        <li><span className="campaign-legend-swatch campaign-legend-completed" />Completed</li>
-        <li><span className="campaign-legend-swatch campaign-legend-failed" />Failed</li>
-        <li><span className="campaign-legend-swatch campaign-legend-stopped" />Stopped</li>
+        <li><span className="campaign-legend-swatch campaign-legend-passed" />Passed</li>
+        <li><span className="campaign-legend-swatch campaign-legend-failed" />Model failed</li>
+        <li title="Ended without a verdict on the model: unavailable, invalid evidence, provider or harness failure, or stopped">
+          <span className="campaign-legend-swatch campaign-legend-no-verdict" />No verdict
+        </li>
         <li><span className="campaign-legend-swatch campaign-legend-remaining" />Remaining</li>
       </ul>
       {recent.length === 0 ? (
@@ -69,11 +71,16 @@ function Runs({
             const href = campaign.runId
               ? `/evaluations/${campaign.datasetId}/${campaign.runId}`
               : `/?dataset=${campaign.datasetId}`;
-            const terminal = campaign.assignmentCompleted + campaign.assignmentFailed + campaign.assignmentStopped;
+            const breakdown = terminalOutcomeBreakdown(campaign.terminalOutcomes);
+            const passed = breakdown?.verdicts.find((entry) => entry.status === 'completed')?.count ?? 0;
+            const failed = breakdown?.verdicts.find((entry) => entry.status === 'model_failed')?.count ?? 0;
+            const noVerdict = breakdown?.nonVerdictCount ?? 0;
+            const terminal = breakdown?.total ?? 0;
             const total = Math.max(campaign.assignmentTotal, terminal);
-            const completedWidth = total > 0 ? (campaign.assignmentCompleted / total) * 100 : 0;
-            const failedWidth = total > 0 ? (campaign.assignmentFailed / total) * 100 : 0;
-            const stoppedWidth = total > 0 ? (campaign.assignmentStopped / total) * 100 : 0;
+            const share = (count: number) => (total > 0 ? (count / total) * 100 : 0);
+            const noVerdictTitle = breakdown?.nonVerdicts
+              .map((entry) => `${formatNumber(entry.count)} ${entry.status.replace(/_/g, ' ')}`)
+              .join(', ');
             const verification = campaign.verifierState === 'passed'
               ? 'Verification passed'
               : campaign.verifierState === 'failed'
@@ -136,14 +143,17 @@ function Runs({
                       aria-valuemin={0}
                       aria-valuemax={total}
                       aria-valuenow={terminal}
-                      aria-valuetext={`${campaign.assignmentCompleted} completed, ${campaign.assignmentFailed} failed, ${campaign.assignmentStopped} stopped, ${total - terminal} remaining`}
+                      aria-valuetext={`${passed} passed, ${failed} model failed, ${noVerdict} no verdict, ${total - terminal} remaining`}
                     >
-                      <span className="campaign-outcome-completed" style={{ width: `${completedWidth}%` }} />
-                      <span className="campaign-outcome-failed" style={{ width: `${failedWidth}%` }} />
-                      <span className="campaign-outcome-stopped" style={{ width: `${stoppedWidth}%` }} />
+                      <span className="campaign-outcome-passed" style={{ width: `${share(passed)}%` }} title={`${formatNumber(passed)} passed`} />
+                      <span className="campaign-outcome-failed" style={{ width: `${share(failed)}%` }} title={`${formatNumber(failed)} model failed`} />
+                      <span className="campaign-outcome-no-verdict" style={{ width: `${share(noVerdict)}%` }} title={noVerdictTitle} />
                     </div>
                     <div className="campaign-evidence-foot">
-                      <span>{formatNumber(terminal)} / {formatNumber(total)} terminal</span>
+                      <span>
+                        {formatNumber(passed)} passed · {formatNumber(failed)} failed · {formatNumber(noVerdict)} no verdict
+                        {total > terminal ? ` · ${formatNumber(total - terminal)} remaining` : ''}
+                      </span>
                       <span className={campaign.verifierState === 'failed' ? 'campaign-verification-failed' : undefined}>{verification}</span>
                     </div>
                   </>

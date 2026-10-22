@@ -1228,9 +1228,8 @@ export interface RecentCampaignRow extends ReleaseProvenance {
   runStatus: RunStatus;
   verifierState?: VerifierState;
   assignmentTotal: number;
-  assignmentCompleted: number;
-  assignmentFailed: number;
-  assignmentStopped: number;
+  /** Terminal outcome counts; classify with `terminalOutcomeBreakdown`. */
+  terminalOutcomes?: Partial<Record<TerminalStatus, number>>;
   runId?: string;
 }
 
@@ -1319,9 +1318,7 @@ export function recentCampaignRows(
       runStatus: publishedRunStatus(primary),
       verifierState: primary?.verifier_state,
       assignmentTotal: primary?.assignment_total ?? 0,
-      assignmentCompleted: primary?.assignment_completed ?? 0,
-      assignmentFailed: primary?.assignment_failed ?? 0,
-      assignmentStopped: primary?.terminal_outcomes.stopped ?? 0,
+      terminalOutcomes: primary?.terminal_outcomes,
       runId: primary?.run_id,
     });
   }

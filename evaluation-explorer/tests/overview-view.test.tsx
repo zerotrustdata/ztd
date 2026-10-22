@@ -154,8 +154,8 @@ describe('OverviewView', () => {
     }));
     const row = within(screen.getByRole('list', { name: 'Recent runs' }));
     expect(row.getByText('cancelled')).toBeInTheDocument();
-    expect(row.getByText('75 / 75 terminal')).toBeInTheDocument();
-    expect(row.getByRole('progressbar')).toHaveAttribute('aria-valuetext', '5 completed, 1 failed, 69 stopped, 0 remaining');
+    expect(row.getByText('5 passed · 1 failed · 69 no verdict')).toBeInTheDocument();
+    expect(row.getByRole('progressbar')).toHaveAttribute('aria-valuetext', '5 passed, 1 model failed, 69 no verdict, 0 remaining');
   });
 
   it.each(['assignment_started', 'assignment_completed', 'assignment_failed', 'stage_updated'] as const)(
@@ -252,13 +252,14 @@ describe('OverviewView', () => {
 
     const evidence = within(screen.getByRole('region', { name: 'Runs' }));
     expect(evidence.getByRole('heading', { name: 'Runs' })).toBeInTheDocument();
-    expect(evidence.getByText('Completed')).toBeInTheDocument();
-    expect(evidence.getByText('Failed')).toBeInTheDocument();
+    expect(evidence.getByText('Passed')).toBeInTheDocument();
+    expect(evidence.getByText('Model failed')).toBeInTheDocument();
+    expect(evidence.getByText('No verdict')).toBeInTheDocument();
     expect(evidence.getByText('Remaining')).toBeInTheDocument();
     const coverage = evidence.getByRole('progressbar', { name: 'smoke-run assignment outcomes' });
     expect(coverage).toHaveAttribute('aria-valuenow', '6');
     expect(coverage).toHaveAttribute('aria-valuemax', '75');
-    expect(evidence.getByText('6 / 75 terminal')).toBeInTheDocument();
+    expect(evidence.getByText('5 passed · 1 failed · 0 no verdict · 69 remaining')).toBeInTheDocument();
     expect(evidence.getByText('Verification pending')).toBeInTheDocument();
 
     expect(screen.queryByRole('region', { name: 'Public data and APIs' })).not.toBeInTheDocument();
