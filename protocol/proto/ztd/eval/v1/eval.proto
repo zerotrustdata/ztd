@@ -1472,6 +1472,28 @@ message ConformanceRunRecord {
   bool outbound_absent = 14;
 }
 
+// ConformanceApprovalDecision is the human decision a suspending case asks for.
+enum ConformanceApprovalDecision {
+  CONFORMANCE_APPROVAL_DECISION_UNSPECIFIED = 0;
+  CONFORMANCE_APPROVAL_DECISION_APPROVE = 1;        // row 23
+  CONFORMANCE_APPROVAL_DECISION_DENY = 2;           // row 24
+  CONFORMANCE_APPROVAL_DECISION_LEAVE_PENDING = 3;  // row 22: the suspension is the expected outcome
+}
+
+// ConformanceApprovalRequest is what an attended run asks its human approver for
+// one case that suspends a transaction. `eval conformance run --attended --json`
+// prints each as one canonical JSON line on stderr, in case order. MCP and A2A
+// requests name the suspended transaction. A blocking ingress (governed dispatch,
+// CLI, MCP stdio) is requested before its call, so its tx_hash is empty: the
+// transaction is the next one the run suspends.
+message ConformanceApprovalRequest {
+  string case_id = 1;
+  string attempt_id = 2;
+  string ingress = 3;
+  ConformanceApprovalDecision decision = 4;
+  string tx_hash = 5;
+}
+
 enum ConformanceFailureClass {
   CONFORMANCE_FAILURE_CLASS_UNSPECIFIED = 0;
   CONFORMANCE_FAILURE_CLASS_OUTCOME_MISMATCH = 1;

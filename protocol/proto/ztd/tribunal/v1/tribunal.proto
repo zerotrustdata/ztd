@@ -42,8 +42,9 @@ message TribunalIntentRequest {
   int32 timeout_seconds = 12;
 
   // member_inference is the template for every member call. The Gateway sets
-  // messages and provider_attempt_id per call; the template must leave
-  // messages, tools, provider_attempt_id, acting_app_id and stream empty.
+  // messages, provider_attempt_id and the role's response_format schema per
+  // call; the template must leave messages, tools, provider_attempt_id,
+  // acting_app_id, stream and response_format empty.
   ztd.operator.v1.InferenceDispatchRequest member_inference = 13;
   // provider_attempt_prefix names the member calls: call n (from 1, in
   // deliberation order) uses provider_attempt_id "<prefix>-<n>". Required and

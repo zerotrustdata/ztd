@@ -353,23 +353,27 @@ func TestExecutedExpectPerPostureAndAction(t *testing.T) {
 	tests := []struct {
 		name    string
 		posture constants.Posture
+		ingress Ingress
 		action  Action
 		l2      operatorv1.L2Status
 		l3      operatorv1.L3Status
 	}{
-		{"doctrine mutation", constants.PostureDoctrine, ActionMutation, notReq, l3NotReq},
-		{"doctrine read", constants.PostureDoctrine, ActionRead, notReq, l3NotReq},
-		{"consensus mutation", constants.PostureConsensus, ActionMutation, reqOK, l3NotReq},
-		{"consensus read", constants.PostureConsensus, ActionRead, reqOK, l3NotReq},
-		{"ratify mutation", constants.PostureRatify, ActionMutation, notReq, l3Req},
-		{"ratify read", constants.PostureRatify, ActionRead, notReq, l3NotReq},
-		{"notary mutation", constants.PostureNotary, ActionMutation, reqOK, l3Req},
-		{"notary read", constants.PostureNotary, ActionRead, reqOK, l3NotReq},
-		{"unknown posture fails closed", constants.Posture("bogus"), ActionMutation, reqOK, l3Req},
+		{"doctrine mutation", constants.PostureDoctrine, IngressMCP, ActionMutation, notReq, l3NotReq},
+		{"doctrine read", constants.PostureDoctrine, IngressMCP, ActionRead, notReq, l3NotReq},
+		{"consensus mutation", constants.PostureConsensus, IngressMCP, ActionMutation, reqOK, l3NotReq},
+		{"consensus read gets no vote", constants.PostureConsensus, IngressMCP, ActionRead, notReq, l3NotReq},
+		{"consensus direct read carries proof", constants.PostureConsensus, IngressDirect, ActionRead, reqOK, l3NotReq},
+		{"ratify mutation", constants.PostureRatify, IngressMCP, ActionMutation, notReq, l3Req},
+		{"ratify read", constants.PostureRatify, IngressMCP, ActionRead, notReq, l3NotReq},
+		{"ratify direct read", constants.PostureRatify, IngressDirect, ActionRead, notReq, l3NotReq},
+		{"notary mutation", constants.PostureNotary, IngressMCP, ActionMutation, reqOK, l3Req},
+		{"notary read gets no vote", constants.PostureNotary, IngressMCP, ActionRead, notReq, l3NotReq},
+		{"notary direct read carries proof", constants.PostureNotary, IngressDirect, ActionRead, reqOK, l3NotReq},
+		{"unknown posture fails closed", constants.Posture("bogus"), IngressMCP, ActionMutation, reqOK, l3Req},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := executedExpect(tc.posture, tc.action, EffectTargetMarker)
+			got := executedExpect(tc.posture, tc.ingress, tc.action, EffectTargetMarker)
 			want := Expect{Kind: ExpectExecuted, L2Status: tc.l2, L3Status: tc.l3, Effect: EffectTargetMarker}
 			if got != want {
 				t.Fatalf("executedExpect = %+v, want %+v", got, want)

@@ -21,19 +21,16 @@ import (
 const auditorMaxAttempts = 2
 
 const auditorSystemPrompt = "You are the Auditor, the Tribunal's final technical gate. Check the selected run_shell_command arguments for correctness against the request, safe argv construction, error handling, and portability. The executable runs directly without a shell; no pipes, &&, redirects, globs, or substitutions.\n" +
-	"- APPROVE: the selected arguments (cluster_a) are correct as written.\n" +
-	"- REVISE: fix a flaw; put the complete corrected argument object in revised_arguments.\n" +
-	"- SWAP: another cluster is better; name it in swap_to_cluster. Not allowed when the panel was unanimous.\n\n" +
-	`Answer with exactly one JSON object and nothing else: {"verdict": "APPROVE"|"REVISE"|"SWAP", "swap_to_cluster": "<cluster id for SWAP>", "revised_arguments": {"command": "...", "args": [...]}, "rationale": "<why>"}`
+	"Answer with exactly one JSON object and nothing else, in the shape of your verdict and with no other field:\n" +
+	`- APPROVE, when the selected arguments (cluster_a) are correct as written: {"verdict": "APPROVE", "rationale": "<why>"}` + "\n" +
+	`- REVISE, to fix a flaw: {"verdict": "REVISE", "revised_arguments": {"command": "...", "args": [...]}, "rationale": "<why>"}. revised_arguments is the complete corrected executable and argv.` + "\n" +
+	`- SWAP, when the voting mode allows it and another cluster is better: {"verdict": "SWAP", "swap_to_cluster": "<cluster id>", "rationale": "<why>"}`
 
 type auditorAnswer struct {
-	Verdict          string `json:"verdict"`
-	SwapToCluster    string `json:"swap_to_cluster"`
-	RevisedArguments *struct {
-		Command string   `json:"command"`
-		Args    []string `json:"args"`
-	} `json:"revised_arguments"`
-	Rationale string `json:"rationale"`
+	Verdict          string             `json:"verdict"`
+	SwapToCluster    string             `json:"swap_to_cluster"`
+	RevisedArguments *authoredArguments `json:"revised_arguments"`
+	Rationale        string             `json:"rationale"`
 }
 
 // auditClusters labels the winner cluster_a and every other cluster after it
@@ -56,18 +53,36 @@ func auditClusters(v Vote) []Cluster {
 	return clusters
 }
 
+// swapAlternatives returns the clusters a SWAP may name: every cluster after
+// the winner, and none when the panel was unanimous.
+func swapAlternatives(v Vote, clusters []Cluster) []string {
+	if v.Unanimous() || len(clusters) < 2 {
+		return nil
+	}
+	ids := make([]string, 0, len(clusters)-1)
+	for _, cluster := range clusters[1:] {
+		ids = append(ids, cluster.ID)
+	}
+	return ids
+}
+
 func auditorPrompt(req Request, v Vote, clusters []Cluster) string {
 	var b strings.Builder
 	b.WriteString(contextBlock(req))
-	mode := "MAJORITY: the panel split; APPROVE, REVISE and SWAP are allowed."
-	if v.Unanimous() {
+	var mode string
+	switch {
+	case v.Unanimous():
 		mode = "UNANIMOUS: every member proposed cluster_a; APPROVE and REVISE are allowed."
+	case len(swapAlternatives(v, clusters)) == 0:
+		mode = "MAJORITY: the panel split with no alternative cluster; APPROVE and REVISE are allowed."
+	default:
+		mode = "MAJORITY: the panel split; APPROVE, REVISE and SWAP are allowed."
 	}
 	fmt.Fprintf(&b, "\nVoting mode: %s\n\n<clusters>\n", mode)
 	for _, cluster := range clusters {
 		fmt.Fprintf(&b, "[%s] (support: %d)\n%s\n", cluster.ID, len(cluster.Members), cluster.Arguments.CanonicalJSON())
 	}
-	b.WriteString("</clusters>\n\nGive your verdict on cluster_a.")
+	b.WriteString("</clusters>\n\nOrchestration sets timeout and working_dir; they are never part of revised_arguments.\nGive your verdict on cluster_a.")
 	return b.String()
 }
 
@@ -79,9 +94,10 @@ func auditorPrompt(req Request, v Vote, clusters []Cluster) string {
 func audit(ctx context.Context, cfg Config, req Request, v Vote) (*Audit, error) {
 	clusters := auditClusters(v)
 	prompt := auditorPrompt(req, v, clusters)
+	schema := auditorJSONSchema(swapAlternatives(v, clusters))
 	var failure string
 	for attempt := uint32(1); attempt <= auditorMaxAttempts; attempt++ {
-		text, err := cfg.Inferer.Infer(ctx, Call{Stage: StageAudit, Persona: PersonaAuditor, Round: attempt, System: auditorSystemPrompt, User: prompt})
+		text, err := cfg.Inferer.Infer(ctx, Call{Stage: StageAudit, Persona: PersonaAuditor, Round: attempt, System: auditorSystemPrompt, User: prompt, JSONSchema: schema})
 		if err != nil {
 			return nil, fmt.Errorf("tribunal: auditor attempt %d: %w", attempt, err)
 		}

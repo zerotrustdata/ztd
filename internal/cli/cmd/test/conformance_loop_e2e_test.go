@@ -10,13 +10,16 @@
 package testcmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -151,7 +154,7 @@ func conformanceLoopPhases(t *testing.T, r *releaseSmokeRun, st *conformanceLoop
 		{"deploy dedicated Data Operator", r.deployWorker},
 		{"hand CLI approvals to the conformance owner", func(context.Context) error {
 			if st.approvals != nil {
-				st.owner = &conformanceLoopOwner{}
+				st.owner = &conformanceLoopOwner{reconcile: st.approvals.Reconcile}
 				st.approvals.Decide(st.owner.decide)
 			}
 			return nil
@@ -258,6 +261,7 @@ func jsonErrorExcerpt(text string, err error) string {
 // to cover every applicable case, then re-verifies the stored run offline.
 func (st *conformanceLoopState) runConformance(ctx context.Context, r *releaseSmokeRun, executor, operatorID string, extra ...string) error {
 	args := append([]string{"--json", "eval", "conformance", "run", "--operator-id", operatorID, "--a2a-stub-listen", st.a2aListen}, extra...)
+	var requests io.Writer
 	if st.owner != nil {
 		pending, err := st.approvals.Pending(ctx)
 		if err != nil {
@@ -267,8 +271,9 @@ func (st *conformanceLoopState) runConformance(ctx context.Context, r *releaseSm
 			return err
 		}
 		args = append(args, "--attended")
+		requests = &conformanceRequestLines{owner: st.owner}
 	}
-	out, err := r.ztdGateway(ctx, "conformance-run-"+executor, args...)
+	out, err := r.ztdGatewayTee(ctx, "conformance-run-"+executor, requests, args...)
 	if st.owner != nil {
 		err = errors.Join(err, st.owner.disarm())
 	}
@@ -302,22 +307,59 @@ func (st *conformanceLoopState) runConformance(ctx context.Context, r *releaseSm
 }
 
 // conformanceLoopOwner is the human owner of the attended conformance runs under
-// ratify and notary, answering through the CLI approval flow. A run suspends one
-// transaction per case that waits for a human: each unattended mutation (row 22)
-// stays suspended, each attended case asks for the approve (row 23) or deny (row
-// 24) it names. Cases run one at a time in catalogue order, and an attended case
-// holds the run until it is answered, so the k-th transaction a run suspends
-// belongs to its k-th suspending case. The bridge's audit reads are approved
-// whenever they come; nothing else is answered outside a run.
+// ratify and notary, answering through the CLI approval flow. The run reports a
+// typed approval request on stderr for each case that suspends a transaction:
+// each unattended mutation (row 22) stays suspended, each attended case asks for
+// the approve (row 23) or deny (row 24) it names. An MCP or A2A request names its
+// transaction. A blocking ingress is requested before its call and the
+// transaction does not exist yet; cases run one at a time and a blocking case
+// holds the run until it is answered, so it is the next transaction the run
+// suspends that no request names. The bridge's audit reads are approved whenever
+// they come; nothing else is answered outside a run.
 type conformanceLoopOwner struct {
 	mu sync.Mutex
+	// reconcile asks the approvals responder for another pass: a request can
+	// arrive after the approvals event for its transaction.
+	reconcile func()
 	// armed is set while a run is in flight; before holds what was pending
-	// when it started, and plan the faults of its suspending cases not yet seen.
-	armed    bool
-	before   map[string]struct{}
-	plan     []cases.Fault
+	// when it started.
+	armed  bool
+	before map[string]struct{}
+	// want is how many requests the run's suspending cases make, named the
+	// decisions requested by transaction, held the blocking requests whose
+	// transaction has not been seen, and unnamed the run's suspensions no
+	// request accounts for yet, by tool.
+	want     int
+	requests int
+	named    map[string]evalv1.ConformanceApprovalDecision
+	held     []*evalv1.ConformanceApprovalRequest
+	unnamed  map[string]string
 	answered map[string]releaseSmokeApprovalDecision
 	errs     []error
+}
+
+// conformanceRequestLines is the conformance run's stderr as the owner reads it:
+// every line that is a canonical approval request is handed to the owner, the
+// banner and log lines around them are not.
+type conformanceRequestLines struct {
+	owner *conformanceLoopOwner
+	line  []byte
+}
+
+// Write never fails, so the run's stderr log keeps everything.
+func (w *conformanceRequestLines) Write(p []byte) (int, error) {
+	w.line = append(w.line, p...)
+	for {
+		end := bytes.IndexByte(w.line, '\n')
+		if end < 0 {
+			return len(p), nil
+		}
+		req := &evalv1.ConformanceApprovalRequest{}
+		if evalv1.UnmarshalCanonical(w.line[:end], req) == nil && req.GetAttemptId() != "" {
+			w.owner.request(req)
+		}
+		w.line = w.line[end+1:]
+	}
 }
 
 // arm prepares the owner for one run under posture; pending is what already waits.
@@ -332,7 +374,9 @@ func (o *conformanceLoopOwner) arm(posture constants.Posture, pending []models.S
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.armed, o.plan, o.errs = true, nil, nil
+	o.armed, o.want, o.requests, o.held, o.errs = true, 0, 0, nil, nil
+	o.named = make(map[string]evalv1.ConformanceApprovalDecision)
+	o.unnamed = make(map[string]string)
 	o.before = make(map[string]struct{}, len(pending))
 	for _, transaction := range pending {
 		o.before[transaction.TransactionHash] = struct{}{}
@@ -340,26 +384,65 @@ func (o *conformanceLoopOwner) arm(posture constants.Posture, pending []models.S
 	if o.answered == nil {
 		o.answered = make(map[string]releaseSmokeApprovalDecision)
 	}
+	// Every attended case asks for a decision; an unattended case asks only to be
+	// left pending, and only when the catalogue expects it to suspend.
 	for _, c := range applicable {
-		switch c.Fault {
-		case cases.FaultUnattendedMutation, cases.FaultAttendedApprove, cases.FaultAttendedDeny:
-			o.plan = append(o.plan, c.Fault)
+		if c.Attended || slices.ContainsFunc(c.Expect, func(e cases.Expect) bool { return e.Kind == cases.ExpectSuspended }) {
+			o.want++
 		}
 	}
 	return nil
 }
 
-// disarm ends the run and reports a suspension no case accounts for, or a
-// suspending case whose transaction never came.
+// disarm ends the run and reports a suspension no request accounts for, a
+// blocking request whose transaction never came, or a request count other than
+// the suspending cases'.
 func (o *conformanceLoopOwner) disarm() error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.armed = false
 	errs := o.errs
-	if len(o.plan) > 0 {
-		errs = append(errs, fmt.Errorf("conformance owner: %d suspending cases never suspended, next %s: %w", len(o.plan), o.plan[0], constants.ErrValidationFailed))
+	if o.requests != o.want {
+		errs = append(errs, fmt.Errorf("conformance owner: %d approval requests, want %d suspending cases: %w", o.requests, o.want, constants.ErrValidationFailed))
+	}
+	for _, req := range o.held {
+		errs = append(errs, fmt.Errorf("conformance owner: %s (%s) asked for %s but never suspended: %w", req.GetAttemptId(), req.GetIngress(), req.GetDecision(), constants.ErrValidationFailed))
+	}
+	for hash, tool := range o.unnamed {
+		errs = append(errs, fmt.Errorf("conformance owner: transaction %s (%s) suspended without an approval request: %w", hash, tool, constants.ErrValidationFailed))
 	}
 	return errors.Join(errs...)
+}
+
+// request takes one approval request the run reported, then asks the responder
+// to reconcile: its transaction may already be pending.
+func (o *conformanceLoopOwner) request(req *evalv1.ConformanceApprovalRequest) {
+	o.mu.Lock()
+	switch {
+	case !o.armed:
+		o.errs = append(o.errs, fmt.Errorf("conformance owner: request %s outside a run: %w", req.GetAttemptId(), constants.ErrValidationFailed))
+	case req.GetTxHash() == "":
+		o.requests++
+		o.held = append(o.held, req)
+	default:
+		o.requests++
+		o.named[req.GetTxHash()] = req.GetDecision()
+		delete(o.unnamed, req.GetTxHash())
+	}
+	o.mu.Unlock()
+	o.reconcile()
+}
+
+// approvalDecision is the responder's answer to a requested decision.
+func approvalDecision(d evalv1.ConformanceApprovalDecision) releaseSmokeApprovalDecision {
+	switch d {
+	case evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_APPROVE:
+		return releaseSmokeApprove
+	case evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_DENY:
+		return releaseSmokeDeny
+	default:
+		return releaseSmokeLeavePending
+	}
 }
 
 // decide answers one pending transaction for the approvals responder.
@@ -378,18 +461,21 @@ func (o *conformanceLoopOwner) decide(transaction models.SuspendedTxResponse) re
 	if _, waited := o.before[hash]; !o.armed || waited {
 		return releaseSmokeLeavePending
 	}
-	decision := releaseSmokeLeavePending
+	requested, named := o.named[hash]
 	switch {
-	case len(o.plan) == 0:
-		o.errs = append(o.errs, fmt.Errorf("conformance owner: transaction %s (%s) suspended after the last suspending case: %w", hash, transaction.ToolName, constants.ErrValidationFailed))
-	case o.plan[0] == cases.FaultAttendedApprove:
-		decision = releaseSmokeApprove
-	case o.plan[0] == cases.FaultAttendedDeny:
-		decision = releaseSmokeDeny
+	case named:
+	case len(o.held) > 0:
+		// A transaction no request names is the held blocking case's: every
+		// earlier case's request was read before the held one.
+		requested = o.held[0].GetDecision()
+		o.held = o.held[1:]
+	default:
+		// Its request may still be on its way.
+		o.unnamed[hash] = transaction.ToolName
+		return releaseSmokeLeavePending
 	}
-	if len(o.plan) > 0 {
-		o.plan = o.plan[1:]
-	}
+	delete(o.unnamed, hash)
+	decision := approvalDecision(requested)
 	o.answered[hash] = decision
 	return decision
 }

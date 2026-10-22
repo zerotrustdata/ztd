@@ -14,6 +14,7 @@
     - [CandidateVote](#ztd-eval-v1-CandidateVote)
     - [ConformanceA2ACall](#ztd-eval-v1-ConformanceA2ACall)
     - [ConformanceAnchor](#ztd-eval-v1-ConformanceAnchor)
+    - [ConformanceApprovalRequest](#ztd-eval-v1-ConformanceApprovalRequest)
     - [ConformanceCaseEvidence](#ztd-eval-v1-ConformanceCaseEvidence)
     - [ConformanceExchange](#ztd-eval-v1-ConformanceExchange)
     - [ConformanceObservation](#ztd-eval-v1-ConformanceObservation)
@@ -110,6 +111,7 @@
     - [AgentReviewVerdict](#ztd-eval-v1-AgentReviewVerdict)
     - [AgentRiskLevel](#ztd-eval-v1-AgentRiskLevel)
     - [AgentRole](#ztd-eval-v1-AgentRole)
+    - [ConformanceApprovalDecision](#ztd-eval-v1-ConformanceApprovalDecision)
     - [ConformanceFailureClass](#ztd-eval-v1-ConformanceFailureClass)
     - [ConformanceObservationKind](#ztd-eval-v1-ConformanceObservationKind)
     - [ConformanceSuiteVerdict](#ztd-eval-v1-ConformanceSuiteVerdict)
@@ -351,6 +353,30 @@ from its enrollment binding, cross-checked against that Operator&#39;s export.
 | key_id | [string](#string) |  |  |
 | public_key_hex | [string](#string) |  |  |
 | export_sha256 | [string](#string) |  | sha256 of the raw export file bytes |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceApprovalRequest"></a>
+
+### ConformanceApprovalRequest
+ConformanceApprovalRequest is what an attended run asks its human approver for
+one case that suspends a transaction. `eval conformance run --attended --json`
+prints each as one canonical JSON line on stderr, in case order. MCP and A2A
+requests name the suspended transaction. A blocking ingress (governed dispatch,
+CLI, MCP stdio) is requested before its call, so its tx_hash is empty: the
+transaction is the next one the run suspends.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| case_id | [string](#string) |  |  |
+| attempt_id | [string](#string) |  |  |
+| ingress | [string](#string) |  |  |
+| decision | [ConformanceApprovalDecision](#ztd-eval-v1-ConformanceApprovalDecision) |  |  |
+| tx_hash | [string](#string) |  |  |
 
 
 
@@ -2412,6 +2438,20 @@ AgentRole is the generic function a step performs in an agent pipeline.
 | AGENT_ROLE_REVIEWER | 6 | approves, revises or swaps the chosen command |
 | AGENT_ROLE_MEMORY_WRITER | 7 | writes case memory after the turn |
 | AGENT_ROLE_TITLE_WRITER | 8 | writes the case title after the turn |
+
+
+
+<a name="ztd-eval-v1-ConformanceApprovalDecision"></a>
+
+### ConformanceApprovalDecision
+ConformanceApprovalDecision is the human decision a suspending case asks for.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONFORMANCE_APPROVAL_DECISION_UNSPECIFIED | 0 |  |
+| CONFORMANCE_APPROVAL_DECISION_APPROVE | 1 | row 23 |
+| CONFORMANCE_APPROVAL_DECISION_DENY | 2 | row 24 |
+| CONFORMANCE_APPROVAL_DECISION_LEAVE_PENDING | 3 | row 22: the suspension is the expected outcome |
 
 
 

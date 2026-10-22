@@ -35,6 +35,9 @@ var EnvVar = struct {
 	SSHAuthSock           EnvVarKey
 	XDGRuntimeDir         EnvVarKey
 	DBusSessionBusAddress EnvVarKey
+	Display               EnvVarKey
+	WaylandDisplay        EnvVarKey
+	Browser               EnvVarKey
 	CloudflareAPIToken    EnvVarKey
 }{
 	OllamaEndpoint:        EnvVarKey("ZTD_OLLAMA_ENDPOINT"),
@@ -60,6 +63,9 @@ var EnvVar = struct {
 	SSHAuthSock:           EnvVarKey("SSH_AUTH_SOCK"),
 	XDGRuntimeDir:         EnvVarKey("XDG_RUNTIME_DIR"),
 	DBusSessionBusAddress: EnvVarKey("DBUS_SESSION_BUS_ADDRESS"),
+	Display:               EnvVarKey("DISPLAY"),
+	WaylandDisplay:        EnvVarKey("WAYLAND_DISPLAY"),
+	Browser:               EnvVarKey("BROWSER"),
 	CloudflareAPIToken:    EnvVarKey("CLOUDFLARE_API_TOKEN"),
 }
 

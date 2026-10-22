@@ -48,6 +48,8 @@ type Call struct {
 	Round  uint32
 	System string
 	User   string
+	// JSONSchema is the canonical response schema the answer must satisfy.
+	JSONSchema string
 }
 
 // Inferer answers one deliberation call through governed inference and

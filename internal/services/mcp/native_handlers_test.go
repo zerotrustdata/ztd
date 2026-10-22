@@ -470,6 +470,98 @@ func TestHandleDBIsolatedRead(t *testing.T) {
 			t.Error("expected error field in result for non-SELECT query")
 		}
 	})
+
+	t.Run("missing query rejected", func(t *testing.T) {
+		req := DBIsolatedReadRequest{DatabasePath: filepath.Join(testutil.TempDir(t), "test.db")}
+		reqJSON, _ := json.Marshal(req)
+
+		_, err := handler.HandleTool(context.Background(), "db_isolated_read", reqJSON)
+		require.Error(t, err)
+	})
+
+	// Property: no query, including a stacked statement behind a SELECT
+	// prefix, changes the database. The read-only DSN is the last line.
+	t.Run("never mutates the database", func(t *testing.T) {
+		dbPath := filepath.Join(testutil.TempDir(t), "test.db")
+		db, err := sql.Open("sqlite", dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+		_, err = db.Exec("CREATE TABLE test_table (id INTEGER PRIMARY KEY, value TEXT)")
+		require.NoError(t, err)
+		_, err = db.Exec("INSERT INTO test_table (id, value) VALUES (1, 'original')")
+		require.NoError(t, err)
+
+		mutations := []string{
+			"DROP TABLE test_table",
+			"DELETE FROM test_table",
+			"INSERT INTO test_table (id, value) VALUES (2, 'new')",
+			"UPDATE test_table SET value = 'modified' WHERE id = 1",
+			"CREATE TABLE new_table (id INTEGER)",
+			"SELECT 1; DELETE FROM test_table",
+			"SELECT * FROM test_table; UPDATE test_table SET value = 'modified'",
+		}
+		for _, query := range mutations {
+			reqJSON, err := json.Marshal(DBIsolatedReadRequest{DatabasePath: dbPath, Query: query})
+			require.NoError(t, err)
+			_, err = handler.HandleTool(context.Background(), "db_isolated_read", reqJSON)
+			require.NoError(t, err, query)
+
+			var count int
+			var value string
+			require.NoError(t, db.QueryRow("SELECT COUNT(*), MAX(value) FROM test_table").Scan(&count, &value), query)
+			require.Equal(t, 1, count, query)
+			require.Equal(t, "original", value, query)
+			var tables int
+			require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'").Scan(&tables), query)
+			require.Equal(t, 1, tables, query)
+		}
+	})
+
+	t.Run("concurrent reads", func(t *testing.T) {
+		dbPath := filepath.Join(testutil.TempDir(t), "test.db")
+		db, err := sql.Open("sqlite", dbPath)
+		require.NoError(t, err)
+		defer db.Close()
+		_, err = db.Exec("CREATE TABLE test_table (id INTEGER PRIMARY KEY, value TEXT)")
+		require.NoError(t, err)
+		for i := 0; i < 100; i++ {
+			_, err = db.Exec("INSERT INTO test_table (id, value) VALUES (?, ?)", i, fmt.Sprintf("value_%d", i))
+			require.NoError(t, err)
+		}
+
+		const readers = 10
+		errs := make(chan error, readers)
+		for i := 0; i < readers; i++ {
+			go func(id int) {
+				reqJSON, err := json.Marshal(DBIsolatedReadRequest{
+					DatabasePath: dbPath,
+					Query:        fmt.Sprintf("SELECT * FROM test_table WHERE id = %d", id*10),
+				})
+				if err != nil {
+					errs <- err
+					return
+				}
+				result, err := handler.HandleTool(context.Background(), "db_isolated_read", reqJSON)
+				if err != nil {
+					errs <- fmt.Errorf("reader %d: %w", id, err)
+					return
+				}
+				var readResult DBIsolatedReadResult
+				if err := json.Unmarshal([]byte(result.Content[0].Text), &readResult); err != nil {
+					errs <- fmt.Errorf("reader %d: %w", id, err)
+					return
+				}
+				if len(readResult.Rows) != 1 || readResult.Error != "" {
+					errs <- fmt.Errorf("reader %d: rows=%d error=%q", id, len(readResult.Rows), readResult.Error)
+					return
+				}
+				errs <- nil
+			}(i)
+		}
+		for i := 0; i < readers; i++ {
+			require.NoError(t, <-errs)
+		}
+	})
 }
 
 func TestHandleDBIndexTriage(t *testing.T) {

@@ -107,8 +107,9 @@ export type TribunalIntentRequest = Message<"ztd.tribunal.v1.TribunalIntentReque
 
   /**
    * member_inference is the template for every member call. The Gateway sets
-   * messages and provider_attempt_id per call; the template must leave
-   * messages, tools, provider_attempt_id, acting_app_id and stream empty.
+   * messages, provider_attempt_id and the role's response_format schema per
+   * call; the template must leave messages, tools, provider_attempt_id,
+   * acting_app_id, stream and response_format empty.
    *
    * @generated from field: ztd.operator.v1.InferenceDispatchRequest member_inference = 13;
    */

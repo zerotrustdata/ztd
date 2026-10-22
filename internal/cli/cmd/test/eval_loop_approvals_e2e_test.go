@@ -127,6 +127,12 @@ func (a *releaseSmokeCLIApprovalResponder) Decide(decide func(models.SuspendedTx
 	a.mu.Lock()
 	a.decide = decide
 	a.mu.Unlock()
+	a.Reconcile()
+}
+
+// Reconcile asks for one more pass over the pending list, for a decider whose
+// answers changed without an approvals event.
+func (a *releaseSmokeCLIApprovalResponder) Reconcile() {
 	select {
 	case a.wake <- struct{}{}:
 	default:

@@ -175,8 +175,9 @@ type TribunalIntentRequest struct {
 	ExecutionId    string `protobuf:"bytes,11,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	TimeoutSeconds int32  `protobuf:"varint,12,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
 	// member_inference is the template for every member call. The Gateway sets
-	// messages and provider_attempt_id per call; the template must leave
-	// messages, tools, provider_attempt_id, acting_app_id and stream empty.
+	// messages, provider_attempt_id and the role's response_format schema per
+	// call; the template must leave messages, tools, provider_attempt_id,
+	// acting_app_id, stream and response_format empty.
 	MemberInference *v1.InferenceDispatchRequest `protobuf:"bytes,13,opt,name=member_inference,json=memberInference,proto3" json:"member_inference,omitempty"`
 	// provider_attempt_prefix names the member calls: call n (from 1, in
 	// deliberation order) uses provider_attempt_id "<prefix>-<n>". Required and

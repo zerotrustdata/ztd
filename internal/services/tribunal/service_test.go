@@ -153,19 +153,21 @@ func TestDeliberateApproved(t *testing.T) {
 		assert.Contains(t, messageText(request, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER), testRequest)
 
 		var stage tribunalv1.TribunalStage
-		var persona string
+		var persona, schema string
 		system := messageText(request, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM)
 		switch {
 		case i < len(AllMembers):
-			stage, persona = tribunalv1.TribunalStage_TRIBUNAL_STAGE_GENERATE, string(AllMembers[i])
+			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_GENERATE, string(AllMembers[i]), generationJSONSchema
 			assert.Equal(t, memberSystemPrompt(AllMembers[i]), system)
 		case i == len(AllMembers):
-			stage, persona = tribunalv1.TribunalStage_TRIBUNAL_STAGE_MARSHAL, PersonaMarshal
+			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_MARSHAL, PersonaMarshal, marshalJSONSchema
 			assert.Equal(t, marshalSystemPrompt, system)
 		default:
-			stage, persona = tribunalv1.TribunalStage_TRIBUNAL_STAGE_AUDIT, PersonaAuditor
+			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_AUDIT, PersonaAuditor, auditorJSONSchema([]string{"cluster_b", "cluster_c"})
 			assert.Equal(t, auditorSystemPrompt, system)
 		}
+		assert.Equal(t, constants.MediaTypeJSON, request.GetResponseFormat().GetMediaType())
+		assert.Equal(t, schema, request.GetResponseFormat().GetJsonSchema())
 		assert.Equal(t, stage, calls[i].GetStage())
 		assert.Equal(t, persona, calls[i].GetPersona())
 		assert.Equal(t, uint32(1), calls[i].GetRound())
@@ -295,6 +297,13 @@ func TestValidateIntentRequest(t *testing.T) {
 			name: "template sets stream",
 			mutate: func(req *tribunalv1.TribunalIntentRequest) {
 				req.MemberInference.Stream = true
+			},
+			want: constants.ErrTribunalTemplateInvalid,
+		},
+		{
+			name: "template sets response_format",
+			mutate: func(req *tribunalv1.TribunalIntentRequest) {
+				req.MemberInference.ResponseFormat = &operatorv1.InferenceResponseFormat{MediaType: constants.MediaTypeJSON, JsonSchema: `{"type":"object"}`}
 			},
 			want: constants.ErrTribunalTemplateInvalid,
 		},

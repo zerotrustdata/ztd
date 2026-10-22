@@ -442,3 +442,32 @@ func TestConformanceVerdictError_PassesOnlyPassOrUnattendedIncomplete(t *testing
 		})
 	}
 }
+
+// TestApprovalRequestWriterPrintsOneCanonicalLinePerRequest checks the attended --json
+// stderr contract: each request is one canonical JSON line that decodes back to itself, and
+// no writer is no sink.
+func TestApprovalRequestWriterPrintsOneCanonicalLinePerRequest(t *testing.T) {
+	var nilWriter *approvalRequestWriter
+	assert.Nil(t, nilWriter.sink())
+
+	var out bytes.Buffer
+	rw := &approvalRequestWriter{w: &out}
+	sent := []*evalv1.ConformanceApprovalRequest{
+		{CaseId: "c22", AttemptId: "run-1-0001", Ingress: "mcp", Decision: evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_LEAVE_PENDING, TxHash: "tx-22"},
+		{CaseId: "c23", AttemptId: "run-1-0002", Ingress: "cli", Decision: evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_APPROVE},
+	}
+	for _, req := range sent {
+		rw.sink()(req)
+	}
+	require.NoError(t, rw.Err())
+
+	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+	require.Len(t, lines, len(sent))
+	for i, line := range lines {
+		got := &evalv1.ConformanceApprovalRequest{}
+		require.NoError(t, evalv1.UnmarshalCanonical([]byte(line), got))
+		assert.Equal(t, sent[i].GetAttemptId(), got.GetAttemptId())
+		assert.Equal(t, sent[i].GetDecision(), got.GetDecision())
+		assert.Equal(t, sent[i].GetTxHash(), got.GetTxHash())
+	}
+}

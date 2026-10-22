@@ -11,11 +11,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -243,6 +245,14 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 	}
 	defer func() { err = errors.Join(err, stdio.Close()) }()
 
+	// Under --json an attended run reports each approval it asks for as a typed
+	// line on stderr, so an automated approver can answer it by transaction.
+	var requests *approvalRequestWriter
+	if opts.attended && output.JSONEnabled(cmd) {
+		requests = &approvalRequestWriter{w: cmd.ErrOrStderr()}
+		defer func() { err = errors.Join(err, requests.Err()) }()
+	}
+
 	drivers, sentinel, err := conformanceDrivers(ctx, conformanceSetup{
 		client:         gatewayClient,
 		persona:        persona,
@@ -254,6 +264,7 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		poster:         poster,
 		attended:       opts.attended,
 		approverUserID: opts.approverUserID,
+		requests:       requests.sink(),
 	})
 	if err != nil {
 		return err
@@ -479,6 +490,47 @@ type conformanceSetup struct {
 	poster         cliop.CommandPoster
 	attended       bool
 	approverUserID string
+	// requests receives each attended approval request; nil reports none.
+	requests drive.RequestSink
+}
+
+// approvalRequestWriter prints each approval request as one canonical JSON line.
+// The first write failure is kept and returned by Err.
+type approvalRequestWriter struct {
+	mu  sync.Mutex
+	w   io.Writer
+	err error
+}
+
+// sink is the writer as a request sink; a nil writer is a nil sink.
+func (rw *approvalRequestWriter) sink() drive.RequestSink {
+	if rw == nil {
+		return nil
+	}
+	return rw.write
+}
+
+func (rw *approvalRequestWriter) write(req *evalv1.ConformanceApprovalRequest) {
+	rw.mu.Lock()
+	defer rw.mu.Unlock()
+	if rw.err != nil {
+		return
+	}
+	body, err := evalv1.MarshalCanonical(req)
+	if err != nil {
+		rw.err = fmt.Errorf("evaluation: canonicalize approval request %s: %w", req.GetAttemptId(), err)
+		return
+	}
+	if _, err := fmt.Fprintln(rw.w, string(body)); err != nil {
+		rw.err = fmt.Errorf("evaluation: write approval request %s: %w", req.GetAttemptId(), err)
+	}
+}
+
+// Err is the first write failure.
+func (rw *approvalRequestWriter) Err() error {
+	rw.mu.Lock()
+	defer rw.mu.Unlock()
+	return rw.err
 }
 
 // conformanceDrivers builds one driver per ingress and the sentinel. The L2 source
@@ -529,11 +581,11 @@ func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingr
 	}
 	var mcpIngress cases.Driver = mcpDriver
 	if s.attended {
-		mcpIngress = drive.NewAttended(mcpDriver, s.client, s.persona, s.approverUserID)
+		mcpIngress = drive.NewAttended(mcpDriver, s.client, s.persona, s.approverUserID, s.requests)
 	}
 	var dispatchIngress cases.Driver = dispatch
 	if s.attended {
-		dispatchIngress = drive.NewAttended(dispatch, s.client, s.persona, s.approverUserID)
+		dispatchIngress = drive.NewAttended(dispatch, s.client, s.persona, s.approverUserID, s.requests)
 	}
 	cli, err := drive.NewCLI(s.poster, data, s.persona.CLISessionID)
 	if err != nil {
@@ -541,7 +593,7 @@ func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingr
 	}
 	var cliIngress cases.Driver = cli
 	if s.attended {
-		cliIngress = drive.NewAttended(cli, s.client, s.persona, s.approverUserID)
+		cliIngress = drive.NewAttended(cli, s.client, s.persona, s.approverUserID, s.requests)
 	}
 	drivers := map[cases.Ingress]cases.Driver{
 		cases.IngressDirect:           direct,
@@ -553,14 +605,14 @@ func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingr
 	if s.stdio != nil {
 		var stdioIngress cases.Driver = s.stdio
 		if s.attended {
-			stdioIngress = drive.NewAttended(s.stdio, s.client, s.persona, s.approverUserID)
+			stdioIngress = drive.NewAttended(s.stdio, s.client, s.persona, s.approverUserID, s.requests)
 		}
 		drivers[cases.IngressMCPStdio] = stdioIngress
 	}
 	if s.stub != nil {
 		var a2aIngress cases.Driver = drive.NewA2A(s.client, s.persona, s.stub)
 		if s.attended {
-			a2aIngress = drive.NewAttended(a2aIngress, s.client, s.persona, s.approverUserID)
+			a2aIngress = drive.NewAttended(a2aIngress, s.client, s.persona, s.approverUserID, s.requests)
 		}
 		drivers[cases.IngressA2A] = a2aIngress
 	}

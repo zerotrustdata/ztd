@@ -118,6 +118,8 @@ func ValidateIntentRequest(req *tribunalv1.TribunalIntentRequest) error {
 		return fmt.Errorf("tribunal: member_inference.acting_app_id comes from the caller identity: %w", constants.ErrTribunalTemplateInvalid)
 	case template.GetStream():
 		return fmt.Errorf("tribunal: member_inference.stream must be false: %w", constants.ErrTribunalTemplateInvalid)
+	case template.GetResponseFormat() != nil:
+		return fmt.Errorf("tribunal: member_inference.response_format is set per call: %w", constants.ErrTribunalTemplateInvalid)
 	}
 	tierRole, err := InferenceRoleForTier(req.GetTier())
 	if err != nil {
@@ -205,6 +207,9 @@ func (m *memberInferer) Infer(ctx context.Context, call Call) (string, error) {
 	req.Messages = []*operatorv1.InferenceMessage{
 		textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, call.System),
 		textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, call.User),
+	}
+	if call.JSONSchema != "" {
+		req.ResponseFormat = &operatorv1.InferenceResponseFormat{MediaType: constants.MediaTypeJSON, JsonSchema: call.JSONSchema}
 	}
 	record := &tribunalv1.TribunalMemberCall{
 		Stage:             call.Stage.Proto(),

@@ -456,16 +456,16 @@ func newCase(spec rowSpec, fault Fault, ingress Ingress, posture PostureBinding,
 
 	effect := effectFor(ingress, spec.action)
 	for _, o := range spec.outcomes {
-		c.Expect = append(c.Expect, o.expect(posture.Posture, spec.action, effect))
+		c.Expect = append(c.Expect, o.expect(posture.Posture, ingress, spec.action, effect))
 	}
 	return c
 }
 
-// expect completes an outcome for one posture, action and effect.
-func (o outcome) expect(posture constants.Posture, action Action, effect Effect) Expect {
+// expect completes an outcome for one posture, ingress, action and effect.
+func (o outcome) expect(posture constants.Posture, ingress Ingress, action Action, effect Effect) Expect {
 	switch o.kind {
 	case ExpectExecuted:
-		return executedExpect(posture, action, effect)
+		return executedExpect(posture, ingress, action, effect)
 	case ExpectRejected:
 		return Expect{Kind: ExpectRejected, RejectionCode: o.rejection, Effect: EffectNone}
 	case ExpectRefused:
@@ -475,12 +475,15 @@ func (o outcome) expect(posture constants.Posture, action Action, effect Effect)
 	}
 }
 
-// executedExpect is the one expected outcome of an EXECUTED submission. L2 is
-// REQUIRED_VALID under consensus and notary (every action), else NOT_REQUIRED.
-// L3 is REQUIRED_VALID for a mutation under ratify and notary, else NOT_REQUIRED.
-func executedExpect(posture constants.Posture, action Action, effect Effect) Expect {
+// executedExpect is the one expected outcome of an EXECUTED submission. Under
+// consensus and notary L2 is REQUIRED_VALID for a mutation, which is the only
+// action the tribunal votes on, and for every DIRECT submission, which carries its
+// own valid proof that the receipt records as evidence; a Gateway-ingress read
+// gets no vote round and is NOT_REQUIRED. L3 is REQUIRED_VALID for a mutation
+// under ratify and notary, else NOT_REQUIRED.
+func executedExpect(posture constants.Posture, ingress Ingress, action Action, effect Effect) Expect {
 	l2 := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
-	if posture.RequiresL2() {
+	if posture.RequiresL2() && (action == ActionMutation || ingress == IngressDirect) {
 		l2 = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
 	}
 	l3 := operatorv1.L3Status_L3_STATUS_NOT_REQUIRED

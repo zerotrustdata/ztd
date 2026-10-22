@@ -134,7 +134,7 @@ func validateExpect(c Case, posture constants.Posture, e Expect) error {
 		if e.L2Status == operatorv1.L2Status_L2_STATUS_UNSPECIFIED || e.L3Status == operatorv1.L3Status_L3_STATUS_UNSPECIFIED {
 			return invalid("case %s: executed expectation has no L2 or L3 status", c.ID)
 		}
-		want := executedExpect(posture, c.Action, effectFor(c.Ingress, c.Action))
+		want := executedExpect(posture, c.Ingress, c.Action,effectFor(c.Ingress, c.Action))
 		if e != want {
 			return invalid("case %s: executed expectation %+v does not match %+v", c.ID, e, want)
 		}

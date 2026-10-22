@@ -256,6 +256,8 @@ The production Tribunal service (`internal/services/tribunal/`) runs on the Gate
 4. **Technical Audit**: The Auditor persona reviews the consensus command (`APPROVE`, `REVISE`, or `SWAP`). When a `REVISE` or `SWAP` changes the command, Marshal assesses the changed command before it can be approved, and a `HIGH` assessment blocks it the same way.
 5. **Governed Dispatch**: Only the approved, audited command is dispatched by the Gateway through `DispatchService.Dispatch` as an ordinary governed `MCP_CALL run_shell_command` under the caller's identity, so posture-required L2 quorum and L3 human approval apply unchanged. The Tribunal acts in front of envelope construction and does NOT substitute for or impersonate L2 consensus quorum proofs or L3 approvals. The `TribunalIntentResult` returns the persona steps, every member call with its receipt, the exact approved argument JSON, and the call's governed outcome.
 
+Every member call carries a JSON response format whose schema is the shape its strict decoder accepts (`internal/services/tribunal/schema.go`). A candidate and a `REVISE` carry only the authored `{command, args}`; the Gateway owns timeout and working directory. Marshal answers `{risk, rationale}` with optional `feedback`. The Auditor schema has one branch per verdict, and offers the `SWAP` branch only when the panel split into alternative clusters. The schema guides the provider's output but does not replace the decoder: a provider that ignores it still fails closed. Marshal treats an invalid answer as `HIGH`, and the Auditor's answer counts as an invalid attempt.
+
 ## Anti-patterns
 
 - **Treating Model Reasoning as Protocol Proof**: Assuming LLM approval or structured output satisfies L2 Consensus or L3 Notary gates (INV-AGT-01).

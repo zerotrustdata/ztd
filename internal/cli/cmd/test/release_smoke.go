@@ -347,7 +347,14 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("start isolated key agent: %w", err)
 	}
-	r.childEnv = r.agent.Env()
+	// Children run headless: with no display and a no-op browser command, an
+	// approval link (the MCP stdio bridge opens one per suspension) opens nothing
+	// on the developer's workstation.
+	r.childEnv = append(r.agent.Env(),
+		string(constants.EnvVar.Display)+"=",
+		string(constants.EnvVar.WaylandDisplay)+"=",
+		string(constants.EnvVar.Browser)+"=true",
+	)
 	for _, p := range []*int{&r.ports.http, &r.ports.https} {
 		*p, err = freeSmokePort()
 		if err != nil {
@@ -769,12 +776,20 @@ func (r *releaseSmokeRun) embeddedFileTransactions() []string {
 	return nil
 }
 func (r *releaseSmokeRun) ztdGateway(ctx context.Context, name string, args ...string) (string, error) {
-	return r.ztd(ctx, name, r.gwRoot, append([]string{"-e", fmt.Sprintf("127.0.0.1:%d", r.ports.http), "-p", strconv.Itoa(r.ports.https)}, args...)...)
+	return r.ztdGatewayTee(ctx, name, nil, args...)
+}
+
+// ztdGatewayTee is ztdGateway with the child's stderr also streamed to stderrTee.
+func (r *releaseSmokeRun) ztdGatewayTee(ctx context.Context, name string, stderrTee io.Writer, args ...string) (string, error) {
+	return r.ztdTee(ctx, name, r.gwRoot, stderrTee, append([]string{"-e", fmt.Sprintf("127.0.0.1:%d", r.ports.http), "-p", strconv.Itoa(r.ports.https)}, args...)...)
 }
 func (r *releaseSmokeRun) ztd(ctx context.Context, name, dir string, args ...string) (string, error) {
+	return r.ztdTee(ctx, name, dir, nil, args...)
+}
+func (r *releaseSmokeRun) ztdTee(ctx context.Context, name, dir string, stderrTee io.Writer, args ...string) (string, error) {
 	argv := append([]string{r.opts.ZtdBin}, args...)
 	prefix := filepath.Join(r.logDir, name)
-	p, err := r.owner.start(name, dir, prefix, argv, r.childEnv)
+	p, err := r.owner.start(name, dir, prefix, argv, r.childEnv, stderrTee)
 	if err != nil {
 		return "", err
 	}

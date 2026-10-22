@@ -45,7 +45,7 @@ func startSleeper(t *testing.T, r *releaseSmokeRun) *smokeOwnedProcess {
 		// cmd.exe runs ping as a grandchild, so stopping must reach the whole job.
 		argv = []string{"cmd.exe", "/c", "ping", "-n", "61", "127.0.0.1"}
 	}
-	proc, err := r.owner.start("sleeper", smokeTempDir(t), filepath.Join(r.logDir, "sleeper"), argv, nil)
+	proc, err := r.owner.start("sleeper", smokeTempDir(t), filepath.Join(r.logDir, "sleeper"), argv, nil, nil)
 	if err != nil {
 		t.Fatalf("start owned process: %v", err)
 	}

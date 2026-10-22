@@ -63,6 +63,22 @@ func TestSearchFileTool(t *testing.T) {
 		assert.NotContains(t, result.Content[0].Text, "hunter2")
 	})
 
+	t.Run("scrubs every secret kind", func(t *testing.T) {
+		secretsFile := filepath.Join(logsDir, "secrets.log")
+		require.NoError(t, os.WriteFile(secretsFile, []byte("password=secret123\napi_key=sk-12345\ntoken=abc123\nsecret=mysecret\n"), 0644))
+		args, err := json.Marshal(SearchFileRequest{Path: filepath.Join("logs", "secrets.log"), Pattern: "="})
+		require.NoError(t, err)
+		result, err := handler.HandleTool(context.Background(), constants.MCPToolSearchFile, args)
+		require.NoError(t, err)
+
+		var got SearchFileResult
+		require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &got))
+		require.Len(t, got.Matches, 4)
+		for _, secret := range []string{"secret123", "sk-12345", "abc123", "mysecret"} {
+			assert.NotContains(t, result.Content[0].Text, secret)
+		}
+	})
+
 	t.Run("rejects a directory and names the directory tool", func(t *testing.T) {
 		args, err := json.Marshal(SearchFileRequest{Path: "logs", Pattern: "AUTH_FAILURE"})
 		require.NoError(t, err)
