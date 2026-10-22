@@ -370,6 +370,7 @@ func TestRealStackHeldRepetition_ControllerLoadsThePreviousRepetition(t *testing
 	_, err = evaluation.HeldAssignmentContextForTest(ctx, env.controller, env.req.CampaignID, next)
 	require.ErrorIs(t, err, constants.ErrEvaluationHeldContextUnavailable, "a previous repetition without a trace cannot be continued")
 	assert.True(t, evaluation.IsRecoverableAssignmentExecutionErrorForTest(err))
+	assert.Equal(t, evaluation.ExecutionFailureHeldContext, evaluation.ClassifyExecutionFailure(err))
 
 	res := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())

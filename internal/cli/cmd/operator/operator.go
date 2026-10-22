@@ -217,9 +217,9 @@ func operatorModelResidencyCmd() *cobra.Command {
 
 func operatorModelReleaseCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:    "release <model>",
+		Use:    "release <model> [model...]",
 		Hidden: true,
-		Args:   cobra.ExactArgs(1),
+		Args:   cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			endpoint, err := operatorOllamaEndpoint(cmd)
 			if err != nil {
@@ -229,7 +229,7 @@ func operatorModelReleaseCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("operator: release model: %w", err)
 			}
-			if err := backend.ReleaseModel(cmd.Context(), args[0]); err != nil {
+			if err := backend.ReleaseModels(cmd.Context(), args); err != nil {
 				return fmt.Errorf("operator: release model: %w", err)
 			}
 			return nil

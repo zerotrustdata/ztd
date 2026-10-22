@@ -11,7 +11,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -354,69 +353,45 @@ func ReadOllamaProviderResidency(ctx context.Context, dispatcher OllamaModelComm
 	return residency, nil
 }
 
-// VerifyOllamaModelsAbsent reads governed residency once after ReleaseOllamaModels
-// and fails closed if any named tag is still resident. The unload is synchronous:
-// each release returns only after the provider confirms done_reason "unload"
-// (inference.OllamaBackend.ReleaseModel), so no polling is needed.
-func VerifyOllamaModelsAbsent(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext, modelTags []string) error {
-	if len(modelTags) == 0 {
-		return nil
-	}
-	if maintenance.Timeout <= 0 {
-		maintenance.Timeout = inference.ProviderStatusTimeout
-	}
-	residency, err := ReadOllamaProviderResidency(ctx, dispatcher, maintenance)
-	if err != nil {
-		return fmt.Errorf("evaluation: verify Ollama models absent: %w", err)
-	}
-	for _, resident := range residency.Models {
-		if slices.Contains(modelTags, resident.Name) {
-			return fmt.Errorf("evaluation: verify Ollama models absent: %w: model %q still resident after unload", constants.ErrInferenceModelReleaseFailed, resident.Name)
-		}
-	}
-	return nil
-}
-
-// ReleaseOllamaModels unloads only the validated campaign-owned model tags
-// through the exact Inference Operator session after scored work is complete.
+// ReleaseOllamaModels sends one governed batch release to the exact Inference
+// Operator session. The Operator validates the full set, unloads it, and
+// verifies absence before this command completes.
 func ReleaseOllamaModels(ctx context.Context, dispatcher OllamaModelCommandDispatcher, targetOperatorSessionID, runID string, modelTags []string, environment map[string]string, newID func(string) string) error {
-	if dispatcher == nil || targetOperatorSessionID == "" || runID == "" || newID == nil {
+	if dispatcher == nil || targetOperatorSessionID == "" || runID == "" || newID == nil || len(modelTags) == 0 {
 		return fmt.Errorf("evaluation: release Ollama models: %w", constants.ErrMissingRequiredField)
 	}
-	for index, modelTag := range modelTags {
-		command, err := operatorcapability.OllamaReleaseCommand(modelTag)
-		if err != nil {
-			return fmt.Errorf("evaluation: release Ollama models: %w", err)
-		}
-		executionID := newID(fmt.Sprintf("ollama-release-%d", index))
-		payload, err := MarshalOllamaModelCommandPayload(OllamaModelCommandDispatchRequest{
-			Command:        command,
-			ExecutionID:    executionID,
-			Environment:    environment,
-			TimeoutSeconds: 60,
-		})
-		if err != nil {
-			return fmt.Errorf("evaluation: release Ollama models: %w", err)
-		}
-		request := OllamaModelCommandDispatchRequest{
-			TargetOperatorSessionID: targetOperatorSessionID,
-			ActionType:              constants.ActionTypeExecuteBash,
-			Command:                 command,
-			Payload:                 payload,
-			Environment:             environment,
-			TimeoutSeconds:          60,
-			ExecutionID:             executionID,
-			CaseID:                  runID,
-			InvestigationID:         "ollama-model-release",
-			TaskID:                  newID("ollama-release"),
-		}
-		result, err := dispatcher.DispatchOllamaModelCommand(ctx, request)
-		if err != nil {
-			return fmt.Errorf("evaluation: release Ollama models: %w", err)
-		}
-		if err := ValidateOllamaModelCommandResult(command, result); err != nil {
-			return fmt.Errorf("evaluation: release Ollama models: %w", err)
-		}
+	command, err := operatorcapability.OllamaReleaseCommand(modelTags...)
+	if err != nil {
+		return fmt.Errorf("evaluation: release Ollama models: %w", err)
+	}
+	executionID := newID("ollama-release")
+	payload, err := MarshalOllamaModelCommandPayload(OllamaModelCommandDispatchRequest{
+		Command:        command,
+		ExecutionID:    executionID,
+		Environment:    environment,
+		TimeoutSeconds: 60,
+	})
+	if err != nil {
+		return fmt.Errorf("evaluation: release Ollama models: %w", err)
+	}
+	request := OllamaModelCommandDispatchRequest{
+		TargetOperatorSessionID: targetOperatorSessionID,
+		ActionType:              constants.ActionTypeExecuteBash,
+		Command:                 command,
+		Payload:                 payload,
+		Environment:             environment,
+		TimeoutSeconds:          60,
+		ExecutionID:             executionID,
+		CaseID:                  runID,
+		InvestigationID:         "ollama-model-release",
+		TaskID:                  newID("ollama-release-task"),
+	}
+	result, err := dispatcher.DispatchOllamaModelCommand(ctx, request)
+	if err != nil {
+		return fmt.Errorf("evaluation: release Ollama models: %w", err)
+	}
+	if err := ValidateOllamaModelCommandResult(command, result); err != nil {
+		return fmt.Errorf("evaluation: release Ollama models: %w", err)
 	}
 	return nil
 }

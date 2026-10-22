@@ -60,6 +60,11 @@ message L2Metadata {
   repeated L2Vote votes   = 2;    // independent member votes
   // Set only on a Tribunal member's vote inference; mutually exclusive with votes.
   L2DeliberationAttestation deliberation = 3;
+  // Set only on a witness observation command (provider-boundary or
+  // model-provenance): votes are the parent INFERENCE's quorum and sign this
+  // hash, not the observation's. It MUST equal the command payload's
+  // inference_transaction_id; mutually exclusive with deliberation.
+  string parent_transaction_hash = 4;
 }
 
 // Notary (L3Notary) Governance: Authorization (Human-in-the-loop)

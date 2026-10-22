@@ -73,7 +73,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`, `POST /api/v1/observe/producer/stop`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
-| INV-SSE-PROD-04 | Every rejected observe producer request returns a typed `models.ObserveProducerRejection` body with a stable `code`. Transition and stale-update rejections include their typed details; ownership misses return `forbidden` without record details, and unclassified failures return `internal` without details. Clients MUST decode the rejection and use its cause rather than treating the response as an untyped error string. |
+| INV-SSE-PROD-04 | Observe producer validation, lifecycle, ownership, and persistence rejections return a typed `models.ObserveProducerRejection` body with a stable `code`. Transition and stale-update rejections include their typed details; ownership misses return `forbidden` without record details, and unclassified failures return `internal` without details. The agent harness client decodes the body and preserves its classified cause for `errors.Is` and `errors.As`. Authentication and method rejection responses retain their shared boundary formats. |
 
 ### Consumer authentication (`INV-SSE-CONS`)
 

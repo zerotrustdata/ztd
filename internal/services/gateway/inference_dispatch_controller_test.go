@@ -43,9 +43,14 @@ type stubInferenceCommandDispatcher struct {
 	called      bool
 }
 
-func (s *stubInferenceCommandDispatcher) Dispatch(_ context.Context, req dispatch.CommandDispatchRequest) (*dispatch.CommandDispatchResult, error) {
+func (s *stubInferenceCommandDispatcher) Dispatch(ctx context.Context, req dispatch.CommandDispatchRequest) (*dispatch.CommandDispatchResult, error) {
 	s.called = true
 	s.lastReq = req
+	if req.OnAdmitted != nil {
+		if err := req.OnAdmitted(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if req.OnInferenceProgress != nil {
 		if err := req.OnInferenceProgress(&operatorv1.InferenceProgressEvent{
 			ProviderAttemptId: "provider-attempt-1",

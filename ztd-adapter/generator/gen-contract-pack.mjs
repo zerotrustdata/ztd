@@ -187,20 +187,14 @@ const EVENT_PAYLOAD_MODELS = [
   'eval_stop_requested_payload',
 ];
 
-// Typed error responses for the mTLS producer client. These models are
-// available to producer implementations, but producer endpoints remain
-// excluded from the browser endpoint allowlist and generated OpenAPI.
-const PRODUCER_ERROR_MODELS = [
-  'observe_projection_transition_error',
-  'observe_projection_stale_update_error',
-  'observe_producer_rejection',
-];
-
 const EXCLUDED_MODELS = new Set([
   'observe_producer_agent_state_request',
   'observe_producer_run_state_request',
   'observe_producer_stop_request',
   'observe_producer_response',
+  'observe_projection_transition_error',
+  'observe_projection_stale_update_error',
+  'observe_producer_rejection',
   // Public feed owner-only and server-to-server models. These never appear
   // in the builder contract pack: ingest requests are Gateway-to-mirror,
   // export config is owner-only, outbox entries are internal state, and
@@ -458,13 +452,11 @@ function generateModelsTs() {
   sections.push('export type UTCDatetime = string;');
   sections.push('');
 
-  // Inline models first (dependencies), then browser models, event payloads,
-  // and typed producer error responses.
+  // Inline models first (dependencies), then browser models and event payloads.
   // Generate interfaces for browser models to populate inlineModels.
   const interfaceBlocks = [];
   for (const m of BROWSER_MODELS) interfaceBlocks.push(generateInterfaceClean(m));
   for (const m of EVENT_PAYLOAD_MODELS) interfaceBlocks.push(generateInterfaceClean(m));
-  for (const m of PRODUCER_ERROR_MODELS) interfaceBlocks.push(generateInterfaceClean(m));
 
   // Inline interfaces discovered during resolution.
   const inlineBlocks = [];
@@ -490,7 +482,6 @@ function generateModelsTs() {
   for (const [name, props] of inlineModels) validatorBlocks.push(generateInlineValidator(name, props));
   for (const m of BROWSER_MODELS) validatorBlocks.push(generateValidator(m));
   for (const m of EVENT_PAYLOAD_MODELS) validatorBlocks.push(generateValidator(m));
-  for (const m of PRODUCER_ERROR_MODELS) validatorBlocks.push(generateValidator(m));
   sections.push(validatorBlocks.join('\n\n'));
   sections.push('');
 
@@ -630,7 +621,10 @@ function generateOpenApi() {
     servers: [{ url: '/api/v1', description: 'Gateway base URL from runtime config' }],
     paths,
     components,
-    'x-models': { ...observeApi, ...eventPayloads },
+    'x-models': {
+      ...Object.fromEntries(Object.entries(observeApi).filter(([name]) => !EXCLUDED_MODELS.has(name))),
+      ...eventPayloads,
+    },
   };
   return stableSerialize(doc);
 }

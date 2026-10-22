@@ -35,6 +35,7 @@ const (
 	ExecutionFailureTarget       ExecutionFailureClass = "target_unavailable"
 	ExecutionFailurePosture      ExecutionFailureClass = "posture_unsupported"
 	ExecutionFailureEvidence     ExecutionFailureClass = "evidence_unavailable"
+	ExecutionFailureHeldContext  ExecutionFailureClass = "held_context_unavailable"
 	ExecutionFailureVerification ExecutionFailureClass = "verification_failed"
 	ExecutionFailureDispatch     ExecutionFailureClass = "dispatch_failure"
 	ExecutionFailureInvalidInput ExecutionFailureClass = "invalid_input"
@@ -64,6 +65,8 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureVerification
 	case errors.Is(err, constants.ErrEvaluationObservationUnavailable):
 		return ExecutionFailureEvidence
+	case errors.Is(err, constants.ErrEvaluationHeldContextUnavailable):
+		return ExecutionFailureHeldContext
 	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
@@ -146,7 +149,7 @@ const (
 
 // executionFailureClasses is every class ClassifyExecutionFailure can return.
 var executionFailureClasses = []ExecutionFailureClass{
-	ExecutionFailureProvider, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureVerification,
+	ExecutionFailureProvider, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureHeldContext, ExecutionFailureVerification,
 	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureCanceled, ExecutionFailureTimeout, ExecutionFailureInternal,
 }
 

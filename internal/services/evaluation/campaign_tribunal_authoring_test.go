@@ -92,6 +92,53 @@ func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunal
 	}
 }
 
+func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *testing.T) {
+	receipt := &operatorv1.ActionReceipt{
+		TransactionId: "tx-denied",
+		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		FailureCode:   operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+		ActionType:    string(constants.ActionTypeInference),
+		RejectionCode: operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET,
+		L2Status:      operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED,
+		SignerKeyId:   "operator-key",
+		Signature:     "signed-receipt",
+	}
+	member := &tribunalv1.TribunalMemberCall{
+		ProviderAttemptId: "attempt-member",
+		Receipt:           receipt,
+		Failure: &operatorv1.InferenceDispatchFailure{
+			Code: operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_GOVERNANCE_REJECTED,
+		},
+	}
+	newRun := func() *agentRun {
+		return newTribunalAuthoringRun(t, true, &tribunalAuthoringInference{}, &tribunalAuthoringTools{})
+	}
+
+	t.Run("signed L2 rejection is retained as governance outcome", func(t *testing.T) {
+		run := newRun()
+		failure := run.recordMemberCalls(AgentToolCall{CallID: "tool-1"}, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, []*tribunalv1.TribunalMemberCall{member})
+		assert.Equal(t, tribunalGovernanceRejected, failure)
+		assert.Empty(t, run.trace.ProviderFailure)
+		assert.Empty(t, run.trace.ProviderFailureClass)
+		require.Len(t, run.trace.ModelCalls, 1)
+		assert.Equal(t, tribunalModelCallGovernanceRejected, run.trace.ModelCalls[0].Error)
+		assert.Equal(t, "tx-denied", run.trace.ModelCalls[0].TransactionID)
+		require.NotNil(t, run.trace.ModelCalls[0].Receipt)
+		assert.Same(t, receipt, run.trace.ModelCalls[0].Receipt.ActionReceipt)
+	})
+
+	t.Run("missing receipt remains an internal failure", func(t *testing.T) {
+		run := newRun()
+		withoutReceipt := proto.Clone(member).(*tribunalv1.TribunalMemberCall)
+		withoutReceipt.Receipt = nil
+		failure := run.recordMemberCalls(AgentToolCall{CallID: "tool-1"}, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, []*tribunalv1.TribunalMemberCall{withoutReceipt})
+		assert.Equal(t, string(ExecutionFailureInternal), failure)
+		assert.Equal(t, string(ExecutionFailureInternal), run.trace.ProviderFailure)
+		assert.Empty(t, run.trace.ProviderFailureClass)
+		assert.Empty(t, run.trace.ModelCalls)
+	})
+}
+
 func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 	const proposal = `{"command":"echo","args":["hello"]}`
 	t.Run("native dispatches MCP directly", func(t *testing.T) {

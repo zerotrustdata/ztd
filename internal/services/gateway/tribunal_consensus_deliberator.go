@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -77,8 +78,10 @@ func NewTribunalConsensusDeliberator(store consensusBindingReader, policies cons
 }
 
 // Deliberate collects member votes on the envelope until quorum is met or can
-// no longer be met. A member that cannot run its inference or sign casts no
-// vote; an answer that is not a strict approve is a signed deny. Every
+// no longer be met. Members are asked in binding order, in concurrent batches
+// of the approvals still needed, and stop once the context ends. A member that
+// cannot run its inference or sign casts no vote; an answer that is not a
+// strict approve is a signed deny. Every
 // member's outcome, with its stated reason, is recorded as a
 // ztd.v1.consensus.vote.recorded audit event before its vote counts.
 func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error) {
@@ -110,29 +113,20 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 	}
 	votes := make([]*commonv1.L2Vote, 0, bound.Quorum)
 	approvals := 0
-	for i, memberAppID := range bound.MemberAppIDs {
-		if approvals >= bound.Quorum || approvals+len(bound.MemberAppIDs)-i < bound.Quorum {
+	for next := 0; ctx.Err() == nil; {
+		needed := bound.Quorum - approvals
+		if needed <= 0 || len(bound.MemberAppIDs)-next < needed {
 			break
 		}
-		vote := d.castVote(ctx, bound, memberAppID, computed, subject)
-		var signature []byte
-		if vote.failure == nil {
-			if signature, err = d.signer.Sign(memberAppID, governance.L2VotePayload(computed, vote.answer.Approve())); err != nil {
-				d.logger.Warn("tribunal consensus: member cannot sign", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
-				vote.failure = fmt.Errorf("sign vote: %w", err)
+		batch := bound.MemberAppIDs[next : next+needed]
+		next += needed
+		for i, vote := range d.castVotes(ctx, bound, batch, computed, subject) {
+			if approved, signed := d.countVote(&env, bound, batch[i], computed, vote); signed != nil {
+				votes = append(votes, signed)
+				if approved {
+					approvals++
+				}
 			}
-		}
-		// A vote counts only once its record is on the Gateway audit chain.
-		if err := d.recordVote(&env, bound, memberAppID, vote); err != nil {
-			d.logger.Warn("tribunal consensus: member vote not recorded", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
-			continue
-		}
-		if vote.failure != nil {
-			continue
-		}
-		votes = append(votes, &commonv1.L2Vote{SignerKeyId: memberAppID, ConsensusSignature: hex.EncodeToString(signature), Decision: vote.answer.Approve()})
-		if vote.answer.Approve() {
-			approvals++
 		}
 	}
 
@@ -145,6 +139,46 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 		return nil, fmt.Errorf("tribunal consensus: encode deliberated envelope: %w", err)
 	}
 	return deliberated, nil
+}
+
+// castVotes runs the batch's vote inferences concurrently. A batch is exactly
+// the approvals still needed for quorum, so it never overshoots quorum; one
+// member's deny or failure can leave the rest of its batch moot, and those
+// votes are still recorded. Results return in batch order.
+func (d *TribunalConsensusDeliberator) castVotes(ctx context.Context, bound *models.ConsensusPolicy, batch []string, txHash string, subject tribunal.ConsensusSubject) []memberVote {
+	out := make([]memberVote, len(batch))
+	var wg sync.WaitGroup
+	for i, memberAppID := range batch {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out[i] = d.castVote(ctx, bound, memberAppID, txHash, subject)
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
+// countVote signs and records memberAppID's vote. It returns the L2 vote only
+// when the member signed and its record is on the Gateway audit chain.
+func (d *TribunalConsensusDeliberator) countVote(env *commonv1.GovernanceEnvelope, bound *models.ConsensusPolicy, memberAppID, computed string, vote memberVote) (bool, *commonv1.L2Vote) {
+	var signature []byte
+	if vote.failure == nil {
+		var err error
+		if signature, err = d.signer.Sign(memberAppID, governance.L2VotePayload(computed, vote.answer.Approve())); err != nil {
+			d.logger.Warn("tribunal consensus: member cannot sign", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
+			vote.failure = fmt.Errorf("sign vote: %w", err)
+		}
+	}
+	// A vote counts only once its record is on the Gateway audit chain.
+	if err := d.recordVote(env, bound, memberAppID, vote); err != nil {
+		d.logger.Warn("tribunal consensus: member vote not recorded", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
+		return false, nil
+	}
+	if vote.failure != nil {
+		return false, nil
+	}
+	return vote.answer.Approve(), &commonv1.L2Vote{SignerKeyId: memberAppID, ConsensusSignature: hex.EncodeToString(signature), Decision: vote.answer.Approve()}
 }
 
 // memberVote is one member's deliberation outcome. failure is set when the
@@ -266,12 +300,25 @@ func consensusSubject(env *commonv1.GovernanceEnvelope) (tribunal.ConsensusSubje
 		intent = string(encoded)
 	}
 	return tribunal.ConsensusSubject{
-		ActionType:     env.GetActionType(),
-		TargetResource: env.GetTargetResource(),
-		EventType:      env.GetEventType(),
-		PayloadJSON:    string(payload),
-		IntentJSON:     intent,
+		ActionType:        env.GetActionType(),
+		ActionSemantics:   consensusActionSemantics(constants.ActionType(env.GetActionType())),
+		TargetResource:    env.GetTargetResource(),
+		EventType:         env.GetEventType(),
+		OperatorID:        env.GetOperatorId(),
+		OperatorSessionID: env.GetOperatorSessionId(),
+		CaseID:            env.GetCaseId(),
+		InvestigationID:   env.GetInvestigationId(),
+		TaskID:            env.GetTaskId(),
+		PayloadJSON:       string(payload),
+		IntentJSON:        intent,
 	}, nil
+}
+
+func consensusActionSemantics(actionType constants.ActionType) string {
+	if actionType == constants.ActionTypeOllamaModelResidency {
+		return "Ollama model residency query: reads current resident models; the residency handler does not load or unload models."
+	}
+	return ""
 }
 
 // tribunalMemberForAppID maps a canonical consensus app ID to its panel member.

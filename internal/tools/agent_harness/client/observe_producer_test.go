@@ -53,12 +53,12 @@ func TestRequestRunStop_PostsTheTypedRequestAsAnAppWorkload(t *testing.T) {
 
 // updateRunStateAgainst posts a running update to a server that answers with
 // status and body.
-func updateRunStateAgainst(t *testing.T, status int, body string) error {
+func updateRunStateAgainst(t *testing.T, body string) error {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, constants.APIPaths.ObserveProducerRunState, r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
+		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(body))
 	}))
 	defer server.Close()
@@ -83,7 +83,7 @@ func TestUpdateRunState_RejectionCarriesTheRefusedTransition(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	err = updateRunStateAgainst(t, http.StatusBadRequest, string(rejection))
+	err = updateRunStateAgainst(t, string(rejection))
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.ErrorIs(t, err, constants.ErrObserveInvalidTransition)
 	var rejected *ObserveProducerRejectedError
@@ -96,19 +96,19 @@ func TestUpdateRunState_RejectionCarriesTheRefusedTransition(t *testing.T) {
 }
 
 func TestUpdateRunState_RejectionCodeRecoversTheSentinel(t *testing.T) {
-	err := updateRunStateAgainst(t, http.StatusBadRequest, `{"error":"observe: run_kind is required","code":"run_kind_invalid"}`)
+	err := updateRunStateAgainst(t, `{"error":"observe: run_kind is required","code":"run_kind_invalid"}`)
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.ErrorIs(t, err, constants.ErrObserveRunKindRequired)
 }
 
 func TestUpdateRunState_UnknownRejectionCodeIsNamed(t *testing.T) {
-	err := updateRunStateAgainst(t, http.StatusBadRequest, `{"error":"new","code":"from_the_future"}`)
+	err := updateRunStateAgainst(t, `{"error":"new","code":"from_the_future"}`)
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.ErrorIs(t, err, constants.ErrObserveRejectionUnknown)
 }
 
 func TestUpdateRunState_UndecodableRejectionIsAnInvalidResponse(t *testing.T) {
-	err := updateRunStateAgainst(t, http.StatusBadRequest, `not json`)
+	err := updateRunStateAgainst(t, `not json`)
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }

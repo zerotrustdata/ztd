@@ -523,6 +523,9 @@ func (r *agentRun) loop(ctx context.Context) error {
 				return err
 			}
 			r.trace.ToolCalls = append(r.trace.ToolCalls, executed)
+			if r.trace.TerminalClassification == AgentTerminalClassificationPolicyDenial {
+				return nil
+			}
 			if r.trace.ProviderFailure != "" {
 				// A Tribunal inference inside the tool call failed; like a
 				// failed turn, it ends the loop.

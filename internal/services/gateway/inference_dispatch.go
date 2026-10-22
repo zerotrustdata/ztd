@@ -53,6 +53,7 @@ func (a *gatewayDispatcherAdapter) Dispatch(ctx context.Context, req dispatch.Co
 		CliSessionID:            req.CliSessionID,
 		Timeout:                 req.Timeout,
 		OnInferenceProgress:     req.OnInferenceProgress,
+		OnAdmitted:              req.OnAdmitted,
 	})
 	if err != nil {
 		return nil, err

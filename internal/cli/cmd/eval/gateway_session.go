@@ -214,7 +214,34 @@ func evalPreflightGatewayPosture(
 	if err := evaluation.ValidateGatewayPosture(spec, posture); err != nil {
 		return err
 	}
-	return evalGatewayGovernanceReady(health)
+	if err := evalGatewayGovernanceReady(health); err != nil {
+		return err
+	}
+	if !health.Posture.RequiresL2() || health.Consensus.Provider != string(constants.ConsensusProviderTribunal) {
+		return nil
+	}
+	operators, err := evalListOperators(cmd, deps, cfg, authContext)
+	if err != nil {
+		return fmt.Errorf("evaluation: shared-runtime Tribunal preflight: %w", err)
+	}
+	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", spec.GetInvestigation().GetDataOperatorId())
+	if err != nil {
+		return fmt.Errorf("evaluation: shared-runtime Tribunal preflight: %w", err)
+	}
+	if err := evalRejectSharedRuntimeTribunalL2(health, topology); err != nil {
+		return err
+	}
+	return nil
+}
+
+func evalRejectSharedRuntimeTribunalL2(health *models.HealthResponse, topology evaluation.CampaignOperatorTopology) error {
+	if health == nil || !health.Posture.RequiresL2() || health.Consensus.Provider != string(constants.ConsensusProviderTribunal) {
+		return nil
+	}
+	if topology.Inference.OperatorID == topology.Data.OperatorID && topology.Inference.OperatorSessionID == topology.Data.OperatorSessionID {
+		return fmt.Errorf("evaluation: campaign preflight: shared Inference/Data Operator under enforced Tribunal L2: enroll and select a dedicated inference Operator, then create a new run: %w", constants.ErrEvaluationSharedRuntimeTribunalL2)
+	}
+	return nil
 }
 
 // gatewayHealth reads the Gateway's typed /health once.

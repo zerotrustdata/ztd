@@ -502,9 +502,6 @@ func releaseProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExec
 	if err := evaluation.ReleaseOllamaModels(cmd.Context(), dispatcher, inferenceSessionID, opts.RunID, residentTags, maintenance.Environment, maintenance.NewID); err != nil {
 		return err
 	}
-	if err := evaluation.VerifyOllamaModelsAbsent(cmd.Context(), dispatcher, maintenance, residentTags); err != nil {
-		return err
-	}
 	if !opts.JSONOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Released %d %s model(s) through inference session %s\n", len(residentTags), label, inferenceSessionID)
 	}

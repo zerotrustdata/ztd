@@ -361,9 +361,14 @@ type L2Metadata struct {
 	ConsensusSetId string                 `protobuf:"bytes,1,opt,name=consensus_set_id,json=consensusSetId,proto3" json:"consensus_set_id,omitempty"` // ID of the consensus set that produced this vote set
 	Votes          []*L2Vote              `protobuf:"bytes,2,rep,name=votes,proto3" json:"votes,omitempty"`                                           // independent member votes
 	// Set only on a Tribunal member's vote inference; mutually exclusive with votes.
-	Deliberation  *L2DeliberationAttestation `protobuf:"bytes,3,opt,name=deliberation,proto3" json:"deliberation,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Deliberation *L2DeliberationAttestation `protobuf:"bytes,3,opt,name=deliberation,proto3" json:"deliberation,omitempty"`
+	// Set only on a witness observation command (provider-boundary or
+	// model-provenance): votes are the parent INFERENCE's quorum and sign this
+	// hash, not the observation's. It MUST equal the command payload's
+	// inference_transaction_id; mutually exclusive with deliberation.
+	ParentTransactionHash string `protobuf:"bytes,4,opt,name=parent_transaction_hash,json=parentTransactionHash,proto3" json:"parent_transaction_hash,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *L2Metadata) Reset() {
@@ -415,6 +420,13 @@ func (x *L2Metadata) GetDeliberation() *L2DeliberationAttestation {
 		return x.Deliberation
 	}
 	return nil
+}
+
+func (x *L2Metadata) GetParentTransactionHash() string {
+	if x != nil {
+		return x.ParentTransactionHash
+	}
+	return ""
 }
 
 // Notary (L3Notary) Governance: Authorization (Human-in-the-loop)
@@ -1654,12 +1666,13 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\bdecision\x18\x03 \x01(\bR\bdecision\"]\n" +
 	"\x19L2DeliberationAttestation\x12\"\n" +
 	"\rsigner_key_id\x18\x01 \x01(\tR\vsignerKeyId\x12\x1c\n" +
-	"\tsignature\x18\x02 \x01(\tR\tsignature\"\xb1\x01\n" +
+	"\tsignature\x18\x02 \x01(\tR\tsignature\"\xe9\x01\n" +
 	"\n" +
 	"L2Metadata\x12(\n" +
 	"\x10consensus_set_id\x18\x01 \x01(\tR\x0econsensusSetId\x12+\n" +
 	"\x05votes\x18\x02 \x03(\v2\x15.ztd.common.v1.L2VoteR\x05votes\x12L\n" +
-	"\fdeliberation\x18\x03 \x01(\v2(.ztd.common.v1.L2DeliberationAttestationR\fdeliberation\"\xb6\x03\n" +
+	"\fdeliberation\x18\x03 \x01(\v2(.ztd.common.v1.L2DeliberationAttestationR\fdeliberation\x126\n" +
+	"\x17parent_transaction_hash\x18\x04 \x01(\tR\x15parentTransactionHash\"\xb6\x03\n" +
 	"\aL3Proof\x12(\n" +
 	"\x10client_data_json\x18\x01 \x01(\tR\x0eclientDataJSON\x12-\n" +
 	"\x12authenticator_data\x18\x02 \x01(\tR\x11authenticatorData\x12\x1c\n" +

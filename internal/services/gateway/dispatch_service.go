@@ -215,6 +215,13 @@ type DispatchRequest struct {
 	// OnInferenceProgress receives bounded provider progress telemetry while
 	// waiting for the authoritative terminal completion.
 	OnInferenceProgress func(*operatorv1.InferenceProgressEvent) error
+
+	// OnAdmitted runs once the envelope holds every admission proof (L2
+	// deliberation and any L3 approval) and before it is published. Its ctx
+	// binds that admitted envelope: observation commands dispatched under it
+	// carry the parent's L2 quorum (withWitnessParent). An error stops the
+	// dispatch before publish.
+	OnAdmitted func(ctx context.Context) error
 }
 
 // DispatchResult is the output of a successful command dispatch. Receipt
@@ -296,6 +303,86 @@ func (d *DispatchService) attachDeliberationAttestation(ctx context.Context, env
 		return fmt.Errorf("dispatch: deliberation attestation: %w", err)
 	}
 	env.Governance.L2.Deliberation.Signature = hex.EncodeToString(sig)
+	return nil
+}
+
+// witnessParentKey carries the admitted INFERENCE whose attempt the
+// observation commands dispatched under ctx witness. It is unexported: only
+// Dispatch sets it, after the parent holds its L2 quorum, so no ingress can
+// claim a witness binding.
+type witnessParentKey struct{}
+
+// witnessParent is an admitted parent INFERENCE's transaction hash and L2
+// quorum.
+type witnessParent struct {
+	transactionHash string
+	l2              *commonv1.L2Metadata
+}
+
+// withWitnessParent marks ctx with admitted's L2 quorum when admitted is an
+// INFERENCE that carries votes. A Tribunal member's vote inference carries a
+// deliberation attestation instead, and its observations carry that
+// attestation (attachDeliberationAttestation).
+func withWitnessParent(ctx context.Context, admitted *commonv1.GovernanceEnvelope) context.Context {
+	l2 := admitted.GetGovernance().GetL2()
+	if constants.ActionType(admitted.GetActionType()) != constants.ActionTypeInference ||
+		len(l2.GetVotes()) == 0 || l2.GetDeliberation() != nil {
+		return ctx
+	}
+	return context.WithValue(ctx, witnessParentKey{}, witnessParent{
+		transactionHash: admitted.GetTransactionHash(),
+		l2:              proto.Clone(l2).(*commonv1.L2Metadata),
+	})
+}
+
+// witnessParentHash returns the transaction hash of ctx's admitted parent
+// INFERENCE, or "" outside one. Observation coordinators name it as the
+// command's inference_transaction_id.
+func witnessParentHash(ctx context.Context) string {
+	parent, _ := ctx.Value(witnessParentKey{}).(witnessParent)
+	return parent.transactionHash
+}
+
+// witnessInferenceTransactionID is the inference a FINALIZE command names: the
+// completed inference's transaction, or ctx's admitted parent when the attempt
+// failed before a result named one.
+func witnessInferenceTransactionID(ctx context.Context, inferenceTransactionID string) string {
+	if inferenceTransactionID != "" {
+		return inferenceTransactionID
+	}
+	return witnessParentHash(ctx)
+}
+
+// attachWitnessBinding binds an observation envelope to ctx's admitted parent
+// INFERENCE: the parent's votes and hash replace deliberating the observation.
+// Outside a parent, or inside a Tribunal member's deliberation (already
+// attested), it does nothing. A command that names another inference fails
+// closed.
+func attachWitnessBinding(ctx context.Context, env *commonv1.GovernanceEnvelope) error {
+	parent, ok := ctx.Value(witnessParentKey{}).(witnessParent)
+	if !ok || env.GetGovernance().GetL2().GetDeliberation() != nil {
+		return nil
+	}
+	if env.GetGovernance() == nil {
+		env.Governance = &commonv1.GovernanceMetadata{}
+	}
+	l2 := proto.Clone(parent.l2).(*commonv1.L2Metadata)
+	l2.ParentTransactionHash = parent.transactionHash
+	env.Governance.L2 = l2
+	if err := governance.VerifyL2WitnessBinding(env); err != nil {
+		return fmt.Errorf("dispatch: %w", err)
+	}
+	return nil
+}
+
+// admit runs req.OnAdmitted under a ctx bound to the admitted envelope.
+func admit(ctx context.Context, req DispatchRequest, admitted *commonv1.GovernanceEnvelope) error {
+	if req.OnAdmitted == nil {
+		return nil
+	}
+	if err := req.OnAdmitted(withWitnessParent(ctx, admitted)); err != nil {
+		return fmt.Errorf("dispatch: admitted: %w", err)
+	}
 	return nil
 }
 
@@ -455,6 +542,10 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 			d.approvals.finish(env.Id, pending, nil, err)
 			return nil, err
 		}
+		if err := admit(ctx, req, resumed); err != nil {
+			d.approvals.finish(env.Id, pending, nil, err)
+			return nil, err
+		}
 		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, resumed.GetStateMerkleRoot())
 		result, err := d.dispatchEnvelope(ctx, op, resumed, wire, req)
 		receipt := governance.FailedReceipt(err)
@@ -463,6 +554,16 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		}
 		d.approvals.finish(env.Id, pending, receipt, err)
 		return result, err
+	}
+	if req.OnAdmitted != nil {
+		// Admit the exact deliberated envelope, votes included.
+		admitted := &commonv1.GovernanceEnvelope{}
+		if err := protojson.Unmarshal(wire, admitted); err != nil {
+			return nil, fmt.Errorf("dispatch: decode deliberated envelope: %w", err)
+		}
+		if err := admit(ctx, req, admitted); err != nil {
+			return nil, err
+		}
 	}
 	return d.dispatchEnvelope(ctx, op, env, wire, req)
 }

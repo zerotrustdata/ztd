@@ -16,7 +16,41 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
+
+func TestEvalRejectSharedRuntimeTribunalL2(t *testing.T) {
+	shared := evaluation.CampaignOperatorTopology{
+		Inference: evaluation.CampaignOperatorRuntime{OperatorID: "operator-a", OperatorSessionID: "session-a"},
+		Data:      evaluation.CampaignOperatorRuntime{OperatorID: "operator-a", OperatorSessionID: "session-a"},
+	}
+	separate := evaluation.CampaignOperatorTopology{
+		Inference: evaluation.CampaignOperatorRuntime{OperatorID: "operator-inference", OperatorSessionID: "session-inference"},
+		Data:      evaluation.CampaignOperatorRuntime{OperatorID: "operator-data", OperatorSessionID: "session-data"},
+	}
+	tests := []struct {
+		name     string
+		health   *models.HealthResponse
+		topology evaluation.CampaignOperatorTopology
+		wantErr  bool
+	}{
+		{name: "enforced Tribunal L2 shared runtime refuses", health: &models.HealthResponse{Posture: constants.PostureConsensus, Consensus: models.HealthConsensus{Provider: string(constants.ConsensusProviderTribunal)}}, topology: shared, wantErr: true},
+		{name: "notary Tribunal L2 shared runtime refuses", health: &models.HealthResponse{Posture: constants.PostureNotary, Consensus: models.HealthConsensus{Provider: string(constants.ConsensusProviderTribunal)}}, topology: shared, wantErr: true},
+		{name: "enforced application L2 allows shared runtime", health: &models.HealthResponse{Posture: constants.PostureConsensus, Consensus: models.HealthConsensus{Provider: "application"}}, topology: shared},
+		{name: "non L2 Tribunal allows shared runtime", health: &models.HealthResponse{Posture: constants.PostureRatify, Consensus: models.HealthConsensus{Provider: string(constants.ConsensusProviderTribunal)}}, topology: shared},
+		{name: "enforced Tribunal L2 allows separate runtimes", health: &models.HealthResponse{Posture: constants.PostureConsensus, Consensus: models.HealthConsensus{Provider: string(constants.ConsensusProviderTribunal)}}, topology: separate},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := evalRejectSharedRuntimeTribunalL2(tt.health, tt.topology)
+			if tt.wantErr {
+				require.ErrorIs(t, err, constants.ErrEvaluationSharedRuntimeTribunalL2)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
 
 func TestEvalGatewayGovernanceReady(t *testing.T) {
 	tests := []struct {

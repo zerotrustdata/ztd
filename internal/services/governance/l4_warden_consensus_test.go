@@ -870,6 +870,11 @@ func TestL2DeliberationExempt(t *testing.T) {
 		{name: "provider boundary observation without votes", env: attested(constants.ActionTypeProviderBoundaryObservation, nil), want: true},
 		{name: "inference attestation with a vote", env: attested(constants.ActionTypeInference, []*commonv1.L2Vote{{SignerKeyId: deliberationMemberKeyID, Decision: true}}), want: false},
 		{name: "mcp call attestation without votes", env: attested(constants.ActionTypeMcpCall, nil), want: false},
+		{name: "observation attestation with a parent hash", env: func() *govtypes.GovernanceEnvelope {
+			env := attested(constants.ActionTypeProviderBoundaryObservation, nil)
+			env.Governance.L2.ParentTransactionHash = "parent-inference-hash"
+			return env
+		}(), want: false},
 		{name: "nil envelope", env: nil, want: false},
 	}
 	for _, tc := range tests {

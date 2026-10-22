@@ -16,8 +16,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
@@ -82,13 +88,54 @@ type inferCall struct {
 }
 
 // fakeInferer answers each member's vote from a script keyed by ActingAppID.
-// A member with no script entry fails, so unexpected calls are visible.
+// A member with no script entry fails, so unexpected calls are visible. With
+// barrier set, a call answers only once barrier.want calls are in flight.
+// onCall, when set, runs before the reply.
 type fakeInferer struct {
+	mu      sync.Mutex
 	replies map[string]inferReply
 	calls   []inferCall
+	barrier *callBarrier
+	onCall  func(req dispatch.DispatchInferenceRequest)
+}
+
+// callBarrier releases its callers once want of them have arrived.
+type callBarrier struct {
+	want    int
+	mu      sync.Mutex
+	arrived int
+	all     chan struct{}
+}
+
+func newCallBarrier(want int) *callBarrier {
+	return &callBarrier{want: want, all: make(chan struct{})}
+}
+
+// wait reports whether every expected caller arrived before the deadline.
+func (b *callBarrier) wait() bool {
+	b.mu.Lock()
+	b.arrived++
+	if b.arrived == b.want {
+		close(b.all)
+	}
+	b.mu.Unlock()
+	select {
+	case <-b.all:
+		return true
+	case <-time.After(5 * time.Second):
+		return false
+	}
 }
 
 func (f *fakeInferer) DispatchInference(ctx context.Context, req dispatch.DispatchInferenceRequest) (*dispatch.DispatchInferenceResult, error) {
+	if f.onCall != nil {
+		f.onCall(req)
+	}
+	if f.barrier != nil && !f.barrier.wait() {
+		return nil, fmt.Errorf("fakeInferer: %s answered before its batch was in flight", req.ActingAppID)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	deliberating, _ := ctx.Value(consensusDeliberationKey{}).(string)
 	f.calls = append(f.calls, inferCall{
 		actingAppID:  req.ActingAppID,
@@ -332,13 +379,22 @@ func TestTribunalConsensusAllApproveStopsAtQuorum(t *testing.T) {
 	if len(inferer.calls) != 3 {
 		t.Fatalf("inference calls = %d, want 3 (short-circuit at quorum)", len(inferer.calls))
 	}
-	for i, call := range inferer.calls {
-		if call.actingAppID != binding.MemberAppIDs[i] {
-			t.Fatalf("call %d acting app = %s, want %s", i, call.actingAppID, binding.MemberAppIDs[i])
-		}
+	called := make([]string, 0, len(inferer.calls))
+	for _, call := range inferer.calls {
+		called = append(called, call.actingAppID)
+	}
+	slices.Sort(called)
+	want := slices.Sorted(slices.Values(binding.MemberAppIDs[:3]))
+	if !slices.Equal(called, want) {
+		t.Fatalf("called members = %v, want the first three %v", called, want)
 	}
 	if len(signer.calls) != 3 {
 		t.Fatalf("sign calls = %d, want 3", len(signer.calls))
+	}
+	for i, sign := range signer.calls {
+		if sign.memberAppID != binding.MemberAppIDs[i] {
+			t.Fatalf("sign %d member = %s, want %s (binding order)", i, sign.memberAppID, binding.MemberAppIDs[i])
+		}
 	}
 
 	deliberated := unmarshalDeliberatedEnvelope(t, out)
@@ -455,6 +511,50 @@ func TestTribunalConsensusInferenceErrorCastsNoVoteAndContinues(t *testing.T) {
 	}
 }
 
+func TestTribunalConsensusAsksEachBatchConcurrently(t *testing.T) {
+	env, _ := tribunalTestEnvelope(t)
+	binding := tribunalTestBinding()
+	// Each call answers only once all three first-batch calls are in flight;
+	// serial voting would time out the barrier and cast no vote.
+	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer}), barrier: newCallBarrier(binding.Quorum)}
+	signer := newFakeSigner(t, binding.MemberAppIDs...)
+	d := newTribunalTestDeliberator(binding, inferer, signer)
+
+	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
+	if err != nil {
+		t.Fatalf("Deliberate: %v", err)
+	}
+	votes := unmarshalDeliberatedEnvelope(t, out).GetGovernance().GetL2().GetVotes()
+	if got, want := voteSignerIDs(votes), binding.MemberAppIDs[:3]; !slices.Equal(got, want) {
+		t.Fatalf("vote signers = %v, want %v in binding order", got, want)
+	}
+}
+
+func TestTribunalConsensusStopsAskingOnceTheContextEnds(t *testing.T) {
+	env, _ := tribunalTestEnvelope(t)
+	binding := tribunalTestBinding()
+	replies := repliesForAll(inferReply{text: tribunalApproveAnswer})
+	failing := binding.MemberAppIDs[0]
+	replies[failing] = inferReply{err: context.Canceled}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	inferer := &fakeInferer{replies: replies, onCall: func(req dispatch.DispatchInferenceRequest) {
+		if req.ActingAppID == failing {
+			cancel()
+		}
+	}}
+	signer := newFakeSigner(t, binding.MemberAppIDs...)
+	d := newTribunalTestDeliberator(binding, inferer, signer)
+
+	if _, err := d.Deliberate(ctx, marshalTestEnvelope(t, env)); err != nil {
+		t.Fatalf("Deliberate: %v", err)
+	}
+	// The first batch was already in flight; no member is asked after cancel.
+	if len(inferer.calls) != 3 {
+		t.Fatalf("inference calls = %d, want 3 (no batch after cancel)", len(inferer.calls))
+	}
+}
+
 func TestTribunalConsensusMemberWithoutKeyCastsNoVote(t *testing.T) {
 	env, _ := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
@@ -514,7 +614,8 @@ func TestTribunalConsensusRecordsEveryMemberVote(t *testing.T) {
 		t.Fatalf("Deliberate: %v", err)
 	}
 
-	// Deny, invalid-answer deny, approve, no vote; then quorum is unreachable.
+	// First batch: deny, invalid-answer deny, approve. The second batch asks the
+	// two remaining members together: no vote, approve. Quorum is not met.
 	for _, event := range recorder.events {
 		if event.Type != constants.EventConsensusVoteRecorded || event.TransactionID != hash || event.OperatorSessionID != "session-1" {
 			t.Fatalf("vote event = type %s tx %s session %s, want %s on %s/session-1",
@@ -531,6 +632,7 @@ func TestTribunalConsensusRecordsEveryMemberVote(t *testing.T) {
 		{outcome: models.ConsensusVoteOutcomeDeny, failed: true},
 		{outcome: models.ConsensusVoteOutcomeApprove, reason: "matches target"},
 		{outcome: models.ConsensusVoteOutcomeNoVote, failed: true},
+		{outcome: models.ConsensusVoteOutcomeApprove, reason: "matches target"},
 	}
 	if len(records) != len(want) {
 		t.Fatalf("vote records = %d, want %d: %+v", len(records), len(want), records)
@@ -643,6 +745,38 @@ func TestTribunalConsensusVotePromptCarriesTypedPayload(t *testing.T) {
 			t.Fatalf("call %d user prompt does not carry the command payload:\n%s", i, user)
 		}
 	}
+}
+
+func TestTribunalConsensusSubjectAddsResidencyMeaningAndEnvelopeContext(t *testing.T) {
+	t.Parallel()
+	payload, err := proto.Marshal(&operatorv1.OllamaModelResidencyRequested{ExecutionId: "exec-1"})
+	require.NoError(t, err)
+	env := &commonv1.GovernanceEnvelope{
+		ActionType:        string(constants.ActionTypeOllamaModelResidency),
+		TargetResource:    "operator://operator-1/inference",
+		EventType:         string(constants.Event.Operator.OllamaModelResidency.Requested),
+		OperatorId:        "operator-1",
+		OperatorSessionId: "session-2",
+		CaseId:            "case-3",
+		InvestigationId:   "investigation-4",
+		TaskId:            "task-5",
+		Payload:           payload,
+	}
+
+	subject, err := consensusSubject(env)
+	require.NoError(t, err)
+	assert.Equal(t, "{}", subject.IntentJSON)
+	assert.Equal(t, "Ollama model residency query: reads current resident models; the residency handler does not load or unload models.", subject.ActionSemantics)
+	assert.Equal(t, "operator-1", subject.OperatorID)
+	assert.Equal(t, "session-2", subject.OperatorSessionID)
+	assert.Equal(t, "case-3", subject.CaseID)
+	assert.Equal(t, "investigation-4", subject.InvestigationID)
+	assert.Equal(t, "task-5", subject.TaskID)
+
+	_, prompt := tribunal.ConsensusVotePrompt(tribunal.MemberAxiom, subject)
+	assert.Contains(t, prompt, "Action semantics: "+subject.ActionSemantics)
+	assert.Contains(t, prompt, "Operator session ID: session-2")
+	assert.Contains(t, prompt, "<intent_data>\n{}\n</intent_data>")
 }
 
 func TestTribunalConsensusUndecodablePayloadFailsBeforeAnyWork(t *testing.T) {

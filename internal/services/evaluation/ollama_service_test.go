@@ -20,7 +20,8 @@ import (
 )
 
 type recordingOllamaModelCommandDispatcher struct {
-	requests []OllamaModelCommandDispatchRequest
+	requests   []OllamaModelCommandDispatchRequest
+	returnCode int32
 }
 
 func (d *recordingOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ context.Context, request OllamaModelCommandDispatchRequest) (*OllamaModelCommandDispatchResult, error) {
@@ -30,7 +31,7 @@ func (d *recordingOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ con
 		Success: true,
 		CommandResult: &operatorv1.CommandResult{
 			Status:     operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
-			ReturnCode: 0,
+			ReturnCode: d.returnCode,
 		},
 	}, nil
 }
@@ -40,11 +41,26 @@ func TestReleaseOllamaModels_TargetsExactInferenceSession(t *testing.T) {
 	dispatcher := &recordingOllamaModelCommandDispatcher{}
 	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b", "registry.example/team/gemma3:4b"}, map[string]string{"ZTD_OLLAMA_ENDPOINT": "http://provider.example:11434"}, func(prefix string) string { return prefix + "-id" })
 	require.NoError(t, err)
-	require.Len(t, dispatcher.requests, 2)
+	require.Len(t, dispatcher.requests, 1)
 	assert.Equal(t, "inference-session", dispatcher.requests[0].TargetOperatorSessionID)
-	assert.Equal(t, "ztd operator model release qwen3:0.6b", dispatcher.requests[0].Command)
-	assert.Equal(t, "ztd operator model release registry.example/team/gemma3:4b", dispatcher.requests[1].Command)
+	assert.Equal(t, "ztd operator model release qwen3:0.6b registry.example/team/gemma3:4b", dispatcher.requests[0].Command)
 	assert.Equal(t, "http://provider.example:11434", dispatcher.requests[0].Environment["ZTD_OLLAMA_ENDPOINT"])
+}
+
+func TestReleaseOllamaModels_ValidatesWholeBatchBeforeDispatch(t *testing.T) {
+	t.Parallel()
+	dispatcher := &recordingOllamaModelCommandDispatcher{}
+	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b", "qwen3:0.6b;whoami"}, nil, func(prefix string) string { return prefix + "-id" })
+	require.ErrorIs(t, err, constants.ErrInferenceModelTagInvalid)
+	assert.Empty(t, dispatcher.requests)
+}
+
+func TestReleaseOllamaModels_PropagatesFailedOperatorCommand(t *testing.T) {
+	t.Parallel()
+	dispatcher := &recordingOllamaModelCommandDispatcher{returnCode: 1}
+	err := ReleaseOllamaModels(context.Background(), dispatcher, "inference-session", "run-1", []string{"qwen3:0.6b"}, nil, func(prefix string) string { return prefix + "-id" })
+	require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
+	assert.Len(t, dispatcher.requests, 1)
 }
 
 func TestMarshalOllamaModelCommandPayload_CarriesExecutionFields(t *testing.T) {
@@ -77,37 +93,4 @@ func TestValidateOllamaModelCommandResult_RejectsNonzeroExit(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-}
-
-// residencyOllamaModelCommandDispatcher answers every typed residency query with
-// the same resident set and counts the queries it received.
-type residencyOllamaModelCommandDispatcher struct {
-	residentTags []string
-	reads        int
-}
-
-func (d *residencyOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ context.Context, request OllamaModelCommandDispatchRequest) (*OllamaModelCommandDispatchResult, error) {
-	d.reads++
-	residency := &operatorv1.OllamaModelResidencyResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
-	for _, tag := range d.residentTags {
-		residency.Models = append(residency.Models, &operatorv1.OllamaModelResidencyModel{Name: tag})
-	}
-	return &OllamaModelCommandDispatchResult{Status: 200, Success: true, ActionType: request.ActionType, ResidencyResult: residency}, nil
-}
-
-func TestVerifyOllamaModelsAbsent_PassesAfterSingleResidencyRead(t *testing.T) {
-	t.Parallel()
-	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "inference-session", NewID: func(prefix string) string { return prefix + "-id" }}
-	dispatcher := &residencyOllamaModelCommandDispatcher{residentTags: []string{"other:1b"}}
-	require.NoError(t, VerifyOllamaModelsAbsent(context.Background(), dispatcher, maintenance, []string{"qwen3:0.6b"}))
-	assert.Equal(t, 1, dispatcher.reads)
-}
-
-func TestVerifyOllamaModelsAbsent_FailsClosedWhileModelResident(t *testing.T) {
-	t.Parallel()
-	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "inference-session", NewID: func(prefix string) string { return prefix + "-id" }}
-	dispatcher := &residencyOllamaModelCommandDispatcher{residentTags: []string{"qwen3:0.6b"}}
-	err := VerifyOllamaModelsAbsent(context.Background(), dispatcher, maintenance, []string{"qwen3:0.6b"})
-	require.ErrorIs(t, err, constants.ErrInferenceModelReleaseFailed)
-	assert.Equal(t, 1, dispatcher.reads)
 }

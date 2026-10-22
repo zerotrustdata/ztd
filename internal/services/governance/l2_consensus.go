@@ -113,6 +113,17 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	// A named set with zero votes is a quorum failure, including the K=1
 	// application binding. Keep it distinct from an absent L2 proof above.
 
+	// A witness observation's votes are its parent inference's quorum. Once
+	// the payload is proven to name that parent, they are verified against the
+	// parent hash exactly as the parent's own L4 verifies them.
+	if parent := l2.GetParentTransactionHash(); parent != "" {
+		if err := VerifyL2WitnessBinding(envelope); err != nil {
+			tv.logger.Error("L2 witness binding rejected", string(constants.ConnectionStateError), err)
+			return false, err
+		}
+		computedHash = parent
+	}
+
 	if tv.signerStore == nil {
 		if enforced {
 			tv.logger.Error("Signer store not configured but required by posture", "posture", posture)
@@ -228,7 +239,52 @@ func L2DeliberationPayload(messageID string) []byte {
 func L2DeliberationExempt(envelope *govtypes.GovernanceEnvelope) bool {
 	l2 := envelope.GetGovernance().GetL2()
 	return isDeliberationAction(constants.ActionType(envelope.GetActionType())) &&
-		l2.GetDeliberation() != nil && len(l2.GetVotes()) == 0
+		l2.GetDeliberation() != nil && len(l2.GetVotes()) == 0 && l2.GetParentTransactionHash() == ""
+}
+
+// L2WitnessBound reports whether an envelope claims its parent inference's L2
+// quorum: a witness observation command naming a parent transaction hash and
+// carrying no deliberation attestation. It is the single owner of the claim.
+// Gateway deliberation sites skip deliberation when it holds; L4 accepts it
+// only after VerifyL2WitnessBinding proves the payload names that parent and
+// the votes prove the parent's quorum.
+func L2WitnessBound(envelope *govtypes.GovernanceEnvelope) bool {
+	l2 := envelope.GetGovernance().GetL2()
+	return isWitnessAction(constants.ActionType(envelope.GetActionType())) &&
+		l2.GetParentTransactionHash() != "" && l2.GetDeliberation() == nil
+}
+
+// isWitnessAction reports whether an action witnesses an inference attempt: the
+// provider-boundary and model-provenance observation commands.
+func isWitnessAction(actionType constants.ActionType) bool {
+	return actionType == constants.ActionTypeProviderBoundaryObservation ||
+		actionType == constants.ActionTypeModelProvenanceObservation
+}
+
+// witnessCommand is the observation command payload naming the inference
+// transaction it witnesses.
+type witnessCommand interface {
+	GetInferenceTransactionId() string
+}
+
+// VerifyL2WitnessBinding proves a witness binding before its votes are checked
+// against the parent hash: the envelope is L2WitnessBound and its own payload,
+// covered by its own transaction hash, names that parent. Every failure, in
+// every posture, is ErrTxL2SignatureInvalid: a binding is never audit-only. The
+// Gateway runs it when it attaches a binding; L4 runs it before the votes.
+func VerifyL2WitnessBinding(envelope *govtypes.GovernanceEnvelope) error {
+	if !L2WitnessBound(envelope) {
+		return fmt.Errorf("l4 warden: witness binding outside an observation command: %w", constants.ErrTxL2SignatureInvalid)
+	}
+	decoded, err := DecodePayloadForAction(constants.ActionType(envelope.GetActionType()), envelope.GetPayload())
+	if err != nil {
+		return fmt.Errorf("l4 warden: witness binding: %w: %w", constants.ErrTxL2SignatureInvalid, err)
+	}
+	command, ok := decoded.(witnessCommand)
+	if !ok || command.GetInferenceTransactionId() != envelope.GetGovernance().GetL2().GetParentTransactionHash() {
+		return fmt.Errorf("l4 warden: witness binding names another inference: %w", constants.ErrTxL2SignatureInvalid)
+	}
+	return nil
 }
 
 // isDeliberationAction reports whether a Tribunal member's vote may produce an

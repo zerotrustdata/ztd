@@ -170,6 +170,7 @@ Consensus (L2) Governance: a vote set from an enrolled consensus set.
 | consensus_set_id | [string](#string) |  | ID of the consensus set that produced this vote set |
 | votes | [L2Vote](#ztd-common-v1-L2Vote) | repeated | independent member votes |
 | deliberation | [L2DeliberationAttestation](#ztd-common-v1-L2DeliberationAttestation) |  | Set only on a Tribunal member&#39;s vote inference; mutually exclusive with votes. |
+| parent_transaction_hash | [string](#string) |  | Set only on a witness observation command (provider-boundary or model-provenance): votes are the parent INFERENCE&#39;s quorum and sign this hash, not the observation&#39;s. It MUST equal the command payload&#39;s inference_transaction_id; mutually exclusive with deliberation. |
 
 
 

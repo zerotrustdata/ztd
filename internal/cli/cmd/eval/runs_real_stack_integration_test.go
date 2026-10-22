@@ -12,6 +12,9 @@ package eval
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
@@ -26,19 +29,82 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/marshaler"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
+	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	"github.com/zerotrustdata/ztd/internal/uuid"
+	"github.com/zerotrustdata/ztd/protocol"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
+
+type runTribunalMemberSigner struct {
+	keys map[string]ed25519.PrivateKey
+}
+
+func (s *runTribunalMemberSigner) HasKey(appID string) bool {
+	_, ok := s.keys[appID]
+	return ok
+}
+
+func (s *runTribunalMemberSigner) Sign(appID string, payload []byte) ([]byte, error) {
+	key, ok := s.keys[appID]
+	if !ok {
+		return nil, constants.ErrConsensusMemberKeyUnavailable
+	}
+	return ed25519.Sign(key, payload), nil
+}
+
+func bindRunTribunalConsensus(t *testing.T, gateway *fixtures.GatewayFixture, identity *fixtures.ClientIdentity) {
+	t.Helper()
+	ctx := t.Context()
+	gatewayService := gateway.Service
+	store := gatewayService.GetConsensusStore()
+	fixtureBinding, err := store.GetBoundConsensusApp(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, fixtureBinding)
+	require.NoError(t, store.ClearConsensusBinding(ctx, ""))
+
+	signer := &runTribunalMemberSigner{keys: make(map[string]ed25519.PrivateKey, len(tribunal.AllMembers))}
+	memberAppIDs := make([]string, 0, len(tribunal.AllMembers))
+	for _, member := range tribunal.AllMembers {
+		appID := tribunal.ConsensusMemberAppID(member)
+		memberAppIDs = append(memberAppIDs, appID)
+		publicKey, privateKey, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
+		signer.keys[appID] = privateKey
+		require.NoError(t, gatewayService.GetSignerStore().AddTrustedSigner(ctx, models.TrustedSigner{
+			ID: appID, PublicKey: hex.EncodeToString(publicKey), AddedAt: time.Now().UTC(), Enabled: true,
+		}))
+		spiffeID := protocol.NewWorkloadIdentity().AppSPIFFEID(appID)
+		policy, err := json.Marshal(models.AppPolicy{AppID: spiffeID, OwnerUserID: identity.UserID})
+		require.NoError(t, err)
+		require.NoError(t, gatewayService.GetDocStore().DocSet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), spiffeID, policy))
+	}
+	gatewayService.SetConsensusMemberSigner(signer)
+	require.NoError(t, store.AddConsensus(ctx, models.ConsensusPolicy{
+		ID:              string(constants.DocIDConsensusBinding),
+		Provider:        string(constants.ConsensusProviderTribunal),
+		EndpointURL:     fixtureBinding.EndpointURL,
+		MemberAppIDs:    memberAppIDs,
+		Quorum:          3,
+		RequireDistinct: true,
+		ModelTag:        testQwenVariant().GetServedModelTag(),
+		ModelDigest:     testQwenVariant().GetModelDigest(),
+		Enabled:         true,
+	}))
+}
 
 // realStackRun is a real-stack eval ready to run: the stack is up, the CLI
 // runtime is installed against it, and the campaign is created on it.
@@ -256,4 +322,58 @@ func TestRunsExecute_RealStack(t *testing.T) {
 			assert.True(t, proto.Equal(receipt, local.ActionReceipt), "the imported trace receipt must match the Inference Operator's authoritative local record")
 		})
 	}
+}
+
+func TestReleaseProviderModels_DoesNotRunASecondTribunalResidencyQuery(t *testing.T) {
+	replies := make([]fixtures.OllamaReply, 6)
+	for i := range replies {
+		replies[i] = fixtures.OllamaReply{Content: `{"decision":"approve","reason":"ok"}`}
+	}
+	run := newRealStackEnvironment(t, fixtures.EvalStackOptions{
+		Posture: constants.PostureConsensus, Replies: replies, BindConsensus: bindRunTribunalConsensus,
+	}, runControlDeps{})
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(run.ctx)
+	cmd.Flags().String("project-root", run.root, "")
+	authContext, err := run.deps.authLoader(run.fileSvc, run.cfg)
+	require.NoError(t, err)
+	inferenceWorkload, err := run.stack.Inference.Workload()
+	require.NoError(t, err)
+
+	// The strict-run preflight residency read deliberates through Tribunal and
+	// loads its pinned model. The release command then deliberates through the
+	// same model before unloading and checking /api/ps inside that command.
+	require.NoError(t, releaseProviderModels(cmd, run.deps, runExecuteOptions{RunID: "tribunal-release"}, run.cfg, authContext,
+		inferenceWorkload.OperatorSessionID, run.stack.Provider.Endpoint(), "resident", nil))
+	assert.Equal(t, 6, run.stack.Provider.ChatCount(), "one preflight and one release each need the Tribunal quorum")
+
+	provider, err := inference.NewOllamaBackend(run.stack.Provider.Endpoint(), slog.Default())
+	require.NoError(t, err)
+	residency, err := provider.ReadResidency(run.ctx)
+	require.NoError(t, err)
+	assert.Empty(t, residency.Models, "release verifies absence after its own Tribunal votes load the pinned model")
+
+	receipts, err := run.stack.Gateway.Service.GetAuditStore().ListActionReceipts(models.AuditScope{
+		OperatorSessionID: inferenceWorkload.OperatorSessionID,
+		InvestigationID:   "ollama-model-residency",
+	}, 10, 0)
+	require.NoError(t, err)
+	assert.Len(t, receipts, 1, "the caller must not dispatch a second governed residency query after release")
+
+	releaseReceipts, err := run.stack.Gateway.Service.GetAuditStore().ListActionReceipts(models.AuditScope{
+		OperatorSessionID: inferenceWorkload.OperatorSessionID,
+		InvestigationID:   "ollama-model-release",
+	}, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, releaseReceipts, 1)
+	assert.Equal(t, constants.ActionTypeExecuteBash, releaseReceipts[0].ActionType)
+	assert.NotEmpty(t, releaseReceipts[0].TransactionID)
+	operatorFiles, err := fs.NewRuntimeFileService(run.stack.InferenceHost.WorkingDir, testutil.NewTestLogger())
+	require.NoError(t, err)
+	local, err := storage.ReadLocalActionReceipt(operatorFiles, testutil.NewTestLogger(), keystore.Options{Keyring: run.stack.InferenceHost.Keyring}, releaseReceipts[0].TransactionID)
+	require.NoError(t, err)
+	require.NotNil(t, local)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, local.ActionReceipt.GetStatus())
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, local.ActionReceipt.GetL2Status())
 }

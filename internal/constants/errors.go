@@ -1420,6 +1420,7 @@ var (
 var (
 	ErrEvaluationTargetUnavailable         = errors.New("evaluation: target operator is unavailable")
 	ErrEvaluationPostureUnsupported        = errors.New("evaluation: governance posture is unsupported")
+	ErrEvaluationSharedRuntimeTribunalL2   = errors.New("evaluation: enforced Tribunal L2 requires distinct Inference and Data Operators")
 	ErrEvaluationObservationUnavailable    = errors.New("evaluation: independent observation is unavailable")
 	ErrEvaluationReportPersistFailed       = errors.New("evaluation: report persistence failed")
 	ErrEvaluationTargetAmbiguous           = errors.New("evaluation: target operator selection is ambiguous")

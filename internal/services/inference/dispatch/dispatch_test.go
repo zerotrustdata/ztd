@@ -32,11 +32,23 @@ type stubCommandDispatcher struct {
 	err     error
 	calls   int
 	lastReq CommandDispatchRequest
+	// admitting is true while OnAdmitted runs.
+	admitting bool
 }
 
-func (s *stubCommandDispatcher) Dispatch(_ context.Context, req CommandDispatchRequest) (*CommandDispatchResult, error) {
-	s.calls++
+func (s *stubCommandDispatcher) Dispatch(ctx context.Context, req CommandDispatchRequest) (*CommandDispatchResult, error) {
 	s.lastReq = req
+	// Like the Gateway, admit the envelope before publishing it. calls counts
+	// published envelopes only.
+	if req.OnAdmitted != nil {
+		s.admitting = true
+		err := req.OnAdmitted(ctx)
+		s.admitting = false
+		if err != nil {
+			return nil, err
+		}
+	}
+	s.calls++
 	return s.result, s.err
 }
 
@@ -726,6 +738,40 @@ func TestDispatchInference_ObservationBeginFailureFailsClosedBeforeProviderCall(
 	assert.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
 	assert.Equal(t, 1, notifier.beginCalls)
 	assert.Equal(t, 0, dispatcher.calls, "inference must not dispatch when observation begin fails")
+}
+
+// orderingObservationNotifier records whether the provider-boundary BEGIN was
+// delivered inside the command dispatcher's admission hook, and how many
+// inference envelopes it had published by then.
+type orderingObservationNotifier struct {
+	*stubObservationNotifier
+	dispatcher       *stubCommandDispatcher
+	callsAtBegin     int
+	beganInAdmission bool
+}
+
+func (o *orderingObservationNotifier) NotifyAttemptBegin(ctx context.Context, requestorUserID, providerAttemptID string, startedAtUnixMs int64, retryCount uint32) (*operatorv1.ActionReceipt, error) {
+	o.callsAtBegin = o.dispatcher.calls
+	o.beganInAdmission = o.dispatcher.admitting
+	return o.stubObservationNotifier.NotifyAttemptBegin(ctx, requestorUserID, providerAttemptID, startedAtUnixMs, retryCount)
+}
+
+// BEGIN runs in the admission hook: after the inference holds its L2 votes, so
+// the observation can bind to them, and before the envelope is published.
+func TestDispatchInference_ObservationBeginRunsInsideAdmission(t *testing.T) {
+	req := baseRequest()
+	configureCampaignRequest(t, &req)
+	dispatcher := &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+	svc := NewDispatchService(dispatcher, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}, testLogger())
+	notifier := &orderingObservationNotifier{stubObservationNotifier: &stubObservationNotifier{}, dispatcher: dispatcher}
+	svc.SetProviderObservationNotifier(notifier)
+
+	_, err := svc.DispatchInference(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, 1, notifier.beginCalls)
+	assert.True(t, notifier.beganInAdmission, "observation BEGIN must run inside admission")
+	assert.Zero(t, notifier.callsAtBegin, "observation BEGIN must precede inference publish")
+	assert.Equal(t, 1, dispatcher.calls)
 }
 
 // Observation is optional: with no observer connected, a campaign attempt

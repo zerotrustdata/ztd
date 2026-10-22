@@ -19,14 +19,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOperatorModelReleaseCmd_UsesEmbeddedOllamaClient(t *testing.T) {
-	var request struct {
-		Model     string          `json:"model"`
-		KeepAlive json.RawMessage `json:"keep_alive"`
-	}
+func TestOperatorModelReleaseCmd_BatchesAndVerifiesModels(t *testing.T) {
+	var requests []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/ps" {
+			_, _ = w.Write([]byte(`{"models":[]}`))
+			return
+		}
 		require.Equal(t, "/api/generate", r.URL.Path)
+		var request struct {
+			Model     string          `json:"model"`
+			KeepAlive json.RawMessage `json:"keep_alive"`
+		}
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		requests = append(requests, request.Model)
+		assert.JSONEq(t, "0", string(request.KeepAlive))
 		require.NoError(t, json.NewEncoder(w).Encode(struct {
 			Model      string `json:"model"`
 			Done       bool   `json:"done"`
@@ -40,8 +47,7 @@ func TestOperatorModelReleaseCmd_UsesEmbeddedOllamaClient(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	cmd := operatorModelCmd()
-	cmd.SetArgs([]string{"release", "qwen3:0.6b", "--inference-ollama-endpoint", server.URL})
+	cmd.SetArgs([]string{"release", "qwen3:0.6b", "gemma3:4b", "--inference-ollama-endpoint", server.URL})
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
-	assert.Equal(t, "qwen3:0.6b", request.Model)
-	assert.JSONEq(t, "0", string(request.KeepAlive))
+	assert.Equal(t, []string{"qwen3:0.6b", "gemma3:4b"}, requests)
 }

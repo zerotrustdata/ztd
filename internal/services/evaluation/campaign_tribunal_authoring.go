@@ -10,10 +10,12 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
@@ -25,11 +27,12 @@ import (
 
 // Model-visible answers for a deliberation that wrote no approved command.
 const (
-	tribunalNoConsensusError   = "ZTD-1607: Tool execution failed for run_shell_command: the Tribunal reached no consensus on a command for this request; restate the request more specifically"
-	tribunalAuditFailedError   = "ZTD-1607: Tool execution failed for run_shell_command: the Auditor could not review the Tribunal's command (%s)"
-	tribunalMarshalBlocked     = "MARSHAL BLOCKED: %s (feedback: %s)"
-	tribunalMarshalConflict    = "AGENT CONFLICT: Marshal blocked command twice. Human intervention required."
-	tribunalInferenceFailedMsg = "ZTD-1607: Tool execution failed for run_shell_command: Tribunal inference failed (%s)"
+	tribunalNoConsensusError            = "ZTD-1607: Tool execution failed for run_shell_command: the Tribunal reached no consensus on a command for this request; restate the request more specifically"
+	tribunalAuditFailedError            = "ZTD-1607: Tool execution failed for run_shell_command: the Auditor could not review the Tribunal's command (%s)"
+	tribunalMarshalBlocked              = "MARSHAL BLOCKED: %s (feedback: %s)"
+	tribunalMarshalConflict             = "AGENT CONFLICT: Marshal blocked command twice. Human intervention required."
+	tribunalInferenceFailedMsg          = "ZTD-1607: Tool execution failed for run_shell_command: Tribunal inference failed (%s)"
+	tribunalModelCallGovernanceRejected = "governance_rejected"
 )
 
 // runTribunal routes one run_shell_command proposal through Tribunal authoring
@@ -79,6 +82,11 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, args a
 		return AgentToolCall{}, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
 	if failure := r.recordMemberCalls(record, tier, result.GetMemberCalls()); failure != "" {
+		if failure == tribunalGovernanceRejected {
+			record.PolicyDecision = agentPolicyDecisionDeny
+			r.trace.TerminalClassification = AgentTerminalClassificationPolicyDenial
+			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorSecurity, Error: "SECURITY VIOLATION: Tribunal inference was rejected by required governance"})
+		}
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf(tribunalInferenceFailedMsg, failure)})
 	}
 	r.trace.Steps = append(r.trace.Steps, result.GetSteps()...)
@@ -186,6 +194,13 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 				call.TransactionID = member.GetReceipt().GetTransactionId()
 				call.Receipt = &AgentTraceReceipt{ActionReceipt: member.GetReceipt()}
 			}
+			if isTribunalL2GovernanceDenial(member, err) {
+				call.Error = tribunalModelCallGovernanceRejected
+				if call.Receipt != nil {
+					r.trace.ModelCalls = append(r.trace.ModelCalls, call)
+				}
+				return tribunalGovernanceRejected
+			}
 			r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
 			r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
 			call.Error = r.trace.ProviderFailure
@@ -198,6 +213,24 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
 	}
 	return ""
+}
+
+const tribunalGovernanceRejected = "governance_rejected"
+
+// isTribunalL2GovernanceDenial recognizes only the typed inference rejection
+// represented by a signed failed INFERENCE receipt for a required L2 quorum
+// failure. Receipt authenticity is verified by canonical trace evidence
+// verification before the outcome is accepted.
+func isTribunalL2GovernanceDenial(member *tribunalv1.TribunalMemberCall, err error) bool {
+	if member == nil || !errors.Is(err, constants.ErrInferenceGovernanceRejected) {
+		return false
+	}
+	receipt := member.GetReceipt()
+	return governance.IsGovernanceRejectionReceipt(receipt) &&
+		receipt.GetActionType() == string(constants.ActionTypeInference) &&
+		receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET &&
+		receipt.GetL2Status() == operatorv1.L2Status_L2_STATUS_REQUIRED_FAILED &&
+		receipt.GetSignerKeyId() != "" && receipt.GetSignature() != ""
 }
 
 // memberCallError is the failure a member call carries, mapped to its public

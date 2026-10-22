@@ -18,11 +18,13 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -194,10 +196,37 @@ type ollamaModelReleaseResponse struct {
 	DoneReason string `json:"done_reason"`
 }
 
-// ReleaseModel asks the provider to unload a resident model by sending an
-// empty generate request with keep_alive 0. It fails closed unless the
-// provider confirms the unload for exactly that model.
-func (b *OllamaBackend) ReleaseModel(ctx context.Context, model string) error {
+// ReleaseModels unloads each requested model and then verifies the complete
+// requested set is absent from provider residency. Keeping this postcondition
+// in the same governed operator command prevents consensus inference for a
+// later release or verification command from reloading an earlier model.
+func (b *OllamaBackend) ReleaseModels(ctx context.Context, models []string) error {
+	if len(models) == 0 {
+		return fmt.Errorf("ollama_backend: release models: %w: at least one model is required", constants.ErrInferenceModelTagInvalid)
+	}
+	for _, model := range models {
+		if err := operatorcapability.ValidateServedModelTag(model); err != nil {
+			return fmt.Errorf("ollama_backend: release models: %w", err)
+		}
+	}
+	for _, model := range models {
+		if err := b.releaseModel(ctx, model); err != nil {
+			return err
+		}
+	}
+	residency, err := b.ReadResidency(ctx)
+	if err != nil {
+		return fmt.Errorf("ollama_backend: verify released models absent: %w", err)
+	}
+	for _, resident := range residency.Models {
+		if slices.Contains(models, resident.Name) {
+			return fmt.Errorf("ollama_backend: verify released models absent: %w: model %q remains resident", constants.ErrInferenceModelReleaseFailed, resident.Name)
+		}
+	}
+	return nil
+}
+
+func (b *OllamaBackend) releaseModel(ctx context.Context, model string) error {
 	if model == "" {
 		return fmt.Errorf("ollama_backend: release model: %w", constants.ErrInferenceModelTagInvalid)
 	}
