@@ -15,7 +15,7 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
-| 1.3.0 | Unreleased | Tribunal L2 consensus scoped to state changes; single typed `run_shell_command` execution contract with Tribunal authoring, canonical argument evidence, and native MCP dispatch; event receipts on the events chain; `search_file` and `search_directory` replace `log_stream_filter`; CLI L3 deny (`ztd auth approve --deny`), attended `ztd test conformance-loop`, JSON-preserving scrubbing, runtime-owned UEI tokens, and SPIFFE-authenticated consensus application calls. v1.2.1 was never published. | [v1.3.0](docs/release_notes/v1.3.x/v1.3.0.md) |
+| 1.3.0 | 2026-10-22 | Tribunal L2 consensus scoped to state changes; single typed `run_shell_command` execution contract with Tribunal authoring, canonical argument evidence, and native MCP dispatch; event receipts on the events chain; `search_file` and `search_directory` replace `log_stream_filter`; CLI L3 deny (`ztd auth approve --deny`), attended `ztd test conformance-loop`, JSON-preserving scrubbing, runtime-owned UEI tokens, and SPIFFE-authenticated consensus application calls. v1.2.1 was never published. | [v1.3.0](docs/release_notes/v1.3.x/v1.3.0.md) |
 
 ## v1.2.x
 
