@@ -15,6 +15,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govtypes "github.com/zerotrustdata/ztd/internal/governance"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -156,6 +157,30 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 		return false, nil
 	}
 
+	if err := VerifyL2Quorum(ctx, tv.signerStore, policy, l2, computedHash); err != nil {
+		tv.logger.Error("L2 votes rejected", "posture", posture, string(constants.ConnectionStateError), err)
+		if enforced {
+			return false, err
+		}
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// VerifyL2Quorum verifies l2's votes over transactionHash against policy. Only
+// member votes count; each must verify under its member's trusted key, a
+// repeated member fails where policy requires distinct signers, and at least
+// policy.Quorum must approve. It is the single owner of the L2 tally: L4 runs
+// it on every envelope carrying votes, and Gateway dispatch runs it before it
+// admits a deliberated inference's witnesses.
+func VerifyL2Quorum(ctx context.Context, signers SignerStore, policy *L2ConsensusPolicy, l2 *commonv1.L2Metadata, transactionHash string) error {
+	if signers == nil {
+		return constants.ErrTxL2SignerStoreNotConfigured
+	}
+	if policy == nil || !policy.Enabled {
+		return constants.ErrTxL2ConsensusSetUnknown
+	}
 	members := make(map[string]bool, len(policy.MemberKeyIDs))
 	for _, m := range policy.MemberKeyIDs {
 		members[m] = true
@@ -164,57 +189,37 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	seen := make(map[string]bool)
 	affirmative := 0
 
-	for _, vote := range l2.Votes {
-		if !members[vote.SignerKeyId] {
+	for _, vote := range l2.GetVotes() {
+		keyID := vote.GetSignerKeyId()
+		if !members[keyID] {
 			continue
 		}
-		if seen[vote.SignerKeyId] {
+		if seen[keyID] {
 			if policy.RequireDistinct {
-				tv.logger.Error("Duplicate signer in vote set with require_distinct", "key_id", vote.SignerKeyId)
-				if enforced {
-					return false, constants.ErrTxL2DuplicateSigner
-				}
-				return false, nil
+				return fmt.Errorf("verify L2 vote %s: %w", keyID, constants.ErrTxL2DuplicateSigner)
 			}
 			continue
 		}
-		pubKey, err := tv.signerStore.GetTrustedSigner(ctx, vote.SignerKeyId)
+		pubKey, err := signers.GetTrustedSigner(ctx, keyID)
 		if err != nil {
-			tv.logger.Error("Failed to load trusted signer", "key_id", vote.SignerKeyId, string(constants.ConnectionStateError), err)
-			if enforced {
-				return false, fmt.Errorf("l4 warden: verify L2 vote %s: %w: %w", vote.SignerKeyId, constants.ErrTxL2SignatureInvalid, err)
-			}
-			return false, nil
+			return fmt.Errorf("verify L2 vote %s: %w: %w", keyID, constants.ErrTxL2SignatureInvalid, err)
 		}
 		if pubKey == nil {
-			tv.logger.Error("Consensus (L2) signer key not found in trusted signers", "key_id", vote.SignerKeyId)
-			if enforced {
-				return false, fmt.Errorf("l4 warden: verify L2 vote %s: %w", vote.SignerKeyId, constants.ErrTxL2SignatureInvalid)
-			}
-			return false, nil
+			return fmt.Errorf("verify L2 vote %s: signer is not trusted: %w", keyID, constants.ErrTxL2SignatureInvalid)
 		}
-		if !tv.verifyL2Signature(pubKey, vote.ConsensusSignature, computedHash, vote.Decision) {
-			tv.logger.Error("L2 signature verification failed", "key_id", vote.SignerKeyId)
-			if enforced {
-				return false, fmt.Errorf("l4 warden: verify L2 vote %s: %w", vote.SignerKeyId, constants.ErrTxL2SignatureInvalid)
-			}
-			return false, nil
+		if !verifyL2Signature(pubKey, vote.GetConsensusSignature(), transactionHash, vote.GetDecision()) {
+			return fmt.Errorf("verify L2 vote %s: %w", keyID, constants.ErrTxL2SignatureInvalid)
 		}
-		seen[vote.SignerKeyId] = true
-		if vote.Decision {
+		seen[keyID] = true
+		if vote.GetDecision() {
 			affirmative++
 		}
 	}
 
 	if affirmative < policy.Quorum {
-		if enforced {
-			tv.logger.Error("L2 quorum not met", "affirmative", affirmative, "quorum", policy.Quorum, "posture", posture)
-			return false, constants.ErrTxL2QuorumNotMet
-		}
-		return false, nil
+		return fmt.Errorf("%d of %d required approvals: %w", affirmative, policy.Quorum, constants.ErrTxL2QuorumNotMet)
 	}
-
-	return true, nil
+	return nil
 }
 
 // L2VotePayload returns the exact bytes L2 votes sign and L4 verifies: "<message_id>|<decision>".
@@ -346,7 +351,7 @@ func (tv *L4Warden) verifyL2Deliberation(ctx context.Context, envelope *govtypes
 }
 
 // verifyL2Signature verifies an L2 ED25519 signature.
-func (tv *L4Warden) verifyL2Signature(pubKey ed25519.PublicKey, signature, messageID string, decision bool) bool {
+func verifyL2Signature(pubKey ed25519.PublicKey, signature, messageID string, decision bool) bool {
 	if signature == "" || signature == "UNSIGNED" {
 		return false
 	}

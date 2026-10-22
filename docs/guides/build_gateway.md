@@ -312,3 +312,5 @@ TUNNEL_HOSTNAME=console.example.com
 - [Connect Applications to Gateway](connect_apps_to_gateway.md) — Connect applications, SDKs, and agents.
 - [Build Operator](build_operator.md) — Build a custom ztd-compatible Operator.
 - [Protocol Architecture](../architecture/protocol.md) — Go module API reference and constants.
+
+System One decision voting is available for future evaluation behind explicit Operator and Tribunal binding settings. Hosted Jev remains disabled by default and has no configured credential or production rollout. See [Decision Model Votes](../architecture/consensus.md#decision-model-votes-opt-in) before considering activation.

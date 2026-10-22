@@ -644,6 +644,7 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 		Quorum:       req.Quorum,
 		ModelTag:     req.ModelTag,
 		ModelDigest:  req.ModelDigest,
+		VoteKind:     req.VoteKind, InferenceOperatorID: req.InferenceOperatorID, VoteThresholds: req.VoteThresholds, AllowHosted: req.AllowHosted,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("platform enrollment: %w", err)
@@ -685,6 +686,7 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 		ConsensusProvider:     string(spec.Provider),
 		ConsensusModelTag:     spec.ModelTag,
 		ConsensusModelDigest:  spec.ModelDigest,
+		ConsensusVoteKind:     spec.VoteKind, ConsensusInferenceOperatorId: spec.InferenceOperatorID, ConsensusVoteThresholds: models.ConsensusThresholdsToProto(spec.VoteThresholds), ConsensusAllowHosted: spec.AllowHosted,
 	}
 	_, err = s.submitEnvelope(ctx, constants.PlatformEnrollmentActionBindConsensus, payload)
 	if err != nil {

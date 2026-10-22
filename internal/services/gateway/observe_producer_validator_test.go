@@ -156,6 +156,22 @@ func TestValidateRunProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *test
 		"unknown first-write status must be rejected")
 }
 
+func TestValidateRunProducerRequest_ReopensOnlyATerminalStatusTowardANonTerminalOne(t *testing.T) {
+	req := validRunReq()
+	req.Status = models.RunLifecycleStatusWaiting
+	req.Reopens = models.RunLifecycleStatusCancelled
+	require.NoError(t, validateRunProducerRequest(req))
+
+	req.Reopens = models.RunLifecycleStatusRunning
+	assert.ErrorIs(t, validateRunProducerRequest(req), constants.ErrObserveStatusInvalid,
+		"a reopen must name a terminal status")
+
+	req.Reopens = models.RunLifecycleStatusCancelled
+	req.Status = models.RunLifecycleStatusCompleted
+	assert.ErrorIs(t, validateRunProducerRequest(req), constants.ErrObserveStatusInvalid,
+		"a reopen must move toward a non-terminal status")
+}
+
 func TestValidateRunProducerRequest_RejectsNegativeCompletedTasks(t *testing.T) {
 	req := validRunReq()
 	req.CompletedTasks = -1

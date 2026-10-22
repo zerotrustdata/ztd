@@ -60,21 +60,33 @@
     - [GovernedDispatchResult](#ztd-operator-v1-GovernedDispatchResult)
     - [HeartbeatRequested](#ztd-operator-v1-HeartbeatRequested)
     - [HeartbeatResult](#ztd-operator-v1-HeartbeatResult)
+    - [InferenceChoiceAnswer](#ztd-operator-v1-InferenceChoiceAnswer)
+    - [InferenceChoiceQuestion](#ztd-operator-v1-InferenceChoiceQuestion)
     - [InferenceCompletion](#ztd-operator-v1-InferenceCompletion)
+    - [InferenceDecisionAnswer](#ztd-operator-v1-InferenceDecisionAnswer)
+    - [InferenceDecisionCriterion](#ztd-operator-v1-InferenceDecisionCriterion)
+    - [InferenceDecisionProbability](#ztd-operator-v1-InferenceDecisionProbability)
+    - [InferenceDecisionQuestion](#ztd-operator-v1-InferenceDecisionQuestion)
+    - [InferenceDecisionRequest](#ztd-operator-v1-InferenceDecisionRequest)
+    - [InferenceDecisionResult](#ztd-operator-v1-InferenceDecisionResult)
     - [InferenceDispatchFailure](#ztd-operator-v1-InferenceDispatchFailure)
     - [InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest)
     - [InferenceDispatchResponse](#ztd-operator-v1-InferenceDispatchResponse)
     - [InferenceDispatchStreamFailure](#ztd-operator-v1-InferenceDispatchStreamFailure)
     - [InferenceDispatchStreamFrame](#ztd-operator-v1-InferenceDispatchStreamFrame)
+    - [InferenceHostedEgressAttestation](#ztd-operator-v1-InferenceHostedEgressAttestation)
     - [InferenceMessage](#ztd-operator-v1-InferenceMessage)
     - [InferenceMessagePart](#ztd-operator-v1-InferenceMessagePart)
     - [InferenceModelVariant](#ztd-operator-v1-InferenceModelVariant)
+    - [InferenceNoulQuestion](#ztd-operator-v1-InferenceNoulQuestion)
     - [InferenceProgressEvent](#ztd-operator-v1-InferenceProgressEvent)
     - [InferenceProviderAttemptRecord](#ztd-operator-v1-InferenceProviderAttemptRecord)
     - [InferenceRequested](#ztd-operator-v1-InferenceRequested)
     - [InferenceResponseFormat](#ztd-operator-v1-InferenceResponseFormat)
     - [InferenceResponsePart](#ztd-operator-v1-InferenceResponsePart)
     - [InferenceResult](#ztd-operator-v1-InferenceResult)
+    - [InferenceScoreAnswer](#ztd-operator-v1-InferenceScoreAnswer)
+    - [InferenceScoreQuestion](#ztd-operator-v1-InferenceScoreQuestion)
     - [InferenceThinkingControl](#ztd-operator-v1-InferenceThinkingControl)
     - [InferenceToolCall](#ztd-operator-v1-InferenceToolCall)
     - [InferenceToolChoice](#ztd-operator-v1-InferenceToolChoice)
@@ -1331,6 +1343,38 @@ Empty message - just the event type matters
 
 
 
+<a name="ztd-operator-v1-InferenceChoiceAnswer"></a>
+
+### InferenceChoiceAnswer
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| selection | [string](#string) |  |  |
+| probabilities | [InferenceDecisionProbability](#ztd-operator-v1-InferenceDecisionProbability) | repeated |  |
+| confidence | [double](#double) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceChoiceQuestion"></a>
+
+### InferenceChoiceQuestion
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| criteria | [InferenceDecisionCriterion](#ztd-operator-v1-InferenceDecisionCriterion) | repeated |  |
+
+
+
+
+
+
 <a name="ztd-operator-v1-InferenceCompletion"></a>
 
 ### InferenceCompletion
@@ -1347,6 +1391,108 @@ instead of at the dispatch deadline.
 | ----- | ---- | ----- | ----------- |
 | receipt | [ActionReceipt](#ztd-operator-v1-ActionReceipt) |  | The signed final ActionReceipt for the inference transaction. |
 | result | [InferenceResult](#ztd-operator-v1-InferenceResult) |  | The complete inference result. Absent when the receipt status is not EXECUTION_STATUS_COMPLETED. |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceDecisionAnswer"></a>
+
+### InferenceDecisionAnswer
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| noul | [double](#double) |  |  |
+| choice | [InferenceChoiceAnswer](#ztd-operator-v1-InferenceChoiceAnswer) |  |  |
+| score | [InferenceScoreAnswer](#ztd-operator-v1-InferenceScoreAnswer) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceDecisionCriterion"></a>
+
+### InferenceDecisionCriterion
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| label | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceDecisionProbability"></a>
+
+### InferenceDecisionProbability
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| label | [string](#string) |  |  |
+| probability | [double](#double) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceDecisionQuestion"></a>
+
+### InferenceDecisionQuestion
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| instructions | [string](#string) |  |  |
+| noul | [InferenceNoulQuestion](#ztd-operator-v1-InferenceNoulQuestion) |  |  |
+| choice | [InferenceChoiceQuestion](#ztd-operator-v1-InferenceChoiceQuestion) |  |  |
+| score | [InferenceScoreQuestion](#ztd-operator-v1-InferenceScoreQuestion) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceDecisionRequest"></a>
+
+### InferenceDecisionRequest
+Payload for ztd.v1.operator.inference.requested. The handler receives an ordered typed conversation, validates and scrubs every data-bearing part, and sends only the normalized request across the provider boundary.
+Decision inference uses named, typed questions; no generated text or tools.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| state | [string](#string) |  |  |
+| questions | [InferenceDecisionQuestion](#ztd-operator-v1-InferenceDecisionQuestion) | repeated |  |
+| allow_hosted | [bool](#bool) |  | Explicit consent to hosted egress, committed into the governed envelope. |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceDecisionResult"></a>
+
+### InferenceDecisionResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| answers | [InferenceDecisionAnswer](#ztd-operator-v1-InferenceDecisionAnswer) | repeated |  |
 
 
 
@@ -1427,6 +1573,7 @@ inference request to the Inference Node.
 | stream | [bool](#bool) |  | When true, the Gateway forwards live InferenceProgressEvent telemetry to the caller while waiting for the authoritative terminal completion. |
 | retry_count | [uint32](#uint32) |  | Zero-based retry ordinal for this provider attempt. |
 | seed | [int32](#int32) | optional | Optional deterministic generation seed forwarded to the provider when supported. Absent means use the provider default. |
+| decision | [InferenceDecisionRequest](#ztd-operator-v1-InferenceDecisionRequest) |  | Exclusive with messages, tools, streaming and generation controls. |
 
 
 
@@ -1496,6 +1643,25 @@ verified completion after the HTTP response has started.
 
 
 
+<a name="ztd-operator-v1-InferenceHostedEgressAttestation"></a>
+
+### InferenceHostedEgressAttestation
+Included in result_digest and therefore bound by the Operator&#39;s signed L5 receipt.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| provider_origin | [string](#string) |  |  |
+| model_version | [string](#string) |  |  |
+| provenance | [string](#string) |  |  |
+| normalized_request_hash | [string](#string) |  |  |
+| explicit_consent | [bool](#bool) |  |  |
+
+
+
+
+
+
 <a name="ztd-operator-v1-InferenceMessage"></a>
 
 ### InferenceMessage
@@ -1539,6 +1705,22 @@ InferenceMessagePart carries exactly one typed part of a conversation turn.
 | ----- | ---- | ----- | ----------- |
 | model | [string](#string) |  |  |
 | digest | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceNoulQuestion"></a>
+
+### InferenceNoulQuestion
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| true_label | [string](#string) |  |  |
+| false_label | [string](#string) |  |  |
 
 
 
@@ -1596,7 +1778,7 @@ finalized only after terminal receipt/result evidence is available.
 <a name="ztd-operator-v1-InferenceRequested"></a>
 
 ### InferenceRequested
-Payload for ztd.v1.operator.inference.requested. The handler receives an ordered typed conversation, validates and scrubs every data-bearing part, and sends only the normalized request across the provider boundary.
+
 
 
 | Field | Type | Label | Description |
@@ -1629,6 +1811,7 @@ Payload for ztd.v1.operator.inference.requested. The handler receives an ordered
 | stream | [bool](#bool) |  | When true, the Inference Node publishes bounded InferenceProgressEvent telemetry on the results channel while the provider stream is active. Progress events are delivery telemetry only; the signed InferenceCompletion remains the sole authoritative terminal outcome. |
 | retry_count | [uint32](#uint32) |  | Zero-based retry ordinal for this provider attempt. Each retry uses a distinct provider_attempt_id and is durably retained. |
 | seed | [int32](#int32) | optional | Optional deterministic generation seed forwarded to the provider when supported. Absent means use the provider default. |
+| decision | [InferenceDecisionRequest](#ztd-operator-v1-InferenceDecisionRequest) |  | Exclusive with messages, tools, streaming and generation controls. |
 
 
 
@@ -1707,6 +1890,40 @@ InferenceResult carries ordered response parts, usage metadata, and the finish r
 | retry_count | [uint32](#uint32) |  |  |
 | load_state | [InferenceLoadState](#ztd-operator-v1-InferenceLoadState) |  |  |
 | retry_classification | [InferenceRetryClassification](#ztd-operator-v1-InferenceRetryClassification) |  |  |
+| decision | [InferenceDecisionResult](#ztd-operator-v1-InferenceDecisionResult) |  | Exclusive with response parts. Covered by result_digest. |
+| hosted_egress | [InferenceHostedEgressAttestation](#ztd-operator-v1-InferenceHostedEgressAttestation) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceScoreAnswer"></a>
+
+### InferenceScoreAnswer
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| score | [double](#double) |  |  |
+| probabilities | [InferenceDecisionProbability](#ztd-operator-v1-InferenceDecisionProbability) | repeated |  |
+| confidence | [double](#double) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-InferenceScoreQuestion"></a>
+
+### InferenceScoreQuestion
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| criteria | [string](#string) | repeated |  |
 
 
 
@@ -2223,6 +2440,10 @@ OperatorDocument.runtime_config.
 | inference_keep_alive | [string](#string) |  | Ollama keep-alive duration (--inference-keep-alive). |
 | provenance_operator_id | [string](#string) |  | Stable provenance attestor pseudonym (--provenance-operator-id). |
 | provider_boundary_observer_id | [string](#string) |  | Stable provider-boundary observer pseudonym (--provider-boundary-observer-id). |
+| inference_decision_backend | [string](#string) |  | Supported decision transport(s); model inventory is reported by provider inventory. |
+| inference_allow_hosted_decision | [bool](#bool) |  |  |
+| inference_decision_models | [string](#string) | repeated |  |
+| inference_decision_only | [bool](#bool) |  |  |
 
 
 
@@ -3073,6 +3294,10 @@ the error text.
 | INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED | 41 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE | 42 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH | 43 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID | 44 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID | 45 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED | 46 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED | 47 |  |
 
 
 
@@ -3267,6 +3492,10 @@ string-matching the result_summary. It is bound into the receipt signature.
 | RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED | 19 |  |
 | RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW | 20 | The prompt filled the provider&#39;s context window, so the provider truncated it or left no room to generate. |
 | RECEIPT_FAILURE_CODE_REHYDRATION_FAILED | 21 | A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch. |
+| RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID | 22 |  |
+| RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID | 23 |  |
+| RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED | 24 |  |
+| RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED | 25 |  |
 
 
  

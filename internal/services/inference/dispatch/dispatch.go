@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -177,6 +178,8 @@ func (s *DispatchService) SetProvenanceObservationNotifier(notifier ProvenanceOb
 
 // DispatchInferenceRequest is the input to DispatchInference. Role and ordered messages are required; optional fields override the Inference Node's config defaults when non-zero/non-empty.
 type DispatchInferenceRequest struct {
+	Decision         *operatorv1.InferenceDecisionRequest
+	TargetOperatorID string
 	// Role is the chat-tier role for this request (primary, assistant, lite).
 	Role models.InferenceModelRole
 
@@ -296,7 +299,7 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	if req.Role == models.InferenceModelRoleUnspecified {
 		return nil, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceRoleInvalid)
 	}
-	if len(req.Messages) == 0 {
+	if len(req.Messages) == 0 && req.Decision == nil {
 		return nil, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceMessagesRequired)
 	}
 	if req.ProviderAttemptID == "" {
@@ -320,6 +323,7 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	// Construct the InferenceRequested proto payload.
 	infReq := &operatorv1.InferenceRequested{
 		Role:                 req.Role.ToProto(),
+		Decision:             req.Decision,
 		Model:                req.Model,
 		Messages:             req.Messages,
 		Tools:                req.Tools,
@@ -347,6 +351,9 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 		ModelRegistryDigest:  req.ModelRegistryDigest,
 		Stream:               req.Stream,
 		RetryCount:           req.RetryCount,
+	}
+	if err := inference.ValidateDecisionInference(infReq); err != nil {
+		return nil, fmt.Errorf("inference dispatch: %w", err)
 	}
 	payload, err := proto.Marshal(infReq)
 	if err != nil {
@@ -662,6 +669,9 @@ func validateCampaignModelRegistry(req DispatchInferenceRequest) error {
 // request identity and carries internally consistent usage, timing and evidence
 // fields. Any mismatch fails closed.
 func validateInferenceResult(result *operatorv1.InferenceResult, req DispatchInferenceRequest) error {
+	if err := models.ValidateDecisionCompletion(req.Decision, result); err != nil {
+		return err
+	}
 	if result.GetModel() == "" || result.GetRequestedModel() == "" {
 		return constants.ErrInferenceProviderResponseInvalid
 	}
@@ -756,12 +766,42 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 	}
 
 	capable := func(op *operatorv1.OperatorDocument) bool {
+
+		if req.Decision != nil {
+			if op.GetRuntimeConfig().GetInferenceDecisionBackend() == "" || !slices.Contains(op.GetRuntimeConfig().GetInferenceDecisionModels(), req.Model) {
+				return false
+			}
+			if req.Decision.GetAllowHosted() && !op.GetRuntimeConfig().GetInferenceAllowHostedDecision() {
+				return false
+			}
+		} else if op.GetRuntimeConfig().GetInferenceDecisionOnly() {
+			return false
+		}
 		return op.RuntimeConfig != nil &&
 			operatorcapability.GetOperatorCapabilities(op).Has(constants.OperatorCapabilityInference) &&
 			op.OperatorSessionId != "" &&
 			constants.OperatorStatus(op.Status) == constants.OperatorStatusActive
 	}
 
+	if req.TargetOperatorID != "" {
+		var selected string
+		for _, op := range operators {
+			if op.GetId() != req.TargetOperatorID || !capable(op) {
+				continue
+			}
+			if req.TargetOperatorSessionID != "" && op.GetOperatorSessionId() != req.TargetOperatorSessionID {
+				continue
+			}
+			if selected != "" {
+				return "", constants.ErrInferenceOperatorAmbiguous
+			}
+			selected = op.GetOperatorSessionId()
+		}
+		if selected == "" {
+			return "", constants.ErrInferenceOperatorNotFound
+		}
+		return selected, nil
+	}
 	if req.TargetOperatorSessionID != "" {
 		for i := range operators {
 			if operators[i].OperatorSessionId == req.TargetOperatorSessionID {

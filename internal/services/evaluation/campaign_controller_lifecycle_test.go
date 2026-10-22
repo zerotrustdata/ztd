@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
@@ -67,7 +68,7 @@ func TestCampaignControllerCreateCampaignRejectsADifferentSpecUnderTheSameID(t *
 }
 
 // newUnfrozenCampaignFixture is newArchiveFixture over an empty runtime tree, so
-// the campaign ID is still free to freeze under a chosen posture.
+// the campaign ID is still free to freeze.
 func newUnfrozenCampaignFixture(t *testing.T) *archiveFixture {
 	t.Helper()
 	seeded := newArchiveFixture(t)
@@ -79,74 +80,51 @@ func newUnfrozenCampaignFixture(t *testing.T) *archiveFixture {
 	return &archiveFixture{files: files, store: store, controller: controller, req: seeded.req}
 }
 
-func postureCreateRequest(f *archiveFixture, posture evalv1.EvaluationGovernancePosture) CampaignCreateRequest {
-	return CampaignCreateRequest{
-		GovernancePosture: posture,
+func TestCampaignControllerCreateCampaignFreezesNoPosture(t *testing.T) {
+	f := newUnfrozenCampaignFixture(t)
+	spec, err := f.controller.CreateCampaign(context.Background(), CampaignCreateRequest{
 		Platform:          testPlatform,
 		CampaignID:        f.req.CampaignID,
 		Catalog:           f.req.Catalog,
 		Inventory:         f.req.Inventory,
 		ScenarioArtifacts: f.req.ScenarioArtifacts,
 		RepetitionCount:   f.req.RepetitionCount,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, spec.GetGovernancePosture())
+	require.NoError(t, ValidateCampaignSpecDigest(spec))
+}
+
+func TestCampaignControllerStartRunFreezesEachRunsLiveGovernance(t *testing.T) {
+	f := newArchiveFixture(t)
+	ctx := context.Background()
+	tribunal, err := NewRunGovernance(consensusPosture, testTribunalBinding())
+	require.NoError(t, err)
+
+	for runID, governance := range map[string]RunGovernance{"run-doctrine": testGovernance, "run-tribunal": tribunal} {
+		run, err := f.controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+			PlatformRelease: testPlatform.Release, Governance: governance, CampaignID: f.req.CampaignID, RunID: runID})
+		require.NoError(t, err, runID)
+		assert.Equal(t, governance.Posture, run.GetActivePosture(), runID)
+		assert.True(t, proto.Equal(governance.Consensus, run.GetConsensus()), runID)
+		require.NoError(t, ValidateRunGovernance(run, governance), runID)
 	}
 }
 
-func TestCampaignControllerCreateCampaignFreezesTheRequestedPostureIntoSpecAndDigest(t *testing.T) {
-	ctx := context.Background()
-	unspecified := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED
-	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
-	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
-
-	defaulted := newUnfrozenCampaignFixture(t)
-	byDefault, err := defaulted.controller.CreateCampaign(ctx, postureCreateRequest(defaulted, unspecified))
-	require.NoError(t, err)
-	assert.Equal(t, doctrine, byDefault.GetGovernancePosture(), "an unspecified request keeps the default posture")
-
-	requested := newUnfrozenCampaignFixture(t)
-	frozen, err := requested.controller.CreateCampaign(ctx, postureCreateRequest(requested, ratify))
-	require.NoError(t, err)
-	assert.Equal(t, ratify, frozen.GetGovernancePosture())
-	require.NoError(t, ValidateCampaignSpecDigest(frozen))
-	assert.NotEqual(t, byDefault.GetCampaignDigest(), frozen.GetCampaignDigest(), "the posture is part of the campaign digest")
-
-	persisted, err := requested.store.LoadCampaignSpec(ctx, requested.req.CampaignID)
-	require.NoError(t, err)
-	assert.Equal(t, ratify, persisted.GetGovernancePosture())
-	assert.Equal(t, frozen.GetCampaignDigest(), persisted.GetCampaignDigest())
-}
-
-func TestCampaignControllerCreateCampaignIsIdempotentForTheSamePosture(t *testing.T) {
-	f := newUnfrozenCampaignFixture(t)
-	ctx := context.Background()
-	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
-
-	first, err := f.controller.CreateCampaign(ctx, postureCreateRequest(f, ratify))
-	require.NoError(t, err)
-	second, err := f.controller.CreateCampaign(ctx, postureCreateRequest(f, ratify))
-	require.NoError(t, err)
-	assert.Equal(t, first.GetCampaignDigest(), second.GetCampaignDigest())
-	assert.Equal(t, ratify, second.GetGovernancePosture())
-}
-
-func TestCampaignControllerCreateCampaignRejectsAChangedPostureUnderTheSameID(t *testing.T) {
-	f := newUnfrozenCampaignFixture(t)
-	ctx := context.Background()
-	ratify := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY
-
-	_, err := f.controller.CreateCampaign(ctx, postureCreateRequest(f, ratify))
-	require.NoError(t, err)
-
-	for _, changed := range []evalv1.EvaluationGovernancePosture{
-		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY,
-		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED,
+func TestCampaignControllerStartRunRejectsMissingGovernance(t *testing.T) {
+	f := newArchiveFixture(t)
+	for name, governance := range map[string]RunGovernance{
+		"no posture":   {Consensus: &evalv1.EvaluationConsensusIdentity{}},
+		"no consensus": {Posture: consensusPosture},
 	} {
-		_, err = f.controller.CreateCampaign(ctx, postureCreateRequest(f, changed))
-		require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict, changed.String())
+		_, err := f.controller.StartRun(context.Background(), RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+			PlatformRelease: testPlatform.Release, Governance: governance, CampaignID: f.req.CampaignID, RunID: "run-ungoverned"})
+		require.Error(t, err, name)
+		assert.Equal(t, ExecutionFailurePosture, ClassifyExecutionFailure(err), name)
 	}
-
-	frozen, err := f.store.LoadCampaignSpec(ctx, f.req.CampaignID)
+	exists, err := f.store.RunExists(context.Background(), "run-ungoverned")
 	require.NoError(t, err)
-	assert.Equal(t, ratify, frozen.GetGovernancePosture(), "a rejected recreation leaves the frozen posture untouched")
+	assert.False(t, exists, "a rejected start must not persist a run")
 }
 
 func TestCampaignControllerCreateCampaignRequiresInputs(t *testing.T) {
@@ -159,7 +137,7 @@ func TestCampaignControllerStartRunBindsANewRunToAnExistingCampaign(t *testing.T
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 
-	run, err := f.controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT,
+	run, err := f.controller.StartRun(ctx, RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT,
 		PlatformRelease:            testPlatform.Release,
 		CampaignID:                 f.req.CampaignID,
 		RunID:                      "run-c",
@@ -181,7 +159,7 @@ func TestCampaignControllerStartRunBindsANewRunToAnExistingCampaign(t *testing.T
 
 func TestCampaignControllerStartRunRejectsUnspecifiedWitnessPolicies(t *testing.T) {
 	f := newArchiveFixture(t)
-	_, err := f.controller.StartRun(context.Background(), RunStartRequest{
+	_, err := f.controller.StartRun(context.Background(), RunStartRequest{Governance: testGovernance,
 		PlatformRelease:           testPlatform.Release,
 		CampaignID:                f.req.CampaignID,
 		RunID:                     "run-unspecified-policy",
@@ -223,7 +201,7 @@ func TestCampaignControllerStartRunRejectsAMultiModelModelRoleCampaign(t *testin
 		evalv1.EvaluationLane_EVALUATION_LANE_UNSPECIFIED,
 		evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE,
 	} {
-		_, err := f.controller.StartRun(context.Background(), RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, PlatformRelease: testPlatform.Release, CampaignID: "multi-model", RunID: "run-multi", Lane: lane})
+		_, err := f.controller.StartRun(context.Background(), RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, PlatformRelease: testPlatform.Release, CampaignID: "multi-model", RunID: "run-multi", Lane: lane})
 		require.ErrorIs(t, err, constants.ErrEvaluationCampaignSubjectInvalid, lane.String())
 	}
 	exists, err := f.store.RunExists(context.Background(), "run-multi")
@@ -235,7 +213,7 @@ func TestCampaignControllerStartRunAllowsAMultiModelSystemCampaign(t *testing.T)
 	f := newArchiveFixture(t)
 	createMultiModelCampaign(t, f, "multi-system")
 
-	run, err := f.controller.StartRun(context.Background(), RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+	run, err := f.controller.StartRun(context.Background(), RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 		PlatformRelease: testPlatform.Release,
 		CampaignID:      "multi-system",
 		RunID:           "run-system",
@@ -249,13 +227,13 @@ func TestCampaignControllerStartRunRejectsExistingRunAndMissingCampaign(t *testi
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 
-	_, err := f.controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, PlatformRelease: testPlatform.Release, CampaignID: f.req.CampaignID, RunID: "run-a"})
+	_, err := f.controller.StartRun(ctx, RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, PlatformRelease: testPlatform.Release, CampaignID: f.req.CampaignID, RunID: "run-a"})
 	require.ErrorContains(t, err, "run already exists")
 
-	_, err = f.controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, PlatformRelease: testPlatform.Release, CampaignID: "no-such-campaign", RunID: "run-x"})
+	_, err = f.controller.StartRun(ctx, RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, PlatformRelease: testPlatform.Release, CampaignID: "no-such-campaign", RunID: "run-x"})
 	require.Error(t, err)
 
-	_, err = f.controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, PlatformRelease: testPlatform.Release, CampaignID: f.req.CampaignID})
+	_, err = f.controller.StartRun(ctx, RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, PlatformRelease: testPlatform.Release, CampaignID: f.req.CampaignID})
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
@@ -327,7 +305,7 @@ func TestCampaignControllerCancelRunRequiresAStoreAndKnownRun(t *testing.T) {
 func TestCampaignControllerStartRunRejectsABuildThatIsNotTheRecordedRelease(t *testing.T) {
 	f := newArchiveFixture(t)
 
-	_, err := f.controller.StartRun(context.Background(), RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: f.req.CampaignID, RunID: "run-other-build", PlatformRelease: "v2.2.9"})
+	_, err := f.controller.StartRun(context.Background(), RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: f.req.CampaignID, RunID: "run-other-build", PlatformRelease: "v2.2.9"})
 	require.ErrorIs(t, err, constants.ErrEvaluationPlatformReleaseMismatch)
 	exists, err := f.store.RunExists(context.Background(), "run-other-build")
 	require.NoError(t, err)
@@ -338,6 +316,6 @@ func TestCampaignControllerStartRunEnforcesNoReleaseOnACampaignFrozenBeforeRelea
 	f := newArchiveFixture(t)
 	saveLegacyCampaign(t, f, "legacy-campaign")
 
-	_, err := f.controller.StartRun(context.Background(), RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: "legacy-campaign", RunID: "run-legacy", PlatformRelease: "v2.2.9"})
+	_, err := f.controller.StartRun(context.Background(), RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: "legacy-campaign", RunID: "run-legacy", PlatformRelease: "v2.2.9"})
 	require.NoError(t, err)
 }

@@ -61,6 +61,11 @@ func ResolveConsensusMembership(appID string, memberAppIDs []string, quorum int)
 // request, as carried by models.PlatformEnrollmentBindConsensusRequest at
 // admission and by the PLATFORM_ENROLLMENT_BIND_CONSENSUS payload at L5.
 type ConsensusBindingSpec struct {
+	VoteKind            string                       `json:"vote_kind,omitempty"`
+	InferenceOperatorID string                       `json:"inference_operator_id,omitempty"`
+	VoteThresholds      []ConsensusDecisionThreshold `json:"vote_thresholds,omitempty"`
+	AllowHosted         bool                         `json:"allow_hosted,omitempty"`
+
 	Provider     constants.ConsensusProvider
 	AppID        string
 	EndpointURL  string
@@ -82,7 +87,8 @@ type ConsensusBindingSpec struct {
 // canonical Tribunal member app IDs in canonical order (empty means canonical);
 // quorum defaults to TribunalConsensusDefaultQuorum and must be between
 // TribunalConsensusMinQuorum and the member count; model tag and digest are
-// required. Per-member owner and trusted-signer checks stay with the caller.
+// required except for explicitly opted-in versioned hosted decisions. Per-member
+// owner and trusted-signer checks stay with the caller.
 func ResolveConsensusBinding(spec ConsensusBindingSpec) (ConsensusBindingSpec, error) {
 	provider, err := constants.ParseConsensusProvider(string(spec.Provider))
 	if err != nil {
@@ -95,6 +101,13 @@ func ResolveConsensusBinding(spec ConsensusBindingSpec) (ConsensusBindingSpec, e
 		ModelTag:    strings.TrimSpace(spec.ModelTag),
 		ModelDigest: strings.TrimSpace(spec.ModelDigest),
 	}
+	out.VoteKind = strings.TrimSpace(spec.VoteKind)
+	out.InferenceOperatorID = strings.TrimSpace(spec.InferenceOperatorID)
+	out.VoteThresholds = append([]ConsensusDecisionThreshold(nil), spec.VoteThresholds...)
+	out.AllowHosted = spec.AllowHosted
+	if err := validateConsensusDecisionBinding(out); err != nil {
+		return ConsensusBindingSpec{}, err
+	}
 	if out.AppID == "" {
 		return ConsensusBindingSpec{}, fmt.Errorf("%w: app_id", constants.ErrMissingRequiredField)
 	}
@@ -103,7 +116,7 @@ func ResolveConsensusBinding(spec ConsensusBindingSpec) (ConsensusBindingSpec, e
 		if out.EndpointURL != "" {
 			return ConsensusBindingSpec{}, constants.ErrConsensusTribunalEndpointSet
 		}
-		if out.ModelTag == "" || out.ModelDigest == "" {
+		if out.ModelTag == "" || (out.ModelDigest == "" && !out.AllowHosted) {
 			return ConsensusBindingSpec{}, constants.ErrConsensusModelRequired
 		}
 		canonical := constants.TribunalConsensusMemberAppIDs()

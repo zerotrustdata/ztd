@@ -27,13 +27,16 @@ import (
 
 // Model-visible answers for a deliberation that wrote no approved command.
 const (
-	tribunalNoConsensusError            = "ZTD-1607: Tool execution failed for run_shell_command: the Tribunal reached no consensus on a command for this request; restate the request more specifically"
-	tribunalAuditFailedError            = "ZTD-1607: Tool execution failed for run_shell_command: the Auditor could not review the Tribunal's command (%s)"
-	tribunalMarshalBlocked              = "MARSHAL BLOCKED: %s (feedback: %s)"
-	tribunalMarshalConflict             = "AGENT CONFLICT: Marshal blocked command twice. Human intervention required."
-	tribunalInferenceFailedMsg          = "ZTD-1607: Tool execution failed for run_shell_command: Tribunal inference failed (%s)"
-	tribunalModelCallGovernanceRejected = "governance_rejected"
+	tribunalNoConsensusError   = "ZTD-1607: Tool execution failed for run_shell_command: the Tribunal reached no consensus on a command for this request; restate the request more specifically"
+	tribunalAuditFailedError   = "ZTD-1607: Tool execution failed for run_shell_command: the Auditor could not review the Tribunal's command (%s)"
+	tribunalMarshalBlocked     = "MARSHAL BLOCKED: %s (feedback: %s)"
+	tribunalMarshalConflict    = "AGENT CONFLICT: Marshal blocked command twice. Human intervention required."
+	tribunalInferenceFailedMsg = "ZTD-1607: Tool execution failed for run_shell_command: Tribunal inference failed (%s)"
 )
+
+// modelCallGovernanceRejected is the error a model call records when required
+// L2 refused its inference (isL2GovernanceDenial): the provider never ran.
+const modelCallGovernanceRejected = "governance_rejected"
 
 // runTribunal routes one run_shell_command proposal through Tribunal authoring
 // on the Gateway (POST /api/v1/operators/intents). The Gateway
@@ -194,8 +197,8 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 				call.TransactionID = member.GetReceipt().GetTransactionId()
 				call.Receipt = &AgentTraceReceipt{ActionReceipt: member.GetReceipt()}
 			}
-			if isTribunalL2GovernanceDenial(member, err) {
-				call.Error = tribunalModelCallGovernanceRejected
+			if isL2GovernanceDenial(member.GetReceipt(), err) {
+				call.Error = modelCallGovernanceRejected
 				if call.Receipt != nil {
 					r.trace.ModelCalls = append(r.trace.ModelCalls, call)
 				}
@@ -217,15 +220,15 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 
 const tribunalGovernanceRejected = "governance_rejected"
 
-// isTribunalL2GovernanceDenial recognizes only the typed inference rejection
+// isL2GovernanceDenial recognizes only the typed inference rejection
 // represented by a signed failed INFERENCE receipt for a required L2 quorum
-// failure. Receipt authenticity is verified by canonical trace evidence
+// failure, whether the inference was a Tribunal member call or a scored agent
+// turn. Receipt authenticity is verified by canonical trace evidence
 // verification before the outcome is accepted.
-func isTribunalL2GovernanceDenial(member *tribunalv1.TribunalMemberCall, err error) bool {
-	if member == nil || !errors.Is(err, constants.ErrInferenceGovernanceRejected) {
+func isL2GovernanceDenial(receipt *operatorv1.ActionReceipt, err error) bool {
+	if !errors.Is(err, constants.ErrInferenceGovernanceRejected) {
 		return false
 	}
-	receipt := member.GetReceipt()
 	return governance.IsGovernanceRejectionReceipt(receipt) &&
 		receipt.GetActionType() == string(constants.ActionTypeInference) &&
 		receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L2_QUORUM_NOT_MET &&

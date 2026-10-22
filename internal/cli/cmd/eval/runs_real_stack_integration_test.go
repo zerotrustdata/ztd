@@ -32,7 +32,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/marshaler"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
@@ -133,8 +132,6 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 	}
 	run := newRealStackEnvironment(t, fixtures.EvalStackOptions{Posture: posture, Replies: replies}, runControl)
 	deps, stack, evidenceFiles := run.deps, run.stack, run.fileSvc
-	governancePosture, err := cases.WirePosture(posture)
-	require.NoError(t, err)
 	dataWorkload, err := stack.Data.Workload()
 	require.NoError(t, err)
 
@@ -152,12 +149,11 @@ func newRealStackRun(t *testing.T, posture constants.Posture, campaignID string,
 	require.Len(t, suite.Scenarios, 1)
 	require.NoError(t, evaluation.NewStore(evidenceFiles).CreateSuite(ctx, suite))
 	_, err = createCampaign(ctx, deps, evidenceFiles, campaignCreateSpec{
-		GovernancePosture: governancePosture,
-		Platform:          testPlatform,
-		CampaignID:        campaignID,
-		Variants:          []*evalv1.ModelVariant{testQwenVariant()},
-		Repetitions:       repetitions,
-		SuiteID:           suite.ID,
+		Platform:    testPlatform,
+		CampaignID:  campaignID,
+		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions: repetitions,
+		SuiteID:     suite.ID,
 		Investigation: &evalv1.EvaluationInvestigation{
 			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
 			InvestigationId: "real-stack-investigation",

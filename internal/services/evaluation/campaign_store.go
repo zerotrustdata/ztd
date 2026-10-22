@@ -384,6 +384,19 @@ func (s *Store) AssignmentResultExists(ctx context.Context, runID, assignmentID 
 	return exists, nil
 }
 
+// AssignmentAgentTraceExists reports whether an agent trace file is persisted
+// for an assignment, without reading or digest-checking it.
+func (s *Store) AssignmentAgentTraceExists(ctx context.Context, runID, assignmentID string) (bool, error) {
+	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(assignmentID) {
+		return false, fmt.Errorf("%w: file service, run ID, and assignment ID are required", constants.ErrEvidenceArtifactMalformed)
+	}
+	exists, err := s.files.FileExists(ctx, s.layout.assignmentAgentTracePath(runID, assignmentID))
+	if err != nil {
+		return false, fmt.Errorf("evaluation: assignment agent trace exists: %w", err)
+	}
+	return exists, nil
+}
+
 func sortAssignmentsDeterministic(assignments []*evalv1.EvaluationAssignment) {
 	sort.Slice(assignments, func(i, j int) bool {
 		return assignmentExecutionLess(assignments[i], assignments[j])

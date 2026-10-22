@@ -52,15 +52,19 @@ func defaultTribunalEnrollDeps() tribunalEnrollDeps {
 }
 
 func enrollTribunalCmd(newClient func() (authcmd.APIClient, error), deps tribunalEnrollDeps) *cobra.Command {
-	var model string
+	var model, voteKind, inferenceOperator string
+	var allowHosted bool
+	var threshold float64
 	var quorum int
 	memberAppIDs := tribunal.ConsensusMemberAppIDs()
 	cmd := &cobra.Command{
 		Use:   "tribunal",
-		Short: "Bind the Gateway-hosted Tribunal panel as the L2 consensus pinned to a frozen model",
-		Long: `Bind the Gateway-hosted Tribunal panel as the L2 consensus through governance, pinned to one frozen model.
+		Short: "Bind the Gateway-hosted Tribunal panel as the L2 consensus pinned to a model identity",
+		Long: `Bind the Gateway-hosted Tribunal panel as the L2 consensus through governance, pinned to one model identity.
 
---model names a served model tag in the frozen model registry; its digest is pinned in the binding.
+Local --model tags are resolved through the frozen model registry and pinned by digest.
+Hosted Jev requires --vote-kind decision, --allow-hosted and an explicit jev-X.Y.Z version.
+Decision voting also requires --inference-operator; hosted access is disabled by default.
 Each panel member (tribunal-axiom, tribunal-concord, tribunal-variance, tribunal-pragma, tribunal-nemesis)
 is enrolled with a sealed signing key unless its key already exists locally, so a re-run resumes.
 Binding traverses governance and requires passkey approval under ratify and notary.
@@ -83,12 +87,37 @@ A pending binding prints its approval URL and transaction; use ztd consensus sta
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
 			}
-			digest, err := resolveTribunalModelDigest(ctx, fileSvc, tag)
+			var digest string
+			if allowHosted {
+				if voteKind != models.ConsensusVoteKindDecision || !models.IsPinnedJevModel(tag) {
+					return constants.ErrConsensusDecisionBindingInvalid
+				}
+			} else {
+				digest, err = resolveTribunalModelDigest(ctx, fileSvc, tag)
+			}
 			if err != nil {
 				return err
 			}
 			client, err := newClient()
 			if err != nil {
+				return err
+			}
+
+			request := models.PlatformEnrollmentBindConsensusRequest{
+				AppID:        memberAppIDs[0],
+				MemberAppIDs: memberAppIDs,
+				Quorum:       quorum,
+				Provider:     string(constants.ConsensusProviderTribunal),
+				ModelTag:     tag,
+				ModelDigest:  digest,
+				VoteKind:     voteKind, InferenceOperatorID: inferenceOperator, AllowHosted: allowHosted,
+			}
+			if voteKind == models.ConsensusVoteKindDecision {
+				for _, id := range memberAppIDs {
+					request.VoteThresholds = append(request.VoteThresholds, models.ConsensusDecisionThreshold{MemberAppID: id, Threshold: threshold})
+				}
+			}
+			if _, err := models.ResolveConsensusBinding(models.ConsensusBindingSpec{Provider: constants.ConsensusProviderTribunal, AppID: request.AppID, MemberAppIDs: request.MemberAppIDs, Quorum: request.Quorum, ModelTag: tag, ModelDigest: digest, VoteKind: voteKind, InferenceOperatorID: inferenceOperator, VoteThresholds: request.VoteThresholds, AllowHosted: allowHosted}); err != nil {
 				return err
 			}
 			for _, appID := range memberAppIDs {
@@ -98,14 +127,6 @@ A pending binding prints its approval URL and transaction; use ztd consensus sta
 				if err := enrollTribunalMember(ctx, cmd.OutOrStdout(), client, fileSvc, cfg, deps.enrollerFactory, appID); err != nil {
 					return err
 				}
-			}
-			request := models.PlatformEnrollmentBindConsensusRequest{
-				AppID:        memberAppIDs[0],
-				MemberAppIDs: memberAppIDs,
-				Quorum:       quorum,
-				Provider:     string(constants.ConsensusProviderTribunal),
-				ModelTag:     tag,
-				ModelDigest:  digest,
 			}
 			body, err := client.Post(constants.APIPaths.AuthPlatformEnrollmentConsensus, request)
 			if err != nil {
@@ -128,7 +149,11 @@ A pending binding prints its approval URL and transaction; use ztd consensus sta
 			return output.WriteJSON(cmd.OutOrStdout(), policy)
 		},
 	}
-	cmd.Flags().StringVar(&model, "model", "", "Served model tag from the frozen model registry to pin (required)")
+	cmd.Flags().StringVar(&voteKind, "vote-kind", "", "Vote kind: generative (default) or decision")
+	cmd.Flags().StringVar(&inferenceOperator, "inference-operator", "", "Stable Inference Operator ID (required for decision voting)")
+	cmd.Flags().Float64Var(&threshold, "vote-threshold", 0.9, "Frozen per-member approval probability threshold for decision votes")
+	cmd.Flags().BoolVar(&allowHosted, "allow-hosted", false, "Allow scrubbed consensus payload egress to hosted TypeSafe Jev; requires a versioned Jev model")
+	cmd.Flags().StringVar(&model, "model", "", "Frozen local model tag, or explicit hosted Jev version with --allow-hosted (required)")
 	cmd.Flags().IntVar(&quorum, "quorum", constants.TribunalConsensusDefaultQuorum, fmt.Sprintf("Required affirmative signature count, between %d and %d", constants.TribunalConsensusMinQuorum, len(memberAppIDs)))
 	return cmd
 }
@@ -192,8 +217,20 @@ func verifyTribunalBinding(policy *models.ConsensusPolicy, request models.Platfo
 		policy.Quorum != request.Quorum ||
 		policy.ModelTag != request.ModelTag ||
 		policy.ModelDigest != request.ModelDigest ||
-		policy.EndpointURL != "" {
+		policy.EndpointURL != "" || policy.VoteKind != request.VoteKind || policy.InferenceOperatorID != request.InferenceOperatorID || policy.AllowHosted != request.AllowHosted || !sameDecisionThresholds(policy.VoteThresholds, request.VoteThresholds) {
 		return fmt.Errorf("consensus enroll tribunal: binding does not match request: %w", constants.ErrInvalidJSONResponse)
 	}
 	return nil
+}
+
+func sameDecisionThresholds(a, b []models.ConsensusDecisionThreshold) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

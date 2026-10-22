@@ -88,6 +88,7 @@ type HealthResponse struct {
 // HealthConsensus is the unauthenticated /health consensus summary. It carries
 // counts only: never member IDs, the pinned model, or an endpoint.
 type HealthConsensus struct {
+	VoteKind string `json:"vote_kind,omitempty"`
 	Bound    bool   `json:"bound"`              // an enabled binding exists
 	Provider string `json:"provider,omitempty"` // constants.ConsensusProvider of the binding
 	Quorum   int    `json:"quorum,omitempty"`   // K
@@ -102,6 +103,9 @@ type HealthConsensus struct {
 func (c HealthConsensus) Describe(posture constants.Posture) string {
 	if c.Bound {
 		line := fmt.Sprintf("%s %d-of-%d | signers %d/%d", c.Provider, c.Quorum, c.Members, c.Usable, c.Members)
+		if c.VoteKind == ConsensusVoteKindDecision {
+			line += " | decision"
+		}
 		if !c.Ready {
 			line += " | NOT READY"
 		}
@@ -119,12 +123,14 @@ func (c HealthConsensus) Describe(posture constants.Posture) string {
 // ConsensusReadiness is the single readiness view of the bound L2 consensus,
 // shared by /health, gw status, ztd consensus status, and the startup log.
 type ConsensusReadiness struct {
-	Bound       bool
-	Provider    constants.ConsensusProvider
-	Quorum      int
-	ModelTag    string
-	ModelDigest string
-	Members     []ConsensusMemberReadiness
+	VoteKind            string
+	InferenceOperatorID string
+	Bound               bool
+	Provider            constants.ConsensusProvider
+	Quorum              int
+	ModelTag            string
+	ModelDigest         string
+	Members             []ConsensusMemberReadiness
 	// Usable counts members with an enabled trusted signer and, under the
 	// tribunal provider, a sealed signing key present on this host.
 	Usable int
@@ -149,6 +155,7 @@ func (r ConsensusReadiness) Summary() HealthConsensus {
 	return HealthConsensus{
 		Bound:    true,
 		Provider: string(r.Provider),
+		VoteKind: r.VoteKind,
 		Quorum:   r.Quorum,
 		Members:  len(r.Members),
 		Usable:   r.Usable,

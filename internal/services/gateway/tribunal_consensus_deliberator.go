@@ -107,6 +107,12 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 		return nil, fmt.Errorf("tribunal consensus: binding provider: %w", constants.ErrTxL2ConsensusNotConfigured)
 	}
 
+	if bound.EffectiveVoteKind() != models.ConsensusVoteKindGenerative {
+		if _, err := models.ResolveConsensusBinding(models.ConsensusBindingSpec{Provider: constants.ConsensusProviderTribunal, AppID: bound.PrimaryAppID(), MemberAppIDs: bound.MemberAppIDs, Quorum: bound.Quorum, ModelTag: bound.ModelTag, ModelDigest: bound.ModelDigest, VoteKind: bound.VoteKind, InferenceOperatorID: bound.InferenceOperatorID, VoteThresholds: bound.VoteThresholds, AllowHosted: bound.AllowHosted}); err != nil {
+			return nil, fmt.Errorf("tribunal consensus: decision binding: %w", err)
+		}
+	}
+
 	subject, err := consensusSubject(&env)
 	if err != nil {
 		return nil, err
@@ -184,6 +190,7 @@ func (d *TribunalConsensusDeliberator) countVote(env *commonv1.GovernanceEnvelop
 // memberVote is one member's deliberation outcome. failure is set when the
 // member casts no vote.
 type memberVote struct {
+	evidence      []models.ConsensusDecisionEvidence
 	answer        tribunal.ConsensusVoteAnswer
 	inferenceTxID string
 	attemptID     string
@@ -203,7 +210,8 @@ func (d *TribunalConsensusDeliberator) recordVote(env *commonv1.GovernanceEnvelo
 		ProviderAttemptID:      vote.attemptID,
 		ModelTag:               bound.ModelTag,
 		Quorum:                 bound.Quorum,
-		RecordedAt:             time.Now().UTC(),
+		VoteKind:               bound.EffectiveVoteKind(), DecisionEvidence: vote.evidence,
+		RecordedAt: time.Now().UTC(),
 	}
 	switch {
 	case vote.failure != nil:
@@ -251,7 +259,7 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 	}
 	attemptID := consensusVoteAttemptID(txHash, memberAppID)
 	system, user := tribunal.ConsensusVotePrompt(member, subject)
-	result, err := d.inference.DispatchInference(withConsensusDeliberation(ctx, memberAppID), dispatch.DispatchInferenceRequest{
+	request := dispatch.DispatchInferenceRequest{
 		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
 		Role:                 models.InferenceModelRolePrimary,
 		Messages: []*operatorv1.InferenceMessage{
@@ -267,10 +275,37 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 		ProviderAttemptID: attemptID,
 		RequestorUserID:   policy.OwnerUserID,
 		ActingAppID:       memberAppID,
-	})
+	}
+	request.TargetOperatorID = bound.InferenceOperatorID
+	if bound.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
+		decision, err := tribunal.ConsensusDecisionRequest(member, subject, bound.AllowHosted)
+		if err != nil {
+			return memberVote{failure: err}
+		}
+		request.Decision = decision
+		request.Messages = nil
+		request.ResponseFormat = nil
+	}
+	result, err := d.inference.DispatchInference(withConsensusDeliberation(ctx, memberAppID), request)
 	if err != nil {
 		d.logger.Warn("tribunal consensus: member inference failed", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
 		return memberVote{attemptID: attemptID, failure: fmt.Errorf("member inference: %w", err)}
+	}
+	if result == nil || result.Result == nil {
+		return memberVote{attemptID: attemptID, failure: constants.ErrInferenceCompletionNoResult}
+	}
+	if bound.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
+		threshold := 0.0
+		for _, t := range bound.VoteThresholds {
+			if t.MemberAppID == memberAppID {
+				threshold = t.Threshold
+			}
+		}
+		if threshold < 0.5 || threshold > 1 {
+			return memberVote{attemptID: attemptID, failure: constants.ErrConsensusDecisionBindingInvalid}
+		}
+		answer, evidence := tribunal.EvaluateConsensusDecision(member, request.Decision, result.Result.GetDecision(), threshold)
+		return memberVote{answer: answer, evidence: evidence, inferenceTxID: result.TransactionID, attemptID: attemptID}
 	}
 	return memberVote{
 		answer:        tribunal.ParseConsensusVote(models.InferenceResultText(result.Result)),

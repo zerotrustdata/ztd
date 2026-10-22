@@ -1420,7 +1420,7 @@
         },
         "/api/v1/observe/producer/run-state": {
             "post": {
-                "description": "Accepts a typed run state update from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the run state projection, and emits an app.run.status.updated SSE event after successful persistence.",
+                "description": "Accepts a typed run state update from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the run state projection, and emits an app.run.status.updated SSE event after successful persistence. A request naming reopens replaces exactly that terminal projected status with a non-terminal one; it is a producer repair for a projection its local store contradicts.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3398,6 +3398,26 @@
                 "CampaignFreshnessSourceOffline"
             ]
         },
+        "models.ConsensusDecisionEvidence": {
+            "type": "object",
+            "properties": {
+                "approval_probability": {
+                    "type": "number"
+                },
+                "passed": {
+                    "type": "boolean"
+                },
+                "probability": {
+                    "type": "number"
+                },
+                "question": {
+                    "type": "string"
+                },
+                "threshold": {
+                    "type": "number"
+                }
+            }
+        },
         "models.ConsensusVoteOutcome": {
             "type": "string",
             "enum": [
@@ -3416,6 +3436,12 @@
             "properties": {
                 "consensus_set_id": {
                     "type": "string"
+                },
+                "decision_evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ConsensusDecisionEvidence"
+                    }
                 },
                 "failure": {
                     "description": "Failure explains a deny read from an invalid answer, or why no vote was cast.",
@@ -3452,6 +3478,9 @@
                 },
                 "transaction_id": {
                     "description": "TransactionID is the envelope ID, the ID its receipts carry.",
+                    "type": "string"
+                },
+                "vote_kind": {
                     "type": "string"
                 }
             }
@@ -3773,6 +3802,9 @@
                 "usable": {
                     "description": "members that can vote now (enabled signer; tribunal: local key present)",
                     "type": "integer"
+                },
+                "vote_kind": {
+                    "type": "string"
                 }
             }
         },
@@ -4075,6 +4107,14 @@
                 },
                 "observed_at": {
                     "type": "string"
+                },
+                "reopens": {
+                    "description": "Reopens names the terminal status a repair replaces because the\nproducer's authoritative local store contradicts it. The Gateway applies\nit only while the projection holds exactly this status and only toward a\nnon-terminal status; otherwise the normal transition rules decide.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.RunLifecycleStatus"
+                        }
+                    ]
                 },
                 "run_id": {
                     "type": "string"
@@ -5582,6 +5622,60 @@
                 }
             }
         },
+        "operatorv1.InferenceDecisionAnswer": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "description": "Types that are valid to be assigned to Kind:\n\n\t*InferenceDecisionAnswer_Noul\n\t*InferenceDecisionAnswer_Choice\n\t*InferenceDecisionAnswer_Score"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "operatorv1.InferenceDecisionQuestion": {
+            "type": "object",
+            "properties": {
+                "instructions": {
+                    "type": "string"
+                },
+                "kind": {
+                    "description": "Types that are valid to be assigned to Kind:\n\n\t*InferenceDecisionQuestion_Noul\n\t*InferenceDecisionQuestion_Choice\n\t*InferenceDecisionQuestion_Score"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "operatorv1.InferenceDecisionRequest": {
+            "type": "object",
+            "properties": {
+                "allow_hosted": {
+                    "description": "Explicit consent to hosted egress, committed into the governed envelope.",
+                    "type": "boolean"
+                },
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.InferenceDecisionQuestion"
+                    }
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "operatorv1.InferenceDecisionResult": {
+            "type": "object",
+            "properties": {
+                "answers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.InferenceDecisionAnswer"
+                    }
+                }
+            }
+        },
         "operatorv1.InferenceDispatchFailure": {
             "type": "object",
             "properties": {
@@ -5649,7 +5743,11 @@
                 40,
                 41,
                 42,
-                43
+                43,
+                44,
+                45,
+                46,
+                47
             ],
             "x-enum-varnames": [
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED",
@@ -5695,7 +5793,11 @@
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CANCELED",
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED",
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE",
-                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH"
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED"
             ]
         },
         "operatorv1.InferenceDispatchRequest": {
@@ -5720,6 +5822,14 @@
                 },
                 "context_limit": {
                     "type": "integer"
+                },
+                "decision": {
+                    "description": "Exclusive with messages, tools, streaming and generation controls.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.InferenceDecisionRequest"
+                        }
+                    ]
                 },
                 "evaluation_attempt_id": {
                     "type": "string"
@@ -5869,6 +5979,26 @@
                 }
             }
         },
+        "operatorv1.InferenceHostedEgressAttestation": {
+            "type": "object",
+            "properties": {
+                "explicit_consent": {
+                    "type": "boolean"
+                },
+                "model_version": {
+                    "type": "string"
+                },
+                "normalized_request_hash": {
+                    "type": "string"
+                },
+                "provenance": {
+                    "type": "string"
+                },
+                "provider_origin": {
+                    "type": "string"
+                }
+            }
+        },
         "operatorv1.InferenceLoadState": {
             "type": "integer",
             "format": "int32",
@@ -5971,6 +6101,14 @@
                     "description": "Number of completion tokens generated.",
                     "type": "integer"
                 },
+                "decision": {
+                    "description": "Exclusive with response parts. Covered by result_digest.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.InferenceDecisionResult"
+                        }
+                    ]
+                },
                 "evaluation_attempt_id": {
                     "type": "string"
                 },
@@ -5980,6 +6118,9 @@
                 },
                 "generation_duration_ns": {
                     "type": "integer"
+                },
+                "hosted_egress": {
+                    "$ref": "#/definitions/operatorv1.InferenceHostedEgressAttestation"
                 },
                 "load_duration_ns": {
                     "type": "integer"
@@ -6300,7 +6441,11 @@
                 18,
                 19,
                 20,
-                21
+                21,
+                22,
+                23,
+                24,
+                25
             ],
             "x-enum-varnames": [
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED",
@@ -6324,7 +6469,11 @@
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW",
-                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED"
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED"
             ]
         },
         "operatorv1.ReceiptPersistenceAttestation": {

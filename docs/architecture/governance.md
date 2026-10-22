@@ -341,6 +341,8 @@ Every completed or failed transaction that reaches the Actuator generates a dete
 - **Substituting a Gateway Assertion for Human Proof**: Having the Gateway sign an L3 attestation, forward only an "approved" flag, or let an Operator read a locally stored approval row instead of re-verifying the original CLI signature or WebAuthn assertion (INV-GOV-LAY-05).
 - **Blocking Bootstrap Actions on Consensus**: Requiring L2 consensus for platform bootstrap actions. Bootstrap actions must succeed to bind the consensus application (INV-GOV-LAY-03).
 
+Typed System One decision requests use the existing `INFERENCE` envelope and L1–L5 execution path. Their signed result digest covers typed answers and any hosted egress attestation. Existing L2 signature bytes and quorum checks remain unchanged. See [Decision Model Votes](consensus.md#decision-model-votes-opt-in) for the opt-in Tribunal binding and qualification limits.
+
 ## Links out
 
 - [Platform Architecture Overview](overview.md): High-level system topology and node boundaries.

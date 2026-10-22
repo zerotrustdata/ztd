@@ -679,6 +679,14 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED
 	}
 	switch {
+	case errors.Is(execErr, constants.ErrInferenceDecisionRequestInvalid):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID
+	case errors.Is(execErr, constants.ErrInferenceDecisionResponseInvalid):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID
+	case errors.Is(execErr, constants.ErrInferenceDecisionUnsupported):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED
+	case errors.Is(execErr, constants.ErrInferenceHostedNotAllowed):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED
 	case errors.Is(execErr, constants.ErrInferenceModelOverrideDenied):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED
 	case errors.Is(execErr, constants.ErrInferenceRoleInvalid):

@@ -246,6 +246,23 @@ func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_
 	assert.Equal(t, []string{"source_not_captured"}, unavailable)
 }
 
+// A governance-rejected inference has no provider attempt, so strict
+// observation expects no window for it.
+func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_StrictSkipsGovernanceRejected(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
+	reader, err := NewCampaignProviderObservationReader(NewStore(fileSvc))
+	require.NoError(t, err)
+	result := &evalv1.EvaluationAssignmentResult{
+		RunId:           "run-denied",
+		ModelInferences: []*evalv1.ModelInferenceRecord{{InferenceRecordId: "inference-denied"}},
+	}
+	failures, unavailable := reader.VerifyAssignmentProviderObservations(ctx, result, ProviderObservationPolicyStrict)
+	assert.Empty(t, failures)
+	assert.Empty(t, unavailable)
+}
+
 func TestMarshalAssignmentResultProjectionEnvelope_IncludesBenchmarkObservations(t *testing.T) {
 	t.Parallel()
 	projection := &evalv1.PublicAssignmentResultProjection{

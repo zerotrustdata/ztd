@@ -39,9 +39,13 @@ const (
 	ExecutionFailureVerification ExecutionFailureClass = "verification_failed"
 	ExecutionFailureDispatch     ExecutionFailureClass = "dispatch_failure"
 	ExecutionFailureInvalidInput ExecutionFailureClass = "invalid_input"
-	ExecutionFailureCanceled     ExecutionFailureClass = "canceled"
-	ExecutionFailureTimeout      ExecutionFailureClass = "timeout"
-	ExecutionFailureInternal     ExecutionFailureClass = "internal_error"
+	// ExecutionFailureScenarioContract is a frozen scenario whose tool contract
+	// this harness rejects, such as a tool the agent catalog no longer has. The
+	// executor rejects it before its first governed action.
+	ExecutionFailureScenarioContract ExecutionFailureClass = "scenario_contract_invalid"
+	ExecutionFailureCanceled         ExecutionFailureClass = "canceled"
+	ExecutionFailureTimeout          ExecutionFailureClass = "timeout"
+	ExecutionFailureInternal         ExecutionFailureClass = "internal_error"
 )
 
 // ClassifyExecutionFailure maps an executor error to its fixed failure
@@ -59,7 +63,7 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureDispatch
 	case errors.Is(err, constants.ErrEvaluationTargetUnavailable), errors.Is(err, constants.ErrEvaluationTargetAmbiguous):
 		return ExecutionFailureTarget
-	case errors.Is(err, constants.ErrEvaluationPostureUnsupported):
+	case errors.Is(err, constants.ErrEvaluationPostureUnsupported), errors.Is(err, constants.ErrEvaluationRunGovernanceChanged):
 		return ExecutionFailurePosture
 	case errors.Is(err, constants.ErrEvalRunVerificationFailed):
 		return ExecutionFailureVerification
@@ -67,6 +71,8 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureEvidence
 	case errors.Is(err, constants.ErrEvaluationHeldContextUnavailable):
 		return ExecutionFailureHeldContext
+	case errors.Is(err, constants.ErrEvaluationScenarioContractInvalid):
+		return ExecutionFailureScenarioContract
 	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
@@ -150,7 +156,8 @@ const (
 // executionFailureClasses is every class ClassifyExecutionFailure can return.
 var executionFailureClasses = []ExecutionFailureClass{
 	ExecutionFailureProvider, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureHeldContext, ExecutionFailureVerification,
-	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureCanceled, ExecutionFailureTimeout, ExecutionFailureInternal,
+	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureScenarioContract, ExecutionFailureCanceled, ExecutionFailureTimeout,
+	ExecutionFailureInternal,
 }
 
 // verifyExecutorFailureResult structurally verifies a result the executor
@@ -296,7 +303,10 @@ func assignmentPersistContext(ctx context.Context) context.Context {
 }
 
 // RepairAssignmentsWithoutResults backfills persisted terminal results for
-// assignments that already reached a terminal lifecycle.
+// assignments that already reached a terminal lifecycle, and resolves a
+// running one whose frozen scenario contract the executor rejects before it
+// acts. The caller must hold the run lease, so no live process is executing
+// the running assignment.
 func (c *CampaignController) RepairAssignmentsWithoutResults(ctx context.Context, runID string) (int, error) {
 	if c == nil || c.store == nil || runID == "" {
 		return 0, fmt.Errorf("evaluation: repair assignments without results: %w", constants.ErrMissingRequiredField)
@@ -307,7 +317,11 @@ func (c *CampaignController) RepairAssignmentsWithoutResults(ctx context.Context
 	}
 	repaired := 0
 	for _, assignment := range assignments {
-		if assignment == nil || !isTerminalAssignmentLifecycle(assignment.GetLifecycleStatus()) {
+		if assignment == nil {
+			continue
+		}
+		running := assignment.GetLifecycleStatus() == evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING
+		if !running && !isTerminalAssignmentLifecycle(assignment.GetLifecycleStatus()) {
 			continue
 		}
 		exists, err := c.store.AssignmentResultExists(ctx, runID, assignment.GetAssignmentId())
@@ -317,9 +331,17 @@ func (c *CampaignController) RepairAssignmentsWithoutResults(ctx context.Context
 		if exists {
 			continue
 		}
-		result, err := c.recoverTerminalAssignmentResult(assignment)
+		var result *evalv1.EvaluationAssignmentResult
+		if running {
+			result, err = c.rejectedScenarioContractResult(ctx, assignment)
+		} else {
+			result, err = c.recoverTerminalAssignmentResult(assignment)
+		}
 		if err != nil {
 			return repaired, err
+		}
+		if result == nil {
+			continue
 		}
 		if err := c.persistTerminalAssignment(ctx, assignment, result); err != nil {
 			return repaired, err
@@ -327,6 +349,40 @@ func (c *CampaignController) RepairAssignmentsWithoutResults(ctx context.Context
 		repaired++
 	}
 	return repaired, nil
+}
+
+// rejectedScenarioContractResult is the scenario_contract_invalid failure
+// result for a running homogeneous assignment that left no agent trace and
+// whose frozen scenario tools the agent catalog rejects: the executor scopes
+// those tools before its first governed action, so such an attempt never acted
+// and never will. It returns nil for any other running assignment, which stays
+// unresolved.
+func (c *CampaignController) rejectedScenarioContractResult(ctx context.Context, assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {
+	if IsHeterogeneousAssignment(assignment) {
+		return nil, nil
+	}
+	traced, err := c.store.AssignmentAgentTraceExists(ctx, assignment.GetRunId(), assignment.GetAssignmentId())
+	if err != nil || traced {
+		return nil, err
+	}
+	catalog, err := c.store.LoadScenarioCatalog(ctx, assignment.GetCampaignId())
+	if err != nil {
+		return nil, err
+	}
+	tools, err := scenarioToolsForAssignment(catalog, assignment)
+	if err != nil {
+		return nil, err
+	}
+	agentTools, err := newAgentToolCatalog()
+	if err != nil {
+		return nil, err
+	}
+	_, scopeErr := agentTools.Scope(tools)
+	if !errors.Is(scopeErr, constants.ErrEvaluationScenarioContractInvalid) {
+		return nil, nil
+	}
+	req := AssignmentExecutionRequest{Assignment: assignment, AttemptID: "recovered"}
+	return BuildExecutorFailureAssignmentResult(req, scopeErr, c.now().UTC())
 }
 
 func (c *CampaignController) recoverTerminalAssignmentResult(assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {

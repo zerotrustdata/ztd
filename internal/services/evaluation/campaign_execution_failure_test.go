@@ -168,6 +168,73 @@ func TestRepairAssignmentsWithoutResults_BackfillsTerminalLifecycle(t *testing.T
 	assert.True(t, exists)
 }
 
+// A running assignment whose frozen scenario names a tool the agent catalog
+// lacks is resolved as a scenario_contract_invalid failure that verifies; a
+// running assignment with a valid contract stays unresolved.
+func TestRepairAssignmentsWithoutResults_ResolvesRunningRejectedScenarioContract(t *testing.T) {
+	ctx := context.Background()
+	files := newCampaignMemoryFileService()
+	store := NewStore(files)
+	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
+	req := testCampaignInitRequest(t)
+	scenarios := make([]*evalv1.EvaluationScenarioDefinition, 0, 2)
+	for _, scenario := range req.Catalog.GetScenarios()[:2] {
+		scenarios = append(scenarios, proto.Clone(scenario).(*evalv1.EvaluationScenarioDefinition))
+	}
+	rejected := scenarios[0]
+	rejected.AllowedTools = append(rejected.AllowedTools, "removed_native_tool")
+	catalog := &evalv1.EvaluationScenarioCatalog{
+		SchemaVersion: req.Catalog.GetSchemaVersion(),
+		CatalogRef:    req.Catalog.GetCatalogRef(),
+		Scenarios:     scenarios,
+	}
+	digest, err := ComputeScenarioCatalogDigest(catalog)
+	require.NoError(t, err)
+	catalog.CatalogDigest = digest
+	req.Catalog = catalog
+	_, err = controller.InitializeCampaign(ctx, req)
+	require.NoError(t, err)
+	_, err = controller.ScheduleRun(ctx, req.RunID)
+	require.NoError(t, err)
+
+	assignments, err := store.ListAssignments(ctx, req.RunID)
+	require.NoError(t, err)
+	var stranded, valid *evalv1.EvaluationAssignment
+	for _, assignment := range assignments {
+		if assignment.GetScenarioId() == rejected.GetScenarioId() && stranded == nil {
+			stranded = assignment
+		} else if assignment.GetScenarioId() != rejected.GetScenarioId() && valid == nil {
+			valid = assignment
+		}
+	}
+	require.NotNil(t, stranded)
+	require.NotNil(t, valid)
+	for _, assignment := range []*evalv1.EvaluationAssignment{stranded, valid} {
+		assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING
+		require.NoError(t, store.SaveAssignment(ctx, assignment))
+	}
+
+	repaired, err := controller.RepairAssignmentsWithoutResults(ctx, req.RunID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, repaired)
+
+	results, err := store.LoadAssignmentResults(ctx, req.RunID, []*evalv1.EvaluationAssignment{stranded})
+	require.NoError(t, err)
+	result := results[stranded.GetAssignmentId()]
+	require.NotNil(t, result)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, result.GetLifecycleStatus())
+	resolved, err := store.LoadAssignment(ctx, req.RunID, stranded.GetAssignmentId())
+	require.NoError(t, err)
+	assert.Empty(t, verifyExecutorFailureResult(resolved, result))
+	assert.Equal(t, executionFailureDetailPrefix+string(ExecutionFailureScenarioContract), result.GetDeterministicGrades()[0].GetDetail())
+
+	exists, err := store.AssignmentResultExists(ctx, req.RunID, valid.GetAssignmentId())
+	require.NoError(t, err)
+	assert.False(t, exists, "a running assignment with a valid contract is not repaired")
+	_, _, err = controller.ResumeNextAssignment(ctx, req.RunID)
+	require.ErrorIs(t, err, constants.ErrEvaluationAssignmentUnresolved)
+}
+
 func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -183,6 +250,7 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 		{name: "posture", err: fmt.Errorf("posture: %w", constants.ErrEvaluationPostureUnsupported), want: ExecutionFailurePosture},
 		{name: "evidence", err: fmt.Errorf("observe: %w", constants.ErrEvaluationObservationUnavailable), want: ExecutionFailureEvidence},
 		{name: "held context", err: assignmentExecutionError("held context", constants.ErrEvaluationHeldContextUnavailable), want: ExecutionFailureHeldContext},
+		{name: "scenario contract", err: assignmentExecutionError("scope tools", constants.ErrEvaluationScenarioContractInvalid), want: ExecutionFailureScenarioContract},
 		{name: "verification", err: fmt.Errorf("verify: %w", constants.ErrEvalRunVerificationFailed), want: ExecutionFailureVerification},
 		{name: "inference backend", err: fmt.Errorf("infer: %w", constants.ErrInferenceBackendUnavailable), want: ExecutionFailureProvider},
 		{name: "unrecognized", err: fmt.Errorf("opaque failure"), want: ExecutionFailureInternal},

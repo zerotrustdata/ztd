@@ -213,6 +213,55 @@ func TestObserveProducer_UpdateRunState_SSEPayloadContainsNestedEnvelope(t *test
 	assert.Equal(t, models.RunLifecycleStatusCompleted, runPayload.Status)
 }
 
+// A reopen replaces only the terminal status it names, as compare-and-set: a
+// projection holding another terminal status keeps the normal transition rules,
+// and the stale-update guard still applies.
+func TestObserveProducer_ReopenRunState_ReplacesOnlyTheNamedTerminalStatus(t *testing.T) {
+	producer, sseStore, docStore := newObserveProducerTestEnv(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	route := producerRoute("user-reopen")
+	runPayload := func(runID string, status models.RunLifecycleStatus, observedAt time.Time) models.RunStatusUpdatedPayload {
+		return models.RunStatusUpdatedPayload{
+			SchemaVersion: constants.ObserveAPIReadModelSchemaVersion,
+			RunID:         runID,
+			RunKind:       models.RunKindEval,
+			DisplayName:   runID,
+			Status:        status,
+			TotalTasks:    3,
+			ObservedAt:    observedAt,
+		}
+	}
+	projected := func(runID string) models.RunLifecycleStatus {
+		doc, err := docStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionObserveRuns), runID)
+		require.NoError(t, err)
+		var proj runProjection
+		require.NoError(t, unmarshalDocData(doc, &proj))
+		return proj.Status
+	}
+
+	require.NoError(t, producer.UpdateRunState(ctx, "user-reopen", route, runPayload("run-cancelled", models.RunLifecycleStatusCancelled, now)))
+	stale := producer.ReopenRunState(ctx, "user-reopen", route, runPayload("run-cancelled", models.RunLifecycleStatusWaiting, now.Add(-time.Second)), models.RunLifecycleStatusCancelled)
+	var staleErr *models.ObserveStaleUpdateError
+	require.ErrorAs(t, stale, &staleErr)
+	require.NoError(t, producer.ReopenRunState(ctx, "user-reopen", route, runPayload("run-cancelled", models.RunLifecycleStatusWaiting, now.Add(time.Second)), models.RunLifecycleStatusCancelled))
+	assert.Equal(t, models.RunLifecycleStatusWaiting, projected("run-cancelled"))
+
+	require.NoError(t, producer.UpdateRunState(ctx, "user-reopen", route, runPayload("run-completed", models.RunLifecycleStatusCompleted, now)))
+	err := producer.ReopenRunState(ctx, "user-reopen", route, runPayload("run-completed", models.RunLifecycleStatusWaiting, now.Add(time.Second)), models.RunLifecycleStatusCancelled)
+	var transition *models.ObserveTransitionError
+	require.ErrorAs(t, err, &transition)
+	assert.Equal(t, string(models.RunLifecycleStatusCompleted), transition.From)
+	assert.Equal(t, models.RunLifecycleStatusCompleted, projected("run-completed"))
+
+	invalid := producer.ReopenRunState(ctx, "user-reopen", route, runPayload("run-cancelled", models.RunLifecycleStatusCompleted, now.Add(2*time.Second)), models.RunLifecycleStatusWaiting)
+	assert.ErrorIs(t, invalid, constants.ErrObserveStatusInvalid)
+
+	rows, err := sseStore.SSEEventsListSince(route, 0, 100)
+	require.NoError(t, err)
+	assert.Len(t, rows, 3, "two seeds and the one applied reopen emit events")
+}
+
 func TestObserveProducer_InvalidTransitionRejected_NoProjectionNoEvent(t *testing.T) {
 	producer, sseStore, docStore := newObserveProducerTestEnv(t)
 	ctx := context.Background()

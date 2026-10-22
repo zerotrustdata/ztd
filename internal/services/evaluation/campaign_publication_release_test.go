@@ -40,7 +40,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 			runID := f.runIDs[0]
 			if tc.legacy {
 				saveLegacyCampaign(t, f, "legacy-public")
-				run, err := f.controller.StartRun(ctx, RunStartRequest{
+				run, err := f.controller.StartRun(ctx, RunStartRequest{Governance: testGovernance,
 					CampaignID:                "legacy-public",
 					RunID:                     "legacy-run",
 					PlatformRelease:           testPlatform.Release,
@@ -111,7 +111,7 @@ func TestCampaignPublication_RejectsMalformedReleaseTags(t *testing.T) {
 	ctx := context.Background()
 	f := newArchiveFixture(t)
 	saveLegacyCampaign(t, f, "legacy-public")
-	run, err := f.controller.StartRun(ctx, RunStartRequest{
+	run, err := f.controller.StartRun(ctx, RunStartRequest{Governance: testGovernance,
 		CampaignID:                "legacy-public",
 		RunID:                     "legacy-run",
 		PlatformRelease:           testPlatform.Release,

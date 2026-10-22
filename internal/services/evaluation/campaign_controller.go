@@ -37,6 +37,7 @@ type CampaignInitRequest struct {
 	Deployment                 *evalv1.EvaluationDeploymentIdentity
 	Lane                       evalv1.EvaluationLane
 	FormationStackSet          *HeterogeneousStackSet
+	Governance                 RunGovernance
 }
 
 // CampaignRunSummary reports resumable controller state for one run.
@@ -68,6 +69,7 @@ type CampaignStore interface {
 	LoadAssignment(ctx context.Context, runID, assignmentID string) (*evalv1.EvaluationAssignment, error)
 	ListAssignments(ctx context.Context, runID string) ([]*evalv1.EvaluationAssignment, error)
 	AssignmentResultExists(ctx context.Context, runID, assignmentID string) (bool, error)
+	AssignmentAgentTraceExists(ctx context.Context, runID, assignmentID string) (bool, error)
 	LoadAssignmentResults(ctx context.Context, runID string, assignments []*evalv1.EvaluationAssignment) (map[string]*evalv1.EvaluationAssignmentResult, error)
 	LoadAssignmentAgentTrace(ctx context.Context, runID, assignmentID string) (*AgentTrace, error)
 	LoadAssignmentAgentTraceArtifact(ctx context.Context, runID, assignmentID string) (*AgentTrace, []byte, error)
@@ -110,7 +112,6 @@ func (c *CampaignController) WithPublication(publication *CampaignPublicationCoo
 
 // CampaignCreateRequest carries the inputs that define one frozen campaign.
 type CampaignCreateRequest struct {
-	GovernancePosture evalv1.EvaluationGovernancePosture
 	CampaignID        string
 	Catalog           *evalv1.EvaluationScenarioCatalog
 	Inventory         *ModelInventoryFreeze
@@ -138,6 +139,9 @@ type RunStartRequest struct {
 	// PlatformRelease is the executing build's release. It must equal the
 	// release the campaign recorded when it froze.
 	PlatformRelease string
+	// Governance is the live Gateway posture and consensus binding, frozen
+	// on the run. Every later execution must find the same.
+	Governance RunGovernance
 }
 
 // CreateCampaign persists the frozen campaign spec, scenario catalog, and
@@ -152,12 +156,6 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	}
 	spec, err := MaterializeCampaignSpecWithInvestigation(req.CampaignID, req.Catalog, req.Inventory, req.RepetitionCount, req.HoldContext, req.Platform, req.Investigation)
 	if err != nil {
-		return nil, err
-	}
-	if req.GovernancePosture != evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED {
-		spec.GovernancePosture = req.GovernancePosture
-	}
-	if err := ValidateCampaignSpecPosture(spec); err != nil {
 		return nil, err
 	}
 	if req.FormationStackSet != nil {
@@ -190,7 +188,6 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	switch {
 	case err == nil:
 		if existing.GetCatalogDigest() != spec.GetCatalogDigest() ||
-			existing.GetGovernancePosture() != spec.GetGovernancePosture() ||
 			existing.GetModelRegistryDigest() != spec.GetModelRegistryDigest() ||
 			existing.GetRepetitionCount() != spec.GetRepetitionCount() ||
 			existing.GetHoldContext() != spec.GetHoldContext() ||
@@ -259,7 +256,7 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 	if recorded := spec.GetPlatformRelease(); recorded != "" && recorded != req.PlatformRelease {
 		return nil, fmt.Errorf("evaluation: start run %q: campaign %q recorded %q, executing build is %q: %w", req.RunID, req.CampaignID, recorded, req.PlatformRelease, constants.ErrEvaluationPlatformReleaseMismatch)
 	}
-	if err := ValidateCampaignSpecPosture(spec); err != nil {
+	if err := req.Governance.validate(); err != nil {
 		return nil, fmt.Errorf("evaluation: start run %q: %w", req.RunID, err)
 	}
 	catalog, err := c.store.LoadScenarioCatalog(ctx, req.CampaignID)
@@ -304,7 +301,8 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 		RunId:                     req.RunID,
 		SuiteRef:                  catalog.GetCatalogRef(),
 		Deployment:                req.Deployment,
-		ActivePosture:             spec.GetGovernancePosture(),
+		ActivePosture:             req.Governance.Posture,
+		Consensus:                 proto.Clone(req.Governance.Consensus).(*evalv1.EvaluationConsensusIdentity),
 		Lane:                      lane,
 		ProviderObservationPolicy: req.ProviderObservationPolicy,
 		ModelProvenancePolicy:     req.ModelProvenancePolicy,
@@ -357,6 +355,7 @@ func (c *CampaignController) InitializeCampaign(ctx context.Context, req Campaig
 		PlatformRelease:            req.Platform.Release,
 		ProviderObservationPolicy:  evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 		ModelProvenancePolicy:      evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+		Governance:                 req.Governance,
 	})
 }
 
@@ -407,7 +406,7 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 	if err != nil {
 		return 0, err
 	}
-	if err := ValidateCampaignSpecPosture(spec); err != nil {
+	if err := (RunGovernance{Posture: run.GetActivePosture(), Consensus: run.GetConsensus()}).validate(); err != nil {
 		return 0, fmt.Errorf("evaluation: schedule run %s: %w", runID, err)
 	}
 	if err := ValidateCampaignSpecDigest(spec); err != nil {

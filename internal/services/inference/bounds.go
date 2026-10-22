@@ -57,6 +57,9 @@ func validateKeepAlive(value string) error {
 }
 
 func validateInferenceRequestBounds(req *operatorv1.InferenceRequested) error {
+	if err := ValidateDecisionInference(req); err != nil {
+		return err
+	}
 	if len(req.GetMessages()) > maxInferenceMessagesCount {
 		return fmt.Errorf("%w: messages", constants.ErrInferenceRequestTooLarge)
 	}

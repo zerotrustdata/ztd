@@ -586,6 +586,11 @@ type Persona struct {
 // A Consensus consists of N member identities (enrolled agentic apps) and
 // requires K affirmative distinct signatures to reach quorum.
 type ConsensusPolicy struct {
+	VoteKind            string                       `json:"vote_kind,omitempty"`
+	InferenceOperatorID string                       `json:"inference_operator_id,omitempty"`
+	VoteThresholds      []ConsensusDecisionThreshold `json:"vote_thresholds,omitempty"`
+	AllowHosted         bool                         `json:"allow_hosted,omitempty"`
+
 	ID              string    `json:"id"`                     // consensus name/id
 	AppID           string    `json:"app_id,omitempty"`       // primary bound consensus application identity
 	MemberAppIDs    []string  `json:"member_app_ids"`         // == TrustedSigner.ID per member
@@ -627,6 +632,11 @@ func (p *ConsensusPolicy) PrimaryAppID() string {
 
 // PlatformEnrollmentBindConsensusRequest binds an enrolled application as the Gateway consensus application.
 type PlatformEnrollmentBindConsensusRequest struct {
+	VoteKind            string                       `json:"vote_kind,omitempty"`
+	InferenceOperatorID string                       `json:"inference_operator_id,omitempty"`
+	VoteThresholds      []ConsensusDecisionThreshold `json:"vote_thresholds,omitempty"`
+	AllowHosted         bool                         `json:"allow_hosted,omitempty"`
+
 	AppID        string   `json:"app_id"`
 	EndpointURL  string   `json:"endpoint_url"`
 	MemberAppIDs []string `json:"member_app_ids,omitempty"`

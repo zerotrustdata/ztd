@@ -14,7 +14,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -72,29 +71,6 @@ func ValidateCampaignInvestigation(investigation *evalv1.EvaluationInvestigation
 	return nil
 }
 
-// ValidateCampaignSpecPosture admits only a known frozen posture. Ratify and
-// notary dispatches wait for real human proof; no approval is minted by eval.
-func ValidateCampaignSpecPosture(spec *evalv1.EvaluationCampaignSpec) error {
-	_, err := cases.GovernancePosture(spec.GetGovernancePosture())
-	if err != nil {
-		return fmt.Errorf("evaluation: campaign %q posture: %w: %w", spec.GetCampaignId(), constants.ErrEvaluationPostureUnsupported, err)
-	}
-	return nil
-}
-
-// ValidateGatewayPosture checks the live Gateway posture against the campaign's
-// frozen posture. The run records the frozen posture as its active posture, so
-// a Gateway running any other posture would mislabel every receipt's governance.
-func ValidateGatewayPosture(spec *evalv1.EvaluationCampaignSpec, gateway evalv1.EvaluationGovernancePosture) error {
-	if err := ValidateCampaignSpecPosture(spec); err != nil {
-		return err
-	}
-	if gateway != spec.GetGovernancePosture() {
-		return fmt.Errorf("evaluation: campaign %q freezes posture %s, Gateway runs %s: %w: %w", spec.GetCampaignId(), spec.GetGovernancePosture(), gateway, constants.ErrEvaluationPostureUnsupported, constants.ErrGatewayPostureMismatch)
-	}
-	return nil
-}
-
 // PlatformIdentity names the ztd build that froze a campaign.
 type PlatformIdentity struct {
 	// Release is the build version (VERSION, for example "v1.0.0"). Required.
@@ -142,7 +118,6 @@ func MaterializeCampaignSpecWithInvestigation(campaignID string, catalog *evalv1
 		CatalogDigest:       catalog.GetCatalogDigest(),
 		ModelRegistry:       append([]*evalv1.ModelVariant(nil), inventory.Variants...),
 		ModelRegistryDigest: inventory.RegistryDigest,
-		GovernancePosture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
 		ScenarioCount:       uint32(len(catalog.GetScenarios())),
 		RepetitionCount:     repetitionCount,
 		HoldContext:         holdContext && repetitionCount > 1,

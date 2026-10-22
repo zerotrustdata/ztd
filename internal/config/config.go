@@ -58,8 +58,11 @@ type LoadOptions struct {
 	HeartbeatInterval time.Duration // --heartbeat-interval: overrides the 30s default when non-zero
 
 	// Inference backend (ztdllama); enabled by the inference capability.
-	InferenceOllamaEndpoint string
-	InferenceKeepAlive      string
+	InferenceOllamaEndpoint      string
+	InferenceKeepAlive           string
+	InferenceAllowHostedDecision bool
+	InferenceDecisionModels      []string
+	InferenceDecisionOnly        bool
 
 	// ProviderBoundaryObserverID identifies the observer capability.
 	ProviderBoundaryObserverID string
@@ -166,7 +169,10 @@ func (c GatewayConfig) A2AIngressEnabled() bool {
 // The Inference Operator is a worker: it holds no model configuration. Each
 // governed request names the model it wants, chosen by the user in the Console.
 type InferenceConfig struct {
-	Enabled bool
+	DecisionModels      []string
+	DecisionOnly        bool
+	AllowHostedDecision bool
+	Enabled             bool
 
 	// OllamaEndpoint is the HTTP endpoint of the configured Ollama provider
 	// (default: http://127.0.0.1:<InferenceOllamaDefaultPort>). For this
@@ -291,6 +297,9 @@ type GatewayOptions struct {
 	WorkDir                            string
 	InferenceOllamaEndpoint            string
 	InferenceKeepAlive                 string
+	InferenceAllowHostedDecision       bool
+	InferenceDecisionModels            []string
+	InferenceDecisionOnly              bool
 	ProviderBoundaryObserverID         string
 	ProvenanceOperatorID               string
 	ProvenanceOperatorModelStorageRoot string
@@ -508,7 +517,7 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 		// The embedded Operator executes in its own runtime directory, never in
 		// the project, so model-driven work cannot touch ztd source or state.
 		WorkDir:                  paths.EmbeddedOperatorWorkDir,
-		Inference:                newInferenceConfig(capabilities.Has(constants.OperatorCapabilityInference), LoadOptions{InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint, InferenceKeepAlive: opts.InferenceKeepAlive}),
+		Inference:                newInferenceConfig(capabilities.Has(constants.OperatorCapabilityInference), LoadOptions{InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint, InferenceKeepAlive: opts.InferenceKeepAlive, InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision, InferenceDecisionModels: opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly}),
 		ProviderBoundaryObserver: newProviderBoundaryObserverConfig(capabilities.Has(constants.OperatorCapabilityObserver), LoadOptions{ProviderBoundaryObserverID: opts.ProviderBoundaryObserverID}),
 		ProvenanceOperator:       provenance,
 
@@ -683,7 +692,9 @@ func newInferenceConfig(enabled bool, opts LoadOptions) InferenceConfig {
 		endpoint = fmt.Sprintf("http://127.0.0.1:%d", constants.InferenceOllamaDefaultPort)
 	}
 	return InferenceConfig{
-		Enabled:        enabled,
+		Enabled:             enabled,
+		AllowHostedDecision: opts.InferenceAllowHostedDecision,
+		DecisionModels:      append([]string(nil), opts.InferenceDecisionModels...), DecisionOnly: opts.InferenceDecisionOnly,
 		OllamaEndpoint: endpoint,
 		KeepAlive:      cmp.Or(opts.InferenceKeepAlive, constants.InferenceDefaultKeepAlive),
 	}

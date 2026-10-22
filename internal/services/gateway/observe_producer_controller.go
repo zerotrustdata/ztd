@@ -177,7 +177,7 @@ func (c *ObserveProducerController) handleAgentState(w http.ResponseWriter, r *h
 // app.run.status.updated SSE event (persist-before-publish).
 //
 // @Summary		Push observe run state
-// @Description	Accepts a typed run state update from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the run state projection, and emits an app.run.status.updated SSE event after successful persistence.
+// @Description	Accepts a typed run state update from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the run state projection, and emits an app.run.status.updated SSE event after successful persistence. A request naming reopens replaces exactly that terminal projected status with a non-terminal one; it is a producer repair for a projection its local store contradicts.
 // @Tags			observe
 // @Accept			json
 // @Produce		json
@@ -229,7 +229,12 @@ func (c *ObserveProducerController) handleRunState(w http.ResponseWriter, r *htt
 		EndedAt:        req.EndedAt,
 		ObservedAt:     req.ObservedAt,
 	}
-	if err := c.producerSvc.UpdateRunState(r.Context(), userID, route, payload); err != nil {
+	if req.Reopens != "" {
+		err = c.producerSvc.ReopenRunState(r.Context(), userID, route, payload, req.Reopens)
+	} else {
+		err = c.producerSvc.UpdateRunState(r.Context(), userID, route, payload)
+	}
+	if err != nil {
 		c.rejectProducerRequest(w, r.URL.Path, err)
 		return
 	}

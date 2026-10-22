@@ -21,6 +21,10 @@ var failureCodes = []struct {
 	sentinel error
 	code     operatorv1.InferenceDispatchFailureCode
 }{
+	{constants.ErrInferenceDecisionRequestInvalid, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID},
+	{constants.ErrInferenceDecisionResponseInvalid, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID},
+	{constants.ErrInferenceDecisionUnsupported, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED},
+	{constants.ErrInferenceHostedNotAllowed, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED},
 	{constants.ErrInternal, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL},
 	{constants.ErrInferenceOutcomeUnknown, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_OUTCOME_UNKNOWN},
 	{constants.ErrDispatchResultTimeout, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_RESULT_TIMEOUT},

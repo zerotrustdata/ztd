@@ -86,7 +86,13 @@ func SelectInferenceOperatorForHardware(
 	sessionID string,
 	systemFingerprint string,
 ) (*InferenceOperatorStatus, error) {
-	matches := activeInferenceOperatorDocs(operators, systemFingerprint)
+	var eligible []*operatorv1.OperatorDocument
+	for _, op := range operators {
+		if sessionID != "" || !op.GetRuntimeConfig().GetInferenceDecisionOnly() {
+			eligible = append(eligible, op)
+		}
+	}
+	matches := activeInferenceOperatorDocs(eligible, systemFingerprint)
 	if sessionID != "" {
 		for _, op := range matches {
 			if op.GetOperatorSessionId() == sessionID {

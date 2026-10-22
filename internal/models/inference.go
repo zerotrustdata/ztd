@@ -106,6 +106,8 @@ type EgressScrubber interface {
 
 // GenerateResponse carries ordered model response parts, usage metadata, and finish reason returned by the backend.
 type GenerateResponse struct {
+	HostedEgress          *operatorv1.InferenceHostedEgressAttestation
+	Decision              *operatorv1.InferenceDecisionResult
 	Parts                 []*operatorv1.InferenceResponsePart
 	PromptTokens          int32
 	CompletionTokens      int32
@@ -147,6 +149,7 @@ type BackendStatus struct {
 
 // InferenceRequestPayload is the typed governed inference payload decoded from the protobuf InferenceRequested message.
 type InferenceRequestPayload struct {
+	Decision             *operatorv1.InferenceDecisionRequest
 	Role                 InferenceModelRole
 	Model                string
 	Messages             []*operatorv1.InferenceMessage
@@ -231,6 +234,7 @@ func FromProtoInferenceRequested(req *operatorv1.InferenceRequested) InferenceRe
 	}
 	return InferenceRequestPayload{
 		Role:                 InferenceModelRoleFromProto(req.GetRole()),
+		Decision:             cloneDecisionRequest(req.GetDecision()),
 		Model:                req.GetModel(),
 		Messages:             messages,
 		Tools:                tools,
@@ -306,6 +310,8 @@ func (p InferenceRequestPayload) ToGenerateRequest(defaultModel string) Generate
 func (r GenerateResponse) ToProtoInferenceResult() *operatorv1.InferenceResult {
 	return &operatorv1.InferenceResult{
 		Parts:                 r.Parts,
+		Decision:              r.Decision,
+		HostedEgress:          r.HostedEgress,
 		PromptTokens:          r.PromptTokens,
 		CompletionTokens:      r.CompletionTokens,
 		TotalTokens:           r.TotalTokens,

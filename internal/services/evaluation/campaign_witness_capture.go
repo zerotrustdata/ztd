@@ -142,7 +142,7 @@ func (c *CampaignWitnessCapture) WaitForRunProviderObservationEvidence(ctx conte
 }
 
 // runScoredAttemptIDs returns the provider attempt ID of every scored inference in
-// one run's persisted assignment results.
+// one run's persisted assignment results that reached its provider.
 func (c *CampaignWitnessCapture) runScoredAttemptIDs(ctx context.Context, runID string) ([]string, error) {
 	results, err := c.persistedResults(ctx, runID)
 	if err != nil {
@@ -151,7 +151,10 @@ func (c *CampaignWitnessCapture) runScoredAttemptIDs(ctx context.Context, runID 
 	var attemptIDs []string
 	for _, result := range results {
 		for _, record := range scoredModelInferences(result) {
-			attemptIDs = append(attemptIDs, record.GetProviderAttemptId())
+			// A governance-rejected inference has no provider attempt.
+			if attemptID := record.GetProviderAttemptId(); attemptID != "" {
+				attemptIDs = append(attemptIDs, attemptID)
+			}
 		}
 	}
 	return attemptIDs, nil

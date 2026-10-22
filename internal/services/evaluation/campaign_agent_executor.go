@@ -402,9 +402,11 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	} else if workspace, err = NewScenarioWorkspace(topology.DataWorkingDirectory, assignment.GetRunId(), req.AttemptID); err != nil {
 		return nil, err
 	}
+	// A rejected scenario contract fails the assignment, not the run: nothing
+	// has acted yet, and later assignments may use other scenarios.
 	tools, err := e.catalog.Scope(req.ScenarioTools)
 	if err != nil {
-		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: %w", err)
+		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: scope tools", err)
 	}
 	return &agentRun{
 		executor:   e,
@@ -452,7 +454,10 @@ func (r *agentRun) loop(ctx context.Context) error {
 	for turn := 1; turn <= agentMaxLoopTurns; turn++ {
 		result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeTurn, LoopTurn: turn}, messages, tools)
 		if call == nil {
-			r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
+			// A turn infer already classified (a signed L2 denial) keeps it.
+			if r.trace.TerminalClassification == "" {
+				r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
+			}
 			return nil
 		}
 		text, thinking, toolCalls := agentResponseParts(result)
@@ -741,6 +746,14 @@ func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*
 // for a Tribunal call its tool call and persona); dispatch fills the rest.
 func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, *AgentModelCall) {
 	result, call, err := r.dispatchInference(ctx, call, messages, tools)
+	if err != nil && call.Receipt != nil && isL2GovernanceDenial(call.Receipt.ActionReceipt, err) {
+		// Required L2 refused the turn and the Inference runtime signed that
+		// rejection: a governance outcome, not a provider failure.
+		call.Error = modelCallGovernanceRejected
+		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
+		r.trace.TerminalClassification = AgentTerminalClassificationPolicyDenial
+		return nil, nil
+	}
 	if err != nil {
 		r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
 		r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
@@ -1457,10 +1470,16 @@ func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *
 			modelRole = campaignRoleFromInferenceString(call.ModelRole)
 			variant = resolved[modelRole]
 		}
+		// A governance-rejected inference never reached the provider, so it has
+		// no provider attempt and no observation or provenance window.
+		attemptID := call.ProviderAttemptID
+		if call.Receipt != nil && governance.IsGovernanceRejectionReceipt(call.Receipt.ActionReceipt) {
+			attemptID = ""
+		}
 		record := &evalv1.ModelInferenceRecord{
 			InferenceRecordId:       newID("inference"),
 			Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
-			ProviderAttemptId:       call.ProviderAttemptID,
+			ProviderAttemptId:       attemptID,
 			AssignmentId:            assignment.GetAssignmentId(),
 			EvaluationAttemptId:     trace.EvaluationAttemptID,
 			ModelRole:               modelRole,

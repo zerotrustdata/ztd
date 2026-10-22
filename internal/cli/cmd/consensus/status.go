@@ -23,16 +23,18 @@ import (
 
 // consensusStatus is the typed output of `ztd consensus status`.
 type consensusStatus struct {
-	Bound           bool              `json:"bound"`
-	Provider        string            `json:"provider,omitempty"`
-	Quorum          int               `json:"quorum,omitempty"`
-	ModelTag        string            `json:"model_tag,omitempty"`
-	Members         []string          `json:"members"`
-	Usable          int               `json:"usable"`
-	Ready           bool              `json:"ready"`
-	Posture         constants.Posture `json:"posture"`
-	GovernanceReady bool              `json:"governance_ready"`
-	L2Enforced      bool              `json:"l2_enforced"`
+	VoteKind            string            `json:"vote_kind,omitempty"`
+	InferenceOperatorID string            `json:"inference_operator_id,omitempty"`
+	Bound               bool              `json:"bound"`
+	Provider            string            `json:"provider,omitempty"`
+	Quorum              int               `json:"quorum,omitempty"`
+	ModelTag            string            `json:"model_tag,omitempty"`
+	Members             []string          `json:"members"`
+	Usable              int               `json:"usable"`
+	Ready               bool              `json:"ready"`
+	Posture             constants.Posture `json:"posture"`
+	GovernanceReady     bool              `json:"governance_ready"`
+	L2Enforced          bool              `json:"l2_enforced"`
 }
 
 func statusCmd(newClient func() (authcmd.APIClient, error)) *cobra.Command {
@@ -102,6 +104,10 @@ func buildStatus(binding *models.ConsensusPolicy, health models.HealthResponse) 
 	status.Provider = string(provider)
 	status.Quorum = binding.Quorum
 	status.ModelTag = binding.ModelTag
+	if provider == constants.ConsensusProviderTribunal {
+		status.VoteKind = binding.EffectiveVoteKind()
+	}
+	status.InferenceOperatorID = binding.InferenceOperatorID
 	status.Members = binding.MemberAppIDs
 	return status, nil
 }
@@ -113,6 +119,12 @@ func writeStatusText(w io.Writer, s consensusStatus) {
 		fmt.Fprintln(w, "Consensus  bound")
 		fmt.Fprintf(w, "Provider   %s\n", s.Provider)
 		fmt.Fprintf(w, "Quorum     %d-of-%d\n", s.Quorum, len(s.Members))
+		if s.VoteKind != "" {
+			fmt.Fprintf(w, "Vote kind  %s\n", s.VoteKind)
+		}
+		if s.InferenceOperatorID != "" {
+			fmt.Fprintf(w, "Inference  %s\n", s.InferenceOperatorID)
+		}
 		if s.ModelTag != "" {
 			fmt.Fprintf(w, "Model      %s\n", s.ModelTag)
 		}

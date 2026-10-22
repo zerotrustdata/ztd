@@ -230,9 +230,9 @@ func TestCampaignTribunalIntegration_TribunalCommandsWithoutRunCommandsFailsClos
 		},
 	})
 
-	_, _, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
+	result, executed, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
 
-	require.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
+	requireScenarioContractFailure(t, result, executed, err)
 	assert.Zero(t, env.stack.Provider.ChatCount(), "no model call before the tool surface resolves")
 }
 

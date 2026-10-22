@@ -28,11 +28,12 @@ type tribunalAuthoringInference struct {
 	probeCalls  int
 	intent      *tribunalv1.TribunalIntentRequest
 	result      *tribunalv1.TribunalIntentResult
+	probeErr    error
 }
 
 func (f *tribunalAuthoringInference) DispatchInference(context.Context, *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 	f.probeCalls++
-	return nil, nil
+	return nil, f.probeErr
 }
 
 func (f *tribunalAuthoringInference) DispatchIntent(_ context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
@@ -121,7 +122,7 @@ func TestRecordMemberCallsClassifiesOnlyReceiptBackedL2DenialAsPolicyOutcome(t *
 		assert.Empty(t, run.trace.ProviderFailure)
 		assert.Empty(t, run.trace.ProviderFailureClass)
 		require.Len(t, run.trace.ModelCalls, 1)
-		assert.Equal(t, tribunalModelCallGovernanceRejected, run.trace.ModelCalls[0].Error)
+		assert.Equal(t, modelCallGovernanceRejected, run.trace.ModelCalls[0].Error)
 		assert.Equal(t, "tx-denied", run.trace.ModelCalls[0].TransactionID)
 		require.NotNil(t, run.trace.ModelCalls[0].Receipt)
 		assert.Same(t, receipt, run.trace.ModelCalls[0].Receipt.ActionReceipt)

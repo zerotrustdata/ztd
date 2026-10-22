@@ -959,6 +959,7 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		Quorum:       int(payload.GetConsensusQuorum()),
 		ModelTag:     payload.GetConsensusModelTag(),
 		ModelDigest:  payload.GetConsensusModelDigest(),
+		VoteKind:     payload.GetConsensusVoteKind(), InferenceOperatorID: payload.GetConsensusInferenceOperatorId(), VoteThresholds: models.ConsensusThresholdsFromProto(payload.GetConsensusVoteThresholds()), AllowHosted: payload.GetConsensusAllowHosted(),
 	})
 	if err != nil {
 		return "", fmt.Errorf("platform enrollment: %w", err)
@@ -1019,9 +1020,10 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 		Provider:        string(spec.Provider),
 		ModelTag:        spec.ModelTag,
 		ModelDigest:     spec.ModelDigest,
-		Enabled:         true,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		VoteKind:        spec.VoteKind, InferenceOperatorID: spec.InferenceOperatorID, VoteThresholds: spec.VoteThresholds, AllowHosted: spec.AllowHosted,
+		Enabled:   true,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	data, err := json.Marshal(consensusDoc)
 	if err != nil {

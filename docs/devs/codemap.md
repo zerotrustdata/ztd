@@ -497,6 +497,8 @@ make swagger-generate
 - Attributing TypeScript protobuf generation to root `buf.gen.yaml` (`INV-PROTO-01`).
 - Maintaining a duplicate flag dump in place of directing readers to `./ztd <command> --help` (`INV-ENV-03`).
 
+Typed decision backends live in `internal/services/inference/systemone.go` (local Ollama) and `typesafe_backend.go` (explicitly opted-in hosted Jev); member questions belong to `internal/services/tribunal/consensus_decision.go`. See [Decision Model Votes](../architecture/consensus.md#decision-model-votes-opt-in) for binding and isolation rules.
+
 ## Links out
 
 - [Developer Guidelines](devs.md): coding invariants. CLI group placement is `INV-CLI-01`. Gateway construction is [Gateway governance construction](devs.md#gateway-governance-construction).

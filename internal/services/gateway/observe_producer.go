@@ -132,6 +132,17 @@ var runTransitions = map[models.RunLifecycleStatus]map[models.RunLifecycleStatus
 	},
 }
 
+// isTerminalRunStatus reports whether status has no outgoing transition to a
+// non-terminal status in runTransitions.
+func isTerminalRunStatus(status models.RunLifecycleStatus) bool {
+	switch status {
+	case models.RunLifecycleStatusCompleted, models.RunLifecycleStatusFailed, models.RunLifecycleStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
 // isValidAgentTransition returns true if transitioning from current to next is
 // allowed by agentTransitions. A zero-value current (no existing projection)
 // accepts any target status.
@@ -294,6 +305,23 @@ func (s *ObserveProducerService) UpdateAgentState(ctx context.Context, userID st
 // stale, or persistence or emission fails. No SSE event is emitted if
 // persistence fails (persist-before-publish).
 func (s *ObserveProducerService) UpdateRunState(ctx context.Context, userID string, route SSERoute, payload models.RunStatusUpdatedPayload) error {
+	return s.updateRunState(ctx, userID, route, payload, "")
+}
+
+// ReopenRunState applies a repair that replaces the terminal status reopens
+// with payload's non-terminal status, because the producer's authoritative
+// local store contradicts the projection. It bypasses runTransitions only while
+// the projection holds exactly reopens (compare-and-set); any other projected
+// status takes the normal transition rules, and the stale-update guard always
+// applies. A reopen that is applied is logged as an audit warning.
+func (s *ObserveProducerService) ReopenRunState(ctx context.Context, userID string, route SSERoute, payload models.RunStatusUpdatedPayload, reopens models.RunLifecycleStatus) error {
+	if !isTerminalRunStatus(reopens) || isTerminalRunStatus(payload.Status) {
+		return fmt.Errorf("observe producer: reopen run state: %w: reopens %q toward %q", constants.ErrObserveStatusInvalid, reopens, payload.Status)
+	}
+	return s.updateRunState(ctx, userID, route, payload, reopens)
+}
+
+func (s *ObserveProducerService) updateRunState(ctx context.Context, userID string, route SSERoute, payload models.RunStatusUpdatedPayload, reopens models.RunLifecycleStatus) error {
 	if payload.RunID == "" {
 		return fmt.Errorf("observe producer: update run state: %w", constants.ErrObserveRunIDRequired)
 	}
@@ -321,7 +349,8 @@ func (s *ObserveProducerService) UpdateRunState(ctx context.Context, userID stri
 		if proj.UserID != userID {
 			return fmt.Errorf("observe producer: update run state: %w: run %s owned by different user", constants.ErrObserveRunNotFound, payload.RunID)
 		}
-		if !isValidRunTransition(proj.Status, payload.Status) {
+		reopening := reopens != "" && proj.Status == reopens
+		if !reopening && !isValidRunTransition(proj.Status, payload.Status) {
 			return fmt.Errorf("observe producer: update run state: %w", &models.ObserveTransitionError{
 				Kind: models.ObserveProjectionKindRun, ID: payload.RunID, From: string(proj.Status), To: string(payload.Status),
 			})
@@ -330,6 +359,11 @@ func (s *ObserveProducerService) UpdateRunState(ctx context.Context, userID stri
 			return fmt.Errorf("observe producer: update run state: %w", &models.ObserveStaleUpdateError{
 				Kind: models.ObserveProjectionKindRun, ID: payload.RunID, ObservedAt: payload.ObservedAt, ProjectedAt: proj.ObservedAt,
 			})
+		}
+		if reopening {
+			s.logger.Warn("observe producer: run projection reopened by producer repair",
+				"run_id", payload.RunID, "user_id", userID, "from", proj.Status, "to", payload.Status,
+				"projected_at", proj.ObservedAt, "observed_at", payload.ObservedAt)
 		}
 		existingProj = &proj
 	}

@@ -1133,10 +1133,14 @@ type PlatformEnrollmentGovernancePayload struct {
 	// Vote producer for the binding: "application" (empty) or "tribunal".
 	ConsensusProvider string `protobuf:"bytes,24,opt,name=consensus_provider,json=consensusProvider,proto3" json:"consensus_provider,omitempty"`
 	// Pinned model the Tribunal provider's members vote with.
-	ConsensusModelTag    string `protobuf:"bytes,25,opt,name=consensus_model_tag,json=consensusModelTag,proto3" json:"consensus_model_tag,omitempty"`
-	ConsensusModelDigest string `protobuf:"bytes,26,opt,name=consensus_model_digest,json=consensusModelDigest,proto3" json:"consensus_model_digest,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	ConsensusModelTag            string                        `protobuf:"bytes,25,opt,name=consensus_model_tag,json=consensusModelTag,proto3" json:"consensus_model_tag,omitempty"`
+	ConsensusModelDigest         string                        `protobuf:"bytes,26,opt,name=consensus_model_digest,json=consensusModelDigest,proto3" json:"consensus_model_digest,omitempty"`
+	ConsensusVoteKind            string                        `protobuf:"bytes,27,opt,name=consensus_vote_kind,json=consensusVoteKind,proto3" json:"consensus_vote_kind,omitempty"`
+	ConsensusInferenceOperatorId string                        `protobuf:"bytes,28,opt,name=consensus_inference_operator_id,json=consensusInferenceOperatorId,proto3" json:"consensus_inference_operator_id,omitempty"`
+	ConsensusVoteThresholds      []*ConsensusDecisionThreshold `protobuf:"bytes,29,rep,name=consensus_vote_thresholds,json=consensusVoteThresholds,proto3" json:"consensus_vote_thresholds,omitempty"`
+	ConsensusAllowHosted         bool                          `protobuf:"varint,30,opt,name=consensus_allow_hosted,json=consensusAllowHosted,proto3" json:"consensus_allow_hosted,omitempty"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *PlatformEnrollmentGovernancePayload) Reset() {
@@ -1349,6 +1353,34 @@ func (x *PlatformEnrollmentGovernancePayload) GetConsensusModelDigest() string {
 		return x.ConsensusModelDigest
 	}
 	return ""
+}
+
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusVoteKind() string {
+	if x != nil {
+		return x.ConsensusVoteKind
+	}
+	return ""
+}
+
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusInferenceOperatorId() string {
+	if x != nil {
+		return x.ConsensusInferenceOperatorId
+	}
+	return ""
+}
+
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusVoteThresholds() []*ConsensusDecisionThreshold {
+	if x != nil {
+		return x.ConsensusVoteThresholds
+	}
+	return nil
+}
+
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusAllowHosted() bool {
+	if x != nil {
+		return x.ConsensusAllowHosted
+	}
+	return false
 }
 
 type PlatformEnrollmentDecisionTarget struct {
@@ -1629,6 +1661,59 @@ func (x *CommandIntent) GetCliSessionId() string {
 	return ""
 }
 
+// Frozen per-member approval probability threshold for decision voting.
+type ConsensusDecisionThreshold struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MemberAppId   string                 `protobuf:"bytes,1,opt,name=member_app_id,json=memberAppId,proto3" json:"member_app_id,omitempty"`
+	Threshold     float64                `protobuf:"fixed64,2,opt,name=threshold,proto3" json:"threshold,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsensusDecisionThreshold) Reset() {
+	*x = ConsensusDecisionThreshold{}
+	mi := &file_ztd_common_v1_common_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsensusDecisionThreshold) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsensusDecisionThreshold) ProtoMessage() {}
+
+func (x *ConsensusDecisionThreshold) ProtoReflect() protoreflect.Message {
+	mi := &file_ztd_common_v1_common_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsensusDecisionThreshold.ProtoReflect.Descriptor instead.
+func (*ConsensusDecisionThreshold) Descriptor() ([]byte, []int) {
+	return file_ztd_common_v1_common_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ConsensusDecisionThreshold) GetMemberAppId() string {
+	if x != nil {
+		return x.MemberAppId
+	}
+	return ""
+}
+
+func (x *ConsensusDecisionThreshold) GetThreshold() float64 {
+	if x != nil {
+		return x.Threshold
+	}
+	return 0
+}
+
 var file_ztd_common_v1_common_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
@@ -1739,7 +1824,7 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x10\n" +
 	"\x03cli\x18\x03 \x01(\tR\x03cli\x12\x1f\n" +
 	"\vsigning_key\x18\x04 \x01(\tR\n" +
-	"signingKey\"\xf0\t\n" +
+	"signingKey\"\x84\f\n" +
 	"#PlatformEnrollmentGovernancePayload\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x16\n" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x1d\n" +
@@ -1770,7 +1855,11 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\x10consensus_quorum\x18\x17 \x01(\rR\x0fconsensusQuorum\x12-\n" +
 	"\x12consensus_provider\x18\x18 \x01(\tR\x11consensusProvider\x12.\n" +
 	"\x13consensus_model_tag\x18\x19 \x01(\tR\x11consensusModelTag\x124\n" +
-	"\x16consensus_model_digest\x18\x1a \x01(\tR\x14consensusModelDigest\"\x94\x01\n" +
+	"\x16consensus_model_digest\x18\x1a \x01(\tR\x14consensusModelDigest\x12.\n" +
+	"\x13consensus_vote_kind\x18\x1b \x01(\tR\x11consensusVoteKind\x12E\n" +
+	"\x1fconsensus_inference_operator_id\x18\x1c \x01(\tR\x1cconsensusInferenceOperatorId\x12e\n" +
+	"\x19consensus_vote_thresholds\x18\x1d \x03(\v2).ztd.common.v1.ConsensusDecisionThresholdR\x17consensusVoteThresholds\x124\n" +
+	"\x16consensus_allow_hosted\x18\x1e \x01(\bR\x14consensusAllowHosted\"\x94\x01\n" +
 	" PlatformEnrollmentDecisionTarget\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12Q\n" +
@@ -1801,7 +1890,10 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\atask_id\x18\n" +
 	" \x01(\tR\x06taskId\x12$\n" +
 	"\x0eweb_session_id\x18\v \x01(\tR\fwebSessionId\x12$\n" +
-	"\x0ecli_session_id\x18\f \x01(\tR\fcliSessionId:\x02\x18\x01*e\n" +
+	"\x0ecli_session_id\x18\f \x01(\tR\fcliSessionId:\x02\x18\x01\"^\n" +
+	"\x1aConsensusDecisionThreshold\x12\"\n" +
+	"\rmember_app_id\x18\x01 \x01(\tR\vmemberAppId\x12\x1c\n" +
+	"\tthreshold\x18\x02 \x01(\x01R\tthreshold*e\n" +
 	"\tComponent\x12\x19\n" +
 	"\x15COMPONENT_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fCOMPONENT_AGENT\x10\x01\x12\x12\n" +
@@ -1831,7 +1923,7 @@ func file_ztd_common_v1_common_proto_rawDescGZIP() []byte {
 }
 
 var file_ztd_common_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_ztd_common_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_ztd_common_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_ztd_common_v1_common_proto_goTypes = []any{
 	(Component)(0),                                 // 0: ztd.common.v1.Component
 	(PlatformComponentKind)(0),                     // 1: ztd.common.v1.PlatformComponentKind
@@ -1850,9 +1942,10 @@ var file_ztd_common_v1_common_proto_goTypes = []any{
 	(*PlatformEnrollmentDecisionTarget)(nil),       // 14: ztd.common.v1.PlatformEnrollmentDecisionTarget
 	(*PlatformEnrollmentCompletionTranscript)(nil), // 15: ztd.common.v1.PlatformEnrollmentCompletionTranscript
 	(*CommandIntent)(nil),                          // 16: ztd.common.v1.CommandIntent
-	(*timestamppb.Timestamp)(nil),                  // 17: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                        // 18: google.protobuf.Struct
-	(*descriptorpb.FieldOptions)(nil),              // 19: google.protobuf.FieldOptions
+	(*ConsensusDecisionThreshold)(nil),             // 17: ztd.common.v1.ConsensusDecisionThreshold
+	(*timestamppb.Timestamp)(nil),                  // 18: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                        // 19: google.protobuf.Struct
+	(*descriptorpb.FieldOptions)(nil),              // 20: google.protobuf.FieldOptions
 }
 var file_ztd_common_v1_common_proto_depIdxs = []int32{
 	4,  // 0: ztd.common.v1.L2Metadata.votes:type_name -> ztd.common.v1.L2Vote
@@ -1862,24 +1955,25 @@ var file_ztd_common_v1_common_proto_depIdxs = []int32{
 	3,  // 4: ztd.common.v1.GovernanceMetadata.l1:type_name -> ztd.common.v1.L1Metadata
 	6,  // 5: ztd.common.v1.GovernanceMetadata.l2:type_name -> ztd.common.v1.L2Metadata
 	9,  // 6: ztd.common.v1.GovernanceMetadata.l3:type_name -> ztd.common.v1.L3Metadata
-	17, // 7: ztd.common.v1.GovernanceEnvelope.timestamp:type_name -> google.protobuf.Timestamp
-	17, // 8: ztd.common.v1.GovernanceEnvelope.expires_at:type_name -> google.protobuf.Timestamp
+	18, // 7: ztd.common.v1.GovernanceEnvelope.timestamp:type_name -> google.protobuf.Timestamp
+	18, // 8: ztd.common.v1.GovernanceEnvelope.expires_at:type_name -> google.protobuf.Timestamp
 	0,  // 9: ztd.common.v1.GovernanceEnvelope.source_component:type_name -> ztd.common.v1.Component
-	18, // 10: ztd.common.v1.GovernanceEnvelope.intent_data:type_name -> google.protobuf.Struct
+	19, // 10: ztd.common.v1.GovernanceEnvelope.intent_data:type_name -> google.protobuf.Struct
 	10, // 11: ztd.common.v1.GovernanceEnvelope.governance:type_name -> ztd.common.v1.GovernanceMetadata
 	1,  // 12: ztd.common.v1.PlatformEnrollmentGovernancePayload.component_kind:type_name -> ztd.common.v1.PlatformComponentKind
 	2,  // 13: ztd.common.v1.PlatformEnrollmentGovernancePayload.decision:type_name -> ztd.common.v1.PlatformEnrollmentDecision
 	12, // 14: ztd.common.v1.PlatformEnrollmentGovernancePayload.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
 	14, // 15: ztd.common.v1.PlatformEnrollmentGovernancePayload.decision_targets:type_name -> ztd.common.v1.PlatformEnrollmentDecisionTarget
-	12, // 16: ztd.common.v1.PlatformEnrollmentDecisionTarget.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
-	1,  // 17: ztd.common.v1.PlatformEnrollmentCompletionTranscript.component_kind:type_name -> ztd.common.v1.PlatformComponentKind
-	12, // 18: ztd.common.v1.PlatformEnrollmentCompletionTranscript.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
-	19, // 19: ztd.common.v1.forbidden_patterns:extendee -> google.protobuf.FieldOptions
-	20, // [20:20] is the sub-list for method output_type
-	20, // [20:20] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	19, // [19:20] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	17, // 16: ztd.common.v1.PlatformEnrollmentGovernancePayload.consensus_vote_thresholds:type_name -> ztd.common.v1.ConsensusDecisionThreshold
+	12, // 17: ztd.common.v1.PlatformEnrollmentDecisionTarget.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
+	1,  // 18: ztd.common.v1.PlatformEnrollmentCompletionTranscript.component_kind:type_name -> ztd.common.v1.PlatformComponentKind
+	12, // 19: ztd.common.v1.PlatformEnrollmentCompletionTranscript.fingerprints:type_name -> ztd.common.v1.PlatformEnrollmentFingerprints
+	20, // 20: ztd.common.v1.forbidden_patterns:extendee -> google.protobuf.FieldOptions
+	21, // [21:21] is the sub-list for method output_type
+	21, // [21:21] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	20, // [20:21] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_ztd_common_v1_common_proto_init() }
@@ -1893,7 +1987,7 @@ func file_ztd_common_v1_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ztd_common_v1_common_proto_rawDesc), len(file_ztd_common_v1_common_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   14,
+			NumMessages:   15,
 			NumExtensions: 1,
 			NumServices:   0,
 		},

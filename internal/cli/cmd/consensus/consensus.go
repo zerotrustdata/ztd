@@ -115,6 +115,7 @@ func decodeConsensusBinding(body []byte) (*models.ConsensusPolicy, error) {
 		Quorum:       policy.Quorum,
 		ModelTag:     policy.ModelTag,
 		ModelDigest:  policy.ModelDigest,
+		VoteKind:     policy.VoteKind, InferenceOperatorID: policy.InferenceOperatorID, VoteThresholds: policy.VoteThresholds, AllowHosted: policy.AllowHosted,
 	}); err != nil {
 		return nil, fmt.Errorf("consensus binding %s: %w: %w", provider, constants.ErrInvalidJSONResponse, err)
 	}

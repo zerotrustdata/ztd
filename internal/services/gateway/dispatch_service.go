@@ -217,10 +217,12 @@ type DispatchRequest struct {
 	OnInferenceProgress func(*operatorv1.InferenceProgressEvent) error
 
 	// OnAdmitted runs once the envelope holds every admission proof (L2
-	// deliberation and any L3 approval) and before it is published. Its ctx
-	// binds that admitted envelope: observation commands dispatched under it
-	// carry the parent's L2 quorum (withWitnessParent). An error stops the
-	// dispatch before publish.
+	// quorum and any L3 approval) and before it is published. Its ctx binds
+	// that admitted envelope: observation commands dispatched under it carry
+	// the parent's L2 quorum (withWitnessParent). An envelope the deliberation
+	// left short of quorum never runs it and publishes unchanged, so the
+	// executing Operator signs its L2 rejection. An error stops the dispatch
+	// before publish.
 	OnAdmitted func(ctx context.Context) error
 }
 
@@ -308,8 +310,8 @@ func (d *DispatchService) attachDeliberationAttestation(ctx context.Context, env
 
 // witnessParentKey carries the admitted INFERENCE whose attempt the
 // observation commands dispatched under ctx witness. It is unexported: only
-// Dispatch sets it, after the parent holds its L2 quorum, so no ingress can
-// claim a witness binding.
+// Dispatch sets it, after the parent holds its L2 quorum (holdsL2Quorum), so
+// no ingress can claim a witness binding.
 type witnessParentKey struct{}
 
 // witnessParent is an admitted parent INFERENCE's transaction hash and L2
@@ -375,15 +377,52 @@ func attachWitnessBinding(ctx context.Context, env *commonv1.GovernanceEnvelope)
 	return nil
 }
 
-// admit runs req.OnAdmitted under a ctx bound to the admitted envelope.
-func admit(ctx context.Context, req DispatchRequest, admitted *commonv1.GovernanceEnvelope) error {
-	if req.OnAdmitted == nil {
+// admit runs req.OnAdmitted under a ctx bound to the admitted envelope, once
+// admitted holds its L2 quorum. A quorum-short envelope runs nothing: it is
+// published unchanged and the executing Operator signs its L2 rejection, so no
+// witness begins for an inference that never executes.
+func (d *DispatchService) admit(ctx context.Context, req DispatchRequest, admitted *commonv1.GovernanceEnvelope) error {
+	if req.OnAdmitted == nil || !d.holdsL2Quorum(ctx, admitted) {
 		return nil
 	}
 	if err := req.OnAdmitted(withWitnessParent(ctx, admitted)); err != nil {
 		return fmt.Errorf("dispatch: admitted: %w", err)
 	}
 	return nil
+}
+
+// holdsL2Quorum reports whether admitted holds the L2 proof its executing L4
+// will require: L2 does not gate the action, the envelope is
+// deliberation-exempt, or its votes verify to the bound consensus quorum
+// (governance.VerifyL2Quorum). Without quorum sources it never holds where L2
+// gates the action. The Operator's L4 stays the authority; this only decides
+// whether the admitted envelope's witnesses begin.
+func (d *DispatchService) holdsL2Quorum(ctx context.Context, admitted *commonv1.GovernanceEnvelope) bool {
+	if !governance.L2Enforced(constants.ActionType(admitted.GetActionType()), d.posture) || governance.L2DeliberationExempt(admitted) {
+		return true
+	}
+	if d.l2Policies == nil {
+		return false
+	}
+	l2 := admitted.GetGovernance().GetL2()
+	policy, err := d.l2Policies.GetConsensusPolicy(ctx, l2.GetConsensusSetId())
+	if err == nil {
+		err = governance.VerifyL2Quorum(ctx, d.l2Signers, policy, l2, admitted.GetTransactionHash())
+	}
+	if err != nil {
+		d.logger.Info("Admitted envelope lacks L2 quorum; publishing for the Operator's rejection",
+			"transaction_hash", admitted.GetTransactionHash(), "action_type", admitted.GetActionType(), string(constants.ConnectionStateError), err)
+		return false
+	}
+	return true
+}
+
+// SetL2QuorumSources wires the consensus policies and trusted signers
+// holdsL2Quorum verifies an admitted envelope's votes against: the same
+// sources the embedded Operator's L4 uses.
+func (d *DispatchService) SetL2QuorumSources(policies governance.L2ConsensusPolicyStore, signers governance.SignerStore) {
+	d.l2Policies = policies
+	d.l2Signers = signers
 }
 
 // SetConsensusMemberSigner wires the Tribunal consensus member signer. A nil
@@ -419,6 +458,8 @@ type DispatchService struct {
 	l2Deliberator     L2ConsensusDeliberator
 	signerStore       ReceiptSignerResolver
 	memberSigner      ConsensusMemberSigner
+	l2Policies        governance.L2ConsensusPolicyStore
+	l2Signers         governance.SignerStore
 }
 
 // NewDispatchService creates a DispatchService wired to the gateway's in-process
@@ -542,7 +583,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 			d.approvals.finish(env.Id, pending, nil, err)
 			return nil, err
 		}
-		if err := admit(ctx, req, resumed); err != nil {
+		if err := d.admit(ctx, req, resumed); err != nil {
 			d.approvals.finish(env.Id, pending, nil, err)
 			return nil, err
 		}
@@ -561,7 +602,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		if err := protojson.Unmarshal(wire, admitted); err != nil {
 			return nil, fmt.Errorf("dispatch: decode deliberated envelope: %w", err)
 		}
-		if err := admit(ctx, req, admitted); err != nil {
+		if err := d.admit(ctx, req, admitted); err != nil {
 			return nil, err
 		}
 	}
@@ -1102,6 +1143,9 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 	if err := proto.Unmarshal(cmdEnv.Payload, request); err != nil {
 		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceResultDecode, err)
 	}
+	if err := models.ValidateDecisionCompletion(request.GetDecision(), result); err != nil {
+		return nil, fmt.Errorf("dispatch: %w", err)
+	}
 	if result.GetProviderAttemptId() != request.GetProviderAttemptId() ||
 		(request.GetModel() != "" && result.GetRequestedModel() != request.GetModel()) ||
 		result.GetRequestedModelDigest() != request.GetModelDigest() ||
@@ -1139,6 +1183,14 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 // falls back to the generic execution-failure sentinel.
 func inferenceReceiptFailureError(receipt *operatorv1.ActionReceipt) error {
 	switch receipt.FailureCode {
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID:
+		return constants.ErrInferenceDecisionRequestInvalid
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID:
+		return constants.ErrInferenceDecisionResponseInvalid
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED:
+		return constants.ErrInferenceDecisionUnsupported
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED:
+		return constants.ErrInferenceHostedNotAllowed
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED:
 		return constants.ErrInferenceGovernanceRejected
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED:

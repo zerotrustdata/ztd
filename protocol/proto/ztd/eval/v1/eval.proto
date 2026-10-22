@@ -354,6 +354,8 @@ message EvaluationRun {
   string run_id = 2;
   ztd.compliance.v1.VersionedReference suite_ref = 3;
   EvaluationDeploymentIdentity deployment = 4;
+  // active_posture is the live Gateway posture, frozen at run start. The run
+  // executes and resumes only under this posture.
   EvaluationGovernancePosture active_posture = 5;
   EvaluationLane lane = 6;
   string target_operator_id = 7;
@@ -365,6 +367,26 @@ message EvaluationRun {
   ModelCampaignBinding campaign_binding = 13;
   EvaluationWitnessPolicy provider_observation_policy = 14;
   EvaluationWitnessPolicy model_provenance_policy = 15;
+  // consensus is the live Gateway's L2 consensus binding, frozen at run
+  // start. Absent only on runs started before it existed; those never resume.
+  EvaluationConsensusIdentity consensus = 16;
+}
+
+// EvaluationConsensusIdentity is the L2 consensus binding one run executes
+// under. A run resumes only against the identical binding, so a rebind never
+// mixes two vote producers or vote models in one run.
+message EvaluationConsensusIdentity {
+  bool bound = 1;
+  string binding_id = 2;
+  string provider = 3;
+  string vote_kind = 4;
+  string model_tag = 5;
+  string model_digest = 6;
+  uint32 quorum = 7;
+  repeated string member_app_ids = 8;
+  // binding_digest is the SHA-256 of the complete governing binding,
+  // including the fields not projected above. Empty when unbound.
+  string binding_digest = 9;
 }
 
 message EvaluationAttempt {
@@ -479,6 +501,9 @@ message EvaluationCampaignSpec {
   repeated ModelVariant model_registry = 5;
   string model_registry_digest = 6;
   string campaign_digest = 7;
+  // governance_posture is set only on campaigns frozen before the posture
+  // moved to the run (EvaluationRun.active_posture). New campaigns leave it
+  // unspecified; a campaign runs under whatever posture each run freezes.
   EvaluationGovernancePosture governance_posture = 8;
   uint32 scenario_count = 9;
   uint32 repetition_count = 10;

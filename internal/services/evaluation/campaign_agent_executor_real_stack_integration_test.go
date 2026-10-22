@@ -632,7 +632,8 @@ func TestCampaignAgentExecutorIntegration_DispatchesToolsDespiteRecordedProbeRej
 }
 
 // A scenario naming a tool outside the agent catalog fails closed before any
-// provider request: the executor cannot resolve its tool surface.
+// provider request: the executor cannot resolve its tool surface, so the
+// assignment records a scenario_contract_invalid failure and the run goes on.
 func TestCampaignAgentExecutorIntegration_UncatalogedScenarioToolFailsClosed(t *testing.T) {
 	ctx := t.Context()
 	env := newRealStackAgentRun(t, realStackOptions{
@@ -643,8 +644,19 @@ func TestCampaignAgentExecutorIntegration_UncatalogedScenarioToolFailsClosed(t *
 		},
 	})
 
-	_, _, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
+	result, executed, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, env.binding, env.req.ScenarioArtifacts)
 
-	require.ErrorIs(t, err, constants.ErrEvaluationScenarioContractInvalid)
+	requireScenarioContractFailure(t, result, executed, err)
 	assert.Zero(t, env.stack.Provider.ChatCount(), "no model call before the tool surface resolves")
+}
+
+// requireScenarioContractFailure asserts an assignment the executor refused
+// for its scenario contract was recorded as that failure, not left running.
+func requireScenarioContractFailure(t *testing.T, result *evalv1.EvaluationAssignmentResult, executed bool, err error) {
+	t.Helper()
+	require.NoError(t, err)
+	require.True(t, executed)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, result.GetLifecycleStatus())
+	require.Len(t, result.GetDeterministicGrades(), 1)
+	assert.Equal(t, "assignment execution failed: "+string(evaluation.ExecutionFailureScenarioContract), result.GetDeterministicGrades()[0].GetDetail())
 }

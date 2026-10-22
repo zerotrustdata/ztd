@@ -31,6 +31,7 @@
     - [EvaluationAssignmentResult](#ztd-eval-v1-EvaluationAssignmentResult)
     - [EvaluationAttempt](#ztd-eval-v1-EvaluationAttempt)
     - [EvaluationCampaignSpec](#ztd-eval-v1-EvaluationCampaignSpec)
+    - [EvaluationConsensusIdentity](#ztd-eval-v1-EvaluationConsensusIdentity)
     - [EvaluationDeploymentIdentity](#ztd-eval-v1-EvaluationDeploymentIdentity)
     - [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation)
     - [EvaluationMetric](#ztd-eval-v1-EvaluationMetric)
@@ -736,7 +737,7 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | model_registry | [ModelVariant](#ztd-eval-v1-ModelVariant) | repeated |  |
 | model_registry_digest | [string](#string) |  |  |
 | campaign_digest | [string](#string) |  |  |
-| governance_posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  |  |
+| governance_posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  | governance_posture is set only on campaigns frozen before the posture moved to the run (EvaluationRun.active_posture). New campaigns leave it unspecified; a campaign runs under whatever posture each run freezes. |
 | scenario_count | [uint32](#uint32) |  |  |
 | repetition_count | [uint32](#uint32) |  |  |
 | platform_release | [string](#string) |  | platform_release is the ztd build version that froze the campaign. It is part of campaign_digest, so a campaign cannot be re-labeled. Empty only on campaigns frozen before v2.3.0; their release is an operator-asserted tag held outside the digest. |
@@ -744,6 +745,31 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | hold_context | [bool](#bool) |  | hold_context makes every repetition after the first continue the previous repetition&#39;s investigation: the model receives that repetition&#39;s complete conversation and works in the same workspace. Only set when repetition_count &gt; 1; false on campaigns frozen before it existed. |
 | investigation | [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation) |  | Investigation identity and its authoritative Data Operator are frozen into campaign_digest. Absent only on legacy specs frozen before this field. |
 | formation_stack_set_digest | [string](#string) |  | Nonempty only for a system campaign. Binds the complete frozen catalog formation set into campaign_digest, independently of later catalog edits. |
+
+
+
+
+
+
+<a name="ztd-eval-v1-EvaluationConsensusIdentity"></a>
+
+### EvaluationConsensusIdentity
+EvaluationConsensusIdentity is the L2 consensus binding one run executes
+under. A run resumes only against the identical binding, so a rebind never
+mixes two vote producers or vote models in one run.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| bound | [bool](#bool) |  |  |
+| binding_id | [string](#string) |  |  |
+| provider | [string](#string) |  |  |
+| vote_kind | [string](#string) |  |  |
+| model_tag | [string](#string) |  |  |
+| model_digest | [string](#string) |  |  |
+| quorum | [uint32](#uint32) |  |  |
+| member_app_ids | [string](#string) | repeated |  |
+| binding_digest | [string](#string) |  | binding_digest is the SHA-256 of the complete governing binding, including the fields not projected above. Empty when unbound. |
 
 
 
@@ -877,7 +903,7 @@ stable identity (not session ID) of the Data Operator that owns its ledger.
 | run_id | [string](#string) |  |  |
 | suite_ref | [ztd.compliance.v1.VersionedReference](#ztd-compliance-v1-VersionedReference) |  |  |
 | deployment | [EvaluationDeploymentIdentity](#ztd-eval-v1-EvaluationDeploymentIdentity) |  |  |
-| active_posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  |  |
+| active_posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  | active_posture is the live Gateway posture, frozen at run start. The run executes and resumes only under this posture. |
 | lane | [EvaluationLane](#ztd-eval-v1-EvaluationLane) |  |  |
 | target_operator_id | [string](#string) |  |  |
 | target_operator_session_id | [string](#string) |  |  |
@@ -888,6 +914,7 @@ stable identity (not session ID) of the Data Operator that owns its ledger.
 | campaign_binding | [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding) |  |  |
 | provider_observation_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
 | model_provenance_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
+| consensus | [EvaluationConsensusIdentity](#ztd-eval-v1-EvaluationConsensusIdentity) |  | consensus is the live Gateway&#39;s L2 consensus binding, frozen at run start. Absent only on runs started before it existed; those never resume. |
 
 
 

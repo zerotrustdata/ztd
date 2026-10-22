@@ -16,6 +16,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -176,14 +177,18 @@ func (s *ConsensusStoreService) ConsensusReadiness(ctx context.Context, signer C
 		return models.ConsensusReadiness{}, fmt.Errorf("consensus store: readiness: policy %q: %w", policy.ID, err)
 	}
 	readiness := models.ConsensusReadiness{
-		Bound:       true,
-		Provider:    provider,
-		Quorum:      policy.Quorum,
-		ModelTag:    policy.ModelTag,
-		ModelDigest: policy.ModelDigest,
-		Members:     make([]models.ConsensusMemberReadiness, 0, len(policy.MemberAppIDs)),
+		Bound:               true,
+		Provider:            provider,
+		Quorum:              policy.Quorum,
+		ModelTag:            policy.ModelTag,
+		ModelDigest:         policy.ModelDigest,
+		InferenceOperatorID: policy.InferenceOperatorID,
+		Members:             make([]models.ConsensusMemberReadiness, 0, len(policy.MemberAppIDs)),
 	}
 	tribunal := provider == constants.ConsensusProviderTribunal
+	if tribunal {
+		readiness.VoteKind = policy.EffectiveVoteKind()
+	}
 	for _, appID := range policy.MemberAppIDs {
 		pub, err := s.signerSvc.GetTrustedSigner(ctx, appID)
 		if err != nil {
@@ -199,6 +204,21 @@ func (s *ConsensusStoreService) ConsensusReadiness(ctx context.Context, signer C
 		readiness.Members = append(readiness.Members, member)
 	}
 	readiness.Ready = readiness.Usable >= readiness.Quorum
+	if policy.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
+		doc, err := s.docSvc.DocGet(ctx, marshaler.CollectionName(constants.CollectionOperators), policy.InferenceOperatorID)
+		if err != nil {
+			return models.ConsensusReadiness{}, fmt.Errorf("consensus readiness: pinned Operator: %w", err)
+		}
+		if doc == nil {
+			readiness.Ready = false
+			return readiness, nil
+		}
+		op, err := models.OperatorDocumentFromStore(doc)
+		if err != nil {
+			return models.ConsensusReadiness{}, err
+		}
+		readiness.Ready = readiness.Ready && op != nil && op.GetStatus() == string(constants.OperatorStatusActive) && op.GetOperatorSessionId() != "" && op.GetRuntimeConfig().GetInferenceDecisionBackend() != "" && slices.Contains(op.GetRuntimeConfig().GetCapabilities(), string(constants.OperatorCapabilityInference)) && slices.Contains(op.GetRuntimeConfig().GetInferenceDecisionModels(), policy.ModelTag) && (!policy.AllowHosted || op.GetRuntimeConfig().GetInferenceAllowHostedDecision())
+	}
 	return readiness, nil
 }
 

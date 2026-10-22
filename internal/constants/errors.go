@@ -1325,6 +1325,13 @@ var (
 
 	// Inference backend errors (ztdllama). The Go backend is an HTTP client
 	// to Ollama and uses provider API requests for generation and model release.
+	ErrEvaluationConsensusProviderShared = errors.New("consensus and campaign inference providers must be isolated")
+	ErrInferenceDecisionRequestInvalid   = errors.New("invalid decision inference request")
+	ErrInferenceDecisionResponseInvalid  = errors.New("invalid decision inference response")
+	ErrInferenceDecisionUnsupported      = errors.New("decision inference is unsupported")
+	ErrInferenceHostedNotAllowed         = errors.New("hosted decision inference requires explicit opt-in")
+	ErrConsensusDecisionBindingInvalid   = errors.New("invalid decision consensus binding")
+
 	ErrInferenceBackendUnavailable        = errors.New("inference: backend unavailable")
 	ErrInferenceModelNotFound             = errors.New("inference: model not found in backend store")
 	ErrInferenceGenerateFailed            = errors.New("inference: generation failed")
@@ -1420,6 +1427,7 @@ var (
 var (
 	ErrEvaluationTargetUnavailable         = errors.New("evaluation: target operator is unavailable")
 	ErrEvaluationPostureUnsupported        = errors.New("evaluation: governance posture is unsupported")
+	ErrEvaluationRunGovernanceChanged      = errors.New("evaluation: Gateway posture or consensus binding differs from what the run froze at start; start a new run")
 	ErrEvaluationSharedRuntimeTribunalL2   = errors.New("evaluation: enforced Tribunal L2 requires distinct Inference and Data Operators")
 	ErrEvaluationObservationUnavailable    = errors.New("evaluation: independent observation is unavailable")
 	ErrEvaluationReportPersistFailed       = errors.New("evaluation: report persistence failed")

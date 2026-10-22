@@ -458,6 +458,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		return nil, fmt.Errorf("gateway: dispatch approvals: %w", err)
 	}
 	dispatchSvc := NewDispatchService(logger, wsHandler, stateRootSvc, auth, cfg.Gateway.Posture, doctrine, l2Deliberator, signerStore, cmdSvc, dispatchApprovals)
+	dispatchSvc.SetL2QuorumSources(consensusStore, signerStore)
 
 	// --- MCP gateway (C2: concrete cmdSvc, auditLogger, l2Deliberator injected) ---
 	var auditLogger mcp.AuditLogger

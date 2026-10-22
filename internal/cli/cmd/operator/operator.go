@@ -348,6 +348,9 @@ func operatorStartCmd() *cobra.Command {
 	var capabilities constants.OperatorCapabilities
 	var inferenceOllamaEndpoint string
 	var inferenceKeepAlive string
+	var inferenceAllowHostedDecision bool
+	var inferenceDecisionModels []string
+	var inferenceDecisionOnly bool
 	var providerBoundaryObserverID string
 	var provenanceOperatorID string
 	var provenanceOperatorModelStorageRoot string
@@ -375,19 +378,21 @@ func operatorStartCmd() *cobra.Command {
 			}
 			endpoint, _ := cmd.Flags().GetString("endpoint")
 			opts := serve.ServeOperatorOptions{
-				OperatorCapabilities:       capabilities,
-				LogLevel:                   logLevel,
-				Endpoint:                   endpoint,
-				HTTPPort:                   gatewayHTTPPort,
-				HTTPSPort:                  gatewayHTTPSPort,
-				TrustBundlePath:            trustBundle,
-				WorkingDir:                 workingDir,
-				DeploymentID:               deploymentID,
-				LaunchDir:                  workingDir,
-				CloudMode:                  cloud,
-				CloudProvider:              provider,
-				HeartbeatInterval:          time.Duration(heartbeatInterval) * time.Second,
-				InferenceOllamaEndpoint:    config.InferenceOllamaEndpoint(inferenceOllamaEndpoint),
+				OperatorCapabilities:         capabilities,
+				LogLevel:                     logLevel,
+				Endpoint:                     endpoint,
+				HTTPPort:                     gatewayHTTPPort,
+				HTTPSPort:                    gatewayHTTPSPort,
+				TrustBundlePath:              trustBundle,
+				WorkingDir:                   workingDir,
+				DeploymentID:                 deploymentID,
+				LaunchDir:                    workingDir,
+				CloudMode:                    cloud,
+				CloudProvider:                provider,
+				HeartbeatInterval:            time.Duration(heartbeatInterval) * time.Second,
+				InferenceOllamaEndpoint:      config.InferenceOllamaEndpoint(inferenceOllamaEndpoint),
+				InferenceAllowHostedDecision: inferenceAllowHostedDecision,
+				InferenceDecisionModels:      inferenceDecisionModels, InferenceDecisionOnly: inferenceDecisionOnly,
 				InferenceKeepAlive:         inferenceKeepAlive,
 				ProviderBoundaryObserverID: providerBoundaryObserverID,
 
@@ -416,6 +421,9 @@ func operatorStartCmd() *cobra.Command {
 	// Inference Node calling the configured remote Ollama provider.
 	cmd.Flags().Var(&capabilities, "capabilities", "Comma-separated operator capabilities: data,inference,provenance,observer (repeatable; default: data)")
 	cmd.Flags().StringVar(&inferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Remote Ollama provider endpoint (default: ZTD_OLLAMA_ENDPOINT, else http://127.0.0.1:11434)")
+	cmd.Flags().StringSliceVar(&inferenceDecisionModels, "decision-model", nil, "Decision models this Operator is provisioned to serve (repeat or comma-separate)")
+	cmd.Flags().BoolVar(&inferenceDecisionOnly, "decision-only", false, "Reserve this Inference Operator for decisions and exclude it from campaign/chat routing")
+	cmd.Flags().BoolVar(&inferenceAllowHostedDecision, "allow-hosted-decision", false, "Allow decision requests to use hosted Jev with the runtime vault credential")
 	cmd.Flags().StringVar(&inferenceKeepAlive, "inference-keep-alive", "", fmt.Sprintf("Ollama keep-alive duration (default: %s for infinite)", constants.InferenceDefaultKeepAlive))
 	cmd.Flags().StringVar(&providerBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity pseudonym")
 	cmd.Flags().StringVar(&provenanceOperatorID, "provenance-operator-id", "", "Stable provenance operator identity pseudonym")

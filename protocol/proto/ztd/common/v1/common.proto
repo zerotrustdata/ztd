@@ -239,6 +239,10 @@ message PlatformEnrollmentGovernancePayload {
   // Pinned model the Tribunal provider's members vote with.
   string consensus_model_tag = 25;
   string consensus_model_digest = 26;
+  string consensus_vote_kind = 27;
+  string consensus_inference_operator_id = 28;
+  repeated ConsensusDecisionThreshold consensus_vote_thresholds = 29;
+  bool consensus_allow_hosted = 30;
 }
 
 message PlatformEnrollmentDecisionTarget {
@@ -281,3 +285,6 @@ message CommandIntent {
   string web_session_id = 11;
   string cli_session_id = 12;
 }
+
+// Frozen per-member approval probability threshold for decision voting.
+message ConsensusDecisionThreshold { string member_app_id = 1; double threshold = 2; }

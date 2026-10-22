@@ -246,7 +246,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign investigation: %w", err)
 	}
-	if err := evalPreflightGatewayPosture(cmd, gatewayDeps, cfg, authContext, spec); err != nil {
+	if _, err := evalPreflightGatewayGovernance(cmd, gatewayDeps, cfg, authContext, spec, summary.Run); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
 	operators, err := evalListOperators(cmd, gatewayDeps, cfg, authContext)
@@ -610,7 +610,41 @@ func (l *runLifecycle) reportRunning(ctx context.Context) error {
 		return nil
 	}
 	l.running = true
-	return l.post(ctx, models.RunLifecycleStatusRunning, row, nil)
+	err = l.post(ctx, models.RunLifecycleStatusRunning, row, nil)
+	// running is refused only from a terminal projection. A run the store has
+	// not cancelled is resumable, so the projection contradicts the store.
+	var refused *models.ObserveTransitionError
+	if errors.As(err, &refused) && row.Status != "cancelled" {
+		return fmt.Errorf("%w; the local run is resumable, so `ztd eval runs repair %s --projection` reopens the Gateway projection", err, l.runID)
+	}
+	return err
+}
+
+// reconcileProjection repairs a Gateway run projection that the local store
+// contradicts. The caller holds the run lease. A run the store holds resumable,
+// with assignments queued and none cancelled, posts waiting. When the Gateway
+// refuses that because the projection holds a terminal status, the store is
+// authoritative, so the update is resent naming the refused status as the one
+// it reopens; the Gateway applies it only while the projection still holds that
+// status. It returns the reopened status, or "" when nothing was reopened.
+func (l *runLifecycle) reconcileProjection(ctx context.Context) (models.RunLifecycleStatus, error) {
+	row, err := l.snapshot(ctx)
+	if err != nil {
+		return "", err
+	}
+	if row.Queued == 0 || releasedRunStatus(row) != models.RunLifecycleStatusWaiting {
+		return "", nil
+	}
+	err = l.post(ctx, models.RunLifecycleStatusWaiting, row, nil)
+	var refused *models.ObserveTransitionError
+	if err == nil || !errors.As(err, &refused) {
+		return "", err
+	}
+	reopens := models.RunLifecycleStatus(refused.From)
+	if err := l.send(ctx, models.RunLifecycleStatusWaiting, row, nil, reopens); err != nil {
+		return "", err
+	}
+	return reopens, nil
 }
 
 // reportTerminal posts the status a released run ends in. It must run after the
@@ -670,6 +704,12 @@ func (l *runLifecycle) snapshot(ctx context.Context) (*runRow, error) {
 }
 
 func (l *runLifecycle) post(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time) error {
+	return l.send(ctx, status, row, endedAt, "")
+}
+
+// send posts status, replacing the terminal projected status reopens when it is
+// set. Only reconcileProjection reopens.
+func (l *runLifecycle) send(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time, reopens models.RunLifecycleStatus) error {
 	startedAt := l.startedAt
 	err := l.client.UpdateRunState(ctx, models.ObserveProducerRunStateRequest{
 		SchemaVersion:  constants.ObserveEventPayloadSchemaVersion,
@@ -682,6 +722,7 @@ func (l *runLifecycle) post(ctx context.Context, status models.RunLifecycleStatu
 		StartedAt:      &startedAt,
 		EndedAt:        endedAt,
 		ObservedAt:     l.deps.now().UTC(),
+		Reopens:        reopens,
 		CLISessionID:   l.cliSessionID,
 	})
 	if err != nil {

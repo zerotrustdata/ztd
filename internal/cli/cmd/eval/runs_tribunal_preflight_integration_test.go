@@ -18,7 +18,6 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
@@ -26,16 +25,13 @@ import (
 func TestRunsStart_RefusesSharedRuntimeUnderTribunalConsensusBeforePersistingRun(t *testing.T) {
 	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{Posture: constants.PostureConsensus, SharedRuntime: true})
 	bindRunTribunalConsensus(t, run.stack.Gateway, run.stack.Identity)
-	governancePosture, err := cases.WirePosture(constants.PostureConsensus)
-	require.NoError(t, err)
 	data, err := run.stack.Data.Workload()
 	require.NoError(t, err)
 	_, err = createCampaign(context.Background(), env.deps, env.fileSvc(t), campaignCreateSpec{
-		GovernancePosture: governancePosture,
-		Platform:          testPlatform,
-		CampaignID:        "eval-shared-tribunal-runtime",
-		Variants:          []*evalv1.ModelVariant{testQwenVariant()},
-		Repetitions:       1,
+		Platform:    testPlatform,
+		CampaignID:  "eval-shared-tribunal-runtime",
+		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions: 1,
 		Investigation: &evalv1.EvaluationInvestigation{
 			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
 			InvestigationId: "shared-tribunal-investigation",

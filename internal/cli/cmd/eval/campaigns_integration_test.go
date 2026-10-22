@@ -126,34 +126,17 @@ func TestCampaignsCreate_HoldContextFlag(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
 
-func TestCampaignsCreate_PostureFlagFreezesTheGovernancePosture(t *testing.T) {
-	env := newStoreRunEnv(t)
-	ctx := context.Background()
-
-	env.mustRun(t, "campaigns", "create", "eval-ratify", "qwen3:4b", "--posture", "ratify")
-	ratified, err := env.store(t).LoadCampaignSpec(ctx, "eval-ratify")
-	require.NoError(t, err)
-	assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, ratified.GetGovernancePosture())
-	require.NoError(t, evaluation.ValidateCampaignSpecDigest(ratified))
-
-	env.mustRun(t, "campaigns", "create", "eval-default", "qwen3:4b")
-	defaulted, err := env.store(t).LoadCampaignSpec(ctx, "eval-default")
-	require.NoError(t, err)
-	assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, defaulted.GetGovernancePosture())
-	assert.NotEqual(t, defaulted.GetCampaignDigest(), ratified.GetCampaignDigest(), "the posture is part of the campaign digest")
-
-	out, err := env.run(t, "campaigns", "create", "eval-ratify", "qwen3:4b", "--posture", "notary")
-	require.ErrorIs(t, err, constants.ErrEvaluationCampaignConflict, out)
-}
-
-func TestCampaignsCreate_RejectsAnUnknownPosture(t *testing.T) {
+func TestCampaignsCreate_FreezesNoGovernancePosture(t *testing.T) {
 	env := newStoreRunEnv(t)
 
-	out, err := env.run(t, "campaigns", "create", "eval-bogus", "qwen3:4b", "--posture", "bogus")
-	require.ErrorIs(t, err, constants.ErrInvalidPosture, out)
+	env.mustRun(t, "campaigns", "create", "eval-any-posture", "qwen3:4b")
+	spec, err := env.store(t).LoadCampaignSpec(context.Background(), "eval-any-posture")
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, spec.GetGovernancePosture(), "each run freezes the live Gateway posture")
+	require.NoError(t, evaluation.ValidateCampaignSpecDigest(spec))
 
-	_, err = env.store(t).LoadCampaignSpec(context.Background(), "eval-bogus")
-	require.Error(t, err, "a rejected posture freezes nothing")
+	out, err := env.run(t, "campaigns", "create", "eval-flag", "qwen3:4b", "--posture", "ratify")
+	require.Error(t, err, "campaigns create no longer takes a posture: %s", out)
 }
 
 func TestCampaignsCreate_FreezesPersistentInvestigationAndDataOperator(t *testing.T) {
@@ -459,7 +442,7 @@ func TestRunsStart_SchedulesSystemLaneCampaign(t *testing.T) {
 	controller := evaluation.NewCampaignController(env.store(t), nil, env.deps.now, adaptNewID(env.deps.newID))
 	_, err = controller.InitializeCampaign(ctx, evaluation.CampaignInitRequest{
 		CampaignID: "eval-system", RunID: "run-system", Catalog: catalog, Inventory: inventory,
-		ScenarioArtifacts: artifacts, RepetitionCount: 1, Platform: testPlatform,
+		ScenarioArtifacts: artifacts, RepetitionCount: 1, Platform: testPlatform, Governance: testGovernance,
 		Lane: evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM, FormationStackSet: stackSet,
 	})
 	require.NoError(t, err)

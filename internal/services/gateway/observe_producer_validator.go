@@ -114,6 +114,9 @@ func validateRunProducerRequest(req models.ObserveProducerRunStateRequest) error
 	if _, ok := validRunLifecycleStatuses[req.Status]; !ok {
 		return fmt.Errorf("observe producer: validate run request: %w: %q", constants.ErrObserveStatusInvalid, req.Status)
 	}
+	if req.Reopens != "" && (!isTerminalRunStatus(req.Reopens) || isTerminalRunStatus(req.Status)) {
+		return fmt.Errorf("observe producer: validate run request: %w: reopens %q toward %q", constants.ErrObserveStatusInvalid, req.Reopens, req.Status)
+	}
 	if req.CompletedTasks < 0 || req.TotalTasks < 0 {
 		return fmt.Errorf("observe producer: validate run request: %w: completed=%d total=%d", constants.ErrObserveNegativeTaskCount, req.CompletedTasks, req.TotalTasks)
 	}

@@ -434,8 +434,11 @@ func operatorRuntimeConfig(cfg *config.Config) (json.RawMessage, error) {
 		LocalDir:     cfg.WorkDir,
 		Account:      auth.ResolveCurrentAccount(),
 
-		InferenceOllamaEndpoint:            cfg.Inference.OllamaEndpoint,
-		InferenceKeepAlive:                 cfg.Inference.KeepAlive,
+		InferenceOllamaEndpoint:      cfg.Inference.OllamaEndpoint,
+		InferenceKeepAlive:           cfg.Inference.KeepAlive,
+		InferenceAllowHostedDecision: cfg.Inference.AllowHostedDecision,
+		InferenceDecisionModels:      cfg.Inference.DecisionModels, InferenceDecisionOnly: cfg.Inference.DecisionOnly,
+		InferenceDecisionBackend:           inferenceDecisionBackendKind(cfg),
 		ProvenanceOperatorId:               cfg.ProvenanceOperator.OperatorID,
 		ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot,
 		ProviderBoundaryObserverId:         cfg.ProviderBoundaryObserver.ObserverID,
@@ -521,4 +524,14 @@ func signTranscript(privateKey *ecdsa.PrivateKey, transcript []byte) (string, er
 		return "", fmt.Errorf("sign transcript: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(signature), nil
+}
+
+func inferenceDecisionBackendKind(cfg *config.Config) string {
+	if !cfg.Inference.Enabled {
+		return ""
+	}
+	if cfg.Inference.AllowHostedDecision {
+		return "ollama-systemone,typesafe"
+	}
+	return "ollama-systemone"
 }

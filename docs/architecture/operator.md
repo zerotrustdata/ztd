@@ -303,6 +303,8 @@ The `ztd autochthon` command is an isolated, autonomous runtime observer and for
 - **Executing Actions Before Initial Receipt Persistence**: Invoking execution handlers before the initial `EXECUTING` receipt and commitment attestation are persisted (INV-OP-ACT-01).
 - **Relying on Gateway Receipt Mirrors as Sovereign Truth**: Treating Gateway-replicated receipts as primary evidence instead of querying the Operator's local SQLite database (INV-OP-STOR-01).
 
+Decision inference is an opt-in Inference capability. Outbound Operators advertise explicit decision models; decision-only Operators are excluded from ordinary campaign chat selection. Hosted Jev remains disabled by default. See [Decision Model Votes](consensus.md#decision-model-votes-opt-in) for backend configuration, vault credentials and qualification limits.
+
 ## Links out
 
 - [Platform Architecture Overview](overview.md): High-level system architecture and node topologies.

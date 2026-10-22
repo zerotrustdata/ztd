@@ -151,6 +151,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
 	var topology evaluation.CampaignOperatorTopology
+	var governance evaluation.RunGovernance
 	if !opts.DryRun {
 		investigation := spec.GetInvestigation()
 		if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
@@ -161,7 +162,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
-		if err := evalPreflightGatewayPosture(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec); err != nil {
+		if governance, err = evalPreflightGatewayGovernance(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec, nil); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
 		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId())
@@ -209,6 +210,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		PlatformRelease:            platformIdentity(cmd).Release,
 		ProviderObservationPolicy:  witnessPolicy(opts.RequireObservation),
 		ModelProvenancePolicy:      witnessPolicy(opts.RequireProvenance),
+		Governance:                 governance,
 	}); err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}

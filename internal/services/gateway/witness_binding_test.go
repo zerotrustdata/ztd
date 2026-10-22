@@ -10,6 +10,9 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"testing"
@@ -20,6 +23,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -28,7 +32,8 @@ import (
 
 var errBoom = errors.New("boom")
 
-// witnessParentEnv is an admitted INFERENCE holding an L2 quorum.
+// witnessParentEnv is an admitted INFERENCE carrying an unsigned L2 vote: enough
+// to mark a witness parent, never enough to hold quorum.
 func witnessParentEnv() *commonv1.GovernanceEnvelope {
 	return &commonv1.GovernanceEnvelope{
 		ActionType:      string(constants.ActionTypeInference),
@@ -146,9 +151,53 @@ func TestAttachWitnessBinding(t *testing.T) {
 	})
 }
 
+// witnessQuorum is a one-member, quorum-one consensus whose member signs votes.
+type witnessQuorum struct {
+	key ed25519.PrivateKey
+}
+
+func newWitnessQuorum(t *testing.T) witnessQuorum {
+	t.Helper()
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	return witnessQuorum{key: key}
+}
+
+func (q witnessQuorum) GetConsensusPolicy(context.Context, string) (*governance.L2ConsensusPolicy, error) {
+	return &governance.L2ConsensusPolicy{MemberKeyIDs: []string{"m1"}, Quorum: 1, RequireDistinct: true, Enabled: true}, nil
+}
+
+func (q witnessQuorum) signers() governance.SignerStore {
+	return &governance.FailClosedSignerStore{Signers: map[string]ed25519.PublicKey{"m1": q.key.Public().(ed25519.PublicKey)}}
+}
+
+// vote is m1's signed vote on transactionHash.
+func (q witnessQuorum) vote(transactionHash string, decision bool) *commonv1.L2Vote {
+	return &commonv1.L2Vote{
+		SignerKeyId:        "m1",
+		ConsensusSignature: hex.EncodeToString(ed25519.Sign(q.key, governance.L2VotePayload(transactionHash, decision))),
+		Decision:           decision,
+	}
+}
+
+// quorumDispatchService is a consensus-posture DispatchService that verifies
+// admitted votes against q.
+func quorumDispatchService(q witnessQuorum) *DispatchService {
+	svc := &DispatchService{logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)), posture: constants.PostureConsensus}
+	svc.SetL2QuorumSources(q, q.signers())
+	return svc
+}
+
 func TestAdmit(t *testing.T) {
+	q := newWitnessQuorum(t)
+	approved := witnessParentEnv()
+	approved.Governance.L2.Votes = []*commonv1.L2Vote{q.vote("parent-hash", true)}
+	denied := witnessParentEnv()
+	denied.Governance.L2.Votes = []*commonv1.L2Vote{q.vote("parent-hash", false)}
+	forged := witnessParentEnv()
+
 	t.Run("nil OnAdmitted is a no-op", func(t *testing.T) {
-		require.NoError(t, admit(context.Background(), DispatchRequest{}, witnessParentEnv()))
+		require.NoError(t, quorumDispatchService(q).admit(context.Background(), DispatchRequest{}, approved))
 	})
 
 	t.Run("OnAdmitted runs under the parent binding", func(t *testing.T) {
@@ -157,14 +206,39 @@ func TestAdmit(t *testing.T) {
 			got = witnessParentHash(ctx)
 			return nil
 		}}
-		require.NoError(t, admit(context.Background(), req, witnessParentEnv()))
+		require.NoError(t, quorumDispatchService(q).admit(context.Background(), req, approved))
 		assert.Equal(t, "parent-hash", got)
 	})
 
 	t.Run("OnAdmitted error is wrapped", func(t *testing.T) {
 		req := DispatchRequest{OnAdmitted: func(context.Context) error { return errBoom }}
-		err := admit(context.Background(), req, witnessParentEnv())
+		err := quorumDispatchService(q).admit(context.Background(), req, approved)
 		assert.ErrorIs(t, err, errBoom)
+	})
+
+	for name, admitted := range map[string]*commonv1.GovernanceEnvelope{"denied quorum": denied, "unverifiable votes": forged} {
+		t.Run(name+" never runs OnAdmitted", func(t *testing.T) {
+			ran := false
+			req := DispatchRequest{OnAdmitted: func(context.Context) error { ran = true; return nil }}
+			require.NoError(t, quorumDispatchService(q).admit(context.Background(), req, admitted))
+			assert.False(t, ran)
+		})
+	}
+
+	t.Run("without quorum sources an L2-gated envelope never runs OnAdmitted", func(t *testing.T) {
+		ran := false
+		req := DispatchRequest{OnAdmitted: func(context.Context) error { ran = true; return nil }}
+		svc := &DispatchService{logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)), posture: constants.PostureConsensus}
+		require.NoError(t, svc.admit(context.Background(), req, approved))
+		assert.False(t, ran)
+	})
+
+	t.Run("an envelope L2 does not gate runs OnAdmitted", func(t *testing.T) {
+		ran := false
+		req := DispatchRequest{OnAdmitted: func(context.Context) error { ran = true; return nil }}
+		svc := &DispatchService{logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)), posture: constants.PostureDoctrine}
+		require.NoError(t, svc.admit(context.Background(), req, forged))
+		assert.True(t, ran)
 	})
 }
 
@@ -226,28 +300,35 @@ func TestDispatchObservation_WitnessBoundSkipsDeliberation(t *testing.T) {
 	})
 }
 
-// votingL2Deliberator attaches one affirmative vote to the envelope it is given.
-type votingL2Deliberator struct{}
+// votingL2Deliberator attaches m1's signed vote, decision, to the envelope it
+// is given.
+type votingL2Deliberator struct {
+	quorum   witnessQuorum
+	decision bool
+}
 
-func (votingL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) ([]byte, error) {
+func (d votingL2Deliberator) Deliberate(_ context.Context, envelopeBytes []byte) ([]byte, error) {
 	env := &commonv1.GovernanceEnvelope{}
 	if err := protojson.Unmarshal(envelopeBytes, env); err != nil {
 		return nil, err
 	}
 	env.Governance.L2 = &commonv1.L2Metadata{
 		ConsensusSetId: "set",
-		Votes:          []*commonv1.L2Vote{{SignerKeyId: "m1", ConsensusSignature: "aa", Decision: true}},
+		Votes:          []*commonv1.L2Vote{d.quorum.vote(env.GetTransactionHash(), d.decision)},
 	}
 	return protojson.Marshal(env)
 }
 
 // TestDispatchService_OnAdmittedRunsWithDeliberatedQuorumBeforePublish proves
 // that Dispatch runs OnAdmitted after L2 deliberation and before publish, under
-// a ctx bound to the deliberated INFERENCE, and that a hook error stops publish.
+// a ctx bound to the deliberated INFERENCE, that a hook error stops publish, and
+// that a deliberation short of quorum publishes the envelope without running
+// OnAdmitted.
 func TestDispatchService_OnAdmittedRunsWithDeliberatedQuorumBeforePublish(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
-	dispatch := func(t *testing.T, hook func(ctx context.Context, published bool) error) (bool, error) {
+	q := newWitnessQuorum(t)
+	dispatchDecided := func(t *testing.T, decision bool, hook func(ctx context.Context, published bool) error) (bool, error) {
 		t.Helper()
 		broker := NewGatewayWebSocketHandler(logger)
 		svc := NewDispatchService(
@@ -256,11 +337,12 @@ func TestDispatchService_OnAdmittedRunsWithDeliberatedQuorumBeforePublish(t *tes
 			&stubOperatorSessionValidator{op: op},
 			constants.PostureConsensus,
 			testDoctrine(),
-			votingL2Deliberator{},
+			votingL2Deliberator{quorum: q, decision: decision},
 			nil,
 			nil,
 			nil,
 		)
+		svc.SetL2QuorumSources(q, q.signers())
 		dispatchCtx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		published := false
@@ -285,7 +367,7 @@ func TestDispatchService_OnAdmittedRunsWithDeliberatedQuorumBeforePublish(t *tes
 	t.Run("hook sees the deliberated parent before publish", func(t *testing.T) {
 		var parentHash string
 		var publishedAtHook bool
-		published, _ := dispatch(t, func(ctx context.Context, published bool) error {
+		published, _ := dispatchDecided(t, true, func(ctx context.Context, published bool) error {
 			parentHash, publishedAtHook = witnessParentHash(ctx), published
 			return nil
 		})
@@ -295,8 +377,15 @@ func TestDispatchService_OnAdmittedRunsWithDeliberatedQuorumBeforePublish(t *tes
 	})
 
 	t.Run("hook error prevents publish", func(t *testing.T) {
-		published, err := dispatch(t, func(context.Context, bool) error { return errBoom })
+		published, err := dispatchDecided(t, true, func(context.Context, bool) error { return errBoom })
 		assert.ErrorIs(t, err, errBoom)
 		assert.False(t, published, "envelope must not be published when OnAdmitted fails")
+	})
+
+	t.Run("quorum-denied deliberation publishes without running the hook", func(t *testing.T) {
+		ran := false
+		published, _ := dispatchDecided(t, false, func(context.Context, bool) error { ran = true; return nil })
+		assert.False(t, ran, "no witness may begin for an inference short of quorum")
+		assert.True(t, published, "the executing Operator must sign the L2 rejection")
 	})
 }
