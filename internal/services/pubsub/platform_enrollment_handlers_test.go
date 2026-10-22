@@ -564,7 +564,7 @@ func TestHandleBindConsensus_RejectsUnsafeEndpointsBeforePersistence(t *testing.
 			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
 				constants.EventPlatformEnrollmentBindConsensusRequested,
 				&commonv1.PlatformEnrollmentGovernancePayload{
-					InstanceId: "consensus-app", ConsensusEndpointUrl: endpoint, ActorUserId: enrollTestOwnerID,
+					InstanceId: "consensus-app", ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: endpoint, ActorUserId: enrollTestOwnerID,
 				}))
 			require.ErrorIs(t, err, constants.ErrConsensusEndpointInvalid)
 			doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
@@ -587,7 +587,7 @@ func TestHandleBindConsensus_RequiresAnEnabledEd25519Signer(t *testing.T) {
 		_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
 			constants.EventPlatformEnrollmentBindConsensusRequested,
 			&commonv1.PlatformEnrollmentGovernancePayload{
-				InstanceId: appID, ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID,
+				InstanceId: appID, ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID,
 			}))
 		require.ErrorIs(t, err, constants.ErrConsensusAppMissingSignerKey)
 		doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
@@ -610,7 +610,7 @@ func TestHandleBindConsensus_PersistsKOfNMemberSet(t *testing.T) {
 		seedConsensusMember(t, env, appID, enrollTestOwnerID, true)
 	}
 	_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
-		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: []string{"reviewer-b", "reviewer-a", "reviewer-c"}, ConsensusQuorum: 2}))
+		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: []string{"reviewer-b", "reviewer-a", "reviewer-c"}, ConsensusQuorum: 2}))
 	require.NoError(t, err)
 	doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
 	require.NoError(t, err)
@@ -656,7 +656,7 @@ func TestHandleBindConsensus_RejectsInvalidMemberSetsBeforePersistence(t *testin
 				seedConsensusMember(t, env, id, owner, id != tc.missingSigner)
 			}
 			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
-				&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "a", ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: tc.members, ConsensusQuorum: tc.quorum}))
+				&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "a", ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: tc.members, ConsensusQuorum: tc.quorum}))
 			require.ErrorIs(t, err, tc.want)
 			doc, getErr := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
 			require.NoError(t, getErr)
@@ -754,7 +754,7 @@ func TestHandleBindConsensus_TribunalRebindReplacesApplicationBinding(t *testing
 	env := newEnrollTestEnv(t)
 	seedConsensusMember(t, env, "reviewer-a", enrollTestOwnerID, true)
 	_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
-		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID}))
+		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID}))
 	require.NoError(t, err)
 	applicationPolicy := readConsensusBinding(t, env)
 	require.NotNil(t, applicationPolicy)

@@ -64,7 +64,7 @@ func bindingBody(t *testing.T, policy models.ConsensusPolicy) []byte {
 }
 
 func TestConsensusStatus_BoundApplicationJSON(t *testing.T) {
-	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer", "peer"}, Quorum: 2, RequireDistinct: true, Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
+	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer", "peer"}, Quorum: 2, RequireDistinct: true, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
 	client := &routedClient{bodies: map[string][]byte{
 		constants.APIPaths.AuthPlatformEnrollmentConsensus: bindingBody(t, policy),
 		constants.APIPaths.Health: healthBody(t, models.HealthResponse{Posture: constants.PostureNotary, GovernanceReady: true,
@@ -170,7 +170,7 @@ func TestConsensusStatus_BindingFetchErrorIsNotUnbound(t *testing.T) {
 func TestConsensusStatus_HealthFailureReturnsError(t *testing.T) {
 	errBoom := errors.New("health down")
 	client := &routedClient{
-		bodies: map[string][]byte{constants.APIPaths.AuthPlatformEnrollmentConsensus: bindingBody(t, models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer"}, Quorum: 1, Enabled: true, EndpointURL: "https://reviewer.example/deliberate"})},
+		bodies: map[string][]byte{constants.APIPaths.AuthPlatformEnrollmentConsensus: bindingBody(t, models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer"}, Quorum: 1, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"})},
 		errs:   map[string]error{constants.APIPaths.Health: errBoom},
 	}
 	cmd := testCmd(t, client)

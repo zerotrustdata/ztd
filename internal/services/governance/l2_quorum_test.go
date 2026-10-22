@@ -62,6 +62,10 @@ func TestVerifyL2Quorum(t *testing.T) {
 		{name: "a repeated member fails distinct signers", votes: []*commonv1.L2Vote{vote("m1", txHash, true), vote("m1", txHash, true)}, want: constants.ErrTxL2DuplicateSigner},
 		{name: "no votes", want: constants.ErrTxL2QuorumNotMet},
 		{name: "disabled policy", policy: &L2ConsensusPolicy{MemberKeyIDs: []string{"m1"}, Quorum: 1}, votes: []*commonv1.L2Vote{vote("m1", txHash, true)}, want: constants.ErrTxL2ConsensusSetUnknown},
+		{name: "zero quorum policy is invalid", policy: &L2ConsensusPolicy{MemberKeyIDs: []string{"m1"}, Quorum: 0, Enabled: true}, want: constants.ErrConsensusQuorumInvalid},
+		{name: "negative quorum policy is invalid", policy: &L2ConsensusPolicy{MemberKeyIDs: []string{"m1"}, Quorum: -1, Enabled: true}, want: constants.ErrConsensusQuorumInvalid},
+		{name: "quorum above member count is invalid", policy: &L2ConsensusPolicy{MemberKeyIDs: []string{"m1"}, Quorum: 2, Enabled: true}, want: constants.ErrConsensusQuorumInvalid},
+		{name: "empty member set is invalid", policy: &L2ConsensusPolicy{Quorum: 1, Enabled: true}, want: constants.ErrConsensusQuorumInvalid},
 		{name: "no signer store", noSigners: true, votes: []*commonv1.L2Vote{vote("m1", txHash, true)}, want: constants.ErrTxL2SignerStoreNotConfigured},
 	}
 	for _, tc := range cases {

@@ -124,9 +124,29 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	ctx := t.Context()
 	env := newRealStackAgentRun(t, realStackOptions{
 		posture: constants.PostureConsensus, singleRole: true, suffix: "tribunal-consensus",
-		replies:       tribunalConsensusVotes(tribunalConsensusQuorum),
+		replies:       append([]fixtures.OllamaReply{{Content: "inference complete"}}, tribunalConsensusVotes(tribunalConsensusQuorum)...),
 		bindConsensus: bindTribunalConsensus,
 	})
+
+	// A no-tool inference is not a state change. The receipt records L2 NOT_REQUIRED,
+	// and only its own provider request runs: no Tribunal vote inference is added.
+	inference, _, err := env.appClient.DispatchInference(ctx, &operatorv1.InferenceDispatchRequest{
+		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
+		Role:                 operatorv1.ModelRole_MODEL_ROLE_PRIMARY,
+		Model:                realStackModelTag,
+		Messages: []*operatorv1.InferenceMessage{{
+			Role:  operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER,
+			Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: "answer without tools"}}},
+		}},
+		ProviderAttemptId:       "tribunal-consensus-no-tool-attempt",
+		TargetOperatorSessionId: env.inferenceSessionID,
+		ActingAppId:             protocol.NewWorkloadIdentity().AppSPIFFEID(constants.EvaluationAppName),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, inference)
+	require.NotNil(t, inference.GetReceipt())
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, inference.GetReceipt().GetL2Status(), "a no-tool inference must not be voted on")
+	assert.Equal(t, 1, env.stack.Provider.ChatCount(), "the no-tool inference must run without Tribunal vote inferences")
 
 	// A read-only tool is not a state change: the Operator signs its receipt
 	// with L2 NOT_REQUIRED and no member inference runs. The path is absent,
@@ -145,7 +165,7 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	require.NotNil(t, readReceipt, "read_file must answer with a signed receipt, got %s: rejection=%q refusal=%q",
 		read.Outcome.Observation.GetKind(), read.Outcome.Observation.GetRejection().GetError(), read.Outcome.Observation.GetRefusal().GetError())
 	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, readReceipt.GetL2Status(), "a read-only tool must not be voted on")
-	assert.Zero(t, env.stack.Provider.ChatCount(), "a read-only tool must run no vote inference")
+	assert.Equal(t, 1, env.stack.Provider.ChatCount(), "a read-only tool must run no additional vote inference")
 
 	// One governed state change through the governed HTTP dispatch path the eval lane uses.
 	args := `{"command":"echo","args":["HEALTHY"]}`
@@ -165,7 +185,8 @@ func TestTribunalConsensusRealStack(t *testing.T) {
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus(), "the action must execute")
 	assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, receipt.GetL2Status(), "the Tribunal quorum proof must be valid")
 
-	// The binding stops at quorum, so exactly three member inferences ran, each on the pinned model.
-	assert.Equal(t, tribunalConsensusQuorum, env.stack.Provider.ChatCount(), "exactly quorum vote inferences must run")
-	assert.Equal(t, []string{realStackModelTag, realStackModelTag, realStackModelTag}, tribunalWireModels(t, env))
+	// The no-tool inference used one provider request, while read_file added none.
+	// The shell mutation adds exactly three member inferences, each on the pinned model.
+	assert.Equal(t, tribunalConsensusQuorum+1, env.stack.Provider.ChatCount(), "the mutation must add exactly quorum vote inferences")
+	assert.Equal(t, []string{realStackModelTag, realStackModelTag, realStackModelTag, realStackModelTag}, tribunalWireModels(t, env))
 }

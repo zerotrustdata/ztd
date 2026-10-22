@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -29,7 +31,6 @@ import (
 	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // consensusVoteInferer runs one member's vote as governed inference.
@@ -73,8 +74,23 @@ type TribunalConsensusDeliberator struct {
 // NewTribunalConsensusDeliberator returns the Tribunal vote producer. signer
 // may be nil until the Gateway host supplies it; without it no member votes
 // and L4 rejects the envelope for quorum.
-func NewTribunalConsensusDeliberator(store consensusBindingReader, policies consensusMemberPolicies, inference consensusVoteInferer, votes consensusVoteRecorder, signer ConsensusMemberSigner, logger *slog.Logger) *TribunalConsensusDeliberator {
-	return &TribunalConsensusDeliberator{store: store, policies: policies, inference: inference, votes: votes, signer: signer, logger: logger}
+func NewTribunalConsensusDeliberator(store consensusBindingReader, policies consensusMemberPolicies, inference consensusVoteInferer, votes consensusVoteRecorder, signer ConsensusMemberSigner, logger *slog.Logger) (*TribunalConsensusDeliberator, error) {
+	if store == nil {
+		return nil, fmt.Errorf("tribunal consensus: store: %w", constants.ErrMissingRequiredField)
+	}
+	if policies == nil {
+		return nil, fmt.Errorf("tribunal consensus: member policies: %w", constants.ErrMissingRequiredField)
+	}
+	if inference == nil {
+		return nil, fmt.Errorf("tribunal consensus: inference dispatcher: %w", constants.ErrMissingRequiredField)
+	}
+	if votes == nil {
+		return nil, fmt.Errorf("tribunal consensus: vote recorder: %w", constants.ErrMissingRequiredField)
+	}
+	if logger == nil {
+		return nil, fmt.Errorf("tribunal consensus: logger: %w", constants.ErrMissingRequiredField)
+	}
+	return &TribunalConsensusDeliberator{store: store, policies: policies, inference: inference, votes: votes, signer: signer, logger: logger}, nil
 }
 
 // Deliberate collects member votes on the envelope until quorum is met or can
@@ -103,7 +119,11 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 	if bound == nil || !bound.Enabled {
 		return nil, constants.ErrTxL2ConsensusNotConfigured
 	}
-	if provider, err := bound.ConsensusProvider(); err != nil || provider != constants.ConsensusProviderTribunal {
+	provider, err := bound.ConsensusProvider()
+	if err != nil {
+		return nil, fmt.Errorf("tribunal consensus: binding provider: %w: %w", constants.ErrTxL2ConsensusNotConfigured, err)
+	}
+	if provider != constants.ConsensusProviderTribunal {
 		return nil, fmt.Errorf("tribunal consensus: binding provider: %w", constants.ErrTxL2ConsensusNotConfigured)
 	}
 

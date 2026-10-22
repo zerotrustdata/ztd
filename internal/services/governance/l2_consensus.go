@@ -146,7 +146,7 @@ func (tv *L4Warden) verifyL2Posture(ctx context.Context, envelope *govtypes.Gove
 	return true, nil
 }
 
-// VerifyL2Quorum verifies l2's votes over transactionHash against policy. Only
+// verifyL2Quorum verifies l2's votes over transactionHash against policy. Only
 // member votes count; each must verify under its member's trusted key, a
 // repeated member fails where policy requires distinct signers, and at least
 // policy.Quorum must approve. It is the single owner of the L2 tally: L4 runs
@@ -157,6 +157,9 @@ func verifyL2Quorum(ctx context.Context, signers SignerStore, policy *L2Consensu
 	}
 	if policy == nil || !policy.Enabled {
 		return constants.ErrTxL2ConsensusSetUnknown
+	}
+	if policy.Quorum < 1 || policy.Quorum > len(policy.MemberKeyIDs) {
+		return fmt.Errorf("verify L2 quorum: %w", constants.ErrConsensusQuorumInvalid)
 	}
 	members := make(map[string]bool, len(policy.MemberKeyIDs))
 	for _, m := range policy.MemberKeyIDs {

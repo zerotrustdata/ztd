@@ -63,7 +63,7 @@ func ConsensusVotePrompt(member Member, subject ConsensusSubject) (system, user 
 // consensusVoteAnswer is the only accepted vote answer shape.
 type consensusVoteAnswer struct {
 	Decision ConsensusVoteDecision `json:"decision"`
-	Reason   string                `json:"reason"`
+	Reason   *string               `json:"reason"`
 }
 
 // ConsensusVoteAnswer is a member's decoded vote answer. Err is set when the
@@ -86,9 +86,13 @@ func ParseConsensusVote(text string) ConsensusVoteAnswer {
 	if err := decodeAnswer(strings.TrimSpace(text), &answer); err != nil {
 		return ConsensusVoteAnswer{Decision: ConsensusVoteDeny, Err: err}
 	}
+	if answer.Reason == nil {
+		return ConsensusVoteAnswer{Decision: ConsensusVoteDeny,
+			Err: fmt.Errorf("reason must be a string: %w", constants.ErrTribunalAnswerInvalid)}
+	}
 	if answer.Decision != ConsensusVoteApprove && answer.Decision != ConsensusVoteDeny {
-		return ConsensusVoteAnswer{Decision: ConsensusVoteDeny, Reason: answer.Reason,
+		return ConsensusVoteAnswer{Decision: ConsensusVoteDeny, Reason: *answer.Reason,
 			Err: fmt.Errorf("decision %q: %w", answer.Decision, constants.ErrTribunalAnswerInvalid)}
 	}
-	return ConsensusVoteAnswer{Decision: answer.Decision, Reason: answer.Reason}
+	return ConsensusVoteAnswer{Decision: answer.Decision, Reason: *answer.Reason}
 }

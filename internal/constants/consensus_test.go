@@ -20,7 +20,7 @@ func TestParseConsensusProvider(t *testing.T) {
 		want    ConsensusProvider
 		wantErr error
 	}{
-		{name: "empty is application", value: "", want: ConsensusProviderApplication},
+		{name: "empty provider is rejected", value: "", wantErr: ErrConsensusProviderInvalid},
 		{name: "application", value: "application", want: ConsensusProviderApplication},
 		{name: "tribunal", value: "tribunal", want: ConsensusProviderTribunal},
 		{name: "unknown provider", value: "bogus", wantErr: ErrConsensusProviderInvalid},

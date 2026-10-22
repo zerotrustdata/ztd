@@ -62,7 +62,8 @@ func TestTribunalDecisionGovernedVotesAndPinnedOperator(t *testing.T) {
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
 	records := &fakeVoteRecorder{}
 	inferer := assertedDecisionInferer{t: t, operatorID: binding.InferenceOperatorID, decisionVoteInferer: decisionVoteInferer{probability: .99}}
-	d := NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, records, signer, slog.New(slog.DiscardHandler))
+	d, err := NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, records, signer, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
 	env, hash := tribunalTestEnvelope(t)
 	out, err := d.Deliberate(t.Context(), marshalTestEnvelope(t, env))
 	require.NoError(t, err)

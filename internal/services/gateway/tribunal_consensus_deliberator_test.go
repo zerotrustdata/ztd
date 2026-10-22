@@ -330,13 +330,23 @@ func (f *fakeVoteRecorder) records(t *testing.T) []models.ConsensusVoteRecord {
 	return out
 }
 
-func newTribunalTestDeliberator(binding *models.ConsensusPolicy, inferer *fakeInferer, signer *fakeSigner) *TribunalConsensusDeliberator {
-	return newRecordingTribunalTestDeliberator(binding, inferer, signer, &fakeVoteRecorder{})
+func newTribunalTestDeliberator(t *testing.T, binding *models.ConsensusPolicy, inferer *fakeInferer, signer *fakeSigner) *TribunalConsensusDeliberator {
+	t.Helper()
+	return newRecordingTribunalTestDeliberator(t, binding, inferer, signer, &fakeVoteRecorder{})
 }
 
-func newRecordingTribunalTestDeliberator(binding *models.ConsensusPolicy, inferer *fakeInferer, signer *fakeSigner, recorder *fakeVoteRecorder) *TribunalConsensusDeliberator {
+func newRecordingTribunalTestDeliberator(t *testing.T, binding *models.ConsensusPolicy, inferer *fakeInferer, signer *fakeSigner, recorder *fakeVoteRecorder) *TribunalConsensusDeliberator {
+	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
-	return NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, recorder, signer, logger)
+	deliberator, err := NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, recorder, signer, logger)
+	require.NoError(t, err)
+	return deliberator
+}
+
+func TestNewTribunalConsensusDeliberatorRejectsMissingRequiredDependencies(t *testing.T) {
+	got, err := NewTribunalConsensusDeliberator(nil, fakePolicies{}, &fakeInferer{}, &fakeVoteRecorder{}, nil, slog.New(slog.DiscardHandler))
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	require.Nil(t, got)
 }
 
 // assertVoteSignature verifies vote's signature over the L2 vote payload for
@@ -366,7 +376,7 @@ func TestTribunalConsensusAllApproveStopsAtQuorum(t *testing.T) {
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 	if err != nil {
@@ -426,7 +436,7 @@ func TestTribunalConsensusAllDenyStopsWhenQuorumUnreachable(t *testing.T) {
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalDenyAnswer})}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 	if err != nil {
@@ -454,7 +464,7 @@ func TestTribunalConsensusInvalidAnswerIsSignedDeny(t *testing.T) {
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: "I think this is probably fine."})}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 	if err != nil {
@@ -484,7 +494,7 @@ func TestTribunalConsensusInferenceErrorCastsNoVoteAndContinues(t *testing.T) {
 	replies[failing] = inferReply{err: errors.New("member inference unavailable")}
 	inferer := &fakeInferer{replies: replies}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 	if err != nil {
@@ -515,7 +525,7 @@ func TestTribunalConsensusAsksEachBatchConcurrently(t *testing.T) {
 	// serial voting would time out the barrier and cast no vote.
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer}), barrier: newCallBarrier(binding.Quorum)}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 	if err != nil {
@@ -541,7 +551,7 @@ func TestTribunalConsensusStopsAskingOnceTheContextEnds(t *testing.T) {
 		}
 	}}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	if _, err := d.Deliberate(ctx, marshalTestEnvelope(t, env)); err != nil {
 		t.Fatalf("Deliberate: %v", err)
@@ -558,7 +568,7 @@ func TestTribunalConsensusMemberWithoutKeyCastsNoVote(t *testing.T) {
 	missing := binding.MemberAppIDs[1]
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 	signer := newFakeSigner(t, membersExcept(missing)...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 	if err != nil {
@@ -605,7 +615,7 @@ func TestTribunalConsensusRecordsEveryMemberVote(t *testing.T) {
 	inferer := &fakeInferer{replies: replies}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
 	recorder := &fakeVoteRecorder{}
-	d := newRecordingTribunalTestDeliberator(binding, inferer, signer, recorder)
+	d := newRecordingTribunalTestDeliberator(t, binding, inferer, signer, recorder)
 
 	if _, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env)); err != nil {
 		t.Fatalf("Deliberate: %v", err)
@@ -649,7 +659,7 @@ func TestTribunalConsensusUnrecordedVoteDoesNotCount(t *testing.T) {
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newRecordingTribunalTestDeliberator(binding, inferer, signer, &fakeVoteRecorder{err: constants.ErrAuditStoreDisabled})
+	d := newRecordingTribunalTestDeliberator(t, binding, inferer, signer, &fakeVoteRecorder{err: constants.ErrAuditStoreDisabled})
 
 	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 	if err != nil {
@@ -666,7 +676,7 @@ func TestTribunalConsensusHashMismatchFailsBeforeAnyWork(t *testing.T) {
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	_, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 	if !errors.Is(err, constants.ErrTxTransactionHashMismatch) {
@@ -685,7 +695,7 @@ func TestTribunalConsensusCallsCarryMemberIdentityAndPinnedModel(t *testing.T) {
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	if _, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env)); err != nil {
 		t.Fatalf("Deliberate: %v", err)
@@ -717,7 +727,7 @@ func TestTribunalConsensusVotePromptCarriesTypedPayload(t *testing.T) {
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	if _, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env)); err != nil {
 		t.Fatalf("Deliberate: %v", err)
@@ -782,7 +792,7 @@ func TestTribunalConsensusUndecodablePayloadFailsBeforeAnyWork(t *testing.T) {
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(binding, inferer, signer)
+	d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 	if _, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env)); err == nil {
 		t.Fatal("Deliberate succeeded on an undecodable payload, want error")
@@ -801,6 +811,9 @@ func TestTribunalConsensusUnconfiguredBindingFailsClosed(t *testing.T) {
 		"application provider": func(p *models.ConsensusPolicy) {
 			p.Provider = string(constants.ConsensusProviderApplication)
 		},
+		"invalid provider": func(p *models.ConsensusPolicy) {
+			p.Provider = "unknown"
+		},
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -812,11 +825,14 @@ func TestTribunalConsensusUnconfiguredBindingFailsClosed(t *testing.T) {
 			}
 			inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
 			signer := newFakeSigner(t, tribunalTestBinding().MemberAppIDs...)
-			d := newTribunalTestDeliberator(binding, inferer, signer)
+			d := newTribunalTestDeliberator(t, binding, inferer, signer)
 
 			_, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
 			if !errors.Is(err, constants.ErrTxL2ConsensusNotConfigured) {
 				t.Fatalf("Deliberate error = %v, want ErrTxL2ConsensusNotConfigured", err)
+			}
+			if name == "invalid provider" && !errors.Is(err, constants.ErrConsensusProviderInvalid) {
+				t.Fatalf("Deliberate error = %v, want ErrConsensusProviderInvalid in the error chain", err)
 			}
 			if len(inferer.calls) != 0 {
 				t.Fatalf("inference calls = %d, want 0", len(inferer.calls))
@@ -834,7 +850,7 @@ func TestConsensusDeliberatorRouterTribunalProviderRoutesToTribunal(t *testing.T
 	router := &consensusDeliberatorRouter{
 		store:       &fakeBinding{policy: binding},
 		application: app,
-		tribunal:    newTribunalTestDeliberator(binding, inferer, signer),
+		tribunal:    newTribunalTestDeliberator(t, binding, inferer, signer),
 	}
 
 	out, err := router.Deliberate(context.Background(), marshalTestEnvelope(t, env))
@@ -867,7 +883,7 @@ func TestConsensusDeliberatorRouterApplicationProviderRoutesToApplication(t *tes
 	router := &consensusDeliberatorRouter{
 		store:       &fakeBinding{policy: binding},
 		application: app,
-		tribunal:    newTribunalTestDeliberator(binding, inferer, signer),
+		tribunal:    newTribunalTestDeliberator(t, binding, inferer, signer),
 	}
 
 	out, err := router.Deliberate(context.Background(), marshalTestEnvelope(t, env))
@@ -904,7 +920,7 @@ func TestConsensusDeliberatorRouterFailsClosedWithoutBindingOrTribunal(t *testin
 				application: app,
 			}
 			if tc.tribunal {
-				router.tribunal = newTribunalTestDeliberator(tribunalTestBinding(), inferer, signer)
+				router.tribunal = newTribunalTestDeliberator(t, tribunalTestBinding(), inferer, signer)
 			}
 
 			_, err := router.Deliberate(context.Background(), marshalTestEnvelope(t, env))

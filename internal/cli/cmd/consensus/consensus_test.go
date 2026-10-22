@@ -35,7 +35,7 @@ func testCmd(t *testing.T, client authcmd.APIClient) *cobra.Command {
 }
 
 func TestConsensusEnrollAppCommands(t *testing.T) {
-	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer"}, Quorum: 1, RequireDistinct: true, Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
+	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer"}, Quorum: 1, RequireDistinct: true, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
 	policyBody, err := json.Marshal(policy)
 	require.NoError(t, err)
 	for _, tc := range []struct {
@@ -76,7 +76,7 @@ func TestConsensusEnrollAppCommands(t *testing.T) {
 }
 
 func TestConsensusEnrollApp_SendsKOfNFlags(t *testing.T) {
-	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer-a", MemberAppIDs: []string{"reviewer-a", "reviewer-b", "reviewer-c"}, Quorum: 2, RequireDistinct: true, Enabled: true, EndpointURL: "https://reviewer-a.example/deliberate"}
+	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer-a", MemberAppIDs: []string{"reviewer-a", "reviewer-b", "reviewer-c"}, Quorum: 2, RequireDistinct: true, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer-a.example/deliberate"}
 	body, err := json.Marshal(policy)
 	require.NoError(t, err)
 	client := &cmdtest.MockAPIClient{PostResp: body}
@@ -89,7 +89,7 @@ func TestConsensusEnrollApp_SendsKOfNFlags(t *testing.T) {
 }
 
 func TestConsensusEnrollApp_TrimsMemberAppIDsBeforeCompare(t *testing.T) {
-	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer", "peer"}, Quorum: 2, RequireDistinct: true, Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
+	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer", "peer"}, Quorum: 2, RequireDistinct: true, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
 	body, err := json.Marshal(policy)
 	require.NoError(t, err)
 	client := &cmdtest.MockAPIClient{PostResp: body}
@@ -177,18 +177,21 @@ func TestConsensusCommands_FileServiceFailure(t *testing.T) {
 }
 
 func TestDecodeConsensusBinding_ProviderShapes(t *testing.T) {
-	application := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer"}, Quorum: 1, Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
+	application := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: "reviewer", MemberAppIDs: []string{"reviewer"}, Quorum: 1, Provider: string(constants.ConsensusProviderApplication), Enabled: true, EndpointURL: "https://reviewer.example/deliberate"}
 	tribunal := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: constants.TribunalConsensusMemberAppIDs()[0], MemberAppIDs: constants.TribunalConsensusMemberAppIDs(), Quorum: constants.TribunalConsensusDefaultQuorum, Provider: string(constants.ConsensusProviderTribunal), ModelTag: "vote-model", ModelDigest: "sha256:abc", Enabled: true}
 	tribunalWithEndpoint := tribunal
 	tribunalWithEndpoint.EndpointURL = "https://tribunal.example/deliberate"
 	applicationNoEndpoint := application
 	applicationNoEndpoint.EndpointURL = ""
+	applicationWithoutProvider := application
+	applicationWithoutProvider.Provider = ""
 	for _, tc := range []struct {
 		name      string
 		policy    models.ConsensusPolicy
 		wantError error
 	}{
 		{name: "application", policy: application},
+		{name: "application without provider", policy: applicationWithoutProvider, wantError: constants.ErrConsensusProviderInvalid},
 		{name: "tribunal without endpoint", policy: tribunal},
 		{name: "tribunal with endpoint", policy: tribunalWithEndpoint, wantError: constants.ErrConsensusTribunalEndpointSet},
 		{name: "application without endpoint", policy: applicationNoEndpoint, wantError: constants.ErrMissingRequiredField},

@@ -77,10 +77,9 @@ func TestResolveConsensusBinding(t *testing.T) {
 			wantQuorum:  1,
 		},
 		{
-			name:        "empty provider decodes as application",
-			spec:        ConsensusBindingSpec{AppID: "app-a", EndpointURL: testAppEndpoint},
-			wantMembers: []string{"app-a"},
-			wantQuorum:  1,
+			name:    "empty provider is rejected",
+			spec:    ConsensusBindingSpec{AppID: "app-a", EndpointURL: testAppEndpoint},
+			wantErr: constants.ErrConsensusProviderInvalid,
 		},
 		{
 			name:    "application with model tag is rejected",
@@ -179,15 +178,14 @@ func TestResolveConsensusBinding(t *testing.T) {
 	}
 }
 
-func TestConsensusPolicyProviderDefaultsForLegacyDocument(t *testing.T) {
+func TestConsensusPolicyProviderRequiresExplicitProvider(t *testing.T) {
 	var policy ConsensusPolicy
 	legacy := `{"app_id":"app-a","member_app_ids":["app-a"],"quorum":1,"require_distinct":true,"endpoint_url":"https://app.example.com/deliberate","enabled":true}`
 	require.NoError(t, json.Unmarshal([]byte(legacy), &policy))
 	require.Empty(t, policy.Provider)
 
-	provider, err := policy.ConsensusProvider()
-	require.NoError(t, err)
-	require.Equal(t, constants.ConsensusProviderApplication, provider)
+	_, err := policy.ConsensusProvider()
+	require.ErrorIs(t, err, constants.ErrConsensusProviderInvalid)
 }
 
 func withQuorum(spec ConsensusBindingSpec, quorum int) ConsensusBindingSpec {

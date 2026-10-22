@@ -106,7 +106,6 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-OP-WARD-01 | L4 Warden MUST lock nonces in memory (`trackInFlight`) and durably reserve them in SQLite (`ReplayStore`) prior to payload validation. Validation failures release that reservation, except an explicit human L3 denial (`ErrTxL3Denied`): its nonce stays spent so the denied transaction cannot later execute. |
 | INV-OP-WARD-02 | L4 Warden MUST verify protocol version 2, recompute the canonical transaction hash (`GenerateMessageID`), verify hash equality against both `envelope.TransactionHash` and `envelope.Id`, validate state Merkle root, verify target execution identity (`ExecutesFor`), and enforce posture-required L2 consensus and L3 notary proofs. |
-| INV-OP-WARD-03 | Under the L2 deliberation attestation exemption (`INV-GOV-LAY-06`), L4 Warden MUST accept an `L2Metadata.deliberation` attestation only when `OperatorL2Trust` names the `tribunal` provider, the signer is an enabled member of that binding, and its Ed25519 signature verifies over `<transaction_hash>\|consensus-deliberation` for the recomputed transaction hash. The Operator MUST NOT grant the exemption from caller identity. Any failure MUST fail closed with `ErrTxL2SignatureInvalid`. |
 
 ### L5 Actuator Execution Boundary (`INV-OP-ACT`)
 
@@ -256,7 +255,7 @@ The Operator owns the final two layers of the governance interlock:
 2. **Durable Replay Reservation**: Confirms TTL expiration (`ExpiresAt`) and reserves the nonce in SQLite (`ReplayStore.ReserveNonce`).
 3. **Stateless Verification**: Decodes the protobuf payload, validates target ownership (`ExecutesFor`), re-runs local L1 Doctrine checks, recomputes the SHA-256 transaction hash, and verifies dual equality (`transaction_hash == envelope.id == recomputed_hash`).
 4. **State Merkle Root Verification**: Validates `envelope.StateMerkleRoot` against the admission snapshot in context.
-5. **Posture Validation**: Evaluates posture-required L2 Consensus signatures and L3 Notary proofs from `envelope.Posture`. Missing or invalid proofs release the reserved nonce; an explicit human L3 denial keeps it spent. Under the `tribunal` provider, a verified deliberation attestation satisfies L2 in place of votes (`INV-OP-WARD-03`).
+5. **Posture Validation**: Evaluates posture-required L2 Consensus signatures and L3 Notary proofs from `envelope.Posture`. Missing or invalid proofs release the reserved nonce; an explicit human L3 denial keeps it spent.
 
 #### L5 Actuator Execution Boundary
 1. **Initial Receipt Logging**: Persists an `EXECUTING` status `ActionReceipt` signed by the Operator's Actuator key.

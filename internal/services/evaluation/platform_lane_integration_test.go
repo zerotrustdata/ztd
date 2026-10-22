@@ -83,9 +83,14 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 						wantL3 = operatorv1.L3Status_L3_STATUS_REQUIRED_VALID
 					}
 					assert.Equal(t, wantL3, receipt.GetL3Status())
-					if posture.RequiresL2() {
-						assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, receipt.GetL2Status())
+					// These scoped results contain FileEdit and FsRead receipts;
+					// ActionReceipt does not carry a target for MCP's finer classification.
+					wantL2 := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
+					actionType := constants.ActionType(receipt.GetActionType())
+					if posture.RequiresL2() && !actionType.IsBootstrapAction() && actionType.IsStateChange() {
+						wantL2 = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
 					}
+					assert.Equal(t, wantL2, receipt.GetL2Status())
 					local, err := storage.ReadLocalActionReceipt(files, testutil.NewTestLogger(), keystore.Options{Keyring: env.stack.DataHost.Keyring}, receipt.GetTransactionId())
 					require.NoError(t, err)
 					require.NotNil(t, local)
@@ -97,7 +102,17 @@ func TestCommandLane_InvestigationLedgerExcludesFixtureAndProbeReceipts(t *testi
 			visible := query(investigation)
 			require.Len(t, visible, 1)
 			assert.Equal(t, scored.TransactionID, visible[0].GetTransactionId())
-			assert.Len(t, query("eval-harness:attempt"), 2)
+			harnessReceipts := query("eval-harness:attempt")
+			require.Len(t, harnessReceipts, 2)
+			if posture.RequiresL2() {
+				validVotes := 0
+				for _, receipt := range harnessReceipts {
+					if receipt.GetL2Status() == operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
+						validVotes++
+					}
+				}
+				assert.Equal(t, 1, validVotes, "only the FileEdit fixture requires L2; FsRead is read-only")
+			}
 			assert.Empty(t, query("fresh-investigation"))
 			// Every query is recorded in the scored investigation. A repeated
 			// query must still exclude all earlier query receipts and itself.

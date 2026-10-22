@@ -246,7 +246,7 @@ Mutations that traverse a ztd ingress use a typed `GovernanceEnvelope` (`INV-BOU
 | Step | Owner |
 | :--- | :--- |
 | L1 doctrine | `internal/services/governance/l1_doctrine.go` (`NewL1DoctrineFromDir`). Loader rules: `INV-DOCTRINE-*`. |
-| L2 consensus | `internal/services/governance/l2_consensus.go`, `internal/services/gateway/consensus_store_service.go`. Bound application HTTPS deliberation. Required only for postures that enforce it (`INV-DEP-05`). The Gateway-hosted Tribunal provider votes in `internal/services/gateway/tribunal_consensus_deliberator.go` (`TribunalConsensusDeliberator`). Architecture: [Consensus](../architecture/consensus.md). |
+| L2 consensus | `internal/services/governance/l2_consensus.go`, `internal/services/gateway/consensus_store_service.go`. Requires an explicitly selected `application` or `tribunal` provider; application uses HTTPS deliberation. Required only for postures that enforce it (`INV-DEP-05`). The Gateway-hosted Tribunal provider votes in `internal/services/gateway/tribunal_consensus_deliberator.go` (`TribunalConsensusDeliberator`). Architecture: [Consensus](../architecture/consensus.md). |
 | L3 notary | `internal/services/governance/`. Gateway mode and outbound mode use distinct notaries. See mode table. |
 | L4 verification and L5 actuation | `internal/services/governance/` with command and file dispatch in `internal/services/pubsub/`. |
 | MCP and A2A translation, native tools, suspension | `internal/services/mcp/`. Native registration rules: `INV-MCP-*`. |

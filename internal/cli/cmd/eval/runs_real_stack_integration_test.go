@@ -15,6 +15,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -323,6 +324,7 @@ func TestRunsExecute_RealStack(t *testing.T) {
 func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	run := newRealStackEnvironment(t, fixtures.EvalStackOptions{
 		Posture: constants.PostureConsensus, BindConsensus: bindRunTribunalConsensus,
+		Replies: []fixtures.OllamaReply{{Content: "ready"}},
 	}, runControlDeps{})
 
 	cmd := &cobra.Command{}
@@ -333,11 +335,33 @@ func TestReleaseProviderModels_RunsNoTribunalVoteRound(t *testing.T) {
 	inferenceWorkload, err := run.stack.Inference.Workload()
 	require.NoError(t, err)
 
+	// Warm the provider through a governed no-tool inference so the typed
+	// residency read finds one resident model for the production release path.
+	appClient, err := inferenceEvalAppClient(run.ctx, io.Discard, run.deps, run.fileSvc, run.cfg, authContext)
+	require.NoError(t, err)
+	inferenceResult, _, err := appClient.DispatchInference(run.ctx, &operatorv1.InferenceDispatchRequest{
+		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
+		Role:                 operatorv1.ModelRole_MODEL_ROLE_PRIMARY,
+		Model:                testQwenVariant().GetServedModelTag(),
+		Messages: []*operatorv1.InferenceMessage{{
+			Role:  operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER,
+			Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_Text{Text: "warm provider"}}},
+		}},
+		ProviderAttemptId:       "tribunal-release-warmup-attempt",
+		TargetOperatorSessionId: inferenceWorkload.OperatorSessionID,
+		ActingAppId:             protocol.NewWorkloadIdentity().AppSPIFFEID(constants.EvaluationAppName),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, inferenceResult)
+	require.NotNil(t, inferenceResult.GetReceipt())
+	assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, inferenceResult.GetReceipt().GetL2Status())
+	assert.Equal(t, 1, run.stack.Provider.ChatCount(), "warm-up inference is not voted on")
+
 	// Neither the strict-run preflight residency read nor the typed release is
 	// a state change, so under consensus neither runs a Tribunal vote round.
 	require.NoError(t, releaseProviderModels(cmd, run.deps, runExecuteOptions{RunID: "tribunal-release"}, run.cfg, authContext,
 		inferenceWorkload.OperatorSessionID, run.stack.Provider.Endpoint(), "resident", nil))
-	assert.Zero(t, run.stack.Provider.ChatCount(), "residency and release must not deliberate")
+	assert.Equal(t, 1, run.stack.Provider.ChatCount(), "residency and release must not add Tribunal vote inferences")
 
 	provider, err := inference.NewOllamaBackend(run.stack.Provider.Endpoint(), slog.Default())
 	require.NoError(t, err)

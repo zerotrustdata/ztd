@@ -300,7 +300,7 @@ func TestPlatformEnrollmentService_BindConsensusRequiresExplicitQuorumForMembers
 	const endpointURL = "https://reviewer.example/deliberate"
 
 	_, err := env.enrollSvc.BindConsensusApplication(t.Context(), env.ownerID, models.PlatformEnrollmentBindConsensusRequest{
-		AppID: "reviewer-a", EndpointURL: endpointURL, MemberAppIDs: []string{"reviewer-a", "reviewer-b"},
+		AppID: "reviewer-a", EndpointURL: endpointURL, Provider: string(constants.ConsensusProviderApplication), MemberAppIDs: []string{"reviewer-a", "reviewer-b"},
 	})
 	require.ErrorIs(t, err, constants.ErrConsensusQuorumInvalid)
 
@@ -311,13 +311,13 @@ func TestPlatformEnrollmentService_BindConsensusRequiresExplicitQuorumForMembers
 	// An explicit quorum passes the quorum gate; the unenrolled primary app
 	// then fails at the enrollment check, which proves the gate was passed.
 	_, err = env.enrollSvc.BindConsensusApplication(t.Context(), env.ownerID, models.PlatformEnrollmentBindConsensusRequest{
-		AppID: "reviewer-a", EndpointURL: endpointURL, MemberAppIDs: []string{"reviewer-a", "reviewer-b"}, Quorum: 2,
+		AppID: "reviewer-a", EndpointURL: endpointURL, Provider: string(constants.ConsensusProviderApplication), MemberAppIDs: []string{"reviewer-a", "reviewer-b"}, Quorum: 2,
 	})
 	require.ErrorIs(t, err, constants.ErrConsensusAppNotEnrolled)
 
 	// A single application without a quorum keeps the 1-of-1 default.
 	_, err = env.enrollSvc.BindConsensusApplication(t.Context(), env.ownerID, models.PlatformEnrollmentBindConsensusRequest{
-		AppID: "reviewer-a", EndpointURL: endpointURL,
+		AppID: "reviewer-a", EndpointURL: endpointURL, Provider: string(constants.ConsensusProviderApplication),
 	})
 	require.ErrorIs(t, err, constants.ErrConsensusAppNotEnrolled)
 }

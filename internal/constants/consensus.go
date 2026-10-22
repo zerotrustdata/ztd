@@ -10,8 +10,7 @@ package constants
 import "fmt"
 
 // ConsensusProvider names the vote producer of a bound L2 consensus. It is the
-// single owner of provider names; an empty stored value is the application
-// provider so bindings written before providers existed keep working.
+// single owner of provider names; every stored binding must specify one.
 type ConsensusProvider string
 
 // Consensus providers.

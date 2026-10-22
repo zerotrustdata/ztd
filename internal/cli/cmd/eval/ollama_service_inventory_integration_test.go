@@ -67,11 +67,9 @@ func TestListOllamaProviderInventory_UsesTypedInventoryAction(t *testing.T) {
 			assert.Equal(t, workload.OperatorSessionID, local.OperatorSessionID)
 			assert.Equal(t, constants.ActionTypeOllamaModelInventory, local.ActionType)
 			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, local.ActionReceipt.GetStatus())
-			// Inventory is a read action; L3 is reserved for mutations.
+			// Inventory is not a state change, so neither L2 nor L3 gates it.
+			assert.Equal(t, operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, local.ActionReceipt.GetL2Status())
 			assert.Equal(t, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED, local.ActionReceipt.GetL3Status())
-			if posture.RequiresL2() {
-				assert.Equal(t, operatorv1.L2Status_L2_STATUS_REQUIRED_VALID, local.ActionReceipt.GetL2Status())
-			}
 			operator, err := env.stack.Gateway.Service.GetRegistrationService().GetOperator(t.Context(), workload.OperatorID)
 			require.NoError(t, err)
 			publicKey, err := models.DecodeActuatorPublicKey(operator.GetActuatorPublicKey())

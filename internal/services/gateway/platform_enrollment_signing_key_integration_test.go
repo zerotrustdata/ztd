@@ -121,7 +121,7 @@ func TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensu
 	require.NoError(t, err)
 	endpointURL := "https://localhost:" + port + "/deliberate"
 	bound, err := env.enrollSvc.BindConsensusApplication(t.Context(), env.ownerID, models.PlatformEnrollmentBindConsensusRequest{
-		AppID: "ordinary-consensus", EndpointURL: endpointURL,
+		AppID: "ordinary-consensus", EndpointURL: endpointURL, Provider: string(constants.ConsensusProviderApplication),
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"ordinary-consensus"}, bound.MemberAppIDs)

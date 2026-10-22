@@ -64,6 +64,8 @@ func TestParseConsensusVote(t *testing.T) {
 		{name: "empty string", text: "", wantErr: true},
 		{name: "free text approve", text: "approve", wantErr: true},
 		{name: "invalid JSON", text: `{"decision":"approve",`, wantErr: true},
+		{name: "missing reason rejected", text: `{"decision":"approve"}`, wantErr: true},
+		{name: "null reason rejected", text: `{"decision":"approve","reason":null}`, wantErr: true},
 		{name: "unknown field rejected", text: `{"decision":"approve","reason":"ok","extra":true}`, wantErr: true},
 		{name: "markdown fenced rejected", text: "```json\n{\"decision\":\"approve\",\"reason\":\"ok\"}\n```", wantErr: true},
 	}
