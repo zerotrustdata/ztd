@@ -508,7 +508,7 @@ func (r *releaseSmokeRun) verifyEvalTraceRuntimes(trace *evaluation.AgentTrace, 
 }
 
 // verifyEvalReceipts verifies every receipt a trace carries against the Operator
-// that signed it: the harness sentinels and each EXECUTE_BASH command on the
+// that signed it: the harness sentinels and each tool call on the
 // Data runtime, and each model call on the Inference runtime. It returns the
 // transaction IDs it verified.
 func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluation.AgentTrace, inferenceRoot, inferenceID, inferenceSession string) ([]string, error) {
@@ -527,8 +527,8 @@ func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluat
 		if receipt == nil || receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
 			return nil, fmt.Errorf("eval inference %s requires L3: %w", call.Purpose, constants.ErrValidationFailed)
 		}
-		if r.opts.Posture == constants.PostureNotary && receipt.GetL2Status() != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
-			return nil, fmt.Errorf("eval inference %s requires L2: %w", call.Purpose, constants.ErrValidationFailed)
+		if receipt.GetL2Status() != operatorv1.L2Status_L2_STATUS_NOT_REQUIRED {
+			return nil, fmt.Errorf("eval inference %s must not require L2: %w", call.Purpose, constants.ErrValidationFailed)
 		}
 		if err := r.verifyReceipt(ctx, inferenceRoot, inferenceID, inferenceSession, receipt.GetTransactionId()); err != nil {
 			return nil, err
@@ -536,11 +536,16 @@ func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluat
 		txs = append(txs, receipt.GetTransactionId())
 	}
 	for _, call := range trace.ToolCalls {
-		if call.ActionType != string(constants.ActionTypeExecuteBash) {
-			continue
-		}
 		if call.Receipt == nil {
 			return nil, fmt.Errorf("eval command %s has no receipt: %w", call.ToolName, constants.ErrValidationFailed)
+		}
+		wantL2 := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
+		action := constants.ActionType(call.ActionType)
+		if r.opts.Posture.RequiresL2() && !action.IsBootstrapAction() && action.ChangesState(call.ToolName) {
+			wantL2 = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
+		}
+		if call.Receipt.GetL2Status() != wantL2 {
+			return nil, fmt.Errorf("eval command %s L2 status %s, want %s: %w", call.ToolName, call.Receipt.GetL2Status(), wantL2, constants.ErrValidationFailed)
 		}
 		if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, call.Receipt.GetTransactionId()); err != nil {
 			return nil, err

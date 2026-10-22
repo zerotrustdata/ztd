@@ -339,20 +339,34 @@ func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t
 	assert.Empty(t, runIDs, "preflight must fail before a run is persisted")
 }
 
-// A live Gateway running a posture the campaign did not freeze fails preflight
-// before a run is persisted.
-func TestRunsStart_FailsPreflightUnderAnUnfrozenGatewayPosture(t *testing.T) {
-	for _, posture := range []constants.Posture{constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
-		t.Run(string(posture), func(t *testing.T) {
-			env, _ := newGatewayRunEnvWithPosture(t, posture)
+// Run start reads live Gateway governance; the campaign does not choose a
+// posture. It freezes the live posture and any bound consensus identity in the
+// prepared run before execution begins.
+func TestRunsStart_FreezesLiveGatewayGovernance(t *testing.T) {
+	tests := []struct {
+		posture constants.Posture
+		want    evalv1.EvaluationGovernancePosture
+	}{
+		{posture: constants.PostureConsensus, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS},
+		{posture: constants.PostureRatify, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY},
+		{posture: constants.PostureNotary, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.posture), func(t *testing.T) {
+			env, _ := newGatewayRunEnvWithPosture(t, tt.posture)
 			env.createCampaign(t, "eval-posture")
 
-			_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{CampaignID: "eval-posture", RunID: "run-posture"})
-			require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported)
-			require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
-			runIDs, err := env.store(t).ListRunIDs(context.Background())
+			result, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{
+				CampaignID: "eval-posture", RunID: "run-posture", PrepareOnly: true,
+			})
 			require.NoError(t, err)
-			assert.Empty(t, runIDs, "posture preflight must fail before a run is persisted")
+			assert.True(t, result.Prepared)
+
+			run, err := env.store(t).LoadRun(context.Background(), "run-posture")
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, run.GetActivePosture())
+			require.NotNil(t, run.GetConsensus())
+			assert.Equal(t, tt.posture.RequiresL2(), run.GetConsensus().GetBound(), "run freezes the live consensus binding when present")
 		})
 	}
 }
