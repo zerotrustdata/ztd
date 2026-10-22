@@ -11,7 +11,7 @@ Before contributing, review the core platform architecture:
 - **ztd Protocol**: The canonical protocol definitions (protobuf schemas and constant registries).
 - **Five-Layer Governance Pipeline**:
     - **L1 Doctrine (L1Doctrine)**: Technical hard gates (forbidden patterns, threat detection).
-    - **L2 Consensus (L2Consensus)**: Multi-agent consensus via Ed25519 signatures.
+    - **L2 Consensus (L2Consensus)**: K-of-N Ed25519 quorum over the transaction hash and decision, from the members bound with `ztd consensus enroll`.
     - **L3 Notary (L3Notary)**: Human-in-the-loop authorization through WebAuthn or signed CLI proofs.
     - **L4 Warden (L4Warden)**: Pre-dispatch verification gate (transaction hash, expiry, nonce, state root).
     - **L5 Actuator (L5Actuator)**: Execution boundary issuing signed `ActionReceipts`.
@@ -54,6 +54,7 @@ Run the narrowest check that covers your changes, then the broader owning suite 
 |---|---|
 | Go unit tests | `./ztd test unit` |
 | Cross-process evaluation qualification | `./ztd test eval-loop` |
+| Cross-process conformance qualification | `./ztd test conformance-loop --posture ratify` |
 | Isolated governed release smoke | `./ztd test release-smoke` |
 | Operator fleet scale qualification | `./ztd test scale` |
 | Repository tools (`internal/tools/*`) | `./ztd test unit --pkg ./internal/tools/<tool>` |

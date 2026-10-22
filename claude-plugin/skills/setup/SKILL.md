@@ -19,7 +19,7 @@ Give the user these steps, using the configured values above:
    ztd gw start --posture doctrine
    ```
 
-   Posture is fixed for a running Gateway. `doctrine` enforces L1/L4/L5; `consensus`, `ratify`, and `notary` add L2 quorum and/or L3 human approval. `ztd gw start --help` lists the current choices.
+   Posture is fixed for a running Gateway. `doctrine` enforces L1/L4/L5; `consensus` requires L2 quorum, `ratify` requires L3 human approval, and `notary` requires both. `ztd gw start --help` lists the current choices.
 
 3. **Enroll the human CLI identity.** The bridge uses it to receive L3 approval events.
 

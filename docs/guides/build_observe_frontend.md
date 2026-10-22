@@ -3,8 +3,8 @@ doc_id: build_observe_frontend
 title: Generator-Neutral Builder Guide
 audience: SPA builders and frontend developers
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/build_observe_frontend.md
   - ztd-adapter/
@@ -105,6 +105,7 @@ The `ztd-adapter/contract-pack/` directory contains deterministic, generator-neu
 
 | File | Purpose |
 | :--- | :--- |
+| `README.md` | Contract pack reference and integration guide |
 | `builder-prompt.md` | Specification prompt given to the SPA builder |
 | `runtime-config.schema.json` | JSON Schema for `FrontendRuntimeConfig` |
 | `observe.openapi.json` | Curated OpenAPI 3.0 for allowlisted browser operations |
@@ -112,6 +113,7 @@ The `ztd-adapter/contract-pack/` directory contains deterministic, generator-neu
 | `models.ts` | TypeScript models and validators |
 | `fixtures/` | Typed fixture scenarios for UI states |
 | `manifest.json` | Output hashes for drift detection |
+| `public/` | Public spectator contract pack (`public/README.md`, `public/offline-verifier.md`) |
 
 ## Invariants
 

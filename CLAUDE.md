@@ -115,8 +115,8 @@ source of truth over an Operator's local store. All `.ztd/` I/O must go through 
 
 ```text
 cmd/ztd/              Binary entry point
-internal/cli/cmd/     Cobra CLI groups (gw, auth, mcp, operator, autochthon, vault, test, audit,
-                       report, public, swagger, tui, version, compliance, eval)
+internal/cli/cmd/     Cobra CLI groups (gw, auth, consensus, mcp, operator, autochthon, vault, test,
+                       audit, report, public, swagger, tui, version, compliance, eval)
 internal/services/    Gateway, outbound Operator, governance (L1-L5), consensus, storage, network,
                        vault, sse, pubsub, mcp (native tool registry), evaluation, compliance
 protocol/             Protobuf contracts, constants registries, generated Go/TypeScript bindings

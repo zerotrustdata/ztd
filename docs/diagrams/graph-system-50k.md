@@ -3,8 +3,8 @@ doc_id: diagram-system-50k
 title: "Diagram: System Overview 50,000-Foot View"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - cmd/ztd/
   - internal/services/gateway/
@@ -24,7 +24,7 @@ do_not_use_for:
 
 Provides the comprehensive 50,000-foot view of the platform. The single static `ztd` binary deploys into two primary architectural roles:
 
-- **Governance Gateway (Policy Decision Point, PDP)**: Coordinates incoming agent intent, L1–L3 governance, platform PKI, WebSocket pub/sub brokering, and SSE delivery. Sits directly on top of an embedded Operator substrate in the same process when running in Gateway mode.
+- **Governance Gateway (Policy Decision Point, PDP)**: Coordinates incoming agent intent, L1–L3 governance, platform PKI, WebSocket pub/sub brokering, and SSE delivery. The Gateway hosts the L2 Tribunal panel or routes L2 votes to a bound application. Sits directly on top of an embedded Operator substrate in the same process when running in Gateway mode.
 - **Governed Operator (Policy Execution Point, PEP)**: The execution substrate beneath all operations. Enforces L4 Warden pre-dispatch verification and L5 Actuator execution boundaries. Deploys embedded within the Gateway for local operations, or as an independent outbound daemon on sovereign remote nodes.
 
 ```mermaid
@@ -39,7 +39,7 @@ graph TD
             Persistence["Persistence<br/>SQLite Stores · Audit · Merkle Roots"]
             Broker["Pub/Sub Broker<br/>WebSocket Fan-out · cmd:* · receipts:*"]
             MCP["MCP / A2A Gateway<br/>/mcp · /api/v1/a2a/call"]
-            Gov["Governance Surface<br/>Envelope Admission · Consensus · Dispatch"]
+            Gov["Governance Surface<br/>Envelope Admission · L2 Consensus (Tribunal or bound app) · Dispatch"]
             SSE["SSE Event Bridge<br/>Push · Poll · Stream"]
         end
 

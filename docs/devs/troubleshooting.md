@@ -3,7 +3,7 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
+version: v1.3.0
 last_updated: 2026-10-22
 owners:
   - internal/cli/cmd/
@@ -143,6 +143,8 @@ make proto-generate
 ./ztd gw start --follow --log debug
 ```
 
+`./ztd gw status` prints a `Consensus` row that describes the bound L2 consensus and the posture the Gateway reports. Start the Gateway and each Operator against a new runtime root rather than one left by an earlier release: an existing `.ztd/data/ztd.db` is not altered, because the `CREATE TABLE` statements are the whole schema (`INV-STOR-SCHEMA-01` in [Developer Guidelines](devs.md)).
+
 ### Gateway CPU and Memory Profiling
 
 ```bash
@@ -222,6 +224,18 @@ Run `./ztd operator show` with an operator ID or operator session ID from the `l
 
 Filter receipts with `--session` set to the Operator session ID, or fetch one canonical receipt with `--tx-id`.
 
+When an L2 quorum rejects a transaction, inspect the bound consensus and each member's recorded vote:
+
+```bash
+# Show the bound L2 consensus, signer readiness, and posture
+./ztd consensus status
+
+# Show every recorded L2 member vote on one governed transaction
+./ztd audit votes --tx <tx-id>
+```
+
+Members are bound with `./ztd consensus enroll`.
+
 ## Anti-patterns
 
 - Running `./ztd` from outside the repository root, creating disjoint `.ztd/` state trees (`INV-TROUBLE-ENV-01`).
@@ -231,6 +245,7 @@ Filter receipts with `--session` set to the Operator session ID, or fetch one ca
 - Running `auth refresh` against a revoked certificate instead of clearing local credentials and logging in again (`INV-TROUBLE-AUTH-04`).
 - Attempting to connect inbound to an outbound Operator, or configuring inbound firewall ports for an Operator (`INV-TROUBLE-OP-01`).
 - Bypassing the L1–L5 pipeline when an envelope is rejected instead of diagnosing root causes from audit receipts (`INV-TROUBLE-OP-02`).
+- Reusing a runtime root from an earlier release for the Gateway or an Operator, relying on a schema that is never migrated (`INV-STOR-SCHEMA-01` in [Developer Guidelines](devs.md)).
 
 ## Links out
 

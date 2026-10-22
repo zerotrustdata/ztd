@@ -3,8 +3,8 @@ doc_id: air_gap
 title: Air-Gapped Deployment
 audience: platform operators and infrastructure teams
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/air_gap.md
   - Makefile
@@ -106,6 +106,8 @@ The Gateway browser console is embedded in the binary and served locally without
 - `vault/`: Vault header (`vault.header`) with the wrapped data-encryption key metadata.
 - `logs/`, `pids/`: Operational runtime state.
 
+v1.3.0 does not rewrite an existing `ztd.db`. Start the Gateway and every Operator from a new runtime root.
+
 ### Prepare a native binary
 
 Run on a connected build host from the repository root:
@@ -153,7 +155,8 @@ Run `make test-airgap` in the staged source tree before transfer to verify:
 On the air-gapped target host:
 - Block outbound internet traffic at host firewall and network perimeter.
 - Ensure external JWKS, public LLM endpoints, and external MCP/A2A URLs remain unset.
-- Point model storage, consensus signers, and DNS at internal endpoints.
+- Point model storage, consensus application endpoints, and DNS at internal endpoints.
+- For Tribunal consensus (`./ztd consensus enroll tribunal --model <tag>`), bind a local model tag. Hosted Jev access is disabled by default, so leave it off; the bind command rejects hosted use unless `--allow-hosted` is given.
 - Restrict permissions on `.ztd/` (directory mode 0700, sensitive files 0600).
 
 ## Anti-patterns

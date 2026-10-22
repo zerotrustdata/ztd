@@ -3,8 +3,8 @@ doc_id: public_spectator
 title: Public Spectator Operations Guide
 audience: platform operators, release managers, publication reviewers
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/public_spectator.md
   - internal/cli/cmd/public/
@@ -46,7 +46,7 @@ For an existing run, use verified catch-up after the verification report is pers
 ./ztd eval runs publish "$RUN_ID"
 ```
 
-The publication coordinator probes the Gateway-owned dataset during catch-up. If the dataset is absent while host publication idempotency still lists records, it clears stale state and republishes the canonical run. Use `--force` only when the mirror was wiped or is known to be missing records.
+During catch-up, the publication coordinator checks the Gateway-owned dataset with one server-filtered mirror history request; a withdrawn dataset reads as absent. If the dataset is absent while host publication idempotency still lists records, it clears stale state and republishes the canonical run. Use `--force` only when the mirror was wiped or is known to be missing records.
 
 The mirror is a visibility boundary, not a Policy Decision Point or Policy Execution Point. The executing Operator retains authoritative local execution evidence in its local audit store.
 

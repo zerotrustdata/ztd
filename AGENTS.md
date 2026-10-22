@@ -42,6 +42,7 @@ make build
 ./ztd test summary       # Chaos test summary
 ./ztd test public-loop --candidate candidate.json --output evidence.json
 ./ztd test eval-loop     # Cross-process eval qualification under ratify and notary
+./ztd test conformance-loop --posture ratify  # Cross-process conformance qualification (all postures by default)
 ./ztd test release-smoke # Isolated governed execution and local evidence smoke
 ./ztd test scale         # Real Operator fleet scale qualification
 
@@ -82,7 +83,7 @@ Every governed mutation is represented as a canonical protobuf `GovernanceEnvelo
 | **L5 Actuator** | Executing Operator | Sole execution boundary: signs `EXECUTING`/`COMPLETED`/`FAILED` receipts, mints short-lived capabilities, dispatches handler, appends to local commitment ledger. |
 
 #### Governance Postures
-Set via `--posture doctrine|consensus|ratify|notary` at Gateway startup (immutable at runtime). Posture determines whether L2/L3 gate execution or are merely audited. **L1, L4, and L5 are unconditionally enforced.**
+Set via `--posture doctrine|consensus|ratify|notary` at Gateway startup (immutable at runtime). Posture determines whether L2/L3 gate execution or are merely audited: `consensus` requires L2, `ratify` requires L3, and `notary` requires both. **L1, L4, and L5 are unconditionally enforced.**
 
 ### Runtime Modes (Three Distinct Owners)
 
@@ -109,8 +110,8 @@ Each executing runtime (Gateway, each Operator) is strictly authoritative for it
 
 ```text
 cmd/ztd/              Binary entry point
-internal/cli/cmd/     Cobra CLI command groups (gw, auth, mcp, operator, autochthon, vault, test,
-                      audit, report, public, swagger, tui, version, compliance, eval)
+internal/cli/cmd/     Cobra CLI command groups (gw, auth, consensus, mcp, operator, autochthon, vault,
+                      test, audit, report, public, swagger, tui, version, compliance, eval)
 internal/services/    Gateway, outbound Operator, governance (L1–L5), consensus, storage, network,
                       vault, SSE, pubsub, MCP native tools, evaluation, compliance
 protocol/             Canonical Protobuf contracts, constants registries, generated Go/TypeScript bindings

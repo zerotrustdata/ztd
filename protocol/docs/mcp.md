@@ -1,6 +1,6 @@
 # Model Context Protocol (MCP) Integration
 
-Last Updated: 2026-10-20
+Last Updated: 2026-10-22
 Version: v1.3.0
 
 The ztd Gateway implements native support for the **Model Context Protocol (MCP)**. Autonomous AI agents and coding assistants connect to the Gateway via standardized JSON-RPC 2.0 interfaces. The Gateway acts as a Policy Decision Point (PDP), intercepting every tool invocation, encapsulating it into a strongly typed `GovernanceEnvelope`, subjecting it to the 5-layer governance sequence (L1–L5), and executing it either via host-native tools or by proxying to an authorized downstream MCP server.
@@ -126,7 +126,8 @@ Every MCP tool call undergoes strict 5-layer verification prior to invocation:
                          ▼
 ┌────────────────────────────────────────────────────────┐
 │ L2 Consensus Deliberation                              │
-│ • Under consensus/notary: calls Consensus deliberator  │
+│ • Under consensus/notary, state-changing calls only:   │
+│   calls the Consensus deliberator (Tribunal votes)     │
 │ • Gathers K-of-N Ed25519 signatures over tx_hash       │
 └────────────────────────┬───────────────────────────────┘
                          │ PASS
@@ -184,6 +185,7 @@ When an MCP tool call requires human authorization under `ratify` or `notary` po
      }
    }
    ```
+   The example abbreviates `text` and `message`. The full message also says the approval window is intentionally short, and that a lapsed request is voided, so the caller must call the tool again to open a fresh approval request.
 4. Once the human completes the passkey assertion, the Gateway emits an `approval.completed` SSE event scoped strictly to the submitting session. The agent retries the call to execute.
 
 ---
@@ -198,15 +200,15 @@ Native tools are registered explicitly in `RegisterNativeTools()` (`internal/ser
 
 ### 5.1 Input Validation Framework (`internal/services/mcp/validation.go`)
 Before any MCP payload is converted into a `GovernanceEnvelope`, it must pass fail-closed structural validation:
-- **SQL Sanitization**: `db_isolated_read` and `db_query_validate` inspect AST statements to ensure only read-only `SELECT` queries execute. Queries containing semicolons, comments, or mutation keywords (`UPDATE`, `INSERT`, `DELETE`, `DROP`) are rejected.
-- **SSRF Prevention**: `net_http_probe` validates target URLs against reserved IP blocks, link-local addresses, and cloud metadata IPs (`169.254.169.254`) unless explicitly authorized.
+- **SQL Sanitization**: `db_isolated_read` and `db_query_validate` accept only queries that begin with `SELECT`. `validateSQLQuery` (`internal/services/mcp/validation.go`) rejects a query with a trailing semicolon.
+- **SSRF Prevention**: `validateHTTPRequestURL` (`internal/services/mcp/validation.go`) accepts only `http` and `https` URLs with a host. When the host is an IP literal or `localhost`, it rejects loopback, private, and link-local addresses unless they are on the private allowlist.
 - **Path Traversal Guards**: All filesystem tools pass paths through `security.ValidatePath` to prevent directory traversal and symlink escapes.
-- **Dangerous Command Denylist**: `run_shell_command` rejects high-risk system commands (`rm -rf`, `dd`, `mkfs`, `fdisk`, `reboot`, `shutdown`, `iptables`, kernel module operations).
+- **Dangerous Command Denylist**: `run_shell_command` takes one executable name with an argv array and runs it without a shell. It rejects base commands and command-line patterns listed in `internal/constants/shell.go` (`DangerousCommands`, `DangerousPatterns`), plus shell-injection patterns from the same file.
 
 ### 5.2 Sovereign Output Scrubbing
 The host-side Operator executes output scrubbing (`ScrubbingService`) immediately at the L5 Actuator boundary. Before results leave the host:
 - API keys, bearer tokens, private keys, passwords, and cloud credentials in stdout/stderr are redacted.
-- Redacted strings are replaced with cryptographic sentinel tokens (`uei_token_*`).
+- Redacted strings are replaced with tokens of the form `{{UEI_<owner>_<N>}}`, where `<owner>` is the minting runtime's hex namespace. Only the runtime that minted a token rehydrates it. The token format is defined in `internal/services/scrubbing/boundary.go`.
 
 ---
 

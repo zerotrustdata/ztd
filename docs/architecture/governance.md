@@ -3,8 +3,8 @@ doc_id: governance
 title: Governance Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/constants/posture.go
   - internal/services/governance/
@@ -26,7 +26,7 @@ related:
   - storage.md
 when_to_read: Understanding the five-layer verification pipeline (L1-L5), governance postures, transaction envelope canonicalization and hashing, fail-closed pre-dispatch and execution gates, deterministic stage evidence, and receipt attestation.
 do_not_use_for:
-  - Deep-dive into L2 machine consensus enrollment, binding, and HTTPS deliberation (consensus.md)
+  - Deep-dive into L2 machine consensus enrollment, binding, and provider-selected deliberation (consensus.md)
   - Gateway HTTP routes, WebSocket pub/sub tunneling, and network topology (gateway.md and network.md)
   - Operator runtime daemon, process management, and local audit storage (operator.md)
   - WebAuthn passkey enrollment and mTLS session verification (auth.md)
@@ -249,7 +249,7 @@ Governed `FILE_EDIT` and `RESTORE_FILE` actions cannot write runtime control or 
 ### Layer 2 (L2) Consensus: Bound Member Deliberation
 
 L2 Consensus authenticates machine review through a K-of-N set of ordinary enrolled applications (`PLATFORM_COMPONENT_KIND_APPLICATION`) bound on the Gateway via `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`). The canonical description is [Consensus Architecture](consensus.md).
-1. **HTTPS Protobuf Deliberation**: Under `consensus` and `notary` postures (`posture.RequiresL2()`), for each envelope that `governance.L2Enforced` selects, the Gateway sends the full `GovernanceEnvelope` (`application/x-protobuf`) to the bound policy's HTTPS deliberation endpoint (hosted by the primary member application) and receives back the envelope with its `L2Metadata` votes (`L2Vote` entries), each signed by a member application's Ed25519 key.
+1. **Provider-Selected Deliberation**: Under `consensus` and `notary` postures (`posture.RequiresL2()`), for each envelope that `governance.L2Enforced` selects, the Gateway obtains votes from the vote producer that the bound provider selects (`consensusDeliberatorRouter`). The `application` provider sends the full `GovernanceEnvelope` (`application/x-protobuf`) to the bound policy's HTTPS deliberation endpoint (hosted by the primary member application) and receives back the envelope with its `L2Metadata` votes (`L2Vote` entries). The `tribunal` provider runs the Gateway-hosted Tribunal panel (`TribunalConsensusDeliberator`) instead of an HTTPS endpoint and attaches the same kind of votes. Each vote is signed by a member application's Ed25519 key in both cases. See [Consensus Architecture](consensus.md) for the provider table and enrollment commands.
 2. **Signature Format**: Ed25519 signature over the UTF-8 payload `<transaction_hash>|<decision>` (`true` or `false`).
 3. **Warden and Operator Verification**: `L4Warden.verifyL2Posture` and outbound Operators (`OperatorL2Trust`) verify each vote against the signing member's Ed25519 public key in `trusted_signers`. Votes from signers outside the bound member set are ignored. An unbound, unknown, or disabled consensus set rejects with `ErrTxL2ConsensusSetUnknown`; `ErrTxL2ConsensusNotConfigured` means only that the consensus store is absent.
 4. **Quorum Evaluation**: Only distinct affirmative (`decision=true`) member votes count toward the quorum K. The L4 Warden rejects with `ErrTxL2QuorumNotMet` when the affirmative count is below K. A negative decision records authenticated dissent and does not count toward quorum.

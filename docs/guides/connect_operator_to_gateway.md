@@ -3,8 +3,8 @@ doc_id: connect_operator_to_gateway
 title: Connect Operator to Gateway
 audience: platform operators and deployment engineers
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/connect_operator_to_gateway.md
   - internal/cli/cmd/operator
@@ -35,6 +35,8 @@ Connecting a new Operator follows five steps:
 3. Start the Operator with the Gateway endpoint. The Operator submits a platform enrollment request and waits for approval.
 4. Approve the request from an enrolled owner CLI.
 5. The Operator receives its issued credentials and connects to the pub/sub channel automatically.
+
+**Upgrade note (v1.3.0):** Upgrade the Gateway and every outbound Operator together. Operators must run v1.3.0. Start the Gateway and each Operator from a new runtime root, because an existing `ztd.db` is not rewritten.
 
 The reference Gateway and Operator are subcommands in the same static `ztd` binary. See [Build Operator](build_operator.md) for build details and [Operator Architecture](../architecture/operator.md) for service design.
 
@@ -128,7 +130,7 @@ Compare the component, hostname, system fingerprint, and key fingerprints with t
 
 ### 5. Wait for the Connection
 
-After approval, the Gateway sends the decision over the held socket and issues the certificates against the completion proof the Operator already sent. The Operator receives its credentials, trust bundle, session ID, and runtime limits into memory. The Operator establishes the mTLS pub/sub connection and subscribes to its command channel:
+After approval, the Gateway sends the decision over the held socket and issues the certificates against the completion proof the Operator already sent. The Operator receives its credentials, trust bundle, session ID, runtime limits, and L2 signer trust into memory. The Operator establishes the mTLS pub/sub connection and subscribes to its command channel:
 
 ```text
 cmd:<operator-id>:<operator-session-id>
@@ -149,6 +151,12 @@ To pin the Gateway CA explicitly, with `GATEWAY_HOST` set as in step 2, copy the
 ```
 
 With `--trust-bundle`, the Operator enrolls over `wss://` on the Gateway HTTPS port (8443 by default), verifying the Gateway certificate against this CA before sending its request.
+
+---
+
+## Consensus Trust Changes
+
+The Gateway delivers L2 signer trust to an Operator in its bootstrap bundle and again with each certificate renewal. A running Operator keeps the trust it last received. After `./ztd consensus enroll app` or `./ztd consensus enroll tribunal` binds a new consensus, restart every running Operator so it receives the current trust. Stop the Operator with `./ztd operator stop "$OPERATOR_SESSION_ID"` and start it again. A restart runs enrollment again and needs owner approval, as described under [Stop the Operator](#stop-the-operator).
 
 ---
 

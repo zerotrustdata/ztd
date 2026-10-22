@@ -75,7 +75,7 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 | `ztd eval models import` | Copy variants from the catalog into the runtime registry |
 | `ztd eval models pull` | Dispatch governed pull/copy maintenance to the exact Inference Operator session |
 | `ztd eval campaigns create` | Create a frozen campaign definition over one registry model |
-| `ztd eval runs start` | Start a campaign run with witness, verify, and publish flags |
+| `ztd eval runs start` | Start a campaign run with witness, verify, and publish flags. Each run freezes the live Gateway posture and consensus binding when it starts and prints them |
 | `ztd eval runs export` | Export one run's disclosure-safe bundle under the runtime root (`--output-dir`, runtime-relative) |
 | `ztd eval rollout add` | Add models to `.ztd/eval/init-campaign-queue.json`. Skips and lists a model that shares a digest with a queued model or with one earlier in rollout order (an alias). Capability probes never exclude a model |
 | `ztd eval rollout run` | Unattended rollout: start → strict-witness verify for queued models. A run in which the provider failed every assignment fails the entry as `provider_failure (<class>)`, for example `(capability_unsupported)` for a model without tool support; stopping a run ends the batch and leaves the entry pending. `--gate-smoke` screens with the smoke suite first; `--promote-on-pass` follows a smoke pass with the full run. The batch holds the queue lock: `rollout add`/`remove`/`retry`/`skip` fail until it ends. Model-driven runs refuse any Data Operator whose working directory is, contains, or sits inside the project, except a throwaway Operator directly under `.ztd/operators/<name>` (the embedded Operator included) (INV-EVAL-CAMP-32) |
@@ -86,6 +86,11 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 | `ztd public restore` | Republish verified runs to the gateway-owned public mirror |
 
 See [Evaluations architecture](../docs/architecture/evals.md) for full campaign operations.
+
+### Run governance freeze
+
+- A campaign does not freeze a governance posture; each run freezes the live Gateway posture and consensus binding at start. `runs execute` and `runs resume` refuse a run once either differs from what it froze (`ErrEvaluationRunGovernanceChanged`).
+- Runs started before v1.3.0 froze no consensus binding. They cannot be executed or resumed, and they stay in campaign history. Start a new run of the same campaign. See [v1.3.0 release notes](../docs/release_notes/v1.3.x/v1.3.0.md).
 
 ## Wipe recovery
 

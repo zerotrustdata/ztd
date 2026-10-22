@@ -56,7 +56,7 @@ Generated Go code lives beside each schema, generated TypeScript modules live un
 The execution path uses five interlocked layers:
 
 1. **L1 Doctrine** applies hard gates, forbidden-pattern matching, and MITRE threat detection.
-2. **L2 Consensus** verifies K-of-N Ed25519 quorum signatures over `<transaction_hash>|<decision>`.
+2. **L2 Consensus** verifies K-of-N Ed25519 quorum signatures over `<transaction_hash>|<decision>` under `consensus` and `notary` postures, for state-changing actions only.
 3. **L3 Notary** verifies human authorization through WebAuthn or signed CLI proofs.
 4. **L4 Warden** performs pre-dispatch transaction-hash recompute, expiry, nonce reservation for replay protection, state-root, and posture-required L2 and L3 proof checks.
 5. **L5 Actuator** dispatches the registered action handler, mints just-in-time capabilities, and produces signed receipts.

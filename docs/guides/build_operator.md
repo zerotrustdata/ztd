@@ -3,8 +3,8 @@ doc_id: build_operator
 title: Build and Run an Operator
 audience: developers, deployers, independent implementations
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/
   - cmd/ztd
@@ -57,7 +57,7 @@ The reference Gateway and Operator compile into the same static `ztd` binary. `.
 | Gateway start command and flags | `internal/cli/cmd/gw/gateway.go` | `./ztd gw start --help` |
 | Operator list/show/bind/run/stop commands | `internal/cli/cmd/operator/` | `./ztd operator --help` |
 | Vault administration | `internal/cli/cmd/vault/` | `./ztd vault --help` |
-| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.2.0` | `go get github.com/zerotrustdata/ztd@v1.2.0` |
+| Public protocol Go module | `github.com/zerotrustdata/ztd@v1.3.0` | `go get github.com/zerotrustdata/ztd@v1.3.0` |
 
 ## Procedures
 
@@ -101,6 +101,8 @@ The Operator requires a reachable Gateway for enrollment, pub/sub, and receipt p
 ./ztd gw start
 ```
 
+v1.3.0 does not rewrite an existing `ztd.db`. Start the Gateway and every Operator from a new runtime root, and upgrade the Gateway and all outbound Operators together.
+
 #### Start and Enroll the Operator
 
 On the target host, set `GATEWAY_HOST` to the Gateway's host name or address, then start the Operator with the Gateway discovery endpoint:
@@ -110,7 +112,7 @@ GATEWAY_HOST=gateway.example.com
 ./ztd operator start --endpoint "$GATEWAY_HOST"
 ```
 
-Every start runs the owner-approved platform enrollment protocol over one bootstrap websocket to the Gateway. The Operator creates keys and certificate requests in memory, holds the socket, proves possession of both keys, and receives its certificate, trust bundle, session, posture, runtime limits, and L2 signer trust. Nothing from enrollment is written to disk.
+Every start runs the owner-approved platform enrollment protocol over one bootstrap websocket to the Gateway. The Operator creates keys and certificate requests in memory, holds the socket, proves possession of both keys, and receives its certificate, trust bundle, session, posture, runtime limits, and L2 signer trust. Nothing from enrollment is written to disk. The L2 signer trust comes from the Gateway's bound consensus and reaches an Operator only at enrollment or certificate renewal, so restart running Operators after `./ztd consensus enroll`.
 
 The enrolled owner lists pending requests, sets `REQUEST_ID` to the request to approve, and approves it:
 
@@ -126,9 +128,9 @@ Run `./ztd operator start --help` for the complete flag set. The options below g
 | Option | Behavior |
 | :--- | :--- |
 | `-e, --endpoint <host[:port]>` | Gateway host for bootstrap websocket and pub/sub. A port names the Gateway HTTP discovery port and must match `--gateway-http-port` when both are set; the pub/sub port comes from `--gateway-https-port`. URL schemes are rejected. Default: `localhost`. |
-| `--trust-bundle <path>` | Owner-supplied CA trust bundle to pin Gateway identity. |
+| `--trust-bundle <path>` | Explicit CA trust bundle, read-only. It overrides the bundle delivered at enrollment and pins Gateway identity. |
 | `--working-dir <path>` | Sets command execution directory and `.ztd/` runtime root. Defaults to current directory. Start refuses a directory that holds a Gateway runtime or places the runtime tree inside `--model-storage-root`. |
-| `--capabilities <list>` | Enables comma-separated set of `data`, `inference`, `provenance`, `observer`. |
+| `--capabilities <list>` | Enables comma-separated set of `data`, `inference`, `provenance`, `observer`. Default: `data`. |
 
 #### Running Multiple Operators on the Same System
 

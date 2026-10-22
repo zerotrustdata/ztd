@@ -3,7 +3,7 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
+version: v1.3.0
 last_updated: 2026-10-22
 owners:
   - cmd/ztd/main.go
@@ -181,13 +181,13 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `gw` | `gw` | `internal/cli/cmd/gw/` | `gateway` | Gateway lifecycle, data, security, and tunnel commands. `gateway_start_running.go` decides whether `gw start` reuses a running Gateway by comparing explicitly set startup flags with its launch profile. |
 | `login`, `logout` | `authcmd` | `internal/cli/cmd/auth/` | | Top-level sign-in (`login` defaults to headless `login cli`; `login web` uses browser) and sign-out (`logout`, `logout web`, `logout cli`); shares `auth` package and enrollment runner. |
 | `auth` | `authcmd` | `internal/cli/cmd/auth/` | | User and platform enrollment, sessions, and approvals. |
-| `consensus` | `consensuscmd` | `internal/cli/cmd/consensus/` | | Gateway L2 consensus: `status` (bound provider, quorum, signer readiness, posture) and `enroll app` (governed application binding). |
+| `consensus` | `consensuscmd` | `internal/cli/cmd/consensus/` | | Gateway L2 consensus: `status` (bound provider, quorum, signer readiness, posture), `enroll app` (governed application binding), and `enroll tribunal --model <tag>` (Gateway-hosted Tribunal panel pinned to one frozen model tag). |
 | `mcp` | `mcp` | `internal/cli/cmd/mcp/` | | MCP stdio serving and agent integration. |
 | `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `reset-identity`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
 | `autochthon` | `autochthoncmd` | `internal/cli/cmd/autochthon/` | | Gateway-less foreground runtime: host sampling and local prior under `.ztd/autochthon/`, and read-only `status` reporting. Not an Operator mode; refuses Gateway-facing flags. |
 | `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, and reset. |
-| `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, `release-smoke`, and `eval-loop`. |
-| `audit` | `audit` | `internal/cli/cmd/audit/` | `audits` | Receipt, event, summary, export, report, and verify queries against a running Gateway. |
+| `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, `release-smoke`, `eval-loop`, and `conformance-loop`. |
+| `audit` | `audit` | `internal/cli/cmd/audit/` | `audits` | Event receipt (`event-receipts`, `export`), raw event (`events`), summary, report, verify, and L2 consensus vote (`votes`) queries against a running Gateway. |
 | `report` | `report` | `internal/cli/cmd/report/` | `reports` | Deterministic CSV evidence generation and offline verification. |
 | `public` | `public` | `internal/cli/cmd/public/` | | Public spectator feed. `restore` is constructed in eval package (`INV-PKG-02`). |
 | `swagger` | `swagger` | `internal/cli/cmd/swagger/` | | OpenAPI generation, serving, and validation. |
@@ -279,7 +279,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/gateway/docs/` | Generated OpenAPI (`swagger.json` embedded by `docs.go`, plus `swagger.yaml`). Generator: `make swagger-generate`. |
 | `internal/services/gateway/explorer/` | Embedded evaluation-explorer assets. |
 | `internal/services/gateway/db/schema.sql` | Canonical SQLite schema embedded by `CanonicalDBService`. |
-| `internal/services/gateway/db/public_mirror_schema.sql` | Public mirror SQLite schema embedded by `PublicMirrorStore`. `db/public_mirror_segments_migration.sql` is embedded alongside it and applied when `proof_manifest_entries` lacks `segment_index`. |
+| `internal/services/gateway/db/public_mirror_schema.sql` | Public mirror SQLite schema embedded by `PublicMirrorStore`. |
 
 ### Persistence
 
@@ -340,6 +340,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/scrubbing/` | Sensitive-value detection, tokenization, and rehydration. |
 | `internal/services/sqliteutil/` | Shared SQLite configuration and connection helpers. |
 | `internal/services/storage/` | Audit, execution, replay, suspension, commitment, and Git ledger persistence. |
+| `internal/services/tribunal/` | Tribunal consensus: member dispatch, vote parsing and schema, decision and generative vote handling, and the Tribunal pipeline and auditor. Gateway-side wiring is in `internal/services/gateway/tribunal_intent.go`. |
 | `internal/services/system/` | Host metrics, OS details, and network interface sampling. |
 | `internal/services/vault/` | Encryption vault lifecycle. |
 
@@ -416,6 +417,7 @@ In-depth test rules reside in [Testing Guide](tests.md).
 | `./ztd test scale` | 3 | Operator fleet scale qualification in `internal/cli/cmd/test/scale.go`: isolated Gateway, `operator deploy` batches, then `TestOperatorFleet_*` in `test/e2e/`. Owns its own Gateway and Operator teardown. |
 | `./ztd test release-smoke` | | Provider-free governed release qualification in `internal/cli/cmd/test/release_smoke.go`: isolated Gateway and data Operator, governed file and document mutations, local evidence exports, and owned-process cleanup. Runs on Unix-like hosts and Windows. |
 | `./ztd test eval-loop` | | Cross-process eval qualification across real Gateway and Operator processes in `internal/cli/cmd/test/eval_loop.go`. |
+| `./ztd test conformance-loop` | | Cross-process governance conformance qualification across real Gateway and Operator processes in `internal/cli/cmd/test/conformance_loop.go`. Suite: `internal/services/evaluation/conformance/`. |
 
 Component test entry points named by root Makefile: `make test`, `make test-unit`, `make test-integration`, `make console-test`, `make website-test`.
 

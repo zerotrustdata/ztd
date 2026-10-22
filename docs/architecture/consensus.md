@@ -3,8 +3,8 @@ doc_id: consensus
 title: Consensus Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-21
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/services/governance/l2_consensus.go
   - internal/services/governance/l4_warden.go
@@ -221,7 +221,7 @@ For generative votes during L2 deliberation under the `tribunal` provider, `Trib
 5. **Vote Record**: Each member's outcome, reason, and failure is appended to the Gateway audit chain as `ztd.v1.consensus.vote.recorded` before the vote counts; an unrecorded vote does not count (INV-CON-VOTE-11). Read them with `ztd audit votes --tx <transaction-id>`. `ztd operator run` prints them under an `L2_QUORUM_NOT_MET` rejection.
 6. **Short-Circuit**: Collection stops at K affirmative votes, once K is unreachable, or once the context ends (INV-CON-VOTE-09). The check runs between batches. A deny or failure inside a batch can leave the rest of that batch moot, but those votes are still recorded. The returned envelope has its `consensus_set_id` set to the binding ID. L4 evaluates quorum.
 
-Each envelope that `governance.L2Enforced` selects (a non-bootstrap state change, INV-CON-WARD-11) costs three to five extra model calls on the single Ollama host. When all members approve, those calls run as one concurrent batch of K calls. Each deny or failure adds one more batch.
+Each envelope that `governance.L2Enforced` selects (a non-bootstrap state change, INV-CON-WARD-11) costs three to five extra model calls against the Tribunal's pinned model (the local model tag, or the hosted Jev version under `--allow-hosted`). When all members approve, those calls run as one concurrent batch of K calls. Each deny or failure adds one more batch.
 
 An `INFERENCE` dispatched through `DispatchService` is not a state change, so it costs no vote round. Its provider-boundary and model-provenance observation commands run unbound and do not deliberate. The inference dispatcher opens each attempt's observation window (BEGIN) from `DispatchRequest.OnAdmitted`, immediately before publish. The window therefore starts when the attempt starts.
 

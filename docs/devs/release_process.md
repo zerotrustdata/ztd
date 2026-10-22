@@ -3,8 +3,8 @@ doc_id: release_process
 title: Release Process
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - VERSION
   - Makefile
@@ -124,6 +124,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Console embed | `internal/services/gateway/console/static/` | `make console-embed-check` |
 | Core-platform smoke runbook | `docs/guides/ux_smoke_test.md` | `./ztd test release-smoke` |
 | Cross-process evaluation loop qualification | `internal/cli/cmd/test/eval_loop_e2e_test.go` | `./ztd test eval-loop` |
+| Cross-process conformance loop qualification | `internal/cli/cmd/test/conformance_loop.go`, `internal/cli/cmd/test/conformance_loop_e2e_test.go` | `./ztd test conformance-loop` |
 | Live Tier 4 evaluation loop (explicit provider run) | `internal/cli/cmd/test/eval_loop_live_e2e_test.go` | `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` |
 | Smoke evidence artifacts | `<root>/` | `evidence/smoke-summary.json`, `reports/{gateway,worker}/`, and logs under `logs/` |
 | Compliance projection | `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md`, `.csv` | `ztd compliance release-evidence` |
@@ -139,7 +140,7 @@ To refresh published runs after correcting asserted tags, execute `ztd public re
 
 1. **Determine change inventory:** Review `git diff --name-status v<prev-tag>..HEAD` and the full diff to identify all added, changed, removed, fixed, and security-sensitive behavior. Group changes by affected contract or user journey (for example CLI and Operator lifecycle, protocol, evaluation, installation, website downloads, or release automation) so tests and documentation are traced across layers rather than file-by-file alone.
 2. **Reconcile documentation:** Walk the documentation catalog in `docs/devs/docs.md`; map changed code, schemas, configuration, and workflows to their canonical documents; then audit each affected document end-to-end against those sources. Review linked guides and entry points for stale commands, claims, and cross-links. Include root README, contributor guide, and agent instructions; confirm fresh-clone prerequisites, lifecycle targets, and removal claims against Makefile and CLI. Documents assessed and left unchanged retain their metadata.
-3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with the heading `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`), then include the sections Overview, Added, Changed, Removed (when anything is removed), Fixed, Tests, Documentation, Compliance Evidence, and Deferred sections.
+3. **Draft release notes:** Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with the heading `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`), then include the sections Overview, Added, Changed, Removed (when anything is removed), Fixed, Qualification evidence, Compatibility (`INV-REL-VER-10`), Tests, Documentation, Compliance Evidence, and Deferred sections.
 4. **Set version:** Update `VERSION` to `vX.Y.Z\n`.
 5. **Sync protocol specs and npm versions:** Run `make version-sync`, which updates `Version: vX.Y.Z` headers in `protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, and `protocol/docs/spec.md` and npm versions, then run `make version-sync-check`. Synchronize Go installation examples in `README.md` and `.github/CONTRIBUTING.md` (`INV-REL-VER-08`).
 6. **Regenerate protocol bindings:** When `protocol/proto/ztd/` changed, run `make proto-generate` so generated Go and TypeScript output is current.
@@ -148,7 +149,7 @@ To refresh published runs after correcting asserted tags, execute `ztd public re
 9. **Run the core-platform smoke gate:** Build the candidate with `make build`, then run `./ztd test release-smoke`. Require exit status 0 and `result: PASS` in `<root>/evidence/smoke-summary.json`; retain the entire root as review evidence. The runner owns and cleans up its isolated Gateway and data Operator.
 10. **Generate and verify compliance evidence:** Run `./ztd compliance release-prepare` with the candidate `./ztd` binary and the intended Gateway runtime database. From the repository root, defaults apply only when that checkout also owns the assessment runtime; otherwise pass `--project-root <gateway-runtime-root>` (or an explicit `--db`) and the matching `--repo-root`. Add `--new-key` only when creating the report-signing key. The command reads `ztd.db` read-only, derives protected scope from `VERSION`, git, the running binary digest, and the assessment window, builds external trust policies, generates and seals the public bundle under the runtime root, exports it under `release-evidence/<version>/report-bundle/`, verifies the export offline, and projects the verified bundle into `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md` and `vX.Y.Z-compliance-evidence.csv`. Keep smoke artifacts as separate engineering acceptance evidence; they do not replace this bundle.
 11. **Finalize document metadata:** Update `last_updated` and `version` on every audited document.
-12. **Verification checks:** Run `./ztd test lint`, `./ztd test unit`, the relevant `./ztd test integration --pkg <package>` packages, and `./ztd test eval-loop` for cross-process evaluation loop qualification under ratify and notary. Run `make console-lint console-test console-embed-check`, `make explorer-lint explorer-test`, and `make constants-check`. When API annotations changed, run `make swagger-generate` and commit the generated OpenAPI diff. Run checks required by affected surfaces, including `make website-test website-build` for website changes. Record the exact commands and outcomes in release notes.
+12. **Verification checks:** Run `./ztd test lint`, `./ztd test unit`, the relevant `./ztd test integration --pkg <package>` packages, `./ztd test eval-loop` for cross-process evaluation loop qualification under ratify and notary, and `./ztd test conformance-loop` for cross-process conformance qualification (all postures by default). Run `make console-lint console-test console-embed-check`, `make explorer-lint explorer-test`, and `make constants-check`. When API annotations changed, run `make swagger-generate` and commit the generated OpenAPI diff. Run checks required by affected surfaces, including `make website-test website-build` for website changes. Record the exact commands and outcomes in release notes.
 
 ### Release Owner Tagging and Publication (Post-Merge)
 

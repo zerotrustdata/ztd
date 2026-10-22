@@ -3,8 +3,8 @@ doc_id: position-paper
 title: Governing Agentic Execution Without Surrendering Data Custody
 audience: researchers, security architects, compliance officers, and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - protocol/
   - internal/services/governance/
@@ -84,7 +84,7 @@ Coupling these concerns creates structural vulnerabilities. Because model contex
 
 Enterprise adoption of AI inference does not require surrendering custody of authoritative state to third-party model providers. Workloads can instead maintain raw data, cryptographic keys, and execution environments within local boundaries while transmitting minimized projections to remote inference endpoints. The model generates a proposal; the local execution boundary verifies and executes it.
 
-Minimizing disclosure does not guarantee zero leakage. Some analytical tasks require semantically meaningful payloads. The sovereign execution boundary provides bounded token scrubbing and local rehydration for governed pathways: sensitive tokens are masked as reversible placeholders (`{{UEI_N}}`) before leaving the host and rehydrated strictly at the execution site (L5 Actuator). The resource owner retains explicit responsibility for external model inputs, account permissions, and bypass pathways.
+Minimizing disclosure does not guarantee zero leakage. Some analytical tasks require semantically meaningful payloads. The sovereign execution boundary provides bounded token scrubbing and local rehydration for governed pathways: sensitive tokens are masked as reversible placeholders (`{{UEI_<owner>_N}}`) before leaving the host and rehydrated strictly at the execution site (L5 Actuator). The resource owner retains explicit responsibility for external model inputs, account permissions, and bypass pathways.
 
 ### 3.3 Session Authority Versus Action Authority
 
@@ -144,7 +144,7 @@ flowchart LR
 ```
 
 1. **L1 Doctrine**: Evaluates decoded typed payloads against field-level constraints, forbidden-pattern regex, and deterministic MITRE ATT&CK heuristics. Enforced across all postures.
-2. **L2 Consensus**: Validates Ed25519 signatures from enrolled consensus members against configured quorum rules when multi-agent agreement is required.
+2. **L2 Consensus**: Validates Ed25519 signatures from enrolled consensus members against configured quorum rules. It gates only state-changing, non-bootstrap actions, and only under the consensus and notary postures.
 3. **L3 Notary**: Validates transaction-bound human approval. Gateway workflows enforce WebAuthn passkeys; outbound Operator workflows verify signed cryptographic approval proofs.
 4. **L4 Warden**: Pre-dispatch gate executed on the target host. Durably reserves the nonce, validates TTL expiration, recomputes the transaction hash, verifies the state Merkle root, re-runs L1 Doctrine, and verifies posture-required L2 and L3 proofs.
 5. **L5 Actuator**: Sole execution boundary. Persists an initial signed `EXECUTING` receipt, appends a signed commitment to the SQLite commitment ledger, rehydrates scrubbed tokens locally, mints a single-use transaction capability, dispatches the handler, dissolves the capability, and persists the signed final receipt and persistence attestation.
@@ -216,7 +216,7 @@ ztd explicitly disclaims universal security guarantees:
 
 Governing execution does not imply running expensive frontier models at every verification layer. Within ztd:
 - L1 Doctrine, transaction canonicalization, signature verification, nonce reservation, Merkle state root checking, capability minting, and receipt persistence are fully deterministic, microsecond-scale algorithmic operations.
-- L2 Consensus involves model deliberation only when the deployment explicitly configures multi-agent consensus.
+- L2 Consensus involves model deliberation only when the deployment explicitly binds a deliberating consensus provider (the Gateway-hosted Tribunal panel, or an enrolled application), and only for state-changing actions.
 - L3 Notary is a human cryptographic ceremony, incurring zero model inference cost.
 
 Belcak et al. argue that small, specialized models are optimal for targeted agentic tasks, reserving frontier models for general reasoning [9]. Multi-agent debate research also highlights trade-offs: Bertalanič and Fortuna show that unguided debate among homogeneous models increases token consumption by 2.1–3.4x without accuracy gains [10], whereas Lin et al. demonstrate that structured role separation (critic, defender, judge) enhances safety evaluation [11].

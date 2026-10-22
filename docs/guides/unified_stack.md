@@ -3,8 +3,8 @@ doc_id: unified_stack
 title: Unified Stack Guide
 audience: platform operators and evaluators
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - Makefile
   - docs/guides/
@@ -107,6 +107,8 @@ make gw MODEL_STORAGE_ROOT=~/.ollama/models GW_ARGS='--inference-ollama-endpoint
 ```
 
 Capabilities are fixed when the Gateway starts. Run `make down` first to change them.
+
+With the embedded Operator serving both Data and Inference, a campaign under `consensus` or `notary` with a bound Tribunal is refused at preflight, before any run is created. The refusal names the fix: enroll and select a dedicated Inference Operator, then create a new run. Keep the Data Operator as the campaign's Data runtime.
 
 The Gateway listens on loopback by default. To enroll Operators from other hosts, start it with `make up-public` or `make gw-public` and point those Operators at the Gateway host name or LAN address with `--endpoint`.
 
@@ -226,6 +228,8 @@ The formation catalog (`./ztd eval formations list`) holds Lite, Assistant, and 
 ```
 
 A formation campaign (`./ztd eval campaigns create <campaign> --formations <formation-id>`) freezes the registered models that the formation requires and runs on the system lane. Formation campaigns support one repetition without held context. A model-role campaign scores one registry model. Validate the witness path with the [mini smoke campaign workflow](#mini-smoke-campaign-workflow) after the Inference Operator and both witness Operators (Observer + Provenance) are enrolled.
+
+Under `consensus` or `notary`, a campaign starts only when the Gateway reports `governance_ready`: a consensus is bound and has quorum-many usable signers. Check it with `./ztd consensus status`. A campaign does not freeze a posture. Each run freezes the live posture and consensus binding when it starts, and `runs start` prints that governance line. `runs execute` and `runs resume` refuse a run whose posture or binding has since changed, so a rebind never mixes two vote models in one run.
 
 ### Campaign and run naming
 

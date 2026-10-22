@@ -3,8 +3,8 @@ doc_id: sovereignty_gauntlet
 title: Sovereignty and Compliance Verification Guide
 audience: platform operators, compliance auditors, evaluators
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/sovereignty_gauntlet.md
   - internal/cli/cmd/compliance/
@@ -25,7 +25,7 @@ do_not_use_for:
 
 ## Purpose
 
-This guide provides operational routing for executing sovereignty, compliance, and evaluation evidence verification across the maintained `ztd compliance` and `ztd eval` pipelines in ztd v1.2.0.
+This guide provides operational routing for executing sovereignty, compliance, and evaluation evidence verification across the maintained `ztd compliance` and `ztd eval` pipelines in ztd v1.3.0.
 
 In ztd, sovereignty is established through cryptographic verification at the local host execution boundary:
 - A model can request an action, but cannot directly execute mutations.
@@ -154,6 +154,8 @@ The commands below run a model-role campaign. Set the shell variable `MODEL_TAG`
 ./ztd eval campaigns create smoke-run "$MODEL_TAG" --suite smoke-suite
 ./ztd eval runs start smoke-run --require-witness
 ```
+
+Under the `consensus` and `notary` postures, which enforce L2, `eval runs start` refuses to start unless L2 consensus is bound and ready. Check the binding with `./ztd consensus status`; `doctrine` and `ratify` do not gate on L2.
 
 Run a strict-witness verification on the resulting campaign run. Set the shell variable `RUN_ID` to the ID of that campaign run:
 

@@ -1,6 +1,6 @@
 # Protocol Constants System
 
-Last Updated: 2026-10-20
+Last Updated: 2026-10-22
 Version: v1.3.0
 
 The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the absolute **Single Source of Truth (SSOT)** for all platform contracts, collection definitions, action types, event registries, route paths, and configuration identifiers.
@@ -231,6 +231,7 @@ HTTP route paths for Gateway REST, mTLS, and control-plane controllers are expos
 - **Audit & Forensics**:
   - `AuditEventReceipts`: `/api/v1/audit/event-receipts`
   - `AuditEventReceiptsExport`: `/api/v1/audit/event-receipts/export`
+  - `AuditConsensusVotes`: `/api/v1/audit/consensus-votes`
   - `AuditEvents`: `/api/v1/audit/events`
   - `AuditSummary`: `/api/v1/audit/summary`
 - **Streaming & PubSub**:

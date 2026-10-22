@@ -3,8 +3,8 @@ doc_id: gateway
 title: Gateway Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/gw/
@@ -118,7 +118,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 The Gateway binary operates in two distinct execution modes:
 
-1. **Governance Gateway Mode (`ztd gw start`)**: The central control plane and PDP. It binds the HTTP and HTTPS routers (default ports 8080 and 8443; startup may resolve an available pair at higher offsets), initializes the SQLite database (`.ztd/data/ztd.db`), hosts the PKI certificate authority, screens transactions against L1 Doctrine, delegates L2 deliberation (`application/x-protobuf`) over HTTPS to the bound consensus policy's deliberation endpoint, manages L3 human WebAuthn suspensions, brokers WebSocket pub/sub command channels to remote Operators, and runs an in-process embedded Operator substrate for Gateway-host execution.
+1. **Governance Gateway Mode (`ztd gw start`)**: The central control plane and PDP. It binds the HTTP and HTTPS routers (default ports 8080 and 8443; startup may resolve an available pair at higher offsets), initializes the SQLite database (`.ztd/data/ztd.db`), hosts the PKI certificate authority, screens transactions against L1 Doctrine, delegates L2 deliberation for state-changing actions (`application/x-protobuf`) over HTTPS to the bound consensus policy's deliberation endpoint, or to the Gateway-hosted Tribunal for a `tribunal` binding, manages L3 human WebAuthn suspensions, brokers WebSocket pub/sub command channels to remote Operators, and runs an in-process embedded Operator substrate for Gateway-host execution.
 2. **Standard Operator Mode (`ztd operator start`)**: When started as an Operator, the same static binary operates as a remote Policy Execution Point (PEP). It opens an outbound-only mTLS WebSocket connection to the Gateway, receives transactions on its assigned command channel, executes independent L4 Warden verification, and enforces L5 Actuator execution. The Gateway does not make inbound connections to remote Operators.
 
 ### Configuration, Startup, and Launch Profiles
@@ -133,7 +133,7 @@ The Gateway is configured via CLI flags or an interactive setup wizard:
 - `ztd gw start -i`: Launches the interactive setup wizard, then boots the Gateway immediately with the confirmed settings.
 - `ztd gw restart`: Reads the persisted launch profile from `.ztd/pids/operator-launch-profile.json` and restarts the process. Fails closed if the profile is missing or invalid.
 - `ztd gw stop`: Gracefully terminates the running Gateway process and flushes SQLite buffers.
-- `ztd gw status`: Emits Gateway state and PID, the Operator inventory with capabilities, enrollment counts, and the Console URL.
+- `ztd gw status`: Emits Gateway state and PID, the Operator inventory with capabilities, a Consensus row (bound consensus, signer readiness, and posture, from the `/health` consensus summary), enrollment counts, and the Console URL.
 
 ### Governance Postures
 
@@ -146,7 +146,7 @@ The Gateway enforces one of four postures (`constants.Posture`) selected at star
 | **`ratify`** | Enforced | Audited | Enforced (Human) | Not Required |
 | **`notary`** | Enforced | Enforced (Bound Members) | Enforced (Human) | Not Required |
 
-Selecting a posture does not automatically enroll its supporting identities. The `consensus` and `notary` postures require enrolled `PLATFORM_COMPONENT_KIND_APPLICATION` members bound as the Gateway's K-of-N consensus member set via `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`POST /api/v1/auth/platform-enrollments/consensus`). Human approval under `ratify` and `notary` requires a WebAuthn passkey assertion (or signed CLI approval for outbound Operators).
+Selecting a posture does not automatically enroll its supporting identities. The `consensus` and `notary` postures require a bound L2 consensus. Bind it with `ztd consensus enroll app` (enrolled `PLATFORM_COMPONENT_KIND_APPLICATION` members, each with `ztd auth enroll app <name> --signing-key`) or `ztd consensus enroll tribunal --model <tag>` (the Gateway-hosted Tribunal panel). The binding names its provider as `application` or `tribunal`, and `ztd consensus status` shows it. Under `consensus` and `notary`, L2 votes gate only the actions the registry classifies as state-changing (`governance.L2Enforced`, see [Consensus Architecture](consensus.md)). Human approval under `ratify` and `notary` requires a WebAuthn passkey assertion (or signed CLI approval for outbound Operators).
 
 ### HTTP and HTTPS Route Classifications
 
@@ -179,7 +179,7 @@ Paths absent from the registry default to `RouteAuthMTLS`. When a JWKS verifier 
 Every transaction entering `POST /api/v1/governance/envelopes` or arriving via MCP/A2A traverses all five governance layers:
 
 1. **L1 Doctrine (Gateway PDP)**: Static regex screening on protobuf string fields annotated with `(ztd.common.v1).forbidden_patterns`, and MITRE ATT&CK heuristics on commands, arguments, and file edits. Violations reject fail closed with `ErrTxL1ValidationFailed`.
-2. **L2 Consensus (Gateway Coordination)**: Under `consensus` and `notary` (`posture.RequiresL2()`), the Gateway sends the full `GovernanceEnvelope` (`application/x-protobuf`) to the bound policy's HTTPS deliberation endpoint (`endpoint_url` of `constants.DocIDConsensusBinding` in `constants.CollectionConsensus`, hosted by the primary member) and receives the envelope with its `L2Metadata` votes (`L2Vote` entries), each signed by a member application's Ed25519 key over `<transaction_hash>|<decision>`. When the binding provider is `tribunal`, the Gateway-hosted Tribunal vote producer supplies the votes instead of the HTTPS endpoint (`INV-GW-GOV-07`).
+2. **L2 Consensus (Gateway Coordination)**: Under `consensus` and `notary` (`posture.RequiresL2()`), for actions the registry classifies as state-changing (`governance.L2Enforced`; inference, observations, typed provider reads, and read-only tools get no vote round), the Gateway sends the full `GovernanceEnvelope` (`application/x-protobuf`) to the bound policy's HTTPS deliberation endpoint (`endpoint_url` of `constants.DocIDConsensusBinding` in `constants.CollectionConsensus`, hosted by the primary member) and receives the envelope with its `L2Metadata` votes (`L2Vote` entries), each signed by a member application's Ed25519 key over `<transaction_hash>|<decision>`. When the binding provider is `tribunal`, the Gateway-hosted Tribunal vote producer supplies the votes instead of the HTTPS endpoint (`INV-GW-GOV-07`).
 3. **L3 Notary (Gateway Suspension)**: For actions where `governance.L3Required(actionType, posture)` is true (`actionType.IsMutation() && !actionType.AuthorizedByDecision() && posture.RequiresL3()`), transactions lacking human proof are suspended in SQLite (`SuspendedTransactionStore` via `mcp.GatewayService.SuspendGovernanceEnvelope`). The Gateway issues an approval challenge (`GovernedSuspension` on MCP/A2A, or HTTP `202 Accepted` with `status: "l3_required"` on `PLATFORM_ENROLLMENT_DECIDE` and `PLATFORM_ENROLLMENT_REVOKE`). A WebAuthn passkey assertion or an enrolled CLI P-256 signature produces the proof and resumes execution via `ResumeWithL3Proof`. Governed HTTP dispatch (`POST /api/v1/operators/commands`) takes the same suspension path but keeps the original request open (`DispatchApprovalCoordinator`) up to `mcp.ApprovalRequestTTL`; see [Governance Architecture](governance.md#layer-3-l3-notary-human-authorization).
 4. **L4 Warden (Operator PEP)**: Executes pre-dispatch verification in the target Operator runtime: validates nonce replay against SQLite, verifies TTL expiry, recomputes the canonical transaction hash, checks the state Merkle root, and enforces posture-required L2/L3 proofs.
 5. **L5 Actuator (Operator PEP)**: The singular execution boundary. Persists an initial `EXECUTING` receipt, appends to the SQLite commitment ledger, rehydrates scrubbed secrets, mints a short-lived capability, dispatches to the handler, dissolves the capability, and signs the final `COMPLETED` or `FAILED` receipt.
@@ -201,6 +201,7 @@ The Gateway provides seamless integration for external AI coding tools (Claude C
 - `ztd mcp agent show <agent>`: Prints the Stdio Transport MCP client configuration, for tools the launcher does not support.
 - `ztd mcp agent run <agent>`: Launches the specified agent with native tools disabled, proxying all tool traffic through `ztd mcp stdio` to the Gateway's authenticated HTTPS endpoint.
 - `ztd mcp agent verify <agent>`: Validates agent configuration and tool lockdown without executing the agent binary (safe for CI).
+- `ztd mcp stdio` proxies every JSON-RPC request, `initialize` included, to the Gateway, which answers each one.
 - When an operation requires L3 approval, the stdio bridge opens the browser approval URL, listens for the `approval.completed` event on the Gateway SSE stream, and resumes the pending transaction.
 
 ### Incremental State Tracking and Merkle Roots
@@ -211,7 +212,7 @@ The Gateway maintains an incremental 16-ary Merkle commitment tree (algorithm 2)
 
 ### Readiness and Health Endpoints
 
-- **Readiness Check (`HTTPS /health`, default port 8443)**: Verifies that the platform settings document is readable and the state Merkle root is calculated. Returns `status`, `mode`, `version`, `pid`, `posture`, `governance_ready`, and `state_merkle_root`. `governance_ready` reports pipeline initialization without failing the response.
+- **Readiness Check (`HTTPS /health`, default port 8443)**: Verifies that the platform settings document is readable and the state Merkle root is calculated. Returns `status`, `mode`, `version`, `pid`, `posture`, `governance_ready`, `a2a_ingress`, `state_merkle_root`, and `consensus`. `governance_ready` reports pipeline initialization without failing the response. `consensus` is a counts-only summary of the L2 binding (provider, quorum, members, and usable signers) that never carries member IDs, the pinned model, or an endpoint.
 - **Bootstrap Check (`HTTP /health`, default port 8080)**: Lightweight process check verifying listener availability prior to database initialization.
 
 ## Anti-patterns

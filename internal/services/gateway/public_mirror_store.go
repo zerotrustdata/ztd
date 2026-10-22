@@ -38,9 +38,6 @@ import (
 //go:embed db/public_mirror_schema.sql
 var publicMirrorSchema string
 
-//go:embed db/public_mirror_segments_migration.sql
-var publicMirrorSegmentsMigration string
-
 const (
 	// publicMirrorVerifyPageBatches bounds how many batch headers startup
 	// verification holds at once.
@@ -181,17 +178,6 @@ func openPublicMirrorStoreAt(ctx context.Context, fileSvc fs.RuntimeFileService,
 	if _, err := db.ExecWithRetry(ctx, publicMirrorSchema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("%w: apply schema: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
-	}
-	var segmentColumnCount int
-	if err := db.QueryRowWithRetry(ctx, `SELECT COUNT(*) FROM pragma_table_info('proof_manifest_entries') WHERE name = 'segment_index'`).Scan(&segmentColumnCount); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("%w: inspect proof schema: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
-	}
-	if segmentColumnCount == 0 {
-		if _, err := db.ExecWithRetry(ctx, publicMirrorSegmentsMigration); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("%w: migrate proof schema: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
-		}
 	}
 	if _, err := db.ExecWithRetry(ctx, `INSERT OR IGNORE INTO mirror_state (id, active_source_id) VALUES (1, '')`); err != nil {
 		_ = db.Close()

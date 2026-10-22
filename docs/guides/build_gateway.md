@@ -3,8 +3,8 @@ doc_id: build-gateway
 title: Build Gateway
 audience: developers and operators
 status: current
-version: v1.2.0
-last_updated: 2026-10-21
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/build_gateway.md
   - Makefile
@@ -125,7 +125,7 @@ Choose a stricter posture only after configuring required proofs:
 ./ztd gw start --posture notary
 ```
 
-Consensus and notary require a bound consensus. The default is the Gateway-hosted Tribunal panel: `./ztd consensus enroll tribunal --model <tag>` pins a served model tag from the frozen model registry and enrolls the five `tribunal-*` member applications, skipping any already enrolled. Then run `./ztd consensus status` to confirm the binding.
+Consensus and notary require a bound consensus. The Gateway-hosted Tribunal panel is one provider: `./ztd consensus enroll tribunal --model <tag>` pins a served model tag from the frozen model registry and enrolls the five `tribunal-*` member applications, skipping any already enrolled. Its quorum defaults to 3 of 5; `--quorum` accepts 3 to 5. Then run `./ztd consensus status` to confirm the binding.
 
 To bind an application instead, enroll it as an ordinary application with an L2 signing identity, then bind its HTTPS endpoint. Set `APP_NAME` to the application name and `APP_ENDPOINT` to its HTTPS deliberation endpoint (the application host plus `/deliberate`), then run:
 
@@ -150,7 +150,7 @@ Use `./ztd gw start --help` for current startup flags and defaults. Global `-e, 
 Custom Gateway implementations consume the ztd Protocol Library for protobuf schema definitions, SPIFFE workload identity helpers, and JSON protocol constants.
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.2.0
+go get github.com/zerotrustdata/ztd@v1.3.0
 ```
 
 Import SPIFFE workload identity helpers and protocol constants from `github.com/zerotrustdata/ztd/protocol`. Import generated protobuf types from the package path under `github.com/zerotrustdata/ztd/protocol/proto/ztd/`, for example `protocol/proto/ztd/operator/v1`.
@@ -169,7 +169,7 @@ To build a custom ztd-compatible Gateway, your implementation must satisfy the f
 4. **Admission and Enrollment**: Expose bootstrap, recovery, platform enrollment, governance, PKI management, MCP, and A2A surfaces.
 5. **Protocol Translation**: Translate MCP JSON-RPC tool calls and A2A skill invocations into governed `GovernanceEnvelope` transactions.
 6. **Governance Pipeline Integration**: Apply L1-L3 according to active posture, dispatch to an Operator, and record signed receipts.
-7. **Audit and Receipt Access**: Expose authenticated audit event and receipt query surfaces.
+7. **Audit and Event Receipt Access**: Expose authenticated audit event and event receipt query surfaces. Event receipts are read from the `events` chain.
 
 ### Protocol Invariants
 

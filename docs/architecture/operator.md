@@ -3,8 +3,8 @@ doc_id: operator
 title: Operator Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/services/ztdo.go
   - internal/services/operatorcapability/
@@ -255,7 +255,7 @@ The Operator owns the final two layers of the governance interlock:
 2. **Durable Replay Reservation**: Confirms TTL expiration (`ExpiresAt`) and reserves the nonce in SQLite (`ReplayStore.ReserveNonce`).
 3. **Stateless Verification**: Decodes the protobuf payload, validates target ownership (`ExecutesFor`), re-runs local L1 Doctrine checks, recomputes the SHA-256 transaction hash, and verifies dual equality (`transaction_hash == envelope.id == recomputed_hash`).
 4. **State Merkle Root Verification**: Validates `envelope.StateMerkleRoot` against the admission snapshot in context.
-5. **Posture Validation**: Evaluates posture-required L2 Consensus signatures and L3 Notary proofs from `envelope.Posture`. Missing or invalid proofs release the reserved nonce; an explicit human L3 denial keeps it spent.
+5. **Posture Validation**: Evaluates posture-required L2 Consensus signatures and L3 Notary proofs from `envelope.Posture`. L2 is enforced only for actions the registry classifies as state-changing against the envelope's target (`governance.L2Enforced`); other envelopes have any L2 votes verified and recorded as audit evidence without gating execution. Missing or invalid proofs release the reserved nonce; an explicit human L3 denial keeps it spent.
 
 #### L5 Actuator Execution Boundary
 1. **Initial Receipt Logging**: Persists an `EXECUTING` status `ActionReceipt` signed by the Operator's Actuator key.
