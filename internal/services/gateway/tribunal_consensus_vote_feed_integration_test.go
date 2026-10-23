@@ -10,6 +10,7 @@
 package gateway
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/internal/testutil"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 // TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart builds the
@@ -68,11 +70,41 @@ func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
 		require.NoError(t, runtime.Stop(stopCtx))
 	})
 	require.NotNil(t, runtime.Publisher())
+	// Subscribe before recording the vote to check live delivery, not replay.
+	streamCtx, streamCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer streamCancel()
+	request, err := http.NewRequestWithContext(streamCtx, http.MethodGet,
+		"http://127.0.0.1:"+publicPort+"/stream?source="+runtime.Publisher().cfg.SourceID+"&since_id=0", nil)
+	require.NoError(t, err)
+	response, err := http.DefaultClient.Do(request)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	require.Equal(t, "text/event-stream", response.Header.Get("Content-Type"))
 
 	memberAppID := binding.MemberAppIDs[1]
 	require.NoError(t, deliberator.recordVote(ctx, env, binding, memberAppID, memberVote{
 		answer: tribunal.ConsensusVoteAnswer{Decision: tribunal.ConsensusVoteApprove, Reason: "read-only query"},
 	}))
+
+	scanner := bufio.NewScanner(response.Body)
+	var streamLabel string
+	var eventType string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "event: ") {
+			eventType = strings.TrimPrefix(line, "event: ")
+		}
+		if eventType == string(models.PublicFeedRecordTypeEvent) && strings.HasPrefix(line, "data: ") {
+			var event evalv1.PublicLiveEvent
+			require.NoError(t, evalv1.UnmarshalCanonical([]byte(strings.TrimPrefix(line, "data: ")), &event))
+			streamLabel = event.GetStageLabel()
+			break
+		}
+	}
+	require.NoError(t, scanner.Err())
+	require.Len(t, recorder.events, 2)
+	require.Equal(t, tribunalVoteStagePrefix+recorder.events[1].ContentText, streamLabel)
 
 	page := spectatorHistory(t, "http://127.0.0.1:"+publicPort+"/history?kind=stage_updated&limit=20")
 	var labels []string
@@ -83,6 +115,7 @@ func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
 		}
 	}
 	require.Len(t, labels, 1)
+	require.Equal(t, streamLabel, labels[0])
 	var published models.ConsensusVoteRecord
 	require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(labels[0], tribunalVoteStagePrefix)), &published))
 	recorded := recorder.records(t)

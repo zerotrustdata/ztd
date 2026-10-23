@@ -282,6 +282,24 @@ describe('LiveEventStream', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
+  it('keeps all five Tribunal seats visible before votes and after feed retention removes them', () => {
+    const { rerender } = render(stream([]));
+    const tribunal = screen.getByRole('region', { name: 'Tribunal' });
+    expect(within(tribunal).getAllByRole('article')).toHaveLength(5);
+    expect(within(tribunal).getAllByText('Waiting')).toHaveLength(5);
+
+    rerender(stream([liveEvent({
+      event_id: 'vote-axiom', kind: 'stage_updated',
+      stage_label: `tribunal vote\n${JSON.stringify({ member_app_id: 'tribunal-axiom', outcome: 'approve' })}`,
+    })]));
+    expect(screen.getByRole('region', { name: 'Tribunal' })).toBe(tribunal);
+    expect(within(tribunal).getByText('Axiom').closest('article')).toHaveAttribute('data-lit', 'true');
+
+    rerender(stream([liveEvent()]));
+    expect(screen.getByRole('region', { name: 'Tribunal' })).toBe(tribunal);
+    expect(within(tribunal).getAllByText('Waiting')).toHaveLength(5);
+  });
+
   it('lights Tribunal seats from consensus vote events and keeps them out of the table', async () => {
     const user = userEvent.setup();
     const vote = {

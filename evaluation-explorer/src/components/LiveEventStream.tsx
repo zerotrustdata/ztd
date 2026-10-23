@@ -431,28 +431,26 @@ export function LiveEventStream({
         </div>
       </div>
       {isReconciling ? <p className="panel-note">Syncing feed history…</p> : null}
-      {tribunalVotes.size > 0 ? (
-        <div className="tribunal-strip" role="region" aria-label="Tribunal">
-          {TRIBUNAL_SEATS.map((seat) => {
-            const vote = tribunalVotes.get(seat.id);
-            const outcome = typeof vote?.outcome === 'string' ? vote.outcome : undefined;
-            return (
-              <article key={seat.id} className="tribunal-seat" data-lit={vote ? 'true' : 'false'} data-outcome={outcome ?? 'pending'}>
-                <span className="tribunal-symbol" aria-hidden="true">{seat.symbol}</span>
-                <span className="tribunal-name">{seat.name}</span>
-                <span className="tribunal-office">{seat.office}</span>
-                <span className="tribunal-outcome">{outcome ? displayLabel(outcome) : 'Waiting'}</span>
-                {vote ? (
-                  <details className="tribunal-vote">
-                    <summary>Vote</summary>
-                    <pre>{JSON.stringify(vote, null, 2)}</pre>
-                  </details>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-      ) : null}
+      <div className="tribunal-strip" role="region" aria-label="Tribunal">
+        {TRIBUNAL_SEATS.map((seat) => {
+          const vote = tribunalVotes.get(seat.id);
+          const outcome = typeof vote?.outcome === 'string' ? vote.outcome : undefined;
+          return (
+            <article key={seat.id} className="tribunal-seat" data-lit={vote ? 'true' : 'false'} data-outcome={outcome ?? 'pending'}>
+              <span className="tribunal-symbol" aria-hidden="true">{seat.symbol}</span>
+              <span className="tribunal-name">{seat.name}</span>
+              <span className="tribunal-office">{seat.office}</span>
+              <span className="tribunal-outcome">{outcome ? displayLabel(outcome) : 'Waiting'}</span>
+              {vote ? (
+                <details className="tribunal-vote">
+                  <summary>Vote</summary>
+                  <pre>{JSON.stringify(vote, null, 2)}</pre>
+                </details>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
       {visible.length === 0 ? (
         isReconciling ? <ReconcilePlaceholder label="Loading feed history…" />
           : <EmptyState hasRecords={events.length > 0} hasFilters={hasFilters} connection={connection} />
