@@ -465,21 +465,27 @@ func TestComplianceReportGenerateCmdWithConfig_SealedRunWitnessMutations(t *test
 		remove      bool
 	}{
 		{name: "tampered provider attempt", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			t.Helper()
 			return sealedWitnessBundlePath(t, fixture, constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderAttemptRefFilename)
 		}},
 		{name: "missing provider attempt", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			t.Helper()
 			return sealedWitnessBundlePath(t, fixture, constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderAttemptRefFilename)
 		}, remove: true},
 		{name: "tampered provider observation", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			t.Helper()
 			return sealedWitnessBundlePath(t, fixture, constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderWindowRefFilename)
 		}},
 		{name: "missing provider observation", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			t.Helper()
 			return sealedWitnessBundlePath(t, fixture, constants.EvaluationProviderObservationsDirname, constants.EvaluationProviderWindowRefFilename)
 		}, remove: true},
 		{name: "tampered model provenance", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			t.Helper()
 			return sealedWitnessBundlePath(t, fixture, constants.EvaluationModelProvenanceDirname, constants.EvaluationModelProvenanceWindowRefFilename)
 		}},
 		{name: "missing model provenance", runtimePath: func(t *testing.T, fixture campaignComplianceBundleFixture) string {
+			t.Helper()
 			return sealedWitnessBundlePath(t, fixture, constants.EvaluationModelProvenanceDirname, constants.EvaluationModelProvenanceWindowRefFilename)
 		}, remove: true},
 	}

@@ -266,6 +266,7 @@ func TestComplianceKSICmd_ValidationErrors(t *testing.T) {
 		{
 			name: "invalid certification class",
 			setup: func(t *testing.T, fileSvc fs.RuntimeFileService) (string, string) {
+				t.Helper()
 				catPath := writeTestKSICatalog(t, fileSvc)
 				return catPath, "INVALID"
 			},
@@ -274,6 +275,7 @@ func TestComplianceKSICmd_ValidationErrors(t *testing.T) {
 		{
 			name: "catalog file not found",
 			setup: func(t *testing.T, fileSvc fs.RuntimeFileService) (string, string) {
+				t.Helper()
 				return constants.TestPathNonexistentCatalog, "C"
 			},
 			errContains: "load KSI catalog",

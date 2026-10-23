@@ -264,6 +264,7 @@ func TestGetDiskUsageForPath(t *testing.T) {
 			},
 			path: "/var",
 			verify: func(t *testing.T, result FSDiskUsageResult) {
+				t.Helper()
 				require.Equal(t, "/var", result.Path)
 				require.NotNil(t, result.Filesystem)
 				require.Equal(t, "/var", result.Filesystem.Path)
@@ -290,6 +291,7 @@ func TestGetDiskUsageForPath(t *testing.T) {
 			},
 			path: "/empty",
 			verify: func(t *testing.T, result FSDiskUsageResult) {
+				t.Helper()
 				require.Equal(t, uint64(0), result.Filesystem.TotalBytes)
 				require.Equal(t, uint64(0), result.Filesystem.UsedBytes)
 				require.Equal(t, uint64(0), result.Filesystem.FreeBytes)

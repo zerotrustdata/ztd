@@ -117,6 +117,7 @@ func TestSignedEnvelope(t *testing.T) {
 			isMutation: false,
 			wantErr:    false,
 			checkFields: func(t *testing.T, env *govpkg.GovernanceEnvelope) {
+				t.Helper()
 				if env.ProtocolVersion != govpkg.GovernanceProtocolVersionV2 {
 					t.Errorf("ProtocolVersion = %s, want %s", env.ProtocolVersion, govpkg.GovernanceProtocolVersionV2)
 				}
@@ -151,6 +152,7 @@ func TestSignedEnvelope(t *testing.T) {
 			isMutation: true,
 			wantErr:    false,
 			checkFields: func(t *testing.T, env *govpkg.GovernanceEnvelope) {
+				t.Helper()
 				if env.Governance.L3 == nil {
 					t.Error("L3 metadata should be present for mutations")
 				}

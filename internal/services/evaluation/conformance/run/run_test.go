@@ -337,12 +337,15 @@ func TestRunRefusesOutboundAnchorThatDoesNotCheckAgainstItsExport(t *testing.T) 
 		want   error
 	}{
 		{name: "export names a key other than the enrollment-bound key", want: constants.ErrConformanceAnchorInvalid, mutate: func(t *testing.T, h *harness) {
+			t.Helper()
 			writeActuatorExport(t, h, cases.ExecutorOutbound, other)
 		}},
 		{name: "export missing", want: constants.ErrConformanceAnchorMissing, mutate: func(t *testing.T, h *harness) {
+			t.Helper()
 			require.NoError(t, h.roots[cases.ExecutorOutbound].Files.Remove(context.Background(), actuatorExportPath()))
 		}},
 		{name: "bound anchor names another runtime", want: constants.ErrConformanceAnchorInvalid, mutate: func(t *testing.T, h *harness) {
+			t.Helper()
 			root := h.roots[cases.ExecutorOutbound]
 			root.Bound = h.signers[cases.ExecutorOutbound].Anchor("op-other")
 			h.roots[cases.ExecutorOutbound] = root

@@ -301,6 +301,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "two runs share a posture",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				return append(runs, passingRun(t, doctrine))
 			},
 			want: constants.ErrConformanceRecordInvalid,
@@ -308,6 +309,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "verdict set run id does not match its record",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				runFor(t, runs, doctrine).Verdicts.RunId = "other-run"
 				return runs
 			},
@@ -316,6 +318,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "record suite id is not the catalogue suite",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				runFor(t, runs, doctrine).Record.SuiteId = "other-suite"
 				return runs
 			},
@@ -324,6 +327,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "posture is not one of the four",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				r := runFor(t, runs, doctrine)
 				r.Record.Posture = evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED
 				r.Verdicts.Posture = evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED
@@ -334,6 +338,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "verdict for a case outside the catalogue",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				v := runFor(t, runs, doctrine).Verdicts
 				v.Verdicts = append(v.Verdicts, &evalv1.ConformanceVerdict{CaseId: "not-a-case"})
 				return runs
@@ -343,6 +348,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "a verdict for an applicable case is missing",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				v := runFor(t, runs, doctrine).Verdicts
 				v.Verdicts = v.Verdicts[:len(v.Verdicts)-1]
 				return runs
@@ -352,6 +358,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "a verdict for an applicable case is duplicated",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				v := runFor(t, runs, doctrine).Verdicts
 				v.Verdicts[1] = v.Verdicts[0]
 				return runs
@@ -361,6 +368,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "L1 stages in one posture disagree on the bundle hash",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				run := runFor(t, runs, doctrine)
 				c := findCase(t, doctrine, isDoctrineL1Direct)
 				evidenceOf(t, run, c.ID).Observations[0].Rejection.Receipt.DeterministicStageEvidence[0].DoctrineBundleHash = "forged-bundle"
@@ -371,6 +379,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "a signed L1 rejection has no L1 stage",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				run := runFor(t, runs, doctrine)
 				c := findCase(t, doctrine, isDoctrineL1Direct)
 				evidenceOf(t, run, c.ID).Observations[0].Rejection.Receipt.DeterministicStageEvidence = nil
@@ -381,6 +390,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "a signed L1 rejection has an empty bundle hash",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				run := runFor(t, runs, doctrine)
 				c := findCase(t, doctrine, isDoctrineL1Direct)
 				evidenceOf(t, run, c.ID).Observations[0].Rejection.Receipt.DeterministicStageEvidence[0].DoctrineBundleHash = ""
@@ -391,6 +401,7 @@ func TestBuildRejectsInvalidRuns(t *testing.T) {
 		{
 			name: "a run carries no record",
 			mutate: func(t *testing.T, runs []VerifiedRun) []VerifiedRun {
+				t.Helper()
 				runs[0].Record = nil
 				return runs
 			},

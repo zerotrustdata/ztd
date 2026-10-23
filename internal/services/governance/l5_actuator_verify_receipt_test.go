@@ -56,6 +56,7 @@ func TestVerifyActionReceipt(t *testing.T) {
 		{
 			name: "valid signature and persistence attestation",
 			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+				t.Helper()
 				return newSignedPersistedReceipt(t, actuator)
 			},
 			publicKey: publicKey,
@@ -63,6 +64,7 @@ func TestVerifyActionReceipt(t *testing.T) {
 		{
 			name: "flipped signature byte",
 			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+				t.Helper()
 				receipt := newSignedPersistedReceipt(t, actuator)
 				signature, err := hex.DecodeString(receipt.Signature)
 				require.NoError(t, err)
@@ -76,6 +78,7 @@ func TestVerifyActionReceipt(t *testing.T) {
 		{
 			name: "missing persistence attestation",
 			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+				t.Helper()
 				receipt := newSignedPersistedReceipt(t, actuator)
 				receipt.FinalPersistenceAttestation = nil
 				return receipt
@@ -86,6 +89,7 @@ func TestVerifyActionReceipt(t *testing.T) {
 		{
 			name: "wrong public key",
 			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+				t.Helper()
 				return newSignedPersistedReceipt(t, actuator)
 			},
 			publicKey: wrongPublicKey,
@@ -94,6 +98,7 @@ func TestVerifyActionReceipt(t *testing.T) {
 		{
 			name: "attestation signed by a key other than the actuator",
 			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+				t.Helper()
 				receipt := newSignedPersistedReceipt(t, actuator)
 				attestation := proto.Clone(receipt.FinalPersistenceAttestation).(*operatorv1.ReceiptPersistenceAttestation)
 				canonical, err := CanonicalizeReceiptPersistenceAttestation(attestation)
@@ -110,6 +115,7 @@ func TestVerifyActionReceipt(t *testing.T) {
 		{
 			name: "missing receipt",
 			receipt: func(t *testing.T) *operatorv1.ActionReceipt {
+				t.Helper()
 				return nil
 			},
 			publicKey: publicKey,

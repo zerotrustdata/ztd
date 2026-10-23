@@ -191,6 +191,7 @@ func TestCommitmentImporter_Import_RejectsContentAndBindingMutations(t *testing.
 			f.binding.Reference = ContentReferenceForBody(constants.CommitmentReferencePrefix, body)
 		}, targetErr: constants.ErrEvidenceArtifactMalformed},
 		{name: "incomplete attestation", mutate: func(t *testing.T, f *commitmentFixture) {
+			t.Helper()
 			f.attestation.TransactionHash = ""
 			f.replaceAttestation(t)
 		}, targetErr: constants.ErrEvidenceArtifactMalformed},

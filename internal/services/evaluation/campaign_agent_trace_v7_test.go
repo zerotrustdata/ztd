@@ -131,6 +131,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 		{
 			name: "per-call variant differs from designated trace identity",
 			mutate: func(t *testing.T, trace *AgentTrace, signer oracletest.Signer) {
+				t.Helper()
 				call := &trace.ModelCalls[0]
 				call.ServedModelTag = "model-b:latest"
 				call.ModelDigest = strings.Repeat("c", 64)
@@ -150,6 +151,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 		{
 			name: "signed result from another variant",
 			mutate: func(t *testing.T, trace *AgentTrace, signer oracletest.Signer) {
+				t.Helper()
 				call := &trace.ModelCalls[0]
 				result := call.InferenceResult.InferenceResult
 				result.Model = "model-b:latest"
@@ -190,6 +192,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 		{
 			name: "result changed after dispatch",
 			mutate: func(t *testing.T, trace *AgentTrace, signer oracletest.Signer) {
+				t.Helper()
 				call := &trace.ModelCalls[0]
 				result := call.InferenceResult.InferenceResult
 				result.Parts[0].Part = &operatorv1.InferenceResponsePart_Text{Text: "other answer"}

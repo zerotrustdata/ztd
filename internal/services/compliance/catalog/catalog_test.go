@@ -227,6 +227,7 @@ func TestCanonicalCatalogDigestsMatchContent(t *testing.T) {
 	require.NoError(t, compliancev1.UnmarshalCanonical(complianceconstants.FedRAMPAndNISTCrosswalkJSON(), crosswalks))
 
 	assertDigest := func(t *testing.T, expected string, message proto.Message) {
+		t.Helper()
 		actual, err := catalog.CatalogDigest(message)
 		require.NoError(t, err)
 		assert.Equal(t, expected, actual)

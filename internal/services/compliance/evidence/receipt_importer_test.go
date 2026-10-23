@@ -329,6 +329,7 @@ func TestPersistenceImporter_Import_RejectsDigestCanonicalAndBindingMutations(t 
 			fixture.persistenceBinding.Reference = ContentReferenceForBody(constants.ReceiptPersistenceReferencePrefix, body)
 		}, targetErr: constants.ErrEvidenceArtifactMalformed},
 		{name: "persistence differs from embedded attestation", mutate: func(t *testing.T, fixture *standaloneReceiptFixture) {
+			t.Helper()
 			attestation := proto.Clone(fixture.receipt.FinalPersistenceAttestation).(*operatorv1.ReceiptPersistenceAttestation)
 			attestation.AuditRecordId = "other-audit-record"
 			body, err := compliancev1.MarshalCanonical(attestation)

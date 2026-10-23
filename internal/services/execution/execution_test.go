@@ -495,6 +495,7 @@ func TestExecutionService_CancelExecution(t *testing.T) {
 		{
 			name: "cancel non-existent execution",
 			test: func(t *testing.T) {
+				t.Helper()
 				t.Parallel()
 				err := svc.CancelExecution("non-existent-id")
 				require.Error(t, err)
@@ -504,6 +505,7 @@ func TestExecutionService_CancelExecution(t *testing.T) {
 		{
 			name: "cancel running execution",
 			test: func(t *testing.T) {
+				t.Helper()
 				t.Parallel()
 				req := &models.ExecutionRequestPayload{
 					ExecutionID:    "cancel-test-1",

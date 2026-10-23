@@ -677,6 +677,7 @@ func TestPasskeyService_RealAssertions(t *testing.T) {
 	})
 
 	approvalProof := func(t *testing.T, signedHash string) *commonv1.L3Proof {
+		t.Helper()
 		options, err := svc.GenerateApprovalChallenge(t.Context(), user.ID, signedHash)
 		require.NoError(t, err)
 		assertion := passkey.Assert(t, options.Response.RelyingPartyID, options.Response.Challenge)

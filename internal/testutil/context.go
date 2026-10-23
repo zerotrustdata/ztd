@@ -20,17 +20,17 @@ const DefaultTestTimeout = 30 * time.Second
 // Context returns a context cancelled when the test finishes and expired after
 // DefaultTestTimeout. Tests that do I/O use it so cancellation is owned by the
 // test (INV-TEST-FIX-03).
-func Context(t testing.TB) context.Context {
-	t.Helper()
-	return ContextWithTimeout(t, DefaultTestTimeout)
+func Context(tb testing.TB) context.Context {
+	tb.Helper()
+	return ContextWithTimeout(tb, DefaultTestTimeout)
 }
 
 // ContextWithTimeout returns a context cancelled when the test finishes and
 // expired after d. Use it when a test's I/O legitimately needs a budget other
 // than DefaultTestTimeout.
-func ContextWithTimeout(t testing.TB, d time.Duration) context.Context {
-	t.Helper()
+func ContextWithTimeout(tb testing.TB, d time.Duration) context.Context {
+	tb.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), d)
-	t.Cleanup(cancel)
+	tb.Cleanup(cancel)
 	return ctx
 }
