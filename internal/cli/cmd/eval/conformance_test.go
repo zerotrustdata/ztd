@@ -72,6 +72,7 @@ type conformanceRig struct {
 // execute runs the command tree with args against the rig's Gateway root and
 // returns its combined output.
 func (r conformanceRig) execute(t *testing.T, args ...string) (string, error) {
+	t.Helper()
 	return r.executeInput(t, "", args...)
 }
 
@@ -149,13 +150,15 @@ func conformanceVaultProvider(keyring keystore.Keyring) evaluation.EvidenceVault
 type storedVault func(t *testing.T, keyring keystore.Keyring) evaluation.EvidenceVaultProvider
 
 // productionStoredVault is the runtime vault the production evidence file service opens.
-func productionStoredVault(_ *testing.T, keyring keystore.Keyring) evaluation.EvidenceVaultProvider {
+func productionStoredVault(t *testing.T, keyring keystore.Keyring) evaluation.EvidenceVaultProvider {
+	t.Helper()
 	return conformanceVaultProvider(keyring)
 }
 
 // lockedStoredVault is a runtime vault that was never unlocked, so every call
 // fails as the real vault's calls do.
-func lockedStoredVault(_ *testing.T, _ keystore.Keyring) evaluation.EvidenceVaultProvider {
+func lockedStoredVault(t *testing.T, _ keystore.Keyring) evaluation.EvidenceVaultProvider {
+	t.Helper()
 	return func(keys fs.RuntimeFileService) (evaluation.EvidenceVault, error) {
 		return vault.NewVault(&vault.VaultConfig{FileSvc: keys, Logger: testutil.NewTestLogger()})
 	}

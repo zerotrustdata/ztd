@@ -140,6 +140,7 @@ func TestDNSRecordName_Table(t *testing.T) {
 // upsertHandler serves a zone lookup plus the given existing records, and
 // answers any mutation with success.
 func upsertHandler(t *testing.T, existing []map[string]any) http.HandlerFunc {
+	t.Helper()
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/client/v4/zones":

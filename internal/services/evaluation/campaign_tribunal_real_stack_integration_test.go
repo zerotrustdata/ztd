@@ -88,6 +88,7 @@ func tribunalScenario(scenario *evalv1.EvaluationScenarioDefinition) {
 // tribunalRun initializes a one-assignment campaign on the real stack whose
 // provider script is the concatenation of the given rounds, in order.
 func tribunalRun(t *testing.T, suffix string, rounds ...[]fixtures.OllamaReply) *realStackAgentRun {
+	t.Helper()
 	return tribunalRunWithPosture(t, suffix, constants.PostureDoctrine, false, rounds...)
 }
 

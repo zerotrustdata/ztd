@@ -41,10 +41,12 @@ type evidenceLedger struct {
 }
 
 func newEvidenceLedger(t testing.TB, signer oracletest.Signer) *evidenceLedger {
+	t.Helper()
 	return newRuntimeLedger(t, signer, evidenceOperatorID, evidenceSessionID)
 }
 
 func newRuntimeLedger(t testing.TB, signer oracletest.Signer, operatorID, sessionID string) *evidenceLedger {
+	t.Helper()
 	return &evidenceLedger{t: t, signer: signer, operatorID: operatorID, sessionID: sessionID, head: "h-0"}
 }
 
