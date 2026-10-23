@@ -638,6 +638,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 			return nil, fmt.Errorf("gateway: initialize public spectator: %w", err)
 		}
 		ls.publicSpectator = spectator
+		bindTribunalVoteFeed(ls.tribunalConsensus, spectator)
 	}
 
 	return ls, nil

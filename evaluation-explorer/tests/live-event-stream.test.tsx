@@ -282,4 +282,45 @@ describe('LiveEventStream', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
+  it('lights Tribunal seats from consensus vote events and keeps them out of the table', async () => {
+    const user = userEvent.setup();
+    const vote = {
+      member_app_id: 'tribunal-axiom',
+      outcome: 'approve',
+      reason: 'read-only query',
+      failure: '',
+      quorum: 3,
+      model_tag: 'gemma4:e2b',
+      transaction_id: 'tx-1',
+      transaction_hash: 'abc',
+      inference_transaction_id: 'inf-1',
+    };
+    render(stream([
+      liveEvent(),
+      liveEvent({
+        event_id: 'vote-axiom',
+        kind: 'stage_updated',
+        assignment_id: undefined,
+        role: undefined,
+        task_id: undefined,
+        stage_label: `tribunal vote\n${JSON.stringify(vote)}`,
+      }),
+    ]));
+    const tribunal = screen.getByRole('region', { name: 'Tribunal' });
+    expect(within(tribunal).getByText('Axiom')).toBeInTheDocument();
+    expect(within(tribunal).getByText('the Composer')).toBeInTheDocument();
+    expect(within(tribunal).getByText('✶')).toBeInTheDocument();
+    expect(within(tribunal).getByText('Concord')).toBeInTheDocument();
+    expect(within(tribunal).getByText('Nemesis')).toBeInTheDocument();
+    expect(within(tribunal).getAllByText('Waiting')).toHaveLength(4);
+    const axiom = within(tribunal).getByText('Axiom').closest('article');
+    expect(axiom).toHaveAttribute('data-lit', 'true');
+    expect(axiom).toHaveAttribute('data-outcome', 'approve');
+    await user.click(within(axiom as HTMLElement).getByText('Vote'));
+    expect(within(tribunal).getByText(/read-only query/)).toBeInTheDocument();
+    expect(within(tribunal).getByText(/gemma4:e2b/)).toBeInTheDocument();
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toHaveTextContent('tool-select-file-read');
+  });
+
 });

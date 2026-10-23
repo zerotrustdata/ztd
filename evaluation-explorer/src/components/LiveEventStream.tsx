@@ -25,6 +25,54 @@ import { formatNumber } from '../utils/format';
 import { LIVE_EVENT_RETENTION_LIMIT } from '../constants';
 const STREAM_PAGE_SIZE = 25;
 const STREAM_EMPTY_METRIC = '--';
+const TRIBUNAL_VOTE_PREFIX = 'tribunal vote\n';
+
+/** Canonical Tribunal seats. Titles match the sealed member stances. */
+const TRIBUNAL_SEATS = [
+  { id: 'axiom', name: 'Axiom', office: 'the Composer', symbol: '✶' },
+  { id: 'concord', name: 'Concord', office: 'the Guardian', symbol: '⛨' },
+  { id: 'variance', name: 'Variance', office: 'the Exhaustive', symbol: '⋮' },
+  { id: 'pragma', name: 'Pragma', office: 'the Conventional', symbol: '≡' },
+  { id: 'nemesis', name: 'Nemesis', office: 'the Calibrated Adversary', symbol: '⚔' },
+] as const;
+
+type TribunalSeatId = (typeof TRIBUNAL_SEATS)[number]['id'];
+
+function isTribunalVoteEvent(event: LiveEvent): boolean {
+  return event.stage_label?.startsWith(TRIBUNAL_VOTE_PREFIX) ?? false;
+}
+
+/** The audit record carried on a consensus-posture vote event, unchanged. */
+function tribunalVoteRecord(event: LiveEvent): Record<string, unknown> | undefined {
+  if (!isTribunalVoteEvent(event) || event.stage_label === undefined) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(event.stage_label.slice(TRIBUNAL_VOTE_PREFIX.length));
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function tribunalSeatId(record: Record<string, unknown>): TribunalSeatId | undefined {
+  const member = record.member_app_id;
+  if (typeof member !== 'string' || !member.startsWith('tribunal-')) return undefined;
+  const id = member.slice('tribunal-'.length);
+  return TRIBUNAL_SEATS.some((seat) => seat.id === id) ? id as TribunalSeatId : undefined;
+}
+
+function latestTribunalVotes(events: LiveEvent[]): Map<TribunalSeatId, Record<string, unknown>> {
+  const latest = new Map<TribunalSeatId, { at: string; record: Record<string, unknown> }>();
+  for (const event of events) {
+    const record = tribunalVoteRecord(event);
+    if (!record) continue;
+    const id = tribunalSeatId(record);
+    if (!id) continue;
+    const current = latest.get(id);
+    if (!current || event.observed_at >= current.at) latest.set(id, { at: event.observed_at, record });
+  }
+  return new Map([...latest].map(([id, vote]) => [id, vote.record]));
+}
 
 function eventTime(iso: string): string {
   const date = new Date(iso);
@@ -281,13 +329,15 @@ export function LiveEventStream({
   const scrollRef = useRef<HTMLDivElement>(null);
   const models = useStoreState((state) => state.models);
   const assignments = useStoreState((state) => state.assignments);
+  const activityEvents = useMemo(() => events.filter((event) => !isTribunalVoteEvent(event)), [events]);
+  const tribunalVotes = useMemo(() => latestTribunalVotes(events), [events]);
 
-  const latestEvent = useMemo(() => events.reduce<LiveEvent | undefined>(
+  const latestEvent = useMemo(() => activityEvents.reduce<LiveEvent | undefined>(
     (latest, event) => !latest || event.observed_at > latest.observed_at ? event : latest, undefined,
-  ), [events]);
+  ), [activityEvents]);
   const targetEvents = useMemo(() => runScope === 'latest' && latestEvent
-    ? events.filter((event) => event.run_id === latestEvent.run_id && event.dataset_id === latestEvent.dataset_id)
-    : events, [events, runScope, latestEvent]);
+    ? activityEvents.filter((event) => event.run_id === latestEvent.run_id && event.dataset_id === latestEvent.dataset_id)
+    : activityEvents, [activityEvents, runScope, latestEvent]);
   const baseRows = useMemo(() => visibleStreamEvents(targetEvents, {
     modelFilter: 'all', kindFilter: 'all',
   }), [targetEvents]);
@@ -308,7 +358,7 @@ export function LiveEventStream({
   ).filter((category) => category !== '—'))).sort(), [baseRows, assignments]);
   const assignmentOptions = useMemo(() => Array.from(new Set(baseRows.map((event) => event.assignment_id)
     .filter((value): value is string => Boolean(value)))).sort(), [baseRows]);
-  const designatedRoles = useMemo(() => designatedRolesByAssignment(events), [events]);
+  const designatedRoles = useMemo(() => designatedRolesByAssignment(activityEvents), [activityEvents]);
   const advancedFilterCount = [kindFilter, categoryFilter, assignmentFilter, runScope].filter((value) => value !== 'all').length;
   const hasFilters = advancedFilterCount > 0 || modelFilter !== 'all';
 
@@ -381,6 +431,28 @@ export function LiveEventStream({
         </div>
       </div>
       {isReconciling ? <p className="panel-note">Syncing feed history…</p> : null}
+      {tribunalVotes.size > 0 ? (
+        <div className="tribunal-strip" role="region" aria-label="Tribunal">
+          {TRIBUNAL_SEATS.map((seat) => {
+            const vote = tribunalVotes.get(seat.id);
+            const outcome = typeof vote?.outcome === 'string' ? vote.outcome : undefined;
+            return (
+              <article key={seat.id} className="tribunal-seat" data-lit={vote ? 'true' : 'false'} data-outcome={outcome ?? 'pending'}>
+                <span className="tribunal-symbol" aria-hidden="true">{seat.symbol}</span>
+                <span className="tribunal-name">{seat.name}</span>
+                <span className="tribunal-office">{seat.office}</span>
+                <span className="tribunal-outcome">{outcome ? displayLabel(outcome) : 'Waiting'}</span>
+                {vote ? (
+                  <details className="tribunal-vote">
+                    <summary>Vote</summary>
+                    <pre>{JSON.stringify(vote, null, 2)}</pre>
+                  </details>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
       {visible.length === 0 ? (
         isReconciling ? <ReconcilePlaceholder label="Loading feed history…" />
           : <EmptyState hasRecords={events.length > 0} hasFilters={hasFilters} connection={connection} />

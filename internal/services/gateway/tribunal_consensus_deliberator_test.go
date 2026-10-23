@@ -30,9 +30,11 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -341,6 +343,53 @@ func newRecordingTribunalTestDeliberator(t *testing.T, binding *models.Consensus
 	deliberator, err := NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, recorder, signer, logger)
 	require.NoError(t, err)
 	return deliberator
+}
+
+type fakeVoteFeed struct {
+	bodies [][]byte
+	err    error
+}
+
+func (f *fakeVoteFeed) PublishLiveEvent(_ context.Context, body []byte) error {
+	f.bodies = append(f.bodies, append([]byte(nil), body...))
+	return f.err
+}
+
+func TestRecordVotePublishesTheAuditRecordOnThePublicFeed(t *testing.T) {
+	env, _ := tribunalTestEnvelope(t)
+	env.Posture = string(constants.PostureConsensus)
+	env.InvestigationId = "run-1"
+	env, _ = hashTribunalTestEnvelope(t, env)
+	binding := tribunalTestBinding()
+	feed := &fakeVoteFeed{}
+	d := newRecordingTribunalTestDeliberator(t, binding, &fakeInferer{}, newFakeSigner(t, binding.MemberAppIDs...), &fakeVoteRecorder{})
+	d.voteFeed = func() consensusVoteFeed { return feed }
+
+	err := d.recordVote(context.Background(), env, binding, binding.MemberAppIDs[0], memberVote{
+		answer: tribunal.ConsensusVoteAnswer{Decision: tribunal.ConsensusVoteApprove, Reason: "read-only query"},
+	})
+	require.NoError(t, err)
+	require.Len(t, feed.bodies, 1)
+	require.NoError(t, publicdisclosure.ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, feed.bodies[0]))
+
+	event := &evalv1.PublicLiveEvent{}
+	require.NoError(t, evalv1.UnmarshalCanonical(feed.bodies[0], event))
+	assert.Equal(t, "stage_updated", event.GetKind())
+	assert.Equal(t, "ds-live-run-1", event.GetDatasetId())
+	assert.Equal(t, "run-1", event.GetRunId())
+	require.True(t, strings.HasPrefix(event.GetStageLabel(), tribunalVoteStagePrefix))
+	var published models.ConsensusVoteRecord
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(event.GetStageLabel(), tribunalVoteStagePrefix)), &published))
+	assert.Equal(t, binding.MemberAppIDs[0], published.MemberAppID)
+	assert.Equal(t, models.ConsensusVoteOutcomeApprove, published.Outcome)
+	assert.Equal(t, "read-only query", published.Reason)
+	assert.Equal(t, d.votes.(*fakeVoteRecorder).records(t)[0], published)
+
+	env.Posture = string(constants.PostureDoctrine)
+	require.NoError(t, d.recordVote(context.Background(), env, binding, binding.MemberAppIDs[1], memberVote{
+		answer: tribunal.ConsensusVoteAnswer{Decision: tribunal.ConsensusVoteDeny, Reason: "not this posture"},
+	}))
+	assert.Len(t, feed.bodies, 1)
 }
 
 func TestNewTribunalConsensusDeliberatorRejectsMissingRequiredDependencies(t *testing.T) {

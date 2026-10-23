@@ -488,6 +488,39 @@ func resequencePublicFeedRecords(records []models.PublicFeedRecord, startSequenc
 	}
 }
 
+// PublishLiveEvent appends one validated live event at the next feed sequence
+// and hands it to ExportBatch, which is what puts it on the mirror SSE stream.
+// A sequence race with another publisher is retried once.
+func (s *PublicPublisherService) PublishLiveEvent(ctx context.Context, body []byte) error {
+	if !s.cfg.Enabled {
+		return constants.ErrPublicFeedDisabled
+	}
+	if err := publicdisclosure.ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, body); err != nil {
+		return fmt.Errorf("public-feed: publish live event: %w", err)
+	}
+	var last error
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := s.loadSnapshotFromOutbox(ctx); err != nil {
+			return fmt.Errorf("public-feed: publish live event: %w", err)
+		}
+		s.mu.Lock()
+		next := s.highWaterSeq + 1
+		s.mu.Unlock()
+		sum := sha256.Sum256(body)
+		err := s.ExportBatch(ctx, []models.PublicFeedRecord{{
+			Sequence:    next,
+			RecordType:  models.PublicFeedRecordTypeEvent,
+			RecordHash:  hex.EncodeToString(sum[:]),
+			RecordBytes: string(body),
+		}})
+		if err == nil || !errors.Is(err, constants.ErrPublicFeedSequenceOutOfOrder) {
+			return err
+		}
+		last = err
+	}
+	return last
+}
+
 // ExportBatch builds a signed batch from records, durably writes it to the
 // outbox, transmits it to the mirror with idempotent retry, and advances
 // acknowledgment only after signed mirror acceptance.
