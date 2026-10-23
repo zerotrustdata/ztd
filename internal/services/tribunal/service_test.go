@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
@@ -128,7 +129,9 @@ func TestDeliberateApproved(t *testing.T) {
 		marshal: lowRisk,
 		audit:   []string{approve},
 	}
-	result, err := NewService(dispatcher).Deliberate(context.Background(), intentRequest(template))
+	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	require.NoError(t, err)
+	result, err := service.Deliberate(context.Background(), intentRequest(template))
 	require.NoError(t, err)
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED, result.GetOutcome())
 	assert.Equal(t, "ss -tlpn", result.GetArguments().GetCommand()+" "+strings.Join(result.GetArguments().GetArgs(), " "))
@@ -188,7 +191,9 @@ func TestDeliberateMemberFailure(t *testing.T) {
 				audit:    []string{approve},
 				fail:     stage,
 			}
-			result, err := NewService(dispatcher).Deliberate(context.Background(), intentRequest(memberTemplate()))
+			service, err := NewService(dispatcher, governance.NewL1Doctrine())
+			require.NoError(t, err)
+			result, err := service.Deliberate(context.Background(), intentRequest(memberTemplate()))
 			require.NoError(t, err)
 			assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_INFERENCE_FAILED, result.GetOutcome())
 			assert.Empty(t, result.GetArguments().GetCommand())
@@ -207,11 +212,13 @@ func TestDeliberateMemberFailure(t *testing.T) {
 
 func TestDeliberateBlocked(t *testing.T) {
 	dispatcher := &fakeMemberDispatcher{
-		generate: proposals(map[Member]string{MemberAxiom: "rm -rf /", MemberConcord: "rm -rf /", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
+		generate: proposals(map[Member]string{MemberAxiom: "rm ./build/file", MemberConcord: "rm ./build/file", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 		marshal:  `{"risk": "HIGH", "rationale": "deletes /", "feedback": "scope the path"}`,
 		audit:    []string{approve},
 	}
-	result, err := NewService(dispatcher).Deliberate(context.Background(), intentRequest(memberTemplate()))
+	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	require.NoError(t, err)
+	result, err := service.Deliberate(context.Background(), intentRequest(memberTemplate()))
 	require.NoError(t, err)
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_BLOCKED, result.GetOutcome())
 	assert.Empty(t, result.GetArguments().GetCommand())
@@ -228,7 +235,9 @@ func TestDeliberateAuditFailed(t *testing.T) {
 		marshal:  lowRisk,
 		audit:    []string{"looks fine"},
 	}
-	result, err := NewService(dispatcher).Deliberate(context.Background(), intentRequest(memberTemplate()))
+	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	require.NoError(t, err)
+	result, err := service.Deliberate(context.Background(), intentRequest(memberTemplate()))
 	require.NoError(t, err)
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED, result.GetOutcome())
 	assert.Empty(t, result.GetArguments().GetCommand())

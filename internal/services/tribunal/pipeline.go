@@ -21,12 +21,16 @@ import (
 // no winner, Marshal's risk assessment of the winner, and the Auditor's
 // review. When the Auditor changes the arguments, Marshal assesses the changed
 // arguments before approval, so the approved set is always one Marshal
-// has classified. Steps are indexed from startIndex+1. A deliberation that
+// has classified. Candidates and Auditor arguments must pass the active L1
+// doctrine before voting or approval. Steps are indexed from startIndex+1. A deliberation that
 // ends without approved arguments is a Result with its Outcome, not an
 // error; only an inference failure returns an error.
 func Run(ctx context.Context, cfg Config, req Request, startIndex uint32) (*Result, error) {
 	if cfg.Inferer == nil {
 		return nil, fmt.Errorf("tribunal: inferer: %w", constants.ErrMissingRequiredField)
+	}
+	if cfg.Doctrine == nil {
+		return nil, fmt.Errorf("tribunal: %w", constants.ErrDoctrineRequired)
 	}
 	steps := stepRecorder{cfg: cfg, index: startIndex}
 	result := &Result{}

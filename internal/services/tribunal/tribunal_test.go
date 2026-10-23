@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -111,6 +112,7 @@ func proposalAnswer(command string) string {
 func testConfig(inferer Inferer) Config {
 	return Config{
 		Inferer:     inferer,
+		Doctrine:    governance.NewL1Doctrine(),
 		Tier:        evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 		ModelTag:    "model:tag",
 		ModelDigest: "sha256:digest",
@@ -430,7 +432,7 @@ func TestRunNoConsensus(t *testing.T) {
 
 func TestRunBlocked(t *testing.T) {
 	inferer := &fakeInferer{
-		generate: proposals(map[Member]string{MemberAxiom: "rm -rf /", MemberConcord: "rm -rf /", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
+		generate: proposals(map[Member]string{MemberAxiom: "rm ./build/file", MemberConcord: "rm ./build/file", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 		marshal:  "not json",
 	}
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
@@ -472,9 +474,9 @@ func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
 		},
 		{
 			name:         "revision Marshal rates HIGH is blocked",
-			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"rm","args":["-rf","/"]}}`,
+			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"rm","args":["./build/file"]}}`,
 			marshalFinal: highRisk,
-			outcome:      OutcomeBlocked, subject: "rm -rf /", riskLevel: RiskHigh, marshalCalls: 2,
+			outcome:      OutcomeBlocked, subject: "rm ./build/file", riskLevel: RiskHigh, marshalCalls: 2,
 		},
 		{
 			name:         "swap to another cluster Marshal rates HIGH is blocked",

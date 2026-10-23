@@ -24,6 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
@@ -33,11 +34,18 @@ type tribunalCommandDispatcher interface {
 	Dispatch(context.Context, DispatchRequest) (*DispatchResult, error)
 }
 
+// tribunalAdmissionReviewer is the Tribunal's final contextual review of an
+// admitted envelope (tribunal.Service.ReviewAdmitted).
+type tribunalAdmissionReviewer interface {
+	ReviewAdmitted(context.Context, *tribunalv1.TribunalIntentRequest, *tribunalv1.TribunalIntentResult, *commonv1.GovernanceEnvelope, []*operatorv1.ConsensusVoteInference) error
+}
+
 // TribunalIntentControllerDeps groups all dependencies for
 // TribunalIntentController.
 type TribunalIntentControllerDeps struct {
 	CommandDispatchSvc   tribunalCommandDispatcher
 	InferenceDispatchSvc *dispatch.DispatchService
+	Doctrine             *governance.L1Doctrine
 	Responder            *response.Writer
 	Logger               *slog.Logger
 
@@ -55,6 +63,7 @@ type TribunalIntentControllerDeps struct {
 type TribunalIntentController struct {
 	commands   tribunalCommandDispatcher
 	inference  *dispatch.DispatchService
+	doctrine   *governance.L1Doctrine
 	responder  *response.Writer
 	logger     *slog.Logger
 	maxPayload int64
@@ -65,6 +74,7 @@ func newTribunalIntentController(d TribunalIntentControllerDeps) *TribunalIntent
 	return &TribunalIntentController{
 		commands:   d.CommandDispatchSvc,
 		inference:  d.InferenceDispatchSvc,
+		doctrine:   d.Doctrine,
 		responder:  d.Responder,
 		logger:     d.Logger,
 		maxPayload: d.MaxPayload,
@@ -128,23 +138,52 @@ func (c *TribunalIntentController) HandleIntent(w http.ResponseWriter, r *http.R
 	}
 
 	members := &tribunalMemberDispatcher{inference: c.inference, appID: appID, userID: userID, logger: c.logger}
-	result, err := tribunal.NewService(members).Deliberate(r.Context(), req)
+	service, err := tribunal.NewService(members, c.doctrine)
+	if err != nil {
+		c.logger.Error("tribunal intent: construct service", logging.ErrorKind(err))
+		c.responder.ProtoJSONCanonical(w, http.StatusInternalServerError, governance.NewIngressRefusal(err))
+		return
+	}
+	result, err := service.Deliberate(r.Context(), req)
 	if err != nil {
 		c.logger.Error("tribunal intent: deliberation failed", logging.ErrorKind(err))
 		c.responder.ProtoJSONCanonical(w, http.StatusInternalServerError, governance.NewIngressRefusal(err))
 		return
 	}
-	c.dispatchCommand(r.Context(), req, result, appID, userID)
+	c.dispatchCommand(r.Context(), req, result, appID, userID, service)
 	c.responder.ProtoJSONCanonical(w, http.StatusOK, result)
 }
 
 // dispatchCommand runs the approved command as an ordinary governed
 // MCP_CALL run_shell_command under the caller's identity and records its outcome on result.
-func (c *TribunalIntentController) dispatchCommand(ctx context.Context, req *tribunalv1.TribunalIntentRequest, result *tribunalv1.TribunalIntentResult, appID, userID string) {
+// Once the envelope is admitted, reviewer gives the Auditor the actual
+// governance decisions before publish. A revised command is never published
+// under the earlier decisions: it is dispatched as a new envelope that needs
+// its own L1, L2 and L3 admission and its own review, up to
+// tribunal.MaxAdmissionReviews envelopes in total.
+func (c *TribunalIntentController) dispatchCommand(ctx context.Context, req *tribunalv1.TribunalIntentRequest, result *tribunalv1.TribunalIntentResult, appID, userID string, reviewer tribunalAdmissionReviewer) {
 	if result.GetOutcome() != tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED {
 		return
 	}
-	dispatched, err := c.dispatchShellCommand(ctx, req, result.GetArgumentsJson(), appID, userID)
+	review := func(ctx context.Context, env *commonv1.GovernanceEnvelope, votes []*operatorv1.ConsensusVoteInference) error {
+		return reviewer.ReviewAdmitted(ctx, req, result, env, votes)
+	}
+	var dispatched *DispatchResult
+	var err error
+	for range tribunal.MaxAdmissionReviews {
+		dispatched, err = c.dispatchShellCommand(ctx, req, result.GetArgumentsJson(), appID, userID, review)
+		if !errors.Is(err, constants.ErrTribunalCommandRevised) {
+			break
+		}
+	}
+	if errors.Is(err, constants.ErrTribunalCommandRevised) {
+		result.Outcome = tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED
+		result.AuditFailure = "contextual Auditor kept changing the authorized command"
+	}
+	if result.GetOutcome() != tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED && governance.RejectionResponse(err) == nil {
+		result.Arguments, result.ArgumentsJson = nil, ""
+		return
+	}
 	if err == nil {
 		result.CommandOutcome = &tribunalv1.TribunalIntentResult_Dispatched{Dispatched: dispatched.GovernedDispatchResult()}
 		return
@@ -163,7 +202,7 @@ func (c *TribunalIntentController) dispatchCommand(ctx context.Context, req *tri
 	result.CommandOutcome = &tribunalv1.TribunalIntentResult_Refusal{Refusal: refusal}
 }
 
-func (c *TribunalIntentController) dispatchShellCommand(ctx context.Context, req *tribunalv1.TribunalIntentRequest, argumentsJSON, appID, userID string) (*DispatchResult, error) {
+func (c *TribunalIntentController) dispatchShellCommand(ctx context.Context, req *tribunalv1.TribunalIntentRequest, argumentsJSON, appID, userID string, review func(context.Context, *commonv1.GovernanceEnvelope, []*operatorv1.ConsensusVoteInference) error) (*DispatchResult, error) {
 	eventType, err := constants.RequestEventForAction(constants.ActionTypeMcpCall)
 	if err != nil {
 		return nil, fmt.Errorf("tribunal intent: resolve MCP_CALL event: %w", err)
@@ -187,6 +226,7 @@ func (c *TribunalIntentController) dispatchShellCommand(ctx context.Context, req
 		InvestigationID:         req.GetInvestigationId(),
 		TaskID:                  req.GetTaskId(),
 		CliSessionID:            req.GetCliSessionId(),
+		OnAdmitted:              review,
 	})
 }
 

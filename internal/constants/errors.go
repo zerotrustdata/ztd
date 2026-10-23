@@ -1497,6 +1497,7 @@ var (
 	ErrTribunalInferenceFailed             = errors.New("tribunal: member inference failed")
 	ErrTribunalTemplateInvalid             = errors.New("tribunal: member inference template sets a Gateway-owned field")
 	ErrTribunalTierMismatch                = errors.New("tribunal: member inference role does not run the requested tier")
+	ErrTribunalCommandRevised              = errors.New("tribunal: contextual review changed the command; fresh governance decisions required")
 
 	// Governed transaction errors
 	ErrTxUnknownEventType      = errors.New("TX_UNKNOWN_EVENT: event type not registered")

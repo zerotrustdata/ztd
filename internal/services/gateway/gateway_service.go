@@ -927,6 +927,7 @@ func (ls *GatewayModeService) initHTTPHandler() error {
 		TribunalIntentControllerDeps: TribunalIntentControllerDeps{
 			CommandDispatchSvc:   ls.dispatchSvc,
 			InferenceDispatchSvc: ls.inferenceDispatchSvc,
+			Doctrine:             ls.doctrine,
 			Responder:            ls.responder,
 			Logger:               logger,
 			MaxPayload:           cfg.Gateway.MaxPayloadBytes,

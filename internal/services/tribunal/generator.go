@@ -100,26 +100,40 @@ func generationPrompt(req Request, prior []Cluster) string {
 	return b.String()
 }
 
-// generate runs one sealed generation round: every member answers the same
-// prompt without seeing the others' answers.
+// generate runs one sealed generation round. Each member sees only its own
+// L1 failures and retries until allowed or exhausted. Only allowed arguments
+// enter the vote; invalid answers and exhausted members abstain.
 func generate(ctx context.Context, cfg Config, req Request, round uint32, prior []Cluster) ([]Candidate, error) {
 	prompt := generationPrompt(req, prior)
 	candidates := make([]Candidate, 0, len(AllMembers))
 	for _, member := range AllMembers {
-		text, err := cfg.Inferer.Infer(ctx, Call{
-			Stage: StageGenerate, Persona: string(member), Round: round,
-			System: memberSystemPrompt(member), User: prompt, JSONSchema: generationJSONSchema,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("tribunal: generate round %d %s: %w", round, member, err)
-		}
-		var answer authoredArguments
 		candidate := Candidate{Member: member, Round: round}
-		if decodeAnswer(text, &answer) == nil && models.ValidExecutableName(answer.Command) {
-			candidate.Arguments = models.RunShellCommandRequest{
+		memberPrompt := prompt
+		for attempt := 0; attempt < candidateMaxAttempts; attempt++ {
+			if err := ctx.Err(); err != nil {
+				return nil, fmt.Errorf("tribunal: generate round %d %s: %w", round, member, err)
+			}
+			text, err := cfg.Inferer.Infer(ctx, Call{
+				Stage: StageGenerate, Persona: string(member), Round: round,
+				System: memberSystemPrompt(member), User: memberPrompt, JSONSchema: generationJSONSchema,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("tribunal: generate round %d %s: %w", round, member, err)
+			}
+			var answer authoredArguments
+			if decodeAnswer(text, &answer) != nil || !models.ValidExecutableName(answer.Command) {
+				break
+			}
+			arguments := models.RunShellCommandRequest{
 				Command: answer.Command, Args: answer.Args,
 				Timeout: req.TimeoutSeconds, WorkingDir: req.WorkingDirectory,
 			}
+			if feedback := doctrineFeedback(cfg.Doctrine, arguments); feedback != "" {
+				memberPrompt += "\n\n" + feedback
+				continue
+			}
+			candidate.Arguments = arguments
+			break
 		}
 		candidates = append(candidates, candidate)
 	}

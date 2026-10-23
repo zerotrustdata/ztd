@@ -217,9 +217,10 @@ type DispatchRequest struct {
 	OnInferenceProgress func(*operatorv1.InferenceProgressEvent) error
 
 	// OnAdmitted runs once the envelope holds every admission proof (any L2
-	// votes and L3 approval) and before it is published. An error stops the
-	// dispatch before publish.
-	OnAdmitted func(ctx context.Context) error
+	// votes and L3 decision) and before it is published. It receives a decoded
+	// copy of the exact admitted envelope and the recorded L2 vote inferences,
+	// read-only. An error stops the dispatch before publish.
+	OnAdmitted func(ctx context.Context, envelope *commonv1.GovernanceEnvelope, votes []*operatorv1.ConsensusVoteInference) error
 }
 
 // DispatchResult is the output of a successful command dispatch. Receipt
@@ -263,12 +264,17 @@ type ConsensusMemberSigner interface {
 	HasKey(memberAppID string) bool
 }
 
-// admit runs req.OnAdmitted once the envelope holds every admission proof.
-func admit(ctx context.Context, req DispatchRequest) error {
+// admit runs req.OnAdmitted once wire holds every admission proof. The hook
+// decodes its own copy of wire, so it cannot edit the authorized transaction.
+func admit(ctx context.Context, req DispatchRequest, wire []byte, votes []*operatorv1.ConsensusVoteInference) error {
 	if req.OnAdmitted == nil {
 		return nil
 	}
-	if err := req.OnAdmitted(ctx); err != nil {
+	admitted := &commonv1.GovernanceEnvelope{}
+	if err := protojson.Unmarshal(wire, admitted); err != nil {
+		return fmt.Errorf("dispatch: decode admitted envelope: %w", err)
+	}
+	if err := req.OnAdmitted(ctx, admitted, votes); err != nil {
 		return fmt.Errorf("dispatch: admitted: %w", err)
 	}
 	return nil
@@ -428,7 +434,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (re
 			d.approvals.finish(env.Id, pending, nil, err)
 			return nil, err
 		}
-		if err := admit(ctx, req); err != nil {
+		if err := admit(ctx, req, wire, consensusInferences); err != nil {
 			d.approvals.finish(env.Id, pending, nil, err)
 			return nil, err
 		}
@@ -441,7 +447,7 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (re
 		d.approvals.finish(env.Id, pending, receipt, err)
 		return result, err
 	}
-	if err := admit(ctx, req); err != nil {
+	if err := admit(ctx, req, wire, consensusInferences); err != nil {
 		return nil, err
 	}
 	return d.dispatchEnvelope(ctx, op, env, wire, req)
