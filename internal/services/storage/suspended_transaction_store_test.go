@@ -900,25 +900,31 @@ func TestGetExpiredSuspendedTransactions_Success(t *testing.T) {
 	}
 }
 
-func TestWait_NilStore(t *testing.T) {
+func TestSuspendedTransactionService_WaitJoinsInFlightApproval(t *testing.T) {
 	t.Parallel()
 
-	var sts *SuspendedTransactionService
+	sts := &SuspendedTransactionService{}
+	sts.wg.Add(1)
 
-	// Wait() on nil store will panic - this is expected behavior
-	// The test verifies this behavior is consistent
-	assert.Panics(t, func() {
+	finished := make(chan struct{})
+	go func() {
 		sts.Wait()
-	})
-}
+		close(finished)
+	}()
 
-func TestWait_Success(t *testing.T) {
-	t.Parallel()
+	select {
+	case <-finished:
+		t.Fatal("Wait returned while an approval write was still in flight")
+	case <-time.After(30 * time.Millisecond):
+	}
 
-	sts := setupTestSuspendedTransactionStore(t)
+	sts.wg.Done()
 
-	// Should not panic
-	sts.Wait()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("Wait did not return after the in-flight approval write finished")
+	}
 }
 
 func TestSuspendedTransactionStore_FullWorkflow(t *testing.T) {

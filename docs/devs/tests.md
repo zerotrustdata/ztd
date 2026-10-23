@@ -59,6 +59,7 @@ The platform enforces a four-tier test architecture:
   - [Run the Release Smoke](#run-the-release-smoke)
   - [Profile Integration Tests](#profile-integration-tests)
   - [Scale-Test Cohorts](#scale-test-cohorts)
+  - [Write a behavior test](#write-a-behavior-test)
 - [Anti-patterns](#anti-patterns)
 - [Links out](#links-out)
 
@@ -86,6 +87,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-TEST-ISO-04 | Tests MUST use typed constants from `internal/constants/` for statuses, paths, reason strings, and permissions instead of ad hoc string literals. |
 | INV-TEST-ISO-05 | Tests discovering user configuration MUST isolate both `HOME` and `USERPROFILE` with `t.Setenv`; Go's `os.UserHomeDir` reads `USERPROFILE` on Windows. Browser approval tests MUST inject browser openers so automated suites do not launch real browsers. |
 | INV-TEST-ISO-06 | `ztd test` runners MUST start test, smoke, and scale child processes without the registry `secret` and `user_endpoint` keys (`config.WithoutUserEnv`), so the developer's `.env` and shell credentials never reach a test process. Tests needing one of these keys MUST set it with `t.Setenv`. |
+| INV-TEST-ISO-07 | A test MUST assert an observable result of the production function under test: a returned value, a typed error (`require.ErrorIs` / `assert.ErrorIs`), a persisted row, or a published message. MUST NOT pass by ignoring that function's error, by asserting only that the call did not panic, or by comparing a value to itself. A compile-time interface check MUST be a package-level `var _ Interface = Impl{}` assignment, not a `Test` function. |
 
 ### Fixture lifecycle (`INV-TEST-FIX`)
 
@@ -306,6 +308,18 @@ Use `testing/synctest` for self-contained timer, timeout, and channel synchroniz
 
 `./ztd test scale` configures fleet scenario inputs (`ZTD_E2E_RUNTIME_ROOT`, `ZTD_E2E_GATEWAY_HTTP_PORT`, `ZTD_E2E_GATEWAY_HTTPS_PORT`, `ZTD_E2E_FLEET_*`). `TestOperatorFleet_HoldsUnderFanOut` accepts `ZTD_E2E_FLEET_SESSIONS` (comma-separated session UUIDs matching `ZTD_E2E_FLEET_SIZE`). When specified, registry health checks and CLI fan-out target exactly those remote sessions.
 
+### Write a behavior test
+
+Tier 1 tests are table-driven when one function has several inputs. Each case uses `t.Run` with a name that states the behavior. `require` stops the test when the next line would be meaningless (construction, I/O, a sentinel that must hold). `assert` checks the remaining observations so one failure does not hide the next. The repository standard is `github.com/stretchr/testify`; do not add a second assertion library. Reach for the standard `testing` helpers when the assertion is a single `t.Fatal`.
+
+Helpers that take `*testing.T` or `testing.TB` call `t.Helper()` before any other test API. Shared constructors for real stores, vaults, and ledgers live in `internal/services/storage/storagetest` and `internal/testutil`. A new fixture extends those packages. It does not copy a constructor into the test file, and it does not replace the production type with a fake of that same type.
+
+Tests that perform I/O take `testutil.Context(t)` (or `testutil.ContextWithTimeout` when the budget is not 30 seconds). The context is cancelled when the test returns. `t.Cleanup` owns teardown. `testutil.TempDir` and `testutil.OperatorDir` own scratch directories. `t.Parallel` is for Tier 1 only.
+
+Log output is asserted through `testutil.NewBufferLogger`. A call that only logs is not proven by `assert.NotPanics`.
+
+Golden files belong in a package `testdata/` directory when the assertion is a stable byte-for-byte contract. Do not add a golden file for a value the test can check with a typed field.
+
 ## Anti-patterns
 
 - Calling `t.Parallel()` in Tier 2 or Tier 3 tests (`INV-TEST-RUN-04`).
@@ -316,6 +330,9 @@ Use `testing/synctest` for self-contained timer, timeout, and channel synchroniz
 - Double-closing resources managed by `NewGatewayFixture` (`INV-TEST-FIX-01`).
 - Leaving temporary directories or background goroutines unjoined when writing integration tests (`INV-TEST-FIX-02`, `INV-TEST-FIX-03`).
 - Asserting a panic on production code paths instead of verifying typed returned errors with `assert.ErrorIs` against `internal/constants/errors.go` (`INV-CODE-06`, `INV-ERR-01`).
+- Ignoring the error returned by the function under test, or treating "it did not panic" as the assertion (`INV-TEST-ISO-07`).
+- Round-tripping a plain struct through `encoding/json` and calling that a test of a store or service (`INV-TEST-ISO-07`).
+- Dressing a compile-time interface check up as a `Test` function (`INV-TEST-ISO-07`).
 
 ## Links out
 
