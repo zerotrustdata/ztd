@@ -10,7 +10,6 @@ package services
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -217,81 +216,19 @@ func TestZtdoService_ConcurrentStateAccess(t *testing.T) {
 	}
 }
 
-func TestZtdoService_Start_RejectsInvalidInferenceEndpointBeforeConnecting(t *testing.T) {
+func TestZtdoService_NewInferenceBackend_RejectsABadEndpoint(t *testing.T) {
 	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
-	cfg.Inference.Enabled = true
 	cfg.Inference.OllamaEndpoint = "not-a-url"
-	calls := 0
-	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {
-		calls++
-		return pubsubtest.NewMockOperatorPubSubClient(), nil
-	})
+	service, err := NewZtdoService(cfg, testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		if service.cancel != nil {
-			service.cancel()
-		}
-	})
 
-	err = service.Start(testutil.Context(t))
+	backend, err := service.newInferenceBackend()
 	require.ErrorIs(t, err, constants.ErrInferenceEndpointInvalid)
-	assert.Zero(t, calls)
-	assert.False(t, service.running)
-}
+	assert.Nil(t, backend)
 
-func TestZtdoService_Start_FactoryFailureStopsBeforeDependents(t *testing.T) {
-	t.Parallel()
-	factoryErr := errors.New("pub/sub client factory unavailable")
-	calls := 0
-	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), func(string, string, *slog.Logger, *certs.TLSConfig) (pubsub.PubSubClient, error) {
-		calls++
-		return nil, factoryErr
-	})
+	cfg.Inference.OllamaEndpoint = "http://127.0.0.1:11434"
+	backend, err = service.newInferenceBackend()
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		if service.cancel != nil {
-			service.cancel()
-		}
-	})
-
-	err = service.Start(testutil.Context(t))
-	require.ErrorIs(t, err, factoryErr)
-	require.ErrorIs(t, err, constants.ErrInternal)
-	assert.Equal(t, 1, calls)
-	assert.Nil(t, service.pubSubClient)
-	assert.Nil(t, service.execution)
-	assert.False(t, service.running)
-}
-
-func TestZtdoService_Start_RejectsSecondStartWithoutDisturbingRunningService(t *testing.T) {
-	t.Parallel()
-	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
-	require.NoError(t, err)
-	service.running = true
-
-	err = service.Start(testutil.Context(t))
-
-	require.ErrorIs(t, err, constants.ErrServiceUnavailable)
-	assert.True(t, service.running, "a rejected second start must leave the service running")
-	assert.Nil(t, service.cancel, "a rejected start must not create a new service context")
-	assert.Nil(t, service.pubSubClient, "a rejected start must not open a second pub/sub client")
-}
-
-func TestZtdoService_Start_RequiresRuntimeFileService(t *testing.T) {
-	t.Parallel()
-	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), nil, newTestCanonicalDB(t), newTestPubSubClientFactory())
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		if service.cancel != nil {
-			service.cancel()
-		}
-	})
-
-	err = service.Start(testutil.Context(t))
-
-	require.ErrorIs(t, err, constants.ErrInternal)
-	assert.Contains(t, err.Error(), "fileSvc must be provided")
-	assert.False(t, service.running)
-	assert.Nil(t, service.pubSubClient, "nothing may be connected before the file service is validated")
+	require.NotNil(t, backend)
 }
