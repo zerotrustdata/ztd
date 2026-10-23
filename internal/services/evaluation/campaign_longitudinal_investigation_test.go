@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -118,7 +119,7 @@ func TestInvestigationGrading_FixedWorkspacePassesFileStateAndGovernedProbe(t *t
 	}
 	require.NotEmpty(t, bp.ScenarioID)
 
-	wsRoot := t.TempDir()
+	wsRoot := testutil.TempDir(t)
 	// Materialize files for wrong-port-config in wsRoot
 	for _, f := range bp.Input.WorkspaceFiles {
 		fullPath := filepath.Join(wsRoot, f.RelPath)

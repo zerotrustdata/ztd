@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/persona"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 var builtinIDs = []string{"cron-disk-fill", "wrong-path-check-script", "wrong-port-config"}
@@ -66,7 +67,7 @@ func checkFailures(f FileState, content string, found bool) []string {
 }
 
 func TestGovernedProbe_Run(t *testing.T) {
-	tempDir := t.TempDir()
+	tempDir := testutil.TempDir(t)
 
 	t.Run("nil probe returns success", func(t *testing.T) {
 		var p *GovernedProbe

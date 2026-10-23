@@ -211,7 +211,7 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 func (fs *FileOpsService) HandleEvaluationWorkspaceSeedRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
 	var request operatorv1.EvaluationWorkspaceSeedRequested
 	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
-		fs.logger.Error("Failed to decode evaluation workspace seed payload", "message_id", msg.ID, logging.ErrorKind(err))
+		fs.logger.Error("Failed to decode evaluation workspace seed payload", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		decodeErr := fmt.Errorf("evaluation workspace seed: decode request: %w", err)
 		return "", errors.Join(decodeErr, fs.publishLFAAError(ctx, msg, constants.Event.Operator.Eval.WorkspaceSeed.Failed, "invalid request payload"))
 	}
@@ -238,7 +238,7 @@ func (fs *FileOpsService) HandleEvaluationWorkspaceSeedRequest(ctx context.Conte
 
 	target, err := fs.fileEdit.OpenEvaluationWorkspaceSeedTarget(ctx, editReq.FilePath)
 	if err != nil {
-		fs.logger.Error("Evaluation workspace seed path rejected", "message_id", msg.ID, logging.ErrorKind(err))
+		fs.logger.Error("Evaluation workspace seed path rejected", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 		rejected := &operatorv1.EvaluationWorkspaceSeedResult{
 			ExecutionId:  executionID,
 			Status:       operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
