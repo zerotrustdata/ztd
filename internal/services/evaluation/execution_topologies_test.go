@@ -37,7 +37,7 @@ func TestFormationValidateRejectsProviderAndFamilyOverlap(t *testing.T) {
 	providerOverlap := formation
 	providerOverlap.Assistant.Provider = providerOverlap.Primary.Provider
 	err = providerOverlap.Validate()
-	require.ErrorIs(t, err, constants.ErrFormationProviderOverlap)
+	assert.ErrorIs(t, err, constants.ErrFormationProviderOverlap)
 
 	familyOverlap := formation
 	familyOverlap.Assistant.Family = familyOverlap.Primary.Family
@@ -159,7 +159,7 @@ func TestRemoveFormationRemovesEntry(t *testing.T) {
 	require.Len(t, updated.Formations(), 4)
 
 	_, err = updated.Formation("gemma-cascade")
-	require.ErrorIs(t, err, constants.ErrFormationInvalid)
+	assert.ErrorIs(t, err, constants.ErrFormationInvalid)
 
 	require.Len(t, topologies.Formations(), 5, "original catalog must be unmodified")
 }

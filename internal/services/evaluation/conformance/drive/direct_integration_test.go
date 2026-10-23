@@ -11,6 +11,7 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -206,7 +207,7 @@ func TestDirectDriveMissingMutatorIsUnsupported(t *testing.T) {
 
 	driven, err := d.Drive(context.Background(), fx.attemptFor(t, directCase(cases.FaultExpired)))
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
+	assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported))
 	assert.Empty(t, driven.Observations, "an unsupported fault must not submit an envelope")
 }
 

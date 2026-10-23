@@ -9,6 +9,7 @@ package storagetest
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -49,7 +50,7 @@ func TestTestTokenStore_KeyNotFound(t *testing.T) {
 
 	_, err := store.KVGet(ctx, "nonexistent")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrKeyNotFound,
+	assert.True(t, errors.Is(err, constants.ErrKeyNotFound),
 		"expected constants.ErrKeyNotFound, got %v", err)
 }
 
@@ -63,7 +64,7 @@ func TestTestTokenStore_TTLExpiry(t *testing.T) {
 
 	_, err = store.KVGet(ctx, "ephemeral")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrKeyNotFound,
+	assert.True(t, errors.Is(err, constants.ErrKeyNotFound),
 		"expected constants.ErrKeyNotFound after TTL expiry, got %v", err)
 }
 
@@ -116,7 +117,7 @@ func TestTestTokenStore_ConcurrentAccess(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			key := "concurrent:" + string(rune('A'+n%26))
-			assert.NoError(t, store.KVSet(ctx, key, "val", 0))
+			require.NoError(t, store.KVSet(ctx, key, "val", 0))
 			_, _ = store.KVGet(ctx, key)
 		}(i)
 	}

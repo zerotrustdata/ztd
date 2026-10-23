@@ -133,5 +133,5 @@ func TestCollectVariantRoleMetricsOutputTokens(t *testing.T) {
 	primary := state.VariantRoles["qwen3-4b:primary"]
 	require.NotNil(t, primary)
 	require.NotNil(t, primary.OutputTokensP50.Value)
-	assert.InDelta(t, 40.0, *primary.OutputTokensP50.Value, 0)
+	assert.Equal(t, 40.0, *primary.OutputTokensP50.Value)
 }

@@ -84,7 +84,7 @@ func TestModelProvenanceObservationCoordinator_EnsureOperator_SubscribesToProven
 		logger,
 	)
 
-	require.NoError(t, coordinator.synchronizeOperatorSubscription(context.Background()))
+	assert.NoError(t, coordinator.synchronizeOperatorSubscription(context.Background()))
 	assert.NotNil(t, coordinator.operator)
 	assert.Equal(t, "sess-prov-1", coordinator.operator.OperatorSessionID)
 }

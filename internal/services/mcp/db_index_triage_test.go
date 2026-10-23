@@ -115,8 +115,8 @@ func TestDBIndexTriageTool_Execute_SuccessWithIndexes(t *testing.T) {
 	err = json.Unmarshal([]byte(result.Content[0].Text), &res)
 	require.NoError(t, err)
 
-	require.NotEmpty(t, res.Indexes)
-	require.InDelta(t, 0.0, res.Fragmentation, 0)
+	require.Greater(t, len(res.Indexes), 0)
+	require.Equal(t, 0.0, res.Fragmentation)
 
 	// Verify we have both unique and non-unique indexes
 	hasUnique := false
@@ -149,7 +149,7 @@ func TestDBIndexTriageTool_Execute_EmptyDatabase(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Empty(t, res.Indexes)
-	require.InDelta(t, 0.0, res.Fragmentation, 0)
+	require.Equal(t, 0.0, res.Fragmentation)
 }
 
 func TestDBIndexTriageTool_Execute_SQLiteInternalIndexesFiltered(t *testing.T) {

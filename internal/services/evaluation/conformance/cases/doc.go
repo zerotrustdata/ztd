@@ -5,7 +5,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-// Package cases holds the governance conformance suite governance-conformance@1.1.0
+// Package cases holds the governance conformance suite governance-conformance@1.0.0
 // as data. Cases are data: each one names its ingress, fault, posture and action,
 // and states one exact expected outcome (covered, conditions 1 and 2). Untyped
 // outcomes are never pinned: a cell an ingress cannot express is recorded as a

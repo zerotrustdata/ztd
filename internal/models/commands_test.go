@@ -40,7 +40,7 @@ func TestRunShellCommandRequestCanonicalJSONAndProto(t *testing.T) {
 		Command: "printf", Args: []string{"%s", "hello"}, Timeout: 12,
 		WorkingDir: "/tmp/work", Hostnames: []string{"operator-a"},
 	}
-	assert.Equal(t, `{"args":["%s","hello"],"command":"printf","hostnames":["operator-a"],"timeout":12,"working_dir":"/tmp/work"}`, request.CanonicalJSON()) //nolint:testifylint // exact bytes, not JSON equivalence
+	assert.Equal(t, `{"args":["%s","hello"],"command":"printf","hostnames":["operator-a"],"timeout":12,"working_dir":"/tmp/work"}`, request.CanonicalJSON())
 
 	proto := request.Proto()
 	assert.Equal(t, "printf", proto.Command)
@@ -92,7 +92,7 @@ func TestPayloadFromDomainResult_PopulatesRequiredFields(t *testing.T) {
 	assert.Equal(t, r.Command, p.Command)
 	assert.Equal(t, r.Args, p.Args)
 	assert.Equal(t, r.Status, p.Status)
-	assert.InDelta(t, r.DurationSeconds, p.DurationSeconds, 0)
+	assert.Equal(t, r.DurationSeconds, p.DurationSeconds)
 	assert.Equal(t, r.OperatorID, p.OperatorID)
 	assert.Equal(t, r.OperatorSessionID, p.OperatorSessionID)
 	assert.Equal(t, r.Stdout, p.Stdout)

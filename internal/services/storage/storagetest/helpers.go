@@ -27,37 +27,37 @@ import (
 
 // CreateTestVault creates a new unlocked Vault in the given directory using the provided private key.
 // The vault header is initialized and the vault is unlocked. Cleanup closes it via t.Cleanup.
-func CreateTestVault(tb testing.TB, dataDir string, privateKey []byte) *vault.Vault {
-	tb.Helper()
+func CreateTestVault(t testing.TB, dataDir string, privateKey []byte) *vault.Vault {
+	t.Helper()
 
 	fileSvc, err := fs.NewRuntimeFileService(filepath.Dir(dataDir), testutil.NewTestLogger())
-	require.NoError(tb, err)
-	require.NoError(tb, fileSvc.CreateRuntimeTree(context.Background()))
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
 
 	logger := testutil.NewTestLogger()
 
 	header, _, err := vault.NewVaultHeader(privateKey)
-	require.NoError(tb, err)
-	require.NoError(tb, header.Save(fileSvc))
+	require.NoError(t, err)
+	require.NoError(t, header.Save(fileSvc))
 
 	v, err := vault.NewVault(&vault.VaultConfig{
 		FileSvc: fileSvc,
 		Logger:  logger,
 	})
-	require.NoError(tb, err)
-	require.NoError(tb, v.Unlock(privateKey))
+	require.NoError(t, err)
+	require.NoError(t, v.Unlock(privateKey))
 
-	tb.Cleanup(func() { v.Close() })
+	t.Cleanup(func() { v.Close() })
 	return v
 }
 
 // NewTestFileSvc creates a RuntimeFileService backed by baseDir with the full
 // .ztd runtime tree created. Returns the file service.
-func NewTestFileSvc(tb testing.TB, baseDir string) fs.RuntimeFileService {
-	tb.Helper()
+func NewTestFileSvc(t testing.TB, baseDir string) fs.RuntimeFileService {
+	t.Helper()
 	svc, err := fs.NewRuntimeFileService(baseDir, testutil.NewTestLogger())
-	require.NoError(tb, err)
-	require.NoError(tb, svc.CreateRuntimeTree(context.Background()))
+	require.NoError(t, err)
+	require.NoError(t, svc.CreateRuntimeTree(context.Background()))
 	return svc
 }
 

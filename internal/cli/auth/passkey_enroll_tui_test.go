@@ -18,7 +18,7 @@ import (
 func TestNewEnrollModel(t *testing.T) {
 	m := newEnrollModel()
 	assert.False(t, m.done)
-	assert.NoError(t, m.err)
+	assert.Nil(t, m.err)
 }
 
 func TestEnrollModelInit(t *testing.T) {

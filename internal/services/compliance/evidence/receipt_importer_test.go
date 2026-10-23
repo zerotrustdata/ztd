@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -149,7 +150,7 @@ func TestReceiptImporter_Import_RejectsInvalidConfiguration(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.importer.Import(context.Background())
 			require.Error(t, err)
-			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+			assert.True(t, errors.Is(err, constants.ErrInvalidEvidenceGraph))
 		})
 	}
 }
@@ -175,7 +176,7 @@ func TestReceiptImporter_Import_RejectsDigestAndCanonicalMutations(t *testing.T)
 			test.mutate(fixture)
 			_, err := NewReceiptImporterAt(fixture.reader, fixture.trust, fixture.receiptBinding, time.Now).Import(context.Background())
 			require.Error(t, err)
-			assert.ErrorIs(t, err, test.targetErr, "error: %v", err)
+			assert.True(t, errors.Is(err, test.targetErr), "error: %v", err)
 		})
 	}
 }
@@ -186,8 +187,8 @@ func TestReceiptImporter_Import_PropagatesTrustAssessmentFailure(t *testing.T) {
 	fixture.trust.err = trustErr
 	_, err := NewReceiptImporterAt(fixture.reader, fixture.trust, fixture.receiptBinding, time.Now).Import(context.Background())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
-	assert.ErrorIs(t, err, trustErr)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceTrustNotAssessed))
+	assert.True(t, errors.Is(err, trustErr))
 }
 
 func TestPersistenceImporter_Import_VerifiesPersistenceIndependently(t *testing.T) {
@@ -239,7 +240,7 @@ func TestPersistenceImporter_Import_RejectsAttestationNotEmbeddedInReceipt(t *te
 	fixture.reader.files[fixture.persistenceBinding.Path] = body
 	_, err = NewPersistenceImporterAt(fixture.reader, fixture.trust, fixture.persistenceBinding, time.Now).Import(context.Background())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceScopeMismatch))
 }
 
 func TestReceiptAndPersistenceImporters_Import_RespectCancellation(t *testing.T) {
@@ -247,7 +248,7 @@ func TestReceiptAndPersistenceImporters_Import_RespectCancellation(t *testing.T)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := NewReceiptImporterAt(fixture.reader, fixture.trust, fixture.receiptBinding, time.Now).Import(ctx)
-	require.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, err, context.Canceled)
 	_, err = NewPersistenceImporterAt(fixture.reader, fixture.trust, fixture.persistenceBinding, time.Now).Import(ctx)
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -328,7 +329,6 @@ func TestPersistenceImporter_Import_RejectsDigestCanonicalAndBindingMutations(t 
 			fixture.persistenceBinding.Reference = ContentReferenceForBody(constants.ReceiptPersistenceReferencePrefix, body)
 		}, targetErr: constants.ErrEvidenceArtifactMalformed},
 		{name: "persistence differs from embedded attestation", mutate: func(t *testing.T, fixture *standaloneReceiptFixture) {
-			t.Helper()
 			attestation := proto.Clone(fixture.receipt.FinalPersistenceAttestation).(*operatorv1.ReceiptPersistenceAttestation)
 			attestation.AuditRecordId = "other-audit-record"
 			body, err := compliancev1.MarshalCanonical(attestation)
@@ -358,7 +358,7 @@ func TestReceiptAndPersistenceImporters_Import_WrapReadFailures(t *testing.T) {
 	} {
 		_, err := importer(context.Background())
 		require.Error(t, err)
-		require.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
+		assert.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
 		assert.ErrorIs(t, err, readErr)
 	}
 }
@@ -369,6 +369,6 @@ func TestPersistenceImporter_Import_PropagatesTrustAssessmentFailure(t *testing.
 	fixture.trust.err = trustErr
 	_, err := NewPersistenceImporterAt(fixture.reader, fixture.trust, fixture.persistenceBinding, time.Now).Import(context.Background())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
+	assert.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
 	assert.ErrorIs(t, err, trustErr)
 }

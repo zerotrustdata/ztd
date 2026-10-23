@@ -461,7 +461,7 @@ func TestNewEnrollmentCoordinator_NilRequiredDeps(t *testing.T) {
 
 	_, err := NewEnrollmentCoordinator(EnrollmentCoordinatorDeps{})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInternal)
+	assert.ErrorIs(t, err, constants.ErrInternal)
 	assert.Contains(t, err.Error(), "FileSvc is required")
 
 	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), slog.Default())
@@ -469,7 +469,7 @@ func TestNewEnrollmentCoordinator_NilRequiredDeps(t *testing.T) {
 
 	_, err = NewEnrollmentCoordinator(EnrollmentCoordinatorDeps{FileSvc: fileSvc})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInternal)
+	assert.ErrorIs(t, err, constants.ErrInternal)
 	assert.Contains(t, err.Error(), "Cfg is required")
 
 	coord, err := NewEnrollmentCoordinator(EnrollmentCoordinatorDeps{
@@ -852,7 +852,7 @@ func TestEnroll_RecoveryDenied_ReturnsTypedError(t *testing.T) {
 
 	_, err := coord.Enroll(context.Background(), EnrollmentOptions{})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrCLIRecoveryRequestDenied)
+	assert.ErrorIs(t, err, constants.ErrCLIRecoveryRequestDenied)
 	assert.Equal(t, 1, browser.calls)
 }
 
@@ -938,7 +938,7 @@ func TestEnroll_RecoveryContextCancelled_AbortsPolling(t *testing.T) {
 
 	_, err := coord.Enroll(ctx, EnrollmentOptions{})
 	require.Error(t, err)
-	require.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, err, context.Canceled)
 	assert.Equal(t, 1, browser.calls, "browser should open before cancellation")
 }
 
@@ -996,7 +996,7 @@ func TestEnroll_SystemTrustFailure_AbortsBeforePasskey(t *testing.T) {
 
 	_, err := coord.Enroll(context.Background(), EnrollmentOptions{})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrSystemTrustInstallFailed)
+	assert.ErrorIs(t, err, constants.ErrSystemTrustInstallFailed)
 	assert.Equal(t, 0, passkey.calls, "passkey must not run after trust failure")
 }
 
@@ -1390,7 +1390,7 @@ func TestEnroll_StaleAnchors_Declined_AbortsBeforeInstall(t *testing.T) {
 
 	_, err := coord.Enroll(context.Background(), EnrollmentOptions{})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrSystemTrustStaleRemovalDenied)
+	assert.ErrorIs(t, err, constants.ErrSystemTrustStaleRemovalDenied)
 	assert.Equal(t, 0, trust.staleRemoveCalls, "RemoveStaleAnchors must not be called when declined")
 	assert.Equal(t, 0, passkey.calls, "passkey must not run when user declines stale removal")
 }
@@ -1444,7 +1444,7 @@ func TestEnroll_StaleAnchors_RemovalError_Aborts(t *testing.T) {
 
 	_, err := coord.Enroll(context.Background(), EnrollmentOptions{})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrSystemTrustInstallFailed)
+	assert.ErrorIs(t, err, constants.ErrSystemTrustInstallFailed)
 	assert.Equal(t, 0, passkey.calls, "passkey must not run after stale removal failure")
 }
 
@@ -1942,7 +1942,7 @@ func TestEnroll_BrowserRestartGate_Decline_AbortsBeforePasskey(t *testing.T) {
 
 	_, err := coord.Enroll(context.Background(), EnrollmentOptions{})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrBrowserRestartDeclined)
+	assert.ErrorIs(t, err, constants.ErrBrowserRestartDeclined)
 	assert.Equal(t, 0, passkey.calls, "passkey must NOT run when user declines browser restart")
 	assert.True(t, recorder.contains("Browser restart declined"))
 }
@@ -2115,8 +2115,8 @@ func TestEnroll_ReusedIdentity_ExpiredSession_PrintsActionableMessageAndExits(t 
 	result, err := coord.Enroll(context.Background(), EnrollmentOptions{})
 	require.Error(t, err)
 	assert.Nil(t, result)
-	require.ErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
-	require.ErrorIs(t, err, constants.ErrCLISessionExpired)
+	assert.ErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
+	assert.ErrorIs(t, err, constants.ErrCLISessionExpired)
 	assert.Equal(t, 1, gw.probeCalls, "probe should be called exactly once")
 	assert.False(t, recorder.contains("Reusing existing CLI identity"), "should NOT print reuse message on expired session")
 	assert.True(t, recorder.contains("auth refresh"), "should print actionable 'auth refresh' message")
@@ -2140,8 +2140,8 @@ func TestEnroll_ReusedIdentity_InvalidSession_PrintsActionableMessageAndExits(t 
 	result, err := coord.Enroll(context.Background(), EnrollmentOptions{})
 	require.Error(t, err)
 	assert.Nil(t, result)
-	require.ErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
-	require.ErrorIs(t, err, constants.ErrCLISessionInvalid)
+	assert.ErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
+	assert.ErrorIs(t, err, constants.ErrCLISessionInvalid)
 	assert.True(t, recorder.contains("auth refresh"), "should print actionable 'auth refresh' message")
 	assert.Equal(t, 0, passkey.calls, "passkey ceremony should NOT run on invalid session")
 }
@@ -2163,8 +2163,8 @@ func TestEnroll_ReusedIdentity_RevokedCertificate_PointsAtLocalLogoutNotRefresh(
 	result, err := coord.Enroll(context.Background(), EnrollmentOptions{})
 	require.Error(t, err)
 	assert.Nil(t, result)
-	require.ErrorIs(t, err, constants.ErrMTLSCertRevoked)
-	require.NotErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
+	assert.ErrorIs(t, err, constants.ErrMTLSCertRevoked)
+	assert.NotErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
 	assert.False(t, recorder.contains("Reusing existing CLI identity"))
 	assert.True(t, recorder.contains("logout --local-only"), "should name the local logout remedy")
 	assert.False(t, recorder.contains("auth refresh"), "must not suggest refresh for a revoked certificate")

@@ -59,15 +59,15 @@ func TestFirstKSIHistoryResultSet(t *testing.T) {
 	assert.Equal(t, resultSet.Class, decoded.Class)
 
 	_, err = firstKSIHistoryResultSet([]byte("not-json"))
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	_, err = firstKSIHistoryResultSet(nil)
 	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }
 
 func TestStableVerificationFailureCode(t *testing.T) {
-	require.ErrorIs(t, stableVerificationFailureCode(constants.ErrChecksumMismatch), constants.ErrChecksumMismatch)
-	require.ErrorIs(t, stableVerificationFailureCode(fmt.Errorf("wrapped: %w", constants.ErrRendererMismatch)), constants.ErrRendererMismatch)
+	assert.ErrorIs(t, stableVerificationFailureCode(constants.ErrChecksumMismatch), constants.ErrChecksumMismatch)
+	assert.ErrorIs(t, stableVerificationFailureCode(fmt.Errorf("wrapped: %w", constants.ErrRendererMismatch)), constants.ErrRendererMismatch)
 	assert.ErrorIs(t, stableVerificationFailureCode(errors.New("unknown failure")), constants.ErrReportVerificationFailed)
 }
 

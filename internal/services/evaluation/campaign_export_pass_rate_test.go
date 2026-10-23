@@ -89,7 +89,7 @@ func TestCampaignExporter_PassRatesExcludeUnjudgedFailuresInCSVAndSQLite(t *test
 			require.NoError(t, db.QueryRow(`SELECT pass_rate_estimate, judged, evaluation_coverage FROM model_summaries`).Scan(&rate, &judged, &coverage))
 			assert.Equal(t, tc.wantRate, rate)
 			assert.Equal(t, tc.judged, judged)
-			assert.InDelta(t, 1.0, coverage, 0)
+			assert.Equal(t, 1.0, coverage)
 		})
 	}
 }

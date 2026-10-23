@@ -177,7 +177,7 @@ func ownerConnectedCLISessionIDs(ctx context.Context, docStore *DocumentStoreSer
 }
 
 // notifyingSuspendedStore decorates the suspended-transaction store so every
-// change to the pending set (suspend, delete, expiry sweep) announces
+// change to the pending set (suspend, approve, delete, expiry sweep) announces
 // itself, whichever caller made it. The embedded store is the source of truth;
 // notification happens only after the underlying operation succeeded.
 type notifyingSuspendedStore struct {
@@ -195,6 +195,15 @@ func (s *notifyingSuspendedStore) StoreSuspendedTransaction(ctx context.Context,
 		return err
 	}
 	s.notify.TransactionsChanged(ctx, tx.UserID)
+	return nil
+}
+
+func (s *notifyingSuspendedStore) ApproveSuspendedTransaction(ctx context.Context, txHash string, proof models.ApprovalProof) error {
+	userID := s.ownerOf(ctx, txHash)
+	if err := s.SuspendedTransactionStore.ApproveSuspendedTransaction(ctx, txHash, proof); err != nil {
+		return err
+	}
+	s.notify.TransactionsChanged(ctx, userID)
 	return nil
 }
 

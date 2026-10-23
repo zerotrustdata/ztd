@@ -49,7 +49,7 @@ func TestSystemOneOllamaTypedTransportAndDigestPin(t *testing.T) {
 	resp, err := backend.Decide(t.Context(), req)
 	require.NoError(t, err)
 	require.Len(t, resp.Decision.Answers, 3)
-	require.InDelta(t, .2, resp.Decision.Answers[2].GetScore().Score, 0)
+	require.EqualValues(t, .2, resp.Decision.Answers[2].GetScore().Score)
 	require.Equal(t, digest, resp.ServedModelDigest)
 	require.EqualValues(t, 18, resp.TotalTokens)
 	req.ModelDigest = strings.Repeat("b", 64)

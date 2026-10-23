@@ -212,7 +212,7 @@ func TestEvalBackup_CreateRejectsDestinationInsideRuntime(t *testing.T) {
 		filepath.Join(f.files.Resolve("data"), "..", constants.RuntimeDirname, "x"),
 	} {
 		_, err := f.backup.Create(context.Background(), dest)
-		require.ErrorIs(t, err, constants.ErrEvaluationBackupDestinationInvalid, dest)
+		assert.ErrorIs(t, err, constants.ErrEvaluationBackupDestinationInvalid, dest)
 	}
 	_, err := f.backup.Create(context.Background(), " ")
 	assert.ErrorIs(t, err, constants.ErrEvaluationBackupDestinationInvalid)
@@ -237,7 +237,7 @@ func TestEvalBackup_CreateEmptyRuntimeFails(t *testing.T) {
 
 	_, err = backup.Create(context.Background(), out)
 
-	require.ErrorIs(t, err, constants.ErrEvaluationBackupEmpty)
+	assert.ErrorIs(t, err, constants.ErrEvaluationBackupEmpty)
 	_, statErr := os.Stat(out)
 	assert.ErrorIs(t, statErr, os.ErrNotExist, "a failed backup must not leave a destination behind")
 }
@@ -456,7 +456,7 @@ func TestEvalBackup_RestoreConflictWritesNothingUnlessOverwrite(t *testing.T) {
 
 	require.ErrorIs(t, err, constants.ErrEvaluationBackupConflict)
 	assert.Contains(t, err.Error(), backupRunReportPath)
-	assert.Equal(t, `{"run":"changed"}`, f.read(t, backupRunReportPath)) //nolint:testifylint // exact bytes, not JSON equivalence
+	assert.Equal(t, `{"run":"changed"}`, f.read(t, backupRunReportPath))
 	campaignExists, err := f.files.FileExists(ctx, backupCampaignPath)
 	require.NoError(t, err)
 	assert.False(t, campaignExists, "a refused restore must not write the files that were not in conflict")
@@ -492,7 +492,7 @@ func TestEvalBackup_RestoreRejectsMissingOrIncompleteManifest(t *testing.T) {
 	f := newEvalBackupFixture(t)
 
 	_, err := f.backup.Restore(context.Background(), filepath.Join(testutil.TempDir(t), "nothing"), false)
-	require.ErrorIs(t, err, constants.ErrEvaluationBackupManifestInvalid)
+	assert.ErrorIs(t, err, constants.ErrEvaluationBackupManifestInvalid)
 
 	report := f.create(t)
 	require.NoError(t, os.Remove(filepath.Join(report.SnapshotDir, constants.EvaluationBackupManifestFilename)))

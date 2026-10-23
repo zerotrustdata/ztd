@@ -12,6 +12,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -148,7 +149,7 @@ func TestObserveService_GetRun_UnknownIDReturnsErrObserveRunNotFound(t *testing.
 
 	_, err := svc.GetRun(context.Background(), "user-a", "nonexistent-run")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveRunNotFound)
+	assert.True(t, errors.Is(err, constants.ErrObserveRunNotFound))
 }
 
 func TestObserveService_GetEval_UnknownIDReturnsErrObserveEvalNotFound(t *testing.T) {
@@ -156,7 +157,7 @@ func TestObserveService_GetEval_UnknownIDReturnsErrObserveEvalNotFound(t *testin
 
 	_, err := svc.GetEval(context.Background(), "user-a", "nonexistent-eval")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveEvalNotFound)
+	assert.True(t, errors.Is(err, constants.ErrObserveEvalNotFound))
 }
 
 func TestObserveService_GetDownload_UnknownIDReturnsErrObserveDownloadNotFound(t *testing.T) {
@@ -164,7 +165,7 @@ func TestObserveService_GetDownload_UnknownIDReturnsErrObserveDownloadNotFound(t
 
 	_, err := svc.GetDownload(context.Background(), "user-a", "nonexistent-artifact")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveDownloadNotFound)
+	assert.True(t, errors.Is(err, constants.ErrObserveDownloadNotFound))
 }
 
 func TestObserveService_CrossUserIsolation_RunDetail(t *testing.T) {
@@ -182,7 +183,7 @@ func TestObserveService_CrossUserIsolation_RunDetail(t *testing.T) {
 	// user-b cannot read user-a's run (returns not found, not the record).
 	_, err = svc.GetRun(context.Background(), "user-b", "run-a-1")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveRunNotFound)
+	assert.True(t, errors.Is(err, constants.ErrObserveRunNotFound))
 }
 
 func TestObserveService_CrossUserIsolation_EvalDetail(t *testing.T) {
@@ -198,7 +199,7 @@ func TestObserveService_CrossUserIsolation_EvalDetail(t *testing.T) {
 
 	_, err = svc.GetEval(context.Background(), "user-b", "eval-a-1")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveEvalNotFound)
+	assert.True(t, errors.Is(err, constants.ErrObserveEvalNotFound))
 }
 
 func TestObserveService_CrossUserIsolation_DownloadDetail(t *testing.T) {
@@ -214,7 +215,7 @@ func TestObserveService_CrossUserIsolation_DownloadDetail(t *testing.T) {
 
 	_, err = svc.GetDownload(context.Background(), "user-b", "art-a-1")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveDownloadNotFound)
+	assert.True(t, errors.Is(err, constants.ErrObserveDownloadNotFound))
 }
 
 func TestObserveService_CrossUserIsolation_ListRunsOnlyReturnsOwned(t *testing.T) {

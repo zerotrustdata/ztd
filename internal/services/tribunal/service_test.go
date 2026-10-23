@@ -163,7 +163,7 @@ func TestDeliberateApproved(t *testing.T) {
 			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_MARSHAL, PersonaMarshal, marshalJSONSchema
 			assert.Equal(t, marshalSystemPrompt, system)
 		default:
-			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_AUDIT, PersonaAuditor, auditorJSONSchema([]string{"cluster_b"})
+			stage, persona, schema = tribunalv1.TribunalStage_TRIBUNAL_STAGE_AUDIT, PersonaAuditor, auditorJSONSchema([]string{"cluster_b", "cluster_c"})
 			assert.Equal(t, auditorSystemPrompt, system)
 		}
 		assert.Equal(t, constants.MediaTypeJSON, request.GetResponseFormat().GetMediaType())

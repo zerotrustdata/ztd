@@ -16,7 +16,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/sse"
 )
@@ -42,7 +41,7 @@ func TestRun_NoSessionReturnsQuickly(t *testing.T) {
 
 	select {
 	case err := <-done:
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run() did not return after simulated quit keypress")
 	}
@@ -58,7 +57,7 @@ func TestRun_QuitViaCtrlC(t *testing.T) {
 
 	select {
 	case err := <-done:
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run() did not return after ctrl+c")
 	}
@@ -105,7 +104,7 @@ func TestRun_AdapterGoroutineCleanedUpOnExit(t *testing.T) {
 
 	select {
 	case err := <-done:
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("Run() did not return; adapter goroutine may not be cleaned up")
 	}
@@ -125,7 +124,7 @@ func TestRun_CancelledContextExits(t *testing.T) {
 
 	select {
 	case err := <-done:
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run() did not return after context cancellation")
 	}

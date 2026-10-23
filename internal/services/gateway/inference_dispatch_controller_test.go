@@ -582,7 +582,7 @@ func TestInferenceDispatchController_StreamingReturnsNDJSONProgressAndCompletion
 	require.NoError(t, protojson.Unmarshal([]byte(lines[1]), &completionFrame))
 	require.NotNil(t, completionFrame.GetCompletion())
 	assert.Equal(t, "tx-inference-001", completionFrame.GetCompletion().GetTransactionId())
-	assert.NotNil(t, dispatcher.lastReq.OnInferenceProgress)
+	assert.True(t, dispatcher.lastReq.OnInferenceProgress != nil)
 
 	var forwarded operatorv1.InferenceRequested
 	require.NoError(t, proto.Unmarshal(dispatcher.lastReq.Payload, &forwarded))

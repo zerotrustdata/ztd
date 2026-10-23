@@ -182,5 +182,5 @@ func TestDropOldestBuf_ConcurrentSendNoDeadlock(t *testing.T) {
 		}
 	}
 done:
-	assert.Positive(t, drained, "should have some messages remaining after concurrent sends")
+	assert.Greater(t, drained, 0, "should have some messages remaining after concurrent sends")
 }

@@ -583,6 +583,6 @@ func TestAgentEvidenceIntegration_AnchorFailClosed(t *testing.T) {
 
 	_, _, err := env.controller.ExecuteNextAssignment(ctx, env.req.RunID, badBinding, env.req.ScenarioArtifacts)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrConformanceAnchorMissing)
+	assert.ErrorIs(t, err, constants.ErrConformanceAnchorMissing)
 	assert.Equal(t, 0, env.stack.Provider.ChatCount(), "nothing is dispatched when anchor validation fails")
 }

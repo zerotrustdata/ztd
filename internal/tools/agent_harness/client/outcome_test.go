@@ -12,6 +12,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -130,7 +131,7 @@ func TestGovernedOutcomeTyped(t *testing.T) {
 			err := tt.outcome.Typed()
 			if tt.wantUntyped {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, constants.ErrIngressResponseUntyped)
+				assert.True(t, errors.Is(err, constants.ErrIngressResponseUntyped))
 				return
 			}
 			assert.NoError(t, err)

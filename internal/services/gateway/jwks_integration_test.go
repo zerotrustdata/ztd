@@ -35,7 +35,7 @@ func TestJWKSProvider_GetKey(t *testing.T) {
 
 		key, err := provider.GetKey(context.Background(), "key1")
 
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, testKey, key)
 	})
 
@@ -53,7 +53,7 @@ func TestJWKSProvider_GetKey(t *testing.T) {
 
 		key, err := provider.GetKey(context.Background(), "nonexistent")
 
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, key)
 		assert.ErrorIs(t, err, constants.ErrJWKSKeyNotFound)
 	})
@@ -86,7 +86,7 @@ func TestJWKSProvider_GetKey(t *testing.T) {
 
 		key, err := provider.GetKey(context.Background(), "key1")
 
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, testKey.N, key.N)
 		assert.Equal(t, testKey.E, key.E)
 	})
@@ -103,7 +103,7 @@ func TestJWKSProvider_GetKey(t *testing.T) {
 
 		key, err := provider.GetKey(context.Background(), "key1")
 
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, key)
 	})
 }
@@ -137,7 +137,7 @@ func TestJWKSProvider_fetchKeys(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Contains(t, provider.keys, "test-key")
 	})
 
@@ -162,7 +162,7 @@ func TestJWKSProvider_fetchKeys(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Empty(t, provider.keys)
 	})
 
@@ -193,7 +193,7 @@ func TestJWKSProvider_fetchKeys(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Empty(t, provider.keys)
 	})
 
@@ -220,7 +220,7 @@ func TestJWKSProvider_fetchKeys(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Empty(t, provider.keys)
 	})
 
@@ -250,7 +250,7 @@ func TestJWKSProvider_fetchKeys(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Empty(t, provider.keys)
 	})
 
@@ -264,7 +264,7 @@ func TestJWKSProvider_fetchKeys(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unexpected status code")
 	})
 
@@ -279,7 +279,7 @@ func TestJWKSProvider_fetchKeys(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to decode response")
 	})
 
@@ -288,7 +288,7 @@ func TestJWKSProvider_fetchKeys(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to create request")
 	})
 
@@ -297,7 +297,7 @@ func TestJWKSProvider_fetchKeys(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to fetch keys")
 	})
 
@@ -364,7 +364,7 @@ func TestJWKSProvider_ErrorWrapping(t *testing.T) {
 
 		err := provider.fetchKeys(context.Background())
 
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrJWKSUnexpectedStatus)
 	})
 }

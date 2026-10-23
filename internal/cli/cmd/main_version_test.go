@@ -72,7 +72,7 @@ func TestNewRootCmd_PersistentFlagsExist(t *testing.T) {
 	endpointFlag := rootCmd.PersistentFlags().Lookup("endpoint")
 	require.NotNil(t, endpointFlag)
 	assert.Equal(t, "e", endpointFlag.Shorthand)
-	assert.Empty(t, endpointFlag.DefValue)
+	assert.Equal(t, "", endpointFlag.DefValue)
 
 	portFlag := rootCmd.PersistentFlags().Lookup("port")
 	require.NotNil(t, portFlag)

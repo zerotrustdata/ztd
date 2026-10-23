@@ -14,6 +14,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -106,7 +107,7 @@ func TestPlatformEnrollment_CLISigningIdentityAndConsensusAcrossPostures(t *test
 					})
 					if posture.RequiresL3() {
 						var required *models.PlatformEnrollmentL3RequiredError
-						require.ErrorAs(t, err, &required)
+						require.True(t, errors.As(err, &required))
 						resume(required.Suspension)
 					} else {
 						require.NoError(t, err)
@@ -133,7 +134,7 @@ func TestPlatformEnrollment_CLISigningIdentityAndConsensusAcrossPostures(t *test
 			_, err = ls.GetPlatformEnrollmentService().BindConsensusApplication(t.Context(), owner.ID, models.PlatformEnrollmentBindConsensusRequest{Provider: string(constants.ConsensusProviderApplication), AppID: "cli-reviewer", EndpointURL: "https://reviewer.example/deliberate"})
 			if posture.RequiresL3() {
 				var required *models.PlatformEnrollmentL3RequiredError
-				require.ErrorAs(t, err, &required)
+				require.True(t, errors.As(err, &required))
 				bound, err := ls.GetConsensusStore().GetBoundConsensusApp(t.Context())
 				require.NoError(t, err)
 				require.Nil(t, bound)

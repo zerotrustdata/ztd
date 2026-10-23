@@ -29,23 +29,23 @@ func newTestFileSvc(t *testing.T, baseDir string) fs.RuntimeFileService {
 
 // CreateTestVault creates a new unlocked Vault using the provided runtime file service and private key.
 // The vault header is initialized and the vault is unlocked. Cleanup closes it via t.Cleanup.
-func CreateTestVault(tb testing.TB, fileSvc fs.RuntimeFileService, privateKey []byte) *vault.Vault {
-	tb.Helper()
+func CreateTestVault(t testing.TB, fileSvc fs.RuntimeFileService, privateKey []byte) *vault.Vault {
+	t.Helper()
 
 	logger := testutil.NewTestLogger()
 
 	header, _, err := vault.NewVaultHeader(privateKey)
-	require.NoError(tb, err)
-	require.NoError(tb, header.Save(fileSvc))
+	require.NoError(t, err)
+	require.NoError(t, header.Save(fileSvc))
 
 	v, err := vault.NewVault(&vault.VaultConfig{
 		FileSvc: fileSvc,
 		Logger:  logger,
 	})
-	require.NoError(tb, err)
-	require.NoError(tb, v.Unlock(privateKey))
+	require.NoError(t, err)
+	require.NoError(t, v.Unlock(privateKey))
 
-	tb.Cleanup(func() { v.Close() })
+	t.Cleanup(func() { v.Close() })
 	return v
 }
 

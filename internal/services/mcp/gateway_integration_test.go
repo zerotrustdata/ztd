@@ -752,5 +752,5 @@ func TestAuditReceiptListTool_DispatchNotConfigured(t *testing.T) {
 
 	_, err = g.DispatchToDownstream(context.Background(), "audit_receipt_list", args, "sess-1")
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptQueryNotConfigured)
+	require.True(t, errors.Is(err, constants.ErrMCPAuditReceiptQueryNotConfigured))
 }

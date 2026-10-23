@@ -84,8 +84,8 @@ func TestUpdateRunState_RejectionCarriesTheRefusedTransition(t *testing.T) {
 	require.NoError(t, err)
 
 	err = updateRunStateAgainst(t, string(rejection))
-	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
-	require.ErrorIs(t, err, constants.ErrObserveInvalidTransition)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.ErrorIs(t, err, constants.ErrObserveInvalidTransition)
 	var rejected *ObserveProducerRejectedError
 	require.ErrorAs(t, err, &rejected)
 	assert.Equal(t, http.StatusBadRequest, rejected.Status)
@@ -97,18 +97,18 @@ func TestUpdateRunState_RejectionCarriesTheRefusedTransition(t *testing.T) {
 
 func TestUpdateRunState_RejectionCodeRecoversTheSentinel(t *testing.T) {
 	err := updateRunStateAgainst(t, `{"error":"observe: run_kind is required","code":"run_kind_invalid"}`)
-	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.ErrorIs(t, err, constants.ErrObserveRunKindRequired)
 }
 
 func TestUpdateRunState_UnknownRejectionCodeIsNamed(t *testing.T) {
 	err := updateRunStateAgainst(t, `{"error":"new","code":"from_the_future"}`)
-	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.ErrorIs(t, err, constants.ErrObserveRejectionUnknown)
 }
 
 func TestUpdateRunState_UndecodableRejectionIsAnInvalidResponse(t *testing.T) {
 	err := updateRunStateAgainst(t, `not json`)
-	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }

@@ -165,9 +165,9 @@ func TestAuditView(t *testing.T) {
 	require.NotNil(t, cmd, "entering Audit should fetch events and summary")
 	eventsMsg, ok := m.auditEventsCmd()().(AuditEventsMsg)
 	require.True(t, ok)
-	require.NoError(t, eventsMsg.Err)
+	assert.NoError(t, eventsMsg.Err)
 	summaryMsg := m.gw.fetchAuditSummary(t.Context())
-	require.NoError(t, summaryMsg.Err)
+	assert.NoError(t, summaryMsg.Err)
 	assert.Contains(t, session.requestedPaths(), constants.APIPaths.AuditEvents+"?limit=10&offset=0")
 	assert.Contains(t, session.requestedPaths(), constants.APIPaths.AuditSummary)
 
@@ -253,7 +253,7 @@ func TestRecoveryView(t *testing.T) {
 	msg, ok := cmd().(RecoveryApprovedMsg)
 	require.True(t, ok)
 	require.NoError(t, msg.Err)
-	assert.Equal(t, models.CLIRecoveryStateApproved, msg.Response.State)
+	assert.True(t, msg.Response.State == models.CLIRecoveryStateApproved)
 	assert.Equal(t, []interface{}{models.CLIRecoveryApproveRequest{Token: "recovery-token", Approve: true}}, session.posted)
 
 	model, _ := m.Update(msg)
@@ -274,7 +274,7 @@ func TestRecoveryView(t *testing.T) {
 	require.NotNil(t, cmd)
 	denyMsg := cmd().(RecoveryApprovedMsg)
 	assert.False(t, denyMsg.Approve)
-	require.NoError(t, denyMsg.Err)
+	assert.NoError(t, denyMsg.Err)
 
 	m, _ = press(t, m, runeKey('n'))
 	assert.Equal(t, viewRecovery, m.view, "token characters are accepted instead of quitting")

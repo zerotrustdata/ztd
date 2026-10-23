@@ -273,6 +273,16 @@ type SSEEventsResponse struct {
 	Count  int           `json:"count"`
 }
 
+// SSEEventsCountResponse is the typed response for GET /api/v1/sse/events/count.
+type SSEEventsCountResponse struct {
+	Count int64 `json:"count"`
+}
+
+// SSEEventsWipeResponse is the typed response for DELETE /api/v1/sse/events.
+type SSEEventsWipeResponse struct {
+	Deleted int64 `json:"deleted"`
+}
+
 // TrustedSignersResponse is the typed response for GET /api/governance/signers.
 type TrustedSignersResponse struct {
 	Success bool            `json:"success"`
@@ -380,6 +390,14 @@ type SuspendedTxResponse struct {
 	ToolName        string    `json:"tool_name"`
 	UserID          string    `json:"user_id"`
 	OperatorID      string    `json:"operator_id"`
+}
+
+// ApprovalStatusResponse is the typed response for GET /api/v1/approvals/status/{txHash}.
+// The CLI verifies this mTLS-authenticated endpoint after receiving approval.completed on the SSE stream.
+type ApprovalStatusResponse struct {
+	Status   string `json:"status"`
+	TxHash   string `json:"tx_hash,omitempty"`
+	ToolName string `json:"tool_name,omitempty"`
 }
 
 // ApprovalRespondRequest is the typed request for POST /api/v1/approvals/respond.

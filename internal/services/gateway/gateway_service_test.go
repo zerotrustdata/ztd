@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -192,7 +193,7 @@ func TestGateway_NoPlaintextOnDiskAfterBoot(t *testing.T) {
 			}
 			contentStr := string(data)
 			for _, s := range forbiddenStrings {
-				assert.NotContains(t, contentStr, s, "file %s contains encoded key material %q", entryRel, s)
+				assert.False(t, strings.Contains(contentStr, s), "file %s contains encoded key material %q", entryRel, s)
 			}
 		}
 	}

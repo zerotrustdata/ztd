@@ -34,8 +34,8 @@ func TestWebSessionService_CreateWebSession(t *testing.T) {
 
 		assert.NotEmpty(t, session.ID)
 		assert.Equal(t, userID, session.UserID)
-		assert.Positive(t, session.CreatedAtUnixMs)
-		assert.Greater(t, session.ExpiresAtUnixMs, session.CreatedAtUnixMs)
+		assert.True(t, session.CreatedAtUnixMs > 0)
+		assert.True(t, session.ExpiresAtUnixMs > session.CreatedAtUnixMs)
 
 		// Verify it's actually in the DB
 		doc, err := infra.DocStore.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionWebSessions), session.ID)
@@ -56,7 +56,7 @@ func TestWebSessionService_CreateWebSession(t *testing.T) {
 		session, err := svc.CreateWebSession(t.Context(), "")
 		require.NoError(t, err) // Service currently doesn't validate empty userID
 		require.NotNil(t, session)
-		assert.Empty(t, session.UserID)
+		assert.Equal(t, "", session.UserID)
 	})
 }
 

@@ -8,6 +8,7 @@
 package gateway
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -67,7 +68,7 @@ func TestValidateAgentProducerRequest_RejectsUnsupportedSchemaVersion(t *testing
 	req.SchemaVersion = "9.9.9"
 	err := validateAgentProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveUnsupportedSchemaVersion)
+	assert.True(t, errors.Is(err, constants.ErrObserveUnsupportedSchemaVersion))
 }
 
 func TestValidateAgentProducerRequest_RejectsEmptyDisplayName(t *testing.T) {
@@ -75,7 +76,7 @@ func TestValidateAgentProducerRequest_RejectsEmptyDisplayName(t *testing.T) {
 	req.DisplayName = ""
 	err := validateAgentProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveAgentDisplayNameRequired)
+	assert.True(t, errors.Is(err, constants.ErrObserveAgentDisplayNameRequired))
 }
 
 func TestValidateAgentProducerRequest_RejectsEmptyRole(t *testing.T) {
@@ -83,7 +84,7 @@ func TestValidateAgentProducerRequest_RejectsEmptyRole(t *testing.T) {
 	req.Role = ""
 	err := validateAgentProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveAgentRoleRequired)
+	assert.True(t, errors.Is(err, constants.ErrObserveAgentRoleRequired))
 }
 
 func TestValidateAgentProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *testing.T) {
@@ -91,7 +92,7 @@ func TestValidateAgentProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *te
 	req.Status = models.AgentLifecycleStatus("bogus")
 	err := validateAgentProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveStatusInvalid,
+	assert.True(t, errors.Is(err, constants.ErrObserveStatusInvalid),
 		"unknown first-write status must be rejected, not accepted as 'no existing projection'")
 }
 
@@ -127,7 +128,7 @@ func TestValidateRunProducerRequest_RejectsUnsupportedSchemaVersion(t *testing.T
 	req.SchemaVersion = "0.0.1"
 	err := validateRunProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveUnsupportedSchemaVersion)
+	assert.True(t, errors.Is(err, constants.ErrObserveUnsupportedSchemaVersion))
 }
 
 func TestValidateRunProducerRequest_RejectsEmptyDisplayName(t *testing.T) {
@@ -135,7 +136,7 @@ func TestValidateRunProducerRequest_RejectsEmptyDisplayName(t *testing.T) {
 	req.DisplayName = ""
 	err := validateRunProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveRunDisplayNameRequired)
+	assert.True(t, errors.Is(err, constants.ErrObserveRunDisplayNameRequired))
 }
 
 func TestValidateRunProducerRequest_RejectsUnknownRunKind(t *testing.T) {
@@ -143,7 +144,7 @@ func TestValidateRunProducerRequest_RejectsUnknownRunKind(t *testing.T) {
 	req.RunKind = models.RunKind("bogus")
 	err := validateRunProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveRunKindRequired)
+	assert.True(t, errors.Is(err, constants.ErrObserveRunKindRequired))
 }
 
 func TestValidateRunProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *testing.T) {
@@ -151,7 +152,7 @@ func TestValidateRunProducerRequest_RejectsUnknownStatusEvenOnFirstWrite(t *test
 	req.Status = models.RunLifecycleStatus("bogus")
 	err := validateRunProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveStatusInvalid,
+	assert.True(t, errors.Is(err, constants.ErrObserveStatusInvalid),
 		"unknown first-write status must be rejected")
 }
 
@@ -162,7 +163,7 @@ func TestValidateRunProducerRequest_ReopensOnlyATerminalStatusTowardANonTerminal
 	require.NoError(t, validateRunProducerRequest(req))
 
 	req.Reopens = models.RunLifecycleStatusRunning
-	require.ErrorIs(t, validateRunProducerRequest(req), constants.ErrObserveStatusInvalid,
+	assert.ErrorIs(t, validateRunProducerRequest(req), constants.ErrObserveStatusInvalid,
 		"a reopen must name a terminal status")
 
 	req.Reopens = models.RunLifecycleStatusCancelled
@@ -176,7 +177,7 @@ func TestValidateRunProducerRequest_RejectsNegativeCompletedTasks(t *testing.T) 
 	req.CompletedTasks = -1
 	err := validateRunProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveNegativeTaskCount)
+	assert.True(t, errors.Is(err, constants.ErrObserveNegativeTaskCount))
 }
 
 func TestValidateRunProducerRequest_RejectsNegativeTotalTasks(t *testing.T) {
@@ -184,7 +185,7 @@ func TestValidateRunProducerRequest_RejectsNegativeTotalTasks(t *testing.T) {
 	req.TotalTasks = -1
 	err := validateRunProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveNegativeTaskCount)
+	assert.True(t, errors.Is(err, constants.ErrObserveNegativeTaskCount))
 }
 
 func TestValidateRunProducerRequest_RejectsCompletedExceedsTotal(t *testing.T) {
@@ -193,7 +194,7 @@ func TestValidateRunProducerRequest_RejectsCompletedExceedsTotal(t *testing.T) {
 	req.TotalTasks = 3
 	err := validateRunProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveCompletedExceedsTotal)
+	assert.True(t, errors.Is(err, constants.ErrObserveCompletedExceedsTotal))
 }
 
 func TestValidateRunProducerRequest_RejectsEndedBeforeStarted(t *testing.T) {
@@ -204,7 +205,7 @@ func TestValidateRunProducerRequest_RejectsEndedBeforeStarted(t *testing.T) {
 	req.EndedAt = &ended
 	err := validateRunProducerRequest(req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrObserveEndBeforeStart)
+	assert.True(t, errors.Is(err, constants.ErrObserveEndBeforeStart))
 }
 
 func TestValidateRunProducerRequest_AcceptsEndedEqualToStarted(t *testing.T) {
@@ -239,7 +240,7 @@ func TestDecodeProducerRequest_RejectsUnknownFields(t *testing.T) {
 	var dst models.ObserveProducerAgentStateRequest
 	err := decodeProducerRequest(body, &dst)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInvalidJSONBody)
+	assert.True(t, errors.Is(err, constants.ErrInvalidJSONBody))
 }
 
 // TestDecodeProducerRequest_RejectsTrailingJSON asserts the strict decode
@@ -249,7 +250,7 @@ func TestDecodeProducerRequest_RejectsTrailingJSON(t *testing.T) {
 	var dst models.ObserveProducerAgentStateRequest
 	err := decodeProducerRequest(body, &dst)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInvalidJSONBody)
+	assert.True(t, errors.Is(err, constants.ErrInvalidJSONBody))
 }
 
 // validStopReq returns a fully valid stop producer request for mutation in
@@ -300,7 +301,7 @@ func TestValidateStopProducerRequest_Rejections(t *testing.T) {
 			tc.mutate(&req)
 			err := validateStopProducerRequest(req)
 			require.Error(t, err)
-			assert.ErrorIs(t, err, tc.want, "want %v, got %v", tc.want, err)
+			assert.True(t, errors.Is(err, tc.want), "want %v, got %v", tc.want, err)
 		})
 	}
 }
@@ -312,7 +313,7 @@ func TestDecodeProducerRequest_RejectsMalformedJSON(t *testing.T) {
 	var dst models.ObserveProducerAgentStateRequest
 	err := decodeProducerRequest(body, &dst)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInvalidJSONBody)
+	assert.True(t, errors.Is(err, constants.ErrInvalidJSONBody))
 }
 
 // TestDecodeProducerRequest_AcceptsValidJSON asserts the strict decode

@@ -62,7 +62,7 @@ func TestEnrollOperator_RefusesMissingActuatorKey(t *testing.T) {
 			require.NoError(t, err)
 
 			_, err = enrollOperator(enrollContext(t), ServeOperatorOptions{}, testutil.NewTestConfig(t), mg.server.URL, testutil.TempDir(t), nil, keyHex, deployment, testLogger())
-			require.ErrorIs(t, err, constants.ErrOperatorActuatorKeyInvalid)
+			assert.ErrorIs(t, err, constants.ErrOperatorActuatorKeyInvalid)
 			assert.Equal(t, 0, mg.dials())
 		})
 	}

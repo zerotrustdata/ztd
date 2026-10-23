@@ -10,6 +10,7 @@
 package storage
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -129,7 +130,7 @@ func TestLockedVaultFailsContentWrites(t *testing.T) {
 	ass.encryptionVault.Lock()
 
 	err = ass.CreateSession("locked-session-2", constants.SessionTypeOperator, "title", "identity")
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "sessions: %v", err)
+	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "sessions: %v", err)
 
 	err = ass.RecordFileMutation(&FileMutationLog{
 		EventID:   eventID,
@@ -137,13 +138,13 @@ func TestLockedVaultFailsContentWrites(t *testing.T) {
 		Operation: FileMutationWrite,
 		DiffStat:  "1 file changed",
 	})
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "file_mutation_log: %v", err)
+	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "file_mutation_log: %v", err)
 
 	record := sampleEventReceiptRecord(t, "locked-session")
 	record.TargetResource = "/locked/target"
 	record.ResultSummary = "locked summary"
 	err = ass.RecordEventReceipt(record)
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "receipts: %v", err)
+	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "receipts: %v", err)
 
 	_, err = ass.RecordEvent(&Event{
 		OperatorSessionID: "locked-session",
@@ -151,12 +152,12 @@ func TestLockedVaultFailsContentWrites(t *testing.T) {
 		Type:              constants.EventType("COMMAND_EXECUTION"),
 		CommandRaw:        "echo locked",
 	})
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "events.command_raw: %v", err)
+	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "events.command_raw: %v", err)
 
 	err = ass.CommitmentLedger().AppendCommitment(func(prior string) (*operatorv1.CommitmentAttestation, error) {
 		return &operatorv1.CommitmentAttestation{TransactionId: "tx-locked", PriorCommitmentHash: prior, TargetResource: "/locked"}, nil
 	})
-	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "commitment_ledger: %v", err)
+	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "commitment_ledger: %v", err)
 }
 
 func scopeForSession(sessionID string) models.AuditScope {

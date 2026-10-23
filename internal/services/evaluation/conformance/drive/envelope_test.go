@@ -7,6 +7,7 @@
 package drive
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -121,7 +122,7 @@ func TestPayloadRejectsActionNotExpressible(t *testing.T) {
 	a := testAttempt(cases.FaultNone, cases.Action("unknown"))
 	_, _, _, err := Payload(a)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
+	assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported))
 }
 
 func TestPayloadDoctrineRequiresCommand(t *testing.T) {
@@ -129,7 +130,7 @@ func TestPayloadDoctrineRequiresCommand(t *testing.T) {
 	a.Case.Command = ""
 	_, _, _, err := Payload(a)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField))
 }
 
 func TestRehashMatchesGenerateMessageID(t *testing.T) {
@@ -151,7 +152,7 @@ func TestRehashRejectsUnhashableEnvelope(t *testing.T) {
 	env := &commonv1.GovernanceEnvelope{ProtocolVersion: "0.0"}
 	err := Rehash(env)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrTxProtocolVersionUnsupported)
+	assert.True(t, errors.Is(err, constants.ErrTxProtocolVersionUnsupported))
 }
 
 func TestBaselinePayloadDecodesToItsAttemptMessage(t *testing.T) {

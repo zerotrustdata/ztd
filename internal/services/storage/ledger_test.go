@@ -49,13 +49,11 @@ func readLedgerSnapshot(t *testing.T, lms *GitLedgerService, absPath string) []b
 
 // setupTestLedger creates a GitLedgerService backed by an unlocked test vault.
 func setupTestLedger(t *testing.T) (*GitLedgerService, string) {
-	t.Helper()
 	return setupLedgerWithVault(t, true)
 }
 
 // setupTestLedgerLocked creates a GitLedgerService whose vault is initialized but locked.
 func setupTestLedgerLocked(t *testing.T) (*GitLedgerService, string) {
-	t.Helper()
 	return setupLedgerWithVault(t, false)
 }
 

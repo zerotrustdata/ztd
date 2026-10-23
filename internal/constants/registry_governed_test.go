@@ -23,7 +23,7 @@ func TestValidateGovernedRequest(t *testing.T) {
 
 	_, err = ValidateGovernedRequest(Event.Operator.Command.Completed)
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrTxEventNotRequest)
+	assert.ErrorIs(t, err, ErrTxEventNotRequest)
 
 	_, err = ValidateGovernedRequest(EventType("ztd.v1.not.registered"))
 	require.Error(t, err)
@@ -57,7 +57,7 @@ func TestValidateGovernedResultEnvelope(t *testing.T) {
 		ActionTypeFsRead,
 	)
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrTxEventActionMismatch)
+	assert.ErrorIs(t, err, ErrTxEventActionMismatch)
 
 	err = ValidateGovernedResultEnvelope(
 		Event.Operator.Command.Requested,
@@ -65,7 +65,7 @@ func TestValidateGovernedResultEnvelope(t *testing.T) {
 		ActionTypeExecuteBash,
 	)
 	require.Error(t, err)
-	require.ErrorIs(t, err, ErrTxOutcomeNotAllowed)
+	assert.ErrorIs(t, err, ErrTxOutcomeNotAllowed)
 
 	err = ValidateGovernedResultEnvelope(
 		Event.Operator.Command.Requested,

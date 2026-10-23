@@ -51,11 +51,11 @@ type ReceiptOpts struct {
 }
 
 // NewSigner generates a fresh actuator key.
-func NewSigner(tb testing.TB) Signer {
-	tb.Helper()
+func NewSigner(t testing.TB) Signer {
+	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		tb.Fatalf("generate actuator key: %v", err)
+		t.Fatalf("generate actuator key: %v", err)
 	}
 	return Signer{Priv: priv, Pub: pub, KeyID: hex.EncodeToString(pub)}
 }
@@ -66,52 +66,52 @@ func (s Signer) Anchor(runtimeID string) *evalv1.ConformanceAnchor {
 }
 
 // Executed returns a COMPLETED receipt whose commitment link is prior -> hash.
-func (s Signer) Executed(tb testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.ActionReceipt {
-	tb.Helper()
-	receipt := s.newReceipt(tb, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
+func (s Signer) Executed(t testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.ActionReceipt {
+	t.Helper()
+	receipt := s.newReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
 	receipt.StateRootBefore = rootBefore
 	receipt.StateRootAfter = rootAfter
 	receipt.DeterministicStageEvidence = executedStages(opts, s.KeyID, prior, hash,
 		operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_COMPLETED)
-	s.Resign(tb, receipt)
+	s.Resign(t, receipt)
 	return receipt
 }
 
 // ExecutionFailed returns a FAILED receipt whose handler ran and failed: it
 // carries a failed L5 execution stage and still appends the commitment link
 // prior -> hash.
-func (s Signer) ExecutionFailed(tb testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.ActionReceipt {
-	tb.Helper()
-	receipt := s.newReceipt(tb, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
+func (s Signer) ExecutionFailed(t testing.TB, opts ReceiptOpts, prior, hash string) *operatorv1.ActionReceipt {
+	t.Helper()
+	receipt := s.newReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
 	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
 	receipt.StateRootBefore = rootBefore
 	receipt.StateRootAfter = rootAfter
 	receipt.DeterministicStageEvidence = executedStages(opts, s.KeyID, prior, hash,
 		operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED)
-	s.Resign(tb, receipt)
+	s.Resign(t, receipt)
 	return receipt
 }
 
 // Rejected returns a signed GOVERNANCE_REJECTED receipt with code and no commitment.
-func (s Signer) Rejected(tb testing.TB, opts ReceiptOpts, code operatorv1.GovernanceRejectionCode) *operatorv1.ActionReceipt {
-	tb.Helper()
-	receipt := s.newReceipt(tb, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
+func (s Signer) Rejected(t testing.TB, opts ReceiptOpts, code operatorv1.GovernanceRejectionCode) *operatorv1.ActionReceipt {
+	t.Helper()
+	receipt := s.newReceipt(t, opts, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED)
 	receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
 	receipt.RejectionCode = code
 	l4 := stage(opts, "L4", operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L4_VERIFICATION,
 		operatorv1.DeterministicStageOutcome_DETERMINISTIC_STAGE_OUTCOME_FAILED, "")
 	receipt.DeterministicStageEvidence = []*operatorv1.DeterministicStageEvidence{l4}
-	s.Resign(tb, receipt)
+	s.Resign(t, receipt)
 	return receipt
 }
 
 // Resign re-signs a receipt after a test mutates it (signature and attestation).
-func (s Signer) Resign(tb testing.TB, receipt *operatorv1.ActionReceipt) {
-	tb.Helper()
+func (s Signer) Resign(t testing.TB, receipt *operatorv1.ActionReceipt) {
+	t.Helper()
 	receipt.FinalPersistenceAttestation = nil
 	payload, err := governance.CanonicalizeActionReceipt(receipt)
 	if err != nil {
-		tb.Fatalf("canonicalize receipt: %v", err)
+		t.Fatalf("canonicalize receipt: %v", err)
 	}
 	receipt.Signature = hex.EncodeToString(ed25519.Sign(s.Priv, payload))
 
@@ -124,7 +124,7 @@ func (s Signer) Resign(tb testing.TB, receipt *operatorv1.ActionReceipt) {
 	}
 	attestationPayload, err := governance.CanonicalizeReceiptPersistenceAttestation(attestation)
 	if err != nil {
-		tb.Fatalf("canonicalize persistence attestation: %v", err)
+		t.Fatalf("canonicalize persistence attestation: %v", err)
 	}
 	attestation.Signature = hex.EncodeToString(ed25519.Sign(s.Priv, attestationPayload))
 	receipt.FinalPersistenceAttestation = attestation
@@ -134,8 +134,8 @@ func (s Signer) Resign(tb testing.TB, receipt *operatorv1.ActionReceipt) {
 // req: it echoes the request's campaign binding and model identity, answers
 // with parts and carries its computed result digest. A receipt for it binds
 // that digest as its result summary.
-func InferenceResult(tb testing.TB, req *operatorv1.InferenceDispatchRequest, parts []*operatorv1.InferenceResponsePart) *operatorv1.InferenceResult {
-	tb.Helper()
+func InferenceResult(t testing.TB, req *operatorv1.InferenceDispatchRequest, parts []*operatorv1.InferenceResponsePart) *operatorv1.InferenceResult {
+	t.Helper()
 	result := &operatorv1.InferenceResult{
 		Model:                req.GetModel(),
 		ProviderAttemptId:    req.GetProviderAttemptId(),
@@ -155,16 +155,16 @@ func InferenceResult(tb testing.TB, req *operatorv1.InferenceDispatchRequest, pa
 	}
 	digest, err := models.ComputeInferenceResultDigest(result)
 	if err != nil {
-		tb.Fatalf("compute inference result digest: %v", err)
+		t.Fatalf("compute inference result digest: %v", err)
 	}
 	result.ResultDigest = digest
 	return result
 }
 
-func (s Signer) newReceipt(tb testing.TB, opts ReceiptOpts, status operatorv1.ExecutionStatus) *operatorv1.ActionReceipt {
-	tb.Helper()
+func (s Signer) newReceipt(t testing.TB, opts ReceiptOpts, status operatorv1.ExecutionStatus) *operatorv1.ActionReceipt {
+	t.Helper()
 	if opts.TransactionID == "" || opts.OperatorID == "" || opts.ActionType == "" {
-		tb.Fatalf("receipt opts need transaction, operator and action type")
+		t.Fatalf("receipt opts need transaction, operator and action type")
 	}
 	return &operatorv1.ActionReceipt{
 		TransactionId:    opts.TransactionID,

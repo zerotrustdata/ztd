@@ -379,6 +379,62 @@ func (h *PasskeyHandler) clearApprovalWriteDeadline(w http.ResponseWriter) {
 	}
 }
 
+// handleCLIApprovalStatus is an mTLS-authenticated endpoint that returns the current
+// status of a suspended transaction. Used by CLI clients for post-SSE verification
+// of approval state.
+func (h *PasskeyHandler) handleCLIApprovalStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	txHash := strings.TrimPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus)
+	if txHash == "" {
+		h.responder.Error(w, http.StatusBadRequest, "transaction hash required")
+		return
+	}
+
+	userID, ok := r.Context().Value(constants.ContextKeyUserID).(string)
+	if !ok || userID == "" {
+		h.responder.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	suspendedTx, found, err := h.orchestrator.GetSuspendedTransaction(r.Context(), txHash)
+	if err != nil {
+		h.logger.Error("Failed to get suspended transaction", "error", err, "txHash", txHash)
+		h.responder.Error(w, http.StatusInternalServerError, "failed to get transaction")
+		return
+	}
+
+	if !found {
+		h.responder.JSON(w, http.StatusOK, models.ApprovalStatusResponse{
+			Status: string(constants.SuspendedTxStatusExpiredOrNotFound),
+		})
+		return
+	}
+
+	if suspendedTx.UserID != "" && suspendedTx.UserID != userID {
+		h.responder.Error(w, http.StatusForbidden, "transaction belongs to another user")
+		return
+	}
+
+	if suspendedTx.Approved {
+		h.responder.JSON(w, http.StatusOK, models.ApprovalStatusResponse{
+			Status:   string(constants.SuspendedTxStatusApproved),
+			TxHash:   txHash,
+			ToolName: suspendedTx.ToolName,
+		})
+		return
+	}
+
+	h.responder.JSON(w, http.StatusOK, models.ApprovalStatusResponse{
+		Status:   string(constants.SuspendedTxStatusPending),
+		TxHash:   txHash,
+		ToolName: suspendedTx.ToolName,
+	})
+}
+
 func (h *PasskeyHandler) handleApprovalPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -395,7 +451,7 @@ func (h *PasskeyHandler) handleApprovalPage(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *PasskeyHandler) handleCLIListSuspended(w http.ResponseWriter, r *http.Request) {
-	h.listSuspendedTransactions(w, r)
+	h.listSuspendedTransactions(w, r, true)
 }
 
 // @Summary		List pending approvals
@@ -406,10 +462,10 @@ func (h *PasskeyHandler) handleCLIListSuspended(w http.ResponseWriter, r *http.R
 // @Failure		401	{string}	string	"Unauthorized"
 // @Router			/api/v1/approvals [get]
 func (h *PasskeyHandler) handleListSuspendedTransactions(w http.ResponseWriter, r *http.Request) {
-	h.listSuspendedTransactions(w, r)
+	h.listSuspendedTransactions(w, r, false)
 }
 
-func (h *PasskeyHandler) listSuspendedTransactions(w http.ResponseWriter, r *http.Request) {
+func (h *PasskeyHandler) listSuspendedTransactions(w http.ResponseWriter, r *http.Request, filterApproved bool) {
 	if r.Method != http.MethodGet {
 		h.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -430,6 +486,9 @@ func (h *PasskeyHandler) listSuspendedTransactions(w http.ResponseWriter, r *htt
 
 	var txResponses []models.SuspendedTxResponse
 	for _, tx := range transactions {
+		if filterApproved && tx.Approved {
+			continue
+		}
 		txResponses = append(txResponses, models.SuspendedTxResponse{
 			TransactionHash: tx.TransactionHash,
 			CreatedAt:       tx.CreatedAt,

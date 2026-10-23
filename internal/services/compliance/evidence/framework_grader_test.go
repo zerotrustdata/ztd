@@ -547,7 +547,7 @@ func TestGradeFrameworkControls_MultipleFrameworks(t *testing.T) {
 	frameworkIDs := make(map[string]bool)
 	for _, assessment := range assessments {
 		frameworkIDs[assessment.GetFrameworkRef().GetId()] = true
-		require.NoError(t, catalog.ValidateControlAssessment(assessment, "scope-1", frameworks, crosswalks))
+		assert.NoError(t, catalog.ValidateControlAssessment(assessment, "scope-1", frameworks, crosswalks))
 	}
 	assert.True(t, frameworkIDs["fedramp-20x"])
 	assert.True(t, frameworkIDs["nist-sp-800-53"])

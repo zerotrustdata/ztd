@@ -20,6 +20,14 @@
       "_go_const": "ChannelOperatorIntent",
       "value": "operator_intent"
     },
+    "PMessage": {
+      "_go_const": "PubSubEventPMessage",
+      "value": "pmessage"
+    },
+    "PSubscribe": {
+      "_go_const": "PubSubActionPSubscribe",
+      "value": "psubscribe"
+    },
     "Publish": {
       "_go_const": "PubSubActionPublish",
       "value": "publish"

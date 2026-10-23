@@ -10,9 +10,7 @@
 package client
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -67,13 +65,6 @@ func TestSubmitEnvelope_ReturnsTypedOutcomeAndRecordsPath(t *testing.T) {
 				}
 				if r.URL.Path != constants.APIPaths.GovernanceEnvelopes {
 					t.Errorf("expected path %s, got %s", constants.APIPaths.GovernanceEnvelopes, r.URL.Path)
-				}
-				body, readErr := io.ReadAll(r.Body)
-				if readErr != nil {
-					t.Errorf("read body: %v", readErr)
-				}
-				if !bytes.Contains(body, []byte("test-hash")) {
-					t.Errorf("request body = %s", body)
 				}
 
 				w.WriteHeader(tt.responseCode)

@@ -428,7 +428,6 @@ var (
 	ErrPubSubCertificateMissingOperatorID = errors.New("certificate missing Operator identity")
 	ErrPubSubInvalidChannelFormat         = errors.New("invalid channel format")
 	ErrPubSubPublishUnauthorized          = errors.New("publish unauthorized: channel not permitted for publisher identity")
-	ErrPubSubSubscribeUnauthorized        = errors.New("subscribe unauthorized: channel not permitted for subscriber identity")
 
 	ErrScrubbingRegexTimeout          = errors.New("regex compilation timeout")
 	ErrScrubbingTokenPersist          = errors.New("failed to persist token to local store")

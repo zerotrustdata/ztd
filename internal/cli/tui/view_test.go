@@ -25,7 +25,7 @@ import (
 func TestView_QuittingReturnsEmpty(t *testing.T) {
 	m := NewModel(Options{})
 	m.quitting = true
-	assert.Empty(t, m.View())
+	assert.Equal(t, "", m.View())
 }
 
 func TestView_DefaultDimensionsWhenZero(t *testing.T) {
@@ -606,14 +606,14 @@ func TestRenderOperators_BoundMarked(t *testing.T) {
 func TestListWindow_SelectionVisibleAtStart(t *testing.T) {
 	start, end := listWindow(10, 0)
 	assert.Equal(t, 0, start)
-	assert.Positive(t, end)
-	assert.Positive(t, end)
+	assert.True(t, end > 0)
+	assert.True(t, 0 < end)
 }
 
 func TestListWindow_SelectionVisibleWhenScrolled(t *testing.T) {
 	start, end := listWindow(10, 8)
-	assert.LessOrEqual(t, start, 8)
-	assert.Less(t, 8, end)
+	assert.True(t, start <= 8)
+	assert.True(t, 8 < end)
 }
 
 func TestListWindow_BoundsListLength(t *testing.T) {
@@ -626,7 +626,7 @@ func TestStageAnnotation_NoAuditWhenPostureUnknown(t *testing.T) {
 	m := NewModel(Options{})
 	m.posture = ""
 	result := m.stageAnnotation(StageL2)
-	assert.Empty(t, result)
+	assert.Equal(t, "", result)
 }
 
 func TestStageAnnotation_AuditedWhenNotEnforced(t *testing.T) {
@@ -642,7 +642,7 @@ func TestStageAnnotation_NoMarkingWhenEnforced(t *testing.T) {
 	// notary enforces L2 and L3
 	m.posture = constants.PostureNotary
 	result := m.stageAnnotation(StageL2)
-	assert.Empty(t, result)
+	assert.Equal(t, "", result)
 }
 
 // TestView_FitsTerminalExactly guards the layout math: borders count toward

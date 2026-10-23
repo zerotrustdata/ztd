@@ -4,7 +4,7 @@ title: "Diagram: Operator L1–L5 Governance Pipeline"
 audience: maintainers, architects, and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-23
+last_updated: 2026-10-22
 owners:
   - internal/services/governance/
   - internal/services/governance/l4_warden.go
@@ -28,15 +28,15 @@ Depicts the Policy Execution Point (PEP) pipeline executed by the host-side Oper
 graph TD
     Start["Signed GovernanceEnvelope<br/>(Incoming Transaction)"]
 
-    Warden["L4 Warden<br/>Pre-Dispatch Verification<br/>Expiry · Nonce Reservation (Replay) · Action Type and Payload<br/>L1 Doctrine · Transaction Hash · State Root · L2 Consensus · L3 Notary"]
+    Warden["L4 Warden<br/>Pre-Dispatch Verification<br/>Nonce · Expiry · Replay · Action Type<br/>L1 Doctrine · State Root · L2 Consensus · L3 Notary"]
 
     subgraph L5Actuator ["L5 Actuator: Sole Execution Boundary"]
         direction TB
         PreReceipt["Sign EXECUTING ActionReceipt<br/>(fail-closed)"]
         Commit["Append CommitmentAttestation<br/>(SQL chain head)"]
         Rehydrate["Rehydrate Scrubbed Payload<br/>(ScrubbingService lookup)"]
-        Cap["Mint JIT Capability<br/>(bound to transaction and target)"]
-        Exec["Dispatch via ExecutionHandler<br/>(action-type handler, e.g. MCP call or A2A call)"]
+        Cap["Mint JIT Capability<br/>(zero standing privileges)"]
+        Exec["Dispatch via MCP / A2A Handler"]
         Dissolve["Dissolve Capability"]
         Receipt["Sign Final ActionReceipt<br/>(COMPLETED or FAILED)"]
         AuditLog["Persist Event Receipt on events chain +<br/>ReceiptPersistenceAttestation"]
@@ -46,23 +46,23 @@ graph TD
 
     Start --> Warden
     Warden -- "VerifiedTransaction" --> PreReceipt
-    Warden -- "Fail Closed<br/>(typed sentinel error)" --> BlockAudit["Signed FAILED rejection ActionReceipt<br/>persisted on events chain; handler never runs"]
+    Warden -- "Fail Closed<br/>(typed sentinel error)" --> BlockAudit["Blocked Transaction Audit Entry"]
     AuditLog --> Publish["Best-effort publish to<br/>receipts:&lt;id&gt;:&lt;session&gt;"]
-    BlockAudit --> Publish
     Publish --> Done["Recorded, Signed, Audited"]
+    BlockAudit --> Done
 ```
 
 ## L4 Warden Verification Sequence
 
 The L4 Warden (`internal/services/governance/l4_warden.go`) orchestrates pre-dispatch checks in a deterministic, fail-closed sequence. If any step fails, execution halts immediately:
 
-1. **Vault, Expiry & Replay Prevention**: Refuses dispatch when the runtime vault is locked or absent, rejects a missing or expired `ExpiresAt`, and reserves the nonce in the replay store before any later verification. A nonce already in flight is rejected.
-2. **Structure, Action Type & Payload Decoding**: Checks the protocol version and required identifiers, validates the action type against the known action types, and decodes the typed payload. Action-specific target checks also run here.
-3. **L1 Doctrine Screening**: Evaluates doctrine over the decoded payload on the executing runtime, independent of any earlier Gateway screening. Outbound Operators construct doctrine with `NewL1Doctrine` (hardcoded detectors and proto forbidden patterns). The Gateway service constructs it with `NewL1DoctrineFromDir`, which adds file-based catalogs from its doctrine directory.
-4. **Transaction Hash Integrity**: Recomputes the canonical transaction hash and verifies exact equality with `envelope.Id`.
-5. **State Root Verification**: Requires `envelope.StateMerkleRoot` and compares it with the bound-state root. Gateway-built transactions compare against the admission snapshot carried in context. Direct submissions compare against the local state root provider.
-6. **L2 Consensus Quorum**: Under `consensus` and `notary` postures, for state-change actions only (`governance.L2Enforced`), verifies that affirmative K-of-N Ed25519 votes over `<tx_hash>|<decision>` meet the policy quorum.
-7. **L3 Notary Human Authorization**: Under `ratify` and `notary` postures, for mutations only (`governance.L3Required`), verifies the L3 proof over the transaction hash. It accepts a WebAuthn passkey approval or a CLI signature approval.
+1. **Nonce Reservation & Replay Prevention**: Durably records the transaction nonce in the local SQLite audit database before performing expensive cryptographic operations.
+2. **Action Type & Payload Decoding**: Validates the action string against the action registry and decodes the typed Protobuf payload.
+3. **Local L1 Doctrine Screening**: Independently evaluates static heuristics, blacklist rules, and Gitleaks signatures locally on the executing node, even if the Gateway screened the envelope previously.
+4. **Transaction Hash Integrity**: Recomputes the SHA-256 hash across canonical envelope fields and verifies exact equality with `envelope.Id`.
+5. **State Merkle Root Verification**: Confirms that the incoming `envelope.StateMerkleRoot` matches the current root of the local commitment ledger.
+6. **L2 Consensus Quorum**: Under `consensus` and `notary` postures, for state-change actions only (`governance.L2Enforced`), verifies $K$-of-$N$ Ed25519 signatures from authorized consensus committee members over `<tx_hash>|<decision>`.
+7. **L3 Notary Human Authorization**: Under `ratify` and `notary` postures, validates the presence of an authenticated WebAuthn signature assertion over the transaction hash.
 
 ## Governance Posture Gating
 
@@ -84,8 +84,8 @@ The L5 Actuator (`internal/services/governance/l5_actuator.go`) is the sole enti
 1. **Pre-Execution Signing**: Generates and signs the initial `EXECUTING` `ActionReceipt` using the local Actuator Ed25519 signing key.
 2. **Commitment Attestation**: Appends a signed attestation to the SQLite chain head.
 3. **Payload Rehydration**: Resolves the runtime's own reversible `{{UEI_<owner>_N}}` tokens to unredacted plaintext through `ScrubbingService`. An `INFERENCE` payload keeps another runtime's tokens opaque. Fails closed: an own token that cannot be resolved, a foreign token in any other action, or any token when no `ScrubbingService` is configured, skips dispatch and finalizes a signed `FAILED` receipt.
-4. **Just-In-Time (JIT) Capability**: Mints an ephemeral capability (`MintCapability`) scoped to the transaction hash, action type, target resource, operator, and session.
-5. **Execution Dispatch**: Invokes the `ExecutionHandler`, which routes the verified action type to its registered handler (for example, MCP calls or A2A calls).
-6. **Capability Dissolution**: Dissolves the capability as soon as the handler returns.
-7. **Final Receipt Signing**: Scrubs the outbound result summary and signs the final `COMPLETED` or `FAILED` `ActionReceipt`.
+4. **Just-In-Time (JIT) Capability**: Mints an ephemeral, transaction-scoped capability granting the exact permissions required by the handler.
+5. **Execution Dispatch**: Invokes the registered MCP tool handler or native command runner.
+6. **Capability Dissolution**: Destroys the ephemeral capability immediately upon command completion.
+7. **Final Receipt Signing**: Scrubs outbound results and signs the final `COMPLETED` or `FAILED` `ActionReceipt`.
 8. **Persistence & Mirroring**: Persists the signed receipt and its `ReceiptPersistenceAttestation` as the current event receipt on the local `events` chain, then publishes a best-effort copy to `receipts:<operator-id>:<operator-session-id>`.

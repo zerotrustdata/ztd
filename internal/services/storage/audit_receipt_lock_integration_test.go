@@ -102,7 +102,7 @@ func TestReceiptSuccessLogsFollowCommitAndUnlock(t *testing.T) {
 			assert.True(t, unlocked, "log handler must not serialize receipt writers: %s", record.Message)
 			var count int
 			err := store.db.QueryRow("SELECT count(*) FROM commitment_ledger").Scan(&count)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, 1, count, "success logging must follow commit")
 		},
 	})

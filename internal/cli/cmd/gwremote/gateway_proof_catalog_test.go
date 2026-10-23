@@ -83,7 +83,7 @@ func TestNewCampaignProofPublisher(t *testing.T) {
 		cfg.Paths.Host = "http://127.0.0.1:1"
 
 		publisher, err := NewCampaignProofPublisher(context.Background(), fileSvc, cfg)
-		require.ErrorIs(t, err, constants.ErrGatewayUnhealthy)
+		assert.ErrorIs(t, err, constants.ErrGatewayUnhealthy)
 		assert.Nil(t, publisher)
 	})
 }

@@ -108,7 +108,7 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			if contentPassed {
 				switch g.req.ScenarioGold.ContentCheck.DiagnosisRubric {
 				case "":
-				case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4:
+				case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3:
 					contentPassed, contentDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, g.req.ScenarioInput, g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
 				default:
 					contentPassed, contentDetail = false, fmt.Sprintf("unknown diagnosis rubric %q", g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
@@ -493,20 +493,12 @@ func (g homogeneousGrader) gradePlayerCriteria() ([]*evalv1.DeterministicGrade, 
 // read a fact from the trace. `policy_decision` observes admission or denial
 // independently of the state effect. Answer-policy `recovery` is derived.
 // `model_inference` is a harness precondition, as is `semantic_grade` while
-// the executor has no judge. Diagnosis V4's `final_response` restates content
-// and trajectory and is derived; older rubrics keep their frozen weights.
+// the executor has no judge.
 func (g homogeneousGrader) requiredEvidenceBasis(evidenceType string) evalv1.GradeBasis {
 	switch evidenceType {
 	case "model_inference", "semantic_grade":
 		return basisStructural
 	case "policy_decision":
-		return basisObservation
-	case "final_response":
-		// V4 freezes the final-response check as a restatement of content and
-		// trajectory. Earlier rubrics retain their recorded scoring contract.
-		if check := g.req.ScenarioGold.ContentCheck; check != nil && check.DiagnosisRubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
-			return basisDerived
-		}
 		return basisObservation
 	case "recovery":
 		switch g.req.ScenarioTools.TrajectoryPolicy {
@@ -602,7 +594,7 @@ func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture, r
 		// without naming a cause or using a definitive causal verb.
 		confidence := strings.ToLower(sections["confidence"])
 		for _, clause := range splitDiagnosisClauses(confidence) {
-			if (rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 || rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4) && containsAny(clause,
+			if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 && containsAny(clause,
 				"no root cause has been established", "root cause has not been established",
 				"no causal link has been established", "causal link has not been established",
 			) {
@@ -617,15 +609,7 @@ func evaluateFinalResponseDiagnosis(output string, input ScenarioInputFixture, r
 	}
 
 	customerSummary := strings.ToLower(sections["summary"])
-	audience := containsAny(customerSummary, "customer", "customers")
-	impact := containsAny(customerSummary, "fail", "unable", "cannot", "trouble", "issue", "impact")
-	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
-		// A customer-facing update can address its reader directly instead of
-		// naming customers in the third person.
-		audience = true
-		impact = impact || containsAny(customerSummary, "delay", "slow", "unsuccessful", "can't", "can’t")
-	}
-	if !audience || !containsAny(customerSummary, "checkout", "payment") || !impact {
+	if !containsAny(customerSummary, "customer", "customers") || !containsAny(customerSummary, "checkout", "payment") || !containsAny(customerSummary, "fail", "unable", "cannot", "trouble", "issue", "impact") {
 		return false, "customer-safe summary does not describe the observed customer checkout impact"
 	}
 	return true, "final response contains a populated diagnosis supported by the frozen timeout and customer-impact evidence"
@@ -656,7 +640,7 @@ func assertsDefinitiveRootCause(response string, rubric ScenarioDiagnosisRubric)
 		"is responsible for", "are responsible for", "resulted in", "led to",
 		"clear causal link", "failing dependency", "payment service is unstable",
 	}
-	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 || rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
+	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV3 {
 		causal = append(causal, "due to", "clearly links", "clearly linked", "clearly connects")
 	}
 	qualified := []string{
@@ -667,46 +651,12 @@ func assertsDefinitiveRootCause(response string, rubric ScenarioDiagnosisRubric)
 		"not due to", "uncertain", "unclear", "unknown", "unconfirmed", "unproven",
 		"cannot conclude", "cannot determine",
 	}
-	if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 {
-		qualified = append(qualified, "likely", "appears to", "suspected", "hypothesis")
-	}
 	for _, clause := range splitDiagnosisClauses(response) {
-		if containsAny(clause, qualified...) {
-			continue
-		}
-		for _, term := range causal {
-			index := strings.Index(clause, term)
-			if index < 0 {
-				continue
-			}
-			if rubric == ScenarioDiagnosisRubricCheckoutTimeoutV4 && supportedDiagnosisCausalPhrase(clause[:index], term, clause[index+len(term):]) {
-				continue
-			}
+		if containsAny(clause, causal...) && !containsAny(clause, qualified...) {
 			return true
 		}
 	}
 	return false
-}
-
-// supportedDiagnosisCausalPhrase distinguishes the fixture's observed timeout
-// impact and the limits of its evidence from assertions about a hidden cause.
-func supportedDiagnosisCausalPhrase(before, phrase, after string) bool {
-	after = strings.TrimSpace(after)
-	switch phrase {
-	case "due to", "is due to", "was due to":
-		for _, limitation := range []string{"synthetic nature", "limited evidence", "incomplete evidence", "lack of evidence"} {
-			if strings.HasPrefix(after, limitation) {
-				return true
-			}
-		}
-		return containsAny(before, "checkout", "customer") && containsAny(before, "fail", "delay") &&
-			containsAny(after, "checkout timeout", "api timeout", "timeout rate") && !containsAny(after, "upstream", "payment", "dependency")
-	case "resulted in", "led to", "causes the", "caused the":
-		return containsAny(before, "timeout", "timed out", "timing out") && !containsAny(before, "upstream", "payment", "dependency") &&
-			containsAny(after, "checkout", "customer") && containsAny(after, "fail", "delay", "unable")
-	default:
-		return false
-	}
 }
 
 // splitDiagnosisClauses keeps negation and uncertainty local to one claim, so

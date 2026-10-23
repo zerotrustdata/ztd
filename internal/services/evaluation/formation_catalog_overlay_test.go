@@ -54,7 +54,7 @@ func TestApplyFormationCatalogOverlayAddsAndRemoves(t *testing.T) {
 	require.Len(t, topologies.Formations(), 5)
 
 	_, err = topologies.Formation("test-new-formation")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	_, err = topologies.Formation("gemma-cascade")
 	assert.ErrorIs(t, err, constants.ErrFormationInvalid)
 }

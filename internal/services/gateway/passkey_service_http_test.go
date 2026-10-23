@@ -77,7 +77,6 @@ func TestPasskeyRegisterChallenge(t *testing.T) {
 			body:       map[string]string{},
 			wantStatus: http.StatusBadRequest,
 			wantJSON: func(t *testing.T, body passkeyErrorResponse) {
-				t.Helper()
 				assert.Contains(t, body.Error, "user_id")
 			},
 		},
@@ -514,7 +513,7 @@ func TestPasskeyReadBodyRejectsOversized(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	_, err := svc.readBody(rr, req)
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "http: request body too large")
 }
 

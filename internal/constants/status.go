@@ -380,18 +380,13 @@ const (
 	SessionKeyPrefixWeb      SessionKeyPrefix = "web_session"
 )
 
-// SuspendedTxStatus is a typed string for the lifecycle state of a stored
-// suspended transaction. A decided transaction leaves the store, so these
-// describe only rows still awaiting or undergoing execution.
+// SuspendedTxStatus is a typed string for suspended transaction status.
 type SuspendedTxStatus string
 
 const (
-	// SuspendedTxStatusPending is an unclaimed, unexpired transaction awaiting L3.
-	SuspendedTxStatusPending SuspendedTxStatus = "pending"
-	// SuspendedTxStatusClaimed is an approved transaction whose execution is in flight.
-	SuspendedTxStatusClaimed SuspendedTxStatus = "claimed"
-	// SuspendedTxStatusExpired is an unclaimed transaction past its expiry.
-	SuspendedTxStatusExpired SuspendedTxStatus = "expired"
+	SuspendedTxStatusPending           SuspendedTxStatus = "pending"
+	SuspendedTxStatusApproved          SuspendedTxStatus = "approved"
+	SuspendedTxStatusExpiredOrNotFound SuspendedTxStatus = "expired_or_not_found"
 )
 
 // GatewayResponseStatus is a typed string for the status field returned in

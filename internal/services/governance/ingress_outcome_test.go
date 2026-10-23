@@ -93,7 +93,7 @@ func TestDecodeIngressFailure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rejection, gotRefusal, err := DecodeIngressFailure(tt.body)
 			if tt.wantUntyped {
-				require.ErrorIs(t, err, constants.ErrIngressResponseUntyped)
+				assert.ErrorIs(t, err, constants.ErrIngressResponseUntyped)
 				assert.Nil(t, rejection)
 				assert.Nil(t, gotRefusal)
 				return

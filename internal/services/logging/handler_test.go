@@ -10,6 +10,7 @@ package logging
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -306,7 +307,7 @@ func TestNewLogger(t *testing.T) {
 func TestParseLogLevel_ErrorsIs(t *testing.T) {
 	_, err := parseLogLevel("bogus")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInvalidLogLevel, "error should wrap constants.ErrInvalidLogLevel")
+	assert.True(t, errors.Is(err, constants.ErrInvalidLogLevel), "error should wrap constants.ErrInvalidLogLevel")
 }
 
 func TestLogHandler_Handle_NoAttrs(t *testing.T) {

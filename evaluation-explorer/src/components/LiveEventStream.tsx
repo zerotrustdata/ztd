@@ -25,103 +25,6 @@ import { formatNumber } from '../utils/format';
 import { LIVE_EVENT_RETENTION_LIMIT } from '../constants';
 const STREAM_PAGE_SIZE = 25;
 const STREAM_EMPTY_METRIC = '--';
-const TRIBUNAL_VOTE_PREFIX = 'tribunal vote\n';
-
-/** Canonical Tribunal seats with display titles describing their member stances. */
-const TRIBUNAL_SEATS = [
-  { id: 'axiom', name: 'Axiom', office: 'Coherent Composer', symbol: '✶' },
-  { id: 'concord', name: 'Concord', office: 'Vigilant Guardian', symbol: '⛨' },
-  { id: 'variance', name: 'Variance', office: 'Exhaustive Analyst', symbol: '⋮' },
-  { id: 'pragma', name: 'Pragma', office: 'Practical Tactician', symbol: '≡' },
-  { id: 'nemesis', name: 'Nemesis', office: 'Endemic Adversary', symbol: '⚔' },
-] as const;
-
-type TribunalSeatId = (typeof TRIBUNAL_SEATS)[number]['id'];
-
-function isTribunalVoteEvent(event: LiveEvent): boolean {
-  return event.stage_label?.startsWith(TRIBUNAL_VOTE_PREFIX) ?? false;
-}
-
-/** The audit record carried on a consensus-posture vote event, unchanged. */
-function tribunalVoteRecord(event: LiveEvent): Record<string, unknown> | undefined {
-  if (!isTribunalVoteEvent(event) || event.stage_label === undefined) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(event.stage_label.slice(TRIBUNAL_VOTE_PREFIX.length));
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
-    return parsed as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
-}
-
-function tribunalSeatId(record: Record<string, unknown>): TribunalSeatId | undefined {
-  const member = record.member_app_id;
-  if (typeof member !== 'string' || !member.startsWith('tribunal-')) return undefined;
-  const id = member.slice('tribunal-'.length);
-  return TRIBUNAL_SEATS.some((seat) => seat.id === id) ? id as TribunalSeatId : undefined;
-}
-
-type SeatVotes = Map<TribunalSeatId, Record<string, unknown>>;
-
-function assignmentRowKey(event: LiveEvent): string {
-  return `${event.dataset_id}:${event.run_id}:${event.assignment_id}`;
-}
-
-/** Vote events carry no assignment identity, so a vote belongs to the assignment
- *  whose activity was most recent when it arrived. The next assignment's activity
- *  moves later votes to its own row. Within a row only the latest round shows,
- *  one vote per seat. */
-function tribunalVotesByAssignment(events: LiveEvent[]): Map<string, SeatVotes> {
-  const byTime = (left: LiveEvent, right: LiveEvent) => left.observed_at.localeCompare(right.observed_at);
-  const activity = events.filter((event) => event.assignment_id && !isTribunalVoteEvent(event)).sort(byTime);
-  const votes = events.filter(isTribunalVoteEvent).sort(byTime);
-  const rounds = new Map<string, { transaction: string; seats: SeatVotes }>();
-  let cursor = -1;
-  for (const vote of votes) {
-    const record = tribunalVoteRecord(vote);
-    const seat = record ? tribunalSeatId(record) : undefined;
-    if (!record || !seat) continue;
-    while (cursor + 1 < activity.length && activity[cursor + 1]!.observed_at <= vote.observed_at) cursor++;
-    const current = activity[cursor];
-    if (!current) continue;
-    const key = assignmentRowKey(current);
-    const transaction = typeof record.transaction_id === 'string' ? record.transaction_id : '';
-    let round = rounds.get(key);
-    if (!round || round.transaction !== transaction) {
-      round = { transaction, seats: new Map() };
-      rounds.set(key, round);
-    }
-    round.seats.set(seat, record);
-  }
-  return new Map([...rounds].map(([key, round]) => [key, round.seats]));
-}
-
-function TribunalVotes({ votes }: { votes: SeatVotes }) {
-  return (
-    <div className="tribunal-seats" role="group" aria-label="Tribunal">
-      {TRIBUNAL_SEATS.map((seat) => {
-        const vote = votes.get(seat.id);
-        const outcome = typeof vote?.outcome === 'string' ? vote.outcome : undefined;
-        const body = (
-          <>
-            <span className="tribunal-symbol" aria-hidden="true">{seat.symbol}</span>
-            <span className="tribunal-name">{seat.name}</span>
-            <span className="tribunal-office">{seat.office}</span>
-            <span className="tribunal-outcome">{outcome ? displayLabel(outcome) : 'Pending'}</span>
-          </>
-        );
-        return vote ? (
-          <details key={seat.id} className="tribunal-seat" title={`${seat.name}, ${seat.office}`} data-outcome={outcome ?? 'pending'}>
-            <summary>{body}</summary>
-            <pre>{JSON.stringify(vote, null, 2)}</pre>
-          </details>
-        ) : (
-          <div key={seat.id} className="tribunal-seat" title={`${seat.name}, ${seat.office}`} data-outcome="pending">{body}</div>
-        );
-      })}
-    </div>
-  );
-}
 
 function eventTime(iso: string): string {
   const date = new Date(iso);
@@ -378,15 +281,13 @@ export function LiveEventStream({
   const scrollRef = useRef<HTMLDivElement>(null);
   const models = useStoreState((state) => state.models);
   const assignments = useStoreState((state) => state.assignments);
-  const activityEvents = useMemo(() => events.filter((event) => !isTribunalVoteEvent(event)), [events]);
-  const tribunalVotes = useMemo(() => tribunalVotesByAssignment(events), [events]);
 
-  const latestEvent = useMemo(() => activityEvents.reduce<LiveEvent | undefined>(
+  const latestEvent = useMemo(() => events.reduce<LiveEvent | undefined>(
     (latest, event) => !latest || event.observed_at > latest.observed_at ? event : latest, undefined,
-  ), [activityEvents]);
+  ), [events]);
   const targetEvents = useMemo(() => runScope === 'latest' && latestEvent
-    ? activityEvents.filter((event) => event.run_id === latestEvent.run_id && event.dataset_id === latestEvent.dataset_id)
-    : activityEvents, [activityEvents, runScope, latestEvent]);
+    ? events.filter((event) => event.run_id === latestEvent.run_id && event.dataset_id === latestEvent.dataset_id)
+    : events, [events, runScope, latestEvent]);
   const baseRows = useMemo(() => visibleStreamEvents(targetEvents, {
     modelFilter: 'all', kindFilter: 'all',
   }), [targetEvents]);
@@ -407,7 +308,7 @@ export function LiveEventStream({
   ).filter((category) => category !== '—'))).sort(), [baseRows, assignments]);
   const assignmentOptions = useMemo(() => Array.from(new Set(baseRows.map((event) => event.assignment_id)
     .filter((value): value is string => Boolean(value)))).sort(), [baseRows]);
-  const designatedRoles = useMemo(() => designatedRolesByAssignment(activityEvents), [activityEvents]);
+  const designatedRoles = useMemo(() => designatedRolesByAssignment(events), [events]);
   const advancedFilterCount = [kindFilter, categoryFilter, assignmentFilter, runScope].filter((value) => value !== 'all').length;
   const hasFilters = advancedFilterCount > 0 || modelFilter !== 'all';
 
@@ -490,7 +391,6 @@ export function LiveEventStream({
               <SortHeader label="Result" field="result" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              <th scope="col"><span className="sr-only">Tribunal</span></th>
               {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => <SortHeader key={key} label={label} field={key} sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />)}
               <SortHeader label="Time" field="time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             </tr></thead>
@@ -499,7 +399,6 @@ export function LiveEventStream({
                 const assignment = matchingAssignment(event, assignments);
                 const model = event.variant_id ? resolveModelSummary(models, event.dataset_id, event.variant_id) : undefined;
                 const parts = eventParts(event, assignment);
-                const rowVotes = event.assignment_id ? tribunalVotes.get(assignmentRowKey(event)) : undefined;
                 const result = streamResult(event, assignment);
                 const eventHref = event.assignment_id
                   ? `/evaluations/${event.dataset_id}/${event.run_id}/assignments/${event.assignment_id}`
@@ -525,9 +424,6 @@ export function LiveEventStream({
                     <td className="stream-model-cell">
                       {modelHref ? <Link to={modelHref} className="stream-model-link" title={model?.served_model_tag ?? event.variant_id}>{model?.served_model_tag ?? event.variant_id}</Link> : <span>Platform</span>}
                       {event.assignment_id || event.role ? <span className="stream-secondary stream-role">{streamEventRoleLabel(event, assignment, designatedRoles)}</span> : null}
-                    </td>
-                    <td className="stream-tribunal-cell">
-                      {rowVotes ? <TribunalVotes votes={rowVotes} /> : null}
                     </td>
                     {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label, format }) => {
                       const displayed = event.assignment_id

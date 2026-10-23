@@ -156,7 +156,7 @@ func TestProcessEnvelope_ConcurrentInvestigationTitleMergePreservesFields(t *tes
 	require.NotNil(t, doc)
 	assert.Equal(t, initialCaseID, rawJSONToString(t, doc.Data["case_id"]))
 	assert.Equal(t, testUserID, rawJSONToString(t, doc.Data["user_id"]))
-	assert.True(t, rawJSONToBool(t, doc.Data["case_flag"]))
+	assert.Equal(t, true, rawJSONToBool(t, doc.Data["case_flag"]))
 	assert.Equal(t, "Initial Title: Create smoke test file", rawJSONToString(t, doc.Data["case_title"]))
 	assert.Equal(t, "open", rawJSONToString(t, doc.Data["status"]))
 
@@ -198,7 +198,7 @@ func TestProcessEnvelope_ConcurrentInvestigationTitleMergePreservesFields(t *tes
 
 	assert.Equal(t, initialCaseID, rawJSONToString(t, docAfterMerge.Data["case_id"]), "case_id must survive title merge")
 	assert.Equal(t, testUserID, rawJSONToString(t, docAfterMerge.Data["user_id"]), "user_id must survive title merge")
-	assert.True(t, rawJSONToBool(t, docAfterMerge.Data["case_flag"]), "case_flag must survive title merge")
+	assert.Equal(t, true, rawJSONToBool(t, docAfterMerge.Data["case_flag"]), "case_flag must survive title merge")
 	assert.Equal(t, "open", rawJSONToString(t, docAfterMerge.Data["status"]), "status must survive title merge")
 	assert.Equal(t, "AI Generated: Create smoke test file (Refined)", rawJSONToString(t, docAfterMerge.Data["case_title"]), "case_title must be updated")
 

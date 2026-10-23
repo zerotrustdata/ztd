@@ -222,6 +222,7 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 
 	// OOB Approval UI for suspended MCP/A2A transactions
 	mux.HandleFunc(constants.APIPaths.ApprovePage, h.passkeyController.handleApprovalPage)
+	mux.HandleFunc(constants.APIPaths.ApprovalsCLIStatus, h.passkeyController.handleCLIApprovalStatus)
 	mux.HandleFunc(constants.APIPaths.ApprovalsCLIList, h.passkeyController.handleCLIListSuspended)
 
 	// Direct approve/deny for suspended transactions (RouteAuthDual — mTLS CLI

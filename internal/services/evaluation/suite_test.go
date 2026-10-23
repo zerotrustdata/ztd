@@ -158,7 +158,7 @@ func TestDecodeScenarioSuite_RejectsUnknownFieldsAndTrailingContent(t *testing.T
 	require.NoError(t, err)
 
 	_, err = DecodeScenarioSuite([]byte(`{"schema_version":"1.0.0","id":"x","version":"1","scenarios":[],"typo_field":1}`))
-	require.ErrorIs(t, err, constants.ErrEvaluationSuiteInvalid)
+	assert.ErrorIs(t, err, constants.ErrEvaluationSuiteInvalid)
 
 	_, err = DecodeScenarioSuite(append(append([]byte(nil), good...), []byte(`{}`)...))
 	assert.ErrorIs(t, err, constants.ErrEvaluationSuiteInvalid)
@@ -188,7 +188,7 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 
 	v1 := customSuite(t, "my-suite", "1.0.0", "instruction-exact-format")
 	require.NoError(t, store.CreateSuite(ctx, v1))
-	require.ErrorIs(t, store.CreateSuite(ctx, v1), constants.ErrEvaluationSuiteExists)
+	assert.ErrorIs(t, store.CreateSuite(ctx, v1), constants.ErrEvaluationSuiteExists)
 
 	summaries, err = store.ListSuites(ctx)
 	require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 	// version is refused; changed content at a new version is accepted.
 	require.NoError(t, store.UpdateSuite(ctx, v1))
 	changed := customSuite(t, "my-suite", "1.0.0", "instruction-exact-format", "tool-select-file-read")
-	require.ErrorIs(t, store.UpdateSuite(ctx, changed), constants.ErrEvaluationSuiteInvalid)
+	assert.ErrorIs(t, store.UpdateSuite(ctx, changed), constants.ErrEvaluationSuiteInvalid)
 	changed.Version = "1.1.0"
 	require.NoError(t, store.UpdateSuite(ctx, changed))
 	resolved, _, err = store.ResolveSuite(ctx, "my-suite")
@@ -222,8 +222,8 @@ func TestSuiteStore_CreateListResolveUpdateDelete(t *testing.T) {
 
 	require.NoError(t, store.DeleteSuite(ctx, "my-suite"))
 	_, _, err = store.ResolveSuite(ctx, "my-suite")
-	require.ErrorIs(t, err, constants.ErrNotFound)
-	require.ErrorIs(t, store.DeleteSuite(ctx, "my-suite"), constants.ErrNotFound)
+	assert.ErrorIs(t, err, constants.ErrNotFound)
+	assert.ErrorIs(t, store.DeleteSuite(ctx, "my-suite"), constants.ErrNotFound)
 	assert.ErrorIs(t, store.UpdateSuite(ctx, v1), constants.ErrNotFound)
 }
 
@@ -232,22 +232,22 @@ func TestSuiteStore_BuiltinSuitesAreReadOnlyAndReserved(t *testing.T) {
 	store := NewStore(newCampaignMemoryFileService())
 
 	shadow := customSuite(t, DefaultSuiteID, "9.9.9", "instruction-exact-format")
-	require.ErrorIs(t, store.CreateSuite(ctx, shadow), constants.ErrEvaluationSuiteBuiltin)
-	require.ErrorIs(t, store.UpdateSuite(ctx, shadow), constants.ErrEvaluationSuiteBuiltin)
-	require.ErrorIs(t, store.DeleteSuite(ctx, DefaultSuiteID), constants.ErrEvaluationSuiteBuiltin)
-	require.ErrorIs(t, store.DeleteSuite(ctx, SmokeSuiteID), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.CreateSuite(ctx, shadow), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.UpdateSuite(ctx, shadow), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.DeleteSuite(ctx, DefaultSuiteID), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.DeleteSuite(ctx, SmokeSuiteID), constants.ErrEvaluationSuiteBuiltin)
 
 	// The pre-rename catalog id stays reserved: a custom suite named after it
 	// would be mistaken for an old built-in run and skip grade recomputation.
 	legacy := customSuite(t, LegacyDefaultSuiteID, "1.0.0", "instruction-exact-format")
-	require.ErrorIs(t, store.CreateSuite(ctx, legacy), constants.ErrEvaluationSuiteBuiltin)
-	require.ErrorIs(t, store.UpdateSuite(ctx, legacy), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.CreateSuite(ctx, legacy), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.UpdateSuite(ctx, legacy), constants.ErrEvaluationSuiteBuiltin)
 
 	// The investigations built-in is reserved and read-only like the others.
 	investigations := customSuite(t, InvestigationsSuiteID, "9.9.9", "instruction-exact-format")
-	require.ErrorIs(t, store.CreateSuite(ctx, investigations), constants.ErrEvaluationSuiteBuiltin)
-	require.ErrorIs(t, store.UpdateSuite(ctx, investigations), constants.ErrEvaluationSuiteBuiltin)
-	require.ErrorIs(t, store.DeleteSuite(ctx, InvestigationsSuiteID), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.CreateSuite(ctx, investigations), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.UpdateSuite(ctx, investigations), constants.ErrEvaluationSuiteBuiltin)
+	assert.ErrorIs(t, store.DeleteSuite(ctx, InvestigationsSuiteID), constants.ErrEvaluationSuiteBuiltin)
 	def, builtin, err := store.ResolveSuite(ctx, InvestigationsSuiteID)
 	require.NoError(t, err)
 	assert.True(t, builtin)
@@ -275,7 +275,7 @@ func TestSuiteStore_InvalidSuiteIsNeverStored(t *testing.T) {
 	bad := customSuite(t, "bad-suite", "1.0.0", "instruction-exact-format")
 	bad.Scenarios[0].AllowedTools = []string{"no_such_tool"}
 
-	require.ErrorIs(t, store.CreateSuite(ctx, bad), constants.ErrEvaluationScenarioContractInvalid)
+	assert.ErrorIs(t, store.CreateSuite(ctx, bad), constants.ErrEvaluationScenarioContractInvalid)
 	_, _, err := store.ResolveSuite(ctx, "bad-suite")
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
@@ -294,7 +294,7 @@ func TestSuiteStore_LoadSuiteCatalogServesBuiltinsAndRejectsUnknownIDs(t *testin
 	assert.Len(t, catalog.GetScenarios(), SmokeGateScenarioCount)
 
 	_, _, err = store.LoadSuiteCatalog(ctx, "never-created")
-	require.ErrorIs(t, err, constants.ErrNotFound)
+	assert.ErrorIs(t, err, constants.ErrNotFound)
 	_, _, err = store.LoadSuiteCatalog(ctx, "../escape")
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }

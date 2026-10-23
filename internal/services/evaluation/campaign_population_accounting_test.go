@@ -43,7 +43,7 @@ func TestCampaignPopulationAccountant_PartialRunReportsCoverageGap(t *testing.T)
 	assert.Equal(t, uint32(count), report.ScheduledAssignments)
 	assert.Equal(t, uint32(1), report.TerminalCount)
 	assert.Equal(t, uint32(count-1), report.QueuedCount)
-	assert.Empty(t, report.MissingCells)
+	assert.Len(t, report.MissingCells, 0)
 	assert.NotEmpty(t, report.TerminalWithoutResult)
 }
 

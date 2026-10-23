@@ -25,7 +25,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestL4Warden_Consensus_ValidNonMutationPasses verifies that a valid
@@ -557,7 +556,7 @@ func TestL4Warden_L2QuorumVerification(t *testing.T) {
 				assert.ErrorIs(t, err, tc.wantErr)
 				return
 			}
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			if verified != nil {
 				assert.Equal(t, tc.wantL2, verified.L2Status)
 			}

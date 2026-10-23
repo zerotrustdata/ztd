@@ -9,6 +9,7 @@ package storage
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -43,7 +44,6 @@ func newLocalEvidenceFixture(t *testing.T) (fs.RuntimeFileService, *vault.Vault,
 }
 
 func localEvidenceConfig(t *testing.T, fileSvc fs.RuntimeFileService, v *vault.Vault, auditStore *SQLAuditStore) LocalExecutionEvidenceConfig {
-	t.Helper()
 	return LocalExecutionEvidenceConfig{
 		FileSvc:    fileSvc,
 		Vault:      v,
@@ -81,7 +81,7 @@ func TestOpenLocalExecutionEvidence_RequiresDependencies(t *testing.T) {
 			tc.mutate(&cfg)
 			evidence, err := OpenLocalExecutionEvidence(cfg)
 			require.Nil(t, evidence)
-			require.ErrorIs(t, err, tc.wantErr, "err = %v, want %v", err, tc.wantErr)
+			require.True(t, errors.Is(err, tc.wantErr), "err = %v, want %v", err, tc.wantErr)
 		})
 	}
 }

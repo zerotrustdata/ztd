@@ -4,7 +4,7 @@ title: Generator-Neutral Builder Guide
 audience: SPA builders and frontend developers
 status: current
 version: v1.3.0
-last_updated: 2026-10-23
+last_updated: 2026-10-22
 owners:
   - docs/guides/build_observe_frontend.md
   - ztd-adapter/
@@ -51,7 +51,7 @@ This guide covers the owner-local observe frontend specifically and the audited 
 
 ## Prerequisites and workflow
 
-The builder output is a browser SPA. The [ztd-adapter package](../../ztd-adapter/package.json) declares `engines.node` as `^22.22.2 || ^24.15.0 || >=26.0.0`. The generated project uses the package manager it requires.
+The builder output is a browser SPA. Use Node.js 22.22.2+, 24.15+, or 26+ and the package manager required by the generated project.
 
 1. Consume `contract-pack/builder-prompt.md`, `runtime-config.schema.json`, `observe.openapi.json`, `event-schemas.json`, `models.ts`, and `fixtures/` as builder inputs. Do not copy the adapter's transport implementation into generated presentation code.
 2. Generate a top-level SPA that imports the built `ztd-adapter` package.
@@ -69,7 +69,7 @@ The builder output is a browser SPA. The [ztd-adapter package](../../ztd-adapter
 </script>
 ```
 
-4. Connect the origin to the Gateway with `./ztd gw connect <frontend-origin>`, then open the built SPA in a top-level browser tab. The command validates the origin, starts the local Gateway or restarts it only with explicit confirmation, requests consent for certificate trust, verifies HTTPS and CORS, and prints a frontend prompt.
+4. Connect the origin to the Gateway with `./ztd gw connect <frontend-origin>`, then open the built SPA in a top-level browser tab.
 5. In live mode, authenticate with WebAuthn, load the typed observe bootstrap snapshot, and start `SseStream`. On `onReconcile`, reload the bootstrap snapshot. On `onUnauthenticated`, redirect to sign-in.
 
 ## Architecture
@@ -84,17 +84,17 @@ The builder output is a browser SPA. The [ztd-adapter package](../../ztd-adapter
                       https://localhost:8443 (ztd Gateway)
 ```
 
-The generated SPA wraps the audited `ztd-adapter` package. The adapter owns runtime configuration parsing, endpoint allowlist enforcement, credentialed fetch, WebAuthn ceremonies, SSE normalization, reconciliation signals, typed stores, and the safe presentation registry (`ztd-adapter/src/presentation/`, not exported from the package root).
+The generated SPA wraps the audited `ztd-adapter` package. The adapter owns runtime configuration parsing, endpoint allowlist enforcement, credentialed fetch, WebAuthn ceremonies, SSE normalization, reconciliation signals, typed stores, and the safe presentation registry.
 
 ## The audited adapter
 
 The `ztd-adapter/` package is the audited integration core. It exposes:
 
-- `parseRuntimeConfig`: Validates a parsed `FrontendRuntimeConfig` object, such as the JSON read from the `ztd-runtime-config` script tag. Throws `RuntimeConfigError` for unknown fields, credential-like keys, origins that are not HTTPS or loopback HTTP, origins with userinfo, fragment, path, or query, and a `passkey_rp_id` that is not a bare domain. Source: [runtime_config.ts](../../ztd-adapter/src/config/runtime_config.ts).
-- `createCredentialedFetch`: Enforces allowlisted operations before any network call, throwing `EndpointNotAllowedError` for other paths, and sets `credentials: 'include'`. Source: [fetch.ts](../../ztd-adapter/src/api/fetch.ts), [allowlist.ts](../../ztd-adapter/src/api/allowlist.ts).
+- `parseRuntimeConfig`: Validates a parsed `FrontendRuntimeConfig` object, such as the JSON read from the `ztd-runtime-config` script tag.
+- `createCredentialedFetch`: Enforces allowlisted operations and sets `credentials: 'include'`.
 - `createObserveClient`: Typed client for the 7 observe endpoints (bootstrap, runs, run detail, evals, eval detail, downloads, download detail).
-- `registerPasskey`, `authenticatePasskey`, `enrollPasskey`: WebAuthn ceremonies. Each takes a `CredentialedFetch` as its first argument.
-- `SseStream`: Manages EventSource on `/api/v1/sse/stream` with `withCredentials: true`, reconnect backoff (doubling from 1 second, capped at 30 seconds by default), a 10-second open timeout, and reconciliation signals typed as `ReconcileReason`. Source: [stream.ts](../../ztd-adapter/src/sse/stream.ts).
+- `registerPasskey`, `authenticatePasskey`, `enrollPasskey`: WebAuthn ceremonies.
+- `SseStream`: Manages EventSource on `/api/v1/sse/stream` with reconnect backoff and reconciliation signals.
 - `normalizeGatewayEvent`: Parses outer envelopes and validates recognized payloads.
 - `adapterReducer`: Pure reducers for auth, projections, narrative, transport, and runtime feature stores.
 - Error classes, for `instanceof` checks: `RuntimeConfigError` (invalid runtime config), `GatewayFetchError` (failed Gateway request), `EndpointNotAllowedError` (operation outside the allowlist), `ObserveResponseValidationError` (malformed observe response), `NormalizedEventError` (malformed SSE event).
@@ -130,8 +130,8 @@ The `ztd-adapter/contract-pack/` directory contains deterministic, generator-neu
 - Preserves the audited adapter boundary.
 - Executes all requests in the top-level browser context.
 - Uses absolute configured Gateway URLs.
-- Sends credentials cross-origin. The Gateway sets the web session cookie `HttpOnly` and `Secure`, with `SameSite=None` when the Gateway has allowed origins configured.
-- Normalizes SSE events into bounded presentation queues. The narrative keeps the most recent 200 rows by default (`NARRATIVE_MAX_ROWS`) and ignores duplicate event IDs.
+- Passes credentials cross-origin via HttpOnly session cookies.
+- Normalizes SSE events into bounded presentation queues.
 
 ## Display requirements
 

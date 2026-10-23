@@ -334,42 +334,35 @@ func TestApproveFlow(t *testing.T) {
 		assert.Contains(t, m.ledger[0].message, "No pending approvals")
 	})
 
-	completedReceipt := func(txHash string) *operatorv1.ActionReceipt {
-		return &operatorv1.ActionReceipt{
-			TransactionHash: txHash,
-			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
-			L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
-		}
-	}
-
-	t.Run("approval.completed with a completed receipt is approved without a status request", func(t *testing.T) {
-		session := &testSession{}
+	t.Run("approval.completed is verified over mTLS, then pending is re-listed", func(t *testing.T) {
+		session := &testSession{statusJSON: `{"status":"approved","tool_name":"run_command"}`}
 		m := NewModel(Options{Session: session})
 		m.awaitingApproval["tx-1"] = struct{}{}
 
-		model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1", Receipt: completedReceipt("tx-1")})
+		model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1"})
 		m = model.(Model)
 		assert.Equal(t, StatusPassed, m.pipeline[StageL3].status)
-		assert.NotContains(t, m.awaitingApproval, "tx-1")
-		last := m.ledger[len(m.ledger)-1]
-		assert.Equal(t, LevelInfo, last.level)
-		assert.Contains(t, last.message, "approved")
 		require.NotNil(t, cmd)
-		_, ok := cmd().(PendingApprovalsMsg)
-		assert.True(t, ok, "an approval re-lists pending approvals")
-		assert.Equal(t, []string{constants.APIPaths.ApprovalsCLIList}, session.requestedPaths(), "the executed transaction has left the pending store; only the list is requested")
+		verified, ok := cmd().(ApprovalVerifiedMsg)
+		require.True(t, ok)
+		require.NoError(t, verified.Err)
+		assert.Contains(t, session.requestedPaths(), constants.APIPaths.ApprovalsCLIStatus+"tx-1")
+
+		model, cmd = m.Update(verified)
+		m = model.(Model)
+		assert.NotContains(t, m.awaitingApproval, "tx-1")
+		assert.Contains(t, m.ledger[len(m.ledger)-1].message, "approved (run_command)")
+		require.NotNil(t, cmd)
+		_, ok = cmd().(PendingApprovalsMsg)
+		assert.True(t, ok, "a verified approval re-lists pending approvals")
 	})
 
-	t.Run("a deny is reported denied, never approved", func(t *testing.T) {
-		m := NewModel(Options{Session: &testSession{}})
+	t.Run("a deny is reported denied, never verified as approved", func(t *testing.T) {
+		session := &testSession{statusJSON: `{"status":"approved"}`}
+		m := NewModel(Options{Session: session})
 		m.awaitingApproval["tx-1"] = struct{}{}
 
-		model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1", Receipt: &operatorv1.ActionReceipt{
-			TransactionHash: "tx-1",
-			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-			FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
-			RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
-		}})
+		model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1", Denied: true})
 		m = model.(Model)
 		assert.Equal(t, StatusFailed, m.pipeline[StageL3].status)
 		assert.NotContains(t, m.awaitingApproval, "tx-1")
@@ -379,45 +372,21 @@ func TestApproveFlow(t *testing.T) {
 		require.NotNil(t, cmd)
 		_, ok := cmd().(PendingApprovalsMsg)
 		assert.True(t, ok, "a deny re-lists pending approvals")
+		assert.NotContains(t, session.requestedPaths(), constants.APIPaths.ApprovalsCLIStatus+"tx-1")
 	})
 
-	failures := []struct {
-		name    string
-		receipt *operatorv1.ActionReceipt
-		want    string
-	}{
-		{name: "missing receipt", receipt: nil, want: "receipt"},
-		{name: "receipt for another transaction", receipt: completedReceipt("tx-other"), want: "does not match"},
-		{name: "failed execution", receipt: &operatorv1.ActionReceipt{
-			TransactionHash: "tx-1",
-			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-			L3Status:        operatorv1.L3Status_L3_STATUS_REQUIRED_VALID,
-		}, want: "did not complete"},
-		{name: "completed without L3 proof", receipt: &operatorv1.ActionReceipt{
-			TransactionHash: "tx-1",
-			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
-			L3Status:        operatorv1.L3Status_L3_STATUS_NOT_REQUIRED,
-		}, want: "L3 proof"},
-	}
-	for _, tc := range failures {
-		t.Run("an approval with a "+tc.name+" is reported as a failure", func(t *testing.T) {
-			m := NewModel(Options{Session: &testSession{}})
-			m.awaitingApproval["tx-1"] = struct{}{}
+	t.Run("a non-approved status is reported as a failure", func(t *testing.T) {
+		m := NewModel(Options{Session: &testSession{statusJSON: `{"status":"expired_or_not_found"}`}})
+		_, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1"})
+		verified := cmd().(ApprovalVerifiedMsg)
+		require.Error(t, verified.Err)
 
-			model, cmd := m.Update(ApprovalCompletedMsg{TxHash: "tx-1", Receipt: tc.receipt})
-			m = model.(Model)
-			assert.Equal(t, StatusFailed, m.pipeline[StageL3].status)
-			assert.NotContains(t, m.awaitingApproval, "tx-1")
-			last := m.ledger[len(m.ledger)-1]
-			assert.Equal(t, LevelWarn, last.level)
-			assert.Contains(t, last.message, "Approval failed")
-			assert.Contains(t, last.message, tc.want)
-			assert.NotContains(t, last.message, "approved")
-			require.NotNil(t, cmd)
-			_, ok := cmd().(PendingApprovalsMsg)
-			assert.True(t, ok, "a failed approval re-lists pending approvals")
-		})
-	}
+		model, _ := m.Update(verified)
+		m = model.(Model)
+		last := m.ledger[len(m.ledger)-1]
+		assert.Equal(t, LevelWarn, last.level)
+		assert.Contains(t, last.message, "expired or not found")
+	})
 }
 
 func TestApplyOperatorsMsg(t *testing.T) {
@@ -731,7 +700,7 @@ func TestPipelineMsgSchedulesTickForBlinkingState(t *testing.T) {
 func TestViewQuitting(t *testing.T) {
 	m := NewModel(Options{})
 	m.quitting = true
-	assert.Empty(t, m.View())
+	assert.Equal(t, "", m.View())
 }
 
 func TestViewRenders(t *testing.T) {

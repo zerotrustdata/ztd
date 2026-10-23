@@ -184,7 +184,7 @@ func TestDoRequest_UnauthorizedIsTypedStatus(t *testing.T) {
 
 	_, err := client.DoRequest("GET", "/api/test", nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.True(t, IsUnauthorized(err))
 	var statusErr *StatusError
 	require.ErrorAs(t, err, &statusErr)

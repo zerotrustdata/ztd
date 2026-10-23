@@ -8,13 +8,10 @@
 package tui
 
 import (
-	"errors"
+	"context"
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/zerotrustdata/ztd/internal/cli/auth"
-	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // handleApprovalsKey applies a key on the approvals view.
@@ -45,6 +42,16 @@ func (m Model) approveSelected() (tea.Model, tea.Cmd) {
 	open := m.openBrowser
 	return m, func() tea.Msg {
 		return ApprovalOpenedMsg{TxHash: txHash, URL: url, Err: open(url)}
+	}
+}
+
+// verifyApprovalCmd confirms a completed approval over mTLS.
+func (m Model) verifyApprovalCmd(txHash string) tea.Cmd {
+	gw := m.gw
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancel()
+		return gw.verifyApproval(ctx, txHash)
 	}
 }
 
@@ -104,24 +111,28 @@ func (m Model) applyApprovalOpenedMsg(msg ApprovalOpenedMsg) Model {
 	return m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: fmt.Sprintf("Opened browser for WebAuthn approval of tx %s: %s", shortHash(msg.TxHash), msg.URL)})
 }
 
-// applyApprovalCompletedMsg reports the outcome of a completed L3 decision
-// from the execution receipt approval.completed carries, as 'ztd auth
-// approve' does. An executed transaction has already left the pending store,
-// so the receipt is the only record of its outcome. Pending approvals are
-// re-listed.
-func (m Model) applyApprovalCompletedMsg(msg ApprovalCompletedMsg) (tea.Model, tea.Cmd) {
+// applyApprovalDeniedMsg reports a human deny. The signed L3_DENIED receipt
+// ends the transaction, so there is no approval to verify; pending approvals
+// are re-listed.
+func (m Model) applyApprovalDeniedMsg(msg ApprovalCompletedMsg) (tea.Model, tea.Cmd) {
 	delete(m.awaitingApproval, msg.TxHash)
-	err := auth.ValidateApprovalReceipt(msg.TxHash, msg.Receipt)
-	switch {
-	case err == nil:
-		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL3, Status: StatusPassed, TxID: msg.TxHash, Detail: "Approved"})
-		m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: fmt.Sprintf("✓ Transaction %s approved (receipt %s, L3 %s)", shortHash(msg.TxHash), msg.Receipt.GetStatus(), msg.Receipt.GetL3Status())})
-	case errors.Is(err, constants.ErrTxL3Denied):
-		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL3, Status: StatusFailed, TxID: msg.TxHash, Detail: "Denied"})
-		m = m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: fmt.Sprintf("✗ Transaction %s denied (signed L3_DENIED receipt)", shortHash(msg.TxHash))})
-	default:
-		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL3, Status: StatusFailed, TxID: msg.TxHash, Detail: "Approval failed"})
-		m = m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "Approval failed: " + err.Error()})
+	m = m.applyPipelineMsg(PipelineMsg{Stage: StageL3, Status: StatusFailed, TxID: msg.TxHash, Detail: "Denied"})
+	m = m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: fmt.Sprintf("✗ Transaction %s denied (signed L3_DENIED receipt)", shortHash(msg.TxHash))})
+	if m.gw == nil {
+		return m, nil
+	}
+	return m, withTimeout(m.gw.fetchPendingApprovals)
+}
+
+// applyApprovalVerifiedMsg reports the verified outcome and re-lists pending
+// approvals.
+func (m Model) applyApprovalVerifiedMsg(msg ApprovalVerifiedMsg) (tea.Model, tea.Cmd) {
+	delete(m.awaitingApproval, msg.TxHash)
+	if msg.Err != nil {
+		m = m.noteSessionError(msg.Err)
+		m = m.applyLedgerMsg(LedgerMsg{Level: LevelWarn, Message: "Approval verification failed: " + msg.Err.Error()})
+	} else {
+		m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: fmt.Sprintf("✓ Transaction %s approved (%s)", shortHash(msg.TxHash), toolLabel(msg.Status.ToolName))})
 	}
 	if m.gw == nil {
 		return m, nil

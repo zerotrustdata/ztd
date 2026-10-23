@@ -106,7 +106,7 @@ func TestStartOperator_PIDWriteFailureTerminatesChildAndLeavesNoPIDFile(t *testi
 
 	startErr := pm.StartOperator(minimalStartOpts())
 	require.Error(t, startErr, "StartOperator should fail when writePID fails")
-	require.ErrorIs(t, startErr, constants.ErrPIDWriteFailed,
+	assert.ErrorIs(t, startErr, constants.ErrPIDWriteFailed,
 		"error should wrap ErrPIDWriteFailed, got: %v", startErr)
 
 	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
@@ -126,7 +126,7 @@ func TestStartOperator_ProcessDeathDuringHealthCheckRemovesPIDFile(t *testing.T)
 
 	startErr := pm.StartOperator(minimalStartOpts())
 	require.Error(t, startErr, "StartOperator should fail when the process never becomes healthy")
-	require.ErrorIs(t, startErr, constants.ErrProcessStartFailed,
+	assert.ErrorIs(t, startErr, constants.ErrProcessStartFailed,
 		"error should wrap ErrProcessStartFailed, got: %v", startErr)
 
 	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
@@ -146,8 +146,8 @@ func TestStartOperator_ProcessDeathReturnsChildDiagnostic(t *testing.T) {
 
 	startErr := pm.StartOperator(minimalStartOpts())
 	require.Error(t, startErr)
-	require.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
-	require.ErrorContains(t, startErr, "gateway child startup diagnostic")
+	assert.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
+	assert.ErrorContains(t, startErr, "gateway child startup diagnostic")
 
 	assertNoLiveChildAndNoPIDFile(t, pm, fileSvc)
 }
@@ -173,8 +173,8 @@ func TestStartOperator_KeyStoreApprovalExtendsHealthWait(t *testing.T) {
 	opts.Notices = &notices
 	startErr := pm.StartOperator(opts)
 	require.Error(t, startErr)
-	require.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
-	require.ErrorContains(t, startErr, "key store approval denied",
+	assert.ErrorIs(t, startErr, constants.ErrProcessStartFailed)
+	assert.ErrorContains(t, startErr, "key store approval denied",
 		"the start must wait past the health budget for the child's outcome")
 	assert.Contains(t, notices.String(), "Keychain prompt")
 
@@ -264,12 +264,12 @@ func TestStartOperator_ForeignHealthServerAfterChildExitIsRejected(t *testing.T)
 	defer close(done)
 	startErrCh := make(chan error, 1)
 	go func() { startErrCh <- pm.StartOperator(opts) }()
-	go bindForeignHealthServerAfterPIDWrite(t, fileSvc, httpPort, done) //nolint:testifylint // shared helper keeps require for the test goroutine
+	go bindForeignHealthServerAfterPIDWrite(t, fileSvc, httpPort, done)
 
 	select {
 	case startErr := <-startErrCh:
 		require.Error(t, startErr, "StartOperator must not accept a foreign health server as the started child")
-		require.ErrorIs(t, startErr, constants.ErrProcessStartFailed,
+		assert.ErrorIs(t, startErr, constants.ErrProcessStartFailed,
 			"error should wrap ErrProcessStartFailed, got: %v", startErr)
 	case <-time.After(60 * time.Second):
 		t.Fatal("StartOperator did not return")
@@ -297,12 +297,12 @@ func TestStartOperator_ForeignHealthServerWhileChildAliveIsRejected(t *testing.T
 	defer close(done)
 	startErrCh := make(chan error, 1)
 	go func() { startErrCh <- pm.StartOperator(opts) }()
-	go bindForeignHealthServerAfterPIDWrite(t, fileSvc, httpPort, done) //nolint:testifylint // shared helper keeps require for the test goroutine
+	go bindForeignHealthServerAfterPIDWrite(t, fileSvc, httpPort, done)
 
 	select {
 	case startErr := <-startErrCh:
 		require.Error(t, startErr, "StartOperator must not accept a foreign health server as the started child")
-		require.ErrorIs(t, startErr, constants.ErrProcessStartFailed,
+		assert.ErrorIs(t, startErr, constants.ErrProcessStartFailed,
 			"error should wrap ErrProcessStartFailed, got: %v", startErr)
 	case <-time.After(60 * time.Second):
 		t.Fatal("StartOperator did not return")

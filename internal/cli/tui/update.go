@@ -103,7 +103,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.applyApprovalOpenedMsg(msg)
 
 	case ApprovalCompletedMsg:
-		return m.applyApprovalCompletedMsg(msg)
+		if msg.Denied {
+			return m.applyApprovalDeniedMsg(msg)
+		}
+		m = m.applyPipelineMsg(PipelineMsg{Stage: StageL3, Status: StatusPassed, TxID: msg.TxHash, Detail: "Approval completed"})
+		m = m.applyLedgerMsg(LedgerMsg{Level: LevelInfo, Message: "Approval completed for tx " + msg.TxHash + " — verifying"})
+		if m.gw != nil && msg.TxHash != "" {
+			return m, m.verifyApprovalCmd(msg.TxHash)
+		}
+
+	case ApprovalVerifiedMsg:
+		return m.applyApprovalVerifiedMsg(msg)
 
 	case ScenarioCompleteMsg:
 		level := LevelCritical

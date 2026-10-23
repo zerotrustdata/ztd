@@ -13,7 +13,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/browserorigin"
 	"github.com/zerotrustdata/ztd/internal/cli/frontendverify"
@@ -34,7 +33,7 @@ func newRenderCmd() (*cobra.Command, *bytes.Buffer) {
 // URL, and Gateway state.
 func TestRenderConnectReview_PrintsOriginRPIDAndAPIURL(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	cmd, buf := newRenderCmd()
 	renderConnectReview(cmd, origin, "your-app.lovable.app", "ztd", "https://localhost:8443", gatewayStateStopped)
@@ -51,7 +50,7 @@ func TestRenderConnectReview_PrintsOriginRPIDAndAPIURL(t *testing.T) {
 // state label is printed when the Gateway is already correctly configured.
 func TestRenderConnectReview_PrintsMatchingState(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	cmd, buf := newRenderCmd()
 	renderConnectReview(cmd, origin, "your-app.lovable.app", "ztd", "https://localhost:8443", gatewayStateMatching)

@@ -3,8 +3,8 @@ doc_id: compliance-alignment
 title: Compliance Alignment
 audience: compliance officers, auditors, security architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - protocol/constants/compliance/
   - internal/services/compliance/
@@ -39,7 +39,7 @@ ztd disclaims broad claims of external certification, accreditation, commercial 
 | **Reviewed Crosswalk** | `protocol/constants/compliance/fedramp-nist-crosswalk.json` | Content-addressed mappings from framework controls to atomic assertions, declaring mapping types, review timestamps, and reviewers. |
 | **Protocol Contracts** | `protocol/proto/ztd/compliance/v1/compliance.proto` | Strongly typed Protobuf schemas defining assessment scopes, evidence nodes, assertion evaluations, framework profiles, and report manifests. |
 | **FedRAMP KSI Catalog** | `docs/reference/ksi-catalog.json` | 31 machine-evaluable Key Security Indicator (KSI) definitions spanning ten operational categories under FedRAMP 20x. |
-| **COSAiS Overlays** | `docs/reference/cosais-overlays.json` | Machine-readable AI security control overlay definitions, all in `draft` status. |
+| **COSAiS Overlays** | `docs/reference/cosais-overlays.json` | Machine-readable AI security control overlay definitions, all in `draft` status, referenced by platform KSI definitions. |
 
 The assertion, framework, and crosswalk catalogs are compact, content-addressed documents with embedded version identifiers and SHA-256 digests. `protocol/constants/compliance/catalogs.go` embeds them into the binary. `LoadCanonicalCatalogs` in `internal/services/compliance/catalog/` verifies each digest and runs `ValidateCatalogSet`, which rejects duplicate IDs and invalid catalog semantics.
 
@@ -49,7 +49,7 @@ The platform reference catalogs define mappings for two primary frameworks:
 - **FedRAMP 20x (CR26-2026-06-24)**: 31 Key Security Indicators (14 mapped to platform assertions, 17 unsupported).
 - **NIST SP 800-53 Rev. 5**: 100 evaluated controls (20 mapped to platform assertions, 80 unsupported).
 
-The framework catalog declares only `fedramp-20x` and `nist-sp-800-53`. No other framework (for example SOC 2, ISO/IEC 27001, HIPAA, PCI DSS, or GDPR) has a catalog in this repository, so none receives generated framework assessments. Relevant architectural capabilities are never presented as evaluated compliance outcomes without a corresponding reviewed crosswalk.
+Frameworks lacking reviewed, canonical JSON crosswalks in this repository (e.g. SOC 2, ISO/IEC 27001, HIPAA, PCI DSS, GDPR) do not receive generated framework assessments. Relevant architectural capabilities are never presented as evaluated compliance outcomes without a corresponding reviewed crosswalk.
 
 ## The Proof-Backed Assessment Pipeline
 
@@ -66,7 +66,7 @@ flowchart TD
     G --> H["Deterministic Renderers\n(OSCAL 1.1.2, JSON, Markdown, CSV, HTML, CLI)"]
 ```
 
-1. **Read-Only Ingestion**: Dedicated importers in `internal/services/compliance/evidence/` decode action receipts, persistence attestations, SQLite audit records, commitment ledgers, ledger commit and state records, KSI history snapshots, build and configuration attestations, and operational export packages without modifying assessed runtime state. Evaluation runs are read from the eval run directories named by `--eval-run`.
+1. **Read-Only Ingestion**: Dedicated importers decode persisted evaluation campaigns, action receipts, persistence attestations, SQLite audit records, commitment ledgers, git file ledgers, KSI records, and build metadata without modifying assessed runtime state.
 2. **Evidence Graph Construction**: The evidence graph validates content-addressed hashes, resolves cross-references, rejects cyclic dependencies, and verifies that all artifacts bind to the declared `AssessmentScope`.
 3. **Atomic Assertion Grading**: Registered, versioned graders evaluate evidence against the 13 catalog assertions, assigning achieved evidence levels based on reproducible cryptographic checks.
 4. **Crosswalk Projection**: The engine maps assertion outcomes through the reviewed crosswalk, preserving mapping classifications (`supporting`, `partial`, `full`) without altering underlying assertion grades.
@@ -82,17 +82,17 @@ Compliance evaluation outcomes use unambiguous, machine-readable statuses:
 | :--- | :--- |
 | **`satisfied`** | Cryptographically verified, scope-bound evidence satisfies the full passing rule defined by the assertion or control. |
 | **`not_satisfied`** | Verified evidence demonstrates an explicit failure of the declared technical assertion rule. |
-| **`not_applicable`** | The assertion is formally excluded by its declared component scope, applicable action classes, or applicable arms (`assertion-catalog.json`). |
+| **`not_applicable`** | The assertion or control is formally excluded by component scope, action class, or deployment mode. |
 | **`unverifiable`** | Required evidence is absent, stale, malformed, unsupported, or cryptographically invalid, and the assertion's `missing_evidence_policy` is `unverifiable`. The engine refuses to guess an outcome. |
 | **`customer_attestation_required`** | The requirement demands organizational, policy, or operational evidence that only the customer can supply. |
 
-Crosswalk mappings maintain `supporting`, `partial`, `full`, and `not_applicable` classifications. The framework grader derives control status only from `full` mappings. `supporting` and `partial` mappings record a limitation on the control assessment, and `not_applicable` mappings are excluded. A control with no `full` mapping resolves to `unverifiable`. The reviewed crosswalk currently declares only `supporting` mappings, so no framework control resolves to `satisfied` from it.
+Crosswalk mappings maintain `supporting`, `partial`, `full`, and `not_applicable` classifications. The framework grader derives control status only from `full` mappings. `supporting` and `partial` mappings record a limitation on the control assessment, and `not_applicable` mappings are excluded. A control with no `full` mapping resolves to `unverifiable`.
 
 ## Generating and Verifying Evidence
 
 ### Verify Persisted Evaluation Evidence
 
-Validate imported evaluation runs as a content-addressed evidence graph. Eval runs are read from `data/eval/runs/<run-id>/` under the runtime tree. Set the shell variable `EVAL_RUN_ID` to the eval run ID to validate:
+Validate imported evaluation runs as a content-addressed evidence graph. Set the shell variable `EVAL_RUN_ID` to the eval run ID to validate:
 
 ```bash
 ztd compliance evidence-graph verify --eval-run "$EVAL_RUN_ID"
@@ -114,7 +114,7 @@ ztd compliance report generate \
   --evidence-trust "$EVIDENCE_TRUST_FILE"
 ```
 
-Generation defaults to the `restricted` profile. The `--profile public` flag is accepted only when every admitted evidence source is public.
+Generation defaults to the `restricted` profile. The `--profile public` flag is accepted only when all admitted evidence sources are explicitly marked public-safe.
 
 The bundle is sealed at rest under `.ztd/reports/<report-id>/` with the runtime vault, because it carries the raw sources the verifier replays. To disclose it, export the plaintext copy to a new directory outside the runtime root. Set `EXPORT_DIR` to a directory outside the runtime root that does not exist yet:
 
@@ -124,7 +124,7 @@ ztd compliance report export --report-id "$REPORT_ID" --out "$EXPORT_DIR"
 
 ### Offline Independent Verification
 
-Verify an exported bundle against trust policies that are supplied from outside the bundle. Set `REPORT_TRUST_FILE` to the assessed report trust JSON file and `ASSESSED_EVIDENCE_TRUST_FILE` to the assessed evidence trust JSON file, both kept outside the bundle:
+Verify an exported bundle offline without network access or ambient runtime credentials. Set `REPORT_TRUST_FILE` to the assessed report trust JSON file and `ASSESSED_EVIDENCE_TRUST_FILE` to the assessed evidence trust JSON file, both kept outside the bundle:
 
 ```bash
 ztd compliance report verify "$EXPORT_DIR/manifest.json" \
@@ -132,17 +132,21 @@ ztd compliance report verify "$EXPORT_DIR/manifest.json" \
   --evidence-trust "$ASSESSED_EVIDENCE_TRUST_FILE"
 ```
 
-`--evidence-trust` is required when the bundle represents signed source evidence; the verifier rejects it when it is missing. `--trust-policy` is always required.
-
-Verification checks:
-- Report trust (`--trust-policy`) and evidence signer trust (`--evidence-trust`) are distinct inputs and must lie outside the bundle root.
-- Directory inventories, protected payload hashes, checksum roots, and Ed25519 signatures.
-- Registered source verification reports and decision replay against the signed analysis.
-- Recorded rendered output formats against the signed analysis.
+Verification enforces complete offline independence:
+- Report trust (`--trust-policy`) and evidence signer trust (`--evidence-trust`) are distinct, external inputs outside the bundle.
+- Verifies directory inventories, protected payload hashes, checksum roots, and Ed25519 signatures.
+- Re-executes every registered source verifier, comparing reproduced evidence with signed analysis.
+- Re-renders all output formats to confirm bit-for-bit rendering determinism.
 
 ## Responsibility Boundaries
 
-Catalog validation accepts five responsibility values: `platform`, `customer`, `shared`, `inherited`, and `assessor` (`internal/services/compliance/catalog/validation.go`). The current catalogs use `platform` and `shared` for assertions, `shared` and `customer` for framework controls, and `shared` for crosswalk mappings. `inherited` and `assessor` are accepted values with no current assignments.
+The framework catalog enforces clear separation of operational responsibilities:
+
+- **Platform**: Technical behavior operated by `ztd` and verified via local cryptographic evidence.
+- **Customer**: Workforce management, organizational policy, physical security, and business continuity operated by the deploying organization.
+- **Shared**: Controls requiring joint satisfaction, where `ztd` satisfies the technical portion and the customer satisfies organizational policies.
+- **Inherited**: Controls satisfied by underlying infrastructure or cloud service providers.
+- **Assessor**: Formal assessment, audit, or attestation determinations rendered by an independent third-party auditor.
 
 ## Procedures for Interpreting Compliance Alignment
 
@@ -154,7 +158,7 @@ Catalog validation accepts five responsibility values: `platform`, `customer`, `
 
 ## Related Documentation
 
-- [Proof-Backed Compliance Evidence](compliance-evidence.md): Atomic assertion specifications, evidence levels, and evidence graph internals.
+- [Proof-Backed Compliance Evidence](compliance-evidence.md): Atomic assertion specifications, evidence levels (L0–L5), and evidence graph internals.
 - [FIPS 140-3 Module Linkage and Scope](fips140-3.md): Cryptographic module boundary, pure-Go linkage, and runtime verification.
 - [Governance Architecture](../architecture/governance.md): Five-layer governance framework and posture policies.
 - [Authentication Architecture](../architecture/auth.md): Identity enrollment, mTLS, and passkey authentication.

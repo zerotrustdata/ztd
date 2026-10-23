@@ -497,7 +497,7 @@ func TestValidateVerificationReportEnforcesIntegrityResultConsistency(t *testing
 			assert.ErrorIs(t, err, tt.want)
 		})
 	}
-	require.NoError(t, catalog.ValidateVerificationReport(valid()))
+	assert.NoError(t, catalog.ValidateVerificationReport(valid()))
 	invalid := valid()
 	invalid.Valid = false
 	invalid.Failures = []*compliancev1.VerificationFailure{{Code: "changed", SubjectRef: "manifest.json", Reason: "digest mismatch"}}
@@ -557,7 +557,7 @@ func TestValidateVerificationReportEnforcesTypedCheckConsistency(t *testing.T) {
 		}},
 	}
 
-	require.NoError(t, catalog.ValidateVerificationReport(valid()))
+	assert.NoError(t, catalog.ValidateVerificationReport(valid()))
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			report := valid()

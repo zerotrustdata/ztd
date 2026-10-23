@@ -208,7 +208,7 @@ func TestBuildGovernanceEnvelope_L1RefusesForbiddenCommandBeforeL3Gate(t *testin
 			params := baseEnvelopeParams(constants.Event.Operator.Command.Requested, maliciousCommandPayload(t), posture, testDoctrine())
 			_, err := BuildGovernanceEnvelope(params)
 			require.Error(t, err)
-			require.ErrorIs(t, err, constants.ErrTxL1ValidationFailed)
+			assert.ErrorIs(t, err, constants.ErrTxL1ValidationFailed)
 			assert.NotErrorIs(t, err, constants.ErrTxL3ProofUnmintable)
 		})
 	}
@@ -321,7 +321,7 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 
 			if tc.wantErr != nil {
 				require.Error(t, err)
-				require.ErrorIs(t, err, tc.wantErr)
+				assert.ErrorIs(t, err, tc.wantErr)
 				assert.False(t, deliberator.called, "deliberator must not be called when the dispatch fails before L2")
 				return
 			}

@@ -140,7 +140,7 @@ func TestAuthContextCmdWithConfig_UnboundSessionFailsClosed(t *testing.T) {
 	err = cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrNotAuthenticated)
+	assert.ErrorIs(t, err, constants.ErrNotAuthenticated)
 	assert.Contains(t, err.Error(), "auth refresh")
 	assert.Equal(t, []string{constants.APIPaths.AuthCLISession}, client.GetCalls)
 }

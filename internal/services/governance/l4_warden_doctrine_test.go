@@ -252,7 +252,7 @@ func TestL4Warden_Doctrine_ForbiddenPayloadRejectedByL1(t *testing.T) {
 
 	verified, err := verifier.VerifyEnvelope(context.Background(), env)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrTxL1ValidationFailed)
+	assert.ErrorIs(t, err, constants.ErrTxL1ValidationFailed)
 	require.NotNil(t, verified)
 	assert.Nil(t, verified.DecodedPayload, "rejected envelope must not carry a decoded payload for dispatch")
 	require.NotEmpty(t, verified.DeterministicStageEvidence)

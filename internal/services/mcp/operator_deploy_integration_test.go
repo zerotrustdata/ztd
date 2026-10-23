@@ -201,7 +201,7 @@ func TestOperatorDeployTool_Execute_SSH_ResolveFailure(t *testing.T) {
 	require.Len(t, deployResult.Deployments, 1)
 	require.False(t, deployResult.Deployments[0].Success)
 	// The failure could be DNS resolution (dial failure), missing keys, or missing known_hosts
-	require.NotEmpty(t, deployResult.Deployments[0].Message, "Should have a failure message")
+	require.True(t, deployResult.Deployments[0].Message != "", "Should have a failure message")
 }
 
 func TestOperatorDeployTool_Execute_MultiHost(t *testing.T) {

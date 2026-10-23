@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"net"
 	"os/exec"
 	"sync"
@@ -185,7 +186,7 @@ func TestProxyConn_CloseIsSafeForConcurrentCallers(t *testing.T) {
 
 			for i, err := range errs {
 				if !tt.wantErr {
-					require.NoError(t, err, "caller %d", i)
+					assert.NoError(t, err, "caller %d", i)
 					continue
 				}
 				require.Error(t, err, "caller %d", i)
@@ -202,7 +203,7 @@ func TestDialSSH_NilConfig(t *testing.T) {
 	client, err := DialSSH(ctx, HostConfig{Hostname: "127.0.0.1", Port: "22"}, nil, "127.0.0.1:22")
 	assert.Nil(t, client)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrSSHNilClientConfig)
+	assert.True(t, errors.Is(err, constants.ErrSSHNilClientConfig))
 }
 
 func TestDialSSH_ContextCancelled(t *testing.T) {
@@ -218,7 +219,7 @@ func TestDialSSH_ContextCancelled(t *testing.T) {
 	client, err := DialSSH(ctx, HostConfig{Hostname: "127.0.0.1", Port: "22"}, clientConfig, "127.0.0.1:22")
 	assert.Nil(t, client)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, errors.Is(err, context.Canceled))
 }
 
 func TestDialSSH_ProxyCommandThatExitsImmediatelyFailsHandshake(t *testing.T) {

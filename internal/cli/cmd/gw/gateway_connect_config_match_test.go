@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/browserorigin"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
@@ -23,7 +22,7 @@ import (
 // copy of the base config while preserving all other fields.
 func TestDeriveConnectConfig_AppliesBrowserFieldsToBaseConfig(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	base := serve.GatewayConfig{
 		Posture:          constants.PostureConsensus,
@@ -50,14 +49,14 @@ func TestDeriveConnectConfig_AppliesBrowserFieldsToBaseConfig(t *testing.T) {
 	assert.Equal(t, 8443, result.HTTPSPort)
 	assert.Equal(t, "info", result.LogLevel)
 	assert.Equal(t, "full", result.CertIdentityMode)
-	assert.InDelta(t, 5.0, result.RateLimitRPS, 0)
+	assert.Equal(t, 5.0, result.RateLimitRPS)
 	assert.Equal(t, 10, result.RateLimitBurst)
 	assert.Equal(t, "/etc/ztd/doctrine", result.DoctrineDir)
 
 	// The base config is not mutated.
 	assert.Nil(t, base.AllowedOrigins)
 	assert.Nil(t, base.PasskeyRpOrigins)
-	assert.Empty(t, base.PasskeyRpID)
+	assert.Equal(t, "", base.PasskeyRpID)
 }
 
 // TestDeriveConnectConfig_OverridesExistingBrowserFields verifies that
@@ -65,7 +64,7 @@ func TestDeriveConnectConfig_AppliesBrowserFieldsToBaseConfig(t *testing.T) {
 // rather than appending to them.
 func TestDeriveConnectConfig_OverridesExistingBrowserFields(t *testing.T) {
 	origin, err := browserorigin.Parse("https://new-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	base := serve.GatewayConfig{
 		AllowedOrigins:   []string{"https://old-app.lovable.app"},
@@ -87,7 +86,7 @@ func TestDeriveConnectConfig_OverridesExistingBrowserFields(t *testing.T) {
 // fields exactly match the requested origin and RP ID.
 func TestBrowserConfigMatches_ExactMatchReturnsTrueNoDeltas(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	profile := serve.GatewayConfig{
 		AllowedOrigins:   []string{"https://your-app.lovable.app"},
@@ -104,7 +103,7 @@ func TestBrowserConfigMatches_ExactMatchReturnsTrueNoDeltas(t *testing.T) {
 // missing CORS origin produces a delta with the current and proposed values.
 func TestBrowserConfigMatches_MissingCORSOriginReturnsDelta(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	profile := serve.GatewayConfig{
 		AllowedOrigins:   []string{"https://other-app.lovable.app"},
@@ -124,7 +123,7 @@ func TestBrowserConfigMatches_MissingCORSOriginReturnsDelta(t *testing.T) {
 // mismatched Passkey RP ID produces a delta.
 func TestBrowserConfigMatches_MismatchedRPIDReturnsDelta(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	profile := serve.GatewayConfig{
 		AllowedOrigins:   []string{"https://your-app.lovable.app"},
@@ -144,7 +143,7 @@ func TestBrowserConfigMatches_MismatchedRPIDReturnsDelta(t *testing.T) {
 // missing passkey RP origin produces a delta.
 func TestBrowserConfigMatches_MissingPasskeyOriginReturnsDelta(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	profile := serve.GatewayConfig{
 		AllowedOrigins:   []string{"https://your-app.lovable.app"},
@@ -163,7 +162,7 @@ func TestBrowserConfigMatches_MissingPasskeyOriginReturnsDelta(t *testing.T) {
 // deterministic order: CORS origin, RP ID, RP origin.
 func TestBrowserConfigMatches_AllFieldsMismatchReturnsThreeDeltas(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	profile := serve.GatewayConfig{
 		AllowedOrigins:   []string{"https://old.lovable.app"},
@@ -184,7 +183,7 @@ func TestBrowserConfigMatches_AllFieldsMismatchReturnsThreeDeltas(t *testing.T) 
 // empty (unset) current value.
 func TestBrowserConfigMatches_EmptySlicesProduceUnsetCurrentValue(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	profile := serve.GatewayConfig{
 		PasskeyRpID: "your-app.lovable.app",
@@ -193,13 +192,13 @@ func TestBrowserConfigMatches_EmptySlicesProduceUnsetCurrentValue(t *testing.T) 
 	matched, deltas := browserConfigMatches(profile, origin, "your-app.lovable.app", "")
 	assert.False(t, matched)
 	assert.Len(t, deltas, 2)
-	assert.Empty(t, deltas[0].Current)
-	assert.Empty(t, deltas[1].Current)
+	assert.Equal(t, "", deltas[0].Current)
+	assert.Equal(t, "", deltas[1].Current)
 }
 
 func TestBrowserConfigMatches_MismatchedRPNameReturnsDelta(t *testing.T) {
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	profile := serve.GatewayConfig{
 		AllowedOrigins:   []string{origin.URL},

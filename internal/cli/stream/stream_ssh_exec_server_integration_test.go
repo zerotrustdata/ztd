@@ -314,7 +314,7 @@ func TestStreamToHost_CancellationInterruptsRunningRemoteCommand(t *testing.T) {
 	select {
 	case res := <-resultCh:
 		assert.NotEqual(t, constants.StreamStatusCompleted, res.Status)
-		require.Error(t, res.Error)
+		assert.Error(t, res.Error)
 	case <-time.After(5 * time.Second):
 		t.Fatal("streamToHost did not return after the context was cancelled")
 	}

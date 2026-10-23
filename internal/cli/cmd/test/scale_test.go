@@ -71,7 +71,7 @@ func TestScaleConfigValidate_RemoteHostsValidation(t *testing.T) {
 		cfg.OperatorEndpoint = ""
 		err := cfg.validate()
 		require.Error(t, err)
-		require.ErrorIs(t, err, constants.ErrScaleTestInvalidInput)
+		assert.ErrorIs(t, err, constants.ErrScaleTestInvalidInput)
 		assert.ErrorIs(t, err, constants.ErrOperatorEndpointInvalid)
 	})
 
@@ -82,7 +82,7 @@ func TestScaleConfigValidate_RemoteHostsValidation(t *testing.T) {
 			cfg.OperatorEndpoint = loopback
 			err := cfg.validate()
 			require.Error(t, err, "expected error for loopback endpoint %s", loopback)
-			require.ErrorIs(t, err, constants.ErrScaleTestInvalidInput)
+			assert.ErrorIs(t, err, constants.ErrScaleTestInvalidInput)
 			assert.ErrorIs(t, err, constants.ErrOperatorEndpointInvalid)
 		}
 	})
@@ -93,7 +93,7 @@ func TestScaleConfigValidate_RemoteHostsValidation(t *testing.T) {
 		cfg.OperatorEndpoint = "127.0.0.1"
 		err := cfg.validate()
 		require.Error(t, err)
-		require.ErrorIs(t, err, constants.ErrScaleTestInvalidInput)
+		assert.ErrorIs(t, err, constants.ErrScaleTestInvalidInput)
 		assert.ErrorIs(t, err, constants.ErrOperatorEndpointInvalid)
 	})
 

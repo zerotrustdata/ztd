@@ -9,6 +9,7 @@ package fs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -241,7 +242,7 @@ func TestReadFile_NonexistentReturnsErrNotFound(t *testing.T) {
 
 	_, err := svc.ReadFile(ctx, "does-not-exist.txt")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrNotFound)
+	assert.True(t, errors.Is(err, constants.ErrNotFound))
 }
 
 func TestFileExists_ExistingFile(t *testing.T) {
@@ -282,7 +283,7 @@ func TestStat_NonexistentReturnsErrNotFound(t *testing.T) {
 
 	_, err := svc.Stat(ctx, "nope.txt")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrNotFound)
+	assert.True(t, errors.Is(err, constants.ErrNotFound))
 }
 
 func TestRemove_ExistingFile(t *testing.T) {
@@ -348,7 +349,7 @@ func TestReadDir_NonexistentReturnsErrNotFound(t *testing.T) {
 
 	_, err := svc.ReadDir(ctx, "no-dir")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrNotFound)
+	assert.True(t, errors.Is(err, constants.ErrNotFound))
 }
 
 func TestRename_RenamesFile(t *testing.T) {
@@ -484,7 +485,7 @@ func TestWriteFile_CancelledContextReturnsError(t *testing.T) {
 
 	err := svc.WriteFile(ctx, "cancelled.txt", []byte("data"), constants.PermFilePrivate)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, errors.Is(err, context.Canceled))
 }
 
 func TestReadFile_CancelledContextReturnsError(t *testing.T) {
@@ -494,7 +495,7 @@ func TestReadFile_CancelledContextReturnsError(t *testing.T) {
 
 	_, err := svc.ReadFile(ctx, "anything.txt")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, errors.Is(err, context.Canceled))
 }
 
 func TestRelFromAbs_Success(t *testing.T) {
@@ -510,7 +511,7 @@ func TestRelFromAbs_OutsidePathReturnsError(t *testing.T) {
 	outside := filepath.Join(testutil.TempDir(t), "outside-ztd", "cert.pem")
 	_, err := svc.RelFromAbs(outside)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPathValidation)
+	assert.True(t, errors.Is(err, constants.ErrPathValidation))
 }
 
 func TestReadFile_RejectsPathTraversal(t *testing.T) {
@@ -519,7 +520,7 @@ func TestReadFile_RejectsPathTraversal(t *testing.T) {
 
 	_, err := svc.ReadFile(ctx, filepath.Join("..", "outside.txt"))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPathValidation)
+	assert.True(t, errors.Is(err, constants.ErrPathValidation))
 }
 
 func TestLstat_RejectsPathTraversal(t *testing.T) {
@@ -528,7 +529,7 @@ func TestLstat_RejectsPathTraversal(t *testing.T) {
 
 	_, err := svc.Lstat(ctx, filepath.Join("..", "outside.txt"))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPathValidation)
+	assert.True(t, errors.Is(err, constants.ErrPathValidation))
 }
 
 func TestCreateRuntimeTree_CreatesPublicFeedDirs(t *testing.T) {

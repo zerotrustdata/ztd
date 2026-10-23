@@ -118,6 +118,29 @@ func (s *SSEEventService) SSEEventsCleanup(maxAge time.Duration) (int64, error) 
 	return count, nil
 }
 
+// SSEEventsWipe deletes all rows from the sse_events table. Returns the number of rows deleted.
+func (s *SSEEventService) SSEEventsWipe() (int64, error) {
+	result, err := s.db.ExecWithRetry(context.Background(), "DELETE FROM sse_events")
+	if err != nil {
+		return 0, fmt.Errorf("sse_event_service: wipe: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("sse_event_service: wipe: rows affected: %w", err)
+	}
+	return count, nil
+}
+
+// SSEEventsCount returns the total number of rows in the sse_events table.
+func (s *SSEEventService) SSEEventsCount() (int64, error) {
+	var count int64
+	err := s.db.QueryRowWithRetry(context.Background(), "SELECT COUNT(*) FROM sse_events").Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("sse_event_service: count: %w", err)
+	}
+	return count, nil
+}
+
 // SSEEventsListSince returns up to `limit` events with id > sinceID, ordered by
 // id ascending. The route MUST set UserID and exactly one of WebSessionID or
 // CLISessionID. SSEEventsListAllSince is the admin-only "all routes" variant.

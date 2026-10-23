@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
@@ -52,16 +51,16 @@ func TestPlatformEnrollmentTransitionValidateAllowsOnlyLifecycleEdges(t *testing
 
 func TestPlatformEnrollmentTransitionValidateRequiresTheIssuanceLease(t *testing.T) {
 	acquire := PlatformEnrollmentTransition{RequestID: "req-1", From: PlatformEnrollmentStateApproved, To: PlatformEnrollmentStateIssuing}
-	require.ErrorIs(t, acquire.Validate(), constants.ErrPlatformEnrollmentInvalidState, "acquiring names the new holder")
+	assert.ErrorIs(t, acquire.Validate(), constants.ErrPlatformEnrollmentInvalidState, "acquiring names the new holder")
 
 	release := PlatformEnrollmentTransition{RequestID: "req-1", From: PlatformEnrollmentStateIssuing, To: PlatformEnrollmentStateCompleted}
-	require.ErrorIs(t, release.Validate(), constants.ErrPlatformEnrollmentInvalidState, "leaving issuing is fenced on the holder")
+	assert.ErrorIs(t, release.Validate(), constants.ErrPlatformEnrollmentInvalidState, "leaving issuing is fenced on the holder")
 
 	release.LeaseOwner = "lease-1"
-	require.NoError(t, release.Validate())
+	assert.NoError(t, release.Validate())
 
 	outsideLease := PlatformEnrollmentTransition{RequestID: "req-1", From: PlatformEnrollmentStateCompleted, To: PlatformEnrollmentStateRevoked, LeaseOwner: "lease-1"}
-	require.ErrorIs(t, outsideLease.Validate(), constants.ErrPlatformEnrollmentInvalidState, "a lease fences only issuance")
+	assert.ErrorIs(t, outsideLease.Validate(), constants.ErrPlatformEnrollmentInvalidState, "a lease fences only issuance")
 
 	assert.ErrorIs(t, PlatformEnrollmentTransition{From: PlatformEnrollmentStatePending, To: PlatformEnrollmentStateApproved}.Validate(),
 		constants.ErrPlatformEnrollmentRequestIDRequired)
@@ -245,8 +244,8 @@ func TestValidateAppNameRejectsReservedPlatformNames(t *testing.T) {
 	for _, name := range reserved {
 		t.Run(name, func(t *testing.T) {
 			err := ValidateAppName(name)
-			require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidAppName)
-			require.ErrorIs(t, err, constants.ErrPlatformEnrollmentReservedIdentity)
+			assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidAppName)
+			assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentReservedIdentity)
 
 			request := PlatformEnrollmentCreateRequest{
 				TokenHash:     PlatformEnrollmentTokenHash("token"),

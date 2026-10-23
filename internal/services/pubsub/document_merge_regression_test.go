@@ -163,7 +163,7 @@ func TestHandleDocumentUpdateSync_MergePreservesUntouchedFields(t *testing.T) {
 		"merge must preserve case_id (Bug 10 regression)")
 	assert.Equal(t, "user-xyz-789", rawString(t, data["user_id"]),
 		"merge must preserve user_id (Bug 10 regression)")
-	assert.True(t, rawBool(t, data["case_flag"]),
+	assert.Equal(t, true, rawBool(t, data["case_flag"]),
 		"merge must preserve case_flag (Bug 10 regression)")
 
 	// Original field that was not in the merge patch.

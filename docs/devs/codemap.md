@@ -4,7 +4,7 @@ title: ztd Code Map
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-23
+last_updated: 2026-10-22
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -188,7 +188,7 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, and reset. |
 | `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, `release-smoke`, `eval-loop`, and `conformance-loop`. |
 | `audit` | `audit` | `internal/cli/cmd/audit/` | `audits` | Event receipt (`event-receipts`, `export`), raw event (`events`), summary, report, verify, and L2 consensus vote (`votes`) queries against a running Gateway. |
-| `report` | `report` | `internal/cli/cmd/report/` | `reports` | Deterministic CSV evidence generation and `verify` over the persistent stores. |
+| `report` | `report` | `internal/cli/cmd/report/` | `reports` | Deterministic CSV evidence generation and offline verification. |
 | `public` | `public` | `internal/cli/cmd/public/` | | Public spectator feed. `restore` is constructed in eval package (`INV-PKG-02`). |
 | `swagger` | `swagger` | `internal/cli/cmd/swagger/` | | OpenAPI generation, serving, and validation. |
 | `tui` | `tuicmd` | `internal/cli/cmd/tui/` | | Tactical Governance Console. |
@@ -431,7 +431,7 @@ Go module and packaging rules are governed by `INV-ENV-01` and [Developer Guidel
 | `make proto-generate` | Go and TypeScript binding refresh: `proto-go` and `proto-node` (`INV-PROTO-01`). |
 | `make constants-generate`, `make constants-check` | `internal/tools/constgen` write and verify. |
 | `make explorer-catalog-generate`, `make explorer-catalog-check` | `evaluation-explorer/src/content/scenario-catalog.generated.ts` generation and verification via `internal/tools/explorercatalog`. |
-| `make lint` | `vulncheck`, `doctrines-validate`, a guard that rejects empty-dir `os.MkdirTemp` and `os.CreateTemp` calls under `cmd`, `internal`, and `test` (`INV-FS-11`), then `golangci-lint run`. |
+| `make lint` | `vulncheck`, `doctrines-validate`, then `golangci-lint run` (which also fails on compile errors). |
 | `make test`, `make test-unit`, `make test-integration` | Platform tiers. `make test` is unit plus integration. |
 | `make console-test`, `make website-test` | Console and website checks. |
 | `make fips-build`, `make fips-verify` | Pinned Linux AMD64 FIPS variant. Reference: [FIPS 140-3](../reference/fips140-3.md). |

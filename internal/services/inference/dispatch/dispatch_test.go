@@ -193,7 +193,7 @@ func TestDispatchInference_ZeroCapableOperatorsFailsClosed(t *testing.T) {
 
 	_, err := svc.DispatchInference(context.Background(), baseRequest())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
+	assert.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
 	assert.Equal(t, 0, dispatcher.calls, "dispatcher must not be called when no capable operator exists")
 }
 
@@ -222,7 +222,7 @@ func TestDispatchInference_MultipleCapableOperatorsRejectedWithoutTarget(t *test
 
 	_, err := svc.DispatchInference(context.Background(), baseRequest())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInferenceOperatorAmbiguous)
+	assert.ErrorIs(t, err, constants.ErrInferenceOperatorAmbiguous)
 	assert.Equal(t, 0, dispatcher.calls, "ambiguous routing must not dispatch")
 }
 
@@ -275,7 +275,7 @@ func TestDispatchInference_ExplicitTargetNotOwnedByRequestor(t *testing.T) {
 	req.TargetOperatorSessionID = "sess-other-user"
 	_, err := svc.DispatchInference(context.Background(), req)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
+	assert.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
 	assert.Equal(t, 0, dispatcher.calls)
 }
 
@@ -290,7 +290,7 @@ func TestDispatchInference_ExplicitTargetNotCapable(t *testing.T) {
 	req.TargetOperatorSessionID = "sess-plain"
 	_, err := svc.DispatchInference(context.Background(), req)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotCapable)
+	assert.ErrorIs(t, err, constants.ErrInferenceOperatorNotCapable)
 	assert.Equal(t, 0, dispatcher.calls)
 }
 
@@ -311,7 +311,7 @@ func TestDispatchInference_NonActiveOperatorNotSelectable(t *testing.T) {
 
 			_, err := svc.DispatchInference(context.Background(), baseRequest())
 			require.Error(t, err)
-			require.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
+			assert.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
 			assert.Equal(t, 0, dispatcher.calls)
 		})
 	}
@@ -343,7 +343,7 @@ func TestDispatchInference_UnspecifiedRoleRejected(t *testing.T) {
 	req.Role = models.InferenceModelRoleUnspecified
 	_, err := svc.DispatchInference(context.Background(), req)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInferenceRoleInvalid)
+	assert.ErrorIs(t, err, constants.ErrInferenceRoleInvalid)
 	assert.Equal(t, 0, dispatcher.calls)
 }
 
@@ -355,7 +355,7 @@ func TestDispatchInference_MissingRequestorRejected(t *testing.T) {
 	req.RequestorUserID = ""
 	_, err := svc.DispatchInference(context.Background(), req)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrRegistrationUserIDRequired)
+	assert.ErrorIs(t, err, constants.ErrRegistrationUserIDRequired)
 	assert.Equal(t, 0, dispatcher.calls)
 }
 
@@ -368,7 +368,7 @@ func TestDispatchInference_MissingProviderAttemptIDRejected(t *testing.T) {
 	_, err := svc.DispatchInference(context.Background(), req)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInferenceProviderAttemptRequired)
+	assert.ErrorIs(t, err, constants.ErrInferenceProviderAttemptRequired)
 	assert.Equal(t, 0, dispatcher.calls)
 }
 
@@ -392,7 +392,7 @@ func TestDispatchInference_DispatchDeadlineMapsToUnknownOutcome(t *testing.T) {
 
 	_, err := svc.DispatchInference(context.Background(), baseRequest())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInferenceOutcomeUnknown,
+	assert.ErrorIs(t, err, constants.ErrInferenceOutcomeUnknown,
 		"a dispatch deadline on inference means the remote provider call may still be running")
 	assert.Equal(t, 1, dispatcher.calls, "unknown outcomes must not be retried automatically")
 }
@@ -735,7 +735,7 @@ func TestDispatchInference_ObservationBeginFailureFailsClosedBeforeProviderCall(
 
 	_, err := svc.DispatchInference(context.Background(), req)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
+	assert.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
 	assert.Equal(t, 1, notifier.beginCalls)
 	assert.Equal(t, 0, dispatcher.calls, "inference must not dispatch when observation begin fails")
 }
@@ -804,7 +804,7 @@ func TestDispatchInference_CampaignObservationFinalizeFailureFailsClosed(t *test
 
 	_, err := svc.DispatchInference(context.Background(), req)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
+	assert.ErrorIs(t, err, constants.ErrDispatchNoDelivery)
 	assert.Equal(t, 1, notifier.beginCalls)
 	assert.Equal(t, 1, notifier.finalizeCalls)
 	assert.Equal(t, 1, dispatcher.calls, "inference may complete before finalize delivery is checked")

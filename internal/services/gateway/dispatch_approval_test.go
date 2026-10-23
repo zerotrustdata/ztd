@@ -77,7 +77,7 @@ func TestDispatchApprovalCoordinator_DecisionMayOnlyChangeL3Metadata(t *testing.
 		defer cancel()
 		done := make(chan error, 1)
 		go func() {
-			_, _, err := coordinator.await(ctx, resumeTestEnvelope(t, constants.Event.Operator.FsRead.Requested, fsReadPayload(t))) //nolint:testifylint // shared helper keeps require for the test goroutine
+			_, _, err := coordinator.await(ctx, resumeTestEnvelope(t, constants.Event.Operator.FsRead.Requested, fsReadPayload(t)))
 			done <- err
 		}()
 		synctest.Wait()
@@ -100,7 +100,7 @@ func TestDispatchApprovalCoordinator_DeliveredFailureReportsHandOff(t *testing.T
 		require.NoError(t, err)
 		failed := &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
 		go func() {
-			_, pending, err := coordinator.await(t.Context(), resumeTestEnvelope(t, constants.Event.Operator.FsRead.Requested, fsReadPayload(t))) //nolint:testifylint // shared helper keeps require for the test goroutine
+			_, pending, err := coordinator.await(t.Context(), resumeTestEnvelope(t, constants.Event.Operator.FsRead.Requested, fsReadPayload(t)))
 			if err == nil {
 				coordinator.finish(pending.envelope.Id, pending, failed, constants.ErrDispatchResultTimeout)
 			}

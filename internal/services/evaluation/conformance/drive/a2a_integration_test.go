@@ -12,6 +12,7 @@ package drive
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -188,6 +189,6 @@ func TestA2ATransportErrorIsAnErrorAndClosesAttempt(t *testing.T) {
 
 	_, err := d.Drive(context.Background(), a2aAttempt(cases.Case{ID: "row-1", Fault: cases.FaultNone, Action: cases.ActionMutation}))
 	require.Error(t, err)
-	require.NotErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
+	assert.False(t, errors.Is(err, constants.ErrConformanceIngressUnsupported))
 	assert.Empty(t, stub.current, "a failed call must still close the stub attempt")
 }

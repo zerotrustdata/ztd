@@ -27,7 +27,7 @@ func TestFailureCodes_RoundTripEveryCode(t *testing.T) {
 			continue
 		}
 		sentinel := FailureSentinel(code)
-		require.Error(t, sentinel, "code %s has no sentinel", name)
+		require.NotNil(t, sentinel, "code %s has no sentinel", name)
 		assert.Equal(t, code, FailureCode(sentinel), "code %s", name)
 	}
 }
@@ -37,6 +37,6 @@ func TestFailureCode_WrappedSentinelAndUnknown(t *testing.T) {
 		FailureCode(fmt.Errorf("dispatch: %w", constants.ErrInferenceToolsUnsupported)))
 	assert.Equal(t, operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED,
 		FailureCode(constants.ErrMethodNotAllowed))
-	assert.NoError(t, FailureSentinel(operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED))
-	assert.NoError(t, FailureSentinel(operatorv1.InferenceDispatchFailureCode(9999)))
+	assert.Nil(t, FailureSentinel(operatorv1.InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED))
+	assert.Nil(t, FailureSentinel(operatorv1.InferenceDispatchFailureCode(9999)))
 }

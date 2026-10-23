@@ -27,7 +27,7 @@ func TestPublicInitCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -38,7 +38,7 @@ func TestPublicConfigSetCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -49,7 +49,7 @@ func TestPublicSourceTransitionCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -60,7 +60,7 @@ func TestPublicPublishCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -70,7 +70,7 @@ func TestPublicPushCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -80,7 +80,7 @@ func TestPublicStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -90,7 +90,7 @@ func TestPublicRotateKeyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -100,6 +100,6 @@ func TestPublicRepairOutboxCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }

@@ -96,7 +96,6 @@ func (mcpAdapter) makeCallBody(name string, payload any) []byte {
 }
 
 func (mcpAdapter) parseSuspendedStatus(t *testing.T, body []byte) string {
-	t.Helper()
 	var res struct {
 		Result struct {
 			Content []mcp.TextContent `json:"content"`
@@ -138,7 +137,6 @@ func (a2aAdapter) makeCallBody(name string, payload any) []byte {
 }
 
 func (a2aAdapter) parseSuspendedStatus(t *testing.T, body []byte) string {
-	t.Helper()
 	var res struct {
 		Result struct {
 			Status string `json:"status"`

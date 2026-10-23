@@ -13,7 +13,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type commandContextKey struct{}
@@ -37,7 +36,7 @@ func TestCommandContext_FallsBackToBackgroundForACommandThatNeverRan(t *testing.
 	got := CommandContext(cmd)
 
 	assert.Equal(t, context.Background(), got)
-	require.NoError(t, got.Err())
+	assert.NoError(t, got.Err())
 	assert.Nil(t, got.Value(commandContextKey{}))
 }
 

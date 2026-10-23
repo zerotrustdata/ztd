@@ -92,7 +92,6 @@ type burstWorker struct {
 }
 
 func runPlatformEnrollmentBurst(t *testing.T, n int, scenario burstScenario) {
-	t.Helper()
 	env := setupPlatformEnrollmentEnv(t, true)
 	svc := env.enrollSvc
 	deadline := platformEnrollmentBurstClientDeadline

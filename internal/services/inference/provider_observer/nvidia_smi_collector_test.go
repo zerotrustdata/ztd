@@ -64,7 +64,7 @@ func TestNvidiaSMICollector_Collect(t *testing.T) {
 			if test.wantReported {
 				assert.Equal(t, evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED, sample.GetGpuUtilizationAvailability())
 				assert.Equal(t, uint64(100*1024*1024), sample.GetVramUsedBytes())
-				assert.InDelta(t, float32(50), sample.GetGpuUtilizationPercent(), 0)
+				assert.Equal(t, float32(50), sample.GetGpuUtilizationPercent())
 				return
 			}
 			assert.Equal(t, evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_UNAVAILABLE, sample.GetGpuUtilizationAvailability())

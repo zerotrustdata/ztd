@@ -143,7 +143,7 @@ func TestCLIRecoveryController_Request_Success(t *testing.T) {
 	assert.Contains(t, resp.ApprovalURL, "#recovery=")
 	assert.Contains(t, resp.ApprovalURL, resp.Token)
 	// Token must be in the fragment, not in the query/path.
-	assert.NotContains(t, strings.Split(resp.ApprovalURL, "#")[0], resp.Token)
+	assert.False(t, strings.Contains(strings.Split(resp.ApprovalURL, "#")[0], resp.Token))
 }
 
 func TestCLIRecoveryController_Request_MethodNotAllowed(t *testing.T) {
@@ -551,7 +551,7 @@ func TestCLIRecoveryController_Complete_ConcurrentOnlyOneSucceeds(t *testing.T) 
 	for i := 0; i < goroutines; i++ {
 		go func() {
 			defer wg.Done()
-			rr, _ := completeRecovery(t, c, resp.Token, sig) //nolint:testifylint // shared helper keeps require for the test goroutine
+			rr, _ := completeRecovery(t, c, resp.Token, sig)
 			mu.Lock()
 			switch rr.Code {
 			case http.StatusCreated:

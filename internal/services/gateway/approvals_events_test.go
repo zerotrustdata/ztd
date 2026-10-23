@@ -88,6 +88,11 @@ func (f *fakeSuspendedStore) GetSuspendedTransaction(_ context.Context, hash str
 	return tx, ok, nil
 }
 
+func (f *fakeSuspendedStore) ApproveSuspendedTransaction(_ context.Context, hash string, _ models.ApprovalProof) error {
+	f.txs[hash].Approved = true
+	return nil
+}
+
 func (f *fakeSuspendedStore) DeleteSuspendedTransaction(_ context.Context, hash string) error {
 	if f.deleteErr != nil {
 		return f.deleteErr
@@ -170,10 +175,11 @@ func TestNotifyingSuspendedStore_AnnouncesEveryChangeToThePendingSet(t *testing.
 	ctx := context.Background()
 
 	require.NoError(t, store.StoreSuspendedTransaction(ctx, &models.SuspendedTransaction{TransactionHash: "h1", UserID: "user-a"}))
+	require.NoError(t, store.ApproveSuspendedTransaction(ctx, "h1", models.ApprovalProof{}))
 	require.NoError(t, store.DeleteSuspendedTransaction(ctx, "h1"))
 
 	tx := models.ApprovalsChangedTransactions
-	assert.Equal(t, []models.ApprovalsChangedSubject{tx, tx}, tapA.subjects(t))
+	assert.Equal(t, []models.ApprovalsChangedSubject{tx, tx, tx}, tapA.subjects(t))
 	assert.Empty(t, tapB.subjects(t))
 
 	// The expiry sweep tells each owner of an expired row once, however many
@@ -185,7 +191,7 @@ func TestNotifyingSuspendedStore_AnnouncesEveryChangeToThePendingSet(t *testing.
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, deleted)
 	assert.Equal(t, []models.ApprovalsChangedSubject{tx}, tapB.subjects(t))
-	assert.Len(t, tapA.subjects(t), 2)
+	assert.Len(t, tapA.subjects(t), 3)
 }
 
 func TestNotifyingSuspendedStore_FailedMutationAnnouncesNothing(t *testing.T) {

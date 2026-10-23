@@ -521,7 +521,7 @@ func TestHandleFetchHistory_FileMutationError(t *testing.T) {
 
 	assert.True(t, result.Success, "should succeed despite mutation lookup error")
 	assert.Len(t, result.Events, 1)
-	assert.Empty(t, result.Events[0].FileMutations, "mutations should be empty on error")
+	assert.Len(t, result.Events[0].FileMutations, 0, "mutations should be empty on error")
 	assert.Equal(t, 1, mockLogger.warnCalled, "should log warning on mutation error")
 }
 
@@ -896,7 +896,7 @@ func TestFetchHistoryError(t *testing.T) {
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	result, failureErr := hh.fetchHistoryError(constants.ErrInternal)
-	require.ErrorIs(t, failureErr, constants.ErrInternal)
+	assert.ErrorIs(t, failureErr, constants.ErrInternal)
 
 	assert.False(t, result.Success)
 	assert.Equal(t, constants.ErrInternal.Error(), result.Error)
@@ -907,7 +907,7 @@ func TestFetchFileHistoryError(t *testing.T) {
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	result, failureErr := hh.fetchFileHistoryError(constants.ErrInternal)
-	require.ErrorIs(t, failureErr, constants.ErrInternal)
+	assert.ErrorIs(t, failureErr, constants.ErrInternal)
 
 	assert.False(t, result.Success)
 	assert.Equal(t, constants.ErrInternal.Error(), result.Error)
@@ -918,7 +918,7 @@ func TestRestoreFileError(t *testing.T) {
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	result, _, restoreErr := hh.restoreFileError(constants.ErrInternal)
-	require.ErrorIs(t, restoreErr, constants.ErrInternal)
+	assert.ErrorIs(t, restoreErr, constants.ErrInternal)
 
 	assert.False(t, result.Success)
 	assert.Equal(t, constants.ErrInternal.Error(), result.Error)
@@ -975,7 +975,7 @@ func TestHandleFetchHistory_EmptyEvents(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, result.Success)
-	assert.Empty(t, result.Events)
+	assert.Len(t, result.Events, 0)
 	assert.Equal(t, int32(0), result.Total)
 }
 

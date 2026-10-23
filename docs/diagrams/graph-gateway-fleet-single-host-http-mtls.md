@@ -3,8 +3,8 @@ doc_id: diagram-gateway-fleet-topology
 title: "Diagram: Gateway Fleet Host Topology"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.0.0
+last_updated: 2026-10-12
 owners:
   - internal/services/gateway/
   - internal/services/network/
@@ -27,43 +27,41 @@ Depicts the standard fleet topology: a centralized Governance Gateway (Policy De
 graph TD
     subgraph Clients ["Clients — Ingress Boundaries"]
         MCP["MCP Clients<br/>(Claude Code · Codex · Goose · Gemini)"]
-        CLI["CLI / Enrolled App<br/>(Direct envelope / governed dispatch)"]
+        CLI["CLI / BYO App<br/>(mTLS · Direct envelope / dispatch)"]
         Browser["Browser<br/>(Console SPA served by Gateway)"]
     end
 
-    GW["Governance Gateway (PDP)<br/>HTTP :8080 plaintext discovery · HTTPS :8443 TLS 1.3<br/>PKI · L1–L3 · Pub/Sub Broker · SSE"]
+    GW["Governance Gateway · ztdg (PDP)<br/>HTTP :8080 Discovery · HTTPS :8443 mTLS<br/>PKI · L1–L3 · Pub/Sub Broker · SSE Bridge"]
 
     subgraph Fleet ["Sovereign Hosts — Outbound-Only PEP"]
-        O1["Governed Operator · data<br/>cmd:&lt;operator-id&gt;:&lt;session-id&gt;"]
-        O2["Governed Operator · inference"]
-        D1[("Per-Operator Local Store<br/>SQLite audit DB · Commitment Ledger")]
-        D2[("Per-Operator Local Store<br/>SQLite audit DB · Commitment Ledger")]
+        O1["Data Operator · ztdo<br/>cmd:&lt;operator-id&gt;:&lt;session-id&gt;"]
+        O2["Inference Operator · ztdo<br/>(Evaluation Profile)"]
+        D1[("Local LFAA Ledger<br/>Authoritative Evidence")]
         O1 --- D1
-        O2 --- D2
+        O2 --- D1
     end
 
-    MCP -. "MCP / A2A · mTLS by default, JWT when JWKS configured<br/>/mcp · /api/v1/a2a/call" .-> GW
-    CLI -. "HTTPS :8443 · per-route auth" .-> GW
-    Browser -. "HTTPS :8443 · session cookie" .-> GW
+    MCP -. "mTLS · Streamable HTTP<br/>/mcp · /api/v1/a2a/call" .-> GW
+    CLI -. "mTLS · HTTPS :8443" .-> GW
+    Browser -. "HTTPS :8443 · WebAuthn Cookie" .-> GW
 
-    GW -. "Operator-initiated WebSocket<br/>/api/v1/pubsub/stream · publish cmd:*" .-> O1
-    GW -. "Operator-initiated WebSocket<br/>/api/v1/pubsub/stream" .-> O2
-    O1 -. "Signed receipts<br/>(best-effort mirror)" .-> GW
-    O2 -. "Signed receipts<br/>(best-effort mirror)" .-> GW
+    GW -. "Outbound-only mTLS WSS<br/>publish cmd:* · subscribe receipts:*" .-> O1
+    GW -. "Outbound-only mTLS WSS" .-> O2
+    O1 -. "Signed ActionReceipt<br/>(best-effort mirror)" .-> GW
+    O2 -. "Signed ActionReceipt" .-> GW
 ```
 
 ## Ingress Paths
 
 | Path | Primary Client | Gateway Surface | Executing Execution Point (PEP) |
 | :--- | :--- | :--- | :--- |
-| **Gateway MCP / A2A** | AI Agents, MCP Tools | `/mcp`, `/api/v1/a2a/call` | Embedded Operator substrate or outbound Operator, per operator type |
-| **Governed HTTP Dispatch** | Enrolled Applications | `POST /api/v1/operators/commands` | Embedded Operator substrate or outbound Operator (cmd channel), per operator type |
-| **Direct Envelope Ingress** | CLI, agent harness clients | `POST /api/v1/governance/envelopes` | Target operator resolved by the Gateway (embedded or outbound) |
-| **SSE Telemetry** | Browsers, CLI | `GET /api/v1/sse/stream` | Telemetry stream only; not an execution path |
+| **Gateway MCP / A2A** | AI Agents, MCP Tools | `/mcp`, `/api/v1/a2a/call` | In-process Gateway Operator substrate or downstream target |
+| **Governed HTTP Dispatch** | Enrolled Applications | `POST /api/v1/operators/commands` | Bound outbound Operator session |
+| **Direct Envelope Ingress** | CLI, Operator Identity | `POST /api/v1/governance/envelopes` | In-process Gateway Operator substrate |
+| **SSE Telemetry** | Browsers, CLI, TUI | `GET /api/v1/sse/stream` | Telemetry stream only; not an execution path |
 
 ## Key Architectural Boundaries
 
 - **Unified Binary, Distinct Modes**: A single static binary (`ztd`) runs as Gateway (`ztd gw start`) or Operator (`ztd operator start`). Gateway mode embeds an in-process Operator substrate for local execution.
-- **Listener Isolation**: Remote Operators establish outbound WebSocket connections to the Gateway pub/sub broker (`/api/v1/pubsub/stream`). Operators expose no inbound listeners; `ztd operator start` has no listen flags.
-- **Gateway Auxiliary Listeners**: Defaults from `ztd gw start --help`: `--listen-host` 127.0.0.1; public spectator private listener 127.0.0.1:8081 and public listener 127.0.0.1:8082; eval explorer 127.0.0.1:5173; pprof disabled unless `--pprof-listen` is set.
-- **Sovereign Audit Storage (LFAA)**: Each Operator strictly owns its local SQLite audit database and Commitment Ledger under `.ztd/`. Receipts published back to the Gateway are best-effort projections and never override local state.
+- **Listener Isolation**: Remote Operators establish outbound-only mTLS WebSocket connections to the Gateway pub/sub broker (`/api/v1/pubsub/stream`). Managed operator hosts expose **zero inbound listening ports**.
+- **Sovereign Audit Storage (LFAA)**: Each Operator strictly owns its local SQLite audit database and Merkle state root under `.ztd/`. Receipts published back to the Gateway are best-effort projections and never override local state.

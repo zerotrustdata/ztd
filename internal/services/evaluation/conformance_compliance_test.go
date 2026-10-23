@@ -9,7 +9,9 @@ package evaluation
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,7 +150,7 @@ func TestConformanceComplianceRealVerifierRejectsFlippedRecordByte(t *testing.T)
 	assert.False(t, report.GetValid())
 	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INVALID_EVIDENCE, set.GetSuiteVerdict())
 	require.Len(t, report.GetFailures(), 1)
-	assert.Contains(t, report.GetFailures()[0].GetCode(), "INVALID_EVIDENCE", report.GetFailures()[0].GetCode())
+	assert.True(t, strings.Contains(report.GetFailures()[0].GetCode(), "INVALID_EVIDENCE"), report.GetFailures()[0].GetCode())
 }
 
 func TestConformanceComplianceRejectsMissingDigestSidecar(t *testing.T) {
@@ -159,7 +161,7 @@ func TestConformanceComplianceRejectsMissingDigestSidecar(t *testing.T) {
 
 	_, _, err := VerifyConformanceSource(ctx, missing, runID, conformanceTestVerifiedAt)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrNotFound)
+	assert.True(t, errors.Is(err, constants.ErrNotFound))
 }
 
 func TestConformanceComplianceRejectsMissingVerificationTime(t *testing.T) {
@@ -167,5 +169,5 @@ func TestConformanceComplianceRejectsMissingVerificationTime(t *testing.T) {
 	files := saveConformanceRunForCompliance(t, runID)
 	_, _, err := verifyConformanceSourceWith(context.Background(), files, runID, time.Time{}, stubConformanceVerifier(runID, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_PASS))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+	assert.True(t, errors.Is(err, constants.ErrInvalidEvidenceGraph))
 }

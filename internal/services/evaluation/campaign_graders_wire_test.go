@@ -121,11 +121,11 @@ func TestGradeHomogeneousScenario_PlayerCriteriaPresentAndAbsentRoles(t *testing
 		// Graded roles: Router and Risk Analyst passed.
 		require.Contains(t, gradeMap, "player-router")
 		assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, gradeMap["player-router"].GetStatus())
-		assert.InDelta(t, 1.0, gradeMap["player-router"].GetScore(), 0)
+		assert.Equal(t, 1.0, gradeMap["player-router"].GetScore())
 
 		require.Contains(t, gradeMap, "player-risk-analyst")
 		assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, gradeMap["player-risk-analyst"].GetStatus())
-		assert.InDelta(t, 1.0, gradeMap["player-risk-analyst"].GetScore(), 0)
+		assert.Equal(t, 1.0, gradeMap["player-risk-analyst"].GetScore())
 
 		// Absent role: Codex (MemoryWriter) was NOT in trace.Steps, so NO grade is emitted.
 		// D11: Absent roles are ungraded, not failed.
@@ -170,7 +170,7 @@ func TestGradeHomogeneousScenario_PlayerCriteriaPresentAndAbsentRoles(t *testing
 
 		require.Contains(t, gradeMap, "player-router")
 		assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, gradeMap["player-router"].GetStatus())
-		assert.InDelta(t, 0.0, gradeMap["player-router"].GetScore(), 0)
+		assert.Equal(t, 0.0, gradeMap["player-router"].GetScore())
 		assert.Contains(t, gradeMap["player-router"].GetDetail(), "LABEL_MISMATCH")
 	})
 

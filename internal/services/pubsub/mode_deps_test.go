@@ -10,6 +10,7 @@ package pubsub
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -131,7 +132,7 @@ func TestNewOutboundModeDeps_ValidationErrors(t *testing.T) {
 			deps, err := NewOutboundModeDeps(OutboundModeDeps{GovernanceCoreDeps: core, ConsensusPolicyStore: testConsensusStore()})
 			require.Error(t, err)
 			require.Nil(t, deps)
-			assert.ErrorIs(t, err, tc.expectedErr, "expected error %v, got %v", tc.expectedErr, err)
+			assert.True(t, errors.Is(err, tc.expectedErr), "expected error %v, got %v", tc.expectedErr, err)
 		})
 	}
 
@@ -261,7 +262,7 @@ func TestNewGatewayModeDeps_ValidationErrors(t *testing.T) {
 			deps, err := NewGatewayModeDeps(input)
 			require.Error(t, err)
 			require.Nil(t, deps)
-			assert.ErrorIs(t, err, tc.expectedErr, "expected error %v, got %v", tc.expectedErr, err)
+			assert.True(t, errors.Is(err, tc.expectedErr), "expected error %v, got %v", tc.expectedErr, err)
 		})
 	}
 }

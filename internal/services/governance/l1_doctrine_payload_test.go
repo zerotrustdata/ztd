@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -81,7 +80,9 @@ func TestL1Doctrine_ValidatePayload_RunShellCommandScreensTheExecutedCommandLine
 				Command string   `json:"command"`
 				Args    []string `json:"args"`
 			}
-			require.NoError(t, json.Unmarshal([]byte(tt.arguments), &request))
+			if !assert.NoError(t, json.Unmarshal([]byte(tt.arguments), &request)) {
+				return
+			}
 			commandLine := strings.Join(append([]string{request.Command}, request.Args...), " ")
 			assert.Equal(t, tt.blocked, len(doctrine.ValidatePayload(&operatorv1.CommandRequested{Command: commandLine})) > 0,
 				"EXECUTE_BASH control for %q", commandLine)

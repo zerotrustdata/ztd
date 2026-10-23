@@ -23,6 +23,4 @@ const (
 )
 
 // requireBurstBuild admits every race build: this size runs anywhere.
-func requireBurstBuild(t *testing.T) {
-	t.Helper()
-}
+func requireBurstBuild(*testing.T) {}

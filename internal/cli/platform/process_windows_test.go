@@ -545,10 +545,11 @@ func TestStopProcess_ForceKillSucceedsButProcessDoesNotExit(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrProcessForceKillTimeout)
 }
 
-var (
-	_ WindowsProcessChecker = realWindowsProcessChecker{}
-	_ CommandExecutor       = realCommandExecutor{}
-)
+func TestRealWindowsProcessChecker(t *testing.T) {
+	// Test that real implementations satisfy the interfaces
+	var _ WindowsProcessChecker = realWindowsProcessChecker{}
+	var _ CommandExecutor = realCommandExecutor{}
+}
 
 func TestProcessManager_NilDependencies(t *testing.T) {
 	// Test that ProcessManager works with nil dependencies (uses real implementations)

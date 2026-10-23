@@ -49,7 +49,7 @@ func TestParseSSEStream(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, events, 1)
 		assert.Equal(t, "passkey.registered", events[0].event)
-		assert.Equal(t, `{"type":"passkey.registered"}`, events[0].data) //nolint:testifylint // exact bytes, not JSON equivalence
+		assert.Equal(t, `{"type":"passkey.registered"}`, events[0].data)
 	})
 
 	t.Run("delivers an approval receipt larger than a megabyte", func(t *testing.T) {
@@ -60,7 +60,7 @@ func TestParseSSEStream(t *testing.T) {
 		var got string
 		err := parseSSEStream(context.Background(), strings.NewReader(input), func(_, data string) { got = data }, nil)
 		require.NoError(t, err)
-		assert.Len(t, got, len(receipt))
+		assert.Equal(t, len(receipt), len(got))
 	})
 
 	t.Run("multiple events", func(t *testing.T) {
@@ -94,7 +94,7 @@ func TestParseSSEStream(t *testing.T) {
 		err := parseSSEStream(context.Background(), strings.NewReader(input), handler, nil)
 		require.NoError(t, err)
 		require.Len(t, events, 1)
-		assert.Empty(t, events[0].event)
+		assert.Equal(t, "", events[0].event)
 		assert.Equal(t, "just data", events[0].data)
 	})
 

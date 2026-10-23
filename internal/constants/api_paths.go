@@ -150,6 +150,7 @@ var APIPaths = struct {
 	ApprovePage           string `json:"approve_page"`
 	ApprovePagePrefix     string `json:"approve_page_prefix"`
 	ApprovalsVerifyAction string `json:"approvals_verify_action"`
+	ApprovalsCLIStatus    string `json:"approvals_cli_status"`
 	ApprovalsCLIList      string `json:"approvals_cli_list"`
 	ApprovalsRespond      string `json:"approvals_respond"`
 	// Admin routes
@@ -324,6 +325,7 @@ var APIPaths = struct {
 	ApprovePage:           "/api/v1/approve/",
 	ApprovePagePrefix:     "/api/v1/approve/",
 	ApprovalsVerifyAction: "/verify",
+	ApprovalsCLIStatus:    "/api/v1/approvals/status/",
 	ApprovalsCLIList:      "/api/v1/approvals/pending",
 	ApprovalsRespond:      "/api/v1/approvals/respond",
 	// Admin routes

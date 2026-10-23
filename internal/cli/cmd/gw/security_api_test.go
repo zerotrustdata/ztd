@@ -111,7 +111,7 @@ func TestSecurityValidateCmd_API_InvalidPEM(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrValidationFailed)
+	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 	assert.Contains(t, buf.String(), "root_ca.crt is not a valid PEM")
 	assert.Contains(t, buf.String(), "Trust bundle is not valid PEM")
 }

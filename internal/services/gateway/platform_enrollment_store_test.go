@@ -12,6 +12,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -122,7 +123,7 @@ func TestEnrollmentAdmissionHistoryAndResume(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = svc.createRequestRecord(ctx, &models.PlatformEnrollmentRequest{})
-	require.ErrorIs(t, err, context.Canceled)
+	require.True(t, errors.Is(err, context.Canceled))
 }
 
 func TestEnrollmentQueriesUseIndexes(t *testing.T) {

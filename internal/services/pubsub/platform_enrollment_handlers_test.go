@@ -940,7 +940,6 @@ func TestHandleCreate_FailsClosedOnBadInput(t *testing.T) {
 			name: "cancelled context",
 			ctx:  cancelled,
 			msg: func(t *testing.T) *PubSubCommandMessage {
-				t.Helper()
 				return enrollTestMessage(t, constants.EventPlatformEnrollmentCreateRequested, valid)
 			},
 			wantErr: context.Canceled,
@@ -957,7 +956,6 @@ func TestHandleCreate_FailsClosedOnBadInput(t *testing.T) {
 			name: "unspecified component kind",
 			ctx:  t.Context(),
 			msg: func(t *testing.T) *PubSubCommandMessage {
-				t.Helper()
 				return enrollTestMessage(t, constants.EventPlatformEnrollmentCreateRequested, &commonv1.PlatformEnrollmentGovernancePayload{RequestId: enrollTestRequest})
 			},
 			wantErr: constants.ErrPlatformEnrollmentInvalidComponent,
@@ -972,7 +970,7 @@ func TestHandleCreate_FailsClosedOnBadInput(t *testing.T) {
 			require.Error(t, err)
 			assert.Empty(t, summary)
 			if tt.wantErr != nil {
-				require.ErrorIs(t, err, tt.wantErr)
+				assert.ErrorIs(t, err, tt.wantErr)
 			}
 			if tt.wantMsg != "" {
 				assert.Contains(t, err.Error(), tt.wantMsg)
@@ -1118,7 +1116,6 @@ func TestHandleIssue_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "approved request without an issuance lease",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				e.seedRequest(t, enrollTestAppRequest(models.PlatformEnrollmentStateApproved))
 			},
 			payload: issuePayload(dashboard),
@@ -1127,7 +1124,6 @@ func TestHandleIssue_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "lease reclaimed by another holder",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				req := enrollTestAppRequest(models.PlatformEnrollmentStateIssuing)
 				req.IssuanceLeaseOwner = "reacquired-holder"
 				e.seedRequest(t, req)
@@ -1138,7 +1134,6 @@ func TestHandleIssue_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "payload names no lease holder",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				e.seedRequest(t, enrollTestAppRequest(models.PlatformEnrollmentStateIssuing))
 			},
 			payload: &commonv1.PlatformEnrollmentGovernancePayload{RequestId: enrollTestRequest, ComponentKind: dashboard, ActorUserId: enrollTestOwnerID},
@@ -1147,7 +1142,6 @@ func TestHandleIssue_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "pending request is never issued",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				e.seedRequest(t, enrollTestAppRequest(models.PlatformEnrollmentStatePending))
 			},
 			payload: issuePayload(dashboard),
@@ -1156,7 +1150,6 @@ func TestHandleIssue_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "already completed request is not reissued",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				e.seedRequest(t, enrollTestAppRequest(models.PlatformEnrollmentStateCompleted))
 			},
 			payload: issuePayload(dashboard),
@@ -1400,7 +1393,6 @@ func TestHandleIssue_OperatorIssuanceFailsClosedOnOwnerLookupProblems(t *testing
 		{
 			name: "owner has no organization",
 			mutate: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				e.store.seed(t, usersColl, enrollTestOwnerID, models.User{})
 			},
 			wantErr: constants.ErrOrganizationIDRequired,
@@ -1413,7 +1405,6 @@ func TestHandleIssue_OperatorIssuanceFailsClosedOnOwnerLookupProblems(t *testing
 		{
 			name: "owner is not a member of the organization",
 			mutate: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				e.store.seed(t, orgsColl, enrollTestOrgID, models.Organization{OwnerUserID: "someone-else"})
 			},
 			wantErr: constants.ErrOrganizationMembershipInvalid,
@@ -1421,7 +1412,6 @@ func TestHandleIssue_OperatorIssuanceFailsClosedOnOwnerLookupProblems(t *testing
 		{
 			name: "owner is disabled after approval",
 			mutate: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				e.store.seed(t, usersColl, enrollTestOwnerID, models.User{OrganizationID: enrollTestOrgID, Status: constants.UserStatusDisabled})
 			},
 			wantErr: constants.ErrPlatformEnrollmentInvalidDecision,
@@ -1772,7 +1762,6 @@ func TestHandlePersistPolicy_RequiresTheCommittedIssuance(t *testing.T) {
 		{"issuing request", seedAppIssuance(models.PlatformEnrollmentStateIssuing), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
 		{"revoked request", seedAppIssuance(models.PlatformEnrollmentStateRevoked), nil, constants.ErrPlatformEnrollmentIssuanceNotCommitted},
 		{"operator request", func(t *testing.T, env *enrollTestEnv) {
-			t.Helper()
 			env.seedRequest(t, committedOperatorIssuance(models.PlatformEnrollmentStateCompleted))
 		}, nil, constants.ErrPlatformEnrollmentInvalidComponent},
 		{"different actor", seedAppIssuance(models.PlatformEnrollmentStateCompleted),
@@ -1811,7 +1800,6 @@ func TestHandlePersistPolicy_RequiresTheCommittedIssuance(t *testing.T) {
 
 func seedAppIssuance(state models.PlatformEnrollmentState) func(t *testing.T, env *enrollTestEnv) {
 	return func(t *testing.T, env *enrollTestEnv) {
-		t.Helper()
 		env.seedRequest(t, committedAppIssuance(state))
 	}
 }
@@ -1844,7 +1832,6 @@ func TestHandlePersistPolicy_RejectsIncompletePayloads(t *testing.T) {
 
 func TestHandlePersistPolicy_PropagatesStoreAndContextErrors(t *testing.T) {
 	msgFor := func(t *testing.T) *PubSubCommandMessage {
-		t.Helper()
 		return enrollTestMessage(t, constants.EventPlatformEnrollmentPersistPolicyRequested, persistPolicyPayload())
 	}
 
@@ -1940,7 +1927,6 @@ func newCreateSessionEnv(t *testing.T) *enrollTestEnv {
 func TestHandleCreateSession_RequiresTheCommittedIssuance(t *testing.T) {
 	seedOperatorIssuance := func(state models.PlatformEnrollmentState) func(t *testing.T, env *enrollTestEnv) {
 		return func(t *testing.T, env *enrollTestEnv) {
-			t.Helper()
 			env.seedRequest(t, committedOperatorIssuance(state))
 		}
 	}
@@ -2075,7 +2061,6 @@ func TestHandleCreateSession_RejectsIncompletePayloadsBeforePersisting(t *testin
 
 func TestHandleCreateSession_PropagatesDependencyFailures(t *testing.T) {
 	msgFor := func(t *testing.T) *PubSubCommandMessage {
-		t.Helper()
 		return enrollTestMessage(t, constants.EventPlatformEnrollmentCreateSessionRequested, createSessionPayload())
 	}
 
@@ -2281,7 +2266,6 @@ func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "pending request cannot be revoked",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				e.seedRequest(t, enrollTestAppRequest(models.PlatformEnrollmentStatePending))
 			},
 			wantErr: constants.ErrPlatformEnrollmentInvalidState,
@@ -2289,7 +2273,6 @@ func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "already revoked request cannot be revoked twice",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				r := completedAppRequest()
 				r.State = models.PlatformEnrollmentStateRevoked
 				e.seedRequest(t, r)
@@ -2298,14 +2281,13 @@ func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
 		},
 		{
 			name:    "app revocation requires the target policy document",
-			seed:    func(t *testing.T, e *enrollTestEnv) { t.Helper(); e.seedRequest(t, completedAppRequest()) },
+			seed:    func(t *testing.T, e *enrollTestEnv) { e.seedRequest(t, completedAppRequest()) },
 			mutate:  func(p *commonv1.PlatformEnrollmentGovernancePayload) { p.TargetDocumentId = "" },
 			wantErr: constants.ErrPlatformEnrollmentInvalidPayload,
 		},
 		{
 			name: "operator revocation requires recorded issued credentials",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				r := completedOperatorRequest(t, e)
 				r.Issued = nil
 				e.seedRequest(t, r)
@@ -2315,7 +2297,6 @@ func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "operator certificate with no serial is rejected",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				r := completedOperatorRequest(t, e)
 				r.Issued.Operator.OperatorCert = "garbage"
 				e.seedRequest(t, r)
@@ -2325,7 +2306,6 @@ func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "operator certificate without a SPIFFE ID is rejected",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				r := completedOperatorRequest(t, e)
 				r.Issued.Operator.OperatorCert = enrollTestCertPEM(t, 55, "", time.Date(2031, 1, 1, 0, 0, 0, 0, time.UTC))
 				e.seedRequest(t, r)
@@ -2335,7 +2315,6 @@ func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "cli certificate without a SPIFFE ID is rejected",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				r := completedOperatorRequest(t, e)
 				r.Issued.Operator.CLICert = "garbage"
 				e.seedRequest(t, r)
@@ -2345,7 +2324,6 @@ func TestHandleRevoke_RejectsInvalidRequests(t *testing.T) {
 		{
 			name: "unknown component kind is rejected",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				r := completedAppRequest()
 				r.ComponentKind = "mystery"
 				e.seedRequest(t, r)
@@ -2402,21 +2380,21 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 	}{
 		{
 			name:   "CA revocation fails",
-			seed:   func(t *testing.T, e *enrollTestEnv) { t.Helper(); e.seedRequest(t, completedAppRequest()) },
+			seed:   func(t *testing.T, e *enrollTestEnv) { e.seedRequest(t, completedAppRequest()) },
 			setup:  func(e *enrollTestEnv) { e.pki.revokeErr = errEnrollTestBoom },
 			want:   "revoke certificate",
 			wantIs: errEnrollTestBoom,
 		},
 		{
 			name:   "app policy deletion fails",
-			seed:   func(t *testing.T, e *enrollTestEnv) { t.Helper(); e.seedRequest(t, completedAppRequest()) },
+			seed:   func(t *testing.T, e *enrollTestEnv) { e.seedRequest(t, completedAppRequest()) },
 			setup:  func(e *enrollTestEnv) { e.store.delErr = errEnrollTestBoom },
 			want:   "revoke app policy",
 			wantIs: errEnrollTestBoom,
 		},
 		{
 			name: "operator certificate revocation fails",
-			seed: func(t *testing.T, e *enrollTestEnv) { t.Helper(); e.seedRequest(t, completedOperatorRequest(t, e)) },
+			seed: func(t *testing.T, e *enrollTestEnv) { e.seedRequest(t, completedOperatorRequest(t, e)) },
 			setup: func(e *enrollTestEnv) {
 				e.pki.revokeErrFor["1001"] = errEnrollTestBoom
 			},
@@ -2425,7 +2403,7 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 		},
 		{
 			name: "CLI session deactivation fails",
-			seed: func(t *testing.T, e *enrollTestEnv) { t.Helper(); e.seedRequest(t, completedOperatorRequest(t, e)) },
+			seed: func(t *testing.T, e *enrollTestEnv) { e.seedRequest(t, completedOperatorRequest(t, e)) },
 			setup: func(e *enrollTestEnv) {
 				e.cli.deactivateErr = errEnrollTestBoom
 			},
@@ -2434,7 +2412,7 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 		},
 		{
 			name: "operator session deactivation fails",
-			seed: func(t *testing.T, e *enrollTestEnv) { t.Helper(); e.seedRequest(t, completedOperatorRequest(t, e)) },
+			seed: func(t *testing.T, e *enrollTestEnv) { e.seedRequest(t, completedOperatorRequest(t, e)) },
 			setup: func(e *enrollTestEnv) {
 				e.opSession.deactivateErr = errEnrollTestBoom
 			},
@@ -2444,7 +2422,6 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 		{
 			name: "operator termination write fails",
 			seed: func(t *testing.T, e *enrollTestEnv) {
-				t.Helper()
 				e.seedRequest(t, completedOperatorRequest(t, e))
 				seedEnrollOperator(t, e, "op-1", enrollTestOwnerID, "fp-host-a", constants.OperatorStatusActive, "op-session-1")
 			},
@@ -2456,7 +2433,7 @@ func TestHandleRevoke_PropagatesDependencyFailures(t *testing.T) {
 		},
 		{
 			name: "marking the request revoked fails",
-			seed: func(t *testing.T, e *enrollTestEnv) { t.Helper(); e.seedRequest(t, completedAppRequest()) },
+			seed: func(t *testing.T, e *enrollTestEnv) { e.seedRequest(t, completedAppRequest()) },
 			setup: func(e *enrollTestEnv) {
 				e.store.transitionErr = errEnrollTestBoom
 			},
@@ -2522,5 +2499,5 @@ func TestReceiptSummaries_NeverContainCredentialMaterial(t *testing.T) {
 	for _, secret := range []string{"operator-csr", "cli-csr", "BEGIN CERTIFICATE", "trust-bundle-pem", "operator-chain", "cli-chain"} {
 		assert.NotContainsf(t, summary, secret, "receipt summary must not contain %q", secret)
 	}
-	assert.NotContains(t, summary, "\n", "summary must be a single audit line")
+	assert.False(t, strings.Contains(summary, "\n"), "summary must be a single audit line")
 }

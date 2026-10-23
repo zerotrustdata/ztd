@@ -11,6 +11,7 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -87,7 +88,7 @@ func TestSentinelReadErrorsOnRefusal(t *testing.T) {
 	receipt, err := s.Read(context.Background(), cases.ExecutorEmbedded, seedReadFile(t, fx))
 	require.Error(t, err)
 	assert.Nil(t, receipt)
-	assert.ErrorIs(t, err, constants.ErrActionReceiptMissing, "got %v", err)
+	assert.True(t, errors.Is(err, constants.ErrActionReceiptMissing), "got %v", err)
 }
 
 // TestNewSentinelRequiresATargetAndRefusesAnUntargetedExecutor checks that construction
@@ -100,14 +101,14 @@ func TestNewSentinelRequiresATargetAndRefusesAnUntargetedExecutor(t *testing.T) 
 	embedded := operator.Target{OperatorID: "embedded-operator", OperatorSessionID: "embedded-session"}
 
 	_, err := NewSentinel(c, persona, map[cases.Executor]operator.Target{})
-	require.ErrorIs(t, err, constants.ErrMissingRequiredField, "no targets: %v", err)
+	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "no targets: %v", err)
 
 	s, err := NewSentinel(c, persona, map[cases.Executor]operator.Target{cases.ExecutorEmbedded: embedded})
 	require.NoError(t, err)
 	receipt, err := s.Read(context.Background(), cases.ExecutorOutbound, "/work/canary.txt")
 	assert.Nil(t, receipt)
-	require.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported, "untargeted executor: %v", err)
+	assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported), "untargeted executor: %v", err)
 
 	_, err = NewSentinel(nil, persona, map[cases.Executor]operator.Target{cases.ExecutorEmbedded: embedded})
-	assert.ErrorIs(t, err, constants.ErrMissingRequiredField, "nil client: %v", err)
+	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "nil client: %v", err)
 }

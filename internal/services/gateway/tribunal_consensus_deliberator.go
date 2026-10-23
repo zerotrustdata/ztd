@@ -30,7 +30,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
-	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -58,17 +57,6 @@ type consensusVoteRecorder interface {
 	RecordEvent(event *storage.Event) (int64, error)
 }
 
-// consensusVoteFeed publishes one live event onto the public mirror feed.
-// *PublicPublisherService satisfies it. The mirror's /stream SSE is the
-// delivery path the Evaluation Explorer already consumes.
-type consensusVoteFeed interface {
-	PublishLiveEvent(ctx context.Context, body []byte) error
-}
-
-// tribunalVoteStagePrefix marks a public live event that carries one recorded
-// Tribunal vote. The bytes after the newline are the audit record, unchanged.
-const tribunalVoteStagePrefix = "tribunal vote\n"
-
 // TribunalConsensusDeliberator produces L2 votes from the Gateway-hosted
 // Tribunal panel. Each bound member votes through one governed INFERENCE on
 // the binding's pinned model, under its own app identity, and signs
@@ -81,7 +69,6 @@ type TribunalConsensusDeliberator struct {
 	votes     consensusVoteRecorder
 	signer    ConsensusMemberSigner
 	logger    *slog.Logger
-	voteFeed  func() consensusVoteFeed
 }
 
 // NewTribunalConsensusDeliberator returns the Tribunal vote producer. signer
@@ -106,9 +93,9 @@ func NewTribunalConsensusDeliberator(store consensusBindingReader, policies cons
 	return &TribunalConsensusDeliberator{store: store, policies: policies, inference: inference, votes: votes, signer: signer, logger: logger}, nil
 }
 
-// Deliberate collects the outcome of all bound Tribunal members before returning,
-// subject to context cancellation and existing inference, signing, and audit failures.
-// Members are asked in binding order and stop once the context ends. A member that
+// Deliberate collects member votes on the envelope until quorum is met or can
+// no longer be met. Members are asked in binding order, in concurrent batches
+// of the approvals still needed, and stop once the context ends. A member that
 // cannot run its inference or sign casts no vote; an answer that is not a
 // strict approve is a signed deny. Every
 // member's outcome, with its stated reason, is recorded as a
@@ -150,20 +137,21 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 	if err != nil {
 		return nil, err
 	}
-	votes := make([]*commonv1.L2Vote, 0, len(bound.MemberAppIDs))
-	batchSize := bound.Quorum
-	if batchSize <= 0 {
-		batchSize = len(bound.MemberAppIDs)
-	}
-	for i := 0; i < len(bound.MemberAppIDs); i += batchSize {
-		if ctx.Err() != nil {
+	votes := make([]*commonv1.L2Vote, 0, bound.Quorum)
+	approvals := 0
+	for next := 0; ctx.Err() == nil; {
+		needed := bound.Quorum - approvals
+		if needed <= 0 || len(bound.MemberAppIDs)-next < needed {
 			break
 		}
-		end := min(i+batchSize, len(bound.MemberAppIDs))
-		batch := bound.MemberAppIDs[i:end]
-		for j, vote := range d.castVotes(ctx, bound, batch, computed, subject) {
-			if _, signed := d.countVote(ctx, &env, bound, batch[j], computed, vote); signed != nil {
+		batch := bound.MemberAppIDs[next : next+needed]
+		next += needed
+		for i, vote := range d.castVotes(ctx, bound, batch, computed, subject) {
+			if approved, signed := d.countVote(&env, bound, batch[i], computed, vote); signed != nil {
 				votes = append(votes, signed)
+				if approved {
+					approvals++
+				}
 			}
 		}
 	}
@@ -199,7 +187,7 @@ func (d *TribunalConsensusDeliberator) castVotes(ctx context.Context, bound *mod
 
 // countVote signs and records memberAppID's vote. It returns the L2 vote only
 // when the member signed and its record is on the Gateway audit chain.
-func (d *TribunalConsensusDeliberator) countVote(ctx context.Context, env *commonv1.GovernanceEnvelope, bound *models.ConsensusPolicy, memberAppID, computed string, vote memberVote) (bool, *commonv1.L2Vote) {
+func (d *TribunalConsensusDeliberator) countVote(env *commonv1.GovernanceEnvelope, bound *models.ConsensusPolicy, memberAppID, computed string, vote memberVote) (bool, *commonv1.L2Vote) {
 	var signature []byte
 	if vote.failure == nil {
 		var err error
@@ -209,7 +197,7 @@ func (d *TribunalConsensusDeliberator) countVote(ctx context.Context, env *commo
 		}
 	}
 	// A vote counts only once its record is on the Gateway audit chain.
-	if err := d.recordVote(ctx, env, bound, memberAppID, vote); err != nil {
+	if err := d.recordVote(env, bound, memberAppID, vote); err != nil {
 		d.logger.Warn("tribunal consensus: member vote not recorded", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
 		return false, nil
 	}
@@ -231,7 +219,7 @@ type memberVote struct {
 
 // recordVote appends memberAppID's vote to the Gateway audit chain under the
 // envelope's transaction ID, the ID its receipts carry.
-func (d *TribunalConsensusDeliberator) recordVote(ctx context.Context, env *commonv1.GovernanceEnvelope, bound *models.ConsensusPolicy, memberAppID string, vote memberVote) error {
+func (d *TribunalConsensusDeliberator) recordVote(env *commonv1.GovernanceEnvelope, bound *models.ConsensusPolicy, memberAppID string, vote memberVote) error {
 	record := models.ConsensusVoteRecord{
 		TransactionID:          env.GetId(),
 		TransactionHash:        env.GetTransactionHash(),
@@ -269,72 +257,6 @@ func (d *TribunalConsensusDeliberator) recordVote(ctx context.Context, env *comm
 		ContentText:       string(content),
 	}); err != nil {
 		return fmt.Errorf("tribunal consensus: record vote: %w", err)
-	}
-	if err := d.publishVote(ctx, env, memberAppID, record.RecordedAt, content); err != nil {
-		d.logger.Warn("tribunal consensus: vote not published", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
-	}
-	return nil
-}
-
-// bindTribunalVoteFeed reads the spectator publisher when a vote is recorded.
-// PublicSpectatorRuntime creates that publisher in Start, so capturing
-// Publisher() during Gateway build stores nil for the process lifetime.
-// A nil *PublicPublisherService is returned as a nil interface. Boxing the
-// nil pointer would pass a nil check and panic inside PublishLiveEvent.
-func bindTribunalVoteFeed(d *TribunalConsensusDeliberator, spectator *PublicSpectatorRuntime) {
-	if d == nil {
-		return
-	}
-	d.voteFeed = func() consensusVoteFeed {
-		if spectator == nil {
-			return nil
-		}
-		publisher := spectator.Publisher()
-		if publisher == nil {
-			return nil
-		}
-		return publisher
-	}
-}
-
-// publishVote puts the audit record on the public feed when the Gateway is in
-// consensus posture. The record bytes are the same JSON just written to the
-// audit chain. A missing publisher or a publish failure leaves the recorded
-// vote in place.
-func (d *TribunalConsensusDeliberator) publishVote(ctx context.Context, env *commonv1.GovernanceEnvelope, memberAppID string, recordedAt time.Time, content []byte) error {
-	if env.GetPosture() != string(constants.PostureConsensus) {
-		return nil
-	}
-	var feed consensusVoteFeed
-	if d.voteFeed != nil {
-		feed = d.voteFeed()
-	}
-	if feed == nil {
-		return nil
-	}
-	runID := env.GetInvestigationId()
-	if runID == "" {
-		runID = env.GetId()
-	}
-	completed, total := uint32(0), uint32(0)
-	body, err := evalv1.MarshalCanonical(&evalv1.PublicLiveEvent{
-		SchemaVersion:   "1.10.0",
-		Kind:            "stage_updated",
-		DatasetId:       "ds-live-" + runID,
-		QualityState:    "live_in_progress",
-		ObservedAt:      recordedAt.UTC().Format(time.RFC3339Nano),
-		EventId:         env.GetId() + ":" + memberAppID,
-		RunId:           runID,
-		LifecycleStatus: "running",
-		Completed:       &completed,
-		Total:           &total,
-		StageLabel:      tribunalVoteStagePrefix + string(content),
-	})
-	if err != nil {
-		return fmt.Errorf("tribunal consensus: encode vote event: %w", err)
-	}
-	if err := feed.PublishLiveEvent(ctx, body); err != nil {
-		return fmt.Errorf("tribunal consensus: publish vote: %w", err)
 	}
 	return nil
 }

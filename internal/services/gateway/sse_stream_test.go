@@ -96,13 +96,13 @@ func TestHandleInternalSSEStream_LastEventIDOverridesSinceID(t *testing.T) {
 
 	// Push two events
 	route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
-	_, err := h.sseController.sseStore.SSEEventsAppend(route, "event1", `{"event":{"type":"event1"}}`, "app1")
+	_, err := h.dataController.sseStore.SSEEventsAppend(route, "event1", `{"event":{"type":"event1"}}`, "app1")
 	require.NoError(t, err)
-	_, err = h.sseController.sseStore.SSEEventsAppend(route, "event2", `{"event":{"type":"event2"}}`, "app1")
+	_, err = h.dataController.sseStore.SSEEventsAppend(route, "event2", `{"event":{"type":"event2"}}`, "app1")
 	require.NoError(t, err)
 
 	// Get all events to find the first event's ID
-	rows, err := h.sseController.sseStore.SSEEventsListSince(route, 0, 100)
+	rows, err := h.dataController.sseStore.SSEEventsListSince(route, 0, 100)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	firstID := rows[0].ID
@@ -125,13 +125,13 @@ func TestHandleInternalSSEStream_ReplaysEventsFromDB(t *testing.T) {
 
 	route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
 	// Push a dummy event first so the real event gets ID > 1
-	_, err := h.sseController.sseStore.SSEEventsAppend(route, "dummy_event", `{"event":{"type":"dummy_event"}}`, "app1")
+	_, err := h.dataController.sseStore.SSEEventsAppend(route, "dummy_event", `{"event":{"type":"dummy_event"}}`, "app1")
 	require.NoError(t, err)
-	_, err = h.sseController.sseStore.SSEEventsAppend(route, "replay_event", `{"event":{"type":"replay_event"}}`, "app1")
+	_, err = h.dataController.sseStore.SSEEventsAppend(route, "replay_event", `{"event":{"type":"replay_event"}}`, "app1")
 	require.NoError(t, err)
 
 	// Get all events to find IDs
-	rows, err := h.sseController.sseStore.SSEEventsListSince(route, 0, 100)
+	rows, err := h.dataController.sseStore.SSEEventsListSince(route, 0, 100)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	dummyID := rows[0].ID
@@ -155,7 +155,7 @@ func TestHandleInternalSSEStream_NoReplayWhenSinceIDZero(t *testing.T) {
 	ctx, userID, cliSessionID := seedCLISessionCtx(t, h, "no-replay")
 
 	route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
-	_, err := h.sseController.sseStore.SSEEventsAppend(route, "no_replay_event", `{"event":{"type":"no_replay_event"}}`, "app1")
+	_, err := h.dataController.sseStore.SSEEventsAppend(route, "no_replay_event", `{"event":{"type":"no_replay_event"}}`, "app1")
 	require.NoError(t, err)
 
 	// since_id=0 and no Last-Event-ID → no replay should occur
@@ -289,10 +289,10 @@ func TestHandleInternalSSEStream_ReplayEmitsNoEventField(t *testing.T) {
 	ctx, userID, cliSessionID := seedCLISessionCtx(t, h, "no-event-field")
 
 	route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
-	_, err := h.sseController.sseStore.SSEEventsAppend(route, "test_type", `{"event":{"type":"test_type"}}`, "app1")
+	_, err := h.dataController.sseStore.SSEEventsAppend(route, "test_type", `{"event":{"type":"test_type"}}`, "app1")
 	require.NoError(t, err)
 
-	rows, err := h.sseController.sseStore.SSEEventsListSince(route, 0, 10)
+	rows, err := h.dataController.sseStore.SSEEventsListSince(route, 0, 10)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	eventID := rows[0].ID
@@ -323,12 +323,12 @@ func TestHandleInternalSSEStream_DuplicatePubSubEventSuppressed(t *testing.T) {
 
 	route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
 	// Insert two events: event1 (ID 1) and event2 (ID 2).
-	_, err := h.sseController.sseStore.SSEEventsAppend(route, "event1_type", `{"event":{"type":"event1_type"}}`, "app1")
+	_, err := h.dataController.sseStore.SSEEventsAppend(route, "event1_type", `{"event":{"type":"event1_type"}}`, "app1")
 	require.NoError(t, err)
-	_, err = h.sseController.sseStore.SSEEventsAppend(route, "event2_type", `{"event":{"type":"event2_type"}}`, "app1")
+	_, err = h.dataController.sseStore.SSEEventsAppend(route, "event2_type", `{"event":{"type":"event2_type"}}`, "app1")
 	require.NoError(t, err)
 
-	rows, err := h.sseController.sseStore.SSEEventsListSince(route, 0, 10)
+	rows, err := h.dataController.sseStore.SSEEventsListSince(route, 0, 10)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	event2ID := rows[1].ID
@@ -402,7 +402,7 @@ func TestHandleInternalSSEStream_WriteErrorTerminatesGoroutine(t *testing.T) {
 	ctx, userID, cliSessionID := seedCLISessionCtx(t, h, "write-err")
 
 	route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
-	_, err := h.sseController.sseStore.SSEEventsAppend(route, "test_type", `{"event":{"type":"test_type"}}`, "app1")
+	_, err := h.dataController.sseStore.SSEEventsAppend(route, "test_type", `{"event":{"type":"test_type"}}`, "app1")
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/sse/stream", nil).WithContext(ctx)
@@ -443,7 +443,7 @@ func TestHandleInternalSSEStream_TruncationSentinelOnFullReplay(t *testing.T) {
 	route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
 	// Insert exactly 1000 events to trigger the truncation sentinel.
 	for i := 0; i < 1000; i++ {
-		_, err := h.sseController.sseStore.SSEEventsAppend(route, "trunc_type", `{"event":{"type":"trunc_type"}}`, "app1")
+		_, err := h.dataController.sseStore.SSEEventsAppend(route, "trunc_type", `{"event":{"type":"trunc_type"}}`, "app1")
 		require.NoError(t, err)
 	}
 

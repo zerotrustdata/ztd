@@ -3,8 +3,8 @@ doc_id: connect_frontend_to_gateway
 title: Connect Frontend to Gateway
 audience: frontend developers integrating with ztd
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/connect_frontend_to_gateway.md
   - internal/services/gateway/
@@ -27,7 +27,7 @@ do_not_use_for:
 
 This guide describes how browser-hosted, JavaScript-based frontend applications authenticate with the ztd Gateway via WebAuthn passkeys, establish HTTPS connections, receive Server-Sent Events (SSE), approve suspended transactions, and manage credentials.
 
-For single-origin local development, the `./ztd gw connect <frontend-origin>` workflow automates CORS and passkey configuration, certificate trust installation, and HTTPS verification. Advanced deployments use `./ztd gw start` flags for multi-origin scenarios. For public-tunnel exposure, see [Cloudflare Tunnel Integration](cloudflare_tunnel.md) and `./ztd gw tunnel`.
+For single-origin local development, the `./ztd gw connect <frontend-origin>` workflow automates CORS and passkey configuration, certificate trust installation, and HTTPS verification. Advanced deployments use `./ztd gw start` flags for multi-origin and public-tunnel scenarios.
 
 ## Quick index
 
@@ -56,7 +56,7 @@ For single-origin local development, the `./ztd gw connect <frontend-origin>` wo
 | :--- | :--- |
 | INV-FE-CORS-01 | The Gateway sets `ztd_web_session_cookie` after successful passkey verification. The cookie is always `HttpOnly` and `Secure`. |
 | INV-FE-CORS-02 | When no cross-origin origins are configured, the cookie uses `SameSite=Lax`. When `--cors-origin` is non-empty, the cookie uses `SameSite=None`. |
-| INV-FE-CORS-03 | The Gateway CORS middleware reflects a request origin in `Access-Control-Allow-Origin` and sets `Access-Control-Allow-Credentials: true` when it matches the allowed set. Matching is case-insensitive and ignores a trailing slash, and `Vary: Origin` is always set. |
+| INV-FE-CORS-03 | The Gateway CORS middleware reflects exact-match origins in `Access-Control-Allow-Origin` and sets `Access-Control-Allow-Credentials: true` when the request origin matches the allowed set. |
 | INV-FE-CORS-04 | The CORS-origin list is configured at Gateway startup via `--cors-origin`. Changes require a Gateway restart. |
 
 ### WebAuthn flows (`INV-FE-WA`)
@@ -64,7 +64,7 @@ For single-origin local development, the `./ztd gw connect <frontend-origin>` wo
 | ID | Rule |
 | :--- | :--- |
 | INV-FE-WA-01 | WebAuthn challenges are base64url-encoded by the Gateway; the frontend MUST decode them to `ArrayBuffer` before calling browser credential APIs. Responses MUST be re-encoded before sending to Gateway verify endpoints. |
-| INV-FE-WA-02 | The RP ID MUST be the hostname of the frontend page's origin or a registrable parent domain of it that is not a public suffix, or browser ceremonies fail. Loopback origins use `localhost`. Derivation and validation live in `internal/cli/browserorigin/origin.go`. |
+| INV-FE-WA-02 | The RP ID MUST match the registrable domain of the frontend page's origin, or browser ceremonies fail. |
 | INV-FE-WA-03 | The console registration route permits only the first credential per user. Subsequent credentials MUST be added via the CLI token-gated enrollment flow (`ztd auth enroll user`). |
 | INV-FE-WA-04 | Approval WebAuthn ceremonies (for suspended transactions) do NOT create a new WebSession; they issue an `ActionReceipt` that resumes execution. |
 
@@ -179,8 +179,6 @@ source.addEventListener('error', () => {
 
 The Gateway derives the user and WebSession from the cookie; the query string carries only `since_id`. Do not pass `user_id` or WebSession IDs in URL query parameters.
 
-`/api/v1/sse/stream` is the live push route. `/api/v1/sse/events` is the paged JSON backfill route (`since_id` and `limit`) for catching up on missed events.
-
 ### Approvals for Suspended Transactions
 
 Fetch pending transactions via `GET /api/v1/approvals`. To approve:
@@ -194,7 +192,7 @@ Fetch pending transactions via `GET /api/v1/approvals`. To approve:
 
 - Omitting `credentials: 'include'` on authenticated fetch requests, causing 401 Unauthorized responses.
 - Hard-coding Gateway URLs as relative paths (`/api/`) instead of the absolute HTTPS origin.
-- Retrying enrollment-token registration with a consumed token. The token is consumed when the verify request is accepted, before the WebAuthn assertion is checked, so a failed ceremony needs a new token (`internal/services/gateway/passkey_service_http.go`).
+- Reusing one-time enrollment tokens across multiple failed registration attempts.
 - Passing `user_id` or WebSession IDs in SSE stream query parameters instead of relying on the authenticated cookie.
 - Dismissing certificate warnings instead of installing local root CA trust.
 

@@ -310,30 +310,24 @@ func TestPubSubResultsService_ObservationCompletions_RejectMissingCorrelationOrW
 
 	tests := []struct {
 		name string
-		call func(t *testing.T, svc *PubSubResultsService) error
+		call func(svc *PubSubResultsService, t *testing.T) error
 	}{
-		{"boundary: empty command id", func(t *testing.T, s *PubSubResultsService) error {
-			t.Helper()
+		{"boundary: empty command id", func(s *PubSubResultsService, t *testing.T) error {
 			return s.PublishProviderBoundaryObservationCompleted(t.Context(), &commonv1.GovernanceEnvelope{Id: "", OperatorId: "op-1", OperatorSessionId: "sess-1"}, &evalv1.ProviderBoundaryObservationCompleted{Window: boundaryWindow})
 		}},
-		{"boundary: nil completion", func(t *testing.T, s *PubSubResultsService) error {
-			t.Helper()
+		{"boundary: nil completion", func(s *PubSubResultsService, t *testing.T) error {
 			return s.PublishProviderBoundaryObservationCompleted(t.Context(), &commonv1.GovernanceEnvelope{Id: "cmd", OperatorId: "op-1", OperatorSessionId: "sess-1"}, nil)
 		}},
-		{"boundary: completion without a window", func(t *testing.T, s *PubSubResultsService) error {
-			t.Helper()
+		{"boundary: completion without a window", func(s *PubSubResultsService, t *testing.T) error {
 			return s.PublishProviderBoundaryObservationCompleted(t.Context(), &commonv1.GovernanceEnvelope{Id: "cmd", OperatorId: "op-1", OperatorSessionId: "sess-1"}, &evalv1.ProviderBoundaryObservationCompleted{})
 		}},
-		{"provenance: empty command id", func(t *testing.T, s *PubSubResultsService) error {
-			t.Helper()
+		{"provenance: empty command id", func(s *PubSubResultsService, t *testing.T) error {
 			return s.PublishModelProvenanceObservationCompleted(t.Context(), &commonv1.GovernanceEnvelope{Id: "", OperatorId: "op-1", OperatorSessionId: "sess-1"}, &evalv1.ModelProvenanceObservationCompleted{Window: provenanceWindow})
 		}},
-		{"provenance: nil completion", func(t *testing.T, s *PubSubResultsService) error {
-			t.Helper()
+		{"provenance: nil completion", func(s *PubSubResultsService, t *testing.T) error {
 			return s.PublishModelProvenanceObservationCompleted(t.Context(), &commonv1.GovernanceEnvelope{Id: "cmd", OperatorId: "op-1", OperatorSessionId: "sess-1"}, nil)
 		}},
-		{"provenance: completion without a window", func(t *testing.T, s *PubSubResultsService) error {
-			t.Helper()
+		{"provenance: completion without a window", func(s *PubSubResultsService, t *testing.T) error {
 			return s.PublishModelProvenanceObservationCompleted(t.Context(), &commonv1.GovernanceEnvelope{Id: "cmd", OperatorId: "op-1", OperatorSessionId: "sess-1"}, &evalv1.ModelProvenanceObservationCompleted{})
 		}},
 	}
@@ -341,7 +335,7 @@ func TestPubSubResultsService_ObservationCompletions_RejectMissingCorrelationOrW
 		t.Run(tt.name, func(t *testing.T) {
 			svc, client, _ := newResultsTestService(t)
 
-			err := tt.call(t, svc)
+			err := tt.call(svc, t)
 
 			require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 			assert.Zero(t, client.PublishedCount())

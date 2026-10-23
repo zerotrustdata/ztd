@@ -157,36 +157,6 @@
       "category": "host",
       "description": "Browser command xdg-open runs (a remote editor such as VS Code Remote points it at a helper that opens URLs on the developer's workstation); multi-process test harnesses set it to a no-op so their children's approval links open nothing"
     },
-    "UserProfile": {
-      "_go_const": "EnvVar.UserProfile",
-      "value": "USERPROFILE",
-      "category": "host",
-      "description": "Windows user profile directory reported by the host; scale test children override it with their isolated home"
-    },
-    "SystemRoot": {
-      "_go_const": "EnvVar.SystemRoot",
-      "value": "SYSTEMROOT",
-      "category": "host",
-      "description": "Windows system root directory reported by the host (Windows environment names are case-insensitive); locates the hosts file"
-    },
-    "GOCache": {
-      "_go_const": "EnvVar.GOCache",
-      "value": "GOCACHE",
-      "category": "host",
-      "description": "Go build cache directory reported by the host toolchain; scale test children keep the developer's cache"
-    },
-    "GOModCache": {
-      "_go_const": "EnvVar.GOModCache",
-      "value": "GOMODCACHE",
-      "category": "host",
-      "description": "Go module cache directory reported by the host toolchain; scale test children keep the developer's module cache"
-    },
-    "GOPath": {
-      "_go_const": "EnvVar.GOPath",
-      "value": "GOPATH",
-      "category": "host",
-      "description": "Go workspace root reported by the host toolchain; scale test children keep the developer's GOPATH"
-    },
     "CloudflareAPIToken": {
       "_go_const": "EnvVar.CloudflareAPIToken",
       "value": "CLOUDFLARE_API_TOKEN",

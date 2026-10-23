@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -64,8 +65,8 @@ func TestStageRolloutIntakePullsAndAliases(t *testing.T) {
 	assert.Equal(t, []string{"huggingface.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M"}, result.Pulled)
 	assert.Equal(t, []string{"qwen3.8:27b"}, result.Aliased)
 	require.Len(t, dispatcher.commands, 2)
-	assert.Contains(t, dispatcher.commands[0], "operator model pull")
-	assert.Contains(t, dispatcher.commands[1], "operator model copy")
+	assert.True(t, strings.Contains(dispatcher.commands[0], "operator model pull"))
+	assert.True(t, strings.Contains(dispatcher.commands[1], "operator model copy"))
 }
 
 func TestStageRolloutIntakeSkipsManualAndPendingEntries(t *testing.T) {
@@ -117,7 +118,7 @@ func TestStageFormationCatalogIntake_PullsMissingLibraryTag(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Equal(t, []string{"gemma3:1b"}, result.Pulled)
 	require.Len(t, dispatcher.commands, 1)
-	assert.Contains(t, dispatcher.commands[0], "gemma3:1b")
+	assert.True(t, strings.Contains(dispatcher.commands[0], "gemma3:1b"))
 }
 
 func writeRolloutIntakeCatalog(t *testing.T, catalog RolloutIntakeCatalog) string {

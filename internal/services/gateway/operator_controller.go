@@ -203,7 +203,7 @@ func (c *OperatorController) handleStopOperator(w http.ResponseWriter, r *http.R
 	})
 }
 
-// POST /api/v1/operators/{id}
+// POST /api/v1/operators/{id}/terminate
 func (c *OperatorController) handleTerminateOperator(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		c.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")

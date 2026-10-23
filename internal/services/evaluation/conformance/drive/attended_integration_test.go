@@ -521,7 +521,7 @@ func TestAttendedSubscriptionRefusedSubmitsNothing(t *testing.T) {
 
 	driven, err := NewAttended(mcpDriver, g.client, unknownCLIPersona(t, g.persona), g.ident.UserID, nil).Drive(t.Context(), a)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "subscribe for approval", "the error must name the failed subscription")
+	assert.ErrorContains(t, err, "subscribe for approval", "the error must name the failed subscription")
 	assert.Empty(t, driven.Observations)
 
 	pending, err := g.pendingTransactions(approver)
@@ -649,8 +649,8 @@ func TestAttendedInnerTransportErrorIsWrappedWithItsCause(t *testing.T) {
 	driven, err := NewAttended(inner, unreachableClient(t), testIdentity().Persona, "user-approver", nil).Drive(t.Context(), a)
 	require.Error(t, err)
 	var urlErr *url.Error
-	require.ErrorAs(t, err, &urlErr, "the transport failure must keep its cause")
-	require.ErrorContains(t, err, "attended "+string(cases.FaultAttendedApprove)+": drive:")
+	assert.ErrorAs(t, err, &urlErr, "the transport failure must keep its cause")
+	assert.ErrorContains(t, err, "attended "+string(cases.FaultAttendedApprove)+": drive:")
 	assert.Empty(t, driven.Observations)
 }
 
@@ -675,7 +675,7 @@ func TestAttendedCancelledWaitReturnsWrappedErrorWithNoObservation(t *testing.T)
 
 	driven, err := NewAttended(cancelling, g.client, g.persona, g.ident.UserID, nil).Drive(ctx, a)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "wait for approval")
+	assert.ErrorContains(t, err, "wait for approval")
 	assert.Empty(t, driven.Observations)
 	assert.True(t,
 		errors.Is(err, context.Canceled) || errors.Is(err, constants.ErrApprovalSSETimeout) || errors.Is(err, constants.ErrSSEStreamClosed),

@@ -139,7 +139,7 @@ func TestTestE2ECmd_RunFlagDefaultsEmpty(t *testing.T) {
 	cmd := testE2ECmd()
 	flag := cmd.Flags().Lookup("run")
 	require.NotNil(t, flag)
-	assert.Empty(t, flag.DefValue)
+	assert.Equal(t, "", flag.DefValue)
 }
 
 func TestTestCoverageCmd(t *testing.T) {
@@ -155,7 +155,7 @@ func TestTestCoverageCmd(t *testing.T) {
 		cmd := testCoverageCmd()
 		flag := cmd.Flags().Lookup("pkg")
 		assert.NotNil(t, flag)
-		assert.Empty(t, flag.DefValue)
+		assert.Equal(t, "", flag.DefValue)
 	})
 
 	t.Run("coverage command has verbose flag", func(t *testing.T) {

@@ -112,7 +112,7 @@ func TestRegister_BrowserOpenFailure_ContinuesToTUI(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 		flusher.Flush()
 		<-r.Context().Done()
 	}
@@ -193,7 +193,7 @@ func TestRegister_SSEReadyBeforeBrowserLaunch(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 		flusher.Flush()
 		<-r.Context().Done()
 	}
@@ -258,7 +258,7 @@ func TestMonitorPasskeyRegistration_UnrelatedEventIgnored(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 
 		// 1. Wrong event type (not passkey.registered).
 		wrongTypeEnvelope, _ := json.Marshal(models.SSEPushPayload{
@@ -329,7 +329,7 @@ func TestMonitorPasskeyRegistration_MalformedEventIgnored(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 
 		// Malformed JSON data.
 		fmt.Fprintf(w, "data: {not valid json\n\n")
@@ -378,7 +378,7 @@ func TestMonitorPasskeyRegistration_UndecodableInnerEventIgnored(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 
 		// Envelope whose inner event has a non-string type: the inner decode
 		// fails, so the event must not match.
@@ -434,7 +434,7 @@ func TestMonitorPasskeyRegistration_SuccessCancelsSSEContext(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 
 		matchingEnvelope, _ := json.Marshal(models.SSEPushPayload{
 			UserID:       "test-user",
@@ -488,7 +488,7 @@ func TestMonitorPasskeyRegistration_MatchingEventCompletesOnce(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 
 		matchingEnvelope, _ := json.Marshal(models.SSEPushPayload{
 			UserID:       "test-user",
@@ -554,7 +554,7 @@ func TestRegister_ValidateInputs(t *testing.T) {
 
 	err := r.Register(context.Background(), "", "test-session")
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrPasskeyRegistrationFailed)
+	assert.ErrorIs(t, err, constants.ErrPasskeyRegistrationFailed)
 
 	err = r.Register(context.Background(), "test-user", "")
 	require.Error(t, err)
@@ -579,7 +579,7 @@ func TestRegister_ContextCancelledBeforeEnrollment(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 		flusher.Flush()
 		<-r.Context().Done()
 	}
@@ -620,7 +620,7 @@ func TestPasskeyRegistrar_Out_EmitsURLBeforeBrowser(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 		flusher.Flush()
 		<-r.Context().Done()
 	}
@@ -706,7 +706,7 @@ func TestPasskeyRegistrar_Out_EmitsBrowserErrorOnOpenFailure(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 		flusher.Flush()
 		<-r.Context().Done()
 	}

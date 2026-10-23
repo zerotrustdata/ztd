@@ -131,7 +131,6 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 		{
 			name: "per-call variant differs from designated trace identity",
 			mutate: func(t *testing.T, trace *AgentTrace, signer oracletest.Signer) {
-				t.Helper()
 				call := &trace.ModelCalls[0]
 				call.ServedModelTag = "model-b:latest"
 				call.ModelDigest = strings.Repeat("c", 64)
@@ -151,7 +150,6 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 		{
 			name: "signed result from another variant",
 			mutate: func(t *testing.T, trace *AgentTrace, signer oracletest.Signer) {
-				t.Helper()
 				call := &trace.ModelCalls[0]
 				result := call.InferenceResult.InferenceResult
 				result.Model = "model-b:latest"
@@ -192,7 +190,6 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 		{
 			name: "result changed after dispatch",
 			mutate: func(t *testing.T, trace *AgentTrace, signer oracletest.Signer) {
-				t.Helper()
 				call := &trace.ModelCalls[0]
 				result := call.InferenceResult.InferenceResult
 				result.Parts[0].Part = &operatorv1.InferenceResponsePart_Text{Text: "other answer"}
@@ -218,7 +215,7 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 			resealV7Trace(t, trace)
 
 			err := VerifyAgentTraceEvidence(trace)
-			require.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid)
+			assert.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid)
 			assert.Error(t, err)
 		})
 	}
@@ -313,7 +310,7 @@ func TestValidateAgentTraceDigest_RejectsShellTextStepsInV8(t *testing.T) {
 	require.NoError(t, err)
 	trace.EvidenceDigest = digest
 
-	require.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrEvidenceArtifactMalformed)
+	assert.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrEvidenceArtifactMalformed)
 	_, err = SealAgentTrace(trace)
 	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }

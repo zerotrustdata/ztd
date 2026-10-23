@@ -50,13 +50,13 @@ func TestOperatorFingerprintOptions_ProvenanceIncludesRuntimePort(t *testing.T) 
 func TestServeOperatorOptions_ZeroValue(t *testing.T) {
 	var opts ServeOperatorOptions
 
-	assert.Empty(t, opts.LogLevel)
-	assert.Empty(t, opts.Endpoint)
-	assert.Empty(t, opts.TrustBundlePath)
-	assert.Empty(t, opts.WorkingDir)
-	assert.Empty(t, opts.LaunchDir)
+	assert.Equal(t, "", opts.LogLevel)
+	assert.Equal(t, "", opts.Endpoint)
+	assert.Equal(t, "", opts.TrustBundlePath)
+	assert.Equal(t, "", opts.WorkingDir)
+	assert.Equal(t, "", opts.LaunchDir)
 	assert.False(t, opts.CloudMode)
-	assert.Empty(t, opts.CloudProvider)
+	assert.Equal(t, "", opts.CloudProvider)
 	assert.Equal(t, time.Duration(0), opts.HeartbeatInterval)
 }
 
@@ -112,9 +112,9 @@ func TestServeOperatorOptions_PartialAssignment(t *testing.T) {
 
 	assert.Equal(t, "info", opts.LogLevel)
 	assert.Equal(t, "10.0.0.1", opts.Endpoint)
-	assert.Empty(t, opts.TrustBundlePath, "unassigned TrustBundlePath should be zero value")
-	assert.Empty(t, opts.WorkingDir, "unassigned WorkingDir should be zero value")
-	assert.Empty(t, opts.LaunchDir, "unassigned LaunchDir should be zero value")
+	assert.Equal(t, "", opts.TrustBundlePath, "unassigned TrustBundlePath should be zero value")
+	assert.Equal(t, "", opts.WorkingDir, "unassigned WorkingDir should be zero value")
+	assert.Equal(t, "", opts.LaunchDir, "unassigned LaunchDir should be zero value")
 	assert.False(t, opts.CloudMode, "unassigned CloudMode should be false")
 	assert.Equal(t, time.Duration(0), opts.HeartbeatInterval, "unassigned HeartbeatInterval should be zero")
 }
@@ -328,7 +328,7 @@ func TestBuildOperatorLoadOptions_BasicMapping(t *testing.T) {
 func TestBuildOperatorLoadOptions_EmptyEndpoint(t *testing.T) {
 	opts := ServeOperatorOptions{}
 	loadOpts := buildOperatorLoadOptions(opts, "", "/work")
-	assert.Empty(t, loadOpts.OperatorEndpoint)
+	assert.Equal(t, "", loadOpts.OperatorEndpoint)
 	assert.Equal(t, "/work", loadOpts.WorkDir)
 }
 
@@ -337,10 +337,10 @@ func TestBuildOperatorLoadOptions_ZeroValues(t *testing.T) {
 	loadOpts := buildOperatorLoadOptions(opts, constants.DefaultEndpoint, constants.DefaultPKIDir)
 
 	assert.False(t, loadOpts.CloudMode)
-	assert.Empty(t, loadOpts.CloudProvider)
+	assert.Equal(t, "", loadOpts.CloudProvider)
 	assert.Equal(t, time.Duration(0), loadOpts.HeartbeatInterval)
-	assert.Empty(t, loadOpts.PKIDir)
-	assert.Empty(t, loadOpts.SecretsDir)
+	assert.Equal(t, "", loadOpts.PKIDir)
+	assert.Equal(t, "", loadOpts.SecretsDir)
 }
 
 func TestBuildOperatorLoadOptions_EnvVarsPropagated(t *testing.T) {
@@ -371,8 +371,8 @@ func TestBuildOperatorLoadOptions_GatewayPortsDefaultToZeroAndPassThroughWhenSet
 func TestBuildOperatorLoadOptions_PKIAndSecretsAlwaysEmpty(t *testing.T) {
 	opts := ServeOperatorOptions{}
 	loadOpts := buildOperatorLoadOptions(opts, constants.DefaultEndpoint, constants.DefaultDataDir)
-	assert.Empty(t, loadOpts.PKIDir, "PKIDir should always be empty for operator mode")
-	assert.Empty(t, loadOpts.SecretsDir, "SecretsDir should always be empty for operator mode")
+	assert.Equal(t, "", loadOpts.PKIDir, "PKIDir should always be empty for operator mode")
+	assert.Equal(t, "", loadOpts.SecretsDir, "SecretsDir should always be empty for operator mode")
 }
 
 func TestBuildOperatorLoadOptions_AllFieldsPopulated(t *testing.T) {
@@ -398,8 +398,8 @@ func TestBuildOperatorLoadOptions_AllFieldsPopulated(t *testing.T) {
 	assert.Equal(t, "warn", loadOpts.LogLevel)
 	assert.Equal(t, "/custom/work", loadOpts.WorkDir)
 	assert.Equal(t, 90*time.Second, loadOpts.HeartbeatInterval)
-	assert.Empty(t, loadOpts.PKIDir)
-	assert.Empty(t, loadOpts.SecretsDir)
+	assert.Equal(t, "", loadOpts.PKIDir)
+	assert.Equal(t, "", loadOpts.SecretsDir)
 	assert.Equal(t, "/bin/bash", loadOpts.Shell)
 	assert.Equal(t, "C.UTF-8", loadOpts.Lang)
 	assert.Equal(t, "screen", loadOpts.Term)
@@ -435,10 +435,10 @@ func TestBuildOperatorLoadOptions_EnvVarsUnset(t *testing.T) {
 	opts := ServeOperatorOptions{}
 	loadOpts := buildOperatorLoadOptions(opts, constants.DefaultEndpoint, "/work")
 
-	assert.Empty(t, loadOpts.Shell)
-	assert.Empty(t, loadOpts.Lang)
-	assert.Empty(t, loadOpts.Term)
-	assert.Empty(t, loadOpts.TZ)
+	assert.Equal(t, "", loadOpts.Shell)
+	assert.Equal(t, "", loadOpts.Lang)
+	assert.Equal(t, "", loadOpts.Term)
+	assert.Equal(t, "", loadOpts.TZ)
 }
 
 func TestClassifyConfigLoadError_NonPostureError_ReturnsConfigError(t *testing.T) {

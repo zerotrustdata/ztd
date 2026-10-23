@@ -4,7 +4,7 @@ title: "Diagram: Gateway Service Stack"
 audience: maintainers, architects, and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-23
+last_updated: 2026-10-22
 owners:
   - internal/services/gateway/
   - internal/cli/serve/gateway.go
@@ -30,14 +30,14 @@ graph TD
 
         subgraph Edge ["1 — Protocol Surfaces"]
             direction LR
-            HTTP["HTTP :8080<br/>Bootstrap · CA discovery · Health · Enrollment"]
+            HTTP["HTTP :8080<br/>Bootstrap · CA discovery · Health"]
             HTTPS["HTTPS :8443<br/>mTLS · Web session · Dual auth"]
         end
 
         subgraph Core ["2 — Core Services"]
             direction LR
             PKI["Root CA / PKI<br/>CSR enrollment · SPIFFE SANs"]
-            Auth["Auth Middleware<br/>Route classification (RouteAuthRegistry)"]
+            Auth["Auth Middleware<br/>Route classification · WebAuthn"]
             Reg["Registration Service<br/>Operator slots · Session binding"]
             Passkey["Passkey Handler<br/>WebAuthn assertions & L3"]
         end
@@ -47,12 +47,11 @@ graph TD
             subgraph MCP ["MCP / A2A Gateway"]
                 MCPEndpoint["Unified MCP Endpoint<br/>/mcp · JSON-RPC dispatch"]
                 A2A["A2A Endpoint<br/>/api/v1/a2a/call"]
-                MCPGW["MCP Gateway<br/>Envelope normalization"]
             end
             subgraph Governance ["Governance Surface"]
                 EnvelopeRx["Envelope Reception<br/>POST /api/v1/governance/envelopes"]
                 Dispatch["Operator Dispatch<br/>POST /api/v1/operators/commands"]
-                Consensus["Consensus Service<br/>L2 votes (Gateway Tribunal or bound app)"]
+                Consensus["Consensus Service<br/>L2 votes (Gateway Tribunal or bound app) · L3 coordination"]
             end
             subgraph Delivery ["Delivery & Observation"]
                 SSE["SSE Event Bridge<br/>Push · Poll · Stream"]
@@ -61,7 +60,7 @@ graph TD
         end
 
         subgraph Broker ["4 — Pub/Sub Broker"]
-            WSSHandler["WebSocket Handler<br/>cmd:* · results:* · heartbeat:* · receipts:*"]
+            WSSHandler["WebSocket Handler<br/>cmd:* · receipts:* · heartbeats"]
         end
 
         subgraph Data ["5 — Persistence Layer"]
@@ -69,42 +68,41 @@ graph TD
             DocStore["Document Store<br/>JSON CRUD · Collection/ID"]
             KVStore["KV Store<br/>TTL-aware ephemeral state"]
             BlobStore["Blob Store<br/>Binary attachments"]
-            AuditDB["Audit Authority<br/>Append-only chained events"]
+            AuditDB["Audit Authority<br/>Append-only encrypted log"]
             StateRoot["State Root Service<br/>Merkle root tracking"]
         end
 
         HTTP --> PKI
         HTTPS --> Auth
+        Auth --> Reg
+        Auth --> Passkey
         Reg --> DocStore
 
-        EnvelopeRx --> Warden_Entry
+        EnvelopeRx --> Consensus
         Dispatch --> Consensus
-        MCPEndpoint --> MCPGW
-        A2A --> MCPGW
+        Consensus --> StateRoot
 
-        Dispatch -- "Remote operator (cmd publish)" --> WSSHandler
+        MCPEndpoint --> WSSHandler
+        A2A --> WSSHandler
+        Dispatch --> WSSHandler
+        WSSHandler --> DocStore
+        WSSHandler --> StateRoot
         SSE --> DocStore
         Observe --> DocStore
 
-        DocStore -- "dirty trigger" --> StateRoot
-        KVStore -- "dirty trigger" --> StateRoot
-        BlobStore -- "dirty trigger" --> StateRoot
+        AuditDB --> StateRoot
     end
 
     subgraph OperatorSubstrate ["Operator Substrate (PEP) — Owns L4–L5"]
         direction TB
-        LoopbackBridge["InProcessPubSubClient<br/>(broker cmd delivery)"]
-        Warden_Entry["OperatorPubSubService<br/>ProcessEnvelope (in-process)"]
+        LoopbackBridge["Loopback Pub/Sub<br/>(In-process dispatch)"]
         Warden["L4 Warden<br/>Pre-dispatch verification"]
         Actuator["L5 Actuator<br/>Execution + Signed receipt"]
-        LoopbackBridge --> Warden_Entry
-        Warden_Entry --> Warden --> Actuator
+        LoopbackBridge --> Warden --> Actuator
     end
 
-    EnvelopeRx -- "ProcessEnvelope (direct)" --> Warden_Entry
-    MCPGW -- "Gateway-local (direct)" --> Warden_Entry
-    MCPGW -- "Outbound (dispatch)" --> Dispatch
-    Dispatch -- "Embedded operator (direct)" --> Warden_Entry
+    EnvelopeRx -- "ProcessEnvelope (synchronous)" --> LoopbackBridge
+    MCPEndpoint -- "Gateway-local path" --> LoopbackBridge
     WSSHandler -- "Loopback publish" --> LoopbackBridge
     Actuator -- "ActionReceipt" --> AuditDB
 ```
@@ -114,17 +112,16 @@ graph TD
 The Gateway coordinates policy decisions through five structured tiers:
 
 1. **Protocol Surfaces**:
-   - Plain HTTP on port `8080` serves health, bootstrap and CA discovery, deploy scripts, and platform enrollment routes. It redirects all other requests to HTTPS with `301`.
+   - Plain HTTP on port `8080` serves discovery, health, deploy scripts, and token-scoped enrollment initiation, redirecting unauthenticated requests to HTTPS.
    - HTTPS on port `8443` serves authenticated APIs, the Console SPA, passkey challenges, WebSocket pub/sub streams, and mTLS endpoints.
 2. **Core Security Services**:
    - `PKIAuthority`: Manages Root, Hub, Operator, and Peer CAs, signing CSRs with SPIFFE URI SANs under `ztd.local`.
-   - `AuthService.Middleware`: Evaluates routes against `RouteAuthRegistry` (`RouteAuthNone`, `RouteAuthMTLS`, `RouteAuthWebSession`, `RouteAuthDual`).
-   - `PasskeyService`: Executes passkey (WebAuthn) registration and assertion ceremonies and brokers L3 proofs.
+   - `GatewayAuthMiddleware`: Evaluates routes against `RouteAuthRegistry` (`RouteAuthNone`, `RouteAuthMTLS`, `RouteAuthWebSession`, `RouteAuthDual`).
+   - `PasskeyService`: Executes FIDO2 / WebAuthn registration and assertion ceremonies for login and L3 approvals.
 3. **Application Ingress**:
-   - MCP and A2A calls are normalized into typed `GovernanceEnvelope` messages by the MCP gateway service.
-   - The Consensus Service routes L2 votes to the bound consensus provider: the Gateway-hosted Tribunal panel (`tribunal`) or an enrolled application (`application`). It votes only on state-change actions.
-   - `DispatchApprovalCoordinator` and `mcp.EnvelopeSuspender` hold transactions suspended pending an L3 proof.
+   - MCP and A2A gateways normalize incoming tool invocations into typed `GovernanceEnvelope` messages.
+   - The Consensus Service routes L2 votes to the bound consensus provider: the Gateway-hosted Tribunal panel (`tribunal`) or an enrolled application (`application`). It votes only on state-change actions. Governance coordinators also hold suspended transactions for L3 notary signatures.
 4. **Pub/Sub Brokering**:
-   - Coordinates outbound WebSocket connections from remote Operators across the `cmd:`, `results:`, `heartbeat:`, and `receipts:` channel prefixes.
+   - Coordinates outbound WebSocket connections from remote Operators, multiplexing session-isolated channels (`cmd:`, `results:`, `heartbeat:`, `receipts:`).
 5. **Operator Substrate**:
-   - The Gateway process embeds an in-process Operator substrate. Gateway-local envelopes call `OperatorPubSubService.ProcessEnvelope` directly, which runs the L4 Warden and L5 Actuator in-process. Broker `cmd:` traffic reaches the embedded Operator through `InProcessPubSubClient` rather than a network socket.
+   - The Gateway process embeds an in-process Operator substrate. Gateway-local operations route through a loopback pub/sub bridge, executing through L4 Warden and L5 Actuator without traversing network sockets.

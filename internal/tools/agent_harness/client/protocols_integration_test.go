@@ -40,10 +40,10 @@ func TestDispatchCommand_UsesTypedAuthenticatedIngressAndRecordsExchange(t *test
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, constants.APIPaths.OperatorsCommands, r.URL.Path)
 		assert.Empty(t, r.Header.Get(constants.HeaderCLISessionID), "dispatch without a CLI certificate runs on the Operator identity, which never carries the CLI session")
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&received))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
 		w.Header().Set("Content-Type", "application/json")
 		_, err := w.Write(responseBody)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -102,7 +102,7 @@ func TestHealth_ReturnsTypedPostureAndRecordsExchange(t *testing.T) {
 		assert.Equal(t, constants.APIPaths.Health, r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		_, err := w.Write([]byte(`{"status":"ok","mode":"gateway","version":"2.1.8","pid":1,"governance_ready":true,"posture":"doctrine"}`))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}))
 	t.Cleanup(server.Close)
 	client, err := New(config.Config{MTLSBaseURL: server.URL})
@@ -203,11 +203,11 @@ func TestMCPToolsCall_TypedArgs_SerializeToSameJSONRPCShape(t *testing.T) {
 			t.Errorf("expected path /mcp, got %s", r.URL.Path)
 		}
 		var req mcp.JSONRPCRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		if req.Method != "tools/call" {
 			t.Errorf("expected method tools/call, got %s", req.Method)
 		}
-		assert.NoError(t, json.Unmarshal(req.Params, &capturedParams))
+		require.NoError(t, json.Unmarshal(req.Params, &capturedParams))
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}`))
 	})
@@ -229,7 +229,7 @@ func TestMCPToolsCall_TypedArgs_SerializeToSameJSONRPCShape(t *testing.T) {
 	require.True(t, ok, "arguments should be a JSON object")
 	assert.Equal(t, "dataop", argsMap["command"])
 	assert.Equal(t, []any{"ingest", "TRK-001"}, argsMap["args"])
-	assert.InDelta(t, float64(10), argsMap["timeout"], 0)
+	assert.Equal(t, float64(10), argsMap["timeout"])
 }
 
 func TestMCPToolsCall(t *testing.T) {

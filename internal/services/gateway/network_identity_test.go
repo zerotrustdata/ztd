@@ -39,7 +39,6 @@ func TestResolveGatewayCertificateIdentity(t *testing.T) {
 			name:     "loads identity from file",
 			certMode: "full",
 			setupFile: func(t *testing.T, dir string) string {
-				t.Helper()
 				identityFile := filepath.Join(dir, constants.NetworkIdentityFilename)
 				identity := network.NetworkIdentity{
 					IPs:       []string{"192.0.2.10", "2001:db8::10"},
@@ -52,7 +51,6 @@ func TestResolveGatewayCertificateIdentity(t *testing.T) {
 			},
 			wantErr: false,
 			checkResult: func(t *testing.T, extraIPs []net.IP, extraDNSNames []string) {
-				t.Helper()
 				assert.Equal(t, []net.IP{net.ParseIP("192.0.2.10")}, extraIPs)
 				assert.Contains(t, extraDNSNames, "gateway.test.internal")
 				assert.Contains(t, extraDNSNames, "localhost")
@@ -64,7 +62,6 @@ func TestResolveGatewayCertificateIdentity(t *testing.T) {
 			identityFile: "",
 			wantErr:      false,
 			checkResult: func(t *testing.T, extraIPs []net.IP, extraDNSNames []string) {
-				t.Helper()
 				assert.NotEmpty(t, extraIPs, "should detect at least one IP")
 				assert.NotEmpty(t, extraDNSNames, "should have DNS names")
 				assert.Contains(t, extraDNSNames, "localhost")
@@ -76,7 +73,6 @@ func TestResolveGatewayCertificateIdentity(t *testing.T) {
 			identityFile: "",
 			wantErr:      false,
 			checkResult: func(t *testing.T, extraIPs []net.IP, extraDNSNames []string) {
-				t.Helper()
 				for _, ip := range extraIPs {
 					assert.True(t, ip.IsLoopback(), "all IPs should be loopback")
 				}
@@ -87,7 +83,6 @@ func TestResolveGatewayCertificateIdentity(t *testing.T) {
 			name:     "malformed identity file",
 			certMode: "full",
 			setupFile: func(t *testing.T, dir string) string {
-				t.Helper()
 				identityFile := filepath.Join(dir, constants.NetworkIdentityFilename)
 				require.NoError(t, os.WriteFile(identityFile, []byte("not-json"), 0600))
 				return identityFile

@@ -39,7 +39,6 @@ func TestEvalTreeInvariants(t *testing.T) {
 }
 
 func checkNoSingletonGroups(t *testing.T, cmd *cobra.Command) {
-	t.Helper()
 	walkCommands(cmd, func(path []string, c *cobra.Command) {
 		// Only check groups, not leaf commands
 		if len(c.Commands()) == 0 {
@@ -52,7 +51,6 @@ func checkNoSingletonGroups(t *testing.T, cmd *cobra.Command) {
 }
 
 func checkPluralGroupNames(t *testing.T, cmd *cobra.Command) {
-	t.Helper()
 	// Mass nouns that are allowed to be singular-like
 	massNouns := map[string]bool{
 		"rollout":     true,
@@ -79,7 +77,6 @@ func checkPluralGroupNames(t *testing.T, cmd *cobra.Command) {
 }
 
 func checkFlagNames(t *testing.T, cmd *cobra.Command) {
-	t.Helper()
 	forbiddenFlags := map[string]bool{
 		"run-id": true,
 		"params": true,
@@ -106,7 +103,6 @@ func checkFlagNames(t *testing.T, cmd *cobra.Command) {
 }
 
 func checkJSONSupport(t *testing.T, cmd *cobra.Command) {
-	t.Helper()
 	walkCommands(cmd, func(path []string, c *cobra.Command) {
 		// Only check leaf commands
 		if len(c.Commands()) > 0 {
@@ -133,7 +129,6 @@ var idFlagSelectors = map[string]bool{
 }
 
 func checkPositionalIDs(t *testing.T, cmd *cobra.Command) {
-	t.Helper()
 	// Check that commands taking IDs use positional arguments
 	idFlagPatterns := []string{"-id"}
 	walkCommands(cmd, func(path []string, c *cobra.Command) {

@@ -9,6 +9,7 @@ package fs
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,7 +29,7 @@ func TestCreateRuntimeTree_CancelledContextReturnsError(t *testing.T) {
 
 	err := svc.CreateRuntimeTree(ctx)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, errors.Is(err, context.Canceled))
 }
 
 func TestCreateRuntimeTree_NilContextSucceeds(t *testing.T) {

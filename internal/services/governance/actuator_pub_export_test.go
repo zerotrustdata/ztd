@@ -106,7 +106,7 @@ func TestActuatorPublicKeyExport(t *testing.T) {
 		info, err := fileSvc.Stat(context.Background(), jsonRel)
 		require.NoError(t, err)
 		if runtime.GOOS != "windows" {
-			assert.Equal(t, os.FileMode(constants.PermFilePrivate), info.Mode().Perm())
+			assert.True(t, info.Mode().Perm() == constants.PermFilePrivate)
 		}
 	})
 }

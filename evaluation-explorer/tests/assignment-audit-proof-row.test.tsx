@@ -9,6 +9,7 @@ import { evalStore } from '../src/state/store';
 
 const { fetchProofCatalogEntry } = vi.hoisted(() => ({ fetchProofCatalogEntry: vi.fn() }));
 vi.mock('../src/state/feed', () => ({
+  loadRuntimeConfig: vi.fn().mockResolvedValue({ schema_version: '1.0.0', mirror_origin: 'http://127.0.0.1:8082' }),
   fetchProofCatalogEntry,
 }));
 
@@ -38,7 +39,6 @@ describe('AssignmentAuditProofRow', () => {
   beforeEach(() => {
     fetchProofCatalogEntry.mockReset().mockResolvedValue(null);
     evalStore.loadFixtures([], []);
-    evalStore.setMirrorOrigin('http://127.0.0.1:8082');
     evalStore.loadProofCatalog([catalogEntry(sliceHash, 'assignment-1.db', 8192)]);
   });
 

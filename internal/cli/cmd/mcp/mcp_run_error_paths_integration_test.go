@@ -74,6 +74,6 @@ func TestLaunchAgentWithGovernance_UnknownAgentReturnsBeforeEnrollment(t *testin
 
 	err := launchAgentWithGovernance("unknown-agent-xyz", nil, false, "", cmdtest.FileSvcFactoryFor(fileSvc), authcmd.PanickingEnrollerFactory())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrAgentNotFound)
+	assert.ErrorIs(t, err, constants.ErrAgentNotFound)
 	assert.NotContains(t, err.Error(), "enrollerFactory should not be called on this code path")
 }

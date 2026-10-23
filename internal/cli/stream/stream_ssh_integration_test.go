@@ -156,7 +156,7 @@ func TestPreFlightCheck_ContextCancelled(t *testing.T) {
 	}
 
 	err := preFlightCheck(ctx, r, "", "", khPath, 5*time.Second)
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "context canceled")
 }
 
@@ -170,7 +170,7 @@ func TestPreFlightCheck_NoAuthMethods(t *testing.T) {
 	}
 
 	err := preFlightCheck(ctx, r, "", "", "", 5*time.Second)
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no SSH auth methods available")
 }
 

@@ -243,7 +243,7 @@ func TestGenerateComplianceAnalysis_RejectsMissingImporters(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+	assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
 	assert.Nil(t, result)
 }
 
@@ -264,7 +264,7 @@ func TestGenerateComplianceAnalysis_RejectsEvidenceFromAnotherScope(t *testing.T
 	})
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 	require.NotNil(t, result)
 	assert.Nil(t, result.Analysis)
 }
@@ -286,7 +286,7 @@ func TestGenerateComplianceAnalysis_RejectsImporterWithConflictingSourceAdmissio
 	})
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrReportVerificationFailed)
+	assert.ErrorIs(t, err, constants.ErrReportVerificationFailed)
 	require.NotNil(t, result)
 	assert.Nil(t, result.Analysis)
 	require.Len(t, result.GraphReport.ImporterErrors, 1)
@@ -309,7 +309,7 @@ func TestGenerateComplianceAnalysis_RejectsImporterFailureBeforeGrading(t *testi
 	})
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrReportVerificationFailed)
+	assert.ErrorIs(t, err, constants.ErrReportVerificationFailed)
 	require.NotNil(t, result)
 	assert.Nil(t, result.Analysis)
 	assert.False(t, result.GraphReport.Valid)

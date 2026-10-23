@@ -103,7 +103,7 @@ func TestLoadOperatorHierarchy_ReportsMissingAndMalformedFiles(t *testing.T) {
 		_, err := loadOperatorHierarchy(testutil.TempDir(t))
 
 		require.Error(t, err)
-		require.ErrorIs(t, err, os.ErrNotExist)
+		assert.ErrorIs(t, err, os.ErrNotExist)
 		assert.Contains(t, err.Error(), "read operator_hierarchy.json")
 	})
 	t.Run("malformed json", func(t *testing.T) {
@@ -211,7 +211,7 @@ func TestWriteGenerated_FailsWhenTargetDirectoryIsMissing(t *testing.T) {
 	err := writeGenerated(root, sampleOutputs())
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, os.ErrNotExist)
+	assert.ErrorIs(t, err, os.ErrNotExist)
 	assert.Contains(t, err.Error(), "write ")
 }
 

@@ -219,7 +219,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 		err = json.Unmarshal(dataBytes, &stored)
 		require.NoError(t, err)
-		assert.Empty(t, stored.UserID)
+		assert.Equal(t, "", stored.UserID)
 	})
 
 	t.Run("EmptyOrgID_PersistsWithoutError", func(t *testing.T) {
@@ -237,7 +237,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 		err = json.Unmarshal(dataBytes, &stored)
 		require.NoError(t, err)
-		assert.Empty(t, stored.OrganizationID)
+		assert.Equal(t, "", stored.OrganizationID)
 	})
 
 	t.Run("EmptyOperatorID_PersistsWithoutError", func(t *testing.T) {
@@ -255,7 +255,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 		err = json.Unmarshal(dataBytes, &stored)
 		require.NoError(t, err)
-		assert.Empty(t, stored.OperatorID)
+		assert.Equal(t, "", stored.OperatorID)
 	})
 
 	t.Run("EmptyLoginMethod_PersistsWithoutError", func(t *testing.T) {
@@ -273,7 +273,7 @@ func TestOperatorSessionService_PersistOperatorSession(t *testing.T) {
 		require.NoError(t, err)
 		err = json.Unmarshal(dataBytes, &stored)
 		require.NoError(t, err)
-		assert.Empty(t, stored.LoginMethod)
+		assert.Equal(t, "", stored.LoginMethod)
 	})
 
 	t.Run("NilDatabase_PanicsOnPersist", func(t *testing.T) {

@@ -46,7 +46,7 @@ func TestValidateLaunchProfile_HTTPPortExceeds65535ReturnsErrLaunchProfileInvali
 	p := validProfile()
 	p.Config.HTTPPort = 65536
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "exceeds 65535")
 }
 
@@ -54,7 +54,7 @@ func TestValidateLaunchProfile_HTTPSPortExceeds65535ReturnsErrLaunchProfileInval
 	p := validProfile()
 	p.Config.HTTPSPort = 70000
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "exceeds 65535")
 }
 
@@ -63,7 +63,7 @@ func TestValidateLaunchProfile_PortCollisionReturnsErrLaunchProfileInvalid(t *te
 	p.Config.HTTPPort = 9000
 	p.Config.HTTPSPort = 9000
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "must differ")
 }
 
@@ -71,7 +71,7 @@ func TestValidateLaunchProfile_InvalidLogLevelReturnsErrLaunchProfileInvalid(t *
 	p := validProfile()
 	p.Config.LogLevel = "bogus"
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "log_level")
 }
 
@@ -79,7 +79,7 @@ func TestValidateLaunchProfile_InvalidCertIdentityModeReturnsErrLaunchProfileInv
 	p := validProfile()
 	p.Config.CertIdentityMode = "bogus-mode"
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "cert_identity_mode")
 }
 
@@ -87,7 +87,7 @@ func TestValidateLaunchProfile_InvalidAllowedOriginReturnsErrLaunchProfileInvali
 	p := validProfile()
 	p.Config.AllowedOrigins = []string{"not-a-url"}
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "allowed origin")
 }
 
@@ -95,7 +95,7 @@ func TestValidateLaunchProfile_InvalidPasskeyOriginReturnsErrLaunchProfileInvali
 	p := validProfile()
 	p.Config.PasskeyRpOrigins = []string{"ftp://bad.example"}
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "passkey origin")
 }
 
@@ -104,7 +104,7 @@ func TestValidateLaunchProfile_PasskeyOriginRPMismatchReturnsErrLaunchProfileInv
 	p.Config.PasskeyRpID = "your-app.lovable.app"
 	p.Config.PasskeyRpOrigins = []string{"https://other-app.lovable.app"}
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "passkey RP configuration")
 }
 
@@ -112,7 +112,7 @@ func TestValidateLaunchProfile_InvalidPublicBaseURLReturnsErrLaunchProfileInvali
 	p := validProfile()
 	p.Config.PublicBaseURL = "ftp://bad.example"
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "public_base_url")
 }
 
@@ -120,7 +120,7 @@ func TestValidateLaunchProfile_InvalidMCPDownstreamURLReturnsErrLaunchProfileInv
 	p := validProfile()
 	p.Config.MCPDownstreamURL = "ftp://bad.example/mcp"
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "mcp_downstream_url")
 }
 
@@ -128,7 +128,7 @@ func TestValidateLaunchProfile_InvalidA2ADownstreamURLReturnsErrLaunchProfileInv
 	p := validProfile()
 	p.Config.A2ADownstreamURL = "gopher://bad.example/a2a"
 	err := ValidateLaunchProfile(p)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileInvalid)
 	assert.Contains(t, err.Error(), "a2a_downstream_url")
 }
 

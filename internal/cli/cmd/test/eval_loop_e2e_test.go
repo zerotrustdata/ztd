@@ -117,7 +117,6 @@ func evalLoopRunRelPath(name string) string {
 // assertion that exits a phase's goroutine before execute can return. Cleanups
 // the caller registers before this call run after the stack has stopped.
 func runEvalLoopPhases(ctx context.Context, t *testing.T, r *releaseSmokeRun, phases []smokePhase) error {
-	t.Helper()
 	finished := false
 	t.Cleanup(func() {
 		if !finished {
@@ -145,7 +144,6 @@ type evalLoopState struct {
 // Gateway, CLI owner, approvals, consensus under notary, a Data Operator, and an
 // Inference Operator that reaches endpoint. loop runs as the final phase.
 func evalLoopPhases(t *testing.T, r *releaseSmokeRun, endpoint string, st *evalLoopState, loop func(context.Context) error) []smokePhase {
-	t.Helper()
 	return []smokePhase{
 		{"prepare", r.prepare},
 		{"start isolated Gateway", r.startGateway},

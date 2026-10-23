@@ -160,7 +160,7 @@ func TestReadRequestBody(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(largeBody))
 
 		_, err := readRequestBody(req, 100)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "payload exceeds maximum size limit")
 	})
 }

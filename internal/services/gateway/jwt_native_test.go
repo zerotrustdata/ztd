@@ -63,35 +63,35 @@ func TestParseAndVerifyJWT(t *testing.T) {
 
 	t.Run("Invalid format", func(t *testing.T) {
 		_, err := ParseAndVerifyJWT(context.Background(), "invalid.token", jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid JWT format")
 	})
 
 	t.Run("Invalid base64 header", func(t *testing.T) {
 		token := "!!!." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".sig"
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "decode header")
 	})
 
 	t.Run("Invalid base64 payload", func(t *testing.T) {
 		token := base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".!!!.sig"
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "decode payload")
 	})
 
 	t.Run("Invalid base64 signature", func(t *testing.T) {
 		token := base64.RawURLEncoding.EncodeToString([]byte("{}")) + "." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + ".!!!"
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "decode signature")
 	})
 
 	t.Run("Invalid JSON header", func(t *testing.T) {
 		token := base64.RawURLEncoding.EncodeToString([]byte("{invalid")) + "." + base64.RawURLEncoding.EncodeToString([]byte("{}")) + "." + base64.RawURLEncoding.EncodeToString([]byte("sig"))
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unmarshal header")
 	})
 
@@ -99,7 +99,7 @@ func TestParseAndVerifyJWT(t *testing.T) {
 		header := map[string]interface{}{"alg": "HS256", "kid": kid}
 		token := generateTestJWT(t, privKey, kid, header, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported signing algorithm")
 	})
 
@@ -107,7 +107,7 @@ func TestParseAndVerifyJWT(t *testing.T) {
 		header := map[string]interface{}{"alg": "RS256"}
 		token := generateTestJWT(t, privKey, "", header, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "missing kid")
 	})
 
@@ -118,7 +118,7 @@ func TestParseAndVerifyJWT(t *testing.T) {
 		payloadB64 := base64.RawURLEncoding.EncodeToString([]byte("{invalid"))
 		token := headerB64 + "." + payloadB64 + ".sig"
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unmarshal payload")
 	})
 
@@ -137,7 +137,7 @@ func TestParseAndVerifyJWT(t *testing.T) {
 		}
 		token := generateTestJWT(t, privKey, kid, nil, claims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "token is not yet valid")
 	})
 
@@ -153,14 +153,14 @@ func TestParseAndVerifyJWT(t *testing.T) {
 	t.Run("Issuer mismatch", func(t *testing.T) {
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "wrong-issuer", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "token issuer mismatch")
 	})
 
 	t.Run("Audience mismatch", func(t *testing.T) {
 		token := generateTestJWT(t, privKey, kid, nil, validClaims)
 		_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "wrong-audience")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "token audience mismatch")
 	})
 
@@ -172,7 +172,7 @@ func TestParseAndVerifyJWT(t *testing.T) {
 		tamperedToken := parts[0] + "." + parts[1] + "." + tamperedSig
 
 		_, err := ParseAndVerifyJWT(context.Background(), tamperedToken, jwks, "roles", "", "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "verify signature")
 	})
 }
@@ -191,6 +191,6 @@ func TestParseAndVerifyJWT_KeyNotFound(t *testing.T) {
 	token := generateTestJWT(t, privKey, "unknown-kid", nil, map[string]interface{}{"sub": "test"})
 
 	_, err := ParseAndVerifyJWT(context.Background(), token, jwks, "roles", "", "")
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "key not found")
 }

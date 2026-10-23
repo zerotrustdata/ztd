@@ -10,6 +10,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -261,8 +262,8 @@ func TestGitOpsTool_Execute_UnsupportedOperation(t *testing.T) {
 
 	args := json.RawMessage(`{"operation": "invalid"}`)
 	_, err := tool.Execute(ctx, args)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrMCPGitOpsUnsupportedOperation)
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrMCPGitOpsUnsupportedOperation))
 }
 
 func TestGitOpsTool_Execute_GitCommandError(t *testing.T) {

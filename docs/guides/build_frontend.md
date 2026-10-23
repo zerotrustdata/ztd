@@ -3,8 +3,8 @@ doc_id: build_frontend
 title: Build a ztd-Compatible Frontend
 audience: frontend developers, web application builders
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - docs/guides/build_frontend.md
   - docs/guides/build_observe_frontend.md
@@ -69,7 +69,7 @@ For same-computer local frontends, run `./ztd gw connect <frontend-origin>` to a
   --cors-origin https://your-app.example.com
 ```
 
-- `--passkey-rp-id`: WebAuthn Relying Party ID. `gw connect` validates an RP ID override against the frontend origin (the origin hostname or a parent domain suffix, rejecting public suffixes).
+- `--passkey-rp-id`: WebAuthn Relying Party ID. MUST be the frontend origin hostname or a registrable parent domain suffix.
 - `--passkey-rp-origin`: Allowed origin for WebAuthn ceremonies (repeatable).
 - `--cors-origin`: Allowed origin for CORS fetch requests (repeatable).
 - `--public-base-url`: Public base URL for approval links and host validation.
@@ -117,14 +117,14 @@ All paths are relative to the Gateway's base URL. Authenticated routes MUST send
 
 ## WebAuthn Flow Requirements
 
-The Gateway encodes WebAuthn challenges and credential IDs as unpadded base64url.
+Binary fields in challenges and responses MUST use unpadded base64url encoding.
 
 ### Registration Flow (First-Time Setup)
 
 1. Verify `GET /api/v1/auth/bootstrap/status` returns `{ "bootstrapped": false }`.
-2. POST `/api/v1/auth/passkeys/console/register/challenge` with `{ "user_name": "Admin" }`.
+2. POST `/api/v1/auth/passkeys/console/register/challenge` with `{ "user_name": "Admin", "cli_session_id": "browser" }`.
 3. Save returned `user_id`. Decode `options.publicKey` and invoke `navigator.credentials.create({ publicKey })`.
-4. POST `/api/v1/auth/passkeys/console/register/verify` with `{ "user_id": <user_id>, "attestation_response": <flat attestation> }`.
+4. POST `/api/v1/auth/passkeys/console/register/verify` with `{ "user_id": <user_id>, "cli_session_id": "browser", "attestation_response": <flat attestation> }`.
 5. On success, Gateway sets `ztd_web_session_cookie`. Load user data from `/api/v1/users/me`.
 
 ### Authentication Flow (Returning User)
@@ -154,17 +154,17 @@ source.addEventListener('message', (event) => {
 });
 ```
 
-Stream routing is derived from the WebSession cookie. The stream handler reads only the `since_id` query parameter and the `Last-Event-ID` header.
+Stream routing is derived from the WebSession cookie. Clients MUST NOT append `user_id` or `web_session_id` to the query string; the stream accepts only `since_id`.
 
 ## Observe API (Read-Only Browser Surface)
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/v1/observe/bootstrap` | Bootstrap snapshot for the observe frontend |
+| `GET` | `/api/v1/observe/bootstrap` | Bootstrap snapshot: agents, active and recent runs, overview counters, measurements, latest evals, downloads |
 | `GET` | `/api/v1/observe/runs?cursor=&limit=` | Paginated run summaries |
-| `GET` | `/api/v1/observe/runs/{run_id}` | Run detail |
+| `GET` | `/api/v1/observe/runs/{run_id}` | Run detail with tasks and evidence links |
 | `GET` | `/api/v1/observe/evals?cursor=&limit=` | Paginated evaluation summaries |
-| `GET` | `/api/v1/observe/evals/{run_id}` | Evaluation detail |
+| `GET` | `/api/v1/observe/evals/{run_id}` | Evaluation detail with metrics |
 | `GET` | `/api/v1/observe/downloads?cursor=&limit=` | Paginated download artifacts |
 | `GET` | `/api/v1/observe/downloads/{artifact_id}` | Artifact metadata; `download=1` streams the artifact bytes |
 

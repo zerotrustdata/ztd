@@ -9,10 +9,10 @@ package gateway
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -186,7 +186,7 @@ func TestSSEEventEnvelope_MarshalRoundTrip(t *testing.T) {
 		Data: data,
 	}
 	b, err := json.Marshal(env)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Contains(t, string(b), string(constants.EventAppAgentStatusUpdated))
 	assert.Contains(t, string(b), "agent_id")
 }
@@ -265,7 +265,9 @@ func TestRunTransitions_EveryNonTerminalCanReachTerminal(t *testing.T) {
 // error constants are distinct and wrappable with errors.Is.
 func TestErrorConstants_ObserveProducerErrorsAreDistinct(t *testing.T) {
 	assert.NotEqual(t, constants.ErrObserveInvalidTransition, constants.ErrObserveStaleUpdate)
-	assert.NotErrorIs(t, constants.ErrObserveInvalidTransition, constants.ErrObserveStaleUpdate)
+	assert.True(t, errors.Is(constants.ErrObserveInvalidTransition, constants.ErrObserveInvalidTransition))
+	assert.True(t, errors.Is(constants.ErrObserveStaleUpdate, constants.ErrObserveStaleUpdate))
+	assert.False(t, errors.Is(constants.ErrObserveInvalidTransition, constants.ErrObserveStaleUpdate))
 }
 
 // TestErrorConstants_ObserveAgentAndRunNotFoundAreDistinct ensures the agent
@@ -274,6 +276,8 @@ func TestErrorConstants_ObserveProducerErrorsAreDistinct(t *testing.T) {
 // map to the same forbidden HTTP response at the controller boundary.
 func TestErrorConstants_ObserveAgentAndRunNotFoundAreDistinct(t *testing.T) {
 	assert.NotEqual(t, constants.ErrObserveAgentNotFound, constants.ErrObserveRunNotFound)
-	assert.NotErrorIs(t, constants.ErrObserveAgentNotFound, constants.ErrObserveRunNotFound,
+	assert.True(t, errors.Is(constants.ErrObserveAgentNotFound, constants.ErrObserveAgentNotFound))
+	assert.True(t, errors.Is(constants.ErrObserveRunNotFound, constants.ErrObserveRunNotFound))
+	assert.False(t, errors.Is(constants.ErrObserveAgentNotFound, constants.ErrObserveRunNotFound),
 		"agent and run ownership sentinels must be distinguishable")
 }

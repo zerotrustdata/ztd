@@ -124,7 +124,7 @@ func TestCampaignPublicationCoordinatorPublishAssignmentResultUsesSealedObservat
 	require.NotNil(t, record.BenchmarkObservations.GPU)
 	require.NotNil(t, record.BenchmarkObservations.GPU.VRAMPeakBytes)
 	require.NotNil(t, record.BenchmarkObservations.GPU.VRAMPeakBytes.Value)
-	assert.InDelta(t, float64(16_000_000_000), *record.BenchmarkObservations.GPU.VRAMPeakBytes.Value, 0)
+	assert.Equal(t, float64(16_000_000_000), *record.BenchmarkObservations.GPU.VRAMPeakBytes.Value)
 }
 
 func TestCampaignPublicationCoordinatorPublishAssignmentResultFailedAssignmentWithoutInferences(t *testing.T) {
@@ -337,7 +337,7 @@ func TestPublishRunCatchUpPreservesBoundVerificationState(t *testing.T) {
 
 	count, err := coordinator.PublishRunCompletion(context.Background(), run.GetRunId(), time.Unix(1_700_000_100, 0).UTC())
 	require.NoError(t, err)
-	require.Positive(t, count)
+	require.Greater(t, count, 0)
 	preVerify := evaluationSummaries(t, exporter.records)
 	require.NotEmpty(t, preVerify)
 	assert.Equal(t, "not_run", preVerify[len(preVerify)-1].VerifierState)
@@ -401,11 +401,11 @@ func TestPublishRunAggregatesFailClosedOnMismatchedPersistedReport(t *testing.T)
 
 	_, err := coordinator.PublishRunAggregates(context.Background(), run.GetRunId(), time.Unix(1_700_000_300, 0).UTC())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 
 	_, err = coordinator.PublishRunCompletion(context.Background(), run.GetRunId(), time.Unix(1_700_000_300, 0).UTC())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 
 	assert.Empty(t, exporter.records, "a failed bind must publish nothing")
 }
@@ -424,7 +424,7 @@ func TestPublishRunCatchUpWithVerificationRejectsCallerReportForSettledRun(t *te
 
 	_, err := coordinator.PublishRunCatchUpWithVerification(context.Background(), run.GetRunId(), report)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 	assert.Empty(t, exporter.records)
 }
 

@@ -71,7 +71,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_SubscribesToOwner
 		logger,
 	)
 
-	require.NoError(t, coordinator.synchronizeObserverSubscription(context.Background()))
+	assert.NoError(t, coordinator.synchronizeObserverSubscription(context.Background()))
 	assert.NotNil(t, coordinator.observer)
 	assert.Equal(t, "sess-observer-1", coordinator.observer.OperatorSessionID)
 }
@@ -242,7 +242,7 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_LogsNotFound(t *t
 	)
 
 	err = coordinator.synchronizeObserverSubscription(context.Background())
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Nil(t, coordinator.observer)
 }
 
@@ -297,8 +297,8 @@ func TestProviderBoundaryObservationCoordinator_EnsureObserver_ReportsAmbiguousW
 
 	err := coordinator.synchronizeObserverSubscription(context.Background())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrProviderBoundaryObserverAmbiguous)
-	require.NotErrorIs(t, err, constants.ErrProviderBoundaryObserverNotFound)
+	assert.ErrorIs(t, err, constants.ErrProviderBoundaryObserverAmbiguous)
+	assert.NotErrorIs(t, err, constants.ErrProviderBoundaryObserverNotFound)
 	assert.Nil(t, coordinator.observer)
 }
 

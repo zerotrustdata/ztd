@@ -135,7 +135,7 @@ func TestVerifyPlatformEnrollmentProofsRequiresEverySubmittedKey(t *testing.T) {
 		Operator: base64.RawURLEncoding.EncodeToString(operatorSignature),
 		CLI:      base64.RawURLEncoding.EncodeToString(cliSignature),
 	})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	err = verifyPlatformEnrollmentProofs(request, models.PlatformEnrollmentProofs{
 		Operator: base64.RawURLEncoding.EncodeToString(operatorSignature),

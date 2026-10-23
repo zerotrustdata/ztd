@@ -192,7 +192,7 @@ func TestComplianceKSICmd_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -206,7 +206,7 @@ func TestComplianceKSIHistoryCmd_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -220,7 +220,7 @@ func TestComplianceOverlayCmd_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -266,7 +266,6 @@ func TestComplianceKSICmd_ValidationErrors(t *testing.T) {
 		{
 			name: "invalid certification class",
 			setup: func(t *testing.T, fileSvc fs.RuntimeFileService) (string, string) {
-				t.Helper()
 				catPath := writeTestKSICatalog(t, fileSvc)
 				return catPath, "INVALID"
 			},
@@ -275,7 +274,6 @@ func TestComplianceKSICmd_ValidationErrors(t *testing.T) {
 		{
 			name: "catalog file not found",
 			setup: func(t *testing.T, fileSvc fs.RuntimeFileService) (string, string) {
-				t.Helper()
 				return constants.TestPathNonexistentCatalog, "C"
 			},
 			errContains: "load KSI catalog",
@@ -303,7 +301,7 @@ func TestComplianceKSICmd_ValidationErrors(t *testing.T) {
 			err := cmd.RunE(cmd, nil)
 			require.Error(t, err)
 			if tt.expectedErr != nil {
-				require.ErrorIs(t, err, tt.expectedErr)
+				assert.ErrorIs(t, err, tt.expectedErr)
 			}
 			if tt.errContains != "" {
 				assert.Contains(t, err.Error(), tt.errContains)

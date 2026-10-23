@@ -46,14 +46,10 @@ func FormationCatalogServedTags() []string {
 
 // selectFormations returns the named catalog formations in the order given,
 // or the whole catalog when no ID is named.
-
-func selectFormations(topologies *ExecutionTopologies, formationIDs []string) ([]Formation, error) {
-	if topologies == nil {
-		var err error
-		topologies, err = NewExecutionTopologies()
-		if err != nil {
-			return nil, err
-		}
+func selectFormations(formationIDs []string) ([]Formation, error) {
+	topologies, err := NewExecutionTopologies()
+	if err != nil {
+		return nil, err
 	}
 	if len(formationIDs) == 0 {
 		return topologies.Formations(), nil
@@ -78,9 +74,8 @@ func selectFormations(topologies *ExecutionTopologies, formationIDs []string) ([
 // formations require, or every catalog formation when none is named. Sovereign
 // served tags must be present in the source; delegated catalog models missing
 // from the source receive deterministic placeholder digests for registry binding.
-// A nil catalog selects the built-in defaults.
-func MaterializeFormationVariants(sourceVariants []*evalv1.ModelVariant, formationIDs []string, catalog *ExecutionTopologies) ([]*evalv1.ModelVariant, error) {
-	formations, err := selectFormations(catalog, formationIDs)
+func MaterializeFormationVariants(sourceVariants []*evalv1.ModelVariant, formationIDs []string) ([]*evalv1.ModelVariant, error) {
+	formations, err := selectFormations(formationIDs)
 	if err != nil {
 		return nil, err
 	}

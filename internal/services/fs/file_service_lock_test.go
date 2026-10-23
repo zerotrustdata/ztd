@@ -27,7 +27,7 @@ func TestTryLock_ExcludesASecondHolderUntilClosed(t *testing.T) {
 	assert.True(t, exists)
 
 	_, err = svc.TryLock(ctx, "nested/run.lock", constants.PermFilePrivate)
-	require.ErrorIs(t, err, constants.ErrRuntimeFileLocked)
+	assert.ErrorIs(t, err, constants.ErrRuntimeFileLocked)
 
 	require.NoError(t, held.Close())
 	again, err := svc.TryLock(ctx, "nested/run.lock", constants.PermFilePrivate)
@@ -54,7 +54,7 @@ func TestTryLockShared_SharesWithSharedHoldersAndExcludesAnExclusiveOne(t *testi
 	require.NoError(t, err, "shared holders coexist")
 
 	_, err = svc.TryLock(ctx, "shared.lock", constants.PermFilePrivate)
-	require.ErrorIs(t, err, constants.ErrRuntimeFileLocked)
+	assert.ErrorIs(t, err, constants.ErrRuntimeFileLocked)
 
 	require.NoError(t, first.Close())
 	require.NoError(t, second.Close())
@@ -62,6 +62,6 @@ func TestTryLockShared_SharesWithSharedHoldersAndExcludesAnExclusiveOne(t *testi
 	require.NoError(t, err)
 
 	_, err = svc.TryLockShared(ctx, "shared.lock", constants.PermFilePrivate)
-	require.ErrorIs(t, err, constants.ErrRuntimeFileLocked, "an exclusive holder excludes shared ones")
+	assert.ErrorIs(t, err, constants.ErrRuntimeFileLocked, "an exclusive holder excludes shared ones")
 	require.NoError(t, exclusive.Close())
 }

@@ -124,13 +124,13 @@ func writeTestCLICert(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.C
 }
 
 func TestValidateAppName(t *testing.T) {
-	require.ErrorIs(t, models.ValidateAppName(""), constants.ErrPlatformEnrollmentAppNameRequired)
-	require.ErrorIs(t, models.ValidateAppName("ztd"), constants.ErrPlatformEnrollmentInvalidAppName)
-	require.ErrorIs(t, models.ValidateAppName("ztdo"), constants.ErrPlatformEnrollmentInvalidAppName)
-	require.ErrorIs(t, models.ValidateAppName("ztde"), constants.ErrPlatformEnrollmentInvalidAppName)
-	require.ErrorIs(t, models.ValidateAppName("operator"), constants.ErrPlatformEnrollmentInvalidAppName)
-	require.ErrorIs(t, models.ValidateAppName("INVALID-UPPER"), constants.ErrPlatformEnrollmentInvalidAppName)
-	require.ErrorIs(t, models.ValidateAppName("app/slash"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName(""), constants.ErrPlatformEnrollmentAppNameRequired)
+	assert.ErrorIs(t, models.ValidateAppName("ztd"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("ztdo"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("ztde"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("operator"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("INVALID-UPPER"), constants.ErrPlatformEnrollmentInvalidAppName)
+	assert.ErrorIs(t, models.ValidateAppName("app/slash"), constants.ErrPlatformEnrollmentInvalidAppName)
 	assert.NoError(t, models.ValidateAppName("ztd-eval"))
 	assert.NoError(t, models.ValidateAppName("my-agent-1"))
 	assert.NoError(t, models.ValidateAppName("custom.app"))
@@ -140,7 +140,7 @@ func TestLoadAppIdentity_Missing(t *testing.T) {
 	fileSvc, cfg := newAuthTestEnv(t)
 	cert, err := LoadAppIdentity(fileSvc, cfg, "my-agent")
 	assert.Nil(t, cert)
-	require.ErrorIs(t, err, constants.ErrAppIdentityNotFound)
+	assert.ErrorIs(t, err, constants.ErrAppIdentityNotFound)
 	assert.False(t, HasValidAppIdentity(fileSvc, cfg, "my-agent"))
 }
 
@@ -157,7 +157,7 @@ func TestLoadAppIdentity_Expired(t *testing.T) {
 
 	cert, err := LoadAppIdentity(fileSvc, cfg, appName)
 	assert.Nil(t, cert)
-	require.ErrorIs(t, err, constants.ErrAppIdentityExpired)
+	assert.ErrorIs(t, err, constants.ErrAppIdentityExpired)
 	assert.False(t, HasValidAppIdentity(fileSvc, cfg, appName))
 }
 

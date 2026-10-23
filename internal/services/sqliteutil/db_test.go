@@ -749,7 +749,7 @@ func TestDB_Tier1_GetPathEmptyString(t *testing.T) {
 		path: "",
 	}
 
-	assert.Empty(t, db.GetPath())
+	assert.Equal(t, "", db.GetPath())
 }
 
 func TestIsUniqueConstraintError_Tier1_NilError(t *testing.T) {

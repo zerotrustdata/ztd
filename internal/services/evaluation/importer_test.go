@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"testing"
 	"time"
 
@@ -80,7 +81,7 @@ func TestEvidenceImporterRejectsRunWithoutPassingSuite(t *testing.T) {
 	nodes, err := importer.Import(context.Background())
 	require.Error(t, err)
 	assert.Nil(t, nodes)
-	assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+	assert.True(t, errors.Is(err, constants.ErrEvalRunVerificationFailed))
 }
 
 func TestEvidenceImporterRejectsTamperedRecordWithRealVerifier(t *testing.T) {
@@ -96,19 +97,19 @@ func TestEvidenceImporterRejectsTamperedRecordWithRealVerifier(t *testing.T) {
 	nodes, err := NewEvidenceImporter(tampered, runID, func() time.Time { return conformanceTestVerifiedAt }).Import(ctx)
 	require.Error(t, err)
 	assert.Nil(t, nodes)
-	assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+	assert.True(t, errors.Is(err, constants.ErrEvalRunVerificationFailed))
 }
 
 func TestEvidenceImporterRejectsIncompleteImporter(t *testing.T) {
 	ctx := context.Background()
 	_, err := NewEvidenceImporter(nil, "run-1", func() time.Time { return conformanceTestVerifiedAt }).Import(ctx)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+	assert.True(t, errors.Is(err, constants.ErrInvalidEvidenceGraph))
 
 	files := saveConformanceRunForCompliance(t, "conformance-import-no-verifier")
 	noVerifier := NewEvidenceImporter(files, "conformance-import-no-verifier", func() time.Time { return conformanceTestVerifiedAt })
 	noVerifier.verifyPersisted = nil
 	_, err = noVerifier.Import(ctx)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+	assert.True(t, errors.Is(err, constants.ErrInvalidEvidenceGraph))
 }

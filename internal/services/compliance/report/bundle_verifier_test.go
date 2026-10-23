@@ -170,14 +170,14 @@ func TestBundledSourceArtifactReaderEnforcesContextAndReadOnlyDirectoryBehavior(
 	assert.Equal(t, []byte("body"), reader.bodies["source.json"])
 
 	_, err = reader.ReadFile(context.Background(), "missing.json")
-	require.ErrorIs(t, err, constants.ErrNotFound)
+	assert.ErrorIs(t, err, constants.ErrNotFound)
 	_, err = reader.ReadDir(context.Background(), "")
-	require.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
+	assert.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = reader.ReadFile(ctx, "source.json")
-	require.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, err, context.Canceled)
 	_, err = reader.ReadDir(ctx, "")
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -215,14 +215,14 @@ func TestBundledRuntimeArtifactReaderResolvesFilesAndRejectsWrites(t *testing.T)
 	assert.True(t, entries[1].IsDir())
 	assert.Equal(t, os.FileMode(0), entries[0].Type())
 	_, err = entries[0].Info()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	_, err = reader.ReadFile(context.Background(), filepath.Join(constants.PathCurrentDir, "..", "outside.json"))
-	require.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
+	assert.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
 	_, err = reader.ReadDir(context.Background(), filepath.Join(constants.PathCurrentDir, "..", "outside"))
-	require.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
+	assert.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
 	_, err = reader.FileExists(context.Background(), filepath.Join(constants.PathCurrentDir, "..", "outside.json"))
-	require.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
+	assert.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
 
 	readOnlyChecks := []func() error{
 		func() error { return reader.MkdirAll(context.Background(), "", 0) },
@@ -239,7 +239,7 @@ func TestBundledRuntimeArtifactReaderResolvesFilesAndRejectsWrites(t *testing.T)
 		func() error { return reader.EnforceFilePermissions(context.Background(), "", 0) },
 	}
 	for _, check := range readOnlyChecks {
-		require.ErrorIs(t, check(), constants.ErrReadOnlyEvidenceSource)
+		assert.ErrorIs(t, check(), constants.ErrReadOnlyEvidenceSource)
 	}
 	assert.Equal(t, "path", reader.Resolve("path"))
 	rel, err := reader.Rel("path")
@@ -2139,7 +2139,7 @@ func TestVerifyComplianceReportBundle_RejectsInvalidVerifierConfiguration(t *tes
 		t.Run(test.name, func(t *testing.T) {
 			report, err := VerifyComplianceReportBundle(context.Background(), test.request)
 			require.Error(t, err)
-			require.ErrorIs(t, err, constants.ErrReportVerificationFailed)
+			assert.ErrorIs(t, err, constants.ErrReportVerificationFailed)
 			assert.Nil(t, report)
 		})
 	}
@@ -2167,7 +2167,7 @@ func TestVerifyComplianceReportBundle_PreservesCancellation(t *testing.T) {
 
 	report, err := VerifyComplianceReportBundle(ctx, BundleVerificationRequest{Bundle: bundle, Reader: reader, TrustPolicy: policy, EvidenceTrust: trust, VerifiedAt: verifiedAt})
 
-	require.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, err, context.Canceled)
 	assert.Nil(t, report)
 }
 
@@ -2386,21 +2386,17 @@ func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(
 			request.SourceArtifacts = removeSourceArtifact(request.SourceArtifacts, fixture.statePath)
 		}},
 		{name: "empty commit inventory", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *ledgerReplayFixture) {
-			t.Helper()
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.commitsPath, nil)
 		}},
 		{name: "empty state inventory", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *ledgerReplayFixture) {
-			t.Helper()
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.statePath, nil)
 		}},
 		{name: "duplicate resource identity under conflicting metadata", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *ledgerReplayFixture) {
-			t.Helper()
 			fixture.commits[1].CommitHash = fixture.commits[0].CommitHash
 			fixture.commits[1].Message = "conflicting duplicate"
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.commitsPath, marshalJSONLines(t, fixture.commits))
 		}},
 		{name: "orphaned inventory", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *ledgerReplayFixture) {
-			t.Helper()
 			resources := request.Analysis.EvidenceResources[:0]
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() != string(evidence.ArtifactTypeLedgerCommit) && resource.GetArtifactType() != string(evidence.ArtifactTypeLedgerState) {
@@ -2412,7 +2408,6 @@ func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "wrong canonical path", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *ledgerReplayFixture) {
-			t.Helper()
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() == string(evidence.ArtifactTypeLedgerState) {
 					resource.BundlePath = constants.ComplianceBundleUnexpectedTestPath
@@ -2422,7 +2417,6 @@ func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "cross-scope path transplantation", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *ledgerReplayFixture) {
-			t.Helper()
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() == string(evidence.ArtifactTypeLedgerCommit) {
 					resource.BundlePath = path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, constants.TestNestedDirname, resource.GetRunId(), constants.LedgerEvidenceDirname, constants.LedgerCommitsFilename)
@@ -2432,7 +2426,6 @@ func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "wrong run", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *ledgerReplayFixture) {
-			t.Helper()
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() == string(evidence.ArtifactTypeLedgerCommit) {
 					resource.RunId = "other-run"
@@ -2442,7 +2435,6 @@ func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "producer mismatch", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *ledgerReplayFixture) {
-			t.Helper()
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() == string(evidence.ArtifactTypeLedgerCommit) {
 					resource.ProducerIdentity = "other-producer"
@@ -2452,7 +2444,6 @@ func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "conflicting attempt binding", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *ledgerReplayFixture) {
-			t.Helper()
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() == string(evidence.ArtifactTypeLedgerState) {
 					resource.AttemptId = "other-attempt"
@@ -2462,12 +2453,10 @@ func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "commit chain mismatch", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *ledgerReplayFixture) {
-			t.Helper()
 			fixture.commits[1].ParentHash = strings.Repeat("9", 40)
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.commitsPath, marshalJSONLines(t, fixture.commits))
 		}},
 		{name: "state root mismatch", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *ledgerReplayFixture) {
-			t.Helper()
 			fixture.state.MerkleRoot = strings.Repeat("9", 40)
 			body, err := json.Marshal(fixture.state)
 			require.NoError(t, err)
@@ -2501,16 +2490,13 @@ func TestVerifyComplianceReportBundle_RejectsBuildConfigurationInventoryAndBindi
 			request.SourceArtifacts = removeSourceArtifact(request.SourceArtifacts, fixture.bundlePath)
 		}},
 		{name: "empty inventory", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *buildConfigReplayFixture) {
-			t.Helper()
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.bundlePath, nil)
 		}},
 		{name: "duplicate build identity", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *buildConfigReplayFixture) {
-			t.Helper()
 			fixture.records = append(fixture.records, fixture.records[0])
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.bundlePath, marshalJSONLines(t, fixture.records))
 		}},
 		{name: "orphaned inventory", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *buildConfigReplayFixture) {
-			t.Helper()
 			resources := request.Analysis.EvidenceResources[:0]
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() != string(evidence.ArtifactTypeBuildAttestation) && resource.GetArtifactType() != string(evidence.ArtifactTypeConfigAttestation) {
@@ -2521,14 +2507,12 @@ func TestVerifyComplianceReportBundle_RejectsBuildConfigurationInventoryAndBindi
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "source scope mutation", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *buildConfigReplayFixture) {
-			t.Helper()
 			for index := range fixture.records {
 				fixture.records[index].ScopeID = "other-scope"
 			}
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.bundlePath, marshalJSONLines(t, fixture.records))
 		}},
 		{name: "wrong run", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *buildConfigReplayFixture) {
-			t.Helper()
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() == string(evidence.ArtifactTypeConfigAttestation) {
 					resource.RunId = "other-run"
@@ -2538,7 +2522,6 @@ func TestVerifyComplianceReportBundle_RejectsBuildConfigurationInventoryAndBindi
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "wrong canonical path", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *buildConfigReplayFixture) {
-			t.Helper()
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() == string(evidence.ArtifactTypeBuildAttestation) {
 					resource.BundlePath = constants.ComplianceBundleUnexpectedTestPath
@@ -2548,7 +2531,6 @@ func TestVerifyComplianceReportBundle_RejectsBuildConfigurationInventoryAndBindi
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "producer mismatch", mutate: func(t *testing.T, request *BundleAssemblyRequest, _ *buildConfigReplayFixture) {
-			t.Helper()
 			for _, resource := range request.Analysis.GetEvidenceResources() {
 				if resource.GetArtifactType() == string(evidence.ArtifactTypeConfigAttestation) {
 					resource.ProducerIdentity = "other-producer"
@@ -2558,24 +2540,20 @@ func TestVerifyComplianceReportBundle_RejectsBuildConfigurationInventoryAndBindi
 			refreshBundleAnalysisArtifacts(t, request)
 		}},
 		{name: "source revision mutation", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *buildConfigReplayFixture) {
-			t.Helper()
 			for index := range fixture.records {
 				fixture.records[index].SourceRevision = "revision-2"
 			}
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.bundlePath, marshalJSONLines(t, fixture.records))
 		}},
 		{name: "configuration digest mutation", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *buildConfigReplayFixture) {
-			t.Helper()
 			fixture.records[1].ConfigurationHashes[0].SHA256 = strings.Repeat("8", 64)
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.bundlePath, marshalJSONLines(t, fixture.records))
 		}},
 		{name: "component inventory mutation", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *buildConfigReplayFixture) {
-			t.Helper()
 			fixture.records[0].ComponentInventory[0].Version = "2.1.8"
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.bundlePath, marshalJSONLines(t, fixture.records))
 		}},
 		{name: "schema mutation", mutate: func(t *testing.T, request *BundleAssemblyRequest, fixture *buildConfigReplayFixture) {
-			t.Helper()
 			fixture.records[0].SchemaVersion = "unsupported"
 			replaceSourceArtifactBody(t, request.SourceArtifacts, fixture.bundlePath, marshalJSONLines(t, fixture.records))
 		}},

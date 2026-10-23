@@ -49,7 +49,7 @@ func TestPasskeyCredentialValidateEmptyID(t *testing.T) {
 		CreatedAtUnixMs: 1719400000000,
 	}
 	err := c.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "empty")
 }
 
@@ -63,7 +63,7 @@ func TestPasskeyCredentialValidateIDTooLong(t *testing.T) {
 		CreatedAtUnixMs: 1719400000000,
 	}
 	err := c.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "1024")
 }
 
@@ -77,7 +77,7 @@ func TestPasskeyCredentialValidateEmptyPublicKey(t *testing.T) {
 		CreatedAtUnixMs: 1719400000000,
 	}
 	err := c.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "COSE")
 }
 
@@ -91,7 +91,7 @@ func TestPasskeyCredentialValidateInvalidCBORPublicKey(t *testing.T) {
 		CreatedAtUnixMs: 1719400000000,
 	}
 	err := c.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "COSE")
 }
 
@@ -105,7 +105,7 @@ func TestPasskeyCredentialValidateUnknownAttestationType(t *testing.T) {
 		CreatedAtUnixMs: 1719400000000,
 	}
 	err := c.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "attestation")
 }
 
@@ -119,7 +119,7 @@ func TestPasskeyCredentialValidateZeroTimestamp(t *testing.T) {
 		CreatedAtUnixMs: 0,
 	}
 	err := c.Validate()
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "zero")
 }
 

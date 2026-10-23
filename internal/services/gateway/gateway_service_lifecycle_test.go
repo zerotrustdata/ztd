@@ -106,15 +106,15 @@ func TestGatewayModeService_StartStop(t *testing.T) {
 	}, 2*time.Second, 20*time.Millisecond, "TLS handshake failure must be formatted by the platform logger with server=HTTPS")
 
 	err = ls.Start(ctx)
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "already running")
 
 	cancel()
 	err = <-errChan
-	require.NoError(t, err, "normal cancellation must not report http.ErrServerClosed")
+	assert.NoError(t, err, "normal cancellation must not report http.ErrServerClosed")
 
 	stopErr := ls.Stop(context.Background())
-	require.NoError(t, stopErr)
+	assert.NoError(t, stopErr)
 
 	assert.False(t, ls.running)
 	assert.False(t, ls.IsReady())

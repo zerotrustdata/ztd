@@ -65,7 +65,7 @@ func TestPublishRunCatchUpExportsLifecyclesAndResultsInOneBatch(t *testing.T) {
 	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
 	published, err := coordinator.PublishRunCatchUp(ctx, run.GetRunId())
 	require.NoError(t, err)
-	require.Positive(t, published)
+	require.Greater(t, published, 0)
 
 	var lifecycleBatch []CampaignPublicFeedRecord
 	for _, batch := range exporter.batches {

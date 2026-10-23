@@ -520,13 +520,13 @@ func TestAuditReceiptsCmd_TableDriven(t *testing.T) {
 func TestAuditReceiptsCmd_TableFormatting(t *testing.T) {
 	t.Run("receipts truncates long transaction hash", func(t *testing.T) {
 		txHash := strings.Repeat("a", 20)
-		assert.Len(t, txHash[:12], 12)
+		assert.Equal(t, 12, len(txHash[:12]))
 		assert.Equal(t, "aaaaaaaaaaaa…", txHash[:12]+"…")
 	})
 
 	t.Run("receipts truncates long resource", func(t *testing.T) {
 		resource := strings.Repeat("b", 50)
-		assert.Len(t, resource[:38], 38)
+		assert.Equal(t, 38, len(resource[:38]))
 		assert.Equal(t, strings.Repeat("b", 38)+"…", resource[:38]+"…")
 	})
 }
@@ -537,7 +537,7 @@ func TestAuditEventsCmd_TableFormatting(t *testing.T) {
 		if len(timestamp) > 19 {
 			timestamp = timestamp[:19]
 		}
-		assert.Len(t, timestamp, 19)
+		assert.Equal(t, 19, len(timestamp))
 		assert.Equal(t, "2024-01-01T00:00:00", timestamp)
 	})
 

@@ -227,13 +227,11 @@ func TestOperatorCertRenewer_InstallsRenewedIdentityAndL2Trust(t *testing.T) {
 
 func TestOperatorCertRenewer_RejectsInvalidReplies(t *testing.T) {
 	foreign := newRenewalTestCA(t)
-	cases := map[string]func(*testing.T, *renewerRig, models.OperatorRenewalFrame) models.OperatorRenewalFrame{
-		"another workload": func(t *testing.T, r *renewerRig, req models.OperatorRenewalFrame) models.OperatorRenewalFrame {
-			t.Helper()
+	cases := map[string]func(*renewerRig, *testing.T, models.OperatorRenewalFrame) models.OperatorRenewalFrame{
+		"another workload": func(r *renewerRig, t *testing.T, req models.OperatorRenewalFrame) models.OperatorRenewalFrame {
 			return r.renewedFrame(t, req, "spiffe://ztd.local/operator/org-1/op-other/sess-1", renewerL2Trust())
 		},
-		"another issuer": func(t *testing.T, _ *renewerRig, req models.OperatorRenewalFrame) models.OperatorRenewalFrame {
-			t.Helper()
+		"another issuer": func(_ *renewerRig, t *testing.T, req models.OperatorRenewalFrame) models.OperatorRenewalFrame {
 			return models.OperatorRenewalFrame{Type: models.OperatorRenewalFrameRenewed, RequestID: req.RequestID,
 				Renewed: foreign.renewed(t, req.Request, renewerSPIFFEID, renewerL2Trust())}
 		},
@@ -241,7 +239,7 @@ func TestOperatorCertRenewer_RejectsInvalidReplies(t *testing.T) {
 	for name, reply := range cases {
 		t.Run(name, func(t *testing.T) {
 			r := newRenewerRig(t, func(r *renewerRig, req models.OperatorRenewalFrame) []models.OperatorRenewalFrame {
-				return []models.OperatorRenewalFrame{reply(t, r, req)}
+				return []models.OperatorRenewalFrame{reply(r, t, req)}
 			})
 			before := r.heldSerial(t)
 

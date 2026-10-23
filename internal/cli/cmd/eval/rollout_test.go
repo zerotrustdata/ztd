@@ -43,7 +43,7 @@ func TestRolloutAdd_RejectsEmptyRegistry(t *testing.T) {
 
 	_, err := env.run(t, "rollout", "add", "--all")
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
+	assert.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
 	assert.Contains(t, err.Error(), "registry is empty")
 }
 

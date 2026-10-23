@@ -72,7 +72,7 @@ func TestHostRAMCollector_ReadsHostRAM(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, sample)
 	assert.Equal(t, evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED, sample.GetHostRamAvailability())
-	assert.Positive(t, sample.GetHostRamTotalBytes())
+	assert.Greater(t, sample.GetHostRamTotalBytes(), uint64(0))
 }
 
 func TestProcMeminfoCollector_ReadsHostRAM(t *testing.T) {
@@ -82,5 +82,5 @@ func TestProcMeminfoCollector_ReadsHostRAM(t *testing.T) {
 	sample, err := NewProcMeminfoCollector().Collect(context.Background(), time.Now().UTC())
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED, sample.GetHostRamAvailability())
-	assert.Positive(t, sample.GetHostRamTotalBytes())
+	assert.Greater(t, sample.GetHostRamTotalBytes(), uint64(0))
 }

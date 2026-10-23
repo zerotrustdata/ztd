@@ -69,7 +69,6 @@ func TestEvalLoopLive(t *testing.T) {
 // executeLiveEvalLoop freezes the provider's real inventory through the governed
 // CLI, runs the Tribunal campaign for model, and verifies the evidence it made.
 func (r *releaseSmokeRun) executeLiveEvalLoop(ctx context.Context, t *testing.T, model, inferenceRoot, inferenceID, inferenceSession string) error {
-	t.Helper()
 	files, store, err := r.newEvalLoopStore()
 	if err != nil {
 		return err
@@ -99,7 +98,6 @@ func (r *releaseSmokeRun) executeLiveEvalLoop(ctx context.Context, t *testing.T,
 // are logged. It binds the trace to its runtimes and the frozen digest, requires
 // the Tribunal stage to have run, and verifies every receipt the trace carries.
 func (r *releaseSmokeRun) verifyLiveEvalRun(ctx context.Context, t *testing.T, store *evaluation.Store, run evalLoopRun, digest, inferenceRoot, inferenceID, inferenceSession string) error {
-	t.Helper()
 	trace := run.trace
 	if err := r.verifyEvalTraceRuntimes(trace, inferenceID, inferenceSession); err != nil {
 		return err

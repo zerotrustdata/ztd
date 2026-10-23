@@ -88,7 +88,7 @@ func TestToolSelectFileReadRequiresTheReportedRetryLimit(t *testing.T) {
 func TestFinalResponseDiagnosisUsesNewFrozenRubricContract(t *testing.T) {
 	t.Parallel()
 	blueprint := finalResponseDiagnosis()
-	require.Equal(t, "1.7.0", blueprint.ScenarioVersion)
+	require.Equal(t, "1.6.0", blueprint.ScenarioVersion)
 	require.NotNil(t, blueprint.Gold.ContentCheck)
-	assert.Equal(t, ScenarioDiagnosisRubricCheckoutTimeoutV4, blueprint.Gold.ContentCheck.DiagnosisRubric)
+	assert.Equal(t, ScenarioDiagnosisRubricCheckoutTimeoutV3, blueprint.Gold.ContentCheck.DiagnosisRubric)
 }

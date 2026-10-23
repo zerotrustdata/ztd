@@ -331,13 +331,13 @@ func TestCampaignMirrorReconcilerRealStack_ForceRejectsCorruptVerificationReport
 
 	require.NoError(t, err)
 	require.Len(t, updates, 2)
-	require.ErrorIs(t, updates[1].Err, constants.ErrEvidenceArtifactMalformed)
+	assert.ErrorIs(t, updates[1].Err, constants.ErrEvidenceArtifactMalformed)
 	assert.Contains(t, result.FailedRuns, runID)
 	assert.Empty(t, result.RestoredRunIDs)
 	assert.False(t, mirrorHasDataset(t, runID), "force must preserve eligibility requirements")
 	assert.Equal(t, highWater, mirrorHighWaterSequence(t, e.stack.Gateway), "a rejected run must publish nothing")
 
 	_, err = newMirrorRunReconciler(t, e).ReconcileRun(ctx, runID, true)
-	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.False(t, mirrorHasDataset(t, runID), "a rejected run must not reach the mirror")
 }

@@ -4,7 +4,7 @@ title: Encryption Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.3.0
-last_updated: 2026-10-23
+last_updated: 2026-10-22
 owners:
   - internal/services/vault/
   - internal/services/keystore/
@@ -71,7 +71,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-ENC-STORE-02 | Secrets stored under `.ztd/secrets/` MUST use AES-256-GCM authenticated encryption and JSON metadata specifying format version `2`, nonce, and ciphertext. The additional data MUST bind each secret file's ciphertext to its name, and each sealed value to the binding its caller supplies (for example the public-feed path it is stored at), so ciphertext moved to another name or binding fails authentication. Other format versions MUST be rejected. There is no migration from version `1`. |
 | INV-ENC-STORE-03 | Keystore initialization MUST enforce strict private filesystem permissions (`0700` for `.ztd/secrets/` and `0600` for secret files). Startup MUST fail if master key generation or permissions enforcement fails. |
 | INV-ENC-STORE-04 | A key store with no master key MUST NOT generate one while `.ztd/secrets/` holds secrets sealed by the keystore; startup MUST fail with `ErrKeyStoreOrphanedSecrets` instead of orphaning them under a new key. |
-| INV-ENC-STORE-05 | Secret names MUST be a single non-hidden path component. Hidden names are reserved for sealed master keys and in-flight atomic writes, so no secret operation MUST overwrite, read, or delete them or leave the secrets directory. The one exception is `Keystore.Purge()`, which removes every non-directory entry under `.ztd/secrets/`, hidden names included. |
+| INV-ENC-STORE-05 | Secret names MUST be a single non-hidden path component. Hidden names are reserved for sealed master keys and in-flight atomic writes, so no secret operation MUST overwrite, read, or delete them or leave the secrets directory. |
 | INV-ENC-STORE-06 | Client identity secrets outside `.ztd/secrets/` MUST be sealed with the same keystore and master key: the CLI private key (`.ztd/cli.key`), each app private key (`.ztd/apps/<name>.key`), and the pending app enrollment state (`.ztd/pki/pending-enrollment/app_<name>.json`, key plus token). Each MUST be stored as a sealed value bound to its runtime-relative path (`Keystore.Encrypt`), read by unsealing in memory then `tls.X509KeyPair`, and sealed under the platform key store master key (OS keyring or ssh-agent). A missing or locked master key MUST fail closed; a plaintext file at a sealed path MUST fail with `ErrIdentityFilePlaintext`, and unseal failures MUST wrap `ErrIdentityFileUnseal`. There is no migration. External clients MUST NOT read these keys: they use the `ztd mcp stdio` bridge, which unseals in process. |
 
 ### Scrubbing and rehydration (`INV-ENC-SCRUB`)
@@ -157,7 +157,7 @@ Data fields are encrypted using AES-256-GCM (`crypto/cipher.NewGCM`) with a fres
 
 Vault encryption protects high-sensitivity fields across platform services:
 
-- **Execution record** (`events`, `internal/services/storage/audit_store.go`): `command_stdout` and `command_stderr` hold the full raw output, gzip-compressed and then encrypted with the vault. `command_raw` and `content_text` are encrypted. Structured metadata (exit code, duration, `execution_id`, `operator_session_id`, hashes) stays plaintext for indexing. Per-file diff statistics are stored encrypted in `file_mutation_log.diff_stat` (see the list below).
+- **Execution record** (`events`, `internal/services/storage/audit_store.go`): `command_stdout` and `command_stderr` hold the full raw output, gzip-compressed and then encrypted with the vault. `command_raw` and `content_text` are encrypted. Structured metadata (exit code, duration, `execution_id`, `operator_session_id`, hashes) stays plaintext for indexing. File diffs are not stored; they are computed from encrypted ledger snapshots.
 - **Canonical Audit Store** (`internal/services/storage/audit_store.go`, `commitment_ledger.go`): Encrypted content columns of `ztd.db`. Every write encrypts through the runtime vault and fails with `ErrAuditStoreVaultLocked` when the vault is locked or absent. There is no plaintext branch and no "encrypted" flag column. Reads decrypt on the owning runtime; a locked vault fails the read. Each ciphertext is bound to its column and row identity as AES-GCM associated data (`Vault.EncryptWithAAD`), and keyed digests use `Vault.HMACSHA256`, which derives a purpose-bound subkey from the DEK with HKDF-SHA256 so the DEK itself is never a MAC key.
   - `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr`, `event_receipt_target_resource`, `event_receipt_result_summary` (BLOB). The canonical protojson ActionReceipt is `content_text` on the `ztd.v1.operator.receipt.recorded` event. The signature stays plaintext and is verified over the stable canonical signing payload, not over these columns.
   - `commitment_ledger`: `target_resource`, `attestation_json` (BLOB). Commitment hash and signature checks run over decrypted values.
@@ -173,7 +173,7 @@ Vault encryption protects high-sensitivity fields across platform services:
 
 Gateway startup reads `--vault-dir` (default: `.ztd/vault`). Headless or container hosts without a usable OS keyring use the ssh-agent seal described under [Master Key and Keyring Providers](#master-key-and-keyring-providers).
 
-If no vault header exists on startup, Gateway automatically initializes a new vault header and generates the sealed vault key in the platform keystore. If an existing key cannot be read, decrypted, or matched to the header fingerprint, Gateway startup fails closed. When locked, audit, execution-record, suspended-transaction, file-ledger, and UEI writes fail closed, and reads that need decrypted content fail with `ErrAuditStoreVaultLocked`. The runtime never returns ciphertext in place of content. A runtime tree whose sealed vault key cannot be unsealed must be recreated with `ztd gw clean`, which recreates platform secrets and vault state.
+If no vault header exists on startup, Gateway automatically initializes a new vault header and generates the sealed vault key in the platform keystore. If an existing key cannot be read, decrypted, or matched to the header fingerprint, Gateway startup fails closed. When locked, audit, execution-record, suspended-transaction, file-ledger, and UEI writes fail closed, and reads that need decrypted content fail with `ErrAuditStoreVaultLocked`. The runtime never returns ciphertext in place of content. A runtime tree with an unsealed or legacy vault layout must be recreated with `ztd gw clean`, which recreates platform secrets and vault state.
 
 ## Platform Keystore Architecture
 
@@ -181,14 +181,13 @@ If no vault header exists on startup, Gateway automatically initializes a new va
 
 The platform keystore (`internal/services/keystore/keystore.go`) protects long-lived operational security material. It uses a dedicated 32-byte master key independent of the vault DEK.
 
-The master key is stored using OS-native keyrings, failing closed if no protected store is available. Secret Service and Keychain hold the key outside the runtime tree. DPAPI and the ssh-agent seal write a sealed blob to a hidden file in `.ztd/secrets/` (`constants.MasterKeyDPAPIFilename`, `constants.MasterKeySSHAgentFilename`); the blob is ciphertext that only the sealing user (DPAPI) or the holder of the sealing SSH private key (ssh-agent) can open, so a copied runtime tree or backup does not expose the master key. No backend writes the master key in plaintext. A `Keystore` reads the master key from its store once and holds it in process memory, like the vault DEK, until `Close()` (called by `CanonicalDBService.Close()`) or `Purge()` zeroes it with `vault.SecureZero()` (`Purge()` also deletes the master key from its store and removes every non-directory entry under `.ztd/secrets/`, hidden seal files included); encrypting or decrypting a secret never reads the key store again, so a store that asks the user for access (the macOS Keychain) asks at most once per process.
+The master key is stored using OS-native keyrings, failing closed if no protected store is available. Secret Service and Keychain hold the key outside the runtime tree. DPAPI and the ssh-agent seal write a sealed blob to a hidden file in `.ztd/secrets/` (`constants.MasterKeyDPAPIFilename`, `constants.MasterKeySSHAgentFilename`); the blob is ciphertext that only the sealing user (DPAPI) or the holder of the sealing SSH private key (ssh-agent) can open, so a copied runtime tree or backup does not expose the master key. No backend writes the master key in plaintext. A `Keystore` reads the master key from its store once and holds it in process memory, like the vault DEK, until `Close()` (called by `CanonicalDBService.Close()`) or `Purge()` zeroes it with `vault.SecureZero()`; encrypting or decrypting a secret never reads the key store again, so a store that asks the user for access (the macOS Keychain) asks at most once per process.
 
 - **Linux**: Uses the freedesktop Secret Service API (`newSecretServiceKeyring()`), spoken directly over the session D-Bus (e.g. `gnome-keyring-daemon`, KWallet); no `secret-tool` or libsecret install is required. ztd never autolaunches a session bus. Construction checks that an existing master key item is readable or, when none exists, that the `default` collection alias resolves; a host with only the in-memory `session` collection (autologin or SSH-only sessions whose login keyring was never created) never stores a key there, because it would be lost at logout; such hosts use the ssh-agent seal below. Locked items and collections are unlocked through the service prompt. New keys are created without replacing an existing item, and more than one matching item fails closed. Desktop sessions use this backend.
 - **Linux ssh-agent seal**: Used when `.ztd/secrets/.master_key.ssh-agent` already exists, or when the Secret Service is unreachable or has no `default` collection. ztd uses the agent named by `SSH_AUTH_SOCK`; when it is unset (SSH logins without `-A`), ztd dials the user's systemd agent sockets under `XDG_RUNTIME_DIR` (default `/run/user/<uid>`) in order: `gcr/ssh` (`gcr-ssh-agent.socket`, GNOME and Ubuntu desktops) then `ssh-agent.socket`. The agent signs `ztd-master-key-seal-v1:<salt>` with its first Ed25519 key (else RSA, using `rsa-sha2-512`). Those signatures are deterministic, so HKDF-SHA256 over the signature re-derives the same key-encryption key. The master key is sealed with AES-256-GCM, with the SSH public key as additional data, and the sealed blob holds no plaintext key. Unsealing requires the same SSH key in a reachable agent, either local or forwarded with `ssh -A`. The agent socket must be served by the service user or root (checked with `SO_PEERCRED`), because whoever serves it chooses the sealing key and sees every signature. ECDSA and security-key (`sk-`) keys are not used. Other Secret Service failures fail closed and never fall through to ssh-agent. Containers and headless hosts without a user agent run an ssh-agent with a loaded key (`eval "$(ssh-agent)" && ssh-add`, after `ssh-keygen -t ed25519` if the host has no key). Without an agent key, ztd fails closed.
 - **macOS**: Uses the user's default Keychain (`newKeychainKeyring()`) through Security.framework, called without cgo. The master key is a generic password item (service `ztd-platform`, account `master-encryption-key`) created by the ztd process itself, so its access list trusts only that ztd binary; other programs, including the `security` command, must pass a Keychain prompt to read it. Because macOS identifies the binary by its code signature (an unsigned binary by its exact bytes), the first run of a rebuilt or upgraded unsigned ztd asks once for access, and the read blocks until the user answers; without a GUI session that prompt cannot be shown and startup fails with `ErrKeyStoreLocked`. A read that blocks longer than `constants.KeyStoreApprovalNoticeDelay` logs `constants.KeyStoreAwaitingApprovalLog`; a background `gw start` that finds it in the child's log tells the user to approve the prompt and waits up to `constants.KeyStoreApprovalTimeout`. New keys never replace an existing item. Items created by earlier releases through the `security` command are not read.
 - **Windows**: Uses Windows DPAPI (`newDPAPIKeyring()`) through `CryptProtectData`/`CryptUnprotectData` in `golang.org/x/sys/windows`, scoped to the current user with entropy `ztd-platform/master-encryption-key`. The sealed blob is stored at `.ztd/secrets/.master_key.dpapi`; only the same user on the same machine can unseal it.
-
-The current code has no external file backend or `--master-key-file` flag, and the launch profile records no key source. A launch profile that still contains `master_key_file` fails closed with `ErrLaunchProfileCorrupted` (the decoder disallows unknown fields); see [Upgrading a v1.0.x Gateway](#upgrading-a-v10x-gateway). Outbound Operators select their key source on their own host.
+v1.1.0 removed the external file backend and the `--master-key-file` flag. The launch profile records no key source, and a v1.0.x profile that still contains `master_key_file` fails closed with `ErrLaunchProfileCorrupted`; see [Upgrading a v1.0.x Gateway](#upgrading-a-v10x-gateway). Outbound Operators select their key source on their own host. Vault, report, compliance, and public commands use the same selection order; read-only keystore construction does not create keys.
 
 OS key creation occurs only during initialization when lookup reports a missing key. It stores the new key and verifies it by reading it back and comparing in constant time; store, retrieval, and verification failures abort startup without switching backends or deleting a stored key. Backend construction performs no write probe.
 
@@ -203,10 +202,12 @@ The platform keystore protects:
 - Vault private key (`vault_key`, `vault_key.rekey`)
 - Actuator signing key (`actuator_signing_key`) and Key ID (`actuator_key_id`)
 - Auditor signing key (`auditor_signing_key`), Key ID (`auditor_key_id`), and HMAC key (`auditor_hmac_key`)
+- Notary signing key (`notary_signing_key`)
+- Operator private key (`operator_private_key`)
+- CLI private key (`cli_private_key`)
 - Root CA, Hub CA, Operator CA, and Gateway Peer CA private keys (`ca_<type>_key`)
 - Gateway serving certificate private key
-
-The CLI private key is not in this list: it is sealed at `.ztd/cli.key` (INV-ENC-STORE-06).
+- Integration API keys (`api_key_<service>`)
 
 Public-feed secrets are not files under `.ztd/secrets/`. `WritePublicSecret` seals each one with `Keystore.Encrypt` bound to its runtime-relative path: the signing key (`public-feed/signing-key.ed25519`) and ingest token (`public-feed/ingest-token`). A pending signing-key rotation stores its sealed new private key as `sealed_new_private_key` in `public-feed/key-rotation.json`.
 
@@ -304,7 +305,7 @@ Destroy the vault header, the canonical database and its WAL and SHM files, and 
 
 ### Upgrading a v1.0.x Gateway
 
-A Gateway whose launch profile (`.ztd/pids/operator-launch-profile.json`) contains `master_key_file` cannot restart: the launch-profile decoder disallows unknown fields, so `./ztd gw restart` fails with `ErrLaunchProfileCorrupted`. Secrets sealed under a different master key cannot be opened with the key the current code selects. Recreate the runtime rather than resetting only the vault.
+A Gateway initialized on v1.0.x with `--master-key-file` cannot restart on v1.1.0. Its launch profile (`.ztd/pids/operator-launch-profile.json`) contains `master_key_file`, which v1.1.0 rejects, so `./ztd gw restart` fails with `ErrLaunchProfileCorrupted`. Its vault key and other platform secrets are sealed under that file, so the OS keyring or ssh-agent key that v1.1.0 selects cannot unseal them. Recreate the runtime rather than resetting only the vault.
 
 Load the host's key source first (on Linux without a Secret Service keyring, `eval "$(ssh-agent)" && ssh-add`), then run:
 
@@ -314,7 +315,7 @@ Load the host's key source first (on Linux without a Secret Service keyring, `ev
 ./ztd login
 ```
 
-`gw clean` stops the Gateway and renames `.ztd` to `.ztd-<MMDDHHMM>`, which keeps the old state on disk for manual recovery. `gw start` initializes a new vault under the selected key source. The old launch profile, which records the Gateway's previous `config` (including `posture`, ports, and `vault_dir`), remains readable as `pids/operator-launch-profile.json` inside the renamed directory. `ztd login` signs the CLI in again because the CLI identity is recreated.
+`gw clean` stops the Gateway and renames `.ztd` to `.ztd-<MMDDHHMM>`, which keeps the old state on disk for manual recovery. `gw start` initializes a new vault under the selected key source. Pass the startup flags the old Gateway used to `gw start`; its previous settings are readable in `pids/operator-launch-profile.json` inside the renamed directory. `ztd login` signs the CLI in again because the CLI identity is recreated.
 
 ## Anti-patterns
 

@@ -62,7 +62,7 @@ func TestDataUsersCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -76,7 +76,7 @@ func TestDataOperatorsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -90,7 +90,7 @@ func TestDataSettingsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -104,7 +104,7 @@ func TestDataStoreCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -118,7 +118,7 @@ func TestDataAuditListCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -130,7 +130,7 @@ func TestGatewayStartCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -142,7 +142,7 @@ func TestGatewayStopCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -154,7 +154,7 @@ func TestGatewayStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -166,7 +166,7 @@ func TestGatewayRestartCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -178,7 +178,7 @@ func TestGatewayLogsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -190,7 +190,7 @@ func TestGatewaySettingsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -203,7 +203,7 @@ func TestGatewayCleanCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -238,7 +238,7 @@ func TestSecurityValidateCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -271,6 +271,6 @@ func TestGatewayConnectCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }

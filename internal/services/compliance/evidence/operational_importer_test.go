@@ -321,7 +321,7 @@ func TestOperationalExportImporter_ReplaysExportedReceiptAndPersistenceBodies(t 
 	assert.Equal(t, VerificationStatusVerified, nodes[0].VerificationStatus)
 	assert.Equal(t, VerificationStatusVerified, nodes[1].VerificationStatus)
 	assert.Equal(t, []string{nodes[0].ArtifactID}, nodes[1].References)
-	assert.Greater(t, len(nodes[0].BundlePath), len(sourceRoot))
+	assert.True(t, len(nodes[0].BundlePath) > len(sourceRoot))
 	assert.Equal(t, sourceRoot, nodes[0].BundlePath[:len(sourceRoot)])
 
 	inventory.SourceScopeID = "other-operator-scope"
@@ -329,7 +329,7 @@ func TestOperationalExportImporter_ReplaysExportedReceiptAndPersistenceBodies(t 
 	require.NoError(t, err)
 	_, err = importer.Import(context.Background())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 	assert.Equal(t, "operational-export", importer.SourceID())
 }
 

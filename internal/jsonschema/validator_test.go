@@ -398,7 +398,7 @@ func TestValidator_FailureDeterministicOrdering(t *testing.T) {
 	s := compileSchema(t, `{"type":"object","required":["a","b","c"]}`)
 	fs1 := validateValue(t, s, `{}`)
 	fs2 := validateValue(t, s, `{}`)
-	assert.Len(t, fs2, len(fs1))
+	assert.Equal(t, len(fs1), len(fs2))
 	for i := range fs1 {
 		assert.Equal(t, fs1[i].Reason, fs2[i].Reason)
 		assert.Equal(t, fs1[i].InstancePtr, fs2[i].InstancePtr)
@@ -419,14 +419,14 @@ func TestValidator_RejectsTrailingData(t *testing.T) {
 	s := compileSchema(t, `{"type":"string"}`)
 	v := NewValidator()
 	fs := v.Validate(s, []byte(`"hello" "extra"`))
-	assert.NotEmpty(t, fs)
+	assert.True(t, len(fs) > 0)
 }
 
 func TestValidator_RejectsInvalidJSON(t *testing.T) {
 	s := compileSchema(t, `{"type":"string"}`)
 	v := NewValidator()
 	fs := v.Validate(s, []byte(`{invalid`))
-	assert.NotEmpty(t, fs)
+	assert.True(t, len(fs) > 0)
 }
 
 func TestValidator_NeverPanics(t *testing.T) {

@@ -116,11 +116,11 @@ func TestValidateHTTPRequestURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			parsed, err := validateHTTPRequestURL(tt.url)
 			if tt.wantErr {
-				require.Error(t, err, tt.url)
+				assert.Error(t, err, tt.url)
 				assert.Nil(t, parsed, tt.url)
 				return
 			}
-			require.NoError(t, err, tt.url)
+			assert.NoError(t, err, tt.url)
 			assert.NotNil(t, parsed, tt.url)
 		})
 	}
@@ -818,7 +818,7 @@ func TestValidateHTTPRequestURL_WithAllowlist(t *testing.T) {
 
 	t.Run("allowlisted private IP passes", func(t *testing.T) {
 		parsed, err := validateHTTPRequestURL("http://10.43.0.40:9000/slew")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.NotNil(t, parsed)
 	})
 
@@ -834,7 +834,7 @@ func TestValidateHTTPRequestURL_WithAllowlist(t *testing.T) {
 
 	t.Run("public URL still allowed", func(t *testing.T) {
 		parsed, err := validateHTTPRequestURL("http://example.com")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.NotNil(t, parsed)
 	})
 }
@@ -847,7 +847,7 @@ func TestValidateHTTPRequestURL_DefaultBlocksPrivate(t *testing.T) {
 	resetPrivateIPAllowlistForTest()
 
 	_, err := validateHTTPRequestURL("http://10.43.0.40")
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	_, err = validateHTTPRequestURL("http://127.0.0.1")
 	assert.Error(t, err)

@@ -41,19 +41,19 @@ func TestOllamaBackend_ReleaseModelsVerifiesWholeBatchAfterUnload(t *testing.T) 
 			_, _ = w.Write([]byte(`{"models":[{"name":"unrelated:1b"}]}`))
 			return
 		}
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/generate", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/api/generate", r.URL.Path)
 		var request struct {
 			Model     string          `json:"model"`
 			KeepAlive json.RawMessage `json:"keep_alive"`
 			Stream    bool            `json:"stream"`
 		}
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
 		requests = append(requests, request.Model)
 		events = append(events, "release:"+request.Model)
 		assert.JSONEq(t, "0", string(request.KeepAlive))
 		assert.False(t, request.Stream)
-		assert.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
+		require.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
 	}))
 	defer server.Close()
 
@@ -75,7 +75,7 @@ func TestOllamaBackend_ReleaseModelsValidatesEntireBatchBeforeUnload(t *testing.
 	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
 	require.NoError(t, err)
 	err = backend.ReleaseModels(context.Background(), []string{"qwen3:0.6b", "bad;tag"})
-	require.ErrorIs(t, err, constants.ErrInferenceModelTagInvalid)
+	assert.ErrorIs(t, err, constants.ErrInferenceModelTagInvalid)
 	assert.Zero(t, generateCalls)
 }
 
@@ -85,8 +85,8 @@ func TestOllamaBackend_ReleaseModelsFailsWhenRequestedModelRemainsResident(t *te
 			var request struct {
 				Model string `json:"model"`
 			}
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-			assert.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			require.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
 			return
 		}
 		_, _ = w.Write([]byte(`{"models":[{"name":"qwen3:0.6b"}]}`))
@@ -107,8 +107,8 @@ func TestOllamaBackend_ReleaseModelsWaitsForAsynchronousUnload(t *testing.T) {
 			var request struct {
 				Model string `json:"model"`
 			}
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-			assert.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			require.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
 			return
 		}
 		residencyReads++
@@ -131,8 +131,8 @@ func TestOllamaBackend_ReleaseModelsFailsClosedOnMalformedResidency(t *testing.T
 			var request struct {
 				Model string `json:"model"`
 			}
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-			assert.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			require.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
 			return
 		}
 		_, _ = w.Write([]byte(`{"models":[`))
@@ -159,8 +159,8 @@ func TestOllamaBackend_GenerateConstructsCorrectChatRequest(t *testing.T) {
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
 		body, err := io.ReadAll(r.Body)
-		assert.NoError(t, err)
-		assert.NoError(t, json.Unmarshal(body, &capturedBody))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &capturedBody))
 
 		promptTokens := int32(12)
 		completionTokens := int32(8)
@@ -268,7 +268,7 @@ func TestOllamaBackend_GenerateConstructsCorrectChatRequest(t *testing.T) {
 	assert.Equal(t, "generated text", resp.Parts[0].GetText())
 	assert.Equal(t, "call-2", resp.Parts[1].GetToolCall().GetCallId())
 	assert.Equal(t, "inspect", resp.Parts[1].GetToolCall().GetName())
-	assert.Equal(t, `{"path":"next.txt"}`, resp.Parts[1].GetToolCall().GetArgumentsJson()) //nolint:testifylint // exact bytes, not JSON equivalence
+	assert.Equal(t, `{"path":"next.txt"}`, resp.Parts[1].GetToolCall().GetArgumentsJson())
 	assert.Equal(t, "gemma3:4b", resp.Model)
 	assert.Equal(t, int32(12), resp.PromptTokens)
 	assert.Equal(t, int32(8), resp.CompletionTokens)
@@ -308,10 +308,10 @@ func TestOllamaBackend_GenerateConstructsCorrectChatRequest(t *testing.T) {
 	assert.Equal(t, "inspect", capturedBody.Tools[0].Function.Name)
 	assert.Equal(t, "Inspect a target", capturedBody.Tools[0].Function.Description)
 	assert.JSONEq(t, `{"properties":{"path":{"type":"string"}},"type":"object"}`, string(capturedBody.Tools[0].Function.Parameters))
-	assert.InDelta(t, float32(0.7), capturedBody.Options.Temperature, 0)
+	assert.Equal(t, float32(0.7), capturedBody.Options.Temperature)
 	assert.Equal(t, int32(100), capturedBody.Options.NumPredict)
 	require.NotNil(t, capturedBody.Options.TopP)
-	assert.InDelta(t, topP, *capturedBody.Options.TopP, 0)
+	assert.Equal(t, topP, *capturedBody.Options.TopP)
 	require.NotNil(t, capturedBody.Options.TopK)
 	assert.Equal(t, topK, *capturedBody.Options.TopK)
 	require.NotNil(t, capturedBody.Options.Seed)
@@ -321,16 +321,16 @@ func TestOllamaBackend_GenerateConstructsCorrectChatRequest(t *testing.T) {
 	assert.Equal(t, contextLimit, *capturedBody.Options.NumCtx)
 	assert.Equal(t, "true", string(capturedBody.Think))
 	assert.JSONEq(t, `{"properties":{"answer":{"type":"string"}},"type":"object"}`, string(capturedBody.Format))
-	assert.Equal(t, json.RawMessage("-1"), capturedBody.KeepAlive) //nolint:testifylint // exact bytes, not JSON equivalence
+	assert.Equal(t, json.RawMessage("-1"), capturedBody.KeepAlive)
 }
 
 func TestOllamaBackend_GeneratePreservesOrderedStreamPartsAndMeasuresFirstToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request ollamaChatRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
 		assert.True(t, request.Stream)
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 		events := []string{
 			`{"model":"test-model","message":{"role":"assistant","thinking":"considering"},"done":false}`,
 			`{"model":"test-model","message":{"role":"assistant","content":"answer"},"done":false}`,
@@ -340,7 +340,7 @@ func TestOllamaBackend_GeneratePreservesOrderedStreamPartsAndMeasuresFirstToken(
 		for _, event := range events {
 			time.Sleep(time.Millisecond)
 			_, err := io.WriteString(w, event+"\n")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			flusher.Flush()
 		}
 	}))
@@ -355,7 +355,7 @@ func TestOllamaBackend_GeneratePreservesOrderedStreamPartsAndMeasuresFirstToken(
 	assert.Equal(t, "considering", response.Parts[0].GetThinking())
 	assert.Equal(t, "answer", response.Parts[1].GetText())
 	assert.Equal(t, "call-1", response.Parts[2].GetToolCall().GetCallId())
-	assert.Equal(t, `{"path":"target.txt"}`, response.Parts[2].GetToolCall().GetArgumentsJson()) //nolint:testifylint // exact bytes, not JSON equivalence
+	assert.Equal(t, `{"path":"target.txt"}`, response.Parts[2].GetToolCall().GetArgumentsJson())
 	require.NotNil(t, response.TimeToFirstTokenNS)
 	assert.Positive(t, *response.TimeToFirstTokenNS)
 	assert.Equal(t, operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_PROVIDER, response.TimingSource)
@@ -382,7 +382,7 @@ func TestOllamaBackend_GenerateRejectsStreamWithoutOneTerminalEvent(t *testing.T
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := io.WriteString(w, tt.body)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}))
 			defer server.Close()
 			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -402,7 +402,7 @@ func TestOllamaBackend_GenerateRejectsStreamWithoutOneTerminalEvent(t *testing.T
 func TestOllamaBackend_GenerateEmptyCompletionReturnsEmptyResult(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := io.WriteString(w, `{"model":"test-model","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}`+"\n")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}))
 	defer server.Close()
 	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -446,7 +446,7 @@ func TestOllamaBackend_GenerateTerminalEventErrorNamesFailedCondition(t *testing
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := io.WriteString(w, tt.body)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}))
 			defer server.Close()
 			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -468,7 +468,7 @@ func TestOllamaBackend_GenerateRejectsParallelToolCallsSplitAcrossEventsWhenDisa
 		}
 		for _, event := range events {
 			_, err := io.WriteString(w, event+"\n")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 	}))
 	defer server.Close()
@@ -486,9 +486,9 @@ func TestOllamaBackend_GenerateRejectsParallelToolCallsSplitAcrossEventsWhenDisa
 func TestOllamaBackend_GenerateTimeoutDuringStreamReturnsBackendTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
-		assert.True(t, ok)
+		require.True(t, ok)
 		_, err := io.WriteString(w, `{"model":"test-model","message":{"role":"assistant","content":"partial"},"done":false}`+"\n")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		flusher.Flush()
 		<-r.Context().Done()
 	}))
@@ -519,7 +519,7 @@ func TestOllamaBackend_GenerateAcceptsToolOnlyResponse(t *testing.T) {
 			Done:       true,
 			DoneReason: "tool_calls",
 		}
-		assert.NoError(t, json.NewEncoder(w).Encode(response))
+		require.NoError(t, json.NewEncoder(w).Encode(response))
 	}))
 	defer server.Close()
 	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -550,10 +550,10 @@ func TestOllamaBackend_GenerateRejectsInvalidToolCalls(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				if tt.responseBody != nil {
 					_, err := w.Write(tt.responseBody)
-					assert.NoError(t, err)
+					require.NoError(t, err)
 					return
 				}
-				assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{Model: "test-model", Message: tt.message, Done: true}))
+				require.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{Model: "test-model", Message: tt.message, Done: true}))
 			}))
 			defer server.Close()
 			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -571,8 +571,8 @@ func TestOllamaBackend_GenerateRejectsInvalidToolCalls(t *testing.T) {
 func TestOllamaBackend_GenerateFiltersToolsUsingAutoChoice(t *testing.T) {
 	var capturedBody ollamaChatRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
-		assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{Model: "test-model", Message: ollamaChatMessage{Role: "assistant", Content: "ok"}, Done: true}))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
+		require.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{Model: "test-model", Message: ollamaChatMessage{Role: "assistant", Content: "ok"}, Done: true}))
 	}))
 	defer server.Close()
 	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -598,8 +598,8 @@ func TestOllamaBackend_GenerateFiltersToolsUsingAutoChoice(t *testing.T) {
 func TestOllamaBackend_GenerateEmptyAutoChoiceAllowsAllDeclaredTools(t *testing.T) {
 	var capturedBody ollamaChatRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
-		assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{Model: "test-model", Message: ollamaChatMessage{Role: "assistant", Content: "ok"}, Done: true}))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
+		require.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{Model: "test-model", Message: ollamaChatMessage{Role: "assistant", Content: "ok"}, Done: true}))
 	}))
 	defer server.Close()
 	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -631,8 +631,8 @@ func TestOllamaBackend_GenerateOutputLimitIsStatedValueOrPlatformCeiling(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			var captured ollamaChatRequest
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.NoError(t, json.NewDecoder(r.Body).Decode(&captured))
-				assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&captured))
+				require.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
 					Model:   "test-model",
 					Message: ollamaChatMessage{Role: "assistant", Content: "ok"},
 					Done:    true,
@@ -652,7 +652,7 @@ func TestOllamaBackend_GenerateOutputLimitIsStatedValueOrPlatformCeiling(t *test
 
 func TestOllamaBackend_GenerateRejectsParallelToolCallsWhenDisabled(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
+		require.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
 			Model: "test-model",
 			Message: ollamaChatMessage{Role: "assistant", ToolCalls: []ollamaToolCall{
 				{Function: ollamaToolFunction{Name: "inspect", Arguments: json.RawMessage(`{}`)}},
@@ -683,7 +683,7 @@ func TestOllamaBackend_GenerateAllowsParallelToolCallsWhenEnabledOrUnspecified(t
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
+				require.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
 					Model: "test-model",
 					Message: ollamaChatMessage{Role: "assistant", ToolCalls: []ollamaToolCall{
 						{Function: ollamaToolFunction{Name: "inspect", Arguments: json.RawMessage(`{}`)}},
@@ -787,7 +787,7 @@ func TestOllamaBackend_GenerateToolsUnsupportedReturnsErrInferenceToolsUnsupport
 
 	require.Error(t, err)
 	assert.Nil(t, resp)
-	require.ErrorIs(t, err, constants.ErrInferenceToolsUnsupported)
+	assert.ErrorIs(t, err, constants.ErrInferenceToolsUnsupported)
 	select {
 	case request := <-requests:
 		assert.Equal(t, "sam860/LFM2:350m", request.Model)
@@ -816,7 +816,7 @@ func TestOllamaBackend_GenerateThinkingUnsupportedReturnsErrInferenceCapabilityU
 
 	require.Error(t, err)
 	assert.Nil(t, resp)
-	require.ErrorIs(t, err, constants.ErrInferenceCapabilityUnsupported)
+	assert.ErrorIs(t, err, constants.ErrInferenceCapabilityUnsupported)
 	assert.NotErrorIs(t, err, constants.ErrInferenceGenerateFailed)
 }
 
@@ -917,7 +917,7 @@ func TestOllamaBackend_GenerateDistinguishesUnavailableUsageFromReportedZero(t *
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := w.Write([]byte(tt.responseBody))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}))
 			defer server.Close()
 			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -989,7 +989,7 @@ func TestOllamaBackend_GenerateParsesCacheTokensWithoutInferringThinkingTokens(t
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := io.WriteString(w, tt.responseBody)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}))
 			defer server.Close()
 
@@ -1038,7 +1038,7 @@ func TestOllamaBackend_GenerateFailsTypedWhenPromptFillsContextWindow(t *testing
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := fmt.Fprintf(w, `{"model":"test-model","message":{"role":"assistant","content":%q},"done":true,"prompt_eval_count":8192,"eval_count":1}`, tt.content)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}))
 			defer server.Close()
 			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -1049,7 +1049,7 @@ func TestOllamaBackend_GenerateFailsTypedWhenPromptFillsContextWindow(t *testing
 			if tt.wantOverflow {
 				require.Error(t, err)
 				assert.Nil(t, response)
-				require.ErrorIs(t, err, constants.ErrInferenceContextOverflow)
+				assert.ErrorIs(t, err, constants.ErrInferenceContextOverflow)
 				assert.NotErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
 				return
 			}
@@ -1073,7 +1073,7 @@ func TestOllamaBackend_GenerateRejectsContradictoryOrInvalidMetadata(t *testing.
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := w.Write([]byte(tt.responseBody))
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}))
 			defer server.Close()
 			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
@@ -1096,13 +1096,13 @@ func TestOllamaBackend_GenerateVerifiesFrozenModelDigestBeforeAndAfterProviderCa
 		switch r.URL.Path {
 		case "/api/tags":
 			tagsCalls++
-			assert.NoError(t, json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaTagModel{{Name: "test-model", Digest: modelDigest}}}))
+			require.NoError(t, json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaTagModel{{Name: "test-model", Digest: modelDigest}}}))
 		case "/api/chat":
 			var err error
 			providerRequest, err = io.ReadAll(r.Body)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			_, err = w.Write([]byte(`{"model":"test-model","message":{"role":"assistant","content":"ok"},"done":true,"done_reason":"stop"}`))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		default:
 			t.Fatalf("unexpected provider path %s", r.URL.Path)
 		}
@@ -1133,10 +1133,10 @@ func TestOllamaBackend_GenerateRejectsModelDigestDriftAfterProviderCall(t *testi
 			if tagsCalls == 2 {
 				digest = strings.Repeat("b", 64)
 			}
-			assert.NoError(t, json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaTagModel{{Name: "test-model", Digest: digest}}}))
+			require.NoError(t, json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaTagModel{{Name: "test-model", Digest: digest}}}))
 		case "/api/chat":
 			_, err := w.Write([]byte(`{"model":"test-model","message":{"role":"assistant","content":"ok"},"done":true}`))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		}
 	}))
 	defer server.Close()
@@ -1185,8 +1185,8 @@ func TestOllamaBackend_StatusReturnsAvailableAndModels(t *testing.T) {
 func TestOllamaBackend_ListModelVariantsNormalizesOllamaDigests(t *testing.T) {
 	digest := strings.Repeat("c", 64)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/tags", r.URL.Path)
-		assert.NoError(t, json.NewEncoder(w).Encode(ollamaTagsResponse{
+		require.Equal(t, "/api/tags", r.URL.Path)
+		require.NoError(t, json.NewEncoder(w).Encode(ollamaTagsResponse{
 			Models: []ollamaTagModel{{Name: "probe-model", Digest: "sha256:" + digest}},
 		}))
 	}))
@@ -1278,7 +1278,7 @@ func TestOllamaBackend_GenerateErrorDoesNotLeakProviderResponseBody(t *testing.T
 
 	require.Error(t, err)
 	assert.Nil(t, resp)
-	require.ErrorIs(t, err, constants.ErrInferenceGenerateFailed)
+	assert.ErrorIs(t, err, constants.ErrInferenceGenerateFailed)
 	assert.NotContains(t, err.Error(), providerCanary, "provider response text must not leak into errors")
 }
 
@@ -1305,7 +1305,7 @@ func TestOllamaBackend_GenerateCallerCancellationReturnsContextCanceled(t *testi
 
 	require.Error(t, err)
 	assert.Nil(t, resp)
-	require.ErrorIs(t, err, context.Canceled, "caller cancellation must stay distinguishable from a deadline")
+	assert.ErrorIs(t, err, context.Canceled, "caller cancellation must stay distinguishable from a deadline")
 	assert.NotErrorIs(t, err, constants.ErrInferenceBackendTimeout)
 }
 
@@ -1416,11 +1416,11 @@ func TestOllamaBackend_GenerateStreamingPublishesProgressEvents(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		encoder := json.NewEncoder(w)
-		assert.NoError(t, encoder.Encode(ollamaChatResponse{
+		require.NoError(t, encoder.Encode(ollamaChatResponse{
 			Model:   "test-model",
 			Message: ollamaChatMessage{Role: "assistant", Content: "hel\n"},
 		}))
-		assert.NoError(t, encoder.Encode(ollamaChatResponse{
+		require.NoError(t, encoder.Encode(ollamaChatResponse{
 			Model:      "test-model",
 			Message:    ollamaChatMessage{Role: "assistant", Content: "lo\n"},
 			Done:       true,
@@ -1560,7 +1560,7 @@ func TestOllamaBackend_GenerateStreamingReporterErrorDoesNotFailGeneration(t *te
 	logger := testutil.NewTestLogger()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
+		require.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
 			Model:      "test-model",
 			Message:    ollamaChatMessage{Role: "assistant", Content: "hello"},
 			Done:       true,

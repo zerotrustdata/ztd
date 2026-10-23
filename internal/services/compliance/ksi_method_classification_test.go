@@ -100,7 +100,7 @@ func TestDefaultMethods_EveryMethodHasTypedIndependenceMetadata(t *testing.T) {
 	}
 
 	assert.Equal(t, 20, totalRegistered)
-	assert.Len(t, seenNames, len(expectedDefaultMethodMetadata))
+	assert.Equal(t, len(expectedDefaultMethodMetadata), len(seenNames))
 }
 
 func TestDefaultMethods_IncludeEvidenceBackedVerifierFamilies(t *testing.T) {
@@ -112,11 +112,11 @@ func TestDefaultMethods_IncludeEvidenceBackedVerifierFamilies(t *testing.T) {
 	}
 
 	assert.Greater(t, counts[KSIVerifierCryptographic], 1)
-	assert.Positive(t, counts[KSIVerifierStateObservation])
-	assert.Positive(t, counts[KSIVerifierHistorical])
-	assert.Positive(t, counts[KSIVerifierDeterministicGrader])
-	assert.Positive(t, counts[KSIVerifierExistence])
-	assert.Positive(t, counts[KSIVerifierStructural])
+	assert.Greater(t, counts[KSIVerifierStateObservation], 0)
+	assert.Greater(t, counts[KSIVerifierHistorical], 0)
+	assert.Greater(t, counts[KSIVerifierDeterministicGrader], 0)
+	assert.Greater(t, counts[KSIVerifierExistence], 0)
+	assert.Greater(t, counts[KSIVerifierStructural], 0)
 }
 
 func TestDefaultMethods_UnregisteredKSIsRemainUnsupported(t *testing.T) {
@@ -129,5 +129,5 @@ func TestDefaultMethods_UnregisteredKSIsRemainUnsupported(t *testing.T) {
 		}
 	}
 
-	assert.Positive(t, unregistered)
+	assert.Greater(t, unregistered, 0)
 }

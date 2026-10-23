@@ -32,12 +32,8 @@ func (f decisionVoteInferer) DispatchInference(_ context.Context, r dispatch.Dis
 		return nil, constants.ErrInferenceOperatorNotFound
 	}
 	result := &operatorv1.InferenceDecisionResult{}
-	prob := f.probability
-	if r.ActingAppID == constants.TribunalConsensusAppIDPrefix+"nemesis" {
-		prob = 1 - f.probability
-	}
 	for _, q := range r.Decision.Questions {
-		result.Answers = append(result.Answers, &operatorv1.InferenceDecisionAnswer{Name: q.Name, Kind: &operatorv1.InferenceDecisionAnswer_Noul{Noul: prob}})
+		result.Answers = append(result.Answers, &operatorv1.InferenceDecisionAnswer{Name: q.Name, Kind: &operatorv1.InferenceDecisionAnswer_Noul{Noul: f.probability}})
 	}
 	return &dispatch.DispatchInferenceResult{TransactionID: "decision-inference", Result: &operatorv1.InferenceResult{Decision: result}}, nil
 }
@@ -73,7 +69,7 @@ func TestTribunalDecisionGovernedVotesAndPinnedOperator(t *testing.T) {
 	require.NoError(t, err)
 	var deliberated commonv1.GovernanceEnvelope
 	require.NoError(t, protojson.Unmarshal(out, &deliberated))
-	require.Len(t, deliberated.GetGovernance().GetL2().GetVotes(), len(binding.MemberAppIDs))
+	require.Len(t, deliberated.GetGovernance().GetL2().GetVotes(), binding.Quorum)
 	for _, vote := range deliberated.GetGovernance().GetL2().GetVotes() {
 		require.True(t, vote.Decision)
 		assertVoteSignature(t, signer, hash, vote)

@@ -27,10 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/pkg/ssh"
 )
 
-// RunShellCommandTool runs one executable directly, without a shell.
-// command is the executable name only; each argument is its own string in args.
-// Description and the input-schema property descriptions are the usage
-// contract models read from tools/list.
+// RunShellCommandTool runs shell commands with denylist enforcement and timeout limits.
 type RunShellCommandTool struct{}
 
 // Name returns the tool identifier.
@@ -38,29 +35,23 @@ func (t *RunShellCommandTool) Name() string {
 	return constants.MCPToolRunShellCommand
 }
 
-// Description is the usage contract models read from tools/list.
-// command is one executable name; every argument belongs in args.
+// Description returns a human-readable description.
 func (t *RunShellCommandTool) Description() string {
-	return "Runs one executable directly, without a shell. " +
-		"command is that executable's name only, with no spaces and no arguments (for example, cat). " +
-		"Every argument is its own string in args (for example, {\"command\":\"cat\",\"args\":[\"/var/log/app.log\"]}). " +
-		"A command line in command is rejected. " +
-		"Dangerous commands are denied, and the call stops at the timeout."
+	return "Executes shell commands with denylist enforcement for dangerous operations and timeout limits."
 }
 
 // InputSchema returns the JSON Schema for tool validation.
-// Property descriptions are part of the same usage contract as Description.
 func (t *RunShellCommandTool) InputSchema() *InputSchema {
 	return &InputSchema{
 		Type: "object",
 		Properties: map[string]*PropertySchema{
 			"command": {
 				Type:        "string",
-				Description: "The executable name only, with no spaces and no arguments (for example, cat). Put a path, flag, or any other argument in args. This field is not a shell command line.",
+				Description: "One executable name only, without arguments (e.g., 'cat'). The command is not run through a shell.",
 			},
 			"args": {
 				Type:        "array",
-				Description: "Each argument of the executable as its own string, in order. For command cat, a file path is [\"/var/log/app.log\"]. Pipes, redirects, globs, and substitutions are not interpreted.",
+				Description: "Every argument of the command as its own string, e.g. [\"-n\", \"5\", \"/var/log/app.log\"] (optional)",
 			},
 			"timeout": {
 				Type:        "integer",

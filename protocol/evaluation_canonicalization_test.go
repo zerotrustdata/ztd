@@ -242,7 +242,7 @@ func TestFailedPublicAssignmentResultCanonicalizationMatchesCrossLanguageVector(
 	reparsed := &evalv1.PublicAssignmentResultProjection{}
 	require.NoError(t, evalv1.UnmarshalCanonical(canonical, reparsed))
 	assert.True(t, proto.Equal(projection, reparsed))
-	assert.InDelta(t, float64(0), reparsed.GetDecomposedScores()[0].GetValue(), 0)
+	assert.Equal(t, float64(0), reparsed.GetDecomposedScores()[0].GetValue())
 }
 
 func TestPublicLiveEventCanonicalizationMatchesCrossLanguageVector(t *testing.T) {

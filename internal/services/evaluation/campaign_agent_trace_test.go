@@ -181,7 +181,7 @@ func TestDecodeAgentTrace_RejectsTamperedAndNonCanonicalBodies(t *testing.T) {
 
 	tampered := []byte(strings.Replace(string(body), "Why is checkout failing?", "Why is checkout passing?", 1))
 	_, err = DecodeAgentTrace(tampered)
-	require.ErrorIs(t, err, constants.ErrChecksumMismatch)
+	assert.ErrorIs(t, err, constants.ErrChecksumMismatch)
 
 	_, err = DecodeAgentTrace(append(append([]byte{}, body...), '\n'))
 	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)

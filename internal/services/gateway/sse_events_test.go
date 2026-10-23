@@ -61,7 +61,7 @@ func TestHandleInternalSSEEvents_Success(t *testing.T) {
 
 	// Push an event first
 	route := SSERoute{UserID: userID, CLISessionID: cliSessionID}
-	_, err := h.sseController.sseStore.SSEEventsAppend(route, "test_event", `{"event":{"type":"test_event"}}`, "test-app")
+	_, err := h.dataController.sseStore.SSEEventsAppend(route, "test_event", `{"event":{"type":"test_event"}}`, "test-app")
 	require.NoError(t, err)
 
 	// Query events with context-stamped auth

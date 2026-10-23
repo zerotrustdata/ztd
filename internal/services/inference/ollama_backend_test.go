@@ -10,6 +10,7 @@ package inference
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -27,13 +28,13 @@ import (
 func TestTransportError_ClassifiesNetworkTimeoutAndPreservesCause(t *testing.T) {
 	cause := &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}
 	err := transportError(t.Context(), "generate", cause)
-	require.ErrorIs(t, err, constants.ErrInferenceBackendTimeout)
-	require.ErrorIs(t, err, cause)
-	require.NotErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
+	assert.ErrorIs(t, err, constants.ErrInferenceBackendTimeout)
+	assert.ErrorIs(t, err, cause)
+	assert.False(t, errors.Is(err, constants.ErrInferenceBackendUnavailable))
 
 	deadlineErr := fmt.Errorf("provider request: %w", context.DeadlineExceeded)
 	err = transportError(t.Context(), "generate", deadlineErr)
-	require.ErrorIs(t, err, constants.ErrInferenceBackendTimeout)
+	assert.ErrorIs(t, err, constants.ErrInferenceBackendTimeout)
 	assert.ErrorIs(t, err, deadlineErr)
 }
 
@@ -41,10 +42,10 @@ func TestEncodeOllamaKeepAlive(t *testing.T) {
 	t.Parallel()
 	encoded, err := encodeOllamaKeepAlive("-1")
 	require.NoError(t, err)
-	assert.Equal(t, json.RawMessage("-1"), encoded) //nolint:testifylint // exact bytes, not JSON equivalence
+	assert.Equal(t, json.RawMessage("-1"), encoded)
 	encoded, err = encodeOllamaKeepAlive("5m")
 	require.NoError(t, err)
-	assert.Equal(t, json.RawMessage(`"5m"`), encoded) //nolint:testifylint // exact bytes, not JSON equivalence
+	assert.Equal(t, json.RawMessage(`"5m"`), encoded)
 }
 
 func TestOllamaBackend_GenerateRejectsUnsupportedToolChoiceAndThinkingLevel(t *testing.T) {
@@ -163,7 +164,7 @@ func TestOllamaBackend_GeneratePreservesUnderlyingTransportCause(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Nil(t, resp)
-	require.ErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
+	assert.ErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
 	var urlErr *url.Error
 	assert.ErrorAs(t, err, &urlErr, "the underlying transport error must stay in the chain")
 }

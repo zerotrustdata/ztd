@@ -75,7 +75,6 @@ func newPublicPublisherTestEnv(t *testing.T) (*PublicPublisherService, *Document
 
 // makeProjectionRecord creates a valid public feed record from a projection object.
 func makeProjectionRecord(t *testing.T, seq int64, proj models.PublicFeedObject) models.PublicFeedRecord {
-	t.Helper()
 	return projectionRecordFromObject(t, seq, proj)
 }
 
@@ -92,7 +91,7 @@ func TestExportBatch_SendsConfiguredIngestToken(t *testing.T) {
 	publisher.SetIngestAuthToken("mirror-token")
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "Bearer mirror-token", r.Header.Get("Authorization"))
-		assert.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{Accepted: true}))
+		require.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{Accepted: true}))
 	}))
 	t.Cleanup(mirror.Close)
 	publisher.SetMirrorOrigin(mirror.URL)
@@ -125,7 +124,7 @@ func TestExportBatch_SignsAndWritesOutbox(t *testing.T) {
 	var receivedBatch models.PublicFeedBatch
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		receivedBatch = req.Batch
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
@@ -174,7 +173,7 @@ func TestExportBatch_HashChainLinksBatches(t *testing.T) {
 	callCount := atomic.Int32{}
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		if callCount.Add(1) == 1 {
 			firstBatch = req.Batch
 		} else {
@@ -223,7 +222,7 @@ func TestExportBatch_RetriesOnMirrorFailure(t *testing.T) {
 			return
 		}
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -246,15 +245,15 @@ func TestExportBatch_RejectsMirrorTipThatConflictsWithPublisherSnapshot(t *testi
 	var receivedSequences []int64
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		receivedSequences = append(receivedSequences, req.Batch.FirstSequence)
 		if len(receivedSequences) == 1 {
 			firstBatch = req.Batch
-			assert.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{Accepted: true, HighWaterSequence: 1, FeedChainHash: req.Batch.ContentHash}))
+			require.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{Accepted: true, HighWaterSequence: 1, FeedChainHash: req.Batch.ContentHash}))
 			return
 		}
-		assert.Equal(t, int64(2), req.Batch.FirstSequence)
-		assert.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{
+		require.Equal(t, int64(2), req.Batch.FirstSequence)
+		require.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{
 			Accepted:          false,
 			SourceID:          req.Batch.SourceID,
 			HighWaterSequence: 2,
@@ -355,7 +354,7 @@ func TestSendToMirror_RejectsUnverifiedMirrorState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				assert.NoError(t, json.NewEncoder(w).Encode(tt.response))
+				require.NoError(t, json.NewEncoder(w).Encode(tt.response))
 			}))
 			t.Cleanup(mirror.Close)
 			err := publisher.sendToMirror(context.Background(), mirror.URL, "", batch)
@@ -370,14 +369,14 @@ func TestExportBatch_RecoversWhenMirrorAcceptedBatchBeforeResponseFailure(t *tes
 	attempts := atomic.Int32{}
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		if attempts.Add(1) == 1 {
 			accepted = req.Batch
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		assert.Equal(t, accepted.ContentHash, req.Batch.ContentHash)
-		assert.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{
+		require.Equal(t, accepted.ContentHash, req.Batch.ContentHash)
+		require.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{
 			Accepted:          false,
 			SourceID:          accepted.SourceID,
 			HighWaterSequence: accepted.LastSequence,
@@ -409,9 +408,9 @@ func TestRetransmitOutbox_AcknowledgesBatchAlreadyAcceptedByMirror(t *testing.T)
 	require.NoError(t, publisher.updateOutboxStatus(context.Background(), batch.LastSequence, models.PublicFeedOutboxStatusSent, true))
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		assert.Equal(t, batch.ContentHash, req.Batch.ContentHash)
-		assert.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, batch.ContentHash, req.Batch.ContentHash)
+		require.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{
 			Accepted:          false,
 			SourceID:          batch.SourceID,
 			HighWaterSequence: batch.LastSequence,
@@ -435,7 +434,7 @@ func TestExportBatch_IdempotentRetransmit(t *testing.T) {
 	var receivedHashes []string
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		receivedHashes = append(receivedHashes, req.Batch.ContentHash)
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
@@ -463,7 +462,7 @@ func TestLoadSnapshotFromOutbox_IgnoresUnacknowledgedTail(t *testing.T) {
 
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -502,7 +501,7 @@ func TestExportBatch_RetriesUnacknowledgedBeforeNewBatch(t *testing.T) {
 	var receivedSequences []int64
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		receivedSequences = append(receivedSequences, req.Batch.FirstSequence)
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
@@ -538,7 +537,7 @@ func TestRepairOutboxFromSnapshot_CompactsPrefixGap(t *testing.T) {
 
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -587,9 +586,9 @@ func TestRepairOutboxFromSnapshot_RetransmitsMultiRecordTail(t *testing.T) {
 	var accepted atomic.Int64
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		accepted.Store(req.Batch.LastSequence)
-		assert.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{
+		require.NoError(t, json.NewEncoder(w).Encode(models.PublicIngestResponse{
 			Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash,
 		}))
 	}))
@@ -679,7 +678,7 @@ func TestGetSnapshot_ReturnsCurrentHighWater(t *testing.T) {
 
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -718,7 +717,7 @@ func TestRecoverOutbox_ResumesAfterRestart(t *testing.T) {
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		accepted.Add(1)
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -758,10 +757,10 @@ func TestRecoverOutbox_UsesRuntimeFileStateAfterDatabaseReplacement(t *testing.T
 	publisher1, _, priv, _ := newPublicPublisherTestEnv(t)
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
-		assert.NoError(t, json.NewEncoder(w).Encode(resp))
+		require.NoError(t, json.NewEncoder(w).Encode(resp))
 	}))
 	t.Cleanup(mirror.Close)
 	publisher1.SetMirrorOrigin(mirror.URL)
@@ -800,10 +799,10 @@ func TestRecoverOutbox_RejectsSnapshotEquivocationAtHighWater(t *testing.T) {
 	publisher1, docStore, priv, _ := newPublicPublisherTestEnv(t)
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		response := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
-		assert.NoError(t, json.NewEncoder(w).Encode(response))
+		require.NoError(t, json.NewEncoder(w).Encode(response))
 	}))
 	t.Cleanup(mirror.Close)
 	publisher1.SetMirrorOrigin(mirror.URL)
@@ -858,7 +857,7 @@ func TestExportBatch_RejectsOversizedBatch(t *testing.T) {
 
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -1010,14 +1009,14 @@ func TestRotateKey_SwitchesSigningKey(t *testing.T) {
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/keys/register" {
-			assert.NoError(t, json.NewEncoder(w).Encode(models.PublicKeyRegistrationResponse{Accepted: true}))
+			require.NoError(t, json.NewEncoder(w).Encode(models.PublicKeyRegistrationResponse{Accepted: true}))
 			return
 		}
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		receivedKeyIDs = append(receivedKeyIDs, req.Batch.SigningKeyID)
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
-		assert.NoError(t, json.NewEncoder(w).Encode(resp))
+		require.NoError(t, json.NewEncoder(w).Encode(resp))
 	}))
 	t.Cleanup(mirror.Close)
 	publisher.SetMirrorOrigin(mirror.URL)
@@ -1057,7 +1056,7 @@ func TestExportBatch_MirrorOutageDoesNotLoseSequence(t *testing.T) {
 	records := []models.PublicFeedRecord{makeProjectionRecord(t, 1, models.NewPublicFeedObject(map[string]string{"campaign_id": "c1"}))}
 	err := publisher.ExportBatch(context.Background(), records)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrPublicFeedMaxRetriesExceeded)
+	assert.ErrorIs(t, err, constants.ErrPublicFeedMaxRetriesExceeded)
 
 	// The outbox has the pending entry.
 	entries, err := publisher.outbox.List(context.Background())
@@ -1071,7 +1070,7 @@ func TestExportBatch_MirrorOutageDoesNotLoseSequence(t *testing.T) {
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		accepted.Add(1)
 		var req models.PublicIngestRequest
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		resp := models.PublicIngestResponse{Accepted: true, HighWaterSequence: req.Batch.LastSequence, FeedChainHash: req.Batch.ContentHash}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)

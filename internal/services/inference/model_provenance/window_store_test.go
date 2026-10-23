@@ -90,7 +90,7 @@ func TestWindowStore_SaveAndLoadRejectPathHostileAttemptID(t *testing.T) {
 	store, err := NewWindowStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 
-	require.ErrorIs(t, store.Save(ctx, testAttestationWindow(t, "a/b")), constants.ErrInferenceProviderAttemptIDInvalid)
+	assert.ErrorIs(t, store.Save(ctx, testAttestationWindow(t, "a/b")), constants.ErrInferenceProviderAttemptIDInvalid)
 	_, err = store.Load(ctx, "a/b")
 	assert.ErrorIs(t, err, constants.ErrInferenceProviderAttemptIDInvalid)
 }

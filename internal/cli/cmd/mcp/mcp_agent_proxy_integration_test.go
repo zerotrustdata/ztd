@@ -25,7 +25,7 @@ import (
 func TestRunMCPAgentRun_NoArgsReturnsError(t *testing.T) {
 	err := runMCPAgentRun(nil, false, "", shared.NewFileSvc, authcmd.PanickingEnrollerFactory())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrAgentNotFound)
+	assert.ErrorIs(t, err, constants.ErrAgentNotFound)
 	assert.Contains(t, err.Error(), "specify an agent name")
 }
 

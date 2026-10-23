@@ -125,7 +125,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 		err = json.Unmarshal(dataBytes, &stored)
 		require.NoError(t, err)
-		assert.Empty(t, stored.OperatorSessionID)
+		assert.Equal(t, "", stored.OperatorSessionID)
 	})
 
 	t.Run("Empty UserID", func(t *testing.T) {
@@ -143,7 +143,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 		err = json.Unmarshal(dataBytes, &stored)
 		require.NoError(t, err)
-		assert.Empty(t, stored.UserID)
+		assert.Equal(t, "", stored.UserID)
 	})
 
 	t.Run("Empty LoginMethod", func(t *testing.T) {
@@ -161,7 +161,7 @@ func TestCLISessionService_PersistCLISession(t *testing.T) {
 		require.NoError(t, err)
 		err = json.Unmarshal(dataBytes, &stored)
 		require.NoError(t, err)
-		assert.Empty(t, stored.LoginMethod)
+		assert.Equal(t, "", stored.LoginMethod)
 	})
 
 	t.Run("Nil Database", func(t *testing.T) {
@@ -367,7 +367,7 @@ func TestCLISessionService_DeactivateCLISession_NotFound(t *testing.T) {
 
 	err := svc.DeactivateCLISession(t.Context(), "nonexistent-session")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrCLISessionNotFound, "expected ErrCLISessionNotFound, got %v", err)
+	assert.True(t, errors.Is(err, constants.ErrCLISessionNotFound), "expected ErrCLISessionNotFound, got %v", err)
 }
 
 func TestCLISessionService_DeactivateCLISession_AlreadyDeactivated(t *testing.T) {
@@ -379,7 +379,7 @@ func TestCLISessionService_DeactivateCLISession_AlreadyDeactivated(t *testing.T)
 
 	err := svc.DeactivateCLISession(t.Context(), "deact-2")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrCLISessionAlreadyDeactivated, "expected ErrCLISessionAlreadyDeactivated, got %v", err)
+	assert.True(t, errors.Is(err, constants.ErrCLISessionAlreadyDeactivated), "expected ErrCLISessionAlreadyDeactivated, got %v", err)
 }
 
 func TestCLISessionService_DeactivateCLISession_EmptyID(t *testing.T) {
@@ -479,7 +479,7 @@ func TestCLISessionService_ReplaceCLISession_UnknownOldSession(t *testing.T) {
 		LoginMethod:       "mTLS",
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrCLISessionNotFound, "expected ErrCLISessionNotFound, got %v", err)
+	assert.True(t, errors.Is(err, constants.ErrCLISessionNotFound), "expected ErrCLISessionNotFound, got %v", err)
 }
 
 func TestCLISessionService_ReplaceCLISession_AlreadyDeactivatedOld(t *testing.T) {
@@ -495,7 +495,7 @@ func TestCLISessionService_ReplaceCLISession_AlreadyDeactivatedOld(t *testing.T)
 		LoginMethod:       "mTLS",
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrCLISessionAlreadyDeactivated, "expected ErrCLISessionAlreadyDeactivated, got %v", err)
+	assert.True(t, errors.Is(err, constants.ErrCLISessionAlreadyDeactivated), "expected ErrCLISessionAlreadyDeactivated, got %v", err)
 }
 
 func TestCLISessionService_ReplaceCLISession_MissingUserBinding(t *testing.T) {
@@ -648,7 +648,7 @@ func TestCLISessionService_ReplaceCLISession_RevocationWriteFailureRollback(t *t
 		LoginMethod:       "mTLS",
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrCLISessionAlreadyDeactivated)
+	assert.True(t, errors.Is(err, constants.ErrCLISessionAlreadyDeactivated))
 }
 
 // ---------------------------------------------------------------------------

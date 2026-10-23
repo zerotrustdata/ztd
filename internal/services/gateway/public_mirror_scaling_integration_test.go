@@ -261,7 +261,7 @@ func TestPublicMirror_ScalingIntegration(t *testing.T) {
 	t.Logf("Store disk growth per batch: small avg=%d bytes, large avg=%d bytes (sample batch JSON=%d bytes)",
 		avgSmallBatchBytes, avgLargeBatchBytes, sampleBatchLen)
 
-	assert.Positive(t, sampleBatchLen)
+	assert.Greater(t, sampleBatchLen, 0)
 	// In SQLite WAL mode, each commit writes WAL frames (~4KB-8KB).
 	// A small multiple of batch size (e.g. 50x) proves it is not rewriting full history (which would be tens/hundreds of MBs).
 	assert.Less(t, avgSmallBatchBytes, int64(sampleBatchLen)*50, "small mirror store growth per batch must be bounded by small multiple of batch size")

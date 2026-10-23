@@ -144,13 +144,12 @@ type ConnStatusMsg struct {
 }
 
 // ApprovalCompletedMsg reports an approval.completed event for a suspended
-// L3 transaction with the resumed execution receipt it carries. The event
-// alone is not proof: the model reports the transaction approved only when
-// auth.ValidateApprovalReceipt accepts Receipt, as 'ztd auth approve' does.
-// Receipt is nil when the event carried none.
+// L3 transaction. The event alone is not proof: the model verifies the
+// transaction's status over mTLS before reporting it approved. Denied is set
+// when the event carries the Operator-signed L3_DENIED rejection receipt.
 type ApprovalCompletedMsg struct {
-	TxHash  string
-	Receipt *operatorv1.ActionReceipt
+	TxHash string
+	Denied bool
 }
 
 // ApprovalOpenedMsg reports that the browser WebAuthn approval page for a
@@ -159,6 +158,14 @@ type ApprovalCompletedMsg struct {
 type ApprovalOpenedMsg struct {
 	TxHash string
 	URL    string
+	Err    error
+}
+
+// ApprovalVerifiedMsg carries the mTLS-verified status of a transaction after
+// approval.completed, or the error that prevented or failed verification.
+type ApprovalVerifiedMsg struct {
+	TxHash string
+	Status models.ApprovalStatusResponse
 	Err    error
 }
 

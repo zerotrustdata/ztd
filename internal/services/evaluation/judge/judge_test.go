@@ -10,6 +10,7 @@ package judge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -155,7 +156,7 @@ func TestScoreTrace_FinalReplyAndMemoryAreScoredThroughCampaignAuthorizedDispatc
 		RubricVersion:    RubricVersion,
 	}, scores[0])
 	require.NotNil(t, scores[0].Result, "a scored judge carries the result its receipt binds")
-	assert.Equal(t, `{"score": 4, "rationale": "answers the objective"}`, models.InferenceResultText(scores[0].Result)) //nolint:testifylint // exact bytes, not JSON equivalence
+	assert.Equal(t, `{"score": 4, "rationale": "answers the objective"}`, models.InferenceResultText(scores[0].Result))
 	assert.Equal(t, SubjectMemory, scores[1].Subject)
 	assert.Equal(t, StatusScored, scores[1].Status)
 	assert.Equal(t, 3, scores[1].Value)
@@ -363,7 +364,7 @@ func TestScoreTrace_MissingRunAssignmentOrScenarioIDFailsWithoutDispatch(t *test
 
 			req, _, err := j.buildDispatchRequest(SubjectFinalReply, judgeFinalReply)
 			assert.Nil(t, req)
-			require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+			assert.True(t, errors.Is(err, constants.ErrMissingRequiredField))
 
 			scores := j.ScoreTrace(context.Background(), trace(judgeFinalReply), judgeObjective, nil)
 
@@ -391,7 +392,7 @@ func TestValidateResponse_RejectsResultBoundToAnotherRunAssignmentOrScenario(t *
 
 			err = j.validateResponse(providerAttemptID, resp)
 
-			assert.ErrorIs(t, err, constants.ErrIdentityBindingFailed)
+			assert.True(t, errors.Is(err, constants.ErrIdentityBindingFailed))
 		})
 	}
 	t.Run("result carrying the requested identity validates", func(t *testing.T) {
@@ -433,7 +434,7 @@ func TestDecodeJudgment_AcceptsOnlyTheDeclaredShape(t *testing.T) {
 
 			if tc.wantErr {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+				assert.True(t, errors.Is(err, constants.ErrJudgeResponseInvalid))
 				return
 			}
 			require.NoError(t, err)
@@ -449,7 +450,7 @@ func TestJudgmentJSONSchema_IsCanonical(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(judgmentJSONSchema), &decoded))
 	canonical, err := json.Marshal(decoded)
 	require.NoError(t, err)
-	assert.Equal(t, string(canonical), judgmentJSONSchema) //nolint:testifylint // exact bytes, not JSON equivalence
+	assert.Equal(t, string(canonical), judgmentJSONSchema)
 }
 
 func TestNew_RejectsEachMissingRequiredField(t *testing.T) {
@@ -472,7 +473,7 @@ func TestNew_RejectsEachMissingRequiredField(t *testing.T) {
 				d = nil
 			}
 			_, err := New(d, judgeConfig(t, tc.mutate))
-			assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
+			assert.True(t, errors.Is(err, constants.ErrMissingRequiredField))
 		})
 	}
 	t.Run("valid configuration constructs a judge", func(t *testing.T) {

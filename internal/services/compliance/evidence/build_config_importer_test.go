@@ -239,7 +239,7 @@ func TestBuildConfigImporter_Import_WrapsReadFailure(t *testing.T) {
 	readErr := fmt.Errorf("build attestation source unavailable")
 	_, err := NewBuildConfigImporter(&failingArtifactReader{err: readErr}, fixture.binding).Import(context.Background())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
+	assert.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
 	assert.ErrorIs(t, err, readErr)
 }
 

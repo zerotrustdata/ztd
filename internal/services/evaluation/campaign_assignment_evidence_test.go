@@ -114,7 +114,7 @@ func TestBuildPublicAssignmentEvidence_RejectsPrivateOrMalformedProof(t *testing
 			input := base
 			input.PublicProofs = []*evalv1.PublicEvidenceBinding{test.binding}
 			_, _, err := BuildPublicAssignmentEvidence(input)
-			require.Error(t, err)
+			assert.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 		})
 	}

@@ -223,8 +223,8 @@ func TestL5ActuatorExecuteFinalPersistenceAttestationWriteFailure(t *testing.T) 
 	receipt, err := actuator.Execute(context.Background(), vt, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrL5ActuatorLogReceipt)
-	require.ErrorIs(t, err, constants.ErrL5ActuatorAuditStore)
+	assert.ErrorIs(t, err, constants.ErrL5ActuatorLogReceipt)
+	assert.ErrorIs(t, err, constants.ErrL5ActuatorAuditStore)
 	require.NotNil(t, receipt)
 	assert.Nil(t, receipt.FinalPersistenceAttestation, "an unpersisted final receipt must not carry a persistence attestation")
 	persisted, getErr := auditStore.GetEventReceipt(vt.Envelope.Id)
@@ -472,7 +472,7 @@ func TestL5ActuatorExecuteFailsClosedWhenRehydrationFails(t *testing.T) {
 
 	require.NoError(t, VerifyActionReceiptSignature(receipt, publicKey))
 	require.NotNil(t, receipt.FinalPersistenceAttestation)
-	require.NoError(t, VerifyReceiptPersistenceAttestation(receipt, publicKey))
+	assert.NoError(t, VerifyReceiptPersistenceAttestation(receipt, publicKey))
 
 	persisted, err := auditStore.GetEventReceipt(receipt.TransactionId)
 	require.NoError(t, err)
@@ -756,7 +756,7 @@ func TestL5ActuatorRejectionReceiptFilesUnderRuntimeSession(t *testing.T) {
 	require.Len(t, receipt.DeterministicStageEvidence, 1)
 	assert.Equal(t, "remote-operator", receipt.DeterministicStageEvidence[0].OperatorId, "the claimed operator stays visible in the signed receipt")
 	assert.Equal(t, "foreign-cli-session", receipt.DeterministicStageEvidence[0].OperatorSessionId, "the claimed session stays visible in the signed receipt")
-	require.NoError(t, VerifyActionReceiptSignature(receipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
+	assert.NoError(t, VerifyActionReceiptSignature(receipt, actuator.SigningKey.Public().(ed25519.PublicKey)))
 
 	require.Equal(t, 1, publisher.callCount())
 	published := publisher.envelope
@@ -780,7 +780,7 @@ func TestL5ActuatorRejectionCodeIsSignatureBound(t *testing.T) {
 
 	tampered := proto.Clone(receipt).(*operatorv1.ActionReceipt)
 	tampered.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE
-	require.Error(t, VerifyActionReceiptSignature(tampered, publicKey), "a changed rejection_code must break the signature")
+	assert.Error(t, VerifyActionReceiptSignature(tampered, publicKey), "a changed rejection_code must break the signature")
 
 	cleared := proto.Clone(receipt).(*operatorv1.ActionReceipt)
 	cleared.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
@@ -821,7 +821,7 @@ func TestL5ActuatorRejectionReceiptPersistFailureIsNotAMutation(t *testing.T) {
 	receipt, err := actuator.RecordRejectedTransaction(context.Background(), rejectedForeignVT(t), constants.ErrTxTargetOperatorMismatch)
 
 	require.ErrorIs(t, err, constants.ErrL5ActuatorRejectionReceiptPersist)
-	require.NotErrorIs(t, err, constants.ErrL5ActuatorLogReceipt)
+	assert.NotErrorIs(t, err, constants.ErrL5ActuatorLogReceipt)
 	assert.Nil(t, receipt)
 }
 

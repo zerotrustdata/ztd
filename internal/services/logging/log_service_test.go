@@ -183,7 +183,7 @@ func TestLogService_OpenLogForRead_NotFound(t *testing.T) {
 
 	_, err := svc.OpenLogForRead(context.Background())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrNotFound, "error should wrap constants.ErrNotFound")
+	assert.True(t, errors.Is(err, constants.ErrNotFound), "error should wrap constants.ErrNotFound")
 }
 
 func TestLogService_OpenLogForRead_OpenError(t *testing.T) {

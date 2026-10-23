@@ -72,7 +72,6 @@ type conformanceRig struct {
 // execute runs the command tree with args against the rig's Gateway root and
 // returns its combined output.
 func (r conformanceRig) execute(t *testing.T, args ...string) (string, error) {
-	t.Helper()
 	return r.executeInput(t, "", args...)
 }
 
@@ -150,15 +149,13 @@ func conformanceVaultProvider(keyring keystore.Keyring) evaluation.EvidenceVault
 type storedVault func(t *testing.T, keyring keystore.Keyring) evaluation.EvidenceVaultProvider
 
 // productionStoredVault is the runtime vault the production evidence file service opens.
-func productionStoredVault(t *testing.T, keyring keystore.Keyring) evaluation.EvidenceVaultProvider {
-	t.Helper()
+func productionStoredVault(_ *testing.T, keyring keystore.Keyring) evaluation.EvidenceVaultProvider {
 	return conformanceVaultProvider(keyring)
 }
 
 // lockedStoredVault is a runtime vault that was never unlocked, so every call
 // fails as the real vault's calls do.
-func lockedStoredVault(t *testing.T, _ keystore.Keyring) evaluation.EvidenceVaultProvider {
-	t.Helper()
+func lockedStoredVault(_ *testing.T, _ keystore.Keyring) evaluation.EvidenceVaultProvider {
 	return func(keys fs.RuntimeFileService) (evaluation.EvidenceVault, error) {
 		return vault.NewVault(&vault.VaultConfig{FileSvc: keys, Logger: testutil.NewTestLogger()})
 	}
@@ -247,7 +244,7 @@ func TestConformanceRoots_RefusesOutboundOperatorWithoutEnrollmentBoundKey(t *te
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			roots, err := conformanceRoots(conformanceTestRuntimeFiles(t), conformanceTestRuntimeFiles(t), conformanceTestOperatorID, tt.doc)
-			require.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
+			assert.ErrorIs(t, err, constants.ErrConformanceAnchorInvalid)
 			assert.Nil(t, roots)
 		})
 	}
@@ -367,7 +364,7 @@ func TestConformanceVerify_LoadFailuresThatAreNotAuthenticationStayErrors(t *tes
 			rig := storedRunRig(t, tt.open, tt.mutate)
 			out, err := rig.execute(t, "conformance", "verify", "--run", conformanceTestRunID)
 			require.ErrorIs(t, err, tt.wantErr)
-			require.NotErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "no verdict set is computed, so the exit rule never runs")
+			assert.NotErrorIs(t, err, constants.ErrEvalRunVerificationFailed, "no verdict set is computed, so the exit rule never runs")
 			assert.NotContains(t, out, "Suite: ", "no verdicts are printed")
 			assert.NotContains(t, out, "RECORD_DIGEST_MISMATCH")
 		})

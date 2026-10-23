@@ -171,7 +171,7 @@ func TestDeleterDeleteRunKeepsEvidenceWhenDiscardFails(t *testing.T) {
 
 	_, err := f.deleterWithBackups(false, publication, backupDir).DeleteRun(ctx, "run-a")
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrPublicFeedDisabled)
+	assert.True(t, errors.Is(err, constants.ErrPublicFeedDisabled))
 	_, _, err = LocateRun(ctx, f.files, "run-a")
 	require.NoError(t, err)
 	assert.Equal(t, before, backedUpPaths(t, backupDir), "a failed discard leaves the backups untouched")
@@ -209,17 +209,17 @@ func TestDeleterRejectsUnsafeIDsWithTypedPathElementError(t *testing.T) {
 
 	_, err := f.deleter(t, false, newRecordingPublicationStateStore()).DeleteCampaign(ctx, unsafeID)
 	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
-	require.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
-	require.ErrorContains(t, err, "campaign ID")
+	assert.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	assert.ErrorContains(t, err, "campaign ID")
 
 	_, err = f.deleter(t, false, newRecordingPublicationStateStore()).DeleteRun(ctx, unsafeID)
 	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
-	require.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
-	require.ErrorContains(t, err, "run ID")
+	assert.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	assert.ErrorContains(t, err, "run ID")
 
 	_, _, err = LocateRun(ctx, f.files, unsafeID)
 	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
-	require.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	assert.NotErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 
 	_, _, err = LocateCampaign(ctx, f.files, unsafeID)
 	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)

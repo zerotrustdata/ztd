@@ -3,8 +3,8 @@ doc_id: compliance-evidence
 title: Proof-Backed Compliance Evidence
 audience: compliance officers, auditors, security architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.2.0
+last_updated: 2026-10-20
 owners:
   - protocol/constants/compliance/
   - internal/services/compliance/
@@ -98,7 +98,7 @@ The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, c
 
 | Assertion ID | Assertion Title | Version | Component Scope | Minimum Evidence Level | Core Operational Verification |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`ZTD-GOV-ALLOW-001`** | Governed Allow Outcome | 2.0.0 | `gateway`, `operator` | L3 | Confirms that each selected permitted governed action has a valid receipt, a posture-specific deterministic chain, and an independently observed declared effect. |
+| **`ZTD-GOV-ALLOW-001`** | Governed Allow Outcome | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Confirms that valid mutations clearing L1–L5 execute and emit terminal receipts. |
 | **`ZTD-GOV-BLOCK-001`** | Governed Block Outcome | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Confirms that prohibited mutations fail closed at the expected layer and that the prohibited terminal state is independently observed absent. |
 | **`ZTD-AU-RECEIPT-001`** | Receipt Integrity | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates Ed25519 signatures on `ActionReceipt` records bound to action, identity, transaction, and state-root fields. |
 | **`ZTD-AU-PERSIST-001`** | Receipt Persistence | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Validates atomic SQLite audit persistence and signed `ReceiptPersistenceAttestation`. |
@@ -107,27 +107,25 @@ The assertion catalog (`protocol/constants/compliance/assertion-catalog.json`, c
 | **`ZTD-CM-STATE-001`** | Independently Observed State | 2.1.0 | `gateway`, `operator` | L3 (Demonstrated) | Verifies a subject-bound independent observation and deterministic measurement of the declared terminal state for governed configuration or file mutations. |
 | **`ZTD-DLP-DETECT-001`** | Sensitive Data Detection | 2.0.0 | `gateway` | L2 (Evaluated) | Measures scanner precision and recall against declared synthetic sensitive occurrences in the supported scanner population. |
 | **`ZTD-DLP-BOUNDARY-001`** | Model Boundary Leakage | 2.1.0 | `gateway`, `operator` | L2 (Evaluated) | Measures the raw occurrence rate of declared synthetic sensitive values in the structured model-boundary population; masked `{{UEI_<owner>_N}}` tokens replace them at the boundary. |
-| **`ZTD-DLP-REHYDRATE-001`** | Local Rehydration | 2.1.0 | `gateway`, `operator` | L2 | Measures exact token rehydration, which the catalog states must occur only at the declared local runtime boundary. |
+| **`ZTD-DLP-REHYDRATE-001`** | Local Rehydration | 2.1.0 | `gateway`, `operator` | L2 (Evaluated) | Verifies exact, host-local token rehydration at L5 Actuator immediately prior to dispatch. |
 | **`ZTD-IA-MTLS-001`** | Workload mTLS | 2.0.0 | `gateway`, `operator` | L3 (Demonstrated) | Verifies assessed workload identity evidence and a reproduced measurement that unauthenticated transport is rejected. The Gateway enforces TLS 1.3 with SPIFFE URI SAN identities. |
-| **`ZTD-IA-NOTARY-001`** | Notary Authorization | 2.0.0 | `gateway`, `operator` | L2 | Requires `deterministic_stage_chain@1.0.0` and `notary_proof@1.0.0` evidence for notary-required mutations. The Operator's L3 notary verifies either a WebAuthn assertion or a CLI approval proof against the transaction hash (`internal/services/governance/outbound_l3_notary.go`). Missing evidence records `customer_attestation_required`. |
-| **`ZTD-CRYPTO-FIPS-001`** | Declared Cryptographic Mode | 2.0.0 | `gateway`, `operator` | L2 | Requires `build_provenance@1.0.0` and `runtime_fips@1.0.0` evidence for the declared approved cryptographic module. The catalog does not name a specific module. The release flow declares `cryptographic_mode` `standard` as a scope input (`internal/constants/compliance_release.go`). |
+| **`ZTD-IA-NOTARY-001`** | Notary Authorization | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Verifies that notary-required mutations carry an independently verified human authorization proof (WebAuthn assertion or CLI approval proof) bound to the exact transaction and active posture. |
+| **`ZTD-CRYPTO-FIPS-001`** | Declared Cryptographic Mode | 2.0.0 | `gateway`, `operator` | L2 (Evaluated) | Verifies build provenance and runtime evidence that the assessed binary links the declared approved cryptographic module, Go Cryptographic Module v1.0.0. |
 
 ## Evidence Level Hierarchy
 
 Evidence strength is categorized according to an explicit, non-inflatable hierarchy:
 
-The levels below are the values `internal/services/compliance/evidence/assertion_grader.go` assigns to an assertion. The code defines no level names beyond `L0` through `L5` (`internal/services/compliance/catalog/validation.go`).
+| Level | Classification | Verification Criteria |
+| :--- | :--- | :--- |
+| **L0** | Documented | Architecture documentation, policy manuals, or schema specifications describe the control. |
+| **L1** | Implemented | Source code inspection and unit test assertions confirm that the control logic exists. |
+| **L2** | Deterministically Evaluated | A registered, versioned grader verifies cryptographic signatures, hashes, and schemas against raw evidence. |
+| **L3** | Demonstrated | An end-to-end execution scenario passes with verified receipts and independent terminal-state observation. |
+| **L4** | Continuously Evidenced | Historical evidence collectors prove control operation across recurring cycles within the assessment window. |
+| **L5** | Externally Attested | An accredited, independent third-party assessor inspects evidence and issues a formal attestation. |
 
-| Level | Criterion in the assertion grader |
-| :--- | :--- |
-| **L0** | Default. No required evidence type, verifier, or grader reference of the assertion matches an evidence node. |
-| **L1** | An evidence node matches a required evidence type. |
-| **L2** | An evidence node matches a required verifier or grader reference. |
-| **L3** | A state observation node shares its subject with a deterministic L2 match. |
-| **L4** | Not assigned. No grader in `internal/services/compliance/evidence/` emits L4. |
-| **L5** | Not assigned. No grader in `internal/services/compliance/evidence/` emits L5. |
-
-A satisfied result is not kept when the achieved level is below the assertion's `minimum_evidence_level` (`assertion_grader.go`, the `evidenceLevelMeets` check).
+The automated `ztd` platform pipeline produces evidence up to **L3 (Demonstrated)**. L4 requires recurring historical effectiveness collection, and L5 requires external third-party assessment.
 
 ## Framework Crosswalk Mappings
 
@@ -139,28 +137,28 @@ The canonical crosswalk (`protocol/constants/compliance/fedramp-nist-crosswalk.j
 | **NIST SP 800-53** | Rev. 5 | 100 controls | 20 | 80 | 30 supporting mappings |
 | **Total** | | **131** | **34** | **97** | **60 supporting mappings** |
 
-Each framework control in `protocol/constants/compliance/framework-catalog.json` contains explicit `support_status` (`mapped` or `unsupported`) and `support_rationale` fields. Unsupported controls remain in the catalog with `support_status` set to `unsupported`.
+Each framework control in `protocol/constants/compliance/framework-catalog.json` contains explicit `support_status` (`mapped` or `unsupported`) and `support_rationale` fields. Customer responsibilities are declared explicitly; unsupported controls are never omitted or masked.
 
 ## Platform Capabilities and Operational Boundaries
 
 The compliance engine provides:
 - **Canonical Compliance Analysis**: Deterministic cross-framework analysis generated via `BuildComplianceAnalysis`.
 - **Signed Report Bundles**: Content-addressed bundle directories containing signed manifests, protected raw evidence, and multi-format projections. A generated bundle is sealed at rest under `.ztd/reports/<report-id>/` with the runtime vault; `ztd compliance report export` writes the plaintext copy an owner chooses to disclose.
-- **Offline Independent Verification**: Verification of an exported bundle against trust policies supplied as external files.
-- **OSCAL 1.1.2 Projections**: Assessment-results output that the OSCAL validator (`internal/services/compliance/oscal/validator/`) checks against the embedded NIST OSCAL 1.1.2 JSON Schema and then against semantic rules. The validator covers the assessment-results model only.
+- **Offline Independent Verification**: Complete verification of bundles without network connectivity or ambient credentials.
+- **OSCAL 1.1.2 Projections**: Full generation of NIST OSCAL 1.1.2 assessment results matching official schemas.
 
-The following are not produced by the automated grader or the shipped catalogs:
-- **Continuous Historical Evidence (L4)**: No grader assigns L4. Recurring historical evidence across an assessment interval is not established by the grader's output.
-- **External Attestation (L5)**: No grader assigns L5. External assessor attestation is not a level the automated grader can produce.
-- **Other Framework Crosswalks**: The only crosswalk and framework catalogs shipped in `protocol/constants/compliance/` cover FedRAMP 20x and NIST SP 800-53 Rev. 5. No other framework is represented in the shipped catalogs.
+The following activities remain external to the automated platform pipeline:
+- **Continuous Historical Evidence (L4)**: Recurring historical evidence collection across long assessment intervals is operated by the customer's monitoring infrastructure.
+- **External Attestation (L5)**: Formal audit certifications must be conducted and signed by qualified independent assessors.
+- **Additional Framework Crosswalks**: Frameworks beyond FedRAMP 20x and NIST SP 800-53 Rev. 5 (such as SOC 2, ISO 27001, and HIPAA) require authoring and reviewing corresponding JSON crosswalks.
 
 ## Offline Trust and Replay Contract
 
 Offline verification (`ztd compliance report verify`) runs on an exported bundle and operates with strict cryptographic independence:
 - **Decoupled Trust Policies**: Report-signing trust (`--trust-policy`) and evidence-signer trust (`--evidence-trust`) are provided as external JSON files. In-bundle trust definitions are rejected.
 - **Deterministic Replay**: The verifier reads raw source bodies from the bundle, re-executes all registered importers, re-grades assertion rules, and verifies that the generated analysis matches the signed analysis record.
-- **Renderer Reproduction**: The verifier re-renders each recorded format (JSON, OSCAL, Markdown, HTML, CSV, CLI) from the canonical analysis and compares the recorded body byte for byte.
-- **Fail-Closed Semantics**: Each failed check is recorded as a verification failure. When any failure is recorded, `report verify` returns `ErrReportVerificationFailed`, which exits non-zero. Signing keys revoked before the signature time are rejected.
+- **Renderer Reproduction**: The verifier re-executes the rendering engines (JSON, OSCAL, Markdown, HTML, CSV, CLI) to confirm bit-for-bit rendering parity.
+- **Fail-Closed Semantics**: Any missing artifact, signature mismatch, revoked key, or scope variance immediately terminates verification with a non-zero exit code.
 - **Sealed at Rest, Exported to Disclose**: A bundle carries the raw sources the verifier replays, including decrypted evaluation traces. `generate` therefore persists it through the evidence file service, sealed with the runtime vault under the `ztd-compliance-report-v1` associated-data label, and refuses a file service that does not seal. `export` is the only path that writes it in the clear: the destination must not exist and must lie outside the runtime root, and every body is checked against its descriptor before it is written.
 
 ## Compliance CLI Reference

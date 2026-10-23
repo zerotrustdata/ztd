@@ -68,7 +68,7 @@ func TestTestCoverageCmd_MakefileFailureWrapsCoverageError(t *testing.T) {
 	err := cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrCoverageTestsFailed)
+	assert.ErrorIs(t, err, constants.ErrCoverageTestsFailed)
 	assert.ErrorIs(t, err, runnerErr)
 }
 
@@ -110,7 +110,7 @@ func TestTestE2ECmd_PropagatesArgumentsAndRaceFlag(t *testing.T) {
 		}
 	}
 	require.GreaterOrEqual(t, idx, 0, "captured args should contain the approved-stack default -run: %v", captured)
-	require.Greater(t, len(captured), idx+1, "captured args should have a value after -run: %v", captured)
+	require.True(t, len(captured) > idx+1, "captured args should have a value after -run: %v", captured)
 	assert.Equal(t, "^(TestApprovedRestart_|TestAuth_|TestCommandRoundtrip_|TestCompliance_|TestConsole_|TestGateway_|TestGovernance_|TestOperatorRegistry_|TestPlatform_FullBootstrap$|TestPubSub_|TestSSE_)", captured[idx+1])
 }
 
@@ -133,7 +133,7 @@ func TestTestE2ECmd_RunFlagAppendsRegexp(t *testing.T) {
 		}
 	}
 	require.GreaterOrEqual(t, idx, 0, "captured args should contain -run: %v", captured)
-	require.Greater(t, len(captured), idx+1, "captured args should have value after -run: %v", captured)
+	require.True(t, len(captured) > idx+1, "captured args should have value after -run: %v", captured)
 	assert.Equal(t, "TestApproved", captured[idx+1])
 }
 
@@ -168,7 +168,7 @@ func TestTestE2ECmd_NonzeroExitWrapsErrE2ETestsFailed(t *testing.T) {
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrE2ETestsFailed)
+	assert.ErrorIs(t, err, constants.ErrE2ETestsFailed)
 	assert.ErrorIs(t, err, runnerErr)
 }
 
@@ -229,7 +229,7 @@ func TestTestUnitCmd_StructureAndFlags(t *testing.T) {
 	assert.NotNil(t, cmd.RunE)
 	runFlag := cmd.Flags().Lookup("run")
 	require.NotNil(t, runFlag)
-	assert.Empty(t, runFlag.DefValue)
+	assert.Equal(t, "", runFlag.DefValue)
 	pkgFlag := cmd.Flags().Lookup("pkg")
 	require.NotNil(t, pkgFlag)
 	assert.Equal(t, "./...", pkgFlag.DefValue)
@@ -251,7 +251,7 @@ func TestTestUnitCmd_RunnerFailureWrapsUnitError(t *testing.T) {
 	err := cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrUnitTestsFailed)
+	assert.ErrorIs(t, err, constants.ErrUnitTestsFailed)
 	assert.ErrorIs(t, err, runnerErr)
 }
 
@@ -261,7 +261,7 @@ func TestTestUnitCmd_NonzeroExitWrapsUnitError(t *testing.T) {
 	err := cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrUnitTestsFailed)
+	assert.ErrorIs(t, err, constants.ErrUnitTestsFailed)
 	assert.Contains(t, err.Error(), "exit code 2")
 }
 
@@ -284,7 +284,7 @@ func TestTestUnitCmd_RunFlagAppendsRegexp(t *testing.T) {
 		}
 	}
 	require.GreaterOrEqual(t, idx, 0)
-	require.Greater(t, len(captured), idx+1)
+	require.True(t, len(captured) > idx+1)
 	assert.Equal(t, "TestEvaluationContract", captured[idx+1])
 }
 
@@ -317,7 +317,7 @@ func TestTestUnitCmd_TargetedOnlyRun(t *testing.T) {
 		}
 	}
 	require.GreaterOrEqual(t, idx, 0)
-	require.Greater(t, len(captured), idx+1)
+	require.True(t, len(captured) > idx+1)
 	assert.Equal(t, "TestSpecificUnitTest", captured[idx+1])
 }
 
@@ -329,7 +329,7 @@ func TestTestUnitCmd_TargetedRunnerFailureWrapsUnitError(t *testing.T) {
 	err := cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrUnitTestsFailed)
+	assert.ErrorIs(t, err, constants.ErrUnitTestsFailed)
 	assert.ErrorIs(t, err, runnerErr)
 }
 
@@ -340,7 +340,7 @@ func TestTestUnitCmd_TargetedNonzeroExitWrapsUnitError(t *testing.T) {
 	err := cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrUnitTestsFailed)
+	assert.ErrorIs(t, err, constants.ErrUnitTestsFailed)
 	assert.Contains(t, err.Error(), "exit code 2")
 }
 
@@ -350,7 +350,7 @@ func TestTestIntegrationCmd_StructureAndFlags(t *testing.T) {
 	assert.NotNil(t, cmd.RunE)
 	runFlag := cmd.Flags().Lookup("run")
 	require.NotNil(t, runFlag)
-	assert.Empty(t, runFlag.DefValue)
+	assert.Equal(t, "", runFlag.DefValue)
 	verboseFlag := cmd.Flags().ShorthandLookup("v")
 	require.NotNil(t, verboseFlag)
 	assert.Equal(t, "false", verboseFlag.DefValue)
@@ -382,7 +382,7 @@ func TestTestIntegrationCmd_RunFlagAppendsRegexp(t *testing.T) {
 		}
 	}
 	require.GreaterOrEqual(t, idx, 0)
-	require.Greater(t, len(captured), idx+1)
+	require.True(t, len(captured) > idx+1)
 	assert.Equal(t, "TestPublicMirror|TestPublicPublisher", captured[idx+1])
 }
 
@@ -427,7 +427,7 @@ func TestTestIntegrationCmd_TargetedOnlyRun(t *testing.T) {
 		}
 	}
 	require.GreaterOrEqual(t, idx, 0)
-	require.Greater(t, len(captured), idx+1)
+	require.True(t, len(captured) > idx+1)
 	assert.Equal(t, "TestSpecificIntegrationTest", captured[idx+1])
 }
 
@@ -439,7 +439,7 @@ func TestTestIntegrationCmd_TargetedRunnerFailureWrapsIntegrationError(t *testin
 	err := cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
+	assert.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
 	assert.ErrorIs(t, err, runnerErr)
 }
 
@@ -450,7 +450,7 @@ func TestTestIntegrationCmd_TargetedNonzeroExitWrapsIntegrationError(t *testing.
 	err := cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
+	assert.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
 	assert.Contains(t, err.Error(), "exit code 2")
 }
 
@@ -470,7 +470,7 @@ func TestTestIntegrationCmd_RunnerFailureWrapsIntegrationError(t *testing.T) {
 	err := cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
+	assert.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
 	assert.ErrorIs(t, err, runnerErr)
 }
 
@@ -480,6 +480,6 @@ func TestTestIntegrationCmd_NonzeroExitWrapsIntegrationError(t *testing.T) {
 	err := cmd.RunE(cmd, nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
+	assert.ErrorIs(t, err, constants.ErrIntegrationTestsFailed)
 	assert.Contains(t, err.Error(), "exit code 2")
 }

@@ -42,14 +42,14 @@ func TestInferenceDispatchFailure_MapsCodeToSentinel(t *testing.T) {
 	require.NoError(t, err)
 
 	err = inferenceDispatchFailure(http.StatusUnprocessableEntity, body)
-	require.ErrorIs(t, err, constants.ErrInferenceToolsUnsupported)
+	assert.ErrorIs(t, err, constants.ErrInferenceToolsUnsupported)
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
 }
 
 func TestInferenceDispatchFailure_UncodedBodyIsStatusErrorOnly(t *testing.T) {
 	err := inferenceDispatchFailure(http.StatusForbidden, []byte(`{"error":"forbidden"}`))
-	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
-	require.NotErrorIs(t, err, constants.ErrInferenceGovernanceRejected)
+	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.NotErrorIs(t, err, constants.ErrInferenceGovernanceRejected)
 
 	err = inferenceDispatchFailure(http.StatusBadGateway, []byte("not json"))
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)

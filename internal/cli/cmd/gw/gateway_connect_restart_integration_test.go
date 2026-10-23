@@ -102,6 +102,6 @@ func TestGatewayConnectCmd_RunningGatewayWithDifferingConfigYesFlagAttemptsResta
 
 	err := cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrProcessStartFailed)
+	assert.ErrorIs(t, err, constants.ErrProcessStartFailed)
 	assert.Contains(t, buf.String(), "Stopping ztd Gateway")
 }

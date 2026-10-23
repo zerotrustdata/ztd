@@ -95,7 +95,7 @@ func TestToolRegistry_RegisterDuplicate(t *testing.T) {
 	require.NoError(t, err, "Failed to register first tool")
 
 	err = registry.Register(tool2)
-	require.Error(t, err, "Expected error when registering duplicate tool")
+	assert.Error(t, err, "Expected error when registering duplicate tool")
 	assert.ErrorIs(t, err, constants.ErrMCPToolAlreadyRegistered, "Error should wrap ErrMCPToolAlreadyRegistered")
 }
 
@@ -103,7 +103,7 @@ func TestToolRegistry_RegisterNil(t *testing.T) {
 	registry := NewToolRegistry()
 
 	err := registry.Register(nil)
-	require.Error(t, err, "Expected error when registering nil tool")
+	assert.Error(t, err, "Expected error when registering nil tool")
 	assert.ErrorIs(t, err, constants.ErrMCPToolNil, "Error should be ErrMCPToolNil")
 }
 
@@ -119,7 +119,7 @@ func TestToolRegistry_RegisterEmptyName(t *testing.T) {
 	}
 
 	err := registry.Register(tool)
-	require.Error(t, err, "Expected error when registering tool with empty name")
+	assert.Error(t, err, "Expected error when registering tool with empty name")
 	assert.ErrorIs(t, err, constants.ErrMCPToolNameEmpty, "Error should be ErrMCPToolNameEmpty")
 }
 
@@ -148,7 +148,7 @@ func TestToolRegistry_RegisterInvalidName(t *testing.T) {
 			}
 
 			err := registry.Register(tool)
-			require.Error(t, err, "Expected error for tool name '%s'", tc.toolName)
+			assert.Error(t, err, "Expected error for tool name '%s'", tc.toolName)
 			assert.ErrorIs(t, err, constants.ErrMCPToolNameInvalid, "Error should wrap ErrMCPToolNameInvalid")
 		})
 	}
@@ -200,7 +200,7 @@ func TestToolRegistry_RegisterInvalidSchema(t *testing.T) {
 			}
 
 			err := registry.Register(tool)
-			require.Error(t, err, "Expected error for invalid schema")
+			assert.Error(t, err, "Expected error for invalid schema")
 			assert.ErrorIs(t, err, tc.err, "Error should wrap %v", tc.err)
 		})
 	}
@@ -243,7 +243,7 @@ func TestToolRegistry_List(t *testing.T) {
 	}
 
 	listed := registry.List()
-	assert.Len(t, listed, 3, "Expected 3 tools")
+	assert.Equal(t, 3, len(listed), "Expected 3 tools")
 
 	// Verify all tools are present
 	names := make(map[string]bool)
@@ -349,7 +349,7 @@ func TestValidateInputSchema(t *testing.T) {
 
 	for _, schema := range validSchemas {
 		err := validateInputSchema(schema)
-		require.NoError(t, err, "Expected valid schema to pass validation")
+		assert.NoError(t, err, "Expected valid schema to pass validation")
 	}
 
 	invalidSchemas := []struct {
@@ -363,7 +363,7 @@ func TestValidateInputSchema(t *testing.T) {
 
 	for _, tc := range invalidSchemas {
 		err := validateInputSchema(tc.schema)
-		require.Error(t, err, "Expected error for invalid schema")
+		assert.Error(t, err, "Expected error for invalid schema")
 		assert.ErrorIs(t, err, tc.err, "Error should be %v", tc.err)
 	}
 }

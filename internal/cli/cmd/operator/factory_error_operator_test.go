@@ -58,7 +58,7 @@ func TestOperatorStopCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"session-001"})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -71,7 +71,7 @@ func TestOperatorBindCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"list"})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -81,7 +81,7 @@ func TestOperatorShowCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"operator-001"})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -95,7 +95,7 @@ func TestOperatorRunCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 
 	err := cmd.RunE(cmd, []string{"operator-001"})
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -107,7 +107,7 @@ func TestOperatorListCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -119,6 +119,6 @@ func TestOperatorDeployCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd.SetErr(&buf)
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }

@@ -23,12 +23,12 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.9.0"
+	GraderVersion = "1.8.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.14.0"
+	DefaultSuiteVersion = "1.13.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -56,7 +56,6 @@ const (
 	ScenarioDiagnosisRubricCheckoutTimeoutV1 ScenarioDiagnosisRubric = "checkout-timeout-v1"
 	ScenarioDiagnosisRubricCheckoutTimeoutV2 ScenarioDiagnosisRubric = "checkout-timeout-v2"
 	ScenarioDiagnosisRubricCheckoutTimeoutV3 ScenarioDiagnosisRubric = "checkout-timeout-v3"
-	ScenarioDiagnosisRubricCheckoutTimeoutV4 ScenarioDiagnosisRubric = "checkout-timeout-v4"
 )
 
 // scenarioCatalogFreezeTime is the fixed production and verification time of

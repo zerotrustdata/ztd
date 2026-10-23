@@ -253,9 +253,9 @@ func TestSysTimeClockTool_Execute(t *testing.T) {
 
 	// Verify time formatting
 	_, err = time.Parse(time.RFC3339, clockResult.SystemTime.UTC)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	_, err = time.Parse(time.RFC3339, clockResult.SystemTime.Local)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// NTP status should at least have a default state
 	assert.NotEmpty(t, clockResult.NTP.Status)

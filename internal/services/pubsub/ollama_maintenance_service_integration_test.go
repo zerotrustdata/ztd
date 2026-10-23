@@ -89,9 +89,8 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_PublishesTypedFailure(t
 	}{
 		{
 			name:     "undecodable request payload",
-			endpoint: func(t *testing.T) string { t.Helper(); return fakeOllama(t, ollamaInventoryRoutes()) },
+			endpoint: func(t *testing.T) string { return fakeOllama(t, ollamaInventoryRoutes()) },
 			message: func(t *testing.T) *PubSubCommandMessage {
-				t.Helper()
 				return ollamaWithPayload(ollamaInventoryMessage(t, ""), []byte{0xff, 0xff})
 			},
 			wantError: "invalid request payload",
@@ -99,25 +98,23 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_PublishesTypedFailure(t
 		{
 			name:      "provider endpoint is not configured",
 			endpoint:  func(*testing.T) string { return "" },
-			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaInventoryMessage(t, "") },
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaInventoryMessage(t, "") },
 			wantError: constants.ErrInferenceEndpointInvalid.Error(),
 		},
 		{
 			name: "provider is unavailable",
 			endpoint: func(t *testing.T) string {
-				t.Helper()
 				return fakeOllama(t, map[string]http.HandlerFunc{"/api/tags": ollamaStatus(http.StatusInternalServerError)})
 			},
-			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaInventoryMessage(t, "") },
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaInventoryMessage(t, "") },
 			wantError: constants.ErrInferenceBackendUnavailable.Error(),
 		},
 		{
 			name: "provider reports no installed models",
 			endpoint: func(t *testing.T) string {
-				t.Helper()
 				return fakeOllama(t, map[string]http.HandlerFunc{"/api/tags": ollamaJSON(`{"models":[]}`)})
 			},
-			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaInventoryMessage(t, "") },
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaInventoryMessage(t, "") },
 			wantError: constants.ErrInferenceModelNotFound.Error(),
 		},
 	}
@@ -213,11 +210,9 @@ func TestOllamaMaintenanceService_HandleResidencyRequest_PublishesTypedFailure(t
 		{
 			name: "undecodable request payload",
 			endpoint: func(t *testing.T) string {
-				t.Helper()
 				return fakeOllama(t, map[string]http.HandlerFunc{"/api/ps": ollamaJSON(`{"models":[]}`)})
 			},
 			message: func(t *testing.T) *PubSubCommandMessage {
-				t.Helper()
 				return ollamaWithPayload(ollamaResidencyMessage(t, ""), []byte{0xff, 0xff})
 			},
 			wantError: "invalid request payload",
@@ -225,25 +220,23 @@ func TestOllamaMaintenanceService_HandleResidencyRequest_PublishesTypedFailure(t
 		{
 			name:      "provider endpoint is not configured",
 			endpoint:  func(*testing.T) string { return "" },
-			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaResidencyMessage(t, "") },
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaResidencyMessage(t, "") },
 			wantError: constants.ErrInferenceEndpointInvalid.Error(),
 		},
 		{
 			name: "provider is unavailable",
 			endpoint: func(t *testing.T) string {
-				t.Helper()
 				return fakeOllama(t, map[string]http.HandlerFunc{"/api/ps": ollamaStatus(http.StatusBadGateway)})
 			},
-			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaResidencyMessage(t, "") },
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaResidencyMessage(t, "") },
 			wantError: constants.ErrInferenceBackendUnavailable.Error(),
 		},
 		{
 			name: "resident model without a name is rejected",
 			endpoint: func(t *testing.T) string {
-				t.Helper()
 				return fakeOllama(t, map[string]http.HandlerFunc{"/api/ps": ollamaJSON(`{"models":[{"name":""}]}`)})
 			},
-			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaResidencyMessage(t, "") },
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaResidencyMessage(t, "") },
 			wantError: constants.ErrInferenceProviderResponseInvalid.Error(),
 		},
 	}
@@ -285,7 +278,7 @@ func TestOllamaMaintenanceService_HandleReleaseRequest_PublishesTypedRelease(t *
 			var body struct {
 				Model string `json:"model"`
 			}
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 			released <- body.Model
 			_, _ = w.Write([]byte(`{"model":"` + body.Model + `","done":true,"done_reason":"unload"}`))
 		},
@@ -314,11 +307,9 @@ func TestOllamaMaintenanceService_HandleReleaseRequest_PublishesTypedFailure(t *
 		{
 			name: "undecodable request payload",
 			endpoint: func(t *testing.T) string {
-				t.Helper()
 				return fakeOllama(t, map[string]http.HandlerFunc{"/api/ps": ollamaJSON(`{"models":[]}`)})
 			},
 			message: func(t *testing.T) *PubSubCommandMessage {
-				t.Helper()
 				return ollamaWithPayload(ollamaReleaseMessage(t, "", "qwen3:0.6b"), []byte{0xff, 0xff})
 			},
 			wantError: "invalid request payload",
@@ -326,28 +317,23 @@ func TestOllamaMaintenanceService_HandleReleaseRequest_PublishesTypedFailure(t *
 		{
 			name: "empty release set is rejected before any provider call",
 			endpoint: func(t *testing.T) string {
-				t.Helper()
 				return fakeOllama(t, map[string]http.HandlerFunc{"/api/ps": ollamaJSON(`{"models":[]}`)})
 			},
-			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaReleaseMessage(t, "") },
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaReleaseMessage(t, "") },
 			wantError: "at least one model tag is required",
 		},
 		{
 			name: "option-like or shell-shaped tag is rejected before any provider call",
 			endpoint: func(t *testing.T) string {
-				t.Helper()
 				return fakeOllama(t, map[string]http.HandlerFunc{"/api/ps": ollamaJSON(`{"models":[]}`)})
 			},
-			message: func(t *testing.T) *PubSubCommandMessage {
-				t.Helper()
-				return ollamaReleaseMessage(t, "", "qwen3:0.6b;whoami")
-			},
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaReleaseMessage(t, "", "qwen3:0.6b;whoami") },
 			wantError: constants.ErrInferenceModelTagInvalid.Error(),
 		},
 		{
 			name:      "provider endpoint is not configured",
 			endpoint:  func(*testing.T) string { return "" },
-			message:   func(t *testing.T) *PubSubCommandMessage { t.Helper(); return ollamaReleaseMessage(t, "", "qwen3:0.6b") },
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaReleaseMessage(t, "", "qwen3:0.6b") },
 			wantError: constants.ErrInferenceEndpointInvalid.Error(),
 		},
 	}

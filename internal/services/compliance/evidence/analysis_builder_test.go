@@ -792,7 +792,7 @@ func TestBuildComplianceAnalysis_AggregatesRealGraderOutput(t *testing.T) {
 	assert.Len(t, analysis.GetAssertionAssessments(), len(assertionAssessments))
 	assert.Len(t, analysis.GetFrameworkAssessments(), len(frameworkAssessments))
 	for _, assessment := range analysis.GetAssertionAssessments() {
-		require.NoError(t, catalog.ValidateAssertionAssessment(assessment, "scope-1", assertions))
+		assert.NoError(t, catalog.ValidateAssertionAssessment(assessment, "scope-1", assertions))
 	}
 	for _, assessment := range analysis.GetFrameworkAssessments() {
 		assert.NoError(t, catalog.ValidateControlAssessment(assessment, "scope-1", frameworks, crosswalks))

@@ -130,19 +130,19 @@ func TestAppPlatformEnrollmentClient_FullFlow(t *testing.T) {
 			atomic.AddInt32(&requestReceived, 1)
 			assert.Equal(t, http.MethodPost, r.Method)
 			var createReq models.PlatformEnrollmentCreateRequest
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&createReq))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&createReq))
 			assert.Equal(t, models.PlatformComponentApplication, createReq.ComponentKind)
 			assert.Equal(t, appName, createReq.AppName)
 			assert.NotEmpty(t, createReq.App.CSRPEM)
 			tokenHash = createReq.TokenHash
 
 			block, _ := pem.Decode([]byte(createReq.App.CSRPEM))
-			assert.NotNil(t, block)
+			require.NotNil(t, block)
 			csr, err := x509.ParseCertificateRequest(block.Bytes)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			uri, err := url.Parse("spiffe://ztd.local/app/" + appName)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			leafTemplate := x509.Certificate{
 				SerialNumber: big.NewInt(2),
 				Subject:      pkix.Name{CommonName: "ztd-app-" + appName},
@@ -153,7 +153,7 @@ func TestAppPlatformEnrollmentClient_FullFlow(t *testing.T) {
 				URIs:         []*url.URL{uri},
 			}
 			leafDER, err := x509.CreateCertificate(rand.Reader, &leafTemplate, caCert, csr.PublicKey, caKey)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			issuedCertPEM = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER}))
 
 			w.WriteHeader(http.StatusCreated)
@@ -186,7 +186,7 @@ func TestAppPlatformEnrollmentClient_FullFlow(t *testing.T) {
 			atomic.AddInt32(&completeReceived, 1)
 			assert.Equal(t, http.MethodPost, r.Method)
 			var compReq models.PlatformEnrollmentCompleteRequest
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&compReq))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&compReq))
 			assert.Equal(t, tokenHash, models.PlatformEnrollmentTokenHash(compReq.Token))
 			assert.NotEmpty(t, compReq.Proofs.App)
 
@@ -250,11 +250,11 @@ func TestAppPlatformEnrollmentClient_LostCreateResponseResumesSameRequest(t *tes
 		switch r.URL.Path {
 		case constants.APIPaths.AuthPlatformEnrollmentRequest:
 			var req models.PlatformEnrollmentCreateRequest
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 			submitted = append(submitted, req)
 			if atomic.AddInt32(&requestHits, 1) == 1 {
 				conn, _, err := w.(http.Hijacker).Hijack()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				_ = conn.Close()
 				return
 			}

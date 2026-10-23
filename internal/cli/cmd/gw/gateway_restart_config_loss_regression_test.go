@@ -55,7 +55,7 @@ func TestGatewayRestartCmd_FailsClosedWhenNoLaunchProfile_AfterFix(t *testing.T)
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err, cmdtest.RegressionMarkerAfterFix)
-	require.ErrorIs(t, err, constants.ErrLaunchProfileMissing, cmdtest.RegressionMarkerAfterFix)
+	assert.ErrorIs(t, err, constants.ErrLaunchProfileMissing, cmdtest.RegressionMarkerAfterFix)
 
 	// The posture file is untouched — restart did not delete or modify it.
 	postureData, readErr := fileSvc.ReadFile(context.Background(), postureRelPath)
@@ -114,7 +114,7 @@ func TestGatewayRestartCmd_RestoresCompleteConfigFromProfile_AfterFix(t *testing
 
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err, cmdtest.RegressionMarkerAfterFix)
-	require.ErrorIs(t, err, constants.ErrProcessStartFailed, cmdtest.RegressionMarkerAfterFix)
+	assert.ErrorIs(t, err, constants.ErrProcessStartFailed, cmdtest.RegressionMarkerAfterFix)
 
 	// The launch profile still contains the complete configuration —
 	// restart did not lose any fields.

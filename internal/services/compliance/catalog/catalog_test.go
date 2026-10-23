@@ -168,8 +168,8 @@ func TestValidateAssertionCatalogRejectsUnknownComponentScope(t *testing.T) {
 			candidate.Assertions[0].ComponentScope = []string{"gateway", tt.component}
 			err := catalog.ValidateAssertionCatalog(candidate)
 			require.Error(t, err)
-			require.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
-			require.ErrorContains(t, err, "ZTD-GOV-BLOCK-001")
+			assert.ErrorIs(t, err, constants.ErrInvalidEvidenceGraph)
+			assert.ErrorContains(t, err, "ZTD-GOV-BLOCK-001")
 			assert.ErrorContains(t, err, tt.component)
 		})
 	}
@@ -227,7 +227,6 @@ func TestCanonicalCatalogDigestsMatchContent(t *testing.T) {
 	require.NoError(t, compliancev1.UnmarshalCanonical(complianceconstants.FedRAMPAndNISTCrosswalkJSON(), crosswalks))
 
 	assertDigest := func(t *testing.T, expected string, message proto.Message) {
-		t.Helper()
 		actual, err := catalog.CatalogDigest(message)
 		require.NoError(t, err)
 		assert.Equal(t, expected, actual)

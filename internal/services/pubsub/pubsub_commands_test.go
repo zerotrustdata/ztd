@@ -429,7 +429,7 @@ func TestGatewayDispatchedVerificationContext_AcceptsPDPBoundRootDespiteLiveDrif
 	env := buildGatewayDispatchedDoctrineEnvelope(t, gatewayRoot, "nonce-gateway-dispatch-root")
 	_, err = svc.l4warden.VerifyEnvelope(context.Background(), env)
 	require.Error(t, err)
-	require.ErrorIs(t, err, governance.ErrStateRootMismatch)
+	assert.ErrorIs(t, err, governance.ErrStateRootMismatch)
 
 	_, err = svc.l4warden.VerifyEnvelope(gatewayDispatchedVerificationContext(context.Background(), env), env)
 	require.NoError(t, err)
@@ -1213,7 +1213,7 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "document updated: cases/case-1", summary)
 		require.Len(t, mock.DocReplaceCalls, 1)
-		require.Empty(t, mock.DocMergeCalls)
+		require.Len(t, mock.DocMergeCalls, 0)
 		call := mock.DocReplaceCalls[0]
 		assert.Equal(t, "cases", call.Collection)
 		assert.Equal(t, "case-1", call.ID)
@@ -1239,7 +1239,7 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "document updated: cases/case-1", summary)
 		require.Len(t, mock.DocMergeCalls, 1)
-		require.Empty(t, mock.DocReplaceCalls)
+		require.Len(t, mock.DocReplaceCalls, 0)
 		call := mock.DocMergeCalls[0]
 		assert.Equal(t, "cases", call.Collection)
 		assert.Equal(t, "case-1", call.ID)
@@ -1262,7 +1262,7 @@ func TestOperatorPubSubService_handleDocumentUpdateSync(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "document updated: cases/case-1", summary)
 		require.Len(t, mock.DocReplaceCalls, 1)
-		assert.Equal(t, json.RawMessage("{}"), mock.DocReplaceCalls[0].Data) //nolint:testifylint // exact bytes, not JSON equivalence
+		assert.Equal(t, json.RawMessage("{}"), mock.DocReplaceCalls[0].Data)
 	})
 }
 
@@ -1547,7 +1547,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 
 		receipt, err := f.Svc.ProcessEnvelope(context.Background(), envelopeBytes)
 		require.Error(t, err)
-		require.ErrorIs(t, err, constants.ErrTxEventActionMismatch)
+		assert.ErrorIs(t, err, constants.ErrTxEventActionMismatch)
 		var rejection *governance.ReceiptError
 		require.ErrorAs(t, err, &rejection, "the mismatch must be an L4 rejection carrying a receipt")
 		require.NotNil(t, receipt)
@@ -1577,7 +1577,7 @@ func TestOperatorPubSubService_ProcessEnvelope(t *testing.T) {
 		require.ErrorIs(t, err, constants.ErrTxEventNotGoverned)
 		assert.Nil(t, receipt, "a pre-L4 refusal has no action to sign, so it carries no receipt")
 		var rejection *governance.ReceiptError
-		assert.NotErrorAs(t, err, &rejection, "a pre-L4 refusal must not be an L4 rejection")
+		assert.False(t, errors.As(err, &rejection), "a pre-L4 refusal must not be an L4 rejection")
 	})
 
 	t.Run("rejects when transaction verifier not configured", func(t *testing.T) {
@@ -2121,7 +2121,7 @@ func TestOperatorPubSubService_BindMCPGatewayRejectsNil(t *testing.T) {
 
 	err := svc.BindMCPGateway(nil)
 
-	require.ErrorIs(t, err, constants.ErrPubSubMCPGatewayNil)
+	assert.ErrorIs(t, err, constants.ErrPubSubMCPGatewayNil)
 	assert.Nil(t, svc.GetMCPGateway())
 }
 
@@ -2133,7 +2133,7 @@ func TestOperatorPubSubService_BindMCPGatewayRejectsDuplicateBinding(t *testing.
 
 	err := svc.BindMCPGateway(&mcp.GatewayService{})
 
-	require.ErrorIs(t, err, constants.ErrPubSubMCPGatewayAlreadyBound)
+	assert.ErrorIs(t, err, constants.ErrPubSubMCPGatewayAlreadyBound)
 	assert.Same(t, first, svc.GetMCPGateway())
 }
 

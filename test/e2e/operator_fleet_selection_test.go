@@ -10,11 +10,10 @@
 package e2e
 
 import (
-	"testing"
-
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	"testing"
 )
 
 func TestFleetSelection_RejectsMissingDuplicateAndMalformedSessions(t *testing.T) {

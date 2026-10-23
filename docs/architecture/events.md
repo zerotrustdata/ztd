@@ -3,8 +3,8 @@ doc_id: events
 title: Event and Action Protocol
 audience: maintainers and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.2.0
+last_updated: 2026-10-22
 owners:
   - protocol/constants/events.json
   - internal/services/gateway/
@@ -143,11 +143,10 @@ Event wire values follow the pattern `ztd.v1.<domain>.<entity>[.<qualifier>...].
 | Domain | Scope and Responsibilities |
 | :--- | :--- |
 | **`operator`** | Operator lifecycle, OperatorSession binding, heartbeats, command dispatch, and local execution state. |
-| **`ai`** | AI evaluation lifecycle (`ztd.v1.ai.eval.*`) and LLM chat filter updates (`ztd.v1.ai.llm.chat.filter.updated`). |
-| **`app`** | Application entities: cases, investigations, documents, agent and run status updates, and task completion. |
-| **`platform`** | Core infrastructure: authentication and sessions, platform enrollment, approval changes, notifications, SSE connection lifecycle, console logs, telemetry, and usage. |
+| **`ai`** | AI evaluation telemetry (`ztd.v1.ai.eval.*`) and model execution metrics. |
+| **`app`** | Application entities: cases, investigations, documents, and agent status updates. |
+| **`platform`** | Core infrastructure: authentication, PKI issuance, notifications, and governance interlock events. |
 | **`public`** | Public spectator feed batches, feed key rotation, and published proofs. |
-| **`consensus`** | L2 consensus vote records (`ztd.v1.consensus.vote.recorded`). |
 | **`inference`** | Model provenance attestations and provider-boundary observations. |
 
 ### Event Kinds and Operational Semantics
@@ -156,16 +155,16 @@ Event wire values follow the pattern `ztd.v1.<domain>.<entity>[.<qualifier>...].
 | :--- | :--- | :--- | :--- | :--- |
 | **`request`** | `.requested` | `ephemeral`, `operator.audit_log`, `gateway.docstore`, `gateway.operator_docs` | `governed`, `pubsub`, `sse`, or none | Initiates an operation. If a `governance` block is present, it MUST be wrapped in a `GovernanceEnvelope`. |
 | **`outcome`** | e.g. `.completed`, `.failed` | `ephemeral`, `gateway.sse_store`, `gateway.audit_log`, `gateway.docstore`, `gateway.operator_docs`, `operator.audit_log` | `sse`, `pubsub`, or none | Reports completion status, failure details, or incremental progress for a prior request. |
-| **`fact`** | e.g. `.created`, `.updated` | `ephemeral`, `gateway.sse_store`, `gateway.audit_log`, `operator.audit_log` | `sse`, `pubsub`, or none | Records an autonomous occurrence independent of a direct client request. |
-| **`stream`** | Infix `.stream.`, `.chunk.`, `.delta.`, `.keepalive.`, or `.thinking.` | `ephemeral` | `sse` only | Transports ephemeral UI fragments such as SSE keepalives (`ztd.v1.platform.sse.keepalive.sent`). Never persisted. |
+| **`fact`** | e.g. `.created`, `.updated` | `ephemeral`, `gateway.sse_store`, `gateway.operator_docs`, `operator.audit_log` | `sse`, `pubsub`, or none | Records an autonomous occurrence independent of a direct client request. |
+| **`stream`** | Infix `.stream.`, `.chunk.`, `.delta.`, `.keepalive.`, or `.thinking.` | `ephemeral` | `sse` only | Transports ephemeral UI fragments such as SSE keepalives and token deltas. Never persisted. |
 
 ### Governance Envelopes and Action Type Derivation
 
 Not all request events are governed. A request event becomes governed when its registry entry defines a `governance` block:
-- **Non-governed requests** (no `governance` block, for example `ztd.v1.platform.auth.login.requested`): carry no `governance` block and are not wrapped in a `GovernanceEnvelope`.
-- **Governed requests** (`governance` block present): wrapped in a canonical `GovernanceEnvelope` (`protocol/proto/ztd/common/v1/common.proto`).
+- **UI and WebSession/CLISession Requests**: Delivered over SSE or internal request buses without governance wrapping.
+- **Mutating Requests**: Wrapped in a canonical `GovernanceEnvelope` (`protocol/proto/ztd/common/v1/common.proto`).
 
-The Gateway PDP resolves the incoming `event_type` through `constants.ValidateGovernedRequest`, which returns the registry-mapped `action_type`. `BuildGovernanceEnvelope` (`internal/services/gateway/dispatch_service.go`) decodes the payload for that action class and runs L1 Doctrine validation in every posture, before the L3 gate. The active posture then decides which L2 and L3 proofs gate execution. The runtime does not read the registry's `governance.payload` value; it is carried into generated constants only.
+The Gateway PDP resolves the incoming `event_type` through `constants.ValidateGovernedRequest`, which returns the registry-mapped `action_type`. Envelope construction decodes the payload for that action class and runs L1 Doctrine validation in every posture. The active posture then decides which L2 and L3 proofs gate execution. The runtime does not read the registry's `governance.payload` value; it is carried into generated constants only.
 
 ### Transport Ownership and Channel Routing
 
@@ -178,7 +177,7 @@ The registry declares transports per event. The runtime enforces only the `gover
 
 Persistence ownership is assigned per event in the registry:
 - **`operator.audit_log`**: Append-only local SQLite audit store on the host where the Operator executes. Under LFAA, this is the authoritative execution record.
-- **`gateway.audit_log`**: Gateway SQL audit store, hash-chained like `operator.audit_log`. The registry assigns it to the `ztd.v1.public.feed.*` outcomes and to `ztd.v1.consensus.vote.recorded`.
+- **`gateway.audit_log`**: Gateway SQL audit store, hash-chained like `operator.audit_log`. The registry assigns it to public feed events.
 - **`gateway.sse_store`**: `sse_events` table backing historical SSE replay (`GET /api/v1/sse/events`). Rows are pruned by age.
 - **`gateway.operator_docs`**: Gateway `operators` document collection tracking registered Operators, their status, and heartbeat state.
 - **`gateway.docstore`**: Authoritative Gateway document store for collections such as `users`, `app_policies`, `trusted_signers`, `cases`, `investigations`, and `platform_enrollments`.
@@ -187,9 +186,9 @@ Persistence ownership is assigned per event in the registry:
 ### Hash-Chained Audit Ledger Mechanics
 
 Events appended to the `events` table of the SQL audit store form an append-only cryptographic hash chain. Each row records:
-1. `seq`: Unique integer sequence number (`events.seq`, `UNIQUE`) scoped to the host database. An empty chain starts from an all-zero genesis hash, or from the latest checkpoint hash after pruning.
+1. `seq`: Monotonically increasing 64-bit integer scoped to the host database. An empty chain starts from an all-zero genesis hash, or from the latest checkpoint hash after pruning.
 2. `prev_hash`: The `hash` of the immediately preceding row.
-3. `content_digest`: HMAC-SHA256 over the JSON encoding of the content fields (`content_text`, `command_raw`, `command_exit_code`, `command_stdout`, `command_stderr`, `execution_duration_ms`, `execution_id`) under a subkey the runtime vault derives (see [Storage Architecture](./storage.md)). A locked vault fails the append closed.
+3. `content_digest`: HMAC-SHA256 over the canonical content fields (`content_text`, `command_raw`, `command_exit_code`, `command_stdout`, `command_stderr`, `execution_duration_ms`, `execution_id`) under a subkey the runtime vault derives (see [Storage Architecture](./storage.md)). A locked vault fails the append closed.
 4. `hash`: SHA-256 digest over `ztd-audit-v1|seq|prev_hash|type|operator_session_id|timestamp|content_digest|transaction_id`.
 
 Receipt stages append `ztd.v1.operator.receipt.recorded` facts to the chain. The current event receipt is the one of those events whose `event_receipt_status` is not null. The chain event type string stays `ztd.v1.operator.receipt.recorded`; it is an input to the chain hash.

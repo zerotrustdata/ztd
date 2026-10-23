@@ -307,10 +307,11 @@ func translateEvent(ev sse.Event) []tea.Msg {
 		}
 		msg := ApprovalCompletedMsg{TxHash: p.TxHash}
 		if p.HasReceipt() {
-			msg.Receipt = &operatorv1.ActionReceipt{}
-			if err := protojson.Unmarshal(p.Receipt, msg.Receipt); err != nil {
+			receipt := &operatorv1.ActionReceipt{}
+			if err := protojson.Unmarshal(p.Receipt, receipt); err != nil {
 				return []tea.Msg{decodeFailure(innerType, err)}
 			}
+			msg.Denied = receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED
 		}
 		return []tea.Msg{msg}
 	case innerType == string(constants.EventPlatformApprovalsChanged):

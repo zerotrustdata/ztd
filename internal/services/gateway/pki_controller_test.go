@@ -169,7 +169,6 @@ func TestPKIController_HandlePKIHubBundle(t *testing.T) {
 			method:         http.MethodGet,
 			expectedStatus: http.StatusOK,
 			validateResp: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				t.Helper()
 				assert.Equal(t, "application/x-pem-file", rr.Header().Get("Content-Type"))
 				assert.Equal(t, "nosniff", rr.Header().Get("X-Content-Type-Options"))
 				assert.Equal(t, "DENY", rr.Header().Get("X-Frame-Options"))
@@ -187,12 +186,10 @@ func TestPKIController_HandlePKIHubBundle(t *testing.T) {
 			name:   "Failure - PKI error returns 500",
 			method: http.MethodGet,
 			setup: func(t *testing.T, c *PKIController, _ *CanonicalDBService) {
-				t.Helper()
 				c.pki = &PKIAuthority{fileSvc: newTestFileSvc(t)}
 			},
 			expectedStatus: http.StatusInternalServerError,
 			validateResp: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				t.Helper()
 				var resp map[string]string
 				err := json.Unmarshal(rr.Body.Bytes(), &resp)
 				require.NoError(t, err)
@@ -221,7 +218,6 @@ func TestPKIController_HandlePKIFingerprint(t *testing.T) {
 			method:         http.MethodGet,
 			expectedStatus: http.StatusOK,
 			validateResp: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				t.Helper()
 				var resp map[string]string
 				err := json.Unmarshal(rr.Body.Bytes(), &resp)
 				require.NoError(t, err, "failed to unmarshal response")
@@ -239,12 +235,10 @@ func TestPKIController_HandlePKIFingerprint(t *testing.T) {
 			name:   "Failure - Root CA file not found",
 			method: http.MethodGet,
 			setup: func(t *testing.T, c *PKIController, _ *CanonicalDBService) {
-				t.Helper()
 				c.pki = &PKIAuthority{fileSvc: newTestFileSvc(t)}
 			},
 			expectedStatus: http.StatusInternalServerError,
 			validateResp: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				t.Helper()
 				var resp map[string]string
 				err := json.Unmarshal(rr.Body.Bytes(), &resp)
 				require.NoError(t, err)
@@ -254,7 +248,6 @@ func TestPKIController_HandlePKIFingerprint(t *testing.T) {
 			name:   "Failure - Invalid PEM format",
 			method: http.MethodGet,
 			setup: func(t *testing.T, c *PKIController, _ *CanonicalDBService) {
-				t.Helper()
 				relPath := filepath.Join(constants.PkiDirname, constants.PkiSubdirRoot, constants.PkiFileRootCA)
 				err := c.pki.fileSvc.WriteFile(context.Background(), relPath, []byte("invalid pem data"), constants.PermFilePublic)
 				require.NoError(t, err, "failed to write invalid PEM data")
@@ -357,7 +350,6 @@ func TestPKIController_HandlePKICertificatesRevoke(t *testing.T) {
 			body:           mustMarshalJSON(t, validRevokePayload),
 			expectedStatus: http.StatusOK,
 			validateResp: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				t.Helper()
 				var resp struct {
 					Status string `json:"status"`
 				}
@@ -378,7 +370,6 @@ func TestPKIController_HandlePKICertificatesRevoke(t *testing.T) {
 			body:           []byte("invalid json"),
 			expectedStatus: http.StatusBadRequest,
 			validateResp: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				t.Helper()
 				var resp map[string]string
 				err := json.Unmarshal(rr.Body.Bytes(), &resp)
 				require.NoError(t, err)
@@ -396,7 +387,6 @@ func TestPKIController_HandlePKICertificatesRevoke(t *testing.T) {
 			method: http.MethodPost,
 			body:   mustMarshalJSON(t, validRevokePayload),
 			setup: func(t *testing.T, c *PKIController, _ *CanonicalDBService) {
-				t.Helper()
 				c.pki = &PKIAuthority{}
 			},
 			expectedStatus: http.StatusInternalServerError,
@@ -424,10 +414,7 @@ func TestPKIController_HandlePKIRevocationBundle(t *testing.T) {
 			method:         http.MethodGet,
 			expectedStatus: http.StatusOK,
 			validateResp: func(t *testing.T, rr *httptest.ResponseRecorder) {
-				t.Helper(
 				// After Phase 2, endpoint returns standard X.509 CRL (DER-encoded binary)
-				)
-
 				crlDER := rr.Body.Bytes()
 				assert.NotEmpty(t, crlDER, "CRL DER should not be empty")
 
@@ -447,7 +434,6 @@ func TestPKIController_HandlePKIRevocationBundle(t *testing.T) {
 			name:   "Failure - PKI bundle generation error",
 			method: http.MethodGet,
 			setup: func(t *testing.T, c *PKIController, _ *CanonicalDBService) {
-				t.Helper()
 				c.pki = &PKIAuthority{}
 			},
 			expectedStatus: http.StatusInternalServerError,

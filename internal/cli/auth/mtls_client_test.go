@@ -143,7 +143,7 @@ func TestBuildMTLSClient_ValidCertsAndBundle(t *testing.T) {
 	// dialer is wired in.
 	require.NotNil(t, transport.DialContext, "BuildMTLSClient transport must set an IPv4 DialContext")
 	_, dialErr := transport.DialContext(context.Background(), "tcp", "[::1]:8443")
-	require.Error(t, dialErr, "BuildMTLSClient dialer must reject literal IPv6 addresses (IPv4 only)")
+	assert.Error(t, dialErr, "BuildMTLSClient dialer must reject literal IPv6 addresses (IPv4 only)")
 	assert.Contains(t, dialErr.Error(), "ipv4 dial: resolve")
 }
 

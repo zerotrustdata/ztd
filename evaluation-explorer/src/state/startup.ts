@@ -9,7 +9,7 @@
 //      snapshot's high-water sequence (history items arrive in ascending
 //      sequence order; the store enforces strict contiguity)
 //   5. seal against feed-chain state once observed == high-water
-//   6. publish accepted history in batches of one page
+//   6. publish reconciled history in one batched store update
 //   7. connect SSE from the accepted cursor
 //
 // On any transport failure the store fails closed: last accepted data
@@ -111,16 +111,12 @@ async function saveCache(
 
 export async function startFeed(opts: StartOptions = {}): Promise<void> {
   const gen = ++generation;
-  activeStream?.close();
-  activeStream = null;
   const fetchImpl = opts.fetchImpl ?? fetch.bind(globalThis);
   const cacheStorage = opts.cacheStorage ?? new IndexedDBFeedCache();
   const streamFactory = opts.streamFactory ?? openStream;
   try {
     evalStore.setConnection('connecting', 'Connecting to the public mirror.');
     const runtime = await loadRuntimeConfig(fetchImpl);
-    if (gen !== generation) return;
-    evalStore.setMirrorOrigin(runtime.mirror_origin);
     const bootstrap = await fetchBootstrap(runtime.mirror_origin, fetchImpl);
     if (gen !== generation) return;
     const snapshot = bootstrap.snapshot;
@@ -130,22 +126,15 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
     if (gen !== generation) return;
     const records = cached ? [...cached.records] : [];
     if (cached) {
-      evalStore.beginBatch();
-      try {
-        evalStore.initBootstrap(cached.snapshot, [], bootstrap.proof_catalog_summary.artifact_count);
-        for (const record of cached.records) evalStore.acceptProjection(record);
-        evalStore.acceptSnapshot(snapshot);
-      } finally {
-        evalStore.endBatch();
-      }
+      evalStore.initBootstrap(cached.snapshot, [], bootstrap.proof_catalog_summary.artifact_count);
+      for (const record of cached.records) evalStore.acceptProjection(record);
+      evalStore.acceptSnapshot(snapshot);
     }
     await reconcileHistory(runtime.mirror_origin, snapshot.source_id, fetchImpl, gen, records);
     if (gen !== generation) return;
-    // Start live delivery before the best-effort IndexedDB write. Capture the
-    // sealed history checkpoint synchronously before new stream records arrive.
-    const saving = saveCache(cacheStorage, runtime.mirror_origin, records);
-    connectStream(runtime.mirror_origin, snapshot.source_id, evalStore.getState().observedSequence, gen, streamFactory, opts);
-    await saving;
+    await saveCache(cacheStorage, runtime.mirror_origin, records);
+    if (gen !== generation) return;
+    connectStream(runtime.mirror_origin, snapshot.source_id, evalStore.getState().observedSequence, gen, streamFactory);
   } catch (error) {
     if (gen !== generation) return;
     const message = error instanceof Error ? error.message : 'public mirror is unreachable';
@@ -160,35 +149,31 @@ async function reconcileHistory(
   gen: number,
   records: ProjectionRecord[],
 ): Promise<void> {
-  for (let round = 0; round < MAX_HISTORY_ROUNDS; round++) {
-    for (let page = 0; page < MAX_HISTORY_PAGES; page++) {
-      const cursor = evalStore.getState().observedSequence;
-      const pageData = await fetchHistoryPage(mirrorOrigin, sourceId, cursor, HISTORY_LIMIT, fetchImpl);
-      if (gen !== generation) return;
-      // Publish one accepted page at a time so earlier history can render
-      // while the next request is in flight. Never notify per record.
-      evalStore.beginBatch();
-      try {
+  evalStore.beginBatch();
+  try {
+    for (let round = 0; round < MAX_HISTORY_ROUNDS; round++) {
+      for (let page = 0; page < MAX_HISTORY_PAGES; page++) {
+        const cursor = evalStore.getState().observedSequence;
+        const pageData = await fetchHistoryPage(mirrorOrigin, sourceId, cursor, HISTORY_LIMIT, fetchImpl);
         for (const item of pageData.items) {
           const record = normalizeHistoryItem(item);
           records.push(record);
           evalStore.acceptProjection(record);
         }
-      } finally {
-        evalStore.endBatch();
+        if (!pageData.has_more) break;
+        if (pageData.items.length === 0 || page === MAX_HISTORY_PAGES - 1) {
+          throw new Error('public history did not advance');
+        }
       }
-      if (!pageData.has_more) break;
-      if (pageData.items.length === 0 || page === MAX_HISTORY_PAGES - 1) {
-        throw new Error('public history did not advance');
-      }
+      if (gen !== generation) return;
+      const snapshot: FeedSnapshot = await fetchSnapshot(mirrorOrigin, sourceId, fetchImpl);
+      evalStore.acceptSnapshot(snapshot);
+      if (snapshot.high_water_sequence === evalStore.getState().observedSequence) return;
     }
-    if (gen !== generation) return;
-    const snapshot: FeedSnapshot = await fetchSnapshot(mirrorOrigin, sourceId, fetchImpl);
-    if (gen !== generation) return;
-    evalStore.acceptSnapshot(snapshot);
-    if (snapshot.high_water_sequence === evalStore.getState().observedSequence) return;
+    throw new Error('public history could not reach snapshot');
+  } finally {
+    evalStore.endBatch();
   }
-  throw new Error('public history could not reach snapshot');
 }
 
 function connectStream(
@@ -197,30 +182,26 @@ function connectStream(
   sinceId: number,
   gen: number,
   streamFactory: typeof openStream,
-  opts: StartOptions,
 ): void {
   activeStream?.close();
   activeStream = streamFactory(mirrorOrigin, sourceId, sinceId, {
     onSnapshot: (snapshot) => {
-      if (gen !== generation) return;
       const reference = evalStore.getState().currentSnapshot ?? evalStore.getState().pendingSnapshot;
       // The mirror withdrew a dataset this tab may hold: reload from the
       // filtered feed rather than keep showing it.
       if (reference && reference.withdrawal_digest !== snapshot.withdrawal_digest) {
-        if (gen === generation) void startFeed(opts);
+        if (gen === generation) void startFeed();
         return;
       }
       evalStore.acceptSnapshot(snapshot);
     },
     onProjection: (record) => {
-      if (gen !== generation) return;
       evalStore.acceptProjection(record);
     },
     onTruncated: () => {
-      if (gen === generation) void startFeed(opts);
+      if (gen === generation) void startFeed();
     },
     onError: () => {
-      if (gen !== generation) return;
       evalStore.setOffline('The mirror stream is unreachable. Last accepted data remains visible.');
     },
     onStateChange: (streamState) => {

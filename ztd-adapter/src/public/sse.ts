@@ -29,7 +29,6 @@ export class PublicSseStream {
   private lastSequence: number;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelayMs = 1000;
-  private connectedAt: number | null = null;
   private readonly maxReconnectDelayMs = 30000;
   private stopped = false;
 
@@ -49,30 +48,17 @@ export class PublicSseStream {
     const source = factory(url, { withCredentials: false });
     this.source = source;
     source.onopen = () => {
-      if (this.source !== source) return;
-      this.connectedAt = Date.now();
+      this.reconnectDelayMs = 1000;
       this.options.callbacks.onStateChange?.('connected');
     };
-    source.onerror = (event) => {
-      if (this.source !== source) return;
-      // Named server "error" messages also invoke onerror. Their payload is
-      // handled below; only native transport errors initiate reconnection.
-      if (typeof (event as MessageEvent).data === 'string') return;
-      // Briefly opening a failing proxy connection must not defeat backoff.
-      if (this.connectedAt !== null && Date.now() - this.connectedAt >= this.maxReconnectDelayMs) {
-        this.reconnectDelayMs = 1000;
-      }
+    source.onerror = () => {
       this.options.callbacks.onStateChange?.('reconnecting');
       this.closeSource();
       this.scheduleReconnect();
     };
     source.addEventListener('snapshot', (event) => this.handleSnapshot(event as MessageEvent<string>));
     source.addEventListener('truncated', (event) => this.handleSentinel(event as MessageEvent<string>, true));
-    source.addEventListener('error', (event) => {
-      // A failed EventSource also dispatches a plain Event to this listener.
-      if (this.source !== source || typeof (event as MessageEvent).data !== 'string') return;
-      this.handleSentinel(event as MessageEvent<string>, false);
-    });
+    source.addEventListener('error', (event) => this.handleSentinel(event as MessageEvent<string>, false));
     for (const eventType of RECORD_EVENTS) {
       source.addEventListener(eventType, (event) => this.handleRecord(eventType, event as MessageEvent<string>));
     }
@@ -88,7 +74,6 @@ export class PublicSseStream {
   private closeSource(): void {
     this.source?.close();
     this.source = null;
-    this.connectedAt = null;
   }
 
   private clearReconnectTimer(): void {

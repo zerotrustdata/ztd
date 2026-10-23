@@ -301,7 +301,7 @@ func TestOperatorBootstrap_HeldSocketDeliversInMemoryIdentity(t *testing.T) {
 	leaf, err := x509.ParseCertificate(identity.Certificate.Certificate[0])
 	require.NoError(t, err)
 	_, err = leaf.Verify(x509.VerifyOptions{Roots: certPoolOf(mg.caCert), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	state := readTestDeploymentState(t, fileSvc)
 	assert.Equal(t, models.OperatorDeploymentPhaseEnrolled, state.Phase)
@@ -503,7 +503,7 @@ func TestOperatorBootstrap_CancellationEndsTheHeldSocket(t *testing.T) {
 	}()
 	_, err := client.Enroll(ctx)
 	require.Error(t, err)
-	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	assert.ErrorIs(t, ctx.Err(), context.Canceled)
 	assert.Equal(t, 1, mg.dials())
 }
 
@@ -520,7 +520,7 @@ func TestOperatorBootstrap_UnreachableGatewayIsRetriedUntilCancelled(t *testing.
 	defer cancel()
 	_, err := client.Enroll(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.NotContains(t, err.Error(), "refused the bootstrap websocket")
+	assert.False(t, strings.Contains(err.Error(), "refused the bootstrap websocket"))
 }
 
 func certPoolOf(certs ...*x509.Certificate) *x509.CertPool {

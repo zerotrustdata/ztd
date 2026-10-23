@@ -291,13 +291,13 @@ func TestAttestationImporter_Import_PropagatesTrustAndReadFailures(t *testing.T)
 	fixture.trust.err = trustErr
 	_, err := fixture.importer().Import(context.Background())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
-	require.ErrorIs(t, err, trustErr)
+	assert.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
+	assert.ErrorIs(t, err, trustErr)
 
 	readErr := fmt.Errorf("attestation source unavailable")
 	_, err = NewAttestationImporter(&failingArtifactReader{err: readErr}, fixture.trust, fixture.binding, fixture.now).Import(context.Background())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
+	assert.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
 	assert.ErrorIs(t, err, readErr)
 }
 

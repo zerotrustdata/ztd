@@ -30,17 +30,17 @@ func TestOllamaBackend_ListProviderModelInventoryPreservesDistinctServedTags(t *
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/tags":
-			assert.NoError(t, json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaTagModel{
+			require.NoError(t, json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaTagModel{
 				{Name: "alias-one:latest", Digest: "sha256:" + digestA, Size: 2_600_000_000},
 				{Name: "alias-two:latest", Digest: "sha256:" + digestB},
 			}}))
 		case "/api/show":
 			body, err := io.ReadAll(r.Body)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			var req struct {
 				Name string `json:"name"`
 			}
-			assert.NoError(t, json.Unmarshal(body, &req))
+			require.NoError(t, json.Unmarshal(body, &req))
 			show := ollamaShowResponse{
 				ModelInfo:  map[string]json.RawMessage{"general.parameter_count": json.RawMessage("4030261248")},
 				Parameters: "num_ctx                        8192\n",
@@ -56,7 +56,7 @@ func TestOllamaBackend_ListProviderModelInventoryPreservesDistinctServedTags(t *
 				show.Details.ParameterSize = "1.7B"
 				show.ModelInfo = nil
 			}
-			assert.NoError(t, json.NewEncoder(w).Encode(show))
+			require.NoError(t, json.NewEncoder(w).Encode(show))
 		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}

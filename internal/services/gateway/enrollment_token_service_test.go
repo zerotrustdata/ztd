@@ -11,6 +11,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -52,7 +53,7 @@ func TestEnrollmentToken_ValidateUnknownTokenReturnsInvalid(t *testing.T) {
 	svc := newTestEnrollmentTokenService(t)
 
 	_, err := svc.ValidateAndConsumeToken(t.Context(), "nonexistenttoken1234567890abcdef")
-	assert.ErrorIs(t, err, constants.ErrEnrollmentTokenInvalid)
+	assert.True(t, errors.Is(err, constants.ErrEnrollmentTokenInvalid))
 }
 
 func TestEnrollmentToken_ValidateExpiredTokenReturnsExpired(t *testing.T) {
@@ -72,7 +73,7 @@ func TestEnrollmentToken_ValidateExpiredTokenReturnsExpired(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = svc.ValidateAndConsumeToken(t.Context(), expiredToken.Token)
-	assert.ErrorIs(t, err, constants.ErrEnrollmentTokenExpired)
+	assert.True(t, errors.Is(err, constants.ErrEnrollmentTokenExpired))
 }
 
 func TestEnrollmentToken_ConsumedTokenCannotBeReused(t *testing.T) {
@@ -86,17 +87,17 @@ func TestEnrollmentToken_ConsumedTokenCannotBeReused(t *testing.T) {
 	assert.True(t, first.Consumed)
 
 	_, err = svc.ValidateAndConsumeToken(t.Context(), token.Token)
-	assert.ErrorIs(t, err, constants.ErrEnrollmentTokenConsumed)
+	assert.True(t, errors.Is(err, constants.ErrEnrollmentTokenConsumed))
 }
 
 func TestEnrollmentToken_ShortStringDoesNotPanic(t *testing.T) {
 	svc := newTestEnrollmentTokenService(t)
 
 	_, err := svc.ValidateAndConsumeToken(t.Context(), "")
-	require.ErrorIs(t, err, constants.ErrEnrollmentTokenInvalid)
+	assert.True(t, errors.Is(err, constants.ErrEnrollmentTokenInvalid))
 
 	_, err = svc.ValidateAndConsumeToken(t.Context(), "x")
-	assert.ErrorIs(t, err, constants.ErrEnrollmentTokenInvalid)
+	assert.True(t, errors.Is(err, constants.ErrEnrollmentTokenInvalid))
 }
 
 func TestEnrollmentToken_GenerateTokenShortCLISessionIDDoesNotPanic(t *testing.T) {
@@ -112,7 +113,7 @@ func TestEnrollmentToken_GenerateTokenShortCLISessionIDDoesNotPanic(t *testing.T
 	token2, err := svc.GenerateToken(t.Context(), "user-empty", "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, token2.Token)
-	assert.Empty(t, token2.CLISessionID)
+	assert.Equal(t, "", token2.CLISessionID)
 }
 
 func TestEnrollmentToken_ValidateTokenDoesNotConsume(t *testing.T) {
@@ -142,7 +143,7 @@ func TestEnrollmentToken_ValidateTokenDoesNotConsume(t *testing.T) {
 
 	// Now ValidateToken must reject it as consumed.
 	_, err = svc.ValidateToken(t.Context(), token.Token)
-	assert.ErrorIs(t, err, constants.ErrEnrollmentTokenConsumed)
+	assert.True(t, errors.Is(err, constants.ErrEnrollmentTokenConsumed))
 }
 
 func TestEnrollmentToken_CleanupExpiredTokens(t *testing.T) {

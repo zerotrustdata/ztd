@@ -82,7 +82,6 @@ func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 		{
 			name: "receipt summary is not the result digest",
 			mutate: func(t *testing.T, s oracletest.Signer, sc *judge.Score) {
-				t.Helper()
 				sc.Receipt.ResultSummary = "digest-other"
 				s.Resign(t, sc.Receipt)
 			},
@@ -119,7 +118,6 @@ func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 		{
 			name: "receipt signed by a key the anchors do not pin",
 			mutate: func(t *testing.T, _ oracletest.Signer, sc *judge.Score) {
-				t.Helper()
 				oracletest.NewSigner(t).Resign(t, sc.Receipt)
 			},
 			wantFail: true,
@@ -127,7 +125,6 @@ func TestVerifyJudgeReceipt_BindsScoreToSignedResult(t *testing.T) {
 		{
 			name: "receipt from another operator session",
 			mutate: func(t *testing.T, s oracletest.Signer, sc *judge.Score) {
-				t.Helper()
 				for _, stage := range sc.Receipt.GetDeterministicStageEvidence() {
 					stage.OperatorSessionId = "session-other"
 				}

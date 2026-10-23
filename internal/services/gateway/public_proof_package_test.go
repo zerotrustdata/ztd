@@ -98,7 +98,7 @@ func TestBuildProofPackage_CreatesCompletePackage(t *testing.T) {
 		assert.NotEmpty(t, entry.ImmutableURL)
 		assert.Equal(t, models.PublicFeedProofClassificationPublicSafe, entry.Classification)
 		assert.NotEmpty(t, entry.SHA256)
-		assert.Positive(t, entry.ByteSize)
+		assert.Greater(t, entry.ByteSize, int64(0))
 		assert.NotEmpty(t, entry.VerificationCommand)
 	}
 }

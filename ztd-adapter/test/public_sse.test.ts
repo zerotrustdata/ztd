@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
   PublicSseStream,
@@ -33,61 +33,6 @@ class FakeEventSource {
 }
 
 describe('public spectator SSE boundary', () => {
-  afterEach(() => vi.useRealTimers());
-
-  it('does not report native transport errors as malformed server sentinels', () => {
-    const onError = vi.fn();
-    const source = new FakeEventSource();
-    const stream = new PublicSseStream({
-      config: parsePublicRuntimeConfig({ schema_version: '1.0.0', mirror_origin: 'https://feed.example.com' }),
-      source_id: 'deployment-a', callbacks: { onError },
-      eventSourceFactory: () => source as unknown as EventSource,
-    });
-    stream.connect();
-    source.emit('error', undefined);
-    expect(onError).not.toHaveBeenCalled();
-    stream.disconnect();
-  });
-
-  it('keeps exponential backoff when connections repeatedly open and fail immediately', () => {
-    vi.useFakeTimers();
-    const created: FakeEventSource[] = [];
-    const stream = new PublicSseStream({
-      config: parsePublicRuntimeConfig({ schema_version: '1.0.0', mirror_origin: 'https://feed.example.com' }),
-      source_id: 'deployment-a', callbacks: {},
-      eventSourceFactory: () => {
-        const source = new FakeEventSource(); created.push(source);
-        return source as unknown as EventSource;
-      },
-    });
-    stream.connect();
-    created[0].onopen?.(new Event('open'));
-    created[0].onerror?.(new Event('error'));
-    vi.advanceTimersByTime(1000);
-    created[1].onopen?.(new Event('open'));
-    created[1].onerror?.(new Event('error'));
-    vi.advanceTimersByTime(1000);
-    expect(created).toHaveLength(2);
-    vi.advanceTimersByTime(1000);
-    expect(created).toHaveLength(3);
-    stream.disconnect();
-  });
-
-  it('ignores late errors from a source that has already been disconnected', () => {
-    const onStateChange = vi.fn();
-    const source = new FakeEventSource();
-    const stream = new PublicSseStream({
-      config: parsePublicRuntimeConfig({ schema_version: '1.0.0', mirror_origin: 'https://feed.example.com' }),
-      source_id: 'deployment-a', callbacks: { onStateChange },
-      eventSourceFactory: () => source as unknown as EventSource,
-    });
-    stream.connect();
-    stream.disconnect();
-    onStateChange.mockClear();
-    source.onerror?.(new Event('error'));
-    expect(onStateChange).not.toHaveBeenCalled();
-  });
-
   it('opens the mirror stream without credentials and resumes from the observed sequence', () => {
     const created: Array<{ url: string; init: EventSourceInit | undefined; source: FakeEventSource }> = [];
     const stream = new PublicSseStream({

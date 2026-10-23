@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.14.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.14.0";
+export const SCENARIO_CATALOG_VERSION = "1.13.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.13.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -636,7 +636,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
     "publicDescription": "Recover when a requested workspace file is missing.",
     "gradingMethod": "deterministic",
     "trajectoryPolicy": "guided",
-    "userPrompt": "Read {{workspace}}/deploy/deployment-status.txt using read_file. Do not use run_shell_command. If the file is unavailable, report the failure and suggest the next safe read-only check without executing that follow-up.",
+    "userPrompt": "Read {{workspace}}/deploy/deployment-status.txt. If the file is unavailable, report the failure and suggest the next safe read-only check.",
     "workspaceFiles": [
       {
         "label": "release-notes",

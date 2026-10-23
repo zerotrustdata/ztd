@@ -178,7 +178,7 @@ func TestRegistrationService_ListOperatorSlots(t *testing.T) {
 
 	t.Run("Empty user_id returns error", func(t *testing.T) {
 		slots, err := regSvc.ListOperatorSlots(t.Context(), "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, slots)
 		assert.Contains(t, err.Error(), "user_id is required")
 	})
@@ -220,7 +220,7 @@ func TestRegistrationService_ListUserOperators(t *testing.T) {
 
 	t.Run("Empty user_id returns error", func(t *testing.T) {
 		operators, err := regSvc.ListUserOperators(t.Context(), "")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, operators)
 		assert.Contains(t, err.Error(), "user_id is required")
 	})
@@ -294,19 +294,19 @@ func TestRegistrationService_TerminateOperator(t *testing.T) {
 
 	t.Run("Missing operator_id returns error", func(t *testing.T) {
 		err := regSvc.TerminateOperator(t.Context(), "", "user-123", "test")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "operator_id is required")
 	})
 
 	t.Run("Missing user_id returns error", func(t *testing.T) {
 		err := regSvc.TerminateOperator(t.Context(), "op-123", "", "test")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "user_id is required")
 	})
 
 	t.Run("Non-existent operator returns error", func(t *testing.T) {
 		err := regSvc.TerminateOperator(t.Context(), "nonexistent-op", "user-123", "test")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "operator not found")
 	})
 
@@ -317,7 +317,7 @@ func TestRegistrationService_TerminateOperator(t *testing.T) {
 
 		// Try to terminate with different user_id
 		err = regSvc.TerminateOperator(t.Context(), slot.Id, "user-456", "test")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "does not belong to user")
 	})
 
@@ -397,7 +397,7 @@ func TestRegistrationService_BindOperators(t *testing.T) {
 			OperatorIDs: []string{"op-123"},
 		}
 		resp, err := regSvc.BindOperators(t.Context(), req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "web_session_id is required")
 	})
@@ -408,7 +408,7 @@ func TestRegistrationService_BindOperators(t *testing.T) {
 			OperatorIDs:  []string{"op-123"},
 		}
 		resp, err := regSvc.BindOperators(t.Context(), req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "user_id is required")
 	})
@@ -420,7 +420,7 @@ func TestRegistrationService_BindOperators(t *testing.T) {
 			OperatorIDs:  []string{},
 		}
 		resp, err := regSvc.BindOperators(t.Context(), req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "operator_ids required")
 	})
@@ -538,7 +538,7 @@ func TestRegistrationService_UnbindOperators(t *testing.T) {
 			OperatorIDs: []string{"op-123"},
 		}
 		resp, err := regSvc.UnbindOperators(t.Context(), req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "web_session_id is required")
 	})
@@ -549,7 +549,7 @@ func TestRegistrationService_UnbindOperators(t *testing.T) {
 			OperatorIDs:  []string{"op-123"},
 		}
 		resp, err := regSvc.UnbindOperators(t.Context(), req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "user_id is required")
 	})
@@ -669,7 +669,7 @@ func TestRegistrationService_SetTargetContext(t *testing.T) {
 			OperatorID: "op-123",
 		}
 		resp, err := regSvc.SetTargetContext(t.Context(), req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "web_session_id is required")
 	})
@@ -680,7 +680,7 @@ func TestRegistrationService_SetTargetContext(t *testing.T) {
 			OperatorID:   "op-123",
 		}
 		resp, err := regSvc.SetTargetContext(t.Context(), req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "user_id is required")
 	})
@@ -692,7 +692,7 @@ func TestRegistrationService_SetTargetContext(t *testing.T) {
 			OperatorID:   "nonexistent-op",
 		}
 		resp, err := regSvc.SetTargetContext(t.Context(), req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "not found")
 	})
@@ -707,7 +707,7 @@ func TestRegistrationService_SetTargetContext(t *testing.T) {
 			OperatorID:   slot.Id,
 		}
 		resp, err := regSvc.SetTargetContext(t.Context(), req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "does not belong to user")
 	})
@@ -775,7 +775,7 @@ func TestRegistrationService_RegisterDeviceCSR(t *testing.T) {
 		}
 
 		_, err = regSvc.RegisterDeviceCSR(t.Context(), "user-123", "org-123", req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "system_fingerprint is required")
 	})
 
@@ -805,7 +805,7 @@ func TestRegistrationService_RegisterDeviceCSR(t *testing.T) {
 		}
 
 		_, err = regSvc.RegisterDeviceCSR(t.Context(), "", "org-123", req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "user_id is required")
 	})
 
@@ -834,7 +834,7 @@ func TestRegistrationService_RegisterDeviceCSR(t *testing.T) {
 		}
 
 		_, err = regSvc.RegisterDeviceCSR(t.Context(), "user-123", "org-123", req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "operator CSR is required")
 	})
 
@@ -864,7 +864,7 @@ func TestRegistrationService_RegisterDeviceCSR(t *testing.T) {
 		}
 
 		_, err = regSvc.RegisterDeviceCSR(t.Context(), "user-123", "org-123", req)
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid system_fingerprint")
 	})
 
@@ -937,7 +937,7 @@ func TestRegistrationService_CompleteRegistration(t *testing.T) {
 		}
 
 		_, err = regSvc.completeRegistration(t.Context(), slot, "user-123", "org-123", req, "test-fingerprint")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid CSR PEM format")
 	})
 
@@ -973,7 +973,7 @@ func TestRegistrationService_CompleteRegistration(t *testing.T) {
 		}
 
 		_, err = regSvc.completeRegistration(t.Context(), slot, "user-123", "org-123", req, "test-fingerprint")
-		require.Error(t, err)
+		assert.Error(t, err)
 		// The error could be either decode failure or wrong block type depending on PEM parsing
 		assert.Contains(t, err.Error(), "invalid CSR PEM format")
 	})
@@ -1006,7 +1006,7 @@ func TestRegistrationService_CompleteRegistration(t *testing.T) {
 		}
 
 		_, err = regSvc.completeRegistration(t.Context(), slot, "user-123", "org-123", req, "test-fingerprint")
-		require.Error(t, err)
+		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "CSR required")
 	})
 }

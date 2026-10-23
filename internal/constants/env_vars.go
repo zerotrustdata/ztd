@@ -37,11 +37,6 @@ var EnvVar = struct {
 	Display               EnvVarKey
 	WaylandDisplay        EnvVarKey
 	Browser               EnvVarKey
-	UserProfile           EnvVarKey
-	SystemRoot            EnvVarKey
-	GOCache               EnvVarKey
-	GOModCache            EnvVarKey
-	GOPath                EnvVarKey
 	CloudflareAPIToken    EnvVarKey
 }{
 	OllamaEndpoint:        EnvVarKey("ZTD_OLLAMA_ENDPOINT"),
@@ -69,11 +64,6 @@ var EnvVar = struct {
 	Display:               EnvVarKey("DISPLAY"),
 	WaylandDisplay:        EnvVarKey("WAYLAND_DISPLAY"),
 	Browser:               EnvVarKey("BROWSER"),
-	UserProfile:           EnvVarKey("USERPROFILE"),
-	SystemRoot:            EnvVarKey("SYSTEMROOT"),
-	GOCache:               EnvVarKey("GOCACHE"),
-	GOModCache:            EnvVarKey("GOMODCACHE"),
-	GOPath:                EnvVarKey("GOPATH"),
 	CloudflareAPIToken:    EnvVarKey("CLOUDFLARE_API_TOKEN"),
 }
 

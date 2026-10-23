@@ -453,9 +453,9 @@ func TestExecutionService_Stop(t *testing.T) {
 		// Verify execution returns an error about stopping
 		select {
 		case err := <-execDone:
-			require.Error(t, err)
+			assert.Error(t, err)
 			if err != nil {
-				require.ErrorIs(t, err, constants.ErrExecutionServiceStopping)
+				assert.ErrorIs(t, err, constants.ErrExecutionServiceStopping)
 			}
 		case <-time.After(2 * time.Second):
 			t.Fatal("Execution did not return after semaphore release")
@@ -495,7 +495,6 @@ func TestExecutionService_CancelExecution(t *testing.T) {
 		{
 			name: "cancel non-existent execution",
 			test: func(t *testing.T) {
-				t.Helper()
 				t.Parallel()
 				err := svc.CancelExecution("non-existent-id")
 				require.Error(t, err)
@@ -505,7 +504,6 @@ func TestExecutionService_CancelExecution(t *testing.T) {
 		{
 			name: "cancel running execution",
 			test: func(t *testing.T) {
-				t.Helper()
 				t.Parallel()
 				req := &models.ExecutionRequestPayload{
 					ExecutionID:    "cancel-test-1",
@@ -638,7 +636,7 @@ func TestExecutionService_CancelExecution_NoConcurrentDeadlock(t *testing.T) {
 				return execCtx.Process != nil
 			}, 5*time.Second, 10*time.Millisecond)
 			err := svc.CancelExecution(id)
-			assert.NoError(t, err, "CancelExecution should not fail")
+			require.NoError(t, err, "CancelExecution should not fail")
 			select {
 			case <-execDone:
 			case <-time.After(10 * time.Second):

@@ -222,7 +222,7 @@ func TestRenderComplianceAnalysis_RejectsInvalidInput(t *testing.T) {
 			rendered, err := RenderComplianceAnalysis(test.analysis, test.format)
 
 			require.Error(t, err)
-			require.ErrorIs(t, err, test.target)
+			assert.ErrorIs(t, err, test.target)
 			assert.Nil(t, rendered)
 		})
 	}

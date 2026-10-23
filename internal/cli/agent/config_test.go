@@ -10,6 +10,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -133,7 +134,7 @@ func TestWriteConfig_TempJSON_ListsNativeToolsAndCleansUp(t *testing.T) {
 
 			cleanup()
 			_, err = os.Stat(configPath)
-			require.ErrorIs(t, err, os.ErrNotExist)
+			assert.True(t, errors.Is(err, os.ErrNotExist))
 			scratch, err := files.ReadDir(context.Background(), constants.TmpDirname)
 			require.NoError(t, err)
 			assert.Empty(t, scratch, "cleanup must remove the scratch directory")

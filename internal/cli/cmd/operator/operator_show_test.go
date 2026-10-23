@@ -59,7 +59,7 @@ func TestParseOperatorHeartbeatView_HeartbeatResultSnapshot(t *testing.T) {
 	assert.Equal(t, "worker-1", view.SystemIdentity.Hostname)
 	assert.Equal(t, constants.Platform("linux"), view.SystemIdentity.OS)
 	assert.Equal(t, "automatic", view.HeartbeatType)
-	assert.InDelta(t, 12.5, view.PerformanceMetrics.CPUPercent, 0)
+	assert.Equal(t, 12.5, view.PerformanceMetrics.CPUPercent)
 	assert.Equal(t, "2h 15m", view.UptimeInfo.Uptime)
 }
 
@@ -78,7 +78,7 @@ func TestParseOperatorHeartbeatView_AcceptsProtojsonCamelCase(t *testing.T) {
 	view := clioperator.ParseHeartbeatView(raw)
 	require.NotNil(t, view)
 	assert.Equal(t, "legacy-host", view.SystemIdentity.Hostname)
-	assert.InDelta(t, 5.0, view.PerformanceMetrics.CPUPercent, 0)
+	assert.Equal(t, 5.0, view.PerformanceMetrics.CPUPercent)
 }
 
 func TestParseOperatorHeartbeatView_RejectsLegacyPythonShape(t *testing.T) {
@@ -322,6 +322,6 @@ func TestOperatorHostnameValue_FallbackToCurrentHostname(t *testing.T) {
 	assert.Equal(t, "cached-worker", operatorHostnameDisplay(op))
 
 	emptyOp := &operatorv1.OperatorDocument{Id: "op-2"}
-	assert.Empty(t, operatorHostnameValue(emptyOp))
+	assert.Equal(t, "", operatorHostnameValue(emptyOp))
 	assert.Equal(t, "-", operatorHostnameDisplay(emptyOp))
 }

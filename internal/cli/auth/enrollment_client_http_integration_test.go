@@ -60,7 +60,7 @@ func TestEnrollmentClient_Bootstrap_ReturnsValidatedArtifactsAndSendsTypedReques
 	stub := newDiscoveryStub(t, map[string]http.HandlerFunc{
 		constants.APIPaths.AuthBootstrap: func(w http.ResponseWriter, r *http.Request) {
 			gotContentType = r.Header.Get(constants.HeaderContentType)
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&got))
 			writeJSONResponse(t, w, http.StatusOK, bootstrapResponseFrom(artifacts))
 		},
 	})
@@ -210,7 +210,7 @@ func TestEnrollmentClient_CreateRecoveryRequest_ReturnsTokenAndApprovalDetails(t
 	var got models.CLIRecoveryRequestRequest
 	stub := newDiscoveryStub(t, map[string]http.HandlerFunc{
 		constants.APIPaths.AuthCLIRecoveryRequest: func(w http.ResponseWriter, r *http.Request) {
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&got))
 			writeJSONResponse(t, w, http.StatusOK, models.CLIRecoveryRequestResponse{
 				Success: true, RequestID: "rec-1", Token: "tok-1", ApprovalURL: "https://gw/console/#rec", ExpiresAt: expires,
 			})
@@ -326,7 +326,7 @@ func TestEnrollmentClient_CompleteRecovery_ProvesPossessionOfTheCSRKey(t *testin
 	var got models.CLIRecoveryCompleteRequest
 	stub := newDiscoveryStub(t, map[string]http.HandlerFunc{
 		constants.APIPaths.AuthCLIRecoveryComplete: func(w http.ResponseWriter, r *http.Request) {
-			assert.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&got))
 			writeJSONResponse(t, w, http.StatusOK, models.CLIRecoveryCompleteResponse{
 				Success: true, CLISessionID: artifacts.CLISessionID, UserID: artifacts.UserID,
 				OperatorSessionID: "op-session-2", OperatorID: "op-2",

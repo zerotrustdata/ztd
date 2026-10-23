@@ -45,9 +45,9 @@ func TestGenerate_WritesChecksumsAndValidatedManifest(t *testing.T) {
 func TestGenerate_RejectsInvalidProvenanceAndMissingArtifact(t *testing.T) {
 	root := testutil.TempDir(t)
 	err := generate(root, "", "build-1", "2026-09-23T00:00:00Z", "revision", "tree")
-	require.Error(t, err)
+	assert.Error(t, err)
 	err = generate(root, "2.1.12", "build-1", "invalid", "revision", "tree")
-	require.Error(t, err)
+	assert.Error(t, err)
 	err = generate(root, "2.1.12", "build-1", "2026-09-23T00:00:00Z", "revision", "tree")
 	assert.Error(t, err)
 }
@@ -115,7 +115,7 @@ func TestGenerate_PublishesManifestAtomicallyWithoutLeavingStagingFile(t *testin
 	require.NoError(t, generate(root, "2.1.12", "build-1", "2026-09-23T00:00:00Z", "revision", "tree"))
 
 	_, err := os.Stat(filepath.Join(root, constants.ZtdBinariesManifestFilename))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	_, err = os.Stat(filepath.Join(root, ".ztd-binaries.json.new"))
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
@@ -177,7 +177,7 @@ func TestGenerate_ReportsFirstMissingArtifactByFilename(t *testing.T) {
 	err := generate(root, "2.1.12", "build-1", "2026-09-23T00:00:00Z", "revision", "tree")
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, os.ErrNotExist)
+	assert.ErrorIs(t, err, os.ErrNotExist)
 	assert.Contains(t, err.Error(), missing.Filename)
 	_, statErr := os.Stat(filepath.Join(root, constants.ZtdBinariesManifestFilename))
 	assert.ErrorIs(t, statErr, os.ErrNotExist)
@@ -192,7 +192,7 @@ func TestGenerate_RejectsEmptyArtifactBecauseManifestRequiresPositiveSize(t *tes
 	err := generate(root, "2.1.12", "build-1", "2026-09-23T00:00:00Z", "revision", "tree")
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrZtdBinaryManifest)
+	assert.ErrorIs(t, err, constants.ErrZtdBinaryManifest)
 	assert.Contains(t, err.Error(), empty.Filename)
 	_, statErr := os.Stat(filepath.Join(root, constants.ZtdBinariesManifestFilename))
 	assert.ErrorIs(t, statErr, os.ErrNotExist)

@@ -12,6 +12,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,7 +44,7 @@ func TestDiscoverRemoteOperator_SelectsTheActiveDataOperator(t *testing.T) {
 		assert.Empty(t, r.Header.Get(constants.HeaderCLISessionID), "discovery runs on the Operator identity, which never carries the CLI session")
 		w.Header().Set("Content-Type", "application/json")
 		_, writeErr := w.Write(body)
-		assert.NoError(t, writeErr)
+		require.NoError(t, writeErr)
 	}))
 	t.Cleanup(server.Close)
 	client, err := New(config.Config{MTLSBaseURL: server.URL, CLISessionID: "cli-1", UserID: "user-1"})
@@ -69,7 +70,7 @@ func TestDiscoverRemoteOperator_SelectsSingleHostNativeDataOperator(t *testing.T
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, writeErr := w.Write(body)
-		assert.NoError(t, writeErr)
+		require.NoError(t, writeErr)
 	}))
 	t.Cleanup(server.Close)
 	client, err := New(config.Config{MTLSBaseURL: server.URL, CLISessionID: "cli-1", UserID: "user-1"})
@@ -175,5 +176,5 @@ func TestDiscoverRemoteOperator_PropagatesTransportErrors(t *testing.T) {
 	_, _, err = client.DiscoverRemoteOperator(context.Background())
 
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, constants.ErrEvaluationTargetUnavailable)
+	assert.False(t, errors.Is(err, constants.ErrEvaluationTargetUnavailable))
 }

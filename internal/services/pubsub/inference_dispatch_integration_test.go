@@ -360,7 +360,7 @@ func TestInferenceDispatch_ProcessEnvelope_BackendFailure_PublishesFailedComplet
 	receipt, err := svc.ProcessEnvelope(context.Background(), wire)
 
 	require.Error(t, err, "backend failure must fail the transaction")
-	require.ErrorIs(t, err, constants.ErrInferenceGenerateFailed)
+	assert.ErrorIs(t, err, constants.ErrInferenceGenerateFailed)
 	require.NotNil(t, receipt, "actuator must return a signed failed receipt")
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.Status)
 

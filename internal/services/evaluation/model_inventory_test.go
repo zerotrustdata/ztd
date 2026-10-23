@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -119,7 +120,7 @@ func TestLoadModelInventoryFreezeFile_WrapsReadErrors(t *testing.T) {
 	t.Parallel()
 	_, err := LoadModelInventoryFreezeFile(filepath.Join(testutil.TempDir(t), "missing.json"))
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.False(t, errors.Is(err, constants.ErrMissingRequiredField))
 }
 
 func TestParseParameterCount(t *testing.T) {
@@ -177,7 +178,7 @@ func TestFilterVariantsByMaxParameters(t *testing.T) {
 	assert.Equal(t, "m4", filtered[2].VariantId)
 
 	all := FilterVariantsByMaxParameters(variants, 0)
-	assert.Len(t, all, len(variants))
+	assert.Equal(t, len(variants), len(all))
 }
 
 func TestFilterVariantsByFamily(t *testing.T) {

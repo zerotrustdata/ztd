@@ -41,7 +41,6 @@ func TestDoRequest(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			expectError:    false,
 			checkBody: func(t *testing.T, body []byte) {
-				t.Helper()
 				assert.Contains(t, string(body), "status")
 			},
 			checkStatus: http.StatusOK,

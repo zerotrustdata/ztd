@@ -9,6 +9,7 @@ package evidence_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -213,5 +214,5 @@ func TestBuildFrameworkProfiles_PropagatesCancellation(t *testing.T) {
 	cancel()
 
 	_, err := evidence.BuildFrameworkProfiles(ctx, evidence.FrameworkProfileRequest{Analysis: analysis, Frameworks: frameworks})
-	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, errors.Is(err, context.Canceled))
 }

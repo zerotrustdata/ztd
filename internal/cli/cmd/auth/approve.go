@@ -128,7 +128,7 @@ prints the Operator-signed L3_DENIED rejection receipt that ends it.`,
 				fmt.Fprintf(os.Stderr, "\n[ztd] Please visit: %s\n", approvalURL)
 			}
 
-			return waitForApprovalAndVerify(ctx, cmd, approvals, txHash)
+			return waitForApprovalAndVerify(ctx, cmd, approvals, client, txHash)
 		},
 	}
 	cmd.Flags().Bool("cli", false, "sign the transaction hash with the enrolled CLI certificate")
@@ -184,8 +184,14 @@ func approveWithCLI(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *conf
 	if err := protojson.Unmarshal(resp, &receipt); err != nil {
 		return fmt.Errorf("approve: parse CLI approval receipt: %w", err)
 	}
-	if err := auth.ValidateApprovalReceipt(txHash, &receipt); err != nil {
-		return fmt.Errorf("approve: %w", err)
+	if receipt.GetTransactionHash() != txHash {
+		return fmt.Errorf("approve: receipt transaction hash %q does not match requested hash: %w", receipt.GetTransactionHash(), constants.ErrTxTransactionHashMismatch)
+	}
+	if receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return fmt.Errorf("approve: transaction %s did not complete (status %s): %w", txHash, receipt.GetStatus(), constants.ErrActionExecutionFailed)
+	}
+	if receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
+		return fmt.Errorf("approve: transaction %s did not confirm required L3 proof (status %s): %w", txHash, receipt.GetL3Status(), constants.ErrTxL3ProofInvalid)
 	}
 	cmd.Printf("\n✓ Transaction %s approved successfully\n", txHash)
 	cmd.Printf("  Receipt: %s (L3 %s)\n", receipt.GetStatus(), receipt.GetL3Status())
@@ -219,18 +225,31 @@ func subscribeApproval(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *
 	return approvals, nil
 }
 
-// waitForApprovalAndVerify checks the execution receipt on the authenticated
-// approval stream. Completed transactions have already left the pending store.
-func waitForApprovalAndVerify(ctx context.Context, cmd *cobra.Command, approvals *auth.ApprovalSubscription, txHash string) error {
+// waitForApprovalAndVerify waits on the approval subscription for the browser decision,
+// then verifies the approval status via the mTLS status endpoint.
+func waitForApprovalAndVerify(ctx context.Context, cmd *cobra.Command, approvals *auth.ApprovalSubscription, client APIClient, txHash string) error {
 	cmd.Printf("\nWaiting for browser approval (SSE)...\n")
 	receipt, err := approvals.Wait(ctx, txHash, "")
 	if err != nil {
 		return fmt.Errorf("approve: %w", err)
 	}
-	if err := auth.ValidateApprovalReceipt(txHash, receipt); err != nil {
+	// A deny resolves the wait with the Operator-signed L3_DENIED rejection.
+	if receipt.GetRejectionCode() == operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+		return fmt.Errorf("approve: transaction %s: %w", txHash, constants.ErrTxL3Denied)
+	}
+
+	resp, err := client.Get(auth.ApprovalStatusPath(txHash))
+	if err != nil {
+		return fmt.Errorf("approve: verify status: %w", err)
+	}
+
+	status, err := auth.VerifyApprovalStatus(txHash, resp)
+	if err != nil {
 		return fmt.Errorf("approve: %w", err)
 	}
 	cmd.Printf("\n✓ Transaction %s approved successfully\n", txHash)
-	cmd.Printf("  Receipt: %s (L3 %s)\n", receipt.GetStatus(), receipt.GetL3Status())
+	if status.ToolName != "" {
+		cmd.Printf("  Tool: %s\n", status.ToolName)
+	}
 	return nil
 }

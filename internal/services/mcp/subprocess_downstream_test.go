@@ -106,7 +106,7 @@ func TestSubprocessDownstream_ErrorResponse(t *testing.T) {
 
 	_, err := ds.Call(ctx, "tools/call", nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrGatewayMCPError)
+	assert.ErrorIs(t, err, constants.ErrGatewayMCPError)
 	assert.Contains(t, err.Error(), "downstream failed")
 }
 

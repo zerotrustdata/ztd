@@ -72,8 +72,8 @@ func TestNetSocketAuditTool_Execute_InvalidJSON(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := tool.Execute(ctx, json.RawMessage("{invalid json"))
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrMCPUnmarshalArguments)
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrMCPUnmarshalArguments))
 }
 
 func TestNetSocketAuditTool_Execute_InvalidProtocol(t *testing.T) {
@@ -87,8 +87,8 @@ func TestNetSocketAuditTool_Execute_InvalidProtocol(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = tool.Execute(ctx, args)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrMCPValidateProcNetInvalidProtocol)
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, constants.ErrMCPValidateProcNetInvalidProtocol))
 }
 
 func TestNetSocketAuditTool_Execute_ProtocolCaseInsensitivity(t *testing.T) {
@@ -200,12 +200,12 @@ func TestNetSocketAuditTool_Execute_ValidTCPData(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := tool.Execute(ctx, args)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, result)
 
 	var resultData NetSocketAuditResult
 	err = json.Unmarshal([]byte(result.Content[0].Text), &resultData)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Len(t, resultData.Sockets, 2)
 
 	// Verify first socket (127.0.0.1:8080 in little-endian: 0100007F:1F90)
@@ -252,12 +252,12 @@ func TestNetSocketAuditTool_Execute_ValidUDPData(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := tool.Execute(ctx, args)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, result)
 
 	var resultData NetSocketAuditResult
 	err = json.Unmarshal([]byte(result.Content[0].Text), &resultData)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Len(t, resultData.Sockets, 1)
 
 	// Verify UDP socket (127.0.0.1:53 in little-endian: 0100007F:0035)
@@ -314,12 +314,12 @@ func TestNetSocketAuditTool_Execute_EmptyProtocol(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := tool.Execute(ctx, args)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, result)
 
 	var resultData NetSocketAuditResult
 	err = json.Unmarshal([]byte(result.Content[0].Text), &resultData)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Len(t, resultData.Sockets, 2) // One TCP, one UDP
 
 	// Should have opened both TCP and UDP
@@ -355,12 +355,12 @@ func TestNetSocketAuditTool_Execute_MalformedFile(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := tool.Execute(ctx, args)
-	require.NoError(t, err) // Should handle malformed data gracefully
+	assert.NoError(t, err) // Should handle malformed data gracefully
 	assert.NotNil(t, result)
 
 	var resultData NetSocketAuditResult
 	err = json.Unmarshal([]byte(result.Content[0].Text), &resultData)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Empty(t, resultData.Sockets) // No valid sockets parsed
 }
 
@@ -387,12 +387,12 @@ func TestNetSocketAuditTool_Execute_EmptyFile(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := tool.Execute(ctx, args)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, result)
 
 	var resultData NetSocketAuditResult
 	err = json.Unmarshal([]byte(result.Content[0].Text), &resultData)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Empty(t, resultData.Sockets)
 }
 
@@ -423,12 +423,12 @@ func TestNetSocketAuditTool_Execute_OnlyHeader(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := tool.Execute(ctx, args)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, result)
 
 	var resultData NetSocketAuditResult
 	err = json.Unmarshal([]byte(result.Content[0].Text), &resultData)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Empty(t, resultData.Sockets)
 }
 
@@ -462,12 +462,12 @@ func TestNetSocketAuditTool_Execute_InvalidAddress(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := tool.Execute(ctx, args)
-	require.NoError(t, err) // Should handle invalid addresses gracefully
+	assert.NoError(t, err) // Should handle invalid addresses gracefully
 	assert.NotNil(t, result)
 
 	var resultData NetSocketAuditResult
 	err = json.Unmarshal([]byte(result.Content[0].Text), &resultData)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	// Invalid hex addresses are skipped entirely
 	assert.Empty(t, resultData.Sockets)
 }
@@ -544,7 +544,7 @@ func TestParseProcNetFile_ContextCancellation(t *testing.T) {
 	cancel() // Cancel immediately
 
 	sockets, err := parseProcNetFile(ctx, file, "tcp")
-	require.Error(t, err)
+	assert.Error(t, err)
 	assert.Equal(t, context.Canceled, err)
 	assert.Empty(t, sockets)
 }
@@ -572,7 +572,7 @@ func TestParseProcNetFile_ValidData(t *testing.T) {
 
 	ctx := context.Background()
 	sockets, err := parseProcNetFile(ctx, file, "tcp")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Len(t, sockets, 1)
 
 	assert.Equal(t, "tcp", sockets[0].Protocol)
@@ -605,7 +605,7 @@ func TestParseProcNetFile_MultipleEntries(t *testing.T) {
 
 	ctx := context.Background()
 	sockets, err := parseProcNetFile(ctx, file, "tcp")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Len(t, sockets, 3)
 }
 
@@ -631,7 +631,7 @@ func TestParseProcNetFile_SkipInvalidLines(t *testing.T) {
 
 	ctx := context.Background()
 	sockets, err := parseProcNetFile(ctx, file, "tcp")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Len(t, sockets, 2) // Only valid entries
 }
 
@@ -655,7 +655,7 @@ func TestParseProcNetFile_InsufficientFields(t *testing.T) {
 
 	ctx := context.Background()
 	sockets, err := parseProcNetFile(ctx, file, "tcp")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Empty(t, sockets) // Lines with insufficient fields are skipped
 }
 
@@ -674,7 +674,7 @@ func TestParseProcNetFile_EmptyFile(t *testing.T) {
 
 	ctx := context.Background()
 	sockets, err := parseProcNetFile(ctx, file, "tcp")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Empty(t, sockets)
 }
 
@@ -694,6 +694,6 @@ func TestNetSocketAuditTool_Execute_NilFileOpener(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrMCPToolUnsupportedPlatform)
 		return
 	}
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, result)
 }

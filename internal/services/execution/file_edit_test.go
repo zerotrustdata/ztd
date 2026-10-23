@@ -441,7 +441,7 @@ func TestFileEditService_RejectsPatchWithoutFilesystemChanges(t *testing.T) {
 			require.Empty(t, result.BackupPath)
 			after, err := os.ReadDir(tmpDir)
 			require.NoError(t, err)
-			require.Len(t, after, len(before))
+			require.Equal(t, len(before), len(after))
 			if exists {
 				data, err := os.ReadFile(tmpFile)
 				require.NoError(t, err)

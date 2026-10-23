@@ -9,6 +9,7 @@ package evidence
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -131,7 +132,6 @@ func TestAuditRecordImporter_Import_RejectsContentMutations(t *testing.T) {
 			fixture.binding.Reference = ContentReferenceForBody(constants.AuditRecordReferencePrefix, body)
 		}, targetErr: constants.ErrEvidenceArtifactMalformed},
 		{name: "malformed event binding", mutate: func(t *testing.T, fixture *auditRecordFixture) {
-			t.Helper()
 			event := &operatorv1.AuditEvent{Id: 41, OperatorSessionId: fixture.binding.OperatorSessionID, Timestamp: timesvc.FormatTimestamp(time.Unix(1_700_000_000, 0))}
 			body, err := compliancev1.MarshalCanonical(event)
 			require.NoError(t, err)
@@ -160,7 +160,6 @@ func TestAuditRecordImporter_Import_RejectsSessionAndTimestampMismatch(t *testin
 			fixture.binding.OperatorSessionID = "session-2"
 		}, targetErr: constants.ErrEvidenceScopeMismatch},
 		{name: "invalid timestamp", mutate: func(t *testing.T, fixture *auditRecordFixture) {
-			t.Helper()
 			event := &operatorv1.AuditEvent{Id: 41, OperatorSessionId: fixture.binding.OperatorSessionID, Timestamp: "invalid", Type: string(constants.EventAppTaskCompleted)}
 			body, err := compliancev1.MarshalCanonical(event)
 			require.NoError(t, err)
@@ -184,7 +183,7 @@ func TestAuditRecordImporter_Import_WrapsReadFailure(t *testing.T) {
 	readErr := fmt.Errorf("audit source unavailable")
 	_, err := NewAuditRecordImporter(&failingArtifactReader{err: readErr}, fixture.binding).Import(context.Background())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
+	assert.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
 	assert.ErrorIs(t, err, readErr)
 }
 
@@ -214,6 +213,6 @@ func TestAuditRecordImporter_Import_PreservesMissingArtifactError(t *testing.T) 
 	fixture.reader.files = map[string][]byte{}
 	_, err := NewAuditRecordImporter(fixture.reader, fixture.binding).Import(context.Background())
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
-	assert.ErrorIs(t, err, constants.ErrNotFound)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceImporterFailed))
+	assert.True(t, errors.Is(err, constants.ErrNotFound))
 }

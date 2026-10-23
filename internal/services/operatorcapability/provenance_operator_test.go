@@ -23,7 +23,7 @@ func TestSelectProvenanceOperator(t *testing.T) {
 		{Id: "prov-1", OperatorSessionId: "sess-prov-1", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}}},
 	}
 	selected, err := SelectProvenanceOperator(operators, "")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "sess-prov-1", selected.OperatorSessionID)
 }
 

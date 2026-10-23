@@ -4,7 +4,7 @@ title: Public Spectator Operations Guide
 audience: platform operators, release managers, publication reviewers
 status: current
 version: v1.3.0
-last_updated: 2026-10-23
+last_updated: 2026-10-22
 owners:
   - docs/guides/public_spectator.md
   - internal/cli/cmd/public/
@@ -34,11 +34,11 @@ The Gateway-owned public spectator runs inside the Gateway process when started 
 - **Public read/SSE** (`--public-spectator-public-listen`, default `127.0.0.1:8082`): anonymous bootstrap, snapshot, history, SSE, proof catalog/manifest, content-addressed proof downloads.
 - **Evaluation explorer** (`--eval-explorer-listen`, default `127.0.0.1:5173`): dedicated explorer listener that reads the local public listener API. The public listener also serves the explorer assets (`GET` and `HEAD`), so the public origin hosts the explorer.
 
-Publisher configuration, signing key, ingest token, and outbox state live under `.ztd/public-feed/`. The publisher's signed proof log and artifacts live under `.ztd/public-proofs/`, with its delivery checkpoint in `.ztd/proof-mirror-sync.json`. Together these form one feed generation. If generation state exists without publisher configuration, startup fails closed with `ErrPublicFeedOrphanedGeneration` instead of adopting that state. The mirror database and content-addressed proof artifacts live under `.ztd/public-mirror/`. Listeners bind loopback by default. Only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
+Publisher configuration, signing key, ingest token, and outbox state live under `.ztd/public-feed/`. The publisher's signed proof log and artifacts live under `.ztd/public-proofs/`, with its delivery checkpoint in `.ztd/proof-mirror-sync.json`. Together these form one feed generation. A new signing key never adopts a previous generation's state; startup fails closed with `ErrPublicFeedOrphanedGeneration`. The mirror database and content-addressed proof artifacts live under `.ztd/public-mirror/`. Listeners bind loopback by default. Only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
 
 Restarting the Gateway preserves mirror state and publisher outbox state.
 
-Campaign publication from the host CLI uses mTLS with the host CLI certificate and `POST /api/v1/public-feed/batches`.
+Campaign publication from the host CLI uses owner mTLS and `POST /api/v1/public-feed/batches`.
 
 For an existing run, use verified catch-up after the verification report is persisted. Set the shell variable `RUN_ID` to the ID of the run to publish, then run:
 
@@ -46,7 +46,7 @@ For an existing run, use verified catch-up after the verification report is pers
 ./ztd eval runs publish "$RUN_ID"
 ```
 
-During catch-up, the publication coordinator checks the Gateway-owned dataset with one server-filtered mirror history request; a withdrawn dataset reads as absent. If the dataset is absent while host publication idempotency still lists records, it clears stale state and republishes the canonical run. Use `--force` after a Gateway mirror volume wipe. It clears host publication idempotency and republishes all projections.
+During catch-up, the publication coordinator checks the Gateway-owned dataset with one server-filtered mirror history request; a withdrawn dataset reads as absent. If the dataset is absent while host publication idempotency still lists records, it clears stale state and republishes the canonical run. Use `--force` only when the mirror was wiped or is known to be missing records.
 
 To republish every run that is not archived, run:
 
@@ -107,7 +107,7 @@ Start the Gateway with `--public-base-url https://opendevops.ai` so the embedded
 
 After starting the tunnel, verify HTTPS, CORS, bounded reads, rate limiting, replayable SSE, proof catalog, proof manifest, and content-addressed proof download from an external client.
 
-Confirm that mutation requests (`POST`) to `/ingest`, `/keys/register`, `/proof-ingest`, and any other non-read path return 404 on the public origin. The public origin serves only the anonymous read allowlist and explorer assets. A `GET` to a path outside that allowlist returns the explorer `index.html` (HTTP 200), not an API response, so Gateway management, MCP, A2A, approval, and audit paths are not reachable there.
+Confirm `/ingest`, `/keys/register`, `/proof-ingest`, Gateway management, MCP, A2A, approval, and audit paths return 404 on the public origin.
 
 Scan public responses and proof bytes for credentials, private endpoints, machine paths, SPIFFE identities, raw prompts, or model outputs before publication.
 
@@ -122,7 +122,7 @@ Scan public responses and proof bytes for credentials, private endpoints, machin
 ./ztd public restore --queue
 ```
 
-`public publish` durably appends records before transmission. `public push` retries outbox delivery and pushes the proof package. When publication is Gateway-owned (no host publisher configuration and a healthy Gateway), `public push` prints that the Gateway-owned public mirror is already synchronized and does nothing. `public restore --queue` republishes completed, passing verified runs from the campaign queue to the mirror.
+`public publish` durably appends records before transmission. `public push` retries outbox delivery and pushes the proof package without re-executing inference. `public restore --queue` republishes completed, passing verified runs from the campaign queue to the mirror after a storage reset.
 
 ## Links out
 

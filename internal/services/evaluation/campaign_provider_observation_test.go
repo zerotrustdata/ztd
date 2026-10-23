@@ -84,13 +84,13 @@ func TestCampaignProviderObservationReader_BuildPublicBenchmarkObservations(t *t
 	require.NoError(t, err)
 	require.NotNil(t, benchmark)
 	require.NotNil(t, benchmark.Timing)
-	assert.InDelta(t, 2.0, *benchmark.Timing.ModelLoadMS.Value, 0)
-	assert.InDelta(t, 40.0, *benchmark.Timing.GenerationMS.Value, 0)
+	assert.Equal(t, 2.0, *benchmark.Timing.ModelLoadMS.Value)
+	assert.Equal(t, 40.0, *benchmark.Timing.GenerationMS.Value)
 	require.NotNil(t, benchmark.GPU)
-	assert.InDelta(t, 1000.0, *benchmark.GPU.VRAMBeforeBytes.Value, 0)
-	assert.InDelta(t, 3000.0, *benchmark.GPU.VRAMPeakBytes.Value, 0)
-	assert.InDelta(t, 4000.0, *benchmark.GPU.SystemRAMPeakBytes.Value, 0)
-	assert.InDelta(t, 42.0, *benchmark.GPU.UtilizationPercent.Value, 0)
+	assert.Equal(t, 1000.0, *benchmark.GPU.VRAMBeforeBytes.Value)
+	assert.Equal(t, 3000.0, *benchmark.GPU.VRAMPeakBytes.Value)
+	assert.Equal(t, 4000.0, *benchmark.GPU.SystemRAMPeakBytes.Value)
+	assert.Equal(t, 42.0, *benchmark.GPU.UtilizationPercent.Value)
 }
 
 func TestBuildPublicGradeSummaries_FromDeterministicGrades(t *testing.T) {
@@ -118,7 +118,7 @@ func TestBuildToolScorecardObservations_FailingToolSelection(t *testing.T) {
 		}},
 	})
 	require.NotNil(t, scorecard["tool_selection"])
-	assert.InDelta(t, 0.0, *scorecard["tool_selection"].Value, 0)
+	assert.Equal(t, 0.0, *scorecard["tool_selection"].Value)
 	assert.Equal(t, "scenario_not_applicable", scorecard["tool_recognition"].UnavailableReason)
 }
 
@@ -204,7 +204,7 @@ func TestMarshalAssignmentResultProjectionEnvelope_IncludesToolScorecard(t *test
 	require.True(t, ok)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Value)
-	assert.InDelta(t, 0.0, *selection.Value, 0)
+	assert.Equal(t, 0.0, *selection.Value)
 }
 
 func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_InterimMissingWindow(t *testing.T) {
@@ -232,11 +232,11 @@ func TestSaveProviderAttemptRecord_ReportsTypedPreconditionErrors(t *testing.T) 
 
 	err := store.SaveProviderAttemptRecord(ctx, "eval-1022-13:30-1792701045", &operatorv1.InferenceProviderAttemptRecord{ProviderAttemptId: "attempt-1"})
 	require.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)
-	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	assert.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
 
 	err = store.SaveProviderAttemptRecord(ctx, "run-1", &operatorv1.InferenceProviderAttemptRecord{})
 	require.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)
-	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 
 	err = store.SaveProviderObservationWindow(ctx, "run-1", nil)
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
@@ -303,7 +303,7 @@ func TestMarshalAssignmentResultProjectionEnvelope_IncludesBenchmarkObservations
 	require.NotNil(t, record.BenchmarkObservations.GPU)
 	require.NotNil(t, record.BenchmarkObservations.GPU.VRAMPeakBytes)
 	require.NotNil(t, record.BenchmarkObservations.GPU.VRAMPeakBytes.Value)
-	assert.InDelta(t, 4096.0, *record.BenchmarkObservations.GPU.VRAMPeakBytes.Value, 0)
+	assert.Equal(t, 4096.0, *record.BenchmarkObservations.GPU.VRAMPeakBytes.Value)
 }
 
 func TestCampaignRunVerifier_WithReaders(t *testing.T) {
@@ -327,6 +327,6 @@ func TestBuildPublicBenchmarkObservations_UnconfiguredObserverKeepsResultTelemet
 	benchmark, err := (*CampaignProviderObservationReader)(nil).BuildPublicBenchmarkObservations(context.Background(), result)
 	require.NoError(t, err)
 	require.NotNil(t, benchmark.Timing)
-	assert.InDelta(t, 1.0, *benchmark.Timing.ModelLoadMS.Value, 0)
+	assert.Equal(t, 1.0, *benchmark.Timing.ModelLoadMS.Value)
 	assert.Contains(t, benchmark.UnavailableReasons, "source_not_captured")
 }

@@ -41,7 +41,7 @@ func TestNewEvalCampaignPublicationService_RejectsMissingDependencies(t *testing
 	t.Cleanup(func() { _ = db.Close() })
 
 	_, err = NewEvalCampaignPublicationService(nil, func() *PublicSpectatorRuntime { return nil })
-	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	_, err = NewEvalCampaignPublicationService(NewDocumentStoreService(db, logger), nil)
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }

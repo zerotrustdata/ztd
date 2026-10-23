@@ -17,7 +17,6 @@ import (
 )
 
 func testAttestationWindow(t *testing.T, providerAttemptID string) *evalv1.ModelProvenanceAttestationWindow {
-	t.Helper()
 	digest := strings.Repeat("a", 64)
 	window := &evalv1.ModelProvenanceAttestationWindow{
 		SchemaVersion:              SchemaVersion,

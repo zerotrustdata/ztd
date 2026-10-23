@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -129,7 +130,7 @@ func TestBuildPublicAssignmentProjectionRejectsScopeMismatch(t *testing.T) {
 		ScenarioContext: &PublicScenarioContext{ScenarioID: "scenario-1"},
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceScopeMismatch))
 }
 
 func projectionUint32Ptr(value uint32) *uint32 {

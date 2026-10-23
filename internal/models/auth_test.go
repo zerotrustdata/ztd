@@ -135,7 +135,7 @@ func TestUserWebAuthnIcon_AlwaysReturnsEmpty(t *testing.T) {
 	t.Parallel()
 
 	u := &User{ID: "user-1"}
-	assert.Empty(t, u.WebAuthnIcon())
+	assert.Equal(t, "", u.WebAuthnIcon())
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ func TestUserWebAuthnCredentials_EmptyCredentialsReturnsEmptySlice(t *testing.T)
 	u := &User{ID: "user-1"}
 	creds := u.WebAuthnCredentials()
 
-	assert.Empty(t, creds)
+	assert.Len(t, creds, 0)
 }
 
 func TestUserWebAuthnCredentials_ConvertsPasskeyCredentialsToWebAuthnFormat(t *testing.T) {

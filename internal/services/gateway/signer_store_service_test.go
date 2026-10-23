@@ -55,11 +55,11 @@ func TestSignerStoreService_AddTrustedSigner(t *testing.T) {
 		}
 
 		err := svc.AddTrustedSigner(t.Context(), signer)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		// Verify it was added
 		retrieved, err := svc.GetTrustedSigner(t.Context(), "signer-1")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, pubKey, retrieved)
 	})
 
@@ -99,11 +99,11 @@ func TestSignerStoreService_AddTrustedSigner(t *testing.T) {
 		}
 
 		err := svc.AddTrustedSigner(t.Context(), signer)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		// Retrieve and verify AddedAt was set
 		list, err := svc.ListTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Len(t, list, 1)
 		assert.False(t, list[0].AddedAt.IsZero())
 	})
@@ -120,11 +120,11 @@ func TestSignerStoreService_AddTrustedSigner(t *testing.T) {
 		}
 
 		err := svc.AddTrustedSigner(t.Context(), signer)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		// Retrieve and verify AddedAt was preserved
 		list, err := svc.ListTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Len(t, list, 1)
 		assert.Equal(t, expectedTime, list[0].AddedAt)
 	})
@@ -150,11 +150,11 @@ func TestSignerStoreService_AddTrustedSigner(t *testing.T) {
 			Enabled:   true,
 		}
 		err = svc.AddTrustedSigner(t.Context(), signer2)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		// Verify update
 		retrieved, err := svc.GetTrustedSigner(t.Context(), "signer-5")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, pubKey2, retrieved)
 	})
 }
@@ -163,7 +163,7 @@ func TestSignerStoreService_GetTrustedSigner(t *testing.T) {
 	t.Run("GetTrustedSigner returns nil for non-existent signer", func(t *testing.T) {
 		svc := setupSignerStore(t)
 		pubKey, err := svc.GetTrustedSigner(t.Context(), "nonexistent")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Nil(t, pubKey)
 	})
 
@@ -179,7 +179,7 @@ func TestSignerStoreService_GetTrustedSigner(t *testing.T) {
 		require.NoError(t, err)
 
 		retrieved, err := svc.GetTrustedSigner(t.Context(), "signer-enabled")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, pubKey, retrieved)
 	})
 
@@ -195,7 +195,7 @@ func TestSignerStoreService_GetTrustedSigner(t *testing.T) {
 		require.NoError(t, err)
 
 		retrieved, err := svc.GetTrustedSigner(t.Context(), "signer-disabled")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Nil(t, retrieved)
 	})
 
@@ -220,7 +220,7 @@ func TestGetTrustedSigner_NoSelfDescribingFallback(t *testing.T) {
 	// A well-formed 64-hex key id that names no registered signer must not
 	// resolve to a key: the id is never decoded into the key it describes.
 	retrieved, err := svc.GetTrustedSigner(t.Context(), keyID)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Nil(t, retrieved)
 }
 
@@ -228,7 +228,7 @@ func TestSignerStoreService_ListTrustedSigners(t *testing.T) {
 	t.Run("ListTrustedSigners returns empty list when no signers", func(t *testing.T) {
 		svc := setupSignerStore(t)
 		list, err := svc.ListTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Empty(t, list)
 	})
 
@@ -250,7 +250,7 @@ func TestSignerStoreService_ListTrustedSigners(t *testing.T) {
 		}
 
 		list, err := svc.ListTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Len(t, list, 3)
 
 		// Verify IDs are preserved
@@ -283,7 +283,7 @@ func TestSignerStoreService_ListTrustedSigners(t *testing.T) {
 		require.NoError(t, err)
 
 		list, err := svc.ListTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Len(t, list, 2)
 	})
 
@@ -298,7 +298,7 @@ func TestSignerStoreService_DeleteTrustedSigner(t *testing.T) {
 	t.Run("DeleteTrustedSigner returns false for non-existent signer", func(t *testing.T) {
 		svc := setupSignerStore(t)
 		deleted, err := svc.DeleteTrustedSigner(t.Context(), "nonexistent")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.False(t, deleted)
 	})
 
@@ -320,12 +320,12 @@ func TestSignerStoreService_DeleteTrustedSigner(t *testing.T) {
 
 		// Delete it
 		deleted, err := svc.DeleteTrustedSigner(t.Context(), "signer-to-delete")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.True(t, deleted)
 
 		// Verify it's gone
 		retrieved, err = svc.GetTrustedSigner(t.Context(), "signer-to-delete")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Nil(t, retrieved)
 	})
 
@@ -342,12 +342,12 @@ func TestSignerStoreService_DeleteTrustedSigner(t *testing.T) {
 
 		// First delete
 		deleted, err := svc.DeleteTrustedSigner(t.Context(), "signer-multi-delete")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.True(t, deleted)
 
 		// Second delete
 		deleted, err = svc.DeleteTrustedSigner(t.Context(), "signer-multi-delete")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.False(t, deleted)
 	})
 }
@@ -356,7 +356,7 @@ func TestSignerStoreService_HasTrustedSigners(t *testing.T) {
 	t.Run("HasTrustedSigners returns false when no signers", func(t *testing.T) {
 		svc := setupSignerStore(t)
 		has, err := svc.HasTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.False(t, has)
 	})
 
@@ -372,7 +372,7 @@ func TestSignerStoreService_HasTrustedSigners(t *testing.T) {
 		require.NoError(t, err)
 
 		has, err := svc.HasTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.True(t, has)
 	})
 
@@ -388,7 +388,7 @@ func TestSignerStoreService_HasTrustedSigners(t *testing.T) {
 		require.NoError(t, err)
 
 		has, err := svc.HasTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.False(t, has)
 	})
 
@@ -414,7 +414,7 @@ func TestSignerStoreService_HasTrustedSigners(t *testing.T) {
 		require.NoError(t, err)
 
 		has, err := svc.HasTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.True(t, has)
 	})
 }
@@ -456,11 +456,11 @@ func TestSignerStoreService_Integration(t *testing.T) {
 
 		// Verify gone
 		retrieved, err = svc.GetTrustedSigner(t.Context(), "lifecycle-signer")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Nil(t, retrieved)
 
 		has, err = svc.HasTrustedSigners(t.Context())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.False(t, has)
 	})
 

@@ -31,7 +31,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "executed",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				return signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 			},
 			want: Outcome{
@@ -44,7 +43,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "execution failed",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 				receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
@@ -62,7 +60,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "rejected with code",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				return signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
 			},
 			want: Outcome{
@@ -75,7 +72,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "rejected with unclassified code is still a rejection",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				return signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED)
 			},
 			want: Outcome{
@@ -88,7 +84,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "rejected with an L5 execution stage",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
 				receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, &operatorv1.DeterministicStageEvidence{
 					StageId: "tx-1:L5", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L5_EXECUTION,
@@ -102,7 +97,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "rejected with a commitment-append stage",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
 				receipt.DeterministicStageEvidence = append(receipt.DeterministicStageEvidence, &operatorv1.DeterministicStageEvidence{
 					StageId: "tx-1:COMMIT", Kind: operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND,
@@ -117,7 +111,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "executed with no commitment stage",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				stages := receipt.DeterministicStageEvidence[:0]
 				for _, stage := range receipt.DeterministicStageEvidence {
@@ -134,7 +127,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "executed with an empty commitment hash",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).CommitmentHash = ""
 				signer.Resign(t, receipt)
@@ -145,7 +137,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "executed genesis commitment (empty prior hash)",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				return signer.Executed(t, verifyOpts("op-1"), "", "hash-1")
 			},
 			want: Outcome{
@@ -158,7 +149,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "executed with an empty commitment hash",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				findStage(receipt, operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_COMMITMENT_APPEND).CommitmentHash = ""
 				signer.Resign(t, receipt)
@@ -169,7 +159,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "rejection code on a completed receipt",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				receipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE
 				signer.Resign(t, receipt)
@@ -180,7 +169,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "failure code on a completed receipt",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
 				signer.Resign(t, receipt)
@@ -191,7 +179,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "executing status is not terminal",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Executed(t, verifyOpts("op-1"), "prior-0", "hash-1")
 				receipt.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING
 				signer.Resign(t, receipt)
@@ -202,7 +189,6 @@ func TestClassify(t *testing.T) {
 		{
 			name: "failed receipt with no L5 stage and no governance failure",
 			build: func(t *testing.T) *operatorv1.ActionReceipt {
-				t.Helper()
 				receipt := signer.Rejected(t, verifyOpts("op-1"), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)
 				receipt.FailureCode = operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_EXECUTION_FAILED
 				receipt.RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
@@ -211,7 +197,7 @@ func TestClassify(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		{name: "nil receipt", build: func(t *testing.T) *operatorv1.ActionReceipt { t.Helper(); return nil }, wantErr: true},
+		{name: "nil receipt", build: func(t *testing.T) *operatorv1.ActionReceipt { return nil }, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

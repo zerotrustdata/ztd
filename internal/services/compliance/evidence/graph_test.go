@@ -103,7 +103,7 @@ func TestEvidenceGraph_AddNode_RejectsEmptyArtifactID(t *testing.T) {
 	node.ArtifactID = ""
 	err := g.AddNode(node)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceArtifactMalformed))
 	assert.False(t, g.Valid())
 }
 
@@ -113,7 +113,7 @@ func TestEvidenceGraph_AddNode_RejectsEmptySHA256(t *testing.T) {
 	node.SHA256 = ""
 	err := g.AddNode(node)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceArtifactMalformed))
 }
 
 func TestEvidenceGraph_AddNode_RejectsEmptyScopeID(t *testing.T) {
@@ -122,7 +122,7 @@ func TestEvidenceGraph_AddNode_RejectsEmptyScopeID(t *testing.T) {
 	node.ScopeID = ""
 	err := g.AddNode(node)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceScopeMismatch))
 }
 
 func TestEvidenceGraph_AddNode_RejectsOversizedArtifact(t *testing.T) {
@@ -130,7 +130,7 @@ func TestEvidenceGraph_AddNode_RejectsOversizedArtifact(t *testing.T) {
 	node := validNode(ArtifactTypeEvalManifest, "scope-1", []byte(`this is more than 10 bytes`))
 	err := g.AddNode(node)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactTooLarge)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceArtifactTooLarge))
 }
 
 func TestEvidenceGraph_AddNode_AllowsZeroMaxBytes(t *testing.T) {
@@ -147,7 +147,7 @@ func TestEvidenceGraph_AddNode_RejectsUnsupportedMediaType(t *testing.T) {
 	node.MediaType = "application/xml"
 	err := g.AddNode(node)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceMediaTypeUnsupported)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceMediaTypeUnsupported))
 }
 
 func TestEvidenceGraph_AddNode_AllowsEmptyMediaTypeWithAllowList(t *testing.T) {
@@ -163,7 +163,7 @@ func TestEvidenceGraph_AddNode_RejectsPathTraversalBundlePath(t *testing.T) {
 	node.BundlePath = "../escape.json"
 	err := g.AddNode(node)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPathValidation)
+	assert.True(t, errors.Is(err, constants.ErrPathValidation))
 }
 
 func TestEvidenceGraph_AddNode_RejectsAbsoluteBundlePath(t *testing.T) {
@@ -172,7 +172,7 @@ func TestEvidenceGraph_AddNode_RejectsAbsoluteBundlePath(t *testing.T) {
 	node.BundlePath = "/etc/passwd"
 	err := g.AddNode(node)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPathValidation)
+	assert.True(t, errors.Is(err, constants.ErrPathValidation))
 }
 
 func TestEvidenceGraph_AddNode_AcceptsDuplicateWithSameContent(t *testing.T) {
@@ -195,7 +195,7 @@ func TestEvidenceGraph_AddNode_RejectsDuplicateWithConflictingContent(t *testing
 	node2.SHA256 = hex.EncodeToString(otherDigest[:])
 	err := g.AddNode(node2)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceDuplicateContent)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceDuplicateContent))
 }
 
 func TestEvidenceGraph_AddNode_RejectsDuplicateWithConflictingScope(t *testing.T) {
@@ -207,7 +207,7 @@ func TestEvidenceGraph_AddNode_RejectsDuplicateWithConflictingScope(t *testing.T
 	node2.ScopeID = "scope-2"
 	err := g.AddNode(node2)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
+	assert.True(t, errors.Is(err, constants.ErrEvidenceScopeMismatch))
 }
 
 func TestEvidenceGraph_AddNode_DeduplicatesMirroredArtifactAcrossSourceAdmissions(t *testing.T) {
@@ -547,7 +547,7 @@ func TestEvidenceGraph_ValidateAll_RunsAllChecksInOrder(t *testing.T) {
 	require.NoError(t, g.AddNode(node))
 	g.ValidateAll(time.Time{}, time.Time{})
 	assert.False(t, g.Valid())
-	assert.NotEmpty(t, g.Failures())
+	assert.Greater(t, len(g.Failures()), 0)
 }
 
 func TestEvidenceGraph_ValidateAll_PassesForValidGraph(t *testing.T) {

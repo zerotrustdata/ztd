@@ -73,14 +73,14 @@ func TestCanonicalDBService_SSEEventsListAllSince(t *testing.T) {
 	assert.Len(t, rows, 2, "Should return 2 events after ID 3")
 }
 
-func newTestDB(tb testing.TB) *CanonicalDBService {
-	tb.Helper()
-	fileSvc := newTestFileSvc(tb)
+func newTestDB(t testing.TB) *CanonicalDBService {
+	t.Helper()
+	fileSvc := newTestFileSvc(t)
 	logger := testutil.NewTestLogger()
-	ks := newTestKeystore(tb, fileSvc, logger)
+	ks := newTestKeystore(t, fileSvc, logger)
 	db, err := OpenCanonicalDBService(logger, ks, fileSvc)
-	require.NoError(tb, err)
-	tb.Cleanup(func() { db.Close() })
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
 	return db
 }
 
@@ -369,7 +369,15 @@ func TestDocQuery_UnknownOpIsSkipped(t *testing.T) {
 // BlobStore overwrite
 // ---------------------------------------------------------------------------
 
-func TestSSEEventsAppendAndListSince(t *testing.T) {
+func TestSSEEventsCount_EmptyTable(t *testing.T) {
+	db := newTestDB(t)
+
+	count, err := db.GetSSEStore().SSEEventsCount()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), count)
+}
+
+func TestSSEEventsAppendAndCount(t *testing.T) {
 	db := newTestDB(t)
 
 	_, err := db.GetSSEStore().SSEEventsAppend(SSERoute{UserID: "test-user", WebSessionID: "sess-1"}, "TEXT", `{"chunk":"hello"}`, "")
@@ -379,13 +387,34 @@ func TestSSEEventsAppendAndListSince(t *testing.T) {
 	_, err = db.GetSSEStore().SSEEventsAppend(SSERoute{UserID: "test-user", CLISessionID: "sess-2"}, "DONE", `{}`, "")
 	require.NoError(t, err)
 
-	webRows, err := db.GetSSEStore().SSEEventsListSince(SSERoute{UserID: "test-user", WebSessionID: "sess-1"}, 0, 100)
+	count, err := db.GetSSEStore().SSEEventsCount()
 	require.NoError(t, err)
-	assert.Len(t, webRows, 2)
+	assert.Equal(t, int64(3), count)
+}
 
-	cliRows, err := db.GetSSEStore().SSEEventsListSince(SSERoute{UserID: "test-user", CLISessionID: "sess-2"}, 0, 100)
+func TestSSEEventsWipe_DeletesAllRows(t *testing.T) {
+	db := newTestDB(t)
+
+	_, err := db.GetSSEStore().SSEEventsAppend(SSERoute{UserID: "test-user", WebSessionID: "sess-1"}, "TEXT", `{"chunk":"a"}`, "")
 	require.NoError(t, err)
-	assert.Len(t, cliRows, 1)
+	_, err = db.GetSSEStore().SSEEventsAppend(SSERoute{UserID: "test-user", CLISessionID: "sess-2"}, "DONE", `{}`, "")
+	require.NoError(t, err)
+
+	deleted, err := db.GetSSEStore().SSEEventsWipe()
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), deleted)
+
+	count, err := db.GetSSEStore().SSEEventsCount()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), count)
+}
+
+func TestSSEEventsWipe_EmptyTableReturnsZero(t *testing.T) {
+	db := newTestDB(t)
+
+	deleted, err := db.GetSSEStore().SSEEventsWipe()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), deleted)
 }
 
 // ---------------------------------------------------------------------------

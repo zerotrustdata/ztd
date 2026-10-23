@@ -146,7 +146,7 @@ func TestL5ActuatorExecutePersistsReceiptAndCommitment(t *testing.T) {
 	require.NoError(t, compliancev1.UnmarshalCanonical(commitments[0].AttestationJSON, storedAttestation))
 	canonicalJSON, err := compliancev1.MarshalCanonical(storedAttestation)
 	require.NoError(t, err)
-	require.Equal(t, canonicalJSON, commitments[0].AttestationJSON) //nolint:testifylint // exact bytes, not JSON equivalence
+	require.Equal(t, canonicalJSON, commitments[0].AttestationJSON)
 	require.Equal(t, commitments[0].Hash, storedAttestation.Hash)
 	require.Equal(t, commitments[0].PriorCommitmentHash, storedAttestation.PriorCommitmentHash)
 	canonicalSigningBytes, err := CanonicalizeCommitmentAttestation(storedAttestation)
@@ -283,7 +283,7 @@ func TestL5ActuatorExecuteCommitmentFailureStopsBeforeHandler(t *testing.T) {
 
 	receipt, err := actuator.Execute(context.Background(), vt, nil)
 	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrL5ActuatorCommitmentPersist)
+	assert.True(t, errors.Is(err, constants.ErrL5ActuatorCommitmentPersist))
 	assert.Nil(t, receipt)
 	assert.False(t, handler.executed)
 	commitments, listErr := auditStore.CommitmentLedger().ListCommitments()

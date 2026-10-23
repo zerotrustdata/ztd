@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 
@@ -40,6 +41,12 @@ type GatewayWebSocketHandler struct {
 	mu          sync.RWMutex
 	connections map[*wsSubscriber]struct{}
 	subscribers map[string]map[*wsSubscriber]struct{}
+	// patternSubscribers maps a glob pattern (e.g. "heartbeat:*") to the
+	// subscribers registered via PSUBSCRIBE. Fan-out in Publish matches the
+	// published channel against each pattern with path.Match and delivers a
+	// pmessage event to every matching subscriber. Keyed by glob pattern,
+	// parallel to subscribers.
+	patternSubscribers map[string]map[*wsSubscriber]struct{}
 
 	// In-process handlers for governance command processing and SSE streaming
 	handlersMu    sync.RWMutex
@@ -210,10 +217,11 @@ func (s *wsSubscriber) shutdown() {
 // NewGatewayWebSocketHandler creates a new pub/sub broker.
 func NewGatewayWebSocketHandler(logger *slog.Logger) *GatewayWebSocketHandler {
 	return &GatewayWebSocketHandler{
-		logger:      logger,
-		connections: make(map[*wsSubscriber]struct{}),
-		subscribers: make(map[string]map[*wsSubscriber]struct{}),
-		handlers:    make(map[string]map[int64]func(string, []byte)),
+		logger:             logger,
+		connections:        make(map[*wsSubscriber]struct{}),
+		subscribers:        make(map[string]map[*wsSubscriber]struct{}),
+		patternSubscribers: make(map[string]map[*wsSubscriber]struct{}),
+		handlers:           make(map[string]map[int64]func(string, []byte)),
 	}
 }
 
@@ -278,6 +286,35 @@ func (b *GatewayWebSocketHandler) Publish(channel string, data []byte) int {
 			b.logger.Error("pubsub: failed to marshal event", "channel", channel, "error", err)
 			b.mu.RUnlock()
 			return 0
+		}
+		for sub := range subs {
+			deliveries = append(deliveries, delivery{sub: sub, msg: msg})
+		}
+	}
+	// Pattern fan-out: for each registered glob pattern, match it against
+	// the published channel and deliver a pmessage event to every matching
+	// pattern subscriber. path.Match implements the same glob semantics as
+	// Redis PSUBSCRIBE and the mock gateway's fnmatch: '*' spans the whole
+	// tail because channels use ':' (never '/') as the delimiter.
+	for pattern, subs := range b.patternSubscribers {
+		matched, err := path.Match(pattern, channel)
+		if err != nil {
+			b.logger.Warn("pubsub: malformed pattern in patternSubscribers, skipping", "pattern", pattern, "error", err)
+			continue
+		}
+		if !matched {
+			continue
+		}
+		event := &pubsubv1.PubSubEvent{
+			Type:    constants.PubSubEventPMessage,
+			Channel: channel,
+			Pattern: pattern,
+			Data:    data,
+		}
+		msg, err := proto.Marshal(event)
+		if err != nil {
+			b.logger.Error("pubsub: failed to marshal pmessage event", "channel", channel, "pattern", pattern, "error", err)
+			continue
 		}
 		for sub := range subs {
 			deliveries = append(deliveries, delivery{sub: sub, msg: msg})
@@ -479,7 +516,7 @@ func (h *pubSubSessionHandler) handleAction(msg *pubsubv1.PubSubMessage) {
 	switch msg.Action {
 	case constants.PubSubActionSubscribe:
 		// Enforce topic ACL: subscriber can only subscribe to channels matching their identity
-		if err := verifyChannelACL(msg.Channel, h.sub.operatorID, h.sub.operatorSessionID); err != nil {
+		if err := verifyChannelACL(msg.Channel, h.sub.operatorID); err != nil {
 			h.broker.logger.Warn("PubSub subscription rejected: ACL violation", "channel", msg.Channel, "error", err.Error())
 			return
 		}
@@ -488,8 +525,27 @@ func (h *pubSubSessionHandler) handleAction(msg *pubsubv1.PubSubMessage) {
 			h.broker.logger.Warn("pubsub: failed to send subscription ack", "channel", msg.Channel, "error", err)
 		}
 		h.announceCommandSubscribed(msg.Channel)
+	case constants.PubSubActionPSubscribe:
+		// Enforce topic ACL on the pattern before registering it. The
+		// wildcard '*' is permitted only at the operator_id segment
+		// position; cross-operator patterns are rejected so a subscriber
+		// cannot PSUBSCRIBE heartbeat:* and receive every operator's
+		// heartbeats.
+		if err := verifyPatternACL(msg.Channel, h.sub.operatorID); err != nil {
+			h.broker.logger.Warn("PubSub pattern subscription rejected: ACL violation", "pattern", msg.Channel, "error", err.Error())
+			return
+		}
+		h.broker.psubscribe(msg.Channel, h.sub)
+		if err := h.broker.sendAck(h.sub, msg.Channel); err != nil {
+			h.broker.logger.Warn("pubsub: failed to send psubscribe ack", "pattern", msg.Channel, "error", err)
+		}
 	case constants.PubSubActionUnsubscribe:
+		// Clients send UNSUBSCRIBE for both exact and pattern
+		// subscriptions; there is no separate PUNSUBSCRIBE action on the
+		// wire. Evict from both maps so either kind of subscription is
+		// torn down.
 		h.broker.unsubscribe(msg.Channel, h.sub)
+		h.broker.punsubscribe(msg.Channel, h.sub)
 	case constants.PubSubActionPublish:
 		h.handlePublish(msg)
 	}
@@ -763,6 +819,34 @@ func (b *GatewayWebSocketHandler) unsubscribe(channel string, sub *wsSubscriber)
 	}
 }
 
+// psubscribe registers sub for pattern deliveries. The caller must have
+// already enforced verifyPatternACL; this method performs no ACL check.
+func (b *GatewayWebSocketHandler) psubscribe(pattern string, sub *wsSubscriber) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.patternSubscribers[pattern] == nil {
+		b.patternSubscribers[pattern] = make(map[*wsSubscriber]struct{})
+	}
+	b.patternSubscribers[pattern][sub] = struct{}{}
+}
+
+// punsubscribe removes sub from a single pattern's subscriber set. The
+// Clients send UNSUBSCRIBE for both exact and pattern subscriptions
+// (there is no separate PUNSUBSCRIBE action on the wire), so the
+// PubSubActionUnsubscribe case calls both unsubscribe and punsubscribe.
+func (b *GatewayWebSocketHandler) punsubscribe(pattern string, sub *wsSubscriber) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if subs, ok := b.patternSubscribers[pattern]; ok {
+		delete(subs, sub)
+		if len(subs) == 0 {
+			delete(b.patternSubscribers, pattern)
+		}
+	}
+}
+
 func (b *GatewayWebSocketHandler) removeSub(sub *wsSubscriber) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -772,6 +856,12 @@ func (b *GatewayWebSocketHandler) removeSub(sub *wsSubscriber) {
 		delete(subs, sub)
 		if len(subs) == 0 {
 			delete(b.subscribers, ch)
+		}
+	}
+	for pattern, subs := range b.patternSubscribers {
+		delete(subs, sub)
+		if len(subs) == 0 {
+			delete(b.patternSubscribers, pattern)
 		}
 	}
 }
@@ -825,6 +915,12 @@ func (b *GatewayWebSocketHandler) DisconnectIdentity(spiffeID string) int {
 				delete(b.subscribers, channel)
 			}
 		}
+		for pattern, subscribers := range b.patternSubscribers {
+			delete(subscribers, sub)
+			if len(subscribers) == 0 {
+				delete(b.patternSubscribers, pattern)
+			}
+		}
 	}
 	b.mu.Unlock()
 	for _, sub := range matches {
@@ -845,8 +941,14 @@ func (b *GatewayWebSocketHandler) Close() {
 			seen[sub] = struct{}{}
 		}
 	}
+	for _, subscribers := range b.patternSubscribers {
+		for sub := range subscribers {
+			seen[sub] = struct{}{}
+		}
+	}
 	b.connections = make(map[*wsSubscriber]struct{})
 	b.subscribers = make(map[string]map[*wsSubscriber]struct{})
+	b.patternSubscribers = make(map[string]map[*wsSubscriber]struct{})
 	b.mu.Unlock()
 
 	for sub := range seen {
@@ -889,9 +991,8 @@ func extractMTLSIdentity(r *http.Request) (string, string) {
 
 // verifyChannelACL enforces topic ACLs (Plan §5).
 // Subscribers can only subscribe to channels matching their mTLS workload identity.
-// Channel format: <prefix>:<operator_id>:<operator_session_id>. operatorSessionID
-// is the session named by an Operator certificate; it is empty for app workloads.
-func verifyChannelACL(channel, operatorID, operatorSessionID string) error {
+// Channel format: results:<operator_id>:<cli_session_id> or heartbeat:<operator_id>
+func verifyChannelACL(channel, operatorID string) error {
 	if operatorID == "" {
 		// If no operator_id in cert, reject subscription
 		return constants.ErrPubSubCertificateMissingOperatorID
@@ -906,20 +1007,32 @@ func verifyChannelACL(channel, operatorID, operatorSessionID string) error {
 
 	// The second part should be the operator_id
 	if parts[1] != operatorID {
-		return fmt.Errorf("%w: channel operator_id mismatch: channel=%s, cert=%s",
-			constants.ErrPubSubSubscribeUnauthorized, parts[1], operatorID)
+		return fmt.Errorf("channel operator_id mismatch: channel=%s, cert=%s", parts[1], operatorID)
 	}
 
-	// An Operator certificate is issued for one session; it may subscribe
-	// only to that session's channels, so a superseded session's certificate
-	// cannot receive the current session's commands.
-	if operatorSessionID != "" {
-		if len(parts) != 3 || parts[2] != operatorSessionID {
-			return fmt.Errorf("%w: channel session mismatch: channel=%s",
-				constants.ErrPubSubSubscribeUnauthorized, channel)
-		}
-	}
+	return nil
+}
 
+// verifyPatternACL enforces topic ACLs for pattern subscriptions
+// (PSUBSCRIBE). It mirrors verifyChannelACL but the operator_id segment of
+// the pattern may be the wildcard '*' (matching the subscriber's own
+// operator_id implicitly) or the subscriber's own operator_id; any other
+// concrete operator_id is rejected. This is the security-critical piece:
+// without it a subscriber could PSUBSCRIBE heartbeat:* and receive every
+// operator's heartbeats. The wildcard is permitted only at the operator_id
+// segment position (parts[1]); cross-operator patterns such as
+// heartbeat:op-other:* are rejected.
+func verifyPatternACL(pattern, operatorID string) error {
+	if operatorID == "" {
+		return constants.ErrPubSubCertificateMissingOperatorID
+	}
+	parts := strings.Split(pattern, ":")
+	if len(parts) < 2 {
+		return constants.ErrPubSubInvalidChannelFormat
+	}
+	if parts[1] != "*" && parts[1] != operatorID {
+		return fmt.Errorf("pattern operator_id mismatch: pattern=%s, cert=%s", parts[1], operatorID)
+	}
 	return nil
 }
 

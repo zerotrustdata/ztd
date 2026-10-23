@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -317,7 +318,7 @@ func TestDoJSON_RejectsMalformedRequestPath(t *testing.T) {
 
 	err := client.getJSON(context.Background(), "/zones\n", nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "build request", "got %v", err)
+	assert.True(t, strings.Contains(err.Error(), "build request"), "got %v", err)
 }
 
 func TestDoJSON_SendsJSONBodyForPostAndPatch(t *testing.T) {
