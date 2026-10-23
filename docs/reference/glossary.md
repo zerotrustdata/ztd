@@ -454,7 +454,7 @@ Documents are authoritative by definition and always participate in the bound ro
 
 ## Suspended Transaction
 
-A Governance Envelope paused while awaiting required L3 Notary human approval (`internal/services/storage/suspended_transaction_store.go`, the `suspended_transactions` table in the runtime's `ztd.db`). The store retains the envelope and tool arguments (vault-encrypted; a locked vault fails the write and the read), approval status, proof metadata, expiry, caller bindings, and the targeted Operator session, whose audit chain records the approval request and expiry. Upon human approval via passkey or signature, the Gateway resumes governance evaluation. The Gateway maintenance sweep records each expiry on that session's chain before deleting the record, and a successful resumed execution removes its record.
+A Governance Envelope paused while awaiting required L3 Notary human approval (`internal/services/storage/suspended_transaction_store.go`, the `suspended_transactions` table in the runtime's `ztd.db`). The store retains the envelope and tool arguments (vault-encrypted; a locked vault fails the write and the read), expiry, execution claim, caller bindings, and the targeted Operator session, whose audit chain records the approval request and expiry. It stores no approval decision or proof. Upon human approval via passkey or signature, the Gateway resumes governance evaluation with the proof in the envelope, and the executing Operator's signed receipt is the evidence of the outcome. The Gateway maintenance sweep records each expiry on that session's chain before deleting the record, and a successful resumed execution removes its record.
 
 ---
 

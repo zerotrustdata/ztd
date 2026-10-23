@@ -382,14 +382,6 @@ type SuspendedTxResponse struct {
 	OperatorID      string    `json:"operator_id"`
 }
 
-// ApprovalStatusResponse is the typed response for GET /api/v1/approvals/status/{txHash}.
-// The CLI verifies this mTLS-authenticated endpoint after receiving approval.completed on the SSE stream.
-type ApprovalStatusResponse struct {
-	Status   string `json:"status"`
-	TxHash   string `json:"tx_hash,omitempty"`
-	ToolName string `json:"tool_name,omitempty"`
-}
-
 // ApprovalRespondRequest is the typed request for POST /api/v1/approvals/respond.
 // It records a deny decision from a grounded session, or an explicit CLI
 // approval signed over the pending transaction hash. Browser approvals use

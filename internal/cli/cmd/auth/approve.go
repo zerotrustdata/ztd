@@ -128,7 +128,7 @@ prints the Operator-signed L3_DENIED rejection receipt that ends it.`,
 				fmt.Fprintf(os.Stderr, "\n[ztd] Please visit: %s\n", approvalURL)
 			}
 
-			return waitForApprovalAndVerify(ctx, cmd, approvals, client, txHash)
+			return waitForApprovalAndVerify(ctx, cmd, approvals, txHash)
 		},
 	}
 	cmd.Flags().Bool("cli", false, "sign the transaction hash with the enrolled CLI certificate")

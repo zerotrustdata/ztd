@@ -379,53 +379,6 @@ func (h *PasskeyHandler) clearApprovalWriteDeadline(w http.ResponseWriter) {
 	}
 }
 
-// handleCLIApprovalStatus is an mTLS-authenticated endpoint that returns the current
-// status of a suspended transaction. Used by CLI clients for post-SSE verification
-// of approval state.
-func (h *PasskeyHandler) handleCLIApprovalStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		h.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	txHash := strings.TrimPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus)
-	if txHash == "" {
-		h.responder.Error(w, http.StatusBadRequest, "transaction hash required")
-		return
-	}
-
-	userID, ok := r.Context().Value(constants.ContextKeyUserID).(string)
-	if !ok || userID == "" {
-		h.responder.Error(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
-	suspendedTx, found, err := h.orchestrator.GetSuspendedTransaction(r.Context(), txHash)
-	if err != nil {
-		h.logger.Error("Failed to get suspended transaction", "error", err, "txHash", txHash)
-		h.responder.Error(w, http.StatusInternalServerError, "failed to get transaction")
-		return
-	}
-
-	if !found {
-		h.responder.JSON(w, http.StatusOK, models.ApprovalStatusResponse{
-			Status: string(constants.SuspendedTxStatusExpiredOrNotFound),
-		})
-		return
-	}
-
-	if suspendedTx.UserID != "" && suspendedTx.UserID != userID {
-		h.responder.Error(w, http.StatusForbidden, "transaction belongs to another user")
-		return
-	}
-
-	h.responder.JSON(w, http.StatusOK, models.ApprovalStatusResponse{
-		Status:   string(constants.SuspendedTxStatusPending),
-		TxHash:   txHash,
-		ToolName: suspendedTx.ToolName,
-	})
-}
-
 func (h *PasskeyHandler) handleApprovalPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")

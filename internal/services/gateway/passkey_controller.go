@@ -57,11 +57,6 @@ func (c *PasskeyController) handleApprovalPage(w http.ResponseWriter, r *http.Re
 	c.handler.handleApprovalPage(w, r)
 }
 
-// handleCLIApprovalStatus delegates to PasskeyHandler.handleCLIApprovalStatus.
-func (c *PasskeyController) handleCLIApprovalStatus(w http.ResponseWriter, r *http.Request) {
-	c.handler.handleCLIApprovalStatus(w, r)
-}
-
 // handleCLIListSuspended delegates to PasskeyHandler.handleCLIListSuspended.
 func (c *PasskeyController) handleCLIListSuspended(w http.ResponseWriter, r *http.Request) {
 	c.handler.handleCLIListSuspended(w, r)
