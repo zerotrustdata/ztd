@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -358,7 +359,7 @@ func (h *PasskeyHandler) handleSignedCLIApproval(w http.ResponseWriter, r *http.
 		}
 		status, cause := cliApprovalResumeFailure(err)
 		if status == http.StatusInternalServerError {
-			h.logger.Error("CLI approval: resume failed", "txHash", req.ApprovalID, logging.ErrorKind(err))
+			h.logger.Error("CLI approval: resume failed", slog.String("txHash", req.ApprovalID), logging.ErrorKind(err))
 		}
 		h.responder.Error(w, status, cause.Error())
 		return

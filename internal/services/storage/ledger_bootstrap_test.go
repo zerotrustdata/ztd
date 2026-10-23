@@ -372,11 +372,11 @@ func TestBootstrap_SessionRepoCreatedLazily(t *testing.T) {
 
 	// Before creation, the session directory should not exist, and a read-path lookup must not create it
 	_, err := svc.fileSvc.Stat(t.Context(), filepath.Join(sessionRelPath, constants.GitDirname))
-	assert.ErrorIs(t, err, constants.ErrNotFound, "session .git should not exist before first access")
+	require.ErrorIs(t, err, constants.ErrNotFound, "session .git should not exist before first access")
 	_, err = svc.openSessionLedger(sessionID)
 	require.ErrorIs(t, err, constants.ErrLedgerSessionNotFound)
 	_, err = svc.fileSvc.Stat(t.Context(), sessionRelPath)
-	assert.ErrorIs(t, err, constants.ErrNotFound, "a read-path lookup must not create the session ledger")
+	require.ErrorIs(t, err, constants.ErrNotFound, "a read-path lookup must not create the session ledger")
 
 	// After creation, it should exist and be a valid git repo
 	path, err := svc.createSessionLedger(sessionID)

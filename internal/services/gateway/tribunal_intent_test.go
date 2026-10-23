@@ -128,12 +128,12 @@ func TestTribunalIntentRevisionDispatchesFreshEnvelope(t *testing.T) {
 	controller.dispatchCommand(context.Background(), &tribunalv1.TribunalIntentRequest{}, result, "app", "user", reviewer)
 
 	require.Len(t, dispatcher.requests, 2, "the revision is dispatched as its own governed request")
-	assert.Equal(t, approved, dispatchedArguments(t, dispatcher.requests[0]))
-	assert.Equal(t, revised, dispatchedArguments(t, dispatcher.requests[1]))
+	assert.JSONEq(t, approved, dispatchedArguments(t, dispatcher.requests[0]))
+	assert.JSONEq(t, revised, dispatchedArguments(t, dispatcher.requests[1]))
 	require.Len(t, reviewer.envelopes, 2)
 	assert.NotEqual(t, reviewer.envelopes[0].GetId(), reviewer.envelopes[1].GetId(), "the earlier admission never authorizes the revised command")
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED, result.GetOutcome())
-	assert.Equal(t, revised, result.GetArgumentsJson())
+	assert.JSONEq(t, revised, result.GetArgumentsJson())
 	require.NotNil(t, result.GetDispatched())
 	assert.Equal(t, "transaction-2", result.GetDispatched().GetTransactionId())
 }

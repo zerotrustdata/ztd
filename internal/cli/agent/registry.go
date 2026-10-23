@@ -12,13 +12,12 @@
 // the Gateway governs execution.
 package agent
 
-import "github.com/zerotrustdata/ztd/internal/services/fs"
-
 import (
 	"fmt"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 // ConfigStrategy selects how an agent's MCP configuration is written.

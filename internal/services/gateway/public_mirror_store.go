@@ -686,18 +686,6 @@ func (s *PublicMirrorStore) recordsAfter(ctx context.Context, sourceID string, a
 	return records, nil
 }
 
-// recordsBefore returns up to limit retained records of one type with
-// sequence < before, newest first.
-func (s *PublicMirrorStore) recordsBefore(ctx context.Context, sourceID string, recordType models.PublicFeedRecordType, before int64, limit int) ([]models.PublicFeedRecord, error) {
-	records, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT sequence, record_type, record_hash, record_bytes FROM records
-		WHERE source_id = ? AND record_type = ? AND sequence < ? ORDER BY sequence DESC LIMIT ?`,
-		[]interface{}{sourceID, string(recordType), before, limit}, scanPublicMirrorRecord)
-	if err != nil {
-		return nil, fmt.Errorf("public mirror store: read recent records: %w", err)
-	}
-	return records, nil
-}
-
 func (s *PublicMirrorStore) recordsInRange(ctx context.Context, sourceID string, first, last int64) ([]models.PublicFeedRecord, error) {
 	records, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT sequence, record_type, record_hash, record_bytes FROM records
 		WHERE source_id = ? AND sequence BETWEEN ? AND ? ORDER BY sequence`,

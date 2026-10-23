@@ -9,7 +9,6 @@ package identityreset
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -19,13 +18,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func write(t *testing.T, directory, name string) string {
+func write(t *testing.T, directory, name string) {
 	t.Helper()
-	path := filepath.Join(directory, ".ztd", name)
 	fileSvc, err := fs.NewRuntimeFileService(directory, nil)
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), name, []byte("retain-or-remove"), constants.PermFilePrivate))
-	return path
 }
 
 func TestResetPreservesDataAndOtherIdentities(t *testing.T) {

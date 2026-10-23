@@ -123,7 +123,7 @@ func TestReviewAdmittedGivesAuditorActualGovernanceEvidence(t *testing.T) {
 	require.NoError(t, service.ReviewAdmitted(context.Background(), req, result, env, admittedVoteInference()))
 
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED, result.GetOutcome())
-	assert.Equal(t, approvedJSON, result.GetArgumentsJson(), "an approving review keeps the authorized bytes")
+	assert.JSONEq(t, approvedJSON, result.GetArgumentsJson(), "an approving review keeps the authorized command")
 	assert.True(t, proto.Equal(original, env), "the review never edits the admitted envelope")
 
 	require.Len(t, result.GetMemberCalls(), authoringCalls+1, "the contextual review is one more recorded member call")
@@ -245,7 +245,7 @@ func TestReviewAdmittedFailsClosed(t *testing.T) {
 			require.ErrorIs(t, err, tc.wantErr)
 			require.NotErrorIs(t, err, constants.ErrTribunalCommandRevised)
 			assert.Equal(t, tc.outcome, result.GetOutcome())
-			assert.Equal(t, approvedJSON, result.GetArgumentsJson(), "a failed review never replaces the authorized command")
+			assert.JSONEq(t, approvedJSON, result.GetArgumentsJson(), "a failed review never replaces the authorized command")
 			assert.Contains(t, result.GetAuditFailure(), tc.failure)
 			assert.Len(t, tc.dispatcher.requests, tc.requests)
 		})

@@ -104,12 +104,12 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 	var expired []string
 	for rows.Next() {
 		var first int64
 		var key string
 		if err := rows.Scan(&first, &key); err != nil {
-			_ = rows.Close()
 			return err
 		}
 		obsolete[first] = true
