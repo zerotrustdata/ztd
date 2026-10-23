@@ -91,3 +91,37 @@ func TestMirror_SnapshotUpgradeAndCorruption(t *testing.T) {
 		})
 	}
 }
+
+func TestMirror_SnapshotBackfillsVerifiedLegacyHistory(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "run-a"}))}, constants.PublicFeedZeroHashHex)
+	require.NoError(t, env.mirror.acceptBatch(ctx, batch))
+	// Simulate a pre-snapshot schema without touching the retained signed chain.
+	_, err := env.store.db.ExecWithRetry(ctx, `DROP TABLE snapshot_records; DROP TABLE snapshot_batches; DROP TABLE snapshot_heads; PRAGMA user_version = 0`)
+	require.NoError(t, err)
+	mirror := env.reopenMirror()
+	bootstrap, err := mirror.currentBootstrap(ctx, env.sourceID)
+	require.NoError(t, err)
+	require.Len(t, bootstrap.RecentProjections, 1)
+	assert.Equal(t, int64(1), bootstrap.Snapshot.HighWaterSequence)
+}
+
+func TestMirror_SnapshotFailureRollsBackFeedCursor(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	first := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "run-a"}))}, constants.PublicFeedZeroHashHex)
+	require.NoError(t, env.mirror.acceptBatch(ctx, first))
+	_, err := env.store.db.ExecWithRetry(ctx, `CREATE TRIGGER fail_snapshot BEFORE INSERT ON snapshot_records BEGIN SELECT RAISE(ABORT, 'injected snapshot failure'); END`)
+	require.NoError(t, err)
+	second := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(2, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "run-b"}))}, first.ContentHash)
+	require.Error(t, env.mirror.acceptBatch(ctx, second))
+	bootstrap, err := env.mirror.currentBootstrap(ctx, env.sourceID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), bootstrap.Snapshot.HighWaterSequence)
+	assert.Len(t, bootstrap.RecentProjections, 1)
+	summary, found, err := env.store.SourceSummary(ctx, env.sourceID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, int64(1), summary.HighWaterSequence)
+}

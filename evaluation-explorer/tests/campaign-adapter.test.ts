@@ -1264,7 +1264,7 @@ describe('EvalStore campaign ingest', () => {
     expect(resultRecords.some((record) => record.kind === 'assignment_completed')).toBe(true);
   });
 
-  it('uses catalog assignment_count as the campaign matrix total', () => {
+  it('uses catalog matrix size for activity without overriding canonical run totals', () => {
     const store = new EvalStore();
     const runId = 'run-catalog-total';
     const datasetId = campaignDatasetId(runId);
@@ -1350,7 +1350,7 @@ describe('EvalStore campaign ingest', () => {
 
     const run = store.getEvaluation(datasetId, runId);
     const failEvent = store.getEvents(runId, datasetId).find((event) => event.kind === 'assignment_failed');
-    expect(run).toMatchObject({ assignment_total: 4 });
+    expect(run).toMatchObject({ assignment_total: 1 });
     expect(failEvent).toMatchObject({ completed: 1, total: 4 });
   });
 

@@ -36,7 +36,7 @@ import {
   type FeedStatus,
   type StreamConnectionState,
 } from '../utils/feed-state';
-import { CAMPAIGN_MESSAGE_TYPES } from '../contract/campaign-wire';
+import { CAMPAIGN_MESSAGE_TYPES, decodeCampaignProjectionEnvelope } from '../contract/campaign-wire';
 import {
   adaptCampaignProjectionEnvelope,
   campaignProgressCounts,
@@ -191,8 +191,9 @@ type Listener = () => void;
 export class EvalStore {
   private state: StoreState = emptyState();
   private listeners = new Set<Listener>();
-  private campaignContext: CampaignAdaptContext = createCampaignAdaptContext();
-  /** Suppress subscriber notifications while replaying history pages. */
+  // Validation copies only the affected run's context, never the full corpus.
+  private campaignContexts = new Map<string, CampaignAdaptContext>();
+  /** Suppress subscriber notifications while applying a group of records. */
   private batchDepth = 0;
 
   getState = (): StoreState => this.state;
@@ -202,12 +203,12 @@ export class EvalStore {
     return () => this.listeners.delete(listener);
   };
 
-  /** True while history replay has not yet sealed the bootstrap snapshot. */
+  /** True while stream replay has not reached its announced cursor. */
   isReconciling(): boolean {
     return this.state.pendingSnapshot !== null;
   }
 
-  /** Coalesce store updates during cold-load history replay. */
+  /** Coalesce related store updates. */
   beginBatch(): void {
     this.batchDepth++;
   }
@@ -256,7 +257,7 @@ export class EvalStore {
     recentProjections: ProjectionRecord[],
     proofCount: number,
   ): void {
-    this.campaignContext = createCampaignAdaptContext();
+    this.campaignContexts = new Map();
     const state = emptyState();
     state.connection = 'live';
     state.mirrorOrigin = this.state.mirrorOrigin;
@@ -274,6 +275,10 @@ export class EvalStore {
         throw new ValidationError('record exceeds snapshot cursor', 'bootstrap.sequence');
       }
       this.ingestProjection(state, record);
+    }
+    if (state.errors.length > 0) {
+      for (const error of state.errors) this.pushError(error);
+      throw new ValidationError('current snapshot contains invalid records', 'bootstrap');
     }
     this.state = state;
     this.emitIfNotBatching();
@@ -314,7 +319,7 @@ export class EvalStore {
         ...state,
         pendingSnapshot: snapshot,
         feedStatus: state.feedStatus
-          ? { ...withFeedSnapshot(state, snapshot, 'Reconciling feed history.'), connection: state.connection }
+          ? { ...withFeedSnapshot(state, snapshot, 'Receiving stream updates.'), connection: state.connection }
           : null,
       }));
       return;
@@ -373,10 +378,12 @@ export class EvalStore {
         payload.model_role_mapping = {};
       }
       if (isCampaignProjectionPayload(payload)) {
-        const candidateContext = cloneCampaignAdaptContext(this.campaignContext);
-        const adapted = adaptCampaignProjectionEnvelope(payload, candidateContext);
+        const envelope = decodeCampaignProjectionEnvelope(payload);
+        const runId = envelope.record.run_id;
+        const candidateContext = cloneCampaignAdaptContext(this.campaignContexts.get(runId) ?? createCampaignAdaptContext());
+        const adapted = adaptCampaignProjectionEnvelope(envelope, candidateContext);
         const validated = adapted.map((decoded) => decodeViewRecord(decoded.kind, decoded));
-        this.campaignContext = candidateContext;
+        this.campaignContexts.set(runId, candidateContext);
         for (const decoded of validated) {
           this.indexRecord(state, decoded, record.sequence);
           if (decoded.kind === 'assignment_result') {
@@ -408,7 +415,9 @@ export class EvalStore {
         if (record.assignment_count > 0) {
           const runId = campaignRunIdFromDatasetId(record.dataset_id);
           if (runId) {
-            recordCampaignMatrixTotal(this.campaignContext, runId, record.assignment_count);
+            const context = this.campaignContexts.get(runId) ?? createCampaignAdaptContext();
+            recordCampaignMatrixTotal(context, runId, record.assignment_count);
+            this.campaignContexts.set(runId, context);
             this.refreshRunProgressTotals(state, record.dataset_id, runId);
           }
         }
@@ -463,9 +472,9 @@ export class EvalStore {
     state.eventIds = new Set(retained.map((event) => event.event_id));
   }
 
-  /** Reconcile assignment_total on summaries and live events after the matrix size is known. */
+  /** Reconcile activity progress after the catalog's matrix size is known. */
   private refreshRunProgressTotals(state: StoreState, datasetId: string, runId: string): void {
-    const progress = this.campaignContext.runTotals.get(runId);
+    const progress = this.campaignContexts.get(runId)?.runTotals.get(runId);
     if (!progress) return;
     const { total } = campaignProgressCounts(progress);
     if (total <= 0) return;
@@ -511,7 +520,7 @@ export class EvalStore {
   }
 
   loadFixtures(snapshotRecords: SnapshotRecord[], liveEvents: LiveEvent[]): void {
-    this.campaignContext = createCampaignAdaptContext();
+    this.campaignContexts = new Map();
     const state = emptyState();
     state.connection = 'offline';
     state.feedStatus = {

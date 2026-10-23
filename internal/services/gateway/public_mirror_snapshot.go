@@ -54,7 +54,7 @@ func snapshotRecordIdentity(record models.PublicFeedRecord) (key, dataset string
 	event = identity.EventID != ""
 	parts := []string{identity.Kind, identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
 	if event {
-		parts = []string{"event", identity.EventID}
+		parts = []string{"event", identity.DatasetID, identity.RunID, identity.AssignmentID, identity.EventID}
 	}
 	encoded, err := json.Marshal(parts)
 	if err != nil {

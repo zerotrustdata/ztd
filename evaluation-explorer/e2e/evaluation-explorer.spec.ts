@@ -153,7 +153,7 @@ async function expectNativeRun(page: Page, runId: string) {
   await expect(page.locator('.native-scenario li')).toHaveCount(10);
 }
 
-test('reconstructs native evaluations from public mirror history', async ({ page }) => {
+test('loads native evaluations directly from the public mirror snapshot', async ({ page }) => {
   if (!process.env.ZTD_PUBLIC_MIRROR_ORIGIN) await installMirror(page);
   const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
@@ -171,7 +171,7 @@ test('reconstructs native evaluations from public mirror history', async ({ page
   await expect(page.getByRole('heading', { name: 'Evaluations', exact: true })).toBeVisible();
   for (const runId of runIds) await expect(page.getByRole('link', { name: runId })).toBeVisible();
   await expect.poll(() => mirrorResponses.some((url) => url.endsWith('/bootstrap'))).toBe(true);
-  await expect.poll(() => mirrorResponses.some((url) => url.includes('/history?'))).toBe(true);
+  expect(mirrorResponses.some((url) => url.includes('/history?'))).toBe(false);
 
   for (const runId of runIds) await expectNativeRun(page, runId);
 

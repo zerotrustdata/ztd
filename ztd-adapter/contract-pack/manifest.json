@@ -94,7 +94,7 @@
     },
     {
       "path": "public/manifest.json",
-      "sha256": "e6e3cc19daaa74f3b076f57736af1f78110ec4e7529b5f13fb08f883300aa5d9"
+      "sha256": "08150b95db160ce69d4a8abc4faa745f02c7155cacd35dc29e3640ae0457d988"
     },
     {
       "path": "public/models.ts",
@@ -110,7 +110,7 @@
     },
     {
       "path": "public/public-read.openapi.json",
-      "sha256": "ae1ec174b5c0abd9f94417901cb9c3a83d527fe7d4a10e76c8dc543b66f27a73"
+      "sha256": "4f140acf144edd5170a1f9e76d54fc70256e67d471106ebbc271c2582f28068f"
     },
     {
       "path": "public/README.md",

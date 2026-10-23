@@ -199,7 +199,11 @@ func (c *CampaignPublicationCoordinator) PublishAssignmentResult(ctx context.Con
 	if err != nil {
 		return err
 	}
-	aggregates, err := c.buildRunAggregatePublishRequests(ctx, assignment.GetRunId(), result.GetCompletedAt().AsTime())
+	var observedAt time.Time
+	if completed := result.GetCompletedAt(); completed != nil {
+		observedAt = completed.AsTime()
+	}
+	aggregates, err := c.buildRunAggregatePublishRequests(ctx, assignment.GetRunId(), observedAt)
 	if err != nil {
 		return err
 	}

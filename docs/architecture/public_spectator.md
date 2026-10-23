@@ -45,7 +45,7 @@ The credentialed owner-local observe mode and the anonymous public-spectator mod
 - [Export Binding and Cryptographic Continuity](#export-binding-and-cryptographic-continuity)
 - [Threat Model and Mitigations](#threat-model-and-mitigations)
 - [Anonymous Read Limits, Retention, and Availability](#anonymous-read-limits-retention-and-availability)
-- [Proposed Current-State Snapshot](#proposed-current-state-snapshot)
+- [Current-State Snapshot](#current-state-snapshot)
 - [Relationship to Platform Architecture](#relationship-to-platform-architecture)
 - [Procedures](#procedures)
 - [Anti-patterns](#anti-patterns)
@@ -71,6 +71,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-SPEC-DATA-01 | Every exported record MUST pass a closed allowlist enforced by campaign projector, disclosure validator, publisher, and mirror before becoming browser-visible. Any unknown field fails closed. |
 | INV-SPEC-DATA-02 | Every structural feed-record string outside the verbatim carriers (`INV-SPEC-DATA-03`) MUST be at most 512 bytes. The publisher and mirror MUST NOT screen record or proof-artifact content by field name or string content; public records are published verbatim. |
 | INV-SPEC-DATA-03 | Evaluation evidence is published in full and never redacted or screened. The feed-record carriers `model_response`, `failure_output`, `role_transcripts`, and each grade summary's `detail` are verbatim text held only to the 256 KiB record bound. A `role_transcripts` value that exceeds its bounds or would push the record past 256 KiB is omitted whole, never truncated. The complete agent trace (exact model input, every turn's thinking and text, tool arguments and results, signed receipts, actuator anchors, and the sentinel bracket) is published as a content-addressed proof artifact bound by an `assignment_agent_trace` evidence binding. The campaign-frozen scenario fixture (input and gold criteria) is published as campaign-scoped proof artifacts bound by `scenario_input_fixture` and `scenario_gold_criteria` evidence bindings. |
+| INV-SPEC-DATA-04 | The mirror MUST keep a durable current read model independent of replay-history retention, advance it in the accepted-batch transaction, and serve it coherently through `/bootstrap`. Explorer run fields MUST come from canonical backend summaries; live activity MUST NOT overwrite them. |
 
 ### Cryptographic Continuity (`INV-SPEC-CRYPTO`)
 
@@ -79,7 +80,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-SPEC-CRYPTO-01 | Every exported batch MUST be an append-only, monotonically sequenced record signed with Ed25519 over the content hash and linked to the predecessor batch's `content_hash` (`previous_batch_hash`). |
 | INV-SPEC-CRYPTO-02 | Proof artifacts MUST be immutable, content-addressed files served under paths derived from their SHA-256 digests. |
 | INV-SPEC-CRYPTO-03 | Key rotation MUST occur via a signed revocation batch. Batches signed by revoked keys are rejected. Historical batches remain verifiable against the retained key registry. |
-| INV-SPEC-CRYPTO-04 | Withdrawing a campaign run (`WithdrawCampaignDataset`, reached through the Gateway's publication-state `DELETE` that `ztd eval runs delete` calls) MUST NOT remove or rewrite signed batches. The mirror records the run's dataset as withdrawn and filters its projections from `/bootstrap`, `/history`, and `/stream`; the publisher prunes the run's proof artifacts from the proof catalog and pushes it. Every mirror snapshot carries `withdrawal_digest` (SHA-256 over the sorted withdrawn dataset IDs, zero hash when none), and withdrawal pushes a fresh `snapshot` event to open streams. A client MUST discard cached or in-memory records and refetch history when the digest changes, because the signed chain alone cannot reveal a withdrawal. |
+| INV-SPEC-CRYPTO-04 | Withdrawing a campaign run (`WithdrawCampaignDataset`, reached through the Gateway's publication-state `DELETE` that `ztd eval runs delete` calls) MUST NOT remove or rewrite signed batches. The mirror records the run's dataset as withdrawn and filters its projections from `/bootstrap`, `/history`, and `/stream`; the publisher prunes the run's proof artifacts from the proof catalog and pushes it. Every mirror snapshot carries `withdrawal_digest` (SHA-256 over the sorted withdrawn dataset IDs, zero hash when none), and withdrawal pushes a fresh `snapshot` event to open streams. A client MUST replace its in-memory state from `/bootstrap` when the digest changes, because the signed chain alone cannot reveal a withdrawal. |
 | INV-SPEC-CRYPTO-05 | A proof segment MUST bind its source, index, predecessor root, every entry field, withdrawals, timestamp, signing key ID, and verifier instructions to its Ed25519-signed root. The mirror MUST reject gaps, conflicting roots at an accepted index, repeated artifact IDs, unknown or repeated withdrawals, and a legacy manifest signature presented as a segment signature. |
 
 ## Owned surfaces
@@ -244,24 +245,24 @@ The mirror persists to a SQLite database (`public-mirror/mirror.db`, schema `int
 - **Verified on open**: Every open re-verifies the retained chain (contiguous sequences, `previous_batch_hash` links, `content_hash` recomputation, Ed25519 signatures against the key registry, record hashes against stored record bytes), each proof manifest's root and entries, and each stored artifact file's SHA-256. Any mismatch fails startup with `ErrPublicFeedMirrorStoreCorrupt`.
 - **Proof ingest**: `POST /proof-ingest` carries one signed segment and its new artifact bytes; a withdrawal carries no artifact bytes. `GET /proof-catalog` is derived from the active entry projection. The mirror also accepts legacy full manifests until a source's first segment arrives. An entry whose artifact is neither in the request nor stored is rejected with HTTP 400 and `missing_artifact_ids`; nothing is committed. Private `GET /proof-root` supplies the delivery position without reading the full manifest. Each accepted segment updates the publisher's small delivery checkpoint. Pruning a run invalidates that checkpoint and appends a signed withdrawal.
 
-## Proposed Current-State Snapshot
+## Current-State Snapshot
 
-This design is pending implementation approval. The current `/snapshot` response is a chain cursor, and `/bootstrap` contains only recent projections. The Explorer reconstructs current state by replaying retained history and merging aggregate summaries with assignment and live-event updates. These are the behaviors this proposal replaces.
+`/snapshot` describes the accepted feed cursor. `/bootstrap` serves the durable current read model at that cursor. Its `recent_projections` field contains the latest record per entity plus a bounded activity tail, in newest-first order; it is independent of replay-history retention. The Explorer installs that snapshot directly and subscribes to SSE after its cursor.
 
 The mirror owns one durable current read model per source. The evaluation projector remains the only owner of derived run counts, verdict classifications, metrics, verification state, and process-aware run status. The mirror retains and serves those published records; it does not manufacture verdicts from tool activity or missing proof artifacts. Live events describe activity and never overwrite aggregate run fields in the browser.
 
 ### Storage and atomicity
 
-- A current-record table keeps the newest accepted record for each catalog, model and role, suite, run, and assignment identity. A separate bounded tail within the snapshot keeps recent activity. Source and dataset identity participate in every index key.
-- Each current record references its original signed batch. The mirror preserves that batch while the current state references it, including after replay-history retention prunes the batch from `/history`. Replacing a record releases its old batch only after no current record references it.
-- One SQLite transaction appends accepted feed records, updates the current read model, and advances the snapshot cursor. Snapshot reads capture records, withdrawals, and the cursor from the same database read transaction. Failed ingest exposes none of its partial state.
+- `snapshot_records` keeps the newest accepted record for each catalog, model and role, suite, run, and assignment identity. A separate bounded tail within the snapshot keeps recent activity. Source and dataset identity participate in every index key.
+- Each current record references its original signed batch in `snapshot_batches`. `snapshot_heads` records the accepted cursor; schema initialization uses SQLite `user_version` 1. The mirror preserves that batch while the current state references it, including after replay-history retention prunes the batch from `/history`. Replacing a record releases its old batch only after no current record references it.
+- One SQLite transaction appends accepted feed records, updates the current read model, and advances the snapshot cursor. Snapshot reads capture records, proof summary, withdrawals, and the cursor under the same mutation lock; the lock is released before response encoding or network writes. Failed ingest exposes none of its partial state.
 - Snapshot initialization and live deltas use the same identity and replacement rules. Counts and byte totals use deltas; routine publication does not scan all retained artifacts or revisions. Proof bytes remain content-addressed and are fetched on demand.
 
 ### Browser contract
 
 `/bootstrap` returns the coherent current records and their source, accepted sequence, chain hash, withdrawal digest, and proof summary. The Explorer installs the entire snapshot in one store notification and subscribes to `/stream` after that sequence. SSE carries accepted deltas through the same record decoder. A replay gap, source change, or withdrawal replaces the snapshot. `/history` remains an evidence-inspection endpoint and does not participate in ordinary page initialization. The browser feed-history cache and history-to-current-state reconstruction are removed.
 
-The snapshot payload contains current entities rather than all historical revisions. Assignment evidence and immutable proof artifacts remain available on demand; they are not copied into every SSE message. Transport compression and explicit response bounds apply to the snapshot. If pagination is required, all pages must reference one immutable snapshot version, rather than reading a moving current state between pages.
+The snapshot payload grows with current entities rather than historical revisions. Its activity tail is bounded to `PublicFeedSSEReplayMaxRecords` (100). Responses use transport compression; full proof artifact bytes remain on demand. Assignment projection records retain their published evidence fields. Context validation in the Explorer copies only the affected run rather than every run in the corpus.
 
 ### Upgrade and verification
 
@@ -269,7 +270,7 @@ The migration preserves existing tables, signed records, source identity, proof 
 
 Startup verifies retained snapshot batch signatures, exact record membership and bytes, record identity columns, snapshot cursor, and source binding before serving. A snapshot must never be accepted solely because its unsigned rows contain self-consistent hashes. Withdrawn datasets are excluded from the current read model and subsequent bootstrap responses.
 
-Acceptance requires regressions for snapshot survival across history pruning and restart; replacement of one entity without replaying older revisions; atomic run/result visibility; correct Runs totals during SSE; duplicate delivery; gap recovery; withdrawals and source changes; corrupted projection columns and missing batches; and bounded startup/network work as revision history grows.
+`TestMirror_BootstrapKeepsCurrentStateAcrossRetention` checks pruning and restart, `TestMirror_SnapshotRetainsCurrentEntitiesInsteadOfRevisions` checks compaction and withdrawals, and the snapshot upgrade/corruption/rollback tests check migration and atomicity. Explorer startup takes one runtime-config request and one bootstrap request before SSE. Browser tests cover Runs values across SSE and snapshot reloads; assignment result publication carries the canonical run summary in the same signed batch for the normal run update.
 
 ## Relationship to Platform Architecture
 

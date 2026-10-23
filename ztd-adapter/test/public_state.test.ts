@@ -73,6 +73,20 @@ describe('public spectator state reconciliation', () => {
     expect(state.items.map((item) => item.sequence)).toEqual([1, 2, 3]);
   });
 
+  it('installs sparse current entity revisions at the snapshot cursor', () => {
+    const bootstrap = {
+      protocol_version: '1.0.0', snapshot: snapshot(100, firstHash), source_freshness: 'active',
+      recent_projections: [{ sequence: 50, campaign_id: 'current-campaign' }],
+      proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: '2026-09-13T00:00:00Z',
+    };
+    const state = reconcilePublicBootstrap(createPublicMirrorState(), bootstrap);
+    expect(state.observed_sequence).toBe(100);
+    expect(state.items.map((item) => item.sequence)).toEqual([50]);
+    expect(() => reconcilePublicBootstrap(createPublicMirrorState(), {
+      ...bootstrap, recent_projections: [{ sequence: 101 }],
+    })).toThrow(PublicReconciliationError);
+  });
+
   it('fails closed on a snapshot regression, same-sequence equivocation, or sequence gap', () => {
     const state = reconcilePublicSnapshot(createPublicMirrorState(), snapshot(2, secondHash));
     expect(() => reconcilePublicSnapshot(state, snapshot(1, firstHash))).toThrow(PublicReconciliationError);

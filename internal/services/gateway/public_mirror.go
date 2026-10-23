@@ -1227,8 +1227,7 @@ func (m *PublicMirrorServer) writeStoreUnavailable(w http.ResponseWriter, messag
 	http.Error(w, "mirror store unavailable", http.StatusInternalServerError)
 }
 
-// handleBootstrap handles GET /bootstrap — bounded initial snapshot for
-// public first paint.
+// handleBootstrap handles GET /bootstrap — the coherent current read model.
 func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
