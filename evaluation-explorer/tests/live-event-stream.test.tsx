@@ -285,8 +285,12 @@ describe('LiveEventStream', () => {
   it('keeps all five Tribunal seats visible before votes and after feed retention removes them', () => {
     const { rerender } = render(stream([]));
     const tribunal = screen.getByRole('region', { name: 'Tribunal' });
+    const heading = screen.getByRole('heading', { name: 'Live activity' }).parentElement;
+    const modelControls = screen.getByRole('combobox', { name: 'Filter by model' }).parentElement;
+    expect(heading?.nextElementSibling).toBe(tribunal);
+    expect(tribunal.nextElementSibling).toBe(modelControls);
     expect(within(tribunal).getAllByRole('article')).toHaveLength(5);
-    expect(within(tribunal).getAllByText('Waiting')).toHaveLength(5);
+    expect(within(tribunal).getAllByText('Ready')).toHaveLength(5);
 
     rerender(stream([liveEvent({
       event_id: 'vote-axiom', kind: 'stage_updated',
@@ -297,7 +301,7 @@ describe('LiveEventStream', () => {
 
     rerender(stream([liveEvent()]));
     expect(screen.getByRole('region', { name: 'Tribunal' })).toBe(tribunal);
-    expect(within(tribunal).getAllByText('Waiting')).toHaveLength(5);
+    expect(within(tribunal).getAllByText('Ready')).toHaveLength(5);
   });
 
   it('lights Tribunal seats from consensus vote events and keeps them out of the table', async () => {
@@ -326,11 +330,11 @@ describe('LiveEventStream', () => {
     ]));
     const tribunal = screen.getByRole('region', { name: 'Tribunal' });
     expect(within(tribunal).getByText('Axiom')).toBeInTheDocument();
-    expect(within(tribunal).getByText('the Composer')).toBeInTheDocument();
+    expect(within(tribunal).getByText('Coherent Composer')).toBeInTheDocument();
     expect(within(tribunal).getByText('✶')).toBeInTheDocument();
     expect(within(tribunal).getByText('Concord')).toBeInTheDocument();
     expect(within(tribunal).getByText('Nemesis')).toBeInTheDocument();
-    expect(within(tribunal).getAllByText('Waiting')).toHaveLength(4);
+    expect(within(tribunal).getAllByText('Ready')).toHaveLength(4);
     const axiom = within(tribunal).getByText('Axiom').closest('article');
     expect(axiom).toHaveAttribute('data-lit', 'true');
     expect(axiom).toHaveAttribute('data-outcome', 'approve');

@@ -27,13 +27,13 @@ const STREAM_PAGE_SIZE = 25;
 const STREAM_EMPTY_METRIC = '--';
 const TRIBUNAL_VOTE_PREFIX = 'tribunal vote\n';
 
-/** Canonical Tribunal seats. Titles match the sealed member stances. */
+/** Canonical Tribunal seats with display titles describing their member stances. */
 const TRIBUNAL_SEATS = [
-  { id: 'axiom', name: 'Axiom', office: 'the Composer', symbol: '✶' },
-  { id: 'concord', name: 'Concord', office: 'the Guardian', symbol: '⛨' },
-  { id: 'variance', name: 'Variance', office: 'the Exhaustive', symbol: '⋮' },
-  { id: 'pragma', name: 'Pragma', office: 'the Conventional', symbol: '≡' },
-  { id: 'nemesis', name: 'Nemesis', office: 'the Calibrated Adversary', symbol: '⚔' },
+  { id: 'axiom', name: 'Axiom', office: 'Coherent Composer', symbol: '✶' },
+  { id: 'concord', name: 'Concord', office: 'Vigilant Guardian', symbol: '⛨' },
+  { id: 'variance', name: 'Variance', office: 'Exhaustive Analyst', symbol: '⋮' },
+  { id: 'pragma', name: 'Pragma', office: 'Practical Tactician', symbol: '≡' },
+  { id: 'nemesis', name: 'Nemesis', office: 'Endemic Adversary', symbol: '⚔' },
 ] as const;
 
 type TribunalSeatId = (typeof TRIBUNAL_SEATS)[number]['id'];
@@ -397,6 +397,26 @@ export function LiveEventStream({
           <h2>{title}</h2>
           <StreamStatusIndicator streamConnection={streamConnection} feedConnection={connection} />
         </div>
+        <div className="tribunal-strip" role="region" aria-label="Tribunal">
+          {TRIBUNAL_SEATS.map((seat) => {
+            const vote = tribunalVotes.get(seat.id);
+            const outcome = typeof vote?.outcome === 'string' ? vote.outcome : undefined;
+            return (
+              <article key={seat.id} className="tribunal-seat" title={`${seat.name}, ${seat.office}`} data-lit={vote ? 'true' : 'false'} data-outcome={outcome ?? 'pending'}>
+                <span className="tribunal-symbol" aria-hidden="true">{seat.symbol}</span>
+                <span className="tribunal-name">{seat.name}</span>
+                <span className="tribunal-office">{seat.office}</span>
+                <span className="tribunal-outcome">{outcome ? displayLabel(outcome) : 'Ready'}</span>
+                {vote ? (
+                  <details className="tribunal-vote">
+                    <summary>Vote</summary>
+                    <pre>{JSON.stringify(vote, null, 2)}</pre>
+                  </details>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
         <div className="stream-controls">
           <select aria-label="Filter by model" value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}>
             <option value="all">All models</option>
@@ -431,26 +451,6 @@ export function LiveEventStream({
         </div>
       </div>
       {isReconciling ? <p className="panel-note">Syncing feed history…</p> : null}
-      <div className="tribunal-strip" role="region" aria-label="Tribunal">
-        {TRIBUNAL_SEATS.map((seat) => {
-          const vote = tribunalVotes.get(seat.id);
-          const outcome = typeof vote?.outcome === 'string' ? vote.outcome : undefined;
-          return (
-            <article key={seat.id} className="tribunal-seat" data-lit={vote ? 'true' : 'false'} data-outcome={outcome ?? 'pending'}>
-              <span className="tribunal-symbol" aria-hidden="true">{seat.symbol}</span>
-              <span className="tribunal-name">{seat.name}</span>
-              <span className="tribunal-office">{seat.office}</span>
-              <span className="tribunal-outcome">{outcome ? displayLabel(outcome) : 'Waiting'}</span>
-              {vote ? (
-                <details className="tribunal-vote">
-                  <summary>Vote</summary>
-                  <pre>{JSON.stringify(vote, null, 2)}</pre>
-                </details>
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
       {visible.length === 0 ? (
         isReconciling ? <ReconcilePlaceholder label="Loading feed history…" />
           : <EmptyState hasRecords={events.length > 0} hasFilters={hasFilters} connection={connection} />
