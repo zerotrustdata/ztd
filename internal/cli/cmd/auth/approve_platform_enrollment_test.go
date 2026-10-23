@@ -248,7 +248,7 @@ func TestApprovePlatformEnrollmentCmd_RequestNotFoundReturnsError(t *testing.T) 
 
 	err = cmd.RunE(cmd, []string{"nonexistent-req"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestNotFound)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestNotFound)
 	assert.Empty(t, mockClient.PostCalls, "decision must not be posted for a non-existent request")
 }
 
@@ -269,7 +269,7 @@ func TestApprovePlatformEnrollmentCmd_GetErrorReturnsWrappedError(t *testing.T) 
 
 	err := cmd.RunE(cmd, []string{"req-operator-001"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, getErr)
+	require.ErrorIs(t, err, getErr)
 	assert.Empty(t, mockClient.PostCalls, "decision must not be posted when pending fetch fails")
 }
 
@@ -420,7 +420,7 @@ func TestApprovePlatformEnrollmentCmd_ReasonTooLongReturnsError(t *testing.T) {
 
 	err = cmd.RunE(cmd, []string{"req-operator-001"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentReasonTooLong)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentReasonTooLong)
 	assert.Empty(t, mockClient.PostCalls, "decision must not be posted when reason validation fails")
 }
 
@@ -559,7 +559,7 @@ func TestApprovePlatformEnrollmentCmd_AllRejectsExplicitSelectors(t *testing.T) 
 func TestApprovePlatformEnrollmentCmd_UnmatchedSelectorPostsNothing(t *testing.T) {
 	client, _, err := runApproveWithYes(t, nil, []string{"req-operator-001", "ghost-a", "ghost-b"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestNotFound)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestNotFound)
 	assert.Contains(t, err.Error(), "ghost-a, ghost-b")
 	assert.NotContains(t, err.Error(), "req-operator-001")
 	assert.Empty(t, client.PostCalls, "no request may be decided when any selector is unmatched")
@@ -570,7 +570,7 @@ func TestApprovePlatformEnrollmentCmd_ReasonTooLongPostsNothingForBatch(t *testi
 		map[string]string{"reason": strings.Repeat("x", constants.PlatformEnrollmentMaxReasonBytes+1)},
 		[]string{"req-operator-001", "req-dashboard-002"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentReasonTooLong)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentReasonTooLong)
 	assert.Empty(t, client.PostCalls)
 }
 

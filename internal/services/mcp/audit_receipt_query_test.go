@@ -347,7 +347,7 @@ func TestAuditReceiptListTool_Execute_MissingOperatorSessionID(t *testing.T) {
 	tool := &AuditReceiptListTool{}
 	_, err := tool.Execute(ctx, args)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPAuditReceiptListOperatorSessionReq))
+	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptListOperatorSessionReq)
 	assert.Zero(t, stub.listCalls)
 }
 
@@ -357,7 +357,7 @@ func TestAuditReceiptListTool_Execute_QueryNotConfigured(t *testing.T) {
 	tool := &AuditReceiptListTool{}
 	_, err := tool.Execute(context.Background(), args)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPAuditReceiptQueryNotConfigured))
+	assert.ErrorIs(t, err, constants.ErrMCPAuditReceiptQueryNotConfigured)
 }
 
 func TestAuditReceiptListTool_Execute_InvalidNotBefore(t *testing.T) {
@@ -367,7 +367,7 @@ func TestAuditReceiptListTool_Execute_InvalidNotBefore(t *testing.T) {
 	tool := &AuditReceiptListTool{}
 	_, err := tool.Execute(ctx, args)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPAuditReceiptParseNotBefore))
+	assert.ErrorIs(t, err, constants.ErrMCPAuditReceiptParseNotBefore)
 }
 
 func TestAuditReceiptListTool_Execute_QueryError(t *testing.T) {
@@ -442,7 +442,7 @@ func TestAuditReceiptGetTool_Execute_MissingTransactionID(t *testing.T) {
 	tool := &AuditReceiptGetTool{}
 	_, err := tool.Execute(ctx, args)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPAuditReceiptGetTransactionIDReq))
+	assert.ErrorIs(t, err, constants.ErrMCPAuditReceiptGetTransactionIDReq)
 }
 
 func TestAuditReceiptGetTool_Execute_QueryNotConfigured(t *testing.T) {
@@ -451,7 +451,7 @@ func TestAuditReceiptGetTool_Execute_QueryNotConfigured(t *testing.T) {
 	tool := &AuditReceiptGetTool{}
 	_, err := tool.Execute(context.Background(), args)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPAuditReceiptQueryNotConfigured))
+	assert.ErrorIs(t, err, constants.ErrMCPAuditReceiptQueryNotConfigured)
 }
 
 func TestAuditReceiptGetTool_Execute_QueryError(t *testing.T) {
@@ -508,7 +508,7 @@ func TestNativeToolHandler_AuditReceiptQueryNotConfigured(t *testing.T) {
 	args, _ := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1"})
 	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", args)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrMCPAuditReceiptQueryNotConfigured))
+	assert.ErrorIs(t, err, constants.ErrMCPAuditReceiptQueryNotConfigured)
 }
 
 // TestAuditReceiptTools_VaultLockedIsSurfaced asserts that a locked runtime
@@ -521,7 +521,7 @@ func TestAuditReceiptTools_VaultLockedIsSurfaced(t *testing.T) {
 	listArgs, _ := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1"})
 	_, err := (&AuditReceiptListTool{}).Execute(ctx, listArgs)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
+	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked)
 
 	getArgs, _ := json.Marshal(AuditReceiptGetRequest{TransactionID: "tx-1"})
 	_, err = (&AuditReceiptGetTool{}).Execute(ctx, getArgs)

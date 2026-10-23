@@ -10,7 +10,6 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,35 +37,35 @@ func TestProcSignalSafeTool_Execute_InvalidArgs(t *testing.T) {
 
 	t.Run("invalid json", func(t *testing.T) {
 		_, err := tool.Execute(ctx, json.RawMessage(`{invalid`))
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, constants.ErrMCPUnmarshalArguments))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrMCPUnmarshalArguments)
 	})
 
 	t.Run("missing pid", func(t *testing.T) {
 		args := json.RawMessage(`{"signal": "SIGTERM"}`)
 		_, err := tool.Execute(ctx, args)
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, constants.ErrMCPProcSignalRequired))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrMCPProcSignalRequired)
 	})
 
 	t.Run("missing signal", func(t *testing.T) {
 		args := json.RawMessage(`{"pid": 1234}`)
 		_, err := tool.Execute(ctx, args)
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, constants.ErrMCPProcSignalRequired))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrMCPProcSignalRequired)
 	})
 
 	t.Run("invalid pid", func(t *testing.T) {
 		args := json.RawMessage(`{"pid": -1, "signal": "SIGTERM"}`)
 		_, err := tool.Execute(ctx, args)
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, constants.ErrMCPProcSignalRequired))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, constants.ErrMCPProcSignalRequired)
 	})
 
 	t.Run("pid zero", func(t *testing.T) {
 		args := json.RawMessage(`{"pid": 0, "signal": "SIGKILL"}`)
 		_, err := tool.Execute(ctx, args)
-		assert.True(t, errors.Is(err, constants.ErrMCPProcSignalRequired))
+		assert.ErrorIs(t, err, constants.ErrMCPProcSignalRequired)
 	})
 }
 

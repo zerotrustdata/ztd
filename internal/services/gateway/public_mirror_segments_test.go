@@ -80,7 +80,7 @@ func TestMirror_SegmentIngest_MissingStoredFileRejected(t *testing.T) {
 	}
 	err := env.mirror.storeProofPackage(ctx, req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPublicFeedProofArtifactsMissing)
+	require.ErrorIs(t, err, constants.ErrPublicFeedProofArtifactsMissing)
 
 	// Now ingest with inline artifact -> succeeds
 	req.Artifacts = []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}}
@@ -193,7 +193,7 @@ func TestMirror_SegmentIngest_StartupRejectsChainBreakAndSignatureFailure(t *tes
 
 		_, err = OpenPublicMirrorStore(ctx, env.fileSvc, testutil.NewTestLogger())
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
+		require.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
 	}
 
 	// 2. Signature failure

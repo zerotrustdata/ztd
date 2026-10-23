@@ -45,7 +45,7 @@ func TestNewModel_PublicBaseURLPreFilled(t *testing.T) {
 
 func TestNewModel_PublicBaseURLDefaultWhenEmpty(t *testing.T) {
 	m := NewModel(Options{})
-	assert.Equal(t, "", m.publicBaseURLInput.Value())
+	assert.Empty(t, m.publicBaseURLInput.Value())
 }
 
 func TestNewModel_PasskeyRpOriginPreFilled(t *testing.T) {

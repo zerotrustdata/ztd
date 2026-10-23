@@ -251,7 +251,7 @@ func TestPayloadToFileEditRequest_WithTaskID(t *testing.T) {
 	}
 
 	editReq, err := payloadToFileEditRequest(msg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "task-123", editReq.TaskID)
 }
 

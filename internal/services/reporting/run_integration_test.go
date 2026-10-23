@@ -173,7 +173,7 @@ func TestRun_PopulatedStores_AllCSVFilesWritten(t *testing.T) {
 	for _, fname := range expectedFiles {
 		path := filepath.Join(opts.OutDir, fname)
 		_, err := os.Stat(path)
-		assert.NoError(t, err, "expected file %s to exist", fname)
+		require.NoError(t, err, "expected file %s to exist", fname)
 	}
 
 	// Verify manifest has entries for all files.

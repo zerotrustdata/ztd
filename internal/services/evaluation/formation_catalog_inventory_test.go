@@ -44,7 +44,7 @@ func TestMaterializeFormationCatalogVariants_SelectsAllSovereignCatalogTags(t *t
 	}
 	_, err := MaterializeFormationVariants(partial, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
+	require.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
 
 	source := FormationCatalogFixtureVariants(func(string) string { return repeatHex('a') })
 	selected, err := MaterializeFormationVariants(source, nil)

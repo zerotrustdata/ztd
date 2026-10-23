@@ -10,7 +10,6 @@ package storage
 import (
 	"context"
 	"crypto/ed25519"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,7 +29,7 @@ func TestOpenReadOnlyOperationalEvidence_DoesNotCreateAbsentDatabase(t *testing.
 	require.Error(t, err)
 	assert.Nil(t, reader)
 	_, statErr := os.Stat(dbPath)
-	assert.True(t, errors.Is(statErr, os.ErrNotExist))
+	assert.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
 func TestReadOnlyOperationalEvidence_SnapshotReadsBoundedReceiptAndCommitmentBodies(t *testing.T) {
@@ -73,9 +72,9 @@ func TestReadOnlyOperationalEvidence_SnapshotReadsBoundedReceiptAndCommitmentBod
 	require.Len(t, snapshot.Receipts, 1)
 	require.Len(t, snapshot.Commitments, 1)
 	assert.Equal(t, "tx-1", snapshot.Receipts[0].TransactionID)
-	assert.Equal(t, []byte(`{"transactionId":"tx-1"}`), snapshot.Receipts[0].Body)
+	assert.Equal(t, []byte(`{"transactionId":"tx-1"}`), snapshot.Receipts[0].Body) //nolint:testifylint // exact bytes, not JSON equivalence
 	assert.Equal(t, "tx-1", snapshot.Commitments[0].TransactionID)
-	assert.Equal(t, []byte(`{"transactionId":"tx-1"}`), snapshot.Commitments[0].Body)
+	assert.Equal(t, []byte(`{"transactionId":"tx-1"}`), snapshot.Commitments[0].Body) //nolint:testifylint // exact bytes, not JSON equivalence
 }
 
 func TestReadOnlyOperationalEvidence_SnapshotFailsInsteadOfTruncatingPopulation(t *testing.T) {

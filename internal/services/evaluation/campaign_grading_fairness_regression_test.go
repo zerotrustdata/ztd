@@ -37,7 +37,7 @@ func TestCollectRunAggregateState_UnavailableObservationsDoNotLowerModelScores(t
 	assert.Equal(t, uint32(3), state.Terminal)
 	assert.Equal(t, uint32(2), state.Judged)
 	require.NotNil(t, state.Headline.PassRate.Value)
-	assert.Equal(t, 0.5, *state.Headline.PassRate.Value)
+	assert.InDelta(t, 0.5, *state.Headline.PassRate.Value, 0)
 	model := buildModelSummaryRecord("dataset", "2026-10-23T00:00:00Z", state.VariantRoles["model:primary"], CampaignRelease{})
 	require.NotNil(t, model.PassRate)
 	assert.Equal(t, uint32(2), model.PassRate.Denominator)
@@ -105,7 +105,7 @@ func TestGradeHomogeneousScenario_FinalResponseRestatementDoesNotCountTwice(t *t
 	result := &evalv1.EvaluationAssignmentResult{DecomposedScores: grading.DecomposedScores}
 	rate, ok := DeterministicPassRate(result)
 	require.True(t, ok)
-	assert.Equal(t, 0.5, rate)
+	assert.InDelta(t, 0.5, rate, 0)
 }
 
 func TestRecoveryToolFailure_DisclosesShellRestrictionAndAcceptsMissingFileWording(t *testing.T) {

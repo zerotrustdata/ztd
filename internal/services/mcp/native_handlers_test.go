@@ -52,7 +52,7 @@ func TestNewNativeToolHandler(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, handler)
 		require.NotNil(t, handler.registry)
-		require.Greater(t, len(handler.ListTools()), 0)
+		require.NotEmpty(t, handler.ListTools())
 	})
 
 	t.Run("with logger", func(t *testing.T) {

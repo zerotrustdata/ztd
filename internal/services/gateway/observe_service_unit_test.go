@@ -11,7 +11,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -53,7 +52,7 @@ func TestDecodeCursor_EmptyStringIsStart(t *testing.T) {
 func TestDecodeCursor_InvalidBase64Rejected(t *testing.T) {
 	_, err := decodeCursor("!!!not-base64!!!")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveCursorInvalid), "invalid cursor should wrap ErrObserveCursorInvalid")
+	assert.ErrorIs(t, err, constants.ErrObserveCursorInvalid, "invalid cursor should wrap ErrObserveCursorInvalid")
 }
 
 func TestDecodeCursor_InvalidJSONRejected(t *testing.T) {
@@ -61,7 +60,7 @@ func TestDecodeCursor_InvalidJSONRejected(t *testing.T) {
 	encoded := mustEncodeBase64(t, []byte("not-json"))
 	_, err := decodeCursor(encoded)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrObserveCursorInvalid), "invalid cursor JSON should wrap ErrObserveCursorInvalid")
+	assert.ErrorIs(t, err, constants.ErrObserveCursorInvalid, "invalid cursor JSON should wrap ErrObserveCursorInvalid")
 }
 
 func TestClampLimit_Bounds(t *testing.T) {
@@ -107,9 +106,9 @@ func TestCompareSortKey_DescOrdering(t *testing.T) {
 	newer := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	older := time.Date(2026, 9, 9, 11, 0, 0, 0, time.UTC)
 	// Newer timestamp sorts before older (DESC).
-	assert.Greater(t, compareSortKey(newer, "a", older, "b"), 0)
+	assert.Positive(t, compareSortKey(newer, "a", older, "b"))
 	// Equal timestamp: larger ID sorts first (DESC).
-	assert.Greater(t, compareSortKey(newer, "b", newer, "a"), 0)
+	assert.Positive(t, compareSortKey(newer, "b", newer, "a"))
 	// Fully equal keys compare equal.
 	assert.Equal(t, 0, compareSortKey(newer, "a", newer, "a"))
 }

@@ -311,7 +311,7 @@ func TestGetSuspendedTransaction_Success(t *testing.T) {
 	assert.Equal(t, "get-test-hash", retrieved.TransactionHash)
 	assert.Equal(t, "test-envelope", string(retrieved.Envelope))
 	assert.Equal(t, "test_tool", retrieved.ToolName)
-	assert.Equal(t, `{"arg": "value"}`, string(retrieved.ToolArguments))
+	assert.Equal(t, `{"arg": "value"}`, string(retrieved.ToolArguments)) //nolint:testifylint // exact bytes, not JSON equivalence
 	assert.Equal(t, "user-123", retrieved.UserID)
 	assert.Equal(t, "operator-456", retrieved.OperatorID)
 	assert.True(t, retrieved.Approved)

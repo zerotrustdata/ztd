@@ -110,7 +110,7 @@ func TestPlatformEnrollment_CreateRequest_AcceptsGatewayOriginCSR(t *testing.T) 
 
 	assert.NotEmpty(t, resp.RequestID, "gateway-origin enrollment must return a non-empty request ID")
 	_, err := env.enrollSvc.GetStatus(context.Background(), platformEnrollmentTestToken(t, resp.RequestID))
-	assert.NoError(t, err, "requester-held token must resolve the created enrollment")
+	require.NoError(t, err, "requester-held token must resolve the created enrollment")
 	assert.Equal(t, models.PlatformOperatorName, resp.ComponentName,
 		"gateway-origin enrollment component name must be %s", models.PlatformOperatorName)
 
@@ -272,7 +272,7 @@ func TestPlatformEnrollment_NonFirstUserCannotApproveGatewayOriginRequest(t *tes
 		RequestID: createResp.RequestID,
 		Decision:  models.PlatformEnrollmentDecisionApprove,
 	})
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision,
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision,
 		"non-first-user approval of a gateway-origin enrollment must fail with ErrPlatformEnrollmentInvalidDecision")
 
 	// The request must remain pending (unchanged).

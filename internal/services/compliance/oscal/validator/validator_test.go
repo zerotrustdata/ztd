@@ -184,7 +184,7 @@ func TestValidator_OfficialNISTAssessmentResultsFixture_PassesBothStages(t *test
 	assert.NotEmpty(t, provenance.RetrievedAt)
 	assert.NotEmpty(t, provenance.RetrievalMethod)
 	assert.NotEmpty(t, provenance.IntegrityNote)
-	assert.Equal(t, provenance.ByteLength, len(officialNISTAssessmentResults))
+	assert.Len(t, officialNISTAssessmentResults, provenance.ByteLength)
 	digest := sha256.Sum256(officialNISTAssessmentResults)
 	assert.Equal(t, provenance.SHA256, hex.EncodeToString(digest[:]))
 

@@ -705,7 +705,7 @@ func TestVerifyPatternACL(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 				if tt.wantErrIs != nil {
-					assert.ErrorIs(t, err, tt.wantErrIs)
+					require.ErrorIs(t, err, tt.wantErrIs)
 				}
 				return
 			}
@@ -719,11 +719,11 @@ func TestVerifyPatternACL(t *testing.T) {
 func TestVerifyChannelACLRejectsCrossOperator(t *testing.T) {
 	otherOperatorID := "a7a272ba-5022-4a89-81f4-28bf30dc1692"
 
-	assert.Error(t, verifyChannelACL("results:"+otherOperatorID+":session-123", "op-1"),
+	require.Error(t, verifyChannelACL("results:"+otherOperatorID+":session-123", "op-1"),
 		"cross-operator result channel must be rejected")
-	assert.Error(t, verifyChannelACL("heartbeat:"+otherOperatorID, "op-1"),
+	require.Error(t, verifyChannelACL("heartbeat:"+otherOperatorID, "op-1"),
 		"cross-operator heartbeat channel must be rejected")
-	assert.NoError(t, verifyChannelACL("results:op-1:session-123", "op-1"),
+	require.NoError(t, verifyChannelACL("results:op-1:session-123", "op-1"),
 		"own result channel must be accepted")
 	assert.Error(t, verifyPatternACL("results:"+otherOperatorID+":*", "op-1"),
 		"cross-operator result pattern must be rejected")

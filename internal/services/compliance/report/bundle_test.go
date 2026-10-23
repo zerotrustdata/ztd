@@ -332,7 +332,7 @@ func TestPersistBundle_RefusesFileServiceThatDoesNotSeal(t *testing.T) {
 
 	_, err = PersistBundle(context.Background(), store, result)
 
-	assert.ErrorIs(t, err, constants.ErrBundlePersistenceFailed)
+	require.ErrorIs(t, err, constants.ErrBundlePersistenceFailed)
 	assert.Empty(t, store.writes)
 }
 
@@ -367,7 +367,7 @@ func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
 	t.Run("existing output directory", func(t *testing.T) {
 		outDir := testutil.TempDir(t)
 		_, err := ExportBundle(context.Background(), fileSvc, reportID, outDir)
-		assert.ErrorIs(t, err, constants.ErrBundleExportFailed)
+		require.ErrorIs(t, err, constants.ErrBundleExportFailed)
 		entries, readErr := os.ReadDir(outDir)
 		require.NoError(t, readErr)
 		assert.Empty(t, entries)
@@ -383,19 +383,19 @@ func TestExportBundle_RefusesUnsafeDestinationsAndSources(t *testing.T) {
 
 		outDir := filepath.Join(runtimeDir, "plaintext-export")
 		_, err = ExportBundle(context.Background(), sealed, reportID, outDir)
-		assert.ErrorIs(t, err, constants.ErrBundleExportFailed)
+		require.ErrorIs(t, err, constants.ErrBundleExportFailed)
 		assert.NoDirExists(t, outDir)
 	})
 	t.Run("file service that does not open sealed bundles", func(t *testing.T) {
 		outDir := filepath.Join(testutil.TempDir(t), "export")
 		_, err := ExportBundle(context.Background(), newRecordingBundleFileService(), reportID, outDir)
-		assert.ErrorIs(t, err, constants.ErrBundleExportFailed)
+		require.ErrorIs(t, err, constants.ErrBundleExportFailed)
 		assert.NoDirExists(t, outDir)
 	})
 	t.Run("unknown report", func(t *testing.T) {
 		outDir := filepath.Join(testutil.TempDir(t), "export")
 		_, err := ExportBundle(context.Background(), fileSvc, "missing-report", outDir)
-		assert.ErrorIs(t, err, constants.ErrBundleExportFailed)
+		require.ErrorIs(t, err, constants.ErrBundleExportFailed)
 		assert.NoDirExists(t, outDir)
 	})
 }
@@ -441,7 +441,7 @@ func TestPersistBundle_RejectsInvalidAssemblyResultsBeforeWriting(t *testing.T) 
 
 			_, err = PersistBundle(context.Background(), fileSvc, result)
 
-			assert.ErrorIs(t, err, constants.ErrBundlePersistenceFailed)
+			require.ErrorIs(t, err, constants.ErrBundlePersistenceFailed)
 			assert.Empty(t, store.writes)
 		})
 	}
@@ -458,7 +458,7 @@ func TestPersistBundle_RejectsExistingBundleWithoutOverwriting(t *testing.T) {
 
 	_, err = PersistBundle(context.Background(), fileSvc, result)
 
-	assert.ErrorIs(t, err, constants.ErrBundlePersistenceFailed)
+	require.ErrorIs(t, err, constants.ErrBundlePersistenceFailed)
 	assert.Empty(t, store.writes)
 	assert.Empty(t, store.removedPaths)
 }
@@ -475,8 +475,8 @@ func TestPersistBundle_RemovesIncompleteNewBundleAfterWriteFailure(t *testing.T)
 
 	_, err = PersistBundle(context.Background(), fileSvc, result)
 
-	assert.ErrorIs(t, err, constants.ErrBundlePersistenceFailed)
-	assert.ErrorIs(t, err, store.writeErr)
+	require.ErrorIs(t, err, constants.ErrBundlePersistenceFailed)
+	require.ErrorIs(t, err, store.writeErr)
 	assert.Equal(t, []string{bundleDir}, store.removedPaths)
 	assert.Empty(t, store.files)
 }
@@ -521,7 +521,7 @@ func TestAssembleBundle_PublicProfile_ProducesChecksummedArtifactsAndManifest(t 
 	for _, artifact := range result.Bundle.GetArtifacts() {
 		assert.Equal(t, constants.ComplianceBundleProfilePublic, artifact.GetProfile())
 		assert.Nil(t, artifact.GetEncryption())
-		assert.Greater(t, artifact.GetByteLength(), int64(0))
+		assert.Positive(t, artifact.GetByteLength())
 		assert.NotEmpty(t, artifact.GetSha256())
 	}
 

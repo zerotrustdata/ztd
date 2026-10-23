@@ -147,7 +147,7 @@ func TestRunsVerify_CoverageReportsIncompleteScheduledRun(t *testing.T) {
 
 	out, err := env.run(t, "runs", "verify", "run-a-1", "--coverage")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
 	assert.Contains(t, out, "incomplete")
 
 	var payload runCoverageJSON
@@ -519,7 +519,7 @@ func TestRunsResume_RejectsMissingRunWithoutLeavingALease(t *testing.T) {
 
 	_, err := env.run(t, "runs", "resume", "missing-run-id")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrNotFound)
+	require.ErrorIs(t, err, constants.ErrNotFound)
 
 	runIDs, listErr := env.store(t).ListRunIDs(context.Background())
 	require.NoError(t, listErr)
@@ -537,7 +537,7 @@ func TestRunsResume_GatewayOutageReleasesLeaseWithoutExecuting(t *testing.T) {
 	_, err := env.run(t, "runs", "resume", "run-a-1", "--no-auto-bind")
 	require.Error(t, err)
 	var transportError *url.Error
-	assert.ErrorAs(t, err, &transportError)
+	require.ErrorAs(t, err, &transportError)
 	assert.Zero(t, run.stack.Provider.ChatCount())
 
 	_, leaseErr := env.store(t).LoadRunLease(context.Background(), "run-a-1")
@@ -857,7 +857,7 @@ func TestRunsResume_RejectsPreflightWhenGatewayUnhealthy(t *testing.T) {
 
 	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
 	assert.Zero(t, run.stack.Provider.ChatCount(), "the preflight refuses before any model turn")
 
 	_, leaseErr := env.store(t).LoadRunLease(context.Background(), runID)

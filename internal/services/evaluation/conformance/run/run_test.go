@@ -359,7 +359,7 @@ func TestRunRefusesOutboundAnchorThatDoesNotCheckAgainstItsExport(t *testing.T) 
 			record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
 
 			require.Error(t, err)
-			assert.ErrorIs(t, err, tt.want)
+			require.ErrorIs(t, err, tt.want)
 			assert.Nil(t, record)
 			assert.Empty(t, h.log, "the anchor is checked before any canary seed, sentinel read or drive")
 		})
@@ -391,7 +391,7 @@ func TestRunRequiresEnrollmentBoundAnchorOnlyForOutbound(t *testing.T) {
 			record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
 
 			require.Error(t, err)
-			assert.ErrorIs(t, err, tt.want)
+			require.ErrorIs(t, err, tt.want)
 			assert.Nil(t, record)
 			assert.Empty(t, h.log, "the anchor is checked before any canary seed, sentinel read or drive")
 		})
@@ -405,8 +405,8 @@ func TestRunAbortsWhenStackIsNotQuiescent(t *testing.T) {
 	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrConformanceStackNotQuiescent)
-	assert.ErrorIs(t, err, constants.ErrConformanceUnclaimedExecution)
+	require.ErrorIs(t, err, constants.ErrConformanceStackNotQuiescent)
+	require.ErrorIs(t, err, constants.ErrConformanceUnclaimedExecution)
 	assert.Nil(t, record)
 }
 
@@ -417,7 +417,7 @@ func TestRunAbortsWhenSentinelReceiptIsForged(t *testing.T) {
 	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrConformanceStackNotQuiescent)
+	require.ErrorIs(t, err, constants.ErrConformanceStackNotQuiescent)
 	assert.Nil(t, record)
 	assert.Equal(t, []string{"snapshot", "snapshot", "sentinel:embedded", "sentinel:embedded", "sentinel:outbound", "sentinel:outbound"}, h.log)
 }
@@ -508,7 +508,7 @@ func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
 			record, err := Run(context.Background(), cfg)
 
 			require.Error(t, err)
-			assert.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
+			require.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
 			assert.Nil(t, record)
 			assert.Empty(t, h.log)
 			_, err = embedded.Files.Lstat(context.Background(), canaryRoot())
@@ -525,7 +525,7 @@ func TestRunAbortsWithNoRecordWhenDriverFails(t *testing.T) {
 	record, err := Run(context.Background(), h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true))
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, driveErr)
+	require.ErrorIs(t, err, driveErr)
 	assert.Nil(t, record)
 }
 

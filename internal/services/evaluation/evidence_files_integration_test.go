@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -184,7 +183,7 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 
 		body, err := locked.ReadFile(ctx, sealedPath)
 		require.ErrorIs(t, err, constants.ErrVaultLocked)
-		assert.NotErrorIs(t, err, constants.ErrEvaluationEvidenceDecryptFailed, "a locked vault is not an authentication failure")
+		require.NotErrorIs(t, err, constants.ErrEvaluationEvidenceDecryptFailed, "a locked vault is not an authentication failure")
 		assert.Empty(t, body)
 	})
 
@@ -452,7 +451,7 @@ func TestEvalBackup_CarriesCiphertextOnly(t *testing.T) {
 	// A host whose key store never held the master key cannot open the snapshot.
 	other := newSealedRuntime(t)
 	_, err = NewEvalBackup(other.files, time.Now).Restore(ctx, report.SnapshotDir, false)
-	require.True(t, errors.Is(err, constants.ErrEvaluationBackupKeyChainInvalid), "a key chain the key store cannot open restores nothing: %v", err)
+	require.ErrorIs(t, err, constants.ErrEvaluationBackupKeyChainInvalid, "a key chain the key store cannot open restores nothing: %v", err)
 	exists, err := other.files.FileExists(ctx, recordPath)
 	require.NoError(t, err)
 	assert.False(t, exists)

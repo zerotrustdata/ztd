@@ -93,7 +93,7 @@ func TestRandomSerial(t *testing.T) {
 		require.NoError(t, err)
 
 		limit := new(big.Int).Lsh(big.NewInt(1), 128)
-		assert.Less(t, serial.Cmp(limit), 0, "serial should be less than 2^128")
+		assert.Negative(t, serial.Cmp(limit), "serial should be less than 2^128")
 		assert.GreaterOrEqual(t, serial.Cmp(big.NewInt(0)), 0, "serial should be non-negative")
 	})
 }
@@ -331,7 +331,7 @@ func TestLoadCAPrivateKey(t *testing.T) {
 
 		var loadedKey *ecdsa.PrivateKey
 		err := pki.loadCAPrivateKey("root", &loadedKey)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrPKIPrivateKeyRequired)
 	})
 
@@ -348,7 +348,7 @@ func TestLoadCAPrivateKey(t *testing.T) {
 
 		var loadedKey *ecdsa.PrivateKey
 		err := pki.loadCAPrivateKey("nonexistent", &loadedKey)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrKeyStoreKeyNotFound)
 	})
 
@@ -415,7 +415,7 @@ func TestPKIAuthority_VerifyCertificate_Unit(t *testing.T) {
 	t.Run("Returns error for nil certificate", func(t *testing.T) {
 		pki := &PKIAuthority{}
 		err := pki.VerifyCertificate(t.Context(), nil)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrPKINoCertificate)
 	})
 }
@@ -425,7 +425,7 @@ func TestPKIAuthority_RevokeCertificate(t *testing.T) {
 	t.Run("Returns error when database is nil", func(t *testing.T) {
 		pki := &PKIAuthority{db: nil}
 		err := pki.RevokeCertificate(t.Context(), "123", "test reason")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrPKIDatabaseNotAvailable)
 	})
 }
@@ -435,7 +435,7 @@ func TestPKIAuthority_GenerateCRL_Unit(t *testing.T) {
 	t.Run("Returns error when database is nil", func(t *testing.T) {
 		pki := &PKIAuthority{db: nil}
 		_, err := pki.GenerateCRL(t.Context())
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrPKIDatabaseNotAvailable)
 	})
 }
@@ -489,7 +489,7 @@ func TestPKIAuthority_SignCSR_Unit(t *testing.T) {
 		csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
 
 		_, _, err := pki.SignCSR(string(csrPEM), "gateway-peer", "", "", "", "", "gateway-id")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrPKIGatewayPeerCANotLoaded)
 	})
 
@@ -506,7 +506,7 @@ func TestPKIAuthority_SignCSR_Unit(t *testing.T) {
 		csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
 
 		_, _, err := pki.SignCSR(string(csrPEM), "operator", "org-id", "op-id", "session-id", "", "")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrPKIOperatorCANotLoaded)
 	})
 }
@@ -605,6 +605,6 @@ func TestLoadCACertificate_RejectsEd25519Signature(t *testing.T) {
 	pki := &PKIAuthority{fileSvc: fileSvc}
 	err = pki.loadCACertificate(relPath, &loadedCert)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrPKIEd25519CertRejected)
+	require.ErrorIs(t, err, constants.ErrPKIEd25519CertRejected)
 	assert.Nil(t, loadedCert, "rejected cert must not be stored")
 }

@@ -46,7 +46,7 @@ func TestTermUnit(t *testing.T) {
 		assert.Greater(t, v, float32(0))
 		assert.LessOrEqual(t, v, float32(1))
 	}
-	assert.Equal(t, a, termUnit("xterm-256color"))
+	assert.InDelta(t, a, termUnit("xterm-256color"), 0)
 }
 
 func TestZeroGenomeIsPersistence(t *testing.T) {
@@ -74,7 +74,7 @@ func TestCultureHoldsAConstantHostAndRoundTrips(t *testing.T) {
 	assert.Equal(t, c.pop, loaded.pop)
 
 	_, err = unmarshalCulture(b[:len(b)-1])
-	assert.ErrorIs(t, err, constants.ErrAutochthonCultureFormat)
+	require.ErrorIs(t, err, constants.ErrAutochthonCultureFormat)
 	binary.LittleEndian.PutUint32(b[cultureHeaderN:], math.Float32bits(float32(math.NaN())))
 	_, err = unmarshalCulture(b)
 	assert.ErrorIs(t, err, constants.ErrAutochthonCultureFormat)
@@ -324,7 +324,7 @@ func TestReadStatusPendingLineAndBrokenChain(t *testing.T) {
 	assert.EqualValues(t, 1, st.Tally.Lines)
 	assert.Empty(t, st.Generations)
 	_, err = openTally(ctx, files, nil)
-	assert.ErrorIs(t, err, constants.ErrAutochthonTallyBroken, "start refuses a torn tail")
+	require.ErrorIs(t, err, constants.ErrAutochthonTallyBroken, "start refuses a torn tail")
 
 	require.NoError(t, files.WriteFile(ctx, constants.AutochthonTallyRelPath, []byte("{}\n"), constants.PermFilePrivate))
 	_, err = ReadStatus(ctx, files, StatusOptions{})
@@ -355,7 +355,7 @@ func TestRunRefusesARootThatIsAlreadyRunning(t *testing.T) {
 	held, err := files.TryLock(ctx, constants.AutochthonLockRelPath, constants.PermFilePrivate)
 	require.NoError(t, err)
 	err = Run(ctx, files, testutil.NewTestLogger(), Options{Interval: time.Millisecond, Ticks: 1})
-	assert.ErrorIs(t, err, constants.ErrAutochthonRunning)
+	require.ErrorIs(t, err, constants.ErrAutochthonRunning)
 	exists, err := files.FileExists(ctx, constants.AutochthonTallyRelPath)
 	require.NoError(t, err)
 	assert.False(t, exists, "a refused run touches no tally")
@@ -391,7 +391,7 @@ func TestReadStatusAnchor(t *testing.T) {
 	}
 	for _, a := range []Anchor{{Lines: 2, Head: lines[2].Hash}, {Lines: 4, Head: lines[2].Hash}, {Lines: 1, Head: genesis}} {
 		_, err := ReadStatus(ctx, files, StatusOptions{Anchor: &a})
-		assert.ErrorIs(t, err, constants.ErrAutochthonAnchorMissing, "anchor %s", a)
+		require.ErrorIs(t, err, constants.ErrAutochthonAnchorMissing, "anchor %s", a)
 	}
 
 	raw, err := files.ReadFile(ctx, constants.AutochthonTallyRelPath)

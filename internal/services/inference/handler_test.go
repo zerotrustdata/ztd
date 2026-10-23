@@ -141,7 +141,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_NoModelOnTheRequestFailsClo
 	_, err := handler.ExecuteVerifiedTransaction(context.Background(), constants.Event.Operator.Inference.Requested, &testCommandMessage{payload: payload})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInferenceModelRefInvalid, "the Operator holds no default model to fall back to")
+	require.ErrorIs(t, err, constants.ErrInferenceModelRefInvalid, "the Operator holds no default model to fall back to")
 	assert.Zero(t, backend.calls, "backend must not be called without a model")
 }
 
@@ -161,7 +161,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_MissingProviderAttemptIDRej
 	_, err = handler.ExecuteInference(context.Background(), &testCommandMessage{payload: payload})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInferenceProviderAttemptRequired)
+	require.ErrorIs(t, err, constants.ErrInferenceProviderAttemptRequired)
 	assert.Zero(t, backend.calls)
 }
 
@@ -283,7 +283,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_CampaignRegistryRejectsInva
 
 			_, err := handler.ExecuteInference(context.Background(), &testCommandMessage{payload: mustMarshalInferenceRequested(t, req)})
 
-			assert.ErrorIs(t, err, tt.wantError)
+			require.ErrorIs(t, err, tt.wantError)
 			assert.Zero(t, backend.calls)
 		})
 	}
@@ -446,7 +446,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_UnspecifiedRoleRejected(t *
 	_, err := handler.ExecuteVerifiedTransaction(context.Background(), constants.Event.Operator.Inference.Requested, cmdMsg)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrInferenceRoleInvalid)
+	require.ErrorIs(t, err, constants.ErrInferenceRoleInvalid)
 	assert.Equal(t, 0, backend.calls)
 }
 
@@ -659,7 +659,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_PreservesValidatedGeneratio
 
 	require.NoError(t, err)
 	require.NotNil(t, backend.lastReq.TopP)
-	assert.Equal(t, topP, *backend.lastReq.TopP)
+	assert.InDelta(t, topP, *backend.lastReq.TopP, 0)
 	require.NotNil(t, backend.lastReq.TopK)
 	assert.Equal(t, topK, *backend.lastReq.TopK)
 	require.NotNil(t, backend.lastReq.Seed)
@@ -1038,7 +1038,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_InvalidTypedInputRejectedBe
 			_, err := handler.ExecuteVerifiedTransaction(context.Background(), constants.Event.Operator.Inference.Requested, &testCommandMessage{payload: payload})
 
 			require.Error(t, err)
-			assert.ErrorIs(t, err, tt.err)
+			require.ErrorIs(t, err, tt.err)
 			assert.Equal(t, 0, backend.calls)
 		})
 	}

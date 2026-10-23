@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -33,7 +34,7 @@ func TestProofIndexPendingAfter_ResumesOnlyMatchingPrefixes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pending, err := index.pendingAfter(tc.root)
-			assert.ErrorIs(t, err, tc.wantErr)
+			require.ErrorIs(t, err, tc.wantErr)
 			if tc.wantErr != nil {
 				return
 			}
@@ -54,10 +55,10 @@ func TestProofIndexCheck_EnforcesMirrorChainRules(t *testing.T) {
 		ProofRootSHA256: "root-1",
 		Entries:         []models.PublicProofCatalogEntry{{ArtifactID: idA, SourceRunID: "run-a"}},
 	}
-	assert.NoError(t, index.check(genesis))
+	require.NoError(t, index.check(genesis))
 	index.commit(genesis, 0, 10)
 	withdrawal := models.PublicProofManifestSegment{SegmentIndex: 2, PreviousRoot: "root-1", ProofRootSHA256: "root-2", WithdrawnArtifactIDs: []string{idA}}
-	assert.NoError(t, index.check(withdrawal))
+	require.NoError(t, index.check(withdrawal))
 	index.commit(withdrawal, 10, 10)
 	assert.Empty(t, index.catalog().Entries)
 	assert.Empty(t, index.activeRunArtifactIDs("run-a"))

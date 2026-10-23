@@ -44,14 +44,14 @@ func TestWriteJSON_PrettyPrints(t *testing.T) {
 	var buf bytes.Buffer
 	err := WriteJSON(&buf, map[string]any{"operators": []any{}})
 	require.NoError(t, err)
-	assert.Equal(t, "{\n  \"operators\": []\n}\n", buf.String())
+	assert.Equal(t, "{\n  \"operators\": []\n}\n", buf.String()) //nolint:testifylint // exact bytes, not JSON equivalence
 }
 
 func TestWriteRawJSON_PrettyPrintsCompactPayload(t *testing.T) {
 	var buf bytes.Buffer
 	err := WriteRawJSON(&buf, []byte(`{"operators":[{"id":"op-1"}]}`))
 	require.NoError(t, err)
-	assert.True(t, strings.Contains(buf.String(), "\n  \"operators\""))
+	assert.Contains(t, buf.String(), "\n  \"operators\"")
 	assert.True(t, strings.HasSuffix(buf.String(), "\n"))
 }
 

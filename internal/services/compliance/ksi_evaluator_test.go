@@ -252,21 +252,21 @@ func TestKSIEvaluator_RegisterMethods(t *testing.T) {
 	catalog := testCatalog()
 	eval := NewKSIEvaluator(catalog)
 
-	assert.Equal(t, 0, len(eval.methods["KSI-CMT-01"]))
+	assert.Empty(t, eval.methods["KSI-CMT-01"])
 
 	method := testKSIMethod("testMethod", KSIPropertyPresence, func(ctx context.Context) (bool, []*compliancev1.ComplianceEvidenceReference, error) {
 		return true, nil, nil
 	})
 	require.NoError(t, eval.RegisterMethods("KSI-CMT-01", method))
-	assert.Equal(t, 1, len(eval.methods["KSI-CMT-01"]))
+	assert.Len(t, eval.methods["KSI-CMT-01"], 1)
 
 	require.ErrorIs(t, eval.RegisterMethods("KSI-CMT-01", method), constants.ErrKSIMethodNotIndependent)
-	assert.Equal(t, 1, len(eval.methods["KSI-CMT-01"]))
+	assert.Len(t, eval.methods["KSI-CMT-01"], 1)
 
 	sameIdentity := method
 	sameIdentity.MeasuredProperty = KSIPropertySignatureValidity
 	require.ErrorIs(t, eval.RegisterMethods("KSI-CMT-01", sameIdentity), constants.ErrKSIMethodInvalid)
-	assert.Equal(t, 1, len(eval.methods["KSI-CMT-01"]))
+	assert.Len(t, eval.methods["KSI-CMT-01"], 1)
 }
 
 func TestKSIEvaluator_RegisterMethods_AllowsEachIndependentMetadataDimension(t *testing.T) {
@@ -291,7 +291,7 @@ func TestKSIEvaluator_RegisterMethods_AllowsEachIndependentMetadataDimension(t *
 			tt.mutate(&second)
 
 			require.NoError(t, eval.RegisterMethods("KSI-CMT-01", first, second))
-			assert.Equal(t, 2, len(eval.methods["KSI-CMT-01"]))
+			assert.Len(t, eval.methods["KSI-CMT-01"], 2)
 		})
 	}
 }
@@ -330,7 +330,7 @@ func TestKSIEvaluator_RegisterMethods_RejectsInvalidMetadataAtomically(t *testin
 			tt.mutate(&invalid)
 
 			require.ErrorIs(t, eval.RegisterMethods("KSI-CMT-01", valid, invalid), constants.ErrKSIMethodInvalid)
-			assert.Equal(t, 0, len(eval.methods["KSI-CMT-01"]))
+			assert.Empty(t, eval.methods["KSI-CMT-01"])
 		})
 	}
 }
@@ -357,7 +357,7 @@ func TestKSIEvaluator_RegisterDefaultMethods(t *testing.T) {
 	assert.GreaterOrEqual(t, len(eval.methods["KSI-CMT-01"]), 2)
 	assert.GreaterOrEqual(t, len(eval.methods["KSI-MLA-07"]), 2)
 	assert.GreaterOrEqual(t, len(eval.methods["KSI-SVC-05"]), 2)
-	assert.Equal(t, 0, len(eval.methods["KSI-CED-01"]), "CED KSIs are not automatable by ztd")
+	assert.Empty(t, eval.methods["KSI-CED-01"], "CED KSIs are not automatable by ztd")
 }
 
 // TestKSIEvaluator_Evaluate_AllSatisfied verifies that a fully-evidenced
@@ -735,7 +735,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 		rs := &KSIResultSet{Results: []KSIResult{}}
 		err := rs.Validate(catalog)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrValidationFailed)
+		require.ErrorIs(t, err, constants.ErrValidationFailed)
 		assert.Contains(t, err.Error(), "empty result set")
 	})
 
@@ -745,7 +745,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 		}
 		err := rs.Validate(catalog)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrValidationFailed)
+		require.ErrorIs(t, err, constants.ErrValidationFailed)
 		assert.ErrorIs(t, err, constants.ErrKSIBindingIncomplete)
 	})
 
@@ -783,7 +783,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 		}
 		err := rs.Validate(catalog)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrValidationFailed)
+		require.ErrorIs(t, err, constants.ErrValidationFailed)
 		assert.Contains(t, err.Error(), "unknown KSI")
 	})
 
@@ -796,7 +796,7 @@ func TestKSIResultSet_Validate(t *testing.T) {
 		}
 		err := rs.Validate(catalog)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrValidationFailed)
+		require.ErrorIs(t, err, constants.ErrValidationFailed)
 		assert.Contains(t, err.Error(), "empty ID")
 	})
 
@@ -1014,7 +1014,7 @@ func TestKSIEvaluator_Evaluate_FullIntegration(t *testing.T) {
 
 	// Verify result set structure
 	assert.Equal(t, ClassC, result.Class)
-	assert.Greater(t, result.EvaluatedAtMs, int64(0))
+	assert.Positive(t, result.EvaluatedAtMs)
 	assert.Len(t, result.Results, 4) // 4 KSIs in testCatalog applicable to Class C
 
 	// Verify each automatable KSI has evidence

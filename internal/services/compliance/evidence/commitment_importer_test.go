@@ -214,7 +214,7 @@ func TestCommitmentImporter_Import_PropagatesTrustAssessmentFailure(t *testing.T
 	fixture.trust.err = trustErr
 	_, err := NewCommitmentImporter(fixture.reader, fixture.trust, fixture.binding, fixture.verifiedAt).Import(context.Background())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
+	require.ErrorIs(t, err, constants.ErrEvidenceTrustNotAssessed)
 	assert.ErrorIs(t, err, trustErr)
 }
 
@@ -223,7 +223,7 @@ func TestCommitmentImporter_Import_WrapsReadFailure(t *testing.T) {
 	readErr := fmt.Errorf("commitment source unavailable")
 	_, err := NewCommitmentImporter(&failingArtifactReader{err: readErr}, fixture.trust, fixture.binding, fixture.verifiedAt).Import(context.Background())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
+	require.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
 	assert.ErrorIs(t, err, readErr)
 }
 

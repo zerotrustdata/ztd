@@ -109,7 +109,7 @@ func TestStepDefs_ReviewTitle(t *testing.T) {
 // --- stepOrder ---
 
 func TestStepOrder_Sequence(t *testing.T) {
-	assert.Equal(t, 4, len(stepOrder))
+	assert.Len(t, stepOrder, 4)
 	assert.Equal(t, StepNetwork, stepOrder[0])
 	assert.Equal(t, StepPosture, stepOrder[1])
 	assert.Equal(t, StepRouting, stepOrder[2])

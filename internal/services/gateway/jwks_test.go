@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewJWKSProvider(t *testing.T) {
@@ -70,7 +71,7 @@ func TestJWKSProvider_Concurrency(t *testing.T) {
 
 		for i := 0; i < 10; i++ {
 			res := <-results
-			assert.NoError(t, res.err)
+			require.NoError(t, res.err)
 			assert.Same(t, testKey, res.key)
 		}
 	})

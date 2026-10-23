@@ -135,7 +135,7 @@ func TestCLIDriveRejectsUnsupportedCases(t *testing.T) {
 			a := dispatchAttempt(tt.ingress, tt.fault)
 
 			_, err := newTestCLI(t, spy).Drive(context.Background(), a)
-			assert.True(t, errors.Is(err, constants.ErrConformanceIngressUnsupported), "got %v", err)
+			require.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported, "got %v", err)
 			assert.Empty(t, spy.paths, "no dispatch is posted for an unsupported case")
 		})
 	}
@@ -147,11 +147,11 @@ func TestNewCLIRequiresPosterTargetAndSession(t *testing.T) {
 	spy := &requestSpy{}
 
 	_, err := NewCLI(nil, target, "cli-session-1")
-	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "nil poster: %v", err)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField, "nil poster: %v", err)
 
 	_, err = NewCLI(spy, operator.Target{OperatorID: "outbound-operator"}, "cli-session-1")
-	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "empty target session: %v", err)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField, "empty target session: %v", err)
 
 	_, err = NewCLI(spy, target, "")
-	assert.True(t, errors.Is(err, constants.ErrMissingRequiredField), "empty cli session: %v", err)
+	assert.ErrorIs(t, err, constants.ErrMissingRequiredField, "empty cli session: %v", err)
 }

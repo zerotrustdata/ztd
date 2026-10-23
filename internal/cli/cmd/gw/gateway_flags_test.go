@@ -78,7 +78,7 @@ func TestGatewayFlagsToServeConfig_EmptyFlags(t *testing.T) {
 	assert.Empty(t, cfg.PasskeyRpID)
 	assert.Empty(t, cfg.PasskeyRpName)
 	assert.Nil(t, cfg.PasskeyRpOrigins)
-	assert.Equal(t, 0.0, cfg.RateLimitRPS)
+	assert.InDelta(t, 0.0, cfg.RateLimitRPS, 0)
 	assert.Equal(t, 0, cfg.RateLimitBurst)
 	assert.Empty(t, cfg.LogLevel)
 	assert.Empty(t, cfg.CertIdentityMode)

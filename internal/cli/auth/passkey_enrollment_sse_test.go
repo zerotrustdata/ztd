@@ -79,7 +79,7 @@ func TestMonitorPasskeyRegistration_SSEEventTriggersRegisteredMsg(t *testing.T) 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		require.True(t, ok, "ResponseWriter must support flushing")
+		assert.True(t, ok, "ResponseWriter must support flushing")
 		fmt.Fprintf(w, "event: passkey.registered\ndata: %s\n\n",
 			passkeyRegisteredEnvelope(t, "test-user", "test-session"))
 		flusher.Flush()
@@ -118,7 +118,7 @@ func TestMonitorPasskeyRegistration_NoEventHeaderExtractsTypeFromPayload(t *test
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		require.True(t, ok, "ResponseWriter must support flushing")
+		assert.True(t, ok, "ResponseWriter must support flushing")
 		// Send the envelope without the event: header so the monitor
 		// must extract the type from the inner Event.type field.
 		fmt.Fprintf(w, "data: %s\n\n",
@@ -186,7 +186,7 @@ func TestMonitorPasskeyRegistration_SSEStreamClosedSendsEnrollErrMsg(t *testing.
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		require.True(t, ok, "ResponseWriter must support flushing")
+		assert.True(t, ok, "ResponseWriter must support flushing")
 		flusher.Flush()
 		// Immediately close the connection without sending any events
 	}

@@ -376,7 +376,7 @@ func TestOperatorDeployFailsWhenAWorkerIsNeverAnnouncedAndNamesItsOwnFailure(t *
 		defaultTestRemoteFactory(t, mock),
 		"--hosts", "host", "--dest-dir", remoteDir, "--background", "--endpoint", "localhost", "--operator-endpoint", "192.168.1.50", "--approve", "--trust-bundle", testTrustBundle)
 	require.Error(t, err, out)
-	assert.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
+	require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
 	assert.Contains(t, err.Error()+out, "HTTP 429", "the worker's own failure is surfaced")
 	assert.Empty(t, client.PostCalls, "nothing is approved without a request ID")
 }
@@ -924,7 +924,7 @@ func TestValidateOperatorDeployFlags_RemoteOperatorEndpoint(t *testing.T) {
 		require.NoError(t, cmd.ParseFlags([]string{"--hosts", "remote1", "--dest-dir", "/tmp/fleet", "--background", "--endpoint", "192.168.1.50"}))
 		_, _, err := validateOperatorDeployFlags(cmd, false, "remote1", "/tmp/fleet", 1, 1, 1, true, "", false)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
+		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 		assert.ErrorIs(t, err, constants.ErrOperatorEndpointInvalid)
 	})
 

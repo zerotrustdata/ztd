@@ -9,9 +9,7 @@ package gateway
 
 import (
 	"bytes"
-	"errors"
 	"log/slog"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -208,7 +206,7 @@ func TestVerifyPublishACL(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 				if tt.wantErrIs != nil {
-					assert.ErrorIs(t, err, tt.wantErrIs)
+					require.ErrorIs(t, err, tt.wantErrIs)
 				}
 				if tt.wantErrContain != "" {
 					assert.Contains(t, err.Error(), tt.wantErrContain)
@@ -310,7 +308,7 @@ func TestBuildGovernanceEnvelope_InvalidPostureFailsClosed(t *testing.T) {
 		Doctrine:          governance.NewL1Doctrine(),
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrInvalidPosture),
+	assert.ErrorIs(t, err, constants.ErrInvalidPosture,
 		"unrecognized posture must fail closed with ErrInvalidPosture, got: %v", err)
 }
 
@@ -333,7 +331,7 @@ func TestBuildGovernanceEnvelope_MissingPostureFailsClosed(t *testing.T) {
 		// Posture intentionally omitted.
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrEnvelopePostureMissing),
+	assert.ErrorIs(t, err, constants.ErrEnvelopePostureMissing,
 		"missing posture must fail closed with ErrEnvelopePostureMissing, got: %v", err)
 }
 
@@ -505,5 +503,5 @@ func TestHandlePublish_LogsOnACLViolation(t *testing.T) {
 	logs := logBuf.String()
 	assert.Contains(t, logs, "ACL violation", "ACL violation must be logged")
 	assert.Contains(t, logs, "level=WARN", "ACL violation must be logged at WARN level")
-	assert.True(t, strings.Contains(logs, "cmd:op-001:sess-001"), "log must include the rejected channel")
+	assert.Contains(t, logs, "cmd:op-001:sess-001", "log must include the rejected channel")
 }

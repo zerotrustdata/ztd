@@ -166,7 +166,7 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	for _, ds := range res.GetDecomposedScores() {
 		if ds.GetDimension() == "diagnosis_quality" {
 			hasDiagDecomposedScore = true
-			assert.Equal(t, 4.0, ds.GetValue())
+			assert.InDelta(t, 4.0, ds.GetValue(), 0)
 			break
 		}
 	}

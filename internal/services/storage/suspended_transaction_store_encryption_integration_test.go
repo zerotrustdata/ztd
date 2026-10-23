@@ -11,7 +11,6 @@ package storage
 
 import (
 	"bytes"
-	"errors"
 	"testing"
 	"time"
 
@@ -94,7 +93,7 @@ func TestSuspendedTransactionLockedVaultFailsClosed(t *testing.T) {
 		CreatedAt:         now,
 		ExpiresAt:         now.Add(time.Hour),
 	})
-	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "store: %v", err)
+	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "store: %v", err)
 
 	var count int
 	require.NoError(t, db.QueryRowWithRetry(ctx,
@@ -103,11 +102,11 @@ func TestSuspendedTransactionLockedVaultFailsClosed(t *testing.T) {
 	require.Zero(t, count, "failed write must not leave a row")
 
 	_, _, err = sts.GetSuspendedTransaction(ctx, stored.TransactionHash)
-	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "get: %v", err)
+	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "get: %v", err)
 
 	_, err = sts.ListSuspendedTransactions(ctx, "")
-	require.True(t, errors.Is(err, constants.ErrAuditStoreVaultLocked), "list: %v", err)
+	require.ErrorIs(t, err, constants.ErrAuditStoreVaultLocked, "list: %v", err)
 
 	_, err = NewSuspendedTransactionService(db, nil, nil)
-	require.True(t, errors.Is(err, constants.ErrAuditStoreEncryptionVaultRequired), "nil vault: %v", err)
+	require.ErrorIs(t, err, constants.ErrAuditStoreEncryptionVaultRequired, "nil vault: %v", err)
 }

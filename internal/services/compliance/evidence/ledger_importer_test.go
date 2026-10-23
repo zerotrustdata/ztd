@@ -256,7 +256,7 @@ func TestLedgerImporter_Import_WrapsReadFailures(t *testing.T) {
 	readErr := fmt.Errorf("ledger source unavailable")
 	_, err := NewLedgerImporter(&failingArtifactReader{err: readErr}, fixture.binding).Import(context.Background())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
+	require.ErrorIs(t, err, constants.ErrEvidenceImporterFailed)
 	assert.ErrorIs(t, err, readErr)
 }
 

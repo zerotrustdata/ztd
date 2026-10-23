@@ -170,14 +170,14 @@ func TestBundledSourceArtifactReaderEnforcesContextAndReadOnlyDirectoryBehavior(
 	assert.Equal(t, []byte("body"), reader.bodies["source.json"])
 
 	_, err = reader.ReadFile(context.Background(), "missing.json")
-	assert.ErrorIs(t, err, constants.ErrNotFound)
+	require.ErrorIs(t, err, constants.ErrNotFound)
 	_, err = reader.ReadDir(context.Background(), "")
-	assert.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
+	require.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = reader.ReadFile(ctx, "source.json")
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	_, err = reader.ReadDir(ctx, "")
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -215,14 +215,14 @@ func TestBundledRuntimeArtifactReaderResolvesFilesAndRejectsWrites(t *testing.T)
 	assert.True(t, entries[1].IsDir())
 	assert.Equal(t, os.FileMode(0), entries[0].Type())
 	_, err = entries[0].Info()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, err = reader.ReadFile(context.Background(), filepath.Join(constants.PathCurrentDir, "..", "outside.json"))
-	assert.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
+	require.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
 	_, err = reader.ReadDir(context.Background(), filepath.Join(constants.PathCurrentDir, "..", "outside"))
-	assert.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
+	require.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
 	_, err = reader.FileExists(context.Background(), filepath.Join(constants.PathCurrentDir, "..", "outside.json"))
-	assert.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
+	require.ErrorIs(t, err, constants.ErrUnexpectedEvidenceArtifact)
 
 	readOnlyChecks := []func() error{
 		func() error { return reader.MkdirAll(context.Background(), "", 0) },
@@ -239,7 +239,7 @@ func TestBundledRuntimeArtifactReaderResolvesFilesAndRejectsWrites(t *testing.T)
 		func() error { return reader.EnforceFilePermissions(context.Background(), "", 0) },
 	}
 	for _, check := range readOnlyChecks {
-		assert.ErrorIs(t, check(), constants.ErrReadOnlyEvidenceSource)
+		require.ErrorIs(t, check(), constants.ErrReadOnlyEvidenceSource)
 	}
 	assert.Equal(t, "path", reader.Resolve("path"))
 	rel, err := reader.Rel("path")
@@ -2139,7 +2139,7 @@ func TestVerifyComplianceReportBundle_RejectsInvalidVerifierConfiguration(t *tes
 		t.Run(test.name, func(t *testing.T) {
 			report, err := VerifyComplianceReportBundle(context.Background(), test.request)
 			require.Error(t, err)
-			assert.ErrorIs(t, err, constants.ErrReportVerificationFailed)
+			require.ErrorIs(t, err, constants.ErrReportVerificationFailed)
 			assert.Nil(t, report)
 		})
 	}
@@ -2167,7 +2167,7 @@ func TestVerifyComplianceReportBundle_PreservesCancellation(t *testing.T) {
 
 	report, err := VerifyComplianceReportBundle(ctx, BundleVerificationRequest{Bundle: bundle, Reader: reader, TrustPolicy: policy, EvidenceTrust: trust, VerifiedAt: verifiedAt})
 
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	assert.Nil(t, report)
 }
 

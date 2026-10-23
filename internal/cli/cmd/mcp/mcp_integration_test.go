@@ -304,7 +304,7 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 
 		_, err := proxySessionToGatewayWithRetryContext(ctx, conn, req, nil)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrApprovalSSETimeout)
+		require.ErrorIs(t, err, constants.ErrApprovalSSETimeout)
 		assert.Contains(t, err.Error(), "timed out")
 		// Only the initial proxy attempt — no polling retries
 		assert.Equal(t, int32(1), attempts.Load())
@@ -337,7 +337,7 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 
 		_, err := proxySessionToGatewayWithRetryContext(context.Background(), conn, JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "tools/call"}, nil)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
+		require.ErrorIs(t, err, constants.ErrCLISessionRefreshRequired)
 		assert.Equal(t, int32(1), connections.Load())
 		assert.Zero(t, attempts.Load(), "a call without a working approval stream must not be forwarded")
 	})

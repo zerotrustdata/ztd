@@ -78,7 +78,7 @@ func TestReadAndDigest_PropagatesReadError(t *testing.T) {
 	reader := &memoryArtifactReader{files: map[string][]byte{}}
 	_, err := ReadAndDigest(reader, context.Background(), "missing", 0)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrNotFound))
+	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
 func TestReadAndDigest_EnforcesSizeLimit(t *testing.T) {
@@ -86,7 +86,7 @@ func TestReadAndDigest_EnforcesSizeLimit(t *testing.T) {
 	reader := &memoryArtifactReader{files: map[string][]byte{"path": body}}
 	_, err := ReadAndDigest(reader, context.Background(), "path", 5)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, constants.ErrEvidenceArtifactTooLarge))
+	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactTooLarge)
 }
 
 func TestReadAndDigest_DefaultMaxBytesWhenZero(t *testing.T) {
@@ -210,7 +210,7 @@ func TestValidPathElement_RejectsUnsafeElements(t *testing.T) {
 
 func TestValidatePathElement_AdmitsOnlyValidRelativePaths(t *testing.T) {
 	for _, value := range []string{"", "..", "a/b", "eval-1022-13:30", "a\x00b"} {
-		assert.ErrorIs(t, ValidatePathElement(value), constants.ErrEvidencePathElementInvalid, "%q", value)
+		require.ErrorIs(t, ValidatePathElement(value), constants.ErrEvidencePathElementInvalid, "%q", value)
 	}
 	for _, value := range []string{"eval-1022-1330", "run-1", "abc123"} {
 		require.NoError(t, ValidatePathElement(value))
@@ -267,15 +267,15 @@ func TestValidRelativePath_RejectsUnsafePaths(t *testing.T) {
 }
 
 func TestClassifyReadError_MapsNotFoundToUnresolvedReference(t *testing.T) {
-	assert.True(t, errors.Is(ClassifyReadError(constants.ErrNotFound), constants.ErrUnresolvedReference))
+	assert.ErrorIs(t, ClassifyReadError(constants.ErrNotFound), constants.ErrUnresolvedReference)
 }
 
 func TestClassifyReadError_PreservesTooLarge(t *testing.T) {
-	assert.True(t, errors.Is(ClassifyReadError(constants.ErrEvidenceArtifactTooLarge), constants.ErrEvidenceArtifactTooLarge))
+	assert.ErrorIs(t, ClassifyReadError(constants.ErrEvidenceArtifactTooLarge), constants.ErrEvidenceArtifactTooLarge)
 }
 
 func TestClassifyReadError_MapsUnknownToInvalidGraph(t *testing.T) {
-	assert.True(t, errors.Is(ClassifyReadError(errors.New("unknown")), constants.ErrInvalidEvidenceGraph))
+	assert.ErrorIs(t, ClassifyReadError(errors.New("unknown")), constants.ErrInvalidEvidenceGraph)
 }
 
 func TestContains_FindsTarget(t *testing.T) {
@@ -419,7 +419,7 @@ func TestValidateVerificationReport_EnforcesCanonicalBoundSuccessfulReport(t *te
 			decoded, err := ValidateVerificationReport(body, "run-1", constants.ConformanceVerifierID, constants.ConformanceVerifierVersion, test.notAfter)
 			if test.targetErr != nil {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, test.targetErr)
+				require.ErrorIs(t, err, test.targetErr)
 				assert.Nil(t, decoded)
 				return
 			}
@@ -432,6 +432,6 @@ func TestValidateVerificationReport_EnforcesCanonicalBoundSuccessfulReport(t *te
 func TestValidateVerificationReport_RejectsNoncanonicalBody(t *testing.T) {
 	report, err := ValidateVerificationReport([]byte(`{"report_id": "run-1"}`), "run-1", constants.ConformanceVerifierID, constants.ConformanceVerifierVersion, time.Unix(1_700_000_000, 0).UTC())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	assert.Nil(t, report)
 }

@@ -150,7 +150,7 @@ func TestOSCALExporter_EmptyAnalysisAssessments(t *testing.T) {
 
 	results, err := NewOSCALExporter(oscalTestCatalog()).GenerateAssessmentResults(analysis)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrValidationFailed)
+	require.ErrorIs(t, err, constants.ErrValidationFailed)
 	assert.Nil(t, results)
 }
 

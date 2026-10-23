@@ -671,8 +671,8 @@ func TestMirror_RetentionPrunesOldestHistoryAndRecoversChain(t *testing.T) {
 
 func TestMirror_SetMaxRetainedRecordBytesValidates(t *testing.T) {
 	env := newMirrorTestEnv(t)
-	assert.ErrorIs(t, env.mirror.SetMaxRetainedRecordBytes(0), constants.ErrPublicFeedRetentionConfig)
-	assert.ErrorIs(t, env.mirror.SetMaxRetainedRecordBytes(-10), constants.ErrPublicFeedRetentionConfig)
+	require.ErrorIs(t, env.mirror.SetMaxRetainedRecordBytes(0), constants.ErrPublicFeedRetentionConfig)
+	require.ErrorIs(t, env.mirror.SetMaxRetainedRecordBytes(-10), constants.ErrPublicFeedRetentionConfig)
 	assert.NoError(t, env.mirror.SetMaxRetainedRecordBytes(1024))
 }
 
@@ -680,7 +680,7 @@ func TestMirror_RetentionPrunesByByteLimitAndRecoversChain(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	r1 := env.makeRecord(1, projectionWithInt64Field("sequence", 1))
 	recordBytesSize := int64(len(r1.RecordBytes))
-	require.Greater(t, recordBytesSize, int64(0))
+	require.Positive(t, recordBytesSize)
 
 	// Allow 2 records of bytes (so 3rd batch exceeds byte budget).
 	maxBytes := recordBytesSize*2 + 10
@@ -981,7 +981,7 @@ func TestMirror_Bootstrap_ReturnsSnapshotAndProjections(t *testing.T) {
 	assert.Equal(t, constants.PublicFeedProtocolVersion, bootstrap.ProtocolVersion)
 	assert.Equal(t, int64(3), bootstrap.Snapshot.HighWaterSequence)
 	assert.Equal(t, env.sourceID, bootstrap.Snapshot.SourceID)
-	assert.Equal(t, 3, len(bootstrap.RecentProjections))
+	assert.Len(t, bootstrap.RecentProjections, 3)
 	assert.Equal(t, models.CampaignFreshnessActive, bootstrap.SourceFreshness)
 }
 
@@ -993,7 +993,7 @@ func TestMirror_Bootstrap_EmptySourceReturnsOffline(t *testing.T) {
 	status := env.getJSON("/bootstrap?source=unknown-source", &bootstrap)
 	assert.Equal(t, http.StatusOK, status)
 	assert.Equal(t, models.CampaignFreshnessSourceOffline, bootstrap.SourceFreshness)
-	assert.Equal(t, 0, len(bootstrap.RecentProjections))
+	assert.Empty(t, bootstrap.RecentProjections)
 }
 
 // ---------------------------------------------------------------------------
@@ -1056,7 +1056,7 @@ func TestMirror_History_CursorPagination(t *testing.T) {
 	var page1 models.PublicFeedCursorPage
 	status := env.getJSON("/history?source="+env.sourceID+"&limit=2", &page1)
 	assert.Equal(t, http.StatusOK, status)
-	assert.Equal(t, 2, len(page1.Items))
+	assert.Len(t, page1.Items, 2)
 	assert.True(t, page1.HasMore)
 	assert.Equal(t, "2", page1.Cursor)
 
@@ -1064,14 +1064,14 @@ func TestMirror_History_CursorPagination(t *testing.T) {
 	var page2 models.PublicFeedCursorPage
 	status = env.getJSON("/history?source="+env.sourceID+"&cursor=2&limit=2", &page2)
 	assert.Equal(t, http.StatusOK, status)
-	assert.Equal(t, 2, len(page2.Items))
+	assert.Len(t, page2.Items, 2)
 	assert.True(t, page2.HasMore)
 
 	// Page 3 with cursor.
 	var page3 models.PublicFeedCursorPage
 	status = env.getJSON("/history?source="+env.sourceID+"&cursor=4&limit=2", &page3)
 	assert.Equal(t, http.StatusOK, status)
-	assert.Equal(t, 1, len(page3.Items))
+	assert.Len(t, page3.Items, 1)
 	assert.False(t, page3.HasMore)
 }
 
@@ -2119,7 +2119,7 @@ func TestMirror_ProofCatalog_ReturnsEntries(t *testing.T) {
 	var catalog models.PublicProofCatalog
 	status := env.getJSON("/proof-catalog?source="+env.sourceID, &catalog)
 	assert.Equal(t, http.StatusOK, status)
-	assert.Equal(t, 1, len(catalog.Entries))
+	assert.Len(t, catalog.Entries, 1)
 	assert.Equal(t, artifactID, catalog.Entries[0].ArtifactID)
 }
 
@@ -2155,7 +2155,7 @@ func TestMirror_ProofCatalog_EmptyReturnsEmptyArray(t *testing.T) {
 	var catalog models.PublicProofCatalog
 	status := env.getJSON("/proof-catalog?source="+env.sourceID, &catalog)
 	assert.Equal(t, http.StatusOK, status)
-	assert.Equal(t, 0, len(catalog.Entries))
+	assert.Empty(t, catalog.Entries)
 }
 
 // TestMirror_ProofManifest_ReturnsManifest verifies that the proof manifest
@@ -2218,12 +2218,12 @@ func TestMirror_FullCycle_IngestThenRead(t *testing.T) {
 	var bootstrap models.PublicFeedBootstrap
 	env.getJSON("/bootstrap?source="+env.sourceID, &bootstrap)
 	assert.Equal(t, int64(3), bootstrap.Snapshot.HighWaterSequence)
-	assert.Equal(t, 3, len(bootstrap.RecentProjections))
+	assert.Len(t, bootstrap.RecentProjections, 3)
 
 	// History (all records).
 	var page models.PublicFeedCursorPage
 	env.getJSON("/history?source="+env.sourceID+"&limit=10", &page)
-	assert.Equal(t, 3, len(page.Items))
+	assert.Len(t, page.Items, 3)
 	assert.False(t, page.HasMore)
 }
 
@@ -2371,7 +2371,7 @@ func TestMirror_EmptySource_HistoryReturnsEmpty(t *testing.T) {
 	var page models.PublicFeedCursorPage
 	status := env.getJSON("/history?source="+env.sourceID, &page)
 	assert.Equal(t, http.StatusOK, status)
-	assert.Equal(t, 0, len(page.Items))
+	assert.Empty(t, page.Items)
 	assert.False(t, page.HasMore)
 }
 
@@ -2454,7 +2454,7 @@ func TestMirror_History_CursorIsOpaqueSequence(t *testing.T) {
 	// Page 1 with limit 3.
 	var page1 models.PublicFeedCursorPage
 	env.getJSON("/history?source="+env.sourceID+"&limit=3", &page1)
-	assert.Equal(t, 3, len(page1.Items))
+	assert.Len(t, page1.Items, 3)
 	assert.True(t, page1.HasMore)
 	cursor := page1.Cursor
 	assert.NotEmpty(t, cursor)
@@ -2462,7 +2462,7 @@ func TestMirror_History_CursorIsOpaqueSequence(t *testing.T) {
 	// Page 2 using the cursor.
 	var page2 models.PublicFeedCursorPage
 	env.getJSON(fmt.Sprintf("/history?source=%s&cursor=%s&limit=3", env.sourceID, cursor), &page2)
-	assert.Equal(t, 3, len(page2.Items))
+	assert.Len(t, page2.Items, 3)
 
 	// Verify no overlap: page2 items should start after page1's last item.
 	page1LastSeq, _ := strconv.ParseInt(page1.Cursor, 10, 64)

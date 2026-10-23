@@ -330,7 +330,7 @@ func TestPublicationRealStack_ScheduledLifecyclesAreExportedOnce(t *testing.T) {
 	out, err = env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
 	// A republish appends the live summary revision it reports and no lifecycle.
-	assert.Equal(t, len(before)+publishedCount(t, out), len(mirrorProjections(t)), "the count printed matches the projections the mirror served")
+	assert.Len(t, mirrorProjections(t), len(before)+publishedCount(t, out), "the count printed matches the projections the mirror served")
 	assertOnceEach(t, mirrorProjections(t), queued, "idempotent publish keeps each lifecycle single")
 	assertOnceEach(t, mirrorProjections(t), queued, "idempotent publish keeps each lifecycle single")
 }

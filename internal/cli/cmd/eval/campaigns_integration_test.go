@@ -197,7 +197,7 @@ func TestCampaignsCreate_RequiresSelection(t *testing.T) {
 
 	_, err := env.run(t, "campaigns", "create", "eval-a")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
+	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
 
 	_, err = env.run(t, "campaigns")
 	require.NoError(t, err)
@@ -217,7 +217,7 @@ func TestCampaignsCreate_RejectsEmptyRegistry(t *testing.T) {
 
 	_, err := env.run(t, "campaigns", "create", "eval-a", "--all")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
+	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
 	assert.Contains(t, err.Error(), "registry is empty")
 }
 
@@ -421,7 +421,7 @@ func TestCampaignsCreate_RejectsMultiModelModelRoleCampaign(t *testing.T) {
 
 	_, err := env.run(t, "campaigns", "create", "eval-many", "--all")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrEvaluationCampaignSubjectInvalid)
+	require.ErrorIs(t, err, constants.ErrEvaluationCampaignSubjectInvalid)
 
 	_, err = env.run(t, "campaigns", "show", "eval-many")
 	require.Error(t, err, "a rejected create must not persist the campaign")

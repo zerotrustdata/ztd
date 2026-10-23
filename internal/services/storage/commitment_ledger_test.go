@@ -372,8 +372,8 @@ func TestCommitmentLedger_JSONUnmarshal_PartialFields(t *testing.T) {
 
 	assert.Equal(t, "tx-002", fields.TransactionID)
 	assert.Equal(t, "delete", fields.ActionType)
-	assert.Equal(t, "", fields.TransactionHash) // Zero value
-	assert.Equal(t, "", fields.StateRootAtCommit)
+	assert.Empty(t, fields.TransactionHash) // Zero value
+	assert.Empty(t, fields.StateRootAtCommit)
 	assert.Equal(t, int64(0), fields.CommittedAtUnixMs) // Zero value
 }
 

@@ -8,7 +8,6 @@
 package doctrinecorpus
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -132,7 +131,7 @@ func TestValidate_RejectsInvalidCorpus(t *testing.T) {
 			tt.mutate(corpus)
 			err := validate(corpus)
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, constants.ErrValidationFailed), "got %v", err)
+			assert.ErrorIs(t, err, constants.ErrValidationFailed, "got %v", err)
 		})
 	}
 }

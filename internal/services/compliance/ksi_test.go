@@ -157,7 +157,7 @@ func TestKSICatalog_Validate(t *testing.T) {
 			err := tt.catalog.Validate()
 			if tt.wantErr {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, constants.ErrKSICatalogInvalid)
+				require.ErrorIs(t, err, constants.ErrKSICatalogInvalid)
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}

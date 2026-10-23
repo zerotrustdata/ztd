@@ -972,7 +972,7 @@ func TestHandleCreate_FailsClosedOnBadInput(t *testing.T) {
 			require.Error(t, err)
 			assert.Empty(t, summary)
 			if tt.wantErr != nil {
-				assert.ErrorIs(t, err, tt.wantErr)
+				require.ErrorIs(t, err, tt.wantErr)
 			}
 			if tt.wantMsg != "" {
 				assert.Contains(t, err.Error(), tt.wantMsg)
@@ -2522,5 +2522,5 @@ func TestReceiptSummaries_NeverContainCredentialMaterial(t *testing.T) {
 	for _, secret := range []string{"operator-csr", "cli-csr", "BEGIN CERTIFICATE", "trust-bundle-pem", "operator-chain", "cli-chain"} {
 		assert.NotContainsf(t, summary, secret, "receipt summary must not contain %q", secret)
 	}
-	assert.False(t, strings.Contains(summary, "\n"), "summary must be a single audit line")
+	assert.NotContains(t, summary, "\n", "summary must be a single audit line")
 }

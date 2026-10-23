@@ -95,7 +95,7 @@ func TestEventRow(t *testing.T) {
 			ExitCode: constants.ExitCodeNone,
 		}
 		rec := r.Record()
-		assert.Equal(t, "", rec[4])
+		assert.Empty(t, rec[4])
 	})
 }
 

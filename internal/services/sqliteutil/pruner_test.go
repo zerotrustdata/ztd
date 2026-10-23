@@ -359,7 +359,7 @@ func TestPruner_Tier1_ContextCancelledOnStop(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(nil, nil))
 	p := NewPruner(nil, logger, time.Hour, nil)
 
-	assert.Nil(t, p.ctx.Err(), "context should not be cancelled initially")
+	require.NoError(t, p.ctx.Err(), "context should not be cancelled initially")
 
 	p.Start()
 	p.Stop()

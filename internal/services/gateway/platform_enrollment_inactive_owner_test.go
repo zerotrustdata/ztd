@@ -61,7 +61,7 @@ func TestPlatformEnrollmentService_InactiveOwnerDecisionFailsClosed(t *testing.T
 		RequestID: createResp.RequestID,
 		Decision:  models.PlatformEnrollmentDecisionApprove,
 	})
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision,
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision,
 		"disabled first user must fail closed with the typed authorization error")
 
 	// The request must remain pending (the decision was not applied).
@@ -119,8 +119,8 @@ func TestPlatformEnrollmentService_InactiveOwnerDistinctFromNonOwner(t *testing.
 		Decision:  models.PlatformEnrollmentDecisionApprove,
 	})
 
-	assert.ErrorIs(t, inactiveErr, constants.ErrPlatformEnrollmentInvalidDecision)
-	assert.ErrorIs(t, nonOwnerErr, constants.ErrPlatformEnrollmentInvalidDecision)
+	require.ErrorIs(t, inactiveErr, constants.ErrPlatformEnrollmentInvalidDecision)
+	require.ErrorIs(t, nonOwnerErr, constants.ErrPlatformEnrollmentInvalidDecision)
 	assert.Equal(t, inactiveErr, nonOwnerErr,
 		"inactive owner and non-owner must receive the same typed error (no leak)")
 
@@ -154,7 +154,7 @@ func TestPlatformEnrollmentService_ReenabledOwnerCanDecide(t *testing.T) {
 		RequestID: createResp.RequestID,
 		Decision:  models.PlatformEnrollmentDecisionApprove,
 	})
-	assert.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision)
+	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision)
 
 	// Re-enable the owner by directly setting the status back to active.
 	updateBytes, err := json.Marshal(models.User{Status: constants.UserStatusActive})

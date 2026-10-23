@@ -32,7 +32,7 @@ func TestMcpStdioCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd := McpStdioCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }
 
@@ -44,6 +44,6 @@ func TestAgentRunCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	cmd := agentRunCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), authcmd.PanickingEnrollerFactory())
 	err := cmd.RunE(cmd, []string{"claude"})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrFileServiceInit)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
 	assert.ErrorIs(t, err, errFactory)
 }

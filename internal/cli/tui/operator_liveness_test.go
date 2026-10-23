@@ -8,7 +8,6 @@
 package tui
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -193,6 +192,6 @@ func TestOperatorView_RendersDerivedStaleStatusAfterStaleAt(t *testing.T) {
 	m.operators = []*operatorv1.OperatorDocument{listedOperator("op-1", constants.OperatorStatusActive, fixedTime.Add(-time.Second))}
 	m.operatorsLoaded = true
 
-	assert.True(t, strings.Contains(m.View(), string(constants.OperatorStatusStale)), "the silent Operator renders stale")
+	assert.Contains(t, m.View(), string(constants.OperatorStatusStale), "the silent Operator renders stale")
 	assert.Equal(t, string(constants.OperatorStatusActive), m.operators[0].Status, "the model keeps the listed status")
 }

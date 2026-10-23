@@ -351,7 +351,7 @@ func TestDataDocFilterTypes(t *testing.T) {
 
 		assert.Equal(t, "count", decoded.Field)
 		assert.Equal(t, ">", decoded.Op)
-		assert.Equal(t, json.RawMessage("100"), decoded.Value)
+		assert.Equal(t, json.RawMessage("100"), decoded.Value) //nolint:testifylint // exact bytes, not JSON equivalence
 	})
 
 	t.Run("DocFilter with null value", func(t *testing.T) {
@@ -370,7 +370,7 @@ func TestDataDocFilterTypes(t *testing.T) {
 
 		assert.Equal(t, "deleted_at", decoded.Field)
 		assert.Equal(t, "==", decoded.Op)
-		assert.Equal(t, json.RawMessage("null"), decoded.Value)
+		assert.Equal(t, json.RawMessage("null"), decoded.Value) //nolint:testifylint // exact bytes, not JSON equivalence
 	})
 
 	t.Run("DocQueryRequest with zero limit", func(t *testing.T) {
@@ -475,7 +475,7 @@ func TestDataDocFilterEdgeCases(t *testing.T) {
 		err = json.Unmarshal(data, &decoded)
 		require.NoError(t, err)
 
-		assert.Equal(t, "", decoded.Field)
+		assert.Empty(t, decoded.Field)
 	})
 
 	t.Run("DocFilter with empty operator", func(t *testing.T) {
@@ -492,7 +492,7 @@ func TestDataDocFilterEdgeCases(t *testing.T) {
 		err = json.Unmarshal(data, &decoded)
 		require.NoError(t, err)
 
-		assert.Equal(t, "", decoded.Op)
+		assert.Empty(t, decoded.Op)
 	})
 
 	t.Run("DocFilter with complex value (object)", func(t *testing.T) {

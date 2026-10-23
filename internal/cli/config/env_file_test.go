@@ -81,7 +81,7 @@ func TestLoadEnvFile(t *testing.T) {
 		}
 		unsetEnvForTest(t, token)
 		path := writeEnvFile(t, string(token)+"=x\n", 0o644)
-		assert.ErrorIs(t, LoadEnvFile(path), constants.ErrEnvFileInvalid)
+		require.ErrorIs(t, LoadEnvFile(path), constants.ErrEnvFileInvalid)
 		_, set := os.LookupEnv(string(token))
 		assert.False(t, set)
 	})

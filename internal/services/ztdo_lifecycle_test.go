@@ -98,7 +98,7 @@ func TestZtdoService_Start_SuccessFlow(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("Timed out waiting for the Operator service to observe shutdown")
 	}
-	assert.ErrorIs(t, service.ctx.Err(), context.Canceled)
+	require.ErrorIs(t, service.ctx.Err(), context.Canceled)
 
 	// Clean up to avoid background goroutines logging after test completion
 	require.NoError(t, service.Stop(context.Background()))

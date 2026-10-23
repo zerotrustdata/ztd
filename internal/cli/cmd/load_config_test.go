@@ -14,13 +14,14 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestLoadConfigSuccess(t *testing.T) {
 	cfg, err := shared.LoadConfig("")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, cfg)
 	assert.NotEmpty(t, cfg.ProjectRoot)
 }
@@ -34,7 +35,7 @@ func TestLoadConfigWrapsError(t *testing.T) {
 
 	cfg, err := shared.LoadConfig("")
 	assert.Nil(t, cfg)
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, constants.ErrConfigLoadFailed)
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrConfigLoadFailed)
 	assert.Contains(t, err.Error(), "disk read failure")
 }

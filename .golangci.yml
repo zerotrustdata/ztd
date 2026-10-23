@@ -49,7 +49,7 @@ linters:
     
     # Test helpers. paralleltest stays off until integration and e2e tests are excluded.
     - thelper
-    # - testifylint  # Disabled for gradual compliance (157 style issues - code is functionally correct)
+    - testifylint
     # - paralleltest  # Disabled for gradual compliance (1490 issues)
     
     # Performance

@@ -201,10 +201,10 @@ func TestSysContainerStatusTool_Execute_Success(t *testing.T) {
 	require.Equal(t, true, res["running"])
 	require.Equal(t, false, res["paused"])
 	require.Equal(t, false, res["restarting"])
-	require.Equal(t, float64(12345), res["pid"])
+	require.InDelta(t, float64(12345), res["pid"], 0)
 	require.Equal(t, "2024-01-01T00:00:00Z", res["started_at"])
 	require.Equal(t, "0001-01-01T00:00:00Z", res["finished_at"])
-	require.Equal(t, float64(0), res["exit_code"])
+	require.InDelta(t, float64(0), res["exit_code"], 0)
 	require.Equal(t, "docker.io/library/nginx:latest", res["image"])
 	require.Equal(t, "2024-01-01T00:00:00Z", res["created"])
 }
@@ -241,7 +241,7 @@ func TestSysContainerStatusTool_Execute_StoppedContainer(t *testing.T) {
 
 	require.Equal(t, "exited", res["status"])
 	require.Equal(t, false, res["running"])
-	require.Equal(t, float64(1), res["exit_code"])
+	require.InDelta(t, float64(1), res["exit_code"], 0)
 }
 
 func TestSysContainerStatusTool_Execute_PausedContainer(t *testing.T) {
@@ -311,7 +311,7 @@ func TestSysContainerStatusTool_Execute_RestartingContainer(t *testing.T) {
 
 	require.Equal(t, "restarting", res["status"])
 	require.Equal(t, true, res["restarting"])
-	require.Equal(t, float64(137), res["exit_code"])
+	require.InDelta(t, float64(137), res["exit_code"], 0)
 }
 
 func TestSysContainerStatusTool_Execute_MissingStateFields(t *testing.T) {
@@ -339,10 +339,10 @@ func TestSysContainerStatusTool_Execute_MissingStateFields(t *testing.T) {
 	require.Equal(t, false, res["running"])
 	require.Equal(t, false, res["paused"])
 	require.Equal(t, false, res["restarting"])
-	require.Equal(t, float64(0), res["pid"])
+	require.InDelta(t, float64(0), res["pid"], 0)
 	require.Equal(t, "unknown", res["started_at"])
 	require.Equal(t, "unknown", res["finished_at"])
-	require.Equal(t, float64(0), res["exit_code"])
+	require.InDelta(t, float64(0), res["exit_code"], 0)
 }
 
 func TestSysContainerStatusTool_Execute_MissingImageAndCreated(t *testing.T) {

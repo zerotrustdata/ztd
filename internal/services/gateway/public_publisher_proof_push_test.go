@@ -43,9 +43,9 @@ type proofIngestRecorder struct {
 func (r *proofIngestRecorder) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	if request.URL.Path == "/proof-ingest" {
 		body, err := io.ReadAll(request.Body)
-		require.NoError(r.t, err)
+		assert.NoError(r.t, err)
 		var ingest models.PublicProofIngestRequest
-		require.NoError(r.t, json.Unmarshal(body, &ingest))
+		assert.NoError(r.t, json.Unmarshal(body, &ingest))
 		r.mu.Lock()
 		r.inlined = append(r.inlined, len(ingest.Artifacts))
 		r.requests = append(r.requests, ingest)

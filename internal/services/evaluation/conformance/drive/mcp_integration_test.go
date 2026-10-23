@@ -11,7 +11,6 @@ package drive
 
 import (
 	"context"
-	"errors"
 	"os"
 	"testing"
 
@@ -54,7 +53,7 @@ func TestMCPNewDiscoversNativeToolsOnTheGateway(t *testing.T) {
 func TestMCPNewUnreachableGatewayIsAnErrorNotUnsupported(t *testing.T) {
 	_, err := NewMCP(context.Background(), unreachableClient(t), testIdentity().Persona)
 	require.Error(t, err)
-	assert.False(t, errors.Is(err, constants.ErrConformanceIngressUnsupported))
+	assert.NotErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
 }
 
 // TestMCPCallArgumentsPerFault pins the tool and the exact arguments each fault sends.
@@ -123,7 +122,7 @@ func TestMCPDriveTransportErrorIsAnError(t *testing.T) {
 	m := &MCP{client: unreachableClient(t), persona: testIdentity().Persona}
 	_, err := m.Drive(context.Background(), mcpAttempt(cases.Case{ID: "row-1", Fault: cases.FaultNone}))
 	require.Error(t, err, "a transport failure has no HTTP answer and must be an error, not an observation")
-	assert.False(t, errors.Is(err, constants.ErrConformanceIngressUnsupported))
+	assert.NotErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
 }
 
 // TestMCPReadBaselineExecutesUnderDoctrine checks that the read baseline runs on MCP
