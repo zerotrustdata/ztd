@@ -132,6 +132,7 @@ func TestAuditRecordImporter_Import_RejectsContentMutations(t *testing.T) {
 			fixture.binding.Reference = ContentReferenceForBody(constants.AuditRecordReferencePrefix, body)
 		}, targetErr: constants.ErrEvidenceArtifactMalformed},
 		{name: "malformed event binding", mutate: func(t *testing.T, fixture *auditRecordFixture) {
+			t.Helper()
 			event := &operatorv1.AuditEvent{Id: 41, OperatorSessionId: fixture.binding.OperatorSessionID, Timestamp: timesvc.FormatTimestamp(time.Unix(1_700_000_000, 0))}
 			body, err := compliancev1.MarshalCanonical(event)
 			require.NoError(t, err)
@@ -160,6 +161,7 @@ func TestAuditRecordImporter_Import_RejectsSessionAndTimestampMismatch(t *testin
 			fixture.binding.OperatorSessionID = "session-2"
 		}, targetErr: constants.ErrEvidenceScopeMismatch},
 		{name: "invalid timestamp", mutate: func(t *testing.T, fixture *auditRecordFixture) {
+			t.Helper()
 			event := &operatorv1.AuditEvent{Id: 41, OperatorSessionId: fixture.binding.OperatorSessionID, Timestamp: "invalid", Type: string(constants.EventAppTaskCompleted)}
 			body, err := compliancev1.MarshalCanonical(event)
 			require.NoError(t, err)

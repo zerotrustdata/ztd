@@ -771,22 +771,27 @@ func TestMirror_RestartRejectsCorruptDurableState(t *testing.T) {
 		corrupt func(t *testing.T, env *mirrorTestEnv)
 	}{
 		{name: "invalid retained window", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			t.Helper()
 			_, err := env.store.db.Exec(`UPDATE sources SET retained_from_sequence = 0 WHERE source_id = ?`, env.sourceID)
 			require.NoError(t, err)
 		}},
 		{name: "summary chain hash mismatch", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			t.Helper()
 			_, err := env.store.db.Exec(`UPDATE sources SET feed_chain_hash = ? WHERE source_id = ?`, strings.Repeat("ab", 32), env.sourceID)
 			require.NoError(t, err)
 		}},
 		{name: "tampered record bytes", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			t.Helper()
 			_, err := env.store.db.Exec(`UPDATE records SET record_bytes = '{}' WHERE source_id = ?`, env.sourceID)
 			require.NoError(t, err)
 		}},
 		{name: "tampered batch signature", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			t.Helper()
 			_, err := env.store.db.Exec(`UPDATE batches SET signature = ? WHERE source_id = ?`, strings.Repeat("00", ed25519.SignatureSize), env.sourceID)
 			require.NoError(t, err)
 		}},
 		{name: "missing retained batch", corrupt: func(t *testing.T, env *mirrorTestEnv) {
+			t.Helper()
 			_, err := env.store.db.Exec(`DELETE FROM batches WHERE source_id = ?`, env.sourceID)
 			require.NoError(t, err)
 		}},
@@ -2049,22 +2054,27 @@ func TestMirror_RestartRejectsCorruptDurableProofMetadata(t *testing.T) {
 		corrupt func(t *testing.T, env *mirrorTestEnv, artifactID string)
 	}{
 		{name: "entry path traversal", corrupt: func(t *testing.T, env *mirrorTestEnv, _ string) {
+			t.Helper()
 			_, err := env.store.db.Exec(`UPDATE proof_manifest_entries SET entry_json = json_set(entry_json, '$.filename', '../private.json') WHERE source_id = ?`, env.sourceID)
 			require.NoError(t, err)
 		}},
 		{name: "manifest root mismatch", corrupt: func(t *testing.T, env *mirrorTestEnv, _ string) {
+			t.Helper()
 			_, err := env.store.db.Exec(`UPDATE proof_manifests SET manifest_json = json_set(manifest_json, '$.proof_root_sha256', ?), proof_root_sha256 = ? WHERE source_id = ?`,
 				constants.PublicFeedZeroHashHex, constants.PublicFeedZeroHashHex, env.sourceID)
 			require.NoError(t, err)
 		}},
 		{name: "missing manifest entry", corrupt: func(t *testing.T, env *mirrorTestEnv, _ string) {
+			t.Helper()
 			_, err := env.store.db.Exec(`DELETE FROM proof_manifest_entries WHERE source_id = ?`, env.sourceID)
 			require.NoError(t, err)
 		}},
 		{name: "substituted artifact file", corrupt: func(t *testing.T, env *mirrorTestEnv, artifactID string) {
+			t.Helper()
 			require.NoError(t, env.fileSvc.WriteFile(context.Background(), publicMirrorProofArtifactPath(artifactID), []byte(`{"campaign_id":"c2","verification_ok":true}`), constants.PermFilePrivate))
 		}},
 		{name: "missing artifact file", corrupt: func(t *testing.T, env *mirrorTestEnv, artifactID string) {
+			t.Helper()
 			require.NoError(t, env.fileSvc.Remove(context.Background(), publicMirrorProofArtifactPath(artifactID)))
 		}},
 	}

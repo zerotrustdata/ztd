@@ -289,11 +289,13 @@ func TestRunReleasePrepare_RefusesRerunBeforeWritingAnything(t *testing.T) {
 	}
 	for name, seed := range map[string]func(*testing.T, *releasePrepareFixture) string{
 		"exported bundle": func(t *testing.T, fixture *releasePrepareFixture) string {
+			t.Helper()
 			bundleDir := filepath.Join(workDir(fixture), constants.ComplianceReleaseBundleDirname)
 			require.NoError(t, os.MkdirAll(bundleDir, constants.PermDirPrivate))
 			return bundleDir
 		},
 		"persisted report": func(t *testing.T, fixture *releasePrepareFixture) string {
+			t.Helper()
 			persisted := filepath.Join(fixture.projectRoot, constants.RuntimeDirname, constants.ComplianceBundlesDirname, "v2.2.2-gateway-operational-public")
 			require.NoError(t, os.MkdirAll(persisted, constants.PermDirPrivate))
 			return persisted

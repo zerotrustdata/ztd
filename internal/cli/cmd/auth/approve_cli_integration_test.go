@@ -217,9 +217,11 @@ func TestApproveCmd_Deny_RejectsReceiptThatIsNotTheRequestedDeny(t *testing.T) {
 		want error
 	}{
 		{"wrong transaction hash", func(t *testing.T) []byte {
+			t.Helper()
 			return cliDenyReceipt(t, hex.EncodeToString(bytes.Repeat([]byte("b"), sha256.Size)), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)
 		}, constants.ErrTxTransactionHashMismatch},
 		{"not an L3 deny", func(t *testing.T) []byte {
+			t.Helper()
 			return cliApprovalReceipt(t, txHash, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID)
 		}, constants.ErrValidationFailed},
 	} {

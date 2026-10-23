@@ -672,6 +672,7 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 			name:   "agent trace unpublished",
 			forget: func(artifacts *evaluation.CampaignPublishedProofArtifacts) { artifacts.AgentTraceSHA256 = "" },
 			check: func(t *testing.T, artifacts evaluation.CampaignPublishedProofArtifacts) {
+				t.Helper()
 				assert.NotEmpty(t, artifacts.AgentTraceSHA256, "the rebuild binds the trace again")
 			},
 		},
@@ -682,6 +683,7 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 				artifacts.ScenarioGoldSHA256 = ""
 			},
 			check: func(t *testing.T, artifacts evaluation.CampaignPublishedProofArtifacts) {
+				t.Helper()
 				assert.NotEmpty(t, artifacts.ScenarioInputSHA256, "the rebuild binds the scenario input again")
 				assert.NotEmpty(t, artifacts.ScenarioGoldSHA256, "the rebuild binds the scenario gold again")
 			},

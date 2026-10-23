@@ -1313,6 +1313,7 @@ func TestInferenceDispatch_RealStoresRejectInvalidSessionSelectionBeforeBackendI
 		{
 			name: "ambiguous capable sessions without target",
 			seed: func(t *testing.T, infra *TestInfrastructure, userID string) {
+				t.Helper()
 				seedInferenceOperator(t, infra, userID, "operator-ambiguous-a", "session-ambiguous-a", true)
 				seedInferenceOperator(t, infra, userID, "operator-ambiguous-b", "session-ambiguous-b", true)
 			},
@@ -1321,6 +1322,7 @@ func TestInferenceDispatch_RealStoresRejectInvalidSessionSelectionBeforeBackendI
 		{
 			name: "explicit incapable session",
 			seed: func(t *testing.T, infra *TestInfrastructure, userID string) {
+				t.Helper()
 				seedInferenceOperator(t, infra, userID, "operator-incapable", "session-incapable", false)
 			},
 			target:  "session-incapable",
@@ -1329,6 +1331,7 @@ func TestInferenceDispatch_RealStoresRejectInvalidSessionSelectionBeforeBackendI
 		{
 			name: "cross-user target is nondisclosed",
 			seed: func(t *testing.T, infra *TestInfrastructure, _ string) {
+				t.Helper()
 				otherUserID := "user-inference-other"
 				seedActiveUser(t, infra, otherUserID)
 				seedInferenceOperator(t, infra, otherUserID, "operator-other-user", "session-other-user", true)
@@ -1339,6 +1342,7 @@ func TestInferenceDispatch_RealStoresRejectInvalidSessionSelectionBeforeBackendI
 		{
 			name: "capable session with zero delivery",
 			seed: func(t *testing.T, infra *TestInfrastructure, userID string) {
+				t.Helper()
 				seedInferenceOperator(t, infra, userID, "operator-no-delivery", "session-no-delivery", true)
 			},
 			target:  "session-no-delivery",

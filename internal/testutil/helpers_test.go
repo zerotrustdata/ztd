@@ -30,12 +30,14 @@ func TestNewTestConfig(t *testing.T) {
 		{
 			name: "ReturnsNonNil",
 			test: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
 				require.NotNil(t, cfg)
 			},
 		},
 		{
 			name: "FieldsPopulated",
 			test: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
 				assert.Equal(t, "test-project", cfg.ProjectID)
 				assert.NotEmpty(t, cfg.OperatorID)
 				assert.NotEmpty(t, cfg.OperatorSessionId)
@@ -46,6 +48,7 @@ func TestNewTestConfig(t *testing.T) {
 		{
 			name: "WorkDirExists",
 			test: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
 				_, err := os.Stat(cfg.WorkDir)
 				require.NoError(t, err, "WorkDir from TempDir(t) must exist")
 			},
@@ -53,6 +56,7 @@ func TestNewTestConfig(t *testing.T) {
 		{
 			name: "OperatorIDContainsTestName",
 			test: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
 				safeName := strings.NewReplacer("/", "-", " ", "_", ":", "-").Replace(t.Name())
 				if len(safeName) > 40 {
 					safeName = safeName[:40]
@@ -102,12 +106,14 @@ func TestNewTestLogger(t *testing.T) {
 		{
 			name: "ReturnsNonNil",
 			test: func(t *testing.T, logger *slog.Logger) {
+				t.Helper()
 				require.NotNil(t, logger)
 			},
 		},
 		{
 			name: "DoesNotPanic",
 			test: func(t *testing.T, logger *slog.Logger) {
+				t.Helper()
 				assert.NotPanics(t, func() {
 					logger.Info("info message")
 					logger.Info("debug message")
@@ -138,12 +144,14 @@ func TestNewVerboseTestLogger(t *testing.T) {
 		{
 			name: "ReturnsNonNil",
 			test: func(t *testing.T, logger *slog.Logger) {
+				t.Helper()
 				require.NotNil(t, logger)
 			},
 		},
 		{
 			name: "WritesToTestLog",
 			test: func(t *testing.T, logger *slog.Logger) {
+				t.Helper()
 				assert.NotPanics(t, func() {
 					logger.Info("verbose test log message")
 					logger.Info("verbose debug message")
@@ -172,7 +180,10 @@ func TestGetTestOperatorDirectURL(t *testing.T) {
 		{
 			name: "DefaultScheme",
 			test: func(t *testing.T, url string) {
+				t.Helper(
 				// ztd uses ZERO environment variables - always uses default URL
+				)
+
 				assert.True(t, strings.HasPrefix(url, "wss://"), "default URL must use wss:// scheme, got: %s", url)
 				assert.NotEmpty(t, url)
 			},
@@ -180,7 +191,10 @@ func TestGetTestOperatorDirectURL(t *testing.T) {
 		{
 			name: "NotEmpty",
 			test: func(t *testing.T, url string) {
+				t.Helper(
 				// ztd uses ZERO environment variables - always uses default URL
+				)
+
 				assert.NotEmpty(t, url)
 			},
 		},

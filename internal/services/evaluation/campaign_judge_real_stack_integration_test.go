@@ -225,6 +225,7 @@ func TestRealStackJudge_ReceiptVerificationRejectsTamperedReceipts(t *testing.T)
 		{
 			name: "judge receipt signed by an unpinned key",
 			tamper: func(t *testing.T, response *operatorv1.InferenceDispatchResponse) {
+				t.Helper()
 				oracletest.NewSigner(t).Resign(t, response.Receipt)
 			},
 		},

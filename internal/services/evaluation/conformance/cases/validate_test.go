@@ -115,9 +115,11 @@ func TestValidateRejectsBadRejectionAndRefusalCodes(t *testing.T) {
 	cs, gaps := mustCatalogue(t)
 	corpus := mustCorpus(t)
 	rejectedIdx := func(t *testing.T, base []Case) int {
+		t.Helper()
 		return indexOf(t, base, row(3), func(c Case) bool { return c.Ingress == IngressDirect })
 	}
 	refusedIdx := func(t *testing.T, base []Case) int {
+		t.Helper()
 		return indexOf(t, base, row(11))
 	}
 
@@ -127,27 +129,35 @@ func TestValidateRejectsBadRejectionAndRefusalCodes(t *testing.T) {
 		detail string
 	}{
 		{"rejection UNSPECIFIED", func(t *testing.T, cs []Case) {
+			t.Helper()
 			cs[rejectedIdx(t, cs)].Expect[0].RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNSPECIFIED
 		}, "not a defined rejection"},
 		{"rejection UNCLASSIFIED", func(t *testing.T, cs []Case) {
+			t.Helper()
 			cs[rejectedIdx(t, cs)].Expect[0].RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED
 		}, "not a defined rejection"},
 		{"rejection undefined value", func(t *testing.T, cs []Case) {
+			t.Helper()
 			cs[rejectedIdx(t, cs)].Expect[0].RejectionCode = operatorv1.GovernanceRejectionCode(9999)
 		}, "not a defined rejection"},
 		{"rejection carries refusal code", func(t *testing.T, cs []Case) {
+			t.Helper()
 			cs[rejectedIdx(t, cs)].Expect[0].RefusalCode = operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_MISSING_FIELD
 		}, "rejection carries a refusal code"},
 		{"refusal UNCLASSIFIED", func(t *testing.T, cs []Case) {
+			t.Helper()
 			cs[refusedIdx(t, cs)].Expect[0].RefusalCode = operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNCLASSIFIED
 		}, "not a defined refusal"},
 		{"refusal undefined value", func(t *testing.T, cs []Case) {
+			t.Helper()
 			cs[refusedIdx(t, cs)].Expect[0].RefusalCode = operatorv1.IngressRefusalCode(9999)
 		}, "not a defined refusal"},
 		{"refusal carries rejection code", func(t *testing.T, cs []Case) {
+			t.Helper()
 			cs[refusedIdx(t, cs)].Expect[0].RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_REPLAY
 		}, "refusal carries a rejection code"},
 		{"executed carries failure code", func(t *testing.T, cs []Case) {
+			t.Helper()
 			i := indexOf(t, cs, row(1))
 			cs[i].Expect[0].RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_REPLAY
 		}, "executed expectation carries a failure code"},

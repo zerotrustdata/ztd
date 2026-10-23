@@ -24,11 +24,11 @@ import (
 
 // seedHistoryDocuments inserts n receipt-sized documents in one transaction,
 // standing in for accumulated audit/receipt history.
-func seedHistoryDocuments(t testing.TB, db *CanonicalDBService, n int) {
-	t.Helper()
+func seedHistoryDocuments(tb testing.TB, db *CanonicalDBService, n int) {
+	tb.Helper()
 	body := strings.Repeat("x", 4096)
 	now := timesvc.FormatTimestamp(time.Now().UTC())
-	require.NoError(t, db.db.ExecInTxWithRetry(t.Context(), func(tx *sql.Tx) error {
+	require.NoError(tb, db.db.ExecInTxWithRetry(tb.Context(), func(tx *sql.Tx) error {
 		stmt, err := tx.Prepare("INSERT INTO documents (collection, id, data, created_at, updated_at) VALUES ('history', ?, ?, ?, ?)")
 		if err != nil {
 			return err

@@ -65,12 +65,12 @@ type TestInfrastructure struct {
 // newTestFileSvc creates a RuntimeFileService backed by a temp directory
 // with the full .ztd runtime tree created. All gateway integration tests
 // should use this helper to obtain a fileSvc.
-func newTestFileSvc(t testing.TB) fs.RuntimeFileService {
-	t.Helper()
-	baseDir := testutil.TempDir(t)
+func newTestFileSvc(tb testing.TB) fs.RuntimeFileService {
+	tb.Helper()
+	baseDir := testutil.TempDir(tb)
 	svc, err := fs.NewRuntimeFileService(baseDir, testutil.NewTestLogger())
-	require.NoError(t, err)
-	require.NoError(t, svc.CreateRuntimeTree(context.Background()))
+	require.NoError(tb, err)
+	require.NoError(tb, svc.CreateRuntimeTree(context.Background()))
 	return svc
 }
 

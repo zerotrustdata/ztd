@@ -586,6 +586,7 @@ func TestDispatchService_Dispatch_ResultHandlerRemovedAfterReturn(t *testing.T) 
 	}
 
 	publishResult := func(t *testing.T, broker *GatewayWebSocketHandler, op *operatorv1.OperatorDocument) func(string, []byte) {
+		t.Helper()
 		return func(_ string, data []byte) {
 			cmdEnv := &commonv1.GovernanceEnvelope{}
 			if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, cmdEnv); err != nil {

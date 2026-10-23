@@ -98,6 +98,7 @@ func TestHandler_HandleCommand(t *testing.T) {
 		{
 			name: "begin returns provider attempt id",
 			setup: func(t *testing.T, _ *Handler) []byte {
+				t.Helper()
 				command := &evalv1.ProviderBoundaryObservationCommand{
 					ProviderAttemptId:      "attempt-1",
 					Phase:                  evalv1.ProviderBoundaryObservationPhase_PROVIDER_BOUNDARY_OBSERVATION_PHASE_BEGIN,
@@ -112,6 +113,7 @@ func TestHandler_HandleCommand(t *testing.T) {
 		{
 			name: "finalize publishes completion window",
 			setup: func(t *testing.T, handler *Handler) []byte {
+				t.Helper()
 				begin := &evalv1.ProviderBoundaryObservationCommand{
 					ProviderAttemptId:      "attempt-1",
 					Phase:                  evalv1.ProviderBoundaryObservationPhase_PROVIDER_BOUNDARY_OBSERVATION_PHASE_BEGIN,
@@ -139,6 +141,7 @@ func TestHandler_HandleCommand(t *testing.T) {
 		{
 			name: "invalid payload",
 			setup: func(t *testing.T, _ *Handler) []byte {
+				t.Helper()
 				return []byte("not-a-proto")
 			},
 			wantErr:    true,
@@ -147,6 +150,7 @@ func TestHandler_HandleCommand(t *testing.T) {
 		{
 			name: "unsupported phase",
 			setup: func(t *testing.T, _ *Handler) []byte {
+				t.Helper()
 				command := &evalv1.ProviderBoundaryObservationCommand{
 					ProviderAttemptId: "attempt-1",
 					Phase:             evalv1.ProviderBoundaryObservationPhase_PROVIDER_BOUNDARY_OBSERVATION_PHASE_UNSPECIFIED,

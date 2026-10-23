@@ -37,6 +37,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 			name:   "no scored calls is explicitly unavailable",
 			result: &evalv1.EvaluationAssignmentResult{},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				assert.Nil(t, summary.InputTokens.Value)
 				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS, summary.InputTokens.UnavailableReason)
 			},
@@ -48,6 +49,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				ScoredInferenceSpanNanos: proto.Uint64(2_000_000),
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				require.NotNil(t, summary.InputTokens.Value)
 				assert.Zero(t, *summary.InputTokens.Value)
 				require.NotNil(t, summary.OutputTokens.Value)
@@ -73,6 +75,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				}},
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				require.NotNil(t, summary.ThinkingTokens.Value)
 				assert.Zero(t, *summary.ThinkingTokens.Value)
 				require.NotNil(t, summary.CacheTokens.Value)
@@ -88,6 +91,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				},
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				require.NotNil(t, summary.InputTokens.Value)
 				assert.Equal(t, float64(4), *summary.InputTokens.Value)
 				require.NotNil(t, summary.OutputTokens.Value)
@@ -105,6 +109,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				},
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				assert.Nil(t, summary.ThinkingTokens.Value)
 				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE, summary.ThinkingTokens.UnavailableReason)
 				require.NotNil(t, summary.CacheTokens.Value)
@@ -117,6 +122,7 @@ func TestBuildPublicResourceSummary(t *testing.T) {
 				ModelInferences: []*evalv1.ModelInferenceRecord{{Classification: callScoredChain, UsageAvailability: reported}, {Classification: callScoredChain, UsageAvailability: evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE}},
 			},
 			assertions: func(t *testing.T, summary *PublicResourceSummary) {
+				t.Helper()
 				assert.Nil(t, summary.InputTokens.Value)
 				assert.Equal(t, evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE, summary.InputTokens.UnavailableReason)
 			},

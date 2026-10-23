@@ -131,8 +131,11 @@ func TestOperatorCertRenewal_Refusals(t *testing.T) {
 		wantErrIs error
 	}{
 		{
-			name:      "peer is not an Operator",
-			peer:      func(t *testing.T) *x509.Certificate { return renewalPeer(t, "spiffe://ztd.local/app/test-app") },
+			name: "peer is not an Operator",
+			peer: func(t *testing.T) *x509.Certificate {
+				t.Helper()
+				return renewalPeer(t, "spiffe://ztd.local/app/test-app")
+			},
 			wantErrIs: constants.ErrOperatorRenewalPeerNotOperator,
 		},
 		{
@@ -169,6 +172,7 @@ func TestOperatorCertRenewal_Refusals(t *testing.T) {
 		{
 			name: "CSR names a subject alternative name",
 			req: func(t *testing.T) *models.OperatorRenewalRequest {
+				t.Helper()
 				return &models.OperatorRenewalRequest{CSR: renewalCSR(t, "gateway.example")}
 			},
 			wantErrIs: constants.ErrOperatorRenewalCSRSubjectAltName,
