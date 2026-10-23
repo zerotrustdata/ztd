@@ -1599,7 +1599,8 @@ func AssignmentTerminalOutcome(lifecycle evalv1.EvaluationAssignmentLifecycleSta
 		switch DerivePublicSummaryStatus(result) {
 		case evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS:
 			return TerminalOutcomeCompleted, nil
-		case evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE:
+		case evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE,
+			evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE:
 			return TerminalOutcomeInvalidEvidence, nil
 		default:
 			return TerminalOutcomeModelFailed, nil

@@ -367,6 +367,9 @@ func TestGradeHomogeneousScenario_DiagnosisUsesFrozenRubricVersion(t *testing.T)
 		{"v2 accepts observation confidence", ScenarioDiagnosisRubricCheckoutTimeoutV2, "", "High.", true},
 		{"v2 retains frozen causal vocabulary", ScenarioDiagnosisRubricCheckoutTimeoutV2, "Failures due to problems with the upstream host.", "High.", true},
 		{"v3 rejects reviewed causal assertion", ScenarioDiagnosisRubricCheckoutTimeoutV3, "Failures due to problems with the upstream host.", "High.", false},
+		{"v3 retains frozen qualification vocabulary", ScenarioDiagnosisRubricCheckoutTimeoutV3, "Timeouts are likely caused by an upstream issue.", "Moderate.", false},
+		{"v4 accepts qualified hypothesis", ScenarioDiagnosisRubricCheckoutTimeoutV4, "Timeouts are likely caused by an upstream issue.", "Moderate.", true},
+		{"v4 rejects definitive upstream assertion", ScenarioDiagnosisRubricCheckoutTimeoutV4, "Failures due to problems with the upstream host.", "High.", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			blueprint := finalResponseDiagnosis()
