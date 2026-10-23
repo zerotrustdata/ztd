@@ -18,6 +18,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/security"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 )
@@ -52,28 +54,13 @@ func NewFileEditService(cfg *config.Config, logger *slog.Logger, fileSvc fs.Runt
 	return fes, nil
 }
 
-// ExecuteFileEdit performs a file editing operation
+// ExecuteFileEdit applies the runtime path policy to request.FilePath, opens
+// the destination beneath a directory handle, and performs the operation
+// through that handle.
 func (fes *FileEditService) ExecuteFileEdit(ctx context.Context, request *models.FileEditRequest) (*models.FileEditResult, error) {
-	fes.logger.Info("Executing file edit operation",
-		"execution_id", request.ExecutionID,
-		"operation", request.Operation)
-
-	startTime := time.Now().UTC()
-	result := &models.FileEditResult{
-		ExecutionID:     request.ExecutionID,
-		CaseID:          request.CaseID,
-		TaskID:          request.TaskID,
-		InvestigationID: request.InvestigationID,
-		Operation:       request.Operation,
-		FilePath:        request.FilePath,
-		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING,
-		StartTime:       startTime,
-	}
-
-	// Apply the runtime path policy and open the destination beneath a
-	// directory handle; every operation below goes through that handle.
 	target, err := fes.fileSvc.OpenFileEditTarget(ctx, request.FilePath, fes.config.WorkDir)
 	if err != nil {
+		result := fes.newFileEditResult(request)
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		result.ErrorMessage = fmt.Sprintf("Invalid file path: %v", err)
 		result.ErrorType = "validation_error"
@@ -81,9 +68,35 @@ func (fes *FileEditService) ExecuteFileEdit(ctx context.Context, request *models
 		return result, fmt.Errorf("file edit: validate path: %w", err)
 	}
 	defer target.Close()
+	return fes.ExecuteFileEditTarget(target, request)
+}
+
+func (fes *FileEditService) newFileEditResult(request *models.FileEditRequest) *models.FileEditResult {
+	return &models.FileEditResult{
+		ExecutionID:     request.ExecutionID,
+		CaseID:          request.CaseID,
+		TaskID:          request.TaskID,
+		InvestigationID: request.InvestigationID,
+		Operation:       request.Operation,
+		FilePath:        request.FilePath,
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_EXECUTING,
+		StartTime:       time.Now().UTC(),
+	}
+}
+
+// ExecuteFileEditTarget performs the operation through a target the caller
+// already admitted and opened, so the ledger snapshot and the edit go through
+// the same directory handle. The caller keeps ownership of target.
+func (fes *FileEditService) ExecuteFileEditTarget(target *fs.FileEditTarget, request *models.FileEditRequest) (*models.FileEditResult, error) {
+	fes.logger.Info("Executing file edit operation",
+		"execution_id", request.ExecutionID,
+		"operation", request.Operation)
+
 	request.FilePath = target.Path()
+	result := fes.newFileEditResult(request)
 
 	// Execute operation based on type
+	var err error
 	switch request.Operation {
 	case constants.FileOperationRead:
 		err = fes.executeRead(target, request, result)
@@ -142,6 +155,31 @@ func (fes *FileEditService) ExecuteFileEdit(ctx context.Context, request *models
 // snapshots. The caller must Close the target.
 func (fes *FileEditService) OpenFileEditTarget(ctx context.Context, path string) (*fs.FileEditTarget, error) {
 	return fes.fileSvc.OpenFileEditTarget(ctx, path, fes.config.WorkDir)
+}
+
+// OpenEvaluationWorkspaceSeedTarget admits path only as an evaluation
+// workspace seed under this runtime's working directory: lexically an attempt
+// workspace file or sentinel (security.IsEvaluationWorkspaceSeedPath), through
+// the FILE_EDIT path policy, and resolving beneath the working directory's
+// workspaces directory once symlinks are followed. Any other path fails with
+// ErrEvaluationWorkspaceSeedPathRejected. The caller must Close the target.
+func (fes *FileEditService) OpenEvaluationWorkspaceSeedTarget(ctx context.Context, path string) (*fs.FileEditTarget, error) {
+	if !security.IsEvaluationWorkspaceSeedPath(path, fes.config.WorkDir) {
+		return nil, fmt.Errorf("%w: %s", constants.ErrEvaluationWorkspaceSeedPathRejected, path)
+	}
+	target, err := fes.fileSvc.OpenFileEditTarget(ctx, path, fes.config.WorkDir)
+	if err != nil {
+		return nil, err
+	}
+	within, err := target.ResolvesWithin(filepath.Join(fes.config.WorkDir, constants.EvaluationWorkspaceDirname))
+	if err == nil && !within {
+		err = fmt.Errorf("%w: %s resolves outside the workspaces directory", constants.ErrEvaluationWorkspaceSeedPathRejected, path)
+	}
+	if err != nil {
+		_ = target.Close()
+		return nil, err
+	}
+	return target, nil
 }
 
 // executeRead reads a file or file section

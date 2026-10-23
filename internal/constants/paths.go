@@ -281,6 +281,9 @@ const (
 	// EvaluationWorkspacePrefix prefixes the per-attempt workspace directory,
 	// which is completed by a digest of the run and attempt identity.
 	EvaluationWorkspacePrefix = "ws-"
+	// EvaluationWorkspaceDigestHexLength is how many lower-case hex characters
+	// of the run/attempt digest follow EvaluationWorkspacePrefix.
+	EvaluationWorkspaceDigestHexLength = 16
 	// EvaluationWorkspaceSentinelSuffix suffixes a workspace directory name to
 	// name the harness-owned sentinel file that sits beside it.
 	EvaluationWorkspaceSentinelSuffix = ".sentinel"

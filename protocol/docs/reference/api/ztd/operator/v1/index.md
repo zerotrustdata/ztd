@@ -32,6 +32,8 @@
     - [DocumentUpdateRequested](#ztd-operator-v1-DocumentUpdateRequested)
     - [EnvironmentDetails](#ztd-operator-v1-EnvironmentDetails)
     - [EvalAnswerRequested](#ztd-operator-v1-EvalAnswerRequested)
+    - [EvaluationWorkspaceSeedRequested](#ztd-operator-v1-EvaluationWorkspaceSeedRequested)
+    - [EvaluationWorkspaceSeedResult](#ztd-operator-v1-EvaluationWorkspaceSeedResult)
     - [ExecutionStatusUpdate](#ztd-operator-v1-ExecutionStatusUpdate)
     - [FetchFileDiffRequested](#ztd-operator-v1-FetchFileDiffRequested)
     - [FetchFileDiffResult](#ztd-operator-v1-FetchFileDiffResult)
@@ -767,6 +769,48 @@ for L1-L5 verification before the gateway persists them via DocSet.
 | benchmark | [string](#string) |  | Benchmark name (e.g., &#34;ifeval&#34;, &#34;simpleqa&#34;, &#34;gpqa&#34;) |
 | answer | [string](#string) |  | The model&#39;s answer text (opaque to the Gateway) |
 | model | [string](#string) |  | Model identifier (provider:model format, e.g., &#34;openai:gpt-4&#34;) |
+
+
+
+
+
+
+<a name="ztd-operator-v1-EvaluationWorkspaceSeedRequested"></a>
+
+### EvaluationWorkspaceSeedRequested
+EvaluationWorkspaceSeedRequested writes one frozen evaluation fixture file.
+The executing Operator admits file_path only inside an attempt-scoped
+workspace under its own working directory (&lt;work_dir&gt;/workspaces/ws-&lt;digest&gt;/
+or that workspace&#39;s .sentinel sibling), so seeding is harness maintenance,
+not a state change of the host.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| file_path | [string](#string) |  |  |
+| content | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-EvaluationWorkspaceSeedResult"></a>
+
+### EvaluationWorkspaceSeedResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| status | [ExecutionStatus](#ztd-operator-v1-ExecutionStatus) |  |  |
+| file_path | [string](#string) |  |  |
+| bytes_written | [int64](#int64) |  |  |
+| duration_seconds | [float](#float) |  |  |
+| error_message | [string](#string) |  |  |
+| error_type | [string](#string) |  |  |
 
 
 

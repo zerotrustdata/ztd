@@ -110,6 +110,27 @@ message FileEditRequested {
   reserved "vault_mode";
 }
 
+// EvaluationWorkspaceSeedRequested writes one frozen evaluation fixture file.
+// The executing Operator admits file_path only inside an attempt-scoped
+// workspace under its own working directory (<work_dir>/workspaces/ws-<digest>/
+// or that workspace's .sentinel sibling), so seeding is harness maintenance,
+// not a state change of the host.
+message EvaluationWorkspaceSeedRequested {
+  string execution_id = 1;
+  string file_path = 2;
+  string content = 3;
+}
+
+message EvaluationWorkspaceSeedResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string file_path = 3;
+  int64 bytes_written = 4;
+  float duration_seconds = 5;
+  string error_message = 6;
+  string error_type = 7;
+}
+
 message FsListRequested {
   string path = 1 [(ztd.common.v1.forbidden_patterns) = "/mnt/pnfs/private/.*"];
   string execution_id = 2;

@@ -161,6 +161,35 @@ func isEvaluationControlledTargetPathFromParts(parts []string, runtimeIndex int)
 	return true
 }
 
+// IsEvaluationWorkspaceName reports whether name is one attempt workspace
+// directory name: EvaluationWorkspacePrefix followed by
+// EvaluationWorkspaceDigestHexLength lower-case hex characters.
+func IsEvaluationWorkspaceName(name string) bool {
+	digest, ok := strings.CutPrefix(name, constants.EvaluationWorkspacePrefix)
+	return ok && len(digest) == constants.EvaluationWorkspaceDigestHexLength && strings.Trim(digest, "0123456789abcdef") == ""
+}
+
+// IsEvaluationWorkspaceSeedPath reports whether path is lexically a file an
+// evaluation harness may seed under workDir: a file beneath an attempt
+// workspace (<workDir>/workspaces/ws-<digest>/...) or that workspace's
+// sentinel (<workDir>/workspaces/ws-<digest>.sentinel). Nothing else under
+// workDir, and nothing outside it, qualifies.
+func IsEvaluationWorkspaceSeedPath(path, workDir string) bool {
+	if path == "" || workDir == "" || !filepath.IsAbs(path) || !filepath.IsAbs(workDir) {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Join(workDir, constants.EvaluationWorkspaceDirname), filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) == 1 {
+		name, ok := strings.CutSuffix(parts[0], constants.EvaluationWorkspaceSentinelSuffix)
+		return ok && IsEvaluationWorkspaceName(name)
+	}
+	return IsEvaluationWorkspaceName(parts[0])
+}
+
 // IsShellRequired checks for shell-specific characters that might require a shell
 func IsShellRequired(command string) bool {
 	// Metacharacters that require shell processing:

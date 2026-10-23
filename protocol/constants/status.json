@@ -17,6 +17,11 @@
         "_go_const": "ActionTypeEvalAnswer",
         "value": "EVAL_ANSWER"
       },
+      "EVAL_WORKSPACE_SEED": {
+        "_go_const": "ActionTypeEvalWorkspaceSeed",
+        "_mutation": true,
+        "value": "EVAL_WORKSPACE_SEED"
+      },
       "EXECUTE_BASH": {
         "_go_const": "ActionTypeExecuteBash",
         "_mutation": true,

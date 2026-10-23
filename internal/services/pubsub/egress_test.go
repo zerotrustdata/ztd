@@ -169,6 +169,7 @@ func egressResultPayloadTypes() map[string]struct {
 		"CommandResult":                        {&operatorv1.CommandResult{}, egressContent},
 		"ExecutionStatusUpdate":                {&operatorv1.ExecutionStatusUpdate{}, egressContent},
 		"FileEditResult":                       {&operatorv1.FileEditResult{}, egressContent},
+		"EvaluationWorkspaceSeedResult":        {&operatorv1.EvaluationWorkspaceSeedResult{}, egressContent},
 		"FsListResult":                         {&operatorv1.FsListResult{}, egressContent},
 		"FsGrepResult":                         {&operatorv1.FsGrepResult{}, egressContent},
 		"FsReadResult":                         {&operatorv1.FsReadResult{}, egressContent},

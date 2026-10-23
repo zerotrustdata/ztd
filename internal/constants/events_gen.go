@@ -80,6 +80,9 @@ const EventOperatorCommandStatusUpdatedRunning EventType = "ztd.v1.operator.comm
 const EventOperatorContextChanged EventType = "ztd.v1.operator.context.changed"
 const EventOperatorDeviceRegistered EventType = "ztd.v1.operator.device.registered"
 const EventOperatorEvalAnswerRequested EventType = "ztd.v1.operator.eval.answer.requested"
+const EventOperatorEvalWorkspaceSeedCompleted EventType = "ztd.v1.operator.eval.workspace.seed.completed"
+const EventOperatorEvalWorkspaceSeedFailed EventType = "ztd.v1.operator.eval.workspace.seed.failed"
+const EventOperatorEvalWorkspaceSeedRequested EventType = "ztd.v1.operator.eval.workspace.seed.requested"
 const EventOperatorFieldReadAccessDenied EventType = "ztd.v1.operator.field.read.access.denied"
 const EventOperatorFieldReadAccessGranted EventType = "ztd.v1.operator.field.read.access.granted"
 const EventOperatorFieldReadRequested EventType = "ztd.v1.operator.field.read.requested"
@@ -781,6 +784,30 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Persistence:       "ephemeral",
 		GovernanceAction:  ActionTypeEvalAnswer,
 		GovernancePayload: "ztd.operator.v1.EvalAnswerRequested",
+	},
+	EventOperatorEvalWorkspaceSeedCompleted: {
+		Key:         "OperatorEvalWorkspaceSeedCompleted",
+		Kind:        EventKindOutcome,
+		Transport:   nil,
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+	},
+	EventOperatorEvalWorkspaceSeedFailed: {
+		Key:         "OperatorEvalWorkspaceSeedFailed",
+		Kind:        EventKindOutcome,
+		Transport:   nil,
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+	},
+	EventOperatorEvalWorkspaceSeedRequested: {
+		Key:               "OperatorEvalWorkspaceSeedRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli"},
+		Persistence:       "ephemeral",
+		GovernanceAction:  ActionTypeEvalWorkspaceSeed,
+		GovernancePayload: "ztd.operator.v1.EvaluationWorkspaceSeedRequested",
+		Outcomes:          []string{"OperatorEvalWorkspaceSeedCompleted", "OperatorEvalWorkspaceSeedFailed"},
 	},
 	EventOperatorFieldReadAccessDenied: {
 		Key:         "OperatorFieldReadAccessDenied",
@@ -2138,6 +2165,13 @@ type _EventOperatorCommandStatusUpdated struct {
 
 type _EventOperatorEval struct {
 	AnswerRequested EventType
+	WorkspaceSeed   _EventOperatorEvalWorkspaceSeed
+}
+
+type _EventOperatorEvalWorkspaceSeed struct {
+	Completed EventType
+	Failed    EventType
+	Requested EventType
 }
 
 type _EventOperatorFetchFileDiff struct {
@@ -2350,6 +2384,11 @@ var Event = struct {
 		DeviceRegistered: EventOperatorDeviceRegistered,
 		Eval: _EventOperatorEval{
 			AnswerRequested: EventOperatorEvalAnswerRequested,
+			WorkspaceSeed: _EventOperatorEvalWorkspaceSeed{
+				Completed: EventOperatorEvalWorkspaceSeedCompleted,
+				Failed:    EventOperatorEvalWorkspaceSeedFailed,
+				Requested: EventOperatorEvalWorkspaceSeedRequested,
+			},
 		},
 		FetchFileDiff: _EventOperatorFetchFileDiff{
 			Completed: EventOperatorFileDiffFetchCompleted,

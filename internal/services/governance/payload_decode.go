@@ -43,6 +43,8 @@ func DecodePayloadForAction(actionType constants.ActionType, payload []byte) (pr
 		msg = &operatorv1.CommandRequested{}
 	case constants.ActionTypeFileEdit:
 		msg = &operatorv1.FileEditRequested{}
+	case constants.ActionTypeEvalWorkspaceSeed:
+		msg = &operatorv1.EvaluationWorkspaceSeedRequested{}
 	case constants.ActionTypeRestoreFile:
 		msg = &operatorv1.RestoreFileRequested{}
 	case constants.ActionTypeShutdown:

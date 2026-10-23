@@ -26,6 +26,7 @@ type ResultsPublisher interface {
 	PublishExecutionResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
 	PublishCancellationResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
 	PublishFileEditResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
+	PublishEvaluationWorkspaceSeedResult(ctx context.Context, result *operatorv1.EvaluationWorkspaceSeedResult, originalMsg *PubSubCommandMessage) error
 	PublishFsListResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
 	PublishFsGrepResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error
 	PublishShutdownAcknowledgement(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error

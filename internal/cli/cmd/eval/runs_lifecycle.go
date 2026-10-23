@@ -136,9 +136,10 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
 	runLane := evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE
+	var stackSet *evaluation.HeterogeneousStackSet
 	if laneName == campaignLaneSystem {
 		runLane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-		stackSet, err := store.LoadHeterogeneousStackSet(cmd.Context(), opts.CampaignID)
+		stackSet, err = store.LoadHeterogeneousStackSet(cmd.Context(), opts.CampaignID)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: frozen formations: %w", err)
 		}
@@ -164,6 +165,11 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		}
 		if governance, err = evalPreflightGatewayGovernance(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec, nil); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
+		}
+		if stackSet != nil {
+			if err := governance.ValidateFormationTribunal(stackSet, spec.GetModelRegistry()); err != nil {
+				return nil, fmt.Errorf("evaluation: runs start: %w", err)
+			}
 		}
 		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId())
 		if err != nil {

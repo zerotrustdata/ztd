@@ -528,6 +528,40 @@ func TestIsSensitiveReadPathSystemCredentialVariants(t *testing.T) {
 	}
 }
 
+func TestIsEvaluationWorkspaceSeedPath(t *testing.T) {
+	workDir := filepath.FromSlash("/srv/op")
+	if runtime.GOOS == "windows" {
+		workDir = `D:\srv\op`
+	}
+	join := func(parts ...string) string { return filepath.Join(append([]string{workDir}, parts...)...) }
+	ws := constants.EvaluationWorkspacePrefix + "0123456789abcdef"
+	for _, tc := range []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "fixture file", path: join(constants.EvaluationWorkspaceDirname, ws, "logs", "auth.log"), want: true},
+		{name: "fixture at workspace root", path: join(constants.EvaluationWorkspaceDirname, ws, "notes.txt"), want: true},
+		{name: "sentinel", path: join(constants.EvaluationWorkspaceDirname, ws+constants.EvaluationWorkspaceSentinelSuffix), want: true},
+		{name: "workspace directory itself", path: join(constants.EvaluationWorkspaceDirname, ws)},
+		{name: "workspaces directory", path: join(constants.EvaluationWorkspaceDirname)},
+		{name: "file directly in workspaces", path: join(constants.EvaluationWorkspaceDirname, "notes.txt")},
+		{name: "short digest", path: join(constants.EvaluationWorkspaceDirname, constants.EvaluationWorkspacePrefix+"0123", "a.txt")},
+		{name: "upper-case digest", path: join(constants.EvaluationWorkspaceDirname, constants.EvaluationWorkspacePrefix+"0123456789ABCDEF", "a.txt")},
+		{name: "sentinel below workspace", path: join(constants.EvaluationWorkspaceDirname, ws, "x"+constants.EvaluationWorkspaceSentinelSuffix), want: true},
+		{name: "sentinel for malformed workspace", path: join(constants.EvaluationWorkspaceDirname, "ws-x"+constants.EvaluationWorkspaceSentinelSuffix)},
+		{name: "working directory file", path: join("notes.txt")},
+		{name: "traversal out of workspace", path: join(constants.EvaluationWorkspaceDirname, ws, "..", "..", "notes.txt")},
+		{name: "sibling working directory", path: filepath.Join(filepath.Dir(workDir), "other", constants.EvaluationWorkspaceDirname, ws, "a.txt")},
+		{name: "relative path", path: filepath.Join(constants.EvaluationWorkspaceDirname, ws, "a.txt")},
+		{name: "empty", path: ""},
+	} {
+		if got := IsEvaluationWorkspaceSeedPath(tc.path, workDir); got != tc.want {
+			t.Errorf("%s: IsEvaluationWorkspaceSeedPath(%q) = %v, want %v", tc.name, tc.path, got, tc.want)
+		}
+	}
+}
+
 func TestIsProtectedRuntimePath(t *testing.T) {
 	for _, tc := range []struct {
 		path string

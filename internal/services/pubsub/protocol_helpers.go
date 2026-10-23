@@ -35,6 +35,8 @@ func mapProtoToPayloadType(msg proto.Message) string {
 		return "execution_status"
 	case *operatorv1.FileEditResult:
 		return "file_edit_result"
+	case *operatorv1.EvaluationWorkspaceSeedResult:
+		return "evaluation_workspace_seed_result"
 	case *operatorv1.FsListResult:
 		return "fs_list_result"
 	case *operatorv1.FsGrepResult:
@@ -208,6 +210,8 @@ func unmarshalPayload(eventType constants.EventType, payload []byte) (proto.Mess
 		m = &operatorv1.CommandCancelRequested{}
 	case constants.Event.Operator.FileEdit.Requested:
 		m = &operatorv1.FileEditRequested{}
+	case constants.Event.Operator.Eval.WorkspaceSeed.Requested:
+		m = &operatorv1.EvaluationWorkspaceSeedRequested{}
 	case constants.Event.Operator.FsList.Requested:
 		m = &operatorv1.FsListRequested{}
 	case constants.Event.Operator.FsRead.Requested:

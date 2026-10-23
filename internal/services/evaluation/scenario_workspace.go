@@ -17,11 +17,8 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/security"
 )
-
-// scenarioWorkspaceDigestHexLength is how many hex characters of the
-// run/attempt digest name one workspace directory.
-const scenarioWorkspaceDigestHexLength = 16
 
 // ScenarioWorkspace is the attempt-scoped fixture workspace on the bound Data
 // Operator. Paths are paths on the remote operator host, whose OS need not be
@@ -86,7 +83,7 @@ func NewScenarioWorkspace(operatorWorkingDirectory, runID, attemptID string) (Sc
 	}
 	sum := sha256.Sum256([]byte(runID + "\x00" + attemptID))
 	return ScenarioWorkspace{
-		Root:                     path.Join(workingDirectory, constants.EvaluationWorkspaceDirname, constants.EvaluationWorkspacePrefix+hex.EncodeToString(sum[:])[:scenarioWorkspaceDigestHexLength]),
+		Root:                     path.Join(workingDirectory, constants.EvaluationWorkspaceDirname, constants.EvaluationWorkspacePrefix+hex.EncodeToString(sum[:])[:constants.EvaluationWorkspaceDigestHexLength]),
 		OperatorWorkingDirectory: workingDirectory,
 	}, nil
 }
@@ -180,10 +177,7 @@ func (w ScenarioWorkspace) ValidateShape() error {
 	if err != nil {
 		return err
 	}
-	name := path.Base(w.Root)
-	digest := strings.TrimPrefix(name, constants.EvaluationWorkspacePrefix)
-	if path.Dir(w.Root) != path.Join(workingDirectory, constants.EvaluationWorkspaceDirname) || digest == name ||
-		len(digest) != scenarioWorkspaceDigestHexLength || strings.Trim(digest, "0123456789abcdef") != "" {
+	if path.Dir(w.Root) != path.Join(workingDirectory, constants.EvaluationWorkspaceDirname) || !security.IsEvaluationWorkspaceName(path.Base(w.Root)) {
 		return fmt.Errorf("%w: workspace root %q is not an attempt-scoped root under %q", constants.ErrEvaluationWorkspaceUnavailable, w.Root, workingDirectory)
 	}
 	return nil

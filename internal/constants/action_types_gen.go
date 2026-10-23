@@ -18,6 +18,7 @@ const (
 	ActionTypeDocumentDelete                  ActionType = "DOCUMENT_DELETE"
 	ActionTypeDocumentUpdate                  ActionType = "DOCUMENT_UPDATE"
 	ActionTypeEvalAnswer                      ActionType = "EVAL_ANSWER"
+	ActionTypeEvalWorkspaceSeed               ActionType = "EVAL_WORKSPACE_SEED"
 	ActionTypeExecuteBash                     ActionType = "EXECUTE_BASH"
 	ActionTypeFetchFileDiff                   ActionType = "FETCH_FILE_DIFF"
 	ActionTypeFetchFileHistory                ActionType = "FETCH_FILE_HISTORY"
@@ -58,6 +59,7 @@ var AllActionTypes = []ActionType{
 	ActionTypeDocumentDelete,
 	ActionTypeDocumentUpdate,
 	ActionTypeEvalAnswer,
+	ActionTypeEvalWorkspaceSeed,
 	ActionTypeExecuteBash,
 	ActionTypeFetchFileDiff,
 	ActionTypeFetchFileHistory,
@@ -98,6 +100,7 @@ func (a ActionType) IsMutation() bool {
 		ActionTypeCancel,
 		ActionTypeDocumentDelete,
 		ActionTypeDocumentUpdate,
+		ActionTypeEvalWorkspaceSeed,
 		ActionTypeExecuteBash,
 		ActionTypeFileEdit,
 		ActionTypeInference,

@@ -431,6 +431,7 @@ func (rs *OperatorPubSubService) buildHandlers() {
 		constants.ActionTypeExecuteBash:                 rs.commands.HandleExecutionRequest,
 		constants.ActionTypeCancel:                      rs.commands.HandleCancelRequest,
 		constants.ActionTypeFileEdit:                    rs.fileOps.HandleFileEditRequest,
+		constants.ActionTypeEvalWorkspaceSeed:           rs.fileOps.HandleEvaluationWorkspaceSeedRequest,
 		constants.ActionTypeFsList:                      rs.fileOps.HandleFsListRequest,
 		constants.ActionTypeFsRead:                      rs.fileOps.HandleFsReadRequest,
 		constants.ActionTypeFsGrep:                      rs.fileOps.HandleFsGrepRequest,

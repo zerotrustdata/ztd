@@ -96,6 +96,16 @@ func (rr *PubSubResultsService) PublishFileEditResult(ctx context.Context, resul
 	return nil
 }
 
+// PublishEvaluationWorkspaceSeedResult publishes an evaluation workspace seed result via Operator pub/sub.
+func (rr *PubSubResultsService) PublishEvaluationWorkspaceSeedResult(ctx context.Context, result *operatorv1.EvaluationWorkspaceSeedResult, originalMsg *PubSubCommandMessage) error {
+	eventType := rr.determineEventStatus(result, constants.Event.Operator.Eval.WorkspaceSeed.Completed, constants.Event.Operator.Eval.WorkspaceSeed.Failed)
+
+	if err := rr.publishResultEnvelopeUniversal(ctx, eventType, originalMsg.CaseID, originalMsg.TaskID, originalMsg.InvestigationID, originalMsg, result); err != nil {
+		return fmt.Errorf("pubsub: publish evaluation workspace seed result: %w", err)
+	}
+	return nil
+}
+
 // PublishFsListResult publishes file system list result via Operator pub/sub.
 func (rr *PubSubResultsService) PublishFsListResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error {
 	eventType := rr.determineEventStatus(result, constants.Event.Operator.FsList.Completed, constants.Event.Operator.FsList.Failed)

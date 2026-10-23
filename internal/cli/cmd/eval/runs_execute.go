@@ -233,8 +233,9 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err := evaluation.ValidateCampaignSpecDigest(spec); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign spec: %w", err)
 	}
+	var stackSet *evaluation.HeterogeneousStackSet
 	if summary.Run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM {
-		stackSet, err := store.LoadHeterogeneousStackSet(cmd.Context(), binding.GetCampaignId())
+		stackSet, err = store.LoadHeterogeneousStackSet(cmd.Context(), binding.GetCampaignId())
 		if err != nil {
 			return 0, fmt.Errorf("evaluation: run execute: frozen formations: %w", err)
 		}
@@ -246,8 +247,14 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign investigation: %w", err)
 	}
-	if _, err := evalPreflightGatewayGovernance(cmd, gatewayDeps, cfg, authContext, spec, summary.Run); err != nil {
+	governance, err := evalPreflightGatewayGovernance(cmd, gatewayDeps, cfg, authContext, spec, summary.Run)
+	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	if stackSet != nil {
+		if err := governance.ValidateFormationTribunal(stackSet, spec.GetModelRegistry()); err != nil {
+			return 0, fmt.Errorf("evaluation: run execute: %w", err)
+		}
 	}
 	operators, err := evalListOperators(cmd, gatewayDeps, cfg, authContext)
 	if err != nil {

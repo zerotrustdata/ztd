@@ -780,6 +780,44 @@
       ],
       "persistence": "ephemeral"
     },
+    "OperatorEvalWorkspaceSeedCompleted": {
+      "_go_const": "EventOperatorEvalWorkspaceSeedCompleted",
+      "value": "ztd.v1.operator.eval.workspace.seed.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorEvalWorkspaceSeedFailed": {
+      "_go_const": "EventOperatorEvalWorkspaceSeedFailed",
+      "value": "ztd.v1.operator.eval.workspace.seed.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorEvalWorkspaceSeedRequested": {
+      "_go_const": "EventOperatorEvalWorkspaceSeedRequested",
+      "value": "ztd.v1.operator.eval.workspace.seed.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "EVAL_WORKSPACE_SEED",
+        "payload": "ztd.operator.v1.EvaluationWorkspaceSeedRequested"
+      },
+      "producers": [
+        "cli"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorEvalWorkspaceSeedCompleted",
+        "OperatorEvalWorkspaceSeedFailed"
+      ]
+    },
     "OperatorFieldReadAccessDenied": {
       "_go_const": "EventOperatorFieldReadAccessDenied",
       "value": "ztd.v1.operator.field.read.access.denied",
