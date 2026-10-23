@@ -48,7 +48,8 @@ func (p *panickingRefreshClient) Refresh(ctx context.Context, fileSvc fs.Runtime
 // refresh client extends the session in place (the session ID is unchanged) and
 // returns the authoritative operator binding, and the command resyncs the local
 // credentials and prints the confirmation.
-func TestRefreshCmd_Success(t *testing.T) {
+func TestRefreshCmd_Success(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	// Seed local credentials with a session ID and a stale operator binding.
@@ -99,7 +100,8 @@ func TestRefreshCmd_Success(t *testing.T) {
 // TestRefreshCmd_NoLocalIdentity verifies that when no local credentials
 // exist, the command prints an actionable message pointing to enrollment
 // and returns nil (not an error).
-func TestRefreshCmd_NoLocalIdentity(t *testing.T) {
+func TestRefreshCmd_NoLocalIdentity(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	stub := &StubRefreshClient{}
@@ -124,7 +126,8 @@ func TestRefreshCmd_NoLocalIdentity(t *testing.T) {
 // TestRefreshCmd_RefreshFailure verifies that a refresh client error is
 // returned by the command (the gateway rejected the refresh, e.g., the
 // cert itself is expired).
-func TestRefreshCmd_RefreshFailure(t *testing.T) {
+func TestRefreshCmd_RefreshFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	creds := &auth.Credentials{
@@ -164,7 +167,8 @@ func TestRefreshCmd_RefreshFailure(t *testing.T) {
 // TestRefreshCmdWithConfig_FileSvcFactoryError verifies that a fileSvcFactory
 // failure is wrapped with constants.ErrFileServiceInit and the refresh client
 // is not called.
-func TestRefreshCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestRefreshCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := refreshCmdWithConfig(

@@ -45,6 +45,8 @@ func (v *decisionVault) DecryptSecret(name string) (string, error) {
 	return v.key, v.err
 }
 func TestTypeSafeDecisionOptInPinningVaultAndAttestation(t *testing.T) {
+	t.Parallel()
+
 	v := &decisionVault{key: "test-vault-only-key"}
 	backend, err := NewTypeSafeBackend(v)
 	require.NoError(t, err)
@@ -86,6 +88,8 @@ func TestTypeSafeDecisionOptInPinningVaultAndAttestation(t *testing.T) {
 	require.ErrorIs(t, backend.client.CheckRedirect(nil, nil), http.ErrUseLastResponse)
 }
 func TestDecisionInferenceRejectsChatControlsAndOversize(t *testing.T) {
+	t.Parallel()
+
 	req := &operatorv1.InferenceRequested{Model: "tev1:0.8b", Decision: decisionInput(), RequestSchemaVersion: constants.InferenceRequestSchemaVersion}
 	require.NoError(t, ValidateDecisionInference(req))
 	for _, edit := range []func(*operatorv1.InferenceRequested){
@@ -117,6 +121,8 @@ func (s *decisionStub) Decide(_ context.Context, r models.DecisionRequest) (*mod
 	return &models.DecisionResponse{Decision: result, Model: r.Model, ServedModelDigest: r.ModelDigest, NormalizedRequestHash: models.SHA256Hex([]byte("decision request")), OutputHash: hash}, nil
 }
 func TestDecisionHandlerUsesTypedBackendAndSignedResultDigest(t *testing.T) {
+	t.Parallel()
+
 	backend := &decisionStub{}
 	cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true, DecisionModels: []string{"tev1:0.8b"}}}
 	handler := mustNewHandler(t, backend, cfg, mustNewScrubbingSvc(t), testutil.NewTestLogger())

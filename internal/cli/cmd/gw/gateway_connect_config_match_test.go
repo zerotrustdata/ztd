@@ -22,6 +22,7 @@ import (
 // deriveConnectConfig applies the frontend origin, RP ID, and RP name to a
 // copy of the base config while preserving all other fields.
 func TestDeriveConnectConfig_AppliesBrowserFieldsToBaseConfig(t *testing.T) {
+	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 
@@ -64,6 +65,7 @@ func TestDeriveConnectConfig_AppliesBrowserFieldsToBaseConfig(t *testing.T) {
 // deriveConnectConfig replaces existing browser fields in the base config
 // rather than appending to them.
 func TestDeriveConnectConfig_OverridesExistingBrowserFields(t *testing.T) {
+	t.Parallel()
 	origin, err := browserorigin.Parse("https://new-app.lovable.app")
 	require.NoError(t, err)
 
@@ -86,6 +88,7 @@ func TestDeriveConnectConfig_OverridesExistingBrowserFields(t *testing.T) {
 // browserConfigMatches returns true with no deltas when the profile's browser
 // fields exactly match the requested origin and RP ID.
 func TestBrowserConfigMatches_ExactMatchReturnsTrueNoDeltas(t *testing.T) {
+	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 
@@ -103,6 +106,7 @@ func TestBrowserConfigMatches_ExactMatchReturnsTrueNoDeltas(t *testing.T) {
 // TestBrowserConfigMatches_MissingCORSOriginReturnsDelta verifies that a
 // missing CORS origin produces a delta with the current and proposed values.
 func TestBrowserConfigMatches_MissingCORSOriginReturnsDelta(t *testing.T) {
+	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 
@@ -123,6 +127,7 @@ func TestBrowserConfigMatches_MissingCORSOriginReturnsDelta(t *testing.T) {
 // TestBrowserConfigMatches_MismatchedRPIDReturnsDelta verifies that a
 // mismatched Passkey RP ID produces a delta.
 func TestBrowserConfigMatches_MismatchedRPIDReturnsDelta(t *testing.T) {
+	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 
@@ -143,6 +148,7 @@ func TestBrowserConfigMatches_MismatchedRPIDReturnsDelta(t *testing.T) {
 // TestBrowserConfigMatches_MissingPasskeyOriginReturnsDelta verifies that a
 // missing passkey RP origin produces a delta.
 func TestBrowserConfigMatches_MissingPasskeyOriginReturnsDelta(t *testing.T) {
+	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 
@@ -162,6 +168,7 @@ func TestBrowserConfigMatches_MissingPasskeyOriginReturnsDelta(t *testing.T) {
 // when all three browser fields differ, three deltas are returned in
 // deterministic order: CORS origin, RP ID, RP origin.
 func TestBrowserConfigMatches_AllFieldsMismatchReturnsThreeDeltas(t *testing.T) {
+	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 
@@ -183,6 +190,7 @@ func TestBrowserConfigMatches_AllFieldsMismatchReturnsThreeDeltas(t *testing.T) 
 // empty AllowedOrigins and PasskeyRpOrigins slices produce deltas with an
 // empty (unset) current value.
 func TestBrowserConfigMatches_EmptySlicesProduceUnsetCurrentValue(t *testing.T) {
+	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 
@@ -198,6 +206,7 @@ func TestBrowserConfigMatches_EmptySlicesProduceUnsetCurrentValue(t *testing.T) 
 }
 
 func TestBrowserConfigMatches_MismatchedRPNameReturnsDelta(t *testing.T) {
+	t.Parallel()
 	origin, err := browserorigin.Parse("https://your-app.lovable.app")
 	require.NoError(t, err)
 

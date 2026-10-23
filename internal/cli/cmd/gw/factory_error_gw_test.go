@@ -52,7 +52,8 @@ func (p *panickingTrustInstaller) RemoveStaleAnchors(context.Context, []platform
 	panic("trustInstaller.RemoveStaleAnchors should not be called when fileSvcFactory fails")
 }
 
-func TestDataUsersCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestDataUsersCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := dataUsersCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -66,7 +67,8 @@ func TestDataUsersCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestDataOperatorsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestDataOperatorsCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := dataOperatorsCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -80,7 +82,8 @@ func TestDataOperatorsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestDataSettingsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestDataSettingsCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := dataSettingsCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -94,7 +97,8 @@ func TestDataSettingsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestDataStoreCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestDataStoreCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := dataStoreCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -108,7 +112,8 @@ func TestDataStoreCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestDataAuditListCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestDataAuditListCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	cmd := dataAuditListCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
@@ -122,7 +127,8 @@ func TestDataAuditListCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestGatewayStartCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestGatewayStartCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := gatewayStartCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory), nil)
 	var buf bytes.Buffer
@@ -134,7 +140,8 @@ func TestGatewayStartCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestGatewayStopCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestGatewayStopCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := gatewayStopCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -146,7 +153,8 @@ func TestGatewayStopCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestGatewayStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestGatewayStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := gatewayStatusCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.DefaultAPIClientFactory, cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -158,7 +166,8 @@ func TestGatewayStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestGatewayRestartCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestGatewayRestartCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := gatewayRestartCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -170,7 +179,8 @@ func TestGatewayRestartCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestGatewayLogsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestGatewayLogsCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := gatewayLogsCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -182,7 +192,8 @@ func TestGatewayLogsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestGatewaySettingsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestGatewaySettingsCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := gatewaySettingsCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), authcmd.PanickingClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
@@ -194,7 +205,8 @@ func TestGatewaySettingsCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestGatewayCleanCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestGatewayCleanCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := gatewayCleanCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory), defaultTrustInstallerFactory)
 	cmd.Flags().Set("force", "true")
@@ -211,7 +223,8 @@ func TestGatewayCleanCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 // trustInstallerFactory failure is surfaced as a warning (best-effort OS
 // cleanup) and does NOT abort the runtime wipe — the runtime wipe is the
 // destructive primary action. The fileSvc factory succeeds so pm.Clean runs.
-func TestGatewayCleanCmdWithConfig_TrustInstallerFactoryError(t *testing.T) {
+func TestGatewayCleanCmdWithConfig_TrustInstallerFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := gatewayCleanCmdWithConfig(
 		cmdtest.ConfigLoaderFor(cfg),
@@ -232,6 +245,7 @@ func TestGatewayCleanCmdWithConfig_TrustInstallerFactoryError(t *testing.T) {
 }
 
 func TestSecurityValidateCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	t.Parallel()
 	cmd := securityValidateCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -246,7 +260,8 @@ func TestSecurityValidateCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 // fileSvcFactory failure is surfaced as ErrFileServiceInit with the original
 // factory error preserved via errors.Is. The command must fail before reaching
 // any downstream dependency (ProcessManager, trust installer, verifier).
-func TestGatewayConnectCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestGatewayConnectCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	deps := connectDeps{

@@ -25,7 +25,9 @@ import (
 )
 
 func TestBuildHostKeyCallback(t *testing.T) {
+	t.Parallel()
 	t.Run("known_hosts exists and is valid", func(t *testing.T) {
+		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		khPath := filepath.Join(tempDir, "known_hosts")
 
@@ -40,6 +42,7 @@ func TestBuildHostKeyCallback(t *testing.T) {
 	})
 
 	t.Run("known_hosts missing, strict mode returns an error (no insecure fallback)", func(t *testing.T) {
+		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		khPath := filepath.Join(tempDir, "known_hosts")
 
@@ -50,13 +53,16 @@ func TestBuildHostKeyCallback(t *testing.T) {
 	})
 
 	t.Run("ZTD_KNOWN_HOSTS env var overrides home lookup", func(t *testing.T) {
+		t.Parallel()
 		// ZTD_KNOWN_HOSTS env var was removed - known_hosts path is now
 		// resolved solely from ~/.ssh/known_hosts.
 		// This test is removed as the feature no longer exists.
+
 		t.Skip("ZTD_KNOWN_HOSTS env var removed")
 	})
 
 	t.Run("strict callback rejects unknown host", func(t *testing.T) {
+		t.Parallel()
 		tempDir := testutil.TempDir(t)
 		khPath := filepath.Join(tempDir, "known_hosts")
 		require.NoError(t, os.WriteFile(khPath, []byte(""), 0600))
@@ -77,7 +83,9 @@ func TestBuildHostKeyCallback(t *testing.T) {
 }
 
 func TestSSHExitErrorDetection(t *testing.T) {
+	t.Parallel()
 	t.Run("is an exit error", func(t *testing.T) {
+		t.Parallel()
 		mockErr := &sshlib.ExitError{}
 		var target *sshlib.ExitError
 		result := errors.As(mockErr, &target)
@@ -86,6 +94,7 @@ func TestSSHExitErrorDetection(t *testing.T) {
 	})
 
 	t.Run("is not an exit error", func(t *testing.T) {
+		t.Parallel()
 		mockErr := fmt.Errorf("generic error")
 		var target *sshlib.ExitError
 		result := errors.As(mockErr, &target)

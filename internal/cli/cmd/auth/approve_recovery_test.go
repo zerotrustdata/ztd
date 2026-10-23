@@ -26,7 +26,8 @@ import (
 // TestApproveRecoveryCmd_PostsApproveAndPrintsState verifies that the
 // approve-recovery command posts the token + approve flag to the mTLS
 // approve-cli endpoint and prints the resulting state.
-func TestApproveRecoveryCmd_PostsApproveAndPrintsState(t *testing.T) {
+func TestApproveRecoveryCmd_PostsApproveAndPrintsState(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	respBody, err := json.Marshal(models.CLIRecoveryApproveResponse{
@@ -56,7 +57,8 @@ func TestApproveRecoveryCmd_PostsApproveAndPrintsState(t *testing.T) {
 
 // TestApproveRecoveryCmd_DenyPrintsDeniedState verifies that the --deny flag
 // posts Approve=false and prints the denied state.
-func TestApproveRecoveryCmd_DenyPrintsDeniedState(t *testing.T) {
+func TestApproveRecoveryCmd_DenyPrintsDeniedState(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	respBody, err := json.Marshal(models.CLIRecoveryApproveResponse{
@@ -85,7 +87,8 @@ func TestApproveRecoveryCmd_DenyPrintsDeniedState(t *testing.T) {
 
 // TestApproveRecoveryCmd_RejectsMissingToken verifies that the command
 // rejects a missing token argument via cobra's Args validation.
-func TestApproveRecoveryCmd_RejectsMissingToken(t *testing.T) {
+func TestApproveRecoveryCmd_RejectsMissingToken(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{}
@@ -106,7 +109,8 @@ func TestApproveRecoveryCmd_RejectsMissingToken(t *testing.T) {
 // TestApproveRecoveryCmd_UnexpectedStateReturnsError verifies that a
 // response state other than approved/denied returns a wrapped
 // ErrCLIRecoveryRequestFailed.
-func TestApproveRecoveryCmd_UnexpectedStateReturnsError(t *testing.T) {
+func TestApproveRecoveryCmd_UnexpectedStateReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	respBody, err := json.Marshal(models.CLIRecoveryApproveResponse{
@@ -131,7 +135,8 @@ func TestApproveRecoveryCmd_UnexpectedStateReturnsError(t *testing.T) {
 
 // TestApproveRecoveryCmd_PostErrorReturnsWrappedError verifies that a post
 // failure is surfaced as a wrapped error.
-func TestApproveRecoveryCmd_PostErrorReturnsWrappedError(t *testing.T) {
+func TestApproveRecoveryCmd_PostErrorReturnsWrappedError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	postErr := fmt.Errorf("network failure")

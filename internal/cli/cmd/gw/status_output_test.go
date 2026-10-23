@@ -30,6 +30,7 @@ import (
 )
 
 func TestConsensusStatusLine(t *testing.T) {
+	t.Parallel()
 	bound := models.HealthResponse{
 		Posture:   constants.PostureNotary,
 		Consensus: models.HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 5, Ready: true},
@@ -40,8 +41,9 @@ func TestConsensusStatusLine(t *testing.T) {
 	require.Equal(t, "Consensus  NOT BOUND — posture notary requires L2: ztd consensus enroll tribunal --model <tag>", consensusStatusLine(unbound))
 }
 
-func TestGatewayStatusDistinguishesUnknownAndEmptyRegistry(t *testing.T) {
-	for _, tc := range []struct {
+func TestGatewayStatusDistinguishesUnknownAndEmptyRegistry(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	for _, tc := range []struct { //nolint:paralleltest // mutates package-level state
 		name      string
 		operators []byte
 		want      string
@@ -52,6 +54,7 @@ func TestGatewayStatusDistinguishesUnknownAndEmptyRegistry(t *testing.T) {
 		{"empty", []byte(`{"success":true,"operators":[]}`), "Operators  none"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 			mock := &statusMockClient{responses: map[string][]byte{"/api/v1/health": []byte(`{"status":"ok"}`)}}
 			if tc.operators != nil {
@@ -70,7 +73,8 @@ func TestGatewayStatusDistinguishesUnknownAndEmptyRegistry(t *testing.T) {
 	}
 }
 
-func TestGatewayStatusOnlyShowsConnectedOperators(t *testing.T) {
+func TestGatewayStatusOnlyShowsConnectedOperators(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	body, err := json.Marshal(models.OperatorSlotResponse{Success: true, Operators: []*operatorv1.OperatorDocument{
 		{OperatorCapabilities: []string{string(constants.OperatorCapabilityInference)}, CurrentHostname: "gpu-host", Status: string(constants.OperatorStatusActive)},
@@ -89,7 +93,8 @@ func TestGatewayStatusOnlyShowsConnectedOperators(t *testing.T) {
 	require.NotContains(t, buf.String(), "unclaimed-host")
 }
 
-func TestQuietStartKeepsRunningGatewayAndSuppressesGuidance(t *testing.T) {
+func TestQuietStartKeepsRunningGatewayAndSuppressesGuidance(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	pidPath := filepath.Join(constants.PidDirname, constants.OperatorPIDFilename)
 	pid := []byte(strconv.Itoa(os.Getpid()))
@@ -107,12 +112,14 @@ func TestQuietStartKeepsRunningGatewayAndSuppressesGuidance(t *testing.T) {
 	require.Contains(t, buf.String(), "output restored")
 }
 
-func TestStatusShowsLocalEmbeddedCapabilitiesWithoutCLIEnrollment(t *testing.T) {
-	for _, capabilities := range []constants.OperatorCapabilities{
+func TestStatusShowsLocalEmbeddedCapabilitiesWithoutCLIEnrollment(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	for _, capabilities := range []constants.OperatorCapabilities{ //nolint:paralleltest // mutates package-level state
 		{},
 		{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver},
 	} {
 		t.Run(capabilities.String(), func(t *testing.T) {
+
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 			require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.PidDirname, constants.OperatorPIDFilename), []byte(strconv.Itoa(os.Getpid())), constants.PermFilePrivate))
 			require.NoError(t, serve.WriteLaunchProfile(fileSvc, serve.GatewayConfig{OperatorCapabilities: capabilities, Posture: "doctrine", LogLevel: constants.LogLevelInfo}))
@@ -134,8 +141,9 @@ func TestStatusShowsLocalEmbeddedCapabilitiesWithoutCLIEnrollment(t *testing.T) 
 	}
 }
 
-func TestLocalEmbeddedOperatorOmitsStoppedRuntimeAndMarksInvalidProfileUnknown(t *testing.T) {
-	for _, tc := range []struct {
+func TestLocalEmbeddedOperatorOmitsStoppedRuntimeAndMarksInvalidProfileUnknown(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	for _, tc := range []struct { //nolint:paralleltest // mutates package-level state
 		name    string
 		running bool
 		valid   bool
@@ -144,6 +152,7 @@ func TestLocalEmbeddedOperatorOmitsStoppedRuntimeAndMarksInvalidProfileUnknown(t
 		{"stopped", false, true, false}, {"missing profile", true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 			if tc.running {
 				require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.PidDirname, constants.OperatorPIDFilename), []byte(strconv.Itoa(os.Getpid())), constants.PermFilePrivate))
@@ -163,7 +172,8 @@ func TestLocalEmbeddedOperatorOmitsStoppedRuntimeAndMarksInvalidProfileUnknown(t
 	}
 }
 
-func TestStatusDoesNotDuplicateEnrolledEmbeddedOperator(t *testing.T) {
+func TestStatusDoesNotDuplicateEnrolledEmbeddedOperator(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.PidDirname, constants.OperatorPIDFilename), []byte(strconv.Itoa(os.Getpid())), constants.PermFilePrivate))
 	require.NoError(t, serve.WriteLaunchProfile(fileSvc, serve.GatewayConfig{OperatorCapabilities: constants.OperatorCapabilities{constants.OperatorCapabilityInference}, Posture: "doctrine", LogLevel: constants.LogLevelInfo}))
@@ -179,7 +189,8 @@ func TestStatusDoesNotDuplicateEnrolledEmbeddedOperator(t *testing.T) {
 	require.NotContains(t, buf.String(), "launch profile")
 }
 
-func TestGatewayStatusShowsLocalOperatorTablesWithoutEnrollment(t *testing.T) {
+func TestGatewayStatusShowsLocalOperatorTablesWithoutEnrollment(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.PidDirname, constants.OperatorPIDFilename), []byte(strconv.Itoa(os.Getpid())), constants.PermFilePrivate))
 	require.NoError(t, serve.WriteLaunchProfile(fileSvc, serve.GatewayConfig{OperatorCapabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver}, Posture: "doctrine", LogLevel: constants.LogLevelInfo}))
@@ -201,7 +212,8 @@ func TestGatewayStatusShowsLocalOperatorTablesWithoutEnrollment(t *testing.T) {
 	require.NotContains(t, buf.String(), "check enrollment or Gateway logs")
 }
 
-func TestGatewayStatusHasOneOutputFormat(t *testing.T) {
+func TestGatewayStatusHasOneOutputFormat(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	factory := func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) {
 		return nil, constants.ErrNotFound
@@ -261,7 +273,8 @@ func flagRowsFor(out, id string) [][]string {
 	return rows
 }
 
-func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *testing.T) {
+func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	require.NoError(t, serve.WriteLaunchProfile(fileSvc, serve.GatewayConfig{
 		OperatorCapabilities:    constants.OperatorCapabilities{constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance},
@@ -346,7 +359,8 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 	require.NotContains(t, out, "Remote Operators  unavailable")
 }
 
-func TestGatewayStatusLocalFlagsComeFromLaunchProfileWithoutEnrollment(t *testing.T) {
+func TestGatewayStatusLocalFlagsComeFromLaunchProfileWithoutEnrollment(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.PidDirname, constants.OperatorPIDFilename), []byte(strconv.Itoa(os.Getpid())), constants.PermFilePrivate))
 	require.NoError(t, serve.WriteLaunchProfile(fileSvc, serve.GatewayConfig{
@@ -370,6 +384,7 @@ func TestGatewayStatusLocalFlagsComeFromLaunchProfileWithoutEnrollment(t *testin
 }
 
 func TestGatewayStatusOmitsFlagsTableWhenNoOperatorHasFlags(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	printOperatorTables(&buf, operatorInventory{Operators: []operatorStatus{{ID: "op-data", Type: "remote", Status: "active", Host: "h", Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData}}}})
 	require.Contains(t, buf.String(), "op-data")

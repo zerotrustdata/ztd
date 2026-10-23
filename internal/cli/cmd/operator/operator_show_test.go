@@ -32,6 +32,7 @@ import (
 )
 
 func TestParseOperatorHeartbeatView_HeartbeatResultSnapshot(t *testing.T) {
+	t.Parallel()
 	raw := json.RawMessage(`{
 		"timestamp": "2026-09-18T12:00:00Z",
 		"status": "automatic",
@@ -64,6 +65,7 @@ func TestParseOperatorHeartbeatView_HeartbeatResultSnapshot(t *testing.T) {
 }
 
 func TestParseOperatorHeartbeatView_AcceptsProtojsonCamelCase(t *testing.T) {
+	t.Parallel()
 	raw := json.RawMessage(`{
 		"timestamp": "2026-09-18T12:00:00Z",
 		"status": "automatic",
@@ -82,6 +84,7 @@ func TestParseOperatorHeartbeatView_AcceptsProtojsonCamelCase(t *testing.T) {
 }
 
 func TestParseOperatorHeartbeatView_RejectsLegacyPythonShape(t *testing.T) {
+	t.Parallel()
 	raw := json.RawMessage(`{
 		"timestamp": "2026-09-18T12:00:00Z",
 		"heartbeat_type": "automatic",
@@ -93,6 +96,7 @@ func TestParseOperatorHeartbeatView_RejectsLegacyPythonShape(t *testing.T) {
 }
 
 func TestFindOperatorByIDOrSession(t *testing.T) {
+	t.Parallel()
 	operators := []*operatorv1.OperatorDocument{
 		{Id: "op-1", OperatorSessionId: "session-1"},
 		{Id: "op-2", OperatorSessionId: "session-2"},
@@ -103,7 +107,8 @@ func TestFindOperatorByIDOrSession(t *testing.T) {
 	assert.Nil(t, findOperatorByIDOrSession(operators, "missing"))
 }
 
-func TestOperatorShowCmdWithConfig_NotFound(t *testing.T) {
+func TestOperatorShowCmdWithConfig_NotFound(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -127,7 +132,8 @@ func TestOperatorShowCmdWithConfig_NotFound(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrRegistrationOperatorNotFound)
 }
 
-func TestOperatorShowCmdWithConfig_PrintsHeartbeatDetails(t *testing.T) {
+func TestOperatorShowCmdWithConfig_PrintsHeartbeatDetails(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -181,7 +187,8 @@ func TestOperatorShowCmdWithConfig_PrintsHeartbeatDetails(t *testing.T) {
 	assert.Contains(t, output, "v2.1.8")
 }
 
-func TestOperatorShowCmdWithConfig_JSONOutput(t *testing.T) {
+func TestOperatorShowCmdWithConfig_JSONOutput(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -221,7 +228,8 @@ func TestOperatorShowCmdWithConfig_JSONOutput(t *testing.T) {
 	assert.Equal(t, "json-host", payload.Heartbeat.SystemIdentity.Hostname)
 }
 
-func TestOperatorShowCmdWithConfig_ReportsLastHeartbeatAndStaleStatus(t *testing.T) {
+func TestOperatorShowCmdWithConfig_ReportsLastHeartbeatAndStaleStatus(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -263,7 +271,8 @@ func TestOperatorShowCmdWithConfig_ReportsLastHeartbeatAndStaleStatus(t *testing
 	assert.True(t, payload.LastHeartbeatAt.Equal(lastHeartbeat))
 }
 
-func TestOperatorShowCmdWithConfig_ConfigLoadError(t *testing.T) {
+func TestOperatorShowCmdWithConfig_ConfigLoadError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	failLoader := func(string) (*config.Config, error) {
 		return nil, fmt.Errorf("config load error")
 	}
@@ -278,7 +287,8 @@ func TestOperatorShowCmdWithConfig_ConfigLoadError(t *testing.T) {
 	assert.Contains(t, err.Error(), "config load error")
 }
 
-func TestOperatorListCmdWithConfig_IncludesHostname(t *testing.T) {
+func TestOperatorListCmdWithConfig_IncludesHostname(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -314,6 +324,7 @@ func TestOperatorListCmdWithConfig_IncludesHostname(t *testing.T) {
 }
 
 func TestOperatorHostnameValue_FallbackToCurrentHostname(t *testing.T) {
+	t.Parallel()
 	op := &operatorv1.OperatorDocument{
 		Id:              "op-1",
 		CurrentHostname: "cached-worker",

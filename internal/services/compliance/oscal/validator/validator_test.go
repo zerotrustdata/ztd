@@ -141,13 +141,15 @@ const minimalValidOSCAL = `{
   }
 }`
 
-func TestValidator_NewValidator_CompilesEmbeddedSchema(t *testing.T) {
+func TestValidator_NewValidator_CompilesEmbeddedSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	assert.NotNil(t, v)
 }
 
-func TestValidator_NewValidatorReusesImmutableCompiledSchema(t *testing.T) {
+func TestValidator_NewValidatorReusesImmutableCompiledSchema(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	first, err := NewValidator()
 	require.NoError(t, err)
 	second, err := NewValidator()
@@ -156,7 +158,8 @@ func TestValidator_NewValidatorReusesImmutableCompiledSchema(t *testing.T) {
 	assert.Same(t, first.compiledSchema, second.compiledSchema)
 }
 
-func TestValidator_ValidMinimalDocument_PassesBothStages(t *testing.T) {
+func TestValidator_ValidMinimalDocument_PassesBothStages(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	result, err := v.Validate([]byte(minimalValidOSCAL))
@@ -170,7 +173,8 @@ func TestValidator_ValidMinimalDocument_PassesBothStages(t *testing.T) {
 	assert.Empty(t, result.SemanticFailures)
 }
 
-func TestValidator_OfficialNISTAssessmentResultsFixture_PassesBothStages(t *testing.T) {
+func TestValidator_OfficialNISTAssessmentResultsFixture_PassesBothStages(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	var provenance officialFixtureProvenance
 	require.NoError(t, json.Unmarshal(officialNISTAssessmentResultsProvenance, &provenance))
 	assert.Equal(t, "oscal-assessment-results", provenance.FixtureType)
@@ -197,7 +201,8 @@ func TestValidator_OfficialNISTAssessmentResultsFixture_PassesBothStages(t *test
 	assert.Empty(t, result.SemanticFailures)
 }
 
-func TestValidator_InvalidJSON_FailsStructural(t *testing.T) {
+func TestValidator_InvalidJSON_FailsStructural(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	result, err := v.Validate([]byte(`{invalid json`))
@@ -206,7 +211,8 @@ func TestValidator_InvalidJSON_FailsStructural(t *testing.T) {
 	assert.NotEmpty(t, result.StructuralFailures)
 }
 
-func TestValidator_DuplicateJSONKeyFailsWithTypedStructuralReason(t *testing.T) {
+func TestValidator_DuplicateJSONKeyFailsWithTypedStructuralReason(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	result, err := v.Validate([]byte(`{"assessment-results":{"uuid":"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d","uuid":"b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"}}`))
@@ -217,7 +223,8 @@ func TestValidator_DuplicateJSONKeyFailsWithTypedStructuralReason(t *testing.T) 
 	assert.Empty(t, result.SemanticFailures)
 }
 
-func TestValidator_MissingRequiredField_FailsStructural(t *testing.T) {
+func TestValidator_MissingRequiredField_FailsStructural(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	// Missing uuid field
@@ -228,7 +235,8 @@ func TestValidator_MissingRequiredField_FailsStructural(t *testing.T) {
 	assert.NotEmpty(t, result.StructuralFailures)
 }
 
-func TestValidator_EmittedObjectMutationMatrixRejectsStructuralViolations(t *testing.T) {
+func TestValidator_EmittedObjectMutationMatrixRejectsStructuralViolations(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	tests := []struct {
 		name   string
 		old    string
@@ -246,8 +254,9 @@ func TestValidator_EmittedObjectMutationMatrixRejectsStructuralViolations(t *tes
 	}
 	v, err := NewValidator()
 	require.NoError(t, err)
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
+
 			document := replaceInJSON(t, minimalValidOSCAL, tt.old, tt.new)
 			result, err := v.Validate([]byte(document))
 			require.NoError(t, err)
@@ -258,7 +267,8 @@ func TestValidator_EmittedObjectMutationMatrixRejectsStructuralViolations(t *tes
 	}
 }
 
-func TestValidator_EmittedObjectMutationMatrixRejectsUnknownProperties(t *testing.T) {
+func TestValidator_EmittedObjectMutationMatrixRejectsUnknownProperties(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	tests := []struct {
 		name string
 		old  string
@@ -287,8 +297,9 @@ func TestValidator_EmittedObjectMutationMatrixRejectsUnknownProperties(t *testin
 	}
 	v, err := NewValidator()
 	require.NoError(t, err)
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
+
 			document := replaceInJSON(t, minimalValidOSCAL, tt.old, tt.new)
 			result, err := v.Validate([]byte(document))
 			require.NoError(t, err)
@@ -299,7 +310,8 @@ func TestValidator_EmittedObjectMutationMatrixRejectsUnknownProperties(t *testin
 	}
 }
 
-func TestValidator_InvalidUUID_Fails(t *testing.T) {
+func TestValidator_InvalidUUID_Fails(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	// Replace the valid UUID with an invalid one — this fails structural
@@ -310,7 +322,8 @@ func TestValidator_InvalidUUID_Fails(t *testing.T) {
 	assert.False(t, result.Valid)
 }
 
-func TestValidator_DuplicateUUID_FailsSemantic(t *testing.T) {
+func TestValidator_DuplicateUUID_FailsSemantic(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	// Make two elements share the same UUID — both are valid UUIDs so
@@ -326,7 +339,8 @@ func TestValidator_DuplicateUUID_FailsSemantic(t *testing.T) {
 	assert.True(t, hasSemanticFailure(result.SemanticFailures, SemanticUUIDDuplicate))
 }
 
-func TestValidator_UnresolvedEvidenceRef_FailsSemantic(t *testing.T) {
+func TestValidator_UnresolvedEvidenceRef_FailsSemantic(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	// Change the evidence href to a non-existent UUID (valid UUID format
@@ -342,7 +356,8 @@ func TestValidator_UnresolvedEvidenceRef_FailsSemantic(t *testing.T) {
 	}
 }
 
-func TestValidator_InvalidTimestamp_Fails(t *testing.T) {
+func TestValidator_InvalidTimestamp_Fails(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	doc := replaceInJSON(t, minimalValidOSCAL, `"2026-09-07T00:00:00Z"`, `"not-a-timestamp"`)
@@ -352,7 +367,8 @@ func TestValidator_InvalidTimestamp_Fails(t *testing.T) {
 	// May fail structural (date-time format) or semantic (timestamp)
 }
 
-func TestValidator_InvalidOSCALVersion_FailsSemantic(t *testing.T) {
+func TestValidator_InvalidOSCALVersion_FailsSemantic(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	doc := replaceInJSON(t, minimalValidOSCAL, `"oscal-version": "1.1.2"`, `"oscal-version": "1.0.0"`)
@@ -365,7 +381,8 @@ func TestValidator_InvalidOSCALVersion_FailsSemantic(t *testing.T) {
 	}
 }
 
-func TestValidator_InvalidFindingStatus_FailsSemantic(t *testing.T) {
+func TestValidator_InvalidFindingStatus_FailsSemantic(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	doc := replaceInJSON(t, minimalValidOSCAL, `"state": "satisfied"`, `"state": "invalid-status"`)
@@ -378,7 +395,8 @@ func TestValidator_InvalidFindingStatus_FailsSemantic(t *testing.T) {
 	}
 }
 
-func TestValidator_InvalidMediaType_FailsSemantic(t *testing.T) {
+func TestValidator_InvalidMediaType_FailsSemantic(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	doc := replaceInJSON(t, minimalValidOSCAL, `"value": "application/json"`, `"value": "invalid/media-type"`)
@@ -391,7 +409,8 @@ func TestValidator_InvalidMediaType_FailsSemantic(t *testing.T) {
 	}
 }
 
-func TestValidator_EmptyObservationSubjects_FailsSemantic(t *testing.T) {
+func TestValidator_EmptyObservationSubjects_FailsSemantic(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	doc := replaceInJSON(t, minimalValidOSCAL, `"subjects": [
@@ -410,7 +429,8 @@ func TestValidator_EmptyObservationSubjects_FailsSemantic(t *testing.T) {
 	}
 }
 
-func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
+func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	contentAddressProps := `"props": [
             {"name": "artifact-id", "value": "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
             {"name": "artifact-type", "value": "action-receipt"},
@@ -516,8 +536,9 @@ func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
 			reason: SemanticBackMatterResourceMissing,
 		},
 	}
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
+
 			v, err := NewValidator()
 			require.NoError(t, err)
 			result, err := v.Validate([]byte(tt.document))
@@ -529,7 +550,8 @@ func TestValidator_SemanticBindingsRejectInconsistentDocuments(t *testing.T) {
 	}
 }
 
-func TestValidator_FindingTargetPassesWhenReviewedControlsIncludesAll(t *testing.T) {
+func TestValidator_FindingTargetPassesWhenReviewedControlsIncludesAll(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	document := replaceInJSON(t, minimalValidOSCAL, `"include-controls": [
                 {"control-id": "KSI-MLA-07"}
               ]`, `"include-all": {}`)
@@ -540,7 +562,8 @@ func TestValidator_FindingTargetPassesWhenReviewedControlsIncludesAll(t *testing
 	assert.True(t, result.Valid)
 }
 
-func TestValidator_ContentAddressedEvidenceWithMatchingScopePasses(t *testing.T) {
+func TestValidator_ContentAddressedEvidenceWithMatchingScopePasses(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	contentAddressProps := `"props": [
             {"name": "artifact-id", "value": "action-receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
             {"name": "artifact-type", "value": "action-receipt"},
@@ -569,7 +592,8 @@ func TestValidator_ContentAddressedEvidenceWithMatchingScopePasses(t *testing.T)
 	assert.True(t, result.Valid)
 }
 
-func TestValidator_ValidatorIdentity(t *testing.T) {
+func TestValidator_ValidatorIdentity(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	result, err := v.Validate([]byte(minimalValidOSCAL))
@@ -580,7 +604,8 @@ func TestValidator_ValidatorIdentity(t *testing.T) {
 	assert.Equal(t, constants.OSCALSchemaSHA256, result.SchemaDigest)
 }
 
-func TestValidator_StructuralFailurePreventsSemanticValidation(t *testing.T) {
+func TestValidator_StructuralFailurePreventsSemanticValidation(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	// A structurally invalid document should not get semantic failures
@@ -592,7 +617,8 @@ func TestValidator_StructuralFailurePreventsSemanticValidation(t *testing.T) {
 	assert.Empty(t, result.SemanticFailures)
 }
 
-func TestValidator_DeterministicResults(t *testing.T) {
+func TestValidator_DeterministicResults(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	v, err := NewValidator()
 	require.NoError(t, err)
 	document := replaceInJSON(t, minimalValidOSCAL, `"b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"`, `"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"`)
@@ -607,6 +633,7 @@ func TestValidator_DeterministicResults(t *testing.T) {
 }
 
 func TestIsValidUUID(t *testing.T) {
+	t.Parallel()
 	assert.True(t, isValidUUID("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"))
 	assert.True(t, isValidUUID("A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D"))
 	assert.False(t, isValidUUID("not-a-uuid"))

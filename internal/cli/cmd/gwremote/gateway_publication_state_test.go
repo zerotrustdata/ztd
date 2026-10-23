@@ -43,7 +43,8 @@ func (c *capturingPublicationStateClient) Delete(path string) ([]byte, error) {
 	return json.Marshal(c.deleteBody)
 }
 
-func TestNewCampaignPublicationStateStore_RequiresHealthyGateway(t *testing.T) {
+func TestNewCampaignPublicationStateStore_RequiresHealthyGateway(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, _, fileSvc := cmdtest.SetupApproveSSETestEnv(t)
 	cfg.Paths.Host = "http://127.0.0.1:1"
 
@@ -52,6 +53,7 @@ func TestNewCampaignPublicationStateStore_RequiresHealthyGateway(t *testing.T) {
 }
 
 func TestRemoteGatewayCampaignPublicationStateStore_DeleteDiscardsRunPublication(t *testing.T) {
+	t.Parallel()
 	runID := "eval-init-nemotron-3-nano-4b-1792241875"
 	tests := []struct {
 		name    string
@@ -64,6 +66,7 @@ func TestRemoteGatewayCampaignPublicationStateStore_DeleteDiscardsRunPublication
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			client := &capturingPublicationStateClient{deleteBody: test.body}
 			store := &remoteGatewayCampaignPublicationStateStore{client: client}
 

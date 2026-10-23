@@ -26,6 +26,7 @@ func TestNewTracker_RequiresCollector(t *testing.T) {
 }
 
 func TestTracker_BeginRejectsInvalidCommands(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 	tracker, err := NewTracker(TrackerConfig{
@@ -47,6 +48,7 @@ func TestTracker_BeginRejectsInvalidCommands(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			err := tracker.Begin(ctx, test.command)
 			require.Error(t, err)
 			if test.wantSubstr != "" {
@@ -57,6 +59,7 @@ func TestTracker_BeginRejectsInvalidCommands(t *testing.T) {
 }
 
 func TestTracker_FinalizeWithoutBeginProducesTerminalSample(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 	tracker, err := NewTracker(TrackerConfig{
@@ -82,6 +85,7 @@ func TestTracker_FinalizeWithoutBeginProducesTerminalSample(t *testing.T) {
 }
 
 func TestTracker_BeginAndFinalize(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 	tracker, err := NewTracker(TrackerConfig{

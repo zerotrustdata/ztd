@@ -24,10 +24,12 @@ import (
 )
 
 func TestEvidenceImporterSourceIDIsConformance(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, constants.EvaluationSourceKindConformance, NewEvidenceImporter(nil, "run-1", nil).SourceID())
 }
 
 func TestEvidenceImporterEmitsRecordAndVerdictSetNodes(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	const runID = "conformance-import"
 	files := saveConformanceRunForCompliance(t, runID)
@@ -72,6 +74,7 @@ func TestEvidenceImporterEmitsRecordAndVerdictSetNodes(t *testing.T) {
 }
 
 func TestEvidenceImporterRejectsRunWithoutPassingSuite(t *testing.T) {
+	t.Parallel()
 	const runID = "conformance-import-incomplete"
 	files := saveConformanceRunForCompliance(t, runID)
 	importer := NewEvidenceImporter(files, runID, func() time.Time { return conformanceTestVerifiedAt })
@@ -84,6 +87,7 @@ func TestEvidenceImporterRejectsRunWithoutPassingSuite(t *testing.T) {
 }
 
 func TestEvidenceImporterRejectsTamperedRecordWithRealVerifier(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	const runID = "conformance-import-tampered"
 	files := saveConformanceRunForCompliance(t, runID)
@@ -100,6 +104,7 @@ func TestEvidenceImporterRejectsTamperedRecordWithRealVerifier(t *testing.T) {
 }
 
 func TestEvidenceImporterRejectsIncompleteImporter(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	_, err := NewEvidenceImporter(nil, "run-1", func() time.Time { return conformanceTestVerifiedAt }).Import(ctx)
 	require.Error(t, err)

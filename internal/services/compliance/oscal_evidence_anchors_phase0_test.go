@@ -17,6 +17,7 @@ import (
 
 // TestPhase0OSCAL_EvidenceAnchorsResolveToContentAddressedResources verifies the Phase 4 replacement for synthetic evidence fragments.
 func TestPhase0OSCAL_EvidenceAnchorsResolveToContentAddressedResources(t *testing.T) {
+	t.Parallel()
 	doc, err := NewOSCALExporter(nil).GenerateAssessmentResults(oscalTestAnalysis())
 	require.NoError(t, err)
 	resources := make(map[string]OSCALResource, len(doc.AssessmentResults.BackMatter.Resources))
@@ -35,6 +36,7 @@ func TestPhase0OSCAL_EvidenceAnchorsResolveToContentAddressedResources(t *testin
 
 // TestPhase0OSCAL_EvidenceResourcesPreserveTypedArtifactMetadata verifies that analysis evidence metadata survives OSCAL projection.
 func TestPhase0OSCAL_EvidenceResourcesPreserveTypedArtifactMetadata(t *testing.T) {
+	t.Parallel()
 	analysis := oscalTestAnalysis()
 	doc, err := NewOSCALExporter(nil).GenerateAssessmentResults(analysis)
 	require.NoError(t, err)

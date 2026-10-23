@@ -22,6 +22,8 @@ import (
 
 // TestDefaultAuditStoreConfig verifies the default configuration values
 func TestDefaultAuditStoreConfig(t *testing.T) {
+	t.Parallel()
+
 	config := DefaultAuditStoreConfig()
 
 	if config == nil {
@@ -39,6 +41,8 @@ func TestDefaultAuditStoreConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if tt.got != tt.expected {
 				t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.expected)
 			}
@@ -48,6 +52,8 @@ func TestDefaultAuditStoreConfig(t *testing.T) {
 
 // TestFileMutationOperationConstants verifies operation constants
 func TestFileMutationOperationConstants(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		op    FileMutationOperation
@@ -59,6 +65,8 @@ func TestFileMutationOperationConstants(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if string(tt.op) != tt.value {
 				t.Errorf("%s = %q, want %q", tt.name, tt.op, tt.value)
 			}
@@ -68,6 +76,8 @@ func TestFileMutationOperationConstants(t *testing.T) {
 
 // TestErrorConstants verifies error constants
 func TestErrorConstants(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		err  error
@@ -80,6 +90,8 @@ func TestErrorConstants(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if tt.err == nil {
 				t.Fatal("Error constant should not be nil")
 			}
@@ -92,6 +104,7 @@ func TestErrorConstants(t *testing.T) {
 
 // TestNilStoreMethods verifies nil-safe method calls
 func TestNilStoreMethods(t *testing.T) {
+	t.Parallel()
 	var ass *SQLAuditStore
 
 	// These methods should handle nil gracefully
@@ -114,6 +127,8 @@ func TestNilStoreMethods(t *testing.T) {
 
 // TestGetDataDir verifies data directory retrieval
 func TestGetDataDir(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		ass  *SQLAuditStore
@@ -135,6 +150,8 @@ func TestGetDataDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := tt.ass.GetDataDir()
 			if got != tt.want {
 				t.Errorf("GetDataDir() = %v, want %v", got, tt.want)
@@ -144,7 +161,9 @@ func TestGetDataDir(t *testing.T) {
 }
 
 func TestSQLAuditStore_WaitJoinsInFlightWrites(t *testing.T) {
+	t.Parallel()
 	t.Run("nil store returns", func(t *testing.T) {
+		t.Parallel()
 		done := make(chan struct{})
 		go func() {
 			var store *SQLAuditStore
@@ -159,6 +178,7 @@ func TestSQLAuditStore_WaitJoinsInFlightWrites(t *testing.T) {
 	})
 
 	t.Run("blocks until the in-flight write finishes", func(t *testing.T) {
+		t.Parallel()
 		store := &SQLAuditStore{}
 		store.muWrites.Add(1)
 		done := make(chan struct{})
@@ -182,6 +202,8 @@ func TestSQLAuditStore_WaitJoinsInFlightWrites(t *testing.T) {
 
 // TestClose verifies close behavior
 func TestClose(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		ass  *SQLAuditStore
@@ -198,6 +220,8 @@ func TestClose(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if err := tt.ass.Close(); err != nil {
 				t.Errorf("Close() unexpected error = %v", err)
 			}
@@ -208,6 +232,8 @@ func TestClose(t *testing.T) {
 // TestSQLAuditStore_NilDB verifies that NewSQLAuditStore
 // returns an error when db is nil.
 func TestSQLAuditStore_NilDB(t *testing.T) {
+	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 	config := DefaultAuditStoreConfig()
@@ -232,6 +258,8 @@ func TestSQLAuditStore_NilDB(t *testing.T) {
 // TestSQLAuditStore_NilFileSvc verifies that NewSQLAuditStore
 // returns an error when fileSvc is nil.
 func TestSQLAuditStore_NilFileSvc(t *testing.T) {
+	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	tempDir := testutil.TempDir(t)
 	fileSvc := newTestFileSvc(t, tempDir)
@@ -264,6 +292,8 @@ func TestSQLAuditStore_NilFileSvc(t *testing.T) {
 // TestSQLAuditStore_NilEncryptionVault verifies that NewSQLAuditStore
 // requires EncryptionVault in config and returns an error when vault is nil.
 func TestSQLAuditStore_NilEncryptionVault(t *testing.T) {
+	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 	dbPath := fileSvc.Resolve(constants.CanonicalDBRelPath)
@@ -290,6 +320,8 @@ func TestSQLAuditStore_NilEncryptionVault(t *testing.T) {
 
 // TestGetActionReceipt_NilStore verifies nil-safe behavior
 func TestGetActionReceipt_NilStore(t *testing.T) {
+	t.Parallel()
+
 	var ass *SQLAuditStore
 
 	receipt, err := ass.GetEventReceipt("test-tx-id")
@@ -306,6 +338,8 @@ func TestGetActionReceipt_NilStore(t *testing.T) {
 
 // TestGetActionReceipt_NilDB verifies behavior when db is nil
 func TestGetActionReceipt_NilDB(t *testing.T) {
+	t.Parallel()
+
 	ass := &SQLAuditStore{
 		db: nil,
 	}
@@ -324,6 +358,8 @@ func TestGetActionReceipt_NilDB(t *testing.T) {
 
 // TestListActionReceipts_NilStore verifies nil-safe behavior
 func TestListActionReceipts_NilStore(t *testing.T) {
+	t.Parallel()
+
 	var ass *SQLAuditStore
 
 	receipts, err := ass.ListEventReceipts(models.AuditScope{OperatorSessionID: "session-id"}, 10, 0)
@@ -340,6 +376,8 @@ func TestListActionReceipts_NilStore(t *testing.T) {
 
 // TestListActionReceipts_NilDB verifies behavior when db is nil
 func TestListActionReceipts_NilDB(t *testing.T) {
+	t.Parallel()
+
 	ass := &SQLAuditStore{
 		db: nil,
 	}
@@ -358,8 +396,12 @@ func TestListActionReceipts_NilDB(t *testing.T) {
 
 // TestListActionReceipts_DefaultLimit verifies default limit is applied
 func TestListActionReceipts_DefaultLimit(t *testing.T) {
+	t.Parallel(
+
 	// This test verifies the logic that applies default limit when limit <= 0
 	// Since we can't mock the db easily, we test the nil case which also checks limit logic
+	)
+
 	ass := &SQLAuditStore{
 		db: nil,
 	}
@@ -376,6 +418,8 @@ func TestListActionReceipts_DefaultLimit(t *testing.T) {
 
 // TestListActionReceiptsSince_NilStore verifies nil-safe behavior
 func TestListActionReceiptsSince_NilStore(t *testing.T) {
+	t.Parallel()
+
 	var ass *SQLAuditStore
 
 	since := time.Now()
@@ -393,6 +437,8 @@ func TestListActionReceiptsSince_NilStore(t *testing.T) {
 
 // TestListActionReceiptsSince_NilDB verifies behavior when db is nil
 func TestListActionReceiptsSince_NilDB(t *testing.T) {
+	t.Parallel()
+
 	ass := &SQLAuditStore{
 		db: nil,
 	}
@@ -412,6 +458,8 @@ func TestListActionReceiptsSince_NilDB(t *testing.T) {
 
 // TestListActionReceiptsSince_DefaultLimit verifies default limit is applied
 func TestListActionReceiptsSince_DefaultLimit(t *testing.T) {
+	t.Parallel()
+
 	ass := &SQLAuditStore{
 		db: nil,
 	}

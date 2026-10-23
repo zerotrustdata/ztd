@@ -22,6 +22,7 @@ func decisionTestInput() *operatorv1.InferenceDecisionRequest {
 	return &operatorv1.InferenceDecisionRequest{State: "bounded action", Questions: []*operatorv1.InferenceDecisionQuestion{{Name: "gate", Instructions: "Is it safe?", Kind: &operatorv1.InferenceDecisionQuestion_Noul{Noul: &operatorv1.InferenceNoulQuestion{}}}}}
 }
 func TestDecisionValidationFailsClosed(t *testing.T) {
+	t.Parallel()
 	input := decisionTestInput()
 	require.NoError(t, ValidateDecisionRequest(input))
 	for _, tc := range []struct {
@@ -41,6 +42,7 @@ func TestDecisionValidationFailsClosed(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			r := proto.Clone(input).(*operatorv1.InferenceDecisionRequest)
 			tc.edit(r)
 			require.ErrorIs(t, ValidateDecisionRequest(r), constants.ErrInferenceDecisionRequestInvalid)
@@ -53,6 +55,7 @@ func TestDecisionValidationFailsClosed(t *testing.T) {
 	require.ErrorIs(t, ValidateDecisionResult(input, &operatorv1.InferenceDecisionResult{}), constants.ErrInferenceDecisionResponseInvalid)
 }
 func TestDecisionDigestBindsProbabilitiesAndHostedEgress(t *testing.T) {
+	t.Parallel()
 	input := decisionTestInput()
 	result := &operatorv1.InferenceResult{Decision: &operatorv1.InferenceDecisionResult{Answers: []*operatorv1.InferenceDecisionAnswer{{Name: "gate", Kind: &operatorv1.InferenceDecisionAnswer_Noul{Noul: .95}}}}}
 	hash, err := ComputeDecisionOutputHash(result.Decision)
@@ -75,6 +78,7 @@ func TestDecisionDigestBindsProbabilitiesAndHostedEgress(t *testing.T) {
 	require.NoError(t, ValidateDecisionCompletion(input, result))
 }
 func TestDecisionConsensusBinding(t *testing.T) {
+	t.Parallel()
 	spec := ConsensusBindingSpec{Provider: constants.ConsensusProviderTribunal, AppID: constants.TribunalConsensusMemberAppIDs()[0], ModelTag: "tev1:0.8b", ModelDigest: strings.Repeat("a", 64), VoteKind: ConsensusVoteKindDecision, InferenceOperatorID: "consensus-inference"}
 	for _, id := range constants.TribunalConsensusMemberAppIDs() {
 		spec.VoteThresholds = append(spec.VoteThresholds, ConsensusDecisionThreshold{MemberAppID: id, Threshold: .9})

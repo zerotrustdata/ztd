@@ -62,6 +62,7 @@ func heterogeneousAssignmentExecutionRequest(t *testing.T, stack *evalv1.Heterog
 }
 
 func TestValidateHeterogeneousStackSet_RejectsRetiredLegacyGenerationRule(t *testing.T) {
+	t.Parallel()
 	set, err := testFormationStackSet("heterogeneous-campaign", 42, testHeterogeneousVariants())
 	require.NoError(t, err)
 	set.GenerationRule = "heterogeneous-v1"
@@ -71,6 +72,7 @@ func TestValidateHeterogeneousStackSet_RejectsRetiredLegacyGenerationRule(t *tes
 }
 
 func TestValidateHeterogeneousStackSet_RejectsMalformedCatalogStack(t *testing.T) {
+	t.Parallel()
 	set, err := testFormationStackSet("heterogeneous-campaign", 42, testHeterogeneousVariants())
 	require.NoError(t, err)
 	set.Stacks[0].PrimarySlot.VariantId = "not-frozen"
@@ -83,6 +85,7 @@ func TestValidateHeterogeneousStackSet_RejectsMalformedCatalogStack(t *testing.T
 }
 
 func TestComputeHeterogeneousStackDigest_RejectsDuplicateVariants(t *testing.T) {
+	t.Parallel()
 	variants := testFormationCatalogVariants()
 	_, err := materializeStack("invalid", variants[0], variants[0], variants[1])
 	assert.Error(t, err)

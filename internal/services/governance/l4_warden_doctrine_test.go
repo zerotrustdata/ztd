@@ -66,6 +66,7 @@ func TestL4Warden_Doctrine_ValidMutationPassesWithoutL2L3(t *testing.T) {
 // from the SSOT can be decoded and verified under doctrine posture.
 func TestL4Warden_Doctrine_AllActionTypesFromSSOT(t *testing.T) {
 	t.Parallel()
+
 	allActionTypes := constants.AllActionTypes
 	if len(allActionTypes) == 0 {
 		t.Fatal("AllActionTypes() returned empty list")
@@ -74,6 +75,7 @@ func TestL4Warden_Doctrine_AllActionTypesFromSSOT(t *testing.T) {
 	for _, actionType := range allActionTypes {
 		t.Run(string(actionType), func(t *testing.T) {
 			t.Parallel()
+
 			if _, err := constants.RequestEventForAction(actionType); err != nil {
 				t.Skipf("no governed request event for %s", actionType)
 			}
@@ -136,8 +138,10 @@ func TestL4Warden_Doctrine_MissingL3DoesNotReject(t *testing.T) {
 // attacks and state root mismatches are rejected under doctrine posture.
 func TestL4Warden_Doctrine_ReplayAndStateRootReject(t *testing.T) {
 	t.Parallel()
+
 	t.Run("replayed nonce", func(t *testing.T) {
 		t.Parallel()
+
 		replayStore := testutil.NewStatefulMockReplayStore()
 		verifier, privKey := createStrictVerifier(t, replayStore, testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "doctrine")
@@ -152,6 +156,7 @@ func TestL4Warden_Doctrine_ReplayAndStateRootReject(t *testing.T) {
 
 	t.Run("state root mismatch", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("other-root"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "doctrine")
 		rejected, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -171,8 +176,10 @@ func TestL4Warden_Doctrine_ReplayAndStateRootReject(t *testing.T) {
 // missing critical verifier dependencies are rejected under doctrine posture.
 func TestL4Warden_Doctrine_MissingVerifierDependenciesReject(t *testing.T) {
 	t.Parallel()
+
 	t.Run("missing replay store", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, nil, testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "doctrine")
 		_, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -183,6 +190,7 @@ func TestL4Warden_Doctrine_MissingVerifierDependenciesReject(t *testing.T) {
 
 	t.Run("missing state root provider", func(t *testing.T) {
 		t.Parallel()
+
 		verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), nil, testutil.NewConfigurableMockL3Notary(true))
 		env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "doctrine")
 		_, err := verifier.VerifyEnvelope(context.Background(), env)
@@ -193,6 +201,7 @@ func TestL4Warden_Doctrine_MissingVerifierDependenciesReject(t *testing.T) {
 }
 
 func TestL4WardenVerifyEnvelopeProducesAuthoritativeDeterministicStageEvidence(t *testing.T) {
+	t.Parallel()
 	verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 	envelope := signedEnvelope(t, constants.ActionTypeExecuteBash, typedPayload(t, constants.ActionTypeExecuteBash), privKey, "doctrine")
 	envelope.Governance.L2 = nil
@@ -309,6 +318,7 @@ func TestL4Warden_Doctrine_L1ViolationEmitsFailedL1Stage(t *testing.T) {
 // L1 stage truthfully records VERIFIED and the L4 stage records FAILED.
 func TestL4Warden_Doctrine_IdentityFailureAfterDoctrinePassEmitsVerifiedL1Stage(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name    string
 		mutate  func(env *govtypes.GovernanceEnvelope)
@@ -328,6 +338,7 @@ func TestL4Warden_Doctrine_IdentityFailureAfterDoctrinePassEmitsVerifiedL1Stage(
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			verifier, privKey := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			env := signedEnvelope(t, constants.ActionTypeFsList, typedPayload(t, constants.ActionTypeFsList), privKey, "doctrine")
 			tc.mutate(env)

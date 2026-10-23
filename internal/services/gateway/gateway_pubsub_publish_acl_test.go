@@ -27,6 +27,8 @@ import (
 // --- verifyPublishACL table-driven tests ---
 
 func TestVerifyPublishACL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		channel        string
@@ -202,6 +204,8 @@ func TestVerifyPublishACL(t *testing.T) {
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := verifyPublishACL(tt.channel, tt.operatorID, tt.spiffeID)
 			if tt.wantErr {
 				require.Error(t, err)
@@ -221,6 +225,7 @@ func TestVerifyPublishACL(t *testing.T) {
 // --- BuildGovernanceEnvelope unit tests ---
 
 func TestBuildGovernanceEnvelope_Success(t *testing.T) {
+	t.Parallel()
 	payload, err := proto.Marshal(&operatorv1.FsReadRequested{Path: "/etc/hostname", ExecutionId: "exec-1"})
 	require.NoError(t, err)
 	env, err := BuildGovernanceEnvelope(BuildEnvelopeParams{
@@ -259,8 +264,10 @@ func TestBuildGovernanceEnvelope_Success(t *testing.T) {
 }
 
 func TestBuildGovernanceEnvelope_DeterministicTxHash(t *testing.T) {
+	t.Parallel()
 	// Same params (except nonce which is random) produce different tx hashes
 	// because the nonce differs. But the envelope structure is consistent.
+
 	payload, err := proto.Marshal(&operatorv1.FsReadRequested{Path: "/etc/hostname", ExecutionId: "exec-1"})
 	require.NoError(t, err)
 	params := BuildEnvelopeParams{
@@ -295,6 +302,8 @@ func TestBuildGovernanceEnvelope_DeterministicTxHash(t *testing.T) {
 // outside the defined set is refused at construction time rather than stamped
 // onto an envelope the operator would have to interpret.
 func TestBuildGovernanceEnvelope_InvalidPostureFailsClosed(t *testing.T) {
+	t.Parallel()
+
 	payload, err := proto.Marshal(&operatorv1.FsReadRequested{Path: "/etc/hostname", ExecutionId: "exec-1"})
 	require.NoError(t, err)
 	_, err = BuildGovernanceEnvelope(BuildEnvelopeParams{
@@ -318,6 +327,8 @@ func TestBuildGovernanceEnvelope_InvalidPostureFailsClosed(t *testing.T) {
 // cfg.Gateway.Posture), and the operator would reject it per-transaction
 // anyway — fail closed at construction time.
 func TestBuildGovernanceEnvelope_MissingPostureFailsClosed(t *testing.T) {
+	t.Parallel()
+
 	payload, err := proto.Marshal(&operatorv1.FsReadRequested{Path: "/etc/hostname", ExecutionId: "exec-1"})
 	require.NoError(t, err)
 	_, err = BuildGovernanceEnvelope(BuildEnvelopeParams{
@@ -372,6 +383,7 @@ func newOperatorSessionHandler(broker *GatewayWebSocketHandler, operatorID strin
 }
 
 func TestHandlePublish_AppCommandPublishRejectedAtACL(t *testing.T) {
+	t.Parallel()
 	broker := newTestBroker(t)
 	handler := newAppSessionHandler(broker, "app-001")
 
@@ -392,6 +404,7 @@ func TestHandlePublish_AppCommandPublishRejectedAtACL(t *testing.T) {
 }
 
 func TestHandlePublish_OperatorPublishToCmdRejected(t *testing.T) {
+	t.Parallel()
 	op := &operatorv1.OperatorDocument{
 		Id:                "op-001",
 		OperatorSessionId: "sess-001",
@@ -418,6 +431,7 @@ func TestHandlePublish_OperatorPublishToCmdRejected(t *testing.T) {
 }
 
 func TestHandlePublish_OperatorPublishToHeartbeatPermitted(t *testing.T) {
+	t.Parallel()
 	broker := newTestBroker(t)
 	handler := newOperatorSessionHandler(broker, "op-001")
 
@@ -441,6 +455,7 @@ func TestHandlePublish_OperatorPublishToHeartbeatPermitted(t *testing.T) {
 }
 
 func TestHandlePublish_OperatorPublishToResultsPermitted(t *testing.T) {
+	t.Parallel()
 	broker := newTestBroker(t)
 	handler := newOperatorSessionHandler(broker, "op-001")
 
@@ -465,6 +480,7 @@ func TestHandlePublish_OperatorPublishToResultsPermitted(t *testing.T) {
 // TestHandlePublish_OperatorCrossOperatorHeartbeatRejected verifies that
 // an operator cannot publish to another operator's heartbeat channel.
 func TestHandlePublish_OperatorCrossOperatorHeartbeatRejected(t *testing.T) {
+	t.Parallel()
 	broker := newTestBroker(t)
 	handler := newOperatorSessionHandler(broker, "op-001")
 
@@ -488,6 +504,7 @@ func TestHandlePublish_OperatorCrossOperatorHeartbeatRejected(t *testing.T) {
 // TestHandlePublish_LogsOnACLViolation verifies that ACL violations are
 // logged at WARN level for observability.
 func TestHandlePublish_LogsOnACLViolation(t *testing.T) {
+	t.Parallel()
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	broker := NewGatewayWebSocketHandler(logger)

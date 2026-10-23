@@ -16,9 +16,10 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
-func TestStartupEnablesEveryRequestedOperatorCapabilityCombination(t *testing.T) {
+func TestStartupEnablesEveryRequestedOperatorCapabilityCombination(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	all := []constants.OperatorCapability{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver}
-	for _, operatorType := range []constants.OperatorType{constants.OperatorTypeEmbedded, constants.OperatorTypeRemote} {
+	for _, operatorType := range []constants.OperatorType{constants.OperatorTypeEmbedded, constants.OperatorTypeRemote} { //nolint:paralleltest // mutates package-level state
 		for mask := 1; mask < 1<<len(all); mask++ {
 			capabilities := constants.OperatorCapabilities{}
 			for i, capability := range all {
@@ -27,6 +28,7 @@ func TestStartupEnablesEveryRequestedOperatorCapabilityCombination(t *testing.T)
 				}
 			}
 			t.Run(string(operatorType)+"/"+capabilities.String(), func(t *testing.T) {
+
 				var cfg *config.Config
 				var err error
 				want := capabilities.Canonical()
@@ -46,7 +48,8 @@ func TestStartupEnablesEveryRequestedOperatorCapabilityCombination(t *testing.T)
 	}
 }
 
-func TestProvenanceCapabilityRequiresModelStorageRoot(t *testing.T) {
+func TestProvenanceCapabilityRequiresModelStorageRoot(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	provenance := constants.OperatorCapabilities{constants.OperatorCapabilityProvenance}
 	_, err := config.LoadGateway(config.GatewayOptions{OperatorCapabilities: provenance})
 	require.ErrorIs(t, err, constants.ErrProvenanceModelStorageRootRequired)

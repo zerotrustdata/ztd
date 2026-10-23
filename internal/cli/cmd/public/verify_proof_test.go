@@ -29,6 +29,7 @@ import (
 )
 
 func TestVerifyProofCmd_ValidatesChainAndArtifacts(t *testing.T) {
+	t.Parallel()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	pubHex := hex.EncodeToString(pub)
@@ -184,6 +185,7 @@ func TestVerifyProofCmd_ValidatesChainAndArtifacts(t *testing.T) {
 }
 
 func TestVerifyProofCmd_RejectsBrokenLinkAndInvalidSignature(t *testing.T) {
+	t.Parallel()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	pubHex := hex.EncodeToString(pub)
@@ -245,6 +247,7 @@ func TestVerifyProofCmd_RejectsBrokenLinkAndInvalidSignature(t *testing.T) {
 }
 
 func TestVerifyProofCmd_RejectsTamperingAndMixedSources(t *testing.T) {
+	t.Parallel()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	base := models.PublicProofManifestSegment{
@@ -296,6 +299,7 @@ func TestVerifyProofCmd_RejectsTamperingAndMixedSources(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), testutil.NewTestLogger())
 			require.NoError(t, err)
 			var log bytes.Buffer
@@ -313,6 +317,7 @@ func TestVerifyProofCmd_RejectsTamperingAndMixedSources(t *testing.T) {
 }
 
 func TestVerifyProofCmd_ValidatesKeyRegistryWithRotation(t *testing.T) {
+	t.Parallel()
 	pub1, priv1, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	keyID1 := "key-1"

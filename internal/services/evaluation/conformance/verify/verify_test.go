@@ -264,6 +264,7 @@ func verifyRecord(t *testing.T, rec *evalv1.ConformanceRunRecord, applicable []c
 }
 
 func TestVerifyAgainstPassingRecordIsPass(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	set := verifyRecord(t, f.record(), f.applicable)
 
@@ -319,6 +320,7 @@ func persistedVerdicts(t *testing.T, record *evalv1.ConformanceRunRecord) *evalv
 }
 
 func TestVerifyPersisted_EmbeddedOperatorOnlyPasses(t *testing.T) {
+	t.Parallel()
 	record := embeddedOnlyRecord(t, false)
 	set := persistedVerdicts(t, record)
 	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_PASS, set.GetSuiteVerdict())
@@ -329,6 +331,7 @@ func TestVerifyPersisted_EmbeddedOperatorOnlyPasses(t *testing.T) {
 }
 
 func TestVerifyPersisted_OutboundAbsentWithPinnedOutboundIsInvalid(t *testing.T) {
+	t.Parallel()
 	raw, _ := conformancetest.DoctrineRecord(t)
 	record := new(evalv1.ConformanceRunRecord)
 	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
@@ -339,6 +342,7 @@ func TestVerifyPersisted_OutboundAbsentWithPinnedOutboundIsInvalid(t *testing.T)
 }
 
 func TestVerifyPersisted_SkippedA2AIsIncompleteAndTamperingStillFails(t *testing.T) {
+	t.Parallel()
 	record := embeddedOnlyRecord(t, true)
 	set := persistedVerdicts(t, record)
 	assert.Equal(t, evalv1.ConformanceSuiteVerdict_CONFORMANCE_SUITE_VERDICT_INCOMPLETE, set.GetSuiteVerdict())
@@ -373,6 +377,7 @@ func TestVerifyPersisted_SkippedA2AIsIncompleteAndTamperingStillFails(t *testing
 }
 
 func TestVerifyAgainstUnavailableReasonCannotHideRequiredIngress(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	record := f.record()
 	ev := caseEvidence(t, record, caseDirect)
@@ -383,6 +388,7 @@ func TestVerifyAgainstUnavailableReasonCannotHideRequiredIngress(t *testing.T) {
 }
 
 func TestVerifyAgainstUnattendedAttendedCaseIsIncomplete(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	rec := f.record()
 	rec.Attended = false
@@ -427,6 +433,7 @@ func flipHexDigit(digit byte) byte {
 }
 
 func TestVerifyAgainstNegativeMutations(t *testing.T) {
+	t.Parallel()
 	tests := []fixtureRecordMutation{
 		{
 			name: "wrong rejection code",
@@ -852,6 +859,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			f := newFixture(t)
 			rec := f.record()
 			tt.mutate(t, f, rec)
@@ -871,6 +879,7 @@ func TestVerifyAgainstNegativeMutations(t *testing.T) {
 }
 
 func TestVerifyAgainstUnclassifiedRejectionNeverMatches(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.applicable[1].Expect[0].RejectionCode = operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_UNCLASSIFIED
 	rec := f.record()
@@ -886,6 +895,7 @@ func TestVerifyAgainstUnclassifiedRejectionNeverMatches(t *testing.T) {
 }
 
 func TestVerifyPersistedPassingRecordIsPass(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	raw, err := evalv1.MarshalCanonical(f.record())
 	require.NoError(t, err)
@@ -895,6 +905,7 @@ func TestVerifyPersistedPassingRecordIsPass(t *testing.T) {
 }
 
 func TestVerifyPersistedFlippedBitIsInvalidEvidence(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	raw, err := evalv1.MarshalCanonical(f.record())
 	require.NoError(t, err)
@@ -923,6 +934,7 @@ func TestVerifyPersistedFlippedBitIsInvalidEvidence(t *testing.T) {
 }
 
 func TestVerifyPersistedDigestMismatchNamesTheDigestClass(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	raw, err := evalv1.MarshalCanonical(f.record())
 	require.NoError(t, err)
@@ -938,6 +950,7 @@ func TestVerifyPersistedDigestMismatchNamesTheDigestClass(t *testing.T) {
 }
 
 func TestSealedRecordTamperedSetIsTheDigestMismatchVerdictForTheCallerRun(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	raw, err := evalv1.MarshalCanonical(f.record())
 	require.NoError(t, err)
@@ -958,6 +971,7 @@ func TestSealedRecordTamperedSetIsTheDigestMismatchVerdictForTheCallerRun(t *tes
 }
 
 func TestVerifyPersistedNonCanonicalRecordIsInvalidEvidence(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	canonical, err := evalv1.MarshalCanonical(f.record())
 	require.NoError(t, err)
@@ -972,6 +986,7 @@ func TestVerifyPersistedNonCanonicalRecordIsInvalidEvidence(t *testing.T) {
 }
 
 func TestVerifyPersistedReceiptSignatureFlipIsSignatureInvalid(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	rec := f.record()
 	receipt := caseEvidence(t, rec, caseDirect).GetSentinelBefore()
@@ -991,6 +1006,7 @@ func TestVerifyPersistedReceiptSignatureFlipIsSignatureInvalid(t *testing.T) {
 }
 
 func TestVerifyUnrealPostureIsInvalidEvidenceWithoutCatalogue(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	rec := f.record()
 	rec.Posture = evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED
@@ -1054,6 +1070,7 @@ func assertOnlyCaseNotPass(t *testing.T, set *evalv1.ConformanceVerdictSet, case
 }
 
 func TestVerifyPersistedPinnedDoctrineRecordIsPass(t *testing.T) {
+	t.Parallel()
 	record, raw, digest := pinnedDoctrineRecord(t)
 	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, cases.Stack{A2AIngress: true, Outbound: true})
 	require.NoError(t, err)
@@ -1075,6 +1092,7 @@ func TestVerifyPersistedPinnedDoctrineRecordIsPass(t *testing.T) {
 }
 
 func TestVerifyPersistedPinnedDoctrineRecordFlippedReceiptSignatureIsInvalidEvidenceForItsCase(t *testing.T) {
+	t.Parallel()
 	record, _, _ := pinnedDoctrineRecord(t)
 	receipt := caseEvidence(t, record, pinnedCaseID).GetSentinelBefore()
 	sig := []byte(receipt.GetSignature())
@@ -1093,6 +1111,7 @@ func TestVerifyPersistedPinnedDoctrineRecordFlippedReceiptSignatureIsInvalidEvid
 }
 
 func TestVerifyPersistedPinnedDoctrineRecordChangedTargetPathIsTargetMismatch(t *testing.T) {
+	t.Parallel()
 	record, _, _ := pinnedDoctrineRecord(t)
 	ev := caseEvidence(t, record, pinnedCaseID)
 	ev.TargetPath = "eval/targets/conformance-" + doctrineRecordRunID + "/" + ev.GetTargetPath()
@@ -1109,6 +1128,7 @@ func TestVerifyPersistedPinnedDoctrineRecordChangedTargetPathIsTargetMismatch(t 
 }
 
 func TestVerifyPersistedPinnedDoctrineRecordWithOneCaseRemovedIsNotPass(t *testing.T) {
+	t.Parallel()
 	record, _, _ := pinnedDoctrineRecord(t)
 	var kept []*evalv1.ConformanceCaseEvidence
 	for _, ev := range record.GetCases() {
@@ -1129,6 +1149,7 @@ func TestVerifyPersistedPinnedDoctrineRecordWithOneCaseRemovedIsNotPass(t *testi
 }
 
 func TestVerifyPersistedPinnedDoctrineRecordByteFlipWithoutRecomputedDigestIsDigestMismatch(t *testing.T) {
+	t.Parallel()
 	_, raw, digest := pinnedDoctrineRecord(t)
 	flipped := append([]byte(nil), raw...)
 	flipped[len(flipped)/2] ^= 0x01

@@ -16,7 +16,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestTryLock_ExcludesASecondHolderUntilClosed(t *testing.T) {
+func TestTryLock_ExcludesASecondHolderUntilClosed(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -35,7 +36,8 @@ func TestTryLock_ExcludesASecondHolderUntilClosed(t *testing.T) {
 	require.NoError(t, again.Close())
 }
 
-func TestTryLock_CancelledContextReturnsContextError(t *testing.T) {
+func TestTryLock_CancelledContextReturnsContextError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -44,7 +46,8 @@ func TestTryLock_CancelledContextReturnsContextError(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestTryLockShared_SharesWithSharedHoldersAndExcludesAnExclusiveOne(t *testing.T) {
+func TestTryLockShared_SharesWithSharedHoldersAndExcludesAnExclusiveOne(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 

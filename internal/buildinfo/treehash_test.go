@@ -42,6 +42,7 @@ func writeParityFixture(t *testing.T, root string) {
 }
 
 func TestComputeSourceManifestHash_KeysRetainEntryPrefix(t *testing.T) {
+	t.Parallel()
 	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 
@@ -53,6 +54,7 @@ func TestComputeSourceManifestHash_KeysRetainEntryPrefix(t *testing.T) {
 }
 
 func TestComputeSourceManifestHash_RejectsMissingEntry(t *testing.T) {
+	t.Parallel()
 	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 
@@ -62,6 +64,7 @@ func TestComputeSourceManifestHash_RejectsMissingEntry(t *testing.T) {
 }
 
 func TestComputeSourceManifestHash_RejectsEscapingEntry(t *testing.T) {
+	t.Parallel()
 	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 
@@ -73,6 +76,7 @@ func TestComputeSourceManifestHash_RejectsEscapingEntry(t *testing.T) {
 }
 
 func TestComputeSourceManifestHash_RejectsSymlinkEntry(t *testing.T) {
+	t.Parallel()
 	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 	outside := testutil.TempDir(t)
@@ -84,6 +88,7 @@ func TestComputeSourceManifestHash_RejectsSymlinkEntry(t *testing.T) {
 }
 
 func TestComputeSourceManifestHash_ExcludeSkipsNestedGeneratedDirs(t *testing.T) {
+	t.Parallel()
 	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 	venv := filepath.Join(base, "pkg", ".venv", "bin")
@@ -106,6 +111,7 @@ func TestComputeSourceManifestHash_ExcludeSkipsNestedGeneratedDirs(t *testing.T)
 }
 
 func TestListSourceManifestFiles_ReturnsPortableSortedDependencies(t *testing.T) {
+	t.Parallel()
 	base := testutil.TempDir(t)
 	writeParityFixture(t, base)
 	require.NoError(t, os.MkdirAll(filepath.Join(base, "dir", "tests"), 0o755))

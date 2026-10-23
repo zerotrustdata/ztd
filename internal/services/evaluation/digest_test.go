@@ -70,6 +70,7 @@ func testScenarioCatalog() *evalv1.EvaluationScenarioCatalog {
 }
 
 func TestComputeCampaignSpecDigest_IsStableAndSensitive(t *testing.T) {
+	t.Parallel()
 	spec := testCampaignSpec()
 	first, err := ComputeCampaignSpecDigest(spec)
 	require.NoError(t, err)
@@ -86,6 +87,7 @@ func TestComputeCampaignSpecDigest_IsStableAndSensitive(t *testing.T) {
 }
 
 func TestValidateCampaignSpecDigest_RejectsMismatch(t *testing.T) {
+	t.Parallel()
 	spec := testCampaignSpec()
 	digest, err := ComputeCampaignSpecDigest(spec)
 	require.NoError(t, err)
@@ -97,6 +99,7 @@ func TestValidateCampaignSpecDigest_RejectsMismatch(t *testing.T) {
 }
 
 func TestComputeScenarioCatalogDigest_SortsScenariosDeterministically(t *testing.T) {
+	t.Parallel()
 	catalog := testScenarioCatalog()
 	forward, err := ComputeScenarioCatalogDigest(catalog)
 	require.NoError(t, err)
@@ -111,6 +114,7 @@ func TestComputeScenarioCatalogDigest_SortsScenariosDeterministically(t *testing
 }
 
 func TestComputeModelVariantRegistryDigest_MatchesInferenceRegistryDigest(t *testing.T) {
+	t.Parallel()
 	variants := []*evalv1.ModelVariant{testModelVariant()}
 	evalDigest, err := ComputeModelVariantRegistryDigest("phase1a-smoke", variants)
 	require.NoError(t, err)
@@ -124,6 +128,7 @@ func TestComputeModelVariantRegistryDigest_MatchesInferenceRegistryDigest(t *tes
 }
 
 func TestComputeAssignmentDeterministicIdentity_DistinguishesHomogeneousBindings(t *testing.T) {
+	t.Parallel()
 	base := &evalv1.EvaluationAssignment{
 		CampaignId: "phase1a-smoke",
 		ScenarioId: "instruction-exact-1",
@@ -157,6 +162,7 @@ func TestComputeAssignmentDeterministicIdentity_DistinguishesHomogeneousBindings
 }
 
 func TestComputeAssignmentResultDigest_IsStableAndValidated(t *testing.T) {
+	t.Parallel()
 	result := &evalv1.EvaluationAssignmentResult{
 		SchemaVersion:   CampaignSchemaVersion,
 		AssignmentId:    "assign-1",
@@ -174,6 +180,7 @@ func TestComputeAssignmentResultDigest_IsStableAndValidated(t *testing.T) {
 }
 
 func TestComputeAssignmentResultDigestIncludesEnrichedCaptureFields(t *testing.T) {
+	t.Parallel()
 	base := &evalv1.EvaluationAssignmentResult{
 		SchemaVersion:   CampaignSchemaVersion,
 		AssignmentId:    "assign-enriched",
@@ -240,6 +247,7 @@ func TestComputeAssignmentResultDigestIncludesEnrichedCaptureFields(t *testing.T
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			result := proto.Clone(base).(*evalv1.EvaluationAssignmentResult)
 			test.mutate(result)
 			changed, err := ComputeAssignmentResultDigest(result)

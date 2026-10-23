@@ -53,6 +53,7 @@ func testIdentity() Identity {
 }
 
 func TestBaselineHashesAndReverifiesForEachKind(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		attempt cases.Attempt
@@ -66,6 +67,7 @@ func TestBaselineHashesAndReverifiesForEachKind(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env, err := Baseline(tt.attempt, testIdentity(), "root-1", time.Now())
 			require.NoError(t, err)
 
@@ -86,6 +88,7 @@ func TestBaselineHashesAndReverifiesForEachKind(t *testing.T) {
 }
 
 func TestBaselineCarriesNoPostureOrGovernance(t *testing.T) {
+	t.Parallel()
 	env, err := Baseline(testAttempt(cases.FaultNone, cases.ActionMutation), testIdentity(), "root-1", time.Now())
 	require.NoError(t, err)
 	assert.Empty(t, env.Posture)
@@ -93,6 +96,7 @@ func TestBaselineCarriesNoPostureOrGovernance(t *testing.T) {
 }
 
 func TestBaselineExpiresFiveMinutesAfterNow(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	env, err := Baseline(testAttempt(cases.FaultNone, cases.ActionMutation), testIdentity(), "root-1", now)
 	require.NoError(t, err)
@@ -100,6 +104,7 @@ func TestBaselineExpiresFiveMinutesAfterNow(t *testing.T) {
 }
 
 func TestBaselineNonceIsFreshPerAttempt(t *testing.T) {
+	t.Parallel()
 	a := testAttempt(cases.FaultNone, cases.ActionMutation)
 	first, err := Baseline(a, testIdentity(), "root-1", time.Now())
 	require.NoError(t, err)
@@ -109,6 +114,7 @@ func TestBaselineNonceIsFreshPerAttempt(t *testing.T) {
 }
 
 func TestUngovernedCollectionIsNotGoverned(t *testing.T) {
+	t.Parallel()
 	_, _, msg, err := Payload(testAttempt(cases.FaultUngovernedCollection, cases.ActionMutation))
 	require.NoError(t, err)
 	doc, ok := msg.(*operatorv1.DocumentUpdateRequested)
@@ -118,6 +124,7 @@ func TestUngovernedCollectionIsNotGoverned(t *testing.T) {
 }
 
 func TestPayloadRejectsActionNotExpressible(t *testing.T) {
+	t.Parallel()
 	a := testAttempt(cases.FaultNone, cases.Action("unknown"))
 	_, _, _, err := Payload(a)
 	require.Error(t, err)
@@ -125,6 +132,7 @@ func TestPayloadRejectsActionNotExpressible(t *testing.T) {
 }
 
 func TestPayloadDoctrineRequiresCommand(t *testing.T) {
+	t.Parallel()
 	a := testAttempt(cases.FaultDoctrine, cases.ActionMutation)
 	a.Case.Command = ""
 	_, _, _, err := Payload(a)
@@ -133,6 +141,7 @@ func TestPayloadDoctrineRequiresCommand(t *testing.T) {
 }
 
 func TestRehashMatchesGenerateMessageID(t *testing.T) {
+	t.Parallel()
 	env, err := Baseline(testAttempt(cases.FaultNone, cases.ActionMutation), testIdentity(), "root-1", time.Now())
 	require.NoError(t, err)
 	want, err := governance.GenerateMessageID(env)
@@ -148,6 +157,7 @@ func TestRehashMatchesGenerateMessageID(t *testing.T) {
 }
 
 func TestRehashRejectsUnhashableEnvelope(t *testing.T) {
+	t.Parallel()
 	env := &commonv1.GovernanceEnvelope{ProtocolVersion: "0.0"}
 	err := Rehash(env)
 	require.Error(t, err)
@@ -155,6 +165,7 @@ func TestRehashRejectsUnhashableEnvelope(t *testing.T) {
 }
 
 func TestBaselinePayloadDecodesToItsAttemptMessage(t *testing.T) {
+	t.Parallel()
 	a := testAttempt(cases.FaultNone, cases.ActionMutation)
 	env, err := Baseline(a, testIdentity(), "root-1", time.Now())
 	require.NoError(t, err)

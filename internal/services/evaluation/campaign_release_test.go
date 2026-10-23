@@ -34,6 +34,7 @@ func saveLegacyCampaign(t *testing.T, f *archiveFixture, campaignID string) {
 }
 
 func TestStoreLoadCampaignRelease_ARecordedReleaseIsTheDigestBoundOne(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 
 	release, err := f.store.LoadCampaignRelease(context.Background(), f.req.CampaignID)
@@ -42,6 +43,7 @@ func TestStoreLoadCampaignRelease_ARecordedReleaseIsTheDigestBoundOne(t *testing
 }
 
 func TestStoreTagCampaignRelease_AssertsAReleaseOnALegacyCampaign(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	saveLegacyCampaign(t, f, "legacy-campaign")
@@ -62,6 +64,7 @@ func TestStoreTagCampaignRelease_AssertsAReleaseOnALegacyCampaign(t *testing.T) 
 }
 
 func TestStoreTagCampaignRelease_RefusesToRelabelARecordedRelease(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 
 	err := f.store.TagCampaignRelease(context.Background(), f.req.CampaignID, "v2.2.7", archiveTestNow)
@@ -72,6 +75,7 @@ func TestStoreTagCampaignRelease_RefusesToRelabelARecordedRelease(t *testing.T) 
 }
 
 func TestStoreTagCampaignRelease_RequiresACampaignAndARelease(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 
 	require.ErrorIs(t, f.store.TagCampaignRelease(context.Background(), f.req.CampaignID, " ", archiveTestNow), constants.ErrMissingRequiredField)

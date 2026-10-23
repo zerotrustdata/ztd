@@ -32,7 +32,8 @@ func setupTestFS(t *testing.T) RuntimeFileService {
 	return svc
 }
 
-func TestNewRuntimeFileService_EmptyBaseDirUsesCWD(t *testing.T) {
+func TestNewRuntimeFileService_EmptyBaseDirUsesCWD(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	baseDir := testutil.TempDir(t)
 	require.NoError(t, paths.InitWithBase(baseDir))
 
@@ -41,13 +42,15 @@ func TestNewRuntimeFileService_EmptyBaseDirUsesCWD(t *testing.T) {
 	assert.NotNil(t, svc)
 }
 
-func TestResolve_EmptyPathReturnsRuntimeDir(t *testing.T) {
+func TestResolve_EmptyPathReturnsRuntimeDir(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	abs := svc.Resolve("")
 	assert.Contains(t, abs, constants.RuntimeDirname)
 }
 
-func TestResolve_RelativePathJoinsRuntimeDir(t *testing.T) {
+func TestResolve_RelativePathJoinsRuntimeDir(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	abs := svc.Resolve("pki/root_ca.crt")
 	assert.Contains(t, abs, constants.RuntimeDirname)
@@ -55,7 +58,8 @@ func TestResolve_RelativePathJoinsRuntimeDir(t *testing.T) {
 	assert.Contains(t, abs, "root_ca.crt")
 }
 
-func TestWriteFile_CreatesFileWithCorrectContent(t *testing.T) {
+func TestWriteFile_CreatesFileWithCorrectContent(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -68,7 +72,8 @@ func TestWriteFile_CreatesFileWithCorrectContent(t *testing.T) {
 	assert.Equal(t, data, got)
 }
 
-func TestOpenFileEditTargetProtectsRuntimeAndResolvesSymlinks(t *testing.T) {
+func TestOpenFileEditTargetProtectsRuntimeAndResolvesSymlinks(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	ctx := context.Background()
 	baseDir := testutil.OperatorDir(t)
 	require.NoError(t, paths.InitWithBase(baseDir))
@@ -131,7 +136,8 @@ func TestOpenFileEditTargetProtectsRuntimeAndResolvesSymlinks(t *testing.T) {
 // TestOpenFileEditTargetRejectsSymlinkSwappedAfterValidation is the TOCTOU
 // regression: replacing a validated evaluation target with a symlink to
 // protected runtime state must not redirect the write.
-func TestOpenFileEditTargetRejectsSymlinkSwappedAfterValidation(t *testing.T) {
+func TestOpenFileEditTargetRejectsSymlinkSwappedAfterValidation(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	ctx := context.Background()
 	baseDir := testutil.OperatorDir(t)
 	require.NoError(t, paths.InitWithBase(baseDir))
@@ -159,7 +165,8 @@ func TestOpenFileEditTargetRejectsSymlinkSwappedAfterValidation(t *testing.T) {
 	assert.Equal(t, "protected", string(got))
 }
 
-func TestOpenFileEditTargetRequiresExistingEvaluationTargetDirectory(t *testing.T) {
+func TestOpenFileEditTargetRequiresExistingEvaluationTargetDirectory(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	ctx := context.Background()
 	baseDir := testutil.OperatorDir(t)
 	require.NoError(t, paths.InitWithBase(baseDir))
@@ -174,7 +181,8 @@ func TestOpenFileEditTargetRequiresExistingEvaluationTargetDirectory(t *testing.
 	require.ErrorIs(t, err, constants.ErrPathNotFound)
 }
 
-func TestWriteFile_ReplacesReadOnlyFile(t *testing.T) {
+func TestWriteFile_ReplacesReadOnlyFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 	require.NoError(t, svc.WriteFile(ctx, "report.json", []byte("original"), constants.PermFileReadOnly))
@@ -184,7 +192,8 @@ func TestWriteFile_ReplacesReadOnlyFile(t *testing.T) {
 	assert.Equal(t, "updated", string(body))
 }
 
-func TestWriteFile_CreatesParentDirectories(t *testing.T) {
+func TestWriteFile_CreatesParentDirectories(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -196,7 +205,8 @@ func TestWriteFile_CreatesParentDirectories(t *testing.T) {
 	assert.Equal(t, []byte("data"), got)
 }
 
-func TestWriteFile_EnforcesPermissions(t *testing.T) {
+func TestWriteFile_EnforcesPermissions(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -208,7 +218,8 @@ func TestWriteFile_EnforcesPermissions(t *testing.T) {
 	assert.Equal(t, testutil.FileMode(constants.PermFilePrivate, info.IsDir()), info.Mode().Perm())
 }
 
-func TestWriteFile_OverwritesExistingFile(t *testing.T) {
+func TestWriteFile_OverwritesExistingFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -220,7 +231,8 @@ func TestWriteFile_OverwritesExistingFile(t *testing.T) {
 	assert.Equal(t, []byte("new"), got)
 }
 
-func TestWriteFile_NoTempFilesRemain(t *testing.T) {
+func TestWriteFile_NoTempFilesRemain(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -235,7 +247,8 @@ func TestWriteFile_NoTempFilesRemain(t *testing.T) {
 	}
 }
 
-func TestReadFile_NonexistentReturnsErrNotFound(t *testing.T) {
+func TestReadFile_NonexistentReturnsErrNotFound(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -244,7 +257,8 @@ func TestReadFile_NonexistentReturnsErrNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
-func TestFileExists_ExistingFile(t *testing.T) {
+func TestFileExists_ExistingFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -255,7 +269,8 @@ func TestFileExists_ExistingFile(t *testing.T) {
 	assert.True(t, exists)
 }
 
-func TestFileExists_NonexistentFile(t *testing.T) {
+func TestFileExists_NonexistentFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -264,7 +279,8 @@ func TestFileExists_NonexistentFile(t *testing.T) {
 	assert.False(t, exists)
 }
 
-func TestStat_ReturnsFileInfo(t *testing.T) {
+func TestStat_ReturnsFileInfo(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -276,7 +292,8 @@ func TestStat_ReturnsFileInfo(t *testing.T) {
 	assert.False(t, info.IsDir())
 }
 
-func TestStat_NonexistentReturnsErrNotFound(t *testing.T) {
+func TestStat_NonexistentReturnsErrNotFound(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -285,7 +302,8 @@ func TestStat_NonexistentReturnsErrNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
-func TestRemove_ExistingFile(t *testing.T) {
+func TestRemove_ExistingFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -297,7 +315,8 @@ func TestRemove_ExistingFile(t *testing.T) {
 	assert.False(t, exists)
 }
 
-func TestRemove_NonexistentIsNoOp(t *testing.T) {
+func TestRemove_NonexistentIsNoOp(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -305,7 +324,8 @@ func TestRemove_NonexistentIsNoOp(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestRemoveAll_ExistingDirectory(t *testing.T) {
+func TestRemoveAll_ExistingDirectory(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -318,7 +338,8 @@ func TestRemoveAll_ExistingDirectory(t *testing.T) {
 	assert.False(t, exists)
 }
 
-func TestRemoveAll_NonexistentIsNoOp(t *testing.T) {
+func TestRemoveAll_NonexistentIsNoOp(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -326,7 +347,8 @@ func TestRemoveAll_NonexistentIsNoOp(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestReadDir_ListsEntries(t *testing.T) {
+func TestReadDir_ListsEntries(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -342,7 +364,8 @@ func TestReadDir_ListsEntries(t *testing.T) {
 	assert.Contains(t, names, "b.txt")
 }
 
-func TestReadDir_NonexistentReturnsErrNotFound(t *testing.T) {
+func TestReadDir_NonexistentReturnsErrNotFound(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -351,7 +374,8 @@ func TestReadDir_NonexistentReturnsErrNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
-func TestRename_RenamesFile(t *testing.T) {
+func TestRename_RenamesFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -366,7 +390,8 @@ func TestRename_RenamesFile(t *testing.T) {
 	assert.False(t, exists)
 }
 
-func TestMkdirAll_CreatesNestedDirectories(t *testing.T) {
+func TestMkdirAll_CreatesNestedDirectories(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -378,7 +403,8 @@ func TestMkdirAll_CreatesNestedDirectories(t *testing.T) {
 	assert.True(t, info.IsDir())
 }
 
-func TestCreateRuntimeTree_CreatesAllDirectories(t *testing.T) {
+func TestCreateRuntimeTree_CreatesAllDirectories(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -414,7 +440,8 @@ func TestCreateRuntimeTree_CreatesAllDirectories(t *testing.T) {
 	}
 }
 
-func TestCreateRuntimeTree_SecretsDirIsPrivate(t *testing.T) {
+func TestCreateRuntimeTree_SecretsDirIsPrivate(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -425,7 +452,8 @@ func TestCreateRuntimeTree_SecretsDirIsPrivate(t *testing.T) {
 	assert.Equal(t, testutil.FileMode(constants.PermDirPrivate, info.IsDir()), info.Mode().Perm())
 }
 
-func TestCreateRuntimeTree_VaultDirIsPrivate(t *testing.T) {
+func TestCreateRuntimeTree_VaultDirIsPrivate(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -436,7 +464,8 @@ func TestCreateRuntimeTree_VaultDirIsPrivate(t *testing.T) {
 	assert.Equal(t, testutil.FileMode(constants.PermDirPrivate, info.IsDir()), info.Mode().Perm())
 }
 
-func TestCreateRuntimeTree_Idempotent(t *testing.T) {
+func TestCreateRuntimeTree_Idempotent(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -448,7 +477,8 @@ func TestCreateRuntimeTree_Idempotent(t *testing.T) {
 	assert.True(t, info.IsDir())
 }
 
-func TestEnforceFilePermissions_SetsMode(t *testing.T) {
+func TestEnforceFilePermissions_SetsMode(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -460,7 +490,8 @@ func TestEnforceFilePermissions_SetsMode(t *testing.T) {
 	assert.Equal(t, testutil.FileMode(constants.PermFilePrivate, info.IsDir()), info.Mode().Perm())
 }
 
-func TestEnforceDirPermissions_Recursive(t *testing.T) {
+func TestEnforceDirPermissions_Recursive(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -477,7 +508,8 @@ func TestEnforceDirPermissions_Recursive(t *testing.T) {
 	assert.Equal(t, testutil.FileMode(constants.PermDirPrivate, info.IsDir()), info.Mode().Perm())
 }
 
-func TestWriteFile_CancelledContextReturnsError(t *testing.T) {
+func TestWriteFile_CancelledContextReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -487,7 +519,8 @@ func TestWriteFile_CancelledContextReturnsError(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestReadFile_CancelledContextReturnsError(t *testing.T) {
+func TestReadFile_CancelledContextReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -497,7 +530,8 @@ func TestReadFile_CancelledContextReturnsError(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestRelFromAbs_Success(t *testing.T) {
+func TestRelFromAbs_Success(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	abs := svc.Resolve("pki/root_ca.crt")
 	rel, err := svc.RelFromAbs(abs)
@@ -505,7 +539,8 @@ func TestRelFromAbs_Success(t *testing.T) {
 	assert.Equal(t, filepath.Join("pki", "root_ca.crt"), rel)
 }
 
-func TestRelFromAbs_OutsidePathReturnsError(t *testing.T) {
+func TestRelFromAbs_OutsidePathReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	outside := filepath.Join(testutil.TempDir(t), "outside-ztd", "cert.pem")
 	_, err := svc.RelFromAbs(outside)
@@ -513,7 +548,8 @@ func TestRelFromAbs_OutsidePathReturnsError(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrPathValidation)
 }
 
-func TestReadFile_RejectsPathTraversal(t *testing.T) {
+func TestReadFile_RejectsPathTraversal(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -522,7 +558,8 @@ func TestReadFile_RejectsPathTraversal(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrPathValidation)
 }
 
-func TestLstat_RejectsPathTraversal(t *testing.T) {
+func TestLstat_RejectsPathTraversal(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -531,7 +568,8 @@ func TestLstat_RejectsPathTraversal(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrPathValidation)
 }
 
-func TestCreateRuntimeTree_CreatesPublicFeedDirs(t *testing.T) {
+func TestCreateRuntimeTree_CreatesPublicFeedDirs(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 

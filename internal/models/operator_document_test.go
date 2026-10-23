@@ -337,6 +337,7 @@ func TestOperatorResponseRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	t.Run("with operator", func(t *testing.T) {
+		t.Parallel()
 		now := time.Now().UTC()
 		op := &operatorv1.OperatorDocument{
 			Id:        "op-1",
@@ -362,6 +363,7 @@ func TestOperatorResponseRoundTrip(t *testing.T) {
 	})
 
 	t.Run("nil operator", func(t *testing.T) {
+		t.Parallel()
 		resp := OperatorResponse{
 			Success:  false,
 			Operator: nil,

@@ -32,6 +32,7 @@ func (s *stubAttestationPublisher) PublishModelProvenanceObservationCompleted(_ 
 }
 
 func TestHandler_BeginAndFinalize(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 	attestor := &stubAttestor{
@@ -87,6 +88,7 @@ func TestHandler_BeginAndFinalize(t *testing.T) {
 }
 
 func TestHandler_UnsupportedPhase(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 	tracker, err := NewTracker(TrackerConfig{
@@ -107,6 +109,7 @@ func TestHandler_UnsupportedPhase(t *testing.T) {
 }
 
 func TestNewHandler_RequiresDependencies(t *testing.T) {
+	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	_, err := NewHandler(nil, &stubAttestationPublisher{}, logger)
 	require.Error(t, err)

@@ -14,17 +14,20 @@ import (
 )
 
 func TestOperatorDeployTool_Name(t *testing.T) {
+	t.Parallel()
 	tool := &OperatorDeployTool{}
 	require.Equal(t, "operator_deploy", tool.Name())
 }
 
 func TestOperatorDeployTool_Description(t *testing.T) {
+	t.Parallel()
 	tool := &OperatorDeployTool{}
 	require.NotEmpty(t, tool.Description())
 	require.Contains(t, tool.Description(), "operator")
 }
 
 func TestOperatorDeployTool_InputSchema(t *testing.T) {
+	t.Parallel()
 	tool := &OperatorDeployTool{}
 	schema := tool.InputSchema()
 

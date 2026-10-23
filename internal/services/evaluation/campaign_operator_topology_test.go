@@ -50,6 +50,7 @@ func anchoredOperator(doc *operatorv1.OperatorDocument, signer oracletest.Signer
 }
 
 func TestResolveCampaignOperatorTopology(t *testing.T) {
+	t.Parallel()
 	inference := topologyOperator("i1", "infer-1", constants.OperatorCapabilityInference)
 	data := topologyOperator("d1", "data-1", constants.OperatorCapabilityData)
 	observer := topologyOperator("obs", "obs-1", constants.OperatorCapabilityObserver)
@@ -117,6 +118,7 @@ func TestResolveCampaignOperatorTopology(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := ResolveCampaignOperatorTopology(test.operators, "")
 			if test.wantErr != nil {
 				require.ErrorIs(t, err, test.wantErr)
@@ -133,6 +135,7 @@ func TestResolveCampaignOperatorTopology(t *testing.T) {
 }
 
 func TestResolveCampaignOperatorTopologyForDataOperatorFollowsStableIdentityAcrossSessions(t *testing.T) {
+	t.Parallel()
 	inference := topologyOperator("inference", "inference-session", constants.OperatorCapabilityInference)
 	oldSession := topologyOperator("data-stable", "old-session", constants.OperatorCapabilityData)
 	oldSession.Status = string(constants.OperatorStatusOffline)
@@ -153,6 +156,7 @@ func TestResolveCampaignOperatorTopologyForDataOperatorFollowsStableIdentityAcro
 }
 
 func TestResolveCampaignOperatorTopologyForDataOperatorFailsClosed(t *testing.T) {
+	t.Parallel()
 	inference := topologyOperator("inference", "inference-session", constants.OperatorCapabilityInference)
 	wrongCapability := topologyOperator("stable-id", "wrong-capability", constants.OperatorCapabilityObserver)
 	inactive := topologyOperator("stable-id", "offline", constants.OperatorCapabilityData)
@@ -173,6 +177,7 @@ func TestResolveCampaignOperatorTopologyForDataOperatorFailsClosed(t *testing.T)
 		{name: "several active sessions are ambiguous", operators: []*operatorv1.OperatorDocument{inference, first, second}, wantErr: constants.ErrDataOperatorAmbiguous},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := ResolveCampaignOperatorTopologyForDataOperator(test.operators, "", "stable-id")
 			require.ErrorIs(t, err, test.wantErr)
 		})
@@ -180,6 +185,7 @@ func TestResolveCampaignOperatorTopologyForDataOperatorFailsClosed(t *testing.T)
 }
 
 func TestCampaignOperatorTopology_WithAnchorsBindsEachRuntime(t *testing.T) {
+	t.Parallel()
 	inferenceSigner, dataSigner := oracletest.NewSigner(t), oracletest.NewSigner(t)
 	operators := []*operatorv1.OperatorDocument{
 		anchoredOperator(topologyOperator("i1", "infer-1", constants.OperatorCapabilityInference), inferenceSigner),
@@ -198,6 +204,7 @@ func TestCampaignOperatorTopology_WithAnchorsBindsEachRuntime(t *testing.T) {
 }
 
 func TestCampaignOperatorTopology_SharedRuntimePinsOneKeyForBothRoles(t *testing.T) {
+	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	operators := []*operatorv1.OperatorDocument{
 		anchoredOperator(topologyOperator("embedded", "embedded-1", constants.OperatorCapabilityData, constants.OperatorCapabilityInference), signer),
@@ -217,6 +224,7 @@ func TestCampaignOperatorTopology_SharedRuntimePinsOneKeyForBothRoles(t *testing
 }
 
 func TestCampaignOperatorTopology_WithAnchorsFailsClosed(t *testing.T) {
+	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	unbound := []*operatorv1.OperatorDocument{
 		anchoredOperator(topologyOperator("i1", "infer-1", constants.OperatorCapabilityInference), signer),
@@ -233,6 +241,7 @@ func TestCampaignOperatorTopology_WithAnchorsFailsClosed(t *testing.T) {
 }
 
 func TestCampaignOperatorTopology_ValidateAnchoredRejectsAnchorForAnotherRuntime(t *testing.T) {
+	t.Parallel()
 	signer := oracletest.NewSigner(t)
 	topology := testOperatorTopology("infer-1", "data-1")
 	topology.Inference.Anchor = signer.Anchor(topology.Inference.OperatorID)

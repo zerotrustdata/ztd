@@ -38,7 +38,7 @@ func TestLoadEnvFile(t *testing.T) {
 	token := constants.EnvVar.CloudflareAPIToken
 	ollama := constants.EnvVar.OllamaEndpoint
 
-	t.Run("loads registry keys and skips comments", func(t *testing.T) {
+	t.Run("loads registry keys and skips comments", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
 		unsetEnvForTest(t, token)
 		unsetEnvForTest(t, ollama)
 		path := writeEnvFile(t, "# comment\n\nexport "+string(token)+"=\"tok en\"\n"+string(ollama)+"='http://10.0.0.2:11434'\n", constants.PermFilePrivate)
@@ -56,26 +56,26 @@ func TestLoadEnvFile(t *testing.T) {
 		assert.Equal(t, "from-shell", os.Getenv(string(token)))
 	})
 
-	t.Run("missing file loads nothing", func(t *testing.T) {
+	t.Run("missing file loads nothing", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
 		require.NoError(t, LoadEnvFile(filepath.Join(testutil.TempDir(t), constants.EnvFilename)))
 	})
 
-	t.Run("unknown key is rejected", func(t *testing.T) {
+	t.Run("unknown key is rejected", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
 		path := writeEnvFile(t, "ZTD_NOT_REGISTERED=x\n", constants.PermFilePrivate)
 		assert.ErrorIs(t, LoadEnvFile(path), constants.ErrEnvFileUnknownKey)
 	})
 
-	t.Run("host key is rejected", func(t *testing.T) {
+	t.Run("host key is rejected", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
 		path := writeEnvFile(t, string(constants.EnvVar.Home)+"=/tmp\n", constants.PermFilePrivate)
 		assert.ErrorIs(t, LoadEnvFile(path), constants.ErrEnvFileUnknownKey)
 	})
 
-	t.Run("malformed line is rejected", func(t *testing.T) {
+	t.Run("malformed line is rejected", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
 		path := writeEnvFile(t, "not an assignment\n", constants.PermFilePrivate)
 		assert.ErrorIs(t, LoadEnvFile(path), constants.ErrEnvFileMalformed)
 	})
 
-	t.Run("group or world readable file is rejected", func(t *testing.T) {
+	t.Run("group or world readable file is rejected", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
 		if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 			t.Skip("permission check is enforced on Linux and macOS")
 		}
@@ -86,7 +86,7 @@ func TestLoadEnvFile(t *testing.T) {
 		assert.False(t, set)
 	})
 
-	t.Run("symlink is rejected", func(t *testing.T) {
+	t.Run("symlink is rejected", func(t *testing.T) { //nolint:paralleltest // mutates the process environment
 		if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 			t.Skip("O_NOFOLLOW is enforced on Linux and macOS")
 		}
@@ -109,6 +109,7 @@ func TestInferenceOllamaEndpoint(t *testing.T) {
 }
 
 func TestWithoutUserEnv(t *testing.T) {
+	t.Parallel()
 	environ := []string{
 		"HOME=/home/u",
 		string(constants.EnvVar.CloudflareAPIToken) + "=token",

@@ -100,6 +100,7 @@ func TestDecodePayloadForAction_MatchesRegistryPayloadDeclaration(t *testing.T) 
 		governed++
 		gov := entry.Governance
 		t.Run(event, func(t *testing.T) {
+			t.Parallel()
 			require.NotEmpty(t, gov.Payload, "governed event %s must declare a payload message", event)
 			decoded, err := DecodePayloadForAction(constants.ActionType(gov.ActionType), nil)
 			require.NoError(t, err, "action %s must have a payload decoder", gov.ActionType)
@@ -111,9 +112,11 @@ func TestDecodePayloadForAction_MatchesRegistryPayloadDeclaration(t *testing.T) 
 }
 
 func TestDecodePayloadForAction_KnownActionsDecode(t *testing.T) {
-	t.Parallel()
+	t.Parallel(
 
 	// A representative sample across read, mutation, and bootstrap classes.
+	)
+
 	samples := []constants.ActionType{
 		constants.ActionTypeFsRead,
 		constants.ActionTypeExecuteBash,
@@ -123,6 +126,7 @@ func TestDecodePayloadForAction_KnownActionsDecode(t *testing.T) {
 	for _, at := range samples {
 		t.Run(string(at), func(t *testing.T) {
 			t.Parallel()
+
 			payload := typedPayload(t, at)
 			decoded, err := DecodePayloadForAction(at, payload)
 			require.NoError(t, err)

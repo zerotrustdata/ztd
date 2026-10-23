@@ -26,6 +26,8 @@ import (
 // member fails where distinct signers are required, and quorum counts
 // approvals only.
 func TestVerifyL2Quorum(t *testing.T) {
+	t.Parallel()
+
 	const txHash = "tx-hash"
 	keys := map[string]ed25519.PrivateKey{}
 	trusted := map[string]ed25519.PublicKey{}
@@ -70,6 +72,8 @@ func TestVerifyL2Quorum(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			p := tc.policy
 			if p == nil {
 				p = policy

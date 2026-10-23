@@ -29,6 +29,7 @@ func writeFile(t *testing.T, root, rel, content string) {
 }
 
 func TestShouldCheck(t *testing.T) {
+	t.Parallel()
 	cases := map[string]bool{
 		"cmd/ztd/main.go":                 true,
 		"console/src/App.tsx":             true,
@@ -53,6 +54,7 @@ func TestShouldCheck(t *testing.T) {
 }
 
 func TestFindMissing_ReportsOnlyUnheaderedFirstPartySources(t *testing.T) {
+	t.Parallel()
 	root := testutil.TempDir(t)
 	writeFile(t, root, "ok.go", header+"package ok\n")
 	writeFile(t, root, "alt.ts", "// Licensed under BSL 1.1\nexport {}\n")
@@ -70,6 +72,7 @@ func TestFindMissing_ReportsOnlyUnheaderedFirstPartySources(t *testing.T) {
 }
 
 func TestRun_ExitCodes(t *testing.T) {
+	t.Parallel()
 	root := testutil.TempDir(t)
 	writeFile(t, root, "ok.go", header+"package ok\n")
 

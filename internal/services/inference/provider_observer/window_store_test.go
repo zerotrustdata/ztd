@@ -126,6 +126,7 @@ func TestValidateObservationWindow_RejectsInvalidBindings(t *testing.T) {
 }
 
 func TestWindowStore_SaveLoadRoundTrip(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
 	store, err := NewWindowStore(fileSvc)

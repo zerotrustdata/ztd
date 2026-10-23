@@ -20,16 +20,19 @@ import (
 )
 
 func TestCheckStoppable(t *testing.T) {
+	t.Parallel()
 	require.NoError(t, CheckStoppable(&operatorv1.OperatorDocument{OperatorType: string(constants.OperatorTypeRemote)}))
 	require.ErrorIs(t, CheckStoppable(&operatorv1.OperatorDocument{OperatorType: string(constants.OperatorTypeEmbedded)}), constants.ErrOperatorStopEmbedded)
 	assert.ErrorIs(t, CheckStoppable(&operatorv1.OperatorDocument{}), constants.ErrOperatorStopNotRemote)
 }
 
 func TestNewStopRequest_TrimsReason(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, models.StopOperatorRequest{OperatorSessionID: "s1", Reason: "why"}, NewStopRequest("s1", "  why \n"))
 }
 
 func TestDecodeStopResponse(t *testing.T) {
+	t.Parallel()
 	got, err := DecodeStopResponse([]byte(`{"success":true,"operator_id":"op","operator_session_id":"s1","transaction_id":"tx"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "op", got.OperatorID)

@@ -47,7 +47,8 @@ func decodeLogRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	return records
 }
 
-func TestZtdoService_Stop_NeverStartedServiceIsANoOp(t *testing.T) {
+func TestZtdoService_Stop_NeverStartedServiceIsANoOp(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	logger, buf := capturingLogger()
 	service, err := NewZtdoService(testutil.NewTestConfig(t), logger, newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
@@ -60,7 +61,8 @@ func TestZtdoService_Stop_NeverStartedServiceIsANoOp(t *testing.T) {
 	}
 }
 
-func TestZtdoService_Stop_CancelsServiceContextAndMarksStopped(t *testing.T) {
+func TestZtdoService_Stop_CancelsServiceContextAndMarksStopped(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	service, err := NewZtdoService(testutil.NewTestConfig(t), testutil.NewTestLogger(), newTestTLSConfig(t), newTestL2Trust(t), newTestFileSvc(t), newTestCanonicalDB(t), newTestPubSubClientFactory())
 	require.NoError(t, err)
 	service.ctx, service.cancel = context.WithCancel(t.Context())
@@ -180,6 +182,7 @@ func findOutboundOperatorViolations(filename string, src []byte) ([]string, erro
 // opens no inbound listeners and never imports, constructs, or calls the MCP
 // gateway service.
 func TestOutboundOperatorSource_OpensNoInboundListenersAndNoMCPGateway(t *testing.T) {
+	t.Parallel()
 	for _, pattern := range outboundOperatorSourceGlobs {
 		matches, err := filepath.Glob(pattern)
 		require.NoError(t, err)
@@ -205,6 +208,7 @@ func TestOutboundOperatorSource_OpensNoInboundListenersAndNoMCPGateway(t *testin
 // used by the source guard detects each forbidden pattern, so a clean result
 // from the guard means the production sources are clean.
 func TestOutboundOperatorSourceScanner_DetectsForbiddenPatterns(t *testing.T) {
+	t.Parallel()
 	const mcpImport = `"github.com/zerotrustdata/ztd/internal/services/mcp"`
 
 	tests := []struct {
@@ -234,6 +238,7 @@ func TestOutboundOperatorSourceScanner_DetectsForbiddenPatterns(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			src := "package serve\n\nimport (\n\t" + tt.imports + "\n)\n\nfunc run() {\n\t" + tt.body + "\n}\n"
 
 			violations, err := findOutboundOperatorViolations("fixture.go", []byte(src))
@@ -254,6 +259,7 @@ func TestOutboundOperatorSourceScanner_DetectsForbiddenPatterns(t *testing.T) {
 }
 
 func TestOutboundOperatorSourceScanner_RejectsUnparseableSource(t *testing.T) {
+	t.Parallel()
 	_, err := findOutboundOperatorViolations("broken.go", []byte("package"))
 	require.Error(t, err, "an unparseable source must fail the guard, not pass silently")
 }

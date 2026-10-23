@@ -18,6 +18,7 @@ import (
 )
 
 func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
+	t.Parallel()
 	assignmentID := "test-assignment-123"
 	gold := ScenarioGoldCriteria{
 		GoldEvidenceReferences: []ScenarioGoldEvidenceReference{
@@ -96,6 +97,7 @@ func TestComputeInvestigationMetrics_AllMetricsComputed(t *testing.T) {
 }
 
 func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
+	t.Parallel()
 	assignmentID := "test-assignment-redundant"
 	gold := ScenarioGoldCriteria{
 		GoldEvidenceReferences: []ScenarioGoldEvidenceReference{
@@ -138,6 +140,7 @@ func TestComputeInvestigationMetrics_RedundantCommandDetected(t *testing.T) {
 }
 
 func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testing.T) {
+	t.Parallel()
 	trace := &AgentTrace{
 		ModelCalls: []AgentModelCall{{LoopTurn: 1}},
 		ToolCalls: []AgentToolCall{
@@ -166,6 +169,7 @@ func TestComputeInvestigationMetrics_RedundantShellCommandLineDetected(t *testin
 }
 
 func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *testing.T) {
+	t.Parallel()
 	assignmentID := "test-assignment-unsupported"
 	gold := ScenarioGoldCriteria{
 		ContentCheck: &ScenarioContentCheck{
@@ -195,6 +199,7 @@ func TestComputeInvestigationMetrics_UnsupportedClaimFailsEvidenceBacked(t *test
 }
 
 func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {
+	t.Parallel()
 	refs := []ScenarioGoldEvidenceReference{{
 		ReferenceID:    "ref-history-trail-query",
 		ActionType:     "MCP_CALL",
@@ -217,6 +222,7 @@ func TestComputeRetrievalHitRate_EmptyQueryToReferencedToolHits(t *testing.T) {
 }
 
 func TestComputeRetrievalHitRate_SuppliedContentReferenceHits(t *testing.T) {
+	t.Parallel()
 	refs := []ScenarioGoldEvidenceReference{
 		{ReferenceID: "ref-missing-script", ExpectedContent: "deploy-healthcheck: not found"},
 		{ReferenceID: "ref-exit-code", ExpectedContent: "exit_code=127"},

@@ -90,6 +90,7 @@ func wantDigest(t *testing.T, resp *models.GenerateResponse) string {
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_ServesTheModelTheRequestNamesForEveryRole(t *testing.T) {
 	t.Parallel()
+
 	for _, tc := range []struct {
 		role  operatorv1.ModelRole
 		model string
@@ -99,6 +100,8 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_ServesTheModelTheRequestNam
 		{operatorv1.ModelRole_MODEL_ROLE_LITE, "qwen3:1.5b"},
 	} {
 		t.Run(tc.role.String(), func(t *testing.T) {
+			t.Parallel()
+
 			backend := &stubBackend{generateResp: &models.GenerateResponse{
 				Parts:        textInferenceResponseParts("response"),
 				FinishReason: "stop",
@@ -128,6 +131,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_ServesTheModelTheRequestNam
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_NoModelOnTheRequestFailsClosed(t *testing.T) {
 	t.Parallel()
+
 	backend := &stubBackend{}
 	cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true, KeepAlive: "-1"}}
 	handler := mustNewHandler(t, backend, cfg, mustNewScrubbingSvc(t), testutil.NewTestLogger())
@@ -147,6 +151,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_NoModelOnTheRequestFailsClo
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_MissingProviderAttemptIDRejected(t *testing.T) {
 	t.Parallel()
+
 	backend := &stubBackend{}
 	cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true}}
 	handler := mustNewHandler(t, backend, cfg, mustNewScrubbingSvc(t), testutil.NewTestLogger())
@@ -191,6 +196,7 @@ func TestComputeInferenceModelRegistryDigest_IsOrderIndependentAndIdentitySensit
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_CampaignRegistryAuthorizesEveryRole(t *testing.T) {
 	t.Parallel()
+
 	const model = "frozen-model:1"
 	const campaignID = "campaign-1"
 	modelDigest := strings.Repeat("a", 64)
@@ -204,6 +210,8 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_CampaignRegistryAuthorizesE
 		operatorv1.ModelRole_MODEL_ROLE_LITE,
 	} {
 		t.Run(role.String(), func(t *testing.T) {
+			t.Parallel()
+
 			backend := &stubBackend{generateResp: &models.GenerateResponse{
 				Parts:             textInferenceResponseParts("response"),
 				FinishReason:      "stop",
@@ -239,6 +247,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_CampaignRegistryAuthorizesE
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_CampaignRegistryRejectsInvalidAuthority(t *testing.T) {
 	t.Parallel()
+
 	const campaignID = "campaign-1"
 	modelDigest := strings.Repeat("a", 64)
 	registry := []*operatorv1.InferenceModelVariant{{Model: "frozen-model:1", Digest: modelDigest}}
@@ -261,6 +270,8 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_CampaignRegistryRejectsInva
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			backend := &stubBackend{}
 			handler := mustNewHandler(t, backend, &config.Config{Inference: config.InferenceConfig{
 				Enabled: true,
@@ -291,12 +302,15 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_CampaignRegistryRejectsInva
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_AcceptsGovernedCampaignWithoutStartupBinding(t *testing.T) {
 	t.Parallel()
+
 	const model = "gemma2:9b"
 	modelDigest := strings.Repeat("c", 64)
 	registry := []*operatorv1.InferenceModelVariant{{Model: model, Digest: modelDigest}}
 
 	for _, campaignID := range []string{"eval-init-gemma2-9b", "eval-init-deepseek-r1-7b"} {
 		t.Run(campaignID, func(t *testing.T) {
+			t.Parallel()
+
 			registryDigest, err := models.ComputeInferenceModelRegistryDigest(campaignID, registry)
 			require.NoError(t, err)
 			backend := &stubBackend{generateResp: &models.GenerateResponse{
@@ -339,6 +353,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_AcceptsGovernedCampaignWith
 // frozen registry.
 func TestInferenceHandler_ExecuteVerifiedTransaction_ChatAndCampaignShareOneHandler(t *testing.T) {
 	t.Parallel()
+
 	const chatModel = "gemma4:e4b"
 	const campaignModel = "frozen-model:1"
 	const campaignID = "campaign-shared"
@@ -390,6 +405,8 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_ChatAndCampaignShareOneHand
 
 	for _, order := range []string{"chat-first", "campaign-first"} {
 		t.Run(order, func(t *testing.T) {
+			t.Parallel()
+
 			backend := &stubBackend{}
 			handler := mustNewHandler(t, backend, &config.Config{Inference: config.InferenceConfig{
 				Enabled: true,
@@ -429,6 +446,7 @@ func cloneInferenceModelVariants(variants []*operatorv1.InferenceModelVariant) [
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_UnspecifiedRoleRejected(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	backend := &stubBackend{}
 	cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true}}
@@ -452,6 +470,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_UnspecifiedRoleRejected(t *
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_EmptyPayloadReturnsErrPubSubEmptyPayload(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	backend := &stubBackend{}
 	cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true}}
@@ -468,6 +487,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_EmptyPayloadReturnsErrPubSu
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_InvalidPayloadReturnsError(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	backend := &stubBackend{}
 	cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true}}
@@ -483,6 +503,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_InvalidPayloadReturnsError(
 
 func TestNewInferenceExecutionHandler_RejectsMissingDependencies(t *testing.T) {
 	t.Parallel()
+
 	cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true}}
 	scrubbingSvc := mustNewScrubbingSvc(t)
 	logger := testutil.NewTestLogger()
@@ -501,6 +522,7 @@ func TestNewInferenceExecutionHandler_RejectsMissingDependencies(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
+
 			handler, err := NewInferenceExecutionHandler(test.backend, test.cfg, test.scrubbingSvc, test.logger)
 			assert.Nil(t, handler)
 			assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
@@ -510,6 +532,7 @@ func TestNewInferenceExecutionHandler_RejectsMissingDependencies(t *testing.T) {
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_BackendErrorReturnsErrInferenceGenerateFailed(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	backend := &stubBackend{generateErr: constants.ErrInferenceGenerateFailed}
 	cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true}}
@@ -532,6 +555,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_BackendErrorReturnsErrInfer
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_ScrubsPromptBeforeBackend(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	backend := &stubBackend{generateResp: &models.GenerateResponse{
 		Parts:        textInferenceResponseParts("response"),
@@ -566,6 +590,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_ScrubsPromptBeforeBackend(t
 // complete result rather than a truncated text prefix.
 func TestInferenceHandler_ExecuteVerifiedTransaction_ScrubsTypedMessagesAndCanonicalJSONLeaves(t *testing.T) {
 	t.Parallel()
+
 	backend := &stubBackend{generateResp: &models.GenerateResponse{
 		Parts:        textInferenceResponseParts("response"),
 		FinishReason: "stop",
@@ -618,6 +643,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_ScrubsTypedMessagesAndCanon
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_PreservesValidatedGenerationControls(t *testing.T) {
 	t.Parallel()
+
 	backend := &stubBackend{}
 	cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true}}
 	handler := mustNewHandler(t, backend, cfg, mustNewScrubbingSvc(t), testutil.NewTestLogger())
@@ -716,6 +742,7 @@ func TestFromProtoInferenceRequested_ClonesRequestControls(t *testing.T) {
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_AcceptsDisabledThinkingAndParallelTools(t *testing.T) {
 	t.Parallel()
+
 	backend := &stubBackend{}
 	handler := mustNewHandler(t, backend, &config.Config{Inference: config.InferenceConfig{Enabled: true}}, mustNewScrubbingSvc(t), testutil.NewTestLogger())
 	parallelToolCalls := true
@@ -739,6 +766,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_AcceptsDisabledThinkingAndP
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_InvalidTypedInputRejectedBeforeBackend(t *testing.T) {
 	t.Parallel()
+
 	invalidTopP := float32(1.1)
 	invalidTopK := int32(maxInferenceTopK + 1)
 	invalidSeed := int32(-1)
@@ -1030,6 +1058,8 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_InvalidTypedInputRejectedBe
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			backend := &stubBackend{}
 			cfg := &config.Config{Inference: config.InferenceConfig{Enabled: true}}
 			handler := mustNewHandler(t, backend, cfg, mustNewScrubbingSvc(t), testutil.NewTestLogger())
@@ -1067,6 +1097,7 @@ func TestComputeInferenceResultDigest_CoversUsageAndTimingEvidence(t *testing.T)
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_LongOutputStillBindsDigest(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	longText := make([]byte, constants.ReceiptSummaryMaxBytes+100)
 	for i := range longText {
@@ -1135,6 +1166,7 @@ func outputScrubConfig() *config.Config {
 // scrubbed text, never the raw provider output.
 func TestInferenceHandler_ExecuteVerifiedTransaction_DigestCoversScrubbedOutput(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 
 	scrubber := mustNewScrubbingSvc(t)
@@ -1170,6 +1202,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_DigestCoversScrubbedOutput(
 
 func TestInferenceHandler_ExecuteInference_WithholdsOutputWithoutActiveScrubber(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	disabled, err := scrubbing.NewScrubbingService(context.Background(), &scrubbing.Config{Enabled: false}, logger, nil)
 	require.NoError(t, err)
@@ -1191,6 +1224,7 @@ func TestScrubResponseParts_EmptyOutputNeedsNoScrubber(t *testing.T) {
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_AppliesConfigKeepAliveDefault(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	backend := &stubBackend{generateResp: &models.GenerateResponse{
 		Parts:        textInferenceResponseParts("response"),
@@ -1221,6 +1255,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_AppliesConfigKeepAliveDefau
 
 func TestInferenceHandler_ExecuteVerifiedTransaction_RequestKeepAliveOverridesConfig(t *testing.T) {
 	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	backend := &stubBackend{generateResp: &models.GenerateResponse{
 		Parts:        textInferenceResponseParts("response"),
@@ -1252,6 +1287,8 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_RequestKeepAliveOverridesCo
 // A dispatching client must emit exactly this escaped form; a raw '<', '>' or '&' round-trips to a different string
 // and is rejected as non-canonical.
 func TestNormalizeCanonicalJSON_EscapesHTMLCharacters(t *testing.T) {
+	t.Parallel()
+
 	escaped := `{"pattern":":(){ :|:\u0026 };:","substring":"\u003e /dev/sd","tag":"\u003cb\u003e\u2028\u2029\u003c/b\u003e"}`
 	got, err := normalizeCanonicalJSON(escaped, true, nil)
 	require.NoError(t, err)
@@ -1266,6 +1303,7 @@ var _ governance.ExecutionHandler = (*InferenceExecutionHandler)(nil)
 
 func TestInferenceHandler_ProviderOutageFailsOnlyCurrentRequest(t *testing.T) {
 	t.Parallel()
+
 	backend := &stubBackend{generateErr: constants.ErrInferenceBackendUnavailable}
 	handler := mustNewHandler(t, backend, &config.Config{Inference: config.InferenceConfig{Enabled: true}}, mustNewScrubbingSvc(t), testutil.NewTestLogger())
 	payload := mustMarshalInferenceRequested(t, &operatorv1.InferenceRequested{
@@ -1284,6 +1322,8 @@ func TestInferenceHandler_ProviderOutageFailsOnlyCurrentRequest(t *testing.T) {
 }
 
 func TestInferenceHandler_LogsProviderFailureWithSafeCauseAndAttemptID(t *testing.T) {
+	t.Parallel()
+
 	var output bytes.Buffer
 	logger, err := logging.NewLogger("info", &output)
 	require.NoError(t, err)

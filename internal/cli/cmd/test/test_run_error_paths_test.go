@@ -24,6 +24,7 @@ import (
 )
 
 func TestTestCoverageCmd_PkgFlagChangesTargetPackage(t *testing.T) {
+	t.Parallel()
 	cmd := testCoverageCmd()
 	require.NotNil(t, cmd)
 
@@ -34,6 +35,7 @@ func TestTestCoverageCmd_PkgFlagChangesTargetPackage(t *testing.T) {
 }
 
 func TestTestCoverageCmd_VerboseFlagAddsVFlag(t *testing.T) {
+	t.Parallel()
 	cmd := testCoverageCmd()
 	require.NotNil(t, cmd)
 
@@ -44,6 +46,7 @@ func TestTestCoverageCmd_VerboseFlagAddsVFlag(t *testing.T) {
 }
 
 func TestTestCoverageCmd_DelegatesThresholdEnforcementToMakefile(t *testing.T) {
+	t.Parallel()
 	var capturedName string
 	var capturedArgs []string
 	runner := func(name string, args ...string) error {
@@ -62,6 +65,7 @@ func TestTestCoverageCmd_DelegatesThresholdEnforcementToMakefile(t *testing.T) {
 }
 
 func TestTestCoverageCmd_MakefileFailureWrapsCoverageError(t *testing.T) {
+	t.Parallel()
 	runnerErr := fmt.Errorf("coverage threshold failed")
 	cmd := testCoverageCmdWithRunner(func(string, ...string) error { return runnerErr })
 
@@ -83,6 +87,7 @@ func recordingE2ERunner(code int, err error, captured *[]string) e2eCommandRunne
 }
 
 func TestTestE2ECmd_PropagatesArgumentsAndRaceFlag(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testE2ECmdWithRunner(recordingE2ERunner(0, nil, &captured))
 	var buf bytes.Buffer
@@ -115,6 +120,7 @@ func TestTestE2ECmd_PropagatesArgumentsAndRaceFlag(t *testing.T) {
 }
 
 func TestTestE2ECmd_RunFlagAppendsRegexp(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testE2ECmdWithRunner(recordingE2ERunner(0, nil, &captured))
 	require.NoError(t, cmd.Flags().Set("run", "TestApproved"))
@@ -138,6 +144,7 @@ func TestTestE2ECmd_RunFlagAppendsRegexp(t *testing.T) {
 }
 
 func TestTestE2ECmd_TimeoutFlagDefaultsAndOverrides(t *testing.T) {
+	t.Parallel()
 	timeoutArg := func(captured []string) string {
 		for i, a := range captured {
 			if a == "-timeout" && i+1 < len(captured) {
@@ -160,6 +167,7 @@ func TestTestE2ECmd_TimeoutFlagDefaultsAndOverrides(t *testing.T) {
 }
 
 func TestTestE2ECmd_NonzeroExitWrapsErrE2ETestsFailed(t *testing.T) {
+	t.Parallel()
 	runnerErr := fmt.Errorf("child process failed")
 	cmd := testE2ECmdWithRunner(recordingE2ERunner(2, runnerErr, &[]string{}))
 	var buf bytes.Buffer
@@ -173,6 +181,7 @@ func TestTestE2ECmd_NonzeroExitWrapsErrE2ETestsFailed(t *testing.T) {
 }
 
 func TestTestE2ECmd_NonzeroExitWithoutErrorWrapsErrE2ETestsFailed(t *testing.T) {
+	t.Parallel()
 	cmd := testE2ECmdWithRunner(recordingE2ERunner(1, nil, &[]string{}))
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -183,7 +192,7 @@ func TestTestE2ECmd_NonzeroExitWithoutErrorWrapsErrE2ETestsFailed(t *testing.T) 
 	assert.ErrorIs(t, err, constants.ErrE2ETestsFailed)
 }
 
-func TestTestSummaryCmd_NoTestVaultReturnsMessage(t *testing.T) {
+func TestTestSummaryCmd_NoTestVaultReturnsMessage(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	tmpDir := cmdtest.ChdirTemp(t)
 
 	protocolDir := filepath.Join(tmpDir, "protocol", "constants")
@@ -201,7 +210,7 @@ func TestTestSummaryCmd_NoTestVaultReturnsMessage(t *testing.T) {
 	assert.Contains(t, buf.String(), "Test vault directory not found")
 }
 
-func TestTestSummaryCmd_EmptyTestVaultReturnsMessage(t *testing.T) {
+func TestTestSummaryCmd_EmptyTestVaultReturnsMessage(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	tmpDir := cmdtest.ChdirTemp(t)
 
 	protocolDir := filepath.Join(tmpDir, "protocol", "constants")
@@ -224,6 +233,7 @@ func TestTestSummaryCmd_EmptyTestVaultReturnsMessage(t *testing.T) {
 }
 
 func TestTestUnitCmd_StructureAndFlags(t *testing.T) {
+	t.Parallel()
 	cmd := testUnitCmd()
 	assert.Equal(t, "unit", cmd.Use)
 	assert.NotNil(t, cmd.RunE)
@@ -236,6 +246,7 @@ func TestTestUnitCmd_StructureAndFlags(t *testing.T) {
 }
 
 func TestTestUnitCmd_DelegatesToMakefileTarget(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testUnitCmdWithRunner(recordingE2ERunner(0, nil, &captured))
 
@@ -245,6 +256,7 @@ func TestTestUnitCmd_DelegatesToMakefileTarget(t *testing.T) {
 }
 
 func TestTestUnitCmd_RunnerFailureWrapsUnitError(t *testing.T) {
+	t.Parallel()
 	runnerErr := fmt.Errorf("child process failed")
 	cmd := testUnitCmdWithRunner(recordingE2ERunner(2, runnerErr, &[]string{}))
 
@@ -256,6 +268,7 @@ func TestTestUnitCmd_RunnerFailureWrapsUnitError(t *testing.T) {
 }
 
 func TestTestUnitCmd_NonzeroExitWrapsUnitError(t *testing.T) {
+	t.Parallel()
 	cmd := testUnitCmdWithRunner(recordingE2ERunner(2, nil, &[]string{}))
 
 	err := cmd.RunE(cmd, nil)
@@ -266,6 +279,7 @@ func TestTestUnitCmd_NonzeroExitWrapsUnitError(t *testing.T) {
 }
 
 func TestTestUnitCmd_RunFlagAppendsRegexp(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testUnitCmdWithRunner(recordingE2ERunner(0, nil, &captured))
 	require.NoError(t, cmd.Flags().Set("pkg", "./internal/services/evaluation"))
@@ -289,6 +303,7 @@ func TestTestUnitCmd_RunFlagAppendsRegexp(t *testing.T) {
 }
 
 func TestTestUnitCmd_TargetedOnlyPkg(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testUnitCmdWithRunner(recordingE2ERunner(0, nil, &captured))
 	require.NoError(t, cmd.Flags().Set("pkg", "./internal/services/evaluation"))
@@ -301,6 +316,7 @@ func TestTestUnitCmd_TargetedOnlyPkg(t *testing.T) {
 }
 
 func TestTestUnitCmd_TargetedOnlyRun(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testUnitCmdWithRunner(recordingE2ERunner(0, nil, &captured))
 	require.NoError(t, cmd.Flags().Set("run", "TestSpecificUnitTest"))
@@ -322,6 +338,7 @@ func TestTestUnitCmd_TargetedOnlyRun(t *testing.T) {
 }
 
 func TestTestUnitCmd_TargetedRunnerFailureWrapsUnitError(t *testing.T) {
+	t.Parallel()
 	runnerErr := fmt.Errorf("child process failed")
 	cmd := testUnitCmdWithRunner(recordingE2ERunner(2, runnerErr, &[]string{}))
 	require.NoError(t, cmd.Flags().Set("pkg", "./internal/services/evaluation"))
@@ -334,6 +351,7 @@ func TestTestUnitCmd_TargetedRunnerFailureWrapsUnitError(t *testing.T) {
 }
 
 func TestTestUnitCmd_TargetedNonzeroExitWrapsUnitError(t *testing.T) {
+	t.Parallel()
 	cmd := testUnitCmdWithRunner(recordingE2ERunner(2, nil, &[]string{}))
 	require.NoError(t, cmd.Flags().Set("run", "TestEvaluationContract"))
 
@@ -345,6 +363,7 @@ func TestTestUnitCmd_TargetedNonzeroExitWrapsUnitError(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_StructureAndFlags(t *testing.T) {
+	t.Parallel()
 	cmd := testIntegrationCmd()
 	assert.Equal(t, "integration", cmd.Use)
 	assert.NotNil(t, cmd.RunE)
@@ -360,6 +379,7 @@ func TestTestIntegrationCmd_StructureAndFlags(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_RunFlagAppendsRegexp(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(0, nil, &captured))
 	require.NoError(t, cmd.Flags().Set("pkg", "./internal/services/gateway"))
@@ -387,6 +407,7 @@ func TestTestIntegrationCmd_RunFlagAppendsRegexp(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_VerboseFlagAppendsGoTestVerbose(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(0, nil, &captured))
 	require.NoError(t, cmd.Flags().Set("verbose", "true"))
@@ -399,6 +420,7 @@ func TestTestIntegrationCmd_VerboseFlagAppendsGoTestVerbose(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_TargetedOnlyPkg(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(0, nil, &captured))
 	require.NoError(t, cmd.Flags().Set("pkg", "./internal/services/gateway"))
@@ -411,6 +433,7 @@ func TestTestIntegrationCmd_TargetedOnlyPkg(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_TargetedOnlyRun(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(0, nil, &captured))
 	require.NoError(t, cmd.Flags().Set("run", "TestSpecificIntegrationTest"))
@@ -432,6 +455,7 @@ func TestTestIntegrationCmd_TargetedOnlyRun(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_TargetedRunnerFailureWrapsIntegrationError(t *testing.T) {
+	t.Parallel()
 	runnerErr := fmt.Errorf("child process failed")
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(2, runnerErr, &[]string{}))
 	require.NoError(t, cmd.Flags().Set("pkg", "./internal/services/gateway"))
@@ -444,6 +468,7 @@ func TestTestIntegrationCmd_TargetedRunnerFailureWrapsIntegrationError(t *testin
 }
 
 func TestTestIntegrationCmd_TargetedNonzeroExitWrapsIntegrationError(t *testing.T) {
+	t.Parallel()
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(2, nil, &[]string{}))
 	require.NoError(t, cmd.Flags().Set("run", "TestSpecificIntegrationTest"))
 
@@ -455,6 +480,7 @@ func TestTestIntegrationCmd_TargetedNonzeroExitWrapsIntegrationError(t *testing.
 }
 
 func TestTestIntegrationCmd_DefaultOmitsRunFlag(t *testing.T) {
+	t.Parallel()
 	var captured []string
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(0, nil, &captured))
 
@@ -464,6 +490,7 @@ func TestTestIntegrationCmd_DefaultOmitsRunFlag(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_RunnerFailureWrapsIntegrationError(t *testing.T) {
+	t.Parallel()
 	runnerErr := fmt.Errorf("child process failed")
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(2, runnerErr, &[]string{}))
 
@@ -475,6 +502,7 @@ func TestTestIntegrationCmd_RunnerFailureWrapsIntegrationError(t *testing.T) {
 }
 
 func TestTestIntegrationCmd_NonzeroExitWrapsIntegrationError(t *testing.T) {
+	t.Parallel()
 	cmd := testIntegrationCmdWithRunner(recordingE2ERunner(2, nil, &[]string{}))
 
 	err := cmd.RunE(cmd, nil)

@@ -72,6 +72,7 @@ func newNoopLogger() *slog.Logger {
 }
 
 func TestNewUserService(t *testing.T) {
+	t.Parallel()
 
 	mockDB := newTestCanonicalDBService(t)
 	logger := newNoopLogger()
@@ -85,6 +86,7 @@ func TestNewUserService(t *testing.T) {
 }
 
 func TestUserService_SetAuthService(t *testing.T) {
+	t.Parallel()
 
 	mockDB := newTestCanonicalDBService(t)
 	logger := newNoopLogger()
@@ -97,7 +99,11 @@ func TestUserService_SetAuthService(t *testing.T) {
 }
 
 func TestUserService_CreateUser(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - creates regular user", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -114,7 +120,11 @@ func TestUserService_CreateUser(t *testing.T) {
 }
 
 func TestUserService_CreateUserWithOSUser(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - attaches provided local OS user info", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -140,6 +150,8 @@ func TestUserService_CreateUserWithOSUser(t *testing.T) {
 	})
 
 	t.Run("Success - falls back to gateway local OS user when nil", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -156,7 +168,11 @@ func TestUserService_CreateUserWithOSUser(t *testing.T) {
 }
 
 func TestUserService_Disable(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - disables user", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -176,6 +192,8 @@ func TestUserService_Disable(t *testing.T) {
 	})
 
 	t.Run("Error - empty user ID", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -186,6 +204,8 @@ func TestUserService_Disable(t *testing.T) {
 	})
 
 	t.Run("Error - user not found", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -197,7 +217,11 @@ func TestUserService_Disable(t *testing.T) {
 }
 
 func TestUserService_FirstUserID(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Returns first created user", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -213,6 +237,8 @@ func TestUserService_FirstUserID(t *testing.T) {
 	})
 
 	t.Run("Empty when no users exist", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -224,6 +250,8 @@ func TestUserService_FirstUserID(t *testing.T) {
 }
 
 func TestUserService_FirstUserRetainsOwnershipWhenCreationTimestampsMatch(t *testing.T) {
+	t.Parallel()
+
 	db := newTestCanonicalDBService(t)
 	createdAt := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	require.NoError(t, db.DocSetWithTimestamps(context.Background(), string(constants.CollectionUsers), "z-first", []byte(`{}`), createdAt, createdAt))
@@ -235,7 +263,11 @@ func TestUserService_FirstUserRetainsOwnershipWhenCreationTimestampsMatch(t *tes
 }
 
 func TestUserService_IsFirstUser(t *testing.T) {
+	t.Parallel()
+
 	t.Run("True - sole user is the first user", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -249,6 +281,8 @@ func TestUserService_IsFirstUser(t *testing.T) {
 	})
 
 	t.Run("False - non-existent user is not the first user", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -260,6 +294,8 @@ func TestUserService_IsFirstUser(t *testing.T) {
 	})
 
 	t.Run("False - second user is not the first user", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -283,6 +319,8 @@ func TestUserService_IsFirstUser(t *testing.T) {
 	})
 
 	t.Run("Error - empty user ID", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -294,7 +332,9 @@ func TestUserService_IsFirstUser(t *testing.T) {
 }
 
 func TestUser_IsActive(t *testing.T) {
+	t.Parallel()
 	t.Run("Active status returns true", func(t *testing.T) {
+		t.Parallel()
 		user := &models.User{
 			Status: constants.UserStatusActive,
 		}
@@ -302,6 +342,7 @@ func TestUser_IsActive(t *testing.T) {
 	})
 
 	t.Run("Disabled status returns false", func(t *testing.T) {
+		t.Parallel()
 		user := &models.User{
 			Status: constants.UserStatusDisabled,
 		}
@@ -309,6 +350,7 @@ func TestUser_IsActive(t *testing.T) {
 	})
 
 	t.Run("Empty status returns false", func(t *testing.T) {
+		t.Parallel()
 		user := &models.User{
 			Status: "",
 		}
@@ -316,13 +358,18 @@ func TestUser_IsActive(t *testing.T) {
 	})
 
 	t.Run("Nil user returns false", func(t *testing.T) {
+		t.Parallel()
 		var user *models.User = nil
 		assert.False(t, user.IsActive())
 	})
 }
 
 func TestUserService_HasAnyUsers(t *testing.T) {
+	t.Parallel()
+
 	t.Run("True - users exist", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -338,6 +385,8 @@ func TestUserService_HasAnyUsers(t *testing.T) {
 	})
 
 	t.Run("False - no users exist", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -349,6 +398,7 @@ func TestUserService_HasAnyUsers(t *testing.T) {
 }
 
 func TestDefaultPersonaDefinitions(t *testing.T) {
+	t.Parallel()
 
 	personas := DefaultPersonaDefinitions()
 	assert.NotEmpty(t, personas)
@@ -356,7 +406,11 @@ func TestDefaultPersonaDefinitions(t *testing.T) {
 }
 
 func TestPersonaService_CreatePersona(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - creates persona", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		personaSvc := NewPersonaService(mockDB, logger)
@@ -381,7 +435,11 @@ func TestPersonaService_CreatePersona(t *testing.T) {
 }
 
 func TestPersonaService_GetByID(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - retrieves existing persona", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		personaSvc := NewPersonaService(mockDB, logger)
@@ -402,6 +460,8 @@ func TestPersonaService_GetByID(t *testing.T) {
 	})
 
 	t.Run("Success - returns nil for non-existent persona", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		personaSvc := NewPersonaService(mockDB, logger)
@@ -413,7 +473,11 @@ func TestPersonaService_GetByID(t *testing.T) {
 }
 
 func TestPersonaService_GetAll(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - retrieves all personas", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		personaSvc := NewPersonaService(mockDB, logger)
@@ -443,6 +507,8 @@ func TestPersonaService_GetAll(t *testing.T) {
 	})
 
 	t.Run("Success - returns empty list when no personas", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		personaSvc := NewPersonaService(mockDB, logger)
@@ -454,7 +520,11 @@ func TestPersonaService_GetAll(t *testing.T) {
 }
 
 func TestUserService_GetByID(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - retrieves user", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -472,6 +542,8 @@ func TestUserService_GetByID(t *testing.T) {
 	})
 
 	t.Run("Success - returns nil for non-existent user", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -483,7 +555,11 @@ func TestUserService_GetByID(t *testing.T) {
 }
 
 func TestUserService_GetBySub(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - retrieves user by sub", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -500,6 +576,8 @@ func TestUserService_GetBySub(t *testing.T) {
 	})
 
 	t.Run("Error - empty sub", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -511,7 +589,11 @@ func TestUserService_GetBySub(t *testing.T) {
 }
 
 func TestUserService_DeleteUser(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - deletes user", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -531,6 +613,8 @@ func TestUserService_DeleteUser(t *testing.T) {
 	})
 
 	t.Run("Error - user not found", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -542,7 +626,11 @@ func TestUserService_DeleteUser(t *testing.T) {
 }
 
 func TestUserService_UpdatePasskeyCredentials(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Success - updates credentials", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		userSvc := NewUserService(mockDB, logger)
@@ -576,7 +664,11 @@ func TestUserService_UpdatePasskeyCredentials(t *testing.T) {
 }
 
 func TestPersonaService(t *testing.T) {
+	t.Parallel()
+
 	t.Run("NewPersonaService", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 
@@ -588,6 +680,8 @@ func TestPersonaService(t *testing.T) {
 	})
 
 	t.Run("CreatePersona", func(t *testing.T) {
+		t.Parallel()
+
 		mockDB := newTestCanonicalDBService(t)
 		logger := newNoopLogger()
 		personaSvc := NewPersonaService(mockDB, logger)

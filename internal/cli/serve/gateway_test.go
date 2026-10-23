@@ -21,6 +21,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfig_ZeroValue(t *testing.T) {
+	t.Parallel()
 	var cfg GatewayConfig
 
 	assert.Equal(t, constants.Posture(""), cfg.Posture)
@@ -42,6 +43,7 @@ func TestGatewayConfig_ZeroValue(t *testing.T) {
 }
 
 func TestGatewayConfig_FullAssignment(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		Posture:             constants.PostureConsensus,
 		HTTPPort:            8080,
@@ -80,6 +82,7 @@ func TestGatewayConfig_FullAssignment(t *testing.T) {
 }
 
 func TestGatewayConfig_Equality(t *testing.T) {
+	t.Parallel()
 	a := GatewayConfig{
 		Posture:        constants.PostureDoctrine,
 		HTTPPort:       8080,
@@ -100,6 +103,7 @@ func TestGatewayConfig_Equality(t *testing.T) {
 }
 
 func TestGatewayConfig_PartialAssignment(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		Posture:  constants.PostureNotary,
 		HTTPPort: 8080,
@@ -118,6 +122,7 @@ func TestGatewayConfig_PartialAssignment(t *testing.T) {
 }
 
 func TestGatewayConfig_AllFieldsExported(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{}
 
 	cfg.Posture = constants.PostureConsensus
@@ -156,6 +161,7 @@ func TestGatewayConfig_AllFieldsExported(t *testing.T) {
 }
 
 func TestGatewayConfig_Mutation(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		Posture:   constants.PostureDoctrine,
 		HTTPPort:  8080,
@@ -173,6 +179,7 @@ func TestGatewayConfig_Mutation(t *testing.T) {
 }
 
 func TestGatewayConfig_PostureValues(t *testing.T) {
+	t.Parallel()
 	postures := []constants.Posture{
 		constants.PostureDoctrine,
 		constants.PostureConsensus,
@@ -186,6 +193,7 @@ func TestGatewayConfig_PostureValues(t *testing.T) {
 }
 
 func TestGatewayConfig_PostureStringConversion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		posture  constants.Posture
@@ -198,6 +206,7 @@ func TestGatewayConfig_PostureStringConversion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := GatewayConfig{Posture: tt.posture}
 			assert.Equal(t, tt.expected, string(cfg.Posture))
 		})
@@ -234,6 +243,7 @@ func gatewayConfigToOptions(cfg GatewayConfig) config.GatewayOptions {
 }
 
 func TestGatewayConfigToOptions_FullMapping(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		Posture:             constants.PostureConsensus,
 		HTTPPort:            8080,
@@ -273,6 +283,7 @@ func TestGatewayConfigToOptions_FullMapping(t *testing.T) {
 }
 
 func TestGatewayConfigToOptions_EmptyConfig(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{}
 
 	opts := gatewayConfigToOptions(cfg)
@@ -287,6 +298,7 @@ func TestGatewayConfigToOptions_EmptyConfig(t *testing.T) {
 }
 
 func TestGatewayConfigToOptions_CertModeMapping(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		certMode         string
@@ -299,6 +311,7 @@ func TestGatewayConfigToOptions_CertModeMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := GatewayConfig{CertIdentityMode: tt.certMode}
 			opts := gatewayConfigToOptions(cfg)
 			assert.Equal(t, tt.expectedCertMode, opts.CertMode)
@@ -307,7 +320,9 @@ func TestGatewayConfigToOptions_CertModeMapping(t *testing.T) {
 }
 
 func TestGatewayConfigToOptions_DownstreamURLs(t *testing.T) {
+	t.Parallel()
 	t.Run("both empty (default)", func(t *testing.T) {
+		t.Parallel()
 		cfg := GatewayConfig{}
 		opts := gatewayConfigToOptions(cfg)
 		assert.Empty(t, opts.MCPDownstreamURL)
@@ -315,6 +330,7 @@ func TestGatewayConfigToOptions_DownstreamURLs(t *testing.T) {
 	})
 
 	t.Run("both set", func(t *testing.T) {
+		t.Parallel()
 		cfg := GatewayConfig{
 			MCPDownstreamURL: "http://mcp-downstream:3000/sse",
 			A2ADownstreamURL: "http://a2a-downstream:3001",
@@ -325,6 +341,7 @@ func TestGatewayConfigToOptions_DownstreamURLs(t *testing.T) {
 	})
 
 	t.Run("only MCP set", func(t *testing.T) {
+		t.Parallel()
 		cfg := GatewayConfig{MCPDownstreamURL: "http://mcp:3000"}
 		opts := gatewayConfigToOptions(cfg)
 		assert.Equal(t, "http://mcp:3000", opts.MCPDownstreamURL)
@@ -332,6 +349,7 @@ func TestGatewayConfigToOptions_DownstreamURLs(t *testing.T) {
 	})
 
 	t.Run("only A2A set", func(t *testing.T) {
+		t.Parallel()
 		cfg := GatewayConfig{A2ADownstreamURL: "http://a2a:3001"}
 		opts := gatewayConfigToOptions(cfg)
 		assert.Empty(t, opts.MCPDownstreamURL)
@@ -340,6 +358,7 @@ func TestGatewayConfigToOptions_DownstreamURLs(t *testing.T) {
 }
 
 func TestGatewayConfigToOptions_VaultFieldsNotMapped(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		VaultDir: constants.TestPathShortVault,
 	}
@@ -355,6 +374,7 @@ func TestGatewayConfigToOptions_VaultFieldsNotMapped(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfig_FieldCount(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		Posture:             constants.PostureDoctrine,
 		HTTPPort:            8080,
@@ -432,6 +452,7 @@ func TestGatewayConfig_FieldCount(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfig_DoctrinePostureScenario(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		Posture:       constants.PostureDoctrine,
 		HTTPPort:      8080,
@@ -451,6 +472,7 @@ func TestGatewayConfig_DoctrinePostureScenario(t *testing.T) {
 }
 
 func TestGatewayConfig_NotaryPostureScenario(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		Posture:       constants.PostureNotary,
 		HTTPPort:      8080,
@@ -474,6 +496,7 @@ func TestGatewayConfig_NotaryPostureScenario(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfig_PortBoundaries(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		httpPort  int
@@ -491,6 +514,7 @@ func TestGatewayConfig_PortBoundaries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := GatewayConfig{HTTPPort: tt.httpPort, HTTPSPort: tt.httpsPort}
 			assert.Equal(t, tt.httpPort, cfg.HTTPPort)
 			assert.Equal(t, tt.httpsPort, cfg.HTTPSPort)
@@ -503,6 +527,7 @@ func TestGatewayConfig_PortBoundaries(t *testing.T) {
 }
 
 func TestGatewayConfig_NegativePorts(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{HTTPPort: -1, HTTPSPort: -1}
 	assert.Equal(t, -1, cfg.HTTPPort)
 	assert.Equal(t, -1, cfg.HTTPSPort)
@@ -517,6 +542,7 @@ func TestGatewayConfig_NegativePorts(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfig_RateLimitBoundaries(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		rps   float64
@@ -531,6 +557,7 @@ func TestGatewayConfig_RateLimitBoundaries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := GatewayConfig{RateLimitRPS: tt.rps, RateLimitBurst: tt.burst}
 			assert.InDelta(t, tt.rps, cfg.RateLimitRPS, 0)
 			assert.Equal(t, tt.burst, cfg.RateLimitBurst)
@@ -543,6 +570,7 @@ func TestGatewayConfig_RateLimitBoundaries(t *testing.T) {
 }
 
 func TestGatewayConfig_NegativeRateLimit(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{RateLimitRPS: -1.0, RateLimitBurst: -1}
 	opts := gatewayConfigToOptions(cfg)
 
@@ -555,6 +583,7 @@ func TestGatewayConfig_NegativeRateLimit(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfig_VaultConfiguration(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		VaultDir: constants.TestPathVarLibVaultDir,
 	}
@@ -563,6 +592,7 @@ func TestGatewayConfig_VaultConfiguration(t *testing.T) {
 }
 
 func TestGatewayConfigToOptions_VaultFieldsPreservedInConfigOnly(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		VaultDir:   constants.TestPathShortVault,
 		DataDir:    constants.TestPathShortData,
@@ -582,6 +612,7 @@ func TestGatewayConfigToOptions_VaultFieldsPreservedInConfigOnly(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfig_CertIdentityModes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		mode string
@@ -593,6 +624,7 @@ func TestGatewayConfig_CertIdentityModes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := GatewayConfig{CertIdentityMode: tt.mode}
 			opts := gatewayConfigToOptions(cfg)
 			assert.Equal(t, tt.mode, opts.CertMode)
@@ -601,6 +633,7 @@ func TestGatewayConfig_CertIdentityModes(t *testing.T) {
 }
 
 func TestGatewayConfig_NetworkIdentityFile(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{NetworkIdentityFile: constants.TestPathEtcNetworkIdentity}
 	opts := gatewayConfigToOptions(cfg)
 
@@ -612,6 +645,7 @@ func TestGatewayConfig_NetworkIdentityFile(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfigToOptions_AllowTestPortZeroAlwaysFalse(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		cfg  GatewayConfig
@@ -627,6 +661,7 @@ func TestGatewayConfigToOptions_AllowTestPortZeroAlwaysFalse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			opts := gatewayConfigToOptions(tt.cfg)
 			assert.False(t, opts.AllowTestPortZero,
 				"AllowTestPortZero must always be false in production gateway config mapping")
@@ -639,6 +674,7 @@ func TestGatewayConfigToOptions_AllowTestPortZeroAlwaysFalse(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfig_PasskeyConfiguration(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		PasskeyRpID:   "operator.example.com",
 		PasskeyRpName: "ztd Operator",
@@ -650,6 +686,7 @@ func TestGatewayConfig_PasskeyConfiguration(t *testing.T) {
 }
 
 func TestGatewayConfig_PasskeyEmptyDefaults(t *testing.T) {
+	t.Parallel()
 	var cfg GatewayConfig
 	opts := gatewayConfigToOptions(cfg)
 
@@ -659,7 +696,9 @@ func TestGatewayConfig_PasskeyEmptyDefaults(t *testing.T) {
 }
 
 func TestGatewayConfig_PasskeyRpOriginsWiring(t *testing.T) {
+	t.Parallel()
 	t.Run("single origin", func(t *testing.T) {
+		t.Parallel()
 		cfg := GatewayConfig{
 			PasskeyRpOrigins: []string{"http://localhost:8087"},
 		}
@@ -668,6 +707,7 @@ func TestGatewayConfig_PasskeyRpOriginsWiring(t *testing.T) {
 	})
 
 	t.Run("multiple origins", func(t *testing.T) {
+		t.Parallel()
 		cfg := GatewayConfig{
 			PasskeyRpOrigins: []string{"http://localhost:8087", "https://localhost:8450"},
 		}
@@ -676,6 +716,7 @@ func TestGatewayConfig_PasskeyRpOriginsWiring(t *testing.T) {
 	})
 
 	t.Run("empty slice preserved as nil", func(t *testing.T) {
+		t.Parallel()
 		var cfg GatewayConfig
 		opts := gatewayConfigToOptions(cfg)
 		assert.Nil(t, opts.PasskeyRpOrigins)
@@ -687,6 +728,7 @@ func TestGatewayConfig_PasskeyRpOriginsWiring(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfigToOptions_DownstreamWithPosture(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		posture constants.Posture
@@ -701,6 +743,7 @@ func TestGatewayConfigToOptions_DownstreamWithPosture(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := GatewayConfig{
 				Posture:          tt.posture,
 				MCPDownstreamURL: tt.mcpURL,
@@ -720,6 +763,7 @@ func TestGatewayConfigToOptions_DownstreamWithPosture(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfigToOptions_RoundTripIntegrity(t *testing.T) {
+	t.Parallel()
 	original := GatewayConfig{
 		Posture:             constants.PostureNotary,
 		HTTPPort:            8080,
@@ -762,6 +806,7 @@ func TestGatewayConfigToOptions_RoundTripIntegrity(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGatewayConfig_StandardPortValues(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		HTTPPort:  constants.Ports.OperatorHttp,
 		HTTPSPort: constants.Ports.OperatorHttps,
@@ -772,6 +817,7 @@ func TestGatewayConfig_StandardPortValues(t *testing.T) {
 }
 
 func TestGatewayConfigToOptions_StandardPortsPreserved(t *testing.T) {
+	t.Parallel()
 	cfg := GatewayConfig{
 		HTTPPort:  constants.Ports.OperatorHttp,
 		HTTPSPort: constants.Ports.OperatorHttps,

@@ -24,14 +24,19 @@ import (
 )
 
 func TestValidatePublicFeedSourceID_RejectsPathComponents(t *testing.T) {
+	t.Parallel()
+
 	for _, sourceID := range []string{"../source", "source/id", ".", "source id"} {
 		t.Run(sourceID, func(t *testing.T) {
+			t.Parallel()
+
 			assert.ErrorIs(t, ValidatePublicFeedSourceID(sourceID), constants.ErrPublicFeedSourceIDInvalid)
 		})
 	}
 }
 
 func TestTransitionLocalPublicFeed_ArchivesPublisherStateAndStartsFreshSource(t *testing.T) {
+	t.Parallel()
 	fileSvc := newProducerFileSvc(t)
 	ks := newTestKeystore(t, fileSvc, testutil.NewTestLogger())
 	ctx := context.Background()
@@ -85,6 +90,8 @@ func TestTransitionLocalPublicFeed_ArchivesPublisherStateAndStartsFreshSource(t 
 }
 
 func TestTransitionLocalPublicFeed_PreservesEveryImmutableGeneration(t *testing.T) {
+	t.Parallel()
+
 	fileSvc := newProducerFileSvc(t)
 	ks := newTestKeystore(t, fileSvc, testutil.NewTestLogger())
 	ctx := context.Background()
@@ -113,6 +120,8 @@ func TestTransitionLocalPublicFeed_PreservesEveryImmutableGeneration(t *testing.
 }
 
 func TestEnsureLocalPublicFeed_RejectsOrphanedProofGeneration(t *testing.T) {
+	t.Parallel()
+
 	fileSvc := newProducerFileSvc(t)
 	ks := newTestKeystore(t, fileSvc, testutil.NewTestLogger())
 	ctx := context.Background()
@@ -127,11 +136,13 @@ func TestEnsureLocalPublicFeed_RejectsOrphanedProofGeneration(t *testing.T) {
 }
 
 func TestValidatePublicMirrorListenAddresses_RejectsDuplicate(t *testing.T) {
+	t.Parallel()
 	err := ValidatePublicMirrorListenAddresses("127.0.0.1:8081", "127.0.0.1:8081", false)
 	assert.ErrorIs(t, err, constants.ErrPublicFeedListenAddress)
 }
 
 func TestValidatePublicMirrorListenAddresses_AllowsContainerBind(t *testing.T) {
+	t.Parallel()
 	err := ValidatePublicMirrorListenAddresses("0.0.0.0:8081", "0.0.0.0:8082", true)
 	require.NoError(t, err)
 	err = ValidatePublicMirrorListenAddresses("0.0.0.0:8081", "0.0.0.0:8082", false)

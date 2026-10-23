@@ -52,6 +52,7 @@ func messageTypeCounts(t *testing.T, batch []CampaignPublicFeedRecord) map[strin
 // Catch-up ships every assignment lifecycle and terminal result of a run in one
 // export batch, so the feed does not pay one export per record.
 func TestPublishRunCatchUpExportsLifecyclesAndResultsInOneBatch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
@@ -110,6 +111,7 @@ func recordedProofArtifacts(t *testing.T, store *Store, run *evalv1.EvaluationRu
 // A package whose database, agent trace, and scenario fixture hashes are all
 // recorded is reused: catch-up asks the Gateway for nothing.
 func TestPublishRunCatchUpSkipsProofRebuildWhenHashesRecorded(t *testing.T) {
+	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
 	exporter := &recordingCampaignFeedExporter{}
@@ -138,6 +140,7 @@ func TestPublishRunCatchUpSkipsProofRebuildWhenHashesRecorded(t *testing.T) {
 // A package published before its agent trace was captured, or bound to a
 // different trace, is rebuilt so the current trace is published and bound.
 func TestPublishRunCatchUpRebuildsProofWhenAgentTraceIsUnpublished(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
@@ -178,6 +181,7 @@ func TestPublishRunCatchUpRebuildsProofWhenAgentTraceIsUnpublished(t *testing.T)
 // A package recorded before scenario fixtures were published is rebuilt so the
 // frozen fixture bodies are published and bound.
 func TestPublishRunCatchUpRebuildsProofWhenScenarioFixtureIsUnpublished(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)

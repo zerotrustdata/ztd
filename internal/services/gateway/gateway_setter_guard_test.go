@@ -22,6 +22,8 @@ import (
 // mutator methods. Under the ModeDeps refactor (Item R), consensus is wired at
 // construction time via GatewayModeDeps.
 func TestGatewayModeService_NoDeletedSetters(t *testing.T) {
+	t.Parallel()
+
 	dir := "."
 	entries, err := os.ReadDir(dir)
 	if err != nil {

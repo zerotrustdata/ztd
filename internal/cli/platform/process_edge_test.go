@@ -19,6 +19,8 @@ import (
 )
 
 func TestBuildReExecArgs(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := testutil.TempDir(t)
 
 	fileSvc := newPlatformTestFileSvc(t, tmpDir)
@@ -94,6 +96,8 @@ func TestBuildReExecArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if tt.needsDirs {
 				require.NoError(t, pm.CreateDirectories())
 			}

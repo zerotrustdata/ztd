@@ -19,76 +19,101 @@ import (
 // --- validatePublicBaseURL ---
 
 func TestValidatePublicBaseURL_ValidHTTPS(t *testing.T) {
+	t.Parallel()
 	assert.NoError(t, validatePublicBaseURL("https://demo.zerotrustdata.io"))
 }
 
 func TestValidatePublicBaseURL_HttpLocalhost(t *testing.T) {
+	t.Parallel()
 	assert.NoError(t, validatePublicBaseURL("http://localhost:8080"))
 }
 
 func TestValidatePublicBaseURL_Http127(t *testing.T) {
+	t.Parallel()
 	assert.NoError(t, validatePublicBaseURL("http://127.0.0.1:8080"))
 }
 
 func TestValidatePublicBaseURL_HttpIPv6Loopback(t *testing.T) {
+	t.Parallel()
 	assert.NoError(t, validatePublicBaseURL("http://[::1]:8080"))
 }
 
 func TestValidatePublicBaseURL_RejectsEmpty(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validatePublicBaseURL(""))
 }
 
 func TestValidatePublicBaseURL_RejectsNonURL(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validatePublicBaseURL("not-a-url"))
 }
 
 func TestValidatePublicBaseURL_RejectsNonLoopbackHTTP(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validatePublicBaseURL("http://demo.zerotrustdata.io"))
 }
 
 func TestValidatePublicBaseURL_RejectsQuery(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validatePublicBaseURL("https://demo.zerotrustdata.io?foo=bar"))
 }
 
 func TestValidatePublicBaseURL_RejectsFragment(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validatePublicBaseURL("https://demo.zerotrustdata.io#section"))
 }
 
 func TestValidatePublicBaseURL_RejectsUserInfo(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validatePublicBaseURL("https://user@demo.zerotrustdata.io"))
 }
 
 func TestValidatePublicBaseURL_RejectsUnsupportedScheme(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validatePublicBaseURL("ftp://demo.zerotrustdata.io"))
 }
 
 // --- validatePasskeyRP ---
 
 func TestValidatePasskeyRP_ExactMatch(t *testing.T) {
+	t.Parallel()
+
 	assert.NoError(t, validatePasskeyRP("demo.zerotrustdata.io", "https://demo.zerotrustdata.io"))
 }
 
 func TestValidatePasskeyRP_SuffixMatch(t *testing.T) {
+	t.Parallel()
+
 	assert.NoError(t, validatePasskeyRP("zerotrustdata.io", "https://api.zerotrustdata.io"))
 }
 
 func TestValidatePasskeyRP_Mismatch(t *testing.T) {
+	t.Parallel()
+
 	assert.Error(t, validatePasskeyRP("other.com", "https://demo.zerotrustdata.io"))
 }
 
 func TestValidatePasskeyRP_EmptyRpID(t *testing.T) {
+	t.Parallel()
+
 	assert.Error(t, validatePasskeyRP("", "https://demo.zerotrustdata.io"))
 }
 
 func TestValidatePasskeyRP_InvalidOrigin(t *testing.T) {
+	t.Parallel()
+
 	assert.Error(t, validatePasskeyRP("demo.zerotrustdata.io", "not-a-url"))
 }
 
 func TestValidatePasskeyRP_HttpOriginAllowed(t *testing.T) {
+	t.Parallel()
+
 	assert.NoError(t, validatePasskeyRP("localhost", "http://localhost:8443"))
 }
 
 func TestValidatePasskeyRP_UnsupportedScheme(t *testing.T) {
+	t.Parallel()
+
 	assert.Error(t, validatePasskeyRP("demo.zerotrustdata.io", "ftp://demo.zerotrustdata.io"))
 }
 
@@ -100,29 +125,41 @@ func TestValidatePasskeyRP_UnsupportedScheme(t *testing.T) {
 // credentials across unrelated tenants) and non-loopback HTTP origins.
 
 func TestValidatePasskeyRP_RejectsPublicSuffixRPID(t *testing.T) {
+	t.Parallel(
+
 	// "app" is an ICANN public suffix. Using it as an RP ID would scope
 	// passkey credentials across every *.app tenant, so the centralized
 	// validator rejects it even though it is a suffix of the origin host.
+	)
+
 	err := validatePasskeyRP("app", "https://your-app.lovable.app")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestValidatePasskeyRP_RejectsUnrelatedSuffix(t *testing.T) {
+	t.Parallel()
+
 	err := validatePasskeyRP("other.com", "https://demo.zerotrustdata.io")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestValidatePasskeyRP_RejectsNonLoopbackHTTPOrigin(t *testing.T) {
+	t.Parallel()
+
 	err := validatePasskeyRP("example.com", "http://example.com")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestValidatePasskeyRP_RejectsPortBearingRPID(t *testing.T) {
+	t.Parallel(
+
 	// The centralized validator derives the RP ID from the hostname only;
 	// a port-bearing override is never a valid WebAuthn RP ID.
+	)
+
 	err := validatePasskeyRP("demo.zerotrustdata.io:8443", "https://demo.zerotrustdata.io:8443")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
@@ -131,68 +168,84 @@ func TestValidatePasskeyRP_RejectsPortBearingRPID(t *testing.T) {
 // --- validateDownstreamURL ---
 
 func TestValidateDownstreamURL_EmptyRejected(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateDownstreamURL(""))
 }
 
 func TestValidateDownstreamURL_ValidHTTP(t *testing.T) {
+	t.Parallel()
 	assert.NoError(t, validateDownstreamURL("http://mcp:3000"))
 }
 
 func TestValidateDownstreamURL_ValidHTTPS(t *testing.T) {
+	t.Parallel()
 	assert.NoError(t, validateDownstreamURL("https://mcp.example.com"))
 }
 
 func TestValidateDownstreamURL_InvalidURL(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateDownstreamURL("not-a-url"))
 }
 
 func TestValidateDownstreamURL_RejectsFragment(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateDownstreamURL("https://mcp.example.com#frag"))
 }
 
 func TestValidateDownstreamURL_RejectsCredentials(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateDownstreamURL("https://user:pass@mcp.example.com"))
 }
 
 func TestValidateDownstreamURL_RejectsUnsupportedScheme(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateDownstreamURL("ftp://mcp.example.com"))
 }
 
 // --- validateCORSOrigin ---
 
 func TestValidateCORSOrigin_ValidHTTPS(t *testing.T) {
+	t.Parallel()
 	assert.NoError(t, validateCORSOrigin("https://console.zerotrustdata.io"))
 }
 
 func TestValidateCORSOrigin_ValidHTTP(t *testing.T) {
+	t.Parallel()
 	assert.NoError(t, validateCORSOrigin("http://localhost:8080"))
 }
 
 func TestValidateCORSOrigin_RejectsEmpty(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateCORSOrigin(""))
 }
 
 func TestValidateCORSOrigin_RejectsPath(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateCORSOrigin("https://console.zerotrustdata.io/path"))
 }
 
 func TestValidateCORSOrigin_RejectsQuery(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateCORSOrigin("https://console.zerotrustdata.io?q=1"))
 }
 
 func TestValidateCORSOrigin_RejectsFragment(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateCORSOrigin("https://console.zerotrustdata.io#frag"))
 }
 
 func TestValidateCORSOrigin_RejectsUserInfo(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateCORSOrigin("https://user@console.zerotrustdata.io"))
 }
 
 func TestValidateCORSOrigin_RejectsUnsupportedScheme(t *testing.T) {
+	t.Parallel()
 	assert.Error(t, validateCORSOrigin("ftp://console.zerotrustdata.io"))
 }
 
 func TestValidateCORSOrigin_AllowsRootPath(t *testing.T) {
+	t.Parallel()
 	assert.NoError(t, validateCORSOrigin("https://console.zerotrustdata.io/"))
 }
 
@@ -203,18 +256,21 @@ func TestValidateCORSOrigin_AllowsRootPath(t *testing.T) {
 // not a secure CORS origin.
 
 func TestValidateCORSOrigin_RejectsNonLoopbackHTTP(t *testing.T) {
+	t.Parallel()
 	err := validateCORSOrigin("http://example.com")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestValidateCORSOrigin_RejectsNonLoopbackHTTPWithPort(t *testing.T) {
+	t.Parallel()
 	err := validateCORSOrigin("http://app.lovable.app:3000")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
 }
 
 func TestValidateCORSOrigin_RejectsIPHost(t *testing.T) {
+	t.Parallel()
 	err := validateCORSOrigin("https://192.168.1.10")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
@@ -223,25 +279,31 @@ func TestValidateCORSOrigin_RejectsIPHost(t *testing.T) {
 // --- isLoopbackHost ---
 
 func TestIsLoopbackHost_Localhost(t *testing.T) {
+	t.Parallel()
 	assert.True(t, isLoopbackHost("localhost"))
 }
 
 func TestIsLoopbackHost_127001(t *testing.T) {
+	t.Parallel()
 	assert.True(t, isLoopbackHost("127.0.0.1"))
 }
 
 func TestIsLoopbackHost_IPv6Loopback(t *testing.T) {
+	t.Parallel()
 	assert.True(t, isLoopbackHost("::1"))
 }
 
 func TestIsLoopbackHost_ExternalHost(t *testing.T) {
+	t.Parallel()
 	assert.False(t, isLoopbackHost("demo.zerotrustdata.io"))
 }
 
 func TestIsLoopbackHost_Empty(t *testing.T) {
+	t.Parallel()
 	assert.False(t, isLoopbackHost(""))
 }
 
 func TestIsLoopbackHost_127002(t *testing.T) {
+	t.Parallel()
 	assert.False(t, isLoopbackHost("127.0.0.2"))
 }

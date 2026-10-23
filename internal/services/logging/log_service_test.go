@@ -132,6 +132,8 @@ func makeTempFile(t *testing.T) *os.File {
 }
 
 func TestLogService_ConfigureFileLogger(t *testing.T) {
+	t.Parallel()
+
 	f := makeTempFile(t)
 	defer f.Close()
 
@@ -148,6 +150,8 @@ func TestLogService_ConfigureFileLogger(t *testing.T) {
 }
 
 func TestLogService_ConfigureFileLogger_InvalidLevelClosesHandle(t *testing.T) {
+	t.Parallel()
+
 	f := makeTempFile(t)
 
 	svc := NewLogService(&stubFileSvc{openAppendFile: f})
@@ -159,6 +163,8 @@ func TestLogService_ConfigureFileLogger_InvalidLevelClosesHandle(t *testing.T) {
 }
 
 func TestLogService_OpenLogForAppend_MkdirError(t *testing.T) {
+	t.Parallel()
+
 	mkdirErr := errors.New("disk full")
 	svc := NewLogService(&stubFileSvc{mkdirErr: mkdirErr})
 
@@ -169,6 +175,8 @@ func TestLogService_OpenLogForAppend_MkdirError(t *testing.T) {
 }
 
 func TestLogService_OpenLogForAppend_OpenError(t *testing.T) {
+	t.Parallel()
+
 	openErr := errors.New("permission denied")
 	svc := NewLogService(&stubFileSvc{openAppendErr: openErr})
 
@@ -179,6 +187,8 @@ func TestLogService_OpenLogForAppend_OpenError(t *testing.T) {
 }
 
 func TestLogService_OpenLogForRead_NotFound(t *testing.T) {
+	t.Parallel()
+
 	svc := NewLogService(&stubFileSvc{openReadErr: constants.ErrNotFound})
 
 	_, err := svc.OpenLogForRead(context.Background())
@@ -187,6 +197,8 @@ func TestLogService_OpenLogForRead_NotFound(t *testing.T) {
 }
 
 func TestLogService_OpenLogForRead_OpenError(t *testing.T) {
+	t.Parallel()
+
 	openErr := errors.New("io error")
 	svc := NewLogService(&stubFileSvc{openReadErr: openErr})
 
@@ -197,6 +209,7 @@ func TestLogService_OpenLogForRead_OpenError(t *testing.T) {
 }
 
 func TestLogService_LogFileExists_True(t *testing.T) {
+	t.Parallel()
 	svc := NewLogService(&stubFileSvc{fileExists: true})
 	exists, err := svc.LogFileExists(context.Background())
 	require.NoError(t, err)
@@ -204,6 +217,7 @@ func TestLogService_LogFileExists_True(t *testing.T) {
 }
 
 func TestLogService_LogFileExists_False(t *testing.T) {
+	t.Parallel()
 	svc := NewLogService(&stubFileSvc{fileExists: false})
 	exists, err := svc.LogFileExists(context.Background())
 	require.NoError(t, err)
@@ -211,6 +225,8 @@ func TestLogService_LogFileExists_False(t *testing.T) {
 }
 
 func TestLogService_LogFileExists_Error(t *testing.T) {
+	t.Parallel()
+
 	statErr := errors.New("stat failed")
 	svc := NewLogService(&stubFileSvc{fileExistsErr: statErr})
 	_, err := svc.LogFileExists(context.Background())
@@ -219,6 +235,7 @@ func TestLogService_LogFileExists_Error(t *testing.T) {
 }
 
 func TestLogService_LogFilePath(t *testing.T) {
+	t.Parallel()
 	svc := NewLogService(&stubFileSvc{})
 	path := svc.LogFilePath()
 	expected := filepath.Join("/runtime", constants.LogDirname, constants.ZtdLogFilename)
@@ -226,6 +243,7 @@ func TestLogService_LogFilePath(t *testing.T) {
 }
 
 func TestLogService_LogFilePath_UsesResolve(t *testing.T) {
+	t.Parallel()
 	svc := NewLogService(&stubFileSvc{resolvePath: "/custom/root"})
 	path := svc.LogFilePath()
 	assert.Equal(t, "/custom/root", path)
@@ -234,7 +252,11 @@ func TestLogService_LogFilePath_UsesResolve(t *testing.T) {
 // TestLogService_NewLoggerWritesToHandle verifies the end-to-end path:
 // ConfigureFileLogger returns a logger that actually writes to the handle.
 func TestLogService_NewLoggerWritesToHandle(t *testing.T) {
+	t.Parallel(
+
 	// Use a pipe so we can read what the logger writes.
+	)
+
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
 
@@ -265,6 +287,8 @@ func readAll(r *os.File) (string, error) {
 // TestLogService_StderrRedirectedToLogWritesOnce covers the background Gateway,
 // whose stderr is ztd.log itself: each record must be written once, not twice.
 func TestLogService_StderrRedirectedToLogWritesOnce(t *testing.T) {
+	t.Parallel()
+
 	path := filepath.Join(testutil.TempDir(t), constants.ZtdLogFilename)
 	handle, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, constants.PermFilePrivate)
 	require.NoError(t, err)
@@ -286,6 +310,8 @@ func TestLogService_StderrRedirectedToLogWritesOnce(t *testing.T) {
 // TestLogService_SeparateStderrReceivesRecords covers a foreground Gateway:
 // records go to both ztd.log and the terminal.
 func TestLogService_SeparateStderrReceivesRecords(t *testing.T) {
+	t.Parallel()
+
 	dir := testutil.TempDir(t)
 	handle, err := os.Create(filepath.Join(dir, constants.ZtdLogFilename))
 	require.NoError(t, err)

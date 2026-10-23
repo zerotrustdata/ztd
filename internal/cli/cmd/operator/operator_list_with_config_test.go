@@ -38,7 +38,8 @@ func saveTestCredentials(t *testing.T, fileSvc fs.RuntimeFileService, cfg *confi
 	require.NoError(t, auth.SaveCredentials(fileSvc, cfg, creds))
 }
 
-func TestOperatorListCmdWithConfig_ConfigLoadError(t *testing.T) {
+func TestOperatorListCmdWithConfig_ConfigLoadError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	failLoader := func(string) (*config.Config, error) {
 		return nil, fmt.Errorf("config load error")
 	}
@@ -53,7 +54,8 @@ func TestOperatorListCmdWithConfig_ConfigLoadError(t *testing.T) {
 	assert.Contains(t, err.Error(), "config load error")
 }
 
-func TestOperatorListCmdWithConfig_ClientCreationError(t *testing.T) {
+func TestOperatorListCmdWithConfig_ClientCreationError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -68,7 +70,8 @@ func TestOperatorListCmdWithConfig_ClientCreationError(t *testing.T) {
 	assert.Contains(t, err.Error(), "client creation error")
 }
 
-func TestOperatorListCmdWithConfig_GetRequestError(t *testing.T) {
+func TestOperatorListCmdWithConfig_GetRequestError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -84,7 +87,8 @@ func TestOperatorListCmdWithConfig_GetRequestError(t *testing.T) {
 	assert.Contains(t, err.Error(), "network error")
 }
 
-func TestOperatorListCmdWithConfig_InvalidJSONResponse(t *testing.T) {
+func TestOperatorListCmdWithConfig_InvalidJSONResponse(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -100,7 +104,8 @@ func TestOperatorListCmdWithConfig_InvalidJSONResponse(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
 }
 
-func TestOperatorListCmdWithConfig_NotAuthenticatedWithoutCredentials(t *testing.T) {
+func TestOperatorListCmdWithConfig_NotAuthenticatedWithoutCredentials(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 	loader := func(string) (*config.Config, error) { return cfg, nil }
@@ -116,7 +121,8 @@ func TestOperatorListCmdWithConfig_NotAuthenticatedWithoutCredentials(t *testing
 	assert.Empty(t, client.GetCalls, "client must not be called when credentials are missing")
 }
 
-func TestOperatorListCmdWithConfig_EmptyOperatorsListPrintsNoOperators(t *testing.T) {
+func TestOperatorListCmdWithConfig_EmptyOperatorsListPrintsNoOperators(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -136,7 +142,8 @@ func TestOperatorListCmdWithConfig_EmptyOperatorsListPrintsNoOperators(t *testin
 	assert.Equal(t, []string{constants.APIPaths.Operators + "?user_id=user-001"}, client.GetCalls)
 }
 
-func TestOperatorListCmdWithConfig_ValidResponsePrintsOperatorTable(t *testing.T) {
+func TestOperatorListCmdWithConfig_ValidResponsePrintsOperatorTable(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -170,7 +177,8 @@ func TestOperatorListCmdWithConfig_ValidResponsePrintsOperatorTable(t *testing.T
 	assert.Equal(t, []string{constants.APIPaths.Operators + "?user_id=user-001"}, client.GetCalls)
 }
 
-func TestOperatorListCmdWithConfig_JSONOutputIncludesRuntimeFlags(t *testing.T) {
+func TestOperatorListCmdWithConfig_JSONOutputIncludesRuntimeFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 
@@ -216,7 +224,8 @@ func TestOperatorListCmdWithConfig_JSONOutputIncludesRuntimeFlags(t *testing.T) 
 	assert.True(t, payload.Operators[1].OperatorCapabilities.Has(constants.OperatorCapabilityInference))
 }
 
-func TestOperatorListCmdWithConfig_SendsUserIDQueryParameter(t *testing.T) {
+func TestOperatorListCmdWithConfig_SendsUserIDQueryParameter(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-distinct-123")
 

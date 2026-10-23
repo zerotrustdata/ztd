@@ -20,6 +20,7 @@ func linkOutcome(txID, prior, hash string) Outcome {
 }
 
 func TestVerifyBracket(t *testing.T) {
+	t.Parallel()
 	before := linkOutcome("tx-before", "h-0", "h-1")
 	claimedA := linkOutcome("tx-a", "h-1", "h-2")
 	claimedB := linkOutcome("tx-b", "h-2", "h-3")
@@ -101,6 +102,7 @@ func TestVerifyBracket(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := VerifyBracket(tt.before, tt.after, tt.claimed)
 			if tt.want == nil {
 				assert.NoError(t, err)
@@ -115,6 +117,7 @@ func TestVerifyBracket(t *testing.T) {
 // share one runtime: they arrive out of ledger order, and ordering must neither
 // hide an unclaimed execution nor accept a link that never joins the ledger.
 func TestOrderLedgerThenVerifyBracket(t *testing.T) {
+	t.Parallel()
 	before := linkOutcome("tx-before", "h-0", "h-1")
 	a := linkOutcome("tx-a", "h-1", "h-2")
 	b := linkOutcome("tx-b", "h-2", "h-3")
@@ -148,6 +151,7 @@ func TestOrderLedgerThenVerifyBracket(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ordered, err := OrderLedger(before, tt.after, tt.claimed)
 			if err == nil {
 				err = VerifyBracket(before, tt.after, ordered)

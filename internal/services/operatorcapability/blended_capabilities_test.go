@@ -18,6 +18,7 @@ import (
 )
 
 func TestBlendedOperatorKeepsEveryCapability(t *testing.T) {
+	t.Parallel()
 	cfg := &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver})}
 	op := &operatorv1.OperatorDocument{Id: "blend", OperatorSessionId: "session", OperatorType: string(constants.OperatorTypeRemote), Status: string(constants.OperatorStatusActive), RuntimeConfig: cfg}
 	require.True(t, IsDataOperator(op))
@@ -25,6 +26,7 @@ func TestBlendedOperatorKeepsEveryCapability(t *testing.T) {
 }
 
 func TestEveryOperatorCapabilityCombinationPreservesMembership(t *testing.T) {
+	t.Parallel()
 	all := []constants.OperatorCapability{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver}
 	for _, operatorType := range []constants.OperatorType{constants.OperatorTypeEmbedded, constants.OperatorTypeRemote} {
 		for mask := 1; mask < 1<<len(all); mask++ {
@@ -35,6 +37,7 @@ func TestEveryOperatorCapabilityCombinationPreservesMembership(t *testing.T) {
 				}
 			}
 			t.Run(string(operatorType)+"/"+capabilities.String(), func(t *testing.T) {
+				t.Parallel()
 				cfg := &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(capabilities)}
 				op := &operatorv1.OperatorDocument{Id: "blend", OperatorSessionId: "session", OperatorType: string(operatorType), Status: string(constants.OperatorStatusActive), RuntimeConfig: cfg}
 				effective := capabilities.Canonical()

@@ -16,6 +16,7 @@ import (
 )
 
 func TestValidateListenAddress(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		addr string
 		ok   bool
@@ -33,6 +34,7 @@ func TestValidateListenAddress(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.addr, func(t *testing.T) {
+			t.Parallel()
 			err := ValidateListenAddress(tc.addr)
 			if tc.ok {
 				assert.NoError(t, err)

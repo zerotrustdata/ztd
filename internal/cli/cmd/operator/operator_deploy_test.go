@@ -253,6 +253,7 @@ func runOperatorDeployWithFactory(t *testing.T, client authcmd.APIClient, connec
 }
 
 func TestOperatorDeployDirs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		remoteDir string
@@ -266,12 +267,14 @@ func TestOperatorDeployDirs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, operatorDeployDirs(tt.remoteDir, tt.count))
 		})
 	}
 }
 
-func TestOperatorDeployRejectsInvalidFlagCombinations(t *testing.T) {
+func TestOperatorDeployRejectsInvalidFlagCombinations(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	tests := []struct {
 		name string
 		args []string
@@ -282,8 +285,9 @@ func TestOperatorDeployRejectsInvalidFlagCombinations(t *testing.T) {
 		{"background requires endpoint", []string{"--hosts", "h", "--background"}},
 		{"hosts are required", []string{"--count", "2"}},
 	}
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
+
 			_, err := runOperatorDeploy(t, &cmdtest.MockAPIClient{}, tt.args...)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
@@ -291,7 +295,7 @@ func TestOperatorDeployRejectsInvalidFlagCombinations(t *testing.T) {
 	}
 }
 
-func TestOperatorDeployInstallsBinaryWithoutStartingIt(t *testing.T) {
+func TestOperatorDeployInstallsBinaryWithoutStartingIt(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	remoteDir := deployTestRoot(t)
 
 	out, err := runOperatorDeploy(t, &cmdtest.MockAPIClient{}, "--hosts", "localhost", "--remote-dir", remoteDir)
@@ -311,7 +315,7 @@ func TestOperatorDeployInstallsBinaryWithoutStartingIt(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(remoteDir, constants.DeployStartLogFilename))
 }
 
-func TestOperatorDeployStagesFleetBeforeOneApprovalAndReportsSessions(t *testing.T) {
+func TestOperatorDeployStagesFleetBeforeOneApprovalAndReportsSessions(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	remoteDir := deployTestRoot(t)
 	dirs := operatorDeployDirs(remoteDir, 2)
 
@@ -343,7 +347,7 @@ func TestOperatorDeployStagesFleetBeforeOneApprovalAndReportsSessions(t *testing
 	}
 }
 
-func TestOperatorDeployFailsClosedWhenAWorkerIsReadyWithoutARequest(t *testing.T) {
+func TestOperatorDeployFailsClosedWhenAWorkerIsReadyWithoutARequest(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	remoteDir := deployTestRoot(t)
 
 	client := &cmdtest.MockAPIClient{}
@@ -358,7 +362,7 @@ func TestOperatorDeployFailsClosedWhenAWorkerIsReadyWithoutARequest(t *testing.T
 	assert.Empty(t, client.PostCalls, "nothing is approved without a request")
 }
 
-func TestOperatorDeployFailsWhenAWorkerIsNeverAnnouncedAndNamesItsOwnFailure(t *testing.T) {
+func TestOperatorDeployFailsWhenAWorkerIsNeverAnnouncedAndNamesItsOwnFailure(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	remoteDir := deployTestRoot(t)
 	client := &cmdtest.MockAPIClient{}
 	previous := operatorDeployEnrollTimeout
@@ -381,7 +385,7 @@ func TestOperatorDeployFailsWhenAWorkerIsNeverAnnouncedAndNamesItsOwnFailure(t *
 	assert.Empty(t, client.PostCalls, "nothing is approved without a request ID")
 }
 
-func TestOperatorDeployDoesNotCallASubscriptionOnAStoppedOperatorReady(t *testing.T) {
+func TestOperatorDeployDoesNotCallASubscriptionOnAStoppedOperatorReady(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	remoteDir := deployTestRoot(t)
 	listBody, err := json.Marshal(models.PlatformEnrollmentPendingResponse{
 		Requests: []models.PlatformEnrollmentPendingRequest{{RequestID: "req-1", Fingerprints: testWorkerFingerprints}},
@@ -402,7 +406,7 @@ func TestOperatorDeployDoesNotCallASubscriptionOnAStoppedOperatorReady(t *testin
 
 // The launch ID is not a secret: another process that announces it first must
 // not have its request approved in place of the worker's.
-func TestOperatorDeployRefusesARequestThatDoesNotCarryTheWorkersKeys(t *testing.T) {
+func TestOperatorDeployRefusesARequestThatDoesNotCarryTheWorkersKeys(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	remoteDir := deployTestRoot(t)
 	listBody, err := json.Marshal(models.PlatformEnrollmentPendingResponse{
 		Requests: []models.PlatformEnrollmentPendingRequest{{RequestID: "req-1", Fingerprints: models.PlatformEnrollmentCSRFingerprints{Operator: "intruder-operator-fp", CLI: "intruder-cli-fp"}}},
@@ -417,7 +421,7 @@ func TestOperatorDeployRefusesARequestThatDoesNotCarryTheWorkersKeys(t *testing.
 	assert.Empty(t, client.PostCalls, "no decision may be posted for a request the worker did not create")
 }
 
-func TestOperatorDeployRefusesApprovalWhenTheWorkerRecordedNoKeys(t *testing.T) {
+func TestOperatorDeployRefusesApprovalWhenTheWorkerRecordedNoKeys(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	remoteDir := deployTestRoot(t)
 	listBody, err := json.Marshal(models.PlatformEnrollmentPendingResponse{
 		Requests: []models.PlatformEnrollmentPendingRequest{{RequestID: "req-1", Fingerprints: testWorkerFingerprints}},
@@ -436,7 +440,7 @@ func TestOperatorDeployRefusesApprovalWhenTheWorkerRecordedNoKeys(t *testing.T) 
 	assert.Empty(t, client.PostCalls, "approval is bound to the keys the worker recorded")
 }
 
-func TestOperatorDeployLocalBatchSharesBinaryAndPreservesEarlierBatch(t *testing.T) {
+func TestOperatorDeployLocalBatchSharesBinaryAndPreservesEarlierBatch(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	root := deployTestRoot(t)
 	client := &cmdtest.MockAPIClient{}
 	out, err := runOperatorDeploy(t, client, "--local", "--dest-dir", root, "--count", "10", "--parallel", "4")
@@ -467,7 +471,8 @@ func TestOperatorDeployLocalBatchSharesBinaryAndPreservesEarlierBatch(t *testing
 	assert.Equal(t, filepath.ToSlash(filepath.Join(root, "op-05000")), filepath.ToSlash(dirs[4999]))
 }
 
-func TestOperatorDeployLocalDefaultsToProjectOperatorsDir(t *testing.T) {
+func TestOperatorDeployLocalDefaultsToProjectOperatorsDir(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	out, err := runOperatorDeploy(t, &cmdtest.MockAPIClient{}, "--local")
 	require.NoError(t, err, out)
 	assert.Contains(t, filepath.ToSlash(out), "/"+constants.RuntimeDirname+"/"+constants.OperatorsDirname+"/op-00001",
@@ -475,7 +480,8 @@ func TestOperatorDeployLocalDefaultsToProjectOperatorsDir(t *testing.T) {
 	assert.NotContains(t, out, "~")
 }
 
-func TestOperatorDeployRejectsUnsafeBatchesAndRoles(t *testing.T) {
+func TestOperatorDeployRejectsUnsafeBatchesAndRoles(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	for _, flags := range [][]string{
 		{"--count", "5001"}, {"--count", "2", "--start-index", "5000"},
 		{"--start-index", "0"}, {"--parallel", "0"}, {"--parallel", strconv.Itoa(constants.PlatformEnrollmentMaxLiveOperatorRequests + 1)},
@@ -488,7 +494,7 @@ func TestOperatorDeployRejectsUnsafeBatchesAndRoles(t *testing.T) {
 	}
 }
 
-func TestOperatorDeployRoleFlagsReachWorkerWithoutShellExpansion(t *testing.T) {
+func TestOperatorDeployRoleFlagsReachWorkerWithoutShellExpansion(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	root := deployTestRoot(t)
 	payload := "http://provider:11434/path?q='$(touch INJECTED)'"
 	client := &cmdtest.MockAPIClient{}
@@ -508,6 +514,7 @@ func TestOperatorDeployRoleFlagsReachWorkerWithoutShellExpansion(t *testing.T) {
 }
 
 func TestOperatorDeployRoleIdentities(t *testing.T) {
+	t.Parallel()
 	args := []string{"--capabilities=provenance", "--model-storage-root={dir}/models"}
 	first := operatorDeployArgsForDir(args, "host", "/fleet/op-00001")
 	again := operatorDeployArgsForDir(args, "host", "/fleet/op-00001")
@@ -520,7 +527,7 @@ func TestOperatorDeployRoleIdentities(t *testing.T) {
 	assert.Len(t, explicit, 3)
 }
 
-func TestOperatorDeploySeparatesOwnerAndWorkerEndpoints(t *testing.T) {
+func TestOperatorDeploySeparatesOwnerAndWorkerEndpoints(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	root := deployTestRoot(t)
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
@@ -553,7 +560,7 @@ func TestOperatorDeploySeparatesOwnerAndWorkerEndpoints(t *testing.T) {
 	assert.Contains(t, ownerURL, "localhost")
 }
 
-func TestOperatorDeployForwardsGatewayPortsToTheWorker(t *testing.T) {
+func TestOperatorDeployForwardsGatewayPortsToTheWorker(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	root := deployTestRoot(t)
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
@@ -581,7 +588,8 @@ func TestOperatorDeployForwardsGatewayPortsToTheWorker(t *testing.T) {
 	assert.Contains(t, string(data), "--gateway-https-port=9443\n")
 }
 
-func TestOperatorDeployApprovalClientDialsTheWorkerGatewayPorts(t *testing.T) {
+func TestOperatorDeployApprovalClientDialsTheWorkerGatewayPorts(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Cleanup(func() { config.SetEndpointOverride("") })
 	cfg := &config.Config{}
 	tests := []struct {
@@ -595,8 +603,9 @@ func TestOperatorDeployApprovalClientDialsTheWorkerGatewayPorts(t *testing.T) {
 		{"endpoint port replaced", []string{"--endpoint", "gw.example:9080", "--gateway-https-port", "9443"}, "http://gw.example:9080", "https://gw.example:9443"},
 		{"no owner endpoint", []string{"--gateway-https-port", "9443"}, "http://localhost:8080", "https://localhost:9443"},
 	}
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
+
 			config.SetEndpointOverride("")
 			cmd := operatorDeployCmdWithConfig(nil, nil, nil, nil)
 			cmd.Flags().StringP("endpoint", "e", "", "")
@@ -611,7 +620,7 @@ func TestOperatorDeployApprovalClientDialsTheWorkerGatewayPorts(t *testing.T) {
 	}
 }
 
-func TestOperatorDeployStopsBeforeStartingWorkersWhenTheGatewayIsUnreachable(t *testing.T) {
+func TestOperatorDeployStopsBeforeStartingWorkersWhenTheGatewayIsUnreachable(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	root := deployTestRoot(t)
 	mock := &mockRemoteDeployClient{
 		preflightErr:    errors.New("connection refused"),
@@ -630,7 +639,8 @@ func TestOperatorDeployStopsBeforeStartingWorkersWhenTheGatewayIsUnreachable(t *
 	assert.NoFileExists(t, filepath.Join(root, constants.DeployStartLogFilename), "no worker may start")
 }
 
-func TestOperatorDeployRejectsGatewayPortsOutOfRange(t *testing.T) {
+func TestOperatorDeployRejectsGatewayPortsOutOfRange(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	for _, flag := range []string{"--gateway-http-port", "--gateway-https-port"} {
 		for _, port := range []string{"-1", "65536"} {
 			_, err := runOperatorDeploy(t, &cmdtest.MockAPIClient{}, "--hosts", "host", "--background", "--endpoint", "gateway", "--operator-endpoint", "192.168.1.50", flag, port)
@@ -639,7 +649,8 @@ func TestOperatorDeployRejectsGatewayPortsOutOfRange(t *testing.T) {
 	}
 }
 
-func TestOperatorDeployRejectsInvalidWorkerEndpoints(t *testing.T) {
+func TestOperatorDeployRejectsInvalidWorkerEndpoints(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	for _, endpoint := range []string{"http://gateway", "gateway:8080", "", "gateway name"} {
 		args := []string{"--hosts", "host", "--background", "--operator-endpoint", endpoint}
 		_, err := runOperatorDeploy(t, &cmdtest.MockAPIClient{}, args...)
@@ -647,7 +658,7 @@ func TestOperatorDeployRejectsInvalidWorkerEndpoints(t *testing.T) {
 	}
 }
 
-func TestOperatorDeployParallelEnrollmentApprovesOnlyOwnRequests(t *testing.T) {
+func TestOperatorDeployParallelEnrollmentApprovesOnlyOwnRequests(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	root := deployTestRoot(t)
 	const workers = 12
 	expected := make(map[string]bool, workers)
@@ -736,6 +747,7 @@ func approvedDecision(req models.PlatformEnrollmentBatchDecisionRequest) ([]byte
 }
 
 func TestEnrollDeployedOperatorsApprovesThroughAReadinessDrivenWindow(t *testing.T) {
+	t.Parallel()
 	const workers, window = 10, 4
 	events := newDeploymentEvents()
 	gateway := &windowedGateway{MockAPIClient: &cmdtest.MockAPIClient{}, watches: make(map[string]*deploymentWatch)}
@@ -795,6 +807,7 @@ func (g *l3SuspendingGateway) Post(string, interface{}) ([]byte, error) {
 }
 
 func TestEnrollDeployedOperatorsSurfacesL3SuspensionWithoutCountingItApproved(t *testing.T) {
+	t.Parallel()
 	events := newDeploymentEvents()
 	var pending models.PlatformEnrollmentPendingResponse
 	var ops []deployedOperator
@@ -821,7 +834,8 @@ func TestEnrollDeployedOperatorsSurfacesL3SuspensionWithoutCountingItApproved(t 
 	}
 }
 
-func TestOperatorDeploy_HasNoMasterKeyFileFlag(t *testing.T) {
+func TestOperatorDeploy_HasNoMasterKeyFileFlag(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cmd := operatorDeployCmd()
 	assert.Nil(t, cmd.Flags().Lookup("master-key-file"), "deployed Operators seal under the target's OS keyring or ssh-agent")
 	args, err := operatorDeployStartArgs(cmd)
@@ -832,6 +846,7 @@ func TestOperatorDeploy_HasNoMasterKeyFileFlag(t *testing.T) {
 }
 
 func TestIsWindowsPath_WSLDetection(t *testing.T) {
+	t.Parallel()
 	windowsPaths := []string{
 		`C:\Users\admin`,
 		`c:\fleet`,
@@ -864,8 +879,10 @@ func TestIsWindowsPath_WSLDetection(t *testing.T) {
 	assert.Equal(t, "/home/user", toWindowsFilePath("/home/user"))
 }
 
-func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
-	t.Run("local only with dest-dir", func(t *testing.T) {
+func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("local only with dest-dir", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := operatorDeployCmd()
 		require.NoError(t, cmd.ParseFlags([]string{"--local", "--dest-dir", "/tmp/fleet"}))
 		hosts, workerEndpoint, err := validateOperatorDeployFlags(cmd, true, "", "/tmp/fleet", 1, 1, 1, false, "", false)
@@ -874,7 +891,8 @@ func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
 		assert.Empty(t, workerEndpoint)
 	})
 
-	t.Run("local with hosts without dest-dir fails", func(t *testing.T) {
+	t.Run("local with hosts without dest-dir fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := operatorDeployCmd()
 		require.NoError(t, cmd.ParseFlags([]string{"--local", "--hosts", "remote1"}))
 		_, _, err := validateOperatorDeployFlags(cmd, true, "remote1", "~", 1, 1, 1, false, "", false)
@@ -882,7 +900,8 @@ func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	})
 
-	t.Run("local with remote-dir alias succeeds", func(t *testing.T) {
+	t.Run("local with remote-dir alias succeeds", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := operatorDeployCmd()
 		require.NoError(t, cmd.ParseFlags([]string{"--local", "--remote-dir", "/tmp/fleet"}))
 		hosts, _, err := validateOperatorDeployFlags(cmd, true, "", "/tmp/fleet", 1, 1, 1, false, "", false)
@@ -890,7 +909,8 @@ func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
 		assert.Equal(t, "local", hosts)
 	})
 
-	t.Run("combine local and hosts", func(t *testing.T) {
+	t.Run("combine local and hosts", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := operatorDeployCmd()
 		require.NoError(t, cmd.ParseFlags([]string{"--local", "--hosts", "remote1,remote2", "--dest-dir", "/tmp/fleet"}))
 		hosts, _, err := validateOperatorDeployFlags(cmd, true, "remote1,remote2", "/tmp/fleet", 1, 1, 1, false, "", false)
@@ -898,7 +918,8 @@ func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
 		assert.Equal(t, "local,remote1,remote2", hosts)
 	})
 
-	t.Run("rejects duplicate targets", func(t *testing.T) {
+	t.Run("rejects duplicate targets", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := operatorDeployCmd()
 		require.NoError(t, cmd.ParseFlags([]string{"--local", "--hosts", "remote1,local", "--dest-dir", "/tmp/fleet"}))
 		_, _, err := validateOperatorDeployFlags(cmd, true, "remote1,local", "/tmp/fleet", 1, 1, 1, false, "", false)
@@ -906,7 +927,8 @@ func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	})
 
-	t.Run("localhost and 127.0.0.1 recognized as local targets", func(t *testing.T) {
+	t.Run("localhost and 127.0.0.1 recognized as local targets", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		assert.True(t, isLocalTarget("local"))
 		assert.True(t, isLocalTarget("localhost"))
 		assert.True(t, isLocalTarget("127.0.0.1"))
@@ -917,8 +939,10 @@ func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
 	})
 }
 
-func TestValidateOperatorDeployFlags_RemoteOperatorEndpoint(t *testing.T) {
-	t.Run("remote target background requires non-empty operator-endpoint", func(t *testing.T) {
+func TestValidateOperatorDeployFlags_RemoteOperatorEndpoint(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("remote target background requires non-empty operator-endpoint", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := operatorDeployCmd()
 		cmd.Flags().StringP("endpoint", "e", "", "")
 		require.NoError(t, cmd.ParseFlags([]string{"--hosts", "remote1", "--dest-dir", "/tmp/fleet", "--background", "--endpoint", "192.168.1.50"}))
@@ -928,7 +952,8 @@ func TestValidateOperatorDeployFlags_RemoteOperatorEndpoint(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrOperatorEndpointInvalid)
 	})
 
-	t.Run("remote target background rejects loopback operator-endpoint", func(t *testing.T) {
+	t.Run("remote target background rejects loopback operator-endpoint", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		for _, loopback := range []string{"localhost", "127.0.0.1", "127.0.0.2", "::1", "http://localhost:8080"} {
 			cmd := operatorDeployCmd()
 			cmd.Flags().StringP("endpoint", "e", "", "")
@@ -939,7 +964,8 @@ func TestValidateOperatorDeployFlags_RemoteOperatorEndpoint(t *testing.T) {
 		}
 	})
 
-	t.Run("remote target background accepts valid non-loopback endpoint", func(t *testing.T) {
+	t.Run("remote target background accepts valid non-loopback endpoint", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := operatorDeployCmd()
 		cmd.Flags().StringP("endpoint", "e", "", "")
 		require.NoError(t, cmd.ParseFlags([]string{"--hosts", "remote1", "--dest-dir", "/tmp/fleet", "--background", "--endpoint", "localhost", "--operator-endpoint", "192.168.1.50"}))
@@ -949,7 +975,8 @@ func TestValidateOperatorDeployFlags_RemoteOperatorEndpoint(t *testing.T) {
 		assert.Equal(t, "192.168.1.50", workerEndpoint)
 	})
 
-	t.Run("local-only target background permits loopback and defaults to endpoint", func(t *testing.T) {
+	t.Run("local-only target background permits loopback and defaults to endpoint", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := operatorDeployCmd()
 		cmd.Flags().StringP("endpoint", "e", "", "")
 		require.NoError(t, cmd.ParseFlags([]string{"--local", "--dest-dir", "/tmp/fleet", "--background", "--endpoint", "localhost"}))
@@ -960,8 +987,8 @@ func TestValidateOperatorDeployFlags_RemoteOperatorEndpoint(t *testing.T) {
 	})
 }
 
-func TestRemoteDeployClient_WSLUnavailable(t *testing.T) {
-	t.Run("upload binary wraps ErrWSLUnavailable when WSL fails", func(t *testing.T) {
+func TestRemoteDeployClient_WSLUnavailable(t *testing.T) { //nolint:paralleltest // changes the process working directory
+	t.Run("upload binary wraps ErrWSLUnavailable when WSL fails", func(t *testing.T) { //nolint:paralleltest // changes the process working directory
 		mock := &mockRemoteDeployClient{
 			host:     "wsl-host",
 			isWSL:    true,
@@ -972,7 +999,7 @@ func TestRemoteDeployClient_WSLUnavailable(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrWSLUnavailable)
 	})
 
-	t.Run("execute agent wraps ErrWSLUnavailable when WSL fails", func(t *testing.T) {
+	t.Run("execute agent wraps ErrWSLUnavailable when WSL fails", func(t *testing.T) { //nolint:paralleltest // changes the process working directory
 		mock := &mockRemoteDeployClient{
 			host:     "wsl-host",
 			isWSL:    true,
@@ -983,7 +1010,7 @@ func TestRemoteDeployClient_WSLUnavailable(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrWSLUnavailable)
 	})
 
-	t.Run("operator deploy command surfaces ErrWSLUnavailable on WSL bootstrap failure", func(t *testing.T) {
+	t.Run("operator deploy command surfaces ErrWSLUnavailable on WSL bootstrap failure", func(t *testing.T) { //nolint:paralleltest // changes the process working directory
 		root := deployTestRoot(t)
 		mock := &mockRemoteDeployClient{
 			host:     "wsl-host",

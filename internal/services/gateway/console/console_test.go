@@ -32,6 +32,7 @@ func serve(t *testing.T, path string) *httptest.ResponseRecorder {
 }
 
 func TestHandler_ServesStaticContent(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		path       string
@@ -59,6 +60,7 @@ func TestHandler_ServesStaticContent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			rr := serve(t, tt.path)
 
 			assert.Equal(t, tt.wantStatus, rr.Code)
@@ -71,6 +73,7 @@ func TestHandler_ServesStaticContent(t *testing.T) {
 }
 
 func TestHandler_SetsSecurityHeaders(t *testing.T) {
+	t.Parallel()
 	rr := serve(t, "/")
 
 	csp := rr.Header().Get("Content-Security-Policy")
@@ -87,6 +90,7 @@ func TestHandler_SetsSecurityHeaders(t *testing.T) {
 // partial embed: every asset index.html loads must be present and non-empty,
 // and hashed assets are served as immutable.
 func TestEmbeddedBuild_IndexReferencesEmbeddedAssets(t *testing.T) {
+	t.Parallel()
 	static, err := fs.Sub(staticFS, "static")
 	require.NoError(t, err)
 	index, err := fs.ReadFile(static, "index.html")

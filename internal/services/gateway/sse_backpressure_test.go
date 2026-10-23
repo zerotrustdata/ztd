@@ -22,6 +22,7 @@ import (
 // and the dropped count increases. This is the core back-pressure behavior for
 // SSE/WebSocket streams under burst conditions.
 func TestPubSubBackPressure_DropsOldestUnderBurst(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	broker := NewGatewayWebSocketHandler(logger)
@@ -70,6 +71,8 @@ done:
 // subscriber buffer is full. The drop-oldest policy must handle concurrent
 // trySend calls without blocking.
 func TestPubSubBackPressure_ConcurrentPublishersNoDeadlock(t *testing.T) {
+	t.Parallel()
+
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	broker := NewGatewayWebSocketHandler(logger)
 
@@ -108,6 +111,7 @@ func TestPubSubBackPressure_ConcurrentPublishersNoDeadlock(t *testing.T) {
 // correctly tracks the dropped count and evicts the oldest message first when
 // the buffer is full.
 func TestDropOldestBuf_DroppedCountAndEvictionOrder(t *testing.T) {
+	t.Parallel()
 	buf := newDropOldestBuf(2)
 
 	// Fill the buffer.
@@ -139,6 +143,8 @@ func TestDropOldestBuf_DroppedCountAndEvictionOrder(t *testing.T) {
 // TestDropOldestBuf_CloseTerminatesRecv verifies that Close closes the
 // underlying channel, causing recv() to return a closed channel.
 func TestDropOldestBuf_CloseTerminatesRecv(t *testing.T) {
+	t.Parallel()
+
 	buf := newDropOldestBuf(2)
 	buf.Close()
 
@@ -149,6 +155,8 @@ func TestDropOldestBuf_CloseTerminatesRecv(t *testing.T) {
 // TestDropOldestBuf_ConcurrentSendNoDeadlock verifies that concurrent send
 // calls do not deadlock under mutex contention.
 func TestDropOldestBuf_ConcurrentSendNoDeadlock(t *testing.T) {
+	t.Parallel()
+
 	buf := newDropOldestBuf(4)
 
 	const numGoroutines = 10

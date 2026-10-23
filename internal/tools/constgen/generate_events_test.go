@@ -16,6 +16,7 @@ import (
 )
 
 func TestTitleCase_UppercasesOnlyTheFirstByte(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		input string
@@ -29,12 +30,14 @@ func TestTitleCase_UppercasesOnlyTheFirstByte(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, titleCase(tt.input))
 		})
 	}
 }
 
 func TestGoStringSlice_RendersNilForEmptyAndQuotedLiteralOtherwise(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		values []string
@@ -48,12 +51,14 @@ func TestGoStringSlice_RendersNilForEmptyAndQuotedLiteralOtherwise(t *testing.T)
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, goStringSlice(tt.values))
 		})
 	}
 }
 
 func TestSortedMapKeys_ReturnsKeysInLexicalOrder(t *testing.T) {
+	t.Parallel()
 	got := sortedMapKeys(map[string]int{"b": 1, "c": 2, "a": 3})
 
 	assert.Equal(t, []string{"a", "b", "c"}, got)
@@ -61,12 +66,14 @@ func TestSortedMapKeys_ReturnsKeysInLexicalOrder(t *testing.T) {
 }
 
 func TestSortedEventKeys_ReturnsRegistryKeysInLexicalOrder(t *testing.T) {
+	t.Parallel()
 	got := sortedEventKeys(map[string]eventEntry{"Zeta": {}, "Alpha": {}, "Mid": {}})
 
 	assert.Equal(t, []string{"Alpha", "Mid", "Zeta"}, got)
 }
 
 func TestActionTypeGoConst_ResolvesByWireValueNotRegistryKey(t *testing.T) {
+	t.Parallel()
 	actionTypes := map[string]actionTypeMeta{
 		"KEY_A": {GoConst: "ActionA", Value: "A_WIRE"},
 		"KEY_B": {GoConst: "ActionB", Value: "B_WIRE"},
@@ -109,6 +116,7 @@ func eventsFixture() (registryFile, map[string]actionTypeMeta) {
 }
 
 func TestGenerateEventsGo_DeclaresOneTypedConstantPerEventSortedByRegistryKey(t *testing.T) {
+	t.Parallel()
 	reg, actionTypes := eventsFixture()
 
 	got, err := generateEventsGo(reg, map[string]string{}, actionTypes)
@@ -125,6 +133,7 @@ func TestGenerateEventsGo_DeclaresOneTypedConstantPerEventSortedByRegistryKey(t 
 }
 
 func TestGenerateEventsGo_RegistryEntryCarriesGovernanceTransportAndOutcomes(t *testing.T) {
+	t.Parallel()
 	reg, actionTypes := eventsFixture()
 
 	got, err := generateEventsGo(reg, map[string]string{}, actionTypes)
@@ -143,6 +152,7 @@ func TestGenerateEventsGo_RegistryEntryCarriesGovernanceTransportAndOutcomes(t *
 }
 
 func TestGenerateEventsGo_UngovernedReservedEntryOmitsGovernanceAndNilsTransport(t *testing.T) {
+	t.Parallel()
 	reg, actionTypes := eventsFixture()
 
 	got, err := generateEventsGo(reg, map[string]string{}, actionTypes)
@@ -157,6 +167,7 @@ func TestGenerateEventsGo_UngovernedReservedEntryOmitsGovernanceAndNilsTransport
 }
 
 func TestGenerateEventsGo_AppendsOperatorHierarchyAfterRegistry(t *testing.T) {
+	t.Parallel()
 	reg, actionTypes := eventsFixture()
 	hierarchy := map[string]string{"EventOperatorCommandRequested": "Command.Requested"}
 
@@ -172,6 +183,7 @@ func TestGenerateEventsGo_AppendsOperatorHierarchyAfterRegistry(t *testing.T) {
 }
 
 func TestGenerateEventsGo_FailsNamingTheEventWhoseActionTypeIsUnknown(t *testing.T) {
+	t.Parallel()
 	reg, _ := eventsFixture()
 
 	_, err := generateEventsGo(reg, map[string]string{}, map[string]actionTypeMeta{})
@@ -182,6 +194,7 @@ func TestGenerateEventsGo_FailsNamingTheEventWhoseActionTypeIsUnknown(t *testing
 }
 
 func TestGenerateEventsGo_IsDeterministicAcrossMapIterationOrder(t *testing.T) {
+	t.Parallel()
 	reg, actionTypes := eventsFixture()
 	hierarchy := map[string]string{
 		"EventOperatorCommandRequested": "Command.Requested",
@@ -199,6 +212,7 @@ func TestGenerateEventsGo_IsDeterministicAcrossMapIterationOrder(t *testing.T) {
 }
 
 func TestGenerateOperatorHierarchy_NestsStructsByPathAndKeepsLeavesAsEventTypes(t *testing.T) {
+	t.Parallel()
 	hierarchy := map[string]string{
 		"EventOperatorCommandRequested": "Command.Requested",
 		"EventOperatorCommandCompleted": "Command.Completed",
@@ -230,6 +244,7 @@ func TestGenerateOperatorHierarchy_NestsStructsByPathAndKeepsLeavesAsEventTypes(
 }
 
 func TestGenerateOperatorHierarchy_SupportsMoreThanTwoLevelsOfNesting(t *testing.T) {
+	t.Parallel()
 	hierarchy := map[string]string{
 		"EventOperatorAuditUserRecordRequested": "Audit.User.Record.Requested",
 		"EventOperatorAuditUserRecordCreated":   "Audit.User.Record.Created",

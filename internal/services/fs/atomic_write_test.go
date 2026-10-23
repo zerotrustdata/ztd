@@ -19,7 +19,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestWriteFile_LargeDataPreservesContent(t *testing.T) {
+func TestWriteFile_LargeDataPreservesContent(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -34,7 +35,8 @@ func TestWriteFile_LargeDataPreservesContent(t *testing.T) {
 	assert.True(t, bytes.Equal(data, got))
 }
 
-func TestWriteFile_EmptyDataCreatesZeroLengthFile(t *testing.T) {
+func TestWriteFile_EmptyDataCreatesZeroLengthFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -45,7 +47,8 @@ func TestWriteFile_EmptyDataCreatesZeroLengthFile(t *testing.T) {
 	assert.Equal(t, int64(0), info.Size())
 }
 
-func TestWriteFile_ConcurrentWritesToSamePath(t *testing.T) {
+func TestWriteFile_ConcurrentWritesToSamePath(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -70,7 +73,8 @@ func TestWriteFile_ConcurrentWritesToSamePath(t *testing.T) {
 		"file should contain one of the two written contents")
 }
 
-func TestWriteFile_NestedDeepPath(t *testing.T) {
+func TestWriteFile_NestedDeepPath(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -82,7 +86,8 @@ func TestWriteFile_NestedDeepPath(t *testing.T) {
 	assert.Equal(t, []byte("deep"), got)
 }
 
-func TestReadFile_SucceedsWhileWriteFileReplacesTheSameRecord(t *testing.T) {
+func TestReadFile_SucceedsWhileWriteFileReplacesTheSameRecord(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 

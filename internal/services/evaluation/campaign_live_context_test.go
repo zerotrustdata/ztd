@@ -20,6 +20,7 @@ import (
 )
 
 func TestCampaignLiveContext_V6StillRequiresCompletedQueryEvidence(t *testing.T) {
+	t.Parallel()
 	call := AgentToolCall{
 		ToolName: agentToolInvestigationCtx,
 		Receipt:  &AgentTraceReceipt{ActionReceipt: &operatorv1.ActionReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}},
@@ -31,6 +32,7 @@ func TestCampaignLiveContext_V6StillRequiresCompletedQueryEvidence(t *testing.T)
 // assignment draws a new identity, a persistent investigation keeps its declared
 // ID across Data Operator session rotation, and a different Data Operator fails.
 func TestCampaignInvestigationIdentity_FreshAssignmentsAndPersistentSessionRotation(t *testing.T) {
+	t.Parallel()
 	issued := 0
 	executor := &CampaignAgentExecutor{newID: func(prefix string) string {
 		issued++

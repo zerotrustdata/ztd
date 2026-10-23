@@ -101,6 +101,8 @@ func newInferenceDispatchService(t *testing.T, signerStore ReceiptSignerResolver
 // --- verifyInferenceCompletion table-driven tests ---
 
 func TestVerifyInferenceCompletion(t *testing.T) {
+	t.Parallel()
+
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -143,6 +145,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	}
 
 	t.Run("success returns verified receipt and result", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
 		receipt := completedReceipt(t, result)
@@ -162,6 +166,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("malformed payload fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		resultEnv := &commonv1.GovernanceEnvelope{Id: txID, Payload: []byte{0xff, 0xff, 0xff, 0xff}}
 
@@ -171,6 +177,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("missing receipt fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		resultEnv := resultEnvelopeFor(t, &operatorv1.InferenceCompletion{Result: inferenceTestResult(t)})
 
@@ -180,6 +188,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("receipt transaction identity mismatch fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
 		receipt := completedReceipt(t, result)
@@ -193,6 +203,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("nil signer store fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, nil)
 		result := inferenceTestResult(t)
 		receipt := completedReceipt(t, result)
@@ -204,6 +216,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("unknown signer key id fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
 		receipt := completedReceipt(t, result)
@@ -217,6 +231,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("signer store error fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{err: constants.ErrTrustedSignerKeyNotFound})
 		result := inferenceTestResult(t)
 		receipt := completedReceipt(t, result)
@@ -228,6 +244,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("receipt signature from wrong key fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		_, otherPriv, err := ed25519.GenerateKey(nil)
 		require.NoError(t, err)
@@ -242,6 +260,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("missing persistence attestation fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
 		receipt := completedReceipt(t, result)
@@ -254,6 +274,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("failed receipt terminates as typed failure", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		receipt := &operatorv1.ActionReceipt{
 			TransactionId:    txID,
@@ -275,6 +297,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("completed receipt without result fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		receipt := &operatorv1.ActionReceipt{
 			TransactionId:    txID,
@@ -292,6 +316,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("result part substitution after digest fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
 		receipt := completedReceipt(t, result)
@@ -306,6 +332,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 	})
 
 	t.Run("receipt summary substitution fails closed", func(t *testing.T) {
+		t.Parallel()
+
 		svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 		result := inferenceTestResult(t)
 		receipt := completedReceipt(t, result)
@@ -325,6 +353,8 @@ func TestVerifyInferenceCompletion(t *testing.T) {
 // governance rejections, client faults, and provider failures without
 // string-matching the receipt summary.
 func TestVerifyInferenceCompletion_FailureCodeMapping(t *testing.T) {
+	t.Parallel()
+
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	keyID := "actuator-key-1"
@@ -377,6 +407,8 @@ func TestVerifyInferenceCompletion_FailureCodeMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			svc := newInferenceDispatchService(t, &stubSignerStore{keys: map[string]ed25519.PublicKey{keyID: pub}})
 			receipt := failedReceiptWithCode(t, tt.code)
 			payload, err := proto.Marshal(&operatorv1.InferenceCompletion{Receipt: receipt})

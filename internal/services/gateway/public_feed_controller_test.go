@@ -44,6 +44,8 @@ func testPublicFeedProjectionBytes(t *testing.T) []byte {
 }
 
 func TestPublicFeedControllerHandlePublicFeedBatches_RejectsWhenSpectatorUnavailable(t *testing.T) {
+	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	controller := newPublicFeedController(PublicFeedControllerDeps{
 		Logger:    logger,
@@ -59,6 +61,8 @@ func TestPublicFeedControllerHandlePublicFeedBatches_RejectsWhenSpectatorUnavail
 }
 
 func TestPublicFeedControllerHandlePublicFeedBatches_RejectsNonPost(t *testing.T) {
+	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	controller := newPublicFeedController(PublicFeedControllerDeps{
 		Logger:    logger,

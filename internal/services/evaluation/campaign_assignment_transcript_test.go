@@ -18,6 +18,7 @@ import (
 )
 
 func TestAssignmentPublicationIncludesPersistedAgentTranscript(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
@@ -69,6 +70,7 @@ func TestAssignmentPublicationIncludesPersistedAgentTranscript(t *testing.T) {
 }
 
 func TestPublicAssignmentTranscriptFailsClosed(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, response string
 		tamper         bool
@@ -77,6 +79,7 @@ func TestPublicAssignmentTranscriptFailsClosed(t *testing.T) {
 		{name: "tampered", response: "captured response", tamper: true, want: constants.ErrChecksumMismatch},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			store := NewStore(newCampaignRuntimeFileService(t))
 			assignment := &evalv1.EvaluationAssignment{RunId: "run-transcript", AssignmentId: "assignment-transcript"}
@@ -100,6 +103,7 @@ func TestPublicAssignmentTranscriptFailsClosed(t *testing.T) {
 // A transcript past the transcript or record bounds is omitted from the feed
 // record, which still publishes; the agent trace proof artifact carries it.
 func TestAssignmentPublicationOmitsOversizedTranscript(t *testing.T) {
+	t.Parallel()
 	manyCalls := make([]AgentToolCall, 129)
 	for i := range manyCalls {
 		manyCalls[i] = AgentToolCall{ToolName: "inspect", ArgumentsJSON: `{}`, ResultJSON: `{}`, Success: true, LoopTurn: 1}
@@ -114,6 +118,7 @@ func TestAssignmentPublicationOmitsOversizedTranscript(t *testing.T) {
 		{name: "record over bound", response: strings.Repeat("a", 255*1024)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			files := newCampaignRuntimeFileService(t)
 			store := NewStore(files)
@@ -146,6 +151,7 @@ func TestAssignmentPublicationOmitsOversizedTranscript(t *testing.T) {
 }
 
 func TestPublicAssignmentTranscriptPublishesModelAndToolTextVerbatim(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(newCampaignRuntimeFileService(t))
 	assignment := &evalv1.EvaluationAssignment{RunId: "run-transcript", AssignmentId: "assignment-transcript"}
@@ -166,6 +172,7 @@ func TestPublicAssignmentTranscriptPublishesModelAndToolTextVerbatim(t *testing.
 }
 
 func TestPublicAssignmentTranscriptDistinguishesMissingSourceFromMissingReferencedEvidence(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	store := NewStore(newCampaignRuntimeFileService(t))
 	assignment := &evalv1.EvaluationAssignment{RunId: "run-transcript", AssignmentId: "assignment-transcript"}

@@ -61,6 +61,7 @@ func runVerifyAgentTrace(t *testing.T, body []byte) (string, error) {
 }
 
 func TestPublicVerifyAgentTraceCmd_VerifiesPublishedTrace(t *testing.T) {
+	t.Parallel()
 	body := sealedBracketOnlyTrace(t)
 
 	out, err := runVerifyAgentTrace(t, body)
@@ -70,6 +71,7 @@ func TestPublicVerifyAgentTraceCmd_VerifiesPublishedTrace(t *testing.T) {
 }
 
 func TestPublicVerifyAgentTraceCmd_RejectsEditedTrace(t *testing.T) {
+	t.Parallel()
 	body := []byte(strings.Replace(string(sealedBracketOnlyTrace(t)), "Diagnose the outage.", "Diagnose the outages", 1))
 
 	_, err := runVerifyAgentTrace(t, body)

@@ -17,6 +17,8 @@ import (
 )
 
 func TestValidateWitnessDispatch(t *testing.T) {
+	t.Parallel()
+
 	command, err := proto.Marshal(&operatorv1.CommandRequested{Command: "ollama stop qwen3:0.6b", ExecutionId: "exec-1"})
 	require.NoError(t, err)
 	shellTool, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: `{"command":"pwd"}`, ExecutionId: "exec-2"})
@@ -56,6 +58,8 @@ func TestValidateWitnessDispatch(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			for _, generic := range []struct {
 				action  constants.ActionType
 				payload []byte

@@ -98,6 +98,7 @@ func validGenerationNode(producedAt, verifiedAt time.Time) evidence.EvidenceNode
 }
 
 func TestGenerateComplianceAnalysis_OrchestratesVerifiedEvidenceThroughCanonicalAnalysis(t *testing.T) {
+	t.Parallel()
 	windowStart := time.Unix(1_700_000_000, 0).UTC()
 	windowEnd := windowStart.Add(time.Hour)
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
@@ -136,6 +137,7 @@ func TestGenerateComplianceAnalysis_OrchestratesVerifiedEvidenceThroughCanonical
 }
 
 func TestGenerateSignedComplianceBundle_PublicProfileRejectsRestrictedSourceAdmission(t *testing.T) {
+	t.Parallel()
 	windowStart := time.Unix(1_700_000_000, 0).UTC()
 	windowEnd := windowStart.Add(time.Hour)
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
@@ -160,6 +162,7 @@ func TestGenerateSignedComplianceBundle_PublicProfileRejectsRestrictedSourceAdmi
 }
 
 func TestGenerateComplianceAnalysis_ProjectsExplicitUnavailableAssessmentContext(t *testing.T) {
+	t.Parallel()
 	windowStart := time.Unix(1_700_000_000, 0).UTC()
 	windowEnd := windowStart.Add(time.Hour)
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
@@ -193,6 +196,7 @@ func TestGenerateComplianceAnalysis_ProjectsExplicitUnavailableAssessmentContext
 }
 
 func TestGenerateComplianceAnalysis_UsesProtectedPopulationForCoverageAndDiagnostics(t *testing.T) {
+	t.Parallel()
 	windowStart := time.Unix(1_700_000_000, 0).UTC()
 	windowEnd := windowStart.Add(time.Hour)
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
@@ -230,6 +234,7 @@ func TestGenerateComplianceAnalysis_UsesProtectedPopulationForCoverageAndDiagnos
 }
 
 func TestGenerateComplianceAnalysis_RejectsMissingImporters(t *testing.T) {
+	t.Parallel()
 	windowStart := time.Unix(1_700_000_000, 0).UTC()
 	windowEnd := windowStart.Add(time.Hour)
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
@@ -248,6 +253,7 @@ func TestGenerateComplianceAnalysis_RejectsMissingImporters(t *testing.T) {
 }
 
 func TestGenerateComplianceAnalysis_RejectsEvidenceFromAnotherScope(t *testing.T) {
+	t.Parallel()
 	windowStart := time.Unix(1_700_000_000, 0).UTC()
 	windowEnd := windowStart.Add(time.Hour)
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
@@ -270,6 +276,7 @@ func TestGenerateComplianceAnalysis_RejectsEvidenceFromAnotherScope(t *testing.T
 }
 
 func TestGenerateComplianceAnalysis_RejectsImporterWithConflictingSourceAdmission(t *testing.T) {
+	t.Parallel()
 	windowStart := time.Unix(1_700_000_000, 0).UTC()
 	windowEnd := windowStart.Add(time.Hour)
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
@@ -294,6 +301,7 @@ func TestGenerateComplianceAnalysis_RejectsImporterWithConflictingSourceAdmissio
 }
 
 func TestGenerateComplianceAnalysis_RejectsImporterFailureBeforeGrading(t *testing.T) {
+	t.Parallel()
 	windowStart := time.Unix(1_700_000_000, 0).UTC()
 	windowEnd := windowStart.Add(time.Hour)
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
@@ -319,6 +327,7 @@ func TestGenerateComplianceAnalysis_RejectsImporterFailureBeforeGrading(t *testi
 }
 
 func TestAssessmentDiagnosticsCanonicalRoundTripAndMalformedInputs(t *testing.T) {
+	t.Parallel()
 	diagnostics := []*compliancev1.AssessmentDiagnostic{{
 		Code: "campaign_population_incomplete", Severity: "warning", SourceAdmissionId: "source-1",
 		Subject: &compliancev1.AssessmentSubjectSelection{RunId: "run-1"}, Message: "selected campaign population is incomplete",
@@ -339,6 +348,7 @@ func TestAssessmentDiagnosticsCanonicalRoundTripAndMalformedInputs(t *testing.T)
 		{name: "noncanonical diagnostic", body: []byte(`[ {"code":"campaign_population_incomplete","severity":"warning","source_admission_id":"source-1","subject":{"run_id":"run-1"},"message":"selected campaign population is incomplete"} ]`)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, decodeErr := UnmarshalAssessmentDiagnostics(tc.body)
 			assert.ErrorIs(t, decodeErr, constants.ErrEvidenceArtifactMalformed)
 		})

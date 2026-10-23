@@ -20,7 +20,11 @@ import (
 )
 
 func TestUTCRFC3339(t *testing.T) {
+	t.Parallel()
+
 	t.Run("converts to UTC", func(t *testing.T) {
+		t.Parallel()
+
 		loc, _ := time.LoadLocation("America/New_York")
 		ts := time.Date(2026, 1, 15, 10, 30, 0, 0, loc)
 		result := utcRFC3339(ts)
@@ -28,6 +32,8 @@ func TestUTCRFC3339(t *testing.T) {
 	})
 
 	t.Run("already UTC stays UTC", func(t *testing.T) {
+		t.Parallel()
+
 		ts := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 		result := utcRFC3339(ts)
 		assert.Equal(t, "2026-06-01T12:00:00Z", result)
@@ -35,11 +41,17 @@ func TestUTCRFC3339(t *testing.T) {
 }
 
 func TestOptionalTime(t *testing.T) {
+	t.Parallel()
+
 	t.Run("nil returns empty string", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Empty(t, optionalTime(nil))
 	})
 
 	t.Run("non-nil returns RFC3339", func(t *testing.T) {
+		t.Parallel()
+
 		ts := time.Date(2026, 3, 10, 8, 45, 0, 0, time.UTC)
 		result := optionalTime(&ts)
 		assert.Equal(t, "2026-03-10T08:45:00Z", result)
@@ -47,6 +59,8 @@ func TestOptionalTime(t *testing.T) {
 }
 
 func TestIntStr(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		input    int
 		expected string
@@ -58,13 +72,19 @@ func TestIntStr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.expected, intStr(tt.input))
 		})
 	}
 }
 
 func TestWriteCSV(t *testing.T) {
+	t.Parallel()
+
 	t.Run("writes header and rows", func(t *testing.T) {
+		t.Parallel()
+
 		dir := testutil.TempDir(t)
 		path := filepath.Join(dir, "test.csv")
 
@@ -92,6 +112,8 @@ func TestWriteCSV(t *testing.T) {
 	})
 
 	t.Run("writes only header when rows is empty", func(t *testing.T) {
+		t.Parallel()
+
 		dir := testutil.TempDir(t)
 		path := filepath.Join(dir, "empty.csv")
 
@@ -111,6 +133,8 @@ func TestWriteCSV(t *testing.T) {
 	})
 
 	t.Run("returns error on invalid path", func(t *testing.T) {
+		t.Parallel()
+
 		dir := testutil.TempDir(t)
 		blocker := filepath.Join(dir, "blocker")
 		require.NoError(t, os.WriteFile(blocker, []byte("x"), 0644))
@@ -121,6 +145,8 @@ func TestWriteCSV(t *testing.T) {
 }
 
 func TestRecordTypeForFile(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		input    string
 		expected string
@@ -132,6 +158,8 @@ func TestRecordTypeForFile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
+			t.Parallel()
+
 			assert.Equal(t, tt.expected, recordTypeForFile(tt.input))
 		})
 	}

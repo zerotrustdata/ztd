@@ -87,10 +87,12 @@ func scopeWithUnavailableContext() *compliancev1.AssessmentScope {
 }
 
 func TestValidateAssessmentScopeAcceptsExplicitUnavailableContext(t *testing.T) {
+	t.Parallel()
 	require.NoError(t, catalog.ValidateAssessmentScope(scopeWithUnavailableContext()))
 }
 
 func TestValidateAssessmentScopeRejectsInvalidUnavailableContext(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.AssessmentScope)
@@ -108,6 +110,7 @@ func TestValidateAssessmentScopeRejectsInvalidUnavailableContext(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			scope := scopeWithUnavailableContext()
 			tt.mutate(scope)
 			err := catalog.ValidateAssessmentScope(scope)
@@ -118,6 +121,7 @@ func TestValidateAssessmentScopeRejectsInvalidUnavailableContext(t *testing.T) {
 }
 
 func TestValidateAssessmentScopeRejectsMalformedAndDuplicateBindings(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.AssessmentScope)
@@ -140,6 +144,7 @@ func TestValidateAssessmentScopeRejectsMalformedAndDuplicateBindings(t *testing.
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			candidate := validScope()
 			tt.mutate(candidate)
 			err := catalog.ValidateAssessmentScope(candidate)
@@ -150,6 +155,7 @@ func TestValidateAssessmentScopeRejectsMalformedAndDuplicateBindings(t *testing.
 }
 
 func TestValidateAssessmentScopeRequiresCampaignWitnessPolicies(t *testing.T) {
+	t.Parallel()
 	scope := validScope()
 	admission := scope.SourceAdmissions[0]
 	admission.SourceKind = constants.EvaluationSourceKindCampaign
@@ -169,6 +175,7 @@ func TestValidateAssessmentScopeRequiresCampaignWitnessPolicies(t *testing.T) {
 }
 
 func TestValidateAssertionAssessmentEnforcesReferencesStatusAndFreshness(t *testing.T) {
+	t.Parallel()
 	valid := func() *compliancev1.ControlAssertionAssessment {
 		return &compliancev1.ControlAssertionAssessment{
 			AssessmentId:    "assessment-1",
@@ -201,6 +208,7 @@ func TestValidateAssertionAssessmentEnforcesReferencesStatusAndFreshness(t *test
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			candidate := valid()
 			tt.mutate(candidate)
 			err := catalog.ValidateAssertionAssessment(candidate, "scope-1", validAssertionCatalog())
@@ -211,6 +219,7 @@ func TestValidateAssertionAssessmentEnforcesReferencesStatusAndFreshness(t *test
 }
 
 func TestValidateAssertionAssessmentAcceptsEveryStatus(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		status    string
@@ -227,6 +236,7 @@ func TestValidateAssertionAssessmentAcceptsEveryStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assessment := &compliancev1.ControlAssertionAssessment{
 				AssessmentId:    "assessment-1",
 				ScopeId:         "scope-1",
@@ -245,8 +255,10 @@ func TestValidateAssertionAssessmentAcceptsEveryStatus(t *testing.T) {
 }
 
 func TestValidateAssertionAssessmentEnforcesOrderedMinimumEvidenceLevels(t *testing.T) {
+	t.Parallel()
 	for _, level := range []string{"L0", "L1", "L2", "L3", "L4", "L5"} {
 		t.Run(level, func(t *testing.T) {
+			t.Parallel()
 			assessment := &compliancev1.ControlAssertionAssessment{
 				AssessmentId:    "assessment-1",
 				ScopeId:         "scope-1",
@@ -270,6 +282,7 @@ func TestValidateAssertionAssessmentEnforcesOrderedMinimumEvidenceLevels(t *test
 }
 
 func TestValidateControlAssessmentRejectsUnresolvedMappingsAndUnsupportedFrameworks(t *testing.T) {
+	t.Parallel()
 	frameworks := &compliancev1.FrameworkCatalog{CatalogId: "frameworks", CatalogVersion: "1.0.0", Sha256: validSHA256, Frameworks: []*compliancev1.FrameworkDefinition{validFramework()}}
 	crosswalks := validCrosswalk()
 	valid := func() *compliancev1.FrameworkControlAssessment {
@@ -303,6 +316,7 @@ func TestValidateControlAssessmentRejectsUnresolvedMappingsAndUnsupportedFramewo
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			candidate := valid()
 			tt.mutate(candidate)
 			err := catalog.ValidateControlAssessment(candidate, "scope-1", frameworks, crosswalks)
@@ -313,11 +327,13 @@ func TestValidateControlAssessmentRejectsUnresolvedMappingsAndUnsupportedFramewo
 }
 
 func TestValidateControlAssessmentAcceptsEveryStatusAndResponsibility(t *testing.T) {
+	t.Parallel()
 	statuses := []string{"satisfied", "not_satisfied", "not_applicable", "unverifiable", "customer_attestation_required"}
 	responsibilities := []string{"platform", "customer", "shared", "inherited", "assessor"}
 	for _, responsibility := range responsibilities {
 		for _, status := range statuses {
 			t.Run(responsibility+" "+status, func(t *testing.T) {
+				t.Parallel()
 				framework := validFramework()
 				framework.Controls[0].Responsibility = responsibility
 				frameworks := &compliancev1.FrameworkCatalog{CatalogId: "frameworks", CatalogVersion: "1.0.0", Sha256: validSHA256, Frameworks: []*compliancev1.FrameworkDefinition{framework}}
@@ -344,6 +360,7 @@ func TestValidateControlAssessmentAcceptsEveryStatusAndResponsibility(t *testing
 }
 
 func TestValidateControlAssessmentRejectsSatisfiedCustomerControlWithoutAttestation(t *testing.T) {
+	t.Parallel()
 	framework := validFramework()
 	framework.Controls[0].Responsibility = "customer"
 	frameworks := &compliancev1.FrameworkCatalog{CatalogId: "frameworks", CatalogVersion: "1.0.0", Sha256: validSHA256, Frameworks: []*compliancev1.FrameworkDefinition{framework}}
@@ -367,6 +384,7 @@ func TestValidateControlAssessmentRejectsSatisfiedCustomerControlWithoutAttestat
 }
 
 func TestValidateReportManifestRejectsInvalidReferences(t *testing.T) {
+	t.Parallel()
 	frameworks := &compliancev1.FrameworkCatalog{CatalogId: "frameworks", CatalogVersion: "1.0.0", Sha256: validSHA256, Frameworks: []*compliancev1.FrameworkDefinition{validFramework()}}
 	valid := func() *compliancev1.ComplianceReportManifest {
 		return &compliancev1.ComplianceReportManifest{
@@ -408,6 +426,7 @@ func TestValidateReportManifestRejectsInvalidReferences(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			candidate := valid()
 			tt.mutate(candidate)
 			err := catalog.ValidateReportManifest(candidate, frameworks)
@@ -418,6 +437,7 @@ func TestValidateReportManifestRejectsInvalidReferences(t *testing.T) {
 }
 
 func TestValidateReportSignatureEnforcesRequiredFieldsAlgorithmAndDigest(t *testing.T) {
+	t.Parallel()
 	valid := func() *compliancev1.ReportSignature {
 		return &compliancev1.ReportSignature{KeyId: "key-1", Algorithm: "ed25519", SignedSha256: validSHA256, Signature: "signature"}
 	}
@@ -439,6 +459,7 @@ func TestValidateReportSignatureEnforcesRequiredFieldsAlgorithmAndDigest(t *test
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := catalog.ValidateReportSignature(tt.mutate(valid()))
 			require.Error(t, err)
 			assert.ErrorIs(t, err, constants.ErrReportSignatureFailed)
@@ -448,6 +469,7 @@ func TestValidateReportSignatureEnforcesRequiredFieldsAlgorithmAndDigest(t *test
 }
 
 func TestValidateVerificationReportEnforcesIntegrityResultConsistency(t *testing.T) {
+	t.Parallel()
 	valid := func() *compliancev1.ComplianceVerificationReport {
 		return &compliancev1.ComplianceVerificationReport{ReportId: "report-1", Valid: true, VerifiedAt: timestamppb.Now(), VerifierId: constants.ComplianceBundleVerifierID, VerifierVersion: constants.ComplianceBundleVerifierVersion, ReproducedChecksumRoot: validSHA256}
 	}
@@ -492,6 +514,7 @@ func TestValidateVerificationReportEnforcesIntegrityResultConsistency(t *testing
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := catalog.ValidateVerificationReport(tt.mutate(valid()))
 			require.Error(t, err)
 			assert.ErrorIs(t, err, tt.want)
@@ -505,6 +528,7 @@ func TestValidateVerificationReportEnforcesIntegrityResultConsistency(t *testing
 }
 
 func TestValidateVerificationReportEnforcesTypedCheckConsistency(t *testing.T) {
+	t.Parallel()
 	valid := func() *compliancev1.ComplianceVerificationReport {
 		return &compliancev1.ComplianceVerificationReport{
 			ReportId:               "report-1",
@@ -560,6 +584,7 @@ func TestValidateVerificationReportEnforcesTypedCheckConsistency(t *testing.T) {
 	require.NoError(t, catalog.ValidateVerificationReport(valid()))
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			report := valid()
 			test.mutate(report)
 

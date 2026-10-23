@@ -200,6 +200,8 @@ func (m *mockLogger) Warn(msg string, args ...interface{}) {
 
 // TestNewHistoryHandler verifies constructor behavior. The ledger is required.
 func TestNewHistoryHandler(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		auditStore auditStoreInterface
@@ -215,6 +217,8 @@ func TestNewHistoryHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			dir := testutil.OperatorDir(t)
 			hh, err := NewHistoryHandler(tt.auditStore, tt.ledger, tt.logger, newTestFileSvc(t, dir), dir)
 
@@ -234,6 +238,7 @@ func TestNewHistoryHandler(t *testing.T) {
 
 // TestHandleFetchHistory_InvalidProtobuf verifies protobuf unmarshaling error handling
 func TestHandleFetchHistory_InvalidProtobuf(t *testing.T) {
+	t.Parallel()
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	invalidJSON := []byte("not a valid protobuf")
@@ -247,6 +252,7 @@ func TestHandleFetchHistory_InvalidProtobuf(t *testing.T) {
 
 // TestHandleFetchHistory_MissingSessionID verifies session ID validation
 func TestHandleFetchHistory_MissingSessionID(t *testing.T) {
+	t.Parallel()
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchHistoryRequested{
@@ -266,6 +272,7 @@ func TestHandleFetchHistory_MissingSessionID(t *testing.T) {
 
 // TestHandleFetchHistory_DefaultLimit verifies default limit is applied when limit <= 0
 func TestHandleFetchHistory_DefaultLimit(t *testing.T) {
+	t.Parallel()
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID, Title: "Test Session"}, nil
@@ -294,6 +301,7 @@ func TestHandleFetchHistory_DefaultLimit(t *testing.T) {
 
 // TestHandleFetchHistory_GetSessionError verifies error handling when session lookup fails
 func TestHandleFetchHistory_GetSessionError(t *testing.T) {
+	t.Parallel()
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return nil, errors.New("database connection failed")
@@ -318,6 +326,7 @@ func TestHandleFetchHistory_GetSessionError(t *testing.T) {
 
 // TestHandleFetchHistory_GetEventsError verifies error handling when event lookup fails
 func TestHandleFetchHistory_GetEventsError(t *testing.T) {
+	t.Parallel()
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID}, nil
@@ -345,6 +354,7 @@ func TestHandleFetchHistory_GetEventsError(t *testing.T) {
 
 // TestHandleFetchHistory_Success verifies successful history fetch with session and events
 func TestHandleFetchHistory_Success(t *testing.T) {
+	t.Parallel()
 	exitCode := 0
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
@@ -397,6 +407,7 @@ func TestHandleFetchHistory_Success(t *testing.T) {
 
 // TestHandleFetchHistory_NilExitCode verifies handling of nil exit code
 func TestHandleFetchHistory_NilExitCode(t *testing.T) {
+	t.Parallel()
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID}, nil
@@ -433,6 +444,7 @@ func TestHandleFetchHistory_NilExitCode(t *testing.T) {
 
 // TestHandleFetchHistory_WithFileMutations verifies file mutation inclusion for file edit events
 func TestHandleFetchHistory_WithFileMutations(t *testing.T) {
+	t.Parallel()
 	exitCode := 0
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
@@ -485,6 +497,7 @@ func TestHandleFetchHistory_WithFileMutations(t *testing.T) {
 
 // TestHandleFetchHistory_FileMutationError verifies graceful handling of file mutation lookup errors
 func TestHandleFetchHistory_FileMutationError(t *testing.T) {
+	t.Parallel()
 	exitCode := 0
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
@@ -527,6 +540,7 @@ func TestHandleFetchHistory_FileMutationError(t *testing.T) {
 
 // TestHandleFetchHistory_NonFileEditEvent verifies mutations are not fetched for non-file-edit events
 func TestHandleFetchHistory_NonFileEditEvent(t *testing.T) {
+	t.Parallel()
 	exitCode := 0
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
@@ -568,6 +582,7 @@ func TestHandleFetchHistory_NonFileEditEvent(t *testing.T) {
 
 // TestHandleFetchFileHistory_InvalidProtobuf verifies protobuf unmarshaling error handling
 func TestHandleFetchFileHistory_InvalidProtobuf(t *testing.T) {
+	t.Parallel()
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	invalidJSON := []byte("not a valid protobuf")
@@ -581,6 +596,7 @@ func TestHandleFetchFileHistory_InvalidProtobuf(t *testing.T) {
 
 // TestHandleFetchFileHistory_MissingFilePath verifies file path validation
 func TestHandleFetchFileHistory_MissingFilePath(t *testing.T) {
+	t.Parallel()
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.FetchFileHistoryRequested{
@@ -600,6 +616,7 @@ func TestHandleFetchFileHistory_MissingFilePath(t *testing.T) {
 
 // TestHandleFetchFileHistory_DefaultLimit verifies default limit is applied when limit <= 0
 func TestHandleFetchFileHistory_DefaultLimit(t *testing.T) {
+	t.Parallel()
 	mockLedger := &mockLedger{
 		getFileHistoryFunc: func(filePath string, limit int, sessionID string) ([]FileHistoryEntry, error) {
 			assert.Equal(t, 50, limit, "should use default limit of 50")
@@ -624,6 +641,7 @@ func TestHandleFetchFileHistory_DefaultLimit(t *testing.T) {
 
 // TestHandleFetchFileHistory_GetHistoryError verifies error handling when ledger lookup fails
 func TestHandleFetchFileHistory_GetHistoryError(t *testing.T) {
+	t.Parallel()
 	mockLedger := &mockLedger{
 		getFileHistoryFunc: func(filePath string, limit int, sessionID string) ([]FileHistoryEntry, error) {
 			return nil, errors.New("git operation failed")
@@ -648,6 +666,7 @@ func TestHandleFetchFileHistory_GetHistoryError(t *testing.T) {
 
 // TestHandleFetchFileHistory_Success verifies successful file history fetch
 func TestHandleFetchFileHistory_Success(t *testing.T) {
+	t.Parallel()
 	mockLedger := &mockLedger{
 		getFileHistoryFunc: func(filePath string, limit int, sessionID string) ([]FileHistoryEntry, error) {
 			return []FileHistoryEntry{
@@ -691,6 +710,8 @@ const testRestoreSessionID = "test-session"
 
 // TestHandleRestoreFile_InvalidProtobuf verifies protobuf unmarshaling error handling
 func TestHandleRestoreFile_InvalidProtobuf(t *testing.T) {
+	t.Parallel()
+
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	invalidJSON := []byte("not a valid protobuf")
@@ -704,6 +725,8 @@ func TestHandleRestoreFile_InvalidProtobuf(t *testing.T) {
 
 // TestHandleRestoreFile_MissingFilePath verifies file path validation
 func TestHandleRestoreFile_MissingFilePath(t *testing.T) {
+	t.Parallel()
+
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.RestoreFileRequested{
@@ -723,6 +746,8 @@ func TestHandleRestoreFile_MissingFilePath(t *testing.T) {
 
 // TestHandleRestoreFile_MissingCommitHash verifies commit hash validation
 func TestHandleRestoreFile_MissingCommitHash(t *testing.T) {
+	t.Parallel()
+
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.RestoreFileRequested{
@@ -742,6 +767,8 @@ func TestHandleRestoreFile_MissingCommitHash(t *testing.T) {
 
 // TestHandleRestoreFile_MissingSessionID verifies session ID validation
 func TestHandleRestoreFile_MissingSessionID(t *testing.T) {
+	t.Parallel()
+
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	request := &operatorv1.RestoreFileRequested{
@@ -761,6 +788,8 @@ func TestHandleRestoreFile_MissingSessionID(t *testing.T) {
 
 // TestHandleRestoreFile_RestoreError verifies error handling when restore fails
 func TestHandleRestoreFile_RestoreError(t *testing.T) {
+	t.Parallel()
+
 	mockLedger := &mockLedger{
 		restoreFileFromCommitFunc: func(filePath, commitHash, sessionID string) error {
 			return errors.New("git checkout failed")
@@ -788,6 +817,8 @@ func TestHandleRestoreFile_RestoreError(t *testing.T) {
 
 // TestHandleRestoreFile_Success verifies successful file restore
 func TestHandleRestoreFile_Success(t *testing.T) {
+	t.Parallel()
+
 	mockLedger := &mockLedger{
 		restoreFileFromCommitFunc: func(filePath, commitHash, sessionID string) error {
 			return nil
@@ -821,6 +852,8 @@ func TestHandleRestoreFile_Success(t *testing.T) {
 // TestHandleRestoreFile_MissingExecutingSession verifies a restore without a verified
 // executing session fails closed before the ledger is touched.
 func TestHandleRestoreFile_MissingExecutingSession(t *testing.T) {
+	t.Parallel()
+
 	ledger := &mockLedger{}
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, ledger, &mockLogger{})
 
@@ -842,6 +875,7 @@ func TestHandleRestoreFile_MissingExecutingSession(t *testing.T) {
 
 // TestGetFileAtCommit_Success verifies successful file content retrieval at commit
 func TestGetFileAtCommit_Success(t *testing.T) {
+	t.Parallel()
 	mockLedger := &mockLedger{
 		getFileAtCommitFunc: func(filePath, commitHash, sessionID string) (string, error) {
 			return "file content at commit", nil
@@ -861,6 +895,7 @@ func TestGetFileAtCommit_Success(t *testing.T) {
 
 // TestGetFileAtCommit_Error verifies error handling when file retrieval fails
 func TestGetFileAtCommit_Error(t *testing.T) {
+	t.Parallel()
 	mockLedger := &mockLedger{
 		getFileAtCommitFunc: func(filePath, commitHash, sessionID string) (string, error) {
 			return "", errors.New("git show failed")
@@ -877,6 +912,7 @@ func TestGetFileAtCommit_Error(t *testing.T) {
 
 // TestGetFileAtCommit_LedgerError verifies error handling when ledger returns an error
 func TestGetFileAtCommit_LedgerError(t *testing.T) {
+	t.Parallel()
 	mockLedger := &mockLedger{
 		getFileAtCommitFunc: func(filePath, commitHash, sessionID string) (string, error) {
 			return "", errors.New("ledger error")
@@ -893,6 +929,7 @@ func TestGetFileAtCommit_LedgerError(t *testing.T) {
 
 // TestFetchHistoryError verifies error response construction
 func TestFetchHistoryError(t *testing.T) {
+	t.Parallel()
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	result, failureErr := hh.fetchHistoryError(constants.ErrInternal)
@@ -904,6 +941,7 @@ func TestFetchHistoryError(t *testing.T) {
 
 // TestFetchFileHistoryError verifies error response construction
 func TestFetchFileHistoryError(t *testing.T) {
+	t.Parallel()
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	result, failureErr := hh.fetchFileHistoryError(constants.ErrInternal)
@@ -915,6 +953,8 @@ func TestFetchFileHistoryError(t *testing.T) {
 
 // TestRestoreFileError verifies error response construction
 func TestRestoreFileError(t *testing.T) {
+	t.Parallel()
+
 	hh := newUnitHistoryHandler(t, &mockAuditStore{}, &mockLedger{}, &mockLogger{})
 
 	result, _, restoreErr := hh.restoreFileError(constants.ErrInternal)
@@ -926,6 +966,7 @@ func TestRestoreFileError(t *testing.T) {
 
 // TestHandleFetchHistory_NilSession verifies handling when session is nil
 func TestHandleFetchHistory_NilSession(t *testing.T) {
+	t.Parallel()
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return nil, nil // session not found
@@ -953,6 +994,7 @@ func TestHandleFetchHistory_NilSession(t *testing.T) {
 
 // TestHandleFetchHistory_EmptyEvents verifies handling when no events exist
 func TestHandleFetchHistory_EmptyEvents(t *testing.T) {
+	t.Parallel()
 	mockAudit := &mockAuditStore{
 		getOperatorSessionFunc: func(sessionID string) (*OperatorSession, error) {
 			return &OperatorSession{ID: sessionID}, nil

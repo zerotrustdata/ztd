@@ -23,6 +23,7 @@ import (
 )
 
 func TestValidateCommittedEventRegistry(t *testing.T) {
+	t.Parallel()
 	root, err := findRepoRoot()
 	require.NoError(t, err)
 
@@ -38,6 +39,7 @@ func TestValidateCommittedEventRegistry(t *testing.T) {
 }
 
 func TestValidateRegistryRejectsDuplicateWireValues(t *testing.T) {
+	t.Parallel()
 	reg := registryFile{
 		Events: map[string]eventEntry{
 			"A": {GoConst: "EventA", Value: "ztd.v1.app.case.created"},
@@ -49,6 +51,7 @@ func TestValidateRegistryRejectsDuplicateWireValues(t *testing.T) {
 }
 
 func TestValidateRegistryRejectsGovernanceOnNonRequest(t *testing.T) {
+	t.Parallel()
 	reg := registryFile{
 		Events: map[string]eventEntry{
 			"A": {
@@ -68,6 +71,7 @@ func TestValidateRegistryRejectsGovernanceOnNonRequest(t *testing.T) {
 }
 
 func TestValidateRegistryRejectsMissingProducers(t *testing.T) {
+	t.Parallel()
 	reg := registryFile{
 		Events: map[string]eventEntry{
 			"A": {
@@ -84,6 +88,7 @@ func TestValidateRegistryRejectsMissingProducers(t *testing.T) {
 }
 
 func TestValidateRegistryRejectsMissingOutcomeReference(t *testing.T) {
+	t.Parallel()
 	reg := registryFile{
 		Events: map[string]eventEntry{
 			"Request": {
@@ -103,6 +108,7 @@ func TestValidateRegistryRejectsMissingOutcomeReference(t *testing.T) {
 }
 
 func TestValidateRegistryRejectsActionTypeWithoutRequestEvent(t *testing.T) {
+	t.Parallel()
 	reg := registryFile{
 		Events: map[string]eventEntry{
 			"Command": {
@@ -128,6 +134,7 @@ func TestValidateRegistryRejectsActionTypeWithoutRequestEvent(t *testing.T) {
 }
 
 func TestLoadRegistryFromCommittedFile(t *testing.T) {
+	t.Parallel()
 	root, err := findRepoRoot()
 	require.NoError(t, err)
 	data, err := os.ReadFile(filepath.Join(root, "protocol/constants/events.json"))
@@ -162,6 +169,7 @@ func validGovernedRequest() eventEntry {
 var documentActionTypes = map[string]struct{}{"DOCUMENT_UPDATE": {}}
 
 func TestValidateRegistry_AcceptsGovernedRequestWithItsOutcome(t *testing.T) {
+	t.Parallel()
 	request := validGovernedRequest()
 	request.Outcomes = []string{"Created"}
 	reg := registryFile{Events: map[string]eventEntry{"Document": request, "Created": validOutcome()}}
@@ -170,6 +178,7 @@ func TestValidateRegistry_AcceptsGovernedRequestWithItsOutcome(t *testing.T) {
 }
 
 func TestValidateRegistry_AcceptsStreamEventOnSSEWithEphemeralPersistence(t *testing.T) {
+	t.Parallel()
 	stream := validOutcome()
 	stream.Kind = "stream"
 	stream.Transport = []string{"sse"}
@@ -180,6 +189,7 @@ func TestValidateRegistry_AcceptsStreamEventOnSSEWithEphemeralPersistence(t *tes
 }
 
 func TestValidateRegistry_AcceptsNonGovernedRequestEndingInRequested(t *testing.T) {
+	t.Parallel()
 	request := validOutcome()
 	request.Kind = "request"
 	request.Value = "ztd.v1.app.case.requested"
@@ -189,6 +199,7 @@ func TestValidateRegistry_AcceptsNonGovernedRequestEndingInRequested(t *testing.
 }
 
 func TestValidateRegistry_WrapsRuleSentinelsForErrorsIs(t *testing.T) {
+	t.Parallel()
 	request := validOutcome()
 	request.Kind = "request"
 	request.Value = "ztd.v1.app.case.created"
@@ -204,6 +215,7 @@ func TestValidateRegistry_WrapsRuleSentinelsForErrorsIs(t *testing.T) {
 }
 
 func TestValidateRegistry_RejectsEmptyRegistry(t *testing.T) {
+	t.Parallel()
 	err := validateRegistry(registryFile{}, map[string]struct{}{})
 
 	require.Error(t, err)
@@ -211,6 +223,7 @@ func TestValidateRegistry_RejectsEmptyRegistry(t *testing.T) {
 }
 
 func TestValidateRegistry_RejectsEntriesThatBreakASingleRule(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*eventEntry)
@@ -255,6 +268,7 @@ func TestValidateRegistry_RejectsEntriesThatBreakASingleRule(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			entry := validOutcome()
 			tt.mutate(&entry)
 			reg := registryFile{Events: map[string]eventEntry{"A": entry, "B": validGovernedRequest()}}
@@ -269,6 +283,7 @@ func TestValidateRegistry_RejectsEntriesThatBreakASingleRule(t *testing.T) {
 }
 
 func TestValidateRegistry_RejectsGovernanceBlocksThatBreakASingleRule(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*eventEntry)
@@ -283,6 +298,7 @@ func TestValidateRegistry_RejectsGovernanceBlocksThatBreakASingleRule(t *testing
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			entry := validGovernedRequest()
 			tt.mutate(&entry)
 			reg := registryFile{Events: map[string]eventEntry{"A": entry}}
@@ -296,6 +312,7 @@ func TestValidateRegistry_RejectsGovernanceBlocksThatBreakASingleRule(t *testing
 }
 
 func TestValidateRegistry_RejectsDuplicateGoConstsAcrossDifferentWireValues(t *testing.T) {
+	t.Parallel()
 	first := validOutcome()
 	second := validOutcome()
 	second.Value = "ztd.v1.app.case.updated"
@@ -308,6 +325,7 @@ func TestValidateRegistry_RejectsDuplicateGoConstsAcrossDifferentWireValues(t *t
 }
 
 func TestValidateRegistry_RejectsDuplicateWireValueNamingBothKeys(t *testing.T) {
+	t.Parallel()
 	first := validOutcome()
 	second := validOutcome()
 	second.GoConst = "EventAppCaseCreatedAgain"
@@ -320,6 +338,7 @@ func TestValidateRegistry_RejectsDuplicateWireValueNamingBothKeys(t *testing.T) 
 }
 
 func TestValidateRegistry_ReportsEveryIssueCountedAndSorted(t *testing.T) {
+	t.Parallel()
 	broken := validOutcome()
 	broken.Producers = nil
 	broken.Persistence = ""
@@ -335,6 +354,7 @@ func TestValidateRegistry_ReportsEveryIssueCountedAndSorted(t *testing.T) {
 }
 
 func TestValidateRegistry_GovernedRequestWithExtraTransportsStillCoversItsActionType(t *testing.T) {
+	t.Parallel()
 	request := validGovernedRequest()
 	request.Transport = []string{"governed", "pubsub"}
 	nonRequest := validOutcome()
@@ -349,6 +369,7 @@ func TestValidateRegistry_GovernedRequestWithExtraTransportsStillCoversItsAction
 }
 
 func TestCheckGrammar_ValidatesTerminalSegmentAgainstClosedList(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		value   string
@@ -369,6 +390,7 @@ func TestCheckGrammar_ValidatesTerminalSegmentAgainstClosedList(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := checkGrammar(tt.value)
 
 			if tt.wantErr == "" {
@@ -381,7 +403,7 @@ func TestCheckGrammar_ValidatesTerminalSegmentAgainstClosedList(t *testing.T) {
 	}
 }
 
-func TestFindRepoRoot_WalksUpFromNestedDirectory(t *testing.T) {
+func TestFindRepoRoot_WalksUpFromNestedDirectory(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	root := testutil.TempDir(t)
 	writeFile(t, filepath.Join(root, eventsRel), `{"events":{}}`)
 	nested := filepath.Join(root, "internal", "tools", "constgen")
@@ -398,7 +420,7 @@ func TestFindRepoRoot_WalksUpFromNestedDirectory(t *testing.T) {
 	assert.Equal(t, wantRoot, gotRoot)
 }
 
-func TestFindRepoRoot_FailsWhenNoAncestorHoldsTheEventsRegistry(t *testing.T) {
+func TestFindRepoRoot_FailsWhenNoAncestorHoldsTheEventsRegistry(t *testing.T) { //nolint:paralleltest // changes the process working directory
 	// Only the filesystem root is guaranteed to have no registry ancestor: test
 	// scratch lives inside the repository (INV-FS-11).
 	wd, err := os.Getwd()
@@ -412,6 +434,7 @@ func TestFindRepoRoot_FailsWhenNoAncestorHoldsTheEventsRegistry(t *testing.T) {
 }
 
 func TestLoadRegistry_RejectsFieldsOutsideDeclaredShape(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		json string
@@ -422,6 +445,7 @@ func TestLoadRegistry_RejectsFieldsOutsideDeclaredShape(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			path := filepath.Join(testutil.TempDir(t), "events.json")
 			writeFile(t, path, tt.json)
 
@@ -433,13 +457,16 @@ func TestLoadRegistry_RejectsFieldsOutsideDeclaredShape(t *testing.T) {
 }
 
 func TestLoadRegistry_ReportsMissingAndMalformedFiles(t *testing.T) {
+	t.Parallel()
 	t.Run("missing file", func(t *testing.T) {
+		t.Parallel()
 		_, err := loadRegistry(filepath.Join(testutil.TempDir(t), "absent.json"))
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, os.ErrNotExist)
 	})
 	t.Run("malformed json names the file", func(t *testing.T) {
+		t.Parallel()
 		path := filepath.Join(testutil.TempDir(t), "events.json")
 		writeFile(t, path, `{"events": {`)
 
@@ -449,6 +476,7 @@ func TestLoadRegistry_ReportsMissingAndMalformedFiles(t *testing.T) {
 		assert.Contains(t, err.Error(), "decode "+path)
 	})
 	t.Run("governance block decodes into typed fields", func(t *testing.T) {
+		t.Parallel()
 		path := filepath.Join(testutil.TempDir(t), "events.json")
 		writeFile(t, path, `{"events":{"A":{"_go_const":"EventA","value":"ztd.v1.a.b.requested","governance":{"action_type":"X","payload":"P"},"reserved":true}}}`)
 
@@ -465,6 +493,7 @@ func TestLoadRegistry_ReportsMissingAndMalformedFiles(t *testing.T) {
 }
 
 func TestExecute_WriteGeneratesFilesThatCheckModeThenAccepts(t *testing.T) {
+	t.Parallel()
 	root := newConstgenRoot(t)
 	var stdout bytes.Buffer
 
@@ -481,6 +510,7 @@ func TestExecute_WriteGeneratesFilesThatCheckModeThenAccepts(t *testing.T) {
 }
 
 func TestExecute_CheckFailsBeforeAnyGeneratedFileExists(t *testing.T) {
+	t.Parallel()
 	root := newConstgenRoot(t)
 
 	err := execute(root, false, &bytes.Buffer{})
@@ -490,6 +520,7 @@ func TestExecute_CheckFailsBeforeAnyGeneratedFileExists(t *testing.T) {
 }
 
 func TestExecute_CheckDetectsHandEditedGeneratedFile(t *testing.T) {
+	t.Parallel()
 	root := newConstgenRoot(t)
 	require.NoError(t, execute(root, true, &bytes.Buffer{}))
 	edited := filepath.Join(root, eventsGoRel)
@@ -505,6 +536,7 @@ func TestExecute_CheckDetectsHandEditedGeneratedFile(t *testing.T) {
 }
 
 func TestExecute_RejectsInvalidRegistryWithoutWritingAnyGeneratedFile(t *testing.T) {
+	t.Parallel()
 	root := newConstgenRoot(t)
 	writeFile(t, filepath.Join(root, eventsRel), `{"events":{}}`)
 
@@ -519,6 +551,7 @@ func TestExecute_RejectsInvalidRegistryWithoutWritingAnyGeneratedFile(t *testing
 }
 
 func TestExecute_ReportsMissingInputRegistries(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		remove  string
@@ -529,6 +562,7 @@ func TestExecute_ReportsMissingInputRegistries(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root := newConstgenRoot(t)
 			require.NoError(t, os.Remove(filepath.Join(root, tt.remove)))
 
@@ -542,6 +576,7 @@ func TestExecute_ReportsMissingInputRegistries(t *testing.T) {
 }
 
 func TestExecute_CommittedGeneratedConstantsAreCurrent(t *testing.T) {
+	t.Parallel()
 	root, err := findRepoRoot()
 	require.NoError(t, err)
 

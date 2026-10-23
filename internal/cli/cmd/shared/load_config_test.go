@@ -28,7 +28,8 @@ func swapConfigLoad(t *testing.T, loader func(string) (*config.Config, error)) {
 	t.Cleanup(func() { ConfigLoad = original })
 }
 
-func TestLoadConfig_ReturnsTheConfigFromTheUnderlyingLoader(t *testing.T) {
+func TestLoadConfig_ReturnsTheConfigFromTheUnderlyingLoader(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	want := &config.Config{ProjectRoot: "/project"}
 	var gotRoot string
 	swapConfigLoad(t, func(projectRoot string) (*config.Config, error) {
@@ -43,7 +44,8 @@ func TestLoadConfig_ReturnsTheConfigFromTheUnderlyingLoader(t *testing.T) {
 	assert.Equal(t, "/project", gotRoot, "the project root must be forwarded unchanged")
 }
 
-func TestLoadConfig_WrapsLoaderFailureWithSentinelAndKeepsTheCause(t *testing.T) {
+func TestLoadConfig_WrapsLoaderFailureWithSentinelAndKeepsTheCause(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cause := errors.New("config.yaml: permission denied")
 	swapConfigLoad(t, func(string) (*config.Config, error) { return nil, cause })
 
@@ -56,6 +58,7 @@ func TestLoadConfig_WrapsLoaderFailureWithSentinelAndKeepsTheCause(t *testing.T)
 }
 
 func TestLoadConfig_DefaultLoaderResolvesConfigForARealProjectRoot(t *testing.T) {
+	t.Parallel()
 	root := testutil.TempDir(t)
 
 	cfg, err := LoadConfig(root)

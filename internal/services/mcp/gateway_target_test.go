@@ -23,8 +23,10 @@ import (
 )
 
 func TestGatewayService_LocalEnvelopeExecutionTarget(t *testing.T) {
+	t.Parallel()
 	for _, action := range []constants.ActionType{constants.ActionTypeMcpCall, constants.ActionTypeA2aCall} {
 		t.Run(string(action), func(t *testing.T) {
+			t.Parallel()
 			g := newTestGatewayService(t)
 			ctx := context.WithValue(context.Background(), constants.ContextKeyAppID, "calling-app")
 			ctx = context.WithValue(ctx, constants.ContextKeyUserID, "requesting-user")
@@ -45,6 +47,7 @@ func TestGatewayService_LocalEnvelopeExecutionTarget(t *testing.T) {
 }
 
 func TestGatewayService_ResumePreservesEnvelopeTargetAndHash(t *testing.T) {
+	t.Parallel()
 	proc := &fakeEnvelopeProcessor{receipt: &operatorv1.ActionReceipt{}}
 	store := &fakeSuspendedStore{}
 	g := newTestGatewayService(t, withEnvProc(proc), withSuspendedStore(store))

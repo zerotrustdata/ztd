@@ -36,6 +36,7 @@ func selectedTags(variants []*evalv1.ModelVariant) []string {
 }
 
 func TestModelSelectorResolve(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		selector ModelSelector
@@ -68,6 +69,7 @@ func TestModelSelectorResolve(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := test.selector.Resolve(selectorFixture())
 			switch {
 			case test.wantErr != nil:
@@ -83,6 +85,7 @@ func TestModelSelectorResolve(t *testing.T) {
 }
 
 func TestModelSelectorFilterAllowsUnsetAndEmptyResults(t *testing.T) {
+	t.Parallel()
 	all, err := (&ModelSelector{}).Filter(selectorFixture())
 	require.NoError(t, err)
 	assert.Len(t, all, 4)
@@ -96,6 +99,7 @@ func TestModelSelectorFilterAllowsUnsetAndEmptyResults(t *testing.T) {
 }
 
 func TestModelSelectorWithArgsTrimsBlanks(t *testing.T) {
+	t.Parallel()
 	selector := (&ModelSelector{}).withArgs([]string{" qwen3:4b ", "", "  "})
 	assert.Equal(t, []string{"qwen3:4b"}, selector.IDs)
 	assert.True(t, selector.IsSet())
@@ -103,6 +107,7 @@ func TestModelSelectorWithArgsTrimsBlanks(t *testing.T) {
 }
 
 func TestModelSelectorBindFlags(t *testing.T) {
+	t.Parallel()
 	var selector ModelSelector
 	cmd := &cobra.Command{Use: "x", RunE: func(*cobra.Command, []string) error { return nil }}
 	selector.bindFlags(cmd)

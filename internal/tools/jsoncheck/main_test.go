@@ -20,6 +20,7 @@ import (
 )
 
 func TestRun(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	good := filepath.Join(dir, "good.json")
 	bad := filepath.Join(dir, "bad.json")

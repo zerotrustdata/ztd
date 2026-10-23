@@ -19,7 +19,9 @@ import (
 // SSERoute from auth context values. This is a Tier 1 unit test — no integration
 // tag required because buildSSERouteFromContext only reads context.Context.
 func TestBuildSSERouteFromContext(t *testing.T) {
+	t.Parallel()
 	t.Run("UserID + CLISessionID returns route with both set", func(t *testing.T) {
+		t.Parallel()
 		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
 		ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, "cli-1")
 
@@ -31,6 +33,7 @@ func TestBuildSSERouteFromContext(t *testing.T) {
 	})
 
 	t.Run("UserID + WebSessionID (no CLI) returns route with both set", func(t *testing.T) {
+		t.Parallel()
 		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
 		ctx = context.WithValue(ctx, constants.ContextKeyWebSessionID, "web-1")
 
@@ -42,8 +45,10 @@ func TestBuildSSERouteFromContext(t *testing.T) {
 	})
 
 	t.Run("UserID only returns route with UserID and no session", func(t *testing.T) {
+		t.Parallel()
 		// The caller's validate() will reject this; buildSSERouteFromContext
 		// itself does not validate, it only constructs.
+
 		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
 
 		route := buildSSERouteFromContext(ctx)
@@ -54,6 +59,7 @@ func TestBuildSSERouteFromContext(t *testing.T) {
 	})
 
 	t.Run("Empty context returns empty route", func(t *testing.T) {
+		t.Parallel()
 		route := buildSSERouteFromContext(context.Background())
 
 		assert.Empty(t, route.UserID)
@@ -62,6 +68,7 @@ func TestBuildSSERouteFromContext(t *testing.T) {
 	})
 
 	t.Run("CLISessionID takes precedence over WebSessionID when both present", func(t *testing.T) {
+		t.Parallel()
 		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, "user-1")
 		ctx = context.WithValue(ctx, constants.ContextKeyCLISessionID, "cli-1")
 		ctx = context.WithValue(ctx, constants.ContextKeyWebSessionID, "web-1")
@@ -74,8 +81,10 @@ func TestBuildSSERouteFromContext(t *testing.T) {
 	})
 
 	t.Run("Non-string context values are ignored", func(t *testing.T) {
+		t.Parallel()
 		// Defense-in-depth: a malformed context value should not panic and
 		// should be treated as absent.
+
 		ctx := context.WithValue(context.Background(), constants.ContextKeyUserID, 12345)
 
 		route := buildSSERouteFromContext(ctx)

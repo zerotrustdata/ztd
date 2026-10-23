@@ -152,7 +152,8 @@ func setupTLSClient(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.Con
 	return client
 }
 
-func TestNewClient_Success(t *testing.T) {
+func TestNewClient_Success(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -173,7 +174,8 @@ func TestNewClient_Success(t *testing.T) {
 	assert.NotNil(t, transport.TLSClientConfig.RootCAs)
 }
 
-func TestNewClient_NoCredentials(t *testing.T) {
+func TestNewClient_NoCredentials(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, fileSvc := setupTestConfig(t)
 
 	credsDir := cfg.RuntimeDir
@@ -185,7 +187,8 @@ func TestNewClient_NoCredentials(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrNotAuthenticated)
 }
 
-func TestNewClient_LoadCredentialsError(t *testing.T) {
+func TestNewClient_LoadCredentialsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, fileSvc := setupTestConfig(t)
 
 	credsDir := cfg.RuntimeDir
@@ -200,7 +203,8 @@ func TestNewClient_LoadCredentialsError(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrFailedToLoadCredentials)
 }
 
-func TestNewClient_MissingCertFile(t *testing.T) {
+func TestNewClient_MissingCertFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -212,7 +216,8 @@ func TestNewClient_MissingCertFile(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrFailedToLoadClientCertificate)
 }
 
-func TestNewClient_MissingKeyFile(t *testing.T) {
+func TestNewClient_MissingKeyFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -224,7 +229,8 @@ func TestNewClient_MissingKeyFile(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrFailedToLoadClientCertificate)
 }
 
-func TestNewClient_MissingTrustBundle(t *testing.T) {
+func TestNewClient_MissingTrustBundle(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -237,7 +243,8 @@ func TestNewClient_MissingTrustBundle(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrFailedToReadTrustBundle)
 }
 
-func TestNewClient_InvalidTrustBundle(t *testing.T) {
+func TestNewClient_InvalidTrustBundle(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -250,7 +257,8 @@ func TestNewClient_InvalidTrustBundle(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrFailedToParseTrustBundle)
 }
 
-func TestDoRequest_MarshalError(t *testing.T) {
+func TestDoRequest_MarshalError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -263,7 +271,8 @@ func TestDoRequest_MarshalError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to marshal request body")
 }
 
-func TestNewClient_TLSConfig(t *testing.T) {
+func TestNewClient_TLSConfig(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, fileSvc := setupTestConfig(t)
 	setupTestCredentials(t, fileSvc, cfg)
 
@@ -283,6 +292,7 @@ func TestNewClient_TLSConfig(t *testing.T) {
 }
 
 func TestStatusError(t *testing.T) {
+	t.Parallel()
 	err := fmt.Errorf("list approvals: %w", &StatusError{StatusCode: http.StatusUnauthorized, Body: "expired"})
 	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
 	assert.True(t, IsUnauthorized(err))
@@ -295,6 +305,7 @@ func TestStatusError(t *testing.T) {
 }
 
 func TestDecodeGatewayError_PlatformEnrollmentRequiresBootstrap(t *testing.T) {
+	t.Parallel()
 	body := []byte(fmt.Sprintf(`{"error":%q}`, constants.ErrPlatformEnrollmentRequiresBootstrap.Error()))
 	err := DecodeGatewayError(http.StatusForbidden, body)
 	require.Error(t, err)

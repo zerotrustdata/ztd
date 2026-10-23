@@ -189,6 +189,8 @@ func TestCapability_VerifyRejectsNilAndInvalidContextValues(t *testing.T) {
 		}(), want: "dissolved"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := tt.cap.Verify(constants.ActionTypeExecuteBash, "hash-1", now)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.want)

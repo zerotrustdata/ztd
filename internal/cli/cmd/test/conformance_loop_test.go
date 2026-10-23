@@ -18,6 +18,7 @@ import (
 )
 
 func TestConformanceLoopCommandSelectsOnePostureWithItsOwnDeadline(t *testing.T) {
+	t.Parallel()
 	var command string
 	var args []string
 	cmd := testConformanceLoopCmdWithRunner(func(_ context.Context, name string, argv ...string) (int, error) {
@@ -34,6 +35,7 @@ func TestConformanceLoopCommandSelectsOnePostureWithItsOwnDeadline(t *testing.T)
 }
 
 func TestConformanceLoopCommandRunsEveryPostureByDefault(t *testing.T) {
+	t.Parallel()
 	var args []string
 	cmd := testConformanceLoopCmdWithRunner(func(_ context.Context, _ string, argv ...string) (int, error) {
 		args = argv
@@ -54,6 +56,7 @@ func TestConformanceLoopCommandRunsEveryPostureByDefault(t *testing.T) {
 }
 
 func TestConformanceLoopCommandRejectsInvalidInputBeforeStarting(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		flags []string
 		want  error
@@ -71,6 +74,7 @@ func TestConformanceLoopCommandRejectsInvalidInputBeforeStarting(t *testing.T) {
 }
 
 func TestConformanceLoopCommandFailsOnChildFailure(t *testing.T) {
+	t.Parallel()
 	cmd := testConformanceLoopCmdWithRunner(func(context.Context, string, ...string) (int, error) {
 		return 1, nil
 	})

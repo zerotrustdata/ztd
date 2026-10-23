@@ -126,6 +126,7 @@ func TestNewOutboundModeDeps_ValidationErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			core := validTestGovernanceCoreDeps()
 			tc.modify(&core)
 			deps, err := NewOutboundModeDeps(OutboundModeDeps{GovernanceCoreDeps: core, ConsensusPolicyStore: testConsensusStore()})
@@ -136,6 +137,7 @@ func TestNewOutboundModeDeps_ValidationErrors(t *testing.T) {
 	}
 
 	t.Run("nil ConsensusPolicyStore returns ErrConsensusPolicyStoreRequired", func(t *testing.T) {
+		t.Parallel()
 		deps, err := NewOutboundModeDeps(OutboundModeDeps{GovernanceCoreDeps: validTestGovernanceCoreDeps()})
 		require.ErrorIs(t, err, constants.ErrConsensusPolicyStoreRequired)
 		require.Nil(t, deps)
@@ -147,6 +149,7 @@ func TestNewGatewayModeDeps_Success(t *testing.T) {
 
 	for _, posture := range constants.AllPostures {
 		t.Run(string(posture), func(t *testing.T) {
+			t.Parallel()
 			input := validTestGatewayModeDeps(posture)
 			deps, err := NewGatewayModeDeps(input)
 			require.NoError(t, err)
@@ -256,6 +259,7 @@ func TestNewGatewayModeDeps_ValidationErrors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			input := validTestGatewayModeDeps(constants.PostureDoctrine)
 			tc.modify(&input)
 			deps, err := NewGatewayModeDeps(input)

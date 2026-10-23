@@ -41,6 +41,7 @@ func TestFailClosedSignerStore_NotFound(t *testing.T) {
 
 func TestFailClosedSignerStore_Found(t *testing.T) {
 	t.Parallel()
+
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 	s := &FailClosedSignerStore{Signers: map[string]ed25519.PublicKey{"key1": pub}}
@@ -100,6 +101,7 @@ func TestL2TrustStore_ServesBundlePolicyAndSigners(t *testing.T) {
 
 func TestL2TrustStore_RejectsMalformedTrust(t *testing.T) {
 	t.Parallel()
+
 	cases := map[string]func(*models.OperatorL2Trust){
 		"empty set id":      func(tr *models.OperatorL2Trust) { tr.ConsensusSetID = "" },
 		"zero quorum":       func(tr *models.OperatorL2Trust) { tr.Quorum = 0 },
@@ -112,6 +114,7 @@ func TestL2TrustStore_RejectsMalformedTrust(t *testing.T) {
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			trust, _ := testL2Trust(t)
 			mutate(trust)
 			_, err := NewL2TrustStore(trust)
@@ -122,6 +125,7 @@ func TestL2TrustStore_RejectsMalformedTrust(t *testing.T) {
 
 func TestL2TrustStore_ReplaceSwapsHeldTrust(t *testing.T) {
 	t.Parallel()
+
 	trust, _ := testL2Trust(t)
 	store, err := NewL2TrustStore(trust)
 	require.NoError(t, err)
@@ -148,6 +152,7 @@ func TestL2TrustStore_ReplaceSwapsHeldTrust(t *testing.T) {
 
 func TestL2TrustStore_ReplaceRejectsMalformedAndKeepsHeldTrust(t *testing.T) {
 	t.Parallel()
+
 	trust, pub := testL2Trust(t)
 	store, err := NewL2TrustStore(trust)
 	require.NoError(t, err)

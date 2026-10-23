@@ -86,13 +86,16 @@ func newRootCmdWithVersion(version string) *cobra.Command {
 // --- command structure tests ---
 
 func TestTUICmdStructure(t *testing.T) {
+	t.Parallel()
 	t.Run("command has correct use and short description", func(t *testing.T) {
+		t.Parallel()
 		cmd := Cmd()
 		assert.Equal(t, "tui", cmd.Use)
 		assert.Contains(t, cmd.Short, "Tactical Governance Console")
 	})
 
 	t.Run("command long description contains controls and enrollment hint", func(t *testing.T) {
+		t.Parallel()
 		cmd := Cmd()
 		assert.Contains(t, cmd.Long, "SSE")
 		assert.Contains(t, cmd.Long, "ztd auth enroll user")
@@ -110,6 +113,7 @@ func TestTUICmdStructure(t *testing.T) {
 	})
 
 	t.Run("command has a RunE function", func(t *testing.T) {
+		t.Parallel()
 		cmd := Cmd()
 		assert.NotNil(t, cmd.RunE)
 	})
@@ -118,7 +122,9 @@ func TestTUICmdStructure(t *testing.T) {
 // --- config load failure ---
 
 func TestTUI_ConfigLoadFailure(t *testing.T) {
+	t.Parallel()
 	t.Run("returns error when config loader fails", func(t *testing.T) {
+		t.Parallel()
 		deps := stubTUIDeps(t, nil)
 		deps.configLoader = func(string) (*config.Config, error) {
 			return nil, fmt.Errorf("config disk read failure")
@@ -133,8 +139,10 @@ func TestTUI_ConfigLoadFailure(t *testing.T) {
 
 // --- gateway not reachable ---
 
-func TestTUI_GatewayNotReachable(t *testing.T) {
+func TestTUI_GatewayNotReachable(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("returns wrapped error when gateway is not reachable", func(t *testing.T) {
+
 		cfg := setupTUITestConfig(t)
 		deps := stubTUIDeps(t, cfg)
 		gwErr := fmt.Errorf("connection refused")
@@ -150,7 +158,8 @@ func TestTUI_GatewayNotReachable(t *testing.T) {
 	})
 }
 
-func TestTUI_GatewayNotReachableReportsStartHint(t *testing.T) {
+func TestTUI_GatewayNotReachableReportsStartHint(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := setupTUITestConfig(t)
 	deps := stubTUIDeps(t, cfg)
 	gwErr := fmt.Errorf("connection refused")
@@ -167,6 +176,7 @@ func TestTUI_GatewayNotReachableReportsStartHint(t *testing.T) {
 }
 
 func TestTUICmdSuppressesUsageForRuntimeFailures(t *testing.T) {
+	t.Parallel()
 	cmd := Cmd()
 	assert.True(t, cmd.SilenceErrors, cmdtest.RegressionMarkerAfterFix)
 	assert.True(t, cmd.SilenceUsage, cmdtest.RegressionMarkerAfterFix)
@@ -174,8 +184,10 @@ func TestTUICmdSuppressesUsageForRuntimeFailures(t *testing.T) {
 
 // --- CLI identity loading ---
 
-func TestTUI_AuthContextLoadFailure(t *testing.T) {
+func TestTUI_AuthContextLoadFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("returns the CLI's identity error unchanged in the chain", func(t *testing.T) {
+
 		cfg := setupTUITestConfig(t)
 		deps := stubTUIDeps(t, cfg)
 		credErr := fmt.Errorf("%w: corrupt credentials file", constants.ErrFailedToLoadCredentials)
@@ -196,8 +208,10 @@ func TestTUI_AuthContextLoadFailure(t *testing.T) {
 
 // --- CLI session open failure ---
 
-func TestTUI_NewSessionFailure(t *testing.T) {
+func TestTUI_NewSessionFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("returns error when the CLI API session cannot be opened", func(t *testing.T) {
+
 		cfg := setupTUITestConfig(t)
 		deps := stubTUIDeps(t, cfg)
 		tlsErr := fmt.Errorf("cert file missing")
@@ -214,8 +228,10 @@ func TestTUI_NewSessionFailure(t *testing.T) {
 
 // --- tui.Run invocation ---
 
-func TestTUI_TUIRunCalledWithCorrectOptions(t *testing.T) {
-	t.Run("passes version, CLI identity, CLI session, and the approve flow to tui.Run", func(t *testing.T) {
+func TestTUI_TUIRunCalledWithCorrectOptions(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("passes version, CLI identity, CLI session, and the approve flow to tui.Run", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg := setupTUITestConfig(t)
 		deps := stubTUIDeps(t, cfg)
 
@@ -241,7 +257,8 @@ func TestTUI_TUIRunCalledWithCorrectOptions(t *testing.T) {
 		assert.NotNil(t, capturedOpts.OpenBrowser)
 	})
 
-	t.Run("defaults version to dev when root version is empty", func(t *testing.T) {
+	t.Run("defaults version to dev when root version is empty", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg := setupTUITestConfig(t)
 		deps := stubTUIDeps(t, cfg)
 
@@ -261,7 +278,8 @@ func TestTUI_TUIRunCalledWithCorrectOptions(t *testing.T) {
 		assert.Equal(t, "dev", capturedOpts.Version)
 	})
 
-	t.Run("derives the run context from the command context", func(t *testing.T) {
+	t.Run("derives the run context from the command context", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg := setupTUITestConfig(t)
 		deps := stubTUIDeps(t, cfg)
 
@@ -281,7 +299,8 @@ func TestTUI_TUIRunCalledWithCorrectOptions(t *testing.T) {
 		assert.ErrorIs(t, runCtx.Err(), context.Canceled, "cancelling the command context must cancel the TUI")
 	})
 
-	t.Run("returns error from tui.Run", func(t *testing.T) {
+	t.Run("returns error from tui.Run", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg := setupTUITestConfig(t)
 		deps := stubTUIDeps(t, cfg)
 		runErr := fmt.Errorf("tui crashed")
@@ -298,8 +317,10 @@ func TestTUI_TUIRunCalledWithCorrectOptions(t *testing.T) {
 
 // --- CLI session wiring ---
 
-func TestTUI_DefaultSessionIsCLIAPIClient(t *testing.T) {
+func TestTUI_DefaultSessionIsCLIAPIClient(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("default session factory is the shared CLI API client", func(t *testing.T) {
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 		_, err := defaultTUIDeps().newSession(fileSvc, cfg)
 		require.Error(t, err, "api.NewClient must reject an unenrolled environment")
@@ -309,8 +330,10 @@ func TestTUI_DefaultSessionIsCLIAPIClient(t *testing.T) {
 
 // --- integration-style: real config, no gateway ---
 
-func TestTUI_RealConfigNoGateway(t *testing.T) {
+func TestTUI_RealConfigNoGateway(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("fails with gateway not reachable when using real config and no gateway", func(t *testing.T) {
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		deps := tuiDeps{
@@ -332,8 +355,10 @@ func TestTUI_RealConfigNoGateway(t *testing.T) {
 
 // --- real credentials file: not enrolled ---
 
-func TestTUI_RealCredentialsNotEnrolled(t *testing.T) {
+func TestTUI_RealCredentialsNotEnrolled(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("fails with not authenticated when credentials file does not exist", func(t *testing.T) {
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		// Ensure no credentials file exists
@@ -361,8 +386,10 @@ func TestTUI_RealCredentialsNotEnrolled(t *testing.T) {
 
 // --- real credentials file: corrupt JSON ---
 
-func TestTUI_RealCredentialsCorruptJSON(t *testing.T) {
+func TestTUI_RealCredentialsCorruptJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("fails with ErrInvalidJSONBody when credentials file is corrupt", func(t *testing.T) {
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		require.NoError(t, fileSvc.WriteFile(context.Background(), cmdtest.MustRel(t, fileSvc, cfg.CredentialsFile()), []byte("{invalid json"), constants.PermFilePrivate))
@@ -386,8 +413,10 @@ func TestTUI_RealCredentialsCorruptJSON(t *testing.T) {
 
 // --- output suppression ---
 
-func TestTUI_NoStdoutOnSuccess(t *testing.T) {
+func TestTUI_NoStdoutOnSuccess(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("produces no stdout output on successful tui.Run", func(t *testing.T) {
+
 		cfg := setupTUITestConfig(t)
 		deps := stubTUIDeps(t, cfg)
 		deps.tuiRun = func(context.Context, tui.Options) error {

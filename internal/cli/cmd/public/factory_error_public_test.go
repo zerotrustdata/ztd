@@ -20,7 +20,8 @@ import (
 
 var errFactory = fmt.Errorf("factory boom")
 
-func TestPublicInitCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestPublicInitCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicInitCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	cmd.SetArgs([]string{"--source-id", "deployment-a", "--mirror-origin", "https://mirror.example"})
@@ -31,7 +32,8 @@ func TestPublicInitCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicConfigSetCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestPublicConfigSetCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	cmd.SetArgs([]string{"--mirror-origin", "https://mirror.example"})
@@ -42,7 +44,8 @@ func TestPublicConfigSetCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicSourceTransitionCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestPublicSourceTransitionCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicSourceTransitionCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	cmd.SetArgs([]string{"--source-id", "deployment-new", "--yes"})
@@ -53,7 +56,8 @@ func TestPublicSourceTransitionCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicPublishCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestPublicPublishCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicPublishCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 	cmd.SetArgs([]string{constants.TestPublicFeedRecordsFilename})
@@ -64,7 +68,8 @@ func TestPublicPublishCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicPushCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestPublicPushCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicPushCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 
@@ -74,7 +79,8 @@ func TestPublicPushCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestPublicStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicStatusCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 
@@ -84,7 +90,8 @@ func TestPublicStatusCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicRotateKeyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestPublicRotateKeyCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicRotateKeyCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 
@@ -94,7 +101,8 @@ func TestPublicRotateKeyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestPublicRepairOutboxCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestPublicRepairOutboxCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	cmd := publicRepairOutboxCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FailingFileSvcFactory(errFactory))
 

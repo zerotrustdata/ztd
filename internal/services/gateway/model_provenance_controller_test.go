@@ -51,12 +51,16 @@ func (emptyProvenanceWindows) Save(context.Context, *evalv1.ModelProvenanceAttes
 }
 
 func TestModelProvenanceController_OnlyReadsPersistedWindows(t *testing.T) {
+	t.Parallel()
+
 	logger := testutil.NewTestLogger()
 	controller := newModelProvenanceController(ModelProvenanceControllerDeps{
 		Logger: logger, Responder: response.NewWriter(logger), Windows: emptyProvenanceWindows{},
 	})
 	for _, suffix := range []string{"_attest", "_preflight"} {
 		t.Run(suffix, func(t *testing.T) {
+			t.Parallel()
+
 			req := httptest.NewRequest(http.MethodGet, constants.APIPaths.InferenceModelProvenanceAttestations+suffix+"?served_model_tag=probe-model:7b&expected_model_digest="+strings.Repeat("a", 64), nil)
 			rr := httptest.NewRecorder()
 			controller.handleModelProvenance(rr, req)

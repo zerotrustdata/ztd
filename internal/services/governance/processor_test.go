@@ -26,8 +26,11 @@ func (m *mockProcessor) ProcessEnvelope(ctx context.Context, payload []byte) (*o
 }
 
 func TestEnvelopeProcessorInterface(t *testing.T) {
-	t.Parallel()
+	t.Parallel(
+
 	// Verify that mockProcessor implements EnvelopeProcessor
+	)
+
 	var _ EnvelopeProcessor = (*mockProcessor)(nil)
 
 	proc := &mockProcessor{

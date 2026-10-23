@@ -18,6 +18,7 @@ import (
 )
 
 func TestDecodeActuatorPublicKey_AcceptsExactlyOneEd25519Key(t *testing.T) {
+	t.Parallel()
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
@@ -27,6 +28,7 @@ func TestDecodeActuatorPublicKey_AcceptsExactlyOneEd25519Key(t *testing.T) {
 }
 
 func TestDecodeActuatorPublicKey_RejectsBadHexAndWrongLength(t *testing.T) {
+	t.Parallel()
 	valid := hex.EncodeToString(make([]byte, ed25519.PublicKeySize))
 	tests := []struct {
 		name string
@@ -40,6 +42,7 @@ func TestDecodeActuatorPublicKey_RejectsBadHexAndWrongLength(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := DecodeActuatorPublicKey(tt.key)
 			assert.ErrorIs(t, err, constants.ErrOperatorActuatorKeyInvalid)
 		})
@@ -47,6 +50,7 @@ func TestDecodeActuatorPublicKey_RejectsBadHexAndWrongLength(t *testing.T) {
 }
 
 func TestPlatformOperatorCSRPayload_ActuatorKeyUsesPresentedKey(t *testing.T) {
+	t.Parallel()
 	pub, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 

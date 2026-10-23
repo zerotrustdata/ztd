@@ -42,6 +42,7 @@ func (r *deadlineRecorder) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func TestDispatchCommandBody_ClientTimeoutCoversApprovalAndDispatchDeadline(t *testing.T) {
+	t.Parallel()
 	recorder := &deadlineRecorder{}
 	client, err := New(config.Config{MTLSBaseURL: "http://dispatch.test"})
 	require.NoError(t, err)
@@ -58,6 +59,7 @@ func TestDispatchCommandBody_ClientTimeoutCoversApprovalAndDispatchDeadline(t *t
 }
 
 func TestJSONRPCRequest(t *testing.T) {
+	t.Parallel()
 	req := mcp.JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      1,
@@ -87,6 +89,7 @@ func TestJSONRPCRequest(t *testing.T) {
 }
 
 func TestJSONRPCResponse(t *testing.T) {
+	t.Parallel()
 	resp := mcp.JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      1,
@@ -116,6 +119,7 @@ func TestJSONRPCResponse(t *testing.T) {
 }
 
 func TestJSONRPCError(t *testing.T) {
+	t.Parallel()
 	err := mcp.JSONRPCError{
 		Code:    -32600,
 		Message: "Invalid Request",

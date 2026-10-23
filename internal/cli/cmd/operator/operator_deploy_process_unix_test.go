@@ -24,6 +24,7 @@ import (
 )
 
 func TestOperatorDeployLocalWorkerDetachesFromLaunchingProcess(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(testutil.TempDir(t), "fleet with spaces")
 	require.NoError(t, os.Mkdir(dir, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "ztd"), []byte("#!/bin/sh\nexec sleep 30\n"), 0o700))

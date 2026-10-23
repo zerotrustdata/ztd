@@ -93,6 +93,7 @@ func validCrosswalk() *compliancev1.ControlCrosswalkCatalog {
 }
 
 func TestValidateAssertionCatalogRejectsInvalidRecords(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.ControlAssertionCatalog)
@@ -123,6 +124,7 @@ func TestValidateAssertionCatalogRejectsInvalidRecords(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			candidate := validAssertionCatalog()
 			tt.mutate(candidate)
 			err := catalog.ValidateAssertionCatalog(candidate)
@@ -133,6 +135,7 @@ func TestValidateAssertionCatalogRejectsInvalidRecords(t *testing.T) {
 }
 
 func TestValidateAssertionCatalogRejectsUnknownVerifierAndGraderVersions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.ControlAssertionDefinition)
@@ -144,6 +147,7 @@ func TestValidateAssertionCatalogRejectsUnknownVerifierAndGraderVersions(t *test
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			candidate := validAssertionCatalog()
 			tt.mutate(candidate.Assertions[0])
 			err := catalog.ValidateAssertionCatalog(candidate)
@@ -154,6 +158,7 @@ func TestValidateAssertionCatalogRejectsUnknownVerifierAndGraderVersions(t *test
 }
 
 func TestValidateAssertionCatalogRejectsUnknownComponentScope(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		component string
@@ -164,6 +169,7 @@ func TestValidateAssertionCatalogRejectsUnknownComponentScope(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			candidate := validAssertionCatalog()
 			candidate.Assertions[0].ComponentScope = []string{"gateway", tt.component}
 			err := catalog.ValidateAssertionCatalog(candidate)
@@ -176,6 +182,7 @@ func TestValidateAssertionCatalogRejectsUnknownComponentScope(t *testing.T) {
 }
 
 func TestShippedAssertionCatalogComponentScopesAreClosedVocabulary(t *testing.T) {
+	t.Parallel()
 	assertions := &compliancev1.ControlAssertionCatalog{}
 	require.NoError(t, compliancev1.UnmarshalCanonical(complianceconstants.AssertionCatalogJSON(), assertions))
 	require.NoError(t, catalog.ValidateAssertionCatalog(assertions))
@@ -187,6 +194,7 @@ func TestShippedAssertionCatalogComponentScopesAreClosedVocabulary(t *testing.T)
 }
 
 func TestValidateFrameworkDefinitionAcceptsPlannedControl(t *testing.T) {
+	t.Parallel()
 	framework := validFramework()
 	framework.Controls[0].SupportStatus = "planned"
 	framework.Controls[0].SupportRationale = "A future catalog version maps this control."
@@ -195,6 +203,7 @@ func TestValidateFrameworkDefinitionAcceptsPlannedControl(t *testing.T) {
 }
 
 func TestValidateFrameworkDefinitionRejectsMalformedDefinitions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.FrameworkDefinition)
@@ -209,6 +218,7 @@ func TestValidateFrameworkDefinitionRejectsMalformedDefinitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			framework := validFramework()
 			tt.mutate(framework)
 			err := catalog.ValidateFrameworkDefinition(framework)
@@ -219,6 +229,7 @@ func TestValidateFrameworkDefinitionRejectsMalformedDefinitions(t *testing.T) {
 }
 
 func TestCanonicalCatalogDigestsMatchContent(t *testing.T) {
+	t.Parallel()
 	assertions := &compliancev1.ControlAssertionCatalog{}
 	require.NoError(t, compliancev1.UnmarshalCanonical(complianceconstants.AssertionCatalogJSON(), assertions))
 	frameworks := &compliancev1.FrameworkCatalog{}
@@ -232,16 +243,16 @@ func TestCanonicalCatalogDigestsMatchContent(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, expected, actual)
 	}
-	t.Run("assertion catalog", func(t *testing.T) { assertDigest(t, assertions.Sha256, assertions) })
+	t.Run("assertion catalog", func(t *testing.T) { t.Parallel(); assertDigest(t, assertions.Sha256, assertions) })
 	for _, framework := range frameworks.Frameworks {
-
-		t.Run(framework.FrameworkId, func(t *testing.T) { assertDigest(t, framework.CatalogSha256, framework) })
+		t.Run(framework.FrameworkId, func(t *testing.T) { t.Parallel(); assertDigest(t, framework.CatalogSha256, framework) })
 	}
-	t.Run("framework catalog", func(t *testing.T) { assertDigest(t, frameworks.Sha256, frameworks) })
-	t.Run("crosswalk catalog", func(t *testing.T) { assertDigest(t, crosswalks.Sha256, crosswalks) })
+	t.Run("framework catalog", func(t *testing.T) { t.Parallel(); assertDigest(t, frameworks.Sha256, frameworks) })
+	t.Run("crosswalk catalog", func(t *testing.T) { t.Parallel(); assertDigest(t, crosswalks.Sha256, crosswalks) })
 }
 
 func TestLoadCanonicalCatalogsResolveAllReferences(t *testing.T) {
+	t.Parallel()
 	assertions, frameworks, crosswalks, err := catalog.LoadCanonicalCatalogs()
 	require.NoError(t, err)
 	require.NoError(t, catalog.ValidateCatalogSet(assertions, frameworks, crosswalks))
@@ -256,6 +267,7 @@ func TestLoadCanonicalCatalogsResolveAllReferences(t *testing.T) {
 }
 
 func TestLoadCanonicalAssertionCatalogDefinesTruthfulNativeClaims(t *testing.T) {
+	t.Parallel()
 	assertions, _, _, err := catalog.LoadCanonicalCatalogs()
 	require.NoError(t, err)
 
@@ -282,6 +294,7 @@ func TestLoadCanonicalAssertionCatalogDefinesTruthfulNativeClaims(t *testing.T) 
 	}
 	for _, tt := range tests {
 		t.Run(tt.assertionID, func(t *testing.T) {
+			t.Parallel()
 			assertion := catalog.FindAssertion(assertions, tt.assertionID, tt.version)
 			require.NotNil(t, assertion)
 			assert.Equal(t, tt.level, assertion.GetMinimumEvidenceLevel())

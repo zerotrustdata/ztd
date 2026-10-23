@@ -95,6 +95,7 @@ func TestCampaignPopulationAccountant_CompleteRunPasses(t *testing.T) {
 }
 
 func TestCampaignPopulationAccountant_CompleteSystemRunPasses(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
@@ -139,6 +140,7 @@ func TestCampaignPopulationAccountant_CompleteSystemRunPasses(t *testing.T) {
 }
 
 func TestCampaignPopulationAccountant_SystemMatrixTamperingFailsClosed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func([]*evalv1.EvaluationAssignment)
@@ -178,6 +180,7 @@ func TestCampaignPopulationAccountant_SystemMatrixTamperingFailsClosed(t *testin
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			files := newCampaignMemoryFileService()
 			store := NewStore(files)

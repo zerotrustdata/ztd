@@ -13,6 +13,7 @@ import (
 )
 
 func TestPublicFeedReleaseIdentity_PreservesKnownAndUnknownProvenance(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, view, wire string
 		valid            bool
@@ -28,6 +29,7 @@ func TestPublicFeedReleaseIdentity_PreservesKnownAndUnknownProvenance(t *testing
 		{name: "revision is a string", view: `,"release_basis":"unknown","source_revision":42`, wire: `,"release_basis":"PUBLIC_RELEASE_BASIS_UNKNOWN","source_revision":42`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			bodies := []struct {
 				name string
 				kind models.PublicFeedRecordType
@@ -40,6 +42,7 @@ func TestPublicFeedReleaseIdentity_PreservesKnownAndUnknownProvenance(t *testing
 			}
 			for _, body := range bodies {
 				t.Run(body.name, func(t *testing.T) {
+					t.Parallel()
 					err := ValidatePublicFeedRecord(body.kind, []byte(body.body))
 					if tc.valid {
 						require.NoError(t, err)

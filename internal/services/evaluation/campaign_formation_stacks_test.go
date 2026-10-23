@@ -45,6 +45,7 @@ func formationCatalogTestVariants() []*evalv1.ModelVariant {
 }
 
 func TestGenerateFormationCatalogStackSet_ReturnsEveryCatalogFormation(t *testing.T) {
+	t.Parallel()
 	set, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID: "eval-formations-benchmark",
 		Seed:       17,
@@ -72,6 +73,7 @@ func TestGenerateFormationCatalogStackSet_ReturnsEveryCatalogFormation(t *testin
 }
 
 func TestGenerateFormationCatalogStackSet_IsDeterministic(t *testing.T) {
+	t.Parallel()
 	req := FormationCatalogStackGenerationRequest{
 		CampaignID: "eval-formations-benchmark",
 		Seed:       11,
@@ -85,6 +87,7 @@ func TestGenerateFormationCatalogStackSet_IsDeterministic(t *testing.T) {
 }
 
 func TestGenerateFormationCatalogStackSet_RejectsMissingRegistryVariant(t *testing.T) {
+	t.Parallel()
 	variants := testFormationCatalogVariants()[:3]
 	_, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID: "eval-formations-benchmark",
@@ -95,6 +98,7 @@ func TestGenerateFormationCatalogStackSet_RejectsMissingRegistryVariant(t *testi
 }
 
 func TestGenerateFormationCatalogStackSet_SelectsNamedFormations(t *testing.T) {
+	t.Parallel()
 	set, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID:   "eval-formations-subset",
 		Seed:         3,
@@ -114,6 +118,7 @@ func TestGenerateFormationCatalogStackSet_SelectsNamedFormations(t *testing.T) {
 }
 
 func TestGenerateFormationCatalogStackSet_RejectsUnknownFormation(t *testing.T) {
+	t.Parallel()
 	_, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID:   "eval-formations-subset",
 		Variants:     testFormationCatalogVariants(),
@@ -123,6 +128,7 @@ func TestGenerateFormationCatalogStackSet_RejectsUnknownFormation(t *testing.T) 
 }
 
 func TestValidateFormationCatalogStackSet_AcceptsSubsetsAndRejectsEmptySets(t *testing.T) {
+	t.Parallel()
 	set, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID:   "eval-formations-subset",
 		Variants:     testFormationCatalogVariants(),
@@ -141,6 +147,7 @@ func TestValidateFormationCatalogStackSet_AcceptsSubsetsAndRejectsEmptySets(t *t
 }
 
 func TestGenerateFormationCatalogStackSet_RejectsEmptySovereignDigest(t *testing.T) {
+	t.Parallel()
 	variants := testFormationCatalogVariants()
 	for _, variant := range variants {
 		if variant.GetProviderClass() == "ollama" {
@@ -157,6 +164,7 @@ func TestGenerateFormationCatalogStackSet_RejectsEmptySovereignDigest(t *testing
 }
 
 func TestGenerateFormationCatalogStackSet_SealsRegistryVariantIDs(t *testing.T) {
+	t.Parallel()
 	set, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 		CampaignID:   "eval-formations-subset",
 		Variants:     testFormationCatalogVariants(),
@@ -174,12 +182,14 @@ func TestGenerateFormationCatalogStackSet_SealsRegistryVariantIDs(t *testing.T) 
 }
 
 func TestBindFormation_BindsAllCatalogFormationsFromRegistry(t *testing.T) {
+	t.Parallel()
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 	variants := testFormationCatalogVariants()
 	registry := indexFormationVariants(variants)
 	for _, formation := range topologies.Formations() {
 		t.Run(formation.ID, func(t *testing.T) {
+			t.Parallel()
 			stack, stackErr := formationRegistryStack(formation, registry)
 			require.NoError(t, stackErr)
 			bound, bindErr := BindFormation(FormationBindingRequest{Stack: stack, Variants: variants})

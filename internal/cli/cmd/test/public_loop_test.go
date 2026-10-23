@@ -16,6 +16,7 @@ import (
 )
 
 func TestDefaultPublicLoopRoot_IsUnderLocalDevNeverTemp(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 9, 14, 5, 6, 0, time.FixedZone("x", 3600))
 	root := defaultPublicLoopRoot(now)
 	assert.Equal(t, filepath.Join(".local.dev", "public-loop", "2026-10-09T13-05-06Z"), root)

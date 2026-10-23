@@ -12,14 +12,57 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestApprovalPageURL(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{}
 	got := ApprovalPageURL(cfg, "tx-abc")
 	assert.True(t, strings.HasPrefix(got, cfg.OperatorPublicURL()))
 	assert.True(t, strings.HasSuffix(got, constants.APIPaths.ApprovePagePrefix+"tx-abc"))
+}
+
+func TestApprovalStatusPath(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, constants.APIPaths.ApprovalsCLIStatus+"tx-abc", ApprovalStatusPath("tx-abc"))
+}
+
+func TestVerifyApprovalStatus(t *testing.T) {
+	t.Parallel()
+
+	t.Run("approved", func(t *testing.T) {
+		t.Parallel()
+
+		status, err := VerifyApprovalStatus("tx-1", []byte(`{"status":"approved","tool_name":"run_command"}`))
+		require.NoError(t, err)
+		assert.Equal(t, "run_command", status.ToolName)
+	})
+
+	t.Run("expired or not found", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := VerifyApprovalStatus("tx-1", []byte(`{"status":"expired_or_not_found"}`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tx-1 expired or not found")
+	})
+
+	t.Run("pending is not approved", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := VerifyApprovalStatus("tx-1", []byte(`{"status":"pending"}`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected status")
+	})
+
+	t.Run("malformed body", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := VerifyApprovalStatus("tx-1", []byte(`not json`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "parse status response")
+	})
 }

@@ -20,6 +20,7 @@ import (
 )
 
 func TestParseAgentToolArguments_RejectsNullArguments(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	spec, ok := catalog.Tool(constants.MCPToolAuditReceiptList)
@@ -33,6 +34,7 @@ func TestParseAgentToolArguments_RejectsNullArguments(t *testing.T) {
 }
 
 func TestParseAgentToolArguments_EmptyArgumentsAcceptInjectedDefaults(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	spec, ok := catalog.Tool(constants.MCPToolAuditReceiptList)
@@ -45,6 +47,7 @@ func TestParseAgentToolArguments_EmptyArgumentsAcceptInjectedDefaults(t *testing
 }
 
 func TestDecodeAgentToolRequest_RecordsTypedShellForm(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	spec, ok := catalog.Tool(constants.MCPToolRunShellCommand)
@@ -58,6 +61,7 @@ func TestDecodeAgentToolRequest_RecordsTypedShellForm(t *testing.T) {
 }
 
 func TestDecodeAgentToolRequest_SchemaInvalidShellRecordsGenericForm(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	spec, ok := catalog.Tool(constants.MCPToolRunShellCommand)
@@ -70,6 +74,7 @@ func TestDecodeAgentToolRequest_SchemaInvalidShellRecordsGenericForm(t *testing.
 }
 
 func TestDecodeAgentToolRequest_UndeclaredToolRecordsGenericForm(t *testing.T) {
+	t.Parallel()
 	request := decodeAgentToolRequest(agentToolSpec{}, false, `{"command": "echo"}`)
 	assert.Nil(t, request.Failure)
 	assert.Nil(t, request.Shell)
@@ -77,6 +82,7 @@ func TestDecodeAgentToolRequest_UndeclaredToolRecordsGenericForm(t *testing.T) {
 }
 
 func TestAgentToolSpecFromDeclaration_RoundTripsCatalogSchema(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	scope, err := catalog.Scope(ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}})
@@ -95,6 +101,7 @@ func TestAgentToolSpecFromDeclaration_RoundTripsCatalogSchema(t *testing.T) {
 }
 
 func TestAgentToolCatalogContainsOnlyRegisteredNativeTools(t *testing.T) {
+	t.Parallel()
 	registry := mcp.NewToolRegistry()
 	require.NoError(t, mcp.RegisterNativeTools(registry))
 	catalog, err := newAgentToolCatalog()
@@ -108,6 +115,7 @@ func TestAgentToolCatalogContainsOnlyRegisteredNativeTools(t *testing.T) {
 }
 
 func TestAgentToolScopeRequiresRunShellCommandForTribunalAuthoring(t *testing.T) {
+	t.Parallel()
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	_, err = catalog.Scope(ScenarioToolExpectations{TribunalCommands: true, AllowedTools: []string{"read_file"}})

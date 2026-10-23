@@ -24,6 +24,7 @@ import (
 // revision its campaign was measured under, for recorded, asserted, and unknown
 // release provenance alike.
 func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, release, revision string
 		basis                   ReleaseBasis
@@ -35,6 +36,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 		{name: "unknown", basis: ReleaseBasisUnknown, publicBasis: evalv1.PublicReleaseBasis_PUBLIC_RELEASE_BASIS_UNKNOWN, legacy: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			f := newArchiveFixture(t)
 			runID := f.runIDs[0]
@@ -108,6 +110,7 @@ func TestCampaignPublication_ReleaseProvenanceReachesEveryPublicRecord(t *testin
 
 // A malformed release tag stops catch-up before any public record is exported.
 func TestCampaignPublication_RejectsMalformedReleaseTags(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newArchiveFixture(t)
 	saveLegacyCampaign(t, f, "legacy-public")

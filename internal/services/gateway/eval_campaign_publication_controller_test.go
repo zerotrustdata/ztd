@@ -34,6 +34,8 @@ func newEvalCampaignPublicationControllerTest(t *testing.T) *EvalCampaignPublica
 }
 
 func TestEvalCampaignPublicationController_HandlePublicationState_DeleteReturnsDiscardResponse(t *testing.T) {
+	t.Parallel()
+
 	controller := newEvalCampaignPublicationControllerTest(t)
 	runID := "eval-init-nemotron-3-nano-4b-1792241875"
 
@@ -48,6 +50,8 @@ func TestEvalCampaignPublicationController_HandlePublicationState_DeleteReturnsD
 }
 
 func TestEvalCampaignPublicationController_HandlePublicationState_GetEmptyState(t *testing.T) {
+	t.Parallel()
+
 	controller := newEvalCampaignPublicationControllerTest(t)
 	runID := "eval-init-qwen3-4b-1789739892"
 	path := constants.EvalCampaignPublicationStatePath(runID)
@@ -64,6 +68,8 @@ func TestEvalCampaignPublicationController_HandlePublicationState_GetEmptyState(
 }
 
 func TestEvalCampaignPublicationController_HandlePublicationState_PutAndGet(t *testing.T) {
+	t.Parallel()
+
 	controller := newEvalCampaignPublicationControllerTest(t)
 	runID := "eval-init-gemma3-4b-1789739892"
 	path := constants.EvalCampaignPublicationStatePath(runID)
@@ -93,6 +99,8 @@ func TestEvalCampaignPublicationController_HandlePublicationState_PutAndGet(t *t
 }
 
 func TestEvalCampaignPublicationController_HandlePublicationState_RejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
+
 	controller := newEvalCampaignPublicationControllerTest(t)
 	runID := "eval-init-qwen3-4b-1789739892"
 	path := constants.EvalCampaignPublicationStatePath(runID)
@@ -118,6 +126,8 @@ func TestEvalCampaignPublicationController_HandlePublicationState_RejectsInvalid
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			req := httptest.NewRequest(test.method, test.path, bytes.NewReader(test.body))
 			rec := httptest.NewRecorder()
 			controller.handlePublicationState(rec, req)

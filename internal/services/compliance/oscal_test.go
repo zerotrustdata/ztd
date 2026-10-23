@@ -99,6 +99,7 @@ func oscalTestAnalysis() *compliancev1.ComplianceAnalysis {
 var oscalTestRecordBundlePath = path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundleSourceEvalsDirname, "run-1", constants.ComplianceBundleSourceRuntimeDirname, constants.ConformanceRecordFilename)
 
 func TestOSCALExporter_GenerateAssessmentResults(t *testing.T) {
+	t.Parallel()
 	analysis := oscalTestAnalysis()
 	results, err := NewOSCALExporter(oscalTestCatalog()).GenerateAssessmentResults(analysis)
 	require.NoError(t, err)
@@ -128,7 +129,8 @@ func TestOSCALExporter_GenerateAssessmentResults(t *testing.T) {
 }
 
 // TestOSCALExporter_NilCatalog asserts that analysis rendering does not require a catalog.
-func TestOSCALExporter_NilCatalog(t *testing.T) {
+func TestOSCALExporter_NilCatalog(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	exporter := NewOSCALExporter(nil)
 
 	_, err := exporter.GenerateAssessmentResults(oscalTestAnalysis())
@@ -137,6 +139,7 @@ func TestOSCALExporter_NilCatalog(t *testing.T) {
 
 // TestOSCALExporter_NilAnalysis asserts that nil canonical analysis produces ErrValidationFailed.
 func TestOSCALExporter_NilAnalysis(t *testing.T) {
+	t.Parallel()
 	_, err := NewOSCALExporter(oscalTestCatalog()).GenerateAssessmentResults(nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrValidationFailed)
@@ -144,6 +147,7 @@ func TestOSCALExporter_NilAnalysis(t *testing.T) {
 
 // TestOSCALExporter_EmptyAnalysisAssessments asserts that analysis without assessments produces empty observations and findings.
 func TestOSCALExporter_EmptyAnalysisAssessments(t *testing.T) {
+	t.Parallel()
 	analysis := oscalTestAnalysis()
 	analysis.AssertionAssessments = nil
 	analysis.FrameworkAssessments = nil
@@ -156,7 +160,8 @@ func TestOSCALExporter_EmptyAnalysisAssessments(t *testing.T) {
 
 // TestOSCALAssessmentResults_MarshalJSON verifies JSON serialization produces
 // a valid OSCAL structure with expected top-level keys.
-func TestOSCALAssessmentResults_MarshalJSON(t *testing.T) {
+func TestOSCALAssessmentResults_MarshalJSON(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	exporter := NewOSCALExporter(oscalTestCatalog())
 
 	results, err := exporter.GenerateAssessmentResults(oscalTestAnalysis())
@@ -182,6 +187,7 @@ func TestOSCALAssessmentResults_MarshalJSON(t *testing.T) {
 
 // TestOSCALExporter_GenerateAssessmentResults_MapsCanonicalStatuses verifies OSCAL-compatible framework finding statuses.
 func TestOSCALExporter_GenerateAssessmentResults_MapsCanonicalStatuses(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		status   string
@@ -195,6 +201,7 @@ func TestOSCALExporter_GenerateAssessmentResults_MapsCanonicalStatuses(t *testin
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			analysis := oscalTestAnalysis()
 			analysis.FrameworkAssessments = analysis.FrameworkAssessments[:1]
 			analysis.FrameworkAssessments[0].Status = tt.status
@@ -213,6 +220,7 @@ func TestOSCALExporter_GenerateAssessmentResults_MapsCanonicalStatuses(t *testin
 }
 
 func TestOSCALExporter_GenerateAssessmentResults_RejectsInvalidGraphAndEvidenceReferences(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.ComplianceAnalysis)
@@ -249,6 +257,7 @@ func TestOSCALExporter_GenerateAssessmentResults_RejectsInvalidGraphAndEvidenceR
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			analysis := oscalTestAnalysis()
 			tt.mutate(analysis)
 			_, err := NewOSCALExporter(nil).GenerateAssessmentResults(analysis)
@@ -260,6 +269,7 @@ func TestOSCALExporter_GenerateAssessmentResults_RejectsInvalidGraphAndEvidenceR
 
 // TestGenerateUUID_DeterministicV5 verifies stable identity-bound RFC 4122 UUID v5 generation.
 func TestGenerateUUID_DeterministicV5(t *testing.T) {
+	t.Parallel()
 	u1 := generateUUID("finding", "analysis-1", "control-1")
 	u2 := generateUUID("finding", "analysis-1", "control-1")
 	u3 := generateUUID("finding", "analysis-1", "control-2")
@@ -275,6 +285,7 @@ func TestGenerateUUID_DeterministicV5(t *testing.T) {
 }
 
 func TestOSCALExporter_GenerateAssessmentResultsFromCanonicalAnalysis_ResolvesEvidenceResources(t *testing.T) {
+	t.Parallel()
 	const digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	artifactID := "action-receipt:sha256:" + digest
 	generatedAt := time.Date(2026, time.September, 7, 12, 0, 0, 0, time.UTC)
@@ -335,6 +346,7 @@ func TestOSCALExporter_GenerateAssessmentResultsFromCanonicalAnalysis_ResolvesEv
 }
 
 func TestOSCALExporter_GenerateAssessmentResults_ResolvesEveryEvidenceLink(t *testing.T) {
+	t.Parallel()
 	analysis := oscalTestAnalysis()
 	analysis.EvidenceLinks = []*compliancev1.EvidenceLink{{SourceRef: analysis.EvidenceResources[0].ArtifactId, TargetRef: analysis.EvidenceResources[1].ArtifactId, LinkType: "references"}}
 	document, err := NewOSCALExporter(oscalTestCatalog()).GenerateAssessmentResults(analysis)
@@ -343,6 +355,7 @@ func TestOSCALExporter_GenerateAssessmentResults_ResolvesEveryEvidenceLink(t *te
 }
 
 func TestOSCALExporter_GenerateAssessmentResults_ConformsToV112RequiredShape(t *testing.T) {
+	t.Parallel()
 	document, err := NewOSCALExporter(oscalTestCatalog()).GenerateAssessmentResults(oscalTestAnalysis())
 	require.NoError(t, err)
 
@@ -369,6 +382,7 @@ func TestOSCALExporter_GenerateAssessmentResults_ConformsToV112RequiredShape(t *
 }
 
 func TestValidateOSCALAssessmentResults_RejectsSchemaViolations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*OSCALAssessmentResults)
@@ -396,6 +410,7 @@ func TestValidateOSCALAssessmentResults_RejectsSchemaViolations(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var document *OSCALAssessmentResults
 			if tt.mutate != nil {
 				var err error

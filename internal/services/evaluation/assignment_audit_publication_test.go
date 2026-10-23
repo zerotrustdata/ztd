@@ -111,6 +111,7 @@ func saveAuditProofAssignment(t *testing.T, store *Store, runID, assignmentID st
 }
 
 func TestCampaignPublicationCoordinator_AuditBindingsWithoutProofPublisherBindNothing(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
@@ -126,6 +127,7 @@ func TestCampaignPublicationCoordinator_AuditBindingsWithoutProofPublisherBindNo
 }
 
 func TestCampaignPublicationCoordinator_IngestAssignmentAuditBindings_EmptyLiveRequests(t *testing.T) {
+	t.Parallel()
 	files := newCampaignRuntimeFileService(t)
 	proofPublisher := &recordingCampaignProofPublisher{}
 	coordinator := NewCampaignPublicationCoordinator(NewStore(files), files, NewMemoryCampaignPublicationStateStore(), &recordingCampaignFeedExporter{}).
@@ -154,6 +156,7 @@ func TestCampaignPublicationCoordinator_IngestAssignmentAuditBindings_EmptyLiveR
 }
 
 func TestHasAssignmentAuditEvents_SkipsProjections(t *testing.T) {
+	t.Parallel()
 	assert.False(t, hasAssignmentAuditEvents([]campaignFeedPublishRequest{
 		{RecordType: models.PublicFeedRecordTypeProjection, Body: []byte(`{"kind":"assignment_result"}`)},
 	}), "an assignment with only projections has no audit events")
@@ -187,6 +190,7 @@ func saveAgentTraceForAuditProof(t *testing.T, store *Store) (*evalv1.Evaluation
 }
 
 func TestAssignmentAgentTraceArtifact_PublishesExactPersistedBodyAndBindsIt(t *testing.T) {
+	t.Parallel()
 	store := NewStore(newCampaignRuntimeFileService(t))
 	result, persisted := saveAgentTraceForAuditProof(t, store)
 
@@ -202,6 +206,7 @@ func TestAssignmentAgentTraceArtifact_PublishesExactPersistedBodyAndBindsIt(t *t
 }
 
 func TestAttachScenarioFixture_PublishesFrozenBodiesAndBindsThem(t *testing.T) {
+	t.Parallel()
 	fixtures := testScenarioFixtures(t)
 	var artifacts AssignmentAuditProofArtifacts
 
@@ -228,6 +233,7 @@ func TestAttachScenarioFixture_PublishesFrozenBodiesAndBindsThem(t *testing.T) {
 }
 
 func TestAttachScenarioFixture_RejectsMissingOrTamperedFixture(t *testing.T) {
+	t.Parallel()
 	fixtures := testScenarioFixtures(t)
 	var artifacts AssignmentAuditProofArtifacts
 	require.ErrorIs(t, artifacts.attachScenarioFixture(&evalv1.EvaluationAssignment{ScenarioId: "scenario-unknown"}, fixtures), constants.ErrEvidenceArtifactMalformed)
@@ -239,6 +245,7 @@ func TestAttachScenarioFixture_RejectsMissingOrTamperedFixture(t *testing.T) {
 }
 
 func TestAssignmentAgentTraceArtifact_AbsentTraceWithoutReferencePublishesNothing(t *testing.T) {
+	t.Parallel()
 	store := NewStore(newCampaignRuntimeFileService(t))
 
 	body, digest, err := loadAssignmentAgentTraceArtifact(context.Background(), store, &evalv1.EvaluationAssignmentResult{RunId: "run-1", AssignmentId: "assignment-1"})
@@ -249,13 +256,16 @@ func TestAssignmentAgentTraceArtifact_AbsentTraceWithoutReferencePublishesNothin
 }
 
 func TestAssignmentAgentTraceArtifact_FailsClosed(t *testing.T) {
+	t.Parallel()
 	t.Run("referenced trace missing", func(t *testing.T) {
+		t.Parallel()
 		store := NewStore(newCampaignRuntimeFileService(t))
 		result := &evalv1.EvaluationAssignmentResult{RunId: "run-1", AssignmentId: "assignment-1", EvidenceRefs: []*compliancev1.ComplianceEvidenceReference{{ArtifactType: string(complianceevidence.ArtifactTypeEvaluationAssignmentTrace), Sha256: strings.Repeat("c", 64)}}}
 		_, _, err := loadAssignmentAgentTraceArtifact(context.Background(), store, result)
 		assert.ErrorIs(t, err, constants.ErrNotFound)
 	})
 	t.Run("reference hash differs from persisted body", func(t *testing.T) {
+		t.Parallel()
 		store := NewStore(newCampaignRuntimeFileService(t))
 		result, _ := saveAgentTraceForAuditProof(t, store)
 		result.EvidenceRefs[0].Sha256 = strings.Repeat("c", 64)

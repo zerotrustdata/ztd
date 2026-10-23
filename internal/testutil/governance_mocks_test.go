@@ -18,6 +18,7 @@ import (
 )
 
 func TestMockReplayStore(t *testing.T) {
+	t.Parallel()
 	store := &MockReplayStore{}
 
 	// ReserveNonce never detects replays
@@ -35,6 +36,7 @@ func TestMockReplayStore(t *testing.T) {
 }
 
 func TestStatefulMockReplayStore(t *testing.T) {
+	t.Parallel()
 	store := NewStatefulMockReplayStore()
 	require.NotNil(t, store)
 	require.NotNil(t, store.Nonces)
@@ -83,6 +85,7 @@ func TestStatefulMockReplayStore(t *testing.T) {
 }
 
 func TestStatefulMockReplayStore_Concurrent(t *testing.T) {
+	t.Parallel()
 	store := NewStatefulMockReplayStore()
 	nonce := "concurrent-nonce"
 	expiresAt := time.Now().Add(5 * time.Minute)
@@ -109,6 +112,7 @@ func TestStatefulMockReplayStore_Concurrent(t *testing.T) {
 }
 
 func TestMockStateRootProvider(t *testing.T) {
+	t.Parallel()
 	root := "test-state-root-123"
 	provider := NewMockStateRootProvider(root)
 
@@ -120,6 +124,7 @@ func TestMockStateRootProvider(t *testing.T) {
 }
 
 func TestMockStateRootProvider_EmptyRoot(t *testing.T) {
+	t.Parallel()
 	provider := NewMockStateRootProvider("")
 	require.Empty(t, provider.Root)
 
@@ -129,6 +134,7 @@ func TestMockStateRootProvider_EmptyRoot(t *testing.T) {
 }
 
 func TestMockL3Notary(t *testing.T) {
+	t.Parallel()
 	notary := &MockL3Notary{}
 
 	// MockL3Notary always approves
@@ -138,7 +144,9 @@ func TestMockL3Notary(t *testing.T) {
 }
 
 func TestConfigurableMockL3Notary(t *testing.T) {
+	t.Parallel()
 	// Test pass behavior
+
 	passNotary := NewConfigurableMockL3Notary(true)
 	approved, err := passNotary.VerifyL3Proof(context.Background(), "user-123", "tx-hash-456", "session-789", nil)
 	require.NoError(t, err)
@@ -152,6 +160,7 @@ func TestConfigurableMockL3Notary(t *testing.T) {
 }
 
 func TestSlowMockL3Notary(t *testing.T) {
+	t.Parallel()
 	delay := 50 * time.Millisecond
 	notary := NewSlowMockL3Notary(delay)
 
@@ -165,6 +174,7 @@ func TestSlowMockL3Notary(t *testing.T) {
 }
 
 func TestMockTransactionAudit(t *testing.T) {
+	t.Parallel()
 	audit := &MockTransactionAudit{}
 
 	// MockTransactionAudit is a no-op

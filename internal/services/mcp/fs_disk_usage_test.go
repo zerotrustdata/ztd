@@ -48,13 +48,16 @@ func (m *mockReadFile) ReadFile(path string) ([]byte, error) {
 }
 
 func TestFSDiskUsageTool_Properties(t *testing.T) {
+	t.Parallel()
 	tool := &FSDiskUsageTool{}
 
 	t.Run("Name", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, "fs_disk_usage", tool.Name())
 	})
 
 	t.Run("Description", func(t *testing.T) {
+		t.Parallel()
 		desc := tool.Description()
 		require.NotEmpty(t, desc)
 		require.Contains(t, desc, "filesystem")
@@ -62,6 +65,7 @@ func TestFSDiskUsageTool_Properties(t *testing.T) {
 	})
 
 	t.Run("InputSchema", func(t *testing.T) {
+		t.Parallel()
 		schema := tool.InputSchema()
 		require.Equal(t, "object", schema.Type)
 
@@ -73,6 +77,7 @@ func TestFSDiskUsageTool_Properties(t *testing.T) {
 }
 
 func TestFSDiskUsageTool_Execute_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	tool := &FSDiskUsageTool{}
 	ctx := context.Background()
 
@@ -82,6 +87,7 @@ func TestFSDiskUsageTool_Execute_InvalidJSON(t *testing.T) {
 }
 
 func TestFSDiskUsageTool_Execute_WithValidPath_Success(t *testing.T) {
+	t.Parallel()
 	tool := &FSDiskUsageTool{
 		statFS: &mockStatFS{
 			stat: syscall.Statfs_t{
@@ -117,6 +123,7 @@ func TestFSDiskUsageTool_Execute_WithValidPath_Success(t *testing.T) {
 }
 
 func TestFSDiskUsageTool_Execute_WithEmptyPath_AllFilesystems(t *testing.T) {
+	t.Parallel()
 	mountsData := `sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
 proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
 /dev/sda1 / ext4 rw,relatime 0 0
@@ -156,6 +163,7 @@ proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
 }
 
 func TestFSDiskUsageTool_Execute_Errors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		tool    *FSDiskUsageTool
@@ -186,6 +194,7 @@ func TestFSDiskUsageTool_Execute_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			args, err := json.Marshal(tt.req)
 			require.NoError(t, err)
@@ -198,6 +207,7 @@ func TestFSDiskUsageTool_Execute_Errors(t *testing.T) {
 }
 
 func TestFSDiskUsageTool_Execute_MarshalError(t *testing.T) {
+	t.Parallel()
 	tool := &FSDiskUsageTool{
 		statFS: &mockStatFS{
 			stat: syscall.Statfs_t{
@@ -223,7 +233,9 @@ func TestFSDiskUsageTool_Execute_MarshalError(t *testing.T) {
 }
 
 func TestFSDiskUsageTool_NilInterfaceFallback(t *testing.T) {
+	t.Parallel()
 	// Test that nil statFS and readFile interfaces fall back to real implementations
+
 	tool := &FSDiskUsageTool{
 		statFS:   nil,
 		readFile: nil,
@@ -246,6 +258,7 @@ func TestFSDiskUsageTool_NilInterfaceFallback(t *testing.T) {
 }
 
 func TestGetDiskUsageForPath(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		stat    syscall.Statfs_t
@@ -304,6 +317,7 @@ func TestGetDiskUsageForPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockStat := &mockStatFS{
 				stat:  tt.stat,
 				error: tt.error,
@@ -326,6 +340,7 @@ func TestGetDiskUsageForPath(t *testing.T) {
 }
 
 func TestGetAllDiskUsage_Success(t *testing.T) {
+	t.Parallel()
 	mountsData := `sysfs /sys sysfs rw 0 0
 /dev/sda1 / ext4 rw 0 0
 /dev/sda2 /home ext4 rw 0 0
@@ -352,6 +367,7 @@ func TestGetAllDiskUsage_Success(t *testing.T) {
 }
 
 func TestGetAllDiskUsage_ReadFileError(t *testing.T) {
+	t.Parallel()
 	mockRead := &mockReadFile{
 		error: errors.New("permission denied"),
 	}
@@ -362,6 +378,7 @@ func TestGetAllDiskUsage_ReadFileError(t *testing.T) {
 }
 
 func TestGetAllDiskUsage_SkipsFailedStatFS(t *testing.T) {
+	t.Parallel()
 	mountsData := `/dev/sda1 / ext4 rw 0 0
 /dev/sda2 /home ext4 rw 0 0
 `
@@ -406,6 +423,7 @@ func (c *customStatFS) StatFS(path string, stat *syscall.Statfs_t) error {
 }
 
 func TestParseMounts(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		data      string
@@ -465,6 +483,7 @@ devtmpfs /dev devtmpfs rw 0 0
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockRead := &mockReadFile{
 				data:  []byte(tt.data),
 				error: tt.error,
@@ -496,6 +515,7 @@ devtmpfs /dev devtmpfs rw 0 0
 }
 
 func TestFSDiskUsageTool_UsedPercentCalculation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		blocks      uint64
@@ -539,6 +559,7 @@ func TestFSDiskUsageTool_UsedPercentCalculation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockStat := &mockStatFS{
 				stat: syscall.Statfs_t{
 					Blocks: tt.blocks,
@@ -556,7 +577,9 @@ func TestFSDiskUsageTool_UsedPercentCalculation(t *testing.T) {
 }
 
 func TestFSDiskUsageTool_Invariants(t *testing.T) {
+	t.Parallel()
 	// Property-based test: verify mathematical invariants hold
+
 	tests := []struct {
 		name   string
 		blocks uint64
@@ -589,6 +612,7 @@ func TestFSDiskUsageTool_Invariants(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockStat := &mockStatFS{
 				stat: syscall.Statfs_t{
 					Blocks: tt.blocks,
@@ -624,7 +648,9 @@ func TestFSDiskUsageTool_Invariants(t *testing.T) {
 }
 
 func TestFSDiskUsageTool_BavailVsBfree(t *testing.T) {
+	t.Parallel()
 	// Test the distinction between Bfree (total free) and Bavail (free for non-root)
+
 	tests := []struct {
 		name        string
 		blocks      uint64
@@ -653,6 +679,7 @@ func TestFSDiskUsageTool_BavailVsBfree(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockStat := &mockStatFS{
 				stat: syscall.Statfs_t{
 					Blocks: tt.blocks,

@@ -17,6 +17,8 @@ import (
 )
 
 func TestValidateJWTTemporalClaims_EnforcesSymmetricClockSkewBoundaries(t *testing.T) {
+	t.Parallel()
+
 	now := time.Unix(1_700_000_000, 0)
 	insideSkew := constants.JWTClockSkew - time.Second
 	outsideSkew := constants.JWTClockSkew + time.Second
@@ -81,6 +83,8 @@ func TestValidateJWTTemporalClaims_EnforcesSymmetricClockSkewBoundaries(t *testi
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := validateJWTTemporalClaims(tt.claims, now)
 			if tt.wantErr == nil {
 				assert.NoError(t, err)

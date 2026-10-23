@@ -17,7 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewFileSvc_ReturnsNonNilService(t *testing.T) {
+func TestNewFileSvc_ReturnsNonNilService(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc, err := shared.NewFileSvc("", slog.Default())
 	require.NoError(t, err)
 	assert.NotNil(t, svc)

@@ -57,6 +57,8 @@ func setupEncryptedKVTest(t *testing.T) (*KVStoreService, *vault.Vault) {
 }
 
 func TestEncryptedKVAdapter_SetGet(t *testing.T) {
+	t.Parallel()
+
 	kv, v := setupEncryptedKVTest(t)
 	adapter := NewEncryptedKVAdapter(kv, v)
 
@@ -70,6 +72,8 @@ func TestEncryptedKVAdapter_SetGet(t *testing.T) {
 }
 
 func TestEncryptedKVAdapter_GetNotFound(t *testing.T) {
+	t.Parallel()
+
 	kv, v := setupEncryptedKVTest(t)
 	adapter := NewEncryptedKVAdapter(kv, v)
 
@@ -79,6 +83,8 @@ func TestEncryptedKVAdapter_GetNotFound(t *testing.T) {
 }
 
 func TestEncryptedKVAdapter_SetLockedVault(t *testing.T) {
+	t.Parallel()
+
 	kv, _ := setupEncryptedKVTest(t)
 
 	// Create a locked vault (no unlock)
@@ -102,6 +108,8 @@ func TestEncryptedKVAdapter_SetLockedVault(t *testing.T) {
 }
 
 func TestEncryptedKVAdapter_GetLockedVault(t *testing.T) {
+	t.Parallel()
+
 	kv, v := setupEncryptedKVTest(t)
 	adapter := NewEncryptedKVAdapter(kv, v)
 
@@ -129,6 +137,8 @@ func TestEncryptedKVAdapter_GetLockedVault(t *testing.T) {
 }
 
 func TestEncryptedKVAdapter_ScanPrefix(t *testing.T) {
+	t.Parallel()
+
 	kv, v := setupEncryptedKVTest(t)
 	adapter := NewEncryptedKVAdapter(kv, v)
 
@@ -145,6 +155,8 @@ func TestEncryptedKVAdapter_ScanPrefix(t *testing.T) {
 }
 
 func TestEncryptedKVAdapter_ScanPrefixEmpty(t *testing.T) {
+	t.Parallel()
+
 	kv, v := setupEncryptedKVTest(t)
 	adapter := NewEncryptedKVAdapter(kv, v)
 
@@ -154,6 +166,8 @@ func TestEncryptedKVAdapter_ScanPrefixEmpty(t *testing.T) {
 }
 
 func TestEncryptedKVAdapter_ScanPrefixLockedVault(t *testing.T) {
+	t.Parallel()
+
 	kv, v := setupEncryptedKVTest(t)
 	adapter := NewEncryptedKVAdapter(kv, v)
 
@@ -181,6 +195,8 @@ func TestEncryptedKVAdapter_ScanPrefixLockedVault(t *testing.T) {
 }
 
 func TestEncryptedKVAdapter_SetWithTTL(t *testing.T) {
+	t.Parallel()
+
 	kv, v := setupEncryptedKVTest(t)
 	adapter := NewEncryptedKVAdapter(kv, v)
 
@@ -194,6 +210,8 @@ func TestEncryptedKVAdapter_SetWithTTL(t *testing.T) {
 }
 
 func TestEncryptedKVAdapter_RoundtripEncryption(t *testing.T) {
+	t.Parallel()
+
 	kv, v := setupEncryptedKVTest(t)
 	adapter := NewEncryptedKVAdapter(kv, v)
 
@@ -215,6 +233,8 @@ func TestEncryptedKVAdapter_RoundtripEncryption(t *testing.T) {
 // TestEncryptedKVAdapter_ValueBoundToKey asserts a ciphertext copied under another key
 // fails authentication instead of decrypting as that key's value.
 func TestEncryptedKVAdapter_ValueBoundToKey(t *testing.T) {
+	t.Parallel()
+
 	kv, v := setupEncryptedKVTest(t)
 	adapter := NewEncryptedKVAdapter(kv, v)
 	ctx := context.Background()

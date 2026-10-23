@@ -35,14 +35,14 @@ func newTestFileEditService(t *testing.T, cfg *config.Config, logger *slog.Logge
 	return svc
 }
 
-func TestFileEditService_ExecuteFileEdit_Write(t *testing.T) {
-	t.Parallel()
+func TestFileEditService_ExecuteFileEdit_Write(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("write to new file", func(t *testing.T) {
-		t.Parallel()
+	t.Run("write to new file", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		content := "test content"
@@ -70,8 +70,8 @@ func TestFileEditService_ExecuteFileEdit_Write(t *testing.T) {
 		assert.Equal(t, content, string(data))
 	})
 
-	t.Run("write with backup", func(t *testing.T) {
-		t.Parallel()
+	t.Run("write with backup", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 
@@ -106,8 +106,8 @@ func TestFileEditService_ExecuteFileEdit_Write(t *testing.T) {
 		assert.Equal(t, newContent, string(data))
 	})
 
-	t.Run("write without create_if_missing fails", func(t *testing.T) {
-		t.Parallel()
+	t.Run("write without create_if_missing fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestNonexistentTxtFilename)
 		content := "test"
@@ -130,14 +130,14 @@ func TestFileEditService_ExecuteFileEdit_Write(t *testing.T) {
 	})
 }
 
-func TestFileEditService_ExecuteFileEdit_Read(t *testing.T) {
-	t.Parallel()
+func TestFileEditService_ExecuteFileEdit_Read(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("read entire file", func(t *testing.T) {
-		t.Parallel()
+	t.Run("read entire file", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		content := "line1\nline2\nline3"
@@ -159,8 +159,8 @@ func TestFileEditService_ExecuteFileEdit_Read(t *testing.T) {
 		assert.Equal(t, content, result.Content)
 	})
 
-	t.Run("read specific lines", func(t *testing.T) {
-		t.Parallel()
+	t.Run("read specific lines", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		os.WriteFile(tmpFile, []byte("line1\nline2\nline3\nline4\nline5"), constants.PermFilePublic)
@@ -188,8 +188,8 @@ func TestFileEditService_ExecuteFileEdit_Read(t *testing.T) {
 		assert.Contains(t, result.Content, "line4")
 	})
 
-	t.Run("read non-existent file", func(t *testing.T) {
-		t.Parallel()
+	t.Run("read non-existent file", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		req := &models.FileEditRequest{
 			ExecutionID: "test-req-3",
 			CaseID:      "test-case-3",
@@ -205,8 +205,8 @@ func TestFileEditService_ExecuteFileEdit_Read(t *testing.T) {
 		assert.NotNil(t, result.ErrorMessage)
 	})
 
-	t.Run("read with file stats", func(t *testing.T) {
-		t.Parallel()
+	t.Run("read with file stats", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		os.WriteFile(tmpFile, []byte("test content"), constants.PermFilePublic)
@@ -231,14 +231,14 @@ func TestFileEditService_ExecuteFileEdit_Read(t *testing.T) {
 	})
 }
 
-func TestFileEditService_ExecuteFileEdit_Replace(t *testing.T) {
-	t.Parallel()
+func TestFileEditService_ExecuteFileEdit_Replace(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("replace content", func(t *testing.T) {
-		t.Parallel()
+	t.Run("replace content", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		os.WriteFile(tmpFile, []byte("hello world"), constants.PermFilePublic)
@@ -266,8 +266,8 @@ func TestFileEditService_ExecuteFileEdit_Replace(t *testing.T) {
 		assert.Equal(t, "hello universe", string(data))
 	})
 
-	t.Run("replace missing content fails", func(t *testing.T) {
-		t.Parallel()
+	t.Run("replace missing content fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		os.WriteFile(tmpFile, []byte("hello world"), constants.PermFilePublic)
@@ -292,14 +292,14 @@ func TestFileEditService_ExecuteFileEdit_Replace(t *testing.T) {
 	})
 }
 
-func TestFileEditService_ExecuteFileEdit_Insert(t *testing.T) {
-	t.Parallel()
+func TestFileEditService_ExecuteFileEdit_Insert(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("insert at position", func(t *testing.T) {
-		t.Parallel()
+	t.Run("insert at position", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		os.WriteFile(tmpFile, []byte("line1\nline3"), constants.PermFilePublic)
@@ -327,8 +327,8 @@ func TestFileEditService_ExecuteFileEdit_Insert(t *testing.T) {
 		assert.Contains(t, string(data), "line1\nline2\nline3")
 	})
 
-	t.Run("insert at invalid position fails", func(t *testing.T) {
-		t.Parallel()
+	t.Run("insert at invalid position fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		os.WriteFile(tmpFile, []byte("line1"), constants.PermFilePublic)
@@ -352,14 +352,14 @@ func TestFileEditService_ExecuteFileEdit_Insert(t *testing.T) {
 	})
 }
 
-func TestFileEditService_ExecuteFileEdit_Delete(t *testing.T) {
-	t.Parallel()
+func TestFileEditService_ExecuteFileEdit_Delete(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("delete lines", func(t *testing.T) {
-		t.Parallel()
+	t.Run("delete lines", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		os.WriteFile(tmpFile, []byte("line1\nline2\nline3\nline4"), constants.PermFilePublic)
@@ -390,8 +390,8 @@ func TestFileEditService_ExecuteFileEdit_Delete(t *testing.T) {
 		assert.Contains(t, string(data), "line4")
 	})
 
-	t.Run("delete invalid range fails", func(t *testing.T) {
-		t.Parallel()
+	t.Run("delete invalid range fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 		os.WriteFile(tmpFile, []byte("line1"), constants.PermFilePublic)
@@ -415,11 +415,13 @@ func TestFileEditService_ExecuteFileEdit_Delete(t *testing.T) {
 	})
 }
 
-func TestFileEditService_RejectsPatchWithoutFilesystemChanges(t *testing.T) {
+func TestFileEditService_RejectsPatchWithoutFilesystemChanges(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	svc := newTestFileEditService(t, cfg, testutil.NewTestLogger())
-	for _, exists := range []bool{true, false} {
+	for _, exists := range []bool{true, false} { //nolint:paralleltest // mutates package-level state
 		t.Run(fmt.Sprintf("file_exists_%t", exists), func(t *testing.T) {
+
 			tmpDir := testutil.OperatorDir(t)
 			tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 			const content = "original content"
@@ -453,8 +455,8 @@ func TestFileEditService_RejectsPatchWithoutFilesystemChanges(t *testing.T) {
 	}
 }
 
-func TestFileEditService_CreateBackup(t *testing.T) {
-	t.Parallel()
+func TestFileEditService_CreateBackup(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)

@@ -16,15 +16,18 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 )
 
-func TestGatewayCmdStructure(t *testing.T) {
-	t.Run("gateway command has correct use and aliases", func(t *testing.T) {
+func TestGatewayCmdStructure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("gateway command has correct use and aliases", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := Cmd()
 		assert.Equal(t, "gw", cmd.Use)
 		assert.Contains(t, cmd.Aliases, "gateway")
 		assert.Contains(t, cmd.Short, "Gateway")
 	})
 
-	t.Run("gateway command has all expected subcommands including data and security", func(t *testing.T) {
+	t.Run("gateway command has all expected subcommands including data and security", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := Cmd()
 		require.NotNil(t, cmd)
 
@@ -42,8 +45,10 @@ func TestGatewayCmdStructure(t *testing.T) {
 	})
 }
 
-func TestGatewayStartCmdFlags(t *testing.T) {
-	t.Run("start command has all expected flags", func(t *testing.T) {
+func TestGatewayStartCmdFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("start command has all expected flags", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := gatewayStartCmd()
 		require.NotNil(t, cmd)
 
@@ -62,13 +67,15 @@ func TestGatewayStartCmdFlags(t *testing.T) {
 		}
 	})
 
-	t.Run("start command has follow shorthand", func(t *testing.T) {
+	t.Run("start command has follow shorthand", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := gatewayStartCmd()
 		flag := cmd.Flags().ShorthandLookup("f")
 		assert.NotNil(t, flag)
 	})
 
-	t.Run("start command posture defaults to doctrine", func(t *testing.T) {
+	t.Run("start command posture defaults to doctrine", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cmd := gatewayStartCmd()
 		flag := cmd.Flags().Lookup("posture")
 		require.NotNil(t, flag)
@@ -76,8 +83,10 @@ func TestGatewayStartCmdFlags(t *testing.T) {
 	})
 }
 
-func TestGatewayLogsCmdNoLogFile(t *testing.T) {
+func TestGatewayLogsCmdNoLogFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("logs command reports no log file when none exists", func(t *testing.T) {
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := gatewayLogsCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))

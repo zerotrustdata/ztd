@@ -50,6 +50,7 @@ func postureDependencies(t *testing.T, posture constants.Posture) Dependencies {
 }
 
 func TestNewGatewayService_RejectsEmptyOrUnknownPosture(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		posture constants.Posture
@@ -60,6 +61,7 @@ func TestNewGatewayService_RejectsEmptyOrUnknownPosture(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			g, err := NewGatewayService(postureDependencies(t, tc.posture))
 			require.ErrorIs(t, err, constants.ErrInvalidPosture)
 			require.Nil(t, g)
@@ -68,8 +70,10 @@ func TestNewGatewayService_RejectsEmptyOrUnknownPosture(t *testing.T) {
 }
 
 func TestNewGatewayService_StoresTypedPostureNamedByConfiguration(t *testing.T) {
+	t.Parallel()
 	for _, name := range []constants.Posture{constants.PostureDoctrine, constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
 		t.Run(string(name), func(t *testing.T) {
+			t.Parallel()
 			g, err := NewGatewayService(postureDependencies(t, name))
 			require.NoError(t, err)
 			require.Equal(t, name, g.posture)
@@ -81,6 +85,7 @@ func TestNewGatewayService_StoresTypedPostureNamedByConfiguration(t *testing.T) 
 // where governance.L2Enforced gates the envelope: consensus and notary for state-changing MCP calls,
 // never for a read-only tool, and never for a bootstrap action, which predates the consensus tribunal.
 func TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name      string
 		posture   constants.Posture
@@ -98,6 +103,7 @@ func TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced(t *testing.T) 
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			deliberator := &countingL2Deliberator{}
 			g := newTestGatewayService(t)
 			g.posture = tc.posture
@@ -118,6 +124,7 @@ func TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced(t *testing.T) 
 // TestGatewayService_SuspensionMessageNamesTypedPosture proves the approval pause reads the typed posture,
 // so the instruction returned to the calling agent names the posture the Gateway is actually running.
 func TestGatewayService_SuspensionMessageNamesTypedPosture(t *testing.T) {
+	t.Parallel()
 	g := newTestGatewayService(t,
 		withEnvProc(&fakeEnvelopeProcessor{err: governance.ErrL3ProofMissing}),
 		withSuspendedStore(&fakeSuspendedStore{}))

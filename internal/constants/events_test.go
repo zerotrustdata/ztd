@@ -18,6 +18,7 @@ import (
 )
 
 func TestOtherNewEventConstants(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		goConst EventType
 		value   string
@@ -31,6 +32,7 @@ func TestOtherNewEventConstants(t *testing.T) {
 }
 
 func TestObservabilityDashboardEventConstants(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		goConst EventType
 		value   string
@@ -44,6 +46,7 @@ func TestObservabilityDashboardEventConstants(t *testing.T) {
 }
 
 func TestOperatorIntentEventConstants(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		goConst EventType
 		value   string
@@ -63,12 +66,14 @@ func TestOperatorIntentEventConstants(t *testing.T) {
 }
 
 func TestEventsJSONValidity(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile("../../protocol/constants/events.json")
 	require.NoError(t, err)
 	assert.True(t, json.Valid(data), "events.json is valid JSON")
 }
 
 func TestEventsJSONGoConstPresence(t *testing.T) {
+	t.Parallel()
 	t.Helper()
 	data, err := os.ReadFile("../../protocol/constants/events.json")
 	require.NoError(t, err)
@@ -120,6 +125,7 @@ func loadGoEventConstants(t *testing.T) map[string]string {
 }
 
 func TestEventsJSONGoRegistryParity(t *testing.T) {
+	t.Parallel()
 	jsonEvents := loadEventsJSONRegistry(t)
 	goEvents := loadGoEventConstants(t)
 

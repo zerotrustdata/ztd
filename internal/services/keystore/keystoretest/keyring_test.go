@@ -16,12 +16,14 @@ import (
 )
 
 func TestNewMemoryKeyring(t *testing.T) {
+	t.Parallel()
 	keyring := NewMemoryKeyring()
 	require.NotNil(t, keyring)
 	assert.Equal(t, "memory", keyring.Name())
 }
 
 func TestMemoryKeyring_RetrieveMasterKey_NotFound(t *testing.T) {
+	t.Parallel()
 	keyring := NewMemoryKeyring()
 
 	key, err := keyring.RetrieveMasterKey()
@@ -31,6 +33,7 @@ func TestMemoryKeyring_RetrieveMasterKey_NotFound(t *testing.T) {
 }
 
 func TestMemoryKeyring_StoreAndRetrieveMasterKey(t *testing.T) {
+	t.Parallel()
 	keyring := NewMemoryKeyring()
 
 	testKey := []byte("test-master-key-32-bytes-long-12345")
@@ -43,6 +46,7 @@ func TestMemoryKeyring_StoreAndRetrieveMasterKey(t *testing.T) {
 }
 
 func TestMemoryKeyring_RetrieveMasterKey_ReturnsCopy(t *testing.T) {
+	t.Parallel()
 	keyring := NewMemoryKeyring()
 
 	testKey := []byte("test-master-key-32-bytes-long-12345")
@@ -61,6 +65,7 @@ func TestMemoryKeyring_RetrieveMasterKey_ReturnsCopy(t *testing.T) {
 }
 
 func TestMemoryKeyring_DeleteMasterKey(t *testing.T) {
+	t.Parallel()
 	keyring := NewMemoryKeyring()
 
 	testKey := []byte("test-master-key-32-bytes-long-12345")
@@ -77,6 +82,7 @@ func TestMemoryKeyring_DeleteMasterKey(t *testing.T) {
 }
 
 func TestMemoryKeyring_DeleteMasterKey_NotFound(t *testing.T) {
+	t.Parallel()
 	keyring := NewMemoryKeyring()
 
 	err := keyring.DeleteMasterKey()
@@ -84,6 +90,7 @@ func TestMemoryKeyring_DeleteMasterKey_NotFound(t *testing.T) {
 }
 
 func TestMemoryKeyring_OverwriteMasterKey(t *testing.T) {
+	t.Parallel()
 	keyring := NewMemoryKeyring()
 
 	key1 := []byte("first-master-key-32-bytes-long-123")

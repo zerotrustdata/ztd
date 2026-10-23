@@ -21,7 +21,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/paths"
 )
 
-func TestCreateRuntimeTree_CancelledContextReturnsError(t *testing.T) {
+func TestCreateRuntimeTree_CancelledContextReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -31,13 +32,15 @@ func TestCreateRuntimeTree_CancelledContextReturnsError(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestCreateRuntimeTree_NilContextSucceeds(t *testing.T) {
+func TestCreateRuntimeTree_NilContextSucceeds(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	var nilCtx context.Context
 	require.NoError(t, svc.CreateRuntimeTree(nilCtx))
 }
 
-func TestCreateRuntimeTree_DataBearingDirsArePrivate(t *testing.T) {
+func TestCreateRuntimeTree_DataBearingDirsArePrivate(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	require.NoError(t, svc.CreateRuntimeTree(context.Background()))
 
@@ -57,7 +60,8 @@ func TestCreateRuntimeTree_DataBearingDirsArePrivate(t *testing.T) {
 	}
 }
 
-func TestCreateRuntimeTree_KeyBearingPkiDirsArePrivate(t *testing.T) {
+func TestCreateRuntimeTree_KeyBearingPkiDirsArePrivate(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	require.NoError(t, svc.CreateRuntimeTree(context.Background()))
 
@@ -77,7 +81,8 @@ func TestCreateRuntimeTree_KeyBearingPkiDirsArePrivate(t *testing.T) {
 	}
 }
 
-func TestCreateRuntimeTree_PublicPkiDirsAreStandard(t *testing.T) {
+func TestCreateRuntimeTree_PublicPkiDirsAreStandard(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	require.NoError(t, svc.CreateRuntimeTree(context.Background()))
 
@@ -95,7 +100,8 @@ func TestCreateRuntimeTree_PublicPkiDirsAreStandard(t *testing.T) {
 // Nothing writes into protocol/, docs/, or inference/ at the runtime root: the
 // inference evidence stores live under data/inference and are created by their
 // owning writers on demand.
-func TestCreateRuntimeTree_OmitsUnusedRuntimeRootDirs(t *testing.T) {
+func TestCreateRuntimeTree_OmitsUnusedRuntimeRootDirs(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	require.NoError(t, svc.CreateRuntimeTree(context.Background()))
 

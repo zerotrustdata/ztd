@@ -66,6 +66,7 @@ func setupBootstrapLedger(t *testing.T) (*GitLedgerService, string) {
 // construction, even when it did not exist before.
 func TestBootstrap_CreatesBaseDir(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	info, err := os.Stat(ledgerDir)
@@ -77,6 +78,7 @@ func TestBootstrap_CreatesBaseDir(t *testing.T) {
 // immediately after construction.
 func TestBootstrap_CreatesFilesDir(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	filesDir := filepath.Join(ledgerDir, constants.FilesDirname)
@@ -89,6 +91,7 @@ func TestBootstrap_CreatesFilesDir(t *testing.T) {
 // exists immediately after construction.
 func TestBootstrap_CreatesSessionsDir(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	sessionsDir := filepath.Join(ledgerDir, constants.SessionsDirname)
@@ -101,6 +104,7 @@ func TestBootstrap_CreatesSessionsDir(t *testing.T) {
 // valid .git directory immediately after construction.
 func TestBootstrap_FilesDirHasGitRepo(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	gitDir := filepath.Join(ledgerDir, constants.FilesDirname, constants.GitDirname)
@@ -113,6 +117,7 @@ func TestBootstrap_FilesDirHasGitRepo(t *testing.T) {
 // was created in the files/ directory during bootstrap.
 func TestBootstrap_GitignoreExistsInFilesDir(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	gitignorePath := filepath.Join(ledgerDir, constants.FilesDirname, constants.GitignoreFilename)
@@ -125,6 +130,7 @@ func TestBootstrap_GitignoreExistsInFilesDir(t *testing.T) {
 // verifies the entire expected directory tree in one assertion block.
 func TestBootstrap_AllPathsExist(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	expectedPaths := []string{
@@ -151,6 +157,7 @@ func TestBootstrap_AllPathsExist(t *testing.T) {
 // until a mutation triggered lazy init.
 func TestBootstrap_FilesDirHasInitialCommit(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	filesDir := filepath.Join(ledgerDir, constants.FilesDirname)
@@ -169,6 +176,7 @@ func TestBootstrap_FilesDirHasInitialCommit(t *testing.T) {
 // expected ztd-operator author identity.
 func TestBootstrap_InitialCommitAuthor(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	filesDir := filepath.Join(ledgerDir, constants.FilesDirname)
@@ -191,6 +199,7 @@ func TestBootstrap_InitialCommitAuthor(t *testing.T) {
 // get an error because the files/ git repo didn't exist.
 func TestBootstrap_GetStateMerkleRootImmediately(t *testing.T) {
 	t.Parallel()
+
 	svc, _ := setupBootstrapLedger(t)
 
 	root, err := svc.GetStateMerkleRoot()
@@ -203,6 +212,7 @@ func TestBootstrap_GetStateMerkleRootImmediately(t *testing.T) {
 // least the initial commit immediately after construction, with no mutations.
 func TestBootstrap_ListCommitsImmediately(t *testing.T) {
 	t.Parallel()
+
 	svc, _ := setupBootstrapLedger(t)
 
 	commits, err := svc.ListCommits("", 100)
@@ -219,6 +229,7 @@ func TestBootstrap_ListCommitsImmediately(t *testing.T) {
 // with an empty session ID queries the default files/ repo, not a session repo.
 func TestBootstrap_ListCommitsEmptySessionUsesFilesDir(t *testing.T) {
 	t.Parallel()
+
 	svc, _ := setupBootstrapLedger(t)
 
 	commits, err := svc.ListCommits("", 10)
@@ -234,6 +245,7 @@ func TestBootstrap_ListCommitsEmptySessionUsesFilesDir(t *testing.T) {
 // directory that already has a .git directory is a no-op and does not error.
 func TestBootstrap_InitGitRepoIdempotent(t *testing.T) {
 	t.Parallel()
+
 	svc, ledgerDir := setupBootstrapLedger(t)
 
 	filesRelPath := filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.FilesDirname)
@@ -255,6 +267,7 @@ func TestBootstrap_InitGitRepoIdempotent(t *testing.T) {
 // (bootstrap must be safe to run on an existing structure).
 func TestBootstrap_ReconstructionOverExistingDir(t *testing.T) {
 	t.Parallel()
+
 	tempDir := testutil.OperatorDir(t)
 
 	fileSvc := newTestFileSvc(t, tempDir)
@@ -297,6 +310,7 @@ func TestBootstrap_ReconstructionOverExistingDir(t *testing.T) {
 // TestBootstrap_NilConfigReturnsError verifies that a nil config is rejected.
 func TestBootstrap_NilConfigReturnsError(t *testing.T) {
 	t.Parallel()
+
 	svc, err := NewGitLedgerService(nil, testutil.NewTestLogger(), nil)
 	require.Error(t, err)
 	assert.Nil(t, svc)
@@ -306,6 +320,7 @@ func TestBootstrap_NilConfigReturnsError(t *testing.T) {
 // TestBootstrap_NilVaultReturnsError verifies that a nil vault is rejected.
 func TestBootstrap_NilVaultReturnsError(t *testing.T) {
 	t.Parallel()
+
 	config := &LedgerConfig{}
 	svc, err := NewGitLedgerService(config, testutil.NewTestLogger(), nil)
 	require.Error(t, err)
@@ -317,11 +332,13 @@ func TestBootstrap_NilVaultReturnsError(t *testing.T) {
 // returns an error when the base directory cannot be created (e.g. under a
 // read-only parent).
 func TestBootstrap_BootstrapFailureOnUnwritableBaseDir(t *testing.T) {
-	t.Parallel()
+	t.Parallel(
 
 	// Create a file to block directory creation — os.MkdirAll will fail because
 	// the path component is a file, not a directory. This is cross-platform,
 	// unlike chmod 0555 which doesn't prevent writes on Windows.
+	)
+
 	blocker := filepath.Join(testutil.OperatorDir(t), "blocker")
 	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0644))
 
@@ -355,6 +372,7 @@ func TestBootstrap_BootstrapFailureOnUnwritableBaseDir(t *testing.T) {
 // empty session ID returns the default files/ directory (not a session repo).
 func TestBootstrap_OpenSessionLedgerEmptyReturnsFilesDir(t *testing.T) {
 	t.Parallel()
+
 	svc, ledgerDir := setupBootstrapLedger(t)
 
 	path, err := svc.openSessionLedger("")
@@ -368,6 +386,7 @@ func TestBootstrap_OpenSessionLedgerEmptyReturnsFilesDir(t *testing.T) {
 // is created on first access (not during bootstrap) and has a valid initial commit.
 func TestBootstrap_SessionRepoCreatedLazily(t *testing.T) {
 	t.Parallel()
+
 	svc, ledgerDir := setupBootstrapLedger(t)
 
 	sessionID := "bootstrap-test-session"
@@ -403,6 +422,7 @@ func TestBootstrap_SessionRepoCreatedLazily(t *testing.T) {
 // twice for the same session ID returns the same path and does not reinitialize.
 func TestBootstrap_SessionRepoIdempotent(t *testing.T) {
 	t.Parallel()
+
 	svc, _ := setupBootstrapLedger(t)
 
 	sessionID := "idempotent-session"
@@ -430,6 +450,7 @@ func TestBootstrap_SessionRepoIdempotent(t *testing.T) {
 // starts, performs HTTP-only actions, and then later needs to write a file.
 func TestBootstrap_MutationWorksImmediatelyAfterConstruction(t *testing.T) {
 	t.Parallel()
+
 	svc, _ := setupBootstrapLedger(t)
 	// Host files live outside the runtime .ztd/ tree; mirror writes are governed FILE_EDIT targets.
 	tempDir := testutil.OperatorDir(t)
@@ -458,6 +479,7 @@ func TestBootstrap_MutationWorksImmediatelyAfterConstruction(t *testing.T) {
 // works from a freshly bootstrapped state.
 func TestBootstrap_DiffStatWorksImmediatelyAfterConstruction(t *testing.T) {
 	t.Parallel()
+
 	svc, _ := setupBootstrapLedger(t)
 	// Host files live outside the runtime .ztd/ tree; mirror writes are governed FILE_EDIT targets.
 	tempDir := testutil.OperatorDir(t)
@@ -494,6 +516,7 @@ func TestBootstrap_DiffStatWorksImmediatelyAfterConstruction(t *testing.T) {
 // freshly bootstrapped repo returns no error and empty results.
 func TestBootstrap_GetFileHistoryEmptyRepo(t *testing.T) {
 	t.Parallel()
+
 	svc, _ := setupBootstrapLedger(t)
 
 	history, err := svc.GetFileHistory("/some/nonexistent/file.txt", 10, "")
@@ -509,6 +532,7 @@ func TestBootstrap_GetFileHistoryEmptyRepo(t *testing.T) {
 // goroutines can read from the bootstrapped repo concurrently without issues.
 func TestBootstrap_ConcurrentReadersAfterConstruction(t *testing.T) {
 	t.Parallel()
+
 	svc, _ := setupBootstrapLedger(t)
 
 	const goroutines = 10
@@ -535,6 +559,7 @@ func TestBootstrap_ConcurrentReadersAfterConstruction(t *testing.T) {
 // directory has the expected content.
 func TestBootstrap_GitignoreContent(t *testing.T) {
 	t.Parallel()
+
 	svc, ledgerDir := setupBootstrapLedger(t)
 
 	gitignorePath := filepath.Join(ledgerDir, constants.FilesDirname, constants.GitignoreFilename)
@@ -553,6 +578,7 @@ func TestBootstrap_GitignoreContent(t *testing.T) {
 // tree (not bare), so worktree operations like Add and Commit work correctly.
 func TestBootstrap_FilesDirIsNotBareRepo(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	filesDir := filepath.Join(ledgerDir, constants.FilesDirname)
@@ -568,6 +594,7 @@ func TestBootstrap_FilesDirIsNotBareRepo(t *testing.T) {
 // files/ worktree has a clean status (the initial commit captured everything).
 func TestBootstrap_FilesDirWorktreeStatusClean(t *testing.T) {
 	t.Parallel()
+
 	_, ledgerDir := setupBootstrapLedger(t)
 
 	filesDir := filepath.Join(ledgerDir, constants.FilesDirname)

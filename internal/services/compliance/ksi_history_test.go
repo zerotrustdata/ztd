@@ -36,7 +36,8 @@ func setupHistoryTestFS(t *testing.T) fs.RuntimeFileService {
 
 // TestKSIHistoryStore_SaveAndListRoundTrip verifies that saving a snapshot
 // and listing it back produces the same data.
-func TestKSIHistoryStore_SaveAndListRoundTrip(t *testing.T) {
+func TestKSIHistoryStore_SaveAndListRoundTrip(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -90,7 +91,8 @@ func TestKSIHistoryStore_SaveAndListRoundTrip(t *testing.T) {
 
 // TestKSIHistoryStore_MultipleSnapshotsSorted verifies that multiple snapshots
 // are returned in chronological order (oldest first).
-func TestKSIHistoryStore_MultipleSnapshotsSorted(t *testing.T) {
+func TestKSIHistoryStore_MultipleSnapshotsSorted(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -118,7 +120,8 @@ func TestKSIHistoryStore_MultipleSnapshotsSorted(t *testing.T) {
 
 // TestKSIHistoryStore_GetHistoryForKSI verifies filtering by KSI ID across
 // multiple snapshots.
-func TestKSIHistoryStore_GetHistoryForKSI(t *testing.T) {
+func TestKSIHistoryStore_GetHistoryForKSI(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -151,7 +154,8 @@ func TestKSIHistoryStore_GetHistoryForKSI(t *testing.T) {
 
 // TestKSIHistoryStore_GetHistoryForKSI_NotFound returns ErrKSIHistoryEmpty
 // when no snapshots contain the requested KSI ID.
-func TestKSIHistoryStore_GetHistoryForKSI_NotFound(t *testing.T) {
+func TestKSIHistoryStore_GetHistoryForKSI_NotFound(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -170,7 +174,8 @@ func TestKSIHistoryStore_GetHistoryForKSI_NotFound(t *testing.T) {
 
 // TestKSIHistoryStore_GetHistoryForKSI_NoSnapshots returns ErrKSIHistoryEmpty
 // when the history directory has no snapshots at all.
-func TestKSIHistoryStore_GetHistoryForKSI_NoSnapshots(t *testing.T) {
+func TestKSIHistoryStore_GetHistoryForKSI_NoSnapshots(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -183,7 +188,8 @@ func TestKSIHistoryStore_GetHistoryForKSI_NoSnapshots(t *testing.T) {
 
 // TestKSIHistoryStore_ListSnapshots_EmptyDirectory returns an empty slice
 // when the history directory does not exist.
-func TestKSIHistoryStore_ListSnapshots_EmptyDirectory(t *testing.T) {
+func TestKSIHistoryStore_ListSnapshots_EmptyDirectory(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -195,7 +201,8 @@ func TestKSIHistoryStore_ListSnapshots_EmptyDirectory(t *testing.T) {
 }
 
 // TestKSIHistoryStore_SaveSnapshot_NilResultSet returns ErrKSIHistoryWriteFailed.
-func TestKSIHistoryStore_SaveSnapshot_NilResultSet(t *testing.T) {
+func TestKSIHistoryStore_SaveSnapshot_NilResultSet(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -208,7 +215,8 @@ func TestKSIHistoryStore_SaveSnapshot_NilResultSet(t *testing.T) {
 
 // TestKSIHistoryStore_PruneOlderThan verifies that snapshots older than the
 // retention period are removed and newer ones are kept.
-func TestKSIHistoryStore_PruneOlderThan(t *testing.T) {
+func TestKSIHistoryStore_PruneOlderThan(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -246,7 +254,8 @@ func TestKSIHistoryStore_PruneOlderThan(t *testing.T) {
 }
 
 // TestKSIHistoryStore_PruneOlderThan_ZeroRetention prunes nothing.
-func TestKSIHistoryStore_PruneOlderThan_ZeroRetention(t *testing.T) {
+func TestKSIHistoryStore_PruneOlderThan_ZeroRetention(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -270,7 +279,8 @@ func TestKSIHistoryStore_PruneOlderThan_ZeroRetention(t *testing.T) {
 // TestKSIHistoryStore_ListSnapshots_ReadDirError verifies that non-ErrNotFound
 // ReadDir errors are wrapped with ErrKSIHistoryReadFailed instead of being
 // silently swallowed.
-func TestKSIHistoryStore_ListSnapshots_ReadDirError(t *testing.T) {
+func TestKSIHistoryStore_ListSnapshots_ReadDirError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -290,7 +300,8 @@ func TestKSIHistoryStore_ListSnapshots_ReadDirError(t *testing.T) {
 // TestKSIHistoryStore_PruneOlderThan_ReadDirError verifies that non-ErrNotFound
 // ReadDir errors are wrapped with ErrKSIHistoryReadFailed instead of being
 // silently swallowed.
-func TestKSIHistoryStore_PruneOlderThan_ReadDirError(t *testing.T) {
+func TestKSIHistoryStore_PruneOlderThan_ReadDirError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)
@@ -309,6 +320,7 @@ func TestKSIHistoryStore_PruneOlderThan_ReadDirError(t *testing.T) {
 
 // TestSnapshotFilename verifies the filename format.
 func TestSnapshotFilename(t *testing.T) {
+	t.Parallel()
 	name := snapshotFilename(1700000000000)
 	assert.Equal(t, "ksi-result-1700000000000.json", name)
 }
@@ -316,6 +328,7 @@ func TestSnapshotFilename(t *testing.T) {
 // TestParseSnapshotFilename verifies that parseSnapshotFilename correctly
 // extracts the evaluation timestamp from valid filenames and rejects invalid ones.
 func TestParseSnapshotFilename(t *testing.T) {
+	t.Parallel()
 	ms, ok := parseSnapshotFilename("ksi-result-1700000000000.json")
 	require.True(t, ok)
 	assert.Equal(t, int64(1700000000000), ms)
@@ -334,7 +347,8 @@ func TestParseSnapshotFilename(t *testing.T) {
 // is based on EvaluatedAtMs in the filename, not file modification time. Even
 // if an external tool touches the file to update its mtime, an old snapshot is
 // still pruned correctly.
-func TestKSIHistoryStore_PruneOlderThan_ImmuneToMtimeChanges(t *testing.T) {
+func TestKSIHistoryStore_PruneOlderThan_ImmuneToMtimeChanges(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc := setupHistoryTestFS(t)
 	ctx := context.Background()
 	historyDir := filepath.Join(constants.DataDirname, constants.ComplianceDirname, constants.KSIHistoryDirname)

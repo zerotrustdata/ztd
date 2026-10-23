@@ -52,6 +52,7 @@ func TestVaultCmd(t *testing.T) {
 	t.Parallel()
 
 	t.Run("metadata", func(t *testing.T) {
+		t.Parallel()
 		cmd := Cmd()
 		assert.Equal(t, "vault", cmd.Use)
 		assert.NotEmpty(t, cmd.Short)
@@ -59,6 +60,7 @@ func TestVaultCmd(t *testing.T) {
 	})
 
 	t.Run("subcommands registration", func(t *testing.T) {
+		t.Parallel()
 		cmd := Cmd()
 		expected := []string{"init", "unlock", "rekey", "status", "reset"}
 		subcommands := cmd.Commands()
@@ -77,7 +79,8 @@ func TestVaultCmd(t *testing.T) {
 
 // TestVaultTestFileSvc_RootsAtTempDirNotCWD guards against regressions where
 // the vault test file service roots at CWD instead of an isolated temp dir.
-func TestVaultTestFileSvc_RootsAtTempDirNotCWD(t *testing.T) {
+func TestVaultTestFileSvc_RootsAtTempDirNotCWD(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 
@@ -88,8 +91,10 @@ func TestVaultTestFileSvc_RootsAtTempDirNotCWD(t *testing.T) {
 	assert.NotEqual(t, cwdRuntimeRoot, root, "vault test fileSvc roots at CWD (%s); it must root at an isolated temp dir", cwdRuntimeRoot)
 }
 
-func TestVaultInitCmd(t *testing.T) {
-	t.Run("successful init", func(t *testing.T) {
+func TestVaultInitCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("successful init", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, _ := newTestVaultEnv(t)
 
 		cmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -109,7 +114,8 @@ func TestVaultInitCmd(t *testing.T) {
 		assert.Contains(t, out.String(), "Vault initialized")
 	})
 
-	t.Run("already initialized", func(t *testing.T) {
+	t.Run("already initialized", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, _ := newTestVaultEnv(t)
 
 		cmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -121,8 +127,10 @@ func TestVaultInitCmd(t *testing.T) {
 	})
 }
 
-func TestVaultUnlockCmd(t *testing.T) {
-	t.Run("successful unlock", func(t *testing.T) {
+func TestVaultUnlockCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("successful unlock", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, _ := newTestVaultEnv(t)
 
 		initCmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -136,7 +144,8 @@ func TestVaultUnlockCmd(t *testing.T) {
 		assert.Contains(t, out.String(), "Vault unlocked successfully")
 	})
 
-	t.Run("unlock not initialized", func(t *testing.T) {
+	t.Run("unlock not initialized", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, _ := newTestVaultEnv(t)
 
 		cmd := vaultUnlockCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -145,7 +154,8 @@ func TestVaultUnlockCmd(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrVaultNotInitialized)
 	})
 
-	t.Run("wrong key", func(t *testing.T) {
+	t.Run("wrong key", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, refKS := newTestVaultEnv(t)
 
 		initCmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -163,8 +173,10 @@ func TestVaultUnlockCmd(t *testing.T) {
 	})
 }
 
-func TestVaultRekeyCmd(t *testing.T) {
-	t.Run("successful rekey", func(t *testing.T) {
+func TestVaultRekeyCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("successful rekey", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, refKS := newTestVaultEnv(t)
 
 		initCmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -193,7 +205,8 @@ func TestVaultRekeyCmd(t *testing.T) {
 		require.Error(t, unlockCmd.RunE(unlockCmd, []string{}))
 	})
 
-	t.Run("rekey not initialized", func(t *testing.T) {
+	t.Run("rekey not initialized", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, _ := newTestVaultEnv(t)
 
 		cmd := vaultRekeyCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -203,8 +216,10 @@ func TestVaultRekeyCmd(t *testing.T) {
 	})
 }
 
-func TestVaultStatusCmd(t *testing.T) {
-	t.Run("not initialized", func(t *testing.T) {
+func TestVaultStatusCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("not initialized", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 
 		cmd := vaultStatusCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))
@@ -215,7 +230,8 @@ func TestVaultStatusCmd(t *testing.T) {
 		assert.Contains(t, out.String(), "Lock state: locked")
 	})
 
-	t.Run("initialized", func(t *testing.T) {
+	t.Run("initialized", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, _ := newTestVaultEnv(t)
 
 		initCmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -230,8 +246,10 @@ func TestVaultStatusCmd(t *testing.T) {
 	})
 }
 
-func TestVaultResetCmd(t *testing.T) {
-	t.Run("successful reset with confirm flag", func(t *testing.T) {
+func TestVaultResetCmd(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("successful reset with confirm flag", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, _ := newTestVaultEnv(t)
 
 		initCmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -254,7 +272,8 @@ func TestVaultResetCmd(t *testing.T) {
 		assert.False(t, sealedKeyExists)
 	})
 
-	t.Run("interactive confirmation with destroy", func(t *testing.T) {
+	t.Run("interactive confirmation with destroy", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, _ := newTestVaultEnv(t)
 
 		initCmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -273,7 +292,8 @@ func TestVaultResetCmd(t *testing.T) {
 		assert.False(t, headerExists)
 	})
 
-	t.Run("interactive cancellation", func(t *testing.T) {
+	t.Run("interactive cancellation", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, ksFactory, _ := newTestVaultEnv(t)
 
 		initCmd := vaultInitCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc), ksFactory)
@@ -292,7 +312,8 @@ func TestVaultResetCmd(t *testing.T) {
 		assert.True(t, headerExists)
 	})
 
-	t.Run("reset not initialized", func(t *testing.T) {
+	t.Run("reset not initialized", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 
 		cmd := vaultResetCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))

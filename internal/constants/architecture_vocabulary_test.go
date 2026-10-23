@@ -164,6 +164,7 @@ func scanFileSubstrings(path string, needles []string) ([]string, error) {
 
 // W12: production Go must not introduce literal event/action casts or wire strings.
 func TestArchitecture_NoLiteralEventOrActionTypeCastsInProductionGo(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, err := walkProductionGoFiles(filepath.Join(root, "internal"))
 	require.NoError(t, err)
@@ -178,6 +179,7 @@ func TestArchitecture_NoLiteralEventOrActionTypeCastsInProductionGo(t *testing.T
 }
 
 func TestArchitecture_NoWireEventLiteralsInProductionGo(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, err := walkProductionGoFiles(filepath.Join(root, "internal"))
 	require.NoError(t, err)
@@ -192,6 +194,7 @@ func TestArchitecture_NoWireEventLiteralsInProductionGo(t *testing.T) {
 }
 
 func TestArchitecture_NoBannedMapperNamesInProductionGo(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, err := walkProductionGoFiles(filepath.Join(root, "internal"))
 	require.NoError(t, err)
@@ -212,6 +215,7 @@ func TestArchitecture_NoBannedMapperNamesInProductionGo(t *testing.T) {
 }
 
 func TestArchitecture_NoBannedVocabularyInProductionCode(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var violations []string

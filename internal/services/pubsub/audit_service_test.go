@@ -33,19 +33,18 @@ func listSessionEvents(t *testing.T, store *storage.SQLAuditStore, sessionID str
 	return events
 }
 
-func TestHandleUserMsgRequest_RecordsContentAndRejectsBadPayload(t *testing.T) {
-	t.Parallel()
+func TestHandleUserMsgRequest_RecordsContentAndRejectsBadPayload(t *testing.T) { //nolint:paralleltest // mutates package-level state
 
-	t.Run("invalid protobuf", func(t *testing.T) {
-		t.Parallel()
+	t.Run("invalid protobuf", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleUserMsgRequest(testutil.Context(t), &PubSubCommandMessage{Payload: []byte("not-protobuf")})
 		require.ErrorIs(t, err, constants.ErrAuditUnmarshalUserMsg)
 		assert.Empty(t, listSessionEvents(t, store, sessionID))
 	})
 
-	t.Run("empty content records nothing", func(t *testing.T) {
-		t.Parallel()
+	t.Run("empty content records nothing", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleUserMsgRequest(testutil.Context(t), &PubSubCommandMessage{
 			Payload: mustMarshalProto(t, &operatorv1.AuditMsgRequested{Content: ""}),
@@ -54,8 +53,8 @@ func TestHandleUserMsgRequest_RecordsContentAndRejectsBadPayload(t *testing.T) {
 		assert.Empty(t, listSessionEvents(t, store, sessionID))
 	})
 
-	t.Run("records the message on the operator session", func(t *testing.T) {
-		t.Parallel()
+	t.Run("records the message on the operator session", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleUserMsgRequest(testutil.Context(t), &PubSubCommandMessage{
 			Payload: mustMarshalProto(t, &operatorv1.AuditMsgRequested{Content: "hello operator"}),
@@ -70,8 +69,7 @@ func TestHandleUserMsgRequest_RecordsContentAndRejectsBadPayload(t *testing.T) {
 	})
 }
 
-func TestHandleUserMsgRequest_UninitializedStoreFailsClosed(t *testing.T) {
-	t.Parallel()
+func TestHandleUserMsgRequest_UninitializedStoreFailsClosed(t *testing.T) { //nolint:paralleltest // mutates package-level state
 
 	tests := []struct {
 		name  string
@@ -81,9 +79,9 @@ func TestHandleUserMsgRequest_UninitializedStoreFailsClosed(t *testing.T) {
 		{name: "nil store", store: nil, want: constants.ErrAuditStoreDisabled},
 		{name: "nil database", store: &storage.SQLAuditStore{}, want: constants.ErrAuditStoreDBNotInitialized},
 	}
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+
 			cfg := testutil.NewTestConfig(t)
 			svc := NewAuditService(cfg, testutil.NewTestLogger(), tt.store)
 			err := svc.HandleUserMsgRequest(testutil.Context(t), &PubSubCommandMessage{
@@ -95,19 +93,18 @@ func TestHandleUserMsgRequest_UninitializedStoreFailsClosed(t *testing.T) {
 	}
 }
 
-func TestHandleAIMsgRequest_RecordsContentAndRejectsBadPayload(t *testing.T) {
-	t.Parallel()
+func TestHandleAIMsgRequest_RecordsContentAndRejectsBadPayload(t *testing.T) { //nolint:paralleltest // mutates package-level state
 
-	t.Run("invalid protobuf", func(t *testing.T) {
-		t.Parallel()
+	t.Run("invalid protobuf", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleAIMsgRequest(testutil.Context(t), &PubSubCommandMessage{Payload: []byte("not-protobuf")})
 		require.ErrorIs(t, err, constants.ErrAuditUnmarshalAIMsg)
 		assert.Empty(t, listSessionEvents(t, store, sessionID))
 	})
 
-	t.Run("empty content records nothing", func(t *testing.T) {
-		t.Parallel()
+	t.Run("empty content records nothing", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleAIMsgRequest(testutil.Context(t), &PubSubCommandMessage{
 			Payload: mustMarshalProto(t, &operatorv1.AuditMsgRequested{Content: ""}),
@@ -116,8 +113,8 @@ func TestHandleAIMsgRequest_RecordsContentAndRejectsBadPayload(t *testing.T) {
 		assert.Empty(t, listSessionEvents(t, store, sessionID))
 	})
 
-	t.Run("records the message on the operator session", func(t *testing.T) {
-		t.Parallel()
+	t.Run("records the message on the operator session", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleAIMsgRequest(testutil.Context(t), &PubSubCommandMessage{
 			Payload: mustMarshalProto(t, &operatorv1.AuditMsgRequested{Content: "model reply"}),
@@ -131,19 +128,18 @@ func TestHandleAIMsgRequest_RecordsContentAndRejectsBadPayload(t *testing.T) {
 	})
 }
 
-func TestHandleDirectCmdRequest_RecordsCommandAndRejectsBadPayload(t *testing.T) {
-	t.Parallel()
+func TestHandleDirectCmdRequest_RecordsCommandAndRejectsBadPayload(t *testing.T) { //nolint:paralleltest // mutates package-level state
 
-	t.Run("invalid protobuf", func(t *testing.T) {
-		t.Parallel()
+	t.Run("invalid protobuf", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleDirectCmdRequest(testutil.Context(t), &PubSubCommandMessage{Payload: []byte("not-protobuf")})
 		require.ErrorIs(t, err, constants.ErrAuditUnmarshalDirectCmd)
 		assert.Empty(t, listSessionEvents(t, store, sessionID))
 	})
 
-	t.Run("empty command records nothing", func(t *testing.T) {
-		t.Parallel()
+	t.Run("empty command records nothing", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleDirectCmdRequest(testutil.Context(t), &PubSubCommandMessage{
 			Payload: mustMarshalProto(t, &operatorv1.DirectCommandAuditRequested{Command: ""}),
@@ -152,8 +148,8 @@ func TestHandleDirectCmdRequest_RecordsCommandAndRejectsBadPayload(t *testing.T)
 		assert.Empty(t, listSessionEvents(t, store, sessionID))
 	})
 
-	t.Run("records the command", func(t *testing.T) {
-		t.Parallel()
+	t.Run("records the command", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleDirectCmdRequest(testutil.Context(t), &PubSubCommandMessage{
 			Payload: mustMarshalProto(t, &operatorv1.DirectCommandAuditRequested{
@@ -171,19 +167,18 @@ func TestHandleDirectCmdRequest_RecordsCommandAndRejectsBadPayload(t *testing.T)
 	})
 }
 
-func TestHandleDirectCmdResultRequest_RecordsResultAndRejectsBadPayload(t *testing.T) {
-	t.Parallel()
+func TestHandleDirectCmdResultRequest_RecordsResultAndRejectsBadPayload(t *testing.T) { //nolint:paralleltest // mutates package-level state
 
-	t.Run("invalid protobuf", func(t *testing.T) {
-		t.Parallel()
+	t.Run("invalid protobuf", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleDirectCmdResultRequest(testutil.Context(t), &PubSubCommandMessage{Payload: []byte("not-protobuf")})
 		require.ErrorIs(t, err, constants.ErrAuditUnmarshalDirectResult)
 		assert.Empty(t, listSessionEvents(t, store, sessionID))
 	})
 
-	t.Run("empty command records nothing", func(t *testing.T) {
-		t.Parallel()
+	t.Run("empty command records nothing", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleDirectCmdResultRequest(testutil.Context(t), &PubSubCommandMessage{
 			Payload: mustMarshalProto(t, &operatorv1.DirectCommandResultAuditRequested{Command: ""}),
@@ -192,8 +187,8 @@ func TestHandleDirectCmdResultRequest_RecordsResultAndRejectsBadPayload(t *testi
 		assert.Empty(t, listSessionEvents(t, store, sessionID))
 	})
 
-	t.Run("records stdout exit code and duration", func(t *testing.T) {
-		t.Parallel()
+	t.Run("records stdout exit code and duration", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		svc, store, sessionID := newRecordingAuditService(t)
 		err := svc.HandleDirectCmdResultRequest(testutil.Context(t), &PubSubCommandMessage{
 			Payload: mustMarshalProto(t, &operatorv1.DirectCommandResultAuditRequested{

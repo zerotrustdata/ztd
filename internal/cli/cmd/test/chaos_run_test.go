@@ -16,7 +16,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/tools/chaos"
 )
 
-func TestRunChaos_ConfigPopulationFromFlags(t *testing.T) {
+func TestRunChaos_ConfigPopulationFromFlags(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	originalCount := chaosCount
 	originalDataDir := chaosDataDir
 	originalPKIDir := chaosPKIDir
@@ -41,7 +42,8 @@ func TestRunChaos_ConfigPopulationFromFlags(t *testing.T) {
 	assert.Equal(t, "/tmp/chaos-pki", cfg.PKIDir)
 }
 
-func TestRunChaos_ZeroCountConfigConstruction(t *testing.T) {
+func TestRunChaos_ZeroCountConfigConstruction(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	originalCount := chaosCount
 	t.Cleanup(func() { chaosCount = originalCount })
 
@@ -59,7 +61,7 @@ func TestRunChaos_ZeroCountConfigConstruction(t *testing.T) {
 	assert.Equal(t, 0, cfg.Count)
 }
 
-func TestRunChaos_DefaultCountFromFlagIs100(t *testing.T) {
+func TestRunChaos_DefaultCountFromFlagIs100(t *testing.T) { //nolint:paralleltest // mutates package-level state
 	cmd := chaosCmd()
 	require.NotNil(t, cmd)
 

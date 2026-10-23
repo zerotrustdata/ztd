@@ -109,9 +109,10 @@ func (m *mockResultsPublisher) PublishActionReceipt(ctx context.Context, env *co
 	return nil
 }
 
-func TestNewHeartbeatService(t *testing.T) {
+func TestNewHeartbeatService(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("returns non-nil service with config and logger", func(t *testing.T) {
-		t.Parallel()
+
 		cfg := testutil.NewTestConfig(t)
 		logger := testutil.NewTestLogger()
 		svc := NewHeartbeatService(cfg, logger, nil)
@@ -121,8 +122,8 @@ func TestNewHeartbeatService(t *testing.T) {
 	})
 }
 
-func TestHeartbeatService_SetResultsPublisher(t *testing.T) {
-	t.Parallel()
+func TestHeartbeatService_SetResultsPublisher(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := NewHeartbeatService(testutil.NewTestConfig(t), testutil.NewTestLogger(), nil)
 	publisher := &mockResultsPublisher{}
 
@@ -133,8 +134,8 @@ func TestHeartbeatService_SetResultsPublisher(t *testing.T) {
 	assert.Nil(t, svc.results)
 }
 
-func TestHeartbeatService_SetContext(t *testing.T) {
-	t.Parallel()
+func TestHeartbeatService_SetContext(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := NewHeartbeatService(testutil.NewTestConfig(t), testutil.NewTestLogger(), nil)
 	ctx := testutil.Context(t)
 

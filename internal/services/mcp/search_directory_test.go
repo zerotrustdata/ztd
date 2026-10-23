@@ -22,6 +22,7 @@ import (
 )
 
 func TestSearchDirectoryTool(t *testing.T) {
+	t.Parallel()
 	workDir := testutil.TempDir(t)
 	logsDir := filepath.Join(workDir, "logs")
 	require.NoError(t, os.Mkdir(logsDir, 0755))
@@ -31,6 +32,7 @@ func TestSearchDirectoryTool(t *testing.T) {
 	handler := newSearchToolHandler(t, workDir)
 
 	t.Run("searches every file under the directory", func(t *testing.T) {
+		t.Parallel()
 		args, err := json.Marshal(SearchDirectoryRequest{Path: "logs", Pattern: "PAYMENT_TIMEOUT"})
 		require.NoError(t, err)
 		result, err := handler.HandleTool(context.Background(), constants.MCPToolSearchDirectory, args)
@@ -44,6 +46,7 @@ func TestSearchDirectoryTool(t *testing.T) {
 	})
 
 	t.Run("include narrows matched file names", func(t *testing.T) {
+		t.Parallel()
 		args, err := json.Marshal(SearchDirectoryRequest{Path: "logs", Pattern: "PAYMENT_TIMEOUT", Include: []string{"*.log"}})
 		require.NoError(t, err)
 		result, err := handler.HandleTool(context.Background(), constants.MCPToolSearchDirectory, args)
@@ -58,6 +61,7 @@ func TestSearchDirectoryTool(t *testing.T) {
 	})
 
 	t.Run("rejects a file and names the file tool", func(t *testing.T) {
+		t.Parallel()
 		args, err := json.Marshal(SearchDirectoryRequest{Path: filepath.Join("logs", "api.log"), Pattern: "PAYMENT_TIMEOUT"})
 		require.NoError(t, err)
 		_, err = handler.HandleTool(context.Background(), constants.MCPToolSearchDirectory, args)
@@ -66,6 +70,7 @@ func TestSearchDirectoryTool(t *testing.T) {
 	})
 
 	t.Run("missing directory fails", func(t *testing.T) {
+		t.Parallel()
 		args, err := json.Marshal(SearchDirectoryRequest{Path: "absent", Pattern: "PAYMENT_TIMEOUT"})
 		require.NoError(t, err)
 		_, err = handler.HandleTool(context.Background(), constants.MCPToolSearchDirectory, args)
@@ -73,6 +78,7 @@ func TestSearchDirectoryTool(t *testing.T) {
 	})
 
 	t.Run("invalid pattern fails", func(t *testing.T) {
+		t.Parallel()
 		args, err := json.Marshal(SearchDirectoryRequest{Path: "logs", Pattern: "[invalid"})
 		require.NoError(t, err)
 		_, err = handler.HandleTool(context.Background(), constants.MCPToolSearchDirectory, args)

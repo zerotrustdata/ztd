@@ -53,6 +53,7 @@ func writeTestFrozenInventory(t *testing.T, root string, variants ...*evalv1.Mod
 }
 
 func TestModelInventoryFreezeJSON_RejectsNilFreeze(t *testing.T) {
+	t.Parallel()
 	_, err := modelInventoryFreezeJSON(nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)

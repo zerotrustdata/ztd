@@ -117,6 +117,7 @@ func (r *bundleArtifactReaderStub) ListFiles(context.Context) ([]string, error) 
 }
 
 func TestVerifyComplianceReportBundleRejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		request BundleVerificationRequest
@@ -150,6 +151,7 @@ func TestVerifyComplianceReportBundleRejectsInvalidRequests(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := VerifyComplianceReportBundle(context.Background(), test.request)
 			assert.ErrorIs(t, err, test.wantErr)
 		})
@@ -162,6 +164,7 @@ func TestVerifyComplianceReportBundleRejectsInvalidRequests(t *testing.T) {
 }
 
 func TestBundledSourceArtifactReaderEnforcesContextAndReadOnlyDirectoryBehavior(t *testing.T) {
+	t.Parallel()
 	reader := &bundledSourceArtifactReader{bodies: map[string][]byte{"source.json": []byte("body")}}
 	body, err := reader.ReadFile(context.Background(), "source.json")
 	require.NoError(t, err)
@@ -183,6 +186,7 @@ func TestBundledSourceArtifactReaderEnforcesContextAndReadOnlyDirectoryBehavior(
 }
 
 func TestBundledRuntimeArtifactReaderResolvesFilesAndRejectsWrites(t *testing.T) {
+	t.Parallel()
 	reader := &bundledRuntimeArtifactReader{
 		bodies: map[string][]byte{
 			"sources/evals/run-1/runtime/data.json":        []byte("data"),
@@ -251,6 +255,7 @@ func TestBundledRuntimeArtifactReaderResolvesFilesAndRejectsWrites(t *testing.T)
 }
 
 func TestCampaignWitnessPoliciesMatchAdmissionRejectsSubstitution(t *testing.T) {
+	t.Parallel()
 	admission := &compliancev1.AssessmentSourceAdmission{
 		AdmissionId:               "campaign-source",
 		ProviderObservationPolicy: compliancev1.AssessmentWitnessPolicy_ASSESSMENT_WITNESS_POLICY_STRICT,
@@ -267,6 +272,7 @@ func TestCampaignWitnessPoliciesMatchAdmissionRejectsSubstitution(t *testing.T) 
 }
 
 func TestValidateCampaignSourceInventoryRejectsUnverifiableArtifactLists(t *testing.T) {
+	t.Parallel()
 	admission := &compliancev1.AssessmentSourceAdmission{
 		AdmissionId:               "campaign-source",
 		RunId:                     "run-1",
@@ -299,6 +305,7 @@ func TestValidateCampaignSourceInventoryRejectsUnverifiableArtifactLists(t *test
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			inventory := proto.Clone(base).(*evalv1.CampaignComplianceSourceInventory)
 			test.mutate(inventory)
 			require.Error(t, validateCampaignSourceInventory(inventory, admission))
@@ -312,6 +319,7 @@ func TestValidateCampaignSourceInventoryRejectsUnverifiableArtifactLists(t *test
 }
 
 func TestBundleVerifier_VerifyOperationalSourcesReplaysProtectedInventory(t *testing.T) {
+	t.Parallel()
 	assessmentAsOf := time.UnixMilli(1_700_000_100_000).UTC()
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -973,6 +981,7 @@ func addAuditSourceFixture(t *testing.T, request *BundleAssemblyRequest) auditSo
 }
 
 func TestVerifyComplianceReportBundle_AcceptsCompleteSignedBundleOffline(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixture(t)
 
 	report, err := VerifyComplianceReportBundle(context.Background(), BundleVerificationRequest{
@@ -1002,6 +1011,7 @@ func TestVerifyComplianceReportBundle_AcceptsCompleteSignedBundleOffline(t *test
 }
 
 func TestVerifyComplianceReportBundle_RejectsResignedInventedAssertionAssessment(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		require.NotEmpty(t, request.Analysis.GetAssertionAssessments())
 		request.Analysis.AssertionAssessments[0].EvidenceLevel = "L1"
@@ -1034,6 +1044,7 @@ func TestVerifyComplianceReportBundle_RejectsResignedInventedAssertionAssessment
 }
 
 func TestVerifyComplianceReportBundle_RejectsSignedCommitmentThatDiffersFromAnalysis(t *testing.T) {
+	t.Parallel()
 	var fixture commitmentSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addCommitmentSourceFixture(t, request)
@@ -1052,6 +1063,7 @@ func TestVerifyComplianceReportBundle_RejectsSignedCommitmentThatDiffersFromAnal
 }
 
 func TestVerifyComplianceReportBundle_AcceptsCompleteCommitmentSource(t *testing.T) {
+	t.Parallel()
 	var fixture commitmentSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addCommitmentSourceFixture(t, request)
@@ -1065,6 +1077,7 @@ func TestVerifyComplianceReportBundle_AcceptsCompleteCommitmentSource(t *testing
 }
 
 func TestVerifyComplianceReportBundle_RejectsMissingCommitmentSource(t *testing.T) {
+	t.Parallel()
 	var fixture commitmentSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addCommitmentSourceFixture(t, request)
@@ -1079,6 +1092,7 @@ func TestVerifyComplianceReportBundle_RejectsMissingCommitmentSource(t *testing.
 }
 
 func TestVerifyComplianceReportBundle_RejectsCommitmentWithoutAssessedEvidenceTrust(t *testing.T) {
+	t.Parallel()
 	var fixture commitmentSourceFixture
 	bundle, reader, policy, _, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addCommitmentSourceFixture(t, request)
@@ -1092,6 +1106,7 @@ func TestVerifyComplianceReportBundle_RejectsCommitmentWithoutAssessedEvidenceTr
 }
 
 func TestVerifyComplianceReportBundle_RejectsCommitmentWithUnassessedSigner(t *testing.T) {
+	t.Parallel()
 	var fixture commitmentSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addCommitmentSourceFixture(t, request)
@@ -1106,6 +1121,7 @@ func TestVerifyComplianceReportBundle_RejectsCommitmentWithUnassessedSigner(t *t
 }
 
 func TestVerifyComplianceReportBundle_RejectsCommitmentAnalysisBindingMutations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.ComplianceEvidenceReference)
@@ -1115,6 +1131,7 @@ func TestVerifyComplianceReportBundle_RejectsCommitmentAnalysisBindingMutations(
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			var fixture commitmentSourceFixture
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 				fixture = addCommitmentSourceFixture(t, request)
@@ -1142,6 +1159,7 @@ func TestVerifyComplianceReportBundle_RejectsCommitmentAnalysisBindingMutations(
 }
 
 func TestVerifyComplianceReportBundle_RejectsSignedAttestationThatDiffersFromAnalysis(t *testing.T) {
+	t.Parallel()
 	var fixture attestationSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addAttestationSourceFixture(t, request)
@@ -1158,6 +1176,7 @@ func TestVerifyComplianceReportBundle_RejectsSignedAttestationThatDiffersFromAna
 }
 
 func TestVerifyComplianceReportBundle_AcceptsCompleteAttestationSource(t *testing.T) {
+	t.Parallel()
 	var fixture attestationSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addAttestationSourceFixture(t, request)
@@ -1171,6 +1190,7 @@ func TestVerifyComplianceReportBundle_AcceptsCompleteAttestationSource(t *testin
 }
 
 func TestVerifyComplianceReportBundle_RejectsMissingAttestationSource(t *testing.T) {
+	t.Parallel()
 	var fixture attestationSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addAttestationSourceFixture(t, request)
@@ -1185,6 +1205,7 @@ func TestVerifyComplianceReportBundle_RejectsMissingAttestationSource(t *testing
 }
 
 func TestVerifyComplianceReportBundle_RejectsAttestationWithoutAssessedEvidenceTrust(t *testing.T) {
+	t.Parallel()
 	var fixture attestationSourceFixture
 	bundle, reader, policy, _, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addAttestationSourceFixture(t, request)
@@ -1198,6 +1219,7 @@ func TestVerifyComplianceReportBundle_RejectsAttestationWithoutAssessedEvidenceT
 }
 
 func TestVerifyComplianceReportBundle_RejectsAttestationWithUnassessedSigner(t *testing.T) {
+	t.Parallel()
 	var fixture attestationSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addAttestationSourceFixture(t, request)
@@ -1212,6 +1234,7 @@ func TestVerifyComplianceReportBundle_RejectsAttestationWithUnassessedSigner(t *
 }
 
 func TestVerifyComplianceReportBundle_RejectsAttestationAnalysisBindingMutations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.ComplianceEvidenceReference)
@@ -1221,6 +1244,7 @@ func TestVerifyComplianceReportBundle_RejectsAttestationAnalysisBindingMutations
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			var fixture attestationSourceFixture
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 				fixture = addAttestationSourceFixture(t, request)
@@ -1248,6 +1272,7 @@ func TestVerifyComplianceReportBundle_RejectsAttestationAnalysisBindingMutations
 }
 
 func TestVerifyComplianceReportBundle_RejectsOrphanedAttestationSource(t *testing.T) {
+	t.Parallel()
 	var fixture attestationSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addAttestationSourceFixture(t, request)
@@ -1274,6 +1299,7 @@ func TestVerifyComplianceReportBundle_RejectsOrphanedAttestationSource(t *testin
 }
 
 func TestVerifyComplianceReportBundle_RejectsSignedAuditRecordThatDiffersFromAnalysis(t *testing.T) {
+	t.Parallel()
 	var fixture auditSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addAuditSourceFixture(t, request)
@@ -1291,6 +1317,7 @@ func TestVerifyComplianceReportBundle_RejectsSignedAuditRecordThatDiffersFromAna
 }
 
 func TestVerifyComplianceReportBundle_AcceptsCompleteAuditRecordSource(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		addAuditSourceFixture(t, request)
 	})
@@ -1303,6 +1330,7 @@ func TestVerifyComplianceReportBundle_AcceptsCompleteAuditRecordSource(t *testin
 }
 
 func TestVerifyComplianceReportBundle_RejectsMissingAuditRecordSource(t *testing.T) {
+	t.Parallel()
 	var fixture auditSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addAuditSourceFixture(t, request)
@@ -1317,6 +1345,7 @@ func TestVerifyComplianceReportBundle_RejectsMissingAuditRecordSource(t *testing
 }
 
 func TestVerifyComplianceReportBundle_RejectsAuditRecordAnalysisBindingMutations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*compliancev1.ComplianceEvidenceReference)
@@ -1326,6 +1355,7 @@ func TestVerifyComplianceReportBundle_RejectsAuditRecordAnalysisBindingMutations
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			var fixture auditSourceFixture
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 				fixture = addAuditSourceFixture(t, request)
@@ -1353,6 +1383,7 @@ func TestVerifyComplianceReportBundle_RejectsAuditRecordAnalysisBindingMutations
 }
 
 func TestVerifyComplianceReportBundle_RejectsOrphanedAuditRecordSource(t *testing.T) {
+	t.Parallel()
 	var fixture auditSourceFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addAuditSourceFixture(t, request)
@@ -1379,6 +1410,7 @@ func TestVerifyComplianceReportBundle_RejectsOrphanedAuditRecordSource(t *testin
 }
 
 func TestVerifyComplianceReportBundle_AcceptsCompleteKSIResultAndHistorySources(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		addKSIHistorySourceFixture(t, request)
 	})
@@ -1391,6 +1423,7 @@ func TestVerifyComplianceReportBundle_AcceptsCompleteKSIResultAndHistorySources(
 }
 
 func TestVerifyComplianceReportBundle_RejectsSignedKSISourceMutations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		resultsSource bool
@@ -1400,6 +1433,7 @@ func TestVerifyComplianceReportBundle_RejectsSignedKSISourceMutations(t *testing
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			var targetPath string
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 				paths := addKSIHistorySourceFixture(t, request)
@@ -1428,6 +1462,7 @@ func TestVerifyComplianceReportBundle_RejectsSignedKSISourceMutations(t *testing
 }
 
 func TestVerifyComplianceReportBundle_RejectsIncompleteKSISourceInventories(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		removeResults bool
@@ -1437,6 +1472,7 @@ func TestVerifyComplianceReportBundle_RejectsIncompleteKSISourceInventories(t *t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			var missingPath string
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 				paths := addKSIHistorySourceFixture(t, request)
@@ -1480,6 +1516,7 @@ func signedRestrictedBundleVerificationFixture(t *testing.T, plaintext []byte) (
 }
 
 func TestVerifyComplianceReportBundle_RejectsSignedCanonicalReportSourceMutations(t *testing.T) {
+	t.Parallel()
 	assertionPath := path.Join(constants.ComplianceBundleAssertionsDirname, constants.ComplianceBundleAssertionCatalogFilename)
 	frameworkPath := path.Join(constants.ComplianceBundleFrameworkCatalogsDirname, constants.ComplianceBundleFrameworkCatalogFilename)
 	crosswalkPath := path.Join(constants.ComplianceBundleCrosswalksDirname, constants.ComplianceBundleCrosswalkFilename)
@@ -1539,6 +1576,7 @@ func TestVerifyComplianceReportBundle_RejectsSignedCanonicalReportSourceMutation
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 				replaceSourceArtifactBody(t, request.SourceArtifacts, test.bundlePath, test.mutate(request))
 			})
@@ -1609,6 +1647,7 @@ func cloneEvidenceReferences(values []*compliancev1.ComplianceEvidenceReference)
 }
 
 func TestVerifyComplianceReportBundle_AcceptsRestrictedBundleWithoutPlaintextAccess(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedRestrictedBundleVerificationFixture(t, []byte(`{"secret":"value"}`))
 
 	report, err := VerifyComplianceReportBundle(context.Background(), BundleVerificationRequest{Bundle: bundle, Reader: reader, TrustPolicy: policy, EvidenceTrust: trust, VerifiedAt: verifiedAt})
@@ -1619,6 +1658,7 @@ func TestVerifyComplianceReportBundle_AcceptsRestrictedBundleWithoutPlaintextAcc
 }
 
 func TestVerifyComplianceReportBundle_VerifiesRestrictedPlaintextDigestWhenAuthorizedReaderProvided(t *testing.T) {
+	t.Parallel()
 	plaintext := []byte(`{"secret":"value"}`)
 	bundle, reader, policy, trust, verifiedAt := signedRestrictedBundleVerificationFixture(t, plaintext)
 	plaintextReader := &authorizedPlaintextReaderStub{plaintext: plaintext}
@@ -1632,6 +1672,7 @@ func TestVerifyComplianceReportBundle_VerifiesRestrictedPlaintextDigestWhenAutho
 }
 
 func TestVerifyComplianceReportBundle_RejectsAuthorizedPlaintextDigestMismatch(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedRestrictedBundleVerificationFixture(t, []byte(`{"secret":"expected"}`))
 	plaintextReader := &authorizedPlaintextReaderStub{plaintext: []byte(`{"secret":"mutated"}`)}
 
@@ -1644,6 +1685,7 @@ func TestVerifyComplianceReportBundle_RejectsAuthorizedPlaintextDigestMismatch(t
 }
 
 func TestVerifyComplianceReportBundle_RejectsRestrictedEncryptionMetadataMutation(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedRestrictedBundleVerificationFixture(t, []byte(`{"secret":"value"}`))
 	for _, artifact := range bundle.GetArtifacts() {
 		if artifact.GetBundlePath() == constants.ComplianceBundleRestrictedEvidenceTestPath {
@@ -1659,6 +1701,7 @@ func TestVerifyComplianceReportBundle_RejectsRestrictedEncryptionMetadataMutatio
 }
 
 func TestVerifyComplianceReportBundle_RejectsAuthorizedPlaintextReaderFailure(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedRestrictedBundleVerificationFixture(t, []byte(`{"secret":"value"}`))
 	plaintextReader := &authorizedPlaintextReaderStub{err: constants.ErrEvidenceTrustNotAssessed}
 
@@ -1671,6 +1714,7 @@ func TestVerifyComplianceReportBundle_RejectsAuthorizedPlaintextReaderFailure(t 
 }
 
 func TestVerifyComplianceReportBundle_ReportsArtifactAndSignatureMutations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		mutate         func(*compliancev1.ComplianceReportBundle, *bundleArtifactReaderStub, *compliancev1.ComplianceReportTrustPolicy)
@@ -1928,6 +1972,7 @@ func TestVerifyComplianceReportBundle_ReportsArtifactAndSignatureMutations(t *te
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixture(t)
 			failureSubject := test.failureSubject
 			if failureSubject == constants.ComplianceBundleFrameworkProfileTestPath {
@@ -1957,6 +2002,7 @@ func TestVerifyComplianceReportBundle_ReportsArtifactAndSignatureMutations(t *te
 }
 
 func TestVerifyComplianceReportBundle_RejectsEveryProtectedReportBodyMutation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		bundlePath string
@@ -1975,6 +2021,7 @@ func TestVerifyComplianceReportBundle_RejectsEveryProtectedReportBodyMutation(t 
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixture(t)
 			require.Contains(t, reader.bodies, test.bundlePath)
 			reader.bodies[test.bundlePath] = append(reader.bodies[test.bundlePath], '\n')
@@ -1989,6 +2036,7 @@ func TestVerifyComplianceReportBundle_RejectsEveryProtectedReportBodyMutation(t 
 }
 
 func TestBundleVerifier_SourceVerificationRejectsMalformedTimestamps(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		sourceDir       string
@@ -2001,6 +2049,7 @@ func TestBundleVerifier_SourceVerificationRejectsMalformedTimestamps(t *testing.
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			generatedAt := time.Unix(1_700_000_000, 0).UTC()
 			body, err := compliancev1.MarshalCanonical(&compliancev1.ComplianceVerificationReport{
 				ReportId:        "source-run-1",
@@ -2025,6 +2074,7 @@ func TestBundleVerifier_SourceVerificationRejectsMalformedTimestamps(t *testing.
 }
 
 func TestBundleVerifier_SourceVerificationRejectsReportsWithoutAnalysisEvidenceRuns(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		sourceDir       string
@@ -2035,6 +2085,7 @@ func TestBundleVerifier_SourceVerificationRejectsReportsWithoutAnalysisEvidenceR
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			generatedAt := time.Unix(1_700_000_000, 0).UTC()
 			body, err := compliancev1.MarshalCanonical(&compliancev1.ComplianceVerificationReport{
 				ReportId:        "undeclared-run",
@@ -2062,6 +2113,7 @@ func TestBundleVerifier_SourceVerificationRejectsReportsWithoutAnalysisEvidenceR
 }
 
 func TestVerifyComplianceReportBundle_RejectsUnexpectedDirectoryArtifacts(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixture(t)
 	reader.bodies[constants.ComplianceBundleUnexpectedTestPath] = []byte("unexpected")
 
@@ -2079,6 +2131,7 @@ func TestVerifyComplianceReportBundle_RejectsUnexpectedDirectoryArtifacts(t *tes
 }
 
 func TestVerifyComplianceReportBundle_OrdersFailuresDeterministically(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixture(t)
 	reader.bodies[constants.ComplianceBundleAnalysisPath] = []byte(`{"tampered":true}`)
 	bundle.ChecksumRoot = strings.Repeat("0", 64)
@@ -2097,6 +2150,7 @@ func TestVerifyComplianceReportBundle_OrdersFailuresDeterministically(t *testing
 }
 
 func TestVerifyComplianceReportBundle_ReportsArtifactReaderFailuresWithStableCodes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		listErr         error
@@ -2111,6 +2165,7 @@ func TestVerifyComplianceReportBundle_ReportsArtifactReaderFailuresWithStableCod
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixture(t)
 			reader.listErr = test.listErr
 			reader.readErr = test.readErr
@@ -2125,6 +2180,7 @@ func TestVerifyComplianceReportBundle_ReportsArtifactReaderFailuresWithStableCod
 }
 
 func TestVerifyComplianceReportBundle_RejectsInvalidVerifierConfiguration(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixture(t)
 	tests := []struct {
 		name    string
@@ -2137,6 +2193,7 @@ func TestVerifyComplianceReportBundle_RejectsInvalidVerifierConfiguration(t *tes
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			report, err := VerifyComplianceReportBundle(context.Background(), test.request)
 			require.Error(t, err)
 			require.ErrorIs(t, err, constants.ErrReportVerificationFailed)
@@ -2146,6 +2203,7 @@ func TestVerifyComplianceReportBundle_RejectsInvalidVerifierConfiguration(t *tes
 }
 
 func TestEvidenceVerificationRoutes_ClassifyEverySupportedArtifactType(t *testing.T) {
+	t.Parallel()
 	supported := evidence.SupportedArtifactTypes()
 	represented := make(map[evidence.ArtifactType]struct{}, len(supported))
 	for _, artifactType := range supported {
@@ -2161,6 +2219,7 @@ func TestEvidenceVerificationRoutes_ClassifyEverySupportedArtifactType(t *testin
 }
 
 func TestVerifyComplianceReportBundle_PreservesCancellation(t *testing.T) {
+	t.Parallel()
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -2319,6 +2378,7 @@ func refreshBundleAnalysisArtifacts(t *testing.T, request *BundleAssemblyRequest
 }
 
 func TestVerifyComplianceReportBundle_ReplaysLedgerSources(t *testing.T) {
+	t.Parallel()
 	var fixture ledgerReplayFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addLedgerReplayFixture(t, request)
@@ -2332,6 +2392,7 @@ func TestVerifyComplianceReportBundle_ReplaysLedgerSources(t *testing.T) {
 }
 
 func TestVerifyComplianceReportBundle_RejectsSignedLedgerSemanticSubstitution(t *testing.T) {
+	t.Parallel()
 	var fixture ledgerReplayFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addLedgerReplayFixture(t, request)
@@ -2347,6 +2408,7 @@ func TestVerifyComplianceReportBundle_RejectsSignedLedgerSemanticSubstitution(t 
 }
 
 func TestVerifyComplianceReportBundle_ReplaysBuildConfigurationSources(t *testing.T) {
+	t.Parallel()
 	var fixture buildConfigReplayFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addBuildConfigReplayFixture(t, request)
@@ -2360,6 +2422,7 @@ func TestVerifyComplianceReportBundle_ReplaysBuildConfigurationSources(t *testin
 }
 
 func TestVerifyComplianceReportBundle_RejectsSignedBuildConfigurationSemanticSubstitution(t *testing.T) {
+	t.Parallel()
 	var fixture buildConfigReplayFixture
 	bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 		fixture = addBuildConfigReplayFixture(t, request)
@@ -2375,6 +2438,7 @@ func TestVerifyComplianceReportBundle_RejectsSignedBuildConfigurationSemanticSub
 }
 
 func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*testing.T, *BundleAssemblyRequest, *ledgerReplayFixture)
@@ -2476,6 +2540,7 @@ func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 				fixture := addLedgerReplayFixture(t, request)
 				test.mutate(t, request, &fixture)
@@ -2493,6 +2558,7 @@ func TestVerifyComplianceReportBundle_RejectsLedgerInventoryAndBindingMutations(
 }
 
 func TestVerifyComplianceReportBundle_RejectsBuildConfigurationInventoryAndBindingMutations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*testing.T, *BundleAssemblyRequest, *buildConfigReplayFixture)
@@ -2582,6 +2648,7 @@ func TestVerifyComplianceReportBundle_RejectsBuildConfigurationInventoryAndBindi
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			bundle, reader, policy, trust, verifiedAt := signedBundleVerificationFixtureWithRequest(t, func(request *BundleAssemblyRequest) {
 				fixture := addBuildConfigReplayFixture(t, request)
 				test.mutate(t, request, &fixture)

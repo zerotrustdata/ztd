@@ -22,6 +22,7 @@ import (
 var assetReference = regexp.MustCompile(`(?:src|href)="/(assets/[^"]+)"`)
 
 func TestStaticFS_RootsTheFilesystemAtTheStaticDirectory(t *testing.T) {
+	t.Parallel()
 	static, err := StaticFS()
 	require.NoError(t, err)
 
@@ -36,6 +37,7 @@ func TestStaticFS_RootsTheFilesystemAtTheStaticDirectory(t *testing.T) {
 }
 
 func TestStaticFS_ServesAnHTMLDocumentAsTheEntryPoint(t *testing.T) {
+	t.Parallel()
 	static, err := StaticFS()
 	require.NoError(t, err)
 
@@ -47,6 +49,7 @@ func TestStaticFS_ServesAnHTMLDocumentAsTheEntryPoint(t *testing.T) {
 }
 
 func TestStaticFS_EveryAssetReferencedByIndexIsEmbedded(t *testing.T) {
+	t.Parallel()
 	static, err := StaticFS()
 	require.NoError(t, err)
 	index, err := fs.ReadFile(static, "index.html")
@@ -63,6 +66,7 @@ func TestStaticFS_EveryAssetReferencedByIndexIsEmbedded(t *testing.T) {
 }
 
 func TestStaticFS_RuntimeConfigIsAJSONObjectWithSchemaVersion(t *testing.T) {
+	t.Parallel()
 	static, err := StaticFS()
 	require.NoError(t, err)
 
@@ -75,6 +79,7 @@ func TestStaticFS_RuntimeConfigIsAJSONObjectWithSchemaVersion(t *testing.T) {
 }
 
 func TestStaticFS_MissingPathReportsNotExist(t *testing.T) {
+	t.Parallel()
 	static, err := StaticFS()
 	require.NoError(t, err)
 

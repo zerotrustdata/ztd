@@ -18,6 +18,7 @@ import (
 )
 
 func TestProcSignalSafeTool_Metadata(t *testing.T) {
+	t.Parallel()
 	tool := &ProcSignalSafeTool{}
 	assert.Equal(t, "proc_signal_safe", tool.Name())
 	assert.NotEmpty(t, tool.Description())
@@ -32,16 +33,19 @@ func TestProcSignalSafeTool_Metadata(t *testing.T) {
 }
 
 func TestProcSignalSafeTool_Execute_InvalidArgs(t *testing.T) {
+	t.Parallel()
 	tool := &ProcSignalSafeTool{}
 	ctx := context.Background()
 
 	t.Run("invalid json", func(t *testing.T) {
+		t.Parallel()
 		_, err := tool.Execute(ctx, json.RawMessage(`{invalid`))
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrMCPUnmarshalArguments)
 	})
 
 	t.Run("missing pid", func(t *testing.T) {
+		t.Parallel()
 		args := json.RawMessage(`{"signal": "SIGTERM"}`)
 		_, err := tool.Execute(ctx, args)
 		require.Error(t, err)
@@ -49,6 +53,7 @@ func TestProcSignalSafeTool_Execute_InvalidArgs(t *testing.T) {
 	})
 
 	t.Run("missing signal", func(t *testing.T) {
+		t.Parallel()
 		args := json.RawMessage(`{"pid": 1234}`)
 		_, err := tool.Execute(ctx, args)
 		require.Error(t, err)
@@ -56,6 +61,7 @@ func TestProcSignalSafeTool_Execute_InvalidArgs(t *testing.T) {
 	})
 
 	t.Run("invalid pid", func(t *testing.T) {
+		t.Parallel()
 		args := json.RawMessage(`{"pid": -1, "signal": "SIGTERM"}`)
 		_, err := tool.Execute(ctx, args)
 		require.Error(t, err)
@@ -63,6 +69,7 @@ func TestProcSignalSafeTool_Execute_InvalidArgs(t *testing.T) {
 	})
 
 	t.Run("pid zero", func(t *testing.T) {
+		t.Parallel()
 		args := json.RawMessage(`{"pid": 0, "signal": "SIGKILL"}`)
 		_, err := tool.Execute(ctx, args)
 		assert.ErrorIs(t, err, constants.ErrMCPProcSignalRequired)
@@ -70,6 +77,7 @@ func TestProcSignalSafeTool_Execute_InvalidArgs(t *testing.T) {
 }
 
 func TestProcSignalSafeTool_Execute_Denylist(t *testing.T) {
+	t.Parallel()
 	tool := &ProcSignalSafeTool{}
 	ctx := context.Background()
 
@@ -95,6 +103,7 @@ func TestProcSignalSafeTool_Execute_Denylist(t *testing.T) {
 }
 
 func TestProcSignalSafeTool_Execute_UnsupportedSignal(t *testing.T) {
+	t.Parallel()
 	tool := &ProcSignalSafeTool{}
 	ctx := context.Background()
 

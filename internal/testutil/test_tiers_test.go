@@ -31,6 +31,7 @@ var tierRoots = []string{"internal", "cmd", "test", "protocol"}
 // Check source rather than opening a listener to test tier enforcement. This
 // also checks platform-specific files that the current host does not compile.
 func TestTestTiers_ListenersRequireIntegrationAndBoundaryTestsStaySerial(t *testing.T) {
+	t.Parallel()
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("cannot locate test sources")
@@ -780,6 +781,7 @@ func buildAllowsWithout(expr constraint.Expr, off ...string) bool {
 }
 
 func TestTestBuildAllowsUnit_PlatformConstraintsDoNotReplaceTierTags(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		expr string
 		unit bool
@@ -794,6 +796,7 @@ func TestTestBuildAllowsUnit_PlatformConstraintsDoNotReplaceTierTags(t *testing.
 		{"e2e || !windows", true},
 	} {
 		t.Run(tc.expr, func(t *testing.T) {
+			t.Parallel()
 			expr, err := constraint.Parse("//go:build " + tc.expr)
 			if err != nil {
 				t.Fatal(err)
@@ -809,6 +812,7 @@ func TestTestBuildAllowsUnit_PlatformConstraintsDoNotReplaceTierTags(t *testing.
 // small in-memory modules: the three F7 shapes, every chain length, and the
 // shapes that must not be reported.
 func TestTestTiersResolverFollowsHelpersToListeners(t *testing.T) {
+	t.Parallel()
 	const modulePath = "example.com/m"
 	for _, tc := range []struct {
 		name  string
@@ -999,6 +1003,7 @@ func TestTestTiersResolverFollowsHelpersToListeners(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			files := make(map[string][]byte, len(tc.files))
 			for name, body := range tc.files {
 				files[name] = []byte(body)

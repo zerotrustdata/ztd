@@ -24,7 +24,8 @@ import (
 
 var errFactory = fmt.Errorf("factory boom")
 
-func TestMcpStdioCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestMcpStdioCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	origConfigLoad := shared.ConfigLoad
 	shared.ConfigLoad = func(string) (*config.Config, error) { return cfg, nil }
@@ -36,7 +37,8 @@ func TestMcpStdioCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	assert.ErrorIs(t, err, errFactory)
 }
 
-func TestAgentRunCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestAgentRunCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	origConfigLoad := shared.ConfigLoad
 	shared.ConfigLoad = func(string) (*config.Config, error) { return cfg, nil }

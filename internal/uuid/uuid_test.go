@@ -17,6 +17,7 @@ import (
 var uuidV4Regex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 func TestNewString(t *testing.T) {
+	t.Parallel()
 	s, err := NewString()
 	if err != nil {
 		t.Fatalf("NewString() error = %v", err)
@@ -27,6 +28,7 @@ func TestNewString(t *testing.T) {
 }
 
 func TestNewStringUniqueness(t *testing.T) {
+	t.Parallel()
 	seen := make(map[string]struct{}, 1000)
 	for i := 0; i < 1000; i++ {
 		s, err := NewString()
@@ -41,6 +43,7 @@ func TestNewStringUniqueness(t *testing.T) {
 }
 
 func TestNewStringLength(t *testing.T) {
+	t.Parallel()
 	s, err := NewString()
 	if err != nil {
 		t.Fatalf("NewString() error = %v", err)
@@ -51,6 +54,7 @@ func TestNewStringLength(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
+	t.Parallel()
 	original := "550e8400-e29b-41d4-a716-446655440000"
 	b, err := Parse(original)
 	if err != nil {
@@ -73,6 +77,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestParseInvalid(t *testing.T) {
+	t.Parallel()
 	invalid := []string{
 		"",
 		"not-a-uuid",

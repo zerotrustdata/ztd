@@ -42,6 +42,7 @@ func frozenRun(t *testing.T, governance RunGovernance) *evalv1.EvaluationRun {
 }
 
 func TestNewRunGovernance_ProjectsTheBindingIdentity(t *testing.T) {
+	t.Parallel()
 	unbound, err := NewRunGovernance(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, nil)
 	require.NoError(t, err)
 	assert.False(t, unbound.Consensus.GetBound())
@@ -65,6 +66,7 @@ func TestNewRunGovernance_ProjectsTheBindingIdentity(t *testing.T) {
 }
 
 func TestNewRunGovernance_BindingDigestIgnoresTimestampsOnly(t *testing.T) {
+	t.Parallel()
 	base, err := NewRunGovernance(consensusPosture, testTribunalBinding())
 	require.NoError(t, err)
 
@@ -82,6 +84,7 @@ func TestNewRunGovernance_BindingDigestIgnoresTimestampsOnly(t *testing.T) {
 }
 
 func TestNewRunGovernance_RejectsAnUnpinnedOrUnderQuorumBinding(t *testing.T) {
+	t.Parallel()
 	unpinned := testTribunalBinding()
 	unpinned.ModelDigest = ""
 	_, err := NewRunGovernance(consensusPosture, unpinned)
@@ -98,6 +101,7 @@ func TestNewRunGovernance_RejectsAnUnpinnedOrUnderQuorumBinding(t *testing.T) {
 }
 
 func TestValidateRunGovernance_RequiresTheFrozenPostureAndBinding(t *testing.T) {
+	t.Parallel()
 	frozen, err := NewRunGovernance(consensusPosture, testTribunalBinding())
 	require.NoError(t, err)
 	run := frozenRun(t, frozen)
@@ -126,6 +130,7 @@ func TestValidateRunGovernance_RequiresTheFrozenPostureAndBinding(t *testing.T) 
 }
 
 func TestValidateRunGovernance_RejectsARunThatFrozeNoBinding(t *testing.T) {
+	t.Parallel()
 	legacy := &evalv1.EvaluationRun{RunId: "legacy", ActivePosture: consensusPosture}
 	live, err := NewRunGovernance(consensusPosture, nil)
 	require.NoError(t, err)
@@ -134,6 +139,7 @@ func TestValidateRunGovernance_RejectsARunThatFrozeNoBinding(t *testing.T) {
 }
 
 func TestValidateFormationTribunal_RequiresTheAssistantSlotToBeTheBoundVoteModel(t *testing.T) {
+	t.Parallel()
 	variants := []*evalv1.ModelVariant{
 		{VariantId: "v-primary", ServedModelTag: "qwen3:8b", ModelDigest: repeatHex('a')},
 		{VariantId: "v-assistant", ServedModelTag: "sam860/LFM2:700m", ModelDigest: repeatHex('d')},

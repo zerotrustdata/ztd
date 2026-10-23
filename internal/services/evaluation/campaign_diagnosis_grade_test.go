@@ -19,6 +19,7 @@ import (
 )
 
 func TestGradeHomogeneousScenario_FinalResponseDiagnosisUsesEvidenceAndPopulatedSections(t *testing.T) {
+	t.Parallel()
 	blueprint := finalResponseDiagnosis()
 	input := blueprint.Input
 	input.ScenarioID = blueprint.ScenarioID
@@ -210,6 +211,7 @@ func TestGradeHomogeneousScenario_FinalResponseDiagnosisUsesEvidenceAndPopulated
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			req := AssignmentExecutionRequest{
 				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: "assign-diagnosis", RunId: "run-diagnosis"},
 				ScenarioInput: input,
@@ -240,6 +242,7 @@ func diagnosisPromptEcho(input ScenarioInputFixture) string {
 }
 
 func TestGradeHomogeneousScenario_ScenarioIDWithoutDiagnosisRubricUsesItsGoldCheck(t *testing.T) {
+	t.Parallel()
 	blueprint := finalResponseDiagnosis()
 	input := blueprint.Input
 	input.ScenarioID = blueprint.ScenarioID
@@ -267,6 +270,7 @@ func TestGradeHomogeneousScenario_ScenarioIDWithoutDiagnosisRubricUsesItsGoldChe
 }
 
 func TestGradeHomogeneousScenario_UnknownDiagnosisRubricFailsClosed(t *testing.T) {
+	t.Parallel()
 	blueprint := finalResponseDiagnosis()
 	input := blueprint.Input
 	input.ScenarioID = blueprint.ScenarioID
@@ -292,6 +296,7 @@ func TestGradeHomogeneousScenario_UnknownDiagnosisRubricFailsClosed(t *testing.T
 }
 
 func TestGradeHomogeneousScenario_FinalResponseEvidenceRequiresObservedContentAndTrajectory(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		output       string
@@ -316,6 +321,7 @@ func TestGradeHomogeneousScenario_FinalResponseEvidenceRequiresObservedContentAn
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			req := AssignmentExecutionRequest{
 				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: "assign-generic", RunId: "run-generic"},
 				ScenarioInput: ScenarioInputFixture{ScenarioID: "generic-final-response"},
@@ -355,6 +361,7 @@ func gradePassed(grades []*evalv1.DeterministicGrade, criterionID string) bool {
 // Old rubrics are frozen contracts, including their original confidence and
 // causal vocabulary. A new catalogue must not change a queued older result.
 func TestGradeHomogeneousScenario_DiagnosisUsesFrozenRubricVersion(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name       string
 		rubric     ScenarioDiagnosisRubric
@@ -372,6 +379,7 @@ func TestGradeHomogeneousScenario_DiagnosisUsesFrozenRubricVersion(t *testing.T)
 		{"v4 rejects definitive upstream assertion", ScenarioDiagnosisRubricCheckoutTimeoutV4, "Failures due to problems with the upstream host.", "High.", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			blueprint := finalResponseDiagnosis()
 			blueprint.Gold.ContentCheck.DiagnosisRubric = test.rubric
 			blueprint.Input.ScenarioID = blueprint.ScenarioID

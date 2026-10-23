@@ -27,6 +27,7 @@ import (
 // When GO_WANT_HELPER_PROCESS=1 is set, it reads JSON-RPC requests from stdin
 // and writes responses to stdout.
 func TestHelperSubprocess(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return
 	}
@@ -71,7 +72,8 @@ func helperCommand(t *testing.T, mode string) (string, []string) {
 	return os.Args[0], []string{"-test.run=TestHelperSubprocess"}
 }
 
-func TestSubprocessDownstream_StartAndCallSuccess(t *testing.T) {
+func TestSubprocessDownstream_StartAndCallSuccess(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	cmd, args := helperCommand(t, "echo")
 	logger := testutil.NewTestLogger()
 	ds := NewSubprocessDownstream(cmd, args, logger)
@@ -93,7 +95,8 @@ func TestSubprocessDownstream_StartAndCallSuccess(t *testing.T) {
 	assert.Equal(t, args, ds.Args())
 }
 
-func TestSubprocessDownstream_ErrorResponse(t *testing.T) {
+func TestSubprocessDownstream_ErrorResponse(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	cmd, args := helperCommand(t, "error")
 	logger := testutil.NewTestLogger()
 	ds := NewSubprocessDownstream(cmd, args, logger)
@@ -110,7 +113,8 @@ func TestSubprocessDownstream_ErrorResponse(t *testing.T) {
 	assert.Contains(t, err.Error(), "downstream failed")
 }
 
-func TestSubprocessDownstream_InvalidJSONResponse(t *testing.T) {
+func TestSubprocessDownstream_InvalidJSONResponse(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	cmd, args := helperCommand(t, "invalid_json")
 	logger := testutil.NewTestLogger()
 	ds := NewSubprocessDownstream(cmd, args, logger)
@@ -127,6 +131,7 @@ func TestSubprocessDownstream_InvalidJSONResponse(t *testing.T) {
 }
 
 func TestSubprocessDownstream_StartFailure(t *testing.T) {
+	t.Parallel()
 	logger := testutil.NewTestLogger()
 	ds := NewSubprocessDownstream("nonexistent-binary-cmd-xyz-9999", nil, logger)
 
@@ -138,7 +143,8 @@ func TestSubprocessDownstream_StartFailure(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrProcessStartFailed)
 }
 
-func TestSubprocessDownstream_ContextCancel(t *testing.T) {
+func TestSubprocessDownstream_ContextCancel(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	cmd, args := helperCommand(t, "hang")
 	logger := testutil.NewTestLogger()
 	ds := NewSubprocessDownstream(cmd, args, logger)
@@ -154,7 +160,8 @@ func TestSubprocessDownstream_ContextCancel(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
-func TestSubprocessDownstream_CloseMultipleTimes(t *testing.T) {
+func TestSubprocessDownstream_CloseMultipleTimes(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	cmd, args := helperCommand(t, "echo")
 	logger := testutil.NewTestLogger()
 	ds := NewSubprocessDownstream(cmd, args, logger)

@@ -151,6 +151,8 @@ func seedReportingData(t *testing.T, store *storage.SQLAuditStore, rs *storage.R
 }
 
 func TestRun_PopulatedStores_AllCSVFilesWritten(t *testing.T) {
+	t.Parallel()
+
 	opts := setupReportingEnv(t, true)
 
 	result, err := Run(context.Background(), opts)
@@ -227,6 +229,8 @@ func TestRun_PopulatedStores_AllCSVFilesWritten(t *testing.T) {
 }
 
 func TestRun_EmptyStores_AllCSVFilesWritten(t *testing.T) {
+	t.Parallel()
+
 	opts := setupReportingEnv(t, false)
 
 	result, err := Run(context.Background(), opts)
@@ -255,6 +259,8 @@ func TestRun_EmptyStores_AllCSVFilesWritten(t *testing.T) {
 
 // Fail-closed: without a keystore the vault cannot unlock, so the run writes nothing.
 func TestRun_LockedVault_NilKeystore(t *testing.T) {
+	t.Parallel()
+
 	opts := setupReportingEnv(t, true)
 	opts.Keystore = nil
 
@@ -265,6 +271,8 @@ func TestRun_LockedVault_NilKeystore(t *testing.T) {
 }
 
 func TestRun_LockedVault_VaultKeyNotFound(t *testing.T) {
+	t.Parallel()
+
 	opts := setupReportingEnv(t, true)
 	require.NotNil(t, opts.Keystore)
 	require.NoError(t, opts.Keystore.DeleteSecret(constants.SecretsFileVaultKey))
@@ -274,6 +282,8 @@ func TestRun_LockedVault_VaultKeyNotFound(t *testing.T) {
 }
 
 func TestRun_CancelledContext(t *testing.T) {
+	t.Parallel()
+
 	opts := setupReportingEnv(t, true)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -288,6 +298,8 @@ func TestRun_CancelledContext(t *testing.T) {
 }
 
 func TestRun_BadOutDir(t *testing.T) {
+	t.Parallel()
+
 	opts := setupReportingEnv(t, false)
 	blocker := filepath.Join(testutil.TempDir(t), "blocker")
 	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0644))

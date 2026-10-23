@@ -176,14 +176,17 @@ var draft07ConformanceVectors = []ConformanceTest{
 }
 
 func TestDraft07ConformanceVectors(t *testing.T) {
+	t.Parallel()
 	for _, ct := range draft07ConformanceVectors {
 		t.Run(fmt.Sprintf("%s/%s/%s", ct.Suite, ct.Group, ct.Description), func(t *testing.T) {
+			t.Parallel()
 			runConformanceTest(t, ct)
 		})
 	}
 }
 
 func TestDraft07ConformanceVectors_ProvenanceHashesPresent(t *testing.T) {
+	t.Parallel()
 	for _, ct := range draft07ConformanceVectors {
 		assert.NotEmpty(t, ct.SourceHash, "vector %s/%s missing source hash", ct.Suite, ct.Group)
 		assert.Equal(t, JSONSchemaTestSuiteDraft07SHA256, ct.SourceHash) //nolint:testifylint // exact bytes, not JSON equivalence
@@ -193,7 +196,9 @@ func TestDraft07ConformanceVectors_ProvenanceHashesPresent(t *testing.T) {
 // --- Focused tests for edge cases ---
 
 func TestFocused_NestedIDFragmentResolution(t *testing.T) {
+	t.Parallel()
 	// A $ref to a fragment that matches a nested $id
+
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{
 		"$id": "http://example.com/root.json",
@@ -219,7 +224,9 @@ func TestFocused_NestedIDFragmentResolution(t *testing.T) {
 }
 
 func TestFocused_EscapedJSONPointer(t *testing.T) {
+	t.Parallel()
 	// Property names with special characters that need escaping in JSON Pointers
+
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{
 		"type": "object",
@@ -237,7 +244,9 @@ func TestFocused_EscapedJSONPointer(t *testing.T) {
 }
 
 func TestFocused_RecursiveReference(t *testing.T) {
+	t.Parallel()
 	// A recursive tree schema
+
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{
 		"definitions": {
@@ -267,7 +276,9 @@ func TestFocused_RecursiveReference(t *testing.T) {
 }
 
 func TestFocused_ExactNumericComparisons(t *testing.T) {
+	t.Parallel()
 	// Large integer that would lose precision as float64
+
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{"type":"integer","minimum":9007199254740992}`))
 	require.NoError(t, err)
@@ -278,7 +289,9 @@ func TestFocused_ExactNumericComparisons(t *testing.T) {
 }
 
 func TestFocused_UnicodeStringLength(t *testing.T) {
+	t.Parallel()
 	// minLength/maxLength should count Unicode code points, not bytes
+
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{"type":"string","minLength":3,"maxLength":5}`))
 	require.NoError(t, err)
@@ -292,11 +305,13 @@ func TestFocused_UnicodeStringLength(t *testing.T) {
 }
 
 func TestFocused_DuplicateKeyRejection(t *testing.T) {
+	t.Parallel()
 	// The validator rejects duplicate keys before schema evaluation.
 	// Go's json.Decoder normally overwrites duplicate keys.
 	// The shared strict decoder detects duplicates in its token stream.
 	// The validator returns the stable duplicate-key reason code
 	// instead of validating an ambiguously decoded final value.
+
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{"type":"object","properties":{"a":{"type":"integer"}}}`))
 	require.NoError(t, err)
@@ -309,6 +324,7 @@ func TestFocused_DuplicateKeyRejection(t *testing.T) {
 }
 
 func TestFocused_DeterministicFailureOrdering(t *testing.T) {
+	t.Parallel()
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{
 		"type": "object",
@@ -339,7 +355,9 @@ func TestFocused_DeterministicFailureOrdering(t *testing.T) {
 }
 
 func TestFocused_Concurrency(t *testing.T) {
+	t.Parallel()
 	// The validator should be safe for concurrent use
+
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{"type":"object","properties":{"a":{"type":"integer"}},"required":["a"]}`))
 	require.NoError(t, err)
@@ -362,7 +380,9 @@ func TestFocused_Concurrency(t *testing.T) {
 }
 
 func TestFocused_ResourceLimitDepth(t *testing.T) {
+	t.Parallel()
 	// Deeply nested schema should hit the depth limit
+
 	deepSchema := `{"type":"object","properties":{"a":`
 	for i := 0; i < 300; i++ {
 		deepSchema += `{"type":"object","properties":{"a":`
@@ -377,6 +397,7 @@ func TestFocused_ResourceLimitDepth(t *testing.T) {
 }
 
 func TestFocused_MalformedSchemaRejection(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		src     string
 		wantErr bool
@@ -392,6 +413,7 @@ func TestFocused_MalformedSchemaRejection(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.src, func(t *testing.T) {
+			t.Parallel()
 			schema, err := NewCompiler().Compile([]byte(tt.src))
 			if tt.wantErr {
 				require.Error(t, err)
@@ -407,6 +429,7 @@ func TestFocused_MalformedSchemaRejection(t *testing.T) {
 }
 
 func TestFocused_FuzzSmoke(t *testing.T) {
+	t.Parallel()
 	v := NewValidator()
 	cases := []struct {
 		name     string
@@ -424,6 +447,7 @@ func TestFocused_FuzzSmoke(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			schema, err := NewCompiler().Compile([]byte(tt.schema))
 			require.NoError(t, err)
 			failures := v.Validate(schema, []byte(tt.instance))
@@ -437,6 +461,7 @@ func TestFocused_FuzzSmoke(t *testing.T) {
 
 	for _, src := range []string{`[]`, `null`, `0`, `""`} {
 		t.Run("rejects "+src, func(t *testing.T) {
+			t.Parallel()
 			_, err := NewCompiler().Compile([]byte(src))
 			require.Error(t, err)
 		})
@@ -444,8 +469,10 @@ func TestFocused_FuzzSmoke(t *testing.T) {
 }
 
 func TestFocused_CancellationPreservation(t *testing.T) {
+	t.Parallel()
 	// The validator does not take a context, but it must not hang.
 	// This test verifies that validation completes in bounded time.
+
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{"type":"object","properties":{"a":{"type":"string"}}}`))
 	require.NoError(t, err)
@@ -457,6 +484,7 @@ func TestFocused_CancellationPreservation(t *testing.T) {
 }
 
 func TestFocused_JSONNumberPrecisionInEnum(t *testing.T) {
+	t.Parallel()
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{"enum":[1,2,3]}`))
 	require.NoError(t, err)
@@ -469,6 +497,7 @@ func TestFocused_JSONNumberPrecisionInEnum(t *testing.T) {
 }
 
 func TestFocused_FailureCountLimit(t *testing.T) {
+	t.Parallel()
 	c := NewCompiler()
 	s, err := c.Compile([]byte(`{
 		"type": "object",

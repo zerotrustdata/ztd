@@ -20,6 +20,7 @@ import (
 )
 
 func TestStoreHeterogeneousStackSet_RoundTrip(t *testing.T) {
+	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	stackSet, err := testFormationStackSet("heterogeneous-campaign", 11, testFormationCatalogVariants())
@@ -34,6 +35,7 @@ func TestStoreHeterogeneousStackSet_RoundTrip(t *testing.T) {
 }
 
 func TestStoreHeterogeneousStackSet_RejectsMissingCampaignOnLoad(t *testing.T) {
+	t.Parallel()
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)
 	ctx := context.Background()

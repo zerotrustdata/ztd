@@ -39,6 +39,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestLocalOperatorDiscoveryAndKill(t *testing.T) {
+	t.Parallel()
 	executable, err := os.Executable()
 	require.NoError(t, err)
 	workerPath := filepath.Join(testutil.TempDir(t), "ztd")
@@ -81,6 +82,7 @@ func TestLocalOperatorDiscoveryAndKill(t *testing.T) {
 }
 
 func TestLocalOperatorArgv(t *testing.T) {
+	t.Parallel()
 	require.True(t, isLocalOperatorArgv([]string{"/opt/ztd/ztd", "operator", "start"}))
 	require.True(t, isLocalOperatorArgv([]string{"ztd", "operators", "start"}))
 	for _, args := range [][]string{{"sh", "-c", "ztd operator start"}, {"ztd", "gw", "start"}, {"ztd", "operator", "stop"}, {"language_server", "operator", "start"}} {

@@ -167,6 +167,7 @@ func TestBlobVerifier_BoundsHashesAndHonorsCancellation(t *testing.T) {
 }
 
 func TestBlobVerifier_HashingHonorsCancellationBetweenReads(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	reader := &cancelAfterRead{reader: strings.NewReader("first chunk"), cancel: cancel}

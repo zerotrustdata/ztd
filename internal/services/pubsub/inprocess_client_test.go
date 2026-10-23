@@ -21,6 +21,7 @@ import (
 )
 
 func TestInProcessPubSubClient_CancellationDuringSelectedCallbacks(t *testing.T) {
+	t.Parallel()
 	broker := &mockBroker{}
 	client := NewInProcessPubSubClient(broker, slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithCancel(t.Context())
@@ -73,6 +74,7 @@ func newTestInProcessPubSubClient(broker Broker) *InProcessPubSubClient {
 }
 
 func TestNewInProcessPubSubClient(t *testing.T) {
+	t.Parallel()
 	t.Run("creates client successfully", func(t *testing.T) {
 		t.Parallel()
 		broker := &mockBroker{}
@@ -85,6 +87,7 @@ func TestNewInProcessPubSubClient(t *testing.T) {
 }
 
 func TestInProcessPubSubClient_Subscribe(t *testing.T) {
+	t.Parallel()
 	t.Run("subscribes to channel successfully", func(t *testing.T) {
 		t.Parallel()
 		broker := &mockBroker{}
@@ -154,6 +157,7 @@ func TestInProcessPubSubClient_Subscribe(t *testing.T) {
 }
 
 func TestInProcessPubSubClient_Publish(t *testing.T) {
+	t.Parallel()
 	t.Run("publishes successfully", func(t *testing.T) {
 		t.Parallel()
 		broker := &mockBroker{}
@@ -178,6 +182,7 @@ func TestInProcessPubSubClient_Publish(t *testing.T) {
 }
 
 func TestInProcessPubSubClient_Close(t *testing.T) {
+	t.Parallel()
 	t.Run("closes successfully", func(t *testing.T) {
 		t.Parallel()
 		broker := &mockBroker{}

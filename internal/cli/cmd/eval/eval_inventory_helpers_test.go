@@ -19,6 +19,7 @@ import (
 )
 
 func TestModelInventoryFreezeJSON_AndWriteFile(t *testing.T) {
+	t.Parallel()
 	freeze := &evaluation.ModelInventoryFreeze{
 		CampaignID:           "eval-init-qwen3-4b",
 		RegistryDigest:       "digest-1",

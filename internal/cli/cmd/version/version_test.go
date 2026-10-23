@@ -23,11 +23,14 @@ import (
 )
 
 func TestVersionCmd_RegisteredOnRoot(t *testing.T) {
+	t.Parallel()
 	// Attachment to the root command is asserted by package cmd TestCommandRegistration.
+
 	require.Equal(t, "version", Cmd().Name())
 }
 
 func TestRunVersion_PlainPrintsBuildInfo(t *testing.T) {
+	t.Parallel()
 	vi := serve.VersionInfo{
 		Version:   "1.2.3",
 		BuildID:   "abc123",
@@ -46,6 +49,7 @@ func TestRunVersion_PlainPrintsBuildInfo(t *testing.T) {
 }
 
 func TestRunVersion_PlainOmitsEmptyFields(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	require.NoError(t, runVersion(&buf, serve.VersionInfo{}, false, false))
 
@@ -57,6 +61,7 @@ func TestRunVersion_PlainOmitsEmptyFields(t *testing.T) {
 }
 
 func TestRunVersion_FIPSReportsModuleStatus(t *testing.T) {
+	t.Parallel()
 	vi := serve.VersionInfo{Version: "1.2.3", Platform: "linux/amd64"}
 	var buf bytes.Buffer
 	err := runVersion(&buf, vi, true, false)
@@ -95,6 +100,7 @@ func TestRunVersion_FIPSReportsModuleStatus(t *testing.T) {
 }
 
 func TestVersionCmd_HasFipsFlag(t *testing.T) {
+	t.Parallel()
 	cmd := Cmd()
 	f := cmd.Flags().Lookup("fips")
 	require.NotNil(t, f)
@@ -102,6 +108,7 @@ func TestVersionCmd_HasFipsFlag(t *testing.T) {
 }
 
 func TestRunVersion_JSONEmitsProvenanceFields(t *testing.T) {
+	t.Parallel()
 	vi := serve.VersionInfo{
 		Version:             "2.1.8",
 		BuildID:             "abc123",
@@ -123,6 +130,7 @@ func TestRunVersion_JSONEmitsProvenanceFields(t *testing.T) {
 }
 
 func TestRunVersion_JSONOmitsUnstampedSentinels(t *testing.T) {
+	t.Parallel()
 	vi := serve.VersionInfo{
 		Version:             "2.1.8",
 		SourceRevision:      string(constants.SystemHealthUnknown),
@@ -143,6 +151,7 @@ func TestRunVersion_JSONOmitsUnstampedSentinels(t *testing.T) {
 }
 
 func TestRunVersion_JSONPrefersStampedRevisionOverVCS(t *testing.T) {
+	t.Parallel()
 	vi := serve.VersionInfo{Version: "2.1.8", SourceRevision: "stamped-revision"}
 	var buf bytes.Buffer
 	require.NoError(t, runVersion(&buf, vi, false, true))
@@ -153,15 +162,18 @@ func TestRunVersion_JSONPrefersStampedRevisionOverVCS(t *testing.T) {
 }
 
 func TestEffectiveSourceRevision_FallsBackForUnstampedValues(t *testing.T) {
+	t.Parallel()
 	vcs := buildinfo.VCSStamp{Revision: "vcs-revision", Present: true}
 	for _, value := range []string{"", string(constants.SystemHealthUnknown), constants.BuildMetadataUnavailable} {
 		t.Run(value, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, "vcs-revision", EffectiveSourceRevision(serve.VersionInfo{SourceRevision: value}, vcs))
 		})
 	}
 }
 
 func TestEffectiveBuildID_FallsBackToSourceTreeHash(t *testing.T) {
+	t.Parallel()
 	hash := "a" + strings.Repeat("1", 63)
 	vi := serve.VersionInfo{BuildID: constants.BuildMetadataUnavailable, SourceTreeStateHash: hash}
 
@@ -169,6 +181,7 @@ func TestEffectiveBuildID_FallsBackToSourceTreeHash(t *testing.T) {
 }
 
 func TestRunVersion_JSONFIPSIncludesModuleBlock(t *testing.T) {
+	t.Parallel()
 	vi := serve.VersionInfo{Version: "1.2.3"}
 	var buf bytes.Buffer
 	err := runVersion(&buf, vi, true, true)

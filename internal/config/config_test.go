@@ -22,7 +22,8 @@ import (
 // Load
 // ---------------------------------------------------------------------------
 
-func TestLoadGateway_PostureDefaultsToDoctrineAndRejectsUnknown(t *testing.T) {
+func TestLoadGateway_PostureDefaultsToDoctrineAndRejectsUnknown(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, err := LoadGateway(GatewayOptions{AllowTestPortZero: true})
 	require.NoError(t, err)
 	assert.Equal(t, constants.DefaultPosture, cfg.Gateway.Posture)
@@ -38,6 +39,7 @@ func TestLoadGateway_PostureDefaultsToDoctrineAndRejectsUnknown(t *testing.T) {
 }
 
 func TestLoad_Defaults(t *testing.T) {
+	t.Parallel()
 	wantWorkDir, err := os.Getwd()
 	require.NoError(t, err)
 
@@ -63,6 +65,7 @@ func TestLoad_Defaults(t *testing.T) {
 // GovernanceEnvelope.Posture at L4 verification time, so an empty config
 // posture is acceptable. cfg.Posture is empty when none was supplied.
 func TestLoad_NoPosture_Succeeds(t *testing.T) {
+	t.Parallel()
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,
 	})
@@ -72,6 +75,7 @@ func TestLoad_NoPosture_Succeeds(t *testing.T) {
 }
 
 func TestLoad_FieldPassthrough(t *testing.T) {
+	t.Parallel()
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,
 	})
@@ -81,6 +85,7 @@ func TestLoad_FieldPassthrough(t *testing.T) {
 }
 
 func TestLoad_HTTPPortOverride(t *testing.T) {
+	t.Parallel()
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,
 		HTTPPort:         constants.Ports.OperatorHttps,
@@ -90,6 +95,7 @@ func TestLoad_HTTPPortOverride(t *testing.T) {
 }
 
 func TestLoad_TLSServerName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		endpoint       string
@@ -119,6 +125,7 @@ func TestLoad_TLSServerName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg, err := Load(LoadOptions{
 				OperatorEndpoint: tt.endpoint,
 			})
@@ -129,6 +136,7 @@ func TestLoad_TLSServerName(t *testing.T) {
 }
 
 func TestLoad_ValidationErrors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		opts        LoadOptions
@@ -143,6 +151,7 @@ func TestLoad_ValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg, err := Load(tt.opts)
 			require.Error(t, err)
 			assert.Nil(t, cfg)
@@ -155,7 +164,8 @@ func TestLoad_ValidationErrors(t *testing.T) {
 // LoadGateway
 // ---------------------------------------------------------------------------
 
-func TestLoadGateway_Defaults(t *testing.T) {
+func TestLoadGateway_Defaults(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	wantWorkDir, err := os.Getwd()
 	require.NoError(t, err)
 
@@ -171,7 +181,8 @@ func TestLoadGateway_Defaults(t *testing.T) {
 	assert.Equal(t, constants.ComponentNameZTDOGateway, cfg.ComponentName)
 }
 
-func TestLoadGateway_ExplicitValues(t *testing.T) {
+func TestLoadGateway_ExplicitValues(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg, err := LoadGateway(GatewayOptions{
 		HTTPPort:          443,
 		HTTPSPort:         constants.Ports.OperatorHttps,
@@ -191,16 +202,18 @@ func TestLoadGateway_ExplicitValues(t *testing.T) {
 	assert.Equal(t, "/var/secrets", cfg.Gateway.SecretsDir)
 }
 
-func TestLoadGateway_PartialDefaults(t *testing.T) {
+func TestLoadGateway_PartialDefaults(t *testing.T) { //nolint:paralleltest // mutates package-level state
 
-	t.Run("only data dir overridden", func(t *testing.T) {
+	t.Run("only data dir overridden", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg, err := LoadGateway(GatewayOptions{DataDir: "/custom/data", AllowTestPortZero: true})
 		require.NoError(t, err)
 
 		assert.Equal(t, "/custom/data", cfg.Gateway.DataDir)
 	})
 
-	t.Run("no Operator fields set", func(t *testing.T) {
+	t.Run("no Operator fields set", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg, err := LoadGateway(GatewayOptions{AllowTestPortZero: true})
 		require.NoError(t, err)
 		assert.Empty(t, cfg.Endpoint)
@@ -208,43 +221,51 @@ func TestLoadGateway_PartialDefaults(t *testing.T) {
 	})
 }
 
-func TestLoadGateway_SucceedsWithAllDefaults(t *testing.T) {
+func TestLoadGateway_SucceedsWithAllDefaults(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, err := LoadGateway(GatewayOptions{AllowTestPortZero: true})
 	require.NoError(t, err)
 }
 
-func TestLoadGateway_OperatorLeafCertTTL(t *testing.T) {
-	t.Run("zero selects the 7-day workload maximum", func(t *testing.T) {
+func TestLoadGateway_OperatorLeafCertTTL(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("zero selects the 7-day workload maximum", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg, err := LoadGateway(GatewayOptions{AllowTestPortZero: true})
 		require.NoError(t, err)
 		assert.Equal(t, constants.MaxWorkloadLeafCertTTL, cfg.Gateway.OperatorLeafCertTTL)
 		assert.Equal(t, 7*24*time.Hour, cfg.Gateway.OperatorLeafCertTTL)
 	})
 
-	t.Run("accepts a shorter explicit lifetime", func(t *testing.T) {
+	t.Run("accepts a shorter explicit lifetime", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg, err := LoadGateway(GatewayOptions{OperatorLeafCertTTL: 45 * time.Second, AllowTestPortZero: true})
 		require.NoError(t, err)
 		assert.Equal(t, 45*time.Second, cfg.Gateway.OperatorLeafCertTTL)
 	})
 
-	t.Run("accepts exactly the maximum", func(t *testing.T) {
+	t.Run("accepts exactly the maximum", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		cfg, err := LoadGateway(GatewayOptions{OperatorLeafCertTTL: constants.MaxWorkloadLeafCertTTL, AllowTestPortZero: true})
 		require.NoError(t, err)
 		assert.Equal(t, constants.MaxWorkloadLeafCertTTL, cfg.Gateway.OperatorLeafCertTTL)
 	})
 
-	t.Run("rejects a lifetime above the maximum", func(t *testing.T) {
+	t.Run("rejects a lifetime above the maximum", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		_, err := LoadGateway(GatewayOptions{OperatorLeafCertTTL: constants.MaxWorkloadLeafCertTTL + time.Nanosecond, AllowTestPortZero: true})
 		require.ErrorIs(t, err, constants.ErrConfigLeafCertTTLInvalid)
 	})
 
-	t.Run("rejects a negative lifetime", func(t *testing.T) {
+	t.Run("rejects a negative lifetime", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		_, err := LoadGateway(GatewayOptions{OperatorLeafCertTTL: -time.Hour, AllowTestPortZero: true})
 		require.ErrorIs(t, err, constants.ErrConfigLeafCertTTLInvalid)
 	})
 }
 
 func TestValidateOperatorLeafCertTTL(t *testing.T) {
+	t.Parallel()
 	valid := []time.Duration{time.Nanosecond, time.Minute, 24 * time.Hour, constants.MaxWorkloadLeafCertTTL}
 	for _, ttl := range valid {
 		require.NoError(t, ValidateOperatorLeafCertTTL(ttl), "ttl %s", ttl)
@@ -257,9 +278,10 @@ func TestValidateOperatorLeafCertTTL(t *testing.T) {
 	}
 }
 
-func TestLoadGateway_RejectsPortZeroInProduction(t *testing.T) {
+func TestLoadGateway_RejectsPortZeroInProduction(t *testing.T) { //nolint:paralleltest // mutates package-level state
 
-	t.Run("reject httpPort 0", func(t *testing.T) {
+	t.Run("reject httpPort 0", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		_, err := LoadGateway(GatewayOptions{
 			HTTPPort:          0,
 			HTTPSPort:         constants.Ports.OperatorHttps,
@@ -269,7 +291,8 @@ func TestLoadGateway_RejectsPortZeroInProduction(t *testing.T) {
 		assert.Contains(t, err.Error(), "httpPort cannot be 0 in production")
 	})
 
-	t.Run("reject httpsPort 0", func(t *testing.T) {
+	t.Run("reject httpsPort 0", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		_, err := LoadGateway(GatewayOptions{
 			HTTPPort:          constants.Ports.OperatorHttp,
 			HTTPSPort:         0,
@@ -279,7 +302,8 @@ func TestLoadGateway_RejectsPortZeroInProduction(t *testing.T) {
 		assert.Contains(t, err.Error(), "httpsPort cannot be 0 in production")
 	})
 
-	t.Run("accept all non-zero ports in production", func(t *testing.T) {
+	t.Run("accept all non-zero ports in production", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		_, err := LoadGateway(GatewayOptions{
 			HTTPPort:          constants.Ports.OperatorHttp,
 			HTTPSPort:         constants.Ports.OperatorHttps,
@@ -294,6 +318,7 @@ func TestLoadGateway_RejectsPortZeroInProduction(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoad_HeartbeatIntervalDefault(t *testing.T) {
+	t.Parallel()
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint: constants.DefaultEndpoint,
 	})
@@ -302,6 +327,7 @@ func TestLoad_HeartbeatIntervalDefault(t *testing.T) {
 }
 
 func TestLoad_HeartbeatIntervalOverride(t *testing.T) {
+	t.Parallel()
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint:  constants.DefaultEndpoint,
 		HeartbeatInterval: 90 * time.Second,
@@ -311,6 +337,7 @@ func TestLoad_HeartbeatIntervalOverride(t *testing.T) {
 }
 
 func TestLoad_HeartbeatIntervalZeroUsesDefault(t *testing.T) {
+	t.Parallel()
 	cfg, err := Load(LoadOptions{
 		OperatorEndpoint:  constants.DefaultEndpoint,
 		HeartbeatInterval: 0,
@@ -324,6 +351,7 @@ func TestLoad_HeartbeatIntervalZeroUsesDefault(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHeartbeatIntervalOrDefault(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input time.Duration
 		want  time.Duration
@@ -345,6 +373,7 @@ func TestHeartbeatIntervalOrDefault(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHTTPPortOrDefault(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input int
 		want  int
@@ -366,6 +395,7 @@ func TestHTTPPortOrDefault(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTLSServerName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -382,6 +412,7 @@ func TestTLSServerName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, TLSServerName(tt.endpoint))
 		})
 	}
@@ -390,12 +421,14 @@ func TestTLSServerName(t *testing.T) {
 // Only non-internal endpoints are covered here: ztd.local triggers a DNS
 // lookup, which Tier 1 tests must not perform.
 func TestGatewayDialHost_PassesThroughOtherEndpoints(t *testing.T) {
+	t.Parallel()
 	for _, endpoint := range []string{"example.com", "10.0.0.1", "::1", ""} {
 		assert.Equal(t, endpoint, GatewayDialHost(endpoint))
 	}
 }
 
 func TestBuildPubSubURL(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		endpoint string
@@ -410,12 +443,14 @@ func TestBuildPubSubURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, buildPubSubURL(tt.endpoint, tt.httpPort))
 		})
 	}
 }
 
 func TestListenHostOrDefault_LoopbackUnlessRequested(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, constants.LocalhostIP, listenHostOrDefault(""))
 	assert.Equal(t, "0.0.0.0", listenHostOrDefault("0.0.0.0"))
 	assert.Equal(t, "192.168.1.10", listenHostOrDefault("192.168.1.10"))

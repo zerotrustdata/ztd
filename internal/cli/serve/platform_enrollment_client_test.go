@@ -44,6 +44,7 @@ import (
 // encoding. This is the Go parity vector for the operator component
 // (operator + CLI fingerprints).
 func TestBuildOperatorCompletionTranscript_MatchesGatewayProto(t *testing.T) {
+	t.Parallel()
 	requestID := "req-abc-123"
 	tokenHash := "deadbeef" + strings.Repeat("0", 56)
 	instanceID := "operator-test-host"
@@ -78,6 +79,7 @@ func TestBuildOperatorCompletionTranscript_MatchesGatewayProto(t *testing.T) {
 // (APPLICATION). A wrong component kind would cause proof verification
 // to fail on the gateway.
 func TestBuildOperatorCompletionTranscript_ComponentKindIsOperator(t *testing.T) {
+	t.Parallel()
 	transcript, err := buildOperatorCompletionTranscript("req", "hash", "instance", "opfp", "clifp")
 	require.NoError(t, err)
 
@@ -92,6 +94,7 @@ func TestBuildOperatorCompletionTranscript_ComponentKindIsOperator(t *testing.T)
 // fingerprint). A missing fingerprint would cause proof verification
 // to fail.
 func TestBuildOperatorCompletionTranscript_IncludesBothFingerprints(t *testing.T) {
+	t.Parallel()
 	operatorFP := "op-fp-value"
 	cliFP := "cli-fp-value"
 	transcript, err := buildOperatorCompletionTranscript("req", "hash", "instance", operatorFP, cliFP)
@@ -113,6 +116,7 @@ func TestBuildOperatorCompletionTranscript_IncludesBothFingerprints(t *testing.T
 // for its component kind. This test
 // ties the Go operator client to the cross-language golden vector.
 func TestBuildOperatorCompletionTranscript_SharedParityVector(t *testing.T) {
+	t.Parallel()
 	const requestID = "parity-req-001"
 	const tokenHash = "aabbccdd"
 	const instanceID = "parity-host"
@@ -137,6 +141,7 @@ func TestBuildOperatorCompletionTranscript_SharedParityVector(t *testing.T) {
 // the Operator checks the created frame against matches the gateway's:
 // SHA-256 of the SubjectPublicKeyInfo DER bytes, hex-encoded.
 func TestCSRFingerprint_MatchesGatewayComputation(t *testing.T) {
+	t.Parallel()
 	csrPEM, privKey := generateTestCSR(t, "test-fp")
 
 	clientFP, err := auth.CSRFingerprint(csrPEM)
@@ -152,6 +157,7 @@ func TestCSRFingerprint_MatchesGatewayComputation(t *testing.T) {
 // TestCSRFingerprint_RejectsNonP256Key verifies the fingerprint
 // function fails closed on a non-P-256 key.
 func TestCSRFingerprint_RejectsNonP256Key(t *testing.T) {
+	t.Parallel()
 	privKey, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	require.NoError(t, err)
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{CommonName: "test-p384"}}, privKey)
@@ -167,6 +173,7 @@ func TestCSRFingerprint_RejectsNonP256Key(t *testing.T) {
 // TestTokenHash_MatchesGatewayComputation verifies the client's token
 // hash matches the gateway's: SHA-256 of the raw token, hex-encoded.
 func TestTokenHash_MatchesGatewayComputation(t *testing.T) {
+	t.Parallel()
 	token := "test-token-value-abc123"
 	digest := sha256.Sum256([]byte(token))
 	assert.Equal(t, hex.EncodeToString(digest[:]), models.PlatformEnrollmentTokenHash(token))
@@ -179,6 +186,7 @@ func TestTokenHash_MatchesGatewayComputation(t *testing.T) {
 // corresponding public key. This mirrors the gateway's
 // verifyPlatformEnrollmentProof.
 func TestSignTranscript_ProducesVerifiableASN1Signature(t *testing.T) {
+	t.Parallel()
 	csrPEM, privateKey := generateTestCSR(t, "test-sign")
 
 	transcript := []byte("test transcript bytes for verification")
@@ -194,6 +202,7 @@ func TestSignTranscript_ProducesVerifiableASN1Signature(t *testing.T) {
 // --- Bootstrap URL ---
 
 func TestOperatorBootstrapURL(t *testing.T) {
+	t.Parallel()
 	path := constants.APIPaths.AuthOperatorBootstrapWebSocket
 	tests := []struct {
 		name     string
@@ -212,18 +221,22 @@ func TestOperatorBootstrapURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, OperatorBootstrapURL(tt.endpoint, tt.httpPort))
 		})
 	}
 }
 
 func TestOperatorBootstrapDialURL(t *testing.T) {
+	t.Parallel()
 	path := constants.APIPaths.AuthOperatorBootstrapWebSocket
 	cfg := &config.Config{PubSubURL: "wss://10.0.0.5:9443"}
 	t.Run("a pinned trust bundle dials wss on the Gateway HTTPS port", func(t *testing.T) {
+		t.Parallel()
 		assert.Equal(t, "wss://10.0.0.5:9443"+path, operatorBootstrapDialURL(cfg, "10.0.0.5", 9080, true))
 	})
 	t.Run("without one it dials the plain-HTTP bootstrap", func(t *testing.T) {
+		t.Parallel()
 		assert.Equal(t, "ws://10.0.0.5:9080"+path, operatorBootstrapDialURL(cfg, "10.0.0.5", 9080, false))
 	})
 }
@@ -231,6 +244,7 @@ func TestOperatorBootstrapDialURL(t *testing.T) {
 // --- Client construction ---
 
 func TestNewOperatorBootstrapClient_RejectsIncompleteConfig(t *testing.T) {
+	t.Parallel()
 	deployment, err := NewOperatorDeploymentRecorder(newTestFileSvc(t), "")
 	require.NoError(t, err)
 	valid := OperatorBootstrapClientConfig{
@@ -256,6 +270,7 @@ func TestNewOperatorBootstrapClient_RejectsIncompleteConfig(t *testing.T) {
 		"logger":         func(c *OperatorBootstrapClientConfig) { c.Logger = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			cfg := valid
 			mutate(&cfg)
 			_, err := NewOperatorBootstrapClient(cfg)
@@ -264,6 +279,7 @@ func TestNewOperatorBootstrapClient_RejectsIncompleteConfig(t *testing.T) {
 	}
 
 	t.Run("unparseable trust bundle", func(t *testing.T) {
+		t.Parallel()
 		cfg := valid
 		cfg.TrustBundlePEM = []byte("not a certificate")
 		_, err := NewOperatorBootstrapClient(cfg)
@@ -276,6 +292,7 @@ func TestNewOperatorBootstrapClient_RejectsIncompleteConfig(t *testing.T) {
 // TestOperatorBootstrapAttempt_IdentityPairsBundleWithInMemoryKey proves the
 // delivered certificate is usable with the key that never left the process.
 func TestOperatorBootstrapAttempt_IdentityPairsBundleWithInMemoryKey(t *testing.T) {
+	t.Parallel()
 	caPEM, caCert, caKey := generateTestCA(t)
 	operatorCSR, operatorKey := generateTestCSR(t, "ztd-operator-test")
 	attempt := &operatorBootstrapAttempt{operatorKey: operatorKey}
@@ -307,6 +324,7 @@ func TestOperatorBootstrapAttempt_IdentityPairsBundleWithInMemoryKey(t *testing.
 	assert.True(t, operatorKey.Equal(identity.Certificate.PrivateKey))
 
 	t.Run("a certificate for another key is refused", func(t *testing.T) {
+		t.Parallel()
 		otherCSR, _ := generateTestCSR(t, "ztd-operator-other")
 		foreign := *bundle
 		foreign.Credentials.OperatorCert = signTestCSR(t, otherCSR, caCert, caKey)
@@ -321,6 +339,7 @@ func TestOperatorBootstrapAttempt_IdentityPairsBundleWithInMemoryKey(t *testing.
 		"session":     func(c *models.PlatformEnrollmentOperatorCredentials) { c.OperatorSessionID = "" },
 	} {
 		t.Run("missing "+name, func(t *testing.T) {
+			t.Parallel()
 			incomplete := *bundle
 			mutate(&incomplete.Credentials)
 			_, err := attempt.identity(&incomplete)
@@ -395,7 +414,9 @@ func csrPublicKey(t *testing.T, csrPEM string) *ecdsa.PublicKey {
 }
 
 func TestRenderOperatorEnrollmentInstructions(t *testing.T) {
+	t.Parallel()
 	t.Run("with approval URL prints CLI approve command and passkey URL", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		renderOperatorEnrollmentInstructions(&buf, &models.PlatformEnrollmentCreateResponse{
 			RequestID:   "req-1",
@@ -407,6 +428,7 @@ func TestRenderOperatorEnrollmentInstructions(t *testing.T) {
 	})
 
 	t.Run("without approval URL prints CLI approve command only", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		renderOperatorEnrollmentInstructions(&buf, &models.PlatformEnrollmentCreateResponse{
 			RequestID: "req-2",

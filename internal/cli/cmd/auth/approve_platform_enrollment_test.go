@@ -63,7 +63,8 @@ func samplePendingResponse() models.PlatformEnrollmentPendingResponse {
 	}
 }
 
-func TestRevokePlatformEnrollmentCmdWithConfig_PostsRequestID(t *testing.T) {
+func TestRevokePlatformEnrollmentCmdWithConfig_PostsRequestID(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	responseBody, err := json.Marshal(models.PlatformEnrollmentRevokeResponse{
 		RequestID:     "req-operator-001",
@@ -95,7 +96,8 @@ func TestRevokePlatformEnrollmentCmdWithConfig_PostsRequestID(t *testing.T) {
 // TestApprovePlatformEnrollmentCmd_ApproveWithYes verifies that --yes skips the
 // interactive prompt, posts an approve decision with the correct request ID,
 // and prints the resulting state.
-func TestApprovePlatformEnrollmentCmd_ApproveWithYes(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_ApproveWithYes(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -130,7 +132,8 @@ func TestApprovePlatformEnrollmentCmd_ApproveWithYes(t *testing.T) {
 
 // TestDenyPlatformEnrollmentCmd_WithYes verifies that the deny subcommand posts a
 // deny decision and prints the denied state.
-func TestDenyPlatformEnrollmentCmd_WithYes(t *testing.T) {
+func TestDenyPlatformEnrollmentCmd_WithYes(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -163,7 +166,8 @@ func TestDenyPlatformEnrollmentCmd_WithYes(t *testing.T) {
 
 // TestApprovePlatformEnrollmentCmd_ReasonIncludedInBody verifies that the
 // --reason flag value is included in the posted decision request body.
-func TestApprovePlatformEnrollmentCmd_ReasonIncludedInBody(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_ReasonIncludedInBody(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -195,7 +199,8 @@ func TestApprovePlatformEnrollmentCmd_ReasonIncludedInBody(t *testing.T) {
 // TestApprovePlatformEnrollmentCmd_DisplaysRequestDetails verifies that the
 // command output includes component kind, hostname, instance ID, CSR
 // fingerprints, creation time, and expiry before posting the decision.
-func TestApprovePlatformEnrollmentCmd_DisplaysRequestDetails(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_DisplaysRequestDetails(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -231,7 +236,8 @@ func TestApprovePlatformEnrollmentCmd_DisplaysRequestDetails(t *testing.T) {
 
 // TestApprovePlatformEnrollmentCmd_RequestNotFoundReturnsError verifies that a
 // request ID not in the pending list returns ErrPlatformEnrollmentRequestNotFound.
-func TestApprovePlatformEnrollmentCmd_RequestNotFoundReturnsError(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_RequestNotFoundReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -254,7 +260,8 @@ func TestApprovePlatformEnrollmentCmd_RequestNotFoundReturnsError(t *testing.T) 
 
 // TestApprovePlatformEnrollmentCmd_GetErrorReturnsWrappedError verifies that a
 // pending-list fetch failure is surfaced as a wrapped error.
-func TestApprovePlatformEnrollmentCmd_GetErrorReturnsWrappedError(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_GetErrorReturnsWrappedError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	getErr := fmt.Errorf("network failure")
@@ -275,7 +282,8 @@ func TestApprovePlatformEnrollmentCmd_GetErrorReturnsWrappedError(t *testing.T) 
 
 // TestApprovePlatformEnrollmentCmd_PostErrorReturnsWrappedError verifies that a
 // decision post failure is surfaced as a wrapped error.
-func TestApprovePlatformEnrollmentCmd_PostErrorReturnsWrappedError(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_PostErrorReturnsWrappedError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -298,7 +306,8 @@ func TestApprovePlatformEnrollmentCmd_PostErrorReturnsWrappedError(t *testing.T)
 
 // TestApprovePlatformEnrollmentCmd_RejectsMissingRequestID verifies that the
 // command rejects a missing request ID argument via cobra's Args validation.
-func TestApprovePlatformEnrollmentCmd_RejectsMissingRequestID(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_RejectsMissingRequestID(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{}
@@ -319,7 +328,8 @@ func TestApprovePlatformEnrollmentCmd_RejectsMissingRequestID(t *testing.T) {
 // command output never includes requester tokens, token hashes, CSR PEM, or
 // certificates — only request ID, component metadata, fingerprints, and
 // timestamps.
-func TestApprovePlatformEnrollmentCmd_OutputNeverContainsTokens(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_OutputNeverContainsTokens(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -351,7 +361,8 @@ func TestApprovePlatformEnrollmentCmd_OutputNeverContainsTokens(t *testing.T) {
 
 // TestApprovePlatformEnrollmentCmd_InteractiveAbort verifies that answering
 // "n" to the interactive prompt aborts the decision without posting.
-func TestApprovePlatformEnrollmentCmd_InteractiveAbort(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_InteractiveAbort(t *testing.T) { //nolint:paralleltest // mutates process standard streams and package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -382,7 +393,8 @@ func TestApprovePlatformEnrollmentCmd_InteractiveAbort(t *testing.T) {
 // TestRevokePlatformEnrollmentCmd_InteractiveAbortReturnsError verifies that
 // declining the revoke confirmation returns ErrConfirmationAborted and posts
 // nothing, so the process exits non-zero instead of reporting success.
-func TestRevokePlatformEnrollmentCmd_InteractiveAbortReturnsError(t *testing.T) {
+func TestRevokePlatformEnrollmentCmd_InteractiveAbortReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	mockClient := &cmdtest.MockAPIClient{}
 
@@ -401,7 +413,8 @@ func TestRevokePlatformEnrollmentCmd_InteractiveAbortReturnsError(t *testing.T) 
 // TestApprovePlatformEnrollmentCmd_ReasonTooLongReturnsError verifies that a
 // --reason value exceeding PlatformEnrollmentMaxReasonBytes returns a
 // validation error before posting.
-func TestApprovePlatformEnrollmentCmd_ReasonTooLongReturnsError(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_ReasonTooLongReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -472,7 +485,8 @@ func postedRequestIDs(t *testing.T, client *cmdtest.MockAPIClient) []string {
 	return ids
 }
 
-func TestApprovePlatformEnrollmentCmd_MultipleRequestIDs(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_MultipleRequestIDs(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	client, output, err := runApproveWithYes(t, nil, []string{"req-operator-001", "req-dashboard-002"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, client))
@@ -481,26 +495,30 @@ func TestApprovePlatformEnrollmentCmd_MultipleRequestIDs(t *testing.T) {
 	require.Len(t, client.GetCalls, 1, "pending list must be fetched once for the whole batch")
 }
 
-func TestApprovePlatformEnrollmentCmd_ByHostname(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_ByHostname(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	client, _, err := runApproveWithYes(t, nil, []string{"Dashboard.Example.COM"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"req-dashboard-002"}, postedRequestIDs(t, client))
 }
 
-func TestApprovePlatformEnrollmentCmd_ByInstanceID(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_ByInstanceID(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	client, _, err := runApproveWithYes(t, nil, []string{"operator-host-01"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"req-operator-001"}, postedRequestIDs(t, client))
 }
 
-func TestApprovePlatformEnrollmentCmd_MixedSelectorsDeduplicate(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_MixedSelectorsDeduplicate(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	client, _, err := runApproveWithYes(t, nil, []string{"req-operator-001", "operator.example.com", "operator-host-01", "dashboard-host-01"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, client),
 		"a request matched by several selectors is decided once, in pending-list order")
 }
 
-func TestApprovePlatformEnrollmentCmd_HostnameMatchingSeveralRequests(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_HostnameMatchingSeveralRequests(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pending := samplePendingResponse()
@@ -522,13 +540,15 @@ func TestApprovePlatformEnrollmentCmd_HostnameMatchingSeveralRequests(t *testing
 	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, mockClient))
 }
 
-func TestApprovePlatformEnrollmentCmd_AllApprovesEveryPending(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_AllApprovesEveryPending(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	client, _, err := runApproveWithYes(t, map[string]string{"all": "true"}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, client))
 }
 
-func TestApprovePlatformEnrollmentCmd_AllWithNoPendingIsNoop(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_AllWithNoPendingIsNoop(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(models.PlatformEnrollmentPendingResponse{})
@@ -548,7 +568,8 @@ func TestApprovePlatformEnrollmentCmd_AllWithNoPendingIsNoop(t *testing.T) {
 	assert.Empty(t, mockClient.PostCalls)
 }
 
-func TestApprovePlatformEnrollmentCmd_AllRejectsExplicitSelectors(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_AllRejectsExplicitSelectors(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	client, _, err := runApproveWithYes(t, map[string]string{"all": "true"}, []string{"req-operator-001"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--all cannot be combined")
@@ -556,7 +577,8 @@ func TestApprovePlatformEnrollmentCmd_AllRejectsExplicitSelectors(t *testing.T) 
 	assert.Empty(t, client.PostCalls)
 }
 
-func TestApprovePlatformEnrollmentCmd_UnmatchedSelectorPostsNothing(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_UnmatchedSelectorPostsNothing(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	client, _, err := runApproveWithYes(t, nil, []string{"req-operator-001", "ghost-a", "ghost-b"})
 	require.Error(t, err)
 	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentRequestNotFound)
@@ -565,7 +587,8 @@ func TestApprovePlatformEnrollmentCmd_UnmatchedSelectorPostsNothing(t *testing.T
 	assert.Empty(t, client.PostCalls, "no request may be decided when any selector is unmatched")
 }
 
-func TestApprovePlatformEnrollmentCmd_ReasonTooLongPostsNothingForBatch(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_ReasonTooLongPostsNothingForBatch(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	client, _, err := runApproveWithYes(t,
 		map[string]string{"reason": strings.Repeat("x", constants.PlatformEnrollmentMaxReasonBytes+1)},
 		[]string{"req-operator-001", "req-dashboard-002"})
@@ -574,7 +597,8 @@ func TestApprovePlatformEnrollmentCmd_ReasonTooLongPostsNothingForBatch(t *testi
 	assert.Empty(t, client.PostCalls)
 }
 
-func TestApprovePlatformEnrollmentCmd_BatchFailureDoesNotFallBackToIndividualDecisions(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_BatchFailureDoesNotFallBackToIndividualDecisions(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	pendingBody, err := json.Marshal(samplePendingResponse())
 	require.NoError(t, err)
@@ -592,7 +616,8 @@ func TestApprovePlatformEnrollmentCmd_BatchFailureDoesNotFallBackToIndividualDec
 	require.NotContains(t, buf.String(), "approved.")
 }
 
-func TestApprovePlatformEnrollmentCmd_InteractiveBatchPromptsOnce(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_InteractiveBatchPromptsOnce(t *testing.T) { //nolint:paralleltest // mutates process standard streams and package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -619,7 +644,8 @@ func TestApprovePlatformEnrollmentCmd_InteractiveBatchPromptsOnce(t *testing.T) 
 	assert.Equal(t, []string{"req-operator-001", "req-dashboard-002"}, postedRequestIDs(t, mockClient))
 }
 
-func TestDenyPlatformEnrollmentCmd_AllDeniesEveryPending(t *testing.T) {
+func TestDenyPlatformEnrollmentCmd_AllDeniesEveryPending(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -647,7 +673,8 @@ func TestDenyPlatformEnrollmentCmd_AllDeniesEveryPending(t *testing.T) {
 
 // TestPendingPlatformEnrollmentCmd_ListsRequests verifies that the command
 // fetches the pending list and prints request metadata for each entry.
-func TestPendingPlatformEnrollmentCmd_ListsRequests(t *testing.T) {
+func TestPendingPlatformEnrollmentCmd_ListsRequests(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -679,7 +706,8 @@ func TestPendingPlatformEnrollmentCmd_ListsRequests(t *testing.T) {
 
 // TestPendingPlatformEnrollmentCmd_EmptyListPrintsMessage verifies that an
 // empty pending list prints a clear "no pending" message.
-func TestPendingPlatformEnrollmentCmd_EmptyListPrintsMessage(t *testing.T) {
+func TestPendingPlatformEnrollmentCmd_EmptyListPrintsMessage(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(models.PlatformEnrollmentPendingResponse{Requests: nil})
@@ -700,7 +728,8 @@ func TestPendingPlatformEnrollmentCmd_EmptyListPrintsMessage(t *testing.T) {
 
 // TestPendingPlatformEnrollmentCmd_GetErrorReturnsWrappedError verifies that a
 // fetch failure is surfaced as a wrapped error.
-func TestPendingPlatformEnrollmentCmd_GetErrorReturnsWrappedError(t *testing.T) {
+func TestPendingPlatformEnrollmentCmd_GetErrorReturnsWrappedError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	getErr := fmt.Errorf("network failure")
@@ -720,7 +749,8 @@ func TestPendingPlatformEnrollmentCmd_GetErrorReturnsWrappedError(t *testing.T) 
 // TestPendingPlatformEnrollmentCmd_OutputNeverContainsTokens verifies that the
 // command output never includes requester tokens, token hashes, CSR PEM, or
 // certificates.
-func TestPendingPlatformEnrollmentCmd_OutputNeverContainsTokens(t *testing.T) {
+func TestPendingPlatformEnrollmentCmd_OutputNeverContainsTokens(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -745,7 +775,8 @@ func TestPendingPlatformEnrollmentCmd_OutputNeverContainsTokens(t *testing.T) {
 
 // TestPendingPlatformEnrollmentCmd_InvalidJSONReturnsError verifies that a
 // malformed response body returns a wrapped parse error.
-func TestPendingPlatformEnrollmentCmd_InvalidJSONReturnsError(t *testing.T) {
+func TestPendingPlatformEnrollmentCmd_InvalidJSONReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte("not json {{{")}
@@ -763,7 +794,8 @@ func TestPendingPlatformEnrollmentCmd_InvalidJSONReturnsError(t *testing.T) {
 
 // TestPendingPlatformEnrollmentCmd_ClientFactoryError verifies that a client
 // factory failure is surfaced as a wrapped error and no GET is attempted.
-func TestPendingPlatformEnrollmentCmd_ClientFactoryError(t *testing.T) {
+func TestPendingPlatformEnrollmentCmd_ClientFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	clientErr := fmt.Errorf("client factory boom")
@@ -784,7 +816,8 @@ func TestPendingPlatformEnrollmentCmd_ClientFactoryError(t *testing.T) {
 
 // TestApprovePlatformEnrollmentCmd_ClientFactoryError verifies that a client
 // factory failure is surfaced as a wrapped error and no GET is attempted.
-func TestApprovePlatformEnrollmentCmd_ClientFactoryError(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_ClientFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	clientErr := fmt.Errorf("client factory boom")
@@ -806,7 +839,8 @@ func TestApprovePlatformEnrollmentCmd_ClientFactoryError(t *testing.T) {
 
 // TestApprovePlatformEnrollmentCmd_InvalidPendingJSONReturnsError verifies
 // that a malformed pending-list response returns a wrapped parse error.
-func TestApprovePlatformEnrollmentCmd_InvalidPendingJSONReturnsError(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_InvalidPendingJSONReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	mockClient := &cmdtest.MockAPIClient{GetResp: []byte("not json {{{")}
@@ -825,7 +859,8 @@ func TestApprovePlatformEnrollmentCmd_InvalidPendingJSONReturnsError(t *testing.
 
 // TestApprovePlatformEnrollmentCmd_InvalidDecisionJSONReturnsError verifies
 // that a malformed decision response returns a wrapped parse error.
-func TestApprovePlatformEnrollmentCmd_InvalidDecisionJSONReturnsError(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_InvalidDecisionJSONReturnsError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -848,6 +883,7 @@ func TestApprovePlatformEnrollmentCmd_InvalidDecisionJSONReturnsError(t *testing
 // TestApprovePlatformEnrollmentCmd_ConfigLoaderError verifies that a config
 // load failure is returned directly.
 func TestApprovePlatformEnrollmentCmd_ConfigLoaderError(t *testing.T) {
+	t.Parallel()
 	cfgErr := fmt.Errorf("config load error")
 	loader := func(string) (*config.Config, error) { return nil, cfgErr }
 
@@ -865,6 +901,7 @@ func TestApprovePlatformEnrollmentCmd_ConfigLoaderError(t *testing.T) {
 // TestPendingPlatformEnrollmentCmd_ConfigLoaderError verifies that a config
 // load failure is returned directly.
 func TestPendingPlatformEnrollmentCmd_ConfigLoaderError(t *testing.T) {
+	t.Parallel()
 	cfgErr := fmt.Errorf("config load error")
 	loader := func(string) (*config.Config, error) { return nil, cfgErr }
 
@@ -882,7 +919,8 @@ func TestPendingPlatformEnrollmentCmd_ConfigLoaderError(t *testing.T) {
 // TestApprovePlatformEnrollmentCmd_DisplaysSystemFingerprint verifies that the
 // system fingerprint is shown for operator requests (which carry it) but not
 // for dashboard requests (which do not).
-func TestApprovePlatformEnrollmentCmd_DisplaysSystemFingerprint(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_DisplaysSystemFingerprint(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -911,6 +949,7 @@ func TestApprovePlatformEnrollmentCmd_DisplaysSystemFingerprint(t *testing.T) {
 // TestApprovePlatformEnrollmentCmd_CommandStructure verifies the command's
 // Use, flags, and Args validation.
 func TestApprovePlatformEnrollmentCmd_CommandStructure(t *testing.T) {
+	t.Parallel()
 	cmd := approvePlatformEnrollmentCmdWithConfig(
 		cmdtest.ConfigLoaderFor(nil), PanickingClientFactory(), cmdtest.FileSvcFactoryFor(nil))
 	assert.Equal(t, "approve <request-id|instance-id|hostname>... | --all", cmd.Use)
@@ -926,6 +965,7 @@ func TestApprovePlatformEnrollmentCmd_CommandStructure(t *testing.T) {
 // TestDenyPlatformEnrollmentCmd_CommandStructure verifies the deny command's
 // Use, flags, and Args validation.
 func TestDenyPlatformEnrollmentCmd_CommandStructure(t *testing.T) {
+	t.Parallel()
 	cmd := denyPlatformEnrollmentCmdWithConfig(
 		cmdtest.ConfigLoaderFor(nil), PanickingClientFactory(), cmdtest.FileSvcFactoryFor(nil))
 	assert.Equal(t, "deny <request-id|instance-id|hostname>... | --all", cmd.Use)
@@ -939,6 +979,7 @@ func TestDenyPlatformEnrollmentCmd_CommandStructure(t *testing.T) {
 // TestPendingPlatformEnrollmentCmd_CommandStructure verifies the command's
 // Use and Args validation.
 func TestPendingPlatformEnrollmentCmd_CommandStructure(t *testing.T) {
+	t.Parallel()
 	cmd := pendingPlatformEnrollmentCmdWithConfig(
 		cmdtest.ConfigLoaderFor(nil), PanickingClientFactory(), cmdtest.FileSvcFactoryFor(nil))
 	assert.Equal(t, "pending", cmd.Use)
@@ -948,7 +989,8 @@ func TestPendingPlatformEnrollmentCmd_CommandStructure(t *testing.T) {
 // TestApprovePlatformEnrollmentCmd_ApproveWithYes_FetchesPendingFirst verifies
 // that the command GETs the pending list before POSTing the decision, proving
 // the display step happens before the decision.
-func TestApprovePlatformEnrollmentCmd_ApproveWithYes_FetchesPendingFirst(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_ApproveWithYes_FetchesPendingFirst(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -1008,7 +1050,8 @@ func sampleEnrolledResponse() models.PlatformEnrollmentEnrolledResponse {
 	}
 }
 
-func TestListPlatformEnrollmentCmd_ListsEnrollments(t *testing.T) {
+func TestListPlatformEnrollmentCmd_ListsEnrollments(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	enrolledBody, err := json.Marshal(sampleEnrolledResponse())
@@ -1036,7 +1079,8 @@ func TestListPlatformEnrollmentCmd_ListsEnrollments(t *testing.T) {
 	assert.NotContains(t, output, "3b750b7a-6d88-493a-80b5-fe715a9b8525")
 }
 
-func TestListPlatformEnrollmentCmd_EmptyListPrintsMessage(t *testing.T) {
+func TestListPlatformEnrollmentCmd_EmptyListPrintsMessage(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	enrolledBody, err := json.Marshal(models.PlatformEnrollmentEnrolledResponse{Enrollments: nil})
@@ -1056,13 +1100,15 @@ func TestListPlatformEnrollmentCmd_EmptyListPrintsMessage(t *testing.T) {
 }
 
 func TestListPlatformEnrollmentCmd_CommandStructure(t *testing.T) {
+	t.Parallel()
 	cmd := listPlatformEnrollmentCmdWithConfig(
 		cmdtest.ConfigLoaderFor(nil), PanickingClientFactory(), cmdtest.FileSvcFactoryFor(nil))
 	assert.Equal(t, "list", cmd.Use)
 	assert.NotNil(t, cmd.RunE)
 }
 
-func TestApprovePlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) {
+func TestApprovePlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -1097,7 +1143,8 @@ func TestApprovePlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) {
 	assert.Contains(t, output, "Expires At:   "+expiresAt.Format(time.RFC3339))
 }
 
-func TestDenyPlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) {
+func TestDenyPlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	pendingBody, err := json.Marshal(samplePendingResponse())
@@ -1132,7 +1179,8 @@ func TestDenyPlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) {
 	assert.Contains(t, output, "Expires At:   "+expiresAt.Format(time.RFC3339))
 }
 
-func TestRevokePlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) {
+func TestRevokePlatformEnrollmentCmd_L3RequiredPrintsSuspension(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 
 	expiresAt := time.Date(2026, 10, 17, 21, 30, 0, 0, time.UTC)

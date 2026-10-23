@@ -17,6 +17,7 @@ import (
 )
 
 func TestNewExecutionTopologies_ReturnsFiveValidTargetFormations(t *testing.T) {
+	t.Parallel()
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 	formations := topologies.Formations()
@@ -29,6 +30,7 @@ func TestNewExecutionTopologies_ReturnsFiveValidTargetFormations(t *testing.T) {
 }
 
 func TestFormationValidateRejectsProviderAndFamilyOverlap(t *testing.T) {
+	t.Parallel()
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 	formation, err := topologies.Formation("deepseek-reasoning-tower")
@@ -46,6 +48,7 @@ func TestFormationValidateRejectsProviderAndFamilyOverlap(t *testing.T) {
 }
 
 func TestParseVRAMBudgetMiB(t *testing.T) {
+	t.Parallel()
 	for raw, want := range map[string]uint64{
 		"8gb":     8 * 1024,
 		"12GiB":   12 * 1024,
@@ -65,6 +68,7 @@ func TestParseVRAMBudgetMiB(t *testing.T) {
 }
 
 func TestEstimateFormationVRAM(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, uint64(5365), EstimateFormationModelVRAMMiB(9_000_000_000, "Q4_K_M"))
 	assert.Equal(t, uint64(9120), EstimateFormationModelVRAMMiB(9_000_000_000, "Q8_0"))
 	assert.Zero(t, EstimateFormationModelVRAMMiB(9_000_000_000, "unknown"))
@@ -73,6 +77,7 @@ func TestEstimateFormationVRAM(t *testing.T) {
 }
 
 func TestFormationValidateNamesMissingFields(t *testing.T) {
+	t.Parallel()
 	formation := newTestFormation("missing-fields")
 	formation.DisplayName, formation.MaxVRAMMiB = "", 0
 	err := formation.Validate()
@@ -87,6 +92,7 @@ func TestFormationValidateNamesMissingFields(t *testing.T) {
 }
 
 func TestFormationValidateBudgetErrorBreaksDownRoles(t *testing.T) {
+	t.Parallel()
 	formation := newTestFormation("over-budget")
 	formation.MaxVRAMMiB = 8 * 1024
 	err := formation.Validate()
@@ -104,6 +110,7 @@ func newTestFormation(id string) Formation {
 }
 
 func TestAddOrUpdateFormationAddsNewEntry(t *testing.T) {
+	t.Parallel()
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 
@@ -119,6 +126,7 @@ func TestAddOrUpdateFormationAddsNewEntry(t *testing.T) {
 }
 
 func TestAddOrUpdateFormationReplacesExistingEntry(t *testing.T) {
+	t.Parallel()
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 
@@ -133,6 +141,7 @@ func TestAddOrUpdateFormationReplacesExistingEntry(t *testing.T) {
 }
 
 func TestAddOrUpdateFormationRejectsInvalidFormation(t *testing.T) {
+	t.Parallel()
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 
@@ -144,11 +153,13 @@ func TestAddOrUpdateFormationRejectsInvalidFormation(t *testing.T) {
 }
 
 func TestAddOrUpdateFormationRejectsNilTopologies(t *testing.T) {
+	t.Parallel()
 	_, err := AddOrUpdateFormation(nil, newTestFormation("test-new-formation"))
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
 func TestRemoveFormationRemovesEntry(t *testing.T) {
+	t.Parallel()
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 
@@ -165,6 +176,7 @@ func TestRemoveFormationRemovesEntry(t *testing.T) {
 }
 
 func TestRemoveFormationRejectsUnknownID(t *testing.T) {
+	t.Parallel()
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 
@@ -173,6 +185,7 @@ func TestRemoveFormationRejectsUnknownID(t *testing.T) {
 }
 
 func TestRemoveFormationRejectsRemovingLastEntry(t *testing.T) {
+	t.Parallel()
 	topologies := &ExecutionTopologies{formations: []Formation{newTestFormation("only-formation")}}
 
 	_, _, err := RemoveFormation(topologies, "only-formation")
@@ -180,6 +193,7 @@ func TestRemoveFormationRejectsRemovingLastEntry(t *testing.T) {
 }
 
 func TestUltraEfficientSpeedsterMeetsFrozenInventoryRequirements(t *testing.T) {
+	t.Parallel()
 	topologies, err := NewExecutionTopologies()
 	require.NoError(t, err)
 	formation, err := topologies.Formation("ultra-efficient-speedster")

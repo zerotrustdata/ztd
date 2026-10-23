@@ -35,6 +35,7 @@ func rolloutQueueEntryIDs(queue *CampaignQueue) []string {
 }
 
 func TestLoadRolloutQueue_MissingQueueIsEmpty(t *testing.T) {
+	t.Parallel()
 	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.CreateRuntimeTree(context.Background()))
@@ -45,6 +46,7 @@ func TestLoadRolloutQueue_MissingQueueIsEmpty(t *testing.T) {
 }
 
 func TestSaveRolloutQueue_EmptyQueueRemovesFile(t *testing.T) {
+	t.Parallel()
 	fileSvc, err := fs.NewRuntimeFileService(testutil.TempDir(t), nil)
 	require.NoError(t, err)
 	ctx := context.Background()
@@ -69,6 +71,7 @@ func TestSaveRolloutQueue_EmptyQueueRemovesFile(t *testing.T) {
 }
 
 func TestCampaignQueueAddVariants_OrdersByPriorityThenSize(t *testing.T) {
+	t.Parallel()
 	queue := BuildInitCampaignQueue("", nil)
 	intake, err := queue.AddVariants([]*evalv1.ModelVariant{
 		rolloutVariant("big", "m:big", 12_000_000_000),
@@ -87,6 +90,7 @@ func TestCampaignQueueAddVariants_OrdersByPriorityThenSize(t *testing.T) {
 }
 
 func TestCampaignQueueAddVariants_KeepsQueuedEntriesAndStatus(t *testing.T) {
+	t.Parallel()
 	queue := BuildInitCampaignQueue("", nil)
 	_, err := queue.AddVariants([]*evalv1.ModelVariant{rolloutVariant("mid", "m:mid", 4_000_000_000)}, nil, nil)
 	require.NoError(t, err)
@@ -108,6 +112,7 @@ func TestCampaignQueueAddVariants_KeepsQueuedEntriesAndStatus(t *testing.T) {
 }
 
 func TestCampaignQueueAddVariants_CapabilityObservationsDoNotExcludeModels(t *testing.T) {
+	t.Parallel()
 	queue := BuildInitCampaignQueue("", nil)
 	toolless := rolloutVariant("toolless", "m:toolless", 1_000_000_000)
 	toolless.CapabilityObservations = []*evalv1.ModelCapabilityObservation{
@@ -126,6 +131,7 @@ func TestCampaignQueueAddVariants_CapabilityObservationsDoNotExcludeModels(t *te
 }
 
 func TestCampaignQueueAddVariants_CollapsesDigestAliases(t *testing.T) {
+	t.Parallel()
 	queue := BuildInitCampaignQueue("", nil)
 	queued := rolloutVariant("queued", "m:queued", 3_000_000_000)
 	_, err := queue.AddVariants([]*evalv1.ModelVariant{queued}, nil, nil)
@@ -148,6 +154,7 @@ func TestCampaignQueueAddVariants_CollapsesDigestAliases(t *testing.T) {
 }
 
 func TestCampaignQueueSelectEntries(t *testing.T) {
+	t.Parallel()
 	queue := BuildInitCampaignQueue("", nil)
 	_, err := queue.AddVariants([]*evalv1.ModelVariant{
 		rolloutVariant("tiny", "m:tiny", 1_000_000_000),
@@ -167,6 +174,7 @@ func TestCampaignQueueSelectEntries(t *testing.T) {
 }
 
 func TestCampaignQueueEntriesForVariants_UsesQueueOrder(t *testing.T) {
+	t.Parallel()
 	queue := BuildInitCampaignQueue("", nil)
 	variants := []*evalv1.ModelVariant{
 		rolloutVariant("tiny", "m:tiny", 1_000_000_000),
@@ -183,6 +191,7 @@ func TestCampaignQueueEntriesForVariants_UsesQueueOrder(t *testing.T) {
 }
 
 func TestCampaignQueueSetEntryStatus(t *testing.T) {
+	t.Parallel()
 	queue := BuildInitCampaignQueue("", nil)
 	_, err := queue.AddVariants([]*evalv1.ModelVariant{
 		rolloutVariant("tiny", "m:tiny", 1_000_000_000),
@@ -200,6 +209,7 @@ func TestCampaignQueueSetEntryStatus(t *testing.T) {
 }
 
 func TestLoadRolloutIntakePriorityIDs_ReadsProjectRoot(t *testing.T) {
+	t.Parallel()
 	root := testutil.TempDir(t)
 	ids, err := LoadRolloutIntakePriorityIDs(root)
 	require.NoError(t, err)

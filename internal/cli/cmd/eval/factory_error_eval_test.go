@@ -27,7 +27,8 @@ import (
 
 var errFactory = fmt.Errorf("factory boom")
 
-func TestEvalCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+func TestEvalCmdWithConfig_FileSvcFactoryError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	_, cfg := cmdtest.NewCmdTestEnv(t)
 	deps := nativeEvalDeps{
 		configLoader:   cmdtest.ConfigLoaderFor(cfg),
@@ -97,8 +98,9 @@ func TestEvalCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 		{name: "backup", args: []string{"backup", "--output-dir", "out"}},
 		{name: "restore", args: []string{"restore", "snapshot-dir"}},
 	}
-	for _, test := range tests {
+	for _, test := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(test.name, func(t *testing.T) {
+
 			cmd := evalCmdWithConfig(deps)
 			cmd.SetArgs(test.args)
 			var buf bytes.Buffer

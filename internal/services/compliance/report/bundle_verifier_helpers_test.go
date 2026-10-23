@@ -26,10 +26,12 @@ import (
 )
 
 func TestZeroSHA256(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, hex.EncodeToString(make([]byte, sha256.Size)), zeroSHA256())
 }
 
 func TestCampaignWitnessPolicyHelpers(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, evaluation.ProviderObservationPolicyStrict, campaignProviderPolicy(evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT))
 	assert.Equal(t, evaluation.ProviderObservationPolicyInterim, campaignProviderPolicy(evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM))
 	assert.Equal(t, evaluation.ModelProvenancePolicyStrict, campaignProvenancePolicy(evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT))
@@ -41,6 +43,7 @@ func TestCampaignWitnessPolicyHelpers(t *testing.T) {
 }
 
 func TestLastKSIHistoryResultBody(t *testing.T) {
+	t.Parallel()
 	body, err := lastKSIHistoryResultBody([]byte("first\nsecond\n"))
 	require.NoError(t, err)
 	assert.Equal(t, []byte("second"), body)
@@ -50,6 +53,7 @@ func TestLastKSIHistoryResultBody(t *testing.T) {
 }
 
 func TestFirstKSIHistoryResultSet(t *testing.T) {
+	t.Parallel()
 	resultSet := &compliance.KSIResultSet{Class: compliance.ClassA, EvaluatedAtMs: 1}
 	line, err := json.Marshal(resultSet)
 	require.NoError(t, err)
@@ -66,22 +70,26 @@ func TestFirstKSIHistoryResultSet(t *testing.T) {
 }
 
 func TestStableVerificationFailureCode(t *testing.T) {
+	t.Parallel()
 	require.ErrorIs(t, stableVerificationFailureCode(constants.ErrChecksumMismatch), constants.ErrChecksumMismatch)
 	require.ErrorIs(t, stableVerificationFailureCode(fmt.Errorf("wrapped: %w", constants.ErrRendererMismatch)), constants.ErrRendererMismatch)
 	assert.ErrorIs(t, stableVerificationFailureCode(errors.New("unknown failure")), constants.ErrReportVerificationFailed)
 }
 
 func TestReplayedNodeMatchesNilInputs(t *testing.T) {
+	t.Parallel()
 	assert.False(t, replayedNodeMatches(nil, &evidence.EvidenceNode{}))
 	assert.False(t, replayedNodeMatches(&compliancev1.ComplianceEvidenceReference{}, nil))
 }
 
 func TestProtectedDecisionImporterSourceID(t *testing.T) {
+	t.Parallel()
 	importer := protectedDecisionImporter{admissionID: "protected-source"}
 	assert.Equal(t, "protected-source", importer.SourceID())
 }
 
 func TestFrameworkCatalogForManifest(t *testing.T) {
+	t.Parallel()
 	catalog := frameworkCatalogForManifest(&compliancev1.ComplianceReportManifest{
 		FrameworkRefs: []*compliancev1.VersionedReference{
 			{Id: "fedramp", Version: "rev5"},

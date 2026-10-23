@@ -19,7 +19,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestOpenForAppend_CreatesParentDirectories(t *testing.T) {
+func TestOpenForAppend_CreatesParentDirectories(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -35,7 +36,8 @@ func TestOpenForAppend_CreatesParentDirectories(t *testing.T) {
 	assert.Equal(t, []byte("first"), got)
 }
 
-func TestOpenForAppend_CreatesFileIfAbsent(t *testing.T) {
+func TestOpenForAppend_CreatesFileIfAbsent(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -48,7 +50,8 @@ func TestOpenForAppend_CreatesFileIfAbsent(t *testing.T) {
 	assert.True(t, exists)
 }
 
-func TestOpenForAppend_AppendsToExistingFile(t *testing.T) {
+func TestOpenForAppend_AppendsToExistingFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -65,7 +68,8 @@ func TestOpenForAppend_AppendsToExistingFile(t *testing.T) {
 	assert.Equal(t, []byte("line1\nline2\n"), got)
 }
 
-func TestOpenForAppend_RespectsMode(t *testing.T) {
+func TestOpenForAppend_RespectsMode(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -78,7 +82,8 @@ func TestOpenForAppend_RespectsMode(t *testing.T) {
 	assert.Equal(t, testutil.FileMode(constants.PermFilePrivate, info.IsDir()), info.Mode().Perm())
 }
 
-func TestOpenForRead_ReturnsErrNotFoundForMissingFile(t *testing.T) {
+func TestOpenForRead_ReturnsErrNotFoundForMissingFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -87,7 +92,8 @@ func TestOpenForRead_ReturnsErrNotFoundForMissingFile(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrNotFound)
 }
 
-func TestOpenForRead_ReturnsReadableHandleForExistingFile(t *testing.T) {
+func TestOpenForRead_ReturnsReadableHandleForExistingFile(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx := context.Background()
 
@@ -102,7 +108,8 @@ func TestOpenForRead_ReturnsReadableHandleForExistingFile(t *testing.T) {
 	assert.Equal(t, []byte("payload"), got)
 }
 
-func TestOpenForAppend_CancelledContextReturnsContextError(t *testing.T) {
+func TestOpenForAppend_CancelledContextReturnsContextError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -112,7 +119,8 @@ func TestOpenForAppend_CancelledContextReturnsContextError(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestOpenForRead_CancelledContextReturnsContextError(t *testing.T) {
+func TestOpenForRead_CancelledContextReturnsContextError(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	svc := setupTestFS(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

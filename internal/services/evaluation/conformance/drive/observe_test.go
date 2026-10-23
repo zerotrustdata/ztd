@@ -18,6 +18,7 @@ import (
 )
 
 func TestObserveFillsReceiptFromDispatchWhenObservationHasNone(t *testing.T) {
+	t.Parallel()
 	receipt := &operatorv1.ActionReceipt{TransactionId: "tx-dispatch"}
 	o := &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT},
@@ -29,6 +30,7 @@ func TestObserveFillsReceiptFromDispatchWhenObservationHasNone(t *testing.T) {
 }
 
 func TestObserveKeepsObservationReceiptOverDispatch(t *testing.T) {
+	t.Parallel()
 	o := &client.GovernedOutcome{
 		Observation: &evalv1.ConformanceObservation{
 			Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
@@ -42,6 +44,7 @@ func TestObserveKeepsObservationReceiptOverDispatch(t *testing.T) {
 }
 
 func TestObserveCopiesTypedMessage(t *testing.T) {
+	t.Parallel()
 	source := &evalv1.ConformanceObservation{
 		Kind:        evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNTYPED,
 		HttpStatus:  500,
@@ -57,6 +60,7 @@ func TestObserveCopiesTypedMessage(t *testing.T) {
 }
 
 func TestObserveWithoutDispatchLeavesReceiptEmpty(t *testing.T) {
+	t.Parallel()
 	o := &client.GovernedOutcome{Observation: &evalv1.ConformanceObservation{
 		Kind: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REFUSAL,
 	}}

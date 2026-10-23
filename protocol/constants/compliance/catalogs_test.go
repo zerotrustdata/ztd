@@ -15,6 +15,7 @@ import (
 )
 
 func TestCatalogJSONAccessorsReturnIndependentCopies(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		access  func() []byte
@@ -26,6 +27,7 @@ func TestCatalogJSONAccessorsReturnIndependentCopies(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			first := tt.access()
 			second := tt.access()
 			require.Len(t, first, len(second))

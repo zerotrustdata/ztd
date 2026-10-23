@@ -23,6 +23,7 @@ import (
 // was (re)added to PasskeyService, re-coupling the passkey domain to the
 // governance interface.
 func TestPasskeyService_DoesNotImplementL3Notary(t *testing.T) {
+	t.Parallel()
 	l3NotaryType := reflect.TypeOf((*governance.L3Notary)(nil)).Elem()
 	passkeyType := reflect.TypeOf((*PasskeyService)(nil))
 	assert.False(t, passkeyType.Implements(l3NotaryType),
@@ -34,6 +35,7 @@ func TestPasskeyService_DoesNotImplementL3Notary(t *testing.T) {
 // composes. This is the positive counterpart to the negative L3Notary
 // assertion above and locks in the composing-notary contract.
 func TestPasskeyService_ImplementsPasskeyVerifier(t *testing.T) {
+	t.Parallel()
 	verifierType := reflect.TypeOf((*governance.PasskeyVerifier)(nil)).Elem()
 	passkeyType := reflect.TypeOf((*PasskeyService)(nil))
 	assert.True(t, passkeyType.Implements(verifierType),

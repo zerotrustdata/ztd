@@ -81,6 +81,7 @@ func writeSmokeReport(t *testing.T, dir string, f smokeFixture) {
 }
 
 func TestEvaluateSmokeReportAcceptsCompleteWorkerExport(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, completeSmokeFixture())
 
@@ -101,6 +102,7 @@ func TestEvaluateSmokeReportAcceptsCompleteWorkerExport(t *testing.T) {
 }
 
 func TestEvaluateSmokeReportRejectsFailAndSkippedRows(t *testing.T) {
+	t.Parallel()
 	f := completeSmokeFixture()
 	f.verificationRows[0] = "commitment_chain,commitment_ledger,abc,FAIL,prior hash mismatch"
 	f.verificationRows[1] = "git_merkle_root,ledger,HEAD,SKIPPED,ledger unavailable"
@@ -120,6 +122,7 @@ func TestEvaluateSmokeReportRejectsFailAndSkippedRows(t *testing.T) {
 }
 
 func TestEvaluateSmokeReportRejectsMissingRequiredCheck(t *testing.T) {
+	t.Parallel()
 	f := completeSmokeFixture()
 	f.verificationRows = f.verificationRows[:3]
 	dir := testutil.TempDir(t)
@@ -135,6 +138,7 @@ func TestEvaluateSmokeReportRejectsMissingRequiredCheck(t *testing.T) {
 }
 
 func TestEvaluateSmokeReportRejectsEmptyEvidence(t *testing.T) {
+	t.Parallel()
 	f := completeSmokeFixture()
 	f.receiptRows = nil
 	f.commitmentRows = nil
@@ -154,6 +158,7 @@ func TestEvaluateSmokeReportRejectsEmptyEvidence(t *testing.T) {
 }
 
 func TestEvaluateSmokeReportRejectsGatewayWithoutFileMutations(t *testing.T) {
+	t.Parallel()
 	f := completeSmokeFixture()
 	f.mutationRows = nil
 	dir := testutil.TempDir(t)
@@ -169,6 +174,7 @@ func TestEvaluateSmokeReportRejectsGatewayWithoutFileMutations(t *testing.T) {
 }
 
 func TestRequireCompletedReceiptFailsClosedWhenNotExported(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, completeSmokeFixture())
 	ev, err := evaluateSmokeReport("gateway", dir)
@@ -182,6 +188,7 @@ func TestRequireCompletedReceiptFailsClosedWhenNotExported(t *testing.T) {
 }
 
 func TestEvaluateSmokeReportFailsOnMalformedCSV(t *testing.T) {
+	t.Parallel()
 	dir := testutil.TempDir(t)
 	writeSmokeReport(t, dir, completeSmokeFixture())
 	if err := os.WriteFile(filepath.Join(dir, constants.ReportReceiptsFilename), []byte("a,b,c\n1,2\n"), 0o600); err != nil {
@@ -194,6 +201,7 @@ func TestEvaluateSmokeReportFailsOnMalformedCSV(t *testing.T) {
 }
 
 func TestParseDeploySessionReadsOnlyThisWorker(t *testing.T) {
+	t.Parallel()
 	out := "  localhost:/tmp/other  session other-session\n  localhost:/tmp/run/worker  session worker-session-123\n"
 	got, err := parseSmokeDeploySession(out, "/tmp/run/worker")
 	if err != nil || got != "worker-session-123" {
@@ -205,6 +213,7 @@ func TestParseDeploySessionReadsOnlyThisWorker(t *testing.T) {
 }
 
 func TestExecuteRunsCleanupsAndWritesFailedSummary(t *testing.T) {
+	t.Parallel()
 	runDir := filepath.Join(testutil.TempDir(t), "new-run")
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: runDir})
 	var cleaned []string
@@ -234,6 +243,7 @@ func TestExecuteRunsCleanupsAndWritesFailedSummary(t *testing.T) {
 }
 
 func TestExecuteJoinsCleanupFailureWithStepFailure(t *testing.T) {
+	t.Parallel()
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: filepath.Join(testutil.TempDir(t), "new-run")})
 	r.addCleanup("gateway stop", func(context.Context) error { return errors.New("gw stop refused") })
 	err := r.execute(context.Background(), []smokePhase{{"fail", func(context.Context) error { return errors.New("boom") }}})
@@ -243,6 +253,7 @@ func TestExecuteJoinsCleanupFailureWithStepFailure(t *testing.T) {
 }
 
 func TestExecuteRefusesExistingRootWithoutChangingEvidence(t *testing.T) {
+	t.Parallel()
 	runDir := testutil.TempDir(t)
 	evidenceDir := filepath.Join(runDir, "evidence")
 	if err := os.Mkdir(evidenceDir, 0o700); err != nil {
@@ -268,6 +279,7 @@ func TestExecuteRefusesExistingRootWithoutChangingEvidence(t *testing.T) {
 }
 
 func TestClaimRunRootRejectsSymlink(t *testing.T) {
+	t.Parallel()
 	parent := testutil.TempDir(t)
 	target := filepath.Join(parent, "target")
 	if err := os.Mkdir(target, 0o700); err != nil {
@@ -285,6 +297,7 @@ func TestClaimRunRootRejectsSymlink(t *testing.T) {
 }
 
 func TestVerifyEvidenceFailsRunOnUnverifiedWorkerExport(t *testing.T) {
+	t.Parallel()
 	runDir := testutil.TempDir(t)
 	r := newReleaseSmokeRun(releaseSmokeOptions{RunDir: runDir})
 	r.reportsDir = filepath.Join(runDir, "reports")
@@ -306,6 +319,7 @@ func TestVerifyEvidenceFailsRunOnUnverifiedWorkerExport(t *testing.T) {
 }
 
 func TestZtdCommandFailurePropagatesWithExitCode(t *testing.T) {
+	t.Parallel()
 	bin, args := "cmd.exe", []string{"/c", "exit 1"}
 	if runtime.GOOS != "windows" {
 		// /bin/false on Linux, /usr/bin/false on macOS.
@@ -332,6 +346,7 @@ func TestZtdCommandFailurePropagatesWithExitCode(t *testing.T) {
 }
 
 func TestReleaseSmokeCmdAnchorsRelativeBinaryAndRoot(t *testing.T) {
+	t.Parallel()
 	var got releaseSmokeOptions
 	cmd := releaseSmokeCmdWithRunner(func(_ context.Context, opts releaseSmokeOptions) error {
 		got = opts
@@ -354,6 +369,7 @@ func TestReleaseSmokeCmdAnchorsRelativeBinaryAndRoot(t *testing.T) {
 }
 
 func TestReleaseSmokeRejectsUnknownPosture(t *testing.T) {
+	t.Parallel()
 	err := validateReleaseSmokePosture(constants.Posture("unknown"))
 	if !errors.Is(err, constants.ErrInvalidPosture) {
 		t.Fatalf("validate posture = %v, want invalid-posture error", err)
@@ -361,6 +377,7 @@ func TestReleaseSmokeRejectsUnknownPosture(t *testing.T) {
 }
 
 func TestReleaseSmokeCmdRejectsProtectedRootBeforeStartingRuntimes(t *testing.T) {
+	t.Parallel()
 	cmd := releaseSmokeCmdWithRunner(func(context.Context, releaseSmokeOptions) error {
 		t.Fatal("runner started with a protected working root")
 		return nil
@@ -374,6 +391,7 @@ func TestReleaseSmokeCmdRejectsProtectedRootBeforeStartingRuntimes(t *testing.T)
 }
 
 func TestReleaseSmokeCmdDefaultPermitsGovernedFileEdits(t *testing.T) {
+	t.Parallel()
 	cmd := releaseSmokeCmdWithRunner(func(_ context.Context, opts releaseSmokeOptions) error {
 		for _, name := range []string{"gateway", "worker"} {
 			if security.IsProtectedRuntimePath(filepath.Join(opts.RunDir, name, "file.txt")) {
@@ -393,6 +411,7 @@ func TestReleaseSmokeCmdDefaultPermitsGovernedFileEdits(t *testing.T) {
 }
 
 func TestSmokeReceiptAnchorsRejectUnboundWorkerKeyAndStayPinned(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	gatewayKey, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -440,6 +459,7 @@ func TestSmokeReceiptAnchorsRejectUnboundWorkerKeyAndStayPinned(t *testing.T) {
 }
 
 func TestReleaseSmokeCmdRejectsProtectedRootThroughSymlinkAncestor(t *testing.T) {
+	t.Parallel()
 	parent := testutil.OperatorDir(t)
 	alias := filepath.Join(parent, "scratch-alias")
 	testutil.Symlink(t, testutil.TempDir(t), alias)

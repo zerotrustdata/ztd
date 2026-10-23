@@ -32,6 +32,7 @@ func protocolModelsPath(filename string) string {
 // round-trips through JSON with the canonical wire field name and no extra
 // fields.
 func TestObserveProducerResponseRoundTrip(t *testing.T) {
+	t.Parallel()
 	resp := ObserveProducerResponse{Accepted: true}
 	data, err := json.Marshal(resp)
 	require.NoError(t, err)
@@ -50,6 +51,7 @@ func TestObserveProducerResponseRoundTrip(t *testing.T) {
 // request round-trips through JSON with canonical wire field names, omits
 // optional fields when empty, and preserves every lifecycle enum.
 func TestObserveProducerAgentStateRequestRoundTrip(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	for _, status := range []AgentLifecycleStatus{
 		AgentLifecycleStatusIdle, AgentLifecycleStatusQueued, AgentLifecycleStatusRunning,
@@ -77,6 +79,7 @@ func TestObserveProducerAgentStateRequestRoundTrip(t *testing.T) {
 // TestObserveProducerAgentStateRequestOmitsOptionalFields asserts the agent
 // producer request omits optional fields when empty.
 func TestObserveProducerAgentStateRequestOmitsOptionalFields(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	req := ObserveProducerAgentStateRequest{
 		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
@@ -103,6 +106,7 @@ func TestObserveProducerAgentStateRequestOmitsOptionalFields(t *testing.T) {
 // optional timestamp fields when nil, and preserves every run kind and
 // lifecycle enum.
 func TestObserveProducerRunStateRequestRoundTrip(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	for _, kind := range []RunKind{RunKindInvestigation, RunKindEval, RunKindDemo, RunKindWorkflow} {
 		for _, status := range []RunLifecycleStatus{
@@ -133,6 +137,7 @@ func TestObserveProducerRunStateRequestRoundTrip(t *testing.T) {
 // TestObserveProducerRunStateRequestOmitsOptionalFields asserts the run
 // producer request omits optional fields when empty.
 func TestObserveProducerRunStateRequestOmitsOptionalFields(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	req := ObserveProducerRunStateRequest{
 		SchemaVersion:  constants.ObserveEventPayloadSchemaVersion,
@@ -160,6 +165,7 @@ func TestObserveProducerRunStateRequestOmitsOptionalFields(t *testing.T) {
 // round-trips through JSON with canonical wire field names and preserves every
 // stop reason and scope.
 func TestObserveProducerStopRequestRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, reason := range []StopReason{
 		StopReasonGraceful, StopReasonSafetyBudget, StopReasonSafetyDisk,
 		StopReasonSafetyHardwareDrift, StopReasonSafetyCredential,
@@ -194,6 +200,7 @@ func TestObserveProducerStopRequestRoundTrip(t *testing.T) {
 // TestObserveProducerRequestWebRoutingSerializes asserts a web-routed producer
 // request serializes with web_session_id set and cli_session_id omitted.
 func TestObserveProducerRequestWebRoutingSerializes(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	req := ObserveProducerAgentStateRequest{
 		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
@@ -216,6 +223,7 @@ func TestObserveProducerRequestWebRoutingSerializes(t *testing.T) {
 // TestObserveProducerRequestCLIRoutingSerializes asserts a CLI-routed producer
 // request serializes with cli_session_id set and web_session_id omitted.
 func TestObserveProducerRequestCLIRoutingSerializes(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	req := ObserveProducerRunStateRequest{
 		SchemaVersion: constants.ObserveEventPayloadSchemaVersion,
@@ -240,6 +248,7 @@ func TestObserveProducerRequestCLIRoutingSerializes(t *testing.T) {
 // shape contains no user_id field — the gateway derives user_id from the mTLS
 // peer certificate, never from the request body.
 func TestObserveProducerRequestNoUserIDField(t *testing.T) {
+	t.Parallel()
 	observedAt := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	reqs := []any{
 		ObserveProducerAgentStateRequest{
@@ -273,6 +282,7 @@ func TestObserveProducerRequestNoUserIDField(t *testing.T) {
 // TestObserveAPIJSONContainsProducerResponse asserts the canonical protocol
 // JSON model file contains the observe_producer_response entry.
 func TestObserveAPIJSONContainsProducerResponse(t *testing.T) {
+	t.Parallel()
 	data, err := os.ReadFile(protocolModelsPath(constants.ProtocolObserveAPIJSONFilename))
 	require.NoError(t, err)
 	var raw map[string]json.RawMessage

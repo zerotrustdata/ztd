@@ -27,6 +27,8 @@ func marshalIngressFailure(t *testing.T, msg proto.Message) []byte {
 }
 
 func TestDecodeIngressFailure(t *testing.T) {
+	t.Parallel()
+
 	signedRejection := &operatorv1.GovernanceRejection{
 		Error: "rejected",
 		Receipt: &operatorv1.ActionReceipt{
@@ -91,6 +93,8 @@ func TestDecodeIngressFailure(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			rejection, gotRefusal, err := DecodeIngressFailure(tt.body)
 			if tt.wantUntyped {
 				require.ErrorIs(t, err, constants.ErrIngressResponseUntyped)

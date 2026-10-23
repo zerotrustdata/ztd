@@ -21,6 +21,8 @@ import (
 )
 
 func TestL4Warden_RejectsForeignExecutionTarget(t *testing.T) {
+	t.Parallel()
+
 	warden, key := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 	env := signedEnvelope(t, constants.ActionTypeFsRead, typedPayload(t, constants.ActionTypeFsRead), key, constants.PostureDoctrine)
 	env.OperatorId = "foreign-outbound-operator"
@@ -30,6 +32,8 @@ func TestL4Warden_RejectsForeignExecutionTarget(t *testing.T) {
 }
 
 func TestL4Warden_RejectsMcpCallTargetOtherThanItsTool(t *testing.T) {
+	t.Parallel()
+
 	warden, key := createStrictVerifier(t, testutil.NewStatefulMockReplayStore(), testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 	for _, target := range []string{constants.MCPToolAuditReceiptList, ""} {
 		env := signedEnvelope(t, constants.ActionTypeMcpCall, typedPayload(t, constants.ActionTypeMcpCall), key, constants.PostureDoctrine)
@@ -41,6 +45,8 @@ func TestL4Warden_RejectsMcpCallTargetOtherThanItsTool(t *testing.T) {
 }
 
 func TestL4Warden_ExecutionTarget(t *testing.T) {
+	t.Parallel()
+
 	outbound := &testutil.MockExecutionTarget{OperatorIDs: []string{"operator-1"}, SessionID: "operator-session-1"}
 	gateway := embedded.New(nil, nil)
 	cases := []struct {
@@ -65,6 +71,8 @@ func TestL4Warden_ExecutionTarget(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			replay := testutil.NewStatefulMockReplayStore()
 			warden, key := createStrictVerifier(t, replay, testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			warden.executionTarget = tc.target
@@ -86,6 +94,8 @@ func TestL4Warden_ExecutionTarget(t *testing.T) {
 // TestL4Warden_TargetSession proves a claimed operator_session_id is verified
 // against the session the runtime owns, not trusted because it is hashed.
 func TestL4Warden_TargetSession(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name       string
 		target     ExecutionTarget
@@ -102,6 +112,8 @@ func TestL4Warden_TargetSession(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			replay := testutil.NewStatefulMockReplayStore()
 			warden, key := createStrictVerifier(t, replay, testutil.NewMockStateRootProvider("root-1"), testutil.NewConfigurableMockL3Notary(true))
 			warden.executionTarget = tc.target

@@ -28,7 +28,9 @@ import (
 )
 
 func TestAuditCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("audit command has correct use and description", func(t *testing.T) {
+		t.Parallel()
 		cmd := Cmd()
 		assert.Equal(t, "audit", cmd.Use)
 		assert.Contains(t, cmd.Short, "Run audit reports")
@@ -36,6 +38,7 @@ func TestAuditCmd(t *testing.T) {
 	})
 
 	t.Run("audit command has all subcommands", func(t *testing.T) {
+		t.Parallel()
 		cmd := Cmd()
 		subcommands := cmd.Commands()
 		subcommandNames := make(map[string]bool)
@@ -52,13 +55,16 @@ func TestAuditCmd(t *testing.T) {
 }
 
 func TestAuditReceiptsCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("receipts command has correct use and description", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditEventReceiptsCmd()
 		assert.Equal(t, "event-receipts", cmd.Use)
 		assert.Contains(t, cmd.Short, "List signed event receipts")
 	})
 
 	t.Run("receipts has session and tx-id flags", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditEventReceiptsCmd()
 		sessionFlag := cmd.Flags().Lookup("session")
 		txIDFlag := cmd.Flags().Lookup("tx-id")
@@ -69,13 +75,16 @@ func TestAuditReceiptsCmd(t *testing.T) {
 }
 
 func TestAuditExportCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("export command has correct use and description", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditExportCmd()
 		assert.Equal(t, "export", cmd.Use)
 		assert.Contains(t, cmd.Short, "Export the full event receipts bundle")
 	})
 
 	t.Run("export has session and out flags", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditExportCmd()
 		sessionFlag := cmd.Flags().Lookup("session")
 		outFlag := cmd.Flags().Lookup("out")
@@ -85,6 +94,7 @@ func TestAuditExportCmd(t *testing.T) {
 	})
 
 	t.Run("export has default out path", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditExportCmd()
 		outFlag := cmd.Flags().Lookup("out")
 		assert.Equal(t, constants.ReceiptsExportFilename, outFlag.DefValue)
@@ -92,13 +102,16 @@ func TestAuditExportCmd(t *testing.T) {
 }
 
 func TestAuditReportCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("report command has correct use and description", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditReportCmd()
 		assert.Equal(t, "report", cmd.Use)
 		assert.Contains(t, cmd.Short, "Generate a compliance report")
 	})
 
 	t.Run("report has session and out flags", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditReportCmd()
 		sessionFlag := cmd.Flags().Lookup("session")
 		outFlag := cmd.Flags().Lookup("out")
@@ -108,6 +121,7 @@ func TestAuditReportCmd(t *testing.T) {
 	})
 
 	t.Run("report has default out directory", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditReportCmd()
 		outFlag := cmd.Flags().Lookup("out")
 		assert.Equal(t, constants.ReportsDirname, outFlag.DefValue)
@@ -115,13 +129,16 @@ func TestAuditReportCmd(t *testing.T) {
 }
 
 func TestAuditEventsCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("events command has correct use and description", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditEventsCmd()
 		assert.Equal(t, "events", cmd.Use)
 		assert.Contains(t, cmd.Short, "Query raw audit events")
 	})
 
 	t.Run("events has session and limit flags", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditEventsCmd()
 		sessionFlag := cmd.Flags().Lookup("session")
 		limitFlag := cmd.Flags().Lookup("limit")
@@ -131,6 +148,7 @@ func TestAuditEventsCmd(t *testing.T) {
 	})
 
 	t.Run("events has default limit", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditEventsCmd()
 		limitFlag := cmd.Flags().Lookup("limit")
 		assert.Equal(t, "100", limitFlag.DefValue)
@@ -138,13 +156,16 @@ func TestAuditEventsCmd(t *testing.T) {
 }
 
 func TestAuditSummaryCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("summary command has correct use and description", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditSummaryCmd()
 		assert.Equal(t, "summary", cmd.Use)
 		assert.Contains(t, cmd.Short, "Aggregate audit events")
 	})
 
 	t.Run("summary has session flag", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditSummaryCmd()
 		sessionFlag := cmd.Flags().Lookup("session")
 
@@ -153,7 +174,9 @@ func TestAuditSummaryCmd(t *testing.T) {
 }
 
 func TestAuditCommandFlags(t *testing.T) {
+	t.Parallel()
 	t.Run("all audit commands have consistent session flag naming", func(t *testing.T) {
+		t.Parallel()
 		commands := []*cobra.Command{
 			auditEventReceiptsCmd(),
 			auditExportCmd(),
@@ -174,7 +197,9 @@ func TestAuditCommandFlags(t *testing.T) {
 // Test helper functions for audit response parsing
 
 func TestAuditReceiptsResponseParsing(t *testing.T) {
+	t.Parallel()
 	t.Run("parses valid receipts response", func(t *testing.T) {
+		t.Parallel()
 		jsonResp := `{
 			"success": true,
 			"event_receipts": [
@@ -208,6 +233,7 @@ func TestAuditReceiptsResponseParsing(t *testing.T) {
 	})
 
 	t.Run("handles empty receipts array", func(t *testing.T) {
+		t.Parallel()
 		jsonResp := `{
 			"success": true,
 			"event_receipts": []
@@ -222,7 +248,9 @@ func TestAuditReceiptsResponseParsing(t *testing.T) {
 }
 
 func TestAuditEventsResponseParsing(t *testing.T) {
+	t.Parallel()
 	t.Run("parses valid events response", func(t *testing.T) {
+		t.Parallel()
 		jsonResp := `{
 			"success": true,
 			"events": [
@@ -248,6 +276,7 @@ func TestAuditEventsResponseParsing(t *testing.T) {
 	})
 
 	t.Run("handles ExitCodeNone sentinel", func(t *testing.T) {
+		t.Parallel()
 		jsonResp := `{
 			"success": true,
 			"events": [
@@ -272,7 +301,9 @@ func TestAuditEventsResponseParsing(t *testing.T) {
 }
 
 func TestAuditSummaryResponseParsing(t *testing.T) {
+	t.Parallel()
 	t.Run("parses valid summary response", func(t *testing.T) {
+		t.Parallel()
 		jsonResp := `{
 			"success": true,
 			"events_summary": {
@@ -300,6 +331,7 @@ func TestAuditSummaryResponseParsing(t *testing.T) {
 	})
 
 	t.Run("handles empty summary", func(t *testing.T) {
+		t.Parallel()
 		jsonResp := `{
 			"success": true,
 			"events_summary": {},
@@ -318,7 +350,9 @@ func TestAuditSummaryResponseParsing(t *testing.T) {
 }
 
 func TestAuditReportResponseParsing(t *testing.T) {
+	t.Parallel()
 	t.Run("parses valid report response", func(t *testing.T) {
+		t.Parallel()
 		jsonResp := `{
 			"success": true,
 			"report": {
@@ -343,8 +377,10 @@ func TestAuditReportResponseParsing(t *testing.T) {
 
 // Error handling tests
 
-func TestAuditReceiptsCmd_ConfigLoadFailure(t *testing.T) {
+func TestAuditReceiptsCmd_ConfigLoadFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("receipts fails when config load fails", func(t *testing.T) {
+
 		originalLoad := shared.ConfigLoad
 		shared.ConfigLoad = func(string) (*config.Config, error) {
 			return nil, fmt.Errorf("config load failed")
@@ -363,8 +399,10 @@ func TestAuditReceiptsCmd_ConfigLoadFailure(t *testing.T) {
 	})
 }
 
-func TestAuditReceiptsCmd_APIClientFailure(t *testing.T) {
+func TestAuditReceiptsCmd_APIClientFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("receipts fails when API client creation fails", func(t *testing.T) {
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := auditEventReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
@@ -383,8 +421,10 @@ func TestAuditReceiptsCmd_APIClientFailure(t *testing.T) {
 	})
 }
 
-func TestAuditReceiptsCmd_CredentialsLoadFailure(t *testing.T) {
+func TestAuditReceiptsCmd_CredentialsLoadFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("receipts fails when credentials file is corrupted", func(t *testing.T) {
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		require.NoError(t, fileSvc.WriteFile(context.Background(), cmdtest.MustRel(t, fileSvc, cfg.CredentialsFile()), []byte("invalid json {{{"), constants.PermFilePrivate))
@@ -403,8 +443,10 @@ func TestAuditReceiptsCmd_CredentialsLoadFailure(t *testing.T) {
 	})
 }
 
-func TestAuditReceiptsCmd_NoCredentials(t *testing.T) {
+func TestAuditReceiptsCmd_NoCredentials(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	t.Run("receipts fails when no credentials exist", func(t *testing.T) {
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := auditEventReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
@@ -422,7 +464,9 @@ func TestAuditReceiptsCmd_NoCredentials(t *testing.T) {
 }
 
 func TestAuditEventsCmd_LimitValidation(t *testing.T) {
+	t.Parallel()
 	t.Run("events has limit flag with correct default", func(t *testing.T) {
+		t.Parallel()
 		cmd := auditEventsCmd()
 		limitFlag := cmd.Flags().Lookup("limit")
 		assert.NotNil(t, limitFlag)
@@ -430,7 +474,9 @@ func TestAuditEventsCmd_LimitValidation(t *testing.T) {
 	})
 
 	t.Run("events validates limit bounds", func(t *testing.T) {
+		t.Parallel()
 		// Test the validation logic directly
+
 		testCases := []struct {
 			limit    int
 			expected bool
@@ -451,7 +497,8 @@ func TestAuditEventsCmd_LimitValidation(t *testing.T) {
 
 // Table-driven tests for various scenarios
 
-func TestAuditReceiptsCmd_TableDriven(t *testing.T) {
+func TestAuditReceiptsCmd_TableDriven(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	tests := []struct {
 		name          string
 		flags         map[string]string
@@ -486,8 +533,9 @@ func TestAuditReceiptsCmd_TableDriven(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run(tt.name, func(t *testing.T) {
+
 			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 			cmd := auditEventReceiptsCmdWithConfig(func(_ string) (*config.Config, error) {
@@ -518,13 +566,16 @@ func TestAuditReceiptsCmd_TableDriven(t *testing.T) {
 // Output formatting tests
 
 func TestAuditReceiptsCmd_TableFormatting(t *testing.T) {
+	t.Parallel()
 	t.Run("receipts truncates long transaction hash", func(t *testing.T) {
+		t.Parallel()
 		txHash := strings.Repeat("a", 20)
 		assert.Len(t, txHash[:12], 12)
 		assert.Equal(t, "aaaaaaaaaaaa…", txHash[:12]+"…")
 	})
 
 	t.Run("receipts truncates long resource", func(t *testing.T) {
+		t.Parallel()
 		resource := strings.Repeat("b", 50)
 		assert.Len(t, resource[:38], 38)
 		assert.Equal(t, strings.Repeat("b", 38)+"…", resource[:38]+"…")
@@ -532,7 +583,9 @@ func TestAuditReceiptsCmd_TableFormatting(t *testing.T) {
 }
 
 func TestAuditEventsCmd_TableFormatting(t *testing.T) {
+	t.Parallel()
 	t.Run("events truncates long timestamp", func(t *testing.T) {
+		t.Parallel()
 		timestamp := "2024-01-01T00:00:00.000Z"
 		if len(timestamp) > 19 {
 			timestamp = timestamp[:19]
@@ -542,6 +595,7 @@ func TestAuditEventsCmd_TableFormatting(t *testing.T) {
 	})
 
 	t.Run("events truncates long type", func(t *testing.T) {
+		t.Parallel()
 		eventType := strings.Repeat("c", 35)
 		if len(eventType) > 28 {
 			eventType = eventType[:28] + "…"
@@ -552,6 +606,7 @@ func TestAuditEventsCmd_TableFormatting(t *testing.T) {
 	})
 
 	t.Run("events truncates long command", func(t *testing.T) {
+		t.Parallel()
 		command := strings.Repeat("d", 50)
 		if len(command) > 35 {
 			command = command[:35] + "…"
@@ -564,8 +619,10 @@ func TestAuditEventsCmd_TableFormatting(t *testing.T) {
 
 // Error path tests for remaining audit subcommands
 
-func TestAuditExportCmd_ErrorPaths(t *testing.T) {
-	t.Run("export fails when config load fails", func(t *testing.T) {
+func TestAuditExportCmd_ErrorPaths(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("export fails when config load fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		originalLoad := shared.ConfigLoad
 		shared.ConfigLoad = func(string) (*config.Config, error) {
 			return nil, fmt.Errorf("config load failed")
@@ -582,7 +639,8 @@ func TestAuditExportCmd_ErrorPaths(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrConfigLoadFailed)
 	})
 
-	t.Run("export fails when not authenticated", func(t *testing.T) {
+	t.Run("export fails when not authenticated", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := auditExportCmdWithConfig(func(_ string) (*config.Config, error) {
@@ -597,7 +655,8 @@ func TestAuditExportCmd_ErrorPaths(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrNotAuthenticated)
 	})
 
-	t.Run("export fails with corrupted credentials", func(t *testing.T) {
+	t.Run("export fails with corrupted credentials", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		require.NoError(t, fileSvc.WriteFile(context.Background(), cmdtest.MustRel(t, fileSvc, cfg.CredentialsFile()), []byte("invalid json {{{"), constants.PermFilePrivate))
@@ -615,8 +674,10 @@ func TestAuditExportCmd_ErrorPaths(t *testing.T) {
 	})
 }
 
-func TestAuditReportCmd_ErrorPaths(t *testing.T) {
-	t.Run("report fails when config load fails", func(t *testing.T) {
+func TestAuditReportCmd_ErrorPaths(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("report fails when config load fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		originalLoad := shared.ConfigLoad
 		shared.ConfigLoad = func(string) (*config.Config, error) {
 			return nil, fmt.Errorf("config load failed")
@@ -633,7 +694,8 @@ func TestAuditReportCmd_ErrorPaths(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrConfigLoadFailed)
 	})
 
-	t.Run("report fails when not authenticated", func(t *testing.T) {
+	t.Run("report fails when not authenticated", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := auditReportCmdWithConfig(func(_ string) (*config.Config, error) {
@@ -649,8 +711,10 @@ func TestAuditReportCmd_ErrorPaths(t *testing.T) {
 	})
 }
 
-func TestAuditEventsCmd_ErrorPaths(t *testing.T) {
-	t.Run("events fails when config load fails", func(t *testing.T) {
+func TestAuditEventsCmd_ErrorPaths(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("events fails when config load fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		originalLoad := shared.ConfigLoad
 		shared.ConfigLoad = func(string) (*config.Config, error) {
 			return nil, fmt.Errorf("config load failed")
@@ -667,7 +731,8 @@ func TestAuditEventsCmd_ErrorPaths(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrConfigLoadFailed)
 	})
 
-	t.Run("events fails when not authenticated", func(t *testing.T) {
+	t.Run("events fails when not authenticated", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := auditEventsCmdWithConfig(func(_ string) (*config.Config, error) {
@@ -682,7 +747,8 @@ func TestAuditEventsCmd_ErrorPaths(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrNotAuthenticated)
 	})
 
-	t.Run("events fails with invalid limit (zero)", func(t *testing.T) {
+	t.Run("events fails with invalid limit (zero)", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := auditEventsCmdWithConfig(func(_ string) (*config.Config, error) {
@@ -700,7 +766,8 @@ func TestAuditEventsCmd_ErrorPaths(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrValidationFailed)
 	})
 
-	t.Run("events fails with invalid limit (too high)", func(t *testing.T) {
+	t.Run("events fails with invalid limit (too high)", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := auditEventsCmdWithConfig(func(_ string) (*config.Config, error) {
@@ -719,8 +786,10 @@ func TestAuditEventsCmd_ErrorPaths(t *testing.T) {
 	})
 }
 
-func TestAuditSummaryCmd_ErrorPaths(t *testing.T) {
-	t.Run("summary fails when config load fails", func(t *testing.T) {
+func TestAuditSummaryCmd_ErrorPaths(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
+	t.Run("summary fails when config load fails", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		originalLoad := shared.ConfigLoad
 		shared.ConfigLoad = func(string) (*config.Config, error) {
 			return nil, fmt.Errorf("config load failed")
@@ -737,7 +806,8 @@ func TestAuditSummaryCmd_ErrorPaths(t *testing.T) {
 		assert.ErrorIs(t, err, constants.ErrConfigLoadFailed)
 	})
 
-	t.Run("summary fails when not authenticated", func(t *testing.T) {
+	t.Run("summary fails when not authenticated", func(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 		fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 
 		cmd := auditSummaryCmdWithConfig(func(_ string) (*config.Config, error) {

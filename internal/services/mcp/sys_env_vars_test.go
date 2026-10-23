@@ -24,6 +24,7 @@ func setTestEnv(t *testing.T, vars map[string]string) {
 }
 
 func TestSysEnvVarsTool_Execute_EmptyArgs(t *testing.T) {
+	t.Parallel()
 	tool := &SysEnvVarsTool{}
 	ctx := testutil.Context(t)
 
@@ -40,6 +41,7 @@ func TestSysEnvVarsTool_Execute_EmptyArgs(t *testing.T) {
 }
 
 func TestSysEnvVarsTool_Execute_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	tool := &SysEnvVarsTool{}
 	ctx := testutil.Context(t)
 
@@ -48,7 +50,8 @@ func TestSysEnvVarsTool_Execute_InvalidJSON(t *testing.T) {
 	require.Contains(t, err.Error(), "invalid arguments")
 }
 
-func TestSysEnvVarsTool_Execute_WithPattern(t *testing.T) {
+func TestSysEnvVarsTool_Execute_WithPattern(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	tool := &SysEnvVarsTool{}
 	ctx := testutil.Context(t)
 
@@ -79,7 +82,8 @@ func TestSysEnvVarsTool_Execute_WithPattern(t *testing.T) {
 	require.NotContains(t, variables, "HOME")
 }
 
-func TestSysEnvVarsTool_Execute_RedactSecretsDefault(t *testing.T) {
+func TestSysEnvVarsTool_Execute_RedactSecretsDefault(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	tool := &SysEnvVarsTool{}
 	ctx := testutil.Context(t)
 
@@ -108,7 +112,8 @@ func TestSysEnvVarsTool_Execute_RedactSecretsDefault(t *testing.T) {
 	require.Equal(t, "public_value", variables["SAFE_VAR"])
 }
 
-func TestSysEnvVarsTool_Execute_RedactSecretsFalse(t *testing.T) {
+func TestSysEnvVarsTool_Execute_RedactSecretsFalse(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	tool := &SysEnvVarsTool{}
 	ctx := testutil.Context(t)
 
@@ -136,7 +141,8 @@ func TestSysEnvVarsTool_Execute_RedactSecretsFalse(t *testing.T) {
 	require.Equal(t, "public_value", variables["SAFE_VAR"])
 }
 
-func TestSysEnvVarsTool_Execute_RedactSecretsTrue(t *testing.T) {
+func TestSysEnvVarsTool_Execute_RedactSecretsTrue(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	tool := &SysEnvVarsTool{}
 	ctx := testutil.Context(t)
 
@@ -161,7 +167,8 @@ func TestSysEnvVarsTool_Execute_RedactSecretsTrue(t *testing.T) {
 	require.Equal(t, "public_value", variables["SAFE_VAR"])
 }
 
-func TestSysEnvVarsTool_Execute_PatternAndRedact(t *testing.T) {
+func TestSysEnvVarsTool_Execute_PatternAndRedact(t *testing.T) { //nolint:paralleltest // sets the process environment
+
 	tool := &SysEnvVarsTool{}
 	ctx := testutil.Context(t)
 
@@ -191,9 +198,11 @@ func TestSysEnvVarsTool_Execute_PatternAndRedact(t *testing.T) {
 }
 
 func TestSysEnvVarsTool_Execute_MalformedEnvVar(t *testing.T) {
+	t.Parallel()
 	// This test verifies that malformed environment variables (without =) are skipped
 	// Since we can't easily inject malformed vars into os.Environ(), we test the logic indirectly
 	// by ensuring the tool doesn't panic with normal environment
+
 	tool := &SysEnvVarsTool{}
 	ctx := testutil.Context(t)
 

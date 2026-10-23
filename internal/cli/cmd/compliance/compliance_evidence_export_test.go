@@ -19,12 +19,14 @@ import (
 )
 
 func TestComplianceEvidenceCmd_ContainsExportSubcommand(t *testing.T) {
+	t.Parallel()
 	cmd := complianceEvidenceCmd()
 	require.Len(t, cmd.Commands(), 1)
 	assert.Equal(t, "export", cmd.Commands()[0].Name())
 }
 
 func TestComplianceEvidenceExportCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	t.Parallel()
 	cmd := complianceEvidenceExportCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory))
 	require.NoError(t, cmd.Flags().Set("scope", constants.TestInvalidJSONFilename))
 	require.NoError(t, cmd.Flags().Set("out", constants.TestCustomComplianceOutDir))

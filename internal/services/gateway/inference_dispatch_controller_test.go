@@ -186,6 +186,8 @@ func successDispatchResultForRequest(t *testing.T, req *operatorv1.InferenceDisp
 // --- InferenceDispatchController.HandleDispatch tests ---
 
 func TestInferenceDispatchController_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
+
 	ctrl := newInferenceDispatchControllerForTest(t, &stubInferenceCommandDispatcher{}, &stubInferenceOperatorLister{}, 1024)
 
 	req := httptest.NewRequest(http.MethodGet, constants.APIPaths.InferenceDispatch, nil)
@@ -196,6 +198,8 @@ func TestInferenceDispatchController_MethodNotAllowed(t *testing.T) {
 }
 
 func TestInferenceDispatchController_MissingAppIdentity(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, &stubInferenceOperatorLister{}, 1024)
 
@@ -212,6 +216,8 @@ func TestInferenceDispatchController_MissingAppIdentity(t *testing.T) {
 }
 
 func TestInferenceDispatchController_MissingUserIdentity(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, &stubInferenceOperatorLister{}, 1024)
 
@@ -228,6 +234,8 @@ func TestInferenceDispatchController_MissingUserIdentity(t *testing.T) {
 }
 
 func TestInferenceDispatchController_MalformedJSON(t *testing.T) {
+	t.Parallel()
+
 	ctrl := newInferenceDispatchControllerForTest(t, &stubInferenceCommandDispatcher{}, &stubInferenceOperatorLister{}, 1024)
 
 	req := inferenceDispatchHTTPRequest(t, []byte("{invalid"), "test-app", "user-001")
@@ -238,6 +246,8 @@ func TestInferenceDispatchController_MalformedJSON(t *testing.T) {
 }
 
 func TestInferenceDispatchController_UnknownFieldRejected(t *testing.T) {
+	t.Parallel()
+
 	ctrl := newInferenceDispatchControllerForTest(t, &stubInferenceCommandDispatcher{}, &stubInferenceOperatorLister{}, 1024)
 
 	req := inferenceDispatchHTTPRequest(t, []byte(`{"role":"MODEL_ROLE_PRIMARY","messages":[{"role":"INFERENCE_MESSAGE_ROLE_USER","parts":[{"text":"hi"}]}],"not_a_field":1}`), "test-app", "user-001")
@@ -248,6 +258,8 @@ func TestInferenceDispatchController_UnknownFieldRejected(t *testing.T) {
 }
 
 func TestInferenceDispatchController_TrailingJSONRejected(t *testing.T) {
+	t.Parallel()
+
 	ctrl := newInferenceDispatchControllerForTest(t, &stubInferenceCommandDispatcher{}, &stubInferenceOperatorLister{}, 1024)
 
 	req := inferenceDispatchHTTPRequest(t, []byte(`{"role":"MODEL_ROLE_PRIMARY","messages":[{"role":"INFERENCE_MESSAGE_ROLE_USER","parts":[{"text":"hi"}]}]}{"extra":true}`), "test-app", "user-001")
@@ -258,6 +270,8 @@ func TestInferenceDispatchController_TrailingJSONRejected(t *testing.T) {
 }
 
 func TestInferenceDispatchController_OversizedBodyRejected(t *testing.T) {
+	t.Parallel()
+
 	ctrl := newInferenceDispatchControllerForTest(t, &stubInferenceCommandDispatcher{}, &stubInferenceOperatorLister{}, 64)
 
 	body := marshalInferenceDispatchRequest(t, &operatorv1.InferenceDispatchRequest{
@@ -272,6 +286,8 @@ func TestInferenceDispatchController_OversizedBodyRejected(t *testing.T) {
 }
 
 func TestInferenceDispatchController_EmptyMessagesRejected(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}, 1024)
 
@@ -287,6 +303,8 @@ func TestInferenceDispatchController_EmptyMessagesRejected(t *testing.T) {
 }
 
 func TestInferenceDispatchController_InvalidRoleRejected(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}, 1024)
 
@@ -304,6 +322,8 @@ func TestInferenceDispatchController_InvalidRoleRejected(t *testing.T) {
 }
 
 func TestInferenceDispatchController_ActingAppIDMismatchRejected(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}, 1024)
 
@@ -321,6 +341,8 @@ func TestInferenceDispatchController_ActingAppIDMismatchRejected(t *testing.T) {
 }
 
 func TestInferenceDispatchController_SuccessReturnsVerifiedProtoContract(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -459,6 +481,8 @@ func TestInferenceDispatchController_SuccessReturnsVerifiedProtoContract(t *test
 }
 
 func TestInferenceDispatchController_ActingAppIDDerivedFromIdentity(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{result: successDispatchResult(t)}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -480,6 +504,8 @@ func TestInferenceDispatchController_ActingAppIDDerivedFromIdentity(t *testing.T
 }
 
 func TestInferenceDispatchController_ErrorStatusMapping(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		dispatchErr error
@@ -510,6 +536,8 @@ func TestInferenceDispatchController_ErrorStatusMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			dispatcher := &stubInferenceCommandDispatcher{err: tt.dispatchErr}
 			lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 			ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -533,6 +561,8 @@ func TestInferenceDispatchController_ErrorStatusMapping(t *testing.T) {
 }
 
 func TestInferenceDispatchController_InternalErrorIsPublicSafe(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{err: fmt.Errorf("pq: password authentication failed for user \"gateway\"")}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -552,6 +582,8 @@ func TestInferenceDispatchController_InternalErrorIsPublicSafe(t *testing.T) {
 }
 
 func TestInferenceDispatchController_StreamingReturnsNDJSONProgressAndCompletion(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{result: successDispatchResult(t)}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -590,6 +622,8 @@ func TestInferenceDispatchController_StreamingReturnsNDJSONProgressAndCompletion
 }
 
 func TestInferenceDispatchController_StreamingDispatchFailureWritesFailureFrame(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{err: constants.ErrInferenceProgressBackpressure}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -640,6 +674,8 @@ func (w *failingFlushWriter) Flush() {
 }
 
 func TestInferenceDispatchController_StreamingWriteFailureIsCallerDisconnect(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{result: successDispatchResult(t)}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -659,6 +695,8 @@ func TestInferenceDispatchController_StreamingWriteFailureIsCallerDisconnect(t *
 }
 
 func TestInferenceDispatchController_ContextCanceledWritesNothing(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{err: context.Canceled}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)
@@ -676,6 +714,8 @@ func TestInferenceDispatchController_ContextCanceledWritesNothing(t *testing.T) 
 }
 
 func TestInferenceDispatchController_FailedReceiptPropagatedOnProviderFailure(t *testing.T) {
+	t.Parallel()
+
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId: "tx-inference-failed-001",
 		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
@@ -708,8 +748,12 @@ func TestInferenceDispatchController_FailedReceiptPropagatedOnProviderFailure(t 
 }
 
 func TestInferenceDispatchController_ProviderFailureLogCarriesEvidenceIDsWithoutContent(t *testing.T) {
+	t.Parallel()
+
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprintf("stream=%v", stream), func(t *testing.T) {
+			t.Parallel()
+
 			receipt := &operatorv1.ActionReceipt{TransactionId: "tx-backend-failure", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}
 			dispatcher := &stubInferenceCommandDispatcher{err: governance.WithFailedReceipt(receipt, fmt.Errorf("private provider detail: %w", constants.ErrInferenceBackendUnavailable))}
 			ctrl := newInferenceDispatchControllerForTest(t, dispatcher, &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}, 4096)
@@ -731,6 +775,8 @@ func TestInferenceDispatchController_ProviderFailureLogCarriesEvidenceIDsWithout
 }
 
 func TestInferenceDispatchController_GovernanceRejectionCarriesNoFailedReceipt(t *testing.T) {
+	t.Parallel()
+
 	dispatcher := &stubInferenceCommandDispatcher{err: constants.ErrInferenceGovernanceRejected}
 	lister := &stubInferenceOperatorLister{ops: []*operatorv1.OperatorDocument{inferenceCapableOperator("sess-inf-1")}}
 	ctrl := newInferenceDispatchControllerForTest(t, dispatcher, lister, 4096)

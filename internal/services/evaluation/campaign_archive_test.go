@@ -78,6 +78,7 @@ func (f *archiveFixture) holdLease(t *testing.T, runID string) {
 }
 
 func TestArchiverArchiveRunMovesRunAndKeepsItReadable(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 
@@ -113,6 +114,7 @@ func TestArchiverArchiveRunMovesRunAndKeepsItReadable(t *testing.T) {
 }
 
 func TestArchiverArchiveRunRejectsRunningAndArchivedRuns(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	f.holdLease(t, "run-a")
@@ -134,6 +136,7 @@ func TestArchiverArchiveRunRejectsRunningAndArchivedRuns(t *testing.T) {
 }
 
 func TestArchiverUnarchiveRunRoundTrips(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 
@@ -154,6 +157,7 @@ func TestArchiverUnarchiveRunRoundTrips(t *testing.T) {
 }
 
 func TestArchiverArchiveCampaignMovesEveryRun(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 
@@ -180,6 +184,7 @@ func TestArchiverArchiveCampaignMovesEveryRun(t *testing.T) {
 }
 
 func TestArchiverArchiveCampaignFailsBeforeMovingAnythingWhenARunIsRunning(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	f.holdLease(t, "run-b")
@@ -198,6 +203,7 @@ func TestArchiverArchiveCampaignFailsBeforeMovingAnythingWhenARunIsRunning(t *te
 }
 
 func TestArchiverUnarchiveCampaignRestoresCampaignAndRuns(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 
@@ -222,6 +228,7 @@ func TestArchiverUnarchiveCampaignRestoresCampaignAndRuns(t *testing.T) {
 }
 
 func TestArchiverUnarchiveCampaignLeavesIndividuallyArchivedRunsArchived(t *testing.T) {
+	t.Parallel()
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 

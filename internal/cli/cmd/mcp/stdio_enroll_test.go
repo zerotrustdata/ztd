@@ -31,7 +31,8 @@ import (
 // credentials) without any enrollment side effect. If a future change adds an
 // enrollerFactory parameter to `mcpStdioCmdWithConfig`, this test should be
 // updated to inject a panicking factory and assert it is never called.
-func TestMCPStdio_DoesNotInvokeEnrollment(t *testing.T) {
+func TestMCPStdio_DoesNotInvokeEnrollment(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, _ := cmdtest.NewCmdTestEnv(t)
 
 	cmd := McpStdioCmdWithConfig(cmdtest.FileSvcFactoryFor(fileSvc))

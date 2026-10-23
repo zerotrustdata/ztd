@@ -19,6 +19,7 @@ import (
 )
 
 func TestRunStopWatcher_StopEventRequestsWithoutCancelling(t *testing.T) {
+	t.Parallel()
 	events := make(chan runEvent)
 	hardCtx, hardCancel := context.WithCancel(context.Background())
 	defer hardCancel()
@@ -40,6 +41,7 @@ func TestRunStopWatcher_StopEventRequestsWithoutCancelling(t *testing.T) {
 }
 
 func TestReleasedRunStatus_ReportsWhereTheRunStands(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		row  *runRow
@@ -57,12 +59,14 @@ func TestReleasedRunStatus_ReportsWhereTheRunStands(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, releasedRunStatus(tt.row))
 		})
 	}
 }
 
 func TestRunStatusSettled_OnlyQueuedAndRunningAreStillInFlight(t *testing.T) {
+	t.Parallel()
 	assert.False(t, runStatusSettled(models.RunLifecycleStatusQueued))
 	assert.False(t, runStatusSettled(models.RunLifecycleStatusRunning))
 	for _, status := range []models.RunLifecycleStatus{
@@ -76,6 +80,7 @@ func TestRunStatusSettled_OnlyQueuedAndRunningAreStillInFlight(t *testing.T) {
 }
 
 func TestDeliverRunEvent_UndecodableStopIsAnErrorAndOtherRunsAreIgnored(t *testing.T) {
+	t.Parallel()
 	stopType := string(constants.EventAiEvalStopRequested)
 	events := make(chan runEvent, 1)
 
@@ -93,6 +98,7 @@ func TestDeliverRunEvent_UndecodableStopIsAnErrorAndOtherRunsAreIgnored(t *testi
 }
 
 func TestFollowRun_CancelledContextReturnsNil(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	stream := &runEventStream{cancel: func() {}, done: make(chan struct{})}
 	// Ending ctx closes the stream as well, so both select cases are ready.

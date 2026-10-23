@@ -32,6 +32,8 @@ func inferenceOperatorFixture(id, session string) *operatorv1.OperatorDocument {
 }
 
 func TestEvalGroupHasNoSessionFlags(t *testing.T) {
+	t.Parallel()
+
 	group := evalCmdWithConfig(nativeEvalDeps{})
 	assert.Nil(t, group.PersistentFlags().Lookup("data-session"))
 	assert.Nil(t, group.PersistentFlags().Lookup("inference-session"))

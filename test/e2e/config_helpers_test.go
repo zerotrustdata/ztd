@@ -25,8 +25,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func TestResolveRepoRoot(t *testing.T) {
-	t.Run("success in module directory", func(t *testing.T) {
+func TestResolveRepoRoot(t *testing.T) { //nolint:paralleltest // changes the process working directory
+	t.Run("success in module directory", func(t *testing.T) { //nolint:paralleltest // changes the process working directory
 		// resolveRepoRoot runs `go list -m` from the process working directory.
 		// The test process runs inside the ztd module, so it must succeed and
 		// return a clean, non-empty path.
@@ -36,7 +36,7 @@ func TestResolveRepoRoot(t *testing.T) {
 		assert.Equal(t, filepath.Clean(root), root)
 	})
 
-	t.Run("error outside any module", func(t *testing.T) {
+	t.Run("error outside any module", func(t *testing.T) { //nolint:paralleltest // changes the process working directory
 		// Run resolveRepoRoot from the filesystem root to exercise the
 		// error-wrapping path deterministically. resolveRepoRoot shells out to
 		// `go list -m`, which fails outside a module; test scratch lives inside
@@ -74,6 +74,7 @@ func TestResolveRuntimeRoot(t *testing.T) {
 // from loadE2EConfig. These run as Tier 1 unit tests with no file system or
 // platform dependency.
 func TestValidateCredentials(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		creds         *auth.Credentials
@@ -121,6 +122,7 @@ func TestValidateCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := validateCredentials(tt.creds)
 			if tt.expectError {
 				require.Error(t, err)

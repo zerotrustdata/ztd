@@ -19,8 +19,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestHandleCancelRequest_ValidPayload_CancelSuccess(t *testing.T) {
-	t.Parallel()
+func TestHandleCancelRequest_ValidPayload_CancelSuccess(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})
@@ -36,8 +36,8 @@ func TestHandleCancelRequest_ValidPayload_CancelSuccess(t *testing.T) {
 	svc.HandleCancelRequest(context.Background(), msg)
 }
 
-func TestHandleCancelRequest_ValidPayload_CancelFailure(t *testing.T) {
-	t.Parallel()
+func TestHandleCancelRequest_ValidPayload_CancelFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})
@@ -53,8 +53,8 @@ func TestHandleCancelRequest_ValidPayload_CancelFailure(t *testing.T) {
 	svc.HandleCancelRequest(context.Background(), msg)
 }
 
-func TestRunStatusTicker_WithResultsPublisher(t *testing.T) {
-	t.Parallel()
+func TestRunStatusTicker_WithResultsPublisher(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	svc := newTestCommandService(t, cfg, logger, &mockResultsPublisher{})

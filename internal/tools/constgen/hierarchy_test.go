@@ -15,6 +15,7 @@ import (
 )
 
 func TestGenerateOperatorHierarchy(t *testing.T) {
+	t.Parallel()
 	hierarchy, err := loadOperatorHierarchy("../../..")
 	require.NoError(t, err)
 	out := generateOperatorHierarchy(hierarchy)

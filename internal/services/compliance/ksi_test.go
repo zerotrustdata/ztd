@@ -24,6 +24,7 @@ import (
 
 // TestKSICatalog_LoadFromDisk loads the shipped KSI catalog and validates its structure.
 func TestKSICatalog_LoadFromDisk(t *testing.T) {
+	t.Parallel()
 	catalogPath := filepath.Join("..", "..", "..", "docs", "reference", "ksi-catalog.json")
 
 	catalog, err := LoadKSICatalog(catalogPath)
@@ -62,6 +63,7 @@ func TestKSICatalog_LoadFromDisk(t *testing.T) {
 
 // TestKSICatalog_Validate detects structural problems in a catalog.
 func TestKSICatalog_Validate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		catalog     *KSICatalog
@@ -154,6 +156,7 @@ func TestKSICatalog_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.catalog.Validate()
 			if tt.wantErr {
 				require.Error(t, err)
@@ -170,6 +173,7 @@ func TestKSICatalog_Validate(t *testing.T) {
 
 // TestKSICatalog_FindKSI finds a KSI by ID.
 func TestKSICatalog_FindKSI(t *testing.T) {
+	t.Parallel()
 	catalog := &KSICatalog{
 		Version: "1.0",
 		Source:  "test",
@@ -188,6 +192,7 @@ func TestKSICatalog_FindKSI(t *testing.T) {
 
 // TestKSICatalog_KSIsForClass filters KSIs by certification class.
 func TestKSICatalog_KSIsForClass(t *testing.T) {
+	t.Parallel()
 	catalog := &KSICatalog{
 		Version: "1.0",
 		Source:  "test",
@@ -212,6 +217,7 @@ func TestKSICatalog_KSIsForClass(t *testing.T) {
 
 // TestMinimumMethodsForClass returns correct minimum method counts.
 func TestMinimumMethodsForClass(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, 0, MinimumMethodsForClass(ClassA))
 	assert.Equal(t, 1, MinimumMethodsForClass(ClassB))
 	assert.Equal(t, 2, MinimumMethodsForClass(ClassC))
@@ -219,6 +225,7 @@ func TestMinimumMethodsForClass(t *testing.T) {
 }
 
 func TestKSIOutcomeStatusDistinguishesMeasuredFailuresFromUnverifiableEvidence(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		outcome KSIOutcome
@@ -234,6 +241,7 @@ func TestKSIOutcomeStatusDistinguishesMeasuredFailuresFromUnverifiableEvidence(t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, test.status, test.outcome.Status())
 		})
 	}
@@ -241,6 +249,7 @@ func TestKSIOutcomeStatusDistinguishesMeasuredFailuresFromUnverifiableEvidence(t
 
 // TestKSI_IsStale detects stale KSIs based on validation cycle.
 func TestKSI_IsStale(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 
 	tests := []struct {
@@ -289,6 +298,7 @@ func TestKSI_IsStale(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, tt.ksi.IsStale(tt.now))
 		})
 	}
@@ -296,6 +306,7 @@ func TestKSI_IsStale(t *testing.T) {
 
 // TestKSI_JSONRoundTrip verifies KSI struct serialization round-trips through JSON.
 func TestKSI_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
 	original := KSI{
 		ID:                  "KSI-SVC-05",
 		Title:               "Validating Resource Integrity",
@@ -334,6 +345,7 @@ func TestKSI_JSONRoundTrip(t *testing.T) {
 
 // TestKSIResultSet_JSONRoundTrip verifies KSIResultSet serialization round-trips through JSON.
 func TestKSIResultSet_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
 	original := KSIResultSet{
 		Class:         ClassC,
 		EvaluatedAtMs: time.Now().UnixMilli(),
@@ -370,6 +382,7 @@ func TestKSIResultSet_JSONRoundTrip(t *testing.T) {
 
 // TestLoadKSICatalog_FileNotFound returns a wrapped error for missing files.
 func TestLoadKSICatalog_FileNotFound(t *testing.T) {
+	t.Parallel()
 	_, err := LoadKSICatalog("/nonexistent/path/to/ksi-catalog.json")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "read KSI catalog")
@@ -377,6 +390,7 @@ func TestLoadKSICatalog_FileNotFound(t *testing.T) {
 
 // TestLoadKSICatalog_InvalidJSON returns a parse error for malformed JSON.
 func TestLoadKSICatalog_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	path := filepath.Join(tmpDir, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0644))
@@ -388,6 +402,7 @@ func TestLoadKSICatalog_InvalidJSON(t *testing.T) {
 
 // TestLoadKSICatalog_ValidationFailure returns a validation error for structurally invalid catalogs.
 func TestLoadKSICatalog_ValidationFailure(t *testing.T) {
+	t.Parallel()
 	tmpDir := testutil.TempDir(t)
 	path := filepath.Join(tmpDir, "invalid.json")
 	// Valid JSON but missing required fields (no version)

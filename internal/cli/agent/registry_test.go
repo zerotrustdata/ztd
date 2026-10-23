@@ -17,6 +17,7 @@ import (
 )
 
 func TestAll_ListsExactlyTheSupportedAgents(t *testing.T) {
+	t.Parallel()
 	ids := make([]constants.AgentBinary, 0, len(registry))
 	for _, integration := range All() {
 		ids = append(ids, integration.ID)
@@ -31,14 +32,17 @@ func TestAll_ListsExactlyTheSupportedAgents(t *testing.T) {
 }
 
 func TestAll_ReturnsACopy(t *testing.T) {
+	t.Parallel()
 	all := All()
 	all[0].DisplayName = "mutated"
 	assert.NotEqual(t, "mutated", All()[0].DisplayName)
 }
 
 func TestRegistry_EveryEntryIsFullyDefined(t *testing.T) {
+	t.Parallel()
 	for _, integration := range All() {
 		t.Run(string(integration.ID), func(t *testing.T) {
+			t.Parallel()
 			assert.NotEmpty(t, integration.DisplayName)
 			assert.Equal(t, string(integration.ID), integration.BinaryName)
 			assert.NotEmpty(t, integration.ConfigStrategy)
@@ -50,6 +54,7 @@ func TestRegistry_EveryEntryIsFullyDefined(t *testing.T) {
 }
 
 func TestRegistry_OnlyDevinHasPartialLockdown(t *testing.T) {
+	t.Parallel()
 	for _, integration := range All() {
 		want := LockdownStrict
 		if integration.ID == constants.AgentBinaryDevin {
@@ -60,6 +65,7 @@ func TestRegistry_OnlyDevinHasPartialLockdown(t *testing.T) {
 }
 
 func TestLookup(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		id      string
@@ -75,6 +81,7 @@ func TestLookup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := Lookup(tt.id)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)

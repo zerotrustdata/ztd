@@ -75,13 +75,15 @@ func (f *evidenceFixture) snapshotDirs(t *testing.T) []string {
 	return dirs
 }
 
-func TestEvalEvidenceBackup_PromptNamesTheDefaultBackupDirectory(t *testing.T) {
+func TestEvalEvidenceBackup_PromptNamesTheDefaultBackupDirectory(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	backup := newEvidenceFixture(t).backup()
 
 	assert.Equal(t, "Back up evaluation evidence to "+constants.EvaluationBackupDefaultDir+" first?", backup.Prompt)
 }
 
-func TestEvalEvidenceBackup_RunSnapshotsEvidenceIntoTheDefaultBackupDirectory(t *testing.T) {
+func TestEvalEvidenceBackup_RunSnapshotsEvidenceIntoTheDefaultBackupDirectory(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	f := newEvidenceFixture(t)
 	f.writeEvidence(t, runRecordRelPath, `{"run":1}`)
 
@@ -95,7 +97,8 @@ func TestEvalEvidenceBackup_RunSnapshotsEvidenceIntoTheDefaultBackupDirectory(t 
 	assert.Contains(t, summary, shared.DefaultEvalBackupDir(f.cfg))
 }
 
-func TestEvalEvidenceBackup_RunReportsAlreadyBackedUpWhenEvidenceMatchesTheNewestSnapshot(t *testing.T) {
+func TestEvalEvidenceBackup_RunReportsAlreadyBackedUpWhenEvidenceMatchesTheNewestSnapshot(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	f := newEvidenceFixture(t)
 	f.writeEvidence(t, runRecordRelPath, `{"run":1}`)
 	prior, err := evaluation.NewEvalBackup(f.fileSvc, func() time.Time { return priorSnapshotTime }).
@@ -109,7 +112,8 @@ func TestEvalEvidenceBackup_RunReportsAlreadyBackedUpWhenEvidenceMatchesTheNewes
 	assert.Len(t, f.snapshotDirs(t), 1, "an unchanged run must not leave a second snapshot behind")
 }
 
-func TestEvalEvidenceBackup_RunTakesANewSnapshotWhenEvidenceChangedSinceTheLastOne(t *testing.T) {
+func TestEvalEvidenceBackup_RunTakesANewSnapshotWhenEvidenceChangedSinceTheLastOne(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	f := newEvidenceFixture(t)
 	f.writeEvidence(t, runRecordRelPath, `{"run":1}`)
 	_, err := evaluation.NewEvalBackup(f.fileSvc, func() time.Time { return priorSnapshotTime }).
@@ -125,7 +129,8 @@ func TestEvalEvidenceBackup_RunTakesANewSnapshotWhenEvidenceChangedSinceTheLastO
 	assert.Len(t, f.snapshotDirs(t), 2)
 }
 
-func TestEvalEvidenceBackup_RunReturnsSentinelWhenThereIsNoEvidence(t *testing.T) {
+func TestEvalEvidenceBackup_RunReturnsSentinelWhenThereIsNoEvidence(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	f := newEvidenceFixture(t)
 
 	summary, err := f.backup().Run(context.Background())
@@ -135,7 +140,8 @@ func TestEvalEvidenceBackup_RunReturnsSentinelWhenThereIsNoEvidence(t *testing.T
 	assert.Empty(t, f.snapshotDirs(t))
 }
 
-func TestEvalEvidenceBackup_RunAsksTheConfigLoaderForTheDefaultProjectRoot(t *testing.T) {
+func TestEvalEvidenceBackup_RunAsksTheConfigLoaderForTheDefaultProjectRoot(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	f := newEvidenceFixture(t)
 	var loaderArgs []string
 	backup := shared.EvalEvidenceBackup(
@@ -156,6 +162,7 @@ func TestEvalEvidenceBackup_RunAsksTheConfigLoaderForTheDefaultProjectRoot(t *te
 }
 
 func TestEvalEvidenceBackup_RunWrapsConfigLoadFailureAndSkipsTheFileService(t *testing.T) {
+	t.Parallel()
 	cause := errors.New("config unreadable")
 	factoryCalled := false
 	backup := shared.EvalEvidenceBackup(
@@ -174,7 +181,8 @@ func TestEvalEvidenceBackup_RunWrapsConfigLoadFailureAndSkipsTheFileService(t *t
 	assert.False(t, factoryCalled)
 }
 
-func TestEvalEvidenceBackup_RunWrapsFileServiceInitFailure(t *testing.T) {
+func TestEvalEvidenceBackup_RunWrapsFileServiceInitFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	f := newEvidenceFixture(t)
 	cause := errors.New("runtime root not writable")
 	backup := shared.EvalEvidenceBackup(cmdtest.ConfigLoaderFor(f.cfg), cmdtest.FailingFileSvcFactory(cause))
@@ -186,7 +194,8 @@ func TestEvalEvidenceBackup_RunWrapsFileServiceInitFailure(t *testing.T) {
 	require.ErrorIs(t, err, cause)
 }
 
-func TestConfirmDestructive_WithEvidenceBackupReportsNothingToBackUpOnAnEmptyRuntime(t *testing.T) {
+func TestConfirmDestructive_WithEvidenceBackupReportsNothingToBackUpOnAnEmptyRuntime(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	f := newEvidenceFixture(t)
 	cmd := &cobra.Command{Use: "clean"}
 	var out bytes.Buffer
@@ -201,7 +210,8 @@ func TestConfirmDestructive_WithEvidenceBackupReportsNothingToBackUpOnAnEmptyRun
 	assert.Contains(t, out.String(), "No evaluation evidence found; nothing to back up.")
 }
 
-func TestConfirmDestructive_WithEvidenceBackupPrintsTheSnapshotSummaryBeforeProceeding(t *testing.T) {
+func TestConfirmDestructive_WithEvidenceBackupPrintsTheSnapshotSummaryBeforeProceeding(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	f := newEvidenceFixture(t)
 	f.writeEvidence(t, runRecordRelPath, `{"run":1}`)
 	cmd := &cobra.Command{Use: "clean"}

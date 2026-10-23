@@ -18,6 +18,7 @@ import (
 )
 
 func TestNetHTTPProbeTool_Metadata(t *testing.T) {
+	t.Parallel()
 	tool := &NetHTTPProbeTool{}
 	require.Equal(t, "net_http_probe", tool.Name())
 	require.NotEmpty(t, tool.Description())
@@ -25,6 +26,7 @@ func TestNetHTTPProbeTool_Metadata(t *testing.T) {
 }
 
 func TestNetHTTPProbeTool_InputSchema(t *testing.T) {
+	t.Parallel()
 	tool := &NetHTTPProbeTool{}
 	schema := tool.InputSchema()
 
@@ -43,6 +45,7 @@ func TestNetHTTPProbeTool_InputSchema(t *testing.T) {
 }
 
 func TestNetHTTPProbeTool_Execute_InvalidArgs(t *testing.T) {
+	t.Parallel()
 	tool := &NetHTTPProbeTool{}
 	ctx := context.Background()
 
@@ -58,6 +61,7 @@ func TestNetHTTPProbeTool_Execute_InvalidArgs(t *testing.T) {
 }
 
 func TestNetHTTPProbeTool_Execute_BlockedURLs(t *testing.T) {
+	t.Parallel()
 	tool := &NetHTTPProbeTool{}
 	ctx := context.Background()
 
@@ -74,6 +78,7 @@ func TestNetHTTPProbeTool_Execute_BlockedURLs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			args := json.RawMessage(`{"url": "` + tt.url + `"}`)
 			result, err := tool.Execute(ctx, args)
 			require.NoError(t, err)
@@ -89,6 +94,7 @@ func TestNetHTTPProbeTool_Execute_BlockedURLs(t *testing.T) {
 }
 
 func TestNetHTTPProbeTool_Execute_NetworkError(t *testing.T) {
+	t.Parallel()
 	tool := &NetHTTPProbeTool{}
 	ctx := context.Background()
 
@@ -107,6 +113,7 @@ func TestNetHTTPProbeTool_Execute_NetworkError(t *testing.T) {
 }
 
 func TestNetHTTPProbeTool_Execute_Timeout(t *testing.T) {
+	t.Parallel()
 	tool := &NetHTTPProbeTool{}
 
 	// Create a context that is already canceled or has a very short timeout
@@ -130,8 +137,10 @@ func TestNetHTTPProbeTool_Execute_Timeout(t *testing.T) {
 }
 
 func TestNetHTTPProbeTool_Execute_MethodHandling(t *testing.T) {
+	t.Parallel()
 	// Since we can't easily hit a real server, we'll just test that different methods
 	// don't crash and pass through the validation.
+
 	tool := &NetHTTPProbeTool{}
 	ctx := context.Background()
 

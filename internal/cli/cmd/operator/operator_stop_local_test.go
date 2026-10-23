@@ -30,6 +30,7 @@ import (
 )
 
 func TestStopLocalOperatorEscalation(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		exits   []bool
@@ -42,6 +43,7 @@ func TestStopLocalOperatorEscalation(t *testing.T) {
 		{"KILL timeout", []bool{false, false, false}, []bool{false, true}, "failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			var signals []bool
 			checks := 0
 			p := localOperatorProcess{pid: 123, wait: func(time.Duration) (bool, error) { v := tc.exits[checks]; checks++; return v, nil }, signal: func(force bool) error { signals = append(signals, force); return nil }}
@@ -56,7 +58,8 @@ func TestStopLocalOperatorEscalation(t *testing.T) {
 	}
 }
 
-func TestOperatorStopLocalWithoutGateway(t *testing.T) {
+func TestOperatorStopLocalWithoutGateway(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 	client := &cmdtest.MockAPIClient{GetErr: errors.New("gateway offline")}
@@ -73,7 +76,8 @@ func TestOperatorStopLocalWithoutGateway(t *testing.T) {
 	require.True(t, closed)
 }
 
-func TestOperatorStopLocal_BoundedConcurrencyAndAccounting(t *testing.T) {
+func TestOperatorStopLocal_BoundedConcurrencyAndAccounting(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 	client := &cmdtest.MockAPIClient{GetErr: errors.New("gateway offline")}
@@ -108,7 +112,8 @@ func TestOperatorStopLocal_BoundedConcurrencyAndAccounting(t *testing.T) {
 	})
 }
 
-func TestOperatorStopLocal_CancellationAccountsForQueuedWorkers(t *testing.T) {
+func TestOperatorStopLocal_CancellationAccountsForQueuedWorkers(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 	client := &cmdtest.MockAPIClient{GetErr: errors.New("gateway offline")}
@@ -153,6 +158,7 @@ func TestOperatorStopLocal_CancellationAccountsForQueuedWorkers(t *testing.T) {
 }
 
 func TestStopLocalOperatorSignalFailure(t *testing.T) {
+	t.Parallel()
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
 	result := stopLocalOperator(cmd, localOperatorProcess{pid: 123, wait: func(time.Duration) (bool, error) { return false, nil }, signal: func(bool) error { return errors.New("permission denied") }}, models.StopOperatorResponse{}, nil, 0)
@@ -160,7 +166,8 @@ func TestStopLocalOperatorSignalFailure(t *testing.T) {
 	require.Contains(t, result.Error, "permission denied")
 }
 
-func TestTargetedStopFallsBackAfterShutdownFailure(t *testing.T) {
+func TestTargetedStopFallsBackAfterShutdownFailure(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
 	body, err := json.Marshal(models.OperatorSlotResponse{Success: true, Operators: []*operatorv1.OperatorDocument{{Id: "op-a", OperatorSessionId: "session-a", OperatorType: string(constants.OperatorTypeRemote)}}})

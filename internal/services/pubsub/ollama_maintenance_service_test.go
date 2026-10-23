@@ -134,7 +134,8 @@ func ollamaInventoryRoutes() map[string]http.HandlerFunc {
 	}
 }
 
-func TestNewOllamaMaintenanceService_RequiresEveryDependency(t *testing.T) {
+func TestNewOllamaMaintenanceService_RequiresEveryDependency(t *testing.T) { //nolint:paralleltest // mutates package-level state
+
 	cfg := testutil.NewTestConfig(t)
 	logger := testutil.NewTestLogger()
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -153,8 +154,9 @@ func TestNewOllamaMaintenanceService_RequiresEveryDependency(t *testing.T) {
 		{name: "disabled scrubber", cfg: cfg, scrubber: newEgressScrubber(t, false), auditStore: auditStore, wantErr: constants.ErrEgressScrubberUnavailable},
 		{name: "nil audit store", cfg: cfg, scrubber: scrubber, wantErr: constants.ErrAuditStoreRequired},
 	}
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // mutates package-level state
 		t.Run("rejects "+tt.name, func(t *testing.T) {
+
 			svc, err := NewOllamaMaintenanceService(tt.cfg, logger, client, tt.scrubber, tt.auditStore)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
@@ -162,6 +164,7 @@ func TestNewOllamaMaintenanceService_RequiresEveryDependency(t *testing.T) {
 	}
 
 	t.Run("accepts every dependency", func(t *testing.T) {
+
 		svc, err := NewOllamaMaintenanceService(cfg, logger, client, scrubber, auditStore)
 		require.NoError(t, err)
 		assert.NotNil(t, svc)

@@ -64,6 +64,7 @@ func posture(p evalv1.EvaluationGovernancePosture) func(Case) bool {
 }
 
 func TestCatalogueValidates(t *testing.T) {
+	t.Parallel()
 	cs, gaps := mustCatalogue(t)
 	if err := Validate(cs, gaps, mustCorpus(t)); err != nil {
 		t.Fatalf("Validate(Catalogue()) = %v, want nil", err)
@@ -71,6 +72,7 @@ func TestCatalogueValidates(t *testing.T) {
 }
 
 func TestCatalogueCountsPerRowAndIngress(t *testing.T) {
+	t.Parallel()
 	cs, _ := mustCatalogue(t)
 
 	// Row 1: every ingress, two postures, one case each.
@@ -121,6 +123,7 @@ func TestCatalogueCountsPerRowAndIngress(t *testing.T) {
 // No case on any ingress expects a refusal because an L3 proof cannot be minted:
 // the Gateway suspends the request for a human instead.
 func TestApprovalRowsPinTheHumanDecisionPerIngress(t *testing.T) {
+	t.Parallel()
 	cs, _ := mustCatalogue(t)
 
 	suspending := map[Ingress]bool{IngressMCP: true, IngressA2A: true}
@@ -171,6 +174,7 @@ func TestApprovalRowsPinTheHumanDecisionPerIngress(t *testing.T) {
 // missing_field body fault per ingress: DIRECT reaches L4 and is rejected by the
 // signed payload-decode check, while governed dispatch refuses before an envelope exists.
 func TestRowSeventeenMissingFieldPinsDirectRejectionAndDispatchRefusal(t *testing.T) {
+	t.Parallel()
 	cs, _ := mustCatalogue(t)
 	pinned := map[Ingress]Expect{
 		IngressDirect: {
@@ -215,6 +219,7 @@ func TestRowSeventeenMissingFieldPinsDirectRejectionAndDispatchRefusal(t *testin
 var fullStack = Stack{A2AIngress: true, Outbound: true}
 
 func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
+	t.Parallel()
 	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, fullStack)
 	if err != nil {
 		t.Fatalf("Applicable(DOCTRINE): %v", err)
@@ -231,6 +236,7 @@ func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
 }
 
 func TestApplicableRatifyExcludesRowOne(t *testing.T) {
+	t.Parallel()
 	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, fullStack)
 	if err != nil {
 		t.Fatalf("Applicable(RATIFY): %v", err)
@@ -243,6 +249,7 @@ func TestApplicableRatifyExcludesRowOne(t *testing.T) {
 }
 
 func TestApplicableDropsOnlyIngressesTheStackLacks(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		stack   Stack
@@ -253,6 +260,7 @@ func TestApplicableDropsOnlyIngressesTheStackLacks(t *testing.T) {
 		{"minimal stack", Stack{}, []Ingress{IngressA2A}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			for _, binding := range Postures {
 				with, err := Applicable(binding.Wire, fullStack)
 				if err != nil {
@@ -285,6 +293,7 @@ func TestApplicableDropsOnlyIngressesTheStackLacks(t *testing.T) {
 }
 
 func TestRecordStackReadsAbsenceFlags(t *testing.T) {
+	t.Parallel()
 	if got := RecordStack(&evalv1.ConformanceRunRecord{}); got != fullStack {
 		t.Fatalf("RecordStack(legacy) = %+v, want %+v", got, fullStack)
 	}
@@ -295,6 +304,7 @@ func TestRecordStackReadsAbsenceFlags(t *testing.T) {
 }
 
 func TestStackExecutorRunsOutboundRoleOnEmbeddedWhenOutboundAbsent(t *testing.T) {
+	t.Parallel()
 	for _, i := range ingressAll {
 		if got, want := fullStack.Executor(i), i.Executor(); got != want {
 			t.Errorf("full stack Executor(%s) = %s, want %s", i, got, want)
@@ -306,6 +316,7 @@ func TestStackExecutorRunsOutboundRoleOnEmbeddedWhenOutboundAbsent(t *testing.T)
 }
 
 func TestPosturesBindEveryGovernancePostureInOrder(t *testing.T) {
+	t.Parallel()
 	got := make([]constants.Posture, 0, len(Postures))
 	for _, binding := range Postures {
 		got = append(got, binding.Posture)
@@ -324,6 +335,7 @@ func TestPosturesBindEveryGovernancePostureInOrder(t *testing.T) {
 }
 
 func TestPostureMappingRejectsUnknown(t *testing.T) {
+	t.Parallel()
 	if _, err := GovernancePosture(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED); !errors.Is(err, constants.ErrConformancePostureUnknown) {
 		t.Fatalf("GovernancePosture(UNSPECIFIED) = %v, want ErrConformancePostureUnknown", err)
 	}
@@ -336,6 +348,7 @@ func TestPostureMappingRejectsUnknown(t *testing.T) {
 }
 
 func TestApplicableRejectsUnknownPosture(t *testing.T) {
+	t.Parallel()
 	_, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fullStack)
 	if !errors.Is(err, constants.ErrConformancePostureUnknown) {
 		t.Fatalf("Applicable(UNSPECIFIED) = %v, want ErrConformancePostureUnknown", err)
@@ -343,6 +356,7 @@ func TestApplicableRejectsUnknownPosture(t *testing.T) {
 }
 
 func TestExecutedExpectPerPostureAndAction(t *testing.T) {
+	t.Parallel()
 	const (
 		notReq = operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
 		reqOK  = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
@@ -373,6 +387,7 @@ func TestExecutedExpectPerPostureAndAction(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := executedExpect(tc.posture, tc.ingress, tc.action, EffectTargetMarker)
 			want := Expect{Kind: ExpectExecuted, L2Status: tc.l2, L3Status: tc.l3, Effect: EffectTargetMarker}
 			if got != want {
@@ -383,6 +398,7 @@ func TestExecutedExpectPerPostureAndAction(t *testing.T) {
 }
 
 func TestCaseIDsAreLowerCaseAndUnique(t *testing.T) {
+	t.Parallel()
 	cs, _ := mustCatalogue(t)
 	seen := make(map[string]bool, len(cs))
 	for _, c := range cs {
@@ -397,6 +413,7 @@ func TestCaseIDsAreLowerCaseAndUnique(t *testing.T) {
 }
 
 func TestMarkerCommandWritesMarkerWithEscaping(t *testing.T) {
+	t.Parallel()
 	a := Attempt{
 		RunID:     "run",
 		AttemptID: "a1",
@@ -416,6 +433,7 @@ func TestMarkerCommandWritesMarkerWithEscaping(t *testing.T) {
 }
 
 func TestMarkerArgvPassesL1AndIsNotDangerous(t *testing.T) {
+	t.Parallel()
 	a := Attempt{
 		RunID:     "run",
 		AttemptID: "a1",

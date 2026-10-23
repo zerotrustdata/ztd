@@ -199,6 +199,7 @@ func (r *renewerRig) renewedFrame(t *testing.T, req models.OperatorRenewalFrame,
 }
 
 func TestOperatorCertRenewer_InstallsRenewedIdentityAndL2Trust(t *testing.T) {
+	t.Parallel()
 	r := newRenewerRig(t, func(r *renewerRig, req models.OperatorRenewalFrame) []models.OperatorRenewalFrame {
 		// A frame for another request precedes the answer and is ignored.
 		return []models.OperatorRenewalFrame{
@@ -226,6 +227,7 @@ func TestOperatorCertRenewer_InstallsRenewedIdentityAndL2Trust(t *testing.T) {
 }
 
 func TestOperatorCertRenewer_RejectsInvalidReplies(t *testing.T) {
+	t.Parallel()
 	foreign := newRenewalTestCA(t)
 	cases := map[string]func(*testing.T, *renewerRig, models.OperatorRenewalFrame) models.OperatorRenewalFrame{
 		"another workload": func(t *testing.T, r *renewerRig, req models.OperatorRenewalFrame) models.OperatorRenewalFrame {
@@ -240,6 +242,7 @@ func TestOperatorCertRenewer_RejectsInvalidReplies(t *testing.T) {
 	}
 	for name, reply := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			r := newRenewerRig(t, func(r *renewerRig, req models.OperatorRenewalFrame) []models.OperatorRenewalFrame {
 				return []models.OperatorRenewalFrame{reply(t, r, req)}
 			})
@@ -255,6 +258,7 @@ func TestOperatorCertRenewer_RejectsInvalidReplies(t *testing.T) {
 }
 
 func TestOperatorCertRenewer_MalformedL2TrustInstallsNothing(t *testing.T) {
+	t.Parallel()
 	r := newRenewerRig(t, func(r *renewerRig, req models.OperatorRenewalFrame) []models.OperatorRenewalFrame {
 		bad := renewerL2Trust()
 		bad.Quorum = 0
@@ -267,6 +271,7 @@ func TestOperatorCertRenewer_MalformedL2TrustInstallsNothing(t *testing.T) {
 }
 
 func TestOperatorCertRenewer_GatewayErrors(t *testing.T) {
+	t.Parallel()
 	errorReply := func(retryable bool) func(*renewerRig, models.OperatorRenewalFrame) []models.OperatorRenewalFrame {
 		return func(_ *renewerRig, req models.OperatorRenewalFrame) []models.OperatorRenewalFrame {
 			return []models.OperatorRenewalFrame{{Type: models.OperatorRenewalFrameError, RequestID: req.RequestID,
@@ -275,32 +280,38 @@ func TestOperatorCertRenewer_GatewayErrors(t *testing.T) {
 	}
 
 	t.Run("refusal is final", func(t *testing.T) {
+		t.Parallel()
 		r := newRenewerRig(t, errorReply(false))
 		require.ErrorIs(t, r.renewer.renewOnce(t.Context()), constants.ErrOperatorRenewalRefused)
 	})
 	t.Run("gateway failure is retryable", func(t *testing.T) {
+		t.Parallel()
 		r := newRenewerRig(t, errorReply(true))
 		err := r.renewer.renewOnce(t.Context())
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, constants.ErrOperatorRenewalRefused)
 	})
 	t.Run("no reply times out", func(t *testing.T) {
+		t.Parallel()
 		r := newRenewerRig(t, func(*renewerRig, models.OperatorRenewalFrame) []models.OperatorRenewalFrame { return nil })
 		r.renewer.attemptTimeout = 50 * time.Millisecond
 		require.ErrorIs(t, r.renewer.renewOnce(t.Context()), constants.ErrOperatorRenewalTimeout)
 	})
 	t.Run("refusal stops retries", func(t *testing.T) {
+		t.Parallel()
 		r := newRenewerRig(t, errorReply(false))
 		require.ErrorIs(t, r.renewer.renewBefore(t.Context(), time.Now().Add(time.Hour)), constants.ErrOperatorRenewalRefused)
 		assert.Len(t, r.gateway.Requests(), 1)
 	})
 	t.Run("retries end at expiry", func(t *testing.T) {
+		t.Parallel()
 		r := newRenewerRig(t, errorReply(true))
 		require.ErrorIs(t, r.renewer.renewBefore(t.Context(), time.Now()), constants.ErrOperatorRenewalExpired)
 	})
 }
 
 func TestOperatorCertRenewer_RunRenewsAtTwoThirdsOfLifetime(t *testing.T) {
+	t.Parallel()
 	r := newRenewerRig(t, func(r *renewerRig, req models.OperatorRenewalFrame) []models.OperatorRenewalFrame {
 		return []models.OperatorRenewalFrame{r.renewedFrame(t, req, renewerSPIFFEID, renewerL2Trust())}
 	})

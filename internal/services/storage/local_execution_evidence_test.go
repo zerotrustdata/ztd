@@ -54,6 +54,8 @@ func localEvidenceConfig(t *testing.T, fileSvc fs.RuntimeFileService, v *vault.V
 }
 
 func TestOpenLocalExecutionEvidence_OpensLedgerAndHistory(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, v, auditStore := newLocalEvidenceFixture(t)
 
 	evidence, err := OpenLocalExecutionEvidence(localEvidenceConfig(t, fileSvc, v, auditStore))
@@ -63,6 +65,8 @@ func TestOpenLocalExecutionEvidence_OpensLedgerAndHistory(t *testing.T) {
 }
 
 func TestOpenLocalExecutionEvidence_RequiresDependencies(t *testing.T) {
+	t.Parallel()
+
 	fileSvc, v, auditStore := newLocalEvidenceFixture(t)
 
 	tests := []struct {
@@ -77,6 +81,8 @@ func TestOpenLocalExecutionEvidence_RequiresDependencies(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := localEvidenceConfig(t, fileSvc, v, auditStore)
 			tc.mutate(&cfg)
 			evidence, err := OpenLocalExecutionEvidence(cfg)

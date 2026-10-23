@@ -17,6 +17,7 @@ import (
 )
 
 func TestValidateHeartbeatInterval(t *testing.T) {
+	t.Parallel()
 	maxSeconds := int(constants.OperatorHeartbeatMaxInterval.Seconds())
 
 	for _, seconds := range []int{0, 1, 15, 30, 60, 120, maxSeconds} {
@@ -31,6 +32,8 @@ func TestValidateHeartbeatInterval(t *testing.T) {
 }
 
 func TestOperatorStartCmd_RejectsHeartbeatIntervalPastMaximum(t *testing.T) {
+	t.Parallel()
+
 	cmd := operatorStartCmd()
 	require.NoError(t, cmd.Flags().Set("heartbeat-interval", "301"))
 
@@ -40,6 +43,8 @@ func TestOperatorStartCmd_RejectsHeartbeatIntervalPastMaximum(t *testing.T) {
 }
 
 func TestOperatorStartCmd_RejectsArgsAfterDoubleDash(t *testing.T) {
+	t.Parallel()
+
 	cmd := operatorStartCmd()
 	require.NoError(t, cmd.ParseFlags([]string{"--provenance-operator-id", "p", "--", "--capabilities", "observer,provenance"}))
 

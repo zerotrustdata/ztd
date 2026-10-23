@@ -14,7 +14,9 @@ import (
 )
 
 func TestAuthCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("auth command has correct use and description", func(t *testing.T) {
+		t.Parallel()
 		cmd := Cmd()
 		assert.Equal(t, "auth", cmd.Use)
 		assert.Contains(t, cmd.Short, "Authentication")
@@ -23,7 +25,9 @@ func TestAuthCmd(t *testing.T) {
 }
 
 func TestEnrollUserCmd(t *testing.T) {
+	t.Parallel()
 	t.Run("user command has correct use", func(t *testing.T) {
+		t.Parallel()
 		cmd := enrollUserCmd()
 		assert.Equal(t, "user", cmd.Use)
 		assert.Contains(t, cmd.Short, "Enroll")
@@ -39,6 +43,7 @@ func TestEnrollUserCmd(t *testing.T) {
 // browser frontend connection UX rollout — `gw connect` is the sole local
 // browser connection workflow.
 func TestEnrollCmd_Parent(t *testing.T) {
+	t.Parallel()
 	cmd := enrollCmd()
 	assert.Equal(t, "enroll", cmd.Use)
 	assert.Nil(t, cmd.RunE, "parent enroll command must have no RunE so cobra prints help on bare invocation")
@@ -58,13 +63,16 @@ func TestEnrollCmd_Parent(t *testing.T) {
 }
 
 func TestAuthCommandFlags(t *testing.T) {
+	t.Parallel()
 	t.Run("enroll has no count flag", func(t *testing.T) {
+		t.Parallel()
 		cmd := enrollUserCmd()
 		countFlag := cmd.Flags().Lookup("count")
 		assert.Nil(t, countFlag)
 	})
 
 	t.Run("enroll has no ttl flag", func(t *testing.T) {
+		t.Parallel()
 		cmd := enrollUserCmd()
 		ttlFlag := cmd.Flags().Lookup("ttl")
 		assert.Nil(t, ttlFlag)

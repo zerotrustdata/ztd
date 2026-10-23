@@ -25,6 +25,8 @@ import (
 )
 
 func TestGenerateCSR(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		commonName string
@@ -49,6 +51,8 @@ func TestGenerateCSR(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			csrPEM, privKey, err := GenerateCSR(tt.commonName)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateCSR() error = %v, wantErr %v", err, tt.wantErr)
@@ -85,6 +89,7 @@ func TestGenerateCSR(t *testing.T) {
 }
 
 func TestSaveCredentials(t *testing.T) {
+	t.Parallel()
 	fileSvc := newAuthTestFileSvc(t)
 	runtimeDir := fileSvc.Resolve("")
 
@@ -134,13 +139,20 @@ func TestSaveCredentials(t *testing.T) {
 }
 
 func TestLoadCredentials(t *testing.T) {
-	fileSvc := newAuthTestFileSvc(t)
-	runtimeDir := fileSvc.Resolve("")
+	t.Parallel()
 
-	cfg := &config.Config{}
-	cfg.RuntimeDir = runtimeDir
+	newEnv := func(t *testing.T) (fs.RuntimeFileService, *config.Config) {
+		t.Helper()
+		fileSvc := newAuthTestFileSvc(t)
+		cfg := &config.Config{}
+		cfg.RuntimeDir = fileSvc.Resolve("")
+		return fileSvc, cfg
+	}
 
 	t.Run("non-existent file returns nil", func(t *testing.T) {
+		t.Parallel()
+		fileSvc, cfg := newEnv(t)
+
 		creds, err := LoadCredentials(fileSvc, cfg)
 		if err != nil {
 			t.Errorf("LoadCredentials() error = %v, want nil", err)
@@ -151,6 +163,9 @@ func TestLoadCredentials(t *testing.T) {
 	})
 
 	t.Run("load existing credentials", func(t *testing.T) {
+		t.Parallel()
+		fileSvc, cfg := newEnv(t)
+
 		creds := &Credentials{
 			OperatorSessionID: "test-session-id",
 			UserID:            "test-user-id",
@@ -176,6 +191,9 @@ func TestLoadCredentials(t *testing.T) {
 	})
 
 	t.Run("invalid JSON returns error", func(t *testing.T) {
+		t.Parallel()
+		fileSvc, cfg := newEnv(t)
+
 		credsFile := cfg.CredentialsFile()
 		credsRel, err := fileSvc.RelFromAbs(credsFile)
 		if err != nil {

@@ -34,6 +34,7 @@ func testProviderEnvironment() *ProviderEnvironment {
 }
 
 func TestFormatCapacity(t *testing.T) {
+	t.Parallel()
 	cases := map[string]struct {
 		bytes uint64
 		want  string
@@ -47,12 +48,14 @@ func TestFormatCapacity(t *testing.T) {
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, test.want, formatCapacity(test.bytes))
 		})
 	}
 }
 
 func TestObservedProviderEnvironmentFromCapacities(t *testing.T) {
+	t.Parallel()
 	set := func(values ...uint64) map[uint64]struct{} {
 		out := map[uint64]struct{}{}
 		for _, value := range values {
@@ -122,6 +125,7 @@ func resultWithAttempts(attemptIDs ...string) *evalv1.EvaluationAssignmentResult
 const reported = evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_REPORTED
 
 func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	newReader := func(t *testing.T) (*CampaignProviderObservationReader, *Store) {
 		t.Helper()
@@ -132,6 +136,7 @@ func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	}
 
 	t.Run("derives the environment from windows across assignments", func(t *testing.T) {
+		t.Parallel()
 		reader, store := newReader(t)
 		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-1", capacitySample(1, testVRAMBytes, reported), capacitySample(2, testVRAMBytes, reported))
 		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-2", capacitySample(1, testVRAMBytes, reported))
@@ -145,6 +150,7 @@ func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	})
 
 	t.Run("skips an attempt whose window was never captured", func(t *testing.T) {
+		t.Parallel()
 		reader, store := newReader(t)
 		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-1", capacitySample(1, testVRAMBytes, reported))
 
@@ -156,6 +162,7 @@ func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	})
 
 	t.Run("makes no claim without any window", func(t *testing.T) {
+		t.Parallel()
 		reader, _ := newReader(t)
 		environment, err := reader.ObservedProviderEnvironment(ctx, map[string]*evalv1.EvaluationAssignmentResult{
 			"assignment-1": resultWithAttempts("attempt-missing"),
@@ -166,6 +173,7 @@ func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	})
 
 	t.Run("ignores capacities the observer marked unavailable", func(t *testing.T) {
+		t.Parallel()
 		reader, store := newReader(t)
 		unavailable := evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_METRIC_AVAILABILITY_UNAVAILABLE
 		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-1", capacitySample(1, testVRAMBytes, unavailable))
@@ -178,6 +186,7 @@ func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	})
 
 	t.Run("makes no claim when windows disagree about the hardware", func(t *testing.T) {
+		t.Parallel()
 		reader, store := newReader(t)
 		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-1", capacitySample(1, testVRAMBytes, reported))
 		saveObservationWindow(t, store, testEnvironmentRunID, "attempt-2", capacitySample(1, testVRAMBytes/2, reported))
@@ -191,12 +200,14 @@ func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	})
 
 	t.Run("requires a reader", func(t *testing.T) {
+		t.Parallel()
 		_, err := (*CampaignProviderObservationReader)(nil).ObservedProviderEnvironment(ctx, nil)
 		assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	})
 }
 
 func TestBuildRunAggregateViewRecordsCarriesProviderEnvironment(t *testing.T) {
+	t.Parallel()
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
@@ -247,6 +258,7 @@ func (e *attemptStubExecutor) ExecuteAssignment(ctx context.Context, req Assignm
 }
 
 func TestPublishedCatalogCarriesTheObservedEnvironmentOnlyOnceTheRunIsComplete(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)

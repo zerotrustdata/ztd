@@ -19,6 +19,7 @@ import (
 // `rs.platformEnrollment == nil` guards. Platform enrollment handler is required in
 // gateway mode and absent in outbound mode.
 func TestExecuteVerifiedTransaction_NoPlatformEnrollmentNilGuards(t *testing.T) {
+	t.Parallel()
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "pubsub_commands.go", nil, parser.ParseComments)
 	if err != nil {

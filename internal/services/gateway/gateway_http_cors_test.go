@@ -29,6 +29,7 @@ func newCORSHTTPHandler(allowedOrigins []string) *HTTPHandler {
 }
 
 func TestCORSMiddleware_PassThroughWhenNoAllowedOrigins(t *testing.T) {
+	t.Parallel()
 	h := newCORSHTTPHandler(nil)
 	called := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +49,7 @@ func TestCORSMiddleware_PassThroughWhenNoAllowedOrigins(t *testing.T) {
 }
 
 func TestCORSMiddleware_AllowedOriginSetsHeaders(t *testing.T) {
+	t.Parallel()
 	h := newCORSHTTPHandler([]string{"https://lovable.dev"})
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -65,6 +67,7 @@ func TestCORSMiddleware_AllowedOriginSetsHeaders(t *testing.T) {
 }
 
 func TestCORSMiddleware_DisallowedOriginDoesNotSetAllowOrigin(t *testing.T) {
+	t.Parallel()
 	h := newCORSHTTPHandler([]string{"https://lovable.dev"})
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -82,6 +85,7 @@ func TestCORSMiddleware_DisallowedOriginDoesNotSetAllowOrigin(t *testing.T) {
 }
 
 func TestCORSMiddleware_NoOriginHeaderDoesNotSetAllowOrigin(t *testing.T) {
+	t.Parallel()
 	h := newCORSHTTPHandler([]string{"https://lovable.dev"})
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -97,6 +101,7 @@ func TestCORSMiddleware_NoOriginHeaderDoesNotSetAllowOrigin(t *testing.T) {
 }
 
 func TestCORSMiddleware_PreflightAllowedOriginReturns204(t *testing.T) {
+	t.Parallel()
 	h := newCORSHTTPHandler([]string{"https://lovable.dev"})
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("next handler must not be called for preflight")
@@ -117,6 +122,7 @@ func TestCORSMiddleware_PreflightAllowedOriginReturns204(t *testing.T) {
 }
 
 func TestCORSMiddleware_PreflightDisallowedOriginDoesNotShortCircuit(t *testing.T) {
+	t.Parallel()
 	h := newCORSHTTPHandler([]string{"https://lovable.dev"})
 	called := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +142,7 @@ func TestCORSMiddleware_PreflightDisallowedOriginDoesNotShortCircuit(t *testing.
 }
 
 func TestCORSMiddleware_OriginMatchingIsCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	h := newCORSHTTPHandler([]string{"https://Lovable.Dev"})
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -151,6 +158,7 @@ func TestCORSMiddleware_OriginMatchingIsCaseInsensitive(t *testing.T) {
 }
 
 func TestCORSMiddleware_OriginMatchingTrimsTrailingSlash(t *testing.T) {
+	t.Parallel()
 	h := newCORSHTTPHandler([]string{"https://lovable.dev/"})
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
