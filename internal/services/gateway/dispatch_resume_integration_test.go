@@ -141,6 +141,7 @@ func (r *recordingPendingDispatchResumer) resumed() *commonv1.GovernanceEnvelope
 // deliberates through a real 2-of-3 consensus set and the Operator enforces L2
 // next to L3; under ratify L2 is not enforced.
 func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanisms []string) {
+	t.Helper()
 	for _, mechanism := range mechanisms {
 		t.Run(mechanism, func(t *testing.T) {
 			const userID, operatorID, sessionID, cliSessionID = "approval-user", "approval-operator", "approval-session", "human-cli-session"

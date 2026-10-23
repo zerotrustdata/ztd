@@ -77,6 +77,7 @@ func complianceReportSigningFixtureForTest(t *testing.T, scopeID string) (*compl
 }
 
 func complianceReportSigningIdentityForTest(t *testing.T) *compliancereport.ComplianceReportSigningIdentity {
+	t.Helper()
 	identity, _ := complianceReportSigningFixtureForTest(t, evidence.EvalScopeID("evidence-graph-suite"))
 	return identity
 }

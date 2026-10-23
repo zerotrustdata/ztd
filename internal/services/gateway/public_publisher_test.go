@@ -75,6 +75,7 @@ func newPublicPublisherTestEnv(t *testing.T) (*PublicPublisherService, *Document
 
 // makeProjectionRecord creates a valid public feed record from a projection object.
 func makeProjectionRecord(t *testing.T, seq int64, proj models.PublicFeedObject) models.PublicFeedRecord {
+	t.Helper()
 	return projectionRecordFromObject(t, seq, proj)
 }
 

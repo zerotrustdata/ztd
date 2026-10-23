@@ -649,10 +649,12 @@ func startInferenceOperatorWithResultTampering(t *testing.T, infra *TestInfrastr
 }
 
 func startFileEditOperator(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, workDir string) ed25519.PublicKey {
+	t.Helper()
 	return startFileEditOperatorWithNotary(t, infra, operatorID, sessionID, workDir, nil)
 }
 
 func startFileEditOperatorWithNotary(t *testing.T, infra *TestInfrastructure, operatorID, sessionID, workDir string, notary govsvc.L3Notary) ed25519.PublicKey {
+	t.Helper()
 	return startFileEditOperatorWithGovernance(t, infra, operatorID, sessionID, workDir, notary, nil)
 }
 
