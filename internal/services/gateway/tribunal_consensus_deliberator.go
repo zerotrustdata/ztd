@@ -151,9 +151,18 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 		return nil, err
 	}
 	votes := make([]*commonv1.L2Vote, 0, len(bound.MemberAppIDs))
-	if ctx.Err() == nil && len(bound.MemberAppIDs) > 0 {
-		for i, vote := range d.castVotes(ctx, bound, bound.MemberAppIDs, computed, subject) {
-			if _, signed := d.countVote(ctx, &env, bound, bound.MemberAppIDs[i], computed, vote); signed != nil {
+	batchSize := bound.Quorum
+	if batchSize <= 0 {
+		batchSize = len(bound.MemberAppIDs)
+	}
+	for i := 0; i < len(bound.MemberAppIDs); i += batchSize {
+		if ctx.Err() != nil {
+			break
+		}
+		end := min(i+batchSize, len(bound.MemberAppIDs))
+		batch := bound.MemberAppIDs[i:end]
+		for j, vote := range d.castVotes(ctx, bound, batch, computed, subject) {
+			if _, signed := d.countVote(ctx, &env, bound, batch[j], computed, vote); signed != nil {
 				votes = append(votes, signed)
 			}
 		}

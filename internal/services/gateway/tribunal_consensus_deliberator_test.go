@@ -480,67 +480,7 @@ func TestTribunalConsensusAllApproveCountsEveryMember(t *testing.T) {
 	}
 }
 
-func TestTribunalConsensusAllApproveStopsAtQuorum(t *testing.T) {
-	env, hash := tribunalTestEnvelope(t)
-	binding := tribunalTestBinding()
-	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
-	signer := newFakeSigner(t, binding.MemberAppIDs...)
-	d := newTribunalTestDeliberator(t, binding, inferer, signer)
-
-	out, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
-	if err != nil {
-		t.Fatalf("Deliberate: %v", err)
-	}
-
-	if len(inferer.calls) != 3 {
-		t.Fatalf("inference calls = %d, want 3 (short-circuit at quorum)", len(inferer.calls))
-	}
-	called := make([]string, 0, len(inferer.calls))
-	for _, call := range inferer.calls {
-		called = append(called, call.actingAppID)
-	}
-	slices.Sort(called)
-	want := slices.Sorted(slices.Values(binding.MemberAppIDs[:3]))
-	if !slices.Equal(called, want) {
-		t.Fatalf("called members = %v, want the first three %v", called, want)
-	}
-	if len(signer.calls) != 3 {
-		t.Fatalf("sign calls = %d, want 3", len(signer.calls))
-	}
-	for i, sign := range signer.calls {
-		if sign.memberAppID != binding.MemberAppIDs[i] {
-			t.Fatalf("sign %d member = %s, want %s (binding order)", i, sign.memberAppID, binding.MemberAppIDs[i])
-		}
-	}
-
-	deliberated := unmarshalDeliberatedEnvelope(t, out)
-	l2 := deliberated.GetGovernance().GetL2()
-	if got := l2.GetConsensusSetId(); got != tribunalTestBindingID {
-		t.Fatalf("consensus_set_id = %q, want %q", got, tribunalTestBindingID)
-	}
-	if len(l2.GetVotes()) != 3 {
-		t.Fatalf("votes = %d, want 3", len(l2.GetVotes()))
-	}
-	for _, vote := range l2.GetVotes() {
-		if !vote.GetDecision() {
-			t.Fatalf("vote from %s is not approve", vote.GetSignerKeyId())
-		}
-		assertVoteSignature(t, signer, hash, vote)
-	}
-
-	rehash, err := govpkg.GenerateMessageID(deliberated)
-	if err != nil {
-		t.Fatalf("re-hash deliberated envelope: %v", err)
-	}
-	if rehash != hash {
-		t.Fatalf("re-hash = %s, want original hash %s; envelope changed outside Governance.L2", rehash, hash)
-	}
-	if deliberated.GetTransactionHash() != hash || deliberated.GetId() != hash {
-		t.Fatalf("transaction_hash/id changed: id=%s tx=%s", deliberated.GetId(), deliberated.GetTransactionHash())
-	}
-}
-
-func TestTribunalConsensusAllDenyStopsWhenQuorumUnreachable(t *testing.T) {
+func TestTribunalConsensusAllDenyCollectsAllMembers(t *testing.T) {
 	env, hash := tribunalTestEnvelope(t)
 	binding := tribunalTestBinding()
 	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalDenyAnswer})}
@@ -552,13 +492,12 @@ func TestTribunalConsensusAllDenyStopsWhenQuorumUnreachable(t *testing.T) {
 		t.Fatalf("Deliberate: %v", err)
 	}
 
-	// After three denies only two members remain, fewer than quorum 3.
-	if len(inferer.calls) != 3 {
-		t.Fatalf("inference calls = %d, want 3 (stop once quorum unreachable)", len(inferer.calls))
+	if len(inferer.calls) != len(binding.MemberAppIDs) {
+		t.Fatalf("inference calls = %d, want %d", len(inferer.calls), len(binding.MemberAppIDs))
 	}
 	votes := unmarshalDeliberatedEnvelope(t, out).GetGovernance().GetL2().GetVotes()
-	if len(votes) != 3 {
-		t.Fatalf("votes = %d, want 3", len(votes))
+	if len(votes) != len(binding.MemberAppIDs) {
+		t.Fatalf("votes = %d, want %d", len(votes), len(binding.MemberAppIDs))
 	}
 	for _, vote := range votes {
 		if vote.GetDecision() {
@@ -580,12 +519,12 @@ func TestTribunalConsensusInvalidAnswerIsSignedDeny(t *testing.T) {
 		t.Fatalf("Deliberate: %v", err)
 	}
 
-	if len(inferer.calls) != 3 {
-		t.Fatalf("inference calls = %d, want 3", len(inferer.calls))
+	if len(inferer.calls) != len(binding.MemberAppIDs) {
+		t.Fatalf("inference calls = %d, want %d", len(inferer.calls), len(binding.MemberAppIDs))
 	}
 	votes := unmarshalDeliberatedEnvelope(t, out).GetGovernance().GetL2().GetVotes()
-	if len(votes) != 3 {
-		t.Fatalf("votes = %d, want 3 signed deny votes", len(votes))
+	if len(votes) != len(binding.MemberAppIDs) {
+		t.Fatalf("votes = %d, want %d signed deny votes", len(votes), len(binding.MemberAppIDs))
 	}
 	for _, vote := range votes {
 		if vote.GetDecision() {
@@ -610,13 +549,12 @@ func TestTribunalConsensusInferenceErrorCastsNoVoteAndContinues(t *testing.T) {
 		t.Fatalf("Deliberate: %v", err)
 	}
 
-	// The failing member is called, then the next three members reach quorum.
-	if len(inferer.calls) != 4 {
-		t.Fatalf("inference calls = %d, want 4", len(inferer.calls))
+	if len(inferer.calls) != len(binding.MemberAppIDs) {
+		t.Fatalf("inference calls = %d, want %d", len(inferer.calls), len(binding.MemberAppIDs))
 	}
 	votes := unmarshalDeliberatedEnvelope(t, out).GetGovernance().GetL2().GetVotes()
 	got := voteSignerIDs(votes)
-	want := binding.MemberAppIDs[1:4]
+	want := binding.MemberAppIDs[1:]
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("vote signers = %v, want %v", got, want)
 	}
@@ -641,7 +579,7 @@ func TestTribunalConsensusAsksEachBatchConcurrently(t *testing.T) {
 		t.Fatalf("Deliberate: %v", err)
 	}
 	votes := unmarshalDeliberatedEnvelope(t, out).GetGovernance().GetL2().GetVotes()
-	if got, want := voteSignerIDs(votes), binding.MemberAppIDs[:3]; !slices.Equal(got, want) {
+	if got, want := voteSignerIDs(votes), binding.MemberAppIDs; !slices.Equal(got, want) {
 		t.Fatalf("vote signers = %v, want %v in binding order", got, want)
 	}
 }
@@ -689,8 +627,8 @@ func TestTribunalConsensusMemberWithoutKeyCastsNoVote(t *testing.T) {
 			t.Fatalf("inference ran for member %s without a key", missing)
 		}
 	}
-	if len(inferer.calls) != 3 {
-		t.Fatalf("inference calls = %d, want 3", len(inferer.calls))
+	if len(inferer.calls) != 4 {
+		t.Fatalf("inference calls = %d, want 4", len(inferer.calls))
 	}
 	for _, sign := range signer.calls {
 		if sign.memberAppID == missing {
@@ -703,8 +641,8 @@ func TestTribunalConsensusMemberWithoutKeyCastsNoVote(t *testing.T) {
 			t.Fatalf("keyless member %s produced a vote", missing)
 		}
 	}
-	if len(votes) != 3 {
-		t.Fatalf("votes = %d, want 3", len(votes))
+	if len(votes) != 4 {
+		t.Fatalf("votes = %d, want 4", len(votes))
 	}
 }
 
@@ -969,12 +907,12 @@ func TestConsensusDeliberatorRouterTribunalProviderRoutesToTribunal(t *testing.T
 	if app.calls != 0 {
 		t.Fatalf("application deliberator calls = %d, want 0", app.calls)
 	}
-	if len(inferer.calls) != 3 {
-		t.Fatalf("inference calls = %d, want 3", len(inferer.calls))
+	if len(inferer.calls) != len(binding.MemberAppIDs) {
+		t.Fatalf("inference calls = %d, want %d", len(inferer.calls), len(binding.MemberAppIDs))
 	}
 	votes := unmarshalDeliberatedEnvelope(t, out).GetGovernance().GetL2().GetVotes()
-	if len(votes) != 3 {
-		t.Fatalf("votes = %d, want 3", len(votes))
+	if len(votes) != len(binding.MemberAppIDs) {
+		t.Fatalf("votes = %d, want %d", len(votes), len(binding.MemberAppIDs))
 	}
 	for _, vote := range votes {
 		assertVoteSignature(t, signer, hash, vote)
