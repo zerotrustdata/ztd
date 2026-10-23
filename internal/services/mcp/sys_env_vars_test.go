@@ -8,17 +8,24 @@
 package mcp
 
 import (
-	"context"
 	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
+
+func setTestEnv(t *testing.T, vars map[string]string) {
+	t.Helper()
+	for k, v := range vars {
+		t.Setenv(k, v)
+	}
+}
 
 func TestSysEnvVarsTool_Execute_EmptyArgs(t *testing.T) {
 	tool := &SysEnvVarsTool{}
-	ctx := context.Background()
+	ctx := testutil.Context(t)
 
 	result, err := tool.Execute(ctx, json.RawMessage("{}"))
 	require.NoError(t, err)
@@ -34,7 +41,7 @@ func TestSysEnvVarsTool_Execute_EmptyArgs(t *testing.T) {
 
 func TestSysEnvVarsTool_Execute_InvalidJSON(t *testing.T) {
 	tool := &SysEnvVarsTool{}
-	ctx := context.Background()
+	ctx := testutil.Context(t)
 
 	_, err := tool.Execute(ctx, json.RawMessage("{invalid}"))
 	require.Error(t, err)
@@ -43,7 +50,7 @@ func TestSysEnvVarsTool_Execute_InvalidJSON(t *testing.T) {
 
 func TestSysEnvVarsTool_Execute_WithPattern(t *testing.T) {
 	tool := &SysEnvVarsTool{}
-	ctx := context.Background()
+	ctx := testutil.Context(t)
 
 	// Set up test environment variables
 	testVars := map[string]string{
@@ -55,20 +62,7 @@ func TestSysEnvVarsTool_Execute_WithPattern(t *testing.T) {
 	}
 
 	// Save original values and restore after test
-	originalVars := make(map[string]string)
-	for k, v := range testVars {
-		originalVars[k] = os.Getenv(k)
-		os.Setenv(k, v)
-	}
-	defer func() {
-		for k, v := range originalVars {
-			if v == "" {
-				os.Unsetenv(k)
-			} else {
-				os.Setenv(k, v)
-			}
-		}
-	}()
+	setTestEnv(t, testVars)
 
 	args := json.RawMessage(`{"pattern": "ZTD_*"}`)
 	result, err := tool.Execute(ctx, args)
@@ -87,7 +81,7 @@ func TestSysEnvVarsTool_Execute_WithPattern(t *testing.T) {
 
 func TestSysEnvVarsTool_Execute_RedactSecretsDefault(t *testing.T) {
 	tool := &SysEnvVarsTool{}
-	ctx := context.Background()
+	ctx := testutil.Context(t)
 
 	// Set up test environment variables with sensitive data
 	testVars := map[string]string{
@@ -97,20 +91,7 @@ func TestSysEnvVarsTool_Execute_RedactSecretsDefault(t *testing.T) {
 		"SAFE_VAR":          "public_value",
 	}
 
-	originalVars := make(map[string]string)
-	for k, v := range testVars {
-		originalVars[k] = os.Getenv(k)
-		os.Setenv(k, v)
-	}
-	defer func() {
-		for k, v := range originalVars {
-			if v == "" {
-				os.Unsetenv(k)
-			} else {
-				os.Setenv(k, v)
-			}
-		}
-	}()
+	setTestEnv(t, testVars)
 
 	args := json.RawMessage(`{}`)
 	result, err := tool.Execute(ctx, args)
@@ -129,7 +110,7 @@ func TestSysEnvVarsTool_Execute_RedactSecretsDefault(t *testing.T) {
 
 func TestSysEnvVarsTool_Execute_RedactSecretsFalse(t *testing.T) {
 	tool := &SysEnvVarsTool{}
-	ctx := context.Background()
+	ctx := testutil.Context(t)
 
 	// Set up test environment variables
 	testVars := map[string]string{
@@ -137,20 +118,7 @@ func TestSysEnvVarsTool_Execute_RedactSecretsFalse(t *testing.T) {
 		"SAFE_VAR": "public_value",
 	}
 
-	originalVars := make(map[string]string)
-	for k, v := range testVars {
-		originalVars[k] = os.Getenv(k)
-		os.Setenv(k, v)
-	}
-	defer func() {
-		for k, v := range originalVars {
-			if v == "" {
-				os.Unsetenv(k)
-			} else {
-				os.Setenv(k, v)
-			}
-		}
-	}()
+	setTestEnv(t, testVars)
 
 	// Note: The implementation defaults redact_secrets to true even when explicitly set to false
 	// This test documents the current behavior
@@ -170,7 +138,7 @@ func TestSysEnvVarsTool_Execute_RedactSecretsFalse(t *testing.T) {
 
 func TestSysEnvVarsTool_Execute_RedactSecretsTrue(t *testing.T) {
 	tool := &SysEnvVarsTool{}
-	ctx := context.Background()
+	ctx := testutil.Context(t)
 
 	// Set up test environment variables
 	testVars := map[string]string{
@@ -178,20 +146,7 @@ func TestSysEnvVarsTool_Execute_RedactSecretsTrue(t *testing.T) {
 		"SAFE_VAR": "public_value",
 	}
 
-	originalVars := make(map[string]string)
-	for k, v := range testVars {
-		originalVars[k] = os.Getenv(k)
-		os.Setenv(k, v)
-	}
-	defer func() {
-		for k, v := range originalVars {
-			if v == "" {
-				os.Unsetenv(k)
-			} else {
-				os.Setenv(k, v)
-			}
-		}
-	}()
+	setTestEnv(t, testVars)
 
 	args := json.RawMessage(`{"redact_secrets": true}`)
 	result, err := tool.Execute(ctx, args)
@@ -208,7 +163,7 @@ func TestSysEnvVarsTool_Execute_RedactSecretsTrue(t *testing.T) {
 
 func TestSysEnvVarsTool_Execute_PatternAndRedact(t *testing.T) {
 	tool := &SysEnvVarsTool{}
-	ctx := context.Background()
+	ctx := testutil.Context(t)
 
 	// Set up test environment variables
 	testVars := map[string]string{
@@ -217,20 +172,7 @@ func TestSysEnvVarsTool_Execute_PatternAndRedact(t *testing.T) {
 		"OTHER_API_KEY": "other_secret",
 	}
 
-	originalVars := make(map[string]string)
-	for k, v := range testVars {
-		originalVars[k] = os.Getenv(k)
-		os.Setenv(k, v)
-	}
-	defer func() {
-		for k, v := range originalVars {
-			if v == "" {
-				os.Unsetenv(k)
-			} else {
-				os.Setenv(k, v)
-			}
-		}
-	}()
+	setTestEnv(t, testVars)
 
 	args := json.RawMessage(`{"pattern": "ZTD_*", "redact_secrets": true}`)
 	result, err := tool.Execute(ctx, args)
@@ -253,7 +195,7 @@ func TestSysEnvVarsTool_Execute_MalformedEnvVar(t *testing.T) {
 	// Since we can't easily inject malformed vars into os.Environ(), we test the logic indirectly
 	// by ensuring the tool doesn't panic with normal environment
 	tool := &SysEnvVarsTool{}
-	ctx := context.Background()
+	ctx := testutil.Context(t)
 
 	result, err := tool.Execute(ctx, json.RawMessage("{}"))
 	require.NoError(t, err)
