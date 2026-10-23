@@ -19,16 +19,25 @@ import (
 func TestContext_ExpiresAndCancelsWithTheTest(t *testing.T) {
 	t.Parallel()
 
-	var scoped context.Context
+	canceled := make(chan error, 1)
 	t.Run("scoped", func(t *testing.T) {
-		scoped = Context(t)
-		deadline, ok := scoped.Deadline()
+		ctx := Context(t)
+		deadline, ok := ctx.Deadline()
 		require.True(t, ok)
 		assert.WithinDuration(t, time.Now().Add(DefaultTestTimeout), deadline, time.Second)
-		assert.NoError(t, scoped.Err())
+		assert.NoError(t, ctx.Err())
+		go func() {
+			<-ctx.Done()
+			canceled <- ctx.Err()
+		}()
 	})
 
-	assert.ErrorIs(t, scoped.Err(), context.Canceled)
+	select {
+	case err := <-canceled:
+		assert.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("context was not canceled when the subtest returned")
+	}
 }
 
 func TestContextWithTimeout_UsesTheRequestedBudget(t *testing.T) {

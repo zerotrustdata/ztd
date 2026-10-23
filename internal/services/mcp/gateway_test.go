@@ -2115,8 +2115,9 @@ func newTestScrubbingService(t *testing.T) *scrubbing.ScrubbingService {
 }
 
 func newTestGatewayService(t *testing.T, opts ...testGatewayOption) *GatewayService {
-	// Generate default signing key
-	_, privKey, _ := ed25519.GenerateKey(rand.Reader)
+	t.Helper()
+	_, privKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 
 	g := &GatewayService{
 		posture:           constants.PostureDoctrine,
