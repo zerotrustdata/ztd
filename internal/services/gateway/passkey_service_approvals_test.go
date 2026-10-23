@@ -362,22 +362,22 @@ func TestPasskeyService_HandleCLIListSuspended(t *testing.T) {
 		assert.Equal(t, txHash, resp.Transactions[0].TransactionHash)
 	})
 
-	t.Run("Success - filters out approved transactions", func(t *testing.T) {
+	t.Run("Success - retired transactions are absent", func(t *testing.T) {
 		s, userSvc, suspendedStore := setupTestPasskeyService(t)
 		user, err := userSvc.CreateUser(t.Context())
 		require.NoError(t, err)
 
 		suspendedTx := &models.SuspendedTransaction{
-			TransactionHash:   "approved-tx",
+			TransactionHash:   "retired-tx",
 			OperatorSessionID: "operator-session-1",
 			Envelope:          []byte("{}"),
 			UserID:            user.ID,
 			ToolName:          "test-tool",
 			ToolArguments:     []byte("{}"),
 			ExpiresAt:         time.Now().Add(5 * time.Minute),
-			Approved:          true,
 		}
-		require.NoError(t, suspendedStore.StoreSuspendedTransaction(context.Background(), suspendedTx))
+		require.NoError(t, suspendedStore.StoreSuspendedTransaction(t.Context(), suspendedTx))
+		require.NoError(t, suspendedStore.DeleteSuspendedTransaction(t.Context(), suspendedTx.TransactionHash))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/approvals/pending", nil)
 		req = req.WithContext(context.WithValue(req.Context(), constants.ContextKeyUserID, user.ID))

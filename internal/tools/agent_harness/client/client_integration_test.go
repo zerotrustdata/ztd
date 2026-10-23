@@ -544,12 +544,6 @@ func TestClient_ApprovalSubscription_Success(t *testing.T) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, constants.APIPaths.SSEStream):
 			approvalCompletedSSE(t, w, userID, txHash, resumedReceiptJSON(t, txHash))
-		case strings.HasPrefix(r.URL.Path, constants.APIPaths.ApprovalsCLIStatus):
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(models.ApprovalStatusResponse{
-				Status: string(constants.SuspendedTxStatusApproved),
-				TxHash: txHash,
-			})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

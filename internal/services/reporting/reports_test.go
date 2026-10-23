@@ -465,9 +465,6 @@ func TestReportSuspendedTransactions_WithRecords(t *testing.T) {
 		UserID:            "user-2",
 		OperatorID:        "op-1",
 		ToolName:          "fs_write",
-		Approved:          true,
-		ApprovedBy:        "approver-1",
-		ApprovalSignature: "sig-1",
 	}))
 
 	outDir := testutil.TempDir(t)
@@ -486,7 +483,7 @@ func TestReportSuspendedTransactions_WithRecords(t *testing.T) {
 	txHashes := []string{records[1][0], records[2][0]}
 	assert.ElementsMatch(t, []string{"suspend-hash-1", "suspend-hash-2"}, txHashes)
 	statuses := []string{records[1][3], records[2][3]}
-	assert.ElementsMatch(t, []string{"pending", "approved"}, statuses)
+	assert.ElementsMatch(t, []string{"pending", "pending"}, statuses)
 }
 
 func TestReportSuspendedTransactions_CancelledContext(t *testing.T) {

@@ -419,15 +419,6 @@ func (h *PasskeyHandler) handleCLIApprovalStatus(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if suspendedTx.Approved {
-		h.responder.JSON(w, http.StatusOK, models.ApprovalStatusResponse{
-			Status:   string(constants.SuspendedTxStatusApproved),
-			TxHash:   txHash,
-			ToolName: suspendedTx.ToolName,
-		})
-		return
-	}
-
 	h.responder.JSON(w, http.StatusOK, models.ApprovalStatusResponse{
 		Status:   string(constants.SuspendedTxStatusPending),
 		TxHash:   txHash,
@@ -451,7 +442,7 @@ func (h *PasskeyHandler) handleApprovalPage(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *PasskeyHandler) handleCLIListSuspended(w http.ResponseWriter, r *http.Request) {
-	h.listSuspendedTransactions(w, r, true)
+	h.listSuspendedTransactions(w, r)
 }
 
 // @Summary		List pending approvals
@@ -462,10 +453,10 @@ func (h *PasskeyHandler) handleCLIListSuspended(w http.ResponseWriter, r *http.R
 // @Failure		401	{string}	string	"Unauthorized"
 // @Router			/api/v1/approvals [get]
 func (h *PasskeyHandler) handleListSuspendedTransactions(w http.ResponseWriter, r *http.Request) {
-	h.listSuspendedTransactions(w, r, false)
+	h.listSuspendedTransactions(w, r)
 }
 
-func (h *PasskeyHandler) listSuspendedTransactions(w http.ResponseWriter, r *http.Request, filterApproved bool) {
+func (h *PasskeyHandler) listSuspendedTransactions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.responder.Error(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -486,9 +477,6 @@ func (h *PasskeyHandler) listSuspendedTransactions(w http.ResponseWriter, r *htt
 
 	var txResponses []models.SuspendedTxResponse
 	for _, tx := range transactions {
-		if filterApproved && tx.Approved {
-			continue
-		}
 		txResponses = append(txResponses, models.SuspendedTxResponse{
 			TransactionHash: tx.TransactionHash,
 			CreatedAt:       tx.CreatedAt,
