@@ -1171,15 +1171,33 @@ func TestRecordExecution(t *testing.T) {
 	})
 }
 
-func TestPrintSummaryRow(t *testing.T) {
-	// This is a visual output function, just verify it doesn't panic
-	printSummaryRow("TEST_CATEGORY", 10, "EXECUTED", 10)
-	printSummaryRow("MISMATCH", 5, "EXECUTED", 3)
+func TestFormatSummaryRow_MarksWhetherTheCountMatches(t *testing.T) {
+	matched := formatSummaryRow("GOOD_ACTOR", 10, "EXECUTED", 10)
+	if !strings.Contains(matched, "GOOD_ACTOR") || !strings.Contains(matched, "EXECUTED") || !strings.Contains(matched, "✓") {
+		t.Fatalf("matched row = %q", matched)
+	}
+	if strings.Contains(matched, "✗") {
+		t.Fatalf("matched row marked a mismatch: %q", matched)
+	}
+
+	mismatched := formatSummaryRow("PROMPT_INJECTION", 5, "REJECTED", 3)
+	if !strings.Contains(mismatched, "PROMPT_INJECTION") || !strings.Contains(mismatched, "REJECTED") || !strings.Contains(mismatched, "✗") {
+		t.Fatalf("mismatched row = %q", mismatched)
+	}
 }
 
-func TestPrintDemoQueries(t *testing.T) {
-	// This is a visual output function, just verify it doesn't panic
-	printDemoQueries("/test/test.db")
+func TestFormatDemoQueries_InterpolatesTheDatabasePath(t *testing.T) {
+	text := formatDemoQueries("chaos-run/chaos.db")
+	for _, want := range []string{
+		"# sqlite3 'chaos-run/chaos.db'",
+		"./ztd test summary",
+		"./ztd gw data audit summary",
+		"chaos-session-001",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("demo queries missing %q\n%s", want, text)
+		}
+	}
 }
 
 func TestChaosExecutionHandler(t *testing.T) {
