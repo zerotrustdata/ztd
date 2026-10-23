@@ -169,17 +169,17 @@ func (f *releasePrepareFixture) seedRuntimeDatabase(t *testing.T, receiptSigner,
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	_, err = db.Exec(`
-		CREATE TABLE receipts (transaction_id TEXT PRIMARY KEY, executed_at_ms INTEGER NOT NULL, receipt_json BLOB);
 		CREATE TABLE commitment_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, transaction_id TEXT NOT NULL, committed_at_unix_ms INTEGER NOT NULL, hash TEXT NOT NULL, attestation_json BLOB);
-		CREATE TABLE events (seq INTEGER, prev_hash TEXT, hash TEXT, type TEXT, operator_session_id TEXT, timestamp TEXT, content_digest TEXT, transaction_id TEXT, content_text BLOB, command_raw BLOB, command_exit_code INTEGER, command_stdout BLOB, command_stderr BLOB, execution_duration_ms INTEGER, execution_id TEXT);
+		CREATE TABLE events (seq INTEGER, prev_hash TEXT, hash TEXT, type TEXT, operator_session_id TEXT, timestamp TEXT, content_digest TEXT, transaction_id TEXT, content_text BLOB, command_raw BLOB, command_exit_code INTEGER, command_stdout BLOB, command_stderr BLOB, execution_duration_ms INTEGER, execution_id TEXT, event_receipt_status INTEGER, event_receipt_executed_at_ms INTEGER);
 	`)
 	require.NoError(t, err)
 	for index, executedAt := range receiptsAt {
 		transactionID := fmt.Sprintf("tx-%d", index)
 		body, marshalErr := compliancev1.MarshalCanonical(&operatorv1.ActionReceipt{TransactionId: transactionID, SignerKeyId: receiptSigner})
 		require.NoError(t, marshalErr)
-		sealed := storagetest.EncryptReceiptJSON(t, encryptionVault, transactionID, body)
-		_, err = db.Exec(`INSERT INTO receipts (transaction_id, executed_at_ms, receipt_json) VALUES (?, ?, ?)`, transactionID, executedAt.UnixMilli(), sealed)
+		seq := int64(index + 1)
+		sealed := storagetest.EncryptEventContent(t, encryptionVault, seq, body)
+		_, err = db.Exec(`INSERT INTO events (seq, type, transaction_id, content_text, event_receipt_status, event_receipt_executed_at_ms) VALUES (?, ?, ?, ?, ?, ?)`, seq, string(constants.EventOperatorReceiptRecorded), transactionID, sealed, int64(operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED), executedAt.UnixMilli())
 		require.NoError(t, err)
 	}
 	for index, committedAt := range commitmentsAt {

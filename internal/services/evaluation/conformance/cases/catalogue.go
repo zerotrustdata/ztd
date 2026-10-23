@@ -58,10 +58,10 @@ func WirePosture(posture constants.Posture) (evalv1.EvaluationGovernancePosture,
 
 // Ingress and posture sets used by the row table.
 var (
-	ingressAll      = []Ingress{IngressDirect, IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI}
+	ingressAll      = []Ingress{IngressDirect, IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressMCPStdio, IngressA2A, IngressCLI}
 	ingressDispatch = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound}
 	// ingressApproval are the ingresses a human approval can resume under ratify and notary.
-	ingressApproval = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI}
+	ingressApproval = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressMCPStdio, IngressA2A, IngressCLI}
 
 	postureAll = []evalv1.EvaluationGovernancePosture{
 		evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
@@ -145,8 +145,10 @@ var rowSpecs = []rowSpec{
 	{row: 1, faults: []Fault{FaultNone}, ingresses: ingressAll, postures: postureDoctrineConsensus,
 		action: ActionMutation, outcomes: []outcome{executed()}},
 
-	// Row 2: the read baseline. The MCP read tool suspends under ratify and notary.
-	{row: 2, faults: []Fault{FaultReadBaseline}, ingresses: []Ingress{IngressDirect, IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP},
+	// Row 2: the read baseline. The MCP read tool suspends under ratify and notary;
+	// the stdio bridge then holds the call until a human decides, so MCP_STDIO has
+	// no ratify or notary read case.
+	{row: 2, faults: []Fault{FaultReadBaseline}, ingresses: []Ingress{IngressDirect, IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressMCPStdio},
 		postures: postureDoctrineConsensus, action: ActionRead, outcomes: []outcome{executed()}},
 	{row: 2, faults: []Fault{FaultReadBaseline}, ingresses: []Ingress{IngressDirect, IngressDispatchEmbedded, IngressDispatchOutbound},
 		postures: postureRatifyNotary, action: ActionRead, outcomes: []outcome{executed()}},
@@ -239,7 +241,7 @@ var rowSpecs = []rowSpec{
 	{row: 14, faults: []Fault{FaultDoctrine}, ingresses: []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressCLI},
 		postures: postureAll, action: ActionMutation, corpus: corpusFirstPerCategory,
 		outcomes: []outcome{refused(operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_L1_DOCTRINE)}},
-	{row: 14, faults: []Fault{FaultDoctrine}, ingresses: []Ingress{IngressMCP, IngressA2A},
+	{row: 14, faults: []Fault{FaultDoctrine}, ingresses: []Ingress{IngressMCP, IngressMCPStdio, IngressA2A},
 		postures: postureAll, action: ActionMutation, corpus: corpusFirstPerCategory,
 		outcomes: []outcome{rejected(operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L1_DOCTRINE)}},
 
@@ -300,11 +302,12 @@ var rowSpecs = []rowSpec{
 
 	// Rows 22 to 24: the human approval path under ratify and notary. MCP and A2A
 	// answer a mutation with a suspension, so an unattended run observes it (row 22).
-	// Governed dispatch and the CLI do not answer until a human decides: the request
-	// blocks for the approval TTL, so a suspension is not observable there and those
-	// ingresses carry only the attended rows. An approve executes (row 23). A deny is
-	// the Operator-signed L3_DENIED rejection (row 24), a rejection receipt on MCP and
-	// A2A and the same signed rejection in the dispatch answer.
+	// Governed dispatch, the CLI and the MCP stdio bridge do not answer until a human
+	// decides: the request blocks for the approval TTL, so a suspension is not
+	// observable there and those ingresses carry only the attended rows. An approve
+	// executes (row 23). A deny is the Operator-signed L3_DENIED rejection (row 24), a
+	// rejection receipt on MCP and A2A, the same signed rejection in the dispatch
+	// answer, and the JSON-RPC error data of the stdio bridge.
 	{row: 22, faults: []Fault{FaultUnattendedMutation}, ingresses: []Ingress{IngressMCP, IngressA2A}, postures: postureRatifyNotary,
 		action: ActionMutation, outcomes: []outcome{suspended()}},
 	{row: 23, faults: []Fault{FaultAttendedApprove}, ingresses: ingressApproval, postures: postureRatifyNotary,
@@ -322,7 +325,7 @@ var l2Faults = []Fault{FaultL2Missing, FaultL2BelowQuorum, FaultL2DuplicateSigne
 var gapSpecs = []gapSpec{
 	{row: 2, fault: FaultReadBaseline, ingresses: []Ingress{IngressA2A}, reason: "every A2A call is a mutation"},
 	{row: 2, fault: FaultReadBaseline, ingresses: []Ingress{IngressCLI}, reason: "`ztd operator run` sends EXECUTE_BASH only"},
-	{row: 25, fault: FaultL3ViaArguments, ingresses: []Ingress{IngressMCP, IngressA2A},
+	{row: 25, fault: FaultL3ViaArguments, ingresses: []Ingress{IngressMCP, IngressMCPStdio, IngressA2A},
 		reason: "no tool or skill argument can carry an L3 proof; the only attachment is ResumeWithL3Proof, fed by the WebAuthn assertion (T06 handoff, answer a)"},
 }
 
@@ -360,8 +363,38 @@ func Catalogue() ([]Case, []Gap, error) {
 	return cases, gaps, nil
 }
 
-// Applicable returns the cases for one posture, in catalogue order.
-func Applicable(posture evalv1.EvaluationGovernancePosture) ([]Case, error) {
+// Stack is the optional parts of the stack under test. A2A ingress is opt-in at
+// the Gateway, so it decides whether A2A cases apply. The embedded Operator is a
+// complete Data Operator: when it is selected, it executes the outbound dispatch
+// and CLI cases too, so no case depends on an outbound Operator.
+type Stack struct {
+	A2AIngress bool // the Gateway exposes A2A ingress
+	Outbound   bool // the selected Data Operator is an outbound Operator
+}
+
+// RecordStack returns the stack a run record was executed against.
+func RecordStack(record *evalv1.ConformanceRunRecord) Stack {
+	return Stack{A2AIngress: !record.GetA2AIngressAbsent(), Outbound: !record.GetOutboundAbsent()}
+}
+
+// Includes reports whether the stack can run cases on ingress i.
+func (s Stack) Includes(i Ingress) bool {
+	return i != IngressA2A || s.A2AIngress
+}
+
+// Executor is the runtime that executes and signs cases on ingress i in this
+// stack: the outbound role falls to the embedded Operator when it is the selected
+// Data Operator.
+func (s Stack) Executor(i Ingress) Executor {
+	if ex := i.Executor(); ex != ExecutorOutbound || s.Outbound {
+		return ex
+	}
+	return ExecutorEmbedded
+}
+
+// Applicable returns the cases for one posture, in catalogue order. Cases on
+// an ingress the stack does not include are not applicable.
+func Applicable(posture evalv1.EvaluationGovernancePosture, stack Stack) ([]Case, error) {
 	if _, err := GovernancePosture(posture); err != nil {
 		return nil, fmt.Errorf("catalogue: applicable: %w", err)
 	}
@@ -371,9 +404,10 @@ func Applicable(posture evalv1.EvaluationGovernancePosture) ([]Case, error) {
 	}
 	var out []Case
 	for _, c := range all {
-		if c.Posture == posture {
-			out = append(out, c)
+		if c.Posture != posture || !stack.Includes(c.Ingress) {
+			continue
 		}
+		out = append(out, c)
 	}
 	return out, nil
 }
@@ -422,16 +456,16 @@ func newCase(spec rowSpec, fault Fault, ingress Ingress, posture PostureBinding,
 
 	effect := effectFor(ingress, spec.action)
 	for _, o := range spec.outcomes {
-		c.Expect = append(c.Expect, o.expect(posture.Posture, spec.action, effect))
+		c.Expect = append(c.Expect, o.expect(posture.Posture, ingress, spec.action, effect))
 	}
 	return c
 }
 
-// expect completes an outcome for one posture, action and effect.
-func (o outcome) expect(posture constants.Posture, action Action, effect Effect) Expect {
+// expect completes an outcome for one posture, ingress, action and effect.
+func (o outcome) expect(posture constants.Posture, ingress Ingress, action Action, effect Effect) Expect {
 	switch o.kind {
 	case ExpectExecuted:
-		return executedExpect(posture, action, effect)
+		return executedExpect(posture, ingress, action, effect)
 	case ExpectRejected:
 		return Expect{Kind: ExpectRejected, RejectionCode: o.rejection, Effect: EffectNone}
 	case ExpectRefused:
@@ -441,12 +475,15 @@ func (o outcome) expect(posture constants.Posture, action Action, effect Effect)
 	}
 }
 
-// executedExpect is the one expected outcome of an EXECUTED submission. L2 is
-// REQUIRED_VALID under consensus and notary (every action), else NOT_REQUIRED.
-// L3 is REQUIRED_VALID for a mutation under ratify and notary, else NOT_REQUIRED.
-func executedExpect(posture constants.Posture, action Action, effect Effect) Expect {
+// executedExpect is the one expected outcome of an EXECUTED submission. Under
+// consensus and notary L2 is REQUIRED_VALID for a mutation, which is the only
+// action the tribunal votes on, and for every DIRECT submission, which carries its
+// own valid proof that the receipt records as evidence; a Gateway-ingress read
+// gets no vote round and is NOT_REQUIRED. L3 is REQUIRED_VALID for a mutation
+// under ratify and notary, else NOT_REQUIRED.
+func executedExpect(posture constants.Posture, ingress Ingress, action Action, effect Effect) Expect {
 	l2 := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
-	if posture.RequiresL2() {
+	if posture.RequiresL2() && (action == ActionMutation || ingress == IngressDirect) {
 		l2 = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
 	}
 	l3 := operatorv1.L3Status_L3_STATUS_NOT_REQUIRED

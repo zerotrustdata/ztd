@@ -19,12 +19,12 @@ import (
 	vault "github.com/zerotrustdata/ztd/internal/services/vault"
 )
 
-// ReadLocalActionReceipt opens one runtime's canonical audit database through
+// ReadLocalEventReceipt opens one runtime's canonical audit database through
 // fileSvc and returns the signed receipt that runtime recorded for
 // transactionID, decrypted with the runtime's own vault key from the key store
 // opts selects (zero Options select the OS key store). It reads only the local, authoritative store and
 // never consults a Gateway mirror. It returns nil, nil when no receipt exists.
-func ReadLocalActionReceipt(fileSvc fs.RuntimeFileService, logger *slog.Logger, opts keystore.Options, transactionID string) (*models.ActionReceiptRecord, error) {
+func ReadLocalEventReceipt(fileSvc fs.RuntimeFileService, logger *slog.Logger, opts keystore.Options, transactionID string) (*models.EventReceiptRecord, error) {
 	if fileSvc == nil {
 		return nil, fmt.Errorf("local receipt: file service: %w", constants.ErrMissingRequiredField)
 	}
@@ -59,5 +59,5 @@ func ReadLocalActionReceipt(fileSvc fs.RuntimeFileService, logger *slog.Logger, 
 		return nil, fmt.Errorf("local receipt: %w", err)
 	}
 	defer store.Close()
-	return store.GetActionReceipt(transactionID)
+	return store.GetEventReceipt(transactionID)
 }

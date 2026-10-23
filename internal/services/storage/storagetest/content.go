@@ -34,11 +34,11 @@ func EncryptCommitmentTargetResource(t testing.TB, v *vault.Vault, hash, payload
 	return data
 }
 
-// EncryptReceiptJSON encrypts a receipts.receipt_json fixture the way the audit store stores it:
-// bound to the transaction id of its row.
-func EncryptReceiptJSON(t testing.TB, v *vault.Vault, transactionID string, payload []byte) []byte {
+// EncryptEventContent encrypts an events.content_text fixture the way the audit store stores it:
+// bound to the chain sequence of its row.
+func EncryptEventContent(t testing.TB, v *vault.Vault, seq int64, payload []byte) []byte {
 	t.Helper()
-	data, err := v.EncryptWithAAD(payload, storage.AuditContentAAD(storage.ReceiptColumnReceiptJSON, transactionID))
+	data, err := v.EncryptWithAAD(payload, storage.AuditContentAAD("events.content_text", storage.EventContentRowID(seq)))
 	require.NoError(t, err)
 	return data
 }

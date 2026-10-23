@@ -9,6 +9,7 @@ package eval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -135,9 +136,10 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
 	runLane := evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE
+	var stackSet *evaluation.HeterogeneousStackSet
 	if laneName == campaignLaneSystem {
 		runLane = evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM
-		stackSet, err := store.LoadHeterogeneousStackSet(cmd.Context(), opts.CampaignID)
+		stackSet, err = store.LoadHeterogeneousStackSet(cmd.Context(), opts.CampaignID)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: frozen formations: %w", err)
 		}
@@ -150,6 +152,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
 	var topology evaluation.CampaignOperatorTopology
+	var governance evaluation.RunGovernance
 	if !opts.DryRun {
 		investigation := spec.GetInvestigation()
 		if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
@@ -160,8 +163,13 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
-		if err := evalPreflightGatewayPosture(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec); err != nil {
+		if governance, err = evalPreflightGatewayGovernance(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec, nil); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
+		}
+		if stackSet != nil {
+			if err := governance.ValidateFormationTribunal(stackSet, spec.GetModelRegistry()); err != nil {
+				return nil, fmt.Errorf("evaluation: runs start: %w", err)
+			}
 		}
 		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId())
 		if err != nil {
@@ -198,7 +206,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		return nil, fmt.Errorf("evaluation: runs start: load CLI identity: %w", err)
 	}
 	controller := evaluation.NewCampaignController(store, nil, deps.now, adaptNewID(deps.newID))
-	if _, err := controller.StartRun(cmd.Context(), evaluation.RunStartRequest{
+	started, err := controller.StartRun(cmd.Context(), evaluation.RunStartRequest{
 		CampaignID:                 opts.CampaignID,
 		RunID:                      runID,
 		InferenceOperatorSessionID: topology.Inference.OperatorSessionID,
@@ -208,11 +216,14 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		PlatformRelease:            platformIdentity(cmd).Release,
 		ProviderObservationPolicy:  witnessPolicy(opts.RequireObservation),
 		ModelProvenancePolicy:      witnessPolicy(opts.RequireProvenance),
-	}); err != nil {
+		Governance:                 governance,
+	})
+	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
 	if !opts.JSONOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Started run %s of campaign %s\n", runID, opts.CampaignID)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Governance: %s\n", evaluation.DescribeRunGovernance(started))
 	}
 	if opts.Publish {
 		publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
@@ -244,7 +255,10 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		NoAutoBind: opts.NoAutoBind,
 		JSONOutput: opts.JSONOutput,
 	})
-	if err != nil {
+	// A publication failure leaves every result persisted, so the run still
+	// verifies; the failure is returned once verification has run.
+	publicationErr := err
+	if err != nil && !errors.Is(err, constants.ErrEvaluationPublicationFailed) {
 		return result, err
 	}
 	result.Executed = executed
@@ -252,11 +266,11 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Executed %d assignment(s) for run %s\n", executed, runID)
 	}
 	if !opts.Verify {
-		return result, nil
+		return result, publicationErr
 	}
 	report, err := verifyRun(cmd, deps, store, runID, opts.RequireObservation, opts.RequireProvenance, opts.Publish, opts.JSONOutput)
 	if err != nil {
-		return result, err
+		return result, errors.Join(err, publicationErr)
 	}
 	result.Report = report
 	if !opts.JSONOutput {
@@ -266,9 +280,9 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		}
 	}
 	if report.GetFailureCount() > 0 {
-		return result, constants.ErrEvalRunVerificationFailed
+		return result, errors.Join(constants.ErrEvalRunVerificationFailed, publicationErr)
 	}
-	return result, nil
+	return result, publicationErr
 }
 
 func witnessPolicy(strict bool) evalv1.EvaluationWitnessPolicy {
@@ -419,12 +433,13 @@ An archived run cannot be resumed.`,
 					}
 				},
 			})
-			if err != nil {
+			publicationErr := err
+			if err != nil && !errors.Is(err, constants.ErrEvaluationPublicationFailed) {
 				return err
 			}
 			if !jsonOutput {
 				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Executed %d assignment(s) for run %s\n", executed, runID)
-				return err
+				return errors.Join(err, publicationErr)
 			}
 			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
@@ -438,7 +453,7 @@ An archived run cannot be resumed.`,
 			if remaining < 0 {
 				remaining = 0
 			}
-			return output.WriteJSON(cmd.OutOrStdout(), runResumeJSON{RunID: runID, Executed: executed, Remaining: remaining, Results: results})
+			return errors.Join(output.WriteJSON(cmd.OutOrStdout(), runResumeJSON{RunID: runID, Executed: executed, Remaining: remaining, Results: results}), publicationErr)
 		},
 	}
 	cmd.Flags().Uint32Var(&limit, "limit", 1, "Maximum queued assignments to execute in this invocation")
@@ -514,11 +529,10 @@ public mirror, so the explorer stops reporting the run as running.`,
 			if result.Stopped, err = controller.CancelRun(cmd.Context(), runID); err != nil {
 				return fmt.Errorf("evaluation: runs cancel: %w", err)
 			}
-			if result.Stopped > 0 && (!result.WasRunning || result.ClearedStale) {
-				// Cancel stopped work that no live process will report: the run was
-				// idle, or its holder exited without releasing. Cancel reports the
-				// cancelled status, as a holder would. A settled run stops nothing
-				// and posts nothing.
+			if result.Stopped > 0 {
+				// Only cancel stops assignments, so only cancel reports the cancelled
+				// status. A holder released before this point and projected the run
+				// as waiting. A settled run stops nothing and posts nothing.
 				authContext, err := deps.authLoader(fileSvc, cfg)
 				if err != nil {
 					return fmt.Errorf("evaluation: runs cancel: load CLI identity: %w", err)

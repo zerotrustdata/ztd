@@ -375,7 +375,7 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 		ScenarioID: "scenario-1", DesignatedRole: "primary", ServedModelTag: "qwen3:4b", Input: testAgentTraceInput(),
 		ModelCalls: []AgentModelCall{{ProviderAttemptID: "pa-1", TransactionID: "tx-1", Purpose: agentModelCallPurposeTurn, LoopTurn: 1, Text: "thinking about " + evidenceMarker}},
 		ToolCalls: []AgentToolCall{{
-			CallID: "tx-2", ModelCallID: "pa-1", ToolName: "run_commands_with_operator", ArgumentsJSON: `{"command":"cat public-synthetic.txt"}`,
+			CallID: "tx-2", ModelCallID: "pa-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: `{"command":"cat","args":["public-synthetic.txt"]}`,
 			Command: "cat public-synthetic.txt", ResultJSON: `{"stdout":"public synthetic evidence"}`, Error: "no such file " + evidenceMarker, IsOperatorTool: true, LoopTurn: 1,
 		}},
 		FinalOutput:     publicAnswer,

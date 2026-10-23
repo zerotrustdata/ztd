@@ -171,19 +171,6 @@ func TestServeStdio_ContextCancellation(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestNewInitializeResponse(t *testing.T) {
-	resp := NewInitializeResponse(1, "ztd", "dev")
-	assert.Equal(t, "2.0", resp.JSONRPC)
-	assert.Equal(t, 1, resp.ID)
-	result, ok := resp.Result.(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "2024-11-05", result["protocolVersion"])
-	serverInfo, ok := result["serverInfo"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "ztd", serverInfo["name"])
-	assert.Equal(t, "dev", serverInfo["version"])
-}
-
 func TestSendError(t *testing.T) {
 	var buf bytes.Buffer
 	err := SendError(&buf, 20, -32600, "invalid request")

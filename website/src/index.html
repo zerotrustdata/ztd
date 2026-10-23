@@ -445,8 +445,9 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <p class="tagline"><span class="v">Verify</span>, then <span class="x">execute</span>.</p>
       <p class="pitch">We build <strong>ztd</strong>, a zero-trust execution layer for AI agents and the infrastructure they touch. AI systems propose actions; they never get direct control of real systems. <strong>The model can ask. The machine that owns the workload decides.</strong></p>
       <div class="cta-row">
-        <a class="btn solid" href="#licensing">Buy Fleet License Packs
+        <a class="btn solid" href="https://zerotrustdata.io">Watch it LIVE
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+        <a class="btn ghost" href="#licensing">Buy Fleet License Pack</a>
         <a class="btn ghost" href="#start">Evaluate Free</a>
         <a class="btn ghost" href="https://github.com/zerotrustdata/ztd" rel="noopener">Read the Source</a>
       </div>
@@ -687,7 +688,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <code>POST /mcp</code><span>Model Context Protocol over HTTP, or stdio via <code>ztd mcp stdio</code></span>
         <code>POST /api/v1/a2a/call</code><span>Agent-to-agent skill calls</span>
         <code>POST /api/v1/operators/commands</code><span>Governed HTTP dispatch for enrolled apps</span>
-        <code>POST /api/v1/operators/intents</code><span>Plain-language intent; the Gateway Tribunal writes the command, then it runs as an ordinary governed EXECUTE_BASH</span>
+        <code>POST /api/v1/operators/intents</code><span>Plain-language intent; the Gateway Tribunal authors typed run_shell_command arguments that pass through MCP_CALL governance</span>
         <code>POST /api/v1/governance/envelopes</code><span>Pre-built envelopes; missing proofs are never synthesized</span>
         <code>ztd operator run</code><span>CLI dispatch to bound Operators</span>
       </div>

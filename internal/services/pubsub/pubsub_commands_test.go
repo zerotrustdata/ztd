@@ -32,6 +32,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/execution"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/governance/governancetest"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
@@ -48,7 +49,7 @@ func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) 
 		constants.ActionTypeHeartbeat, constants.ActionTypeExecuteBash, constants.ActionTypeCancel,
 		constants.ActionTypeFsList, constants.ActionTypeFsRead, constants.ActionTypeFsGrep,
 		constants.ActionTypePortCheck, constants.ActionTypeOllamaModelInventory, constants.ActionTypeOllamaModelResidency,
-		constants.ActionTypeFetchLogs, constants.ActionTypeFetchHistory, constants.ActionTypeFetchFileHistory,
+		constants.ActionTypeOllamaModelRelease, constants.ActionTypeFetchLogs, constants.ActionTypeFetchHistory, constants.ActionTypeFetchFileHistory,
 		constants.ActionTypeRestoreFile, constants.ActionTypeFetchFileDiff,
 	} {
 		t.Run(string(action), func(t *testing.T) {
@@ -120,15 +121,15 @@ func TestLocalNativeToolRouteSelectionPreservesGatewaySessionQueries(t *testing.
 // required store; the witness gate refuses or passes before any query runs.
 type unreachableAuditReceiptQuery struct{}
 
-func (unreachableAuditReceiptQuery) ListActionReceipts(models.AuditScope, int, int) ([]*models.ActionReceiptRecord, error) {
+func (unreachableAuditReceiptQuery) ListEventReceipts(models.AuditScope, int, int) ([]*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (unreachableAuditReceiptQuery) ListActionReceiptsSince(time.Time, int) ([]*models.ActionReceiptRecord, error) {
+func (unreachableAuditReceiptQuery) ListEventReceiptsSince(time.Time, int) ([]*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (unreachableAuditReceiptQuery) GetActionReceipt(string) (*models.ActionReceiptRecord, error) {
+func (unreachableAuditReceiptQuery) GetEventReceipt(string) (*models.EventReceiptRecord, error) {
 	return nil, errors.ErrUnsupported
 }
 
@@ -137,7 +138,9 @@ func (unreachableAuditReceiptQuery) GetActionReceipt(string) (*models.ActionRece
 // when the Gateway pre-check was skipped, but still serves reads of its own
 // signed audit store.
 func TestExecuteLocalNativeToolEnforcesWitnessCapability(t *testing.T) {
-	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditReceiptQuery{})
+	grep, err := execution.NewFsGrepService(testutil.TempDir(t), testutil.NewTestLogger())
+	require.NoError(t, err)
+	host, err := mcp.NewOperatorNativeToolHandler(testutil.NewTestLogger(), "operator-1", unreachableAuditReceiptQuery{}, grep)
 	require.NoError(t, err)
 	tests := []struct {
 		name         string
@@ -234,7 +237,7 @@ func TestNewOperatorPubSubService_StartsWithoutTrustedSignersButRejectsL2(t *tes
 
 func unsignedSignerEnvelope(t *testing.T, signerPriv ed25519.PrivateKey) *govpkg.GovernanceEnvelope {
 	t.Helper()
-	req := &operatorv1.FsListRequested{Path: ".", ExecutionId: "exec-1"}
+	req := &operatorv1.CommandRequested{Command: "uptime", ExecutionId: "exec-1", Justification: "test"}
 	payload, err := proto.Marshal(req)
 	require.NoError(t, err)
 	env := &govpkg.GovernanceEnvelope{
@@ -244,9 +247,9 @@ func unsignedSignerEnvelope(t *testing.T, signerPriv ed25519.PrivateKey) *govpkg
 		SourceComponent:   commonv1.Component_COMPONENT_AGENT,
 		OperatorId:        "operator-1",
 		OperatorSessionId: "session-1",
-		EventType:         string(constants.Event.Operator.FsList.Requested),
+		EventType:         string(constants.Event.Operator.Command.Requested),
 
-		ActionType:      string(constants.ActionTypeFsList),
+		ActionType:      string(constants.ActionTypeExecuteBash),
 		TargetResource:  "localhost",
 		Payload:         payload,
 		StateMerkleRoot: "test-state-root",
@@ -2156,4 +2159,24 @@ func TestOperatorPubSubService_BoundMCPGatewaySupportsConcurrentReads(t *testing
 	for result := range results {
 		assert.Same(t, gateway, result)
 	}
+}
+
+func TestGatewayNativeHistoryHostExistsWithoutOutboundOperatorID(t *testing.T) {
+
+	cfg := testutil.NewTestConfig(t)
+	cfg.OperatorID = ""
+	govDeps := validTestGatewayModeDeps(constants.PostureDoctrine)
+	svc, err := NewGatewayOperatorPubSubService(GatewayCommandServiceConfig{
+		CommandServiceConfig: withTestDeps(t, CommandServiceConfig{
+			Scrubbing:    mustNewScrubbingSvc(t, testutil.NewTestLogger()),
+			Ledger:       storagetest.NewTestLedger(t),
+			RuntimeVault: governancetest.UnlockedVault{},
+			Config:       cfg,
+			Logger:       testutil.NewTestLogger(),
+			PubSubClient: pubsubtest.NewMockOperatorPubSubClient(),
+		}),
+		GovDeps: &govDeps,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, svc.localNativeTools, "embedded runtime must construct its authoritative native history host")
 }

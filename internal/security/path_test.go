@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestValidatePath(t *testing.T) {
@@ -465,6 +467,98 @@ func TestIsShellRequiredAllMetacharacters(t *testing.T) {
 				t.Errorf("IsShellRequired(%q) = false, want true (metacharacter %s)", command, mc)
 			}
 		})
+	}
+}
+
+func TestIsSensitiveReadPath(t *testing.T) {
+	sshDir := filepath.Join(string(filepath.Separator)+"home", "user", constants.SshDirname)
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{path: constants.PathEtcShadow, want: true},
+		{path: constants.PathEtcPasswd, want: true},
+		{path: constants.PathEtcGshadow, want: true},
+		{path: constants.PathEtcSudoers, want: true},
+		{path: constants.PathEtcGroup},
+		{path: filepath.Join(sshDir, constants.SshKeyRSA), want: true},
+		{path: filepath.Join(sshDir, constants.SshKeyEd25519), want: true},
+		{path: filepath.Join(sshDir, constants.SshKeyECDSA), want: true},
+		{path: filepath.Join(sshDir, constants.SshKeyRSA+".pub")},
+		{path: filepath.Join(sshDir, constants.SshKnownHostsBasename)},
+		{path: "/srv/op/notes.txt"},
+		{path: ""},
+	} {
+		if got := IsSensitiveReadPath(tc.path); got != tc.want {
+			t.Errorf("IsSensitiveReadPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestIsSensitiveReadPathSystemCredentialVariants(t *testing.T) {
+	for _, sensitive := range []string{
+		constants.PathEtcShadow,
+		constants.PathEtcPasswd,
+		constants.PathEtcGshadow,
+		constants.PathEtcSudoers,
+	} {
+		t.Run(sensitive, func(t *testing.T) {
+			dir, base := filepath.Split(sensitive)
+			for _, tc := range []struct {
+				name string
+				path string
+				want bool
+			}{
+				{name: "canonical", path: sensitive, want: true},
+				{name: "native separators", path: filepath.FromSlash(sensitive), want: true},
+				{name: "redundant separator", path: dir + "/" + base, want: true},
+				{name: "dot segment", path: dir + "./" + base, want: true},
+				{name: "parent segment", path: dir + "child/../" + base, want: true},
+				{name: "backup file", path: sensitive + ".bak"},
+				{name: "prefixed basename", path: dir + "copy-" + base},
+				{name: "different directory", path: filepath.Join(dir, "other", base)},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					if got := IsSensitiveReadPath(tc.path); got != tc.want {
+						t.Errorf("IsSensitiveReadPath(%q) = %v, want %v", tc.path, got, tc.want)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestIsEvaluationWorkspaceSeedPath(t *testing.T) {
+	workDir := filepath.FromSlash("/srv/op")
+	if runtime.GOOS == "windows" {
+		workDir = `D:\srv\op`
+	}
+	join := func(parts ...string) string { return filepath.Join(append([]string{workDir}, parts...)...) }
+	ws := constants.EvaluationWorkspacePrefix + "0123456789abcdef"
+	for _, tc := range []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "fixture file", path: join(constants.EvaluationWorkspaceDirname, ws, "logs", "auth.log"), want: true},
+		{name: "fixture at workspace root", path: join(constants.EvaluationWorkspaceDirname, ws, "notes.txt"), want: true},
+		{name: "sentinel", path: join(constants.EvaluationWorkspaceDirname, ws+constants.EvaluationWorkspaceSentinelSuffix), want: true},
+		{name: "workspace directory itself", path: join(constants.EvaluationWorkspaceDirname, ws)},
+		{name: "workspaces directory", path: join(constants.EvaluationWorkspaceDirname)},
+		{name: "file directly in workspaces", path: join(constants.EvaluationWorkspaceDirname, "notes.txt")},
+		{name: "short digest", path: join(constants.EvaluationWorkspaceDirname, constants.EvaluationWorkspacePrefix+"0123", "a.txt")},
+		{name: "upper-case digest", path: join(constants.EvaluationWorkspaceDirname, constants.EvaluationWorkspacePrefix+"0123456789ABCDEF", "a.txt")},
+		{name: "sentinel below workspace", path: join(constants.EvaluationWorkspaceDirname, ws, "x"+constants.EvaluationWorkspaceSentinelSuffix), want: true},
+		{name: "sentinel for malformed workspace", path: join(constants.EvaluationWorkspaceDirname, "ws-x"+constants.EvaluationWorkspaceSentinelSuffix)},
+		{name: "working directory file", path: join("notes.txt")},
+		{name: "traversal out of workspace", path: join(constants.EvaluationWorkspaceDirname, ws, "..", "..", "notes.txt")},
+		{name: "sibling working directory", path: filepath.Join(filepath.Dir(workDir), "other", constants.EvaluationWorkspaceDirname, ws, "a.txt")},
+		{name: "relative path", path: filepath.Join(constants.EvaluationWorkspaceDirname, ws, "a.txt")},
+		{name: "empty", path: ""},
+	} {
+		if got := IsEvaluationWorkspaceSeedPath(tc.path, workDir); got != tc.want {
+			t.Errorf("%s: IsEvaluationWorkspaceSeedPath(%q) = %v, want %v", tc.name, tc.path, got, tc.want)
+		}
 	}
 }
 

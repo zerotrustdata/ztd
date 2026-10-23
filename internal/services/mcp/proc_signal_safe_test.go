@@ -62,6 +62,12 @@ func TestProcSignalSafeTool_Execute_InvalidArgs(t *testing.T) {
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, constants.ErrMCPProcSignalRequired))
 	})
+
+	t.Run("pid zero", func(t *testing.T) {
+		args := json.RawMessage(`{"pid": 0, "signal": "SIGKILL"}`)
+		_, err := tool.Execute(ctx, args)
+		assert.True(t, errors.Is(err, constants.ErrMCPProcSignalRequired))
+	})
 }
 
 func TestProcSignalSafeTool_Execute_Denylist(t *testing.T) {
@@ -70,20 +76,22 @@ func TestProcSignalSafeTool_Execute_Denylist(t *testing.T) {
 
 	protectedPIDs := []int{1, 2}
 	for _, pid := range protectedPIDs {
-		args := json.RawMessage(string(mustMarshal(t, map[string]interface{}{
-			"pid":    pid,
-			"signal": "SIGTERM",
-		})))
-		result, err := tool.Execute(ctx, args)
-		require.NoError(t, err)
-		require.Len(t, result.Content, 1)
+		for _, signal := range []string{"SIGTERM", "SIGKILL", "SIGINT"} {
+			args := json.RawMessage(string(mustMarshal(t, map[string]interface{}{
+				"pid":    pid,
+				"signal": signal,
+			})))
+			result, err := tool.Execute(ctx, args)
+			require.NoError(t, err)
+			require.Len(t, result.Content, 1)
 
-		var res ProcSignalSafeResult
-		err = json.Unmarshal([]byte(result.Content[0].Text), &res)
-		require.NoError(t, err)
-		assert.False(t, res.Sent)
-		assert.Equal(t, pid, res.PID)
-		assert.Contains(t, res.Error, "protected")
+			var res ProcSignalSafeResult
+			err = json.Unmarshal([]byte(result.Content[0].Text), &res)
+			require.NoError(t, err)
+			assert.False(t, res.Sent, "pid %d %s", pid, signal)
+			assert.Equal(t, pid, res.PID)
+			assert.Contains(t, res.Error, "protected")
+		}
 	}
 }
 

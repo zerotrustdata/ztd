@@ -3,8 +3,8 @@ doc_id: encryption
 title: Encryption Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/services/vault/
   - internal/services/keystore/
@@ -78,8 +78,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-ENC-SCRUB-01 | The Sovereign Execution Boundary MUST scrub outgoing payloads with strict mode enabled by default (`StrictMode: true`), replacing each sensitive value with a persisted, reversible `{{UEI_N}}` token while keys and field names stay visible. It MUST NOT emit fixed labels or blank a field, and MUST fail closed to `{{UEI_UNAVAILABLE}}` when the token cannot be persisted. |
-| INV-ENC-SCRUB-02 | Reversible User-Explicit Information (UEI) placeholders MUST follow the `{{UEI_N}}` pattern. Mapped values MUST be encrypted via the vault into the observed KV store with a 24-hour TTL under the full key `constants.SentinelKeyPrefix` (`ztd:sentinel:`) + `constants.ScrubbingTokenKeyPrefix` (`uei_token_`) + the token, for example `ztd:sentinel:uei_token_{{UEI_1}}`. L5 Actuator MUST rehydrate `{{UEI_N}}` placeholders in payload values and object keys immediately before action execution. A payload with a `{{UEI_N}}` placeholder in a value or an object key that cannot be resolved, or with two object keys that rehydrate to the same name, MUST NOT be dispatched: the handler MUST NOT run, and the receipt MUST finalize FAILED with `failure_code` `RECEIPT_FAILURE_CODE_REHYDRATION_FAILED` (signed, from `ErrScrubbingTokenUnresolved` or `ErrScrubbingKeyCollision`). |
+| INV-ENC-SCRUB-01 | The Sovereign Execution Boundary MUST scrub outgoing payloads with strict mode enabled by default (`StrictMode: true`), replacing each sensitive value with a persisted, reversible `{{UEI_<owner>_N}}` token while keys and field names stay visible. It MUST NOT emit fixed labels or blank a field, and MUST fail closed to `{{UEI_UNAVAILABLE}}` when the token cannot be persisted. |
+| INV-ENC-SCRUB-02 | Reversible User-Explicit Information (UEI) placeholders MUST follow the `{{UEI_<owner>_N}}` pattern, where `<owner>` is the minting runtime's 12-hex-character token owner, persisted without expiry under `constants.ScrubbingTokenOwnerKey` (`uei_owner`). A runtime whose owner cannot be loaded or minted MUST NOT construct its scrubber (`ErrScrubbingTokenOwner`). Mapped values MUST be encrypted via the vault into the observed KV store with a 24-hour TTL under the full key `constants.SentinelKeyPrefix` (`ztd:sentinel:`) + `constants.ScrubbingTokenKeyPrefix` (`uei_token_`) + the token, for example `ztd:sentinel:uei_token_{{UEI_3f9a0c12be47_1}}`. L5 Actuator MUST rehydrate placeholders in payload values and object keys immediately before action execution, and MUST resolve only tokens its own runtime minted: token mappings never cross runtimes. A token minted by another runtime, or one with no owner, MUST NOT resolve locally. In an `INFERENCE` payload it passes through opaque, so the model sees the placeholder. In every other action it fails the payload. A payload with an own placeholder in a value or an object key that cannot be resolved, a foreign or ownerless placeholder in a non-`INFERENCE` action, or two object keys that rehydrate to the same name, MUST NOT be dispatched: the handler MUST NOT run, and the receipt MUST finalize FAILED with `failure_code` `RECEIPT_FAILURE_CODE_REHYDRATION_FAILED` (signed, from `ErrScrubbingTokenUnresolved` or `ErrScrubbingKeyCollision`). |
 | INV-ENC-SCRUB-03 | L5 Actuator execution MUST fail closed with `ErrEgressScrubberUnavailable` if an active scrubber is unavailable when scrubbing the target resource on receipt generation. |
 
 ### Transport security (`INV-ENC-TLS`)
@@ -159,8 +159,7 @@ Vault encryption protects high-sensitivity fields across platform services:
 
 - **Execution record** (`events`, `internal/services/storage/audit_store.go`): `command_stdout` and `command_stderr` hold the full raw output, gzip-compressed and then encrypted with the vault. `command_raw` and `content_text` are encrypted. Structured metadata (exit code, duration, `execution_id`, `operator_session_id`, hashes) stays plaintext for indexing. File diffs are not stored; they are computed from encrypted ledger snapshots.
 - **Canonical Audit Store** (`internal/services/storage/audit_store.go`, `commitment_ledger.go`): Encrypted content columns of `ztd.db`. Every write encrypts through the runtime vault and fails with `ErrAuditStoreVaultLocked` when the vault is locked or absent. There is no plaintext branch and no "encrypted" flag column. Reads decrypt on the owning runtime; a locked vault fails the read. Each ciphertext is bound to its column and row identity as AES-GCM associated data (`Vault.EncryptWithAAD`), and keyed digests use `Vault.HMACSHA256`, which derives a purpose-bound subkey from the DEK with HKDF-SHA256 so the DEK itself is never a MAC key.
-  - `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr` (BLOB).
-  - `receipts`: `target_resource`, `result_summary`, `receipt_json` (BLOB). The receipt signature is verified over the decrypted canonical form.
+  - `events`: `content_text`, `command_raw`, `command_stdout`, `command_stderr`, `event_receipt_target_resource`, `event_receipt_result_summary` (BLOB). The canonical protojson ActionReceipt is `content_text` on the `ztd.v1.operator.receipt.recorded` event. The signature stays plaintext and is verified over the stable canonical signing payload, not over these columns.
   - `commitment_ledger`: `target_resource`, `attestation_json` (BLOB). Commitment hash and signature checks run over decrypted values.
   - `file_mutation_log`: `filepath`, `diff_stat` (BLOB).
   - `sessions`: `title`, `user_identity` (BLOB).
@@ -221,31 +220,32 @@ ztd combines tokenizing output scrubbing with reversible execution-site rehydrat
 ```text
 +---------------------------------------------------------------------------------+
 |                                Ingress / Model Run                              |
-|           Sensitive input registered -> Reversible placeholder {{UEI_1}}        |
+|      Sensitive input registered -> Reversible placeholder {{UEI_<owner>_1}}     |
 |           Plaintext mapped to Vault-encrypted KV under "uei_token_" (24h TTL)   |
 +---------------------------------------------------------------------------------+
                                          │
                                          ▼
 +---------------------------------------------------------------------------------+
 |                       Governance Pipeline (L1–L4 Verification)                  |
-|                Payload carries only {{UEI_1}} placeholder token                 |
+|            Payload carries only {{UEI_<owner>_1}} placeholder token             |
 |             L1 Doctrine, L2 Consensus, L3 Notary inspect scrubbed payload       |
 +---------------------------------------------------------------------------------+
                                          │
                                          ▼
 +---------------------------------------------------------------------------------+
 |                          L5 Actuator Execution Boundary                         |
-|     1. rehydratePayload: Replaces {{UEI_1}} in values and keys with plaintext   |
+|     1. rehydratePayload: Replaces own tokens in values and keys with plaintext  |
 |        via ScrubbingService.RehydratePayload(). Fail-closed: an unresolvable    |
-|        placeholder never dispatches: handler skipped, receipt FAILED            |
+|        or (outside INFERENCE) foreign placeholder never dispatches: handler     |
+|        skipped, receipt FAILED. INFERENCE keeps foreign tokens opaque           |
 |     2. Capability minting and command execution with rehydrated parameters      |
 |     3. Outbound receipt generation: Scrubber active check enforced;             |
 |        scrubs target_resource and result_summary before signing ActionReceipt   |
 +---------------------------------------------------------------------------------+
 ```
 
-1. **Tokenizing Scrubbing**: The Sovereign Execution Boundary (`internal/services/scrubbing/boundary.go`) inspects outgoing model payloads, command output, and event streams. Each detected credential, API key, private key, connection string, email address, or personal-data value (card, SSN, phone, IBAN) is replaced with its own persisted `{{UEI_N}}` token — never a fixed label and never an empty field. Only the sensitive value is tokenized: keys, field names, and surrounding operational text stay visible (`password={{UEI_3}}`, `{"password":"{{UEI_3}}","user":"svc-deploy"}`). Strict mode (`StrictMode: true`, enabled by default) adds a key/value pass over sensitive key names. Existing tokens are never re-tokenized. If the token cannot be persisted, the value becomes `{{UEI_UNAVAILABLE}}` (fail closed, no plaintext). Constructing an enabled scrubber that requires persistence without a token store fails with `ErrScrubbingTokenStoreUnavailable`.
-2. **Reversible UEI Rehydration**: Callers register sensitive input strings to obtain a `{{UEI_N}}` token matching `regexp.MustCompile(\`\\{\\{UEI_\\d+\\}\\}\`)`. The value is encrypted into the observed KV store via `EncryptedKVAdapter` with a 24-hour expiration under the full key `constants.SentinelKeyPrefix` (`ztd:sentinel:`) + `constants.ScrubbingTokenKeyPrefix` (`uei_token_`) + the token. Immediately prior to action execution, the L5 Actuator (`internal/services/governance/l5_actuator.go`) rehydrates `{{UEI_N}}` placeholders with original un-scrubbed values via `rehydratePayload`. Rehydration is fail-closed. If `RehydratePayload` returns an error, the actuator does not dispatch: the execution handler never runs, and the receipt finalizes FAILED with the rehydration error as its cause (`ErrL5ActuatorRehydrate`). `RehydrateText` resolves a token from the in-memory map, then from the token store. A placeholder that resolves from neither, or whose store lookup fails (for example a locked vault), returns an error wrapping `ErrScrubbingTokenUnresolved`; the text is never returned with the placeholder left in it, and a payload with one unresolved placeholder is never partially rehydrated. Tokens expire from the store after 24 hours, so after a restart a placeholder minted longer ago fails closed rather than reaching the handler. Object keys are rehydrated through the same resolver as values, because `ScrubText` scans the whole payload text and can tokenize an email-shaped key (for example `{"bob@x.io":1}` becomes `{"{{UEI_1}}":1}`). An unresolved key fails the whole payload. Two distinct keys that rehydrate to the same name fail the whole payload with `ErrScrubbingKeyCollision`, because keeping one would silently overwrite the other.
+1. **Tokenizing Scrubbing**: The Sovereign Execution Boundary (`internal/services/scrubbing/boundary.go`) inspects outgoing model payloads, command output, and event streams. Each detected credential, API key, private key, connection string, email address, or personal-data value (card, SSN, phone, IBAN) is replaced with its own persisted `{{UEI_<owner>_N}}` token — never a fixed label and never an empty field. `<owner>` is the runtime's token owner: 6 random bytes, hex-encoded, minted by the first scrubber on the runtime's store and persisted without expiry under `constants.ScrubbingTokenOwnerKey`. The Gateway and its embedded Operator share one owner; each outbound Operator has its own. Only the sensitive value is tokenized: keys, field names, and surrounding operational text stay visible (`password={{UEI_3f9a0c12be47_3}}`, `{"password":"{{UEI_3f9a0c12be47_3}}","user":"svc-deploy"}`). Strict mode (`StrictMode: true`, enabled by default) adds a key/value pass over sensitive key names. Existing tokens are never re-tokenized. If the token cannot be persisted, the value becomes `{{UEI_UNAVAILABLE}}` (fail closed, no plaintext). Constructing an enabled scrubber that requires persistence without a token store fails with `ErrScrubbingTokenStoreUnavailable`.
+2. **Reversible UEI Rehydration**: Callers register sensitive input strings to obtain a `{{UEI_<owner>_N}}` token. The value is encrypted into the observed KV store via `EncryptedKVAdapter` with a 24-hour expiration under the full key `constants.SentinelKeyPrefix` (`ztd:sentinel:`) + `constants.ScrubbingTokenKeyPrefix` (`uei_token_`) + the token. Immediately prior to action execution, the L5 Actuator (`internal/services/governance/l5_actuator.go`) rehydrates placeholders with original un-scrubbed values via `rehydratePayload`. Only tokens that name the executing runtime's owner resolve; plaintext mappings never cross runtimes, so a token minted elsewhere can never select a local secret. A foreign or ownerless token (for example a Data Operator's token in a tool result carried into the next turn on a dedicated Inference Operator) is governed by a typed `scrubbing.ForeignTokenPolicy`: `INFERENCE` uses `ForeignTokenOpaque`, which leaves the placeholder in the prompt so no other runtime's secret reaches a model provider; every other action uses `ForeignTokenReject`, which fails the payload with `ErrScrubbingTokenUnresolved`. Rehydration is fail-closed. If `RehydratePayload` returns an error, the actuator does not dispatch: the execution handler never runs, and the receipt finalizes FAILED with the rehydration error as its cause (`ErrL5ActuatorRehydrate`). `RehydrateText` resolves a token from the in-memory map, then from the token store. A placeholder that resolves from neither, or whose store lookup fails (for example a locked vault), returns an error wrapping `ErrScrubbingTokenUnresolved`; the text is never returned with the placeholder left in it, and a payload with one unresolved placeholder is never partially rehydrated. Tokens expire from the store after 24 hours, so after a restart a placeholder minted longer ago fails closed rather than reaching the handler. Object keys are rehydrated through the same resolver as values, because `ScrubText` scans the whole payload text and can tokenize an email-shaped key (for example `{"bob@x.io":1}` becomes `{"{{UEI_3f9a0c12be47_1}}":1}`). An unresolved key fails the whole payload. Two distinct keys that rehydrate to the same name fail the whole payload with `ErrScrubbingKeyCollision`, because keeping one would silently overwrite the other.
 3. **Outbound Receipt Scrubbing**: Before signing, L5 Actuator scrubs `target_resource` on a copy of the envelope and scrubs result summaries and failure causes. Without an active scrubber, the target resource fails closed with `ErrEgressScrubberUnavailable`, and result text is replaced with the typed status.
 
 ## TLS and Certificate Protection
@@ -322,8 +322,9 @@ Load the host's key source first (on Linux without a Secret Service keyring, `ev
 - **Hardcoding encryption keys**: Storing plaintext private keys or DEKs in configuration files or source code.
 - **Bypassing platform keystore for CA keys**: Writing unencrypted CA or service private key files to disk outside the keystore.
 - **Relying on CLI vault status for Gateway state**: Expecting `./ztd vault status` to report the running Gateway's memory state rather than the CLI process state.
-- **Assuming UEI rehydration is automatic for all scrubbed data**: Expecting scrubbed text that is not a `{{UEI_N}}` token (for example the `{{UEI_UNAVAILABLE}}` marker) to rehydrate automatically at execution time.
-- **Allowing unverified execution when rehydration fails**: Failing to fail closed when `rehydratePayload` cannot resolve a `{{UEI_N}}` token.
+- **Assuming UEI rehydration is automatic for all scrubbed data**: Expecting scrubbed text that is not a UEI token (for example the `{{UEI_UNAVAILABLE}}` marker), or a token another runtime minted, to rehydrate automatically at execution time.
+- **Sharing token mappings across runtimes**: Copying UEI mappings to another runtime so its tokens resolve there. That spreads plaintext; a foreign token stays opaque in `INFERENCE` and fails closed elsewhere.
+- **Allowing unverified execution when rehydration fails**: Failing to fail closed when `rehydratePayload` cannot resolve a UEI token.
 - **Editing generated crypto code or docs out of sync**: Changing crypto algorithms without updating owning packages and documentation.
 
 ## Links out

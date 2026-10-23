@@ -158,14 +158,17 @@ func bindFormationRole(stackID string, role FormationRole, slot *evalv1.RoleAssi
 	if variant == nil {
 		return FormationModel{}, fmt.Errorf("formation %q role %s: variant %q not in frozen registry: %w", stackID, role, slot.GetVariantId(), constants.ErrFormationRegistryBinding)
 	}
-	model := formationModelFromVariant(variant)
+	model := FormationModelFromVariant(variant)
 	if model.Trust == FormationTrustSovereign && model.ModelDigest == "" {
 		return FormationModel{}, fmt.Errorf("formation %q role %s: %w", stackID, role, constants.ErrFormationAttestationRequired)
 	}
 	return model, nil
 }
 
-func formationModelFromVariant(variant *evalv1.ModelVariant) FormationModel {
+// FormationModelFromVariant derives a role binding from one model-inventory
+// variant. Provider defaults to the model family, and sovereign VRAM is
+// estimated from the parameter count and quantization.
+func FormationModelFromVariant(variant *evalv1.ModelVariant) FormationModel {
 	if variant == nil {
 		return FormationModel{}
 	}
@@ -183,19 +186,26 @@ func formationModelFromVariant(variant *evalv1.ModelVariant) FormationModel {
 		family = variant.GetVariantId()
 	}
 	quantization := variant.GetQuantization()
-	if quantization == "" && trust == FormationTrustSovereign {
-		quantization = "Q4_K_M"
+	var modelVRAM, kvCacheVRAM uint64
+	if trust == FormationTrustSovereign {
+		if quantization == "" {
+			quantization = "Q4_K_M"
+		}
+		modelVRAM = EstimateFormationModelVRAMMiB(variant.GetParameterCount(), quantization)
+		kvCacheVRAM = EstimateFormationKVCacheMiB(variant.GetParameterCount())
 	}
 	return FormationModel{
-		VariantID:      variant.GetVariantId(),
-		DisplayName:    variant.GetServedModelTag(),
-		Provider:       provider,
-		Family:         family,
-		ProviderClass:  providerClass,
-		ServedModelTag: variant.GetServedModelTag(),
-		Trust:          trust,
-		Quantization:   quantization,
-		ParameterCount: variant.GetParameterCount(),
-		ModelDigest:    variant.GetModelDigest(),
+		VariantID:             variant.GetVariantId(),
+		DisplayName:           variant.GetServedModelTag(),
+		Provider:              provider,
+		Family:                family,
+		ProviderClass:         providerClass,
+		ServedModelTag:        variant.GetServedModelTag(),
+		Trust:                 trust,
+		Quantization:          quantization,
+		ParameterCount:        variant.GetParameterCount(),
+		EstimatedModelVRAMMiB: modelVRAM,
+		EstimatedKVCacheMiB:   kvCacheVRAM,
+		ModelDigest:           variant.GetModelDigest(),
 	}
 }

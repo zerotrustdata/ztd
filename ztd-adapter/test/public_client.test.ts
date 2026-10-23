@@ -35,6 +35,9 @@ describe('public spectator typed client', () => {
     await expect(client.proofCatalog('deployment-a')).resolves.toMatchObject({ entries: [{ filename: 'proof.db' }] });
     expect(fetchImpl.mock.calls[3]?.[0]).toBe('https://feed.example.com/snapshot?source=deployment-a&sequence=20');
     expect(fetchImpl.mock.calls[4]?.[0]).toBe('https://feed.example.com/proof-catalog?source=deployment-a');
+    responses.push({ schema_version: '1.0.0', generated_at: '2026-09-13T00:00:00Z', entries: [] });
+    await expect(client.proofCatalogEntry('deployment-a', artifactID)).resolves.toMatchObject({ entries: [] });
+    expect(fetchImpl.mock.calls[5]?.[0]).toBe(`https://feed.example.com/proof-catalog?source=deployment-a&artifact=${artifactID}`);
     for (const call of fetchImpl.mock.calls) expect(call[1]).toMatchObject({ credentials: 'omit', method: 'GET' });
   });
 

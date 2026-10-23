@@ -58,6 +58,7 @@ func testCampaignInitRequest(t *testing.T) CampaignInitRequest {
 	require.NoError(t, err)
 	return CampaignInitRequest{
 		Platform:                   testPlatform,
+		Governance:                 testGovernance,
 		CampaignID:                 "smoke-campaign",
 		RunID:                      "run-smoke-1",
 		Catalog:                    catalog,

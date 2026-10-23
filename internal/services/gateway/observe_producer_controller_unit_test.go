@@ -479,6 +479,13 @@ func TestObserveProducerController_HandleRunState_InvalidTransitionRejected(t *t
 	controller.handleRunState(regressW, regressReq)
 
 	assert.Equal(t, http.StatusBadRequest, regressW.Code)
+	var rejection models.ObserveProducerRejection
+	require.NoError(t, json.Unmarshal(regressW.Body.Bytes(), &rejection), "body: %s", regressW.Body.String())
+	assert.Equal(t, models.ObserveProducerRejectionInvalidTransition, rejection.Code)
+	assert.Equal(t, &models.ObserveTransitionError{
+		Kind: models.ObserveProjectionKindRun, ID: "run-trans",
+		From: string(models.RunLifecycleStatusCompleted), To: string(models.RunLifecycleStatusRunning),
+	}, rejection.Transition)
 }
 
 func TestObserveProducerController_HandleAgentState_StaleUpdateRejected(t *testing.T) {

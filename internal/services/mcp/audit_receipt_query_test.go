@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -20,6 +21,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/jsonschema"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
+	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -27,9 +31,9 @@ import (
 // for unit testing the audit receipt native tools. It returns canned records
 // and records the arguments it was called with so tests can assert dispatch.
 type stubAuditReceiptQuery struct {
-	listBySession []*models.ActionReceiptRecord
-	listSince     []*models.ActionReceiptRecord
-	getByID       map[string]*models.ActionReceiptRecord
+	listBySession []*models.EventReceiptRecord
+	listSince     []*models.EventReceiptRecord
+	getByID       map[string]*models.EventReceiptRecord
 	listErr       error
 	listSinceErr  error
 	getErr        error
@@ -46,7 +50,7 @@ type stubAuditReceiptQuery struct {
 	lastGetID             string
 }
 
-func (s *stubAuditReceiptQuery) ListActionReceipts(scope models.AuditScope, limit, offset int) ([]*models.ActionReceiptRecord, error) {
+func (s *stubAuditReceiptQuery) ListEventReceipts(scope models.AuditScope, limit, offset int) ([]*models.EventReceiptRecord, error) {
 	s.listCalls++
 	s.lastListSession = scope.OperatorSessionID
 	s.lastListInvestigation = scope.InvestigationID
@@ -60,7 +64,7 @@ func (s *stubAuditReceiptQuery) ListActionReceipts(scope models.AuditScope, limi
 	return s.listBySession, nil
 }
 
-func (s *stubAuditReceiptQuery) ListActionReceiptsSince(since time.Time, limit int) ([]*models.ActionReceiptRecord, error) {
+func (s *stubAuditReceiptQuery) ListEventReceiptsSince(since time.Time, limit int) ([]*models.EventReceiptRecord, error) {
 	s.lastSinceTime = since
 	s.lastSinceLimit = limit
 	if s.listSinceErr != nil {
@@ -69,7 +73,7 @@ func (s *stubAuditReceiptQuery) ListActionReceiptsSince(since time.Time, limit i
 	return s.listSince, nil
 }
 
-func (s *stubAuditReceiptQuery) GetActionReceipt(transactionID string) (*models.ActionReceiptRecord, error) {
+func (s *stubAuditReceiptQuery) GetEventReceipt(transactionID string) (*models.EventReceiptRecord, error) {
 	s.lastGetID = transactionID
 	if s.getErr != nil {
 		return nil, s.getErr
@@ -77,8 +81,8 @@ func (s *stubAuditReceiptQuery) GetActionReceipt(transactionID string) (*models.
 	return s.getByID[transactionID], nil
 }
 
-func sampleReceiptRecord(txID, _ string, actionType string, executedAt time.Time, _ operatorv1.ExecutionStatus) *models.ActionReceiptRecord {
-	return &models.ActionReceiptRecord{
+func sampleReceiptRecord(txID, _ string, actionType string, executedAt time.Time, _ operatorv1.ExecutionStatus) *models.EventReceiptRecord {
+	return &models.EventReceiptRecord{
 		TransactionID:     txID,
 		TransactionHash:   "hash-" + txID,
 		OperatorID:        "op-1",
@@ -127,7 +131,7 @@ func TestAuditReceiptListTool_InputSchemaAcceptsOperatorLocalSessionlessQuery(t 
 func TestAuditReceiptListTool_Execute_Success(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	stub := &stubAuditReceiptQuery{
-		listBySession: []*models.ActionReceiptRecord{
+		listBySession: []*models.EventReceiptRecord{
 			sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 			sampleReceiptRecord("tx-2", "sess-1", "DOCUMENT_UPDATE", now.Add(-time.Minute), operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 		},
@@ -184,9 +188,9 @@ func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing
 	receipt := sampleReceiptRecord("tx-command", "session-old", "EXECUTE_BASH", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
 	receipt.ActionReceipt = &operatorv1.ActionReceipt{TransactionId: "tx-command", Signature: "sig-tx-command"}
 	stub := &stubAuditReceiptQuery{
-		listBySession: []*models.ActionReceiptRecord{receipt},
+		listBySession: []*models.EventReceiptRecord{receipt},
 	}
-	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub)
+	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub, newTestFsGrep(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 	args, err := json.Marshal(AuditReceiptListRequest{
 		InvestigationID:   "investigation-1",
@@ -211,7 +215,7 @@ func TestOperatorNativeToolHandler_AuditReceiptListUsesLocalAuthority(t *testing
 
 func TestOperatorNativeToolHandler_AuditReceiptListRequiresInvestigation(t *testing.T) {
 	stub := &stubAuditReceiptQuery{}
-	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub)
+	handler, err := NewOperatorNativeToolHandler(nil, "op-1", stub, newTestFsGrep(t, testutil.TempDir(t)))
 	require.NoError(t, err)
 
 	_, err = handler.HandleTool(context.Background(), "audit_receipt_list", json.RawMessage(`{"operator_session_id":"session-1"}`))
@@ -231,16 +235,19 @@ func TestOperatorNativeToolHandler_AuditReceiptListRequiresInvestigation(t *test
 }
 
 func TestNewOperatorNativeToolHandler_RequiresIdentityAndLocalStore(t *testing.T) {
-	_, err := NewOperatorNativeToolHandler(nil, "", &stubAuditReceiptQuery{})
+	grep := newTestFsGrep(t, testutil.TempDir(t))
+	_, err := NewOperatorNativeToolHandler(nil, "", &stubAuditReceiptQuery{}, grep)
 	require.ErrorIs(t, err, constants.ErrOperatorIDMissing)
-	_, err = NewOperatorNativeToolHandler(nil, "op-1", nil)
+	_, err = NewOperatorNativeToolHandler(nil, "op-1", nil, grep)
 	require.ErrorIs(t, err, constants.ErrMCPAuditReceiptQueryNotConfigured)
+	_, err = NewOperatorNativeToolHandler(nil, "op-1", &stubAuditReceiptQuery{}, nil)
+	require.ErrorIs(t, err, constants.ErrMCPFsGrepNotConfigured)
 }
 
 func TestAuditReceiptListTool_Execute_ActionTypeFilter(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	stub := &stubAuditReceiptQuery{
-		listBySession: []*models.ActionReceiptRecord{
+		listBySession: []*models.EventReceiptRecord{
 			sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 			sampleReceiptRecord("tx-2", "sess-1", "DOCUMENT_UPDATE", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 		},
@@ -262,7 +269,7 @@ func TestAuditReceiptListTool_Execute_ActionTypeFilter(t *testing.T) {
 func TestAuditReceiptListTool_Execute_NotBeforeFilter(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	stub := &stubAuditReceiptQuery{
-		listBySession: []*models.ActionReceiptRecord{
+		listBySession: []*models.EventReceiptRecord{
 			sampleReceiptRecord("tx-old", "sess-1", "FILE_EDIT", now.Add(-2*time.Hour), operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 			sampleReceiptRecord("tx-new", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 		},
@@ -282,6 +289,42 @@ func TestAuditReceiptListTool_Execute_NotBeforeFilter(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &lr))
 	require.Len(t, lr.Receipts, 1)
 	assert.Equal(t, "tx-new", lr.Receipts[0].TransactionID)
+}
+
+// The egress scrub keeps a receipt list decodable: deterministic stage timings
+// shaped like phone (10-digit) and card (16-digit) numbers stay numbers.
+func TestAuditReceiptListTool_Execute_ScrubbedResultDecodes(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	record := sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
+	record.ActionReceipt = &operatorv1.ActionReceipt{
+		TransactionId:    "tx-1",
+		ExecutedAtUnixMs: now.UnixMilli(),
+		SignerKeyId:      "key-1",
+		Signature:        "sig-tx-1",
+		DeterministicStageEvidence: []*operatorv1.DeterministicStageEvidence{{
+			StageId:          "tx-1:DETERMINISTIC_STAGE_KIND_L1_DOCTRINE",
+			Kind:             operatorv1.DeterministicStageKind_DETERMINISTIC_STAGE_KIND_L1_DOCTRINE,
+			MonotonicStartNs: 5551234567,
+			MonotonicEndNs:   4111111111111111,
+			ClockDomain:      "ztd-operator-process",
+		}},
+	}
+	stub := &stubAuditReceiptQuery{listBySession: []*models.EventReceiptRecord{record}}
+	ctx := withAuditReceiptQuery(context.Background(), stub)
+	args, _ := json.Marshal(AuditReceiptListRequest{OperatorSessionID: "sess-1"})
+
+	result, err := (&AuditReceiptListTool{}).Execute(ctx, args)
+	require.NoError(t, err)
+	scrubber, err := scrubbing.NewScrubbingService(context.Background(), scrubbing.DefaultConfig(), slog.Default(), storagetest.NewTestTokenStore())
+	require.NoError(t, err)
+	scrubbed := scrubber.ScrubText(context.Background(), result.Content[0].Text)
+
+	var lr AuditReceiptListResult
+	require.NoError(t, json.Unmarshal([]byte(scrubbed), &lr), scrubbed)
+	require.Len(t, lr.Receipts, 1)
+	stage := lr.Receipts[0].ActionReceipt.GetDeterministicStageEvidence()[0]
+	assert.Equal(t, int64(5551234567), stage.GetMonotonicStartNs())
+	assert.Equal(t, int64(4111111111111111), stage.GetMonotonicEndNs())
 }
 
 func TestAuditReceiptListTool_Execute_Pagination(t *testing.T) {
@@ -360,7 +403,7 @@ func TestAuditReceiptGetTool_Name_Description_Schema(t *testing.T) {
 func TestAuditReceiptGetTool_Execute_Success(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	rec := sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
-	stub := &stubAuditReceiptQuery{getByID: map[string]*models.ActionReceiptRecord{"tx-1": rec}}
+	stub := &stubAuditReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-1": rec}}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
 	args, _ := json.Marshal(AuditReceiptGetRequest{TransactionID: "tx-1"})
 
@@ -379,7 +422,7 @@ func TestAuditReceiptGetTool_Execute_Success(t *testing.T) {
 }
 
 func TestAuditReceiptGetTool_Execute_NotFound(t *testing.T) {
-	stub := &stubAuditReceiptQuery{getByID: map[string]*models.ActionReceiptRecord{}}
+	stub := &stubAuditReceiptQuery{getByID: map[string]*models.EventReceiptRecord{}}
 	ctx := withAuditReceiptQuery(context.Background(), stub)
 	args, _ := json.Marshal(AuditReceiptGetRequest{TransactionID: "missing"})
 
@@ -439,7 +482,7 @@ func TestNativeToolHandler_SetAuditReceiptQuery(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	stub := &stubAuditReceiptQuery{
-		listBySession: []*models.ActionReceiptRecord{
+		listBySession: []*models.EventReceiptRecord{
 			sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 		},
 	}

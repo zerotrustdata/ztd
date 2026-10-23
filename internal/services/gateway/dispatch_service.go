@@ -215,6 +215,11 @@ type DispatchRequest struct {
 	// OnInferenceProgress receives bounded provider progress telemetry while
 	// waiting for the authoritative terminal completion.
 	OnInferenceProgress func(*operatorv1.InferenceProgressEvent) error
+
+	// OnAdmitted runs once the envelope holds every admission proof (any L2
+	// votes and L3 approval) and before it is published. An error stops the
+	// dispatch before publish.
+	OnAdmitted func(ctx context.Context) error
 }
 
 // DispatchResult is the output of a successful command dispatch. Receipt
@@ -245,6 +250,27 @@ type operatorSessionValidator interface {
 // proceeds without L2 votes (failing closed at L4 verification where L2 is enforced).
 type L2ConsensusDeliberator interface {
 	Deliberate(ctx context.Context, envelopeBytes []byte) ([]byte, error)
+}
+
+// ConsensusMemberSigner signs with a Tribunal consensus member's sealed app
+// signing key. The Gateway host owns the keys (internal/cli/serve implements
+// it); a missing or unsealable key is constants.ErrConsensusMemberKeyUnavailable,
+// never a plaintext fallback.
+type ConsensusMemberSigner interface {
+	Sign(memberAppID string, payload []byte) ([]byte, error)
+	// HasKey reports whether memberAppID's sealed key is present and unseals here.
+	HasKey(memberAppID string) bool
+}
+
+// admit runs req.OnAdmitted once the envelope holds every admission proof.
+func admit(ctx context.Context, req DispatchRequest) error {
+	if req.OnAdmitted == nil {
+		return nil
+	}
+	if err := req.OnAdmitted(ctx); err != nil {
+		return fmt.Errorf("dispatch: admitted: %w", err)
+	}
+	return nil
 }
 
 // DispatchService constructs a GovernanceEnvelope, publishes it to an operator's
@@ -368,7 +394,9 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 	//    envelope with L2 metadata populated. A nil deliberator skips
 	//    deliberation; the envelope fails closed at L4 verification where
 	//    L2 is enforced. A deliberation error fails closed before publish.
-	if governance.L2Enforced(actionType, d.posture) && d.l2Deliberator != nil {
+	//    A Tribunal member's own vote inference is never L2-enforced
+	//    (INFERENCE changes no state), so L2 cannot recurse into itself.
+	if governance.L2Enforced(env, d.posture) && d.l2Deliberator != nil {
 		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)
@@ -391,6 +419,10 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 			d.approvals.finish(env.Id, pending, nil, err)
 			return nil, err
 		}
+		if err := admit(ctx, req); err != nil {
+			d.approvals.finish(env.Id, pending, nil, err)
+			return nil, err
+		}
 		ctx = context.WithValue(ctx, constants.ContextKeyStateMerkleRoot, resumed.GetStateMerkleRoot())
 		result, err := d.dispatchEnvelope(ctx, op, resumed, wire, req)
 		receipt := governance.FailedReceipt(err)
@@ -399,6 +431,9 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (*D
 		}
 		d.approvals.finish(env.Id, pending, receipt, err)
 		return result, err
+	}
+	if err := admit(ctx, req); err != nil {
+		return nil, err
 	}
 	return d.dispatchEnvelope(ctx, op, env, wire, req)
 }
@@ -937,6 +972,9 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 	if err := proto.Unmarshal(cmdEnv.Payload, request); err != nil {
 		return nil, fmt.Errorf("dispatch: %w: %v", constants.ErrInferenceResultDecode, err)
 	}
+	if err := models.ValidateDecisionCompletion(request.GetDecision(), result); err != nil {
+		return nil, fmt.Errorf("dispatch: %w", err)
+	}
 	if result.GetProviderAttemptId() != request.GetProviderAttemptId() ||
 		(request.GetModel() != "" && result.GetRequestedModel() != request.GetModel()) ||
 		result.GetRequestedModelDigest() != request.GetModelDigest() ||
@@ -974,6 +1012,14 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 // falls back to the generic execution-failure sentinel.
 func inferenceReceiptFailureError(receipt *operatorv1.ActionReceipt) error {
 	switch receipt.FailureCode {
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID:
+		return constants.ErrInferenceDecisionRequestInvalid
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID:
+		return constants.ErrInferenceDecisionResponseInvalid
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED:
+		return constants.ErrInferenceDecisionUnsupported
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED:
+		return constants.ErrInferenceHostedNotAllowed
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED:
 		return constants.ErrInferenceGovernanceRejected
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED:

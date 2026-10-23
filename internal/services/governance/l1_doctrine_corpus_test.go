@@ -35,9 +35,9 @@ func TestL1DoctrineCorpus_WellFormed(t *testing.T) {
 			benign++
 		}
 	}
-	require.Len(t, corpus.Entries, 70, "corpus entry count")
-	require.Len(t, corpus.Attacks(), 49, "corpus attack count")
-	require.Equal(t, 21, benign, "corpus benign count")
+	require.Len(t, corpus.Entries, 75, "corpus entry count")
+	require.Len(t, corpus.Attacks(), 52, "corpus attack count")
+	require.Equal(t, 23, benign, "corpus benign count")
 }
 
 // TestL1DoctrineCorpus_ExecuteBashScreening runs every corpus command through the

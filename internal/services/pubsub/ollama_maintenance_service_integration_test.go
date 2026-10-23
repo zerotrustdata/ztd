@@ -10,6 +10,7 @@
 package pubsub
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -268,4 +269,85 @@ func TestOllamaMaintenanceService_BackendTargetsConfiguredEndpoint(t *testing.T)
 
 	require.Len(t, hits, 1, "residency must be a single read-only provider query")
 	assert.Equal(t, "GET /api/ps", <-hits)
+}
+
+func TestOllamaMaintenanceService_HandleReleaseRequest_PublishesTypedRelease(t *testing.T) {
+	released := make(chan string, 4)
+	env := newOllamaMaintenanceEnv(t, fakeOllama(t, map[string]http.HandlerFunc{
+		"/api/generate": func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				Model string `json:"model"`
+			}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			released <- body.Model
+			_, _ = w.Write([]byte(`{"model":"` + body.Model + `","done":true,"done_reason":"unload"}`))
+		},
+		"/api/ps": ollamaJSON(`{"models":[]}`),
+	}))
+
+	env.svc.HandleReleaseRequest(t.Context(), ollamaReleaseMessage(t, "exec-88", "qwen3:0.6b", "qwen3:1.7b"))
+
+	var result operatorv1.OllamaModelReleaseResult
+	envelope := env.publishedResult(t, &result)
+	assert.Equal(t, string(constants.Event.Operator.OllamaModelRelease.Completed), envelope.EventType)
+	assert.Equal(t, "exec-88", result.ExecutionId)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
+	require.Len(t, released, 2, "every requested tag must be unloaded")
+	assert.Equal(t, "qwen3:0.6b", <-released)
+	assert.Equal(t, "qwen3:1.7b", <-released)
+}
+
+func TestOllamaMaintenanceService_HandleReleaseRequest_PublishesTypedFailure(t *testing.T) {
+	tests := []struct {
+		name      string
+		endpoint  func(t *testing.T) string
+		message   func(t *testing.T) *PubSubCommandMessage
+		wantError string
+	}{
+		{
+			name: "undecodable request payload",
+			endpoint: func(t *testing.T) string {
+				return fakeOllama(t, map[string]http.HandlerFunc{"/api/ps": ollamaJSON(`{"models":[]}`)})
+			},
+			message: func(t *testing.T) *PubSubCommandMessage {
+				return ollamaWithPayload(ollamaReleaseMessage(t, "", "qwen3:0.6b"), []byte{0xff, 0xff})
+			},
+			wantError: "invalid request payload",
+		},
+		{
+			name: "empty release set is rejected before any provider call",
+			endpoint: func(t *testing.T) string {
+				return fakeOllama(t, map[string]http.HandlerFunc{"/api/ps": ollamaJSON(`{"models":[]}`)})
+			},
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaReleaseMessage(t, "") },
+			wantError: "at least one model tag is required",
+		},
+		{
+			name: "option-like or shell-shaped tag is rejected before any provider call",
+			endpoint: func(t *testing.T) string {
+				return fakeOllama(t, map[string]http.HandlerFunc{"/api/ps": ollamaJSON(`{"models":[]}`)})
+			},
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaReleaseMessage(t, "", "qwen3:0.6b;whoami") },
+			wantError: constants.ErrInferenceModelTagInvalid.Error(),
+		},
+		{
+			name:      "provider endpoint is not configured",
+			endpoint:  func(*testing.T) string { return "" },
+			message:   func(t *testing.T) *PubSubCommandMessage { return ollamaReleaseMessage(t, "", "qwen3:0.6b") },
+			wantError: constants.ErrInferenceEndpointInvalid.Error(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newOllamaMaintenanceEnv(t, tt.endpoint(t))
+
+			env.svc.HandleReleaseRequest(t.Context(), tt.message(t))
+
+			var result operatorv1.CommandResult
+			envelope := env.publishedResult(t, &result)
+			assert.Equal(t, string(constants.Event.Operator.OllamaModelRelease.Failed), envelope.EventType)
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
+			assert.Contains(t, result.Error, tt.wantError)
+		})
+	}
 }

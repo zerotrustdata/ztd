@@ -8,8 +8,10 @@
 package models
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
+	"unicode"
 
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -44,10 +46,51 @@ type RunShellCommandRequest struct {
 	Hostnames  []string `json:"hostnames,omitempty"`
 }
 
+// ValidExecutableName reports whether command names one executable that
+// runs directly without a shell: non-empty and free of whitespace.
+func ValidExecutableName(command string) bool {
+	return command != "" && !strings.ContainsFunc(command, unicode.IsSpace)
+}
+
 // CommandLine returns the command and its arguments as the single
 // space-joined line that safety and doctrine checks screen.
 func (r RunShellCommandRequest) CommandLine() string {
 	return strings.Join(append([]string{r.Command}, r.Args...), " ")
+}
+
+// CanonicalJSON returns the stable JSON representation of this request.
+// Hostnames are retained when supplied; Tribunal authoring rejects them
+// because the shared typed protocol contract intentionally excludes hosts.
+func (r RunShellCommandRequest) CanonicalJSON() string {
+	// This fixed struct contains only JSON-safe scalar and slice types, so
+	// json.Marshal cannot fail. Re-marshalling through a map sorts keys, the
+	// canonical object form the inference and evaluation verifiers require.
+	b, _ := json.Marshal(r)
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(b, &fields)
+	canonical, _ := json.Marshal(fields)
+	return string(canonical)
+}
+
+// Proto converts the native request to the shared execution argument type.
+// Hostnames are intentionally not represented in that shared contract.
+func (r RunShellCommandRequest) Proto() *operatorv1.RunShellCommandArguments {
+	return &operatorv1.RunShellCommandArguments{
+		Command: r.Command, Args: append([]string(nil), r.Args...),
+		Timeout: int32(r.Timeout), WorkingDir: r.WorkingDir,
+	}
+}
+
+// RunShellCommandRequestFromProto converts shared typed arguments to the
+// native tool request.
+func RunShellCommandRequestFromProto(p *operatorv1.RunShellCommandArguments) RunShellCommandRequest {
+	if p == nil {
+		return RunShellCommandRequest{}
+	}
+	return RunShellCommandRequest{
+		Command: p.Command, Args: append([]string(nil), p.Args...),
+		Timeout: int(p.Timeout), WorkingDir: p.WorkingDir,
+	}
 }
 
 // ExecutionResult is the domain type for command execution results.

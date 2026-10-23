@@ -75,6 +75,16 @@ func fsReadPayload(t *testing.T) []byte {
 	return b
 }
 
+// commandPayload builds an L1-clean CommandRequested: a state change, so L2
+// gates it under a posture that requires L2.
+func commandPayload(t *testing.T) []byte {
+	t.Helper()
+	msg := &operatorv1.CommandRequested{Command: "uptime", ExecutionId: "exec-1", Justification: "test"}
+	b, err := proto.Marshal(msg)
+	require.NoError(t, err)
+	return b
+}
+
 // maliciousCommandPayload builds a CommandRequested whose command string
 // triggers an L1 doctrine forbidden-pattern violation.
 func maliciousCommandPayload(t *testing.T) []byte {
@@ -216,10 +226,11 @@ func TestBuildGovernanceEnvelope_RatifyAllowsReadOnly(t *testing.T) {
 }
 
 // TestDispatchService_PostureTable_L2Deliberation proves that the DispatchService
-// invokes the L2 deliberator after envelope construction under postures that
-// require L2 signatures (consensus, notary) and does not invoke it under
-// postures that do not (doctrine, ratify). Under notary, the mutation is
-// rejected before deliberation because the path cannot mint L3 proofs.
+// invokes the L2 deliberator after envelope construction for a state change
+// under postures that require L2 signatures (consensus, notary) and does not
+// invoke it under postures that do not (doctrine, ratify), nor for a read under
+// any posture. Under notary, the mutation is rejected before deliberation
+// because the path cannot mint L3 proofs.
 func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	op := &operatorv1.OperatorDocument{Id: "op-001", OperatorSessionId: "sess-001"}
@@ -245,10 +256,16 @@ func TestDispatchService_PostureTable_L2Deliberation(t *testing.T) {
 			payload: fsReadPayload,
 		},
 		{
-			name:            "consensus read deliberates",
+			name:    "consensus read does not deliberate",
+			posture: constants.PostureConsensus,
+			event:   constants.Event.Operator.FsRead.Requested,
+			payload: fsReadPayload,
+		},
+		{
+			name:            "consensus state change deliberates",
 			posture:         constants.PostureConsensus,
-			event:           constants.Event.Operator.FsRead.Requested,
-			payload:         fsReadPayload,
+			event:           constants.Event.Operator.Command.Requested,
+			payload:         commandPayload,
 			wantDeliberated: true,
 		},
 		{
@@ -341,8 +358,8 @@ func TestDispatchService_L2DeliberationFailureFailsClosed(t *testing.T) {
 
 	_, err := svc.Dispatch(context.Background(), DispatchRequest{
 		TargetOperatorSessionID: op.OperatorSessionId,
-		EventType:               string(constants.Event.Operator.FsRead.Requested),
-		Payload:                 fsReadPayload(t),
+		EventType:               string(constants.Event.Operator.Command.Requested),
+		Payload:                 commandPayload(t),
 		RequestorUserID:         "user-001",
 	})
 	require.Error(t, err)
@@ -352,7 +369,7 @@ func TestDispatchService_L2DeliberationFailureFailsClosed(t *testing.T) {
 // TestDispatchService_BootstrapActionSkipsL2Deliberation proves that Dispatch
 // applies L4's bootstrap exemption: a platform enrollment action is not sent to
 // the L2 deliberator under a posture that requires L2, while a non-bootstrap
-// action under the same posture is. There is no cmd-channel subscriber, so
+// state change under the same posture is. There is no cmd-channel subscriber, so
 // Dispatch returns ErrDispatchNoDelivery straight after the deliberation gate
 // and never waits for a result.
 func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
@@ -381,10 +398,10 @@ func TestDispatchService_BootstrapActionSkipsL2Deliberation(t *testing.T) {
 			payload: enrollmentPayload,
 		},
 		{
-			name:            "notary read is deliberated",
-			posture:         constants.PostureNotary,
-			event:           constants.Event.Operator.FsRead.Requested,
-			payload:         fsReadPayload(t),
+			name:            "consensus state change is deliberated",
+			posture:         constants.PostureConsensus,
+			event:           constants.Event.Operator.Command.Requested,
+			payload:         commandPayload(t),
 			wantDeliberated: true,
 		},
 	}

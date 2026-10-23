@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 import { evalStore, recordKey } from '../src/state/store';
@@ -124,7 +124,7 @@ describe('assignmentLifecycleEvents', () => {
   });
 });
 
-describe('EvaluationDetailView failures section', () => {
+describe('EvaluationDetailView failure filtering', () => {
   beforeEach(() => {
     evalStore.loadFixtures([], []);
     evalStore.getState().evaluations.set(recordKey('ds-live-run-1', 'run-1'), evaluation);
@@ -133,7 +133,7 @@ describe('EvaluationDetailView failures section', () => {
     evalStore.getState().assignments.set(recordKey('ds-live-run-1', 'assign-fail-other-run'), otherRunFailure);
   });
 
-  it('lists run-scoped terminal failures at the bottom and links to assignment detail', () => {
+  it('filters run-scoped terminal failures and links to assignment detail', () => {
     render(
       <MemoryRouter initialEntries={['/evaluations/ds-live-run-1/run-1']}>
         <Routes>
@@ -142,11 +142,10 @@ describe('EvaluationDetailView failures section', () => {
       </MemoryRouter>,
     );
 
-    const failuresSection = screen.getByRole('heading', { name: 'Terminal failures' }).closest('.run-failures');
-    expect(failuresSection).not.toBeNull();
-    expect(failuresSection).toHaveTextContent('assign-fail-1');
-    expect(failuresSection).not.toHaveTextContent('assign-pass-1');
-    expect(failuresSection).not.toHaveTextContent('assign-fail-other-run');
-    expect(failuresSection?.querySelector('a[href="/evaluations/ds-live-run-1/run-1/assignments/assign-fail-1"]')).not.toBeNull();
+    const assignments = within(screen.getByRole('region', { name: 'Assignments (2)' }));
+    fireEvent.change(assignments.getByRole('combobox', { name: 'Filter assignments by verdict' }), { target: { value: 'failures' } });
+    expect(assignments.getByRole('link', { name: 'assign-fail-1' })).toHaveAttribute('href', '/evaluations/ds-live-run-1/run-1/assignments/assign-fail-1');
+    expect(assignments.queryByRole('link', { name: 'assign-pass-1' })).not.toBeInTheDocument();
+    expect(assignments.queryByRole('link', { name: 'assign-fail-other-run' })).not.toBeInTheDocument();
   });
 });

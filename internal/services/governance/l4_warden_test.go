@@ -67,6 +67,8 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 		msg = &operatorv1.CommandRequested{Command: "uptime", ExecutionId: "exec-1", Justification: "test"}
 	case constants.ActionTypeFileEdit:
 		msg = &operatorv1.FileEditRequested{FilePath: constants.TestPathShortData, Content: "test", ExecutionId: "exec-1"}
+	case constants.ActionTypeEvalWorkspaceSeed:
+		msg = &operatorv1.EvaluationWorkspaceSeedRequested{FilePath: constants.TestPathShortData, Content: "test", ExecutionId: "exec-1"}
 	case constants.ActionTypeFsList:
 		msg = &operatorv1.FsListRequested{Path: constants.PathCurrentDir, ExecutionId: "exec-1"}
 	case constants.ActionTypeFsRead:
@@ -79,6 +81,8 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 		msg = &operatorv1.OllamaModelInventoryRequested{ExecutionId: "exec-1"}
 	case constants.ActionTypeOllamaModelResidency:
 		msg = &operatorv1.OllamaModelResidencyRequested{ExecutionId: "exec-1"}
+	case constants.ActionTypeOllamaModelRelease:
+		msg = &operatorv1.OllamaModelReleaseRequested{ExecutionId: "exec-1", ModelTags: []string{"qwen3:0.6b"}}
 	case constants.ActionTypeFetchLogs:
 		msg = &operatorv1.FetchLogsRequested{ExecutionId: "exec-1"}
 	case constants.ActionTypeFetchHistory:

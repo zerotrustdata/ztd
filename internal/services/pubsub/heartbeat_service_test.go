@@ -61,6 +61,10 @@ func (m *mockResultsPublisher) PublishFileEditResult(ctx context.Context, result
 	return nil
 }
 
+func (m *mockResultsPublisher) PublishEvaluationWorkspaceSeedResult(ctx context.Context, result *operatorv1.EvaluationWorkspaceSeedResult, originalMsg *PubSubCommandMessage) error {
+	return nil
+}
+
 func (m *mockResultsPublisher) PublishFsListResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error {
 	m.fsListResults = append(m.fsListResults, result)
 	return nil

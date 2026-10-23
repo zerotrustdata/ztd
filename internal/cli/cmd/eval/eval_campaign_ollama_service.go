@@ -110,6 +110,12 @@ func (d *harnessOllamaModelCommandDispatcher) DispatchOllamaModelCommand(ctx con
 			return nil, fmt.Errorf("evaluation: Ollama model command dispatch: decode residency result: %w", err)
 		}
 		result.ResidencyResult = residencyResult
+	case constants.ActionTypeOllamaModelRelease:
+		releaseResult := &operatorv1.OllamaModelReleaseResult{}
+		if err := proto.Unmarshal(resultPayload, releaseResult); err != nil {
+			return nil, fmt.Errorf("evaluation: Ollama model command dispatch: decode release result: %w", err)
+		}
+		result.ReleaseResult = releaseResult
 	default:
 		commandResult := &operatorv1.CommandResult{}
 		if err := proto.Unmarshal(resultPayload, commandResult); err != nil {

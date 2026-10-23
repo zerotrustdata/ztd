@@ -11,9 +11,6 @@ import "time"
 
 // MCP service constants
 const (
-	// DefaultLogFilterLimit is the default number of log lines to return
-	DefaultLogFilterLimit = 100
-
 	// DefaultProcessLimit is the default number of processes to return in metric tools
 	DefaultProcessLimit = 10
 
@@ -75,4 +72,43 @@ const (
 	// MCPToolAuditReceiptGet reads one signed receipt from the executing
 	// runtime's own audit store.
 	MCPToolAuditReceiptGet = "audit_receipt_get"
+
+	// MCPToolReadFile reads one file's contents.
+	MCPToolReadFile = "read_file"
+
+	// MCPToolSearchFile returns the lines of one file that match a regex.
+	MCPToolSearchFile = "search_file"
+
+	// MCPToolSearchDirectory returns the lines matching a regex across every
+	// file under one directory.
+	MCPToolSearchDirectory = "search_directory"
+
+	// MCPToolFsDiskProfile recursively sizes the directories under one path.
+	MCPToolFsDiskProfile = "fs_disk_profile"
+
+	// The read-only native tools below change no state. The action registry
+	// lists them as MCP_CALL read-only targets (ActionType.ChangesState).
+	MCPToolDBDiscoverTopology = "db_discover_topology"
+	MCPToolDBQueryValidate    = "db_query_validate"
+	MCPToolDBIsolatedRead     = "db_isolated_read"
+	MCPToolDBIndexTriage      = "db_index_triage"
+	MCPToolSysOOMDetect       = "sys_oom_detect"
+	MCPToolConfigDiffMask     = "config_diff_mask"
+	MCPToolProcMetricTop      = "proc_metric_top"
+	MCPToolProcTree           = "proc_tree"
+	MCPToolNetSocketAudit     = "net_socket_audit"
+	MCPToolNetEndpointPing    = "net_endpoint_ping"
+	MCPToolNetDNSResolve      = "net_dns_resolve"
+	MCPToolNetSSHKnownHosts   = "net_ssh_known_hosts"
+	MCPToolTLSCertInspect     = "tls_cert_inspect"
+	MCPToolSysInfo            = "sys_info"
+	MCPToolSysEnvVars         = "sys_env_vars"
+	MCPToolSysServiceStatus   = "sys_service_status"
+	MCPToolSysContainerStatus = "sys_container_status"
+	MCPToolSysTimeClock       = "sys_time_clock"
+	MCPToolFsFileChecksum     = "fs_file_checksum"
+	MCPToolFsDiskUsage        = "fs_disk_usage"
+	MCPToolGitOps             = "git_ops"
+	MCPToolCloudMetadata      = "cloud_metadata"
+	MCPToolK8sInspect         = "k8s_inspect"
 )

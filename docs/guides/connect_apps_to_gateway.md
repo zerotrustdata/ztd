@@ -3,8 +3,8 @@ doc_id: connect_apps_to_gateway
 title: Connect Apps to Gateway
 audience: application developers and system integrators
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/connect_apps_to_gateway.md
   - internal/services/gateway/
@@ -82,11 +82,13 @@ For an enrolled application identity, append `"--app", "etl-service"` to `args`.
   "method": "tools/call",
   "params": {
     "name": "run_shell_command",
-    "arguments": { "command": "ls -la" }
+    "arguments": { "command": "ls", "args": ["-la"] }
   },
   "id": 1
 }
 ```
+
+`run_shell_command` takes one executable in `command` and its argv as separate strings in `args`. No shell runs, so pipes, redirects, globs, and substitutions are not interpreted.
 
 #### Downstream MCP Egress
 
@@ -204,7 +206,7 @@ Upon approval, the certificate carrying `spiffe://ztd.local/app/etl-service` is 
 
 ### Consensus Members
 
-A consensus member is an enrolled application bound into the Gateway's K-of-N consensus set. Enroll each member with `./ztd auth enroll app <name> --signing-key`, then bind the set with `./ztd auth enroll consensus bind <app-name> <https-endpoint>`, repeating `--member-app` for every member, including the primary app. A set with more than one member MUST state `--quorum` explicitly; a single application defaults to 1-of-1. The Gateway trims member IDs and rejects duplicate members and a quorum outside the member count. Binding requires the owner's CLI identity, and passkey approval under `ratify` and `notary`. See [Consensus](../architecture/consensus.md) for the signature model and `./ztd auth enroll consensus bind --help` for flags.
+A consensus member is an enrolled application bound into the Gateway's K-of-N consensus set. Enroll each member with `./ztd auth enroll app <name> --signing-key`, then bind the set with `./ztd consensus enroll app <primary-app> <https-endpoint>`, repeating `--member-app` for every member, including the primary app. A set with more than one member MUST state `--quorum` explicitly; a single application defaults to 1-of-1. The Gateway trims member IDs and rejects duplicate members and a quorum outside the member count. Every binding names a consensus provider, and an empty provider is rejected. The `application` provider uses this enrolled member set. The alternative is the Gateway-hosted Tribunal panel, bound with `./ztd consensus enroll tribunal --model <tag>`, which uses no application endpoints. Binding requires the owner's CLI identity, and passkey approval under `ratify` and `notary`. See [Consensus](../architecture/consensus.md) for the signature model, `./ztd consensus enroll app --help` for application flags, and `./ztd consensus enroll tribunal --help` for Tribunal flags.
 
 ---
 
@@ -229,7 +231,7 @@ List audit events for an operator session with `./ztd gw data audit list --opera
 ./ztd audit summary --app spiffe://ztd.local/app/etl-service
 ```
 
-Over HTTP, receipts are served by `GET /api/v1/audit/receipts` with an `operator_session_id` or `acting_app_id` query parameter, and exported as JSON by `GET /api/v1/audit/receipts/export?limit=100`, both over mTLS. To export every store to CSV with independent signature and hash-chain verification, run `./ztd report all`.
+Over HTTP, event receipts are served by `GET /api/v1/audit/event-receipts` with an `operator_session_id` or `acting_app_id` query parameter, and exported as JSON by `GET /api/v1/audit/event-receipts/export?limit=100`, both over mTLS. The list response uses the `event_receipts` key. Every recorded L2 member vote on one transaction is served by `GET /api/v1/audit/consensus-votes?tx_id=<id>`, oldest first. From the CLI, `./ztd audit votes --tx <transaction-id>` shows the same votes. To export every store to CSV with independent signature and hash-chain verification, run `./ztd report all`, which writes `event_receipts.csv`.
 
 ---
 

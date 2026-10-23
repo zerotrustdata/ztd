@@ -17,7 +17,7 @@ import type {
   FeedBootstrap,
   FeedHistoryPage,
   FeedSnapshot,
-  ProofCatalog,
+  ProofCatalogEntry,
   ProjectionRecord,
 } from '../contract/types';
 import {
@@ -131,14 +131,17 @@ export async function fetchHistoryPage(
   return history;
 }
 
-export async function fetchProofCatalog(
+/** Resolve one evidence binding's active catalog entry, or null when the
+ *  mirror holds none (unknown or withdrawn). */
+export async function fetchProofCatalogEntry(
   mirrorOrigin: string,
-  sourceId: string,
+  sourceId: string | undefined,
+  sha256: string,
   fetchImpl: typeof fetch = fetch.bind(globalThis),
-): Promise<ProofCatalog> {
-  const catalog = await client(mirrorOrigin, fetchImpl).proofCatalog(sourceId);
+): Promise<ProofCatalogEntry | null> {
+  const catalog = await client(mirrorOrigin, fetchImpl).proofCatalogEntry(sourceId, sha256);
   isProofCatalog(catalog);
-  return catalog;
+  return catalog.entries.find((entry) => entry.sha256 === sha256) ?? null;
 }
 
 export interface StreamHandlers {

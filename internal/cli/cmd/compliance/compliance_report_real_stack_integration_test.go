@@ -177,8 +177,13 @@ func newComplianceRealRun(t *testing.T) *complianceRealRun {
 	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: complianceRealModelTag, ModelDigest: fixtures.ScriptedModelDigest(t, complianceRealModelTag)}
 	inventory, err := evaluation.MaterializeModelRegistry(complianceRealCampaignID, []*evalv1.ModelVariant{variant})
 	require.NoError(t, err)
+	posture, err := cases.WirePosture(stack.Posture)
+	require.NoError(t, err)
+	governance, err := evaluation.NewRunGovernance(posture, nil)
+	require.NoError(t, err)
 	req := evaluation.CampaignInitRequest{
 		Platform:                   evaluation.PlatformIdentity{Release: "v2.3.0", SourceRevision: "0123abc"},
+		Governance:                 governance,
 		CampaignID:                 complianceRealCampaignID,
 		RunID:                      complianceRealRunID,
 		Catalog:                    truncated,

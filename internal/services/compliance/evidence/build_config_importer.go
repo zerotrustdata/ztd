@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -91,8 +92,11 @@ func (i *BuildConfigImporter) SourceID() string {
 }
 
 func (i *BuildConfigImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
-	if i == nil || i.reader == nil || !validBuildConfigBinding(i.binding) {
-		return nil, fmt.Errorf("%w: reader, content reference, path, scope, run, build identity, source revision, and producer are required", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil {
+		return nil, fmt.Errorf("%w: reader is required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := validBuildConfigBinding(i.binding); err != nil {
+		return nil, fmt.Errorf("%w: build or configuration binding: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -134,9 +138,17 @@ func (i *BuildConfigImporter) buildNodes(records []importedBuildConfigAttestatio
 	return nodes
 }
 
-func validBuildConfigBinding(binding BuildConfigImportBinding) bool {
-	_, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.BuildAttestationReferencePrefix)
-	return referenceValid && ValidRelativePath(binding.Path) && binding.ScopeID != "" && binding.RunID != "" && binding.BuildIdentity != "" && binding.SourceRevision != "" && binding.ProducerIdentity != ""
+func validBuildConfigBinding(binding BuildConfigImportBinding) error {
+	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.BuildAttestationReferencePrefix); !referenceValid {
+		return errors.New("content reference is invalid")
+	}
+	if err := ValidateRelativePath(binding.Path); err != nil {
+		return err
+	}
+	if binding.ScopeID == "" || binding.RunID == "" || binding.BuildIdentity == "" || binding.SourceRevision == "" || binding.ProducerIdentity == "" {
+		return constants.ErrMissingRequiredField
+	}
+	return nil
 }
 
 func InspectBuildConfigSource(body []byte) (BuildConfigSourceMetadata, error) {

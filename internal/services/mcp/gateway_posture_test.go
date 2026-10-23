@@ -78,20 +78,23 @@ func TestNewGatewayService_StoresTypedPostureNamedByConfiguration(t *testing.T) 
 }
 
 // TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced proves the Gateway asks for L2 votes exactly
-// where governance.L2Enforced gates the action: consensus and notary for MCP calls, and never for a
-// bootstrap action, which predates the consensus tribunal.
+// where governance.L2Enforced gates the envelope: consensus and notary for state-changing MCP calls,
+// never for a read-only tool, and never for a bootstrap action, which predates the consensus tribunal.
 func TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced(t *testing.T) {
 	cases := []struct {
 		name      string
 		posture   constants.Posture
 		eventType constants.EventType
+		target    string
 		wantCalls int
 	}{
-		{name: "doctrine does not deliberate MCP calls", posture: constants.PostureDoctrine, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 0},
-		{name: "ratify does not deliberate MCP calls", posture: constants.PostureRatify, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 0},
-		{name: "consensus deliberates MCP calls", posture: constants.PostureConsensus, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 1},
-		{name: "notary deliberates MCP calls", posture: constants.PostureNotary, eventType: constants.Event.Operator.Mcp.CallRequested, wantCalls: 1},
-		{name: "notary does not deliberate platform enrollment bootstrap", posture: constants.PostureNotary, eventType: constants.EventPlatformEnrollmentCreateRequested, wantCalls: 0},
+		{name: "doctrine does not deliberate MCP calls", posture: constants.PostureDoctrine, eventType: constants.Event.Operator.Mcp.CallRequested, target: constants.MCPToolRunShellCommand, wantCalls: 0},
+		{name: "ratify does not deliberate MCP calls", posture: constants.PostureRatify, eventType: constants.Event.Operator.Mcp.CallRequested, target: constants.MCPToolRunShellCommand, wantCalls: 0},
+		{name: "consensus deliberates state-changing MCP calls", posture: constants.PostureConsensus, eventType: constants.Event.Operator.Mcp.CallRequested, target: constants.MCPToolRunShellCommand, wantCalls: 1},
+		{name: "notary deliberates state-changing MCP calls", posture: constants.PostureNotary, eventType: constants.Event.Operator.Mcp.CallRequested, target: constants.MCPToolRunShellCommand, wantCalls: 1},
+		{name: "consensus deliberates unknown MCP tools", posture: constants.PostureConsensus, eventType: constants.Event.Operator.Mcp.CallRequested, target: "tool", wantCalls: 1},
+		{name: "consensus does not deliberate read-only MCP tools", posture: constants.PostureConsensus, eventType: constants.Event.Operator.Mcp.CallRequested, target: constants.MCPToolReadFile, wantCalls: 0},
+		{name: "notary does not deliberate platform enrollment bootstrap", posture: constants.PostureNotary, eventType: constants.EventPlatformEnrollmentCreateRequested, target: "tool", wantCalls: 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -101,7 +104,7 @@ func TestProcessGatewayTransaction_DeliberatesOnlyWhereL2Enforced(t *testing.T) 
 			g.l2ConsensusDeliberator = deliberator
 			ctx := context.WithValue(context.Background(), constants.ContextKeyOperatorSessionID, "operator-session-1")
 
-			_, wire, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: tc.eventType, targetResource: "tool", payloadBytes: []byte("payload")})
+			_, wire, _, err := g.processGatewayTransaction(ctx, processGatewayOptions{eventType: tc.eventType, targetResource: tc.target, payloadBytes: []byte("payload")})
 			require.NoError(t, err)
 
 			env := &commonv1.GovernanceEnvelope{}

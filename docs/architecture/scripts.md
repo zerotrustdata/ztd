@@ -3,8 +3,8 @@ doc_id: scripts
 title: Automation Scripts
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - scripts/
   - internal/services/gateway/scripts/
@@ -103,7 +103,7 @@ pwsh scripts/windows-setup.ps1
 - **Options**: `-y` / `--yes` (unattended installation), `--build-only` (skip Node/explorer, build binary only), `-h` (help).
 - **WSL Isolation**: Rejects binaries resolving under `/mnt/<drive>/` to avoid broken Windows interoperability shims (`INV-SCRIPTS-07`).
 - **Profile Updates**: Persistently configures `PATH` in `~/.zshrc`, `~/.bashrc`, or `~/.profile` (Linux and macOS) or the user-level `Path` in the registry (Windows). Profiles are only appended to, never rewritten.
-- **Env File**: After `make build`, setup copies `.env.example` to `.env` (owner-only mode `0600` on Linux and macOS) and keeps an existing `.env`. Every `./ztd` command loads it (`INV-ENV-04` in [Developer Guidelines](../devs/devs.md)).
+- **Env File**: After building `./ztd`, setup copies `.env.example` to `.env` (owner-only mode `0600` on Linux and macOS) and keeps an existing `.env`. Every `./ztd` command loads it (`INV-ENV-04` in [Developer Guidelines](../devs/devs.md)).
 
 ## Contributor Toolchain
 
@@ -136,7 +136,7 @@ The root `Makefile` provides targets to manage platform processes on the develop
 | `make up-public` | Same as `make up` with `--listen-host 0.0.0.0` so Operators on other hosts can enroll |
 | `make gw` | Builds `./ztd`, starts Gateway with `GW_CAPABILITIES` (default `data,inference,observer`; `MODEL_STORAGE_ROOT` adds `provenance`), then runs `./ztd gw status` |
 | `make gw-public` | Same as `make gw` with `--listen-host 0.0.0.0` |
-| `make operator` | Builds `./ztd` and runs Operator in foreground (`./ztd operator start $(OPERATOR_ARGS)`); pass `--working-dir` when the launch directory holds the Gateway runtime, which Operator start refuses |
+| `make operator` | Builds `./ztd` and runs Operator in foreground (`./ztd operator start $(OPERATOR_ARGS)`); pass `--working-dir` through `OPERATOR_ARGS` to set the Operator's working directory |
 | `make status` | Runs `./ztd gw status` (Gateway state, Operator inventory, enrollment counts, Console URL) |
 | `make down` / `make stop` | Gracefully stops Operators and Gateway, preserving local `.ztd/` state |
 

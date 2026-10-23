@@ -12,6 +12,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/investigation"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -19,6 +20,10 @@ import (
 
 // InvestigationsSuiteID identifies the suite of planted-fault investigation scenarios.
 const InvestigationsSuiteID = "investigations"
+
+// investigationScenarioVersion versions every investigation scenario; 1.1.0
+// replaced log_stream_filter with search_file and search_directory.
+const investigationScenarioVersion = "1.1.0"
 
 var investigationGoldReferences = map[string][]ScenarioGoldEvidenceReference{
 	"wrong-port-config": {
@@ -154,11 +159,12 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 	}
 
 	allowedTools := []string{
-		"read_file",
-		"fs_disk_profile",
-		"log_stream_filter",
-		agentToolRunCommands,
-		"audit_receipt_list",
+		constants.MCPToolReadFile,
+		constants.MCPToolFsDiskProfile,
+		constants.MCPToolSearchFile,
+		constants.MCPToolSearchDirectory,
+		constants.MCPToolRunShellCommand,
+		constants.MCPToolAuditReceiptList,
 	}
 
 	gold := baseGold(
@@ -168,17 +174,19 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 		"Lite is not eligible for full investigation scenarios.",
 		"Homogeneous lane verifies investigation diagnosis and evidence.",
 		"Heterogeneous lane verifies investigation pipeline execution.",
-		[]string{"model_inference"},
+		[]string{"model_inference", "tool_call"},
 	)
 	gold.ContentCheck = &ScenarioContentCheck{
 		RequiredTerms:  requiredTerms,
 		ForbiddenTerms: s.Objective.AnswerConcepts.Forbidden,
 	}
+	gold.FileState = s.Objective.FileState
+	gold.GovernedProbe = s.Objective.GovernedProbe
 	gold.GoldEvidenceReferences = goldRefs
 
 	return ScenarioBlueprint{
 		ScenarioID:        s.ID,
-		ScenarioVersion:   "1.0.0",
+		ScenarioVersion:   investigationScenarioVersion,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS,
 		PublicDescription: s.Objective.Goal,
 		GradingMethod:     gradingDeterministic,

@@ -39,7 +39,7 @@ func TestCampaignExporter_ReleaseProvenanceMatchesTheCampaign(t *testing.T) {
 			runID := f.runIDs[0]
 			if tc.legacy {
 				saveLegacyCampaign(t, f, "legacy-export")
-				run, err := f.controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: "legacy-export", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
+				run, err := f.controller.StartRun(ctx, RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: "legacy-export", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
 				require.NoError(t, err)
 				runID = run.GetRunId()
 				_, err = f.controller.ScheduleRun(ctx, runID)
@@ -90,7 +90,7 @@ func TestCampaignExporter_RejectsMalformedReleaseTags(t *testing.T) {
 	f := newArchiveFixture(t)
 	ctx := context.Background()
 	saveLegacyCampaign(t, f, "legacy-export")
-	run, err := f.controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: "legacy-export", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
+	run, err := f.controller.StartRun(ctx, RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, CampaignID: "legacy-export", RunID: "legacy-run", PlatformRelease: testPlatform.Release})
 	require.NoError(t, err)
 	require.NoError(t, f.files.WriteFile(ctx, f.store.layout.campaignReleaseTagPath("legacy-export"), []byte(`{"release":"v2.2.7","campaign_id":"wrong-campaign"}`), constants.PermFilePrivate))
 	_, err = NewCampaignExporter(nil).ExportRun(ctx, f.store, f.files, run.GetRunId(), "")

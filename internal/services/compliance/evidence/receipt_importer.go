@@ -50,8 +50,11 @@ func NewReceiptImporterAt(reader ArtifactReader, trust AssessedSignerSource, bin
 }
 
 func (i *ReceiptImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
-	if i == nil || i.reader == nil || i.trust == nil || !validReceiptBinding(i.binding, constants.ActionReceiptReferencePrefix) {
-		return nil, fmt.Errorf("%w: reader, assessed trust, content reference, path, scope, and run are required", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil || i.trust == nil {
+		return nil, fmt.Errorf("%w: reader and assessed trust are required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := validReceiptBinding(i.binding, constants.ActionReceiptReferencePrefix); err != nil {
+		return nil, fmt.Errorf("%w: action receipt binding: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -102,8 +105,11 @@ func NewPersistenceImporterAt(reader ArtifactReader, trust AssessedSignerSource,
 }
 
 func (i *PersistenceImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
-	if i == nil || i.reader == nil || i.trust == nil || !validPersistenceBinding(i.binding) {
-		return nil, fmt.Errorf("%w: reader, assessed trust, content references, paths, scope, and run are required", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil || i.trust == nil {
+		return nil, fmt.Errorf("%w: reader and assessed trust are required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := validPersistenceBinding(i.binding); err != nil {
+		return nil, fmt.Errorf("%w: receipt persistence binding: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -196,11 +202,22 @@ func verifyAssessedPersistence(ctx context.Context, trust AssessedSignerSource, 
 	return status, constants.ReceiptEvidenceVerifierID, constants.ReceiptEvidenceVerifierVersion, nowFunc(), nil
 }
 
-func validReceiptBinding(binding ReceiptImportBinding, prefix string) bool {
-	_, _, referenceValid := ParseExpectedContentReference(binding.Reference, prefix)
-	return referenceValid && ValidRelativePath(binding.Path) && binding.ScopeID != "" && binding.RunID != ""
+func validReceiptBinding(binding ReceiptImportBinding, prefix string) error {
+	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, prefix); !referenceValid {
+		return errors.New("content reference is invalid")
+	}
+	if err := ValidateRelativePath(binding.Path); err != nil {
+		return err
+	}
+	if binding.ScopeID == "" || binding.RunID == "" {
+		return constants.ErrMissingRequiredField
+	}
+	return nil
 }
 
-func validPersistenceBinding(binding PersistenceImportBinding) bool {
-	return validReceiptBinding(ReceiptImportBinding{Reference: binding.Reference, Path: binding.Path, ScopeID: binding.ScopeID, RunID: binding.RunID}, constants.ReceiptPersistenceReferencePrefix) && validReceiptBinding(ReceiptImportBinding{Reference: binding.ReceiptReference, Path: binding.ReceiptPath, ScopeID: binding.ScopeID, RunID: binding.RunID}, constants.ActionReceiptReferencePrefix)
+func validPersistenceBinding(binding PersistenceImportBinding) error {
+	if err := validReceiptBinding(ReceiptImportBinding{Reference: binding.Reference, Path: binding.Path, ScopeID: binding.ScopeID, RunID: binding.RunID}, constants.ReceiptPersistenceReferencePrefix); err != nil {
+		return fmt.Errorf("persistence: %w", err)
+	}
+	return validReceiptBinding(ReceiptImportBinding{Reference: binding.ReceiptReference, Path: binding.ReceiptPath, ScopeID: binding.ScopeID, RunID: binding.RunID}, constants.ActionReceiptReferencePrefix)
 }

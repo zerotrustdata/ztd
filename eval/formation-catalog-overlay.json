@@ -45000,6 +45000,54 @@
         "estimated_model_vram_mib": 503,
         "estimated_kv_cache_mib": 256
       }
+    },
+    {
+      "id": "eval-v130-formations-smoke-1022-1501",
+      "display_name": "eval-v130-formations-smoke-1022-1501",
+      "description": "ornith:9b primary, gemma4:e4b assistant, sam860/LFM2:700m lite",
+      "max_vram_mib": 12288,
+      "primary": {
+        "variant_id": "ornith-9b",
+        "display_name": "ornith:9b",
+        "provider": "qwen35",
+        "family": "qwen35",
+        "provider_class": "ollama",
+        "served_model_tag": "ornith:9b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 9000000000,
+        "estimated_model_vram_mib": 5365,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "a75697c145891910e312c95e4a9fc1ccb8653e5ef543b23b0403a4665b82fd91"
+      },
+      "assistant": {
+        "variant_id": "gemma4-e4b",
+        "display_name": "gemma4:e4b",
+        "provider": "gemma4",
+        "family": "gemma4",
+        "provider_class": "ollama",
+        "served_model_tag": "gemma4:e4b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 8000000000,
+        "estimated_model_vram_mib": 4769,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "c6eb396dbd5992bbe3f5cdb947e8bbc0ee413d7c17e2beaae69f5d569cf982eb"
+      },
+      "lite": {
+        "variant_id": "sam860-lfm2-700m",
+        "display_name": "sam860/LFM2:700m",
+        "provider": "lfm2",
+        "family": "lfm2",
+        "provider_class": "ollama",
+        "served_model_tag": "sam860/LFM2:700m",
+        "trust": "sovereign",
+        "quantization": "Q8_0",
+        "parameter_count": 742000000,
+        "estimated_model_vram_mib": 752,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "637d9ffe5f5ee2bdbfa93a61c8c437d134931219778c7ffc693402507c232254"
+      }
     }
   ]
 }

@@ -33,7 +33,7 @@ func newNativeAuditGateway(t *testing.T, scrubber *scrubbing.ScrubbingService, r
 	t.Helper()
 	rec := sampleReceiptRecord("tx-egress-1", "sess-1", "FILE_EDIT", time.Now().UTC(), operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
 	rec.ResultSummary = "leaked " + plantedSSN
-	stub := &stubAuditReceiptQuery{getByID: map[string]*models.ActionReceiptRecord{"tx-egress-1": rec}}
+	stub := &stubAuditReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-egress-1": rec}}
 
 	g := newTestGatewayService(t, withScrubbingService(scrubber), withAuditStore(recorder))
 	g.nativeToolHandler.SetAuditReceiptQuery(stub)

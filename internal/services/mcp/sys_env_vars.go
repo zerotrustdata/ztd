@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // SysEnvVarsTool reads environment variables for configuration debugging.
@@ -20,7 +22,7 @@ type SysEnvVarsTool struct{}
 
 // Name returns the tool identifier.
 func (t *SysEnvVarsTool) Name() string {
-	return "sys_env_vars"
+	return constants.MCPToolSysEnvVars
 }
 
 // Description returns a human-readable description.

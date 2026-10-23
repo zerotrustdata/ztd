@@ -190,6 +190,17 @@ func TestGenerateActionTypesGo_ClassificationPredicatesHandleEmptyAndPopulatedSe
 				"AuthorizedByDecision": {"ActionApply", "ActionIssue"},
 			},
 		},
+		{
+			name: "state change selects only flagged mutations",
+			actionTypes: map[string]actionTypeMeta{
+				"EXEC":    {GoConst: "ActionExec", Value: "EXEC", Mutation: true, StateChange: true},
+				"RELEASE": {GoConst: "ActionRelease", Value: "RELEASE", Mutation: true},
+			},
+			wantCases: map[string][]string{
+				"IsMutation":    {"ActionExec", "ActionRelease"},
+				"IsStateChange": {"ActionExec"},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := generateActionTypesGo(tc.actionTypes)
@@ -207,6 +218,9 @@ func TestGenerateActionTypesGo_ClassificationPredicatesHandleEmptyAndPopulatedSe
 					continue
 				}
 				methods = append(methods, method.Name.Name)
+				if !strings.HasPrefix(method.Name.Name, "Is") && method.Name.Name != "AuthorizedByDecision" {
+					continue
+				}
 				var cases []string
 				var defaultReturns []string
 				ast.Inspect(method.Body, func(node ast.Node) bool {
@@ -233,9 +247,70 @@ func TestGenerateActionTypesGo_ClassificationPredicatesHandleEmptyAndPopulatedSe
 				assert.Equal(t, tc.wantCases[method.Name.Name], cases, method.Name.Name)
 				assert.Equal(t, []string{"false"}, defaultReturns, "%s must return false for unclassified and unknown actions", method.Name.Name)
 			}
-			assert.ElementsMatch(t, []string{"IsMutation", "IsBootstrapAction", "AuthorizedByDecision"}, methods)
+			assert.ElementsMatch(t, []string{
+				"IsMutation", "IsBootstrapAction", "AuthorizedByDecision", "IsStateChange", "ChangesState", "readOnlyTarget",
+			}, methods)
 		})
 	}
+}
+
+func TestGenerateActionTypesGo_ChangesStateExemptsOnlyRegisteredReadOnlyTargets(t *testing.T) {
+	source := generateActionTypesGo(map[string]actionTypeMeta{
+		"CALL": {GoConst: "ActionCall", Value: "CALL", Mutation: true, StateChange: true, ReadOnlyTargets: []string{"ToolList", "ToolRead"}},
+		"EXEC": {GoConst: "ActionExec", Value: "EXEC", Mutation: true, StateChange: true},
+	})
+	readOnly := between(t, source, "func (a ActionType) readOnlyTarget(targetResource string) bool {", "\n}\n")
+	assert.Contains(t, readOnly, "case ActionCall:\n\t\tswitch targetResource {\n\t\tcase ToolList,\n\t\t\tToolRead:\n\t\t\treturn true\n\t\t}\n")
+	assert.NotContains(t, readOnly, "ActionExec")
+	assert.Contains(t, source, "return a.IsStateChange() && !a.readOnlyTarget(targetResource)")
+
+	// Target identifiers are constants package names; declare them so the
+	// generated source type-checks on its own.
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "generated.go", source+"\nconst (\n\tToolList = \"list\"\n\tToolRead = \"read\"\n)\n", parser.AllErrors)
+	require.NoError(t, err, "generated source must be valid Go:\n%s", source)
+	var config types.Config
+	_, err = config.Check("constants", fset, []*ast.File{file}, nil)
+	require.NoError(t, err, "generated source must type-check")
+}
+
+func TestLoadActionTypeMeta_RejectsInconsistentStateChangeFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		action string
+		want   string
+	}{
+		{
+			name:   "state change without mutation",
+			action: `{"_go_const": "ActionX", "value": "X", "_state_change": true}`,
+			want:   "_state_change requires _mutation",
+		},
+		{
+			name:   "read-only targets without state change",
+			action: `{"_go_const": "ActionX", "value": "X", "_mutation": true, "_read_only_targets": ["ToolRead"]}`,
+			want:   "_read_only_targets requires _state_change",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(testutil.TempDir(t), "status.json")
+			writeFile(t, path, `{"status":{"action_type":{"X":`+tc.action+`}}}`)
+
+			_, err := loadActionTypeMeta(path)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestLoadActionTypeMeta_SortsReadOnlyTargets(t *testing.T) {
+	path := filepath.Join(testutil.TempDir(t), "status.json")
+	writeFile(t, path, `{"status":{"action_type":{"CALL":{"_go_const":"ActionCall","value":"CALL","_mutation":true,"_state_change":true,"_read_only_targets":["ToolRead","ToolList"]}}}}`)
+
+	got, err := loadActionTypeMeta(path)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ToolList", "ToolRead"}, got["CALL"].ReadOnlyTargets)
 }
 
 // between returns the text of s from the first occurrence of start up to, but

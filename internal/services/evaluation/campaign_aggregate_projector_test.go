@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestCollectRunAggregateState(t *testing.T) {
@@ -90,6 +91,45 @@ func TestPassRateDividesByAssignmentsJudgedOnTheModel(t *testing.T) {
 	assert.Equal(t, uint32(1), model.TerminalOutcomes[TerminalOutcomeProviderFailed])
 }
 
+// The leaderboard scores size, so the model summary publishes the frozen
+// provider identity rather than a tag guessed from the variant ID, which
+// cannot recover decimal sizes such as qwen3:0.6b.
+func TestModelSummaryPublishesFrozenVariantIdentity(t *testing.T) {
+	assignment := homogeneousAssignment("assign-1", "qwen3-0-6b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
+	assignment.GetHomogeneous().CandidateVariant.ServedModelTag = "qwen3:0.6b"
+	assignment.GetHomogeneous().CandidateVariant.ParameterCount = 751_632_384
+	assignment.GetHomogeneous().CandidateVariant.ParameterCountSource = operatorv1.ParameterCountSource_PARAMETER_COUNT_SOURCE_MODEL_METADATA
+	assignment.GetHomogeneous().CandidateVariant.Quantization = "Q8_0"
+	assignment.GetHomogeneous().CandidateVariant.ModelFormat = "gguf"
+	assignment.GetHomogeneous().CandidateVariant.ArtifactSizeBytes = 812_000_000
+	assignment.GetHomogeneous().CandidateVariant.ContextLimit = 32768
+	assignment.GetHomogeneous().CandidateVariant.ProviderClass = "test-provider"
+	state, err := CollectRunAggregateState([]*evalv1.EvaluationAssignment{assignment}, nil)
+	require.NoError(t, err)
+
+	model := buildModelSummaryRecord("ds", "2026-01-01T00:00:00Z", state.VariantRoles["qwen3-0-6b:lite"], CampaignRelease{})
+	assert.Equal(t, "qwen3:0.6b", model.ServedModelTag)
+	assert.Equal(t, uint64(751_632_384), model.ParameterCount)
+	body, err := marshalCanonicalViewRecord(model)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"parameter_count":751632384`)
+	assert.Contains(t, string(body), `"parameter_count_source":"model_metadata"`)
+	assert.Contains(t, string(body), `"quantization_weight_class":"Q8_0"`)
+	assert.Contains(t, string(body), `"model_format":"gguf"`)
+	assert.Contains(t, string(body), `"artifact_size_bytes":812000000`)
+	assert.Contains(t, string(body), `"context_limit":32768`)
+	assert.Contains(t, string(body), `"backend_provider_class":"test-provider"`)
+	assert.Equal(t, assignment.GetHomogeneous().CandidateVariant.GetModelDigest(), model.ModelDigest)
+
+	unsized := buildModelSummaryRecord("ds", "2026-01-01T00:00:00Z", &variantRoleAggregate{VariantID: "qwen3-4b", Role: "primary"}, CampaignRelease{})
+	assert.Empty(t, unsized.ServedModelTag)
+	body, err = marshalCanonicalViewRecord(unsized)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), "parameter_count")
+	assert.NotContains(t, string(body), "quantization_weight_class")
+	assert.NotContains(t, string(body), "artifact_size_bytes")
+}
+
 // With no assignment judged on the model the rate is unavailable, never zero.
 func TestPassRateIsUnavailableWhenNothingWasJudgedOnTheModel(t *testing.T) {
 	assignments := []*evalv1.EvaluationAssignment{
@@ -108,13 +148,46 @@ func TestPassRateIsUnavailableWhenNothingWasJudgedOnTheModel(t *testing.T) {
 	assert.Nil(t, model.PassRate)
 }
 
+func TestAssignmentRunSeconds_ExcludesIdleGapsAndCountsOverlapOnce(t *testing.T) {
+	at := func(seconds int64) *timestamppb.Timestamp {
+		return timestamppb.New(time.Unix(1_700_000_000+seconds, 0).UTC())
+	}
+	executed := func(id string, start, end int64) (*evalv1.EvaluationAssignment, *evalv1.EvaluationAssignmentResult) {
+		assignment := homogeneousAssignment(id, "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
+		assignment.StartedAt = at(start)
+		return assignment, &evalv1.EvaluationAssignmentResult{AssignmentId: id, CompletedAt: at(end)}
+	}
+	first, firstResult := executed("assign-1", 0, 60)
+	overlapping, overlappingResult := executed("assign-2", 30, 90)
+	// Resumed the next day: the overnight stop is not run time.
+	resumed, resumedResult := executed("assign-3", 86_400, 86_430)
+	// Interrupted by the stop and never resulted: no closed interval.
+	interrupted := homogeneousAssignment("assign-4", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
+	interrupted.StartedAt = at(90)
+	interrupted.CompletedAt = at(80_000)
+	queued := homogeneousAssignment("assign-5", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
+
+	assignments := []*evalv1.EvaluationAssignment{resumed, overlapping, first, interrupted, queued}
+	results := map[string]*evalv1.EvaluationAssignmentResult{
+		"assign-1": firstResult, "assign-2": overlappingResult, "assign-3": resumedResult,
+	}
+	seconds := assignmentRunSeconds(assignments, results)
+	require.NotNil(t, seconds)
+	assert.Equal(t, 120.0, *seconds)
+
+	assert.Nil(t, assignmentRunSeconds([]*evalv1.EvaluationAssignment{interrupted, queued}, nil))
+}
+
 func TestBuildRunAggregateViewRecords(t *testing.T) {
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),
 	}
+	assignments[0].StartedAt = timestamppb.New(time.Unix(1_700_000_005, 0).UTC())
+	assignments[0].GetHomogeneous().CandidateVariant.ServedModelTag = "qwen3:4b"
 	results := map[string]*evalv1.EvaluationAssignmentResult{
 		"assign-1": {
 			AssignmentId:    "assign-1",
+			CompletedAt:     timestamppb.New(time.Unix(1_700_000_035, 0).UTC()),
 			LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 			DeterministicGrades: []*evalv1.DeterministicGrade{{
 				Basis:  evalv1.GradeBasis_GRADE_BASIS_OBSERVATION,
@@ -147,8 +220,8 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 	require.NoError(t, json.Unmarshal(records[0].Body, &publicSummary))
 	assert.Equal(t, "completed", publicSummary.RunStatus)
 	assert.Equal(t, "exploratory_partial", summary.QualityState)
-	require.NotNil(t, summary.ElapsedSeconds)
-	assert.Equal(t, 50.0, *summary.ElapsedSeconds)
+	require.NotNil(t, summary.RunSeconds)
+	assert.Equal(t, 30.0, *summary.RunSeconds)
 
 	var catalog catalogSnapshotRecord
 	require.NoError(t, json.Unmarshal(records[1].Body, &catalog))
@@ -309,8 +382,7 @@ func TestBuildRunCompletionViewRecords(t *testing.T) {
 	assert.Equal(t, "evaluation_summary", summary.Kind)
 	assert.NotNil(t, summary.ModelRoleMapping)
 	assert.Equal(t, "completed", summary.LifecycleState)
-	require.NotNil(t, summary.ElapsedSeconds)
-	assert.Equal(t, 100.0, *summary.ElapsedSeconds)
+	assert.Nil(t, summary.RunSeconds, "assignments without started_at have no execution interval")
 	assert.Equal(t, uint32(2), summary.AssignmentTotal)
 	assert.Equal(t, uint32(1), summary.AssignmentCompleted)
 	assert.Equal(t, uint32(1), summary.AssignmentFailed)

@@ -9,8 +9,6 @@ package investigation
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -21,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/persona"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 var builtinIDs = []string{"cron-disk-fill", "wrong-path-check-script", "wrong-port-config"}
@@ -64,38 +63,46 @@ func workspaceContent(s *Scenario, file string) (string, bool) {
 
 // checkFailures lists the file_state checks that content violates. found is false when the file is missing.
 func checkFailures(f FileState, content string, found bool) []string {
-	if f.Absent {
-		if found {
-			return []string{"absent but present"}
+	return f.Check(content, found)
+}
+
+func TestGovernedProbe_Run(t *testing.T) {
+	tempDir := testutil.TempDir(t)
+
+	t.Run("nil probe returns success", func(t *testing.T) {
+		var p *GovernedProbe
+		passed, out := p.Run(tempDir)
+		if !passed || out != "" {
+			t.Fatalf("expected true, empty; got %v, %q", passed, out)
 		}
-		return nil
-	}
-	if !found {
-		return []string{"missing"}
-	}
-	var failures []string
-	if f.SHA256 != "" {
-		sum := sha256.Sum256([]byte(content))
-		if hex.EncodeToString(sum[:]) != f.SHA256 {
-			failures = append(failures, "sha256")
+	})
+
+	t.Run("empty command returns success", func(t *testing.T) {
+		p := &GovernedProbe{}
+		passed, out := p.Run(tempDir)
+		if !passed || out != "" {
+			t.Fatalf("expected true, empty; got %v, %q", passed, out)
 		}
-	}
-	for _, text := range f.Contains {
-		if !strings.Contains(content, text) {
-			failures = append(failures, "contains "+text)
+	})
+
+	t.Run("successful probe execution", func(t *testing.T) {
+		p := &GovernedProbe{Command: "echo", Args: []string{"probe-ok"}}
+		passed, out := p.Run(tempDir)
+		if !passed || out != "probe-ok" {
+			t.Fatalf("expected true, probe-ok; got %v, %q", passed, out)
 		}
-	}
-	for _, text := range f.NotContains {
-		if strings.Contains(content, text) {
-			failures = append(failures, "not_contains "+text)
+	})
+
+	t.Run("failed probe execution", func(t *testing.T) {
+		p := &GovernedProbe{Command: "sh", Args: []string{"-c", "echo probe-failed; exit 1"}}
+		passed, out := p.Run(tempDir)
+		if passed {
+			t.Fatalf("expected false; got %v, %q", passed, out)
 		}
-	}
-	for _, expr := range f.NotMatches {
-		if regexp.MustCompile(expr).MatchString(content) {
-			failures = append(failures, "not_matches "+expr)
+		if !strings.Contains(out, "probe-failed") {
+			t.Fatalf("expected error output to contain probe-failed; got %q", out)
 		}
-	}
-	return failures
+	})
 }
 
 func TestBuiltinLoadsSortedScenarios(t *testing.T) {
@@ -232,6 +239,7 @@ func TestScenarioValidateRejectsInvalidScenarios(t *testing.T) {
 		}},
 		{"bad regex", func(s *Scenario) { s.Objective.FileState[0].NotMatches = []string{"("} }},
 		{"blank probe command", func(s *Scenario) { s.Objective.GovernedProbe = &GovernedProbe{Command: " "} }},
+		{"shell text probe command", func(s *Scenario) { s.Objective.GovernedProbe = &GovernedProbe{Command: "sh ./check.sh"} }},
 		{"no answer concepts", func(s *Scenario) { s.Objective.AnswerConcepts = AnswerConcepts{} }},
 		{"uppercase concept", func(s *Scenario) { s.Objective.AnswerConcepts.Required = []string{"Port"} }},
 		{"required and forbidden concept", func(s *Scenario) {

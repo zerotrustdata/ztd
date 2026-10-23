@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 )
 
 // RunLease is the durable handle for a process executing one run. It records
@@ -41,8 +40,8 @@ func (l RunLease) CancelRequested() bool {
 // LoadRunLease reads the lease of one run. A run without a lease wraps
 // constants.ErrNotFound.
 func (s *Store) LoadRunLease(ctx context.Context, runID string) (*RunLease, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return nil, err
 	}
 	body, err := s.files.ReadFile(ctx, s.layout.runLeasePath(runID))
 	if err != nil {
@@ -62,8 +61,11 @@ func (s *Store) LoadRunLease(ctx context.Context, runID string) (*RunLease, erro
 // fails with constants.ErrEvaluationRunLeaseHeld. A stale lease is replaced and
 // returned so the caller can report it.
 func (s *Store) AcquireRunLease(ctx context.Context, lease RunLease, live LeaseLiveness) (*RunLease, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(lease.RunID) || lease.PID <= 0 {
-		return nil, fmt.Errorf("%w: run lease requires a run ID and process ID", constants.ErrEvaluationReportPersistFailed)
+	if lease.PID <= 0 {
+		return nil, missingField(constants.ErrEvaluationReportPersistFailed, "run lease process ID")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, runIDElement(lease.RunID)); err != nil {
+		return nil, err
 	}
 	var stale *RunLease
 	existing, err := s.LoadRunLease(ctx, lease.RunID)
@@ -116,8 +118,8 @@ func (s *Store) ReleaseRunLease(ctx context.Context, runID string, pid int) erro
 
 // ClearRunLease removes the lease of a run regardless of holder.
 func (s *Store) ClearRunLease(ctx context.Context, runID string) error {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return err
 	}
 	if err := s.files.Remove(ctx, s.layout.runLeasePath(runID)); err != nil {
 		return fmt.Errorf("evaluation: remove run lease: %w", err)

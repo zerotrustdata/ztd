@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 const (
@@ -32,7 +34,7 @@ type ProcTreeTool struct{}
 
 // Name returns the tool identifier.
 func (t *ProcTreeTool) Name() string {
-	return "proc_tree"
+	return constants.MCPToolProcTree
 }
 
 // Description returns a human-readable description.

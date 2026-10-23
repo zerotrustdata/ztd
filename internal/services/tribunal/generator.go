@@ -9,46 +9,51 @@ package tribunal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/zerotrustdata/ztd/internal/models"
 )
 
 const (
-	defaultOS    = "linux"
-	defaultShell = "bash"
+	defaultOS = "linux"
 )
 
 // memberSystemPrompt returns one panel member's sealed generation instructions.
 func memberSystemPrompt(member Member) string {
-	base := "You are a member of the Tribunal, a sealed panel that writes one shell command for a plain-language request.\n" +
-		"Answer with EXACTLY one shell command and nothing else: no explanation, no markdown fences, no prose.\n\n"
+	base := "You are a member of the Tribunal, a sealed panel that authors one run_shell_command argument set for the request. The executable runs directly without a shell.\n" +
+		"Answer with exactly one JSON object containing command and args, with no explanation or markdown. command must be one executable name with no whitespace; args is an array of argv strings. No pipes, chaining, redirects, globs, or substitutions.\n\n"
+	return base + memberStance(member)
+}
+
+// memberStance is one panel member's persona stance, shared by command
+// generation and the L2 consensus vote.
+func memberStance(member Member) string {
 	switch member {
 	case MemberAxiom:
-		return base + "Role: Axiom (the Composer). Prefer clean, coherent pipelines with canonical flag order."
+		return "Role: Axiom (the Composer). Prefer a clean, coherent argv with canonical flag order."
 	case MemberConcord:
-		return base + "Role: Concord (the Guardian). Prefer read-only queries, safe quoting across pipes, and && chaining."
+		return "Role: Concord (the Guardian). Prefer read-only queries and safe, explicit argv values."
 	case MemberVariance:
-		return base + "Role: Variance (the Exhaustive). Handle spaces and null delimiters (-print0, xargs -0), explicit locales, and robust matching."
+		return "Role: Variance (the Exhaustive). Handle spaces as individual argv values, explicit locales, and robust matching."
 	case MemberPragma:
-		return base + "Role: Pragma (the Conventional). Prefer modern, idiomatic utilities (ss over netstat, journalctl on systemd) and standard flags."
+		return "Role: Pragma (the Conventional). Prefer modern, idiomatic utilities (ss over netstat, journalctl on systemd) and standard flags."
 	case MemberNemesis:
-		return base + "Role: Nemesis (the Calibrated Adversary). Probe the request for edge cases and ambiguity; emit the standard command when it is the right one."
+		return "Role: Nemesis (the Calibrated Adversary). Probe the request for edge cases and ambiguity; emit the standard argv when it is the right one."
 	default:
-		return base
+		return ""
 	}
 }
 
 // contextBlock renders the execution context and the caller's request.
 func contextBlock(req Request) string {
 	var b strings.Builder
-	osName, shell := req.OS, req.Shell
+	osName := req.OS
 	if osName == "" {
 		osName = defaultOS
 	}
-	if shell == "" {
-		shell = defaultShell
-	}
-	fmt.Fprintf(&b, "<system_context>\nOS: %s\nShell: %s\n", osName, shell)
+	fmt.Fprintf(&b, "<system_context>\nOS: %s\nExecution: direct executable argv (no shell)\n", osName)
 	if req.WorkingDirectory != "" {
 		fmt.Fprintf(&b, "Working directory: %s\n", req.WorkingDirectory)
 	}
@@ -60,6 +65,25 @@ func contextBlock(req Request) string {
 	return b.String()
 }
 
+// authoredArguments is the part of a run_shell_command argument set a model
+// authors; orchestration composes timeout and working_dir.
+type authoredArguments struct {
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
+// authoredJSON renders the authored part of arguments in the shape a model
+// answers with.
+func authoredJSON(arguments models.RunShellCommandRequest) string {
+	args := arguments.Args
+	if args == nil {
+		args = []string{}
+	}
+	// A fixed struct of strings always marshals.
+	encoded, _ := json.Marshal(authoredArguments{Command: arguments.Command, Args: args})
+	return string(encoded)
+}
+
 // generationPrompt is one round's user prompt. Round 2 shows the round 1
 // clusters anonymized with their support so members can converge.
 func generationPrompt(req Request, prior []Cluster) string {
@@ -68,11 +92,11 @@ func generationPrompt(req Request, prior []Cluster) string {
 	if len(prior) > 0 {
 		b.WriteString("\nThe panel did not agree in round 1. Its anonymized proposals were:\n")
 		for _, cluster := range prior {
-			fmt.Fprintf(&b, "[%s] (support: %d)\n%s\n", cluster.ID, len(cluster.Members), cluster.Command)
+			fmt.Fprintf(&b, "[%s] (support: %d)\n%s\n", cluster.ID, len(cluster.Members), authoredJSON(cluster.Arguments))
 		}
-		b.WriteString("\nWrite the single best command for the request; you may adopt a proposal or write a better one.\n")
+		b.WriteString("\nWrite the single best run_shell_command argument object for the request; you may adopt a proposal or improve it.\n")
 	}
-	b.WriteString("\nRespond now with the exact shell command and nothing else.")
+	b.WriteString("\nRespond now as exactly {\"command\": \"...\", \"args\": [...]}. The command executes directly without a shell.")
 	return b.String()
 }
 
@@ -82,11 +106,22 @@ func generate(ctx context.Context, cfg Config, req Request, round uint32, prior 
 	prompt := generationPrompt(req, prior)
 	candidates := make([]Candidate, 0, len(AllMembers))
 	for _, member := range AllMembers {
-		text, err := cfg.Inferer.Infer(ctx, Call{Stage: StageGenerate, Persona: string(member), Round: round, System: memberSystemPrompt(member), User: prompt})
+		text, err := cfg.Inferer.Infer(ctx, Call{
+			Stage: StageGenerate, Persona: string(member), Round: round,
+			System: memberSystemPrompt(member), User: prompt, JSONSchema: generationJSONSchema,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("tribunal: generate round %d %s: %w", round, member, err)
 		}
-		candidates = append(candidates, Candidate{Member: member, Round: round, Command: NormaliseCommand(text)})
+		var answer authoredArguments
+		candidate := Candidate{Member: member, Round: round}
+		if decodeAnswer(text, &answer) == nil && models.ValidExecutableName(answer.Command) {
+			candidate.Arguments = models.RunShellCommandRequest{
+				Command: answer.Command, Args: answer.Args,
+				Timeout: req.TimeoutSeconds, WorkingDir: req.WorkingDirectory,
+			}
+		}
+		candidates = append(candidates, candidate)
 	}
 	return candidates, nil
 }

@@ -73,9 +73,27 @@ func (d approvingDriver) Drive(ctx context.Context, a cases.Attempt) (cases.Driv
 	return driven, nil
 }
 
+// collectRequests is a request sink that keeps every request it receives.
+func collectRequests() (*[]*evalv1.ConformanceApprovalRequest, RequestSink) {
+	var got []*evalv1.ConformanceApprovalRequest
+	return &got, func(r *evalv1.ConformanceApprovalRequest) { got = append(got, r) }
+}
+
+// assertRequests requires exactly one request: a's case asking for decision on txHash.
+func assertRequests(t *testing.T, got []*evalv1.ConformanceApprovalRequest, a cases.Attempt, decision evalv1.ConformanceApprovalDecision, txHash string) {
+	t.Helper()
+	require.Len(t, got, 1, "one suspending case is one approval request")
+	assert.Equal(t, a.Case.ID, got[0].GetCaseId())
+	assert.Equal(t, a.AttemptID, got[0].GetAttemptId())
+	assert.Equal(t, string(a.Case.Ingress), got[0].GetIngress())
+	assert.Equal(t, decision, got[0].GetDecision())
+	assert.Equal(t, txHash, got[0].GetTxHash())
+}
+
 // TestAttendedRatifyApprovalResumesMCPCall drives row 23 on MCP under ratify. The call
 // suspends, the test approves it with its passkey, and the attended driver returns the
-// resumed signed receipt with the marker written.
+// resumed signed receipt with the marker written. Its approval request names the
+// suspended transaction.
 func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	all, _, err := cases.Catalogue()
 	require.NoError(t, err)
@@ -97,11 +115,13 @@ func TestAttendedRatifyApprovalResumesMCPCall(t *testing.T) {
 	}}
 
 	a := gatewayAttempt(t, g.f, row23)
-	driven, err := NewAttended(approving, g.client, g.persona, g.ident.UserID).Drive(context.Background(), a)
+	requests, sink := collectRequests()
+	driven, err := NewAttended(approving, g.client, g.persona, g.ident.UserID, sink).Drive(context.Background(), a)
 	require.NoError(t, err)
 	require.Len(t, driven.Observations, 1)
 	obs := driven.Observations[0]
 	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT, obs.GetKind(), "answer kind: %s", obs.GetKind())
+	assertRequests(t, *requests, a, evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_APPROVE, approvedTxHash)
 
 	receipt := obs.GetReceipt()
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
@@ -135,7 +155,7 @@ func TestAttendedRatifyDenialResumesMCPAsSignedRejection(t *testing.T) {
 	}}
 
 	a := gatewayAttempt(t, g.f, row24)
-	driven, err := NewAttended(denying, g.client, g.persona, g.ident.UserID).Drive(context.Background(), a)
+	driven, err := NewAttended(denying, g.client, g.persona, g.ident.UserID, nil).Drive(context.Background(), a)
 	require.NoError(t, err)
 	require.Len(t, driven.Observations, 1)
 	obs := driven.Observations[0]
@@ -251,7 +271,7 @@ func TestAttendedRatifyBlockingIngressesFollowTheHumanDecision(t *testing.T) {
 				watch := g.watchPendingApprovals(t)
 				answered := make(chan answer, 1)
 				go func() {
-					driven, err := NewAttended(inner, g.client, g.persona, g.ident.UserID).Drive(t.Context(), a)
+					driven, err := NewAttended(inner, g.client, g.persona, g.ident.UserID, nil).Drive(t.Context(), a)
 					answered <- answer{driven, err}
 				}()
 
@@ -335,7 +355,7 @@ func TestAttendedRatifyA2AApprovalAttributesDownstreamCallToAttempt(t *testing.T
 	}
 	answered := make(chan answer, 1)
 	go func() {
-		driven, err := NewAttended(a2a, g.client, g.persona, g.ident.UserID).Drive(t.Context(), a)
+		driven, err := NewAttended(a2a, g.client, g.persona, g.ident.UserID, nil).Drive(t.Context(), a)
 		answered <- answer{driven, err}
 	}()
 
@@ -454,7 +474,7 @@ func redirectStderr(t *testing.T) string {
 
 // TestAttendedNonAttendedCasePassesThroughUntouched drives row 22 on MCP under ratify without
 // the attended flag. The Gateway suspends the call and the attended driver returns that
-// suspension as the inner driver gave it. The persona the driver would subscribe with names a
+// suspension as the inner driver gave it, reporting it as LEAVE_PENDING. The persona the driver would subscribe with names a
 // CLI session the Gateway never issued, so an approval stream would fail the call: none is
 // opened for an unattended case.
 func TestAttendedNonAttendedCasePassesThroughUntouched(t *testing.T) {
@@ -469,11 +489,14 @@ func TestAttendedNonAttendedCasePassesThroughUntouched(t *testing.T) {
 	require.NoError(t, err)
 	approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
 
-	driven, err := NewAttended(mcpDriver, g.client, unknownCLIPersona(t, g.persona), g.ident.UserID).Drive(t.Context(), gatewayAttempt(t, g.f, row22))
+	a := gatewayAttempt(t, g.f, row22)
+	requests, sink := collectRequests()
+	driven, err := NewAttended(mcpDriver, g.client, unknownCLIPersona(t, g.persona), g.ident.UserID, sink).Drive(t.Context(), a)
 	require.NoError(t, err)
 	require.Len(t, driven.Observations, 1)
 	obs := driven.Observations[0]
 	require.Equal(t, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_SUSPENDED, obs.GetKind(), "answer kind: %s", obs.GetKind())
+	assertRequests(t, *requests, a, evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_LEAVE_PENDING, obs.GetSuspendedTxHash())
 
 	pending, err := g.pendingTransactions(approver)
 	require.NoError(t, err)
@@ -496,7 +519,7 @@ func TestAttendedSubscriptionRefusedSubmitsNothing(t *testing.T) {
 	approver := fixtures.CreateCLIMTLSClient(t, g.f, g.ident)
 	a := gatewayAttempt(t, g.f, row23)
 
-	driven, err := NewAttended(mcpDriver, g.client, unknownCLIPersona(t, g.persona), g.ident.UserID).Drive(t.Context(), a)
+	driven, err := NewAttended(mcpDriver, g.client, unknownCLIPersona(t, g.persona), g.ident.UserID, nil).Drive(t.Context(), a)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "subscribe for approval", "the error must name the failed subscription")
 	assert.Empty(t, driven.Observations)
@@ -539,7 +562,7 @@ func TestAttendedNonSuspendedAnswerReturnsWithoutWaiting(t *testing.T) {
 			}}
 			a := gatewayAttempt(t, g.f, c)
 
-			driven, err := NewAttended(notSuspended, g.client, g.persona, g.ident.UserID).Drive(t.Context(), a)
+			driven, err := NewAttended(notSuspended, g.client, g.persona, g.ident.UserID, nil).Drive(t.Context(), a)
 			require.NoError(t, err)
 			require.Len(t, driven.Observations, len(c.Expect))
 			assertExpect(t, c.Expect[0], driven.Observations[0])
@@ -584,8 +607,9 @@ func TestAttendedBlockingDispatchAnnouncesBeforeTheCallWithoutOpeningAStream(t *
 		err    error
 	}
 	answered := make(chan answer, 1)
+	requests, sink := collectRequests()
 	go func() {
-		driven, err := NewAttended(inner, noStream, g.persona, g.ident.UserID).Drive(t.Context(), a)
+		driven, err := NewAttended(inner, noStream, g.persona, g.ident.UserID, sink).Drive(t.Context(), a)
 		answered <- answer{driven, err}
 	}()
 
@@ -607,6 +631,7 @@ func TestAttendedBlockingDispatchAnnouncesBeforeTheCallWithoutOpeningAStream(t *
 	require.NoError(t, got.err, "a blocking ingress must not dial the approval stream")
 	require.Len(t, got.driven.Observations, len(c.Expect))
 	assertExpect(t, c.Expect[0], got.driven.Observations[0])
+	assertRequests(t, *requests, a, evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_APPROVE, "")
 	written, err := os.ReadFile(a.TargetAbs)
 	require.NoError(t, err)
 	assert.Equal(t, a.Marker, string(written), "the approved mutation must write exactly the marker")
@@ -621,7 +646,7 @@ func TestAttendedInnerTransportErrorIsWrappedWithItsCause(t *testing.T) {
 	inner, err := NewDispatch(unreachableClient(t), testIdentity().Persona, testDispatchTargets())
 	require.NoError(t, err)
 
-	driven, err := NewAttended(inner, unreachableClient(t), testIdentity().Persona, "user-approver").Drive(t.Context(), a)
+	driven, err := NewAttended(inner, unreachableClient(t), testIdentity().Persona, "user-approver", nil).Drive(t.Context(), a)
 	require.Error(t, err)
 	var urlErr *url.Error
 	assert.ErrorAs(t, err, &urlErr, "the transport failure must keep its cause")
@@ -648,7 +673,7 @@ func TestAttendedCancelledWaitReturnsWrappedErrorWithNoObservation(t *testing.T)
 	t.Cleanup(cancel)
 	cancelling := approvingDriver{inner: mcpDriver, decide: func(string) { cancel() }}
 
-	driven, err := NewAttended(cancelling, g.client, g.persona, g.ident.UserID).Drive(ctx, a)
+	driven, err := NewAttended(cancelling, g.client, g.persona, g.ident.UserID, nil).Drive(ctx, a)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "wait for approval")
 	assert.Empty(t, driven.Observations)

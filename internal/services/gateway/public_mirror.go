@@ -666,13 +666,13 @@ func (m *PublicMirrorServer) PublicHandler() http.Handler {
 
 func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/bootstrap", m.handleBootstrap)
-	mux.HandleFunc("/snapshot", m.handleSnapshot)
+	mux.Handle("/bootstrap", m.withGzip(http.HandlerFunc(m.handleBootstrap)))
+	mux.Handle("/snapshot", m.withGzip(http.HandlerFunc(m.handleSnapshot)))
 	mux.Handle("/history", m.withGzip(http.HandlerFunc(m.handleHistory)))
 	mux.HandleFunc("/stream", m.handleStream)
-	mux.HandleFunc("/proof-catalog", m.handleProofCatalog)
-	mux.HandleFunc("/proof-manifest", m.handleProofManifest)
-	mux.HandleFunc("/proof-segments", m.handleProofSegments)
+	mux.Handle("/proof-catalog", m.withGzip(http.HandlerFunc(m.handleProofCatalog)))
+	mux.Handle("/proof-manifest", m.withGzip(http.HandlerFunc(m.handleProofManifest)))
+	mux.Handle("/proof-segments", m.withGzip(http.HandlerFunc(m.handleProofSegments)))
 	mux.HandleFunc("/proofs/", m.handleProofDownload)
 	return mux
 }
@@ -1331,7 +1331,9 @@ func (m *PublicMirrorServer) handleSnapshot(w http.ResponseWriter, r *http.Reque
 
 // handleHistory handles GET /history — cursor-paginated page of public
 // records. The cursor is the last sequence number seen; the response
-// returns records after the cursor up to the page limit.
+// returns records after the cursor up to the page limit. Optional kind and
+// dataset parameters keep only records whose top-level kind and dataset_id
+// match, so a single-dataset lookup never pages the whole feed.
 func (m *PublicMirrorServer) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1340,6 +1342,7 @@ func (m *PublicMirrorServer) handleHistory(w http.ResponseWriter, r *http.Reques
 	cursorStr := r.URL.Query().Get("cursor")
 	limitStr := r.URL.Query().Get("limit")
 	recordKind := r.URL.Query().Get("kind")
+	datasetID := r.URL.Query().Get("dataset")
 
 	limit := m.defaultPageSize
 	if limitStr != "" {
@@ -1391,6 +1394,12 @@ scan:
 			if recordKind != "" {
 				kind, ok := item.StringField("kind")
 				if !ok || kind != recordKind {
+					continue
+				}
+			}
+			if datasetID != "" {
+				id, ok := item.StringField("dataset_id")
+				if !ok || id != datasetID {
 					continue
 				}
 			}
@@ -1580,7 +1589,9 @@ func (m *PublicMirrorServer) resolveProofManifestSource(ctx context.Context, req
 }
 
 // handleProofCatalog handles GET /proof-catalog — the full public proof
-// catalog, derived from the stored signed manifest.
+// catalog, derived from the stored signed manifest. The optional artifact
+// parameter narrows it to that one active entry, so a reader can resolve a
+// single evidence binding without fetching the whole catalog.
 func (m *PublicMirrorServer) handleProofCatalog(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1591,12 +1602,29 @@ func (m *PublicMirrorServer) handleProofCatalog(w http.ResponseWriter, r *http.R
 		Entries:       []models.PublicProofCatalogEntry{},
 		GeneratedAt:   time.Now().UTC(),
 	}
+	artifactID := r.URL.Query().Get("artifact")
+	if r.URL.Query().Has("artifact") && !validPublicProofArtifactID(artifactID) {
+		http.Error(w, "artifact must be a lowercase sha256 hex digest", http.StatusBadRequest)
+		return
+	}
 	sourceID, ok, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
 	if err != nil {
 		m.writeStoreUnavailable(w, "mirror: resolve proof catalog source", err)
 		return
 	}
 	if !ok {
+		m.writeJSON(w, http.StatusOK, emptyCatalog)
+		return
+	}
+	if artifactID != "" {
+		entry, found, err := m.store.proofCatalogEntry(r.Context(), sourceID, artifactID)
+		if err != nil {
+			m.writeStoreUnavailable(w, "mirror: read proof catalog entry", err)
+			return
+		}
+		if found {
+			emptyCatalog.Entries = append(emptyCatalog.Entries, entry)
+		}
 		m.writeJSON(w, http.StatusOK, emptyCatalog)
 		return
 	}

@@ -27,6 +27,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	governanceService "github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -96,7 +97,7 @@ func TestOperatorAuditReceiptRoute_GovernedLocalLedgerScope(t *testing.T) {
 	require.Equal(t, svc.config.OperatorID, result.OperatorID)
 	require.Equal(t, "operator_local_ledger", result.Authority)
 	require.Len(t, result.Receipts, 2)
-	rows, err := auditStore.ListActionReceipts(models.AuditScope{OperatorID: svc.config.OperatorID}, 100, 0)
+	rows, err := auditStore.ListEventReceipts(models.AuditScope{OperatorID: svc.config.OperatorID}, 100, 0)
 	require.NoError(t, err)
 	storedSessions := make(map[string]string, len(rows))
 	for _, row := range rows {
@@ -124,7 +125,7 @@ func TestOperatorAuditReceiptRoute_GovernedLocalLedgerScope(t *testing.T) {
 
 	// Both the scored query and the fresh query are issued through MCP_CALL and
 	// leave their own signed receipts only after each result is materialized.
-	allRows, err := auditStore.ListActionReceipts(models.AuditScope{OperatorID: svc.config.OperatorID}, 100, 0)
+	allRows, err := auditStore.ListEventReceipts(models.AuditScope{OperatorID: svc.config.OperatorID}, 100, 0)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(allRows), 5)
 }
@@ -163,7 +164,7 @@ func TestOperatorNativeToolRoute_OutboundExecutesRegistryLocally(t *testing.T) {
 	var got mcp.AuditReceiptGetResult
 	// Native tool summaries are scrubbed text; random receipt signatures can
 	// match sensitive-value patterns. Rehydrate locally before decoding JSON.
-	summary, err := svc.scrubbing.RehydrateText(ctx, getReceipt.GetResultSummary())
+	summary, err := svc.scrubbing.RehydrateText(ctx, getReceipt.GetResultSummary(), scrubbing.ForeignTokenReject)
 	require.NoError(t, err, "every token in the signed summary must resolve")
 	require.NoError(t, json.Unmarshal([]byte(summary), &got))
 	require.NotNil(t, got.Receipt)

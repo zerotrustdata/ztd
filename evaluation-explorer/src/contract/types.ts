@@ -431,6 +431,18 @@ export interface ModelSummary extends ViewRecordEnvelope {
   variant_id: string;
   display_name: string;
   served_model_tag?: string;
+  /** Frozen provider parameter count of the candidate variant. */
+  parameter_count?: number;
+  /** Absent on older records whose provider count precision is unknown. */
+  parameter_count_source?: 'model_metadata' | 'rounded_label';
+  /** Specifications of the frozen deployed variant; absent values are unavailable. */
+  model_digest?: string;
+  model_family?: string;
+  model_format?: string;
+  /** Installed artifact bytes reported by the provider; not RAM or VRAM. */
+  artifact_size_bytes?: number;
+  /** Frozen provider context limit; not the context actually used by every inference. */
+  context_limit?: number;
   role: ModelRole;
   backend_provider_class?: string;
   quantization_weight_class?: string;
@@ -557,7 +569,11 @@ export interface EvaluationSummary extends ViewRecordEnvelope {
   terminal_outcomes: Record<TerminalStatus, number>;
   started_at?: string;
   ended_at?: string;
+  /** Historical wall-clock from run start to publication, including stopped
+   *  and verification time. Not displayed; superseded by run_seconds. */
   elapsed_seconds?: number;
+  /** Time at least one assignment was executing; stop/resume gaps excluded. */
+  run_seconds?: number;
   verifier_state: VerifierState;
   verifier_failure_summary?: string;
   verification_metadata?: PublicVerificationMetadata;
@@ -747,6 +763,8 @@ export interface RoleTranscriptToolCall {
   tool_name: string;
   arguments_json?: string;
   arguments_hash?: string;
+  /** Tribunal-approved arguments the call executed, when they differ from the proposal. */
+  approved_arguments_json?: string;
   command?: string;
   success: boolean;
   error_type?: string;

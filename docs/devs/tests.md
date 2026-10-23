@@ -3,8 +3,8 @@ doc_id: tests
 title: Testing Guide
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/cli/cmd/test/
   - internal/testutil/
@@ -114,6 +114,8 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Socket test tags and serial boundary tests | `internal/testutil/test_tiers_test.go` | `TestTestTiers_ListenersRequireIntegrationAndBoundaryTestsStaySerial` |
 | Cross-platform port probes | `internal/netutil/port_probe_windows.go`, `internal/netutil/port_probe_windows_integration_test.go`, `internal/netutil/port_probe_other_integration_test.go` | `TestTCPPortProbe_BindsWithoutAcceptingConnectionsAndReleasesPort`, `TestTCPPortProbe_RejectsWildcardAndLoopbackConflictsAndReleasesPort` |
 | Cross-process evaluation loop qualification | `internal/cli/cmd/test/eval_loop_e2e_test.go` | `./ztd test eval-loop --help` |
+| Cross-process conformance loop qualification | `internal/cli/cmd/test/conformance_loop.go`, `internal/cli/cmd/test/conformance_loop_e2e_test.go` | `./ztd test conformance-loop --help` |
+| Isolated governed release smoke | `internal/cli/cmd/test/release_smoke.go`, `internal/cli/cmd/test/release_smoke_test.go` | `./ztd test release-smoke --help` |
 | Live Tier 4 evaluation loop | `internal/cli/cmd/test/eval_loop_live_e2e_test.go` | `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` |
 | Live E2E suite | `test/e2e/` | `./ztd test e2e` |
 | Completion transcript wire contract | `internal/services/gateway/platform_enrollment_validation_test.go` | `TestPlatformEnrollmentCompletionTranscriptGoldenVector` |
@@ -193,6 +195,10 @@ For the Tier 4 live-provider gate, set `LIVE_OLLAMA_ENDPOINT` to the Ollama endp
 ./ztd test eval-loop --posture ratify
 ./ztd test eval-loop --posture notary
 
+# Run cross-process conformance loop qualification (every posture by default)
+./ztd test conformance-loop
+./ztd test conformance-loop --posture ratify
+
 # Tier 4 live-provider gate (explicit only; the provider is reached through the governed Inference Operator)
 ./ztd test eval-loop --live-ollama-endpoint "$LIVE_OLLAMA_ENDPOINT" --live-model "$LIVE_MODEL"
 ./ztd test eval-loop --live-ollama-endpoint "$LIVE_OLLAMA_ENDPOINT" --live-model "$LIVE_MODEL" --posture ratify
@@ -207,6 +213,8 @@ make test-scale SCALE_COUNT=1000 SCALE_ARGS='--soak 10m --fan-out-concurrency 64
 ```
 
 `./ztd test eval-loop` qualifies the full cross-process evaluation pipeline against live OS processes under both `ratify` and `notary` governance postures. The runner starts isolated Gateway, Data Operator, and Inference Operator processes under distinct `.ztd/` roots via `RuntimeFileService`, deploys them via `ztd operator deploy --approve`, handles L3 human authorizations through an event-driven `ztd auth approve --cli` responder driven entirely by the Gateway's SSE stream (`ztd.v1.platform.approvals.changed`), exercises real Ed25519 K-of-N consensus deliberation under `notary`, and verifies authoritative local execution receipts directly from each Operator's own SQLite store (LFAA). The runner executes the repository-root `./ztd` binary, so run `make build` first. Before the campaigns run, the scripted gate freezes the scripted provider's inventory with `ztd eval models freeze` against the isolated Gateway; the freeze replaces the Gateway's model registry that the campaigns bind. The frozen digest of the scripted model MUST equal the digest the scripted provider serves, and a mismatch fails the run.
+
+`./ztd test conformance-loop` qualifies `ztd eval conformance run` against live OS processes under each selected posture (`doctrine`, `consensus`, `ratify`, and `notary` by default). For each posture the runner starts an isolated Gateway with A2A ingress, enrolls the CLI owner, binds the real consensus application under `consensus` and `notary`, deploys a dedicated Data Operator, and drives `ztd mcp stdio` as an agent's MCP client does. It runs the conformance suite once against the Data Operator and once against the embedded Operator. Each run MUST return one PASS verdict for every applicable case and a PASS suite verdict, and `ztd eval conformance verify` MUST reproduce the run's verdicts offline. Under `ratify` and `notary` the runs are attended: the CLI owner follows the Gateway's SSE stream and answers each suspended case through the approval flow. An unattended mutation stays suspended, an attended-approve case is approved with `ztd auth approve --cli`, and an attended-deny case is denied with `ztd auth approve --deny`. A suspension the catalogue does not predict fails the run, as does a predicted suspension that never arrives. The audit chain of both Operator sessions, read through the stdio bridge with `audit_receipt_list`, MUST advance with completed receipts. Both runtimes' `report all` evidence MUST verify. The runner executes the repository-root `./ztd` binary, so run `make build` first. Evidence and private command logs remain under `.ztd/operators/`.
 
 `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` is the dedicated Tier 4 gate under `INV-TEST-RUN-05`. It builds with the `e2e,live` tags, runs `TestEvalLoopLive` under a default timeout of 40m per selected posture (each posture's run takes what remains of that deadline, less the cleanup margin), and replaces only the provider: the Inference Operator reaches that endpoint through the governed Inference Operator, and no provider is scripted. Each posture freezes the provider's real model digest with `ztd eval models freeze` and runs one Tribunal campaign. The gate proves the loop and its evidence, not model quality, so a FAIL verdict passes. A subtest that fails has its run root under `.ztd/operators/` deleted; a passing run root is kept.
 

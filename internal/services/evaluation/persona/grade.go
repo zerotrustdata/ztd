@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -270,9 +271,10 @@ func gradeRouter(labels *RouterLabels, out *evalv1.RouterOutput) (Status, FailCl
 	return pass()
 }
 
-// gradeCandidate screens the candidate command with the L1 doctrine, offline.
+// gradeCandidate screens the typed candidate through the same MCP_CALL L1 path as live dispatch.
 func gradeCandidate(doctrine *governance.L1Doctrine, out *evalv1.CandidateOutput) (Status, FailClass) {
-	if len(doctrine.ValidatePayload(&operatorv1.CommandRequested{Command: out.GetCommand()})) > 0 {
+	request := models.RunShellCommandRequestFromProto(out.GetArguments())
+	if len(doctrine.ValidatePayload(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: request.CanonicalJSON()})) > 0 {
 		return fail(FailL1Violation)
 	}
 	return pass()

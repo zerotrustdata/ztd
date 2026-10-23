@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -36,6 +37,7 @@ type CampaignInitRequest struct {
 	Deployment                 *evalv1.EvaluationDeploymentIdentity
 	Lane                       evalv1.EvaluationLane
 	FormationStackSet          *HeterogeneousStackSet
+	Governance                 RunGovernance
 }
 
 // CampaignRunSummary reports resumable controller state for one run.
@@ -67,6 +69,7 @@ type CampaignStore interface {
 	LoadAssignment(ctx context.Context, runID, assignmentID string) (*evalv1.EvaluationAssignment, error)
 	ListAssignments(ctx context.Context, runID string) ([]*evalv1.EvaluationAssignment, error)
 	AssignmentResultExists(ctx context.Context, runID, assignmentID string) (bool, error)
+	AssignmentAgentTraceExists(ctx context.Context, runID, assignmentID string) (bool, error)
 	LoadAssignmentResults(ctx context.Context, runID string, assignments []*evalv1.EvaluationAssignment) (map[string]*evalv1.EvaluationAssignmentResult, error)
 	LoadAssignmentAgentTrace(ctx context.Context, runID, assignmentID string) (*AgentTrace, error)
 	LoadAssignmentAgentTraceArtifact(ctx context.Context, runID, assignmentID string) (*AgentTrace, []byte, error)
@@ -109,7 +112,6 @@ func (c *CampaignController) WithPublication(publication *CampaignPublicationCoo
 
 // CampaignCreateRequest carries the inputs that define one frozen campaign.
 type CampaignCreateRequest struct {
-	GovernancePosture evalv1.EvaluationGovernancePosture
 	CampaignID        string
 	Catalog           *evalv1.EvaluationScenarioCatalog
 	Inventory         *ModelInventoryFreeze
@@ -137,6 +139,9 @@ type RunStartRequest struct {
 	// PlatformRelease is the executing build's release. It must equal the
 	// release the campaign recorded when it froze.
 	PlatformRelease string
+	// Governance is the live Gateway posture and consensus binding, frozen
+	// on the run. Every later execution must find the same.
+	Governance RunGovernance
 }
 
 // CreateCampaign persists the frozen campaign spec, scenario catalog, and
@@ -151,12 +156,6 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	}
 	spec, err := MaterializeCampaignSpecWithInvestigation(req.CampaignID, req.Catalog, req.Inventory, req.RepetitionCount, req.HoldContext, req.Platform, req.Investigation)
 	if err != nil {
-		return nil, err
-	}
-	if req.GovernancePosture != evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED {
-		spec.GovernancePosture = req.GovernancePosture
-	}
-	if err := ValidateCampaignSpecPosture(spec); err != nil {
 		return nil, err
 	}
 	if req.FormationStackSet != nil {
@@ -189,7 +188,6 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	switch {
 	case err == nil:
 		if existing.GetCatalogDigest() != spec.GetCatalogDigest() ||
-			existing.GetGovernancePosture() != spec.GetGovernancePosture() ||
 			existing.GetModelRegistryDigest() != spec.GetModelRegistryDigest() ||
 			existing.GetRepetitionCount() != spec.GetRepetitionCount() ||
 			existing.GetHoldContext() != spec.GetHoldContext() ||
@@ -253,12 +251,12 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 	if err := ValidateCampaignSpecDigest(spec); err != nil {
 		return nil, fmt.Errorf("evaluation: start run: campaign spec: %w", err)
 	}
-	// Campaigns frozen before ztd v2.3.0 recorded no release; their asserted tag
+	// Campaigns frozen before ztd v1.0.0 recorded no release; their asserted tag
 	// is not a digest-bound fact, so only a recorded release is enforced.
 	if recorded := spec.GetPlatformRelease(); recorded != "" && recorded != req.PlatformRelease {
 		return nil, fmt.Errorf("evaluation: start run %q: campaign %q recorded %q, executing build is %q: %w", req.RunID, req.CampaignID, recorded, req.PlatformRelease, constants.ErrEvaluationPlatformReleaseMismatch)
 	}
-	if err := ValidateCampaignSpecPosture(spec); err != nil {
+	if err := req.Governance.validate(); err != nil {
 		return nil, fmt.Errorf("evaluation: start run %q: %w", req.RunID, err)
 	}
 	catalog, err := c.store.LoadScenarioCatalog(ctx, req.CampaignID)
@@ -303,7 +301,8 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 		RunId:                     req.RunID,
 		SuiteRef:                  catalog.GetCatalogRef(),
 		Deployment:                req.Deployment,
-		ActivePosture:             spec.GetGovernancePosture(),
+		ActivePosture:             req.Governance.Posture,
+		Consensus:                 proto.Clone(req.Governance.Consensus).(*evalv1.EvaluationConsensusIdentity),
 		Lane:                      lane,
 		ProviderObservationPolicy: req.ProviderObservationPolicy,
 		ModelProvenancePolicy:     req.ModelProvenancePolicy,
@@ -356,6 +355,7 @@ func (c *CampaignController) InitializeCampaign(ctx context.Context, req Campaig
 		PlatformRelease:            req.Platform.Release,
 		ProviderObservationPolicy:  evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 		ModelProvenancePolicy:      evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+		Governance:                 req.Governance,
 	})
 }
 
@@ -406,7 +406,7 @@ func (c *CampaignController) ScheduleRun(ctx context.Context, runID string) (int
 	if err != nil {
 		return 0, err
 	}
-	if err := ValidateCampaignSpecPosture(spec); err != nil {
+	if err := (RunGovernance{Posture: run.GetActivePosture(), Consensus: run.GetConsensus()}).validate(); err != nil {
 		return 0, fmt.Errorf("evaluation: schedule run %s: %w", runID, err)
 	}
 	if err := ValidateCampaignSpecDigest(spec); err != nil {
@@ -575,7 +575,9 @@ func (c *CampaignController) ResumeNextAssignment(ctx context.Context, runID str
 }
 
 // ExecuteNextAssignment resumes one assignment through the configured executor,
-// persists the terminal result, and updates assignment lifecycle state.
+// persists the terminal result, and updates assignment lifecycle state. A
+// publication failure after the result is persisted returns the result with an
+// ErrEvaluationPublicationFailed error, so the caller can continue the run.
 func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID string, binding CampaignExecutionBinding, artifacts map[string]ScenarioArtifacts) (*evalv1.EvaluationAssignmentResult, bool, error) {
 	if c == nil || c.executor == nil {
 		return nil, false, fmt.Errorf("evaluation: execute next assignment: executor: %w", constants.ErrMissingRequiredField)
@@ -630,58 +632,19 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	if err := c.store.SaveAssignment(ctx, assignment); err != nil {
 		return nil, false, err
 	}
-	if err := c.publishAssignmentLifecycle(ctx, assignment); err != nil {
-		return nil, false, err
+	// The assignment is RUNNING once saved; a start publication failure must not
+	// strand it there, so it is carried to the terminal result instead.
+	startPublishErr := c.publishAssignmentLifecycle(ctx, assignment)
+	if startPublishErr == nil && !IsHeterogeneousAssignment(assignment) {
+		startPublishErr = c.publishAssignmentInvocationLiveEvents(ctx, assignment)
 	}
-	if !IsHeterogeneousAssignment(assignment) {
-		if err := c.publishAssignmentInvocationLiveEvents(ctx, assignment); err != nil {
-			return nil, false, err
-		}
+	if startPublishErr != nil {
+		startPublishErr = fmt.Errorf("%w: assignment %s start: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), startPublishErr)
 	}
-	artifact, found := artifacts[assignment.GetScenarioId()]
-	if !found {
-		return nil, false, fmt.Errorf("evaluation: execute next assignment: missing scenario artifacts for %s", assignment.GetScenarioId())
-	}
-	var scenarioInput ScenarioInputFixture
-	if err := json.Unmarshal(artifact.Input.Body, &scenarioInput); err != nil {
-		return nil, false, fmt.Errorf("evaluation: execute next assignment: decode scenario input: %w", err)
-	}
-	var scenarioGold ScenarioGoldCriteria
-	if err := json.Unmarshal(artifact.Gold.Body, &scenarioGold); err != nil {
-		return nil, false, fmt.Errorf("evaluation: execute next assignment: decode scenario gold: %w", err)
-	}
-	catalog, err := c.store.LoadScenarioCatalog(ctx, run.GetCampaignBinding().GetCampaignId())
+	execReq, err := c.frozenAssignmentRequest(ctx, campaignSpec, binding, formationStackSet, artifacts, assignment, c.newID("attempt"))
 	if err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("evaluation: execute next assignment: %w", err)
 	}
-	gradingMethod, err := scenarioGradingMethodForAssignment(catalog, assignment)
-	if err != nil {
-		return nil, false, err
-	}
-	scenarioTools, err := scenarioToolsForAssignment(catalog, assignment)
-	if err != nil {
-		return nil, false, err
-	}
-	requiredConcepts, err := scenarioRequiredConceptsForAssignment(catalog, assignment)
-	if err != nil {
-		return nil, false, err
-	}
-	attemptID := c.newID("attempt")
-	execReq := AssignmentExecutionRequest{
-		Assignment:        assignment,
-		FormationStackSet: formationStackSet,
-		Investigation:     campaignSpec.GetInvestigation(),
-		AttemptID:         attemptID,
-		ScenarioInput:     scenarioInput,
-		ScenarioGold:      scenarioGold,
-		ScenarioTools:     scenarioTools,
-		RequiredConcepts:  requiredConcepts,
-		GradingMethod:     gradingMethod,
-		Binding:           binding,
-	}
-	execReq.Binding.ModelVariants = campaignSpec.GetModelRegistry()
-	execReq.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(campaignSpec.GetModelRegistry())
-	execReq.Binding.FormationStackSetDigest = campaignSpec.GetFormationStackSetDigest()
 	var result *evalv1.EvaluationAssignmentResult
 	execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)
 	if err == nil {
@@ -695,18 +658,71 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 		if buildErr != nil {
 			return nil, false, fmt.Errorf("evaluation: execute next assignment: %w", buildErr)
 		}
-		if err := c.persistTerminalAssignment(ctx, assignment, failureResult); err != nil {
-			return nil, false, err
-		}
-		return failureResult, true, nil
+		return persistedTerminalResult(failureResult, startPublishErr, c.persistTerminalAssignment(ctx, assignment, failureResult))
 	}
 	if result == nil {
 		return nil, false, fmt.Errorf("evaluation: execute next assignment: executor returned nil result: %w", constants.ErrEvaluationAssignmentExecutionFailed)
 	}
-	if err := c.persistTerminalAssignment(ctx, assignment, result); err != nil {
-		return nil, false, err
+	return persistedTerminalResult(result, startPublishErr, c.persistTerminalAssignment(ctx, assignment, result))
+}
+
+// persistedTerminalResult reports a persisted result as executed even when its
+// publication failed; only a persistence failure withholds it.
+func persistedTerminalResult(result *evalv1.EvaluationAssignmentResult, startPublishErr, persistErr error) (*evalv1.EvaluationAssignmentResult, bool, error) {
+	if persistErr != nil && !errors.Is(persistErr, constants.ErrEvaluationPublicationFailed) {
+		return nil, false, persistErr
 	}
-	return result, true, nil
+	return result, true, errors.Join(startPublishErr, persistErr)
+}
+
+// frozenAssignmentRequest builds the request one assignment executes and is
+// graded under from its campaign's frozen spec, scenario catalog and artifacts.
+func (c *CampaignController) frozenAssignmentRequest(ctx context.Context, spec *evalv1.EvaluationCampaignSpec, binding CampaignExecutionBinding, formationStackSet *HeterogeneousStackSet, artifacts map[string]ScenarioArtifacts, assignment *evalv1.EvaluationAssignment, attemptID string) (AssignmentExecutionRequest, error) {
+	artifact, found := artifacts[assignment.GetScenarioId()]
+	if !found {
+		return AssignmentExecutionRequest{}, fmt.Errorf("missing scenario artifacts for %s: %w", assignment.GetScenarioId(), constants.ErrMissingRequiredField)
+	}
+	var scenarioInput ScenarioInputFixture
+	if err := json.Unmarshal(artifact.Input.Body, &scenarioInput); err != nil {
+		return AssignmentExecutionRequest{}, fmt.Errorf("decode scenario input: %w", err)
+	}
+	var scenarioGold ScenarioGoldCriteria
+	if err := json.Unmarshal(artifact.Gold.Body, &scenarioGold); err != nil {
+		return AssignmentExecutionRequest{}, fmt.Errorf("decode scenario gold: %w", err)
+	}
+	catalog, err := c.store.LoadScenarioCatalog(ctx, spec.GetCampaignId())
+	if err != nil {
+		return AssignmentExecutionRequest{}, err
+	}
+	gradingMethod, err := scenarioGradingMethodForAssignment(catalog, assignment)
+	if err != nil {
+		return AssignmentExecutionRequest{}, err
+	}
+	scenarioTools, err := scenarioToolsForAssignment(catalog, assignment)
+	if err != nil {
+		return AssignmentExecutionRequest{}, err
+	}
+	requiredConcepts, err := scenarioRequiredConceptsForAssignment(catalog, assignment)
+	if err != nil {
+		return AssignmentExecutionRequest{}, err
+	}
+	req := AssignmentExecutionRequest{
+		Assignment:        assignment,
+		FormationStackSet: formationStackSet,
+		Investigation:     spec.GetInvestigation(),
+		AttemptID:         attemptID,
+		ScenarioInput:     scenarioInput,
+		ScenarioGold:      scenarioGold,
+		ScenarioTools:     scenarioTools,
+		RequiredConcepts:  requiredConcepts,
+		GradingMethod:     gradingMethod,
+		Binding:           binding,
+	}
+	req.Binding.ModelRegistryDigest = spec.GetModelRegistryDigest()
+	req.Binding.ModelVariants = spec.GetModelRegistry()
+	req.Binding.ModelRegistry = InferenceVariantsFromEvalRegistry(spec.GetModelRegistry())
+	req.Binding.FormationStackSetDigest = spec.GetFormationStackSetDigest()
+	return req, nil
 }
 
 func scenarioGradingMethodForAssignment(catalog *evalv1.EvaluationScenarioCatalog, assignment *evalv1.EvaluationAssignment) (evalv1.EvaluationGradingMethod, error) {

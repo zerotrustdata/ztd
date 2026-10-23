@@ -16,18 +16,19 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/investigation"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.3.0"
+	GraderVersion = "1.8.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID      = "default-suite"
-	DefaultSuiteVersion = "1.6.0"
+	DefaultSuiteVersion = "1.13.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -51,7 +52,11 @@ const (
 // frozen as part of a scenario's gold content check.
 type ScenarioDiagnosisRubric string
 
-const ScenarioDiagnosisRubricCheckoutTimeoutV1 ScenarioDiagnosisRubric = "checkout-timeout-v1"
+const (
+	ScenarioDiagnosisRubricCheckoutTimeoutV1 ScenarioDiagnosisRubric = "checkout-timeout-v1"
+	ScenarioDiagnosisRubricCheckoutTimeoutV2 ScenarioDiagnosisRubric = "checkout-timeout-v2"
+	ScenarioDiagnosisRubricCheckoutTimeoutV3 ScenarioDiagnosisRubric = "checkout-timeout-v3"
+)
 
 // scenarioCatalogFreezeTime is the fixed production and verification time of
 // every catalog fixture artifact, so identical suite content always yields
@@ -238,6 +243,10 @@ type ScenarioEscalationExpectation struct {
 // design (its target does not exist) and whose answer must explain the failure.
 const recoveryKindMissingResource = "missing_resource"
 
+// recoveryKindErrorGuidedRetry supplies the earlier failure in the scenario's
+// seed. The scored call must successfully apply the frozen argument constraints.
+const recoveryKindErrorGuidedRetry = "error_guided_retry"
+
 // ScenarioRecoveryExpectation records whether recovery behavior is expected.
 type ScenarioRecoveryExpectation struct {
 	Expected bool   `json:"expected"`
@@ -268,6 +277,8 @@ type ScenarioGoldCriteria struct {
 	PipelineCriteria       []ScenarioPipelineCriteria      `json:"pipeline_criteria"`
 	ContentCheck           *ScenarioContentCheck           `json:"content_check,omitempty"`
 	ArgumentValidators     []ToolArgumentValidator         `json:"argument_validators,omitempty"`
+	FileState              []investigation.FileState       `json:"file_state,omitempty"`
+	GovernedProbe          *investigation.GovernedProbe    `json:"governed_probe,omitempty"`
 	Players                *ScenarioPlayerExpectations     `json:"players,omitempty"`
 	PromptHint             *ScenarioPromptHint             `json:"prompt_hint,omitempty"`
 	PolicyExpectation      ScenarioPolicyExpectation       `json:"policy_expectation"`

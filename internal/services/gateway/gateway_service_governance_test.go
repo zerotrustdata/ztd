@@ -11,7 +11,8 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/ed25519"
+	"encoding/hex"
 	"testing"
 	"time"
 
@@ -52,22 +53,43 @@ func TestGatewayModeService_IsGovernanceReady(t *testing.T) {
 		assert.False(t, ls.IsGovernanceReady(t.Context()))
 	})
 
-	t.Run("Notary posture returns true with signers", func(t *testing.T) {
+	t.Run("Notary posture returns false with signers but no bound consensus", func(t *testing.T) {
 		ls := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureNotary})
+		addGovernanceTestSigner(t, ls, "test-signer-1")
 
-		signer := models.TrustedSigner{
-			ID:        "test-signer-1",
-			PublicKey: "abc123",
-			AddedAt:   time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
-			Enabled:   true,
-		}
-		signerBytes, err := json.Marshal(signer)
-		require.NoError(t, err)
-		err = ls.GetDocStore().DocSet(t.Context(), "trusted_signers", "test-signer-1", signerBytes)
-		require.NoError(t, err)
+		assert.False(t, ls.IsGovernanceReady(t.Context()))
+		assert.Equal(t, models.HealthConsensus{}, ls.ConsensusHealth(t.Context()))
+	})
+
+	t.Run("Notary posture returns true with a ready consensus binding", func(t *testing.T) {
+		ls := newTestGatewayService(t, testGatewayOpts{posture: constants.PostureNotary})
+		addGovernanceTestSigner(t, ls, "test-signer-1")
+		require.NoError(t, ls.GetConsensusStore().AddConsensus(t.Context(), models.ConsensusPolicy{
+			ID:              string(constants.DocIDConsensusBinding),
+			EndpointURL:     "https://consensus.example.test/deliberate",
+			MemberAppIDs:    []string{"test-signer-1"},
+			Quorum:          1,
+			Provider:        string(constants.ConsensusProviderApplication),
+			RequireDistinct: true,
+			Enabled:         true,
+		}))
 
 		assert.True(t, ls.IsGovernanceReady(t.Context()))
+		assert.True(t, ls.ConsensusHealth(t.Context()).Ready)
 	})
+}
+
+// addGovernanceTestSigner registers an enabled L2 member signer backed by a fresh Ed25519 key.
+func addGovernanceTestSigner(t *testing.T, ls *GatewayModeService, id string) {
+	t.Helper()
+	pub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	require.NoError(t, ls.GetSignerStore().AddTrustedSigner(t.Context(), models.TrustedSigner{
+		ID:        id,
+		PublicKey: hex.EncodeToString(pub),
+		AddedAt:   time.Now().UTC(),
+		Enabled:   true,
+	}))
 }
 
 func TestGatewayModeService_GetGovernanceDeps(t *testing.T) {

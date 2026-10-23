@@ -21,7 +21,7 @@ import (
 const catalogueRows = 25
 
 // doctrineIngresses are the ingresses that must carry every attack category.
-var doctrineIngresses = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI}
+var doctrineIngresses = []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressMCPStdio, IngressA2A, IngressCLI}
 
 // cellKey is one (ingress, fault) cell of the catalogue.
 type cellKey struct {
@@ -134,7 +134,7 @@ func validateExpect(c Case, posture constants.Posture, e Expect) error {
 		if e.L2Status == operatorv1.L2Status_L2_STATUS_UNSPECIFIED || e.L3Status == operatorv1.L3Status_L3_STATUS_UNSPECIFIED {
 			return invalid("case %s: executed expectation has no L2 or L3 status", c.ID)
 		}
-		want := executedExpect(posture, c.Action, effectFor(c.Ingress, c.Action))
+		want := executedExpect(posture, c.Ingress, c.Action, effectFor(c.Ingress, c.Action))
 		if e != want {
 			return invalid("case %s: executed expectation %+v does not match %+v", c.ID, e, want)
 		}
@@ -238,7 +238,7 @@ func definedRefusal(code operatorv1.IngressRefusalCode) bool {
 	return ok
 }
 
-// knownIngress reports whether i is one of the six ingresses.
+// knownIngress reports whether i is one of the catalogue's ingresses.
 func knownIngress(i Ingress) bool {
 	for _, known := range ingressAll {
 		if i == known {

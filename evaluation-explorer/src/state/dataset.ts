@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-// Dataset selection and URL state. The site never averages across datasets.
+// Dataset selection and URL state. Model aggregates span run datasets;
+// evidence details retain their source dataset.
 // The active dataset is encoded in the hash route so it survives reload and
 // is shareable. User preferences (filters, sort) persist in
 // localStorage; eval state never does.
@@ -113,12 +114,12 @@ function defaultDatasetId(
   return liveDatasetIds[0] ?? '';
 }
 
-// The release every view filters by: the explicit ?release= choice, else the
+// Explicit ?release= choices take precedence over a view default or the
 // newest release present in the feed.
-export function useSelectedRelease(): string {
+export function useSelectedRelease(defaultRelease?: string): string {
   const [params] = useSearchParams();
   const feedDefault = useStoreState((state) => defaultViewRelease([...state.catalogs.values(), ...state.evaluations.values(), ...state.models.values()]));
-  return params.get('release') ?? feedDefault;
+  return params.get('release') ?? defaultRelease ?? feedDefault;
 }
 
 export function useDatasetOptions(release: string): DatasetOption[] {

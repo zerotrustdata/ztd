@@ -3,8 +3,8 @@ doc_id: diagram-operator-pipeline-l1-l5
 title: "Diagram: Operator L1–L5 Governance Pipeline"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/services/governance/
   - internal/services/governance/l4_warden.go
@@ -39,7 +39,7 @@ graph TD
         Exec["Dispatch via MCP / A2A Handler"]
         Dissolve["Dissolve Capability"]
         Receipt["Sign Final ActionReceipt<br/>(COMPLETED or FAILED)"]
-        AuditLog["Persist Receipt +<br/>ReceiptPersistenceAttestation"]
+        AuditLog["Persist Event Receipt on events chain +<br/>ReceiptPersistenceAttestation"]
 
         PreReceipt --> Commit --> Rehydrate --> Cap --> Exec --> Dissolve --> Receipt --> AuditLog
     end
@@ -61,7 +61,7 @@ The L4 Warden (`internal/services/governance/l4_warden.go`) orchestrates pre-dis
 3. **Local L1 Doctrine Screening**: Independently evaluates static heuristics, blacklist rules, and Gitleaks signatures locally on the executing node, even if the Gateway screened the envelope previously.
 4. **Transaction Hash Integrity**: Recomputes the SHA-256 hash across canonical envelope fields and verifies exact equality with `envelope.Id`.
 5. **State Merkle Root Verification**: Confirms that the incoming `envelope.StateMerkleRoot` matches the current root of the local commitment ledger.
-6. **L2 Consensus Quorum**: Under `consensus` and `notary` postures, verifies $K$-of-$N$ Ed25519 signatures from authorized consensus committee members over `<tx_hash>|<decision>`.
+6. **L2 Consensus Quorum**: Under `consensus` and `notary` postures, for state-change actions only (`governance.L2Enforced`), verifies $K$-of-$N$ Ed25519 signatures from authorized consensus committee members over `<tx_hash>|<decision>`.
 7. **L3 Notary Human Authorization**: Under `ratify` and `notary` postures, validates the presence of an authenticated WebAuthn signature assertion over the transaction hash.
 
 ## Governance Posture Gating
@@ -71,9 +71,9 @@ The active posture (`--posture`) configured at Gateway startup determines enforc
 | Posture | L1 Doctrine | L2 Consensus | L3 Notary | L4 Warden & L5 Actuator |
 | :--- | :--- | :--- | :--- | :--- |
 | **`doctrine`** | **Enforced** | Audited | Audited | **Enforced** |
-| **`consensus`** | **Enforced** | **Enforced** | Audited | **Enforced** |
+| **`consensus`** | **Enforced** | **Enforced** (state changes) | Audited | **Enforced** |
 | **`ratify`** | **Enforced** | Audited | **Enforced** (Mutations) | **Enforced** |
-| **`notary`** | **Enforced** | **Enforced** | **Enforced** (Mutations) | **Enforced** |
+| **`notary`** | **Enforced** | **Enforced** (state changes) | **Enforced** (Mutations) | **Enforced** |
 
 Universal checks (hash integrity, replay nonce, expiry, Merkle state root, and payload decode) are unconditionally enforced across all postures.
 
@@ -83,9 +83,9 @@ The L5 Actuator (`internal/services/governance/l5_actuator.go`) is the sole enti
 
 1. **Pre-Execution Signing**: Generates and signs the initial `EXECUTING` `ActionReceipt` using the local Actuator Ed25519 signing key.
 2. **Commitment Attestation**: Appends a signed attestation to the SQLite chain head.
-3. **Payload Rehydration**: Resolves reversible `{{UEI_N}}` tokens to unredacted plaintext through `ScrubbingService`. Fails closed: a token that cannot be resolved, or any token when no `ScrubbingService` is configured, skips dispatch and finalizes a signed `FAILED` receipt.
+3. **Payload Rehydration**: Resolves the runtime's own reversible `{{UEI_<owner>_N}}` tokens to unredacted plaintext through `ScrubbingService`. An `INFERENCE` payload keeps another runtime's tokens opaque. Fails closed: an own token that cannot be resolved, a foreign token in any other action, or any token when no `ScrubbingService` is configured, skips dispatch and finalizes a signed `FAILED` receipt.
 4. **Just-In-Time (JIT) Capability**: Mints an ephemeral, transaction-scoped capability granting the exact permissions required by the handler.
 5. **Execution Dispatch**: Invokes the registered MCP tool handler or native command runner.
 6. **Capability Dissolution**: Destroys the ephemeral capability immediately upon command completion.
 7. **Final Receipt Signing**: Scrubs outbound results and signs the final `COMPLETED` or `FAILED` `ActionReceipt`.
-8. **Persistence & Mirroring**: Persists the signed receipt and attestation to local SQLite storage, then publishes a best-effort copy to `receipts:<operator-id>:<operator-session-id>`.
+8. **Persistence & Mirroring**: Persists the signed receipt and its `ReceiptPersistenceAttestation` as the current event receipt on the local `events` chain, then publishes a best-effort copy to `receipts:<operator-id>:<operator-session-id>`.

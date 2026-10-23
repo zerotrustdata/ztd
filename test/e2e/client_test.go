@@ -299,25 +299,25 @@ func newBareMTLSRequest(ctx context.Context, reqURL string) (*http.Request, erro
 }
 
 // GetAuditReceipts fetches the authenticated audit receipts list and returns
-// the typed response up to the server default limit. Use GetActionReceipt for
+// the typed response up to the server default limit. Use GetEventReceipt for
 // the canonical protobuf response selected by transaction ID.
-func (c *E2EClient) GetAuditReceipts(ctx context.Context) (models.AuditReceiptsResponse, error) {
-	path := constants.APIPaths.AuditReceipts
+func (c *E2EClient) GetAuditReceipts(ctx context.Context) (models.AuditEventReceiptsResponse, error) {
+	path := constants.APIPaths.AuditEventReceipts
 	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return models.AuditReceiptsResponse{}, err
+		return models.AuditEventReceiptsResponse{}, err
 	}
 	body, _, err := doRequest(c.mtlsClient, req, http.StatusOK)
 	if err != nil {
-		return models.AuditReceiptsResponse{}, fmt.Errorf("fetch audit receipts: %w", err)
+		return models.AuditEventReceiptsResponse{}, fmt.Errorf("fetch audit receipts: %w", err)
 	}
-	return decodeJSON[models.AuditReceiptsResponse](body, "audit receipts")
+	return decodeJSON[models.AuditEventReceiptsResponse](body, "audit receipts")
 }
 
-// GetActionReceipt reads the bare canonical protobuf response selected by tx_id.
-// The list endpoint returns an AuditReceiptsResponse wrapper instead.
-func (c *E2EClient) GetActionReceipt(ctx context.Context, txID string) (*operatorv1.ActionReceipt, error) {
-	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, constants.APIPaths.AuditReceipts+"?tx_id="+txID, nil)
+// GetEventReceipt reads the bare canonical protobuf response selected by tx_id.
+// The list endpoint returns an AuditEventReceiptsResponse wrapper instead.
+func (c *E2EClient) GetEventReceipt(ctx context.Context, txID string) (*operatorv1.ActionReceipt, error) {
+	req, err := c.newAuthenticatedRequest(ctx, http.MethodGet, constants.APIPaths.AuditEventReceipts+"?tx_id="+txID, nil)
 	if err != nil {
 		return nil, err
 	}

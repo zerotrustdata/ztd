@@ -48,8 +48,11 @@ func (i *CommitmentImporter) SourceID() string {
 }
 
 func (i *CommitmentImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
-	if i == nil || i.reader == nil || i.trust == nil || !validCommitmentBinding(i.binding) || i.verifiedAt.IsZero() {
-		return nil, fmt.Errorf("%w: reader, assessed trust, content reference, path, scope, run, transaction, and verification time are required", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil || i.trust == nil || i.verifiedAt.IsZero() {
+		return nil, fmt.Errorf("%w: reader, assessed trust, and verification time are required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := validCommitmentBinding(i.binding); err != nil {
+		return nil, fmt.Errorf("%w: commitment binding: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -79,9 +82,17 @@ func (i *CommitmentImporter) Import(ctx context.Context) ([]EvidenceNode, error)
 	return []EvidenceNode{{ArtifactID: i.binding.Reference, ArtifactType: ArtifactTypeCommitment, SHA256: digest, MediaType: constants.MediaTypeJSON, SchemaRef: "ztd.operator.v1.CommitmentAttestation", ProducerIdentity: attestation.GetAuditorKeyId(), ProducedAt: time.UnixMilli(attestation.GetCommittedAtUnixMs()), ScopeID: i.binding.ScopeID, RunID: i.binding.RunID, AttemptID: i.binding.AttemptID, ScenarioID: i.binding.ScenarioID, TransactionID: attestation.GetTransactionId(), VerificationStatus: status, VerifierID: verifierID, VerifierVersion: verifierVersion, VerifiedAt: verifiedAt, BundlePath: i.binding.Path, CanonicalBytes: result.Bytes, References: []string{}}}, nil
 }
 
-func validCommitmentBinding(binding CommitmentImportBinding) bool {
-	_, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.CommitmentReferencePrefix)
-	return referenceValid && ValidRelativePath(binding.Path) && binding.ScopeID != "" && binding.RunID != "" && binding.TransactionID != ""
+func validCommitmentBinding(binding CommitmentImportBinding) error {
+	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.CommitmentReferencePrefix); !referenceValid {
+		return errors.New("content reference is invalid")
+	}
+	if err := ValidateRelativePath(binding.Path); err != nil {
+		return err
+	}
+	if binding.ScopeID == "" || binding.RunID == "" || binding.TransactionID == "" {
+		return constants.ErrMissingRequiredField
+	}
+	return nil
 }
 
 func validCommitmentAttestation(attestation *operatorv1.CommitmentAttestation) bool {

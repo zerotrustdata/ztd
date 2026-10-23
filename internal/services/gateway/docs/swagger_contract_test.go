@@ -43,22 +43,22 @@ type swaggerContract struct {
 				FinalPersistenceAttestation swaggerSchemaReference `json:"final_persistence_attestation"`
 			} `json:"properties"`
 		} `json:"operatorv1.ActionReceipt"`
-		ActionReceiptRecord struct {
+		EventReceiptRecord struct {
 			Properties struct {
 				ActionReceipt swaggerSchemaReference `json:"action_receipt"`
 			} `json:"properties"`
-		} `json:"models.ActionReceiptRecord"`
+		} `json:"models.EventReceiptRecord"`
 	} `json:"definitions"`
 	Paths struct {
 		ApprovalVerify struct {
 			Post swaggerOperation `json:"post"`
 		} `json:"/api/v1/approvals/{txHash}/verify"`
-		AuditReceipts struct {
+		AuditEventReceipts struct {
 			Get swaggerOperation `json:"get"`
-		} `json:"/api/v1/audit/receipts"`
-		AuditReceiptsExport struct {
+		} `json:"/api/v1/audit/event-receipts"`
+		AuditEventReceiptsExport struct {
 			Get swaggerOperation `json:"get"`
-		} `json:"/api/v1/audit/receipts/export"`
+		} `json:"/api/v1/audit/event-receipts/export"`
 		GovernanceEnvelopes struct {
 			Post swaggerOperation `json:"post"`
 		} `json:"/api/v1/governance/envelopes"`
@@ -78,8 +78,8 @@ func TestSwaggerContract_DocumentsCanonicalReceiptsAndOperatorValidation(t *test
 		wantRef   string
 	}{
 		{name: "approval canonical receipt", operation: contract.Paths.ApprovalVerify.Post, wantRef: "#/definitions/operatorv1.ActionReceipt"},
-		{name: "audit receipt list wrapper", operation: contract.Paths.AuditReceipts.Get, wantRef: "#/definitions/models.AuditReceiptsResponse"},
-		{name: "audit receipt export wrapper", operation: contract.Paths.AuditReceiptsExport.Get, wantRef: "#/definitions/models.AuditReceiptsResponse"},
+		{name: "audit receipt list wrapper", operation: contract.Paths.AuditEventReceipts.Get, wantRef: "#/definitions/models.AuditEventReceiptsResponse"},
+		{name: "audit receipt export wrapper", operation: contract.Paths.AuditEventReceiptsExport.Get, wantRef: "#/definitions/models.AuditEventReceiptsResponse"},
 		{name: "governance canonical receipt", operation: contract.Paths.GovernanceEnvelopes.Post, wantRef: "#/definitions/operatorv1.ActionReceipt"},
 		{name: "operator validation response", operation: contract.Paths.OperatorsValidate.Post, wantRef: "#/definitions/models.OperatorSessionValidationResponse"},
 	}
@@ -94,5 +94,5 @@ func TestSwaggerContract_DocumentsCanonicalReceiptsAndOperatorValidation(t *test
 	assert.Equal(t, "#/definitions/models.OperatorSessionValidationRequest", contract.Paths.OperatorsValidate.Post.Parameters[0].Schema.Ref)
 	assert.Equal(t, "#/definitions/operatorv1.DeterministicStageEvidence", contract.Definitions.ActionReceipt.Properties.DeterministicStageEvidence.Items.Ref)
 	assert.Equal(t, "#/definitions/operatorv1.ReceiptPersistenceAttestation", contract.Definitions.ActionReceipt.Properties.FinalPersistenceAttestation.Ref)
-	assert.Equal(t, "#/definitions/operatorv1.ActionReceipt", contract.Definitions.ActionReceiptRecord.Properties.ActionReceipt.Ref)
+	assert.Equal(t, "#/definitions/operatorv1.ActionReceipt", contract.Definitions.EventReceiptRecord.Properties.ActionReceipt.Ref)
 }

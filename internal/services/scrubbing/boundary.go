@@ -10,13 +10,16 @@ package scrubbing
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,10 +28,38 @@ import (
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
 )
 
-// tokenPattern matches {{UEI_N}} placeholders in rehydration.
-var tokenPattern = regexp.MustCompile(`\{\{UEI_\d+\}\}`)
+// A UEI token names the runtime that minted it: {{UEI_<owner>_<N>}}, where owner
+// is the minting runtime's random namespace (tokenOwnerBytes, hex encoded). Only
+// the owner rehydrates a token, so a token carried in from another runtime never
+// resolves to a local value, even when its sequence number is one the local
+// runtime has also minted.
+const tokenOwnerBytes = 6
 
-// ContainsToken reports whether payload holds a {{UEI_N}} token. A dispatcher
+// tokenPattern matches any UEI token in rehydration: an owned token, or an
+// ownerless {{UEI_N}} token, which names no runtime and is foreign everywhere.
+var tokenPattern = regexp.MustCompile(`\{\{UEI_(?:[0-9a-f]{12}_)?\d+\}\}`)
+
+// ownedTokenPattern splits an owned token into its owner and sequence number.
+var ownedTokenPattern = regexp.MustCompile(`^\{\{UEI_([0-9a-f]{12})_(\d+)\}\}$`)
+
+// tokenOwnerPattern matches a well-formed owner namespace.
+var tokenOwnerPattern = regexp.MustCompile(`^[0-9a-f]{12}$`)
+
+// ForeignTokenPolicy decides what rehydration does with a token this runtime did
+// not mint. A foreign token never resolves; the policy only chooses between
+// withholding the payload and leaving the token in it verbatim.
+type ForeignTokenPolicy int
+
+const (
+	// ForeignTokenReject fails rehydration on a foreign token. It is the zero
+	// value, so an unset policy fails closed.
+	ForeignTokenReject ForeignTokenPolicy = iota
+	// ForeignTokenOpaque leaves a foreign token in place as opaque text, for a
+	// payload whose reader only ever sees the token, never its value.
+	ForeignTokenOpaque
+)
+
+// ContainsToken reports whether payload holds a UEI token. A dispatcher
 // with no ScrubbingService cannot rehydrate one and must withhold the payload.
 // A JSON payload is scanned as RehydratePayload reads it: every decoded string
 // and object key, so a JSON-escaped token is still found. Any other payload is
@@ -87,7 +118,7 @@ func DefaultConfig() *Config {
 const valueGroupName = "value"
 
 // RegexScrubber replaces every sensitive value its pattern matches with the
-// value's reversible {{UEI_N}} token.
+// value's reversible UEI token.
 type RegexScrubber struct {
 	name    string
 	pattern *regexp.Regexp
@@ -123,16 +154,19 @@ func (r *RegexScrubber) Scrub(input string, tokenize func(string) string) string
 // ScrubbingService handles data scrubbing at the boundary plane:
 // - Scrubbing: Removes sensitive data before cloud transmission
 // - Rehydration: Restores sensitive data at execution boundary
-// - Token Persistence: Maintains {{UEI_N}} mappings across restarts
+// - Token Persistence: Maintains {{UEI_<owner>_N}} mappings across restarts
 type ScrubbingService struct {
 	config    *Config
 	logger    *slog.Logger
 	scrubbers []*RegexScrubber
 
+	// tokenOwner is the runtime's owner namespace, named by every token it mints.
+	tokenOwner string
+
 	// Tokenized context state for data scrubbing
 	tokenMu       sync.RWMutex
-	tokenMap      map[string]string // {{UEI_1}} -> "sensitive value"
-	reverseMap    map[string]string // "sensitive value" -> {{UEI_1}}
+	tokenMap      map[string]string // {{UEI_<owner>_1}} -> "sensitive value"
+	reverseMap    map[string]string // "sensitive value" -> {{UEI_<owner>_1}}
 	tokenSequence int
 
 	// Persistent storage for token maps
@@ -159,6 +193,16 @@ func NewScrubbingService(ctx context.Context, config *Config, logger *slog.Logge
 
 	s.initializeScrubbers(ctx)
 
+	owner, err := s.loadTokenOwner(ctx)
+	if errors.Is(err, constants.ErrKeyNotFound) {
+		// The first service on this store names the runtime.
+		owner, err = s.mintTokenOwner(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.tokenOwner = owner
+
 	// Load persisted tokens if storage is available
 	if s.tokenStore != nil {
 		if err := s.loadPersistedTokens(ctx); err != nil {
@@ -167,6 +211,50 @@ func NewScrubbingService(ctx context.Context, config *Config, logger *slog.Logge
 	}
 
 	return s, nil
+}
+
+// loadTokenOwner reads the runtime's persisted owner namespace. It returns an
+// error wrapping ErrKeyNotFound when the store holds none or there is no store.
+func (s *ScrubbingService) loadTokenOwner(ctx context.Context) (string, error) {
+	if s.tokenStore == nil {
+		return "", fmt.Errorf("scrubbing: load token owner: %w: no TokenStore", constants.ErrKeyNotFound)
+	}
+	owner, err := s.tokenStore.KVGet(ctx, constants.ScrubbingTokenOwnerKey)
+	if errors.Is(err, constants.ErrKeyNotFound) {
+		return "", fmt.Errorf("scrubbing: load token owner: %w", err)
+	}
+	if err != nil {
+		return "", fmt.Errorf("scrubbing: load token owner: %w: %w", constants.ErrScrubbingTokenOwner, err)
+	}
+	if !tokenOwnerPattern.MatchString(owner) {
+		return "", fmt.Errorf("scrubbing: load token owner: %w: malformed owner namespace", constants.ErrScrubbingTokenOwner)
+	}
+	return owner, nil
+}
+
+// mintTokenOwner draws a new random owner namespace and persists it without
+// expiry, so the runtime's tokens name one owner across restarts and every
+// service sharing the store mints and resolves the same tokens. With no store
+// the owner lives only as long as the service, like its tokens.
+func (s *ScrubbingService) mintTokenOwner(ctx context.Context) (string, error) {
+	raw := make([]byte, tokenOwnerBytes)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("scrubbing: mint token owner: %w: %w", constants.ErrScrubbingTokenOwner, err)
+	}
+	owner := hex.EncodeToString(raw)
+	if s.tokenStore == nil {
+		return owner, nil
+	}
+	if err := s.tokenStore.KVSet(ctx, constants.ScrubbingTokenOwnerKey, owner, 0); err != nil {
+		return "", fmt.Errorf("scrubbing: persist token owner: %w: %w", constants.ErrScrubbingTokenOwner, err)
+	}
+	return owner, nil
+}
+
+// ownsToken reports whether this runtime minted token.
+func (s *ScrubbingService) ownsToken(token string) bool {
+	m := ownedTokenPattern.FindStringSubmatch(token)
+	return m != nil && m[1] == s.tokenOwner
 }
 
 // initializeScrubbers sets up all the pattern-based scrubbers
@@ -281,11 +369,15 @@ const suppressedOutput = "[OUTPUT_SUPPRESSED]"
 const untokenizedValue = "{{UEI_UNAVAILABLE}}"
 
 // ScrubText replaces every sensitive value in arbitrary text with its
-// reversible {{UEI_N}} token. The surrounding text, including the key of a
-// key-value pair, stays as written.
+// reversible UEI token. The surrounding text, including the key of a
+// key-value pair, stays as written. A JSON object or array stays valid JSON
+// (see scrubJSONText).
 func (s *ScrubbingService) ScrubText(ctx context.Context, input string) string {
 	if !s.IsEnabled() {
 		return suppressedOutput
+	}
+	if scrubbed, ok := s.scrubJSONText(ctx, input); ok {
+		return scrubbed
 	}
 
 	tokenize := func(value string) string { return s.tokenize(ctx, value) }
@@ -334,14 +426,16 @@ func (s *ScrubbingService) tokenizeSegment(ctx context.Context, segment string) 
 	return segment[:start] + token + segment[start+len(core):]
 }
 
-// scrubbedMarkerPattern matches a {{UEI_N}} token or the untokenized marker.
-var scrubbedMarkerPattern = regexp.MustCompile(`\{\{UEI_(?:\d+|UNAVAILABLE)\}\}`)
+// scrubbedMarkerPattern matches any UEI token, this runtime's or another's, or
+// the untokenized marker, so a token carried in from another runtime is never
+// wrapped in a local one.
+var scrubbedMarkerPattern = regexp.MustCompile(`\{\{UEI_(?:(?:[0-9a-f]{12}_)?\d+|UNAVAILABLE)\}\}`)
 
 // keyValuePairPattern matches one `key=value`, `Key: value` or `"key": value`
 // pair. Group 1 is the left boundary, group 2 the key identifier (bare or
 // quoted), group 3 the separator, and group 4 the value (quoted or bare). A
 // bare value consumes an existing token whole.
-var keyValuePairPattern = regexp.MustCompile(`(^|[\s,;{(\[&?])("[A-Za-z_][A-Za-z0-9_.\-]*"|'[A-Za-z_][A-Za-z0-9_.\-]*'|[A-Za-z_][A-Za-z0-9_.\-]*)(\s*=\s*|\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|(?:\{\{UEI_(?:\d+|UNAVAILABLE)\}\}|[^\s,;&}\]])+)`)
+var keyValuePairPattern = regexp.MustCompile(`(^|[\s,;{(\[&?])("[A-Za-z_][A-Za-z0-9_.\-]*"|'[A-Za-z_][A-Za-z0-9_.\-]*'|[A-Za-z_][A-Za-z0-9_.\-]*)(\s*=\s*|\s*:\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|(?:\{\{UEI_(?:(?:[0-9a-f]{12}_)?\d+|UNAVAILABLE)\}\}|[^\s,;&}\]])+)`)
 
 // scrubDataValues tokenizes, in place, the value of every key-value pair whose
 // key is inherently sensitive (passwords, secrets, etc.), leaving the key and
@@ -443,13 +537,14 @@ func (s *ScrubbingService) isLikelySensitiveKey(key string) bool {
 	return false
 }
 
-// RehydrateText replaces every {{UEI_N}} placeholder with its original value.
+// RehydrateText replaces every token this runtime minted with its original value.
 // It runs right before dispatch to restore sensitive data hidden from the cloud,
-// so it fails closed: a placeholder that cannot be resolved is an error, and the
-// text is never returned with the placeholder left in it. A token resolves from
-// memory first and then from the TokenStore, so tokens minted by another service
-// on the same store, or before a restart, still rehydrate.
-func (s *ScrubbingService) RehydrateText(ctx context.Context, input string) (string, error) {
+// so it fails closed: an own token that cannot be resolved is an error, and the
+// text is never returned with it left in. A token resolves from memory first and
+// then from the TokenStore, so tokens minted by another service on the same
+// store, or before a restart, still rehydrate. A token another runtime minted
+// never resolves: foreign decides whether it fails the text or stays verbatim.
+func (s *ScrubbingService) RehydrateText(ctx context.Context, input string, foreign ForeignTokenPolicy) (string, error) {
 	if input == "" {
 		return input, nil
 	}
@@ -459,7 +554,14 @@ func (s *ScrubbingService) RehydrateText(ctx context.Context, input string) (str
 	var out strings.Builder
 	last := 0
 	for _, loc := range tokenPattern.FindAllStringIndex(input, -1) {
-		value, err := s.resolveToken(ctx, input[loc[0]:loc[1]])
+		token := input[loc[0]:loc[1]]
+		if !s.ownsToken(token) {
+			if foreign == ForeignTokenOpaque {
+				continue
+			}
+			return "", fmt.Errorf("scrubbing: rehydrate text: %w: %s was not minted by this runtime", constants.ErrScrubbingTokenUnresolved, token)
+		}
+		value, err := s.resolveToken(ctx, token)
 		if err != nil {
 			return "", fmt.Errorf("scrubbing: rehydrate text: %w", err)
 		}
@@ -471,7 +573,7 @@ func (s *ScrubbingService) RehydrateText(ctx context.Context, input string) (str
 	return out.String(), nil
 }
 
-// resolveToken returns the sensitive value behind one {{UEI_N}} token. A token that
+// resolveToken returns the sensitive value behind one own token. A token that
 // is in neither memory nor the TokenStore, or whose store lookup fails, returns an
 // error wrapping ErrScrubbingTokenUnresolved.
 func (s *ScrubbingService) resolveToken(ctx context.Context, token string) (string, error) {
@@ -500,7 +602,8 @@ func (s *ScrubbingService) resolveToken(ctx context.Context, token string) (stri
 // json.RawMessage preserves arbitrary JSON shapes without introducing an
 // untyped object model at this serialization boundary. Any unresolvable
 // placeholder fails the whole payload: no partially rehydrated payload is returned.
-func (s *ScrubbingService) RehydratePayload(ctx context.Context, payload []byte) ([]byte, error) {
+// foreign applies to every token in the payload that this runtime did not mint.
+func (s *ScrubbingService) RehydratePayload(ctx context.Context, payload []byte, foreign ForeignTokenPolicy) ([]byte, error) {
 	if len(payload) == 0 {
 		return payload, nil
 	}
@@ -508,7 +611,7 @@ func (s *ScrubbingService) RehydratePayload(ctx context.Context, payload []byte)
 	var data json.RawMessage
 	if err := json.Unmarshal(payload, &data); err != nil {
 		// A payload that is not JSON is rehydrated as plain text.
-		text, rehydrateErr := s.RehydrateText(ctx, string(payload))
+		text, rehydrateErr := s.RehydrateText(ctx, string(payload), foreign)
 		if rehydrateErr != nil {
 			return nil, fmt.Errorf("scrubbing: rehydrate text payload: %w", rehydrateErr)
 		}
@@ -516,17 +619,17 @@ func (s *ScrubbingService) RehydratePayload(ctx context.Context, payload []byte)
 		return []byte(text), nil
 	}
 
-	return s.rehydrateJSONValue(ctx, data)
+	return s.rehydrateJSONValue(ctx, data, foreign)
 }
 
-func (s *ScrubbingService) rehydrateJSONValue(ctx context.Context, value json.RawMessage) ([]byte, error) {
+func (s *ScrubbingService) rehydrateJSONValue(ctx context.Context, value json.RawMessage, foreign ForeignTokenPolicy) ([]byte, error) {
 	if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 		return append([]byte(nil), value...), nil
 	}
 
 	var text string
 	if err := json.Unmarshal(value, &text); err == nil {
-		rehydrated, rehydrateErr := s.RehydrateText(ctx, text)
+		rehydrated, rehydrateErr := s.RehydrateText(ctx, text, foreign)
 		if rehydrateErr != nil {
 			return nil, fmt.Errorf("scrubbing: rehydrate string value: %w", rehydrateErr)
 		}
@@ -537,7 +640,7 @@ func (s *ScrubbingService) rehydrateJSONValue(ctx context.Context, value json.Ra
 	if err := json.Unmarshal(value, &object); err == nil {
 		fields := make(map[string]json.RawMessage, len(object))
 		for key, child := range object {
-			restoredKey, err := s.RehydrateText(ctx, key)
+			restoredKey, err := s.RehydrateText(ctx, key, foreign)
 			if err != nil {
 				return nil, fmt.Errorf("scrubbing: rehydrate object key: %w", err)
 			}
@@ -547,7 +650,7 @@ func (s *ScrubbingService) rehydrateJSONValue(ctx context.Context, value json.Ra
 			if _, exists := fields[restoredKey]; exists {
 				return nil, fmt.Errorf("scrubbing: rehydrate object key: %w", constants.ErrScrubbingKeyCollision)
 			}
-			rehydrated, err := s.rehydrateJSONValue(ctx, child)
+			rehydrated, err := s.rehydrateJSONValue(ctx, child, foreign)
 			if err != nil {
 				return nil, fmt.Errorf("scrubbing: rehydrate object field %q: %w", key, err)
 			}
@@ -559,7 +662,7 @@ func (s *ScrubbingService) rehydrateJSONValue(ctx context.Context, value json.Ra
 	var array []json.RawMessage
 	if err := json.Unmarshal(value, &array); err == nil {
 		for index, child := range array {
-			rehydrated, err := s.rehydrateJSONValue(ctx, child)
+			rehydrated, err := s.rehydrateJSONValue(ctx, child, foreign)
 			if err != nil {
 				return nil, fmt.Errorf("scrubbing: rehydrate array element %d: %w", index, err)
 			}
@@ -571,8 +674,8 @@ func (s *ScrubbingService) rehydrateJSONValue(ctx context.Context, value json.Ra
 	return append([]byte(nil), value...), nil
 }
 
-// GetTokenForValue registers a sensitive value and returns its stable {{UEI_N}}
-// token. Fails closed if persistence is required but unavailable or fails.
+// GetTokenForValue registers a sensitive value and returns its stable
+// {{UEI_<owner>_N}} token. Fails closed if persistence is required but unavailable or fails.
 func (s *ScrubbingService) GetTokenForValue(ctx context.Context, value string) (string, error) {
 	if value == "" {
 		return "", nil
@@ -591,7 +694,7 @@ func (s *ScrubbingService) GetTokenForValue(ctx context.Context, value string) (
 	}
 
 	s.tokenSequence++
-	token := fmt.Sprintf("{{UEI_%d}}", s.tokenSequence)
+	token := fmt.Sprintf("{{UEI_%s_%d}}", s.tokenOwner, s.tokenSequence)
 	s.tokenMap[token] = value
 	s.reverseMap[value] = token
 
@@ -637,16 +740,21 @@ func (s *ScrubbingService) loadPersistedTokens(ctx context.Context) error {
 	loadedCount := 0
 	maxSequence := 0
 	for key, value := range tokens {
-		// Extract token from key format: uei_token_{{UEI_N}}
+		// Extract token from key format: uei_token_{{UEI_<owner>_N}}
 		token := strings.TrimPrefix(key, constants.ScrubbingTokenKeyPrefix)
 		if token == key {
 			s.logger.Warn("scrubbing: invalid token key format", "key", key, "error", constants.ErrScrubbingTokenKeyFormat)
 			continue
 		}
 
-		// Parse sequence number from token: {{UEI_N}}
-		var seq int
-		_, err := fmt.Sscanf(token, "{{UEI_%d}}", &seq)
+		// A token that names no owner, or another owner, is never this
+		// runtime's to resolve.
+		m := ownedTokenPattern.FindStringSubmatch(token)
+		if m == nil || m[1] != s.tokenOwner {
+			s.logger.Warn("scrubbing: skipping token not minted by this runtime", "token", token, "error", constants.ErrScrubbingTokenKeyFormat)
+			continue
+		}
+		seq, err := strconv.Atoi(m[2])
 		if err != nil {
 			s.logger.Warn("scrubbing: failed to parse token sequence", "token", token, "error", fmt.Errorf("%w: %w", constants.ErrScrubbingTokenSequence, err))
 			continue

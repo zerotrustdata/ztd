@@ -192,6 +192,9 @@ const EXCLUDED_MODELS = new Set([
   'observe_producer_run_state_request',
   'observe_producer_stop_request',
   'observe_producer_response',
+  'observe_projection_transition_error',
+  'observe_projection_stale_update_error',
+  'observe_producer_rejection',
   // Public feed owner-only and server-to-server models. These never appear
   // in the builder contract pack: ingest requests are Gateway-to-mirror,
   // export config is owner-only, outbox entries are internal state, and
@@ -449,7 +452,7 @@ function generateModelsTs() {
   sections.push('export type UTCDatetime = string;');
   sections.push('');
 
-  // Inline models first (dependencies), then browser models, then event payloads.
+  // Inline models first (dependencies), then browser models and event payloads.
   // Generate interfaces for browser models to populate inlineModels.
   const interfaceBlocks = [];
   for (const m of BROWSER_MODELS) interfaceBlocks.push(generateInterfaceClean(m));
@@ -618,7 +621,10 @@ function generateOpenApi() {
     servers: [{ url: '/api/v1', description: 'Gateway base URL from runtime config' }],
     paths,
     components,
-    'x-models': { ...observeApi, ...eventPayloads },
+    'x-models': {
+      ...Object.fromEntries(Object.entries(observeApi).filter(([name]) => !EXCLUDED_MODELS.has(name))),
+      ...eventPayloads,
+    },
   };
   return stableSerialize(doc);
 }
@@ -1123,7 +1129,7 @@ function generatePublicOpenApi() {
       '/snapshot': { get: { operationId: 'public_snapshot', parameters: [sourceParameter()], responses: { '200': { description: 'Current feed position', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicFeedSnapshot' } } } } } } },
       '/history': { get: { operationId: 'public_history', parameters: [sourceParameter(), { name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100 } }], responses: { '200': { description: 'Bounded history page', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicFeedCursorPage' } } } } } } },
       '/stream': { get: { operationId: 'public_stream', parameters: [sourceParameter(), { name: 'since_id', in: 'query', required: false, schema: { type: 'integer', minimum: 0 } }], responses: { '200': { description: 'Replayable public event stream', content: { 'text/event-stream': { schema: { type: 'string' } } } } } } },
-      '/proof-catalog': { get: { operationId: 'public_proof_catalog', parameters: [sourceParameter()], responses: { '200': { description: 'Public-safe proof catalog', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofCatalog' } } } } } } },
+      '/proof-catalog': { get: { operationId: 'public_proof_catalog', parameters: [sourceParameter(), { name: 'artifact', in: 'query', required: false, description: 'Narrow the catalog to this active artifact; an unknown or withdrawn digest returns no entries', schema: { type: 'string', pattern: '^[0-9a-f]{64}$' } }], responses: { '400': { description: 'Malformed artifact digest' }, '200': { description: 'Public-safe proof catalog', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofCatalog' } } } } } } },
       '/proof-manifest': { get: { operationId: 'public_proof_manifest', parameters: [sourceParameter()], responses: { '200': { description: 'Proof manifest; nonzero segment_index requires signed log verification', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofManifest' } } } } } } },
       '/proof-segments': { get: { operationId: 'public_proof_segments', parameters: [sourceParameter()], responses: { '200': { description: 'Source-signed proof log including withdrawals', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofSegmentsResponse' } } } } } } },
       '/proofs/{artifact_id}': { get: { operationId: 'public_proof_download', parameters: [{ name: 'artifact_id', in: 'path', required: true, schema: { type: 'string', pattern: '^[0-9a-f]{64}$' } }], responses: { '200': { description: 'Content-addressed public-safe proof bytes', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } } } } },

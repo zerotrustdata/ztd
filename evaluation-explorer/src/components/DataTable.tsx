@@ -11,6 +11,7 @@ import { type ReactNode, useEffect, useId, useState, useSyncExternalStore } from
 import {
   type ColumnDef,
   type ColumnVisibilityState,
+  type OnChangeFn,
   type RowData,
   type SortingState,
   columnVisibilityFeature,
@@ -48,6 +49,9 @@ export interface DataTableProps<T extends RowData> {
   renderCard?: (record: T) => ReactNode;
   /** Filter controls rendered in one row with the column-visibility toggle; stays visible when data is empty. */
   toolbar?: ReactNode;
+  /** Optional controlled visibility for table presets. */
+  columnVisibility?: ColumnVisibilityState;
+  onColumnVisibilityChange?: OnChangeFn<ColumnVisibilityState>;
 }
 
 const cardMedia = '(max-width: 899px)';
@@ -67,6 +71,8 @@ export function DataTable<T extends RowData>({
   enableColumnVisibility = true,
   renderCard,
   toolbar,
+  columnVisibility: controlledVisibility,
+  onColumnVisibilityChange,
 }: DataTableProps<T>) {
   const mobile = useSyncExternalStore(subscribeToCardViewport, cardViewport, () => false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -79,9 +85,9 @@ export function DataTable<T extends RowData>({
     features: dataTableFeatures,
     data,
     columns,
-    state: { sorting, columnVisibility },
+    state: { sorting, columnVisibility: controlledVisibility ?? columnVisibility },
     onSortingChange: setSorting,
-    onColumnVisibilityChange: setColumnVisibility,
+    onColumnVisibilityChange: onColumnVisibilityChange ?? setColumnVisibility,
   });
 
   const pageCount = Math.ceil(data.length / pageSize);
@@ -163,6 +169,7 @@ export function DataTable<T extends RowData>({
                   <th
                     key={header.id}
                     scope="col"
+                    data-column={header.column.id}
                     aria-sort={isSorted ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
                   >
                     {header.column.getCanSort() ? (
@@ -190,7 +197,7 @@ export function DataTable<T extends RowData>({
           {pageRows.map((row) => (
             <tr key={row.id}>
               {row.getVisibleCells().map((cell) => (
-                <td key={cell.id}>
+                <td key={cell.id} data-column={cell.column.id}>
                   <table.FlexRender cell={cell} />
                 </td>
               ))}

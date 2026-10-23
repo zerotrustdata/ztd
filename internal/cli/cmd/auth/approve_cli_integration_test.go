@@ -174,3 +174,76 @@ func TestApproveCmd_CLI_RequiresEnrolledCredentials(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrNotAuthenticated)
 	assert.Empty(t, mockClient.PostCalls)
 }
+
+func cliDenyReceipt(t *testing.T, txHash string, code operatorv1.GovernanceRejectionCode) []byte {
+	t.Helper()
+	body, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+		TransactionId:   "tx-deny-test",
+		TransactionHash: txHash,
+		Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		RejectionCode:   code,
+	})
+	require.NoError(t, err)
+	return body
+}
+
+func TestApproveCmd_Deny_SubmitsUnsignedDenyAndSkipsBrowser(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	txHash := hex.EncodeToString(bytes.Repeat([]byte("a"), sha256.Size))
+	mockClient := &cmdtest.MockAPIClient{PostResp: cliDenyReceipt(t, txHash, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)}
+	openedBrowser := false
+	cmd := approveCmdWithConfig(func(string) (*config.Config, error) { return cfg, nil },
+		func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil },
+		cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { openedBrowser = true; return nil })
+	require.NoError(t, cmd.Flags().Set("deny", "true"))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.RunE(cmd, []string{txHash}))
+	assert.False(t, openedBrowser)
+	require.Len(t, mockClient.PostCalls, 1)
+	assert.Equal(t, constants.APIPaths.ApprovalsRespond, mockClient.PostCalls[0].Path)
+	assert.Equal(t, models.ApprovalRespondRequest{ApprovalID: txHash}, mockClient.PostCalls[0].Body,
+		"a deny is grounded in the mTLS session and carries no approval signature")
+	assert.Contains(t, buf.String(), "denied (signed L3_DENIED receipt)")
+}
+
+func TestApproveCmd_Deny_RejectsReceiptThatIsNotTheRequestedDeny(t *testing.T) {
+	txHash := hex.EncodeToString(bytes.Repeat([]byte("a"), sha256.Size))
+	for _, tc := range []struct {
+		name string
+		body func(t *testing.T) []byte
+		want error
+	}{
+		{"wrong transaction hash", func(t *testing.T) []byte {
+			return cliDenyReceipt(t, hex.EncodeToString(bytes.Repeat([]byte("b"), sha256.Size)), operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED)
+		}, constants.ErrTxTransactionHashMismatch},
+		{"not an L3 deny", func(t *testing.T) []byte {
+			return cliApprovalReceipt(t, txHash, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, operatorv1.L3Status_L3_STATUS_REQUIRED_VALID)
+		}, constants.ErrValidationFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+			mockClient := &cmdtest.MockAPIClient{PostResp: tc.body(t)}
+			cmd := approveCmdWithConfig(func(string) (*config.Config, error) { return cfg, nil },
+				func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil },
+				cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
+			require.NoError(t, cmd.Flags().Set("deny", "true"))
+			assert.ErrorIs(t, cmd.RunE(cmd, []string{txHash}), tc.want)
+		})
+	}
+}
+
+func TestApproveCmd_DenyAndCLIAreExclusive(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	mockClient := &cmdtest.MockAPIClient{}
+	cmd := approveCmdWithConfig(func(string) (*config.Config, error) { return cfg, nil },
+		func(fs.RuntimeFileService, *config.Config) (APIClient, error) { return mockClient, nil },
+		cmdtest.FileSvcFactoryFor(fileSvc), func(string) error { return nil })
+	cmd.SetArgs([]string{"--cli", "--deny", hex.EncodeToString(bytes.Repeat([]byte("a"), sha256.Size))})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	require.Error(t, cmd.Execute())
+	assert.Empty(t, mockClient.PostCalls)
+}

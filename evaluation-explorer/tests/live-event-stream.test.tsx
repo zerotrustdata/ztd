@@ -44,13 +44,13 @@ describe('LiveEventStream', () => {
   it('keeps eight columns and links the task and result directly to evidence', () => {
     render(stream([liveEvent({ metric_delta: { pass: { value: 1 }, latency_ms: { value: 780 }, input_tokens: { value: 350 } } })]));
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim()))
-      .toEqual(['Result', 'Task', 'Model', 'Latency', 'Input', 'Output', 'Tokens/s', 'Time']);
+      .toEqual(['Result', 'Task', 'Model', 'Latency (ms)', 'Input (tok)', 'Output (tok)', 'Tokens/s', 'Time']);
     const href = '/evaluations/ds-live-a/run-a/assignments/assignment-1';
     expect(screen.getByRole('link', { name: 'tool-select-file-read — View details' })).toHaveAttribute('href', href);
     expect(screen.getByRole('link', { name: /Passed:.*View details/ })).toHaveAttribute('href', href);
     expect(screen.getByRole('link', { name: 'model-a' })).toHaveAttribute('href', '/models/ds-live-a/model-a?role=primary');
-    expect(screen.getByText('780 ms')).toBeInTheDocument();
-    expect(screen.getByText('350 tok')).toBeInTheDocument();
+    expect(screen.getByText('780')).toBeInTheDocument();
+    expect(screen.getByText('350')).toBeInTheDocument();
     expect(screen.getByText('Primary')).toHaveClass('stream-role');
   });
 
@@ -107,14 +107,15 @@ describe('LiveEventStream', () => {
       benchmark_observations: { timing: { generation_ms: { value: 780 } }, unavailable_reasons: [] },
     })], []);
     render(stream([liveEvent()]));
-    expect(screen.getByText('450 tok')).toBeInTheDocument();
-    expect(screen.getByText('180 tok')).toBeInTheDocument();
-    expect(screen.getByText('230.8 tok/s')).toBeInTheDocument();
+    expect(screen.getByText('1,200')).toBeInTheDocument();
+    expect(screen.getByText('450')).toBeInTheDocument();
+    expect(screen.getByText('180')).toBeInTheDocument();
+    expect(screen.getByText('230.8')).toBeInTheDocument();
   });
 
   it('distinguishes missing metrics from zero and does not infer speed from latency', () => {
     render(stream([liveEvent({ metric_delta: { output_tokens: { value: 0 }, latency_ms: { value: 1000 } } })]));
-    expect(screen.getByText('0 tok')).toBeInTheDocument();
+    expect(screen.getByText('0')).toBeInTheDocument();
     const missing = screen.getAllByText('--');
     expect(missing.length).toBeGreaterThanOrEqual(1);
     expect(missing[0]).toHaveAttribute('title', 'not observed');
@@ -124,7 +125,7 @@ describe('LiveEventStream', () => {
     evalStore.loadFixtures([assignment({ run_id: 'other-run', terminal_status: 'provider_failed', resource_summary: { output_tokens: { value: 999 } } })], []);
     render(stream([liveEvent()]));
     expect(screen.getByRole('link', { name: /Completed:/ })).toHaveTextContent('✓');
-    expect(screen.queryByText('999 tok')).not.toBeInTheDocument();
+    expect(screen.queryByText('999')).not.toBeInTheDocument();
   });
 
   it('keeps model choices available after filtering and clears the model filter', async () => {
@@ -192,11 +193,11 @@ describe('LiveEventStream', () => {
       liveEvent({ event_id: 'two', assignment_id: 'two', metric_delta: { output_tokens: { value: 2 } } }),
       liveEvent({ event_id: 'missing', assignment_id: 'missing' }),
     ]));
-    const output = () => rows().map((row) => row.querySelector('[data-label="Output"]')?.textContent);
-    await user.click(screen.getByRole('button', { name: 'Sort by Output' }));
-    expect(output()).toEqual(['2 tok', '10 tok', '--']);
-    await user.click(screen.getByRole('button', { name: 'Sort by Output' }));
-    expect(output()).toEqual(['10 tok', '2 tok', '--']);
+    const output = () => rows().map((row) => row.querySelector('[data-label="Output (tok)"]')?.textContent);
+    await user.click(screen.getByRole('button', { name: 'Sort by Output (tok)' }));
+    expect(output()).toEqual(['2', '10', '--']);
+    await user.click(screen.getByRole('button', { name: 'Sort by Output (tok)' }));
+    expect(output()).toEqual(['10', '2', '--']);
   });
 
   it('sorts input tokens numerically with unavailable observations last in either direction', async () => {
@@ -206,24 +207,24 @@ describe('LiveEventStream', () => {
       liveEvent({ event_id: 'two', assignment_id: 'two', metric_delta: { input_tokens: { value: 2 } } }),
       liveEvent({ event_id: 'missing', assignment_id: 'missing' }),
     ]));
-    const input = () => rows().map((row) => row.querySelector('[data-label="Input"]')?.textContent);
-    await user.click(screen.getByRole('button', { name: 'Sort by Input' }));
-    expect(input()).toEqual(['2 tok', '10 tok', '--']);
-    await user.click(screen.getByRole('button', { name: 'Sort by Input' }));
-    expect(input()).toEqual(['10 tok', '2 tok', '--']);
+    const input = () => rows().map((row) => row.querySelector('[data-label="Input (tok)"]')?.textContent);
+    await user.click(screen.getByRole('button', { name: 'Sort by Input (tok)' }));
+    expect(input()).toEqual(['2', '10', '--']);
+    await user.click(screen.getByRole('button', { name: 'Sort by Input (tok)' }));
+    expect(input()).toEqual(['10', '2', '--']);
   });
 
   it('updates rows and metrics as new activity arrives', () => {
     evalStore.loadFixtures([assignment({ resource_summary: { output_tokens: { value: 10 } } })], []);
     const { rerender } = render(stream([liveEvent()]));
-    expect(screen.getByText('10 tok')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Needs attention|Pause|Resume/i })).not.toBeInTheDocument();
     act(() => evalStore.loadFixtures([assignment({ resource_summary: { output_tokens: { value: 20 } } })], []));
     rerender(stream([liveEvent(), liveEvent({ event_id: 'new', assignment_id: 'new', task_id: 'new-task' })]));
     expect(screen.getByText('Live', { exact: true })).toBeInTheDocument();
-    expect(screen.queryByText('10 tok')).not.toBeInTheDocument();
+    expect(screen.queryByText('10')).not.toBeInTheDocument();
     expect(rows()).toHaveLength(2);
-    expect(screen.getByText('20 tok')).toBeInTheDocument();
+    expect(screen.getByText('20')).toBeInTheDocument();
     expect(screen.getByText('new-task')).toBeInTheDocument();
   });
 

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,12 +46,31 @@ type releaseSmokeApprovalResult struct {
 	err             error
 }
 
+// releaseSmokeApprovalDecision is the owner's answer to one pending transaction.
+type releaseSmokeApprovalDecision int
+
+const (
+	// releaseSmokeLeavePending answers nothing yet; the transaction is offered
+	// again on the next reconciliation.
+	releaseSmokeLeavePending releaseSmokeApprovalDecision = iota
+	// releaseSmokeApprove runs `ztd auth approve --cli`.
+	releaseSmokeApprove
+	// releaseSmokeDeny runs `ztd auth approve --deny`.
+	releaseSmokeDeny
+)
+
 // releaseSmokeCLIApprovalResponder follows the owner CLI's live approval
-// stream and runs the real `ztd auth approve --cli` command for pending work.
+// stream and runs the real `ztd auth approve` command for pending work.
 type releaseSmokeCLIApprovalResponder struct {
-	mu       sync.Mutex
-	results  []releaseSmokeApprovalResult
-	seen     map[string]struct{}
+	mu      sync.Mutex
+	results []releaseSmokeApprovalResult
+	seen    map[string]struct{}
+	// decide, when set, answers each pending transaction; without it every
+	// transaction is approved.
+	decide   func(models.SuspendedTxResponse) releaseSmokeApprovalDecision
+	r        *releaseSmokeRun
+	baseURL  string
+	wake     chan struct{}
 	cancel   context.CancelFunc
 	client   *http.Client
 	workers  *sync.WaitGroup
@@ -101,14 +121,41 @@ func (a *releaseSmokeCLIApprovalResponder) record(result releaseSmokeApprovalRes
 	a.mu.Unlock()
 }
 
-func (a *releaseSmokeCLIApprovalResponder) claim(hash string) bool {
+// Decide hands every later answer to decide, then reconciles the pending list
+// so transactions already waiting are answered by it too.
+func (a *releaseSmokeCLIApprovalResponder) Decide(decide func(models.SuspendedTxResponse) releaseSmokeApprovalDecision) {
+	a.mu.Lock()
+	a.decide = decide
+	a.mu.Unlock()
+	a.Reconcile()
+}
+
+// Reconcile asks for one more pass over the pending list, for a decider whose
+// answers changed without an approvals event.
+func (a *releaseSmokeCLIApprovalResponder) Reconcile() {
+	select {
+	case a.wake <- struct{}{}:
+	default:
+	}
+}
+
+// claim answers transaction once: it returns the decision for a transaction not
+// yet answered and marks it answered, unless the decision leaves it pending.
+func (a *releaseSmokeCLIApprovalResponder) claim(transaction models.SuspendedTxResponse) releaseSmokeApprovalDecision {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	hash := transaction.TransactionHash
 	if _, exists := a.seen[hash]; exists {
-		return false
+		return releaseSmokeLeavePending
 	}
-	a.seen[hash] = struct{}{}
-	return true
+	decision := releaseSmokeApprove
+	if a.decide != nil {
+		decision = a.decide(transaction)
+	}
+	if decision != releaseSmokeLeavePending {
+		a.seen[hash] = struct{}{}
+	}
+	return decision
 }
 
 // startReleaseSmokeCLIApprovalResponder starts one owner-session SSE stream,
@@ -134,6 +181,9 @@ func startReleaseSmokeCLIApprovalResponder(t *testing.T, r *releaseSmokeRun) *re
 	var workers sync.WaitGroup
 	responder := &releaseSmokeCLIApprovalResponder{
 		seen:    make(map[string]struct{}),
+		r:       r,
+		baseURL: baseURL,
+		wake:    wake,
 		cancel:  cancel,
 		client:  httpClient,
 		workers: &workers,
@@ -173,13 +223,13 @@ func startReleaseSmokeCLIApprovalResponder(t *testing.T, r *releaseSmokeRun) *re
 			return
 		case <-ready:
 		}
-		responder.reconcile(ctx, r, httpClient, baseURL)
+		responder.reconcile(ctx)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-wake:
-				responder.reconcile(ctx, r, httpClient, baseURL)
+				responder.reconcile(ctx)
 			}
 		}
 	}()
@@ -197,65 +247,73 @@ func startReleaseSmokeCLIApprovalResponder(t *testing.T, r *releaseSmokeRun) *re
 	return responder
 }
 
-func (a *releaseSmokeCLIApprovalResponder) reconcile(ctx context.Context, r *releaseSmokeRun, client *http.Client, baseURL string) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+constants.APIPaths.ApprovalsCLIList, nil)
+// Pending lists the owner's pending transactions, oldest first.
+func (a *releaseSmokeCLIApprovalResponder) Pending(ctx context.Context) ([]models.SuspendedTxResponse, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, a.baseURL+constants.APIPaths.ApprovalsCLIList, nil)
 	if err != nil {
-		slog.Error("failed to create pending approvals request", "error", err)
-		a.record(releaseSmokeApprovalResult{err: err})
-		return
+		return nil, fmt.Errorf("list pending approvals: %w", err)
 	}
-	if r.identity.CLISessionID != "" {
-		request.Header.Set(constants.HeaderCLISessionID, r.identity.CLISessionID)
+	if a.r.identity.CLISessionID != "" {
+		request.Header.Set(constants.HeaderCLISessionID, a.r.identity.CLISessionID)
 	}
-	response, err := client.Do(request)
+	response, err := a.client.Do(request)
 	if err != nil {
-		if ctx.Err() == nil {
-			slog.Error("failed to do pending approvals request", "error", err)
-			a.record(releaseSmokeApprovalResult{err: fmt.Errorf("list pending approvals: %w", err)})
-		}
-		return
+		return nil, fmt.Errorf("list pending approvals: %w", err)
 	}
 	body, readErr := io.ReadAll(response.Body)
 	closeErr := response.Body.Close()
 	if readErr != nil {
-		slog.Error("failed to read pending approvals response body", "error", readErr)
-		a.record(releaseSmokeApprovalResult{err: fmt.Errorf("read pending approvals: %w", readErr)})
-		return
+		return nil, fmt.Errorf("read pending approvals: %w", readErr)
 	}
 	if closeErr != nil {
-		slog.Error("failed to close pending approvals response body", "error", closeErr)
-		a.record(releaseSmokeApprovalResult{err: fmt.Errorf("close pending approvals: %w", closeErr)})
-		return
+		return nil, fmt.Errorf("close pending approvals: %w", closeErr)
 	}
 	if response.StatusCode != http.StatusOK {
-		slog.Error("list pending approvals returned non-200 status", "status", response.StatusCode, "body", string(body))
-		a.record(releaseSmokeApprovalResult{err: fmt.Errorf("list pending approvals returned HTTP %d: %s", response.StatusCode, body)})
-		return
+		return nil, fmt.Errorf("list pending approvals returned HTTP %d: %s", response.StatusCode, body)
 	}
 	var pending models.SuspendedTransactionsResponse
 	if err := json.Unmarshal(body, &pending); err != nil {
-		slog.Error("failed to unmarshal pending approvals", "error", err, "body", string(body))
-		a.record(releaseSmokeApprovalResult{err: fmt.Errorf("decode pending approvals: %w", err)})
+		return nil, fmt.Errorf("decode pending approvals: %w", err)
+	}
+	slices.SortStableFunc(pending.Transactions, func(x, y models.SuspendedTxResponse) int { return x.CreatedAt.Compare(y.CreatedAt) })
+	return pending.Transactions, nil
+}
+
+// reconcile answers the pending transactions in the order they were created.
+func (a *releaseSmokeCLIApprovalResponder) reconcile(ctx context.Context) {
+	pending, err := a.Pending(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			slog.Error("approvals responder failed to list pending approvals", "error", err)
+			a.record(releaseSmokeApprovalResult{err: err})
+		}
 		return
 	}
-	if len(pending.Transactions) > 0 {
-		slog.Info("approvals responder reconcile: pending transactions", "count", len(pending.Transactions))
+	if len(pending) > 0 {
+		slog.Info("approvals responder reconcile: pending transactions", "count", len(pending))
 	}
-	for _, transaction := range pending.Transactions {
-		if transaction.TransactionHash == "" || !a.claim(transaction.TransactionHash) {
+	for _, transaction := range pending {
+		if transaction.TransactionHash == "" {
 			continue
 		}
-		a.approve(ctx, r, transaction.TransactionHash)
+		switch a.claim(transaction) {
+		case releaseSmokeApprove:
+			a.answer(ctx, transaction.TransactionHash, "--cli")
+		case releaseSmokeDeny:
+			a.answer(ctx, transaction.TransactionHash, "--deny")
+		}
 	}
 }
 
-func (a *releaseSmokeCLIApprovalResponder) approve(ctx context.Context, r *releaseSmokeRun, hash string) {
+// answer runs `ztd auth approve <flag> <hash>` as the owner CLI.
+func (a *releaseSmokeCLIApprovalResponder) answer(ctx context.Context, hash, flag string) {
+	r := a.r
 	approvalCtx, cancel := context.WithTimeout(ctx, releaseSmokeApprovalCommandTimeout)
 	defer cancel()
 	args := []string{
 		"-e", fmt.Sprintf("127.0.0.1:%d", r.ports.http),
 		"-p", strconv.Itoa(r.ports.https),
-		"auth", "approve", "--cli", hash,
+		"auth", "approve", flag, hash,
 	}
 	cmd := exec.CommandContext(approvalCtx, r.opts.ZtdBin, args...)
 	cmd.Dir = r.gwRoot
@@ -263,14 +321,14 @@ func (a *releaseSmokeCLIApprovalResponder) approve(ctx context.Context, r *relea
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	slog.Info("approving transaction via CLI", "hash", hash)
+	slog.Info("answering transaction via CLI", "hash", hash, "flag", flag)
 	// The exit status is authoritative: a command that prints the success marker
-	// and then exits non-zero has failed, so it must not be counted as approved.
+	// and then exits non-zero has failed, so it must not be counted as answered.
 	err := cmd.Run()
 	if err != nil {
-		slog.Error("CLI approval failed", "hash", hash, "error", err, "stdout", stdout.String(), "stderr", stderr.String())
+		slog.Error("CLI answer failed", "hash", hash, "flag", flag, "error", err, "stdout", stdout.String(), "stderr", stderr.String())
 	} else {
-		slog.Info("CLI approval succeeded", "hash", hash, "stdout", strings.TrimSpace(stdout.String()))
+		slog.Info("CLI answer succeeded", "hash", hash, "flag", flag, "stdout", strings.TrimSpace(stdout.String()))
 	}
 	a.record(releaseSmokeApprovalResult{
 		transactionHash: hash,

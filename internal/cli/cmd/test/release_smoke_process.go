@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,7 +50,9 @@ type smokeOwnedProcess struct {
 // start starts argv as a new process group in dir. Stdout and stderr are
 // written to <logPrefix>.stdout.log and <logPrefix>.stderr.log, created with
 // owner-only permissions, so command output stays separable and inspectable.
-func (o *smokeProcessOwner) start(name, dir, logPrefix string, argv, env []string) (*smokeOwnedProcess, error) {
+// A non-nil stderrTee also receives stderr as the child writes it; it must not
+// fail, or the log stops with it.
+func (o *smokeProcessOwner) start(name, dir, logPrefix string, argv, env []string, stderrTee io.Writer) (*smokeOwnedProcess, error) {
 	if len(argv) == 0 {
 		return nil, fmt.Errorf("release smoke: empty argv for %s", name)
 	}
@@ -72,6 +75,9 @@ func (o *smokeProcessOwner) start(name, dir, logPrefix string, argv, env []strin
 	cmd.Env = append(config.WithoutUserEnv(os.Environ()), env...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
+	if stderrTee != nil {
+		cmd.Stderr = io.MultiWriter(stderr, stderrTee)
+	}
 	cmd.SysProcAttr = smokeProcessGroupAttr()
 	if err := cmd.Start(); err != nil {
 		_ = stdout.Close()

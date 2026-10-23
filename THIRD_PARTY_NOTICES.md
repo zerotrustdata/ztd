@@ -1378,7 +1378,7 @@ SOFTWARE.
 <http://www.opensource.org/licenses/mit-license.php>
 ```
 
-### github.com/ebitengine/purego v0.11.1
+### github.com/ebitengine/purego v0.11.2
 
 #### LICENSE
 
@@ -2230,7 +2230,7 @@ WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWIS
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### github.com/godbus/dbus/v5 v5.2.3
+### github.com/godbus/dbus/v5 v5.2.4
 
 #### LICENSE
 
@@ -6971,7 +6971,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### react 19.3.0
+### react 19.3.1
 
 - License: MIT
 - Used by: console, evaluation-explorer
@@ -7002,7 +7002,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### react-dom 19.3.0
+### react-dom 19.3.1
 
 - License: MIT
 - Used by: console, evaluation-explorer

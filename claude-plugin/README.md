@@ -10,7 +10,7 @@ extensions.
 
 | Component | Behavior |
 | --- | --- |
-| MCP server `ztd` ([.mcp.json](.mcp.json)) | Runs `ztd mcp stdio --app <app_name>` from your ztd root. Every tool call is proxied over mTLS to the Gateway and becomes a `GovernanceEnvelope` that passes L1–L5. Tools appear as `mcp__plugin_ztd_ztd__<tool>`. |
+| MCP server `ztd` ([.mcp.json](.mcp.json)) | Runs [scripts/mcp-stdio.sh](scripts/mcp-stdio.sh), which changes to your ztd root and runs `ztd mcp stdio --app <app_name>`. Every tool call is proxied over mTLS to the Gateway and becomes a `GovernanceEnvelope` that passes L1–L5. Tools appear as `mcp__plugin_ztd_ztd__<tool>`. |
 | PreToolUse hook ([hooks/pretool.sh](hooks/pretool.sh)) | Denies every tool except the ztd tools, `ToolSearch`/`WaitForMcpServers` (needed to load MCP tools), and conversation-only tools (`Skill`, `TodoWrite`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`). Unknown and future tools are denied. Fires in subagents too. |
 | SessionStart hook ([hooks/session-start.sh](hooks/session-start.sh)) | Tells Claude it is governed, which tools to use, and the project path to pass to them. Flags missing setup. |
 | `/ztd:setup` skill | Setup steps for the user to run in their own terminal. |
@@ -66,7 +66,7 @@ launches Claude with `--strict-mcp-config` and `--disallowed-tools`.
 | | Plugin | `ztd mcp agent run claude` |
 | --- | --- | --- |
 | Start | Any Claude Code surface, including IDE extensions | The `ztd` command, terminal only |
-| Native tools | Denied by a hook. Still listed to the model, which is told not to use them. | Partly removed from the model's tool list: Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch |
+| Native tools | Denied by a hook. Still listed to the model, which is told not to use them. | Partly removed from the model's tool list. The disabled set is `nativeToolsToDisable` in [internal/cli/agent/config.go](../internal/cli/agent/config.go). |
 | Tools not in that list | Denied (allowlist) | Not disabled |
 | Other MCP servers | Their tools are denied by the hook | Not loaded (`--strict-mcp-config`) |
 | Setup | You run `/ztd:setup` steps once | Automatic |

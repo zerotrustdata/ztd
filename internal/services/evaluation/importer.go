@@ -47,8 +47,11 @@ func (i *EvidenceImporter) RunID() string {
 // Import verifies the persisted conformance record and returns its two
 // evidence nodes: the record itself and the suite verdict set derived from it.
 func (i *EvidenceImporter) Import(ctx context.Context) ([]complianceevidence.EvidenceNode, error) {
-	if i == nil || i.reader == nil || !complianceevidence.ValidPathElement(i.runID) || i.now == nil || i.verifyPersisted == nil {
+	if i == nil || i.reader == nil || i.now == nil || i.verifyPersisted == nil {
 		return nil, fmt.Errorf("%w: conformance evaluation importer is incomplete", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := complianceevidence.ValidatePathElement(i.runID); err != nil {
+		return nil, fmt.Errorf("%w: conformance evaluation importer run ID: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	raw, digest, err := readConformanceRecordRaw(ctx, i.reader, i.runID)
 	if err != nil {

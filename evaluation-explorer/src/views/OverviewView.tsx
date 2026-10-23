@@ -5,13 +5,12 @@
 
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { matchesRelease, releaseLabel } from '../content/release';
-import { useSelectedRelease } from '../state/dataset';
+import { releaseLabel } from '../content/release';
 import { useStoreState } from '../state/store';
 import { LiveEventStream } from '../components/LiveEventStream';
 import { formatNumber } from '../components/shared';
 import { formatDuration, formatRelativeTime, formatTimestamp } from '../utils/format';
-import { recentCampaignRows, roleLabel, type RecentCampaignRow } from './derived';
+import { recentCampaignRows, roleLabel, terminalOutcomeBreakdown } from './derived';
 import type { CatalogSnapshot, EvaluationSummary, ModelSummary } from '../contract/types';
 
 function formatClock(iso: string | undefined): string {
@@ -19,15 +18,6 @@ function formatClock(iso: string | undefined): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return 'Unavailable';
   return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-}
-
-/** Wall-clock seconds a run has spent executing: recorded elapsed, start→end, or start→now while live. */
-function runDurationSeconds(row: RecentCampaignRow, now: number): number | undefined {
-  if (row.elapsedSeconds !== undefined) return row.elapsedSeconds;
-  if (!row.startedAt) return undefined;
-  const start = new Date(row.startedAt).getTime();
-  const end = row.endedAt ? new Date(row.endedAt).getTime() : row.runStatus === 'running' ? now : NaN;
-  return Number.isFinite(start) && Number.isFinite(end) && end >= start ? (end - start) / 1000 : undefined;
 }
 
 /** Most recent run for each dataset in the feed. */
@@ -44,7 +34,6 @@ function Runs({
     () => recentCampaignRows(catalogs, evaluations, models),
     [catalogs, evaluations, models],
   );
-  const now = Date.now();
   return (
     <section className="panel campaign-evidence-panel" aria-label="Runs">
       <div className="panel-head campaign-evidence-head">
@@ -56,9 +45,11 @@ function Runs({
         </Link>
       </div>
       <ul className="campaign-legend" aria-label="Assignment outcome legend">
-        <li><span className="campaign-legend-swatch campaign-legend-completed" />Completed</li>
-        <li><span className="campaign-legend-swatch campaign-legend-failed" />Failed</li>
-        <li><span className="campaign-legend-swatch campaign-legend-stopped" />Stopped</li>
+        <li><span className="campaign-legend-swatch campaign-legend-passed" />Passed</li>
+        <li><span className="campaign-legend-swatch campaign-legend-failed" />Model failed</li>
+        <li title="Ended without a verdict on the model: unavailable, invalid evidence, provider or harness failure, or stopped">
+          <span className="campaign-legend-swatch campaign-legend-no-verdict" />No verdict
+        </li>
         <li><span className="campaign-legend-swatch campaign-legend-remaining" />Remaining</li>
       </ul>
       {recent.length === 0 ? (
@@ -70,11 +61,16 @@ function Runs({
             const href = campaign.runId
               ? `/evaluations/${campaign.datasetId}/${campaign.runId}`
               : `/?dataset=${campaign.datasetId}`;
-            const terminal = campaign.assignmentCompleted + campaign.assignmentFailed + campaign.assignmentStopped;
+            const breakdown = terminalOutcomeBreakdown(campaign.terminalOutcomes);
+            const passed = breakdown?.verdicts.find((entry) => entry.status === 'completed')?.count ?? 0;
+            const failed = breakdown?.verdicts.find((entry) => entry.status === 'model_failed')?.count ?? 0;
+            const noVerdict = breakdown?.nonVerdictCount ?? 0;
+            const terminal = breakdown?.total ?? 0;
             const total = Math.max(campaign.assignmentTotal, terminal);
-            const completedWidth = total > 0 ? (campaign.assignmentCompleted / total) * 100 : 0;
-            const failedWidth = total > 0 ? (campaign.assignmentFailed / total) * 100 : 0;
-            const stoppedWidth = total > 0 ? (campaign.assignmentStopped / total) * 100 : 0;
+            const share = (count: number) => (total > 0 ? (count / total) * 100 : 0);
+            const noVerdictTitle = breakdown?.nonVerdicts
+              .map((entry) => `${formatNumber(entry.count)} ${entry.status.replace(/_/g, ' ')}`)
+              .join(', ');
             const verification = campaign.verifierState === 'passed'
               ? 'Verification passed'
               : campaign.verifierState === 'failed'
@@ -87,8 +83,6 @@ function Runs({
             const title = campaign.modelName ?? campaign.label;
             const titleModel = campaign.models.find((model) => model.role === 'primary') ?? campaign.models[0];
             const otherModels = campaign.models.filter((model) => model.name !== campaign.modelName);
-            const duration = runDurationSeconds(campaign, now);
-            const running = status === 'running';
             const startedAt = campaign.startedAt ?? campaign.observedAt;
             return (
               <li key={campaign.datasetId} className="campaign-evidence-row">
@@ -137,14 +131,17 @@ function Runs({
                       aria-valuemin={0}
                       aria-valuemax={total}
                       aria-valuenow={terminal}
-                      aria-valuetext={`${campaign.assignmentCompleted} completed, ${campaign.assignmentFailed} failed, ${campaign.assignmentStopped} stopped, ${total - terminal} remaining`}
+                      aria-valuetext={`${passed} passed, ${failed} model failed, ${noVerdict} no verdict, ${total - terminal} remaining`}
                     >
-                      <span className="campaign-outcome-completed" style={{ width: `${completedWidth}%` }} />
-                      <span className="campaign-outcome-failed" style={{ width: `${failedWidth}%` }} />
-                      <span className="campaign-outcome-stopped" style={{ width: `${stoppedWidth}%` }} />
+                      <span className="campaign-outcome-passed" style={{ width: `${share(passed)}%` }} title={`${formatNumber(passed)} passed`} />
+                      <span className="campaign-outcome-failed" style={{ width: `${share(failed)}%` }} title={`${formatNumber(failed)} model failed`} />
+                      <span className="campaign-outcome-no-verdict" style={{ width: `${share(noVerdict)}%` }} title={noVerdictTitle} />
                     </div>
                     <div className="campaign-evidence-foot">
-                      <span>{formatNumber(terminal)} / {formatNumber(total)} terminal</span>
+                      <span>
+                        {formatNumber(passed)} passed · {formatNumber(failed)} failed · {formatNumber(noVerdict)} no verdict
+                        {total > terminal ? ` · ${formatNumber(total - terminal)} remaining` : ''}
+                      </span>
                       <span className={campaign.verifierState === 'failed' ? 'campaign-verification-failed' : undefined}>{verification}</span>
                     </div>
                   </>
@@ -158,9 +155,9 @@ function Runs({
                   <span title={formatTimestamp(startedAt)}>
                     Started {formatClock(startedAt)} · {formatRelativeTime(startedAt)}
                   </span>
-                  {duration !== undefined ? (
-                    <span title={campaign.endedAt ? `Ended ${formatTimestamp(campaign.endedAt)}` : undefined}>
-                      {running ? 'Running for' : status === 'unknown' || status === 'in_progress' || status === 'interrupted' ? 'Recorded' : 'Ran for'} {formatDuration(duration)}
+                  {campaign.runSeconds !== undefined ? (
+                    <span title={`Time spent executing assignments; stop/resume gaps excluded${campaign.endedAt ? `. Ended ${formatTimestamp(campaign.endedAt)}` : ''}`}>
+                      Run time {formatDuration(campaign.runSeconds)}
                     </span>
                   ) : null}
                 </div>
@@ -174,13 +171,10 @@ function Runs({
 }
 
 export function OverviewView() {
-  const release = useSelectedRelease();
-  const catalogs = useStoreState((state) => Array.from(state.catalogs.values()).filter((record) => matchesRelease(record, release)));
-  const allEvaluations = useStoreState((state) => Array.from(state.evaluations.values()).filter((record) => matchesRelease(record, release)));
-  const allModels = useStoreState((state) => Array.from(state.models.values()).filter((record) => matchesRelease(record, release)));
-  const events = useStoreState((state) =>
-    state.events.filter((event) => matchesRelease(event, release)),
-  );
+  const catalogs = useStoreState((state) => Array.from(state.catalogs.values()));
+  const allEvaluations = useStoreState((state) => Array.from(state.evaluations.values()));
+  const allModels = useStoreState((state) => Array.from(state.models.values()));
+  const events = useStoreState((state) => state.events);
   const connection = useStoreState((state) => state.connection);
   const streamConnection = useStoreState((state) => state.streamConnection);
   const isReconciling = useStoreState((state) => state.pendingSnapshot !== null);
@@ -189,7 +183,6 @@ export function OverviewView() {
     <div className="overview">
       <Runs catalogs={catalogs} evaluations={allEvaluations} models={allModels} />
       <LiveEventStream
-        key={release}
         events={events}
         connection={connection}
         streamConnection={streamConnection}

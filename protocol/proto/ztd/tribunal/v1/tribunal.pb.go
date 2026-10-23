@@ -149,16 +149,15 @@ func (TribunalOutcome) EnumDescriptor() ([]byte, []int) {
 }
 
 // TribunalIntentRequest is the body of POST /api/v1/operators/intents. The
-// Gateway's Tribunal turns one plain-language command intent into an audited
-// shell command through governed INFERENCE dispatches, then dispatches that
-// command to the target Operator as an ordinary governed EXECUTE_BASH. The
-// Tribunal acts in front of envelope construction; it never supplies or
-// replaces an L2 quorum proof or an L3 approval.
+// Gateway's Tribunal reviews typed run_shell_command arguments through governed
+// INFERENCE dispatches, then dispatches the approved bytes to the target
+// Operator as an ordinary governed MCP_CALL. It never supplies or replaces
+// an L2 quorum proof or an L3 approval.
 type TribunalIntentRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Plain-language description of the single command to run. Required.
+	// Canonical JSON proposed run_shell_command arguments. Required.
 	Request string `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
-	// Constraints the command must satisfy.
+	// Orchestration constraints that each member must follow.
 	Guidelines string `protobuf:"bytes,2,opt,name=guidelines,proto3" json:"guidelines,omitempty"`
 	// Execution context shown to the panel. Empty os and shell use the
 	// Tribunal defaults.
@@ -171,13 +170,14 @@ type TribunalIntentRequest struct {
 	InvestigationId         string `protobuf:"bytes,8,opt,name=investigation_id,json=investigationId,proto3" json:"investigation_id,omitempty"`
 	TaskId                  string `protobuf:"bytes,9,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	CliSessionId            string `protobuf:"bytes,10,opt,name=cli_session_id,json=cliSessionId,proto3" json:"cli_session_id,omitempty"`
-	// execution_id and timeout_seconds become the CommandRequested fields of the
-	// dispatched EXECUTE_BASH.
+	// execution_id is carried by the dispatched McpCallRequested. The Gateway
+	// merges timeout_seconds into the reviewed RunShellCommandArguments.
 	ExecutionId    string `protobuf:"bytes,11,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	TimeoutSeconds int32  `protobuf:"varint,12,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
 	// member_inference is the template for every member call. The Gateway sets
-	// messages and provider_attempt_id per call; the template must leave
-	// messages, tools, provider_attempt_id, acting_app_id and stream empty.
+	// messages, provider_attempt_id and the role's response_format schema per
+	// call; the template must leave messages, tools, provider_attempt_id,
+	// acting_app_id, stream and response_format empty.
 	MemberInference *v1.InferenceDispatchRequest `protobuf:"bytes,13,opt,name=member_inference,json=memberInference,proto3" json:"member_inference,omitempty"`
 	// provider_attempt_prefix names the member calls: call n (from 1, in
 	// deliberation order) uses provider_attempt_id "<prefix>-<n>". Required and
@@ -452,8 +452,10 @@ func (x *TribunalMemberCall) GetObservationReceipts() []*v1.ActionReceipt {
 type TribunalIntentResult struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Outcome TribunalOutcome        `protobuf:"varint,1,opt,name=outcome,proto3,enum=ztd.tribunal.v1.TribunalOutcome" json:"outcome,omitempty"`
-	// command is the audited command; set only when outcome is APPROVED.
-	Command string `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
+	// arguments are the approved typed run_shell_command arguments.
+	Arguments *v1.RunShellCommandArguments `protobuf:"bytes,11,opt,name=arguments,proto3" json:"arguments,omitempty"`
+	// arguments_json are the exact canonical bytes dispatched to the Operator.
+	ArgumentsJson string `protobuf:"bytes,12,opt,name=arguments_json,json=argumentsJson,proto3" json:"arguments_json,omitempty"`
 	// steps are the persona steps of the deliberation, in order.
 	Steps []*v11.AgentStep `protobuf:"bytes,3,rep,name=steps,proto3" json:"steps,omitempty"`
 	// member_calls are the governed member inferences, in order.
@@ -463,7 +465,7 @@ type TribunalIntentResult struct {
 	RiskFeedback  string `protobuf:"bytes,9,opt,name=risk_feedback,json=riskFeedback,proto3" json:"risk_feedback,omitempty"`
 	// audit_failure explains an AUDIT_FAILED outcome.
 	AuditFailure string `protobuf:"bytes,10,opt,name=audit_failure,json=auditFailure,proto3" json:"audit_failure,omitempty"`
-	// The governed EXECUTE_BASH outcome of an approved command.
+	// The governed MCP_CALL outcome of an approved run_shell_command.
 	//
 	// Types that are valid to be assigned to CommandOutcome:
 	//
@@ -512,9 +514,16 @@ func (x *TribunalIntentResult) GetOutcome() TribunalOutcome {
 	return TribunalOutcome_TRIBUNAL_OUTCOME_UNSPECIFIED
 }
 
-func (x *TribunalIntentResult) GetCommand() string {
+func (x *TribunalIntentResult) GetArguments() *v1.RunShellCommandArguments {
 	if x != nil {
-		return x.Command
+		return x.Arguments
+	}
+	return nil
+}
+
+func (x *TribunalIntentResult) GetArgumentsJson() string {
+	if x != nil {
+		return x.ArgumentsJson
 	}
 	return ""
 }
@@ -644,10 +653,11 @@ const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"\x06result\x18\x06 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x128\n" +
 	"\areceipt\x18\a \x01(\v2\x1e.ztd.operator.v1.ActionReceiptR\areceipt\x12C\n" +
 	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\x12Q\n" +
-	"\x14observation_receipts\x18\t \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"\xb4\x04\n" +
+	"\x14observation_receipts\x18\t \x03(\v2\x1e.ztd.operator.v1.ActionReceiptR\x13observationReceipts\"\x90\x05\n" +
 	"\x14TribunalIntentResult\x12:\n" +
-	"\aoutcome\x18\x01 \x01(\x0e2 .ztd.tribunal.v1.TribunalOutcomeR\aoutcome\x12\x18\n" +
-	"\acommand\x18\x02 \x01(\tR\acommand\x12,\n" +
+	"\aoutcome\x18\x01 \x01(\x0e2 .ztd.tribunal.v1.TribunalOutcomeR\aoutcome\x12G\n" +
+	"\targuments\x18\v \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targuments\x12%\n" +
+	"\x0earguments_json\x18\f \x01(\tR\rargumentsJson\x12,\n" +
 	"\x05steps\x18\x03 \x03(\v2\x16.ztd.eval.v1.AgentStepR\x05steps\x12F\n" +
 	"\fmember_calls\x18\x04 \x03(\v2#.ztd.tribunal.v1.TribunalMemberCallR\vmemberCalls\x12%\n" +
 	"\x0erisk_rationale\x18\b \x01(\tR\rriskRationale\x12#\n" +
@@ -659,7 +669,7 @@ const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"dispatched\x12D\n" +
 	"\trejection\x18\x06 \x01(\v2$.ztd.operator.v1.GovernanceRejectionH\x00R\trejection\x12;\n" +
 	"\arefusal\x18\a \x01(\v2\x1f.ztd.operator.v1.IngressRefusalH\x00R\arefusalB\x11\n" +
-	"\x0fcommand_outcome*\x82\x01\n" +
+	"\x0fcommand_outcomeJ\x04\b\x02\x10\x03*\x82\x01\n" +
 	"\rTribunalStage\x12\x1e\n" +
 	"\x1aTRIBUNAL_STAGE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17TRIBUNAL_STAGE_GENERATE\x10\x01\x12\x1a\n" +
@@ -698,10 +708,11 @@ var file_ztd_tribunal_v1_tribunal_proto_goTypes = []any{
 	(*v1.InferenceResult)(nil),          // 7: ztd.operator.v1.InferenceResult
 	(*v1.ActionReceipt)(nil),            // 8: ztd.operator.v1.ActionReceipt
 	(*v1.InferenceDispatchFailure)(nil), // 9: ztd.operator.v1.InferenceDispatchFailure
-	(*v11.AgentStep)(nil),               // 10: ztd.eval.v1.AgentStep
-	(*v1.GovernedDispatchResult)(nil),   // 11: ztd.operator.v1.GovernedDispatchResult
-	(*v1.GovernanceRejection)(nil),      // 12: ztd.operator.v1.GovernanceRejection
-	(*v1.IngressRefusal)(nil),           // 13: ztd.operator.v1.IngressRefusal
+	(*v1.RunShellCommandArguments)(nil), // 10: ztd.operator.v1.RunShellCommandArguments
+	(*v11.AgentStep)(nil),               // 11: ztd.eval.v1.AgentStep
+	(*v1.GovernedDispatchResult)(nil),   // 12: ztd.operator.v1.GovernedDispatchResult
+	(*v1.GovernanceRejection)(nil),      // 13: ztd.operator.v1.GovernanceRejection
+	(*v1.IngressRefusal)(nil),           // 14: ztd.operator.v1.IngressRefusal
 }
 var file_ztd_tribunal_v1_tribunal_proto_depIdxs = []int32{
 	5,  // 0: ztd.tribunal.v1.TribunalIntentRequest.member_inference:type_name -> ztd.operator.v1.InferenceDispatchRequest
@@ -712,16 +723,17 @@ var file_ztd_tribunal_v1_tribunal_proto_depIdxs = []int32{
 	9,  // 5: ztd.tribunal.v1.TribunalMemberCall.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
 	8,  // 6: ztd.tribunal.v1.TribunalMemberCall.observation_receipts:type_name -> ztd.operator.v1.ActionReceipt
 	1,  // 7: ztd.tribunal.v1.TribunalIntentResult.outcome:type_name -> ztd.tribunal.v1.TribunalOutcome
-	10, // 8: ztd.tribunal.v1.TribunalIntentResult.steps:type_name -> ztd.eval.v1.AgentStep
-	3,  // 9: ztd.tribunal.v1.TribunalIntentResult.member_calls:type_name -> ztd.tribunal.v1.TribunalMemberCall
-	11, // 10: ztd.tribunal.v1.TribunalIntentResult.dispatched:type_name -> ztd.operator.v1.GovernedDispatchResult
-	12, // 11: ztd.tribunal.v1.TribunalIntentResult.rejection:type_name -> ztd.operator.v1.GovernanceRejection
-	13, // 12: ztd.tribunal.v1.TribunalIntentResult.refusal:type_name -> ztd.operator.v1.IngressRefusal
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	10, // 8: ztd.tribunal.v1.TribunalIntentResult.arguments:type_name -> ztd.operator.v1.RunShellCommandArguments
+	11, // 9: ztd.tribunal.v1.TribunalIntentResult.steps:type_name -> ztd.eval.v1.AgentStep
+	3,  // 10: ztd.tribunal.v1.TribunalIntentResult.member_calls:type_name -> ztd.tribunal.v1.TribunalMemberCall
+	12, // 11: ztd.tribunal.v1.TribunalIntentResult.dispatched:type_name -> ztd.operator.v1.GovernedDispatchResult
+	13, // 12: ztd.tribunal.v1.TribunalIntentResult.rejection:type_name -> ztd.operator.v1.GovernanceRejection
+	14, // 13: ztd.tribunal.v1.TribunalIntentResult.refusal:type_name -> ztd.operator.v1.IngressRefusal
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_ztd_tribunal_v1_tribunal_proto_init() }

@@ -3,8 +3,8 @@ doc_id: about
 title: About ztd
 audience: developers, operators, security architects, and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - cmd/ztd/
   - internal/services/gateway/
@@ -63,7 +63,7 @@ The platform enforces a strict separation of concerns between Policy Decision Po
 | **`ztd Protocol`** | Wire Contract & Standards | Canonical Protobuf contracts (`GovernanceEnvelope`, `ActionReceipt`, `CommitmentAttestation`), canonical hashing, identity bindings, replay defenses, and proof schemas. |
 | **`Governance Gateway (ztdg)`** | Policy Decision Point (PDP) | Workload authentication, PKI CA management, envelope construction, L1 Doctrine enforcement, L2 Consensus coordination, L3 Notary ceremonies, routing, and platform APIs. Hosts an in-process Operator substrate strictly for Gateway-local operations. |
 | **`Governed Operator (ztdo)`** | Policy Execution Point (PEP) | Host-side execution daemon running on managed infrastructure. Connects outbound over mTLS, pulls work from session-specific channels, re-verifies envelopes at L4 Warden, executes via L5 Actuator, and retains authoritative local audit records and git file ledgers. Exposes no inbound listening ports. |
-| **`Consensus Service`** | Quorum Decision Body | Collects transaction proposals and emits Ed25519 signature votes over `<tx_hash>\|<decision>`. Evaluates configured quorum and membership rules. |
+| **`Consensus Service`** | Quorum Decision Body | Collects transaction proposals and emits Ed25519 signature votes over `<tx_hash>\|<decision>`. Evaluates configured quorum and membership rules. The bound provider is either an enrolled application or the Gateway-hosted Tribunal panel (default quorum 3-of-5). |
 | **`Clients & Interfaces`** | Proposers & Observers | AI agents, Model Context Protocol (MCP) clients, Agent-to-Agent (A2A) callers, CLI sessions, and the embedded browser console propose actions and inspect receipts without joining the trusted execution boundary. |
 
 The reference Gateway and Operator runtimes are packaged within a single statically linked Go binary (`ztd`). The repository also embeds the browser console SPA directly into the Gateway binary. These components represent modular reference implementations of separable protocol roles.
@@ -73,7 +73,7 @@ The reference Gateway and Operator runtimes are packaged within a single statica
 Every governed mutation must clear the five-layer governance pipeline before execution:
 
 1. **L1 Doctrine**: Decodes typed payloads and enforces technical hard gates, regex constraints, and deterministic MITRE ATT&CK threat heuristics. L1 is unconditionally enforced across all postures.
-2. **L2 Consensus**: Verifies Ed25519 quorum signatures from enrolled consensus members against configured policy thresholds when multi-agent agreement is required.
+2. **L2 Consensus**: Verifies Ed25519 quorum signatures from enrolled consensus members against configured policy thresholds. It gates only state-changing, non-bootstrap actions, and only under the consensus and notary postures.
 3. **L3 Notary**: Verifies transaction-bound human approval. Gateway workflows enforce WebAuthn passkey ceremonies; outbound Operator workflows verify signed cryptographic approval proofs.
 4. **L4 Warden**: Executes host-side pre-dispatch verification. Durably reserves nonces, checks TTL expiration, recomputes the canonical transaction hash, verifies the bound state root, re-runs L1 Doctrine, and verifies posture-required L2 and L3 proofs.
 5. **L5 Actuator**: The sole authorized execution boundary on the host. Signs and persists an initial `EXECUTING` receipt, appends a signed commitment to the SQLite commitment ledger, rehydrates scrubbed tokens locally, mints a single-use transaction capability, dispatches the handler, dissolves the capability, and persists the signed final receipt and persistence attestation.
@@ -95,7 +95,7 @@ ztd anchors execution authority and authoritative forensic evidence at the data 
 
 - **Outbound-Only Connectivity**: Governed Operators initiate outbound mTLS connections to the Gateway and expose no inbound network ports. Operators function securely behind NAT, firewalls, and restricted network perimeters.
 - **Independent Execution Verification**: Remote Operators independently re-verify every envelope at L4 Warden before mutating the host. Gateway admission alone cannot compel host execution.
-- **Sovereign Execution Boundary**: Sensitive values (tokens, credentials, PII) are redacted or converted to reversible placeholders (`{{UEI_N}}`) before crossing network boundaries. Token rehydration occurs strictly at L5 Actuator on the target execution host immediately prior to dispatch.
+- **Sovereign Execution Boundary**: Sensitive values (tokens, credentials, PII) are redacted or converted to reversible placeholders (`{{UEI_<owner>_N}}`) before crossing network boundaries. Token rehydration occurs strictly at L5 Actuator on the runtime that minted the token, immediately prior to dispatch; another runtime's token never resolves locally.
 - **Local-First Audit Architecture (LFAA)**: Each Operator maintains an authoritative local SQLite audit database and a git-backed file history ledger. Gateway audit stores maintain mirrored projections, but the target host remains the authoritative root of forensic truth.
 - **Vault Encryption**: Local audit stores, execution events, and token maps are encrypted at rest using AES-256-GCM via the local vault service.
 - **Explicit Claim Boundary**: Cryptographic receipts attest strictly to operations that traversed the governed ztd pipeline. ztd does not sandbox unmanaged host processes, client-native shell access, external MCP servers, or unmonitored side channels outside its boundary.

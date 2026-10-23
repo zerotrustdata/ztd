@@ -15,15 +15,17 @@ import (
 	"path/filepath"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 // SaveConformanceRecord writes the canonical record and the lower-case hex
 // sha256 of those bytes next to it. It refuses to overwrite an existing record.
 func (s *Store) SaveConformanceRecord(ctx context.Context, record *evalv1.ConformanceRunRecord) error {
-	if s == nil || s.files == nil || record == nil || !complianceevidence.ValidPathElement(record.GetRunId()) {
-		return fmt.Errorf("%w: file service and canonical conformance run ID are required", constants.ErrEvaluationReportPersistFailed)
+	if record == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "conformance record")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, runIDElement(record.GetRunId())); err != nil {
+		return err
 	}
 	body, err := evalv1.MarshalCanonical(record)
 	if err != nil {

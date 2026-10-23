@@ -139,6 +139,24 @@
       "category": "host",
       "description": "D-Bus session bus address provided by the host session; multi-process test harnesses point it at a missing socket so their children seal under a private ssh-agent instead of the host Secret Service"
     },
+    "Display": {
+      "_go_const": "EnvVar.Display",
+      "value": "DISPLAY",
+      "category": "host",
+      "description": "X11 display provided by the host session; multi-process test harnesses blank it so their children cannot open approval pages in the developer's browser"
+    },
+    "WaylandDisplay": {
+      "_go_const": "EnvVar.WaylandDisplay",
+      "value": "WAYLAND_DISPLAY",
+      "category": "host",
+      "description": "Wayland display provided by the host session; multi-process test harnesses blank it so their children cannot open approval pages in the developer's browser"
+    },
+    "Browser": {
+      "_go_const": "EnvVar.Browser",
+      "value": "BROWSER",
+      "category": "host",
+      "description": "Browser command xdg-open runs (a remote editor such as VS Code Remote points it at a helper that opens URLs on the developer's workstation); multi-process test harnesses set it to a no-op so their children's approval links open nothing"
+    },
     "CloudflareAPIToken": {
       "_go_const": "EnvVar.CloudflareAPIToken",
       "value": "CLOUDFLARE_API_TOKEN",

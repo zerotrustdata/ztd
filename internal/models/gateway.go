@@ -9,6 +9,7 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
@@ -79,7 +80,87 @@ type HealthResponse struct {
 	PID             int                   `json:"pid"`
 	GovernanceReady bool                  `json:"governance_ready"`
 	Posture         constants.Posture     `json:"posture"`
+	A2AIngress      bool                  `json:"a2a_ingress"` // A2A ingress is mounted (a downstream is configured)
 	StateMerkleRoot string                `json:"state_merkle_root,omitempty"`
+	Consensus       HealthConsensus       `json:"consensus"`
+}
+
+// HealthConsensus is the unauthenticated /health consensus summary. It carries
+// counts only: never member IDs, the pinned model, or an endpoint.
+type HealthConsensus struct {
+	VoteKind string `json:"vote_kind,omitempty"`
+	Bound    bool   `json:"bound"`              // an enabled binding exists
+	Provider string `json:"provider,omitempty"` // constants.ConsensusProvider of the binding
+	Quorum   int    `json:"quorum,omitempty"`   // K
+	Members  int    `json:"members,omitempty"`  // N
+	Usable   int    `json:"usable"`             // members that can vote now (enabled signer; tribunal: local key present)
+	Ready    bool   `json:"ready"`              // Usable >= Quorum on an enabled binding
+}
+
+// Describe renders the consensus summary for a status line. A bound binding
+// reports provider, quorum, and usable signers; an unbound one names the L2
+// requirement the posture imposes, so operators know binding is mandatory.
+func (c HealthConsensus) Describe(posture constants.Posture) string {
+	if c.Bound {
+		line := fmt.Sprintf("%s %d-of-%d | signers %d/%d", c.Provider, c.Quorum, c.Members, c.Usable, c.Members)
+		if c.VoteKind == ConsensusVoteKindDecision {
+			line += " | decision"
+		}
+		if !c.Ready {
+			line += " | NOT READY"
+		}
+		return line
+	}
+	if posture == "" {
+		return "not bound (gateway did not report posture)"
+	}
+	if posture.RequiresL2() {
+		return fmt.Sprintf("NOT BOUND — posture %s requires L2: ztd consensus enroll tribunal --model <tag>", posture)
+	}
+	return fmt.Sprintf("not bound (posture %s does not require L2)", posture)
+}
+
+// ConsensusReadiness is the single readiness view of the bound L2 consensus,
+// shared by /health, gw status, ztd consensus status, and the startup log.
+type ConsensusReadiness struct {
+	VoteKind            string
+	InferenceOperatorID string
+	Bound               bool
+	Provider            constants.ConsensusProvider
+	Quorum              int
+	ModelTag            string
+	ModelDigest         string
+	Members             []ConsensusMemberReadiness
+	// Usable counts members with an enabled trusted signer and, under the
+	// tribunal provider, a sealed signing key present on this host.
+	Usable int
+	// Ready is Bound && Usable >= Quorum.
+	Ready bool
+}
+
+// ConsensusMemberReadiness is one member's readiness.
+type ConsensusMemberReadiness struct {
+	AppID         string
+	SignerEnabled bool
+	// LocalKey is meaningful only for the tribunal provider: the member's
+	// sealed app signing key is present and unseals on this host.
+	LocalKey bool
+}
+
+// Summary is the unauthenticated /health projection of r.
+func (r ConsensusReadiness) Summary() HealthConsensus {
+	if !r.Bound {
+		return HealthConsensus{}
+	}
+	return HealthConsensus{
+		Bound:    true,
+		Provider: string(r.Provider),
+		VoteKind: r.VoteKind,
+		Quorum:   r.Quorum,
+		Members:  len(r.Members),
+		Usable:   r.Usable,
+		Ready:    r.Ready,
+	}
 }
 
 // StateResponse is the typed response for GET /state.
@@ -97,7 +178,7 @@ type PubSubPublishResponse struct {
 	Receivers int `json:"receivers"`
 }
 
-type ActionReceiptRecord struct {
+type EventReceiptRecord struct {
 	TransactionID     string                     `json:"transaction_id"`
 	TransactionHash   string                     `json:"transaction_hash"`
 	InvestigationID   string                     `json:"investigation_id"`

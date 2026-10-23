@@ -175,7 +175,7 @@ func TestCampaignControllerKeepsLegacyMissingInvestigationUnchanged(t *testing.T
 	require.NoError(t, err)
 	require.NoError(t, store.SaveCampaignSpec(ctx, spec))
 
-	_, err = controller.StartRun(ctx, RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+	_, err = controller.StartRun(ctx, RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 		CampaignID:                 req.CampaignID,
 		RunID:                      req.RunID,
 		InferenceOperatorSessionID: "inf-session",

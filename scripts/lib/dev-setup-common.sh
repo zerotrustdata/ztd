@@ -318,7 +318,7 @@ ztd_collect_missing() {
 # Reads the exact module version and Go build version of a Go binary via
 # `go version -m`. Returns 1 if the binary cannot be resolved or does not
 # expose Go build information.
-# Outputs: "<mod_version> <go_version>", e.g. "v1.73.0 1.27.2".
+# Outputs: "<mod_version> <go_version>", e.g. "v1.73.0 1.27.3".
 ztd_tool_version() {
     local target="$1" resolved
     if [[ -f "$target" ]]; then

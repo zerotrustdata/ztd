@@ -9,19 +9,25 @@ package investigation
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"os/exec"
 	"path"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/zerotrustdata/ztd/eval/investigations"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/persona"
 )
 
@@ -86,10 +92,71 @@ type FileState struct {
 	Absent      bool     `json:"absent,omitempty"`      // the file must not exist
 }
 
+// Check lists the file_state checks that content violates. found is false when the file is missing.
+func (f FileState) Check(content string, found bool) []string {
+	if f.Absent {
+		if found {
+			return []string{"absent but present"}
+		}
+		return nil
+	}
+	if !found {
+		return []string{"missing"}
+	}
+	var failures []string
+	if f.SHA256 != "" {
+		sum := sha256.Sum256([]byte(content))
+		if hex.EncodeToString(sum[:]) != f.SHA256 {
+			failures = append(failures, "sha256")
+		}
+	}
+	for _, text := range f.Contains {
+		if !strings.Contains(content, text) {
+			failures = append(failures, "contains "+text)
+		}
+	}
+	for _, text := range f.NotContains {
+		if strings.Contains(content, text) {
+			failures = append(failures, "not_contains "+text)
+		}
+	}
+	for _, expr := range f.NotMatches {
+		if regexp.MustCompile(expr).MatchString(content) {
+			failures = append(failures, "not_matches "+expr)
+		}
+	}
+	return failures
+}
+
 // GovernedProbe is a harness-owned command run in the workspace root after the
 // attempt. It passes when its signed receipt shows a successful execution.
+// Like run_shell_command, it names one executable and its argv; it never
+// runs through a shell.
 type GovernedProbe struct {
-	Command string `json:"command"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+}
+
+// Run executes the governed probe command in dir with a bounded timeout.
+// It returns whether the command succeeded and its combined output (or failure message).
+func (p *GovernedProbe) Run(dir string) (bool, string) {
+	if p == nil || p.Command == "" {
+		return true, ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, p.Command, p.Args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	out := strings.TrimSpace(string(output))
+	if err != nil {
+		if out == "" {
+			return false, fmt.Sprintf("probe command %s failed: %v", p.Command, err)
+		}
+		return false, fmt.Sprintf("probe command %s failed: %s (%v)", p.Command, out, err)
+	}
+	return true, out
 }
 
 type AnswerConcepts struct {
@@ -228,8 +295,8 @@ func (o Objective) validate() (map[string]bool, error) {
 	if len(o.FileState) == 0 && o.GovernedProbe == nil {
 		return nil, invalid("objective needs file_state or governed_probe so the scenario can fail")
 	}
-	if o.GovernedProbe != nil && blank(o.GovernedProbe.Command) {
-		return nil, invalid("objective.governed_probe.command is required")
+	if o.GovernedProbe != nil && !models.ValidExecutableName(o.GovernedProbe.Command) {
+		return nil, invalid("objective.governed_probe.command must be one executable name with no whitespace")
 	}
 	paths := make(map[string]bool, len(o.FileState))
 	for i, state := range o.FileState {

@@ -82,7 +82,7 @@ func (c *AuditController) egressReady(w http.ResponseWriter) bool {
 // (target resource and result summary) scrubbed. The nested signed ActionReceipt is
 // returned unchanged: its content was scrubbed before it was signed and altering it
 // would break the signature.
-func (c *AuditController) scrubReceiptRecord(ctx context.Context, r *models.ActionReceiptRecord) *models.ActionReceiptRecord {
+func (c *AuditController) scrubReceiptRecord(ctx context.Context, r *models.EventReceiptRecord) *models.EventReceiptRecord {
 	if r == nil {
 		return nil
 	}
@@ -92,8 +92,8 @@ func (c *AuditController) scrubReceiptRecord(ctx context.Context, r *models.Acti
 	return &out
 }
 
-func (c *AuditController) scrubReceiptRecords(ctx context.Context, records []*models.ActionReceiptRecord) []*models.ActionReceiptRecord {
-	out := make([]*models.ActionReceiptRecord, len(records))
+func (c *AuditController) scrubReceiptRecords(ctx context.Context, records []*models.EventReceiptRecord) []*models.EventReceiptRecord {
+	out := make([]*models.EventReceiptRecord, len(records))
 	for i, r := range records {
 		out[i] = c.scrubReceiptRecord(ctx, r)
 	}
@@ -136,8 +136,8 @@ func (c *AuditController) handleAuditRecords(w http.ResponseWriter, r *http.Requ
 	c.responder.JSON(w, http.StatusOK, result)
 }
 
-// @Summary		Get or list audit receipts
-// @Description	Returns one canonical protojson ActionReceipt when tx_id is set or when investigation_id and action_type uniquely correlate a receipt. Without those selectors, returns searchable receipt records with the complete receipt nested under action_receipt.
+// @Summary		Get or list event receipts
+// @Description	Returns one canonical protojson ActionReceipt when tx_id is set or when investigation_id and action_type uniquely correlate an event receipt. Without those selectors, returns searchable event receipt records with the complete ActionReceipt nested under action_receipt.
 // @Tags			audit
 // @Produce		json
 // @Param			tx_id			query		string	false	"Transaction ID for a single canonical ActionReceipt"
@@ -147,15 +147,15 @@ func (c *AuditController) handleAuditRecords(w http.ResponseWriter, r *http.Requ
 // @Param			operator_session_id	query	string	false	"Operator session filter for list results"
 // @Param			limit			query		int		false	"Maximum list results"
 // @Param			offset			query		int		false	"List offset"
-// @Success		200				{object}	models.AuditReceiptsResponse	"List wrapper; unique selectors instead return a bare operatorv1.ActionReceipt"
+// @Success		200				{object}	models.AuditEventReceiptsResponse	"List wrapper; unique selectors instead return a bare operatorv1.ActionReceipt"
 // @Failure		400				{string}	string	"Bad Request — conflicting or incomplete selectors"
 // @Failure		404				{string}	string	"Receipt not found"
 // @Failure		405				{string}	string	"Method Not Allowed"
 // @Failure		409				{string}	string	"Conflict — correlation matched multiple receipts"
 // @Failure		500				{string}	string	"Internal Server Error"
 // @Failure		503				{string}	string	"Service Unavailable — egress scrubber unavailable, content withheld"
-// @Router			/api/v1/audit/receipts [get]
-func (c *AuditController) handleAuditReceipts(w http.ResponseWriter, r *http.Request) {
+// @Router			/api/v1/audit/event-receipts [get]
+func (c *AuditController) handleAuditEventReceipts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
 		return
@@ -177,9 +177,9 @@ func (c *AuditController) handleAuditReceipts(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if txID != "" {
-		receipt, err := c.auditStore.GetActionReceipt(txID)
+		receipt, err := c.auditStore.GetEventReceipt(txID)
 		if err != nil {
-			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditReceipts: %w", err).Error())
+			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditEventReceipts: %w", err).Error())
 			return
 		}
 		if receipt == nil {
@@ -194,13 +194,13 @@ func (c *AuditController) handleAuditReceipts(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if investigationID != "" {
-		receipt, err := c.auditStore.GetActionReceiptByInvestigationID(investigationID, actionType)
+		receipt, err := c.auditStore.GetEventReceiptByInvestigationID(investigationID, actionType)
 		if err != nil {
 			status := http.StatusInternalServerError
 			if errors.Is(err, constants.ErrAuditStoreReceiptCorrelationDuplicate) {
 				status = http.StatusConflict
 			}
-			c.responder.Error(w, status, fmt.Errorf("audit_controller: handleAuditReceipts: %w", err).Error())
+			c.responder.Error(w, status, fmt.Errorf("audit_controller: handleAuditEventReceipts: %w", err).Error())
 			return
 		}
 		if receipt == nil {
@@ -235,32 +235,32 @@ func (c *AuditController) handleAuditReceipts(w http.ResponseWriter, r *http.Req
 	if !c.egressReady(w) {
 		return
 	}
-	receipts, err := c.auditStore.ListActionReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, offset)
+	receipts, err := c.auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, offset)
 	if err != nil {
-		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditReceipts: %w", err).Error())
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditEventReceipts: %w", err).Error())
 		return
 	}
 
-	c.responder.JSON(w, http.StatusOK, models.AuditReceiptsResponse{
-		Success:  true,
-		Receipts: c.scrubReceiptRecords(r.Context(), receipts),
+	c.responder.JSON(w, http.StatusOK, models.AuditEventReceiptsResponse{
+		Success:       true,
+		EventReceipts: c.scrubReceiptRecords(r.Context(), receipts),
 	})
 }
 
-// @Summary		Export audit receipts
-// @Description	Returns an AuditReceiptsResponse list wrapper. Every searchable record embeds the complete canonical protojson receipt under action_receipt.
+// @Summary		Export event receipts
+// @Description	Returns an AuditEventReceiptsResponse list wrapper. Every searchable record embeds the complete canonical protojson receipt under action_receipt.
 // @Tags			audit
 // @Produce		json
 // @Param			since			query		string	false	"Inclusive receipt timestamp in RFC3339 format"
 // @Param acting_app_id query string false "Acting app identity filter"
 // @Param			operator_session_id	query	string	false	"Operator session filter"
 // @Param			limit			query		int		false	"Maximum results"
-// @Success		200				{object}	models.AuditReceiptsResponse
+// @Success		200				{object}	models.AuditEventReceiptsResponse
 // @Failure		405				{string}	string	"Method Not Allowed"
 // @Failure		500				{string}	string	"Internal Server Error"
 // @Failure		503				{string}	string	"Service Unavailable — egress scrubber unavailable, content withheld"
-// @Router			/api/v1/audit/receipts/export [get]
-func (c *AuditController) handleAuditReceiptsExport(w http.ResponseWriter, r *http.Request) {
+// @Router			/api/v1/audit/event-receipts/export [get]
+func (c *AuditController) handleAuditEventReceiptsExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
 		return
@@ -289,21 +289,21 @@ func (c *AuditController) handleAuditReceiptsExport(w http.ResponseWriter, r *ht
 		return
 	}
 	operatorSessionID := r.URL.Query().Get("operator_session_id")
-	var receipts []*models.ActionReceiptRecord
+	var receipts []*models.EventReceiptRecord
 	var err error
 	if operatorSessionID != "" || r.URL.Query().Get("acting_app_id") != "" {
-		receipts, err = c.auditStore.ListActionReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, 0)
+		receipts, err = c.auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, limit, 0)
 	} else {
-		receipts, err = c.auditStore.ListActionReceiptsSince(since, limit)
+		receipts, err = c.auditStore.ListEventReceiptsSince(since, limit)
 	}
 	if err != nil {
-		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditReceiptsExport: %w", err).Error())
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditEventReceiptsExport: %w", err).Error())
 		return
 	}
 
-	c.responder.JSON(w, http.StatusOK, models.AuditReceiptsResponse{
-		Success:  true,
-		Receipts: c.scrubReceiptRecords(r.Context(), receipts),
+	c.responder.JSON(w, http.StatusOK, models.AuditEventReceiptsResponse{
+		Success:       true,
+		EventReceipts: c.scrubReceiptRecords(r.Context(), receipts),
 	})
 }
 
@@ -352,6 +352,53 @@ func (c *AuditController) handleAuditEvents(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+// @Summary		List consensus votes for a transaction
+// @Description	Returns every recorded L2 consensus member vote (member, outcome, reason, failure) for one governed transaction, oldest first. Reason and failure text is scrubbed.
+// @Tags			audit
+// @Produce		json
+// @Param			tx_id	query		string	true	"Governed transaction ID (the envelope ID receipts carry)"
+// @Success		200		{object}	models.ConsensusVotesResponse
+// @Failure		400		{string}	string	"Bad Request — tx_id missing"
+// @Failure		405		{string}	string	"Method Not Allowed"
+// @Failure		500		{string}	string	"Internal Server Error"
+// @Failure		503		{string}	string	"Service Unavailable — egress scrubber unavailable, content withheld"
+// @Router			/api/v1/audit/consensus-votes [get]
+func (c *AuditController) handleAuditConsensusVotes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	if !c.egressReady(w) {
+		return
+	}
+	txID := r.URL.Query().Get("tx_id")
+	if txID == "" {
+		c.responder.Error(w, http.StatusBadRequest, constants.ErrMissingRequiredField.Error())
+		return
+	}
+	events, err := c.auditStore.GetTransactionEvents(txID, constants.EventConsensusVoteRecorded)
+	if err != nil {
+		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditConsensusVotes: %w", err).Error())
+		return
+	}
+	votes := make([]models.ConsensusVoteRecord, 0, len(events))
+	for _, e := range events {
+		var vote models.ConsensusVoteRecord
+		if err := json.Unmarshal([]byte(e.ContentText), &vote); err != nil {
+			c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditConsensusVotes: event %d: %w", e.ID, err).Error())
+			return
+		}
+		vote.Reason = c.scrubber.ScrubText(r.Context(), vote.Reason)
+		vote.Failure = c.scrubber.ScrubText(r.Context(), vote.Failure)
+		votes = append(votes, vote)
+	}
+	c.responder.JSON(w, http.StatusOK, models.ConsensusVotesResponse{
+		Success:       true,
+		TransactionID: txID,
+		Votes:         votes,
+	})
+}
+
 // toAuditEventRow converts a storage.Event to the API-facing AuditEventRow. CommandRaw is
 // the only content-bearing field (decrypted command lines, file paths, tool arguments) and
 // is scrubbed; the rest are identifiers, the event type, a timestamp and an exit code.
@@ -394,7 +441,7 @@ func (c *AuditController) handleAuditSummary(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Query receipts summary
-	receipts, err := c.auditStore.ListActionReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
+	receipts, err := c.auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditSummary: %w", err).Error())
 		return
@@ -407,12 +454,12 @@ func (c *AuditController) handleAuditSummary(w http.ResponseWriter, r *http.Requ
 	}
 
 	c.responder.JSON(w, http.StatusOK, models.AuditSummaryResponse{
-		Success:         true,
-		EventsSummary:   eventSummary,
-		EventsTotal:     len(events),
-		ReceiptsSummary: receiptSummary,
-		ReceiptsTotal:   len(receipts),
-		TotalRecords:    len(events) + len(receipts),
+		Success:              true,
+		EventsSummary:        eventSummary,
+		EventsTotal:          len(events),
+		EventReceiptsSummary: receiptSummary,
+		EventReceiptsTotal:   len(receipts),
+		TotalRecords:         len(events) + len(receipts),
 	})
 }
 
@@ -436,7 +483,7 @@ func (c *AuditController) handleAuditReport(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Fetch receipts
-	receipts, err := c.auditStore.ListActionReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
+	receipts, err := c.auditStore.ListEventReceipts(models.AuditScope{OperatorSessionID: operatorSessionID, ActingAppID: r.URL.Query().Get("acting_app_id")}, maxAuditQueryLimit, 0)
 	if err != nil {
 		c.responder.Error(w, http.StatusInternalServerError, fmt.Errorf("audit_controller: handleAuditReport: %w", err).Error())
 		return
@@ -467,14 +514,14 @@ func (c *AuditController) handleAuditReport(w http.ResponseWriter, r *http.Reque
 	}
 
 	report := models.AuditReportData{
-		GeneratedAt:       time.Now().Format(time.RFC3339),
-		OperatorSessionID: operatorSessionID,
-		ActingAppID:       r.URL.Query().Get("acting_app_id"),
-		Events:            eventRows,
-		EventsCount:       len(events),
-		Receipts:          receiptRows,
-		ReceiptsCount:     len(receipts),
-		TotalRecords:      len(events) + len(receipts),
+		GeneratedAt:        time.Now().Format(time.RFC3339),
+		OperatorSessionID:  operatorSessionID,
+		ActingAppID:        r.URL.Query().Get("acting_app_id"),
+		Events:             eventRows,
+		EventsCount:        len(events),
+		EventReceipts:      receiptRows,
+		EventReceiptsCount: len(receipts),
+		TotalRecords:       len(events) + len(receipts),
 	}
 
 	c.responder.JSON(w, http.StatusOK, models.AuditReportResponse{

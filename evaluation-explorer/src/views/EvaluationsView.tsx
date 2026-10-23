@@ -88,7 +88,7 @@ export function EvaluationsView() {
   const suiteFilter = params.get('suite') ?? 'all';
   const statusFilter = params.get('status') ?? 'all';
   const qualityFilter = params.get('quality') ?? 'all';
-  const releaseFilter = useSelectedRelease();
+  const releaseFilter = useSelectedRelease('all');
 
   const evaluations = useStoreState((state) =>
     Array.from(state.evaluations.values()).sort((a, b) =>
@@ -352,7 +352,7 @@ export function EvaluationsView() {
           </div>
         ) : (
           <div className="eval-toolbar">
-            <ReleaseSelector />
+            <ReleaseSelector defaultRelease="all" />
             <select aria-label="Filter by suite" value={suiteFilter} onChange={(e) => setFilter('suite', e.target.value)}>
               <option value="all">All suites</option>
               {Array.from(new Set(evaluations.map((e) => e.suite_id))).map((s) => (

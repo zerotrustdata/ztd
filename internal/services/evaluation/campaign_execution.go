@@ -49,8 +49,7 @@ type ScenarioToolExpectations struct {
 	ExpectedTools    []string
 	ForbiddenTools   []string
 	TrajectoryPolicy evalv1.EvaluationTrajectoryPolicy
-	// TribunalCommands declares run_commands_with_operator intent-only; the
-	// Tribunal writes every command the model requests.
+	// TribunalCommands routes run_shell_command through Tribunal authoring.
 	TribunalCommands bool
 }
 

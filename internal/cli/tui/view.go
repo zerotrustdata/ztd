@@ -106,10 +106,10 @@ func (m Model) renderOverview(width, height int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, topRow, bottomRow)
 }
 
-// renderHeader renders two lines: the console title and the Gateway posture,
-// then the same identity 'ztd auth' reports. Each line is cut to width.
+// renderHeader renders two lines: the console title and version with the Gateway
+// posture, then the user, bound Operator, and Gateway version. Each line is cut to width.
 func (m Model) renderHeader(width int) string {
-	title := " ztd TACTICAL GOVERNANCE CONSOLE " + m.version
+	title := " ztd " + m.version
 	posture := "POSTURE: " + m.postureLabel() + " "
 	gap := max(width-lipgloss.Width(title)-lipgloss.Width(posture), 1)
 
@@ -117,8 +117,7 @@ func (m Model) renderHeader(width int) string {
 	if operator == "" {
 		operator = "unbound"
 	}
-	identity := fmt.Sprintf(" USER: %s | CLI SESSION: %s | OPERATOR: %s",
-		m.identity.UserID, shortHash(m.identity.CLISessionID), operator)
+	identity := fmt.Sprintf(" USER: %s | OPERATOR: %s", m.identity.UserID, operator)
 	if m.gatewayVersion != "" {
 		identity += " | GATEWAY: " + m.gatewayVersion
 	}

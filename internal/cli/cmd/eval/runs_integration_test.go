@@ -339,20 +339,34 @@ func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t
 	assert.Empty(t, runIDs, "preflight must fail before a run is persisted")
 }
 
-// A live Gateway running a posture the campaign did not freeze fails preflight
-// before a run is persisted.
-func TestRunsStart_FailsPreflightUnderAnUnfrozenGatewayPosture(t *testing.T) {
-	for _, posture := range []constants.Posture{constants.PostureConsensus, constants.PostureRatify, constants.PostureNotary} {
-		t.Run(string(posture), func(t *testing.T) {
-			env, _ := newGatewayRunEnvWithPosture(t, posture)
+// Run start reads live Gateway governance; the campaign does not choose a
+// posture. It freezes the live posture and any bound consensus identity in the
+// prepared run before execution begins.
+func TestRunsStart_FreezesLiveGatewayGovernance(t *testing.T) {
+	tests := []struct {
+		posture constants.Posture
+		want    evalv1.EvaluationGovernancePosture
+	}{
+		{posture: constants.PostureConsensus, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS},
+		{posture: constants.PostureRatify, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY},
+		{posture: constants.PostureNotary, want: evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_NOTARY},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.posture), func(t *testing.T) {
+			env, _ := newGatewayRunEnvWithPosture(t, tt.posture)
 			env.createCampaign(t, "eval-posture")
 
-			_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{CampaignID: "eval-posture", RunID: "run-posture"})
-			require.ErrorIs(t, err, constants.ErrEvaluationPostureUnsupported)
-			require.ErrorIs(t, err, constants.ErrGatewayPostureMismatch)
-			runIDs, err := env.store(t).ListRunIDs(context.Background())
+			result, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{
+				CampaignID: "eval-posture", RunID: "run-posture", PrepareOnly: true,
+			})
 			require.NoError(t, err)
-			assert.Empty(t, runIDs, "posture preflight must fail before a run is persisted")
+			assert.True(t, result.Prepared)
+
+			run, err := env.store(t).LoadRun(context.Background(), "run-posture")
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, run.GetActivePosture())
+			require.NotNil(t, run.GetConsensus())
+			assert.Equal(t, tt.posture.RequiresL2(), run.GetConsensus().GetBound(), "run freezes the live consensus binding when present")
 		})
 	}
 }
@@ -667,6 +681,38 @@ func TestRunsPublish_ForceRepublish(t *testing.T) {
 	env.prepareRun(t)
 
 	assert.Contains(t, env.mustRun(t, "runs", "publish", "run-a-1", "--force"), "forced republish")
+}
+
+// --all republishes a run already published, publishes one never published,
+// and skips a run a live process holds.
+func TestRunsPublish_AllRepublishesEveryRunAndSkipsHeldRuns(t *testing.T) {
+	env := newPublicationRunEnv(t)
+	env.prepareRun(t)
+	env.mustRun(t, "runs", "publish", "run-a-1")
+	env.createCampaign(t, "eval-b")
+	env.startPrepared(t, "eval-b", "run-b-1")
+	env.createCampaign(t, "eval-c")
+	env.startPrepared(t, "eval-c", "run-c-1")
+	env.holdRun(t, "run-c-1")
+
+	var payload runPublishAllJSON
+	require.NoError(t, env.runJSON(t, &payload, "runs", "publish", "--all"))
+	require.Len(t, payload.Published, 2)
+	assert.Equal(t, "run-a-1", payload.Published[0].RunID)
+	assert.Positive(t, payload.Published[0].PublishedRecords, "an already published run is published again")
+	assert.True(t, payload.Published[0].Force)
+	assert.Equal(t, "run-b-1", payload.Published[1].RunID)
+	assert.Positive(t, payload.Published[1].PublishedRecords)
+	require.Len(t, payload.Skipped, 1)
+	assert.Equal(t, "run-c-1", payload.Skipped[0].RunID)
+	assert.Empty(t, payload.Failed)
+}
+
+func TestRunsPublish_AllRejectsRunArgument(t *testing.T) {
+	env := newStoreRunEnv(t)
+
+	_, err := env.run(t, "runs", "publish", "run-a-1", "--all")
+	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
 
 func TestRunsPublish_IgnoresLegacyFailedReport(t *testing.T) {

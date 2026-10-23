@@ -10,12 +10,15 @@ package httpclient
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 const (
@@ -80,6 +83,49 @@ func WithoutRedirects(client *http.Client, refusal error) *http.Client {
 	pinned := *client
 	pinned.CheckRedirect = func(*http.Request, []*http.Request) error { return refusal }
 	return &pinned
+}
+
+// SPIFFEServerTLSConfig returns a TLS 1.3 client config that authenticates the
+// server by its SPIFFE URI SAN rather than its DNS name. The peer chain must
+// verify against roots for server auth and its leaf must carry exactly
+// spiffeID; a chain that verifies but names another workload fails with
+// refusal. Gateway-issued workload certificates carry no DNS SANs, so hostname
+// verification can never authenticate them. roots is required: a nil pool
+// would fall back to the system roots, which never issue workload identities.
+func SPIFFEServerTLSConfig(roots *x509.CertPool, spiffeID string, refusal error) (*tls.Config, error) {
+	if roots == nil {
+		return nil, constants.ErrEmptyTrustBundle
+	}
+	if spiffeID == "" {
+		return nil, fmt.Errorf("spiffe server identity: %w", constants.ErrMissingRequiredField)
+	}
+	return &tls.Config{
+		// Hostname matching is skipped only because VerifyConnection performs
+		// the chain and SPIFFE identity validation below.
+		InsecureSkipVerify: true, // #nosec G402 -- VerifyConnection performs chain and identity validation.
+		MinVersion:         tls.VersionTLS13,
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if len(state.PeerCertificates) == 0 {
+				return refusal
+			}
+			intermediates := x509.NewCertPool()
+			for _, cert := range state.PeerCertificates[1:] {
+				intermediates.AddCert(cert)
+			}
+			if _, err := state.PeerCertificates[0].Verify(x509.VerifyOptions{
+				Roots: roots, Intermediates: intermediates,
+				KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			}); err != nil {
+				return fmt.Errorf("verify %s certificate chain: %w", spiffeID, err)
+			}
+			for _, uri := range state.PeerCertificates[0].URIs {
+				if uri.String() == spiffeID {
+					return nil
+				}
+			}
+			return refusal
+		},
+	}, nil
 }
 
 func WebSocketDialerWithTLS(tlsCfg *tls.Config) *websocket.Dialer {

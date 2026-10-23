@@ -67,11 +67,11 @@ func ClassifyAttemptFailure(err error) AttemptFailureClass {
 		return AttemptFailureBackendUnavailable
 	case errors.Is(err, constants.ErrInferenceModelNotFound):
 		return AttemptFailureModelNotFound
-	case errors.Is(err, constants.ErrInferenceToolsUnsupported), errors.Is(err, constants.ErrInferenceCapabilityUnsupported):
+	case errors.Is(err, constants.ErrInferenceDecisionUnsupported), errors.Is(err, constants.ErrInferenceHostedNotAllowed), errors.Is(err, constants.ErrInferenceDecisionRequestInvalid), errors.Is(err, constants.ErrInferenceToolsUnsupported), errors.Is(err, constants.ErrInferenceCapabilityUnsupported):
 		return AttemptFailureCapabilityRejected
 	case errors.Is(err, constants.ErrInferenceContextOverflow):
 		return AttemptFailureContextOverflow
-	case errors.Is(err, constants.ErrInferenceProviderResponseInvalid):
+	case errors.Is(err, constants.ErrInferenceProviderResponseInvalid), errors.Is(err, constants.ErrInferenceDecisionResponseInvalid):
 		return AttemptFailureResponseInvalid
 	case errors.Is(err, constants.ErrInferenceGenerateFailed):
 		return AttemptFailureGenerateFailed

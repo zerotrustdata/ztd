@@ -22,6 +22,7 @@ import {
   type CapabilityObservation,
   type CapabilityProbeStatus,
   type ModelCapabilityKey,
+  type ResolvedModelProfile,
 } from '../content/framework-catalog';
 import { OutcomeBreakdown, PassRateBar, TonePill } from '../components/evidence';
 import {
@@ -40,7 +41,7 @@ import {
   MODEL_QUALITY_FILTER_STATES,
   normalizeQualityFilter,
 } from '../utils/feed-state';
-import { datasetLabel, roleLabel } from './derived';
+import { datasetLabel, LEADERBOARD_SCORE_FORMULA, LEADERBOARD_SECURITY_SCORING_DESCRIPTION, modelSummaryGroups, roleLabel } from './derived';
 
 interface ModelFilters {
   search: string;
@@ -49,6 +50,7 @@ interface ModelFilters {
   quality: string | 'all';
   family?: string | 'all';
   capability?: ModelCapabilityKey | 'all';
+  maxArtifactGiB?: string;
 }
 
 const DEFAULT_FILTERS: ModelFilters = {
@@ -67,7 +69,8 @@ function filtersActive(filters: ModelFilters, quality: string): boolean {
     filters.evaluated !== 'all' ||
     quality !== 'all' ||
     (filters.family !== undefined && filters.family !== 'all') ||
-    (filters.capability !== undefined && filters.capability !== 'all')
+    (filters.capability !== undefined && filters.capability !== 'all') ||
+    Boolean(filters.maxArtifactGiB)
   );
 }
 
@@ -126,10 +129,26 @@ export function CapabilityProbeBadges({
   );
 }
 
+function ModelSpecificationBadges({ profile }: { profile: ResolvedModelProfile }) {
+  return (
+    <div className="model-specs-cell" aria-label="Model specifications">
+      <span className="spec-pill spec-family">{profile.family}</span>
+      {profile.parameter_label ? (
+        <span className="spec-pill spec-params" title={`Provider-reported total parameters: ${profile.parameter_count?.toLocaleString('en-US')}`}>
+          {profile.parameter_label} total
+        </span>
+      ) : <UnavailableValue />}
+      {profile.quantization ? <span className="spec-pill spec-quant" title="Provider-reported weight precision / quantization; mixed schemes retain their full name">{profile.quantization}</span> : null}
+      {profile.model_format ? <span className="spec-pill">{profile.model_format.toUpperCase()}</span> : null}
+      {profile.context_label ? <span className="spec-pill spec-ctx" title={`Provider context limit: ${profile.context_limit?.toLocaleString('en-US')} tokens`}>{profile.context_label} ctx</span> : null}
+    </div>
+  );
+}
+
 export function ModelsView() {
   const [filters, setFilters] = useUserPref<ModelFilters>(PREF.filters, DEFAULT_FILTERS);
 
-  const release = useSelectedRelease();
+  const release = useSelectedRelease('all');
   const models = useStoreState((state) =>
     Array.from(state.models.values()).filter((record) => matchesRelease(record, release)),
   );
@@ -215,16 +234,20 @@ export function ModelsView() {
   const effectiveQuality = normalizeQualityFilter(filters.quality, qualityOptions);
   const activeFamily = filters.family ?? 'all';
   const activeCapability = filters.capability ?? 'all';
+  const artifactBudgetGiB = Number(filters.maxArtifactGiB);
+  const modelsWithinBudget = useMemo(() => models.filter((model) =>
+    !(artifactBudgetGiB > 0) || (model.artifact_size_bytes !== undefined && model.artifact_size_bytes <= artifactBudgetGiB * 1024 ** 3),
+  ), [models, artifactBudgetGiB]);
 
   useEffect(() => {
-    if (effectiveQuality !== filters.quality) {
+    if (models.length > 0 && effectiveQuality !== filters.quality) {
       setFilters({ ...filters, quality: effectiveQuality });
     }
-  }, [effectiveQuality, filters, setFilters]);
+  }, [models.length, effectiveQuality, filters, setFilters]);
 
-  const filtered = useMemo(() => {
+  const filteredGroups = useMemo(() => {
     const q = filters.search.trim().toLowerCase();
-    return models
+    return modelSummaryGroups(modelsWithinBudget
       .filter((m) => {
         const profile = profilesByKey.get(`${m.dataset_id}:${m.variant_id}:${m.role}`) ?? resolveModelProfile(m);
         if (q) {
@@ -238,14 +261,19 @@ export function ModelsView() {
         if (activeFamily !== 'all' && profile.family !== activeFamily) return false;
         if (activeCapability !== 'all' && profile.capabilities[activeCapability].status !== 'pass') return false;
         return true;
-      })
-      .sort((a, b) => {
+      }))
+      .sort(({ model: a }, { model: b }) => {
         const measured = Number(Boolean(b.pass_rate)) - Number(Boolean(a.pass_rate));
         if (measured !== 0) return measured;
         const passRate = (b.pass_rate?.estimate ?? -1) - (a.pass_rate?.estimate ?? -1);
         return passRate || a.display_name.localeCompare(b.display_name);
       });
-  }, [models, filters.search, filters.role, evaluatedFilter, effectiveQuality, activeFamily, activeCapability, profilesByKey]);
+  }, [modelsWithinBudget, filters.search, filters.role, evaluatedFilter, effectiveQuality, activeFamily, activeCapability, profilesByKey]);
+
+  const filtered = filteredGroups.map((group) => group.model);
+  const sourceCountByKey = useMemo(() => new Map(filteredGroups.map(({ model, sources }) =>
+    [`${model.variant_id}:${model.role}`, new Set(sources.map((source) => source.dataset_id)).size],
+  )), [filteredGroups]);
 
   const columns = useMemo<DataTableColumn<ModelSummary>[]>(
     () => [
@@ -275,7 +303,7 @@ export function ModelsView() {
                   <UnavailableValue />
                 )}
                 <span className="model-scope-tag" title={row.original.dataset_id}>
-                  {datasetLabel(row.original.dataset_id)}
+                  {sourceCountByKey.get(`${row.original.variant_id}:${row.original.role}`) ?? 1} datasets · {datasetLabel(row.original.dataset_id)}
                 </span>
               </div>
             </div>
@@ -284,7 +312,7 @@ export function ModelsView() {
       },
       {
         id: 'specs',
-        header: 'Architecture & specs',
+        header: 'Model specifications',
         accessorFn: (row: ModelSummary) => {
           const profile =
             profilesByKey.get(`${row.dataset_id}:${row.variant_id}:${row.role}`) ?? resolveModelProfile(row);
@@ -294,14 +322,16 @@ export function ModelsView() {
           const profile =
             profilesByKey.get(`${row.original.dataset_id}:${row.original.variant_id}:${row.original.role}`) ??
             resolveModelProfile(row.original);
-          return (
-            <div className="model-specs-cell">
-              <span className="spec-pill spec-family">{profile.family}</span>
-              {profile.parameter_label ? <span className="spec-pill spec-params">{profile.parameter_label}</span> : null}
-              {profile.quantization ? <span className="spec-pill spec-quant">{profile.quantization}</span> : null}
-              {profile.context_label ? <span className="spec-pill spec-ctx" title={`Context limit: ${profile.context_limit?.toLocaleString('en-US')} tokens`}>{profile.context_label} ctx</span> : null}
-            </div>
-          );
+          return <ModelSpecificationBadges profile={profile} />;
+        },
+      },
+      {
+        id: 'artifact_size',
+        header: 'Artifact size',
+        accessorKey: 'artifact_size_bytes',
+        cell: ({ row }) => {
+          const profile = resolveModelProfile(row.original);
+          return profile.artifact_label ? <span title={`${row.original.artifact_size_bytes?.toLocaleString('en-US')} provider-reported bytes; not RAM or VRAM`}>{profile.artifact_label}</span> : <UnavailableValue />;
         },
       },
       {
@@ -349,7 +379,7 @@ export function ModelsView() {
       },
       {
         id: 'latency_p50',
-        header: 'Latency p50',
+        header: 'Mean run latency p50',
         accessorFn: (row: ModelSummary) => row.latency_p50_ms?.value ?? Number.POSITIVE_INFINITY,
         cell: ({ row }) =>
           row.original.latency_p50_ms?.value !== undefined ? (
@@ -360,7 +390,7 @@ export function ModelsView() {
       },
       {
         id: 'throughput_p50',
-        header: 'Throughput p50',
+        header: 'Mean run throughput p50',
         accessorFn: (row: ModelSummary) => row.output_throughput_p50?.value ?? -1,
         cell: ({ row }) =>
           row.original.output_throughput_p50?.value !== undefined ? (
@@ -394,12 +424,14 @@ export function ModelsView() {
         enableSorting: false,
       },
     ],
-    [profilesByKey, runsByVariant],
+    [profilesByKey, runsByVariant, sourceCountByKey],
   );
 
   const updateFilter = (patch: Partial<ModelFilters>) => setFilters({ ...filters, ...patch });
 
-  const measuredCount = models.filter((model) => Boolean(model.pass_rate) && model.evaluation_coverage >= 1).length;
+  const measuredCount = new Set(models.filter((model) => Boolean(model.pass_rate) && model.evaluation_coverage >= 1).map((model) => model.variant_id)).size;
+  const measuredVariants = new Set(models.filter((model) => model.pass_rate).map((model) => model.variant_id));
+  const inventoryVariants = new Set(models.filter((model) => model.inventory_only && !measuredVariants.has(model.variant_id)).map((model) => model.variant_id));
   const modelKeys = new Set(models.map((model) => `${model.dataset_id}:${model.variant_id}:${model.role}`));
   const coveredRuns = new Set(
     assignments
@@ -409,7 +441,7 @@ export function ModelsView() {
 
   const filterControls = (
     <>
-      <ReleaseSelector />
+      <ReleaseSelector defaultRelease="all" />
       <input
         type="search"
         placeholder="Search models, tags, or families..."
@@ -460,8 +492,18 @@ export function ModelsView() {
           </option>
         ))}
       </select>
+      <input
+        type="number"
+        min="0"
+        step="any"
+        placeholder="Max artifact GiB"
+        aria-label="Maximum artifact size in GiB"
+        title="Installed artifact budget, not runtime memory. Models without reported artifact bytes are excluded when a budget is set."
+        value={filters.maxArtifactGiB ?? ''}
+        onChange={(e) => updateFilter({ maxArtifactGiB: e.target.value })}
+      />
       <span className="result-count">
-        {formatNumber(measuredCount)} measured · {formatNumber(models.length)} total
+        {formatNumber(measuredCount)} measured · {formatNumber(new Set(models.map((model) => model.variant_id)).size)} total
       </span>
     </>
   );
@@ -471,16 +513,16 @@ export function ModelsView() {
       <SectionHeading
         kicker="MODEL CATALOG & CAPABILITIES"
         title="Models, capabilities & role performance"
-        description="Inspect model architecture, 5-probe pre-flight capabilities, and verified role performance across Primary, Assistant, and Lite roles. Select any model to view all evaluations for that model."
+        description={`${LEADERBOARD_SCORE_FORMULA}. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}. Total-parameter penalty: 10% per doubling; this is not measured resource cost. Specifications describe the frozen provider variant. Artifact size is storage, not runtime memory.`}
       />
 
       <RoleLeadersPanel
-        models={models}
+        models={modelsWithinBudget}
         evaluations={evaluations}
         assignments={assignments}
         stats={[
-          { label: 'Measured models', value: models.filter((model) => model.pass_rate).length },
-          { label: 'Inventory-only models', value: models.filter((model) => model.inventory_only).length },
+          { label: 'Measured models', value: measuredVariants.size },
+          { label: 'Inventory-only models', value: inventoryVariants.size },
           { label: 'Model families', value: availableFamilies.length },
           { label: 'Tool-capable variants', value: capabilityCounts.counts.tool_calling },
           {
@@ -542,6 +584,8 @@ export function ModelsView() {
               <p>
                 {profile.served_model_tag} · {profile.family} · {roleLabel(model.role)}
               </p>
+              <ModelSpecificationBadges profile={profile} />
+              <p>Artifact size: {profile.artifact_label ?? <UnavailableValue />}</p>
               <CapabilityProbeBadges capabilities={profile.capability_list} compact />
               {model.inventory_only ? <TonePill tone="neutral">inventory</TonePill> : null}
               <PassRateBar interval={model.pass_rate} />

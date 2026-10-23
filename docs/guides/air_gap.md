@@ -3,8 +3,8 @@ doc_id: air_gap
 title: Air-Gapped Deployment
 audience: platform operators and infrastructure teams
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/air_gap.md
   - Makefile
@@ -56,7 +56,7 @@ Documents how to stage ztd for deployment in network-isolated environments using
 
 | ID | Rule |
 | :--- | :--- |
-| INV-AIR-BUILD-01 | Native binary builds MUST use `GOTOOLCHAIN=local GOFLAGS=-mod=vendor` to ensure the checked-in vendor tree provides all dependencies. Go 1.27.2 MUST already be installed; automatic toolchain downloading is prohibited. |
+| INV-AIR-BUILD-01 | Native binary builds MUST use `GOTOOLCHAIN=local GOFLAGS=-mod=vendor` to ensure the checked-in vendor tree provides all dependencies. Go 1.27.3 MUST already be installed; automatic toolchain downloading is prohibited. |
 | INV-AIR-BUILD-02 | A source archive MUST include the committed Gateway frontend embeds under `internal/services/gateway/console/static/` and `internal/services/gateway/explorer/static/`. `make build` compiles those embeds and does not rebuild frontend `dist/` trees. |
 | INV-AIR-BUILD-03 | `make test-airgap` verifies vendor tree presence and a vendored Go build, but does NOT verify runtime egress blocking or endpoint configuration. |
 
@@ -82,7 +82,7 @@ Documents how to stage ztd for deployment in network-isolated environments using
 ### Supported deployment forms
 
 1. **Native binary**: Transfer a prebuilt static `ztd` binary and its `.sha256` checksum sidecar for the target OS and architecture. No runtime compiler or toolchain is required on the target host.
-2. **Offline source build**: Transfer the complete source tree including `vendor/`, the committed evaluation-explorer and console embeds, and a build host with Go 1.27.2 pre-installed.
+2. **Offline source build**: Transfer the complete source tree including `vendor/`, the committed evaluation-explorer and console embeds, and a build host with Go 1.27.3 pre-installed.
 
 ### Runtime network behavior in air-gap
 
@@ -105,6 +105,8 @@ The Gateway browser console is embedded in the binary and served locally without
 - `secrets/`: Keystore secrets, including the vault key (`vault_key`), and the bootstrap digest.
 - `vault/`: Vault header (`vault.header`) with the wrapped data-encryption key metadata.
 - `logs/`, `pids/`: Operational runtime state.
+
+v1.3.0 does not rewrite an existing `ztd.db`. Start the Gateway and every Operator from a new runtime root.
 
 ### Prepare a native binary
 
@@ -153,7 +155,8 @@ Run `make test-airgap` in the staged source tree before transfer to verify:
 On the air-gapped target host:
 - Block outbound internet traffic at host firewall and network perimeter.
 - Ensure external JWKS, public LLM endpoints, and external MCP/A2A URLs remain unset.
-- Point model storage, consensus signers, and DNS at internal endpoints.
+- Point model storage, consensus application endpoints, and DNS at internal endpoints.
+- For Tribunal consensus (`./ztd consensus enroll tribunal --model <tag>`), bind a local model tag. Hosted Jev access is disabled by default, so leave it off; the bind command rejects hosted use unless `--allow-hosted` is given.
 - Restrict permissions on `.ztd/` (directory mode 0700, sensitive files 0600).
 
 ## Anti-patterns

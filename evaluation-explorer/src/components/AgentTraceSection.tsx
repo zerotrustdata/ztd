@@ -21,7 +21,7 @@ import {
 import type { PublicEvidenceBinding } from '../contract/types';
 import { ValidationError } from '../contract/validators';
 import { useMirrorOrigin } from '../state/mirror';
-import { useStoreState } from '../state/store';
+import { useProofArtifact } from '../state/proof';
 import { PanelSection } from './evidence';
 import { label, prettyJSON } from './RoleTranscripts';
 import { CopyButton, formatLatency, formatTokens } from './shared';
@@ -113,6 +113,9 @@ function ToolCall({ call }: { call: AgentTraceToolCall }) {
         {call.is_operator_tool ? <span className="agent-trace-chip">Governed</span> : <span className="agent-trace-chip">Local</span>}
       </div>
       <TextBlock title="Arguments" text={call.arguments_json} copyLabel={`${call.tool_name} arguments`} json />
+      {call.approved_arguments_json && call.approved_arguments_json !== call.arguments_json ? (
+        <TextBlock title="Approved arguments" text={call.approved_arguments_json} copyLabel={`${call.tool_name} approved arguments`} json />
+      ) : null}
       {call.command ? <TextBlock title="Resolved command" text={call.command} copyLabel={`${call.tool_name} command`} /> : null}
       {call.result_json ? <TextBlock title="Tool result" text={call.result_json} copyLabel={`${call.tool_name} result`} json /> : null}
       {call.error ? <TextBlock title="Error" text={call.error} copyLabel={`${call.tool_name} error`} /> : null}
@@ -335,7 +338,7 @@ export function AgentTraceSection({ id, bindings, runId, assignmentId }: {
 }) {
   const origin = useMirrorOrigin();
   const binding = agentTraceBinding(bindings);
-  const artifact = useStoreState((state) => (binding ? state.proofArtifacts.get(binding.sha256) : undefined));
+  const artifact = useProofArtifact(binding);
   const url = origin && artifact ? `${origin}${artifact.immutable_url}` : undefined;
   const state = useVerifiedTrace(url, binding, runId, assignmentId);
 
@@ -351,7 +354,7 @@ export function AgentTraceSection({ id, bindings, runId, assignmentId }: {
       </div>
       <p className="task-section-note">
         Verified in this browser against its published SHA-256 and evidence digest before display. Receipt signatures and the
-        sentinel bracket verify offline with <code>{command}</code>.
+        sentinel bracket verify offline with <code>{command}</code>. Verification establishes evidence integrity, not grading fairness.
       </p>
       {state.status === 'loading' ? <p className="model-response-empty">Loading and verifying the trace…</p> : null}
       {state.status === 'failed' ? (

@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/testutil"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 func TestOllamaBackend_ListProviderModelInventoryPreservesDistinctServedTags(t *testing.T) {
@@ -30,7 +31,7 @@ func TestOllamaBackend_ListProviderModelInventoryPreservesDistinctServedTags(t *
 		switch r.URL.Path {
 		case "/api/tags":
 			require.NoError(t, json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaTagModel{
-				{Name: "alias-one:latest", Digest: "sha256:" + digestA},
+				{Name: "alias-one:latest", Digest: "sha256:" + digestA, Size: 2_600_000_000},
 				{Name: "alias-two:latest", Digest: "sha256:" + digestB},
 			}}))
 		case "/api/show":
@@ -41,6 +42,7 @@ func TestOllamaBackend_ListProviderModelInventoryPreservesDistinctServedTags(t *
 			}
 			require.NoError(t, json.Unmarshal(body, &req))
 			show := ollamaShowResponse{
+				ModelInfo:  map[string]json.RawMessage{"general.parameter_count": json.RawMessage("4030261248")},
 				Parameters: "num_ctx                        8192\n",
 				Details: ollamaModelDetails{
 					Format:            "gguf",
@@ -52,6 +54,7 @@ func TestOllamaBackend_ListProviderModelInventoryPreservesDistinctServedTags(t *
 			}
 			if req.Name == "alias-two:latest" {
 				show.Details.ParameterSize = "1.7B"
+				show.ModelInfo = nil
 			}
 			require.NoError(t, json.NewEncoder(w).Encode(show))
 		default:
@@ -67,9 +70,18 @@ func TestOllamaBackend_ListProviderModelInventoryPreservesDistinctServedTags(t *
 	require.Len(t, entries, 2)
 	assert.Equal(t, "alias-one:latest", entries[0].ServedModelTag)
 	assert.Equal(t, digestA, entries[0].ModelDigest)
-	assert.Equal(t, uint64(4_000_000_000), entries[0].ParameterCount)
+	assert.Equal(t, uint64(4_030_261_248), entries[0].ParameterCount)
+	assert.Equal(t, operatorv1.ParameterCountSource_PARAMETER_COUNT_SOURCE_MODEL_METADATA, entries[0].ParameterCountSource)
+	assert.Equal(t, "Q4_K_M", entries[0].Quantization)
+	assert.Equal(t, "gguf", entries[0].Format)
+	assert.Equal(t, uint64(2_600_000_000), entries[0].ArtifactSizeBytes)
 	assert.Equal(t, uint32(8192), entries[0].ContextLimit)
 	assert.Equal(t, []string{"completion", "tools"}, entries[0].AdvertisedCapabilities)
 	assert.Equal(t, "alias-two:latest", entries[1].ServedModelTag)
 	assert.Equal(t, digestB, entries[1].ModelDigest)
+	assert.Equal(t, uint64(1_700_000_000), entries[1].ParameterCount)
+	assert.Equal(t, operatorv1.ParameterCountSource_PARAMETER_COUNT_SOURCE_ROUNDED_LABEL, entries[1].ParameterCountSource)
+	assert.Zero(t, entries[1].ArtifactSizeBytes)
+	// The governed protocol conversion preserves specifications and their source.
+	assert.Equal(t, entries, ProviderModelInventoryEntriesFromProto(ProviderModelInventoryEntriesToProto(entries)))
 }

@@ -464,43 +464,6 @@ func TestDBModelsJSON(t *testing.T) {
 }
 
 func TestLogModelsJSON(t *testing.T) {
-	t.Run("LogStreamFilterRequest marshalling", func(t *testing.T) {
-		req := LogStreamFilterRequest{
-			LogPath: "/var/log/app.log",
-			Pattern: "ERROR",
-			Limit:   100,
-		}
-		data, err := json.Marshal(req)
-		require.NoError(t, err)
-		assert.Contains(t, string(data), `"log_path":"/var/log/app.log"`)
-		assert.Contains(t, string(data), `"pattern":"ERROR"`)
-		assert.Contains(t, string(data), `"limit":100`)
-
-		// Test omitempty for Limit
-		req.Limit = 0
-		data, err = json.Marshal(req)
-		require.NoError(t, err)
-		assert.NotContains(t, string(data), `"limit"`)
-	})
-
-	t.Run("LogStreamFilterResult marshalling", func(t *testing.T) {
-		res := LogStreamFilterResult{
-			Lines: []string{"line1", "line2", "line3"},
-			Count: 3,
-		}
-		data, err := json.Marshal(res)
-		require.NoError(t, err)
-		assert.Contains(t, string(data), `"lines":["line1","line2","line3"]`)
-		assert.Contains(t, string(data), `"count":3`)
-
-		// Test round-trip
-		var decoded LogStreamFilterResult
-		err = json.Unmarshal(data, &decoded)
-		require.NoError(t, err)
-		assert.Len(t, decoded.Lines, 3)
-		assert.Equal(t, 3, decoded.Count)
-	})
-
 	t.Run("SysOOMDetectRequest marshalling", func(t *testing.T) {
 		req := SysOOMDetectRequest{
 			LogPath: "/var/log/syslog",

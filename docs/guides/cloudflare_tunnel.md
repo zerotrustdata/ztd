@@ -3,8 +3,8 @@ doc_id: cloudflare_tunnel
 title: Cloudflare Tunnel Integration
 audience: operators, infrastructure engineers, deployment specialists
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/cloudflare_tunnel.md
   - internal/cli/cmd/gw/tunnel.go
@@ -118,7 +118,7 @@ Or query health directly:
 curl -fsS https://console.example.com/api/v1/health
 ```
 
-Expected response contains `"status":"ok"` and `"governance_ready":true`.
+Expected response contains `"status":"ok"` and `"governance_ready":true`. This holds for the `doctrine` posture used in step 3, and for `ratify`. Under `consensus` or `notary`, `governance_ready` is `true` only after a consensus is bound and usable, so it reports `false` until then.
 
 ## Configuration Reference
 
@@ -137,7 +137,7 @@ ingress:
   - service: http_status:404
 ```
 
-By default, `cloudflared` does not verify the Gateway certificate (`noTLSVerify: true`), so the `cloudflared`-to-Gateway hop is encrypted but not authenticated. To enable origin certificate verification, pass `--ca-bundle /path/to/ztdg-ca-bundle.pem` to `gw tunnel create`; the generated config then sets `originCaPool` in place of `noTLSVerify`. The origin TLS server name (SNI) is set to `ztd.local` by default, which is the DNS SAN every Gateway server certificate carries, so verification does not depend on the `--service` host matching the certificate. Pass `--origin-server-name <name>` to override it. `--origin-server-name` MUST be used with `--ca-bundle`; without it the command fails, because `noTLSVerify` mode never sends a server name.
+By default, `cloudflared` does not verify the Gateway certificate (`noTLSVerify: true`), so the `cloudflared`-to-Gateway hop is encrypted but not authenticated. To enable origin certificate verification, pass `--ca-bundle /path/to/ztdg-ca-bundle.pem` to `gw tunnel create`; the generated config then sets `originCaPool` in place of `noTLSVerify`. The origin TLS server name (SNI) is set to `ztd.local` by default, which is the DNS SAN every Gateway server certificate carries, so verification does not depend on the `--service` host matching the certificate. Pass `--origin-server-name <name>` to override it. `--origin-server-name` requires `--ca-bundle`; `gw tunnel create` rejects `--origin-server-name` when `--ca-bundle` is absent, because `noTLSVerify` mode never sends a server name.
 
 ## Troubleshooting
 

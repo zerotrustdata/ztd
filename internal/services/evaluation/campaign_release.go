@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -71,8 +70,11 @@ func (r CampaignRelease) publicBasis() evalv1.PublicReleaseBasis {
 // the recorded release is digest-bound. Re-tagging an untagged-by-digest
 // campaign replaces the earlier assertion.
 func (s *Store) TagCampaignRelease(ctx context.Context, campaignID, release string, assertedAt time.Time) error {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(campaignID) || strings.TrimSpace(release) == "" {
-		return fmt.Errorf("evaluation: tag campaign release: %w", constants.ErrMissingRequiredField)
+	if strings.TrimSpace(release) == "" {
+		return fmt.Errorf("evaluation: tag campaign release: release: %w", constants.ErrMissingRequiredField)
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, campaignIDElement(campaignID)); err != nil {
+		return fmt.Errorf("evaluation: tag campaign release: %w", err)
 	}
 	spec, err := s.LoadCampaignSpec(ctx, campaignID)
 	if err != nil {

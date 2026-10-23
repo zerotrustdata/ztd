@@ -104,9 +104,11 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	// Enrollment token validation (public — the token itself is the credential)
 	mux.HandleFunc(constants.APIPaths.AuthEnrollmentTokenValidate, h.enrollmentTokenController.handleEnrollmentTokenValidate)
 
-	// MCP/A2A ingress (rate-limited, JWT when JWKS is configured, else mTLS via main middleware)
-	mcpHandler := h.buildMCPHandler()
-	registerMCPRoutes(mux, mcpHandler)
+	// MCP/A2A ingress (rate-limited, JWT when JWKS is configured, else mTLS via main middleware).
+	// A2A is mounted only when a downstream is configured.
+	a2aEnabled := h.a2aIngressEnabled()
+	mcpHandler := h.buildMCPHandler(a2aEnabled)
+	registerMCPRoutes(mux, mcpHandler, a2aEnabled)
 
 	jitCfg := passkeyHandlerConfig{source: sourceJWT, enforceFirstCredentialOnly: true, requireAuthenticatedUser: true, enforceSessionUserBinding: true}
 	browserBootstrapRegisterCfg := passkeyHandlerConfig{source: sourceBrowserBootstrap, enforceFirstCredentialOnly: true, createWebSession: true, setCookie: true, createUserOnBootstrap: true}
@@ -176,10 +178,11 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	govEnvHandler := h.rateLimitMiddleware(govEnvMux)
 	mux.Handle(constants.APIPaths.GovernanceEnvelopes, govEnvHandler)
 
-	mux.HandleFunc(constants.APIPaths.AuditReceipts, h.auditController.handleAuditReceipts)
-	mux.HandleFunc(constants.APIPaths.AuditReceiptsExport, h.auditController.handleAuditReceiptsExport)
+	mux.HandleFunc(constants.APIPaths.AuditEventReceipts, h.auditController.handleAuditEventReceipts)
+	mux.HandleFunc(constants.APIPaths.AuditEventReceiptsExport, h.auditController.handleAuditEventReceiptsExport)
 	mux.HandleFunc(constants.APIPaths.AuditRecords, h.auditController.handleAuditRecords)
 	mux.HandleFunc(constants.APIPaths.AuditEvents, h.auditController.handleAuditEvents)
+	mux.HandleFunc(constants.APIPaths.AuditConsensusVotes, h.auditController.handleAuditConsensusVotes)
 	mux.HandleFunc(constants.APIPaths.AuditSummary, h.auditController.handleAuditSummary)
 	mux.HandleFunc(constants.APIPaths.AuditReport, h.auditController.handleAuditReport)
 	mux.HandleFunc(constants.APIPaths.AuditVerify, h.auditController.handleAuditVerify)
@@ -267,13 +270,20 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	return h.corsMiddleware(h.pathTraversalGuard(handler))
 }
 
+// a2aIngressEnabled reports whether the Gateway configuration opts into A2A ingress.
+func (h *HTTPHandler) a2aIngressEnabled() bool {
+	return h.cfg != nil && h.cfg.Gateway.A2AIngressEnabled()
+}
+
 // buildMCPHandler creates the rate-limited, auth-wrapped handler for all MCP/A2A ingress routes.
 // When JWKS is configured, JWT middleware is applied for external IdP auth; otherwise MCP/A2A
 // routes rely on mTLS + AppPolicy enforced by the main middleware at the router level.
-func (h *HTTPHandler) buildMCPHandler() http.Handler {
+func (h *HTTPHandler) buildMCPHandler(a2aEnabled bool) http.Handler {
 	mcpMux := http.NewServeMux()
 	mcpMux.HandleFunc(constants.APIPaths.MCPEndpoint, h.mcpController.handleMCP)
-	mcpMux.HandleFunc(constants.APIPaths.A2ACall, h.mcpController.handleA2aCall)
+	if a2aEnabled {
+		mcpMux.HandleFunc(constants.APIPaths.A2ACall, h.mcpController.handleA2aCall)
+	}
 
 	mcpRateLimited := h.rateLimitMiddleware(mcpMux)
 
@@ -283,10 +293,12 @@ func (h *HTTPHandler) buildMCPHandler() http.Handler {
 	return mcpRateLimited
 }
 
-// registerMCPRoutes registers all MCP/A2A ingress paths on the given mux with the provided handler.
-func registerMCPRoutes(mux *http.ServeMux, handler http.Handler) {
+// registerMCPRoutes registers the MCP ingress path, and the A2A path when enabled, on the given mux.
+func registerMCPRoutes(mux *http.ServeMux, handler http.Handler, a2aEnabled bool) {
 	mux.Handle(constants.APIPaths.MCPEndpoint, handler)
-	mux.Handle(constants.APIPaths.A2ACall, handler)
+	if a2aEnabled {
+		mux.Handle(constants.APIPaths.A2ACall, handler)
+	}
 }
 
 func (h *HTTPHandler) buildHTTPRouter() http.Handler {

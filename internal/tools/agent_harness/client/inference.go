@@ -115,7 +115,8 @@ func (c *Client) DispatchInference(ctx context.Context, req *operatorv1.Inferenc
 // DispatchIntent sends POST /api/v1/operators/intents under the configured
 // platform-enrolled application identity, as DispatchInference does: the
 // Gateway's Tribunal dispatches every member call as governed inference under
-// that identity, then the approved command as a governed EXECUTE_BASH. A
+// that identity, then the approved arguments as a governed MCP_CALL
+// run_shell_command. A
 // deliberated intent is always a TribunalIntentResult. A request refused before
 // deliberation is an ErrHTTPStatusError whose text names the IngressRefusal's
 // error and code; the typed IngressRefusal is in the returned response body.

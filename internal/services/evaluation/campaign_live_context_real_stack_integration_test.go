@@ -117,3 +117,17 @@ func TestRealStackLiveContext_FreshInvestigationHasNoSetupHistory(t *testing.T) 
 	assert.NotEqual(t, trace.ScenarioID, trace.InvestigationID)
 	assert.NotEqual(t, trace.RunID, trace.InvestigationID)
 }
+
+func TestRealStackLiveContext_EmbeddedHistoryScenario(t *testing.T) {
+	env := newRealStackAgentRun(t, realStackOptions{shared: true, singleRole: true, scenarioID: "tool-select-investigation", suffix: "embedded-history",
+		replies: []fixtures.OllamaReply{liveContextAuditList(), {Content: "There are no recorded actions."}},
+	})
+	res := env.executeNext(t)
+	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, evaluation.DerivePublicSummaryStatus(res))
+	trace := executorLoadTrace(t, env, res)
+	require.Len(t, trace.ToolCalls, 1)
+	require.True(t, trace.ToolCalls[0].Success)
+	require.NotNil(t, trace.ToolCalls[0].Retrieval)
+	require.Empty(t, trace.ToolCalls[0].Retrieval.Receipts)
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+}

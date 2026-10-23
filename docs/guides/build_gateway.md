@@ -3,8 +3,8 @@ doc_id: build-gateway
 title: Build Gateway
 audience: developers and operators
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/build_gateway.md
   - Makefile
@@ -48,7 +48,7 @@ The reference implementation is the static `ztd` binary running in Gateway mode.
 
 ### Prerequisites
 
-- **Go 1.27.2+** — Required for building the reference Gateway. The root `go.mod` is authoritative; the Makefile selects the toolchain automatically.
+- **Go 1.27.3+** — Required for building the reference Gateway. The root `go.mod` is authoritative; the Makefile selects the toolchain automatically.
 - **Make** — Required to run the root build targets.
 - **Node.js 22.22.2+, 24.15+, or 26+ and npm** — Required only to rebuild Console or Evaluation Explorer embeds. A plain `make build` uses the committed embeds.
 
@@ -125,14 +125,16 @@ Choose a stricter posture only after configuring required proofs:
 ./ztd gw start --posture notary
 ```
 
-Consensus and notary require a bound consensus application. Enroll it as an ordinary application with an L2 signing identity, then bind its HTTPS endpoint. Set `APP_NAME` to the application name and `APP_ENDPOINT` to its HTTPS deliberation endpoint (the application host plus `/deliberate`), then run:
+Consensus and notary require a bound consensus. The Gateway-hosted Tribunal panel is one provider: `./ztd consensus enroll tribunal --model <tag>` pins a served model tag from the frozen model registry and enrolls the five `tribunal-*` member applications, skipping any already enrolled. Its quorum defaults to 3 of 5; `--quorum` accepts 3 to 5. Then run `./ztd consensus status` to confirm the binding.
+
+To bind an application instead, enroll it as an ordinary application with an L2 signing identity, then bind its HTTPS endpoint. Set `APP_NAME` to the application name and `APP_ENDPOINT` to its HTTPS deliberation endpoint (the application host plus `/deliberate`), then run:
 
 ```bash
 APP_NAME=etl-service
 APP_ENDPOINT=https://etl.example.com/deliberate
 ./ztd auth enroll app "$APP_NAME" --signing-key
-./ztd auth enroll consensus bind "$APP_NAME" "$APP_ENDPOINT"
-./ztd auth enroll consensus show
+./ztd consensus enroll app "$APP_NAME" "$APP_ENDPOINT"
+./ztd consensus status
 ```
 
 Ratify and notary require L3 human authorization for mutations, including the binding itself. See [Consensus](../architecture/consensus.md).
@@ -148,7 +150,7 @@ Use `./ztd gw start --help` for current startup flags and defaults. Global `-e, 
 Custom Gateway implementations consume the ztd Protocol Library for protobuf schema definitions, SPIFFE workload identity helpers, and JSON protocol constants.
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.2.0
+go get github.com/zerotrustdata/ztd@v1.3.0
 ```
 
 Import SPIFFE workload identity helpers and protocol constants from `github.com/zerotrustdata/ztd/protocol`. Import generated protobuf types from the package path under `github.com/zerotrustdata/ztd/protocol/proto/ztd/`, for example `protocol/proto/ztd/operator/v1`.
@@ -167,7 +169,7 @@ To build a custom ztd-compatible Gateway, your implementation must satisfy the f
 4. **Admission and Enrollment**: Expose bootstrap, recovery, platform enrollment, governance, PKI management, MCP, and A2A surfaces.
 5. **Protocol Translation**: Translate MCP JSON-RPC tool calls and A2A skill invocations into governed `GovernanceEnvelope` transactions.
 6. **Governance Pipeline Integration**: Apply L1-L3 according to active posture, dispatch to an Operator, and record signed receipts.
-7. **Audit and Receipt Access**: Expose authenticated audit event and receipt query surfaces.
+7. **Audit and Event Receipt Access**: Expose authenticated audit event and event receipt query surfaces. Event receipts are read from the `events` chain.
 
 ### Protocol Invariants
 
@@ -310,3 +312,5 @@ TUNNEL_HOSTNAME=console.example.com
 - [Connect Applications to Gateway](connect_apps_to_gateway.md) — Connect applications, SDKs, and agents.
 - [Build Operator](build_operator.md) — Build a custom ztd-compatible Operator.
 - [Protocol Architecture](../architecture/protocol.md) — Go module API reference and constants.
+
+System One decision voting is available for future evaluation behind explicit Operator and Tribunal binding settings. Hosted Jev remains disabled by default and has no configured credential or production rollout. See [Decision Model Votes](../architecture/consensus.md#decision-model-votes-opt-in) before considering activation.

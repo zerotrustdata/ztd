@@ -23,6 +23,43 @@ func TestPayloadFromDomainResult_NilReturnsNil(t *testing.T) {
 	assert.Nil(t, PayloadFromDomainResult(nil))
 }
 
+func TestValidExecutableName(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, ValidExecutableName("echo"))
+	assert.True(t, ValidExecutableName("./check.sh"))
+	for _, command := range []string{"", " echo", "echo ", "sh ./check.sh", "echo\tok", "echo ok"} {
+		assert.False(t, ValidExecutableName(command), "%q", command)
+	}
+}
+
+func TestRunShellCommandRequestCanonicalJSONAndProto(t *testing.T) {
+	t.Parallel()
+
+	request := RunShellCommandRequest{
+		Command: "printf", Args: []string{"%s", "hello"}, Timeout: 12,
+		WorkingDir: "/tmp/work", Hostnames: []string{"operator-a"},
+	}
+	assert.Equal(t, `{"args":["%s","hello"],"command":"printf","hostnames":["operator-a"],"timeout":12,"working_dir":"/tmp/work"}`, request.CanonicalJSON())
+
+	proto := request.Proto()
+	assert.Equal(t, "printf", proto.Command)
+	assert.Equal(t, []string{"%s", "hello"}, proto.Args)
+	assert.Equal(t, int32(12), proto.Timeout)
+	assert.Equal(t, "/tmp/work", proto.WorkingDir)
+	fromProto := RunShellCommandRequestFromProto(proto)
+	assert.Equal(t, "printf", fromProto.Command)
+	assert.Equal(t, []string{"%s", "hello"}, fromProto.Args)
+	assert.Equal(t, 12, fromProto.Timeout)
+	assert.Equal(t, "/tmp/work", fromProto.WorkingDir)
+	assert.Empty(t, fromProto.Hostnames)
+}
+
+func TestRunShellCommandRequestFromProtoNil(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, RunShellCommandRequest{}, RunShellCommandRequestFromProto(nil))
+}
+
 func TestPayloadFromDomainResult_PopulatesRequiredFields(t *testing.T) {
 	t.Parallel()
 

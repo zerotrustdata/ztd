@@ -39,6 +39,22 @@ describe('ModelDetailView', () => {
     expect(capabilities.getByText('Structured JSON')).toBeInTheDocument();
   });
 
+  it('lists frozen versions across datasets without assigning a digest to older records', () => {
+    evalStore.loadFixtures([
+      run,
+      { ...model, model_digest: 'a'.repeat(64) },
+      { ...model, dataset_id: 'ds-other-version', model_digest: 'b'.repeat(64) },
+      { ...model, dataset_id: 'ds-old-unknown', model_digest: undefined },
+      { ...model, dataset_id: 'ds-old-unknown', model_digest: undefined, role: 'assistant' },
+    ], []);
+    renderModel();
+    const versions = within(screen.getByRole('region', { name: 'Recorded model versions' }));
+    expect(versions.getByRole('link', { name: 'a'.repeat(64) })).toHaveAttribute('href', `/models/${model.dataset_id}/${model.variant_id}?role=${model.role}`);
+    expect(versions.getByRole('link', { name: 'b'.repeat(64) })).toHaveAttribute('href', `/models/ds-other-version/${model.variant_id}?role=${model.role}`);
+    expect(versions.getByRole('link', { name: 'Digest unavailable' }).closest('li')).toHaveTextContent('1 dataset');
+    expect(versions.getAllByRole('link')).toHaveLength(3);
+  });
+
   it('renders an unmeasured model as Not evaluated without inventing a zero pass rate', () => {
     evalStore.loadFixtures([{ ...model, pass_rate: undefined, inventory_only: true, terminal_outcomes: undefined, quality_state: 'not_evaluated' }, run], []);
     renderModel();
@@ -46,5 +62,16 @@ describe('ModelDetailView', () => {
     expect(within(hero.querySelector('.evidence-verdict')!).getByText('Not evaluated', { exact: true })).toHaveAttribute('data-tone', 'neutral');
     expect(hero).not.toHaveTextContent('0.0%');
     expect(screen.queryByRole('region', { name: /Assignments/ })).not.toBeInTheDocument();
+  });
+
+  it('shows the frozen deployment identity, reported precision, and artifact storage separately', () => {
+    evalStore.loadFixtures([{ ...model, model_digest: 'b'.repeat(64), parameter_count_source: 'rounded_label', quantization_weight_class: 'BF16', model_format: 'gguf', artifact_size_bytes: 8 * 1024 ** 3, context_limit: 4096 }, run], []);
+    renderModel();
+    const identity = within(screen.getByRole('region', { name: 'Identity' }));
+    expect(identity.getByText('b'.repeat(64))).toBeInTheDocument();
+    expect(identity.getByText('Rounded provider label')).toBeInTheDocument();
+    expect(identity.getByText('BF16')).toBeInTheDocument();
+    expect(identity.getByText('8.00 GiB (8,589,934,592 bytes)')).toBeInTheDocument();
+    expect(identity.getByText('4,096 tokens (4K)')).toBeInTheDocument();
   });
 });

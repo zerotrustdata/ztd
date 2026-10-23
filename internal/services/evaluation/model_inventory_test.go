@@ -41,12 +41,15 @@ func TestBuildModelVariantsFromProviderInventory_SortsAndDedupes(t *testing.T) {
 	t.Parallel()
 	entries := []inference.ProviderModelInventoryEntry{
 		{ServedModelTag: "z-model:7b", ModelDigest: repeatHex('a'), ModelFamily: "z"},
-		{ServedModelTag: "a-model:7b", ModelDigest: repeatHex('b'), ModelFamily: "a"},
+		{ServedModelTag: "a-model:7b", ModelDigest: repeatHex('b'), ModelFamily: "a", Quantization: "BF16", Format: "gguf", ArtifactSizeBytes: 14_000_000_000},
 	}
 	variants, err := BuildModelVariantsFromProviderInventory(context.Background(), entries, ModelInventoryOptions{})
 	require.NoError(t, err)
 	require.Len(t, variants, 2)
 	assert.Equal(t, "a-model:7b", variants[0].GetServedModelTag())
+	assert.Equal(t, "BF16", variants[0].GetQuantization())
+	assert.Equal(t, "gguf", variants[0].GetModelFormat())
+	assert.Equal(t, uint64(14_000_000_000), variants[0].GetArtifactSizeBytes())
 	assert.Equal(t, "z-model:7b", variants[1].GetServedModelTag())
 }
 

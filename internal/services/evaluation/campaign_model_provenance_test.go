@@ -129,6 +129,26 @@ func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictMis
 	require.NotEmpty(t, unavailable)
 }
 
+// A governance-rejected inference has no provider attempt, so strict
+// provenance expects no attestation window for it.
+func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictSkipsGovernanceRejected(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+	reader, err := NewCampaignModelProvenanceReader(store)
+	require.NoError(t, err)
+	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-1",
+		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			InferenceRecordId: "inf-denied",
+			ModelVariant:      &evalv1.ModelVariant{ModelDigest: strings.Repeat("a", 64)},
+		}},
+	}
+	failures, unavailable := reader.VerifyAssignmentModelProvenance(ctx, result, ModelProvenancePolicyStrict)
+	assert.Empty(t, failures)
+	assert.Empty(t, unavailable)
+}
+
 func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictDigestMatch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

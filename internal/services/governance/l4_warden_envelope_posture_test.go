@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	govtypes "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -173,8 +174,9 @@ func TestVerifyEnvelope_InvalidEnvelopePostureFailsClosed(t *testing.T) {
 
 // TestPostureGates_L2EnforcedAndL3RequiredByActionClass pins the two posture
 // gates that L4 and every Gateway deliberation or refusal site share. L2 is
-// enforced under a posture that requires it, except for bootstrap actions. L3
-// is required under a posture that requires it, but only for mutations. Each
+// enforced under a posture that requires it, but only for state changes and
+// never for bootstrap actions. L3 is required under a posture that requires
+// it, but only for mutations. Each
 // posture is crossed with a mutation, a read, a non-mutating bootstrap action,
 // and a mutating bootstrap action, so each exemption is checked on its own.
 func TestPostureGates_L2EnforcedAndL3RequiredByActionClass(t *testing.T) {
@@ -193,7 +195,7 @@ func TestPostureGates_L2EnforcedAndL3RequiredByActionClass(t *testing.T) {
 		{"doctrine bootstrap mutation", constants.PostureDoctrine, constants.ActionTypePlatformEnrollmentDecide, false, false},
 
 		{"consensus mutation", constants.PostureConsensus, constants.ActionTypeFileEdit, true, false},
-		{"consensus read", constants.PostureConsensus, constants.ActionTypeFsRead, true, false},
+		{"consensus read", constants.PostureConsensus, constants.ActionTypeFsRead, false, false},
 		{"consensus bootstrap", constants.PostureConsensus, constants.ActionTypePlatformEnrollmentCreate, false, false},
 		{"consensus bootstrap mutation", constants.PostureConsensus, constants.ActionTypePlatformEnrollmentDecide, false, false},
 
@@ -203,7 +205,7 @@ func TestPostureGates_L2EnforcedAndL3RequiredByActionClass(t *testing.T) {
 		{"ratify bootstrap mutation", constants.PostureRatify, constants.ActionTypePlatformEnrollmentDecide, false, true},
 
 		{"notary mutation", constants.PostureNotary, constants.ActionTypeFileEdit, true, true},
-		{"notary read", constants.PostureNotary, constants.ActionTypeFsRead, true, false},
+		{"notary read", constants.PostureNotary, constants.ActionTypeFsRead, false, false},
 		{"notary bootstrap", constants.PostureNotary, constants.ActionTypePlatformEnrollmentCreate, false, false},
 		{"notary bootstrap mutation", constants.PostureNotary, constants.ActionTypePlatformEnrollmentDecide, false, true},
 
@@ -218,8 +220,49 @@ func TestPostureGates_L2EnforcedAndL3RequiredByActionClass(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.wantL2, L2Enforced(tc.action, tc.posture), "L2Enforced")
+			envelope := &govtypes.GovernanceEnvelope{ActionType: string(tc.action)}
+			assert.Equal(t, tc.wantL2, L2Enforced(envelope, tc.posture), "L2Enforced")
 			assert.Equal(t, tc.wantL3, L3Required(tc.action, tc.posture), "L3Required")
+		})
+	}
+}
+
+// TestL2Enforced_ScopesTribunalToStateChanges pins the Tribunal scope: under
+// an L2 posture only a state change gets a vote round. Inference, typed
+// provider reads, the harness model release and read-only MCP tools do not.
+// An MCP call to a tool the registry does not list as read-only, including an
+// empty or unknown target, is a state change, so the gate fails closed.
+func TestL2Enforced_ScopesTribunalToStateChanges(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		action constants.ActionType
+		target string
+		wantL2 bool
+	}{
+		{"inference", constants.ActionTypeInference, "", false},
+		{"model residency read", constants.ActionTypeOllamaModelResidency, "", false},
+		{"model inventory read", constants.ActionTypeOllamaModelInventory, "", false},
+		{"harness model release", constants.ActionTypeOllamaModelRelease, "", false},
+		{"read_file tool", constants.ActionTypeMcpCall, constants.MCPToolReadFile, false},
+		{"search_directory tool", constants.ActionTypeMcpCall, constants.MCPToolSearchDirectory, false},
+		{"git_ops tool", constants.ActionTypeMcpCall, constants.MCPToolGitOps, false},
+		{"run_shell_command tool", constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand, true},
+		{"unknown tool", constants.ActionTypeMcpCall, "proc_signal_safe", true},
+		{"empty tool", constants.ActionTypeMcpCall, "", true},
+		{"read-only tool name on another action", constants.ActionTypeExecuteBash, constants.MCPToolReadFile, true},
+		{"bash", constants.ActionTypeExecuteBash, "", true},
+		{"file edit", constants.ActionTypeFileEdit, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			envelope := &govtypes.GovernanceEnvelope{ActionType: string(tc.action), TargetResource: tc.target}
+			for _, posture := range []constants.Posture{constants.PostureConsensus, constants.PostureNotary} {
+				assert.Equal(t, tc.wantL2, L2Enforced(envelope, posture), posture)
+			}
+			assert.False(t, L2Enforced(envelope, constants.PostureDoctrine), "doctrine never enforces L2")
+			assert.False(t, L2Enforced(envelope, constants.PostureRatify), "ratify never enforces L2")
 		})
 	}
 }

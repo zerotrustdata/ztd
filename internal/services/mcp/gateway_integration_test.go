@@ -663,7 +663,7 @@ func TestAuditReceiptListTool_DispatchToDownstream(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	stub := &stubAuditReceiptQuery{
-		listBySession: []*models.ActionReceiptRecord{
+		listBySession: []*models.EventReceiptRecord{
 			sampleReceiptRecord("tx-1", "sess-1", "FILE_EDIT", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED),
 		},
 	}
@@ -700,7 +700,7 @@ func TestAuditReceiptGetTool_DispatchToDownstream(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	rec := sampleReceiptRecord("tx-get-1", "sess-1", "DOCUMENT_UPDATE", now, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED)
-	stub := &stubAuditReceiptQuery{getByID: map[string]*models.ActionReceiptRecord{"tx-get-1": rec}}
+	stub := &stubAuditReceiptQuery{getByID: map[string]*models.EventReceiptRecord{"tx-get-1": rec}}
 
 	nativeHandler, err := NewNativeToolHandler(slog.Default())
 	require.NoError(t, err)

@@ -34,21 +34,39 @@ type InferenceOperatorStatus struct {
 // ActiveInferenceOperators returns every active remote or configured embedded
 // Operator whose runtime capabilities include Inference.
 func ActiveInferenceOperators(operators []*operatorv1.OperatorDocument) []InferenceOperatorStatus {
-	matches := make([]InferenceOperatorStatus, 0)
+	docs := activeInferenceOperatorDocs(operators, "")
+	matches := make([]InferenceOperatorStatus, 0, len(docs))
+	for _, op := range docs {
+		matches = append(matches, inferenceOperatorStatus(op))
+	}
+	return matches
+}
+
+// activeInferenceOperatorDocs filters operators to active inference-capable
+// sessions, and to systemFingerprint's host when it is non-empty.
+func activeInferenceOperatorDocs(operators []*operatorv1.OperatorDocument, systemFingerprint string) []*operatorv1.OperatorDocument {
+	docs := make([]*operatorv1.OperatorDocument, 0, len(operators))
 	for _, op := range operators {
 		if op.RuntimeConfig == nil || !operatorcapability.HasActiveCapability(op, constants.OperatorCapabilityInference) {
 			continue
 		}
-		matches = append(matches, InferenceOperatorStatus{
-			OperatorID:        op.GetId(),
-			OperatorSessionID: op.GetOperatorSessionId(),
-			Status:            op.GetStatus(),
-			InferenceEnabled:  true,
-			OllamaEndpoint:    inferenceOperatorOllamaEndpoint(op),
-			Embedded:          op.GetOperatorType() == string(constants.OperatorTypeEmbedded),
-		})
+		if systemFingerprint != "" && op.SystemFingerprint != systemFingerprint {
+			continue
+		}
+		docs = append(docs, op)
 	}
-	return matches
+	return docs
+}
+
+func inferenceOperatorStatus(op *operatorv1.OperatorDocument) InferenceOperatorStatus {
+	return InferenceOperatorStatus{
+		OperatorID:        op.GetId(),
+		OperatorSessionID: op.GetOperatorSessionId(),
+		Status:            op.GetStatus(),
+		InferenceEnabled:  true,
+		OllamaEndpoint:    inferenceOperatorOllamaEndpoint(op),
+		Embedded:          op.GetOperatorType() == string(constants.OperatorTypeEmbedded),
+	}
 }
 
 // SelectInferenceOperator resolves exactly one inference-capable Operator.
@@ -68,66 +86,34 @@ func SelectInferenceOperatorForHardware(
 	sessionID string,
 	systemFingerprint string,
 ) (*InferenceOperatorStatus, error) {
-	matches := ActiveInferenceOperators(operators)
-	if systemFingerprint != "" {
-		filtered := make([]InferenceOperatorStatus, 0, len(matches))
-		for _, op := range operators {
-			if op.SystemFingerprint != systemFingerprint {
-				continue
-			}
-			for _, match := range matches {
-				if match.OperatorSessionID == op.GetOperatorSessionId() {
-					filtered = append(filtered, match)
-					break
-				}
-			}
+	var eligible []*operatorv1.OperatorDocument
+	for _, op := range operators {
+		if sessionID != "" || !op.GetRuntimeConfig().GetInferenceDecisionOnly() {
+			eligible = append(eligible, op)
 		}
-		matches = filtered
 	}
+	matches := activeInferenceOperatorDocs(eligible, systemFingerprint)
 	if sessionID != "" {
-		for _, match := range matches {
-			if match.OperatorSessionID == sessionID {
-				selected := match
+		for _, op := range matches {
+			if op.GetOperatorSessionId() == sessionID {
+				selected := inferenceOperatorStatus(op)
 				return &selected, nil
 			}
 		}
 		return nil, fmt.Errorf("%w: session %s", constants.ErrInferenceOperatorNotCapable, sessionID)
 	}
 
-	var dedicatedMatches []InferenceOperatorStatus
-	var embeddedMatches []InferenceOperatorStatus
-	for _, match := range matches {
-		if match.Embedded {
-			embeddedMatches = append(embeddedMatches, match)
-		} else {
-			dedicatedMatches = append(dedicatedMatches, match)
-		}
-	}
-
-	if len(dedicatedMatches) == 1 {
-		selected := dedicatedMatches[0]
-		return &selected, nil
-	}
-	if len(dedicatedMatches) > 1 {
-		candidates := make([]string, 0, len(dedicatedMatches))
-		for _, match := range dedicatedMatches {
-			candidates = append(candidates, fmt.Sprintf("%s (session %s)", match.OperatorID, match.OperatorSessionID))
-		}
-		return nil, fmt.Errorf("%w: %s", constants.ErrInferenceOperatorAmbiguous, strings.Join(candidates, ", "))
-	}
-
-	// Fall back to the Gateway's embedded Operator when no dedicated inference
-	// operators are active.
-	switch len(embeddedMatches) {
+	matches = operatorcapability.PreferDedicated(matches)
+	switch len(matches) {
 	case 0:
 		return nil, constants.ErrInferenceOperatorNotFound
 	case 1:
-		selected := embeddedMatches[0]
+		selected := inferenceOperatorStatus(matches[0])
 		return &selected, nil
 	default:
-		candidates := make([]string, 0, len(embeddedMatches))
-		for _, match := range embeddedMatches {
-			candidates = append(candidates, fmt.Sprintf("%s (session %s)", match.OperatorID, match.OperatorSessionID))
+		candidates := make([]string, 0, len(matches))
+		for _, op := range matches {
+			candidates = append(candidates, fmt.Sprintf("%s (session %s)", op.GetId(), op.GetOperatorSessionId()))
 		}
 		return nil, fmt.Errorf("%w: %s", constants.ErrInferenceOperatorAmbiguous, strings.Join(candidates, ", "))
 	}

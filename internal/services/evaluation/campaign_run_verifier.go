@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -152,8 +153,12 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 			failures = append(failures, fmt.Sprintf("assignment %s result load failed: %v", assignment.GetAssignmentId(), err))
 			continue
 		}
+		// An executor failure before trace sealing persists no trace; the
+		// assignment verifier checks that result structurally instead.
 		agentTrace, err := store.LoadAssignmentAgentTrace(ctx, runID, assignment.GetAssignmentId())
-		if err != nil {
+		if errors.Is(err, constants.ErrNotFound) {
+			agentTrace = nil
+		} else if err != nil {
 			failures = append(failures, fmt.Sprintf("assignment %s agent trace load failed: %v", assignment.GetAssignmentId(), err))
 			continue
 		}
@@ -282,8 +287,11 @@ func BindStoredCampaignVerificationReport(ctx context.Context, store *Store, rep
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if store == nil || store.files == nil || report == nil || !complianceevidence.ValidPathElement(report.GetRunId()) || policy.VerifierReleaseVersion == "" {
+	if store == nil || store.files == nil || report == nil || policy.VerifierReleaseVersion == "" {
 		return nil, nil, fmt.Errorf("evaluation: bind stored campaign verification report: %w", constants.ErrMissingRequiredField)
+	}
+	if err := complianceevidence.ValidatePathElement(report.GetRunId()); err != nil {
+		return nil, nil, fmt.Errorf("evaluation: bind stored campaign verification report: run ID: %w", err)
 	}
 	run, err := store.LoadRun(ctx, report.GetRunId())
 	if err != nil {
@@ -337,8 +345,11 @@ func verifyCampaignRunReadOnly(ctx context.Context, store *Store, runID string, 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if store == nil || store.files == nil || !complianceevidence.ValidPathElement(runID) || policy.VerifierReleaseVersion == "" || policy.AssessmentTime == nil {
+	if store == nil || store.files == nil || policy.VerifierReleaseVersion == "" || policy.AssessmentTime == nil {
 		return nil, fmt.Errorf("evaluation: verify campaign run read-only: %w", constants.ErrMissingRequiredField)
+	}
+	if err := complianceevidence.ValidatePathElement(runID); err != nil {
+		return nil, fmt.Errorf("evaluation: verify campaign run read-only: run ID: %w", err)
 	}
 	run, err := store.LoadRun(ctx, runID)
 	if err != nil {
@@ -426,8 +437,8 @@ func isTerminalAssignmentLifecycle(status evalv1.EvaluationAssignmentLifecycleSt
 
 // LoadCampaignVerification reads one persisted run-level campaign verification report.
 func (s *Store) LoadCampaignVerification(ctx context.Context, runID string) (*evalv1.EvaluationVerificationReport, error) {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) {
-		return nil, fmt.Errorf("%w: file service and run ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return nil, err
 	}
 	path := s.layout.campaignVerificationPath(runID)
 	body, err := s.files.ReadFile(ctx, path)
@@ -446,8 +457,14 @@ func (s *Store) LoadCampaignVerification(ctx context.Context, runID string) (*ev
 
 // SaveCampaignVerification persists one run-level campaign verification report.
 func (s *Store) SaveCampaignVerification(ctx context.Context, runID string, report *evalv1.EvaluationVerificationReport) error {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || report == nil || report.GetRunId() != runID {
-		return fmt.Errorf("%w: campaign verification report binding is invalid", constants.ErrEvaluationReportPersistFailed)
+	if report == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "campaign verification report")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, runIDElement(runID)); err != nil {
+		return err
+	}
+	if report.GetRunId() != runID {
+		return fmt.Errorf("%w: campaign verification report: %w", constants.ErrEvaluationReportPersistFailed, constants.ErrEvidenceScopeMismatch)
 	}
 	body, err := evalv1.MarshalCanonical(report)
 	if err != nil {

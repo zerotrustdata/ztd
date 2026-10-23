@@ -12,16 +12,21 @@ package eval
 import (
 	"context"
 	"crypto/ed25519"
+	"io"
 	"log/slog"
+	"net"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	mcpcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/mcp"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
@@ -47,7 +52,9 @@ import (
 // name it.
 func newConformanceStackRig(t *testing.T) (conformanceRig, *realStackRun) {
 	t.Helper()
-	env := newRealStackEnvironment(t, fixtures.EvalStackOptions{Posture: constants.PostureDoctrine}, defaultRunControlDeps())
+	// The Gateway forwards A2A to the address the run's stub listens on.
+	a2aListen := reserveLoopbackAddr(t)
+	env := newRealStackEnvironment(t, fixtures.EvalStackOptions{Posture: constants.PostureDoctrine, A2ADownstreamURL: "http://" + a2aListen}, defaultRunControlDeps())
 	data, err := env.stack.Data.Workload()
 	require.NoError(t, err)
 
@@ -68,8 +75,20 @@ func newConformanceStackRig(t *testing.T) (conformanceRig, *realStackRun) {
 	deps := env.deps
 	deps.fileSvcFactory = conformanceRootFactory(gatewayRoot, env.stack.Gateway.Keystore, env.stack.DataHost.Keyring)
 	deps.newID = func() (string, error) { return conformanceTestRunID, nil }
-	rig := conformanceRig{gwRoot: gatewayRoot, opRoot: env.stack.DataHost.WorkingDir, operatorID: data.OperatorID, deps: deps}
+	deps.conformance.stdio = inProcessStdio
+	rig := conformanceRig{gwRoot: gatewayRoot, opRoot: env.stack.DataHost.WorkingDir, operatorID: data.OperatorID, a2aListen: a2aListen, deps: deps}
 	return rig, env
+}
+
+// reserveLoopbackAddr returns a loopback address that was free when asked. The
+// Gateway is configured with it before the run's A2A stub binds it.
+func reserveLoopbackAddr(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := listener.Addr().String()
+	require.NoError(t, listener.Close())
+	return addr
 }
 
 // conformanceRootFactory opens each runtime the conformance command reads with the
@@ -89,6 +108,21 @@ func conformanceRootFactory(gatewayRoot string, gatewayKeys *keystore.Keystore, 
 			return gatewayKeys.OpenVault()
 		})
 	}
+}
+
+// inProcessStdio runs the production `ztd mcp stdio` bridge in this process over
+// pipes, with the CLI identity the rig installed under the Gateway root. The test
+// binary is not ztd, so the command's spawn is the one part replaced.
+func inProcessStdio(ctx context.Context, _ *cobra.Command, cfg *config.Config, gwFiles fs.RuntimeFileService) (*drive.MCPStdio, error) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	served := make(chan error, 1)
+	go func() {
+		err := mcpcmd.ServeStdioBridge(ctx, gwFiles, cfg, inR, outW, testutil.NewTestLogger())
+		_ = outW.Close()
+		served <- err
+	}()
+	return drive.ConnectMCPStdio(ctx, inW, outR, func() error { return <-served })
 }
 
 // capturingRun records the config the suite runs with, then runs the production
@@ -127,19 +161,32 @@ func TestConformanceRun_WithoutFlagsOnRealStackRequiresAChoice(t *testing.T) {
 	assert.Contains(t, out, "Choose a Data Operator")
 }
 
-func TestConformanceRun_EmbeddedDataOperatorByIDRunsGatewayLocalCases(t *testing.T) {
+func TestConformanceRun_EmbeddedDataOperatorByIDRunsEveryCase(t *testing.T) {
 	rig, _ := newConformanceStackRig(t)
 	var captured run.Config
-	rig.deps.conformance.run = capturingRun(&captured)
+	var record *evalv1.ConformanceRunRecord
+	rig.deps.conformance.run = func(ctx context.Context, cfg run.Config) (*evalv1.ConformanceRunRecord, error) {
+		captured = cfg
+		var err error
+		record, err = run.Run(ctx, cfg)
+		return record, err
+	}
 
-	out, err := rig.execute(t, "conformance", "run", "--operator-id", string(constants.DocIDEmbeddedOperator))
-	require.NotErrorIs(t, err, constants.ErrEvaluationTargetAmbiguous)
-	assert.Contains(t, out, "Suite: ", "the suite ran to a verdict")
+	out, err := rig.execute(t, "conformance", "run", "--a2a-stub-listen", rig.a2aListen, "--operator-id", string(constants.DocIDEmbeddedOperator))
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "Suite: PASS", "the embedded Data Operator passes the whole suite")
 	require.Len(t, captured.Roots, 1)
 	assert.Equal(t, oracle.GatewayRuntimeID, captured.Roots[cases.ExecutorEmbedded].RuntimeID)
-	require.Len(t, captured.Drivers, 3)
-	require.Len(t, captured.Unavailable, 3)
-	assert.Equal(t, cases.IngressCLI.UnavailableObservation(), captured.Unavailable[cases.IngressCLI])
+	require.Len(t, captured.Drivers, 7, "one driver per ingress")
+	assert.Empty(t, captured.Unavailable)
+	require.NotNil(t, record)
+	assert.True(t, record.GetOutboundAbsent())
+	full, err := cases.Applicable(record.GetPosture(), cases.Stack{A2AIngress: true, Outbound: true})
+	require.NoError(t, err)
+	require.Len(t, record.GetCases(), len(full), "no case is dropped for the embedded Data Operator")
+	for _, ev := range record.GetCases() {
+		assert.Equal(t, string(cases.ExecutorEmbedded), ev.GetExecutor(), ev.GetCaseId())
+	}
 }
 
 func TestConformanceRun_PromptsForTheDataOperatorAndRunsTheChosenOne(t *testing.T) {
@@ -158,13 +205,14 @@ func TestConformanceRun_PromptsForTheDataOperatorAndRunsTheChosenOne(t *testing.
 	if conformanceMenuSession(t, out, 1) == data.OperatorSessionID {
 		require.Len(t, captured.Roots, 2)
 		assert.Equal(t, rig.operatorID, captured.Roots[cases.ExecutorOutbound].RuntimeID)
-		require.Len(t, captured.Drivers, 5)
-		require.Len(t, captured.Unavailable, 1)
-		return
+	} else {
+		require.Len(t, captured.Roots, 1)
+		assert.Equal(t, oracle.GatewayRuntimeID, captured.Roots[cases.ExecutorEmbedded].RuntimeID)
 	}
-	require.Len(t, captured.Roots, 1)
-	assert.Equal(t, oracle.GatewayRuntimeID, captured.Roots[cases.ExecutorEmbedded].RuntimeID)
-	require.Len(t, captured.Drivers, 3)
+	// Without --a2a-stub-listen only A2A is unavailable, whichever Operator runs.
+	require.Len(t, captured.Drivers, 6)
+	require.Len(t, captured.Unavailable, 1)
+	assert.Contains(t, captured.Unavailable, cases.IngressA2A)
 }
 
 func TestConformanceRun_PassesConfiguredDriversAndRootsToRun(t *testing.T) {
@@ -176,12 +224,13 @@ func TestConformanceRun_PassesConfiguredDriversAndRootsToRun(t *testing.T) {
 	require.NotErrorIs(t, err, constants.ErrEvaluationTargetAmbiguous)
 	assert.Contains(t, out, "Suite: ", "the suite ran to a verdict")
 
-	require.Len(t, captured.Drivers, 6, "one driver per ingress")
+	require.Len(t, captured.Drivers, 7, "one driver per ingress")
 	assert.IsType(t, &drive.Direct{}, captured.Drivers[cases.IngressDirect])
 	assert.IsType(t, &drive.Dispatch{}, captured.Drivers[cases.IngressDispatchEmbedded])
 	assert.IsType(t, &drive.Dispatch{}, captured.Drivers[cases.IngressDispatchOutbound])
 	assert.IsType(t, &drive.CLI{}, captured.Drivers[cases.IngressCLI])
 	assert.IsType(t, &drive.MCP{}, captured.Drivers[cases.IngressMCP], "unattended MCP is not wrapped")
+	assert.IsType(t, &drive.MCPStdio{}, captured.Drivers[cases.IngressMCPStdio], "unattended MCP stdio is not wrapped")
 	assert.IsType(t, &drive.A2A{}, captured.Drivers[cases.IngressA2A], "unattended A2A is not wrapped")
 	assert.NotNil(t, captured.Sentinel)
 	assert.False(t, captured.Attended)
@@ -218,6 +267,7 @@ func TestConformanceRun_AttendedWrapsEveryApprovalIngress(t *testing.T) {
 
 	assert.True(t, captured.Attended)
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressMCP])
+	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressMCPStdio])
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressA2A])
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressDispatchEmbedded])
 	assert.IsType(t, &drive.Attended{}, captured.Drivers[cases.IngressDispatchOutbound])

@@ -178,8 +178,10 @@ func validateScenarioToolNames(blueprint ScenarioBlueprint, catalog *agentToolCa
 
 func validateScenarioToolSets(blueprint ScenarioBlueprint) error {
 	allowed := stringSet(blueprint.AllowedTools)
-	if _, ok := allowed[agentToolRunCommands]; blueprint.TribunalCommands != ok {
-		return scenarioContractError(blueprint, "%q is allowed exactly when tribunal commands are declared", agentToolRunCommands)
+	if blueprint.TribunalCommands {
+		if _, ok := allowed[constants.MCPToolRunShellCommand]; !ok {
+			return scenarioContractError(blueprint, "tribunal commands require allowed tool %q", constants.MCPToolRunShellCommand)
+		}
 	}
 	for _, name := range blueprint.ExpectedTools {
 		if _, ok := allowed[name]; !ok {
@@ -234,7 +236,11 @@ func contentCheckHasConstraint(check *ScenarioContentCheck) bool {
 }
 
 func validateDiagnosisRubric(blueprint ScenarioBlueprint, check *ScenarioContentCheck) error {
-	if check == nil || check.DiagnosisRubric == "" || check.DiagnosisRubric == ScenarioDiagnosisRubricCheckoutTimeoutV1 {
+	if check == nil {
+		return nil
+	}
+	switch check.DiagnosisRubric {
+	case "", ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3:
 		return nil
 	}
 	return scenarioContractError(blueprint, "unknown diagnosis rubric %q", check.DiagnosisRubric)
@@ -317,7 +323,10 @@ func validateHintArgumentSource(blueprint ScenarioBlueprint, argument ScenarioHi
 		if !strings.Contains(blueprint.Input.UserPrompt, ScenarioWorkspaceToken) {
 			return scenarioUnanswerableError(blueprint, "%q.%q is sourced from the workspace but the prompt never names it", argument.ToolName, argument.Name)
 		}
-		if argument.Value != "" && !strings.HasPrefix(argument.Value, ScenarioWorkspaceToken) {
+		if argument.Value == "" {
+			return scenarioUnanswerableError(blueprint, "%q.%q is sourced from the workspace but names no workspace path", argument.ToolName, argument.Name)
+		}
+		if !strings.HasPrefix(argument.Value, ScenarioWorkspaceToken) {
 			return scenarioUnanswerableError(blueprint, "%q.%q workspace value %q is not under the workspace", argument.ToolName, argument.Name, argument.Value)
 		}
 	case evalv1.EvaluationHintArgumentSource_EVALUATION_HINT_ARGUMENT_SOURCE_OPERATOR_CONTEXT:

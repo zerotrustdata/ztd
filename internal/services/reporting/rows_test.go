@@ -232,8 +232,8 @@ func TestVerificationRow(t *testing.T) {
 func TestManifestRow(t *testing.T) {
 	t.Run("Columns and Record match", func(t *testing.T) {
 		r := ManifestRow{
-			File:           "receipts.csv",
-			RecordType:     "receipts",
+			File:           "event_receipts.csv",
+			RecordType:     "event_receipts",
 			RowCount:       "10",
 			SHA256:         "abc123",
 			GeneratedAtUTC: "2026-01-01T00:00:00Z",
@@ -242,6 +242,6 @@ func TestManifestRow(t *testing.T) {
 		rec := r.Record()
 		require.Len(t, cols, 5)
 		require.Len(t, rec, 5)
-		assert.Equal(t, "receipts.csv", rec[0])
+		assert.Equal(t, "event_receipts.csv", rec[0])
 	})
 }

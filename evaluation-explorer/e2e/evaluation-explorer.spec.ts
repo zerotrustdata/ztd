@@ -391,3 +391,130 @@ test('Evals tables keep sortable detail columns at desktop and mobile widths', a
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: 'test-results/evals-tables-desktop.png', fullPage: true });
 });
+
+test('evaluation detail fills the page and stacks context without pushing assignments below a sidebar', async ({ page }, testInfo) => {
+  const runId = 'eval-init-qwen3-6-35b-a3b-q4-k-m-1792559280';
+  const run = {
+    ...fixtureEvaluationSummaries[0]!, schema_version: '1.5.0', run_id: runId,
+    primary_invocation_share: undefined, correlated_failure_rate: undefined,
+    headline_metrics: {
+      pass_rate: { value: 0.75, unit: 'ratio', observed_count: 4, eligible_count: 4, unavailable_count: 0 },
+      latency_p50_ms: { value: 640, unit: 'milliseconds', observed_count: 4, eligible_count: 4, unavailable_count: 0 },
+      output_throughput_p50_tokens_per_second: { value: 62, unit: 'tokens_per_second', observed_count: 4, eligible_count: 4, unavailable_count: 0 },
+    },
+    dataset_id: `ds-live-${runId}`, source_revision: 'a'.repeat(64),
+    model_role_mapping: { primary: 'qwen3-6-35b-a3b-q4-k-m', assistant: 'qwen3-6-35b-a3b-q4-k-m' },
+    verification_metadata: {
+      provenance: 'bound', verifier_state: fixtureEvaluationSummaries[0]!.verifier_state,
+      verifier_release_version: '1.0.0', verifier_contract_version: '2.0.0',
+      verified_at: '2026-10-20T22:22:30Z',
+      report_digest: 'b'.repeat(64), population_digest: 'c'.repeat(64),
+    },
+  };
+  const assignments = Array.from({ length: 3 }, (_, index) => ({
+    ...fixtureEnrichedAssignmentResult, dataset_id: run.dataset_id, run_id: runId,
+    assignment_id: `${index}${'a'.repeat(63)}`, variant_id: 'qwen3-6-35b-a3b-q4-k-m',
+  }));
+  await installMirror(page, [run, ...assignments]);
+  await page.goto(`/evaluations/${run.dataset_id}/${runId}?release=all`);
+  const results = page.getByRole('region', { name: 'Assignments (3)', exact: true });
+  const metrics = page.getByRole('region', { name: 'Headline metrics', exact: true });
+  const hero = page.locator('.evaluation-detail .evidence-hero');
+  const table = results.getByRole('table');
+  await expect(table.locator('tbody tr')).toHaveCount(3);
+
+  for (const width of [1920, 1440, 900, 640, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const heroBox = (await hero.boundingBox())!;
+    const metricsBox = (await metrics.boundingBox())!;
+    const resultsBox = (await results.boundingBox())!;
+    expect(heroBox.width).toBeGreaterThanOrEqual(width - 48);
+    expect(Math.abs(metricsBox.x - heroBox.x)).toBeLessThan(1);
+    expect(Math.abs(resultsBox.width - heroBox.width)).toBeLessThan(1);
+    expect(resultsBox.y - metricsBox.y - metricsBox.height).toBeCloseTo(16, 0);
+    const contextBoxes = await page.locator('.evaluation-context > section').evaluateAll((elements) => elements.map((element) => {
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+    expect(contextBoxes[0]!.y).toBeGreaterThan(resultsBox.y + resultsBox.height);
+    if (width <= 640) {
+      for (let index = 1; index < contextBoxes.length; index++) {
+        expect(contextBoxes[index]!.y).toBeGreaterThan(contextBoxes[index - 1]!.y + contextBoxes[index - 1]!.height);
+        expect(contextBoxes[index]!.width).toBeCloseTo(heroBox.width, 0);
+      }
+    } else {
+      expect(contextBoxes[1]!.y).toBeCloseTo(contextBoxes[0]!.y, 0);
+    }
+    if (width < 1120) {
+      const scrollArea = results.locator('.data-table-wrap');
+      await scrollArea.evaluate((element) => { element.scrollLeft = 0; });
+      await scrollArea.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect.poll(() => scrollArea.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    }
+    if (width === 1440 || width === 390) {
+      await page.screenshot({ path: testInfo.outputPath(`evaluation-detail-${width}.png`), fullPage: true });
+    }
+  }
+  await results.getByRole('searchbox', { name: 'Search assignments' }).fill(assignments[0]!.assignment_id);
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+});
+
+test('assignment analysis offers sortable grading and performance without wide IDs or badge piles', async ({ page }, testInfo) => {
+  const tasks = ['final-response-diagnosis', 'instruction-bounded-count', 'instruction-classify-severity', 'instruction-constrain-json', 'instruction-exact-format', 'recovery-error-guided-retry', 'recovery-malformed-resource', 'recovery-tool-failure'];
+  const criteria = ['Answer content', 'Tool trajectory', 'Role invoked', 'Declared tools', 'Governed inference', 'Homogeneous pipeline', 'Required evidence'];
+  const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: 'ds-table-analysis', run_id: 'assignment-analysis-run' };
+  const assignments = tasks.map((task, index) => ({
+    ...fixtureEnrichedAssignmentResult, dataset_id: run.dataset_id, run_id: run.run_id,
+    assignment_id: `${index}${'abcdef0123456789'.repeat(4)}`.slice(0, 64), task_id: task, scenario_id: task,
+    variant_id: 'qwen3-6-35b-a3b-q4-k-m', role: index % 2 === 0 ? 'primary' : 'assistant',
+    terminal_status: index === 0 ? 'model_failed' : 'completed',
+    failure_reason: index === 0 ? 'The final response did not identify the failed service or cite the observed error.' : undefined,
+    scenario_summary: { ...fixtureEnrichedAssignmentResult.scenario_summary!, scenario_id: task,
+      criteria: criteria.map((label) => ({ criterion_id: label.toLowerCase().replaceAll(' ', '-'), public_label: label, public_description: label, required: true, grading_method: 'deterministic' })),
+    },
+    semantic_grade_summaries: criteria.map((label, criterionIndex) => ({
+      criterion_id: label.toLowerCase().replaceAll(' ', '-'), status: index === 0 && criterionIndex === 0 ? 'fail' : 'pass',
+      grading_method: 'deterministic', explanation_code: index === 0 && criterionIndex === 0 ? 'criterion_failed' : 'criterion_passed',
+    })),
+    resource_summary: { latency_ms: { value: 900 + index * 3000 }, input_tokens: { value: 1000 + index * 400 }, output_tokens: { value: 120 + index * 240 }, retries: { value: index % 2 } },
+    benchmark_observations: { timing: { generation_ms: { value: 2000 } }, unavailable_reasons: [] },
+  }));
+  await installMirror(page, [run, ...assignments]);
+  await page.goto(`/evaluations/${run.dataset_id}/${run.run_id}?release=all`);
+  const panel = page.getByRole('region', { name: 'Assignments (8)', exact: true });
+  const table = panel.getByRole('table');
+  await expect(table.locator('tbody tr')).toHaveCount(8);
+  await expect(table.locator('.assignment-short-id').first()).toHaveText('0abcde…');
+  await expect(table.getByRole('columnheader', { name: /Scope|Criteria/ })).toHaveCount(0);
+  await expect(table.locator('.grade-badge-details')).toHaveCount(0);
+  for (const width of [1920, 1280, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    for (const view of ['Results', 'Grading', 'Performance']) {
+      await panel.getByRole('button', { name: view, exact: true }).click();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      if (view === 'Grading') {
+        await table.getByRole('button', { name: 'Sort by Answer content', exact: true }).click();
+        await expect(table.locator('tbody tr').first().locator('.assignment-short-id')).toHaveAttribute('aria-label', assignments[0]!.assignment_id);
+        await expect(table.locator('tbody tr').first().getByRole('link', { name: 'Fail', exact: true })).toBeVisible();
+      }
+      if (view === 'Performance') {
+        await table.getByRole('button', { name: 'Sort by Duration', exact: true }).click();
+        await expect(table.locator('tbody tr').first().locator('.assignment-short-id')).toHaveAttribute('aria-label', assignments[7]!.assignment_id);
+      }
+      // Reset scroll after sortable columns are brought into view, then capture the table itself.
+      await panel.locator('.data-table-wrap').evaluate((element) => { element.scrollLeft = 0; });
+      await panel.screenshot({ path: testInfo.outputPath(`assignments-${view.toLowerCase()}-${width}.png`) });
+    }
+  }
+  await panel.getByRole('combobox', { name: 'Filter assignments by verdict' }).selectOption('model_failed');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await panel.getByRole('button', { name: 'Grading', exact: true }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(table.getByRole('button', { name: 'Sort by Answer content', exact: true })).toBeVisible();
+  await table.getByRole('link', { name: 'Fail', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: tasks[0]! })).toBeVisible();
+  await expect.poll(() => page.locator('#assignment-grades').evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(200);
+});

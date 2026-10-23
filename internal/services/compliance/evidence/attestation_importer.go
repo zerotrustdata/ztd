@@ -80,8 +80,11 @@ func (i *AttestationImporter) SourceID() string {
 }
 
 func (i *AttestationImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
-	if i == nil || i.reader == nil || i.trust == nil || !validAttestationBinding(i.binding) || i.verifiedAt.IsZero() {
-		return nil, fmt.Errorf("%w: reader, assessed trust, content reference, path, scope, run, and verification time are required", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil || i.trust == nil || i.verifiedAt.IsZero() {
+		return nil, fmt.Errorf("%w: reader, assessed trust, and verification time are required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := validAttestationBinding(i.binding); err != nil {
+		return nil, fmt.Errorf("%w: attestation binding: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -152,9 +155,17 @@ func (i *AttestationImporter) verify(ctx context.Context, record importedAttesta
 	return status, constants.AttestationEvidenceVerifierID, constants.AttestationEvidenceVerifierVersion, i.verifiedAt, nil
 }
 
-func validAttestationBinding(binding AttestationImportBinding) bool {
-	_, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.AttestationCollectionReferencePrefix)
-	return referenceValid && ValidRelativePath(binding.Path) && binding.ScopeID != "" && binding.RunID != ""
+func validAttestationBinding(binding AttestationImportBinding) error {
+	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.AttestationCollectionReferencePrefix); !referenceValid {
+		return errors.New("content reference is invalid")
+	}
+	if err := ValidateRelativePath(binding.Path); err != nil {
+		return err
+	}
+	if binding.ScopeID == "" || binding.RunID == "" {
+		return constants.ErrMissingRequiredField
+	}
+	return nil
 }
 
 func decodeAttestations(body []byte, binding AttestationImportBinding) ([]importedAttestation, error) {

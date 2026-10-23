@@ -82,6 +82,19 @@ func TestIsActiveOperatorSession(t *testing.T) {
 	}
 }
 
+func TestPreferDedicated(t *testing.T) {
+	t.Parallel()
+
+	embedded := &operatorv1.OperatorDocument{OperatorSessionId: "embedded", OperatorType: string(constants.OperatorTypeEmbedded)}
+	remoteA := &operatorv1.OperatorDocument{OperatorSessionId: "remote-a", OperatorType: string(constants.OperatorTypeRemote)}
+	remoteB := &operatorv1.OperatorDocument{OperatorSessionId: "remote-b", OperatorType: string(constants.OperatorTypeRemote)}
+
+	assert.Equal(t, []*operatorv1.OperatorDocument{remoteA}, PreferDedicated([]*operatorv1.OperatorDocument{embedded, remoteA}))
+	assert.Equal(t, []*operatorv1.OperatorDocument{remoteA, remoteB}, PreferDedicated([]*operatorv1.OperatorDocument{remoteA, embedded, remoteB}))
+	assert.Equal(t, []*operatorv1.OperatorDocument{embedded}, PreferDedicated([]*operatorv1.OperatorDocument{embedded}))
+	assert.Empty(t, PreferDedicated(nil))
+}
+
 func TestHasActiveCapabilityRequiresActiveSessionAndRole(t *testing.T) {
 	t.Parallel()
 

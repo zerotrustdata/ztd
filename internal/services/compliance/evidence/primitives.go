@@ -152,9 +152,28 @@ type CanonicalArtifact struct {
 	CanonicalBytes []byte
 }
 
+// ValidateArtifactWrite reports the first unmet precondition of an evidence
+// artifact write, each under constants.ErrEvidenceArtifactPersistFailed: a file
+// service and a body (constants.ErrMissingRequiredField), and a supported
+// artifact type (constants.ErrEvidenceArtifactTypeInvalid).
+func ValidateArtifactWrite(fileSvc fs.RuntimeFileService, artifactType ArtifactType, hasBody bool) error {
+	switch {
+	case fileSvc == nil:
+		return fmt.Errorf("%w: file service: %w", constants.ErrEvidenceArtifactPersistFailed, constants.ErrMissingRequiredField)
+	case !hasBody:
+		return fmt.Errorf("%w: artifact body: %w", constants.ErrEvidenceArtifactPersistFailed, constants.ErrMissingRequiredField)
+	case !ContainsArtifactType(SupportedArtifactTypes(), artifactType):
+		return fmt.Errorf("%w: %w: %q", constants.ErrEvidenceArtifactPersistFailed, constants.ErrEvidenceArtifactTypeInvalid, artifactType)
+	}
+	return nil
+}
+
 func PersistCanonicalProtoArtifact(ctx context.Context, fileSvc fs.RuntimeFileService, directory string, artifactType ArtifactType, message proto.Message) (*CanonicalArtifact, error) {
-	if fileSvc == nil || message == nil || !ValidRelativePath(directory) || !ContainsArtifactType(SupportedArtifactTypes(), artifactType) {
-		return nil, fmt.Errorf("%w: file service, relative directory, supported artifact type, and protocol message are required", constants.ErrEvidenceArtifactPersistFailed)
+	if err := ValidateArtifactWrite(fileSvc, artifactType, message != nil); err != nil {
+		return nil, err
+	}
+	if err := ValidateRelativePath(directory); err != nil {
+		return nil, fmt.Errorf("%w: artifact directory: %w", constants.ErrEvidenceArtifactPersistFailed, err)
 	}
 	body, err := MarshalCanonicalProto(message)
 	if err != nil {
@@ -215,20 +234,43 @@ func ValidateCanonicalJSON(body []byte) error {
 	return nil
 }
 
-// ValidPathElement returns true if the value is a single safe path component
-// (no separators, no traversal, not empty).
-func ValidPathElement(value string) bool {
-	return value != "" && value != "." && value != ".." && filepath.Base(value) == value && !filepath.IsAbs(value)
+// unsafePathChars are rejected in every evidence path: a colon names a drive
+// or an alternate data stream on Windows, and NUL truncates the path.
+const unsafePathChars = ":\x00"
+
+// ValidatePathElement reports constants.ErrEvidencePathElementInvalid unless
+// the value is a single safe path component: not empty, no separators, no
+// traversal, and none of the characters ValidateRelativePath rejects, so every
+// identifier it admits also forms a valid evidence directory.
+func ValidatePathElement(value string) error {
+	if value == "" || value == "." || value == ".." || filepath.Base(value) != value || filepath.IsAbs(value) || strings.ContainsAny(value, unsafePathChars) {
+		return fmt.Errorf("%w: %q", constants.ErrEvidencePathElementInvalid, value)
+	}
+	return nil
 }
 
-// ValidRelativePath returns true if the value is a safe relative path that
-// does not escape the root via traversal.
-func ValidRelativePath(value string) bool {
-	if strings.HasPrefix(value, "/") || strings.ContainsAny(value, ":\x00") {
-		return false
+// ValidPathElement returns true if ValidatePathElement accepts the value.
+func ValidPathElement(value string) bool {
+	return ValidatePathElement(value) == nil
+}
+
+// ValidateRelativePath reports constants.ErrEvidenceRelativePathInvalid unless
+// the value is a safe relative path that does not escape the root via
+// traversal.
+func ValidateRelativePath(value string) error {
+	if strings.HasPrefix(value, "/") || strings.ContainsAny(value, unsafePathChars) {
+		return fmt.Errorf("%w: %q", constants.ErrEvidenceRelativePathInvalid, value)
 	}
 	clean := filepath.Clean(value)
-	return clean != "." && clean != ".." && !filepath.IsAbs(clean) && !strings.HasPrefix(clean, ".."+string(os.PathSeparator))
+	if clean == "." || clean == ".." || filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("%w: %q", constants.ErrEvidenceRelativePathInvalid, value)
+	}
+	return nil
+}
+
+// ValidRelativePath returns true if ValidateRelativePath accepts the value.
+func ValidRelativePath(value string) bool {
+	return ValidateRelativePath(value) == nil
 }
 
 // ClassifyReadError maps a read error to the appropriate evidence error

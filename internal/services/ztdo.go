@@ -285,6 +285,11 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if handlers.Inference != nil {
+		if err := handlers.Inference.ConfigureDecisionBackend(ollamaBackend, vs.config.Inference.AllowHostedDecision, vs.secretManager.GetKeystore()); err != nil {
+			return fmt.Errorf("ztdo: decision backend: %w", err)
+		}
+	}
 
 	// OperatorPubSubService Construction
 	psConfig := pubsub.CommandServiceConfig{

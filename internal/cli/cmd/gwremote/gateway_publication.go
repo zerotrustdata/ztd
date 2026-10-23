@@ -179,76 +179,31 @@ func publicMirrorOrigin() string {
 var GatewayHealthCheck func() bool
 
 type httpCampaignMirrorProbe struct {
-	client     *http.Client
-	mu         sync.Mutex
-	indexed    bool
-	datasetIDs map[string]struct{}
+	client *http.Client
 }
 
 func NewHTTPCampaignMirrorProbe(ctx context.Context) evaluation.CampaignMirrorProbe {
 	return &httpCampaignMirrorProbe{client: &http.Client{Timeout: 5 * time.Second}} //nolint:gosec
 }
 
+// DatasetPresent asks the mirror's active source for one catalog snapshot of
+// datasetID. The mirror filters server-side, so the lookup is one request no
+// matter how much history the source retains, and withdrawn datasets read as
+// absent.
 func (p *httpCampaignMirrorProbe) DatasetPresent(ctx context.Context, datasetID string) (bool, error) {
 	if p == nil || datasetID == "" {
 		return false, fmt.Errorf("campaign mirror probe: dataset id: %w", constants.ErrMissingRequiredField)
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !p.indexed {
-		if err := p.indexDatasets(ctx); err != nil {
-			return false, err
-		}
-	}
-	_, present := p.datasetIDs[datasetID]
-	return present, nil
-}
-
-func (p *httpCampaignMirrorProbe) indexDatasets(ctx context.Context) error {
-	bootstrap, err := fetchPublicMirrorBootstrapWithClient(ctx, p.client)
+	page, err := fetchPublicMirrorHistory(ctx, p.client, "", datasetID, "", 1)
 	if err != nil {
-		return err
+		return false, fmt.Errorf("campaign mirror probe: %w", err)
 	}
-	p.datasetIDs = make(map[string]struct{})
-	indexMirrorDatasets(p.datasetIDs, bootstrap.RecentProjections)
-	if bootstrap.Snapshot.HighWaterSequence == 0 {
-		p.indexed = true
-		return nil
-	}
-	cursor := ""
-	for page := 0; page < 32; page++ {
-		history, err := fetchPublicMirrorHistory(ctx, p.client, bootstrap.Snapshot.SourceID, cursor, 100)
-		if err != nil {
-			return err
-		}
-		indexMirrorDatasets(p.datasetIDs, history.Items)
-		if !history.HasMore || history.Cursor == "" {
-			p.indexed = true
-			return nil
-		}
-		cursor = history.Cursor
-	}
-	return fmt.Errorf("campaign mirror probe: history exceeds 3200 retained records: %w", constants.ErrPublicFeedHistoryIncomplete)
+	return len(page.Items) > 0, nil
 }
 
-func indexMirrorDatasets(datasetIDs map[string]struct{}, projections []models.PublicFeedObject) {
-	for _, item := range projections {
-		kind, _ := item.StringField("kind")
-		if kind == "catalog_snapshot" {
-			if datasetID, ok := item.StringField("dataset_id"); ok && datasetID != "" {
-				datasetIDs[datasetID] = struct{}{}
-			}
-		}
-		if recordBytes, ok := item["record"]; ok {
-			var record models.PublicFeedObject
-			if err := json.Unmarshal(recordBytes, &record); err == nil {
-				indexMirrorDatasets(datasetIDs, []models.PublicFeedObject{record})
-			}
-		}
-	}
-}
-
-func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID, cursor string, limit int) (models.PublicFeedCursorPage, error) {
+// fetchPublicMirrorHistory reads one page of catalog snapshots from the
+// mirror's history, optionally narrowed to one source and one dataset.
+func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID, datasetID, cursor string, limit int) (models.PublicFeedCursorPage, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, publicMirrorOrigin()+"/history", nil)
 	if err != nil {
 		return models.PublicFeedCursorPage{}, err
@@ -256,6 +211,9 @@ func fetchPublicMirrorHistory(ctx context.Context, client *http.Client, sourceID
 	query := req.URL.Query()
 	if sourceID != "" {
 		query.Set("source", sourceID)
+	}
+	if datasetID != "" {
+		query.Set("dataset", datasetID)
 	}
 	if cursor != "" {
 		query.Set("cursor", cursor)

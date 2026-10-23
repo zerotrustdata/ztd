@@ -14,13 +14,22 @@ package consensustest
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -31,6 +40,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	govsvc "github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
@@ -165,6 +175,7 @@ func SetupConsensus(t *testing.T, policies PolicyRegistrar, signers SignerRegist
 		MemberAppIDs:    memberAppIDs,
 		Quorum:          quorum,
 		RequireDistinct: true,
+		Provider:        string(constants.ConsensusProviderApplication),
 		Enabled:         true,
 	})
 	require.NoError(t, err)
@@ -174,7 +185,8 @@ func SetupConsensus(t *testing.T, policies PolicyRegistrar, signers SignerRegist
 		Members:     signingMembers,
 		Doctrine:    govsvc.NewL1Doctrine(),
 	}
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	serverCert := consensusAppServerCertificate(t, memberAppIDs[0])
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/x-protobuf" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -192,10 +204,12 @@ func SetupConsensus(t *testing.T, policies PolicyRegistrar, signers SignerRegist
 		w.Header().Set("Content-Type", "application/x-protobuf")
 		_, _ = w.Write(signed)
 	}))
+	server.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{serverCert}}
+	server.StartTLS()
 	t.Cleanup(server.Close)
 	err = policies.AddConsensus(t.Context(), models.ConsensusPolicy{
 		ID: string(constants.DocIDConsensusBinding), MemberAppIDs: []string{memberAppIDs[0]},
-		Quorum: 1, RequireDistinct: true, EndpointURL: server.URL, Enabled: true,
+		Quorum: 1, RequireDistinct: true, EndpointURL: server.URL, Provider: string(constants.ConsensusProviderApplication), Enabled: true,
 	})
 	require.NoError(t, err)
 
@@ -205,4 +219,33 @@ func SetupConsensus(t *testing.T, policies PolicyRegistrar, signers SignerRegist
 		Deliberator: deliberator,
 		Server:      server,
 	}
+}
+
+// consensusAppServerCertificate gives the test deliberation endpoint the same
+// SPIFFE identity that a Gateway-issued application certificate carries. The
+// fixture adds this self-signed certificate to its test trust bundle, so TLS
+// chain validation remains enabled while the URI SAN is checked exactly.
+func consensusAppServerCertificate(t *testing.T, appID string) tls.Certificate {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	spiffeID, err := protocol.NewWorkloadIdentity().AppSPIFFEURL(appID)
+	require.NoError(t, err)
+	now := time.Now()
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(now.UnixNano()),
+		Subject:               pkix.Name{CommonName: appID},
+		NotBefore:             now.Add(-time.Minute),
+		NotAfter:              now.Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
+		URIs:                  []*url.URL{spiffeID},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 }

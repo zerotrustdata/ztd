@@ -200,7 +200,7 @@ const (
 const (
 	DbFilename             = "ztd.db"
 	VaultHeaderFilename    = "vault.header"
-	ReceiptsExportFilename = "receipts-export.json"
+	ReceiptsExportFilename = "event-receipts-export.json"
 
 	// Storage DB filenames (used with filepath.Join)
 	ChaosDBFilename = "chaos.db"
@@ -281,6 +281,9 @@ const (
 	// EvaluationWorkspacePrefix prefixes the per-attempt workspace directory,
 	// which is completed by a digest of the run and attempt identity.
 	EvaluationWorkspacePrefix = "ws-"
+	// EvaluationWorkspaceDigestHexLength is how many lower-case hex characters
+	// of the run/attempt digest follow EvaluationWorkspacePrefix.
+	EvaluationWorkspaceDigestHexLength = 16
 	// EvaluationWorkspaceSentinelSuffix suffixes a workspace directory name to
 	// name the harness-owned sentinel file that sits beside it.
 	EvaluationWorkspaceSentinelSuffix = ".sentinel"
@@ -339,6 +342,9 @@ const (
 	SwaggerFilename          = "swagger.json"
 	ComplianceReportFilename = "compliance-report.json"
 	ZtdLogFilename           = "ztd.log"
+	// ConformanceMCPStdioLogFilename receives the stderr of the `ztd mcp stdio`
+	// child the conformance MCP_STDIO driver spawns.
+	ConformanceMCPStdioLogFilename = "conformance-mcp-stdio.log"
 
 	// Gateway-specific filenames
 	GatewayIDFilename       = "gateway-id"
@@ -536,6 +542,14 @@ const (
 	ExecutionMaxStreamSize = 10 * 1024 * 1024 // 10MB per stream
 	ExecutionMaxLines      = 50               // Max lines for terminal output preview
 	FileEditMaxSize        = 50 * 1024 * 1024 // 50MB max file size for operations
+
+	// SSEClientInitialLineSize and SSEClientMaxLineSize bound one line of the
+	// CLI's Gateway SSE stream. An approval.completed event carries the resumed
+	// transaction's signed receipt, whose tool result can hold both execution
+	// output streams; JSON escaping can grow each byte up to six, so a smaller
+	// cap would drop the stream after the approved call already executed.
+	SSEClientInitialLineSize = 64 * 1024
+	SSEClientMaxLineSize     = 2 * 6 * ExecutionMaxStreamSize
 )
 
 // File suffixes for temp, backup, and SQLite artifacts.
@@ -549,7 +563,7 @@ const (
 // Reporting constants for output directory and filenames.
 const (
 	ReportsDirname                 = "reports"
-	ReportReceiptsFilename         = "receipts.csv"
+	ReportReceiptsFilename         = "event_receipts.csv"
 	ReportSessionsFilename         = "sessions.csv"
 	ReportEventsFilename           = "events.csv"
 	ReportFileMutationsFilename    = "file_mutations.csv"

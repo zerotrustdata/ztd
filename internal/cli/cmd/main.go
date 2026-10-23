@@ -21,6 +21,7 @@ import (
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	autochthoncmd "github.com/zerotrustdata/ztd/internal/cli/cmd/autochthon"
 	compliancecmd "github.com/zerotrustdata/ztd/internal/cli/cmd/compliance"
+	consensuscmd "github.com/zerotrustdata/ztd/internal/cli/cmd/consensus"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/eval"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gw"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/mcp"
@@ -141,6 +142,7 @@ ztd tui`,
 		authcmd.LoginCmd(),
 		authcmd.LogoutCmd(),
 		authcmd.Cmd(),
+		consensuscmd.Cmd(),
 		mcp.Cmd(),
 		operatorcmd.Cmd(),
 		autochthoncmd.Cmd(),

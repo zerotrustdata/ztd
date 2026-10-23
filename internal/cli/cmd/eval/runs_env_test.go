@@ -276,6 +276,12 @@ func testVersionContext() context.Context {
 // testPlatform is the build identity campaign fixtures freeze under.
 var testPlatform = evaluation.PlatformIdentity{Release: testReleaseVersion}
 
+// testGovernance is the unbound doctrine Gateway governance store-only runs freeze.
+var testGovernance = evaluation.RunGovernance{
+	Posture:   evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE,
+	Consensus: &evalv1.EvaluationConsensusIdentity{},
+}
+
 // firstQueuedAssignment is the assignment a run executes next.
 func (e *runEnv) firstQueuedAssignment(t *testing.T, runID string) *evalv1.EvaluationAssignment {
 	t.Helper()

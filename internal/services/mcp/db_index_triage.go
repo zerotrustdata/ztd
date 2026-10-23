@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -36,7 +38,7 @@ type DBIndexTriageTool struct {
 
 // Name returns the tool identifier.
 func (t *DBIndexTriageTool) Name() string {
-	return "db_index_triage"
+	return constants.MCPToolDBIndexTriage
 }
 
 // Description returns a human-readable description.

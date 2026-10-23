@@ -23,7 +23,7 @@ type FSDiskProfileTool struct{}
 
 // Name returns the tool identifier.
 func (t *FSDiskProfileTool) Name() string {
-	return "fs_disk_profile"
+	return constants.MCPToolFsDiskProfile
 }
 
 // Description returns a human-readable description.

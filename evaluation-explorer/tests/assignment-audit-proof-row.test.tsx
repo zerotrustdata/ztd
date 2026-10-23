@@ -7,8 +7,10 @@ import { AssignmentAuditProofRow, filterNonAuditEvidenceBindings } from '../src/
 import type { ProofCatalogEntry } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 
+const { fetchProofCatalogEntry } = vi.hoisted(() => ({ fetchProofCatalogEntry: vi.fn() }));
 vi.mock('../src/state/feed', () => ({
   loadRuntimeConfig: vi.fn().mockResolvedValue({ schema_version: '1.0.0', mirror_origin: 'http://127.0.0.1:8082' }),
+  fetchProofCatalogEntry,
 }));
 
 const sliceHash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -35,8 +37,24 @@ const auditBindings = [
 
 describe('AssignmentAuditProofRow', () => {
   beforeEach(() => {
+    fetchProofCatalogEntry.mockReset().mockResolvedValue(null);
     evalStore.loadFixtures([], []);
     evalStore.loadProofCatalog([catalogEntry(sliceHash, 'assignment-1.db', 8192)]);
+  });
+
+  it('resolves an unresolved binding from the mirror once, on demand', async () => {
+    evalStore.loadProofCatalog([]);
+    fetchProofCatalogEntry.mockResolvedValue(catalogEntry(sliceHash, 'assignment-1.db', 8192));
+    render(<><AssignmentAuditProofRow bindings={auditBindings} /><AssignmentAuditProofRow bindings={auditBindings} /></>);
+    expect(await screen.findAllByRole('link', { name: 'Download SQLite' })).toHaveLength(2);
+    expect(fetchProofCatalogEntry).toHaveBeenCalledTimes(1);
+    expect(fetchProofCatalogEntry).toHaveBeenCalledWith('http://127.0.0.1:8082', undefined, sliceHash);
+  });
+
+  it('does not fetch an entry the store already holds', async () => {
+    render(<AssignmentAuditProofRow bindings={auditBindings} />);
+    await screen.findByRole('link', { name: 'Download SQLite' });
+    expect(fetchProofCatalogEntry).not.toHaveBeenCalled();
   });
 
   it('renders the database download and the Gateway-published verify command', async () => {

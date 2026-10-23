@@ -29,6 +29,17 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
+func TestConsensusStatusLine(t *testing.T) {
+	bound := models.HealthResponse{
+		Posture:   constants.PostureNotary,
+		Consensus: models.HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 5, Ready: true},
+	}
+	require.Equal(t, "Consensus  tribunal 3-of-5 | signers 5/5", consensusStatusLine(bound))
+
+	unbound := models.HealthResponse{Posture: constants.PostureNotary}
+	require.Equal(t, "Consensus  NOT BOUND — posture notary requires L2: ztd consensus enroll tribunal --model <tag>", consensusStatusLine(unbound))
+}
+
 func TestGatewayStatusDistinguishesUnknownAndEmptyRegistry(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

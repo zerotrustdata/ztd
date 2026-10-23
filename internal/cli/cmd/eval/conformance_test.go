@@ -64,7 +64,9 @@ type conformanceRig struct {
 	gwRoot     string
 	opRoot     string
 	operatorID string
-	deps       nativeEvalDeps
+	// a2aListen is the A2A stub address; the stack rig's Gateway forwards A2A there.
+	a2aListen string
+	deps      nativeEvalDeps
 }
 
 // execute runs the command tree with args against the rig's Gateway root and
@@ -87,7 +89,11 @@ func (r conformanceRig) executeInput(t *testing.T, input string, args ...string)
 
 // runArgs is a complete `conformance run` invocation for this rig.
 func (r conformanceRig) runArgs(extra ...string) []string {
-	args := []string{"conformance", "run", "--a2a-stub-listen", "127.0.0.1:0", "--operator-id", r.operatorID, "--operator-root", r.opRoot}
+	listen := r.a2aListen
+	if listen == "" {
+		listen = "127.0.0.1:0"
+	}
+	args := []string{"conformance", "run", "--a2a-stub-listen", listen, "--operator-id", r.operatorID, "--operator-root", r.opRoot}
 	return append(args, extra...)
 }
 
@@ -434,5 +440,34 @@ func TestConformanceVerdictError_PassesOnlyPassOrUnattendedIncomplete(t *testing
 			}
 			assert.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
 		})
+	}
+}
+
+// TestApprovalRequestWriterPrintsOneCanonicalLinePerRequest checks the attended --json
+// stderr contract: each request is one canonical JSON line that decodes back to itself, and
+// no writer is no sink.
+func TestApprovalRequestWriterPrintsOneCanonicalLinePerRequest(t *testing.T) {
+	var nilWriter *approvalRequestWriter
+	assert.Nil(t, nilWriter.sink())
+
+	var out bytes.Buffer
+	rw := &approvalRequestWriter{w: &out}
+	sent := []*evalv1.ConformanceApprovalRequest{
+		{CaseId: "c22", AttemptId: "run-1-0001", Ingress: "mcp", Decision: evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_LEAVE_PENDING, TxHash: "tx-22"},
+		{CaseId: "c23", AttemptId: "run-1-0002", Ingress: "cli", Decision: evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_APPROVE},
+	}
+	for _, req := range sent {
+		rw.sink()(req)
+	}
+	require.NoError(t, rw.Err())
+
+	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+	require.Len(t, lines, len(sent))
+	for i, line := range lines {
+		got := &evalv1.ConformanceApprovalRequest{}
+		require.NoError(t, evalv1.UnmarshalCanonical([]byte(line), got))
+		assert.Equal(t, sent[i].GetAttemptId(), got.GetAttemptId())
+		assert.Equal(t, sent[i].GetDecision(), got.GetDecision())
+		assert.Equal(t, sent[i].GetTxHash(), got.GetTxHash())
 	}
 }

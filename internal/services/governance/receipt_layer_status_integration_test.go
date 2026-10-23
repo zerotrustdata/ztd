@@ -165,7 +165,7 @@ func TestReceiptPostureUndecidedLayerFailsClosedBeforeDispatch(t *testing.T) {
 			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.GetStatus())
 			assert.True(t, tt.undecided(receipt), "the undecided layer must stay UNSPECIFIED on the receipt, never a default")
 			assert.False(t, handler.executed, "an undecided transaction must not reach the execution handler")
-			persisted, err := auditStore.GetActionReceipt(env.Id)
+			persisted, err := auditStore.GetEventReceipt(env.Id)
 			require.NoError(t, err)
 			require.NotNil(t, persisted)
 			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, persisted.Status)

@@ -3,8 +3,8 @@ doc_id: overview
 title: Platform Architecture Overview
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - cmd/ztd/
   - internal/cli/
@@ -141,7 +141,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 The platform ships as a single static Go binary (`ztd`) serving multiple operational roles:
 
-1. **Governance Gateway (`ztd gw start`)**: The central Policy Decision Point (PDP) and protocol coordinator. The Gateway admits client transactions, manages PKI, runs L1 Doctrine screening, coordinates L2 Consensus deliberation, manages L3 Notary approval suspensions, brokers outbound-only pub/sub WebSocket channels to Operators, and persists Gateway coordination state. For local operations, the Gateway executes through an in-process embedded Operator substrate (`internal/services/gateway/embedded/`).
+1. **Governance Gateway (`ztd gw start`)**: The central Policy Decision Point (PDP) and protocol coordinator. The Gateway admits client transactions, manages PKI, runs L1 Doctrine screening, coordinates L2 Consensus deliberation for state-changing actions (hosting the Tribunal vote producer for a `tribunal` binding), manages L3 Notary approval suspensions, brokers outbound-only pub/sub WebSocket channels to Operators, and persists Gateway coordination state. For local operations, the Gateway executes through an in-process embedded Operator substrate (`internal/services/gateway/embedded/`).
 2. **Governed Operator (`ztd operator start`)**: The sovereign Policy Execution Point (PEP) for target runtimes. The Operator exposes no inbound management listeners, initiates an outbound-only TLS 1.3 mTLS connection to the Gateway, pulls work exclusively from a dedicated session command channel (`cmd:<operator_id>:<operator_session_id>`), independently executes L4 Warden verification, and executes accepted actions through the L5 Actuator.
 3. **Embedded Operator**: The in-process Operator substrate inside the Gateway (`operator_type: embedded`). It runs concurrently with the Gateway, always carries the `data` and `inference` capabilities, works in `.ztd/operators/embedded-operator`, and accesses local execution evidence via `storage.OpenLocalExecutionEvidence`.
 4. **CLI Client (`ztd`)**: Unified command-line interface encompassing command groups: `gw`, `auth`, `mcp`, `operator`, `vault`, `test`, `audit`, `report`, `public`, `swagger`, `tui`, `version`, `compliance`, `eval`, and `autochthon`, plus the top-level `login` and `logout` commands. Flags and defaults resolve via `./ztd <command> --help`.
@@ -156,10 +156,10 @@ Every transaction entering a governed platform path traverses five distinct veri
 | Layer | Owner | Responsibilities | Failure Mode |
 | :--- | :--- | :--- | :--- |
 | **L1 Doctrine** | Gateway (PDP) & Operator (PEP) | Static forbidden-pattern matching, MITRE ATT&CK heuristics, and command safety analysis. Detects privilege escalation, destructive disk operations, reverse shells, and credential access. | Fails closed with `ErrTxL1ValidationFailed` across all postures. |
-| **L2 Consensus** | Gateway (Coord.) & Operator (Verify) | $K$-of-$N$ Ed25519 multi-agent machine quorum over `<transaction_hash>\|<decision>`. Members independently deliberate and sign affirmative or negative votes. | Fails closed with `ErrTxL2QuorumNotMet`, or `ErrTxL2SignatureInvalid` for a forged member vote, under `consensus` and `notary`. Audited under `doctrine` and `ratify`. |
+| **L2 Consensus** | Gateway (Coord.) & Operator (Verify) | $K$-of-$N$ Ed25519 multi-agent machine quorum over `<transaction_hash>\|<decision>`. Members independently deliberate and sign affirmative or negative votes. | Votes gate only actions the registry classifies as state-changing (`governance.L2Enforced`); inference, observations, typed provider reads, and read-only tools get no vote round. Fails closed with `ErrTxL2QuorumNotMet`, or `ErrTxL2SignatureInvalid` for a forged member vote, under `consensus` and `notary`. Audited under `doctrine` and `ratify`. The bound consensus is an application set or the Gateway-hosted Tribunal, see [Consensus Architecture](consensus.md). |
 | **L3 Notary** | Gateway (Coord.) & Operator (Verify) | Human authorization for mutating operations. Gateway challenges require WebAuthn passkey assertions. Operator verification checks approved suspended transactions with authorized cryptographic proofs. | Fails closed with `ErrTxL3ProofMissing` for mutations under `ratify` and `notary`. Audited under `doctrine` and `consensus`. |
 | **L4 Warden** | Executing Operator (PEP) | Pre-dispatch verification gate: reserves nonce in durable SQLite replay store, verifies TTL expiry, decodes typed payload, validates target ownership, re-runs L1 Doctrine, recalculates transaction hash, checks state Merkle root, and enforces posture-required L2/L3 proofs. | Fails closed; releases reserved nonce and records a signed failed receipt. |
-| **L5 Actuator** | Executing Operator (PEP) | Sole execution boundary: signs and persists an initial `EXECUTING` receipt, appends signed commitment to SQL ledger, rehydrates `{{UEI_N}}` tokens through `ScrubbingService`, mints a short-lived JIT capability, dispatches typed action handler, dissolves capability, and persists signed `COMPLETED` or `FAILED` receipt. | Fails closed; execution aborts if receipt signing, commitment append, or capability minting fails. A token that cannot be rehydrated, including any token when no `ScrubbingService` is configured, is never dispatched: the receipt finalizes as a signed `FAILED` receipt. |
+| **L5 Actuator** | Executing Operator (PEP) | Sole execution boundary: signs and persists an initial `EXECUTING` receipt, appends signed commitment to SQL ledger, rehydrates its own `{{UEI_<owner>_N}}` tokens through `ScrubbingService` (foreign tokens stay opaque in `INFERENCE` and fail closed elsewhere), mints a short-lived JIT capability, dispatches typed action handler, dissolves capability, and persists signed `COMPLETED` or `FAILED` receipt. | Fails closed; execution aborts if receipt signing, commitment append, or capability minting fails. A token that cannot be rehydrated, including any token when no `ScrubbingService` is configured, is never dispatched: the receipt finalizes as a signed `FAILED` receipt. |
 
 ### Governance Postures and Enforcement Matrix
 
@@ -207,7 +207,7 @@ sequenceDiagram
     GW-->>Client: Return Result & Signed ActionReceipt
 ```
 
-A caller can instead deny a suspended transaction through `POST /api/v1/approvals/respond`. The Gateway resubmits it with an L3 deny marker; the Operator rejects it and returns a signed `L3_DENIED` receipt, which the Gateway returns and publishes as `approval.completed`. The denied transaction does not continue through normal execution.
+A caller can instead deny a suspended transaction through `POST /api/v1/approvals/respond`. The Gateway resubmits it with an L3 deny marker; the Operator rejects it and returns a signed `L3_DENIED` receipt, which the Gateway returns and publishes as `approval.completed`. The denied transaction does not continue through normal execution. An enrolled CLI session can deny the same way with `ztd auth approve --deny`, which denies over mTLS instead of approving.
 
 ### Client Ingress Surfaces and Protocol Adapters
 
@@ -219,7 +219,7 @@ ztd provides five distinct ingress channels:
 4. **Direct Envelope Submission**: Pre-constructed envelopes submitted via `POST /api/v1/governance/envelopes` with pre-gathered L2/L3 proofs. The Gateway does not synthesize missing proofs; unproved transactions fail closed at L4.
 5. **CLI-Directed Execution**: Enrolled operators bound via `ztd operator bind` receive parallel commands dispatched through `ztd operator run`.
 
-The reference binary includes a native registry of 32 typed tools (`internal/services/mcp/native_tool_registry.go`) covering database triage, filesystem profiling, network probing, process monitoring, system introspection, Git operations, shell execution, and audit queries.
+The reference binary includes a native tool registry, populated by `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`. The tool list is not duplicated here; see the registry source for the current set.
 
 ### Operator Capability Model and Coexistence
 
@@ -273,7 +273,7 @@ ztd protects sensitive data using a three-tier encryption hierarchy:
 ### Local-First Audit Architecture (LFAA)
 
 Under the Local-First Audit Architecture (LFAA), each executing runtime is authoritative for its own local execution evidence:
-- **Primary SQLite Database (`ztd.db`)**: Located in `.ztd/data/` for each runtime. Contains audit logs, nonce replay tables, receipts, and commitment ledgers.
+- **Primary SQLite Database (`ztd.db`)**: Located in `.ztd/data/` for each runtime. Contains the audit chain (`events`, including the current event receipt on each transaction's row), nonce replay tables, and commitment ledgers.
 - **Commitment Ledger**: Hash-chained SQLite table linking consecutive execution commitments cryptographically to prove historical tamper resistance.
 - **Git-Backed File Ledger**: Tracks all governed file mutations under `.ztd/data/ledger/` as encrypted Git commits, exposing the repository HEAD commit as a verifiable state snapshot.
 - **Gateway Projection**: Receipts mirrored to the Gateway over WebSocket channels are best-effort projections and do not supersede local Operator evidence.

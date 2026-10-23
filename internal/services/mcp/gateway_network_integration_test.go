@@ -566,7 +566,7 @@ func TestGatewayService_DispatchToDownstream_Scrubbing(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotContains(t, result, "123-45-6789")
 		assert.Contains(t, result, "{{UEI_")
-		rehydrated, err := scrubSvc.RehydrateText(context.Background(), result)
+		rehydrated, err := scrubSvc.RehydrateText(context.Background(), result, scrubbing.ForeignTokenReject)
 		require.NoError(t, err)
 		assert.Contains(t, rehydrated, "123-45-6789")
 	})

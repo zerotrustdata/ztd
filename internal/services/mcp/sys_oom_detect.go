@@ -27,7 +27,7 @@ type SysOOMDetectTool struct{}
 
 // Name returns the tool identifier.
 func (t *SysOOMDetectTool) Name() string {
-	return "sys_oom_detect"
+	return constants.MCPToolSysOOMDetect
 }
 
 // Description returns a human-readable description.

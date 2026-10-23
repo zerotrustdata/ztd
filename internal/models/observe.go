@@ -559,8 +559,13 @@ type ObserveProducerRunStateRequest struct {
 	StartedAt      *time.Time         `json:"started_at,omitempty"`
 	EndedAt        *time.Time         `json:"ended_at,omitempty"`
 	ObservedAt     time.Time          `json:"observed_at"`
-	WebSessionID   string             `json:"web_session_id,omitempty"`
-	CLISessionID   string             `json:"cli_session_id,omitempty"`
+	// Reopens names the terminal status a repair replaces because the
+	// producer's authoritative local store contradicts it. The Gateway applies
+	// it only while the projection holds exactly this status and only toward a
+	// non-terminal status; otherwise the normal transition rules decide.
+	Reopens      RunLifecycleStatus `json:"reopens,omitempty"`
+	WebSessionID string             `json:"web_session_id,omitempty"`
+	CLISessionID string             `json:"cli_session_id,omitempty"`
 }
 
 // ObserveProducerStopRequest is the typed request body for the mTLS producer

@@ -1,7 +1,7 @@
 # ztd Protocol Specification
 
-Last Updated: 2026-10-20
-Version: v1.2.0
+Last Updated: 2026-10-22
+Version: v1.3.0
 
 The **ztd Protocol** is a zero-trust execution and evidence platform for autonomous AI agents, human operators, and distributed target runtimes. It establishes a cryptographically enforced, typed wire contract that binds identity, intent, state, and governance proofs into an immutable transaction envelope (`GovernanceEnvelope`). Every mutation passing through the platform is subjected to an uncompromising 5-layer interlock sequence before execution.
 
@@ -12,7 +12,7 @@ The **ztd Protocol** is a zero-trust execution and evidence platform for autonom
 ## 1. Architectural Foundations
 
 ### 1.1 Wire Format and Serialization
-- **External Wire Ingress & Egress**: Canonical JSON (`protojson`) is mandatory for all client-facing and external interfaces, including HTTP REST endpoints, WebSocket pub/sub command/result channels, Server-Sent Events (SSE), and audit receipt exports.
+- **External Wire Ingress & Egress**: Canonical JSON (`protojson`) is mandatory for all client-facing and external interfaces, including HTTP REST endpoints, WebSocket pub/sub command/result channels, Server-Sent Events (SSE), and audit event receipt exports.
 - **Internal Execution Substrate**: Binary Protocol Buffers (proto3) schemas defined in `protocol/proto/ztd/` serve as the single authoritative schema source. Runtimes decode canonical JSON into strongly typed protobuf messages immediately upon ingress.
 - **Fail-Closed Principle**: Any structural invalidity, missing required field, unsupported field type, expired timestamp, reused nonce, stale state root, or failed cryptographic verification immediately rejects the envelope prior to dispatch.
 
@@ -84,6 +84,7 @@ message GovernanceMetadata {
   - `signer_key_id` (`string`): Identifier of the consensus member. It matches the trusted signer ID in the Operator SignerStore.
   - `consensus_signature` (`string`): Hex-encoded Ed25519 signature over `<transaction_hash>|<decision>`.
   - `decision` (`bool`): Member evaluation verdict (`true` = approve, `false` = reject).
+- Field numbers 3 and 4 are reserved, along with the names `deliberation` and `parent_transaction_hash`, so they are never reused.
 
 #### L3Metadata and L3Proof
 - `proof` (`L3Proof`): WebAuthn or CLI/mTLS proof. Exactly one proof type is populated per instance. Its fields are:
@@ -218,10 +219,10 @@ Every mutation must pass through five sequential, non-bypassable layers before e
 - Analyzes commands and arguments against active doctrine files from `protocol/constants/doctrine/` (MITRE ATT&CK patterns, injection vectors, reverse shells).
 - Enforces absolute path denylists on critical system resources for file-path payloads. Examples include `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/etc/ssh/sshd_config`, and the directories `/bin/`, `/sbin/`, `/usr/bin/`, and `/usr/sbin/`.
 
-#### L2 Consensus: Enrolled Application Deliberation
-- Under `consensus` and `notary` postures, requires the bound enrolled consensus application to evaluate envelope safety.
-- The application returns a signed `L2Vote` containing an Ed25519 signature over `<transaction_hash>|<decision>`.
-- The Gateway never self-signs L2 votes; it delegates deliberation to the bound enrolled consensus application's HTTPS protobuf endpoint. See [Consensus Architecture](../../docs/architecture/consensus.md).
+#### L2 Consensus: Bound Consensus Provider Deliberation
+- Under `consensus` and `notary` postures, the L2 gate applies only to state-change actions: a non-bootstrap action that the action registry classifies as changing state for its target (`governance.L2Enforced`). Inference, observations, typed provider reads, and registered read-only MCP targets get no vote round. Bootstrap actions (platform enrollment) are exempt.
+- The bound consensus provider produces the votes. Provider `application` is an enrolled application's HTTPS protobuf endpoint, which returns the signed `L2Vote`. Provider `tribunal` is the Gateway-hosted Tribunal panel: each member casts its vote with its sealed Ed25519 member key, and the Gateway signs on that member's behalf.
+- Each `L2Vote` carries an Ed25519 signature over `<transaction_hash>|<decision>`. See [Consensus Architecture](../../docs/architecture/consensus.md).
 - Operator L4 Warden verifies that at least $K$ distinct, valid signatures from trusted keys in the `SignerStore` are present.
 
 #### L3 Notary: Hardware-Bound Human Presence
@@ -263,6 +264,8 @@ Posture is configured at Gateway startup via `--posture <mode>` and is immutable
 ## 5. ActionReceipt & Attestation Ledger Model
 
 Execution produces an immutable cryptographic receipt defined in `protocol/proto/ztd/operator/v1/operator.proto`.
+
+Each receipt stage is stored as a `ztd.v1.operator.receipt.recorded` row on the `events` chain. The current stage is the row whose `event_receipt_status` is not null; recording a new stage clears that column on the previous one. No separate `receipts` table is used. The event name is defined in `protocol/constants/events.json`.
 
 ### 5.1 ActionReceipt Schema
 

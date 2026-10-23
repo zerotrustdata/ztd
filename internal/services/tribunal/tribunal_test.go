@@ -9,6 +9,7 @@ package tribunal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -17,28 +18,34 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-func TestNormaliseCommand(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{name: "empty", input: "", expected: ""},
-		{name: "clean command", input: "cat /etc/hosts", expected: "cat /etc/hosts"},
-		{name: "markdown fence bash", input: "```bash\ncat /etc/hosts\n```", expected: "cat /etc/hosts"},
-		{name: "markdown fence with comment", input: "```sh\n# check host file\ncat /etc/hosts;\n```", expected: "cat /etc/hosts"},
-		{name: "prefix Command:", input: "Command: grep -rn 'error' /var/log", expected: "grep -rn 'error' /var/log"},
-		{name: "dollar prefix", input: "$ ss -tlpn", expected: "ss -tlpn"},
-		{name: "trailing semicolon and whitespace", input: "   curl -s http://localhost:8080/health ;  ", expected: "curl -s http://localhost:8080/health"},
+func TestCandidateDecodeIsStrictAndDoesNotRewrite(t *testing.T) {
+	for _, answer := range []string{`not json`, `{"command":"ss","args":[],"extra":1}`, `{"command":"ss -l","args":[]}`, `{"command":"ss\u00a0-l","args":[]}`, `{"command":"","args":[]}`, `null`, "{\"command\":\"ss\",\"args\":[]} trailing", "Command: {\"command\":\"ss\",\"args\":[]}", "```json\n{\"command\":\"ss\",\"args\":[]}\n```"} {
+		inferer := &fakeInferer{generate: func(uint32, Member) string { return answer }}
+		got, err := generate(context.Background(), testConfig(inferer), Request{}, 1, nil)
+		require.NoError(t, err)
+		require.Len(t, got, len(AllMembers))
+		assert.Empty(t, got[0].Arguments.Command, answer)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, NormaliseCommand(tt.input))
-		})
+	inferer := &fakeInferer{generate: func(uint32, Member) string { return `{"command":"ss","args":["-l"]}` }}
+	got, err := generate(context.Background(), testConfig(inferer), Request{}, 1, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"-l"}, got[0].Arguments.Args)
+}
+
+func TestVoteUsesCanonicalTypedArguments(t *testing.T) {
+	candidates := []Candidate{
+		{Member: MemberAxiom, Arguments: models.RunShellCommandRequest{Command: "tool", Args: []string{"a", "b"}}},
+		{Member: MemberConcord, Arguments: models.RunShellCommandRequest{Command: "tool", Args: []string{"a", "b"}}},
+		{Member: MemberVariance, Arguments: models.RunShellCommandRequest{Command: "tool", Args: []string{"b", "a"}}},
 	}
+	v := vote(1, candidates)
+	require.Len(t, v.Clusters, 2)
+	assert.Equal(t, []Member{MemberAxiom, MemberConcord}, v.Clusters[0].Members)
+	assert.Equal(t, []string{"a", "b"}, v.Clusters[0].Arguments.Args)
 }
 
 // fakeInferer answers each call from a per-stage script and records every
@@ -81,7 +88,24 @@ func (f *fakeInferer) Infer(_ context.Context, call Call) (string, error) {
 }
 
 func proposals(commands map[Member]string) func(uint32, Member) string {
-	return func(_ uint32, member Member) string { return commands[member] }
+	return func(_ uint32, member Member) string {
+		return proposalAnswer(commands[member])
+	}
+}
+
+func proposalAnswer(command string) string {
+	if command == "" || strings.HasPrefix(command, "{") || strings.HasPrefix(command, "```") {
+		return command
+	}
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return command
+	}
+	b, _ := json.Marshal(struct {
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
+	}{Command: fields[0], Args: fields[1:]})
+	return string(b)
 }
 
 func testConfig(inferer Inferer) Config {
@@ -102,9 +126,17 @@ const (
 func candidatesFor(commands map[Member]string) []Candidate {
 	var out []Candidate
 	for _, member := range AllMembers {
-		out = append(out, Candidate{Member: member, Round: 1, Command: commands[member]})
+		out = append(out, Candidate{Member: member, Round: 1, Arguments: argsFor(commands[member])})
 	}
 	return out
+}
+
+func argsFor(command string) models.RunShellCommandRequest {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return models.RunShellCommandRequest{}
+	}
+	return models.RunShellCommandRequest{Command: fields[0], Args: fields[1:]}
 }
 
 func TestVote(t *testing.T) {
@@ -145,10 +177,10 @@ func TestVote(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			v := vote(1, candidatesFor(tt.commands))
-			assert.Equal(t, tt.winner, v.Winner)
+			assert.Equal(t, tt.winner, v.Winner.CommandLine())
 			for i, cluster := range v.Clusters {
 				assert.Equal(t, clusterID(i), cluster.ID)
-				assert.NotEmpty(t, cluster.Command)
+				assert.NotEmpty(t, cluster.Arguments.Command)
 			}
 		})
 	}
@@ -169,7 +201,7 @@ func TestAssessRisk(t *testing.T) {
 		invalid bool
 	}{
 		{name: "low", answer: lowRisk, level: RiskLow},
-		{name: "fenced medium", answer: "```json\n{\"risk\": \"medium\", \"rationale\": \"edit\", \"feedback\": \"\"}\n```", level: RiskMedium},
+		{name: "fenced answer fails closed", answer: "```json\n{\"risk\": \"medium\"}\n```", level: RiskHigh, invalid: true},
 		{name: "high", answer: `{"risk": "HIGH", "rationale": "deletes /", "feedback": "scope the path"}`, level: RiskHigh},
 		{name: "free text fails closed", answer: "This is LOW risk.", level: RiskHigh, invalid: true},
 		{name: "unknown field fails closed", answer: `{"risk": "LOW", "score": 1}`, level: RiskHigh, invalid: true},
@@ -179,12 +211,12 @@ func TestAssessRisk(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			inferer := &fakeInferer{marshal: tt.answer}
-			risk, err := assessRisk(context.Background(), testConfig(inferer), Request{Request: testRequest}, "rm -rf /tmp/x")
+			risk, err := assessRisk(context.Background(), testConfig(inferer), Request{Request: testRequest}, argsFor("rm -rf /tmp/x"))
 			require.NoError(t, err)
 			assert.Equal(t, tt.level, risk.Level)
 			assert.Equal(t, tt.invalid, risk.Invalid)
 			require.Len(t, inferer.calls, 1)
-			assert.Contains(t, inferer.calls[0].User, "rm -rf /tmp/x")
+			assert.Contains(t, inferer.calls[0].User, `"command":"rm"`)
 		})
 	}
 }
@@ -213,7 +245,7 @@ func TestAudit(t *testing.T) {
 		{name: "approve", vote: split, answers: []string{approve}, verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, command: "ss -tlpn", attempts: 1},
 		{
 			name: "revise", vote: unanimous,
-			answers: []string{`{"verdict": "REVISE", "revised_command": "ss -tlpn;", "rationale": "x"}`},
+			answers: []string{`{"verdict": "REVISE", "revised_arguments": {"command":"ss","args":["-tlpn"]}, "rationale": "x"}`},
 			verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_REVISE, command: "ss -tlpn", attempts: 1,
 		},
 		{
@@ -233,7 +265,7 @@ func TestAudit(t *testing.T) {
 		},
 		{
 			name: "revise without a command fails closed", vote: split,
-			answers: []string{`{"verdict": "REVISE", "revised_command": "  "}`},
+			answers: []string{`{"verdict": "REVISE", "revised_arguments": {"command":" ","args":[]}}`},
 			failed:  true, attempts: 2,
 		},
 		{name: "free text fails closed", vote: split, answers: []string{"APPROVE"}, failed: true, attempts: 2},
@@ -247,12 +279,12 @@ func TestAudit(t *testing.T) {
 			if tt.failed {
 				assert.NotEmpty(t, result.Failure)
 				assert.Equal(t, evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_UNSPECIFIED, result.Verdict)
-				assert.Empty(t, result.Command)
+				assert.Empty(t, result.Arguments.Command)
 				return
 			}
 			assert.Empty(t, result.Failure)
 			assert.Equal(t, tt.verdict, result.Verdict)
-			assert.Equal(t, tt.command, result.Command)
+			assert.Equal(t, tt.command, result.Arguments.CommandLine())
 		})
 	}
 }
@@ -263,16 +295,16 @@ func TestAuditClustersLabelWinnerFirst(t *testing.T) {
 	}))
 	clusters := auditClusters(v)
 	require.Len(t, clusters, 3)
-	assert.Equal(t, Cluster{ID: "cluster_a", Command: "ss -tlpn", Members: []Member{MemberConcord, MemberVariance, MemberPragma}}, clusters[0])
+	assert.Equal(t, Cluster{ID: "cluster_a", Arguments: argsFor("ss -tlpn"), Members: []Member{MemberConcord, MemberVariance, MemberPragma}}, clusters[0])
 	assert.Equal(t, "cluster_b", clusters[1].ID)
-	assert.Equal(t, "lsof -i", clusters[1].Command)
+	assert.Equal(t, "lsof -i", clusters[1].Arguments.CommandLine())
 	assert.Equal(t, "cluster_c", clusters[2].ID)
 }
 
 func TestRunApproved(t *testing.T) {
 	inferer := &fakeInferer{
 		generate: proposals(map[Member]string{
-			MemberAxiom: "ss -tlpn", MemberConcord: "```bash\nss -tlpn\n```", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
+			MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
 		}),
 		marshal: lowRisk,
 		audit:   []string{approve},
@@ -280,7 +312,7 @@ func TestRunApproved(t *testing.T) {
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 3)
 	require.NoError(t, err)
 	assert.Equal(t, OutcomeApproved, result.Outcome)
-	assert.Equal(t, "ss -tlpn", result.Command)
+	assert.Equal(t, "ss -tlpn", result.Arguments.CommandLine())
 	assert.Len(t, inferer.calls, len(AllMembers)+2)
 
 	require.Len(t, result.Steps, len(AllMembers)+3)
@@ -295,14 +327,14 @@ func TestRunApproved(t *testing.T) {
 	assert.Equal(t, evalv1.AgentRole_AGENT_ROLE_CANDIDATE_VOTER, voter.GetRole())
 	assert.True(t, voter.GetVote().GetConsensusReached())
 	assert.Equal(t, uint32(1), voter.GetVote().GetRounds())
-	assert.Equal(t, "ss -tlpn", voter.GetVote().GetSelectedCommand())
+	assert.Contains(t, voter.GetVote().GetSelectedCommand(), `"command":"ss"`)
 	assert.Len(t, voter.GetVote().GetVotes(), len(AllMembers))
 	risk := result.Steps[len(AllMembers)+1]
 	assert.Equal(t, evalv1.AgentRiskLevel_AGENT_RISK_LEVEL_LOW, risk.GetRisk().GetRisk())
 	assert.Equal(t, "command", risk.GetRisk().GetSubjectKind())
 	review := result.Steps[len(AllMembers)+2]
 	assert.Equal(t, evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, review.GetReview().GetVerdict())
-	assert.Equal(t, "ss -tlpn", review.GetReview().GetCommand())
+	assert.Equal(t, "ss -tlpn", review.GetReview().GetArguments().GetCommand()+" "+strings.Join(review.GetReview().GetArguments().GetArgs(), " "))
 }
 
 func TestRunRegeneratesOnceWithAnonymizedClusters(t *testing.T) {
@@ -310,9 +342,9 @@ func TestRunRegeneratesOnceWithAnonymizedClusters(t *testing.T) {
 	inferer := &fakeInferer{
 		generate: func(round uint32, member Member) string {
 			if round == 2 {
-				return "pwd"
+				return proposalAnswer("pwd")
 			}
-			return distinct[member]
+			return proposalAnswer(distinct[member])
 		},
 		marshal: lowRisk,
 		audit:   []string{approve},
@@ -320,11 +352,11 @@ func TestRunRegeneratesOnceWithAnonymizedClusters(t *testing.T) {
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
 	require.NoError(t, err)
 	assert.Equal(t, OutcomeApproved, result.Outcome)
-	assert.Equal(t, "pwd", result.Command)
+	assert.Equal(t, "pwd", result.Arguments.Command)
 	assert.Len(t, result.Candidates, 2*len(AllMembers))
 	round2 := inferer.calls[len(AllMembers)]
 	assert.Equal(t, uint32(2), round2.Round)
-	assert.Contains(t, round2.User, "[cluster_a] (support: 1)\na")
+	assert.Contains(t, round2.User, "cluster_a")
 	assert.NotContains(t, round2.User, string(MemberAxiom))
 	assert.Equal(t, uint32(2), result.Steps[2*len(AllMembers)].GetVote().GetRounds())
 }
@@ -335,7 +367,7 @@ func TestRunNoConsensus(t *testing.T) {
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
 	require.NoError(t, err)
 	assert.Equal(t, OutcomeNoConsensus, result.Outcome)
-	assert.Empty(t, result.Command)
+	assert.Empty(t, result.Arguments.Command)
 	assert.Len(t, inferer.calls, 2*len(AllMembers))
 	voter := result.Steps[len(result.Steps)-1]
 	assert.False(t, voter.GetVote().GetConsensusReached())
@@ -350,12 +382,12 @@ func TestRunBlocked(t *testing.T) {
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
 	require.NoError(t, err)
 	assert.Equal(t, OutcomeBlocked, result.Outcome)
-	assert.Empty(t, result.Command)
+	assert.Empty(t, result.Arguments.Command)
 	assert.True(t, result.Risk.Invalid)
 	risk := result.Steps[len(result.Steps)-1]
 	assert.Equal(t, evalv1.AgentRole_AGENT_ROLE_RISK_ANALYST, risk.GetRole())
 	assert.True(t, risk.GetRisk().GetBlocked())
-	assert.Equal(t, "rm -rf /", risk.GetRisk().GetSubject())
+	assert.Contains(t, risk.GetRisk().GetSubject(), `"command":"rm"`)
 }
 
 // TestRunAssessesCommandTheAuditorChanged pins CNN-1: a command the Auditor
@@ -375,18 +407,18 @@ func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
 	}{
 		{
 			name:    "revision back to the winner is not reassessed",
-			audit:   `{"verdict": "REVISE", "revised_command": "ss -tlpn;"}`,
+			audit:   `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn"]}}`,
 			outcome: OutcomeApproved, command: "ss -tlpn", subject: "ss -tlpn", riskLevel: RiskLow, marshalCalls: 1,
 		},
 		{
 			name:         "revision Marshal rates LOW is approved",
-			audit:        `{"verdict": "REVISE", "revised_command": "ss -tlpn -p"}`,
+			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn","-p"]}}`,
 			marshalFinal: lowRisk,
 			outcome:      OutcomeApproved, command: "ss -tlpn -p", subject: "ss -tlpn -p", riskLevel: RiskLow, marshalCalls: 2,
 		},
 		{
 			name:         "revision Marshal rates HIGH is blocked",
-			audit:        `{"verdict": "REVISE", "revised_command": "rm -rf /"}`,
+			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"rm","args":["-rf","/"]}}`,
 			marshalFinal: highRisk,
 			outcome:      OutcomeBlocked, subject: "rm -rf /", riskLevel: RiskHigh, marshalCalls: 2,
 		},
@@ -415,7 +447,7 @@ func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
 			result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
 			require.NoError(t, err)
 			assert.Equal(t, tt.outcome, result.Outcome)
-			assert.Equal(t, tt.command, result.Command)
+			assert.Equal(t, tt.command, result.Arguments.CommandLine())
 			require.NotNil(t, result.Risk)
 			assert.Equal(t, tt.riskLevel, result.Risk.Level)
 
@@ -433,7 +465,7 @@ func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
 			}
 			assert.Equal(t, tt.marshalCalls, marshalCalls)
 			require.Len(t, riskSteps, tt.marshalCalls)
-			assert.Equal(t, tt.subject, riskSteps[len(riskSteps)-1].GetRisk().GetSubject())
+			assert.Contains(t, riskSteps[len(riskSteps)-1].GetRisk().GetSubject(), `"command":"`+strings.Fields(tt.subject)[0]+`"`)
 			assert.Equal(t, tt.outcome == OutcomeBlocked, riskSteps[len(riskSteps)-1].GetRisk().GetBlocked())
 		})
 	}
@@ -448,7 +480,7 @@ func TestRunAuditFailed(t *testing.T) {
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
 	require.NoError(t, err)
 	assert.Equal(t, OutcomeAuditFailed, result.Outcome)
-	assert.Empty(t, result.Command)
+	assert.Empty(t, result.Arguments.Command)
 	review := result.Steps[len(result.Steps)-1]
 	assert.Equal(t, evalv1.AgentRole_AGENT_ROLE_REVIEWER, review.GetRole())
 	assert.Equal(t, evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_UNSPECIFIED, review.GetReview().GetVerdict())
@@ -478,7 +510,37 @@ func TestRunRequiresInferer(t *testing.T) {
 
 func TestContextBlock(t *testing.T) {
 	block := contextBlock(Request{Request: testRequest, Guidelines: "no sudo", WorkingDirectory: "/srv"})
-	assert.True(t, strings.Contains(block, "OS: linux\nShell: bash\nWorking directory: /srv"))
+	assert.True(t, strings.Contains(block, "OS: linux\nExecution: direct executable argv (no shell)\nWorking directory: /srv"))
 	assert.Contains(t, block, "<guidelines>\nno sudo\n</guidelines>")
 	assert.Contains(t, block, "<request>\n"+testRequest+"\n</request>")
+}
+
+func TestGatewayOwnedContextIsComposedBeforeReview(t *testing.T) {
+	inferer := &fakeInferer{
+		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
+		marshal:  lowRisk,
+		audit:    []string{`{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-l","-p"]}}`},
+	}
+	req := Request{Request: testRequest, WorkingDirectory: "/srv/work", TimeoutSeconds: 23}
+	result, err := Run(context.Background(), testConfig(inferer), req, 0)
+	require.NoError(t, err)
+	assert.Equal(t, "/srv/work", result.Arguments.WorkingDir)
+	assert.Equal(t, 23, result.Arguments.Timeout)
+	assert.Equal(t, result.Arguments.CanonicalJSON(), result.ArgumentsJSON)
+	var marshalCall, auditorCall string
+	for _, call := range inferer.calls {
+		if call.Stage == StageMarshal {
+			marshalCall = call.User
+		}
+		if call.Stage == StageAudit {
+			auditorCall = call.User
+		}
+	}
+	assert.Contains(t, marshalCall, `"working_dir":"/srv/work"`)
+	assert.Contains(t, marshalCall, `"timeout":23`)
+	assert.Contains(t, auditorCall, `"working_dir":"/srv/work"`)
+	assert.Contains(t, auditorCall, `"timeout":23`)
+	assert.Contains(t, auditorCall, `"args":["-l"]`)
+	require.Len(t, inferer.calls, len(AllMembers)+3)
+	assert.Contains(t, inferer.calls[len(inferer.calls)-1].User, `"args":["-l","-p"]`)
 }

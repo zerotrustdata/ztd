@@ -288,15 +288,16 @@ func (r *releaseSmokeRun) runEvalCampaigns(ctx context.Context, files fs.Runtime
 
 // Model-call purposes, the intent tool, and the scripted answers of the loop.
 const (
-	evalLoopScriptedModel   = "qwen3:4b"
-	evalLoopDirectAnswer    = "READY"
-	evalLoopIntentTool      = "run_commands_with_operator"
-	evalLoopPurposeTurn     = "agent_turn"
-	evalLoopPurposeGenerate = "tribunal_generate"
-	evalLoopPurposeMarshal  = "tribunal_marshal"
-	evalLoopPurposeAudit    = "tribunal_audit"
-	evalLoopTribunalCommand = "cat app/service.conf"
-	evalLoopTribunalAnswer  = "inventory-api listens on port 8081 in app/service.conf, but the upstream health check expects port 8080. Set listen_port = 8080 in the service configuration."
+	evalLoopScriptedModel    = "qwen3:4b"
+	evalLoopDirectAnswer     = "READY"
+	evalLoopIntentTool       = "run_shell_command"
+	evalLoopPurposeTurn      = "agent_turn"
+	evalLoopPurposeGenerate  = "tribunal_generate"
+	evalLoopPurposeMarshal   = "tribunal_marshal"
+	evalLoopPurposeAudit     = "tribunal_audit"
+	evalLoopTribunalProposal = `{"args":["app/service.conf"],"command":"cat"}`
+	evalLoopTribunalCommand  = `{"command":"cat","args":["app/service.conf"]}`
+	evalLoopTribunalAnswer   = "inventory-api listens on port 8081 in app/service.conf, but the upstream health check expects port 8080. Set listen_port = 8080 in the service configuration."
 )
 
 // evalLoopReplies is the scripted provider's answer sequence for the whole loop,
@@ -306,7 +307,7 @@ const (
 func evalLoopReplies() []fixtures.OllamaReply {
 	replies := []fixtures.OllamaReply{
 		{Content: evalLoopDirectAnswer},
-		{ToolCalls: []fixtures.OllamaToolCall{{Name: evalLoopIntentTool, Arguments: json.RawMessage(`{"request": "print the configured port in the service config"}`)}}},
+		{ToolCalls: []fixtures.OllamaToolCall{{Name: evalLoopIntentTool, Arguments: json.RawMessage(evalLoopTribunalProposal)}}},
 	}
 	for range 5 {
 		replies = append(replies, fixtures.OllamaReply{Content: evalLoopTribunalCommand})
@@ -387,7 +388,7 @@ func (r *releaseSmokeRun) runEvalCampaign(ctx context.Context, store *evaluation
 	if err := store.CreateSuite(ctx, campaign.suite); err != nil {
 		return evalLoopRun{}, err
 	}
-	if _, err := r.ztdGateway(ctx, "create-eval-campaign", "eval", "campaigns", "create", campaign.campaignID, campaign.model, "--suite", campaign.suite.ID, "--posture", string(r.opts.Posture), "--investigation", campaign.investigation, "--data-operator", r.workerOperatorID); err != nil {
+	if _, err := r.ztdGateway(ctx, "create-eval-campaign", "eval", "campaigns", "create", campaign.campaignID, campaign.model, "--suite", campaign.suite.ID, "--investigation", campaign.investigation, "--data-operator", r.workerOperatorID); err != nil {
 		return evalLoopRun{}, err
 	}
 	if _, err := r.ztdGateway(ctx, "prepare-eval-run", "eval", "runs", "start", campaign.campaignID, "--prepare-only", "--daemon=false", "--publish=false", "--no-backup"); err != nil {
@@ -507,7 +508,7 @@ func (r *releaseSmokeRun) verifyEvalTraceRuntimes(trace *evaluation.AgentTrace, 
 }
 
 // verifyEvalReceipts verifies every receipt a trace carries against the Operator
-// that signed it: the harness sentinels and each EXECUTE_BASH command on the
+// that signed it: the harness sentinels and each tool call on the
 // Data runtime, and each model call on the Inference runtime. It returns the
 // transaction IDs it verified.
 func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluation.AgentTrace, inferenceRoot, inferenceID, inferenceSession string) ([]string, error) {
@@ -526,8 +527,8 @@ func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluat
 		if receipt == nil || receipt.GetL3Status() != operatorv1.L3Status_L3_STATUS_REQUIRED_VALID {
 			return nil, fmt.Errorf("eval inference %s requires L3: %w", call.Purpose, constants.ErrValidationFailed)
 		}
-		if r.opts.Posture == constants.PostureNotary && receipt.GetL2Status() != operatorv1.L2Status_L2_STATUS_REQUIRED_VALID {
-			return nil, fmt.Errorf("eval inference %s requires L2: %w", call.Purpose, constants.ErrValidationFailed)
+		if receipt.GetL2Status() != operatorv1.L2Status_L2_STATUS_NOT_REQUIRED {
+			return nil, fmt.Errorf("eval inference %s must not require L2: %w", call.Purpose, constants.ErrValidationFailed)
 		}
 		if err := r.verifyReceipt(ctx, inferenceRoot, inferenceID, inferenceSession, receipt.GetTransactionId()); err != nil {
 			return nil, err
@@ -535,11 +536,16 @@ func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluat
 		txs = append(txs, receipt.GetTransactionId())
 	}
 	for _, call := range trace.ToolCalls {
-		if call.ActionType != string(constants.ActionTypeExecuteBash) {
-			continue
-		}
 		if call.Receipt == nil {
 			return nil, fmt.Errorf("eval command %s has no receipt: %w", call.ToolName, constants.ErrValidationFailed)
+		}
+		wantL2 := operatorv1.L2Status_L2_STATUS_NOT_REQUIRED
+		action := constants.ActionType(call.ActionType)
+		if r.opts.Posture.RequiresL2() && !action.IsBootstrapAction() && action.ChangesState(call.ToolName) {
+			wantL2 = operatorv1.L2Status_L2_STATUS_REQUIRED_VALID
+		}
+		if call.Receipt.GetL2Status() != wantL2 {
+			return nil, fmt.Errorf("eval command %s L2 status %s, want %s: %w", call.ToolName, call.Receipt.GetL2Status(), wantL2, constants.ErrValidationFailed)
 		}
 		if err := r.verifyReceipt(ctx, r.workerRoot, r.workerOperatorID, r.workerSession, call.Receipt.GetTransactionId()); err != nil {
 			return nil, err
@@ -551,7 +557,7 @@ func (r *releaseSmokeRun) verifyEvalReceipts(ctx context.Context, trace *evaluat
 
 // verifyTribunalTrace checks the Tribunal campaign's trace: two agent turns, and
 // one intent tool call whose deliberation made five generations, one marshal
-// call and one audit call. The approved command ran as one governed EXECUTE_BASH.
+// call and one audit call. The approved arguments ran as one governed MCP_CALL.
 func verifyTribunalTrace(trace *evaluation.AgentTrace) error {
 	counts := make(map[string]int, len(trace.ModelCalls))
 	for _, call := range trace.ModelCalls {
@@ -571,8 +577,16 @@ func verifyTribunalTrace(trace *evaluation.AgentTrace) error {
 	if len(trace.ToolCalls) != 1 {
 		return fmt.Errorf("tribunal trace has %d tool calls, want 1: %w", len(trace.ToolCalls), constants.ErrValidationFailed)
 	}
-	if call := trace.ToolCalls[0]; call.ToolName != evalLoopIntentTool || call.ActionType != string(constants.ActionTypeExecuteBash) || call.Command != evalLoopTribunalCommand {
-		return fmt.Errorf("tribunal tool call %s %s %q: %w", call.ToolName, call.ActionType, call.Command, constants.ErrValidationFailed)
+	if call := trace.ToolCalls[0]; call.ToolName != evalLoopIntentTool || call.ActionType != string(constants.ActionTypeMcpCall) || call.ArgumentsJSON != evalLoopTribunalProposal {
+		return fmt.Errorf("tribunal tool call %s %s %q: %w", call.ToolName, call.ActionType, call.ArgumentsJSON, constants.ErrValidationFailed)
+	} else {
+		var approved struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		}
+		if err := json.Unmarshal([]byte(call.ApprovedArgumentsJSON), &approved); err != nil || approved.Command != "cat" || len(approved.Args) != 1 || approved.Args[0] != "app/service.conf" {
+			return fmt.Errorf("approved Tribunal arguments %q: %w", call.ApprovedArgumentsJSON, constants.ErrValidationFailed)
+		}
 	}
 	if trace.FinalOutput != evalLoopTribunalAnswer || len(trace.Steps) == 0 {
 		return fmt.Errorf("tribunal trace answer or steps: %w", constants.ErrValidationFailed)

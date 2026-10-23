@@ -28,6 +28,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -57,7 +58,7 @@ func suspendedCallResponse(txHash string) JSONRPCResponse {
 // receipt reports receiptTxHash as the resumed transaction's hash.
 func approvalCompletedFrame(t *testing.T, userID, txHash, receiptTxHash string) string {
 	t.Helper()
-	receipt, err := response.MarshalProtoJSONCanonical(&operatorv1.ActionReceipt{
+	return approvalReceiptFrame(t, userID, txHash, &operatorv1.ActionReceipt{
 		TransactionId:   "transaction-" + receiptTxHash,
 		TransactionHash: receiptTxHash,
 		SignerKeyId:     "warden-key-bridge",
@@ -65,6 +66,12 @@ func approvalCompletedFrame(t *testing.T, userID, txHash, receiptTxHash string) 
 		ResultSummary:   "resumed result",
 		Signature:       "signature-bridge",
 	})
+}
+
+// approvalReceiptFrame is an approval.completed SSE frame for txHash carrying receipt.
+func approvalReceiptFrame(t *testing.T, userID, txHash string, signed *operatorv1.ActionReceipt) string {
+	t.Helper()
+	receipt, err := response.MarshalProtoJSONCanonical(signed)
 	require.NoError(t, err)
 	eventPayload, err := json.Marshal(models.ApprovalCompletedEvent{
 		Type:    constants.SSEEventTypeApprovalCompleted,
@@ -164,6 +171,53 @@ func TestL3ApprovalProxySessionToGatewayWithRetry(t *testing.T) {
 		require.NoError(t, protojson.Unmarshal(result.Receipt, &receipt))
 		assert.Equal(t, "tx-sse-success", receipt.GetTransactionHash())
 		assert.Equal(t, "resumed result", result.Content[0].Text)
+	})
+
+	t.Run("a denied approval is the typed L3_DENIED rejection, not a tool result", func(t *testing.T) {
+		var connections atomic.Int32
+		frames := make(chan string)
+		written := make(chan struct{}, 1)
+		sseServer := approvalStreamServer(t, frames, written, &connections)
+		frame := approvalReceiptFrame(t, "user-sse-deny", "tx-sse-deny", &operatorv1.ActionReceipt{
+			TransactionId:   "transaction-tx-sse-deny",
+			TransactionHash: "tx-sse-deny",
+			SignerKeyId:     "warden-key-bridge",
+			Status:          operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			FailureCode:     operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED,
+			RejectionCode:   operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED,
+			Signature:       "signature-bridge",
+		})
+
+		gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !publishDuringCall(frames, written, frame) {
+				http.Error(w, "approval stream not subscribed before the call", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(suspendedCallResponse("tx-sse-deny"))
+		}))
+		defer gatewayServer.Close()
+
+		conn := &gatewayConn{
+			openBrowser:  func(string) error { return nil },
+			client:       &http.Client{Timeout: 5 * time.Second},
+			gatewayURL:   gatewayServer.URL,
+			sseClient:    &http.Client{Timeout: 5 * time.Second},
+			sseBaseURL:   sseServer.URL,
+			cliSessionID: "cli-sse-deny",
+		}
+
+		resp, err := proxySessionToGatewayWithRetryContext(context.Background(), conn, JSONRPCRequest{JSONRPC: "2.0", ID: 1, Method: "tools/call"}, nil)
+		require.NoError(t, err)
+		require.Nil(t, resp.Result)
+		require.NotNil(t, resp.Error)
+		data, ok := resp.Error.Data.(json.RawMessage)
+		require.True(t, ok, "error.data must be the encoded GovernanceRejection")
+		rejection, refusal, err := governance.DecodeIngressFailure(data)
+		require.NoError(t, err)
+		require.Nil(t, refusal)
+		assert.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, rejection.GetReceipt().GetRejectionCode())
+		assert.Equal(t, "tx-sse-deny", rejection.GetReceipt().GetTransactionHash())
 	})
 
 	t.Run("SSE receipt for another transaction fails closed", func(t *testing.T) {

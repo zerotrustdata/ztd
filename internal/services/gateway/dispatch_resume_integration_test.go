@@ -87,7 +87,7 @@ func TestSuspendedOutboundDeny_ReachesExecutingOperatorAndRetiresSuspension(t *t
 	require.Equal(t, operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED, receipt.GetRejectionCode())
 	require.NoError(t, govsvc.VerifyActionReceiptSignature(receipt, publicKey))
 	require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(receipt, publicKey))
-	persisted, err := infra.AuditStore.GetActionReceipt(env.Id)
+	persisted, err := infra.AuditStore.GetEventReceipt(env.Id)
 	require.NoError(t, err)
 	require.NotNil(t, persisted)
 	require.Equal(t, sessionID, persisted.OperatorSessionID)
@@ -357,7 +357,7 @@ func runOutboundHumanDecisions(t *testing.T, posture constants.Posture, mechanis
 					require.Equal(t, 1, calls)
 				}
 			}
-			persisted, err := infra.AuditStore.GetActionReceipt(suspended.TransactionHash)
+			persisted, err := infra.AuditStore.GetEventReceipt(suspended.TransactionHash)
 			require.NoError(t, err)
 			require.NotNil(t, persisted)
 			require.Equal(t, sessionID, persisted.OperatorSessionID)

@@ -947,29 +947,28 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 	if err != nil {
 		return "", err
 	}
-	appID := strings.TrimSpace(payload.GetInstanceId())
-	if appID == "" {
-		return "", fmt.Errorf("%w: instance_id (app_id)", constants.ErrMissingRequiredField)
-	}
-	endpointURL := strings.TrimSpace(payload.GetConsensusEndpointUrl())
-	if endpointURL == "" {
-		return "", fmt.Errorf("%w: consensus_endpoint_url", constants.ErrMissingRequiredField)
-	}
-	if err := models.ValidateConsensusEndpoint(endpointURL); err != nil {
-		return "", fmt.Errorf("platform enrollment: consensus endpoint: %w", err)
-	}
 	actorUserID := strings.TrimSpace(payload.GetActorUserId())
 	if actorUserID == "" {
 		return "", constants.ErrPlatformEnrollmentInvalidDecision
 	}
-	memberAppIDs, quorum, err := models.ResolveConsensusMembership(appID, payload.GetConsensusMemberAppIds(), int(payload.GetConsensusQuorum()))
+	spec, err := models.ResolveConsensusBinding(models.ConsensusBindingSpec{
+		Provider:     constants.ConsensusProvider(payload.GetConsensusProvider()),
+		AppID:        payload.GetInstanceId(),
+		EndpointURL:  payload.GetConsensusEndpointUrl(),
+		MemberAppIDs: payload.GetConsensusMemberAppIds(),
+		Quorum:       int(payload.GetConsensusQuorum()),
+		ModelTag:     payload.GetConsensusModelTag(),
+		ModelDigest:  payload.GetConsensusModelDigest(),
+		VoteKind:     payload.GetConsensusVoteKind(), InferenceOperatorID: payload.GetConsensusInferenceOperatorId(), VoteThresholds: models.ConsensusThresholdsFromProto(payload.GetConsensusVoteThresholds()), AllowHosted: payload.GetConsensusAllowHosted(),
+	})
 	if err != nil {
 		return "", fmt.Errorf("platform enrollment: %w", err)
 	}
+	appID := spec.AppID
 
 	// Validate ownership, active enrollment policy, and signing key for every
 	// member at the governed L5 boundary before writing the consensus policy.
-	for _, memberID := range memberAppIDs {
+	for _, memberID := range spec.MemberAppIDs {
 		spiffeID := protocol.NewWorkloadIdentity().AppSPIFFEID(memberID)
 		appDoc, err := h.deps.DocStore.DocGet(ctx, marshaler.CollectionName(constants.CollectionAppPolicies), spiffeID)
 		if err != nil {
@@ -1014,13 +1013,17 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 	consensusDoc := models.ConsensusPolicy{
 		ID:              string(constants.DocIDConsensusBinding),
 		AppID:           appID,
-		MemberAppIDs:    append([]string(nil), memberAppIDs...),
-		Quorum:          quorum,
+		MemberAppIDs:    append([]string(nil), spec.MemberAppIDs...),
+		Quorum:          spec.Quorum,
 		RequireDistinct: true,
-		EndpointURL:     endpointURL,
-		Enabled:         true,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		EndpointURL:     spec.EndpointURL,
+		Provider:        string(spec.Provider),
+		ModelTag:        spec.ModelTag,
+		ModelDigest:     spec.ModelDigest,
+		VoteKind:        spec.VoteKind, InferenceOperatorID: spec.InferenceOperatorID, VoteThresholds: spec.VoteThresholds, AllowHosted: spec.AllowHosted,
+		Enabled:   true,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	data, err := json.Marshal(consensusDoc)
 	if err != nil {
@@ -1031,10 +1034,14 @@ func (h *PlatformEnrollmentHandler) HandleBindConsensus(ctx context.Context, msg
 	}
 
 	h.logger.Info("platform enrollment consensus bound",
+		"provider", string(spec.Provider),
 		"app_id", appID,
-		"endpoint_url", endpointURL,
+		"endpoint_url", spec.EndpointURL,
 		"actor_user_id", actorUserID)
-	return fmt.Sprintf("platform enrollment bind_consensus app_id=%s endpoint=%s actor=%s", appID, endpointURL, actorUserID), nil
+	if spec.Provider == constants.ConsensusProviderTribunal {
+		return fmt.Sprintf("platform enrollment bind_consensus provider=%s app_id=%s quorum=%d actor=%s", spec.Provider, appID, spec.Quorum, actorUserID), nil
+	}
+	return fmt.Sprintf("platform enrollment bind_consensus provider=%s app_id=%s endpoint=%s actor=%s", spec.Provider, appID, spec.EndpointURL, actorUserID), nil
 }
 
 // sessionExists reports whether a session document is already persisted.

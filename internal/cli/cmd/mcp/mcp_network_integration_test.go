@@ -192,3 +192,29 @@ func TestProxySessionToGateway(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+// TestProxySessionToGateway_RelaysGatewayBytes pins that the proxy relays result
+// and error.data as the Gateway encoded them: key order and integers survive.
+func TestProxySessionToGateway_RelaysGatewayBytes(t *testing.T) {
+	const result = `{"z":1,"receipt":{"seq":9007199254740993,"a":"x"}}`
+	const data = `{"receipt":{"b":2,"a":1},"error":"TX_DOCTRINE_L1_FAILED"}`
+	for _, tc := range []struct{ name, body, raw string }{
+		{"result", `{"jsonrpc":"2.0","id":7,"result":` + result + `}`, result},
+		{"error data", `{"jsonrpc":"2.0","id":7,"error":{"code":-32005,"message":"denied","data":` + data + `}}`, data},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			session := &gatewayConn{client: &http.Client{Timeout: 5 * time.Second}, gatewayURL: server.URL}
+
+			resp, err := proxySessionToGateway(session, JSONRPCRequest{JSONRPC: "2.0", ID: 7, Method: "tools/call"})
+			require.NoError(t, err)
+			relayed, err := json.Marshal(resp)
+			require.NoError(t, err)
+			assert.Contains(t, string(relayed), tc.raw, "the Gateway's bytes must be relayed unchanged")
+		})
+	}
+}

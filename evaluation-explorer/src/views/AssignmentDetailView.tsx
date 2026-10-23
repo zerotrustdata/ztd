@@ -7,9 +7,10 @@
 // model was asked, every tool call it made, what governance decided, and how
 // it was graded; the aside carries proof, security signals, and measurements.
 
-import type { ReactNode } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, type ReactNode } from 'react';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import type { AssignmentResult, MetricValue } from '../contract/types';
+import { scrollToAnchor } from '../utils/scroll';
 import { TOOL_SCORE_DIMENSIONS } from '../contract/types';
 import { AssignmentEvidenceData } from '../components/AssignmentEvidenceData';
 import { AssignmentActivitySummary } from '../components/AssignmentActivitySummary';
@@ -45,6 +46,7 @@ import {
   assignmentHasAuditSlice,
   assignmentLifecycleEvents,
   assignmentMetricEntries,
+  assignmentOutputThroughput,
   assignmentMetricFormatter,
   assignmentSecuritySignals,
   assignmentVerdictLabel,
@@ -342,12 +344,7 @@ function measureGroups(assignment: AssignmentResult): Array<{ title: string; mea
   const resource = assignment.resource_summary;
   const timing = assignment.benchmark_observations?.timing;
   const gpu = assignment.benchmark_observations?.gpu;
-  const outputTokens = resource?.output_tokens?.value;
-  const generationMs = timing?.generation_ms?.value;
-  const tokensPerSecond =
-    outputTokens !== undefined && generationMs !== undefined && generationMs > 0
-      ? outputTokens / (generationMs / 1000)
-      : undefined;
+  const tokensPerSecond = assignmentOutputThroughput(assignment);
   return [
     {
       title: 'Timing',
@@ -436,6 +433,12 @@ export function AssignmentDetailView() {
     assignment ? siblingRepetitions(assignment, Array.from(state.assignments.values())) : [],
   );
   const connection = useStoreState((state) => state.connection);
+  const { hash } = useLocation();
+  const loadedAssignmentId = assignment?.assignment_id;
+  useEffect(() => {
+    if (loadedAssignmentId && hash === '#assignment-grades') scrollToAnchor('assignment-grades');
+  }, [loadedAssignmentId, hash]);
+
 
   if (!assignmentId || !runId) return <ErrorState message="No assignment selected." />;
   if (!assignment) return <EmptyState hasRecords={false} hasFilters={false} connection={connection} />;
@@ -514,7 +517,7 @@ export function AssignmentDetailView() {
         <ScenarioContextCard scenario={assignment.scenario_summary} />
 
         {gradeChips.length > 0 ? (
-          <div className="assignment-criteria-strip">
+          <div id="assignment-grades" className="assignment-criteria-strip">
             <span className="assignment-strip-label">Criteria</span>
             <UnifiedGradeBadges assignment={assignment} />
           </div>

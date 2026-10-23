@@ -71,7 +71,7 @@ func TestReportReceipts_WithRecords(t *testing.T) {
 	require.NoError(t, store.CreateSession(sessionID, "operator", "Test", "user@test.com"))
 
 	now := time.Now().UTC()
-	require.NoError(t, store.RecordActionReceipt(&models.ActionReceiptRecord{
+	require.NoError(t, store.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     "tx-1",
 		TransactionHash:   "hash-1",
 		OperatorID:        "op-1",
@@ -83,7 +83,7 @@ func TestReportReceipts_WithRecords(t *testing.T) {
 		SignerKeyID:       "key-1",
 		Signature:         "sig-1",
 	}))
-	require.NoError(t, store.RecordActionReceipt(&models.ActionReceiptRecord{
+	require.NoError(t, store.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     "tx-2",
 		TransactionHash:   "hash-2",
 		OperatorID:        "op-2",

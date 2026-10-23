@@ -609,9 +609,9 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_ScrubsTypedMessagesAndCanon
 	require.Len(t, backend.lastReq.Messages, 3)
 	assert.NotContains(t, backend.lastReq.Messages[0].Parts[0].GetText(), "user@example.com")
 	arguments := backend.lastReq.Messages[1].Parts[0].GetToolCall().GetArgumentsJson()
-	assert.Regexp(t, `^\{"count":2,"nested":\{"email":"\{\{UEI_\d+\}\}"\}\}$`, arguments)
+	assert.Regexp(t, `^\{"count":2,"nested":\{"email":"\{\{UEI_[0-9a-f]{12}_\d+\}\}"\}\}$`, arguments)
 	result := backend.lastReq.Messages[2].Parts[0].GetToolResult().GetResultJson()
-	assert.Regexp(t, `^\{"items":\["\{\{UEI_\d+\}\}",3\],"ok":true\}$`, result)
+	assert.Regexp(t, `^\{"items":\["\{\{UEI_[0-9a-f]{12}_\d+\}\}",3\],"ok":true\}$`, result)
 	require.Len(t, backend.lastReq.Tools, 1)
 	assert.Equal(t, schema, backend.lastReq.Tools[0].GetJsonSchema())
 }
@@ -1148,7 +1148,7 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_DigestCoversScrubbedOutput(
 	}
 	require.Len(t, resp.Parts, 3)
 	assert.Equal(t, scrubber.ScrubText(context.Background(), "write to "+outputScrubEmail), resp.Parts[0].GetText())
-	rehydrated, err := scrubber.RehydrateText(context.Background(), resp.Parts[0].GetText())
+	rehydrated, err := scrubber.RehydrateText(context.Background(), resp.Parts[0].GetText(), scrubbing.ForeignTokenReject)
 	require.NoError(t, err)
 	assert.Equal(t, "write to "+outputScrubEmail, rehydrated)
 	assert.Equal(t, "stop", resp.FinishReason)

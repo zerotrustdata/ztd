@@ -28,10 +28,15 @@ import (
 	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
 
+// tribunalCommandDispatcher is the governed execution boundary used by the intent controller.
+type tribunalCommandDispatcher interface {
+	Dispatch(context.Context, DispatchRequest) (*DispatchResult, error)
+}
+
 // TribunalIntentControllerDeps groups all dependencies for
 // TribunalIntentController.
 type TribunalIntentControllerDeps struct {
-	CommandDispatchSvc   *DispatchService
+	CommandDispatchSvc   tribunalCommandDispatcher
 	InferenceDispatchSvc *dispatch.DispatchService
 	Responder            *response.Writer
 	Logger               *slog.Logger
@@ -44,11 +49,11 @@ type TribunalIntentControllerDeps struct {
 // TribunalIntentController handles POST /api/v1/operators/intents: the
 // Gateway's Tribunal deliberates one command intent, each member call a
 // governed INFERENCE dispatch under the caller's identity, and an approved
-// command is dispatched as an ordinary governed EXECUTE_BASH. The Tribunal
+// command is dispatched as an ordinary governed MCP_CALL run_shell_command. The Tribunal
 // acts in front of envelope construction; it never supplies or replaces an
 // L2 quorum proof or an L3 approval.
 type TribunalIntentController struct {
-	commands   *DispatchService
+	commands   tribunalCommandDispatcher
 	inference  *dispatch.DispatchService
 	responder  *response.Writer
 	logger     *slog.Logger
@@ -70,14 +75,14 @@ func newTribunalIntentController(d TribunalIntentControllerDeps) *TribunalIntent
 //
 // A deliberated intent is always a 200 TribunalIntentResult: the outcome, the
 // persona steps, every member inference with its signed receipt, and for an
-// approved command its governed EXECUTE_BASH outcome. Only a request refused
+// approved command its governed MCP_CALL run_shell_command outcome. Only a request refused
 // before deliberation is an IngressRefusal.
 //
 // @Summary		Deliberate and dispatch a command intent
 // @Description	Platform-internal endpoint (mTLS, app workload). The Gateway's Tribunal turns a
 // @Description	plain-language command intent into one audited shell command through governed
 // @Description	inference, then dispatches it to the target Operator as an ordinary governed
-// @Description	EXECUTE_BASH. Under ratify or notary posture the command dispatch is suspended
+// @Description	MCP_CALL run_shell_command. Under ratify or notary posture the command dispatch is suspended
 // @Description	until a human approves or denies it. The Gateway never mints the approval proof.
 // @Tags			operators
 // @Accept			json
@@ -129,16 +134,17 @@ func (c *TribunalIntentController) HandleIntent(w http.ResponseWriter, r *http.R
 		c.responder.ProtoJSONCanonical(w, http.StatusInternalServerError, governance.NewIngressRefusal(err))
 		return
 	}
-	if result.GetOutcome() == tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED {
-		c.dispatchCommand(r.Context(), req, result, appID, userID)
-	}
+	c.dispatchCommand(r.Context(), req, result, appID, userID)
 	c.responder.ProtoJSONCanonical(w, http.StatusOK, result)
 }
 
 // dispatchCommand runs the approved command as an ordinary governed
-// EXECUTE_BASH under the caller's identity and records its outcome on result.
+// MCP_CALL run_shell_command under the caller's identity and records its outcome on result.
 func (c *TribunalIntentController) dispatchCommand(ctx context.Context, req *tribunalv1.TribunalIntentRequest, result *tribunalv1.TribunalIntentResult, appID, userID string) {
-	dispatched, err := c.executeBash(ctx, req, result.GetCommand(), appID, userID)
+	if result.GetOutcome() != tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_APPROVED {
+		return
+	}
+	dispatched, err := c.dispatchShellCommand(ctx, req, result.GetArgumentsJson(), appID, userID)
 	if err == nil {
 		result.CommandOutcome = &tribunalv1.TribunalIntentResult_Dispatched{Dispatched: dispatched.GovernedDispatchResult()}
 		return
@@ -157,17 +163,15 @@ func (c *TribunalIntentController) dispatchCommand(ctx context.Context, req *tri
 	result.CommandOutcome = &tribunalv1.TribunalIntentResult_Refusal{Refusal: refusal}
 }
 
-func (c *TribunalIntentController) executeBash(ctx context.Context, req *tribunalv1.TribunalIntentRequest, command, appID, userID string) (*DispatchResult, error) {
-	eventType, err := constants.RequestEventForAction(constants.ActionTypeExecuteBash)
+func (c *TribunalIntentController) dispatchShellCommand(ctx context.Context, req *tribunalv1.TribunalIntentRequest, argumentsJSON, appID, userID string) (*DispatchResult, error) {
+	eventType, err := constants.RequestEventForAction(constants.ActionTypeMcpCall)
 	if err != nil {
-		return nil, fmt.Errorf("tribunal intent: resolve EXECUTE_BASH event: %w", err)
+		return nil, fmt.Errorf("tribunal intent: resolve MCP_CALL event: %w", err)
 	}
-	payload, err := proto.Marshal(&operatorv1.CommandRequested{
-		Command:          command,
-		ExecutionId:      req.GetExecutionId(),
-		Justification:    req.GetRequest(),
-		TimeoutSeconds:   req.GetTimeoutSeconds(),
-		WorkingDirectory: req.GetWorkingDirectory(),
+	payload, err := proto.Marshal(&operatorv1.McpCallRequested{
+		ToolName:      constants.MCPToolRunShellCommand,
+		ArgumentsJson: argumentsJSON,
+		ExecutionId:   req.GetExecutionId(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tribunal intent: marshal command: %w", err)
@@ -176,7 +180,7 @@ func (c *TribunalIntentController) executeBash(ctx context.Context, req *tribuna
 		TargetOperatorSessionID: req.GetTargetOperatorSessionId(),
 		EventType:               string(eventType),
 		Payload:                 payload,
-		TargetResource:          req.GetWorkingDirectory(),
+		TargetResource:          constants.MCPToolRunShellCommand,
 		RequestorUserID:         userID,
 		ActingAppID:             appID,
 		CaseID:                  req.GetCaseId(),

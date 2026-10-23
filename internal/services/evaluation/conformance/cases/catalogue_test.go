@@ -91,19 +91,24 @@ func TestCatalogueCountsPerRowAndIngress(t *testing.T) {
 			t.Errorf("row 2 %s: got %d cases, want 0 (gap)", ing, got)
 		}
 	}
+	// MCP_STDIO reads under doctrine and consensus only: under ratify and notary the
+	// read suspends and the bridge holds the call for a human.
+	if got := countCases(cs, row(2), ingress(IngressMCPStdio)); got != 2 {
+		t.Errorf("row 2 %s: got %d cases, want 2", IngressMCPStdio, got)
+	}
 
-	// Row 13: 49 attack entries on DIRECT in each of four postures.
-	if got := countCases(cs, row(13)); got != 49*4 {
-		t.Errorf("row 13: got %d cases, want %d", got, 49*4)
+	// Row 13: 52 attack entries on DIRECT in each of four postures.
+	if got := countCases(cs, row(13)); got != 52*4 {
+		t.Errorf("row 13: got %d cases, want %d", got, 52*4)
 	}
 	for _, p := range Postures {
-		if got := countCases(cs, row(13), posture(p.Wire)); got != 49 {
-			t.Errorf("row 13 posture %s: got %d cases, want 49", p.Posture, got)
+		if got := countCases(cs, row(13), posture(p.Wire)); got != 52 {
+			t.Errorf("row 13 posture %s: got %d cases, want 52", p.Posture, got)
 		}
 	}
 
-	// Row 14: one case per category (5) on each of five ingresses in four postures.
-	for _, ing := range []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressCLI, IngressMCP, IngressA2A} {
+	// Row 14: one case per category (5) on each of six ingresses in four postures.
+	for _, ing := range []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressCLI, IngressMCP, IngressMCPStdio, IngressA2A} {
 		if got := countCases(cs, row(14), ingress(ing)); got != 5*4 {
 			t.Errorf("row 14 %s: got %d cases, want %d", ing, got, 5*4)
 		}
@@ -119,7 +124,7 @@ func TestApprovalRowsPinTheHumanDecisionPerIngress(t *testing.T) {
 	cs, _ := mustCatalogue(t)
 
 	suspending := map[Ingress]bool{IngressMCP: true, IngressA2A: true}
-	for _, ing := range []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressA2A, IngressCLI} {
+	for _, ing := range []Ingress{IngressDispatchEmbedded, IngressDispatchOutbound, IngressMCP, IngressMCPStdio, IngressA2A, IngressCLI} {
 		wantSuspended := 0
 		if suspending[ing] {
 			wantSuspended = 2
@@ -206,8 +211,11 @@ func TestRowSeventeenMissingFieldPinsDirectRejectionAndDispatchRefusal(t *testin
 	}
 }
 
+// fullStack includes every optional ingress.
+var fullStack = Stack{A2AIngress: true, Outbound: true}
+
 func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
-	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE)
+	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, fullStack)
 	if err != nil {
 		t.Fatalf("Applicable(DOCTRINE): %v", err)
 	}
@@ -223,13 +231,76 @@ func TestApplicableDoctrineExcludesConsensusAndRatifyRows(t *testing.T) {
 }
 
 func TestApplicableRatifyExcludesRowOne(t *testing.T) {
-	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY)
+	cs, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, fullStack)
 	if err != nil {
 		t.Fatalf("Applicable(RATIFY): %v", err)
 	}
 	for _, c := range cs {
 		if c.Row == 1 {
 			t.Errorf("Applicable(RATIFY) contains row 1 case %s", c.ID)
+		}
+	}
+}
+
+func TestApplicableDropsOnlyIngressesTheStackLacks(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		stack   Stack
+		dropped []Ingress
+	}{
+		{"no A2A ingress", Stack{Outbound: true}, []Ingress{IngressA2A}},
+		{"embedded Operator only", Stack{A2AIngress: true}, nil},
+		{"minimal stack", Stack{}, []Ingress{IngressA2A}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, binding := range Postures {
+				with, err := Applicable(binding.Wire, fullStack)
+				if err != nil {
+					t.Fatalf("Applicable(%s, full): %v", binding.Posture, err)
+				}
+				without, err := Applicable(binding.Wire, tc.stack)
+				if err != nil {
+					t.Fatalf("Applicable(%s, %+v): %v", binding.Posture, tc.stack, err)
+				}
+				var want []Case
+				for _, c := range with {
+					if !slices.Contains(tc.dropped, c.Ingress) {
+						want = append(want, c)
+					}
+				}
+				if len(tc.dropped) > 0 && len(want) == len(with) {
+					t.Fatalf("Applicable(%s, full) has no %v case", binding.Posture, tc.dropped)
+				}
+				if len(without) != len(want) {
+					t.Fatalf("Applicable(%s, %+v) = %d cases, want %d", binding.Posture, tc.stack, len(without), len(want))
+				}
+				for i := range want {
+					if without[i].ID != want[i].ID {
+						t.Fatalf("Applicable(%s, %+v)[%d] = %s, want %s", binding.Posture, tc.stack, i, without[i].ID, want[i].ID)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestRecordStackReadsAbsenceFlags(t *testing.T) {
+	if got := RecordStack(&evalv1.ConformanceRunRecord{}); got != fullStack {
+		t.Fatalf("RecordStack(legacy) = %+v, want %+v", got, fullStack)
+	}
+	got := RecordStack(&evalv1.ConformanceRunRecord{A2AIngressAbsent: true, OutboundAbsent: true})
+	if got != (Stack{}) {
+		t.Fatalf("RecordStack(absent) = %+v, want empty stack", got)
+	}
+}
+
+func TestStackExecutorRunsOutboundRoleOnEmbeddedWhenOutboundAbsent(t *testing.T) {
+	for _, i := range ingressAll {
+		if got, want := fullStack.Executor(i), i.Executor(); got != want {
+			t.Errorf("full stack Executor(%s) = %s, want %s", i, got, want)
+		}
+		if got := (Stack{A2AIngress: true}).Executor(i); got != ExecutorEmbedded {
+			t.Errorf("embedded-only Executor(%s) = %s, want %s", i, got, ExecutorEmbedded)
 		}
 	}
 }
@@ -265,7 +336,7 @@ func TestPostureMappingRejectsUnknown(t *testing.T) {
 }
 
 func TestApplicableRejectsUnknownPosture(t *testing.T) {
-	_, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED)
+	_, err := Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fullStack)
 	if !errors.Is(err, constants.ErrConformancePostureUnknown) {
 		t.Fatalf("Applicable(UNSPECIFIED) = %v, want ErrConformancePostureUnknown", err)
 	}
@@ -282,23 +353,27 @@ func TestExecutedExpectPerPostureAndAction(t *testing.T) {
 	tests := []struct {
 		name    string
 		posture constants.Posture
+		ingress Ingress
 		action  Action
 		l2      operatorv1.L2Status
 		l3      operatorv1.L3Status
 	}{
-		{"doctrine mutation", constants.PostureDoctrine, ActionMutation, notReq, l3NotReq},
-		{"doctrine read", constants.PostureDoctrine, ActionRead, notReq, l3NotReq},
-		{"consensus mutation", constants.PostureConsensus, ActionMutation, reqOK, l3NotReq},
-		{"consensus read", constants.PostureConsensus, ActionRead, reqOK, l3NotReq},
-		{"ratify mutation", constants.PostureRatify, ActionMutation, notReq, l3Req},
-		{"ratify read", constants.PostureRatify, ActionRead, notReq, l3NotReq},
-		{"notary mutation", constants.PostureNotary, ActionMutation, reqOK, l3Req},
-		{"notary read", constants.PostureNotary, ActionRead, reqOK, l3NotReq},
-		{"unknown posture fails closed", constants.Posture("bogus"), ActionMutation, reqOK, l3Req},
+		{"doctrine mutation", constants.PostureDoctrine, IngressMCP, ActionMutation, notReq, l3NotReq},
+		{"doctrine read", constants.PostureDoctrine, IngressMCP, ActionRead, notReq, l3NotReq},
+		{"consensus mutation", constants.PostureConsensus, IngressMCP, ActionMutation, reqOK, l3NotReq},
+		{"consensus read gets no vote", constants.PostureConsensus, IngressMCP, ActionRead, notReq, l3NotReq},
+		{"consensus direct read carries proof", constants.PostureConsensus, IngressDirect, ActionRead, reqOK, l3NotReq},
+		{"ratify mutation", constants.PostureRatify, IngressMCP, ActionMutation, notReq, l3Req},
+		{"ratify read", constants.PostureRatify, IngressMCP, ActionRead, notReq, l3NotReq},
+		{"ratify direct read", constants.PostureRatify, IngressDirect, ActionRead, notReq, l3NotReq},
+		{"notary mutation", constants.PostureNotary, IngressMCP, ActionMutation, reqOK, l3Req},
+		{"notary read gets no vote", constants.PostureNotary, IngressMCP, ActionRead, notReq, l3NotReq},
+		{"notary direct read carries proof", constants.PostureNotary, IngressDirect, ActionRead, reqOK, l3NotReq},
+		{"unknown posture fails closed", constants.Posture("bogus"), IngressMCP, ActionMutation, reqOK, l3Req},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := executedExpect(tc.posture, tc.action, EffectTargetMarker)
+			got := executedExpect(tc.posture, tc.ingress, tc.action, EffectTargetMarker)
 			want := Expect{Kind: ExpectExecuted, L2Status: tc.l2, L3Status: tc.l3, Effect: EffectTargetMarker}
 			if got != want {
 				t.Fatalf("executedExpect = %+v, want %+v", got, want)

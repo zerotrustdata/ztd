@@ -90,7 +90,7 @@ func validateAgentProducerRequest(req models.ObserveProducerAgentStateRequest) e
 		return fmt.Errorf("observe producer: validate agent request: %w", constants.ErrObserveAgentRoleRequired)
 	}
 	if _, ok := validAgentLifecycleStatuses[req.Status]; !ok {
-		return fmt.Errorf("observe producer: validate agent request: %w: %q", constants.ErrObserveInvalidTransition, req.Status)
+		return fmt.Errorf("observe producer: validate agent request: %w: %q", constants.ErrObserveStatusInvalid, req.Status)
 	}
 	return nil
 }
@@ -112,7 +112,10 @@ func validateRunProducerRequest(req models.ObserveProducerRunStateRequest) error
 		return fmt.Errorf("observe producer: validate run request: %w: %q", constants.ErrObserveRunKindRequired, req.RunKind)
 	}
 	if _, ok := validRunLifecycleStatuses[req.Status]; !ok {
-		return fmt.Errorf("observe producer: validate run request: %w: %q", constants.ErrObserveInvalidTransition, req.Status)
+		return fmt.Errorf("observe producer: validate run request: %w: %q", constants.ErrObserveStatusInvalid, req.Status)
+	}
+	if req.Reopens != "" && (!isTerminalRunStatus(req.Reopens) || isTerminalRunStatus(req.Status)) {
+		return fmt.Errorf("observe producer: validate run request: %w: reopens %q toward %q", constants.ErrObserveStatusInvalid, req.Reopens, req.Status)
 	}
 	if req.CompletedTasks < 0 || req.TotalTasks < 0 {
 		return fmt.Errorf("observe producer: validate run request: %w: completed=%d total=%d", constants.ErrObserveNegativeTaskCount, req.CompletedTasks, req.TotalTasks)

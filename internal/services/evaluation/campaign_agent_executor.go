@@ -251,6 +251,14 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 	if objective == "" {
 		objective = req.ScenarioInput.UserPrompt
 	}
+	for _, evidence := range req.ScenarioInput.InlineContext {
+		objective += "\n\nFrozen evidence (" + evidence.Label + "):\n" + evidence.Content
+	}
+	diagnosisPassed, diagnosisDetail := true, ""
+	if check := req.ScenarioGold.ContentCheck; check != nil && check.DiagnosisRubric != "" {
+		diagnosisPassed, diagnosisDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, req.ScenarioInput, check.DiagnosisRubric)
+		objective += "\n\nDeterministic evidence assessment:\n" + diagnosisDetail
+	}
 	var memoryFacts []string
 	if req.ScenarioGold.Players != nil && req.ScenarioGold.Players.Codex != nil {
 		if req.ScenarioGold.Players.Codex.ExactToken != "" {
@@ -331,14 +339,19 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 				rubric = judge.RubricVersion
 			}
 			detail = fmt.Sprintf("score: %d/5; rubric: %s; rationale: %s", sc.Value, rubric, sc.Rationale)
-			decomposedScores = append(decomposedScores, &evalv1.DecomposedScoreRecord{
-				ScoreId:           fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), dimension),
-				Dimension:         dimension,
-				Value:             float64(sc.Value),
-				Unit:              evalv1.EvaluationMetricUnit_EVALUATION_METRIC_UNIT_COUNT,
-				Direction:         evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_HIGHER_IS_BETTER,
-				MissingDataPolicy: evalv1.EvaluationMissingDataPolicy_EVALUATION_MISSING_DATA_POLICY_EXCLUDE,
-			})
+			if sc.Subject == judge.SubjectFinalReply && sc.Value >= 3 && !diagnosisPassed {
+				status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
+				detail += "; judge assessment contradicts deterministic evidence check: " + diagnosisDetail + "; excluded from quality aggregates"
+			} else {
+				decomposedScores = append(decomposedScores, &evalv1.DecomposedScoreRecord{
+					ScoreId:           fmt.Sprintf("%s:%s", req.Assignment.GetAssignmentId(), dimension),
+					Dimension:         dimension,
+					Value:             float64(sc.Value),
+					Unit:              evalv1.EvaluationMetricUnit_EVALUATION_METRIC_UNIT_COUNT,
+					Direction:         evalv1.EvaluationMetricDirection_EVALUATION_METRIC_DIRECTION_HIGHER_IS_BETTER,
+					MissingDataPolicy: evalv1.EvaluationMissingDataPolicy_EVALUATION_MISSING_DATA_POLICY_EXCLUDE,
+				})
+			}
 		}
 		semanticGrades = append(semanticGrades, &evalv1.SemanticGrade{
 			GradeId:        gradeID,
@@ -401,9 +414,11 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 	} else if workspace, err = NewScenarioWorkspace(topology.DataWorkingDirectory, assignment.GetRunId(), req.AttemptID); err != nil {
 		return nil, err
 	}
+	// A rejected scenario contract fails the assignment, not the run: nothing
+	// has acted yet, and later assignments may use other scenarios.
 	tools, err := e.catalog.Scope(req.ScenarioTools)
 	if err != nil {
-		return nil, fmt.Errorf("evaluation: execute homogeneous assignment: %w", err)
+		return nil, assignmentExecutionError("evaluation: execute homogeneous assignment: scope tools", err)
 	}
 	return &agentRun{
 		executor:   e,
@@ -451,7 +466,10 @@ func (r *agentRun) loop(ctx context.Context) error {
 	for turn := 1; turn <= agentMaxLoopTurns; turn++ {
 		result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeTurn, LoopTurn: turn}, messages, tools)
 		if call == nil {
-			r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
+			// A turn infer already classified (a signed L2 denial) keeps it.
+			if r.trace.TerminalClassification == "" {
+				r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
+			}
 			return nil
 		}
 		text, thinking, toolCalls := agentResponseParts(result)
@@ -522,6 +540,9 @@ func (r *agentRun) loop(ctx context.Context) error {
 				return err
 			}
 			r.trace.ToolCalls = append(r.trace.ToolCalls, executed)
+			if r.trace.TerminalClassification == AgentTerminalClassificationPolicyDenial {
+				return nil
+			}
 			if r.trace.ProviderFailure != "" {
 				// A Tribunal inference inside the tool call failed; like a
 				// failed turn, it ends the loop.
@@ -737,6 +758,14 @@ func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*
 // for a Tribunal call its tool call and persona); dispatch fills the rest.
 func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, *AgentModelCall) {
 	result, call, err := r.dispatchInference(ctx, call, messages, tools)
+	if err != nil && call.Receipt != nil && isL2GovernanceDenial(call.Receipt.ActionReceipt, err) {
+		// Required L2 refused the turn and the Inference runtime signed that
+		// rejection: a governance outcome, not a provider failure.
+		call.Error = modelCallGovernanceRejected
+		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
+		r.trace.TerminalClassification = AgentTerminalClassificationPolicyDenial
+		return nil, nil
+	}
 	if err != nil {
 		r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
 		r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
@@ -885,13 +914,10 @@ func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, to
 		ToolName:       toolCall.GetName(),
 		LoopTurn:       turn,
 	}
-	arguments, err := canonicalizeToolJSON(toolCall.GetArgumentsJson())
-	if err != nil {
-		arguments = "{}"
-	}
-	record.ArgumentsJSON = arguments
-	spec, ok := r.tools.Spec(toolCall.GetName())
-	if !ok {
+	spec, declared := r.tools.Spec(toolCall.GetName())
+	request := decodeAgentToolRequest(spec, declared, toolCall.GetArgumentsJson())
+	record.ArgumentsJSON = request.ArgumentsJSON
+	if !declared {
 		hint := "no tools are available; answer directly"
 		if names := r.tools.DeclaredNames(); len(names) > 0 {
 			hint = "use one of: " + strings.Join(names, ", ")
@@ -899,16 +925,13 @@ func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, to
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("ZTD-1607: Unknown tool %q; %s", toolCall.GetName(), hint)})
 	}
 	record.IsOperatorTool = spec.Operator
-	args, failure := parseAgentToolArguments(spec, toolCall.GetArgumentsJson())
-	if failure != nil {
-		return r.fail(record, *failure)
+	if request.Failure != nil {
+		return r.fail(record, *request.Failure)
 	}
-	switch spec.Name {
-	case agentToolRunCommands:
-		return r.runIntent(ctx, record, args)
-	default:
-		return r.runNativeMCPTool(ctx, record, spec.Name, args)
+	if request.Shell != nil && r.req.ScenarioTools.TribunalCommands {
+		return r.runTribunal(ctx, record, *request.Shell)
 	}
+	return r.runNativeMCPTool(ctx, record, request)
 }
 
 func (r *agentRun) fail(record AgentToolCall, failure agentToolFailure) (AgentToolCall, error) {
@@ -934,13 +957,20 @@ func (r *agentRun) succeed(record AgentToolCall, value any) (AgentToolCall, erro
 }
 
 // runNativeMCPTool maps one native MCP tool onto its governed MCP_CALL action.
-func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, tool string, args agentToolArguments) (AgentToolCall, error) {
+func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, request agentToolRequest) (AgentToolCall, error) {
+	tool, args := record.ToolName, request.Arguments
 	if tool == constants.MCPToolAuditReceiptList {
 		r.injectAuditReceiptListDefaults(args)
 	}
-	argsJSON, err := json.Marshal(args.Values())
-	if err != nil {
-		return AgentToolCall{}, fmt.Errorf("evaluation: encode %s arguments: %w", tool, err)
+	var argsJSON []byte
+	if request.Shell != nil {
+		argsJSON = []byte(request.Shell.CanonicalJSON())
+	} else {
+		var err error
+		argsJSON, err = json.Marshal(args.Values())
+		if err != nil {
+			return AgentToolCall{}, fmt.Errorf("evaluation: encode %s arguments: %w", tool, err)
+		}
 	}
 	payload, err := proto.Marshal(&operatorv1.McpCallRequested{
 		ToolName:      tool,
@@ -994,6 +1024,11 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, t
 		if failure != nil {
 			return r.fail(record, *failure)
 		}
+		var result mcp.RunShellCommandResult
+		if err := json.Unmarshal([]byte(summary), &result); err != nil {
+			return AgentToolCall{}, fmt.Errorf("%w: decode %s result: %w", constants.ErrEvaluationDispatchFailed, tool, err)
+		}
+		return r.succeed(record, result)
 	}
 	canonical, err := canonicalizeToolJSON(summary)
 	if err == nil {
@@ -1088,14 +1123,6 @@ func agentDispatchErrorText(tool string, dispatched GovernedToolDispatch) string
 	return fmt.Sprintf("ZTD-1607: Tool execution failed for %s: %s", tool, reason)
 }
 
-type agentCommandResult struct {
-	Success    bool   `json:"success"`
-	Command    string `json:"command"`
-	ReturnCode int32  `json:"return_code"`
-	Stdout     string `json:"stdout"`
-	Stderr     string `json:"stderr"`
-}
-
 // shellCommandFailure returns the model-visible failure for a run_shell_command
 // result that did not run to a zero exit, or nil. The receipt is COMPLETED
 // either way: it records that the command ran, and the exit code is the
@@ -1116,38 +1143,6 @@ func shellCommandFailure(summary string) (*agentToolFailure, error) {
 		message = fmt.Sprintf("command exited with status %d", result.ExitCode)
 	}
 	return &agentToolFailure{ErrorType: agentToolErrorExecution, Error: truncateToolText(message)}, nil
-}
-
-// commandAnswer completes record with an admitted command's result: its
-// decoded output, or a model-visible failure when it did not run to a zero
-// exit.
-func (r *agentRun) commandAnswer(record AgentToolCall, command string, dispatched GovernedToolDispatch) (AgentToolCall, error) {
-	if answerKind(dispatched.Outcome) != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT {
-		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: agentDispatchErrorText(agentToolRunCommands, dispatched)})
-	}
-	result := &operatorv1.CommandResult{}
-	if len(dispatched.ResultPayload) == 0 {
-		return AgentToolCall{}, fmt.Errorf("%w: governed command response carries no result", constants.ErrEvaluationDispatchFailed)
-	}
-	if err := proto.Unmarshal(dispatched.ResultPayload, result); err != nil {
-		return AgentToolCall{}, fmt.Errorf("%w: decode command result: %v", constants.ErrEvaluationDispatchFailed, err)
-	}
-	answer := agentCommandResult{
-		Success: result.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED && result.GetReturnCode() == 0,
-		Command: command, ReturnCode: result.GetReturnCode(),
-		Stdout: truncateToolText(result.GetStdout()), Stderr: truncateToolText(result.GetStderr()),
-	}
-	if !answer.Success {
-		message := strings.TrimSpace(result.GetError())
-		if message == "" {
-			message = strings.TrimSpace(result.GetStderr())
-		}
-		if message == "" {
-			message = fmt.Sprintf("command exited with status %d", result.GetReturnCode())
-		}
-		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: truncateToolText(message)})
-	}
-	return r.succeed(record, answer)
 }
 
 func truncateToolText(text string) string {
@@ -1456,10 +1451,16 @@ func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *
 			modelRole = campaignRoleFromInferenceString(call.ModelRole)
 			variant = resolved[modelRole]
 		}
+		// A governance-rejected inference never reached the provider, so it has
+		// no provider attempt and no observation or provenance window.
+		attemptID := call.ProviderAttemptID
+		if call.Receipt != nil && governance.IsGovernanceRejectionReceipt(call.Receipt.ActionReceipt) {
+			attemptID = ""
+		}
 		record := &evalv1.ModelInferenceRecord{
 			InferenceRecordId:       newID("inference"),
 			Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
-			ProviderAttemptId:       call.ProviderAttemptID,
+			ProviderAttemptId:       attemptID,
 			AssignmentId:            assignment.GetAssignmentId(),
 			EvaluationAttemptId:     trace.EvaluationAttemptID,
 			ModelRole:               modelRole,

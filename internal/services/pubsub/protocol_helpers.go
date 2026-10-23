@@ -35,6 +35,8 @@ func mapProtoToPayloadType(msg proto.Message) string {
 		return "execution_status"
 	case *operatorv1.FileEditResult:
 		return "file_edit_result"
+	case *operatorv1.EvaluationWorkspaceSeedResult:
+		return "evaluation_workspace_seed_result"
 	case *operatorv1.FsListResult:
 		return "fs_list_result"
 	case *operatorv1.FsGrepResult:
@@ -47,6 +49,8 @@ func mapProtoToPayloadType(msg proto.Message) string {
 		return "ollama_model_inventory_result"
 	case *operatorv1.OllamaModelResidencyResult:
 		return "ollama_model_residency_result"
+	case *operatorv1.OllamaModelReleaseResult:
+		return "ollama_model_release_result"
 	case *operatorv1.FetchLogsResult:
 		if m.Error != "" {
 			return "fetch_logs_error"
@@ -206,6 +210,8 @@ func unmarshalPayload(eventType constants.EventType, payload []byte) (proto.Mess
 		m = &operatorv1.CommandCancelRequested{}
 	case constants.Event.Operator.FileEdit.Requested:
 		m = &operatorv1.FileEditRequested{}
+	case constants.Event.Operator.Eval.WorkspaceSeed.Requested:
+		m = &operatorv1.EvaluationWorkspaceSeedRequested{}
 	case constants.Event.Operator.FsList.Requested:
 		m = &operatorv1.FsListRequested{}
 	case constants.Event.Operator.FsRead.Requested:
@@ -218,6 +224,8 @@ func unmarshalPayload(eventType constants.EventType, payload []byte) (proto.Mess
 		m = &operatorv1.OllamaModelInventoryRequested{}
 	case constants.Event.Operator.OllamaModelResidency.Requested:
 		m = &operatorv1.OllamaModelResidencyRequested{}
+	case constants.Event.Operator.OllamaModelRelease.Requested:
+		m = &operatorv1.OllamaModelReleaseRequested{}
 	case constants.Event.Operator.FetchLogs.Requested:
 		m = &operatorv1.FetchLogsRequested{}
 	case constants.Event.Operator.FetchHistory.Requested:

@@ -3,8 +3,8 @@ doc_id: build_apps
 title: Build ztd-Compatible Applications
 audience: application developers and agent framework authors
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/build_apps.md
   - internal/services/mcp/
@@ -66,12 +66,12 @@ For an enrolled application identity, append `"--app", "etl-service"` to `args`.
   "method": "tools/call",
   "params": {
     "name": "run_shell_command",
-    "arguments": { "command": "ls -la" }
+    "arguments": { "command": "ls", "args": ["-la"] }
   }
 }
 ```
 
-Discovery methods (`tools/list`, `resources/list`, `prompts/list`) return catalogs without triggering governance mutations. Invocation methods (`tools/call`, `resources/read`, `prompts/get`) enter the Gateway governance pipeline.
+`run_shell_command` takes one executable in `command` and its argv as separate strings in `args`. No shell runs, so pipes, redirects, globs, and substitutions are not interpreted. Discovery methods (`tools/list`, `resources/list`, `prompts/list`) return catalogs without triggering governance mutations. Invocation methods (`tools/call`, `resources/read`, `prompts/get`) enter the Gateway governance pipeline.
 
 ### 2. Agent-to-Agent (A2A)
 
@@ -151,10 +151,10 @@ An application that serves as an L2 consensus member MUST enroll with an indepen
 Bind the member set through governance. The primary application MUST appear in the member list, and a set of more than one member MUST state `--quorum` explicitly:
 
 ```bash
-./ztd auth enroll consensus bind etl-service https://etl.example.com:9443 --member-app etl-service --member-app risk-service --quorum 2
+./ztd consensus enroll app etl-service https://etl.example.com:9443 --member-app etl-service --member-app risk-service --quorum 2
 ```
 
-The Gateway stores one bound consensus policy. Under `ratify` and `notary`, the binding requires passkey approval at the printed URL. `./ztd auth enroll consensus show` prints the bound policy. The member lifecycle, deliberation endpoint, and vote verification are defined in [Consensus Architecture](../architecture/consensus.md).
+The Gateway stores one bound consensus policy, and every binding names a consensus provider. An empty provider is rejected. The `application` provider uses the enrolled member set above. The alternative is the Gateway-hosted Tribunal panel, bound with `./ztd consensus enroll tribunal --model <tag>` (`--quorum` between 3 and 5, default 3). The panel is `tribunal-axiom`, `tribunal-concord`, `tribunal-variance`, `tribunal-pragma`, and `tribunal-nemesis`. It votes only on state-change actions and does not use application endpoints. Under `ratify` and `notary`, the binding requires passkey approval at the printed URL. `./ztd consensus status` prints the bound provider, quorum, member IDs, and signer readiness. The member lifecycle, deliberation endpoint, and vote verification are defined in [Consensus Architecture](../architecture/consensus.md).
 
 ---
 

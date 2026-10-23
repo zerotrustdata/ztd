@@ -127,14 +127,17 @@ func modelVariantFromProviderEntry(entry inference.ProviderModelInventoryEntry) 
 		providerClass = "ollama"
 	}
 	return &evalv1.ModelVariant{
-		VariantId:      inference.NormalizeProviderModelVariantID(entry.ServedModelTag),
-		ProviderClass:  providerClass,
-		ServedModelTag: entry.ServedModelTag,
-		ModelDigest:    entry.ModelDigest,
-		ModelFamily:    entry.ModelFamily,
-		ParameterCount: entry.ParameterCount,
-		Quantization:   entry.Quantization,
-		ContextLimit:   entry.ContextLimit,
+		VariantId:            inference.NormalizeProviderModelVariantID(entry.ServedModelTag),
+		ProviderClass:        providerClass,
+		ServedModelTag:       entry.ServedModelTag,
+		ModelDigest:          entry.ModelDigest,
+		ModelFamily:          entry.ModelFamily,
+		ParameterCount:       entry.ParameterCount,
+		Quantization:         entry.Quantization,
+		ContextLimit:         entry.ContextLimit,
+		ModelFormat:          entry.Format,
+		ArtifactSizeBytes:    entry.ArtifactSizeBytes,
+		ParameterCountSource: entry.ParameterCountSource,
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -73,8 +74,11 @@ func (i *LedgerImporter) SourceID() string {
 }
 
 func (i *LedgerImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
-	if i == nil || i.reader == nil || !validLedgerBinding(i.binding) {
-		return nil, fmt.Errorf("%w: reader, content references, paths, scope, and run are required", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil {
+		return nil, fmt.Errorf("%w: reader is required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := validLedgerBinding(i.binding); err != nil {
+		return nil, fmt.Errorf("%w: ledger binding: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -154,10 +158,23 @@ func (i *LedgerImporter) buildNodes(commits []importedLedgerCommit, stateBody []
 	return nodes
 }
 
-func validLedgerBinding(binding LedgerImportBinding) bool {
-	_, _, commitsValid := ParseExpectedContentReference(binding.CommitsReference, constants.LedgerCommitCollectionReferencePrefix)
-	_, _, stateValid := ParseExpectedContentReference(binding.StateReference, constants.LedgerStateReferencePrefix)
-	return commitsValid && stateValid && ValidRelativePath(binding.CommitsPath) && ValidRelativePath(binding.StatePath) && binding.ScopeID != "" && binding.RunID != ""
+func validLedgerBinding(binding LedgerImportBinding) error {
+	if _, _, commitsValid := ParseExpectedContentReference(binding.CommitsReference, constants.LedgerCommitCollectionReferencePrefix); !commitsValid {
+		return errors.New("commitments content reference is invalid")
+	}
+	if _, _, stateValid := ParseExpectedContentReference(binding.StateReference, constants.LedgerStateReferencePrefix); !stateValid {
+		return errors.New("state content reference is invalid")
+	}
+	if err := ValidateRelativePath(binding.CommitsPath); err != nil {
+		return fmt.Errorf("commitments path: %w", err)
+	}
+	if err := ValidateRelativePath(binding.StatePath); err != nil {
+		return fmt.Errorf("state path: %w", err)
+	}
+	if binding.ScopeID == "" || binding.RunID == "" {
+		return constants.ErrMissingRequiredField
+	}
+	return nil
 }
 
 func decodeLedgerCommits(body []byte) ([]importedLedgerCommit, error) {

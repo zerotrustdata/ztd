@@ -236,6 +236,10 @@ func (g *GatewayService) dispatchMCP(r *http.Request, req *JSONRPCRequest) (inte
 		return g.wrapDispatch(res, err)
 
 	case "a2a/call":
+		// A2A is opt-in: without a downstream the method does not exist.
+		if g.a2aDownstreamURL == "" {
+			return nil, g.rpcRefusal(-32601, fmt.Errorf("mcp dispatch: %w", constants.ErrJSONRPCMethodNotFound))
+		}
 		res, err := g.a2aCall(ctx, r, req.Params)
 		return g.wrapDispatch(res, err)
 

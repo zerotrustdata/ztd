@@ -5,6 +5,7 @@
 
 - [ztd/common/v1/common.proto](#ztd_common_v1_common-proto)
     - [CommandIntent](#ztd-common-v1-CommandIntent)
+    - [ConsensusDecisionThreshold](#ztd-common-v1-ConsensusDecisionThreshold)
     - [GovernanceEnvelope](#ztd-common-v1-GovernanceEnvelope)
     - [GovernanceMetadata](#ztd-common-v1-GovernanceMetadata)
     - [L1Metadata](#ztd-common-v1-L1Metadata)
@@ -58,6 +59,22 @@ ingest migration removes the legacy cmd: transport.
 | task_id | [string](#string) |  |  |
 | web_session_id | [string](#string) |  |  |
 | cli_session_id | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-common-v1-ConsensusDecisionThreshold"></a>
+
+### ConsensusDecisionThreshold
+Frozen per-member approval probability threshold for decision voting.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| member_app_id | [string](#string) |  |  |
+| threshold | [double](#double) |  |  |
 
 
 
@@ -320,6 +337,13 @@ The assertion must still verify for this user, credential and transaction.
 | consensus_endpoint_url | [string](#string) |  | HTTPS deliberation endpoint for a bound consensus application. |
 | consensus_member_app_ids | [string](#string) | repeated | Ordered set of enrolled signing applications participating in L2. |
 | consensus_quorum | [uint32](#uint32) |  | Affirmative distinct signatures required from consensus_member_app_ids. |
+| consensus_provider | [string](#string) |  | Vote producer for the binding: &#34;application&#34; (empty) or &#34;tribunal&#34;. |
+| consensus_model_tag | [string](#string) |  | Pinned model the Tribunal provider&#39;s members vote with. |
+| consensus_model_digest | [string](#string) |  |  |
+| consensus_vote_kind | [string](#string) |  |  |
+| consensus_inference_operator_id | [string](#string) |  |  |
+| consensus_vote_thresholds | [ConsensusDecisionThreshold](#ztd-common-v1-ConsensusDecisionThreshold) | repeated |  |
+| consensus_allow_hosted | [bool](#bool) |  |  |
 
 
 

@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.2.0-green.svg)](docs/release_notes/v1.2.x/v1.2.0.md)
+[![Version](https://img.shields.io/badge/version-v1.3.0-green.svg)](docs/release_notes/v1.3.x/v1.3.0.md)
 
 **A model can ask, but it cannot directly act.**
 
@@ -86,7 +86,7 @@ Every mutation passing through ztd must clear five deterministic layers:
 You choose a governance posture when the Gateway starts (via `--posture`). It is immutable for the lifetime of that process:
 
 - **`doctrine`** *(default)*: L1 Doctrine, L4 Warden, and L5 Actuator are blocking gates. L2 and L3 proofs are recorded as audit evidence when present, but don't block dispatch.
-- **`consensus`**: Requires $K$-of-$N$ signed machine consensus before any mutation can execute.
+- **`consensus`**: Requires $K$-of-$N$ signed machine consensus before any state-changing action can execute. Bind the consensus with `ztd consensus enroll`; `ztd consensus status` shows it.
 - **`ratify`**: Requires explicit cryptographic human authorization (L3 Notary) for every mutation. Read-only actions pass through.
 - **`notary`**: Maximum governance. Requires both machine consensus (L2) and human sign-off (L3) before any mutating envelope touches a host.
 
@@ -102,7 +102,7 @@ ztd uses a **Local-First Audit Architecture**:
 - **Authoritative local store:** Each Operator maintains its own encrypted SQLite audit records in `data/ztd.db` and a git-backed file history ledger under its runtime directory.
 - **Projections, not truth:** The Gateway mirrors receipts for the UI and CLI, but the local host remains the single authoritative root of truth for what ran.
 - **Incremental Merkle commitment:** State roots are computed incrementally across 65,536 buckets in a 16-ary tree. Proofs don't degrade into full-table scans as your audit history grows.
-- **Local secret rehydration:** Sensitive credentials and tokens never travel across the wire in plaintext. They are scrubbed to reversible placeholders (`{{UEI_N}}`) and rehydrated by the L5 Actuator inside the target host's memory immediately before execution.
+- **Local secret rehydration:** Sensitive credentials and tokens never travel across the wire in plaintext. They are scrubbed to reversible placeholders (`{{UEI_<owner>_N}}`) and rehydrated by the L5 Actuator inside the memory of the host that minted them, immediately before execution.
 
 ---
 
@@ -146,7 +146,7 @@ pwsh scripts/windows-setup.ps1 --build-only
 make quickstart
 ```
 
-*Requirements for source builds: Go 1.27.2, Git, and GNU Make. Pre-built frontends are already embedded in the repository.*
+*Requirements for source builds: Go 1.27.3, Git, and GNU Make. Pre-built frontends are already embedded in the repository.*
 
 ---
 
@@ -209,7 +209,7 @@ For the raw benchmarks, profiles, and the SQLite concurrency lessons learned dur
 ```text
 cmd/ztd/              Static binary entrypoint (Gateway, Operator, CLI, TUI)
 internal/
-  cli/                Cobra CLI commands (gw, operator, auth, mcp, audit, eval, compliance)
+  cli/                Cobra CLI commands (gw, operator, auth, consensus, mcp, audit, eval, compliance)
   services/
     gateway/          PDP control plane, HTTP APIs, PKI CA, session routing
     governance/       The five-layer pipeline (L1 Doctrine, L2 Consensus, L3 Notary, L4 Warden, L5 Actuator)

@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -53,6 +54,7 @@ func (a *gatewayDispatcherAdapter) Dispatch(ctx context.Context, req dispatch.Co
 		CliSessionID:            req.CliSessionID,
 		Timeout:                 req.Timeout,
 		OnInferenceProgress:     req.OnInferenceProgress,
+		OnAdmitted:              req.OnAdmitted,
 	})
 	if err != nil {
 		return nil, err
@@ -239,7 +241,10 @@ func (c *InferenceDispatchController) HandleDispatch(w http.ResponseWriter, r *h
 // it to the authenticated caller. It returns a public sentinel for a request
 // the Gateway refuses before dispatch.
 func newDispatchInferenceRequest(req *operatorv1.InferenceDispatchRequest, appID, userID string) (dispatch.DispatchInferenceRequest, error) {
-	if len(req.GetMessages()) == 0 {
+	if err := inference.ValidateDecisionDispatchRequest(req); err != nil {
+		return dispatch.DispatchInferenceRequest{}, err
+	}
+	if len(req.GetMessages()) == 0 && req.GetDecision() == nil {
 		return dispatch.DispatchInferenceRequest{}, constants.ErrInferenceMessagesRequired
 	}
 	if req.GetProviderAttemptId() == "" {
@@ -257,6 +262,7 @@ func newDispatchInferenceRequest(req *operatorv1.InferenceDispatchRequest, appID
 	}
 	return dispatch.DispatchInferenceRequest{
 		Role:                    role,
+		Decision:                req.GetDecision(),
 		Messages:                req.GetMessages(),
 		Tools:                   req.GetTools(),
 		Model:                   req.GetModel(),
@@ -379,6 +385,11 @@ func classifyInferenceDispatchError(err error) (int, error) {
 		{constants.ErrInferenceOperatorNotCapable, http.StatusUnprocessableEntity},
 		{constants.ErrInferenceRoleInvalid, http.StatusBadRequest},
 		{constants.ErrInferenceMessagesRequired, http.StatusBadRequest},
+		{constants.ErrInferenceDecisionRequestInvalid, http.StatusBadRequest},
+		{constants.ErrInferenceRequestTooLarge, http.StatusRequestEntityTooLarge},
+		{constants.ErrInferenceDecisionResponseInvalid, http.StatusBadGateway},
+		{constants.ErrInferenceDecisionUnsupported, http.StatusUnprocessableEntity},
+		{constants.ErrInferenceHostedNotAllowed, http.StatusForbidden},
 		{constants.ErrInferenceProviderAttemptRequired, http.StatusBadRequest},
 		{constants.ErrInferenceMessageInvalid, http.StatusBadRequest},
 		{constants.ErrInferenceJSONInvalid, http.StatusBadRequest},

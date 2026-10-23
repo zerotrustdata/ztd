@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -76,7 +77,19 @@ func BuildPublicAssignmentProjection(ctx context.Context, input PublicAssignment
 
 // MarshalPublicAssignmentRecord returns the canonical public assignment record
 // body, combining canonical protobuf JSON with its named public extensions.
+// When the embedded role transcripts push the record past its byte bound they
+// are omitted; the agent trace proof artifact carries them in full.
 func MarshalPublicAssignmentRecord(record *PublicAssignmentRecord) ([]byte, error) {
+	body, err := marshalPublicAssignmentRecord(record)
+	if errors.Is(err, constants.ErrEvidenceArtifactTooLarge) && len(record.Extensions.RoleTranscripts) > 0 {
+		withoutTranscripts := *record
+		withoutTranscripts.Extensions.RoleTranscripts = nil
+		return marshalPublicAssignmentRecord(&withoutTranscripts)
+	}
+	return body, err
+}
+
+func marshalPublicAssignmentRecord(record *PublicAssignmentRecord) ([]byte, error) {
 	if record == nil || record.Projection == nil {
 		return nil, fmt.Errorf("evaluation: marshal public assignment record: %w", constants.ErrMissingRequiredField)
 	}

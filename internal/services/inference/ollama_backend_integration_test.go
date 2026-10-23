@@ -32,30 +32,116 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestOllamaBackend_ReleaseModelUsesGenerateKeepAliveZero(t *testing.T) {
-	var request struct {
-		Model     string          `json:"model"`
-		KeepAlive json.RawMessage `json:"keep_alive"`
-		Stream    bool            `json:"stream"`
-	}
+func TestOllamaBackend_ReleaseModelsVerifiesWholeBatchAfterUnload(t *testing.T) {
+	var requests []string
+	var events []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/ps" {
+			events = append(events, "residency")
+			_, _ = w.Write([]byte(`{"models":[{"name":"unrelated:1b"}]}`))
+			return
+		}
 		require.Equal(t, http.MethodPost, r.Method)
 		require.Equal(t, "/api/generate", r.URL.Path)
+		var request struct {
+			Model     string          `json:"model"`
+			KeepAlive json.RawMessage `json:"keep_alive"`
+			Stream    bool            `json:"stream"`
+		}
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"model":       request.Model,
-			"done":        true,
-			"done_reason": "unload",
-		}))
+		requests = append(requests, request.Model)
+		events = append(events, "release:"+request.Model)
+		assert.JSONEq(t, "0", string(request.KeepAlive))
+		assert.False(t, request.Stream)
+		require.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
 	}))
 	defer server.Close()
 
 	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
 	require.NoError(t, err)
-	require.NoError(t, backend.ReleaseModel(context.Background(), "qwen3:0.6b"))
-	assert.Equal(t, "qwen3:0.6b", request.Model)
-	assert.JSONEq(t, "0", string(request.KeepAlive))
-	assert.False(t, request.Stream)
+	require.NoError(t, backend.ReleaseModels(context.Background(), []string{"qwen3:0.6b", "gemma3:4b"}))
+	assert.Equal(t, []string{"qwen3:0.6b", "gemma3:4b"}, requests)
+	assert.Equal(t, []string{"release:qwen3:0.6b", "release:gemma3:4b", "residency"}, events)
+}
+
+func TestOllamaBackend_ReleaseModelsValidatesEntireBatchBeforeUnload(t *testing.T) {
+	var generateCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/generate" {
+			generateCalls++
+		}
+	}))
+	defer server.Close()
+	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+	require.NoError(t, err)
+	err = backend.ReleaseModels(context.Background(), []string{"qwen3:0.6b", "bad;tag"})
+	assert.ErrorIs(t, err, constants.ErrInferenceModelTagInvalid)
+	assert.Zero(t, generateCalls)
+}
+
+func TestOllamaBackend_ReleaseModelsFailsWhenRequestedModelRemainsResident(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/generate" {
+			var request struct {
+				Model string `json:"model"`
+			}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			require.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
+			return
+		}
+		_, _ = w.Write([]byte(`{"models":[{"name":"qwen3:0.6b"}]}`))
+	}))
+	defer server.Close()
+	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err = backend.ReleaseModels(ctx, []string{"qwen3:0.6b"})
+	assert.ErrorIs(t, err, constants.ErrInferenceModelReleaseFailed)
+}
+
+func TestOllamaBackend_ReleaseModelsWaitsForAsynchronousUnload(t *testing.T) {
+	var residencyReads int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/generate" {
+			var request struct {
+				Model string `json:"model"`
+			}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			require.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
+			return
+		}
+		residencyReads++
+		if residencyReads == 1 {
+			_, _ = w.Write([]byte(`{"models":[{"name":"qwen3:0.6b"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"models":[]}`))
+	}))
+	defer server.Close()
+	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+	require.NoError(t, err)
+	require.NoError(t, backend.ReleaseModels(context.Background(), []string{"qwen3:0.6b"}))
+	assert.Equal(t, 2, residencyReads)
+}
+
+func TestOllamaBackend_ReleaseModelsFailsClosedOnMalformedResidency(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/generate" {
+			var request struct {
+				Model string `json:"model"`
+			}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+			require.NoError(t, json.NewEncoder(w).Encode(ollamaModelReleaseResponse{Model: request.Model, Done: true, DoneReason: "unload"}))
+			return
+		}
+		_, _ = w.Write([]byte(`{"models":[`))
+	}))
+	defer server.Close()
+	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+	require.NoError(t, err)
+	err = backend.ReleaseModels(context.Background(), []string{"qwen3:0.6b"})
+	assert.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
 }
 
 func TestOllamaBackend_GenerateConstructsCorrectChatRequest(t *testing.T) {

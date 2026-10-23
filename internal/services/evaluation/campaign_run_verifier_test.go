@@ -66,7 +66,7 @@ func TestCampaignVerificationBinding_BindsExactVerifiedPopulation(t *testing.T) 
 func TestCampaignRunVerifier_RejectsHomogeneousTargetInSystemRun(t *testing.T) {
 	f := newArchiveFixture(t)
 	createBoundSystemCampaign(t, f, "system-target-test")
-	_, err := f.controller.StartRun(t.Context(), RunStartRequest{ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
+	_, err := f.controller.StartRun(t.Context(), RunStartRequest{Governance: testGovernance, ProviderObservationPolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM, ModelProvenancePolicy: evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 		CampaignID: "system-target-test", RunID: "system-target-run", PlatformRelease: testPlatform.Release, Lane: evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM,
 	})
 	require.NoError(t, err)

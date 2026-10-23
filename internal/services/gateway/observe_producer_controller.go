@@ -119,11 +119,11 @@ func validateProducerRouting(webSessionID, cliSessionID string) error {
 // @Accept			json
 // @Produce		json
 // @Param			payload	body		models.ObserveProducerAgentStateRequest	true	"Agent state update"
-// @Success		200		{string}	string									"accepted"
-// @Failure		400		{string}	string									"Invalid transition, stale update, or missing fields"
+// @Success		200		{object}	models.ObserveProducerResponse			"accepted"
+// @Failure		400		{object}	models.ObserveProducerRejection			"Invalid transition, stale update, or missing fields"
 // @Failure		401		{string}	string									"Unauthorized — mTLS user identity required"
 // @Failure		403		{string}	string									"Forbidden — not an app workload or cross-user"
-// @Failure		500		{string}	string									"Persistence failure"
+// @Failure		500		{object}	models.ObserveProducerRejection			"Persistence failure"
 // @Router			/api/v1/observe/producer/agent-state [post]
 func (c *ObserveProducerController) handleAgentState(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -165,7 +165,7 @@ func (c *ObserveProducerController) handleAgentState(w http.ResponseWriter, r *h
 		ObservedAt:    req.ObservedAt,
 	}
 	if err := c.producerSvc.UpdateAgentState(r.Context(), userID, route, payload); err != nil {
-		c.mapProducerError(w, err, "agent state")
+		c.rejectProducerRequest(w, r.URL.Path, err)
 		return
 	}
 	c.responder.JSON(w, http.StatusOK, models.ObserveProducerResponse{Accepted: true})
@@ -177,16 +177,16 @@ func (c *ObserveProducerController) handleAgentState(w http.ResponseWriter, r *h
 // app.run.status.updated SSE event (persist-before-publish).
 //
 // @Summary		Push observe run state
-// @Description	Accepts a typed run state update from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the run state projection, and emits an app.run.status.updated SSE event after successful persistence.
+// @Description	Accepts a typed run state update from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the run state projection, and emits an app.run.status.updated SSE event after successful persistence. A request naming reopens replaces exactly that terminal projected status with a non-terminal one; it is a producer repair for a projection its local store contradicts.
 // @Tags			observe
 // @Accept			json
 // @Produce		json
 // @Param			payload	body		models.ObserveProducerRunStateRequest	true	"Run state update"
-// @Success		200		{string}	string									"accepted"
-// @Failure		400		{string}	string									"Invalid transition, stale update, or missing fields"
+// @Success		200		{object}	models.ObserveProducerResponse			"accepted"
+// @Failure		400		{object}	models.ObserveProducerRejection			"Invalid transition, stale update, or missing fields"
 // @Failure		401		{string}	string									"Unauthorized — mTLS user identity required"
 // @Failure		403		{string}	string									"Forbidden — not an app workload or cross-user"
-// @Failure		500		{string}	string									"Persistence failure"
+// @Failure		500		{object}	models.ObserveProducerRejection			"Persistence failure"
 // @Router			/api/v1/observe/producer/run-state [post]
 func (c *ObserveProducerController) handleRunState(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -229,8 +229,13 @@ func (c *ObserveProducerController) handleRunState(w http.ResponseWriter, r *htt
 		EndedAt:        req.EndedAt,
 		ObservedAt:     req.ObservedAt,
 	}
-	if err := c.producerSvc.UpdateRunState(r.Context(), userID, route, payload); err != nil {
-		c.mapProducerError(w, err, "run state")
+	if req.Reopens != "" {
+		err = c.producerSvc.ReopenRunState(r.Context(), userID, route, payload, req.Reopens)
+	} else {
+		err = c.producerSvc.UpdateRunState(r.Context(), userID, route, payload)
+	}
+	if err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
 		return
 	}
 	c.responder.JSON(w, http.StatusOK, models.ObserveProducerResponse{Accepted: true})
@@ -248,11 +253,11 @@ func (c *ObserveProducerController) handleRunState(w http.ResponseWriter, r *htt
 // @Accept			json
 // @Produce		json
 // @Param			payload	body		models.ObserveProducerStopRequest	true	"Stop request"
-// @Success		200		{string}	string								"accepted"
-// @Failure		400		{string}	string								"Invalid stop reason or scope, or missing campaign_id or run_id"
+// @Success		200		{object}	models.ObserveProducerResponse		"accepted"
+// @Failure		400		{object}	models.ObserveProducerRejection		"Invalid stop reason or scope, or missing campaign_id or run_id"
 // @Failure		401		{string}	string								"Unauthorized — mTLS user identity required"
 // @Failure		403		{string}	string								"Forbidden — not an app workload or cross-user"
-// @Failure		500		{string}	string								"Persistence failure"
+// @Failure		500		{object}	models.ObserveProducerRejection		"Persistence failure"
 // @Router			/api/v1/observe/producer/stop [post]
 func (c *ObserveProducerController) handleStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -283,52 +288,30 @@ func (c *ObserveProducerController) handleStop(w http.ResponseWriter, r *http.Re
 	}
 	route := buildProducerRoute(userID, req.WebSessionID, req.CLISessionID)
 	if err := c.producerSvc.RequestStop(r.Context(), userID, route, "", req.CampaignID, req.RunID, req.StopReason, req.StopScope); err != nil {
-		c.mapProducerError(w, err, "stop request")
+		c.rejectProducerRequest(w, r.URL.Path, err)
 		return
 	}
 	c.responder.JSON(w, http.StatusOK, models.ObserveProducerResponse{Accepted: true})
 }
 
-// mapProducerError maps a typed observe producer error to the correct HTTP
-// status code. Invalid transitions, stale updates, missing required fields,
-// and payload validation failures are 400. Cross-user ownership violations
-// (agent or run) are 403 with the same non-disclosing response so the HTTP
-// boundary does not reveal record existence. Route validation errors
-// (missing session) are 400. Persistence and SSE emission failures are 500.
-func (c *ObserveProducerController) mapProducerError(w http.ResponseWriter, err error, op string) {
-	switch {
-	case errors.Is(err, constants.ErrObserveInvalidTransition),
-		errors.Is(err, constants.ErrObserveStaleUpdate),
-		errors.Is(err, constants.ErrObserveAgentIDRequired),
-		errors.Is(err, constants.ErrObserveRunIDRequired),
-		errors.Is(err, constants.ErrObserveObservedAtRequired),
-		errors.Is(err, constants.ErrObserveUnsupportedSchemaVersion),
-		errors.Is(err, constants.ErrObserveAgentDisplayNameRequired),
-		errors.Is(err, constants.ErrObserveAgentRoleRequired),
-		errors.Is(err, constants.ErrObserveRunDisplayNameRequired),
-		errors.Is(err, constants.ErrObserveRunKindRequired),
-		errors.Is(err, constants.ErrObserveNegativeTaskCount),
-		errors.Is(err, constants.ErrObserveCompletedExceedsTotal),
-		errors.Is(err, constants.ErrObserveEndBeforeStart),
-		errors.Is(err, constants.ErrGatewaySSERouteUserIDRequired),
-		errors.Is(err, constants.ErrGatewaySSERouteSessionRequired),
-		errors.Is(err, constants.ErrGatewaySSERouteSessionMutuallyExclusive):
-		c.rejectProducerRequest(w, op, err)
-	case errors.Is(err, constants.ErrObserveAgentNotFound),
-		errors.Is(err, constants.ErrObserveRunNotFound):
-		// The response is deliberately non-disclosing; the reason stays in the log.
-		c.logger.Warn("observe producer: request forbidden", "operation", op, "error", err)
-		c.responder.Error(w, http.StatusForbidden, constants.ErrForbidden.Error())
-	default:
-		c.logger.Error("observe producer: "+op+" failed", "error", err)
-		c.responder.Error(w, http.StatusInternalServerError, constants.ErrInternal.Error())
-	}
-}
-
-// rejectProducerRequest answers 400 and logs the rejection reason. The reason
-// is returned to the caller, but a caller that treats the status as best-effort
-// never surfaces it, so the Gateway records it too.
+// rejectProducerRequest answers a failed producer request with a typed
+// models.ObserveProducerRejection and logs the full error, since a caller that
+// treats the status as best-effort never surfaces it. Cross-user ownership
+// misses (agent or run) are 403 forbidden without detail, so the boundary does
+// not reveal record existence. An unclassified failure (persistence, SSE
+// emission) is 500 internal. Every other rejection is 400.
 func (c *ObserveProducerController) rejectProducerRequest(w http.ResponseWriter, operation string, err error) {
+	if errors.Is(err, constants.ErrObserveAgentNotFound) || errors.Is(err, constants.ErrObserveRunNotFound) {
+		c.logger.Warn("observe producer: request forbidden", "operation", operation, "error", err)
+		c.responder.JSON(w, http.StatusForbidden, models.NewObserveProducerRejection(constants.ErrForbidden))
+		return
+	}
+	rejection := models.NewObserveProducerRejection(err)
+	if rejection.Code == models.ObserveProducerRejectionInternal {
+		c.logger.Error("observe producer: request failed", "operation", operation, "error", err)
+		c.responder.JSON(w, http.StatusInternalServerError, rejection)
+		return
+	}
 	c.logger.Warn("observe producer: request rejected", "operation", operation, "error", err)
-	c.responder.Error(w, http.StatusBadRequest, err.Error())
+	c.responder.JSON(w, http.StatusBadRequest, rejection)
 }

@@ -29,6 +29,7 @@ type HealthController struct {
 	responder         *response.Writer
 	isReady           func() bool
 	isGovernanceReady func(context.Context) bool
+	consensusHealth   func(context.Context) models.HealthConsensus
 }
 
 // HealthControllerDeps groups all dependencies for HealthController.
@@ -40,6 +41,7 @@ type HealthControllerDeps struct {
 	Responder         *response.Writer
 	IsReady           func() bool
 	IsGovernanceReady func(context.Context) bool
+	ConsensusHealth   func(context.Context) models.HealthConsensus
 }
 
 func newHealthController(d HealthControllerDeps) *HealthController {
@@ -51,7 +53,18 @@ func newHealthController(d HealthControllerDeps) *HealthController {
 		responder:         d.Responder,
 		isReady:           d.IsReady,
 		isGovernanceReady: d.IsGovernanceReady,
+		consensusHealth:   d.ConsensusHealth,
 	}
+}
+
+// consensusSummary returns the /health consensus block, or the zero value when
+// no consensus readiness source is wired (for example in a bootstrap-only test
+// controller).
+func (c *HealthController) consensusSummary(ctx context.Context) models.HealthConsensus {
+	if c.consensusHealth == nil {
+		return models.HealthConsensus{}
+	}
+	return c.consensusHealth(ctx)
 }
 
 // @Summary		Landing page
@@ -108,7 +121,9 @@ func (c *HealthController) handleHealth(w http.ResponseWriter, r *http.Request) 
 		PID:             os.Getpid(),
 		GovernanceReady: c.isGovernanceReady != nil && c.isGovernanceReady(r.Context()),
 		Posture:         c.cfg.Gateway.Posture,
+		A2AIngress:      c.cfg.Gateway.A2AIngressEnabled(),
 		StateMerkleRoot: root,
+		Consensus:       c.consensusSummary(r.Context()),
 	})
 }
 
@@ -132,6 +147,8 @@ func (c *HealthController) handleBootstrapHealth(w http.ResponseWriter, r *http.
 		PID:             os.Getpid(),
 		GovernanceReady: c.isGovernanceReady != nil && c.isGovernanceReady(r.Context()),
 		Posture:         c.cfg.Gateway.Posture,
+		A2AIngress:      c.cfg.Gateway.A2AIngressEnabled(),
+		Consensus:       c.consensusSummary(r.Context()),
 	})
 }
 

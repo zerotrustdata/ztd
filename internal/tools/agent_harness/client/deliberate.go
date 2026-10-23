@@ -18,6 +18,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/protocol"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 )
 
@@ -39,13 +40,14 @@ func (c *Client) Deliberate(ctx context.Context, p Persona, env *commonv1.Govern
 	if !binding.Enabled || models.ValidateConsensusEndpoint(binding.EndpointURL) != nil {
 		return nil, fmt.Errorf("deliberate: binding endpoint: %w: %w", constants.ErrIngressL2DeliberationFailed, constants.ErrConsensusEndpointInvalid)
 	}
+	appClient, err := c.consensusAppClient(binding.PrimaryAppID())
+	if err != nil {
+		return nil, fmt.Errorf("deliberate: application identity: %w: %w", constants.ErrIngressL2DeliberationFailed, err)
+	}
 	wire, err := proto.Marshal(env)
 	if err != nil {
 		return nil, fmt.Errorf("deliberate: marshal envelope: %w: %w", constants.ErrIngressL2DeliberationFailed, err)
 	}
-	// The application receives the envelope, not the Gateway's session headers.
-	// A redirect must not send it to a different endpoint or downgrade TLS.
-	appClient := httpclient.WithoutRedirects(c.http, constants.ErrConsensusEndpointInvalid)
 	status, raw, err = c.doWithClient(ctx, Persona{ID: p.ID, UserAgent: p.UserAgent}, http.MethodPost, binding.EndpointURL, wire, appClient, "application/x-protobuf", false)
 	if err != nil {
 		return nil, fmt.Errorf("deliberate: post envelope: %w: %w", constants.ErrIngressL2DeliberationFailed, err)
@@ -67,4 +69,23 @@ func (c *Client) Deliberate(ctx context.Context, p Persona, env *commonv1.Govern
 		return nil, fmt.Errorf("deliberate: envelope carries no L2 votes: %w", constants.ErrIngressL2DeliberationFailed)
 	}
 	return l2, nil
+}
+
+// consensusAppClient builds the HTTPS client for the bound primary application
+// appID. Like the Gateway's own deliberator, it authenticates the application
+// by its Gateway-issued SPIFFE identity against the Operator identity's trust
+// anchors, since application certificates carry no DNS name. It presents no
+// client certificate: the application receives the envelope, not the
+// harness's Gateway identity or session headers. A redirect must not send the
+// envelope to a different endpoint or downgrade TLS.
+func (c *Client) consensusAppClient(appID string) (*http.Client, error) {
+	if appID == "" {
+		return nil, constants.ErrConsensusAppNotEnrolled
+	}
+	tlsCfg, err := httpclient.SPIFFEServerTLSConfig(c.roots, protocol.NewWorkloadIdentity().AppSPIFFEID(appID), constants.ErrConsensusAppNotEnrolled)
+	if err != nil {
+		return nil, err
+	}
+	appClient := &http.Client{Timeout: httpclient.DefaultTimeout, Transport: &http.Transport{TLSClientConfig: tlsCfg}}
+	return httpclient.WithoutRedirects(appClient, constants.ErrConsensusEndpointInvalid), nil
 }

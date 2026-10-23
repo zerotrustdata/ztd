@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -85,6 +86,12 @@ type CommandDispatchRequest struct {
 	// waiting for the authoritative terminal completion. Nil disables live
 	// progress forwarding.
 	OnInferenceProgress func(*operatorv1.InferenceProgressEvent) error
+
+	// OnAdmitted runs once the Gateway admitted the envelope (L2 and any L3
+	// proof attached) and before it is published. Observation commands
+	// dispatched under its ctx are bound to that admitted inference and carry
+	// its L2 quorum. An error stops the dispatch before publish.
+	OnAdmitted func(ctx context.Context) error
 }
 
 // CommandDispatchResult is the gateway-agnostic dispatch result. The
@@ -171,6 +178,8 @@ func (s *DispatchService) SetProvenanceObservationNotifier(notifier ProvenanceOb
 
 // DispatchInferenceRequest is the input to DispatchInference. Role and ordered messages are required; optional fields override the Inference Node's config defaults when non-zero/non-empty.
 type DispatchInferenceRequest struct {
+	Decision         *operatorv1.InferenceDecisionRequest
+	TargetOperatorID string
 	// Role is the chat-tier role for this request (primary, assistant, lite).
 	Role models.InferenceModelRole
 
@@ -290,7 +299,7 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	if req.Role == models.InferenceModelRoleUnspecified {
 		return nil, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceRoleInvalid)
 	}
-	if len(req.Messages) == 0 {
+	if len(req.Messages) == 0 && req.Decision == nil {
 		return nil, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceMessagesRequired)
 	}
 	if req.ProviderAttemptID == "" {
@@ -314,6 +323,7 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	// Construct the InferenceRequested proto payload.
 	infReq := &operatorv1.InferenceRequested{
 		Role:                 req.Role.ToProto(),
+		Decision:             req.Decision,
 		Model:                req.Model,
 		Messages:             req.Messages,
 		Tools:                req.Tools,
@@ -342,26 +352,13 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 		Stream:               req.Stream,
 		RetryCount:           req.RetryCount,
 	}
+	if err := inference.ValidateDecisionInference(infReq); err != nil {
+		return nil, fmt.Errorf("inference dispatch: %w", err)
+	}
 	payload, err := proto.Marshal(infReq)
 	if err != nil {
 		return nil, fmt.Errorf("inference dispatch: marshal payload: %w", err)
 	}
-
-	attemptStartedAt := time.Now().UTC().UnixMilli()
-	var observationReceipts []*operatorv1.ActionReceipt
-	var window attemptWindow
-	observationBegin, observed, err := s.notifyObservationBegin(ctx, req, attemptStartedAt)
-	if err != nil {
-		return nil, err
-	}
-	window.observed = observed
-	observationReceipts = appendObservationReceipt(observationReceipts, observationBegin)
-	provenanceBegin, attested, err := s.notifyProvenanceBegin(ctx, req, attemptStartedAt)
-	if err != nil {
-		return nil, s.finalizeFailedAttempt(ctx, req, "", attemptStartedAt, window, observationReceipts, err)
-	}
-	window.provenance = attested
-	observationReceipts = appendObservationReceipt(observationReceipts, provenanceBegin)
 
 	// Dispatch through the gateway's CommandDispatcher. The dispatcher
 	// constructs the GovernanceEnvelope with the gateway's state root and
@@ -370,6 +367,13 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	// request deadline contract (RequestDeadline): it outlives an in-flight
 	// provider call, and its expiry is an unknown remote outcome, not a
 	// clean timeout.
+	//
+	// The attempt begins once the Gateway admits the envelope, just before
+	// publish (beginAttempt). Its observation commands are bound to the
+	// admitted inference and carry its L2 quorum rather than being deliberated
+	// again, so each observer's window opens at the attempt start it records.
+	attempt := attemptState{ctx: ctx}
+	var beginErr error
 	result, err := s.dispatcher.Dispatch(ctx, CommandDispatchRequest{
 		TargetOperatorSessionID: operatorSessionID,
 		EventType:               string(constants.Event.Operator.Inference.Requested),
@@ -383,7 +387,16 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 		CliSessionID:            req.CliSessionID,
 		Timeout:                 RequestDeadline,
 		OnInferenceProgress:     req.OnProgress,
+		OnAdmitted: func(admitted context.Context) error {
+			beginErr = s.beginAttempt(admitted, req, &attempt)
+			return beginErr
+		},
 	})
+	if beginErr != nil {
+		// beginAttempt already finalized whatever window it opened.
+		return nil, beginErr
+	}
+	attemptCtx, attemptStartedAt, window, observationReceipts := attempt.ctx, attempt.startedAt, attempt.window, attempt.receipts
 	if err != nil {
 		if errors.Is(err, constants.ErrDispatchResultTimeout) {
 			// The dispatch deadline expired while the provider call may
@@ -395,25 +408,25 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 				"role", req.Role,
 				"model", req.Model,
 				"error", err)
-			return nil, s.finalizeFailedAttempt(ctx, req, "", attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceOutcomeUnknown))
+			return nil, s.finalizeFailedAttempt(attemptCtx, req, "", attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceOutcomeUnknown))
 		}
-		return nil, s.finalizeFailedAttempt(ctx, req, "", attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w", err))
+		return nil, s.finalizeFailedAttempt(attemptCtx, req, "", attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w", err))
 	}
 
 	// Decode the InferenceResult from the result envelope's payload.
 	if len(result.ResultPayload) == 0 {
-		return nil, s.finalizeFailedAttempt(ctx, req, result.TransactionID, attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceResultDecode))
+		return nil, s.finalizeFailedAttempt(attemptCtx, req, result.TransactionID, attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w", constants.ErrInferenceResultDecode))
 	}
 	infResult := &operatorv1.InferenceResult{}
 	if err := proto.Unmarshal(result.ResultPayload, infResult); err != nil {
-		return nil, s.finalizeFailedAttempt(ctx, req, result.TransactionID, attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w: %w", constants.ErrInferenceResultDecode, err))
+		return nil, s.finalizeFailedAttempt(attemptCtx, req, result.TransactionID, attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w: %w", constants.ErrInferenceResultDecode, err))
 	}
 	if err := validateInferenceResult(infResult, req); err != nil {
-		return nil, s.finalizeFailedAttempt(ctx, req, result.TransactionID, attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w", err))
+		return nil, s.finalizeFailedAttempt(attemptCtx, req, result.TransactionID, attemptStartedAt, window, observationReceipts, fmt.Errorf("inference dispatch: %w", err))
 	}
 
 	failed := result.Receipt != nil && result.Receipt.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
-	finalized, err := s.finalizeAttempt(ctx, req, result.TransactionID, attemptStartedAt, failed, window)
+	finalized, err := s.finalizeAttempt(attemptCtx, req, result.TransactionID, attemptStartedAt, failed, window)
 	if err != nil {
 		return nil, WithObservationReceipts(append(observationReceipts, finalized...), err)
 	}
@@ -440,6 +453,38 @@ func appendObservationReceipt(receipts []*operatorv1.ActionReceipt, receipt *ope
 		return receipts
 	}
 	return append(receipts, receipt)
+}
+
+// attemptState is one attempt as beginAttempt opened it. ctx is the admitted
+// ctx its observation commands ran under; FINALIZE runs under it too, so it
+// carries the same parent binding as BEGIN. Before admission it is the request
+// ctx and nothing is open.
+type attemptState struct {
+	ctx       context.Context
+	startedAt int64
+	window    attemptWindow
+	receipts  []*operatorv1.ActionReceipt
+}
+
+// beginAttempt opens the attempt's observation windows under the admitted ctx.
+// A provider-boundary BEGIN failure opens nothing; a provenance BEGIN failure
+// finalizes the provider-boundary window it follows.
+func (s *DispatchService) beginAttempt(ctx context.Context, req DispatchInferenceRequest, attempt *attemptState) error {
+	attempt.ctx = ctx
+	attempt.startedAt = time.Now().UTC().UnixMilli()
+	observationBegin, observed, err := s.notifyObservationBegin(ctx, req, attempt.startedAt)
+	if err != nil {
+		return err
+	}
+	attempt.window.observed = observed
+	attempt.receipts = appendObservationReceipt(attempt.receipts, observationBegin)
+	provenanceBegin, attested, err := s.notifyProvenanceBegin(ctx, req, attempt.startedAt)
+	if err != nil {
+		return s.finalizeFailedAttempt(ctx, req, "", attempt.startedAt, attempt.window, attempt.receipts, err)
+	}
+	attempt.window.provenance = attested
+	attempt.receipts = appendObservationReceipt(attempt.receipts, provenanceBegin)
+	return nil
 }
 
 // attemptWindow records which observation coordinators opened a BEGIN window
@@ -624,6 +669,9 @@ func validateCampaignModelRegistry(req DispatchInferenceRequest) error {
 // request identity and carries internally consistent usage, timing and evidence
 // fields. Any mismatch fails closed.
 func validateInferenceResult(result *operatorv1.InferenceResult, req DispatchInferenceRequest) error {
+	if err := models.ValidateDecisionCompletion(req.Decision, result); err != nil {
+		return err
+	}
 	if result.GetModel() == "" || result.GetRequestedModel() == "" {
 		return constants.ErrInferenceProviderResponseInvalid
 	}
@@ -702,7 +750,8 @@ func validateInferenceResult(result *operatorv1.InferenceResult, req DispatchInf
 // from the requestor's enrolled operators. With an explicit
 // TargetOperatorSessionID the target must appear in the requestor's
 // operator list (ownership) and carry inference capability; without one,
-// exactly one inference-capable session must exist. Terminated operators
+// exactly one inference-capable session must exist, where dedicated
+// Operators take precedence over the embedded fallback. Terminated operators
 // are never selectable, and neither is any Operator whose status is not active:
 // the Gateway moves an Operator with no heartbeat for over a minute to stale,
 // so a stale, stopped, or offline session cannot take or contest a dispatch.
@@ -717,12 +766,41 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 	}
 
 	capable := func(op *operatorv1.OperatorDocument) bool {
+		if req.Decision != nil {
+			if op.GetRuntimeConfig().GetInferenceDecisionBackend() == "" || !slices.Contains(op.GetRuntimeConfig().GetInferenceDecisionModels(), req.Model) {
+				return false
+			}
+			if req.Decision.GetAllowHosted() && !op.GetRuntimeConfig().GetInferenceAllowHostedDecision() {
+				return false
+			}
+		} else if op.GetRuntimeConfig().GetInferenceDecisionOnly() {
+			return false
+		}
 		return op.RuntimeConfig != nil &&
 			operatorcapability.GetOperatorCapabilities(op).Has(constants.OperatorCapabilityInference) &&
 			op.OperatorSessionId != "" &&
 			constants.OperatorStatus(op.Status) == constants.OperatorStatusActive
 	}
 
+	if req.TargetOperatorID != "" {
+		var selected string
+		for _, op := range operators {
+			if op.GetId() != req.TargetOperatorID || !capable(op) {
+				continue
+			}
+			if req.TargetOperatorSessionID != "" && op.GetOperatorSessionId() != req.TargetOperatorSessionID {
+				continue
+			}
+			if selected != "" {
+				return "", constants.ErrInferenceOperatorAmbiguous
+			}
+			selected = op.GetOperatorSessionId()
+		}
+		if selected == "" {
+			return "", constants.ErrInferenceOperatorNotFound
+		}
+		return selected, nil
+	}
 	if req.TargetOperatorSessionID != "" {
 		for i := range operators {
 			if operators[i].OperatorSessionId == req.TargetOperatorSessionID {
@@ -738,17 +816,18 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 		return "", constants.ErrInferenceOperatorNotFound
 	}
 
-	var matches []string
+	var matches []*operatorv1.OperatorDocument
 	for i := range operators {
 		if capable(operators[i]) {
-			matches = append(matches, operators[i].OperatorSessionId)
+			matches = append(matches, operators[i])
 		}
 	}
+	matches = operatorcapability.PreferDedicated(matches)
 	switch len(matches) {
 	case 0:
 		return "", constants.ErrInferenceOperatorNotFound
 	case 1:
-		return matches[0], nil
+		return matches[0].OperatorSessionId, nil
 	default:
 		return "", constants.ErrInferenceOperatorAmbiguous
 	}

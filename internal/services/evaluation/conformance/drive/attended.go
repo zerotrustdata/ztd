@@ -74,7 +74,8 @@ func (s bannerStream) Close() {
 }
 
 // Attended wraps the MCP, A2A, governed dispatch or CLI driver. Cases with
-// Attended=false pass through unchanged. The run wraps the drivers only for an
+// Attended=false pass through unchanged; one that suspends (row 22) is reported
+// to the request sink as LEAVE_PENDING. The run wraps the drivers only for an
 // attended run.
 //
 // The approve or deny decision is the human's. The driver never approves or denies
@@ -88,16 +89,38 @@ type Attended struct {
 	persona        client.Persona
 	approverUserID string
 	approvals      approvalSubscriber
+	requests       RequestSink
 }
 
+// RequestSink receives the typed approval request for each case that suspends a
+// transaction, in case order, before the driver waits on it.
+type RequestSink func(*evalv1.ConformanceApprovalRequest)
+
 // NewAttended wraps inner. The approval stream is the client's SubscribeApprovals.
-func NewAttended(inner cases.Driver, c *client.Client, p client.Persona, approverUserID string) *Attended {
+// A nil requests sink reports nothing beyond the human banner.
+func NewAttended(inner cases.Driver, c *client.Client, p client.Persona, approverUserID string, requests RequestSink) *Attended {
 	return &Attended{
 		inner:          inner,
 		persona:        p,
 		approverUserID: approverUserID,
 		approvals:      clientApprovals{c: c},
+		requests:       requests,
 	}
+}
+
+// request reports the decision a's case asks for on txHash, empty when the
+// transaction does not exist yet.
+func (d *Attended) request(a cases.Attempt, decision evalv1.ConformanceApprovalDecision, txHash string) {
+	if d.requests == nil {
+		return
+	}
+	d.requests(&evalv1.ConformanceApprovalRequest{
+		CaseId:    a.Case.ID,
+		AttemptId: a.AttemptID,
+		Ingress:   string(a.Case.Ingress),
+		Decision:  decision,
+		TxHash:    txHash,
+	})
 }
 
 // Drive subscribes to approvals, then submits the attempt through the inner driver.
@@ -110,13 +133,18 @@ func NewAttended(inner cases.Driver, c *client.Client, p client.Persona, approve
 // returns the inner answer: the Gateway answers it only after the human decides.
 func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, error) {
 	if !a.Case.Attended {
-		return d.inner.Drive(ctx, a)
+		driven, err := d.inner.Drive(ctx, a)
+		if err == nil && isSuspendedOnly(driven) {
+			d.request(a, evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_LEAVE_PENDING, driven.Observations[0].GetSuspendedTxHash())
+		}
+		return driven, err
 	}
-	decision := client.ApprovalDecisionApprove
+	decision, requested := client.ApprovalDecisionApprove, evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_APPROVE
 	if a.Case.Fault == cases.FaultAttendedDeny {
-		decision = client.ApprovalDecisionDeny
+		decision, requested = client.ApprovalDecisionDeny, evalv1.ConformanceApprovalDecision_CONFORMANCE_APPROVAL_DECISION_DENY
 	}
 	if blocksUntilDecision(a.Case.Ingress) {
+		d.request(a, requested, "")
 		d.approvals.Announce(decision)
 		driven, err := d.inner.Drive(ctx, a)
 		if err != nil {
@@ -141,6 +169,7 @@ func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 		return driven, nil
 	}
 	txHash := driven.Observations[0].GetSuspendedTxHash()
+	d.request(a, requested, txHash)
 
 	// The inner driver closed its A2A attempt when it returned the suspension. The
 	// Gateway calls the stub only after the approval, so the attempt is reopened for
@@ -166,10 +195,11 @@ func (d *Attended) Drive(ctx context.Context, a cases.Attempt) (cases.Driven, er
 
 // blocksUntilDecision reports whether the ingress holds a suspended mutation open
 // until a human decides, instead of answering with a suspension: governed HTTP
-// dispatch (both executors) and the CLI, which posts to the same route.
+// dispatch (both executors), the CLI, which posts to the same route, and the MCP
+// stdio bridge, which waits for the decision itself before it answers the call.
 func blocksUntilDecision(ingress cases.Ingress) bool {
 	switch ingress {
-	case cases.IngressDispatchEmbedded, cases.IngressDispatchOutbound, cases.IngressCLI:
+	case cases.IngressDispatchEmbedded, cases.IngressDispatchOutbound, cases.IngressCLI, cases.IngressMCPStdio:
 		return true
 	default:
 		return false
@@ -180,10 +210,10 @@ func blocksUntilDecision(ingress cases.Ingress) bool {
 // rejection (the L3_DENIED deny) is a REJECTION, as every ingress reports one; any
 // other receipt is a RECEIPT.
 func decisionObservation(receipt *operatorv1.ActionReceipt) *evalv1.ConformanceObservation {
-	if governance.IsGovernanceRejectionReceipt(receipt) {
+	if rejection := governance.ReceiptRejection(receipt); rejection != nil {
 		return &evalv1.ConformanceObservation{
 			Kind:      evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_REJECTION,
-			Rejection: &operatorv1.GovernanceRejection{Error: receipt.GetRejectionCode().String(), Receipt: receipt},
+			Rejection: rejection,
 		}
 	}
 	return &evalv1.ConformanceObservation{

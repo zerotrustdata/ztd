@@ -46,6 +46,7 @@ func Cmd() *cobra.Command {
 		testSummaryCmd(),
 		releaseSmokeCmd(),
 		testEvalLoopCmd(),
+		testConformanceLoopCmd(),
 	)
 
 	return cmd

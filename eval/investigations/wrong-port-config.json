@@ -47,7 +47,10 @@
       }
     ],
     "governed_probe": {
-      "command": "sh ./check.sh"
+      "command": "sh",
+      "args": [
+        "./check.sh"
+      ]
     },
     "answer_concepts": {
       "required": [

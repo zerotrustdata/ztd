@@ -3,8 +3,8 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/
@@ -62,7 +62,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-TROUBLE-ENV-01 | CLI commands MUST be run from the checkout root. Running from a subdirectory resolves a different `.ztd/` runtime tree. |
-| INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.27.2). |
+| INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.27.3). |
 | INV-TROUBLE-ENV-03 | A newly built binary MUST be produced with `make build`, which compiles `cmd/ztd` and places the runnable executable at `./ztd`. |
 | INV-TROUBLE-ENV-04 | Every `./ztd` command loads `.env` from the working directory before it runs (`config.LoadEnvFile`). When every command exits before running with an `.env` error, fix the file rather than the command: on Linux and macOS it MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`, fix with `chmod 600 .env`), and every line MUST be `KEY=VALUE` (`ErrEnvFileMalformed`) naming a `secret` or `user_endpoint` key from `protocol/constants/env_vars.json` (`ErrEnvFileUnknownKey`). Platform configuration MUST go in command flags, never `.env`. |
 
@@ -92,14 +92,14 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-TROUBLE-OP-01 | Outbound Operators connect strictly outbound over mTLS to the Gateway (`cmd:<operator_id>:<operator_session_id>`) and expose NO inbound listening ports. To diagnose an unreachable Operator, check Gateway mTLS port reachability, local CA bundle integrity, and platform enrollment approval status. |
-| INV-TROUBLE-OP-02 | Governance rejections at L1, L2, L3, or L4 fail closed. Diagnostic investigations MUST inspect error codes in audit receipts (`ztd audit receipts`, `ztd audit events`; stored under `.ztd/data/`) and state roots before altering configuration or attempting re-execution. |
+| INV-TROUBLE-OP-02 | Governance rejections at L1, L2, L3, or L4 fail closed. Diagnostic investigations MUST inspect error codes in event receipts (`ztd audit event-receipts`, `ztd audit events`, and `ztd audit votes --tx` for an L2 quorum rejection; stored under `.ztd/data/`) and state roots before altering configuration or attempting re-execution. |
 | INV-TROUBLE-OP-03 | `ztd operator start` and `ztd operator reset-identity` refuse a working directory whose runtime tree holds the Gateway root CA (`constants.GatewayRuntimeMarker`); `operator start` fails with `ErrOperatorGatewayRuntime`. Each executing runtime owns its own audit store and state root, so an outbound Operator on the Gateway host MUST run with `--working-dir` set to a separate directory. |
 
 ## Owned surfaces
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
-| Go version requirement | `go.mod` | `go 1.27.2` |
+| Go version requirement | `go.mod` | `go 1.27.3` |
 | Platform build target | `Makefile`, `cmd/ztd` | `make build` |
 | Gateway launch profile | `internal/cli/serve/launch_profile.go` | `.ztd/pids/operator-launch-profile.json` |
 | Vault key path | `internal/constants/paths.go` | `SecretsDirname`/`SecretsFileVaultKey` (`secrets/vault_key`) |
@@ -142,6 +142,8 @@ make proto-generate
 ./ztd gw stop
 ./ztd gw start --follow --log debug
 ```
+
+`./ztd gw status` prints a `Consensus` row that describes the bound L2 consensus and the posture the Gateway reports. Start the Gateway and each Operator against a new runtime root rather than one left by an earlier release: an existing `.ztd/data/ztd.db` is not altered, because the `CREATE TABLE` statements are the whole schema (`INV-STOR-SCHEMA-01` in [Developer Guidelines](devs.md)).
 
 ### Gateway CPU and Memory Profiling
 
@@ -213,14 +215,26 @@ Run `./ztd operator show` with an operator ID or operator session ID from the `l
 ### Governance Pipeline Diagnosis
 
 ```bash
-# Query recent audit receipts to identify rejection layers (L1-L4):
-./ztd audit receipts
+# Query recent event receipts to identify rejection layers (L1-L4):
+./ztd audit event-receipts
 
 # List the most recent raw audit events:
 ./ztd audit events --limit 20
 ```
 
 Filter receipts with `--session` set to the Operator session ID, or fetch one canonical receipt with `--tx-id`.
+
+When an L2 quorum rejects a transaction, inspect the bound consensus and each member's recorded vote:
+
+```bash
+# Show the bound L2 consensus, signer readiness, and posture
+./ztd consensus status
+
+# Show every recorded L2 member vote on one governed transaction
+./ztd audit votes --tx <tx-id>
+```
+
+Members are bound with `./ztd consensus enroll`.
 
 ## Anti-patterns
 
@@ -231,6 +245,7 @@ Filter receipts with `--session` set to the Operator session ID, or fetch one ca
 - Running `auth refresh` against a revoked certificate instead of clearing local credentials and logging in again (`INV-TROUBLE-AUTH-04`).
 - Attempting to connect inbound to an outbound Operator, or configuring inbound firewall ports for an Operator (`INV-TROUBLE-OP-01`).
 - Bypassing the L1–L5 pipeline when an envelope is rejected instead of diagnosing root causes from audit receipts (`INV-TROUBLE-OP-02`).
+- Reusing a runtime root from an earlier release for the Gateway or an Operator, relying on a schema that is never migrated (`INV-STOR-SCHEMA-01` in [Developer Guidelines](devs.md)).
 
 ## Links out
 

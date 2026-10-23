@@ -67,13 +67,20 @@ CLI certificate signature with --cli.
 By default, the CLI opens the Gateway approval page and waits for its completion event. With
 --cli, it signs the transaction hash using the enrolled CLI certificate and submits the signature
 over mTLS. Both flows require enrolled CLI credentials. The --cli flow waits for the final
-execution receipt and allows the governed inference request deadline for that response.`,
+execution receipt and allows the governed inference request deadline for that response.
+
+With --deny, the enrolled CLI session denies the transaction over mTLS instead, and the command
+prints the Operator-signed L3_DENIED rejection receipt that ends it.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			txHash := args[0]
 			cliApproval, err := cmd.Flags().GetBool("cli")
 			if err != nil {
 				return fmt.Errorf("approve: read CLI approval flag: %w", err)
+			}
+			deny, err := cmd.Flags().GetBool("deny")
+			if err != nil {
+				return fmt.Errorf("approve: read deny flag: %w", err)
 			}
 			cfg, err := configLoader("")
 			if err != nil {
@@ -93,6 +100,9 @@ execution receipt and allows the governed inference request deadline for that re
 			ctx := cmd.Context()
 			if ctx == nil {
 				ctx = context.Background()
+			}
+			if deny {
+				return denyWithCLI(cmd, client, txHash)
 			}
 			if cliApproval {
 				return approveWithCLI(cmd, fileSvc, cfg, client, txHash)
@@ -122,8 +132,35 @@ execution receipt and allows the governed inference request deadline for that re
 		},
 	}
 	cmd.Flags().Bool("cli", false, "sign the transaction hash with the enrolled CLI certificate")
+	cmd.Flags().Bool("deny", false, "deny the transaction from the enrolled CLI session instead of approving it")
+	cmd.MarkFlagsMutuallyExclusive("cli", "deny")
 
 	return cmd
+}
+
+// denyWithCLI denies txHash from the enrolled CLI session. The Gateway grounds
+// the deny in the mTLS session and answers with the Operator-signed L3_DENIED
+// rejection, which must name the denied transaction.
+func denyWithCLI(cmd *cobra.Command, client APIClient, txHash string) error {
+	resp, err := client.Post(constants.APIPaths.ApprovalsRespond, models.ApprovalRespondRequest{
+		ApprovalID: txHash,
+		Approved:   false,
+	})
+	if err != nil {
+		return fmt.Errorf("approve: submit CLI deny: %w", err)
+	}
+	var receipt operatorv1.ActionReceipt
+	if err := protojson.Unmarshal(resp, &receipt); err != nil {
+		return fmt.Errorf("approve: parse CLI deny receipt: %w", err)
+	}
+	if receipt.GetTransactionHash() != txHash {
+		return fmt.Errorf("approve: deny receipt transaction hash %q does not match requested hash: %w", receipt.GetTransactionHash(), constants.ErrTxTransactionHashMismatch)
+	}
+	if receipt.GetRejectionCode() != operatorv1.GovernanceRejectionCode_GOVERNANCE_REJECTION_CODE_L3_DENIED {
+		return fmt.Errorf("approve: transaction %s deny receipt carries rejection %s, want L3_DENIED: %w", txHash, receipt.GetRejectionCode(), constants.ErrValidationFailed)
+	}
+	cmd.Printf("\n✗ Transaction %s denied (signed L3_DENIED receipt)\n", txHash)
+	return nil
 }
 
 func approveWithCLI(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config, client APIClient, txHash string) error {

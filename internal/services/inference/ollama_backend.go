@@ -18,11 +18,13 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -39,6 +41,10 @@ const ProviderRequestTimeout = 5 * time.Minute
 // status request should finish before the generation deadline. Provider
 // availability does not gate Operator startup.
 const ProviderStatusTimeout = 30 * time.Second
+
+// providerUnloadRecheckInterval spaces /api/ps reads while a released model's
+// runner is still stopping.
+const providerUnloadRecheckInterval = 250 * time.Millisecond
 
 // defaultMaxResponseBytes bounds every response body read from the remote
 // provider. A streaming chat response contains the full generated output;
@@ -180,6 +186,7 @@ type ollamaTagsResponse struct {
 type ollamaTagModel struct {
 	Name   string `json:"name"`
 	Digest string `json:"digest"`
+	Size   uint64 `json:"size"`
 }
 
 type ollamaModelReleaseRequest struct {
@@ -194,10 +201,59 @@ type ollamaModelReleaseResponse struct {
 	DoneReason string `json:"done_reason"`
 }
 
-// ReleaseModel asks the provider to unload a resident model by sending an
-// empty generate request with keep_alive 0. It fails closed unless the
-// provider confirms the unload for exactly that model.
-func (b *OllamaBackend) ReleaseModel(ctx context.Context, model string) error {
+// ReleaseModels unloads each requested model and then verifies the complete
+// requested set is absent from provider residency. Keeping this postcondition
+// in the same governed operator command prevents consensus inference for a
+// later release or verification command from reloading an earlier model.
+func (b *OllamaBackend) ReleaseModels(ctx context.Context, models []string) error {
+	if len(models) == 0 {
+		return fmt.Errorf("ollama_backend: release models: %w: at least one model is required", constants.ErrInferenceModelTagInvalid)
+	}
+	for _, model := range models {
+		if err := operatorcapability.ValidateServedModelTag(model); err != nil {
+			return fmt.Errorf("ollama_backend: release models: %w", err)
+		}
+	}
+	for _, model := range models {
+		if err := b.releaseModel(ctx, model); err != nil {
+			return err
+		}
+	}
+	return b.awaitModelsAbsent(ctx, models)
+}
+
+// awaitModelsAbsent verifies the released set has left provider residency.
+// Ollama acknowledges keep_alive 0 with done_reason "unload" before its
+// scheduler stops the runner, and it emits no unload event, so /api/ps is the
+// only completion signal. It is re-read until the set is absent or
+// ProviderStatusTimeout elapses.
+func (b *OllamaBackend) awaitModelsAbsent(ctx context.Context, models []string) error {
+	ctx, cancel := context.WithTimeout(ctx, ProviderStatusTimeout)
+	defer cancel()
+	for {
+		residency, err := b.ReadResidency(ctx)
+		if err != nil {
+			return fmt.Errorf("ollama_backend: verify released models absent: %w", err)
+		}
+		resident := ""
+		for _, model := range residency.Models {
+			if slices.Contains(models, model.Name) {
+				resident = model.Name
+				break
+			}
+		}
+		if resident == "" {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("ollama_backend: verify released models absent: %w: model %q remains resident", constants.ErrInferenceModelReleaseFailed, resident)
+		case <-time.After(providerUnloadRecheckInterval):
+		}
+	}
+}
+
+func (b *OllamaBackend) releaseModel(ctx context.Context, model string) error {
 	if model == "" {
 		return fmt.Errorf("ollama_backend: release model: %w", constants.ErrInferenceModelTagInvalid)
 	}

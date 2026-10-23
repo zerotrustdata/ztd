@@ -229,8 +229,8 @@ func ValidateSuiteIdentity(def ScenarioSuite) error {
 	}
 	seen := make(map[string]struct{}, len(def.Scenarios))
 	for i, scenario := range def.Scenarios {
-		if !complianceevidence.ValidPathElement(scenario.ScenarioID) {
-			return suiteInvalid("scenario %d: scenario_id %q must be a single path element", i, scenario.ScenarioID)
+		if err := complianceevidence.ValidatePathElement(scenario.ScenarioID); err != nil {
+			return fmt.Errorf("evaluation: suite definition: %w: scenario %d: scenario_id: %w", constants.ErrEvaluationSuiteInvalid, i, err)
 		}
 		if strings.TrimSpace(scenario.ScenarioVersion) == "" {
 			return suiteInvalid("scenario %s: scenario_version is required", scenario.ScenarioID)

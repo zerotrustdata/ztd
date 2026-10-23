@@ -11,9 +11,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -53,10 +57,48 @@ type conformanceDeps struct {
 	run    func(ctx context.Context, cfg run.Config) (*evalv1.ConformanceRunRecord, error)
 	listen func(addr string) (*drive.A2AStub, error)
 	poster func(fileSvc fs.RuntimeFileService, cfg *config.Config) (cliop.CommandPoster, error)
+	stdio  func(ctx context.Context, cmd *cobra.Command, cfg *config.Config, gwFiles fs.RuntimeFileService) (*drive.MCPStdio, error)
 }
 
 func defaultConformanceDeps() conformanceDeps {
-	return conformanceDeps{run: run.Run, listen: drive.StartA2AStub, poster: defaultConformancePoster}
+	return conformanceDeps{run: run.Run, listen: drive.StartA2AStub, poster: defaultConformancePoster, stdio: startConformanceStdio}
+}
+
+// startConformanceStdio spawns `ztd mcp stdio` from this binary, the bridge an
+// agent's MCP config launches, in the Gateway's project root with the same
+// Gateway endpoint flags. It authenticates with the enrolled CLI identity, as
+// the persona does. Its stderr is appended to the conformance stdio log.
+func startConformanceStdio(ctx context.Context, cmd *cobra.Command, cfg *config.Config, gwFiles fs.RuntimeFileService) (*drive.MCPStdio, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: locate ztd binary: %w", err)
+	}
+	var args []string
+	for _, name := range []string{"endpoint", "port"} {
+		if flag := cmd.Root().PersistentFlags().Lookup(name); flag != nil && flag.Changed {
+			args = append(args, "--"+name, flag.Value.String())
+		}
+	}
+	args = append(args, "mcp", "stdio")
+
+	if err := gwFiles.MkdirAll(ctx, constants.LogDirname, constants.PermDirPrivate); err != nil {
+		return nil, fmt.Errorf("evaluation: create log dir: %w", err)
+	}
+	logFile, err := gwFiles.OpenForAppend(ctx, filepath.Join(constants.LogDirname, constants.ConformanceMCPStdioLogFilename), constants.PermFilePrivate)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: open MCP stdio log: %w", err)
+	}
+	// The child holds its own descriptor once started, so this one closes on return.
+	defer func() { _ = logFile.Close() }()
+
+	bridge := exec.CommandContext(ctx, exe, args...)
+	bridge.Dir = cfg.ProjectRoot
+	bridge.Stderr = logFile
+	stdio, err := drive.StartMCPStdio(ctx, bridge)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: MCP stdio bridge (log %s): %w", gwFiles.Resolve(filepath.Join(constants.LogDirname, constants.ConformanceMCPStdioLogFilename)), err)
+	}
+	return stdio, nil
 }
 
 // conformanceDispatchDeadline bounds one CLI-driven dispatch. Under ratify and notary
@@ -113,9 +155,12 @@ Operator. When several are available, choose one from the list. --operator-id pi
 target for scripts. Outbound runtime roots are discovered from enrollment metadata;
 --operator-root overrides the local path when needed.
 
-Outbound and CLI cases need an outbound Data Operator. A2A cases need a Gateway started
-with --a2a-downstream-url http://<address> and this command's --a2a-stub-listen <address>.
-Missing optional setup is recorded as unavailable coverage, yielding INCOMPLETE.
+The embedded Operator is a complete Data Operator: with it selected, it also executes the
+outbound dispatch and CLI cases, so every ingress runs. A2A ingress is opt-in: a Gateway
+without --a2a-downstream-url exposes none, and its A2A cases are not applicable. A Gateway
+started with
+--a2a-downstream-url http://<address> needs this command's --a2a-stub-listen <address>
+for A2A coverage; without it, A2A cases are recorded as unavailable, yielding INCOMPLETE.
 Unattended INCOMPLETE runs exit zero; failures and invalid evidence always exit non-zero.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -151,11 +196,14 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		opts.approverUserID = authContext.UserID
 	}
 
-	// The posture is read once. Drivers and the run must agree on it, and the
-	// posture is immutable at runtime, so one read is the whole truth.
-	posture, err := gatewayPosture(ctx, gatewayClient)
+	// The posture and A2A ingress are read once. Drivers and the run must agree
+	// on them, and both are immutable at runtime, so one read is the whole truth.
+	posture, a2aIngress, err := gatewayStack(ctx, gatewayClient)
 	if err != nil {
 		return err
+	}
+	if opts.a2aStubListen != "" && !a2aIngress {
+		return fmt.Errorf("evaluation: --a2a-stub-listen needs a Gateway started with --a2a-downstream-url; this Gateway exposes no A2A ingress: %w", constants.ErrEvaluationFlagsInvalid)
 	}
 	embedded, outbound, outboundDoc, err := conformanceTargets(cmd, gatewayClient, opts.operatorID)
 	if err != nil {
@@ -178,12 +226,9 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 	if err != nil {
 		return err
 	}
-	var poster cliop.CommandPoster
-	if outboundDoc != nil {
-		poster, err = deps.conformance.poster(gwFiles, cfg)
-		if err != nil {
-			return err
-		}
+	poster, err := deps.conformance.poster(gwFiles, cfg)
+	if err != nil {
+		return err
 	}
 
 	var stub *drive.A2AStub
@@ -194,6 +239,19 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		}
 		defer func() { err = errors.Join(err, stub.Close(ctx)) }()
 	}
+	stdio, err := deps.conformance.stdio(ctx, cmd, cfg, gwFiles)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, stdio.Close()) }()
+
+	// Under --json an attended run reports each approval it asks for as a typed
+	// line on stderr, so an automated approver can answer it by transaction.
+	var requests *approvalRequestWriter
+	if opts.attended && output.JSONEnabled(cmd) {
+		requests = &approvalRequestWriter{w: cmd.ErrOrStderr()}
+		defer func() { err = errors.Join(err, requests.Err()) }()
+	}
 
 	drivers, sentinel, err := conformanceDrivers(ctx, conformanceSetup{
 		client:         gatewayClient,
@@ -202,18 +260,18 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		embedded:       embedded,
 		outbound:       outbound,
 		stub:           stub,
+		stdio:          stdio,
 		poster:         poster,
 		attended:       opts.attended,
 		approverUserID: opts.approverUserID,
+		requests:       requests.sink(),
 	})
 	if err != nil {
 		return err
 	}
 	unavailable := make(map[cases.Ingress]evalv1.ConformanceObservationKind)
-	for _, ingress := range []cases.Ingress{cases.IngressDispatchOutbound, cases.IngressCLI, cases.IngressA2A} {
-		if drivers[ingress] == nil {
-			unavailable[ingress] = ingress.UnavailableObservation()
-		}
+	if a2aIngress && drivers[cases.IngressA2A] == nil {
+		unavailable[cases.IngressA2A] = cases.IngressA2A.UnavailableObservation()
 	}
 	if !output.JSONEnabled(cmd) {
 		if err := writeConformanceSetup(cmd.ErrOrStderr(), outboundDoc, unavailable); err != nil {
@@ -232,6 +290,7 @@ func runConformance(cmd *cobra.Command, deps nativeEvalDeps, opts conformanceRun
 		Sentinel:    sentinel,
 		Roots:       roots,
 		Posture:     func(context.Context) (evalv1.EvaluationGovernancePosture, error) { return posture, nil },
+		A2AIngress:  a2aIngress,
 		Recorder:    gatewayClient.Record,
 		Attended:    opts.attended,
 		Now:         deps.now,
@@ -325,18 +384,19 @@ Each run is verified from its stored bytes before it enters the report. At most 
 	return command
 }
 
-// gatewayPosture reads the Gateway's governance posture from its health. An
-// unknown posture is ErrConformancePostureUnknown.
-func gatewayPosture(ctx context.Context, client *harnessclient.Client) (evalv1.EvaluationGovernancePosture, error) {
-	health, _, err := client.Health(ctx)
+// gatewayStack reads the Gateway's governance posture and whether it exposes
+// A2A ingress from one health read. An unknown posture is
+// ErrConformancePostureUnknown.
+func gatewayStack(ctx context.Context, client *harnessclient.Client) (evalv1.EvaluationGovernancePosture, bool, error) {
+	health, err := gatewayHealth(ctx, client)
 	if err != nil {
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fmt.Errorf("evaluation: read gateway health: %w", err)
+		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, false, err
 	}
 	posture, err := cases.WirePosture(health.Posture)
 	if err != nil {
-		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, fmt.Errorf("evaluation: gateway posture: %w", err)
+		return evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED, false, fmt.Errorf("evaluation: gateway posture: %w", err)
 	}
-	return posture, nil
+	return posture, health.A2AIngress, nil
 }
 
 // conformanceTargets selects the Gateway's embedded session and, when selected,
@@ -426,16 +486,58 @@ type conformanceSetup struct {
 	embedded       cliop.Target
 	outbound       cliop.Target
 	stub           *drive.A2AStub
+	stdio          *drive.MCPStdio
 	poster         cliop.CommandPoster
 	attended       bool
 	approverUserID string
+	// requests receives each attended approval request; nil reports none.
+	requests drive.RequestSink
+}
+
+// approvalRequestWriter prints each approval request as one canonical JSON line.
+// The first write failure is kept and returned by Err.
+type approvalRequestWriter struct {
+	mu  sync.Mutex
+	w   io.Writer
+	err error
+}
+
+// sink is the writer as a request sink; a nil writer is a nil sink.
+func (rw *approvalRequestWriter) sink() drive.RequestSink {
+	if rw == nil {
+		return nil
+	}
+	return rw.write
+}
+
+func (rw *approvalRequestWriter) write(req *evalv1.ConformanceApprovalRequest) {
+	rw.mu.Lock()
+	defer rw.mu.Unlock()
+	if rw.err != nil {
+		return
+	}
+	body, err := evalv1.MarshalCanonical(req)
+	if err != nil {
+		rw.err = fmt.Errorf("evaluation: canonicalize approval request %s: %w", req.GetAttemptId(), err)
+		return
+	}
+	if _, err := fmt.Fprintln(rw.w, string(body)); err != nil {
+		rw.err = fmt.Errorf("evaluation: write approval request %s: %w", req.GetAttemptId(), err)
+	}
+}
+
+// Err is the first write failure.
+func (rw *approvalRequestWriter) Err() error {
+	rw.mu.Lock()
+	defer rw.mu.Unlock()
+	return rw.err
 }
 
 // conformanceDrivers builds one driver per ingress and the sentinel. The L2 source
 // follows the posture. The bound app deliberates under consensus and notary, and a
 // synthetic proof stands in under doctrine and ratify. Attended runs wrap every
-// driver whose ingress a human approval resumes: MCP, A2A, governed dispatch and
-// the CLI.
+// driver whose ingress a human approval resumes: MCP, MCP stdio, A2A, governed
+// dispatch and the CLI.
 func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingress]cases.Driver, *drive.Sentinel, error) {
 	posture, err := cases.GovernancePosture(s.posture)
 	if err != nil {
@@ -458,10 +560,13 @@ func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingr
 	if err != nil {
 		return nil, nil, fmt.Errorf("evaluation: direct driver: %w", err)
 	}
-	targets := map[cases.Executor]cliop.Target{cases.ExecutorEmbedded: s.embedded}
-	if s.outbound.OperatorSessionID != "" {
-		targets[cases.ExecutorOutbound] = s.outbound
+	// The outbound role is the selected Data Operator, which is the embedded
+	// Operator when no outbound one is selected.
+	data := s.outbound
+	if data.OperatorSessionID == "" {
+		data = s.embedded
 	}
+	targets := map[cases.Executor]cliop.Target{cases.ExecutorEmbedded: s.embedded, cases.ExecutorOutbound: data}
 	dispatch, err := drive.NewDispatch(s.client, s.persona, targets)
 	if err != nil {
 		return nil, nil, fmt.Errorf("evaluation: dispatch driver: %w", err)
@@ -476,33 +581,38 @@ func conformanceDrivers(ctx context.Context, s conformanceSetup) (map[cases.Ingr
 	}
 	var mcpIngress cases.Driver = mcpDriver
 	if s.attended {
-		mcpIngress = drive.NewAttended(mcpDriver, s.client, s.persona, s.approverUserID)
+		mcpIngress = drive.NewAttended(mcpDriver, s.client, s.persona, s.approverUserID, s.requests)
 	}
 	var dispatchIngress cases.Driver = dispatch
 	if s.attended {
-		dispatchIngress = drive.NewAttended(dispatch, s.client, s.persona, s.approverUserID)
+		dispatchIngress = drive.NewAttended(dispatch, s.client, s.persona, s.approverUserID, s.requests)
+	}
+	cli, err := drive.NewCLI(s.poster, data, s.persona.CLISessionID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("evaluation: CLI driver: %w", err)
+	}
+	var cliIngress cases.Driver = cli
+	if s.attended {
+		cliIngress = drive.NewAttended(cli, s.client, s.persona, s.approverUserID, s.requests)
 	}
 	drivers := map[cases.Ingress]cases.Driver{
 		cases.IngressDirect:           direct,
 		cases.IngressDispatchEmbedded: dispatchIngress,
+		cases.IngressDispatchOutbound: dispatchIngress,
+		cases.IngressCLI:              cliIngress,
 		cases.IngressMCP:              mcpIngress,
 	}
-	if s.outbound.OperatorSessionID != "" {
-		cli, err := drive.NewCLI(s.poster, s.outbound, s.persona.CLISessionID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("evaluation: CLI driver: %w", err)
-		}
-		var cliIngress cases.Driver = cli
+	if s.stdio != nil {
+		var stdioIngress cases.Driver = s.stdio
 		if s.attended {
-			cliIngress = drive.NewAttended(cli, s.client, s.persona, s.approverUserID)
+			stdioIngress = drive.NewAttended(s.stdio, s.client, s.persona, s.approverUserID, s.requests)
 		}
-		drivers[cases.IngressDispatchOutbound] = dispatchIngress
-		drivers[cases.IngressCLI] = cliIngress
+		drivers[cases.IngressMCPStdio] = stdioIngress
 	}
 	if s.stub != nil {
 		var a2aIngress cases.Driver = drive.NewA2A(s.client, s.persona, s.stub)
 		if s.attended {
-			a2aIngress = drive.NewAttended(a2aIngress, s.client, s.persona, s.approverUserID)
+			a2aIngress = drive.NewAttended(a2aIngress, s.client, s.persona, s.approverUserID, s.requests)
 		}
 		drivers[cases.IngressA2A] = a2aIngress
 	}
@@ -603,7 +713,6 @@ func writeConformanceVerdicts(cmd *cobra.Command, runID string, set *evalv1.Conf
 		kind        evalv1.ConformanceObservationKind
 		description string
 	}{
-		{evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND, "outbound Data Operator not selected"},
 		{evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A, "A2A test downstream not configured"},
 		{evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED, "human approval cases not requested (use --attended)"},
 	} {

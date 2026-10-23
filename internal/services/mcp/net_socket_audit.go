@@ -37,7 +37,7 @@ type NetSocketAuditTool struct {
 
 // Name returns the tool identifier.
 func (t *NetSocketAuditTool) Name() string {
-	return "net_socket_audit"
+	return constants.MCPToolNetSocketAudit
 }
 
 // Description returns a human-readable description.

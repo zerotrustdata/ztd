@@ -65,6 +65,9 @@ type releaseSmokeOptions struct {
 	ZtdBin  string
 	Timeout time.Duration
 	Posture constants.Posture
+	// GatewayArgs are appended to `gw start`, for a run that needs Gateway
+	// ingress the smoke itself does not configure.
+	GatewayArgs []string
 }
 
 type releaseSmokeSummary struct {
@@ -344,7 +347,14 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("start isolated key agent: %w", err)
 	}
-	r.childEnv = r.agent.Env()
+	// Children run headless: with no display and a no-op browser command, an
+	// approval link (the MCP stdio bridge opens one per suspension) opens nothing
+	// on the developer's workstation.
+	r.childEnv = append(r.agent.Env(),
+		string(constants.EnvVar.Display)+"=",
+		string(constants.EnvVar.WaylandDisplay)+"=",
+		string(constants.EnvVar.Browser)+"=true",
+	)
 	for _, p := range []*int{&r.ports.http, &r.ports.https} {
 		*p, err = freeSmokePort()
 		if err != nil {
@@ -370,7 +380,8 @@ func (r *releaseSmokeRun) prepare(ctx context.Context) error {
 }
 func (r *releaseSmokeRun) startGateway(ctx context.Context) error {
 	r.addCleanup("Gateway", func(ctx context.Context) error { _, err := r.ztdGateway(ctx, "gateway-stop", "gw", "stop"); return err })
-	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, "gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", string(r.opts.Posture), "--public-spectator=false")
+	args := []string{"gw", "start", "--http-port", strconv.Itoa(r.ports.http), "--https-port", strconv.Itoa(r.ports.https), "--listen-host", "127.0.0.1", "--cert-mode", "localhost", "--posture", string(r.opts.Posture), "--public-spectator=false"}
+	_, err := r.ztd(ctx, "gateway-start", r.gwRoot, append(args, r.opts.GatewayArgs...)...)
 	if err != nil {
 		return err
 	}
@@ -514,7 +525,7 @@ func (r *releaseSmokeRun) verifyReceipt(ctx context.Context, runtimeRoot, expect
 	if err != nil {
 		return err
 	}
-	record, err := storage.ReadLocalActionReceipt(fileSvc, slog.Default(), keystore.Options{Keyring: r.agent.Keyring(fileSvc)}, tx)
+	record, err := storage.ReadLocalEventReceipt(fileSvc, slog.Default(), keystore.Options{Keyring: r.agent.Keyring(fileSvc)}, tx)
 	if err != nil {
 		return err
 	}
@@ -765,12 +776,20 @@ func (r *releaseSmokeRun) embeddedFileTransactions() []string {
 	return nil
 }
 func (r *releaseSmokeRun) ztdGateway(ctx context.Context, name string, args ...string) (string, error) {
-	return r.ztd(ctx, name, r.gwRoot, append([]string{"-e", fmt.Sprintf("127.0.0.1:%d", r.ports.http), "-p", strconv.Itoa(r.ports.https)}, args...)...)
+	return r.ztdGatewayTee(ctx, name, nil, args...)
+}
+
+// ztdGatewayTee is ztdGateway with the child's stderr also streamed to stderrTee.
+func (r *releaseSmokeRun) ztdGatewayTee(ctx context.Context, name string, stderrTee io.Writer, args ...string) (string, error) {
+	return r.ztdTee(ctx, name, r.gwRoot, stderrTee, append([]string{"-e", fmt.Sprintf("127.0.0.1:%d", r.ports.http), "-p", strconv.Itoa(r.ports.https)}, args...)...)
 }
 func (r *releaseSmokeRun) ztd(ctx context.Context, name, dir string, args ...string) (string, error) {
+	return r.ztdTee(ctx, name, dir, nil, args...)
+}
+func (r *releaseSmokeRun) ztdTee(ctx context.Context, name, dir string, stderrTee io.Writer, args ...string) (string, error) {
 	argv := append([]string{r.opts.ZtdBin}, args...)
 	prefix := filepath.Join(r.logDir, name)
-	p, err := r.owner.start(name, dir, prefix, argv, r.childEnv)
+	p, err := r.owner.start(name, dir, prefix, argv, r.childEnv, stderrTee)
 	if err != nil {
 		return "", err
 	}

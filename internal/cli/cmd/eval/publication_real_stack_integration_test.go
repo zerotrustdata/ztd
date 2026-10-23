@@ -28,7 +28,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
@@ -118,8 +117,6 @@ func createPublicationCampaign(t *testing.T, run *realStackRun, campaignID strin
 // given platform identity.
 func createPublicationCampaignOn(t *testing.T, run *realStackRun, campaignID string, repetitions uint32, platform evaluation.PlatformIdentity) {
 	t.Helper()
-	governancePosture, err := cases.WirePosture(constants.PostureDoctrine)
-	require.NoError(t, err)
 	dataWorkload, err := run.stack.Data.Workload()
 	require.NoError(t, err)
 	suite := evaluation.DefaultScenarioSuite()
@@ -134,12 +131,11 @@ func createPublicationCampaignOn(t *testing.T, run *realStackRun, campaignID str
 	require.Len(t, suite.Scenarios, 1)
 	require.NoError(t, evaluation.NewStore(run.fileSvc).CreateSuite(run.ctx, suite))
 	_, err = createCampaign(run.ctx, run.deps, run.fileSvc, campaignCreateSpec{
-		GovernancePosture: governancePosture,
-		Platform:          platform,
-		CampaignID:        campaignID,
-		Variants:          []*evalv1.ModelVariant{testQwenVariant()},
-		Repetitions:       repetitions,
-		SuiteID:           suite.ID,
+		Platform:    platform,
+		CampaignID:  campaignID,
+		Variants:    []*evalv1.ModelVariant{testQwenVariant()},
+		Repetitions: repetitions,
+		SuiteID:     suite.ID,
 		Investigation: &evalv1.EvaluationInvestigation{
 			Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
 			InvestigationId: campaignID + "-investigation",

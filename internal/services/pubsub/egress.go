@@ -95,6 +95,8 @@ func egressContentFields(payload proto.Message) (fields []*string, class egressC
 		return []*string{&p.Command, &p.NewOutput, &p.NewStderr, &p.Message}, egressContent, nil
 	case *operatorv1.FileEditResult:
 		return []*string{&p.FilePath, &p.BackupPath, &p.Content, &p.ErrorMessage, &p.ErrorType}, egressContent, nil
+	case *operatorv1.EvaluationWorkspaceSeedResult:
+		return []*string{&p.FilePath, &p.ErrorMessage, &p.ErrorType}, egressContent, nil
 	case *operatorv1.FsListResult:
 		fields = []*string{&p.Path}
 		for _, e := range p.Entries {
@@ -136,6 +138,8 @@ func egressContentFields(payload proto.Message) (fields []*string, class egressC
 			fields = append(fields, &m.Name)
 		}
 		return append(fields, &p.ErrorMessage, &p.ErrorType), egressContent, nil
+	case *operatorv1.OllamaModelReleaseResult:
+		return []*string{&p.ErrorMessage, &p.ErrorType}, egressContent, nil
 	case *operatorv1.FetchLogsResult:
 		return []*string{&p.Command, &p.Stdout, &p.Stderr, &p.Error}, egressContent, nil
 	case *operatorv1.FetchFileDiffResult:
@@ -226,12 +230,16 @@ func egressFailureEvent(outcome constants.EventType, payload proto.Message) cons
 		return constants.Event.Operator.FsGrep.Failed
 	case *operatorv1.FileEditResult:
 		return constants.Event.Operator.FileEdit.Failed
+	case *operatorv1.EvaluationWorkspaceSeedResult:
+		return constants.Event.Operator.Eval.WorkspaceSeed.Failed
 	case *operatorv1.PortCheckResult:
 		return constants.Event.Operator.PortCheck.Failed
 	case *operatorv1.OllamaModelInventoryResult:
 		return constants.Event.Operator.OllamaModelInventory.Failed
 	case *operatorv1.OllamaModelResidencyResult:
 		return constants.Event.Operator.OllamaModelResidency.Failed
+	case *operatorv1.OllamaModelReleaseResult:
+		return constants.Event.Operator.OllamaModelRelease.Failed
 	default:
 		return ""
 	}

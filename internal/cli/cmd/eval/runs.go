@@ -10,6 +10,7 @@ package eval
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -23,6 +24,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -318,18 +320,56 @@ type runPublishJSON struct {
 	Force            bool   `json:"force"`
 }
 
+type runPublishSkipJSON struct {
+	RunID  string `json:"run_id"`
+	Reason string `json:"reason"`
+}
+
+type runPublishFailureJSON struct {
+	RunID string `json:"run_id"`
+	Error string `json:"error"`
+}
+
+type runPublishAllJSON struct {
+	Published []runPublishJSON        `json:"published"`
+	Skipped   []runPublishSkipJSON    `json:"skipped"`
+	Failed    []runPublishFailureJSON `json:"failed"`
+}
+
 func runsPublishCmd(deps nativeEvalDeps) *cobra.Command {
-	var force bool
+	var force, all bool
 	cmd := &cobra.Command{
-		Use:   "publish <run>",
-		Short: "Publish missing public lifecycle projections for one run",
-		Args:  cobra.ExactArgs(1),
+		Use:   "publish [<run>]",
+		Short: "Publish missing public lifecycle projections for one run, or republish every run",
+		Long: `Publish the public lifecycle projections one run is missing.
+
+With --all, republish every run that is not archived. Each run's host
+publication idempotency is cleared first, as --force does, so a run that was
+already published is published again. A run a live process holds is skipped,
+because that process publishes it. A run that fails to publish does not stop
+the others; the command reports each failure and exits with an error.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if !all {
+				return cobra.ExactArgs(1)(cmd, args)
+			}
+			if len(args) != 0 {
+				return fmt.Errorf("evaluation: runs publish: --all cannot be combined with a run: %w", constants.ErrEvaluationFlagsInvalid)
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runID := args[0]
 			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
 				return err
 			}
+			if all {
+				publication, err := NewCampaignPublicationCoordinator(cmd, fileSvc, cfg)
+				if err != nil {
+					return fmt.Errorf("evaluation: runs publish: %w", err)
+				}
+				return publishAllRuns(cmd, deps, fileSvc, publication)
+			}
+			runID := args[0]
 			if err := evaluation.RejectArchivedRun(cmd.Context(), fileSvc, runID); err != nil {
 				return fmt.Errorf("evaluation: runs publish: %w", err)
 			}
@@ -337,32 +377,107 @@ func runsPublishCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: runs publish: %w", err)
 			}
-			report, reportErr := evaluation.NewStore(fileSvc).LoadCampaignVerification(cmd.Context(), runID)
-			if reportErr != nil && !isMissingRecord(reportErr) {
-				return fmt.Errorf("evaluation: runs publish: load verification report: %w", reportErr)
-			}
-			if force {
-				if err := publication.ResetPublicationIdempotency(cmd.Context(), runID); err != nil {
-					return fmt.Errorf("evaluation: runs publish: %w", err)
-				}
-			}
-			count, err := publication.PublishRunCatchUpWithVerification(cmd.Context(), runID, report)
+			count, err := publishRun(cmd.Context(), fileSvc, publication, runID, force)
 			if err != nil {
 				return fmt.Errorf("evaluation: runs publish: %w", err)
 			}
 			if output.JSONEnabled(cmd) {
 				return output.WriteJSON(cmd.OutOrStdout(), runPublishJSON{RunID: runID, PublishedRecords: count, Force: force})
 			}
-			suffix := ""
-			if force {
-				suffix = " (forced republish)"
-			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Published %d public projection record(s) for run %s%s\n", count, runID, suffix)
-			return err
+			return writeRunPublished(cmd, runID, count, force)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "Clear host publication idempotency and republish all projections (use after a gateway mirror volume wipe)")
+	cmd.Flags().BoolVar(&all, "all", false, "Republish every run that is not archived, clearing publication idempotency as --force does")
 	return cmd
+}
+
+// publishRun publishes one run's missing projections and its bound
+// verification. With force, the run's host publication idempotency is cleared
+// first, so every projection is published again.
+func publishRun(ctx context.Context, fileSvc fs.RuntimeFileService, publication *evaluation.CampaignPublicationCoordinator, runID string, force bool) (int, error) {
+	report, err := evaluation.NewStore(fileSvc).LoadCampaignVerification(ctx, runID)
+	if err != nil && !isMissingRecord(err) {
+		return 0, fmt.Errorf("load verification report: %w", err)
+	}
+	if force {
+		if err := publication.ResetPublicationIdempotency(ctx, runID); err != nil {
+			return 0, err
+		}
+	}
+	return publication.PublishRunCatchUpWithVerification(ctx, runID, report)
+}
+
+func writeRunPublished(cmd *cobra.Command, runID string, count int, force bool) error {
+	suffix := ""
+	if force {
+		suffix = " (forced republish)"
+	}
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Published %d public projection record(s) for run %s%s\n", count, runID, suffix)
+	return err
+}
+
+// publishAllRuns force-republishes every run in the active store. A run a live
+// process holds is skipped, because that process publishes it. A failed run is
+// recorded and the remaining runs still publish.
+func publishAllRuns(cmd *cobra.Command, deps nativeEvalDeps, fileSvc fs.RuntimeFileService, publication *evaluation.CampaignPublicationCoordinator) error {
+	ctx := cmd.Context()
+	control, err := deps.runControl.process(fileSvc)
+	if err != nil {
+		return err
+	}
+	live := leaseLiveness(control)
+	store := evaluation.NewStore(fileSvc)
+	runIDs, err := store.ListRunIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("evaluation: runs publish: %w", err)
+	}
+	jsonOut := output.JSONEnabled(cmd)
+	payload := runPublishAllJSON{Published: []runPublishJSON{}, Skipped: []runPublishSkipJSON{}, Failed: []runPublishFailureJSON{}}
+	var failures []error
+	fail := func(runID string, err error) {
+		failures = append(failures, fmt.Errorf("run %s: %w", runID, err))
+		payload.Failed = append(payload.Failed, runPublishFailureJSON{RunID: runID, Error: err.Error()})
+	}
+	for _, runID := range runIDs {
+		lease, err := store.LoadRunLease(ctx, runID)
+		switch {
+		case err == nil && live(*lease):
+			skip := runPublishSkipJSON{RunID: runID, Reason: fmt.Sprintf("held by live process %d on %s", lease.PID, lease.Host)}
+			payload.Skipped = append(payload.Skipped, skip)
+			if !jsonOut {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Skipped run %s: %s\n", runID, skip.Reason); err != nil {
+					return err
+				}
+			}
+			continue
+		case err != nil && !isMissingRecord(err):
+			fail(runID, err)
+			continue
+		}
+		count, err := publishRun(ctx, fileSvc, publication, runID, true)
+		if err != nil {
+			fail(runID, err)
+			continue
+		}
+		payload.Published = append(payload.Published, runPublishJSON{RunID: runID, PublishedRecords: count, Force: true})
+		if !jsonOut {
+			if err := writeRunPublished(cmd, runID, count, true); err != nil {
+				return err
+			}
+		}
+	}
+	if jsonOut {
+		if err := output.WriteJSON(cmd.OutOrStdout(), payload); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Republished %d run(s), skipped %d, failed %d\n", len(payload.Published), len(payload.Skipped), len(payload.Failed)); err != nil {
+		return err
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("evaluation: runs publish: %d of %d run(s) failed: %w", len(failures), len(runIDs), errors.Join(failures...))
+	}
+	return nil
 }
 
 type runExportJSON struct {
@@ -423,36 +538,163 @@ func runsExportCmd(deps nativeEvalDeps) *cobra.Command {
 type runRepairJSON struct {
 	RunID   string `json:"run_id"`
 	Results int    `json:"repaired_results"`
+	// Regraded counts the results --regrade re-imported from their sealed
+	// agent traces.
+	Regraded int `json:"regraded_results,omitempty"`
+	// ProjectionReopened is the terminal Gateway run status --projection
+	// replaced, empty when the projection was not reopened.
+	ProjectionReopened models.RunLifecycleStatus `json:"projection_reopened,omitempty"`
 }
 
 func runsRepairCmd(deps nativeEvalDeps) *cobra.Command {
-	return &cobra.Command{
+	var projection, regrade bool
+	cmd := &cobra.Command{
 		Use:   "repair <run>",
-		Short: "Backfill terminal results for assignments missing result records",
+		Short: "Backfill or regrade terminal assignment results",
 		Long: `Repair one run's persisted records: every assignment that reached a terminal
-lifecycle without a persisted result gets one, recorded as a recovered failure.`,
+lifecycle without a persisted result gets one, recorded as a recovered failure.
+A running assignment with no result and no agent trace, whose frozen scenario
+tools this harness rejects, is recorded as a scenario_contract_invalid failure:
+the executor rejects that contract before it acts, so the attempt never acted.
+Any other running assignment stays unresolved.
+
+With --projection, repair also corrects the Gateway's run projection when it
+holds a terminal status the local store contradicts, such as a paused run
+projected as cancelled. The local store is authoritative: a run with assignments
+queued and none cancelled is reported as waiting, and the Gateway reopens the
+terminal projection only while it still holds that exact status.
+
+With --regrade, repair re-imports each terminal assignment result from its
+sealed agent trace when the trace now imports to a different lifecycle, such as
+an INVALID_EVIDENCE an import check since fixed recorded for valid evidence.
+The sealed trace is never changed. Run ztd eval runs verify and then
+ztd eval runs publish --force to republish the corrected projections.
+
+Repair holds the run lease throughout, so it refuses a run a live process holds.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
-			_, fileSvc, err := nativeEvalEnvironment(cmd, deps)
+			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
 				return err
 			}
 			if err := evaluation.RejectArchivedRun(cmd.Context(), fileSvc, runID); err != nil {
 				return fmt.Errorf("evaluation: runs repair: %w", err)
 			}
-			controller := evaluation.NewCampaignController(evaluation.NewStore(fileSvc), nil, deps.now, adaptNewID(deps.newID))
+			store := evaluation.NewStore(fileSvc)
+			controller := evaluation.NewCampaignController(store, nil, deps.now, adaptNewID(deps.newID))
 			payload := runRepairJSON{RunID: runID}
-			if payload.Results, err = controller.RepairAssignmentsWithoutResults(cmd.Context(), runID); err != nil {
+			if err := withRepairLease(cmd.Context(), deps, fileSvc, store, runID, func(lease repairLease) error {
+				if payload.Results, err = controller.RepairAssignmentsWithoutResults(cmd.Context(), runID); err != nil {
+					return err
+				}
+				if regrade {
+					if payload.Regraded, err = controller.RegradeAssignmentsFromAgentTraces(cmd.Context(), runID); err != nil {
+						return err
+					}
+				}
+				if projection {
+					payload.ProjectionReopened, err = repairRunProjection(cmd, deps, cfg, fileSvc, store, runID, lease)
+				}
+				return err
+			}); err != nil {
 				return fmt.Errorf("evaluation: runs repair: %w", err)
 			}
 			if output.JSONEnabled(cmd) {
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Repaired %d terminal assignment result(s) for run %s\n", payload.Results, runID)
+			out := cmd.OutOrStdout()
+			if _, err := fmt.Fprintf(out, "Repaired %d terminal assignment result(s) for run %s\n", payload.Results, runID); err != nil {
+				return err
+			}
+			if regrade {
+				if _, err := fmt.Fprintf(out, "Regraded %d assignment result(s) from sealed agent traces for run %s\n", payload.Regraded, runID); err != nil {
+					return err
+				}
+			}
+			switch {
+			case !projection:
+				return nil
+			case payload.ProjectionReopened != "":
+				_, err = fmt.Fprintf(out, "Reopened Gateway run projection for run %s: %s -> %s\n", runID, payload.ProjectionReopened, models.RunLifecycleStatusWaiting)
+			default:
+				_, err = fmt.Fprintf(out, "Gateway run projection for run %s needed no reopen\n", runID)
+			}
 			return err
 		},
 	}
+	cmd.Flags().BoolVar(&projection, "projection", false, "Reopen a terminal Gateway run projection the local store contradicts")
+	cmd.Flags().BoolVar(&regrade, "regrade", false, "Re-import terminal results whose sealed agent trace imports to a different lifecycle")
+	return cmd
+}
+
+// repairLease is the run lease repair holds: its owner and the liveness rule
+// it was acquired under.
+type repairLease struct {
+	pid  int
+	host string
+	live evaluation.LeaseLiveness
+}
+
+// withRepairLease runs repair while holding the run lease, so no live process
+// executes or reports the run concurrently, and releases it afterwards.
+func withRepairLease(ctx context.Context, deps nativeEvalDeps, fileSvc fs.RuntimeFileService, store *evaluation.Store, runID string, repair func(repairLease) error) (repairErr error) {
+	control, err := deps.runControl.process(fileSvc)
+	if err != nil {
+		return err
+	}
+	host, err := control.Hostname()
+	if err != nil {
+		return fmt.Errorf("run lease: read hostname: %w", err)
+	}
+	lease := repairLease{pid: control.PID(), host: host, live: leaseLiveness(control)}
+	if _, err := store.AcquireRunLease(ctx, evaluation.RunLease{
+		RunID:     runID,
+		PID:       lease.pid,
+		Host:      host,
+		StartedAt: deps.now().UTC(),
+	}, lease.live); err != nil {
+		return err
+	}
+	defer func() {
+		if releaseErr := store.ReleaseRunLease(context.WithoutCancel(ctx), runID, lease.pid); releaseErr != nil {
+			repairErr = errors.Join(repairErr, fmt.Errorf("release run lease: %w", releaseErr))
+		}
+	}()
+	return repair(lease)
+}
+
+// repairRunProjection reconciles the Gateway run projection with the local
+// store while repair holds the run lease.
+func repairRunProjection(cmd *cobra.Command, deps nativeEvalDeps, cfg *config.Config, fileSvc fs.RuntimeFileService, store *evaluation.Store, runID string, held repairLease) (models.RunLifecycleStatus, error) {
+	ctx := cmd.Context()
+	run, err := store.LoadRun(ctx, runID)
+	if err != nil {
+		return "", err
+	}
+	authContext, err := deps.authLoader(fileSvc, cfg)
+	if err != nil {
+		return "", fmt.Errorf("load CLI identity: %w", err)
+	}
+	appClient, err := inferenceEvalAppClient(ctx, cmd.ErrOrStderr(), deps, fileSvc, cfg, authContext)
+	if err != nil {
+		return "", err
+	}
+	// The repair's own lease only excludes other processes; the run is read as
+	// it stands released, which is what the projection must show.
+	released := func(lease evaluation.RunLease) bool {
+		return (lease.PID != held.pid || lease.Host != held.host) && held.live(lease)
+	}
+	reporter := &runLifecycle{
+		client:       appClient,
+		live:         released,
+		deps:         deps,
+		store:        store,
+		cliSessionID: authContext.CLISessionID,
+		runID:        runID,
+		startedAt:    run.GetStartedAt().AsTime().UTC(),
+	}
+	return reporter.reconcileProjection(ctx)
 }
 
 // runCell is one cell of a run's matrix reduced to what compare reports.

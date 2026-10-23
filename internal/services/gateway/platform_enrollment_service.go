@@ -636,21 +636,20 @@ func (s *PlatformEnrollmentService) Revoke(ctx context.Context, actorUserID stri
 
 // BindConsensusApplication binds an enrolled application as the Gateway consensus application.
 func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context, actorUserID string, req models.PlatformEnrollmentBindConsensusRequest) (*models.ConsensusPolicy, error) {
-	appID := strings.TrimSpace(req.AppID)
-	if appID == "" {
-		return nil, fmt.Errorf("%w: app_id", constants.ErrMissingRequiredField)
-	}
-	endpointURL := strings.TrimSpace(req.EndpointURL)
-	if endpointURL == "" {
-		return nil, fmt.Errorf("%w: endpoint_url", constants.ErrMissingRequiredField)
-	}
-	if err := models.ValidateConsensusEndpoint(endpointURL); err != nil {
-		return nil, fmt.Errorf("platform enrollment: consensus endpoint: %w", err)
-	}
-	members, quorum, err := models.ResolveConsensusMembership(appID, req.MemberAppIDs, req.Quorum)
+	spec, err := models.ResolveConsensusBinding(models.ConsensusBindingSpec{
+		Provider:     constants.ConsensusProvider(req.Provider),
+		AppID:        req.AppID,
+		EndpointURL:  req.EndpointURL,
+		MemberAppIDs: req.MemberAppIDs,
+		Quorum:       req.Quorum,
+		ModelTag:     req.ModelTag,
+		ModelDigest:  req.ModelDigest,
+		VoteKind:     req.VoteKind, InferenceOperatorID: req.InferenceOperatorID, VoteThresholds: req.VoteThresholds, AllowHosted: req.AllowHosted,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("platform enrollment: %w", err)
 	}
+	appID := spec.AppID
 	user, err := s.userSvc.GetByID(ctx, actorUserID)
 	if err != nil {
 		return nil, fmt.Errorf("platform enrollment: authorize consensus binding: %w", err)
@@ -680,10 +679,14 @@ func (s *PlatformEnrollmentService) BindConsensusApplication(ctx context.Context
 		Action:                string(constants.PlatformEnrollmentActionBindConsensus),
 		ComponentKind:         commonv1.PlatformComponentKind_PLATFORM_COMPONENT_KIND_APPLICATION,
 		InstanceId:            appID,
-		ConsensusEndpointUrl:  endpointURL,
+		ConsensusEndpointUrl:  spec.EndpointURL,
 		ActorUserId:           actorUserID,
-		ConsensusMemberAppIds: members,
-		ConsensusQuorum:       uint32(quorum),
+		ConsensusMemberAppIds: spec.MemberAppIDs,
+		ConsensusQuorum:       uint32(spec.Quorum),
+		ConsensusProvider:     string(spec.Provider),
+		ConsensusModelTag:     spec.ModelTag,
+		ConsensusModelDigest:  spec.ModelDigest,
+		ConsensusVoteKind:     spec.VoteKind, ConsensusInferenceOperatorId: spec.InferenceOperatorID, ConsensusVoteThresholds: models.ConsensusThresholdsToProto(spec.VoteThresholds), ConsensusAllowHosted: spec.AllowHosted,
 	}
 	_, err = s.submitEnvelope(ctx, constants.PlatformEnrollmentActionBindConsensus, payload)
 	if err != nil {

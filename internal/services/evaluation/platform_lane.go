@@ -82,12 +82,12 @@ func (l *CommandLane) WriteWorkspaceFile(ctx context.Context, target Target, run
 	if target.OperatorID == "" || target.SessionID == "" || runID == "" || scenarioID == "" || attemptID == "" || absPath == "" {
 		return fmt.Errorf("%w: workspace file write requires operator target, scenario identity, and path", constants.ErrMissingRequiredField)
 	}
-	payload, err := proto.Marshal(&operatorv1.FileEditRequested{FilePath: absPath, Operation: string(constants.FileOperationWrite), ExecutionId: attemptID, Content: content, CreateIfMissing: true})
+	payload, err := proto.Marshal(&operatorv1.EvaluationWorkspaceSeedRequested{FilePath: absPath, ExecutionId: attemptID, Content: content})
 	if err != nil {
-		return fmt.Errorf("%w: marshal file edit request: %v", constants.ErrEvaluationDispatchFailed, err)
+		return fmt.Errorf("%w: marshal workspace seed request: %v", constants.ErrEvaluationDispatchFailed, err)
 	}
 	scope := AgentDispatchScope{RunID: runID, ScenarioID: scenarioID, AttemptID: attemptID, Target: target, HarnessPhase: agentDispatchFixtureSetup}
-	outcome, err := l.dispatchAction(ctx, scope, constants.ActionTypeFileEdit, absPath, payload)
+	outcome, err := l.dispatchAction(ctx, scope, constants.ActionTypeEvalWorkspaceSeed, absPath, payload)
 	if err != nil {
 		return err
 	}

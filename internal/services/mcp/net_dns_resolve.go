@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"net"
 	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // NetDNSResolveTool performs DNS resolution similar to dig/nslookup for network debugging.
@@ -32,7 +34,7 @@ type dnsResolver interface {
 
 // Name returns the tool identifier.
 func (t *NetDNSResolveTool) Name() string {
-	return "net_dns_resolve"
+	return constants.MCPToolNetDNSResolve
 }
 
 // Description returns a human-readable description.

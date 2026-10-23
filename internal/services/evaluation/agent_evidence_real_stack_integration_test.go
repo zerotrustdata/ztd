@@ -189,6 +189,8 @@ type realStackOptions struct {
 	// modelTags are the extra tags the stack serves and attests, each at
 	// fixtures.ScriptedModelDigest(tag).
 	modelTags []string
+	// bindConsensus rebinds the Gateway's consensus before Operators enroll.
+	bindConsensus func(t *testing.T, gateway *fixtures.GatewayFixture, identity *fixtures.ClientIdentity)
 }
 
 // realStackAgentRun is a campaign initialized on the real eval stack, with the
@@ -233,7 +235,7 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	ctx := t.Context()
 	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{
 		Posture: opts.posture, Replies: opts.replies, SharedRuntime: opts.shared,
-		Provenance: true, ModelTags: opts.modelTags,
+		Provenance: true, ModelTags: opts.modelTags, BindConsensus: opts.bindConsensus,
 	})
 
 	logger := testutil.NewTestLogger()
@@ -385,8 +387,13 @@ func (env *realStackAgentRun) startRun(t *testing.T, plan realStackRunPlan) {
 	variant := &evalv1.ModelVariant{VariantId: "qwen3-4b", ProviderClass: "ollama", ServedModelTag: realStackModelTag, ModelDigest: fixtures.ScriptedModelDigest(t, realStackModelTag)}
 	inventory, err := evaluation.MaterializeModelRegistry(plan.campaignID, []*evalv1.ModelVariant{variant})
 	require.NoError(t, err)
+	posture, err := cases.WirePosture(env.stack.Posture)
+	require.NoError(t, err)
+	governance, err := evaluation.NewRunGovernance(posture, nil)
+	require.NoError(t, err)
 	req := evaluation.CampaignInitRequest{
 		Platform:                   evaluation.PlatformIdentity{Release: "v2.3.0", SourceRevision: "0123abc"},
+		Governance:                 governance,
 		CampaignID:                 plan.campaignID,
 		RunID:                      plan.runID,
 		Catalog:                    env.catalog,
@@ -444,7 +451,7 @@ func TestAgentEvidenceIntegration_SharedRuntimeEmbeddedOperator(t *testing.T) {
 
 		trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
 		require.NoError(t, err)
-		assert.Equal(t, "agent-trace.v7", trace.SchemaVersion)
+		assert.Equal(t, "agent-trace.v8", trace.SchemaVersion)
 		require.NotNil(t, trace.Input, "a v4 trace records the exact model input")
 		assert.NotEmpty(t, trace.Input.Messages)
 		assert.True(t, trace.SharedRuntime(), "shared runtime trace must report SharedRuntime() == true")
@@ -474,7 +481,7 @@ func TestAgentEvidenceIntegration_DistinctRuntimes(t *testing.T) {
 
 		trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
 		require.NoError(t, err)
-		assert.Equal(t, "agent-trace.v7", trace.SchemaVersion)
+		assert.Equal(t, "agent-trace.v8", trace.SchemaVersion)
 		require.NotNil(t, trace.Input, "a v4 trace records the exact model input")
 		assert.NotEmpty(t, trace.Input.Messages)
 		assert.False(t, trace.SharedRuntime(), "distinct runtimes must report SharedRuntime() == false")

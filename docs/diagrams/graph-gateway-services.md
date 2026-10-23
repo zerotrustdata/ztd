@@ -3,8 +3,8 @@ doc_id: diagram-gateway-services
 title: "Diagram: Gateway Service Stack"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/services/gateway/
   - internal/cli/serve/gateway.go
@@ -51,7 +51,7 @@ graph TD
             subgraph Governance ["Governance Surface"]
                 EnvelopeRx["Envelope Reception<br/>POST /api/v1/governance/envelopes"]
                 Dispatch["Operator Dispatch<br/>POST /api/v1/operators/commands"]
-                Consensus["Consensus Service<br/>L2 deliberation · L3 coordination"]
+                Consensus["Consensus Service<br/>L2 votes (Gateway Tribunal or bound app) · L3 coordination"]
             end
             subgraph Delivery ["Delivery & Observation"]
                 SSE["SSE Event Bridge<br/>Push · Poll · Stream"]
@@ -120,7 +120,7 @@ The Gateway coordinates policy decisions through five structured tiers:
    - `PasskeyService`: Executes FIDO2 / WebAuthn registration and assertion ceremonies for login and L3 approvals.
 3. **Application Ingress**:
    - MCP and A2A gateways normalize incoming tool invocations into typed `GovernanceEnvelope` messages.
-   - Governance coordinators deliberate L2 consensus or hold suspended transactions for L3 notary signatures.
+   - The Consensus Service routes L2 votes to the bound consensus provider: the Gateway-hosted Tribunal panel (`tribunal`) or an enrolled application (`application`). It votes only on state-change actions. Governance coordinators also hold suspended transactions for L3 notary signatures.
 4. **Pub/Sub Brokering**:
    - Coordinates outbound WebSocket connections from remote Operators, multiplexing session-isolated channels (`cmd:`, `results:`, `heartbeat:`, `receipts:`).
 5. **Operator Substrate**:

@@ -69,26 +69,6 @@ func SendError(out io.Writer, id interface{}, code int, message string) error {
 	return json.NewEncoder(out).Encode(resp)
 }
 
-// NewInitializeResponse returns a standard MCP initialize response payload.
-func NewInitializeResponse(id interface{}, serverName, serverVersion string) JSONRPCResponse {
-	return JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      id,
-		Result: map[string]interface{}{
-			"protocolVersion": "2024-11-05",
-			"serverInfo": map[string]interface{}{
-				"name":    serverName,
-				"version": serverVersion,
-			},
-			"capabilities": map[string]interface{}{
-				"tools":     map[string]interface{}{},
-				"resources": map[string]interface{}{},
-				"prompts":   map[string]interface{}{},
-			},
-		},
-	}
-}
-
 // ServeStdio reads newline-delimited JSON-RPC requests from in, dispatches them
 // to handler, and writes JSON-RPC responses to out.
 //

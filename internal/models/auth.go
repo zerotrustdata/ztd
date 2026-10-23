@@ -586,15 +586,32 @@ type Persona struct {
 // A Consensus consists of N member identities (enrolled agentic apps) and
 // requires K affirmative distinct signatures to reach quorum.
 type ConsensusPolicy struct {
+	VoteKind            string                       `json:"vote_kind,omitempty"`
+	InferenceOperatorID string                       `json:"inference_operator_id,omitempty"`
+	VoteThresholds      []ConsensusDecisionThreshold `json:"vote_thresholds,omitempty"`
+	AllowHosted         bool                         `json:"allow_hosted,omitempty"`
+
 	ID              string    `json:"id"`                     // consensus name/id
 	AppID           string    `json:"app_id,omitempty"`       // primary bound consensus application identity
 	MemberAppIDs    []string  `json:"member_app_ids"`         // == TrustedSigner.ID per member
 	Quorum          int       `json:"quorum"`                 // K affirmative distinct signers required
 	RequireDistinct bool      `json:"require_distinct"`       // reject duplicate signer keys
 	EndpointURL     string    `json:"endpoint_url,omitempty"` // HTTPS deliberation endpoint for bound consensus app
+	Provider        string    `json:"provider"`               // constants.ConsensusProvider; required
+	ModelTag        string    `json:"model_tag,omitempty"`    // tribunal provider: pinned vote model tag
+	ModelDigest     string    `json:"model_digest,omitempty"` // tribunal provider: pinned vote model digest
 	Enabled         bool      `json:"enabled"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// ConsensusProvider decodes the binding's vote producer. An empty or unknown
+// stored value is reported as an error by constants.ParseConsensusProvider.
+func (p *ConsensusPolicy) ConsensusProvider() (constants.ConsensusProvider, error) {
+	if p == nil {
+		return "", constants.ErrConsensusBindingNotFound
+	}
+	return constants.ParseConsensusProvider(p.Provider)
 }
 
 // PrimaryAppID returns the primary application ID hosting the deliberation endpoint.
@@ -614,10 +631,18 @@ func (p *ConsensusPolicy) PrimaryAppID() string {
 
 // PlatformEnrollmentBindConsensusRequest binds an enrolled application as the Gateway consensus application.
 type PlatformEnrollmentBindConsensusRequest struct {
+	VoteKind            string                       `json:"vote_kind,omitempty"`
+	InferenceOperatorID string                       `json:"inference_operator_id,omitempty"`
+	VoteThresholds      []ConsensusDecisionThreshold `json:"vote_thresholds,omitempty"`
+	AllowHosted         bool                         `json:"allow_hosted,omitempty"`
+
 	AppID        string   `json:"app_id"`
 	EndpointURL  string   `json:"endpoint_url"`
 	MemberAppIDs []string `json:"member_app_ids,omitempty"`
 	Quorum       int      `json:"quorum,omitempty"`
+	Provider     string   `json:"provider"`               // constants.ConsensusProvider; required
+	ModelTag     string   `json:"model_tag,omitempty"`    // tribunal provider only
+	ModelDigest  string   `json:"model_digest,omitempty"` // tribunal provider only
 }
 
 // EnrollmentToken represents a one-time use token for secure passkey enrollment.

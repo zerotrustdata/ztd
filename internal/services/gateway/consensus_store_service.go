@@ -16,6 +16,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -150,6 +151,65 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 		trust.Signers = append(trust.Signers, models.OperatorSigner{KeyID: keyID, PublicKeyHex: hex.EncodeToString(pub)})
 	}
 	return trust, nil
+}
+
+// ConsensusReadiness reports which members of the bound consensus can vote on this host.
+func (s *ConsensusStoreService) ConsensusReadiness(ctx context.Context, signer ConsensusMemberSigner) (models.ConsensusReadiness, error) {
+	policy, err := s.GetBoundConsensusApp(ctx)
+	if err != nil {
+		return models.ConsensusReadiness{}, fmt.Errorf("consensus store: readiness: %w", err)
+	}
+	if policy == nil || !policy.Enabled {
+		return models.ConsensusReadiness{}, nil
+	}
+	provider, err := policy.ConsensusProvider()
+	if err != nil {
+		return models.ConsensusReadiness{}, fmt.Errorf("consensus store: readiness: policy %q: %w", policy.ID, err)
+	}
+	readiness := models.ConsensusReadiness{
+		Bound:               true,
+		Provider:            provider,
+		Quorum:              policy.Quorum,
+		ModelTag:            policy.ModelTag,
+		ModelDigest:         policy.ModelDigest,
+		InferenceOperatorID: policy.InferenceOperatorID,
+		Members:             make([]models.ConsensusMemberReadiness, 0, len(policy.MemberAppIDs)),
+	}
+	tribunal := provider == constants.ConsensusProviderTribunal
+	if tribunal {
+		readiness.VoteKind = policy.EffectiveVoteKind()
+	}
+	for _, appID := range policy.MemberAppIDs {
+		pub, err := s.signerSvc.GetTrustedSigner(ctx, appID)
+		if err != nil {
+			return models.ConsensusReadiness{}, fmt.Errorf("consensus store: readiness: signer %s: %w", appID, err)
+		}
+		member := models.ConsensusMemberReadiness{AppID: appID, SignerEnabled: pub != nil}
+		if tribunal && signer != nil {
+			member.LocalKey = signer.HasKey(appID)
+		}
+		if member.SignerEnabled && (!tribunal || member.LocalKey) {
+			readiness.Usable++
+		}
+		readiness.Members = append(readiness.Members, member)
+	}
+	readiness.Ready = readiness.Usable >= readiness.Quorum
+	if policy.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
+		doc, err := s.docSvc.DocGet(ctx, marshaler.CollectionName(constants.CollectionOperators), policy.InferenceOperatorID)
+		if err != nil {
+			return models.ConsensusReadiness{}, fmt.Errorf("consensus readiness: pinned Operator: %w", err)
+		}
+		if doc == nil {
+			readiness.Ready = false
+			return readiness, nil
+		}
+		op, err := models.OperatorDocumentFromStore(doc)
+		if err != nil {
+			return models.ConsensusReadiness{}, err
+		}
+		readiness.Ready = readiness.Ready && op != nil && op.GetStatus() == string(constants.OperatorStatusActive) && op.GetOperatorSessionId() != "" && op.GetRuntimeConfig().GetInferenceDecisionBackend() != "" && slices.Contains(op.GetRuntimeConfig().GetCapabilities(), string(constants.OperatorCapabilityInference)) && slices.Contains(op.GetRuntimeConfig().GetInferenceDecisionModels(), policy.ModelTag) && (!policy.AllowHosted || op.GetRuntimeConfig().GetInferenceAllowHostedDecision())
+	}
+	return readiness, nil
 }
 
 // ConsensusAppDeliberator dispatches the GovernanceEnvelope to the bound consensus application's HTTPS endpoint.

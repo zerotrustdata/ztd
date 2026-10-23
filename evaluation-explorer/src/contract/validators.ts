@@ -370,14 +370,32 @@ export function isCatalogSnapshot(value: unknown): asserts value is CatalogSnaps
 
 export function isModelSummary(value: unknown): asserts value is ModelSummary {
   assertObject(value, 'model_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'], 'model_summary');
+  rejectUnknown(value, [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'parameter_count', 'parameter_count_source', 'model_digest', 'model_family', 'model_format', 'artifact_size_bytes', 'context_limit', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'], 'model_summary');
   assertEnvelope(value, 'model_summary', ['model_summary']);
   assertString(value.variant_id, 'model_summary.variant_id');
   assertString(value.display_name, 'model_summary.display_name');
   assertOptional(value.served_model_tag, 'model_summary.served_model_tag', assertString);
+  if (value.parameter_count !== undefined) {
+    assertInteger(value.parameter_count, 'model_summary.parameter_count');
+    assert(Number.isSafeInteger(value.parameter_count) && value.parameter_count > 0, 'model_summary.parameter_count', 'must be a positive safe integer');
+  }
+  if (value.parameter_count_source !== undefined) {
+    assertEnum(value.parameter_count_source, ['model_metadata', 'rounded_label'] as const, 'model_summary.parameter_count_source');
+    assert(value.parameter_count !== undefined, 'model_summary.parameter_count_source', 'requires a parameter count');
+  }
   assertEnum(value.role, MODEL_ROLES, 'model_summary.role');
   assertOptional(value.backend_provider_class, 'model_summary.backend_provider_class', assertString);
   assertOptional(value.quantization_weight_class, 'model_summary.quantization_weight_class', assertString);
+  assertOptionalHash(value.model_digest, 'model_summary.model_digest');
+  for (const key of ['model_family', 'model_format'] as const) {
+    assertOptional(value[key], `model_summary.${key}`, assertString);
+  }
+  for (const key of ['artifact_size_bytes', 'context_limit'] as const) {
+    if (value[key] !== undefined) {
+      assertInteger(value[key], `model_summary.${key}`);
+      assert(Number.isSafeInteger(value[key]) && value[key] > 0, `model_summary.${key}`, 'must be a positive safe integer');
+    }
+  }
   assertBoolean(value.inventory_only, 'model_summary.inventory_only');
   assertNumber(value.evaluation_coverage, 'model_summary.evaluation_coverage');
   assert(value.evaluation_coverage >= 0 && value.evaluation_coverage <= 1, 'model_summary.evaluation_coverage', 'must be between zero and one');
@@ -537,7 +555,7 @@ function assertCurrentHeadlineMetrics(value: unknown, path: string): void {
 
 export function isEvaluationSummary(value: unknown): asserts value is EvaluationSummary {
   assertObject(value, 'evaluation_summary');
-  rejectUnknown(value, [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'], 'evaluation_summary');
+  rejectUnknown(value, [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'], 'evaluation_summary');
   assertEnvelope(value, 'evaluation_summary', ['evaluation_summary']);
   assertString(value.run_id, 'evaluation_summary.run_id');
   assertOptional(value.campaign_id, 'evaluation_summary.campaign_id', assertString);
@@ -575,6 +593,8 @@ export function isEvaluationSummary(value: unknown): asserts value is Evaluation
   assertOptional(value.started_at, 'evaluation_summary.started_at', assertString);
   assertOptional(value.ended_at, 'evaluation_summary.ended_at', assertString);
   assertOptional(value.elapsed_seconds, 'evaluation_summary.elapsed_seconds', assertNumber);
+  assertOptional(value.run_seconds, 'evaluation_summary.run_seconds', assertNumber);
+  assert(value.run_seconds === undefined || value.run_seconds >= 0, 'evaluation_summary.run_seconds', 'must be >= 0');
   assertEnum(value.verifier_state, VERIFIER_STATES, 'evaluation_summary.verifier_state');
   assertOptional(value.verifier_failure_summary, 'evaluation_summary.verifier_failure_summary', assertString);
   if (schemaAtLeast(value.schema_version, '1.5.0')) {
@@ -829,10 +849,11 @@ export function assertRoleTranscripts(value: unknown, path: string): asserts val
       const callPath = `${transcriptPath}.tool_calls[${callIndex}]`;
       const call: unknown = transcript.tool_calls[callIndex];
       assertObject(call, callPath);
-      rejectUnknown(call, ['tool_name', 'arguments_json', 'arguments_hash', 'command', 'success', 'error_type', 'result_json'], callPath);
+      rejectUnknown(call, ['tool_name', 'arguments_json', 'arguments_hash', 'approved_arguments_json', 'command', 'success', 'error_type', 'result_json'], callPath);
       assertString(call.tool_name, `${callPath}.tool_name`);
       assertOptional(call.arguments_json, `${callPath}.arguments_json`, assertString);
       assertOptionalHash(call.arguments_hash, `${callPath}.arguments_hash`);
+      assertOptional(call.approved_arguments_json, `${callPath}.approved_arguments_json`, assertString);
       assertOptional(call.command, `${callPath}.command`, assertString);
       assertBoolean(call.success, `${callPath}.success`);
       assertOptional(call.error_type, `${callPath}.error_type`, assertString);

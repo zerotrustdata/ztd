@@ -61,7 +61,7 @@ The runner verifies each receipt's actuator signature and persistence attestatio
 - Signed receipt and persistence-attestation verification across both Gateway and Operator audit stores.
 
 The verdict also requires these report and scenario checks:
-- Report evidence: `reports/gateway/` and `reports/worker/` each contain nonempty `receipts.csv`, `commitments.csv`, and `file_mutations.csv`. Every row of `verification_summary.csv` MUST be `PASS`; any `FAIL`, `SKIPPED`, or unrecognized result rejects the run. The checks `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, and `receipt_commitment_crosslink` MUST each appear with `PASS`.
+- Report evidence: `reports/gateway/` and `reports/worker/` each contain nonempty `event_receipts.csv`, `commitments.csv`, and `file_mutations.csv`. Every row of `verification_summary.csv` MUST be `PASS`; any `FAIL`, `SKIPPED`, or unrecognized result rejects the run. The checks `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, and `receipt_commitment_crosslink` MUST each appear with `PASS`.
 - Scenario receipts: the Operator export (`reports/worker/`) contains a completed `FILE_EDIT` receipt for the governed file create, and the Gateway export contains a completed `DOCUMENT_UPDATE` receipt for each of the document create and the document merge and a completed `FILE_EDIT` receipt for the embedded file create.
 
 Retained artifacts under `--root`:

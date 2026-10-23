@@ -191,7 +191,7 @@ func (h *harness) config(posture evalv1.EvaluationGovernancePosture, attended bo
 	drivers := map[cases.Ingress]cases.Driver{}
 	for _, ingress := range []cases.Ingress{
 		cases.IngressDirect, cases.IngressDispatchEmbedded, cases.IngressDispatchOutbound,
-		cases.IngressMCP, cases.IngressA2A, cases.IngressCLI,
+		cases.IngressMCP, cases.IngressMCPStdio, cases.IngressA2A, cases.IngressCLI,
 	} {
 		drivers[ingress] = driver{h: h}
 	}
@@ -203,9 +203,10 @@ func (h *harness) config(posture evalv1.EvaluationGovernancePosture, attended bo
 		Posture: func(context.Context) (evalv1.EvaluationGovernancePosture, error) {
 			return posture, nil
 		},
-		Recorder: func(sink *[]client.Exchange) { h.sink = sink },
-		Attended: attended,
-		Now:      fixedClock(),
+		A2AIngress: true,
+		Recorder:   func(sink *[]client.Exchange) { h.sink = sink },
+		Attended:   attended,
+		Now:        fixedClock(),
 	}
 }
 
@@ -420,7 +421,7 @@ func TestRunAbortsWhenSentinelReceiptIsForged(t *testing.T) {
 
 func TestRunRecordsAttendedCaseAsNotRunInUnattendedRun(t *testing.T) {
 	h := newHarness(t)
-	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY)
+	applicable, err := cases.Applicable(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_RATIFY, cases.Stack{A2AIngress: true, Outbound: true})
 	require.NoError(t, err)
 	var attended int
 	for _, c := range applicable {
@@ -451,35 +452,31 @@ func TestRunRecordsAttendedCaseAsNotRunInUnattendedRun(t *testing.T) {
 	assert.Equal(t, expectedLog(record), h.log)
 }
 
-func TestRunRecordsUnavailableCoverageWithoutTouchingAbsentRuntime(t *testing.T) {
+func TestRunWithEmbeddedOperatorOnlyRunsOutboundRoleCasesOnEmbedded(t *testing.T) {
 	h := newHarness(t)
 	cfg := h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, false)
 	delete(cfg.Roots, cases.ExecutorOutbound)
-	cfg.Unavailable = make(map[cases.Ingress]evalv1.ConformanceObservationKind)
-	for _, ingress := range []cases.Ingress{cases.IngressDispatchOutbound, cases.IngressCLI, cases.IngressA2A} {
-		delete(cfg.Drivers, ingress)
-		cfg.Unavailable[ingress] = ingress.UnavailableObservation()
-	}
 	record, err := Run(context.Background(), cfg)
 	require.NoError(t, err)
 	require.Len(t, record.GetAnchors(), 1)
 	require.Len(t, record.GetQuiescence(), 1)
 	assert.Zero(t, h.reads[cases.ExecutorOutbound])
-	applicable, err := cases.Applicable(record.GetPosture())
+	assert.True(t, record.GetOutboundAbsent())
+	assert.False(t, record.GetA2AIngressAbsent())
+	full, err := cases.Applicable(record.GetPosture(), cases.Stack{A2AIngress: true, Outbound: true})
 	require.NoError(t, err)
-	require.Len(t, record.GetCases(), len(applicable))
-	for i, c := range applicable {
-		if kind, skipped := cfg.Unavailable[c.Ingress]; skipped {
-			ev := record.GetCases()[i]
-			require.Len(t, ev.GetObservations(), 1)
-			assert.Equal(t, kind, ev.GetObservations()[0].GetKind())
-			assert.Nil(t, ev.GetSentinelBefore())
-			assert.Nil(t, ev.GetCanaryBefore())
+	require.Len(t, record.GetCases(), len(full), "the embedded Data Operator runs every case")
+	var outboundRole int
+	for i, c := range full {
+		ev := record.GetCases()[i]
+		assert.Equal(t, string(cases.ExecutorEmbedded), ev.GetExecutor(), c.ID)
+		assert.Contains(t, h.drivenIDs, ev.GetAttemptId(), c.ID)
+		if c.Ingress.Executor() == cases.ExecutorOutbound {
+			outboundRole++
 		}
 	}
-	for _, a := range h.attempts {
-		assert.NotContains(t, cfg.Unavailable, a.Case.Ingress)
-	}
+	assert.Positive(t, outboundRole, "outbound-role cases must run on the embedded Operator")
+	assert.Equal(t, expectedLog(record), h.log)
 }
 
 func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
@@ -488,7 +485,8 @@ func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
 		mutate func(cfg *Config)
 	}{
 		{name: "missing driver", mutate: func(cfg *Config) { delete(cfg.Drivers, cases.IngressMCP) }},
-		{name: "missing root", mutate: func(cfg *Config) { delete(cfg.Roots, cases.ExecutorOutbound) }},
+		{name: "missing outbound driver", mutate: func(cfg *Config) { delete(cfg.Drivers, cases.IngressCLI) }},
+		{name: "missing embedded root", mutate: func(cfg *Config) { delete(cfg.Roots, cases.ExecutorEmbedded) }},
 		{name: "required ingress cannot be skipped", mutate: func(cfg *Config) {
 			delete(cfg.Drivers, cases.IngressMCP)
 			cfg.Unavailable = map[cases.Ingress]evalv1.ConformanceObservationKind{cases.IngressMCP: evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A}
@@ -501,6 +499,7 @@ func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newHarness(t)
 			cfg := h.config(evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE, true)
+			embedded := h.roots[cases.ExecutorEmbedded]
 			tt.mutate(&cfg)
 
 			record, err := Run(context.Background(), cfg)
@@ -509,7 +508,7 @@ func TestRunFailsBeforeSeedingWhenIngressCannotBeDriven(t *testing.T) {
 			assert.ErrorIs(t, err, constants.ErrConformanceIngressUnsupported)
 			assert.Nil(t, record)
 			assert.Empty(t, h.log)
-			_, err = h.roots[cases.ExecutorEmbedded].Files.Lstat(context.Background(), canaryRoot())
+			_, err = embedded.Files.Lstat(context.Background(), canaryRoot())
 			assert.ErrorIs(t, err, constants.ErrNotFound)
 		})
 	}

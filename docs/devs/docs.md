@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/
   - protocol/docs/
@@ -302,7 +302,12 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.1.3 Release Notes](../release_notes/v1.1.x/v1.1.3.md): v1.1.3 release scope and changes.
 - [v1.1.3 Compliance Evidence](../release_notes/v1.1.x/v1.1.3-compliance-evidence.md): Generated compliance evidence projection for v1.1.3.
 - [v1.1.3 Compliance Evidence CSV](../release_notes/v1.1.x/v1.1.3-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.1.3.
-- [v1.2.0 Release Notes](../release_notes/v1.2.x/v1.2.0.md): Release preparation draft; final qualification and signed compliance evidence pending.
+- [v1.2.0 Release Notes](../release_notes/v1.2.x/v1.2.0.md): Production Tribunal, governed approvals, and investigation campaigns.
+- [v1.2.0 Compliance Evidence](../release_notes/v1.2.x/v1.2.0-compliance-evidence.md): Generated compliance evidence projection for v1.2.0.
+- [v1.2.0 Compliance Evidence CSV](../release_notes/v1.2.x/v1.2.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.2.0.
+- [v1.3.0 Release Notes](../release_notes/v1.3.x/v1.3.0.md): Tribunal consensus, the single shell execution contract, event receipts, and evidence compatibility changes.
+- [v1.3.0 Compliance Evidence](../release_notes/v1.3.x/v1.3.0-compliance-evidence.md): Generated compliance evidence projection for v1.3.0.
+- [v1.3.0 Compliance Evidence CSV](../release_notes/v1.3.x/v1.3.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.3.0.
 
 ## Procedures
 

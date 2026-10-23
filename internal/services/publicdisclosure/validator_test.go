@@ -109,6 +109,11 @@ func TestValidateAssignmentRecordAcceptsCurrentSchemas(t *testing.T) {
 	require.NoError(t, ValidateAssignmentRecord("1.1.0", result))
 }
 
+func TestValidateRoleTranscriptsAcceptsApprovedArguments(t *testing.T) {
+	raw := json.RawMessage(`[{"role":"lite","tool_calls":[{"tool_name":"run_shell_command","arguments_json":"{\"command\":\"cat app/service.conf\"}","approved_arguments_json":"{\"args\":[\"app/service.conf\"],\"command\":\"cat\"}","success":true}]}]`)
+	require.NoError(t, ValidateRoleTranscripts(raw))
+}
+
 func TestValidateAssignmentRecordTrajectoryFieldsRequireEnvelope120(t *testing.T) {
 	record := func(version, extra string) []byte {
 		return []byte(`{"schema_version":"` + version + `","message_type":"PublicAssignmentResultProjection","idempotency_key":"run-1:assignment-1:result","record":{"assignment_id":"assignment-1","run_id":"run-1","scenario_id":"scenario-1","result_digest":"` + strings.Repeat("a", 64) + `"` + extra + `}}`)

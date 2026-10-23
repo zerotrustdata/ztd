@@ -52,12 +52,16 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 	if posture == evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_UNSPECIFIED {
 		return nil, fmt.Errorf("conformance run: read posture: %w", constants.ErrConformancePostureUnknown)
 	}
-	applicable, err := cases.Applicable(posture)
+	// The selected Data Operator is outbound exactly when the caller supplies its
+	// root; otherwise the embedded Operator executes the outbound-role cases.
+	_, outbound := cfg.Roots[cases.ExecutorOutbound]
+	stack := cases.Stack{A2AIngress: cfg.A2AIngress, Outbound: outbound}
+	applicable, err := cases.Applicable(posture, stack)
 	if err != nil {
 		return nil, fmt.Errorf("conformance run: applicable cases: %w", err)
 	}
 
-	executors, err := usedExecutors(cfg, applicable)
+	executors, err := usedExecutors(cfg, stack, applicable)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +101,7 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 	evidence := make([]*evalv1.ConformanceCaseEvidence, 0, len(applicable))
 	for index, c := range applicable {
 		attemptID := fmt.Sprintf("%s-%04d", cfg.RunID, index+1)
-		ex := c.Ingress.Executor()
+		ex := stack.Executor(c.Ingress)
 		root := cfg.Roots[ex]
 		set := sets[ex]
 		attempt := cases.Attempt{
@@ -108,16 +112,16 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 			Marker:    cases.Marker(cfg.RunID, attemptID),
 		}
 		if kind, ok := cfg.Unavailable[c.Ingress]; ok {
-			evidence = append(evidence, notRunEvidence(attempt, kind))
+			evidence = append(evidence, notRunEvidence(attempt, ex, kind))
 			continue
 		}
 		if c.Attended && !cfg.Attended {
-			evidence = append(evidence, notRunEvidence(attempt, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED))
+			evidence = append(evidence, notRunEvidence(attempt, ex, evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED))
 			continue
 		}
 		attempt.TargetAbs = filepath.Join(root.Dir, set.TargetPath(attemptID))
 		attempt.ReadAbs = filepath.Join(root.Dir, set.ReadPath())
-		item, err := driveCase(ctx, cfg, root, set, attempt)
+		item, err := driveCase(ctx, cfg, ex, root, set, attempt)
 		if err != nil {
 			return nil, err
 		}
@@ -135,6 +139,8 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 		Cases:                evidence,
 		DoctrineCorpusSha256: doctrinecorpus.SHA256(),
 		Attended:             cfg.Attended,
+		A2AIngressAbsent:     !stack.A2AIngress,
+		OutboundAbsent:       !stack.Outbound,
 		StartedAt:            timestamppb.New(started),
 		FinishedAt:           timestamppb.New(cfg.Now()),
 	}, nil
@@ -142,7 +148,7 @@ func Run(ctx context.Context, cfg Config) (*evalv1.ConformanceRunRecord, error) 
 
 // usedExecutors lists the executors the applicable cases run on, in catalogue
 // order, and fails before any side effect if a case has no driver or no root.
-func usedExecutors(cfg Config, applicable []cases.Case) ([]cases.Executor, error) {
+func usedExecutors(cfg Config, stack cases.Stack, applicable []cases.Case) ([]cases.Executor, error) {
 	for ingress, kind := range cfg.Unavailable {
 		if kind == evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_UNSPECIFIED || kind != ingress.UnavailableObservation() || cfg.Drivers[ingress] != nil {
 			return nil, fmt.Errorf("conformance run: invalid unavailable ingress %s: %w", ingress, constants.ErrConformanceIngressUnsupported)
@@ -157,7 +163,7 @@ func usedExecutors(cfg Config, applicable []cases.Case) ([]cases.Executor, error
 		if _, ok := cfg.Drivers[c.Ingress]; !ok {
 			return nil, fmt.Errorf("conformance run: case %s: no driver for ingress %s: %w", c.ID, c.Ingress, constants.ErrConformanceIngressUnsupported)
 		}
-		ex := c.Ingress.Executor()
+		ex := stack.Executor(c.Ingress)
 		if _, ok := cfg.Roots[ex]; !ok {
 			return nil, fmt.Errorf("conformance run: case %s: no root for executor %s: %w", c.ID, ex, constants.ErrConformanceIngressUnsupported)
 		}
@@ -240,11 +246,11 @@ func executedOutcome(anchors *oracle.AnchorSet, runtimeID string, receipt *opera
 
 // notRunEvidence records a case skipped for a typed reason. It
 // takes no sentinels, snapshots, or drive.
-func notRunEvidence(attempt cases.Attempt, kind evalv1.ConformanceObservationKind) *evalv1.ConformanceCaseEvidence {
+func notRunEvidence(attempt cases.Attempt, ex cases.Executor, kind evalv1.ConformanceObservationKind) *evalv1.ConformanceCaseEvidence {
 	return &evalv1.ConformanceCaseEvidence{
 		CaseId:       attempt.Case.ID,
 		AttemptId:    attempt.AttemptID,
-		Executor:     string(attempt.Case.Ingress.Executor()),
+		Executor:     string(ex),
 		TargetPath:   attempt.TargetRel,
 		Marker:       attempt.Marker,
 		Observations: []*evalv1.ConformanceObservation{{Kind: kind}},
@@ -253,8 +259,7 @@ func notRunEvidence(attempt cases.Attempt, kind evalv1.ConformanceObservationKin
 
 // driveCase brackets one drive with canary snapshots and sentinel reads. Only
 // the drive is exchange-captured, so exchanges hold this case's own traffic.
-func driveCase(ctx context.Context, cfg Config, root Root, set *canary.Set, attempt cases.Attempt) (*evalv1.ConformanceCaseEvidence, error) {
-	ex := attempt.Case.Ingress.Executor()
+func driveCase(ctx context.Context, cfg Config, ex cases.Executor, root Root, set *canary.Set, attempt cases.Attempt) (*evalv1.ConformanceCaseEvidence, error) {
 	canaryBefore, err := canary.Snapshot(ctx, root.Files, set.Root)
 	if err != nil {
 		return nil, fmt.Errorf("conformance run: case %s canary before: %w", attempt.Case.ID, err)

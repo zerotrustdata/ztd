@@ -131,7 +131,11 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 	}
 	require.NoError(t, env.store(t).ClearRunLease(context.Background(), runID))
 	env.control.setAlive(otherHostPID, false)
-	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusCancelled)
+	// A holder asked to stop leaves its queued assignments resumable, so it
+	// projects waiting; only cancel, which stops them, projects cancelled.
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusWaiting)
+	released := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, released.Status)
 	select {
 	case result := <-done:
 		require.NoError(t, result.err, result.out)
@@ -139,6 +143,9 @@ func TestRunsCancel_AsksALiveProcessToStopAndWaitsForItToRelease(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancel did not finish after the process released the run")
 	}
+	posted := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, posted.Status)
+	assert.Equal(t, models.RunLifecycleStatusCancelled, posted.Status.Status)
 	_, err := env.store(t).LoadRunLease(context.Background(), runID)
 	assert.True(t, isMissingRecord(err))
 }
@@ -251,12 +258,63 @@ func TestRunsResume_OfACompletedRunIsRejectedByTheGateway(t *testing.T) {
 	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	var transition *models.ObserveTransitionError
+	require.ErrorAs(t, err, &transition, "the Gateway's refused transition reaches the CLI typed")
+	assert.Equal(t, &models.ObserveTransitionError{
+		Kind: models.ObserveProjectionKindRun, ID: runID,
+		From: string(models.RunLifecycleStatusCompleted), To: string(models.RunLifecycleStatusRunning),
+	}, transition)
 	var show runShowJSON
 	require.NoError(t, env.runJSON(t, &show, "runs", "show", runID))
 	assert.Equal(t, uint32(testModelRoleCells(t)), show.Queued)
 	assert.Zero(t, show.Terminal)
 	requireNoGatewayRunEvent(t, events)
 }
+
+// A paused run whose Gateway projection is wrongly terminal cannot resume until
+// repair --projection reopens it from the authoritative local store.
+func TestRunsRepair_ProjectionReopensACancelledProjectionOfAResumableRun(t *testing.T) {
+	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t)
+	events := observeGatewayRunEvents(t, env, runID)
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusCancelled)
+	seeded := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, seeded.Status)
+
+	_, err := env.run(t, "runs", "resume", runID, "--no-auto-bind")
+	require.Error(t, err)
+	var transition *models.ObserveTransitionError
+	require.ErrorAs(t, err, &transition)
+	assert.Contains(t, err.Error(), "ztd eval runs repair "+runID+" --projection")
+
+	var repaired runRepairJSON
+	require.NoError(t, env.runJSON(t, &repaired, "runs", "repair", runID, "--projection"))
+	assert.Equal(t, models.RunLifecycleStatusCancelled, repaired.ProjectionReopened)
+	reopened := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, reopened.Status)
+	assert.Equal(t, models.RunLifecycleStatusWaiting, reopened.Status.Status)
+
+	out := env.mustRun(t, "runs", "repair", runID, "--projection")
+	assert.Contains(t, out, "needed no reopen", "a projection already matching the store is left alone")
+	repeated := awaitGatewayRunEvent(t, events)
+	require.NotNil(t, repeated.Status)
+	assert.Equal(t, models.RunLifecycleStatusWaiting, repeated.Status.Status)
+}
+
+func TestRunsRepair_ProjectionLeavesACancelledLocalRunAlone(t *testing.T) {
+	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	runID := env.prepareRun(t)
+	env.mustRun(t, "runs", "cancel", runID, "--publish=false")
+	events := observeGatewayRunEvents(t, env, runID)
+	publishGatewayRunState(t, env, stack, runID, models.RunLifecycleStatusCancelled)
+	require.NotNil(t, awaitGatewayRunEvent(t, events).Status)
+
+	var repaired runRepairJSON
+	require.NoError(t, env.runJSON(t, &repaired, "runs", "repair", runID, "--projection"))
+	assert.Empty(t, repaired.ProjectionReopened, "a cancelled local run is not resumable")
+	requireNoGatewayRunEvent(t, events)
+}
+
 func TestRunsResume_FailsClosedWhenGatewayRejectsRunning(t *testing.T) {
 	env, stack := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
 	runID := env.prepareRun(t)

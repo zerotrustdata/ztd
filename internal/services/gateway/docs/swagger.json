@@ -321,16 +321,69 @@
                 }
             }
         },
-        "/api/v1/audit/receipts": {
+        "/api/v1/audit/consensus-votes": {
             "get": {
-                "description": "Returns one canonical protojson ActionReceipt when tx_id is set or when investigation_id and action_type uniquely correlate a receipt. Without those selectors, returns searchable receipt records with the complete receipt nested under action_receipt.",
+                "description": "Returns every recorded L2 consensus member vote (member, outcome, reason, failure) for one governed transaction, oldest first. Reason and failure text is scrubbed.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "audit"
                 ],
-                "summary": "Get or list audit receipts",
+                "summary": "List consensus votes for a transaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Governed transaction ID (the envelope ID receipts carry)",
+                        "name": "tx_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ConsensusVotesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request — tx_id missing",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable — egress scrubber unavailable, content withheld",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/audit/event-receipts": {
+            "get": {
+                "description": "Returns one canonical protojson ActionReceipt when tx_id is set or when investigation_id and action_type uniquely correlate an event receipt. Without those selectors, returns searchable event receipt records with the complete ActionReceipt nested under action_receipt.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "audit"
+                ],
+                "summary": "Get or list event receipts",
                 "parameters": [
                     {
                         "type": "string",
@@ -379,7 +432,7 @@
                     "200": {
                         "description": "List wrapper; unique selectors instead return a bare operatorv1.ActionReceipt",
                         "schema": {
-                            "$ref": "#/definitions/models.AuditReceiptsResponse"
+                            "$ref": "#/definitions/models.AuditEventReceiptsResponse"
                         }
                     },
                     "400": {
@@ -421,16 +474,16 @@
                 }
             }
         },
-        "/api/v1/audit/receipts/export": {
+        "/api/v1/audit/event-receipts/export": {
             "get": {
-                "description": "Returns an AuditReceiptsResponse list wrapper. Every searchable record embeds the complete canonical protojson receipt under action_receipt.",
+                "description": "Returns an AuditEventReceiptsResponse list wrapper. Every searchable record embeds the complete canonical protojson receipt under action_receipt.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "audit"
                 ],
-                "summary": "Export audit receipts",
+                "summary": "Export event receipts",
                 "parameters": [
                     {
                         "type": "string",
@@ -461,7 +514,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.AuditReceiptsResponse"
+                            "$ref": "#/definitions/models.AuditEventReceiptsResponse"
                         }
                     },
                     "405": {
@@ -1335,13 +1388,13 @@
                     "200": {
                         "description": "accepted",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ObserveProducerResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid transition, stale update, or missing fields",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ObserveProducerRejection"
                         }
                     },
                     "401": {
@@ -1359,7 +1412,7 @@
                     "500": {
                         "description": "Persistence failure",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ObserveProducerRejection"
                         }
                     }
                 }
@@ -1367,7 +1420,7 @@
         },
         "/api/v1/observe/producer/run-state": {
             "post": {
-                "description": "Accepts a typed run state update from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the run state projection, and emits an app.run.status.updated SSE event after successful persistence.",
+                "description": "Accepts a typed run state update from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the run state projection, and emits an app.run.status.updated SSE event after successful persistence. A request naming reopens replaces exactly that terminal projected status with a non-terminal one; it is a producer repair for a projection its local store contradicts.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1393,13 +1446,13 @@
                     "200": {
                         "description": "accepted",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ObserveProducerResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid transition, stale update, or missing fields",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ObserveProducerRejection"
                         }
                     },
                     "401": {
@@ -1417,7 +1470,7 @@
                     "500": {
                         "description": "Persistence failure",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ObserveProducerRejection"
                         }
                     }
                 }
@@ -1451,13 +1504,13 @@
                     "200": {
                         "description": "accepted",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ObserveProducerResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid stop reason or scope, or missing campaign_id or run_id",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ObserveProducerRejection"
                         }
                     },
                     "401": {
@@ -1475,7 +1528,7 @@
                     "500": {
                         "description": "Persistence failure",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ObserveProducerRejection"
                         }
                     }
                 }
@@ -1646,7 +1699,7 @@
         },
         "/api/v1/operators/intents": {
             "post": {
-                "description": "Platform-internal endpoint (mTLS, app workload). The Gateway's Tribunal turns a\nplain-language command intent into one audited shell command through governed\ninference, then dispatches it to the target Operator as an ordinary governed\nEXECUTE_BASH. Under ratify or notary posture the command dispatch is suspended\nuntil a human approves or denies it. The Gateway never mints the approval proof.",
+                "description": "Platform-internal endpoint (mTLS, app workload). The Gateway's Tribunal turns a\nplain-language command intent into one audited shell command through governed\ninference, then dispatches it to the target Operator as an ordinary governed\nMCP_CALL run_shell_command. Under ratify or notary posture the command dispatch is suspended\nuntil a human approves or denies it. The Gateway never mints the approval proof.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2487,6 +2540,7 @@
                 "DOCUMENT_DELETE",
                 "DOCUMENT_UPDATE",
                 "EVAL_ANSWER",
+                "EVAL_WORKSPACE_SEED",
                 "EXECUTE_BASH",
                 "FETCH_FILE_DIFF",
                 "FETCH_FILE_HISTORY",
@@ -2505,6 +2559,7 @@
                 "MCP_RESOURCE_READ",
                 "MODEL_PROVENANCE_OBSERVATION",
                 "OLLAMA_MODEL_INVENTORY",
+                "OLLAMA_MODEL_RELEASE",
                 "OLLAMA_MODEL_RESIDENCY",
                 "PLATFORM_ENROLLMENT_BIND_CONSENSUS",
                 "PLATFORM_ENROLLMENT_CREATE",
@@ -2524,6 +2579,7 @@
                 "ActionTypeDocumentDelete",
                 "ActionTypeDocumentUpdate",
                 "ActionTypeEvalAnswer",
+                "ActionTypeEvalWorkspaceSeed",
                 "ActionTypeExecuteBash",
                 "ActionTypeFetchFileDiff",
                 "ActionTypeFetchFileHistory",
@@ -2542,6 +2598,7 @@
                 "ActionTypeMcpResourceRead",
                 "ActionTypeModelProvenanceObservation",
                 "ActionTypeOllamaModelInventory",
+                "ActionTypeOllamaModelRelease",
                 "ActionTypeOllamaModelResidency",
                 "ActionTypePlatformEnrollmentBindConsensus",
                 "ActionTypePlatformEnrollmentCreate",
@@ -2581,6 +2638,7 @@
                 "ztd.v1.app.investigation.updated",
                 "ztd.v1.app.run.status.updated",
                 "ztd.v1.app.task.completed",
+                "ztd.v1.consensus.vote.recorded",
                 "ztd.v1.inference.model.provenance.attestation.recorded",
                 "ztd.v1.operator.a2a.call.requested",
                 "ztd.v1.operator.audit.ai.record.requested",
@@ -2624,6 +2682,9 @@
                 "ztd.v1.operator.context.changed",
                 "ztd.v1.operator.device.registered",
                 "ztd.v1.operator.eval.answer.requested",
+                "ztd.v1.operator.eval.workspace.seed.completed",
+                "ztd.v1.operator.eval.workspace.seed.failed",
+                "ztd.v1.operator.eval.workspace.seed.requested",
                 "ztd.v1.operator.field.read.access.denied",
                 "ztd.v1.operator.field.read.access.granted",
                 "ztd.v1.operator.field.read.requested",
@@ -2710,6 +2771,9 @@
                 "ztd.v1.operator.ollama.model.inventory.completed",
                 "ztd.v1.operator.ollama.model.inventory.failed",
                 "ztd.v1.operator.ollama.model.inventory.requested",
+                "ztd.v1.operator.ollama.model.release.completed",
+                "ztd.v1.operator.ollama.model.release.failed",
+                "ztd.v1.operator.ollama.model.release.requested",
                 "ztd.v1.operator.ollama.model.residency.completed",
                 "ztd.v1.operator.ollama.model.residency.failed",
                 "ztd.v1.operator.ollama.model.residency.requested",
@@ -2803,6 +2867,7 @@
                 "EventAppInvestigationUpdated",
                 "EventAppRunStatusUpdated",
                 "EventAppTaskCompleted",
+                "EventConsensusVoteRecorded",
                 "EventModelProvenanceAttestationRecorded",
                 "EventOperatorA2aCallRequested",
                 "EventOperatorAuditAiRecordRequested",
@@ -2846,6 +2911,9 @@
                 "EventOperatorContextChanged",
                 "EventOperatorDeviceRegistered",
                 "EventOperatorEvalAnswerRequested",
+                "EventOperatorEvalWorkspaceSeedCompleted",
+                "EventOperatorEvalWorkspaceSeedFailed",
+                "EventOperatorEvalWorkspaceSeedRequested",
                 "EventOperatorFieldReadAccessDenied",
                 "EventOperatorFieldReadAccessGranted",
                 "EventOperatorFieldReadRequested",
@@ -2932,6 +3000,9 @@
                 "EventOperatorOllamaModelInventoryCompleted",
                 "EventOperatorOllamaModelInventoryFailed",
                 "EventOperatorOllamaModelInventoryRequested",
+                "EventOperatorOllamaModelReleaseCompleted",
+                "EventOperatorOllamaModelReleaseFailed",
+                "EventOperatorOllamaModelReleaseRequested",
                 "EventOperatorOllamaModelResidencyCompleted",
                 "EventOperatorOllamaModelResidencyFailed",
                 "EventOperatorOllamaModelResidencyRequested",
@@ -3149,74 +3220,6 @@
                 "ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE"
             ]
         },
-        "models.ActionReceiptRecord": {
-            "type": "object",
-            "properties": {
-                "acting_app_id": {
-                    "type": "string"
-                },
-                "action_receipt": {
-                    "$ref": "#/definitions/operatorv1.ActionReceipt"
-                },
-                "action_type": {
-                    "$ref": "#/definitions/constants.ActionType"
-                },
-                "event_type": {
-                    "$ref": "#/definitions/constants.EventType"
-                },
-                "executed_at": {
-                    "type": "string"
-                },
-                "investigation_id": {
-                    "type": "string"
-                },
-                "l2_valid": {
-                    "type": "boolean"
-                },
-                "l3_valid": {
-                    "type": "boolean"
-                },
-                "operator_id": {
-                    "type": "string"
-                },
-                "operator_session_id": {
-                    "type": "string"
-                },
-                "requestor_user_id": {
-                    "type": "string"
-                },
-                "result_summary": {
-                    "type": "string"
-                },
-                "signature": {
-                    "type": "string"
-                },
-                "signer_key_id": {
-                    "type": "string"
-                },
-                "state_root_after": {
-                    "type": "string"
-                },
-                "state_root_before": {
-                    "type": "string"
-                },
-                "status": {
-                    "$ref": "#/definitions/operatorv1.ExecutionStatus"
-                },
-                "target_resource": {
-                    "type": "string"
-                },
-                "timestamp": {
-                    "type": "string"
-                },
-                "transaction_hash": {
-                    "type": "string"
-                },
-                "transaction_id": {
-                    "type": "string"
-                }
-            }
-        },
         "models.AgentLifecycleStatus": {
             "type": "string",
             "enum": [
@@ -3293,13 +3296,13 @@
                 }
             }
         },
-        "models.AuditReceiptsResponse": {
+        "models.AuditEventReceiptsResponse": {
             "type": "object",
             "properties": {
-                "receipts": {
+                "event_receipts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.ActionReceiptRecord"
+                        "$ref": "#/definitions/models.EventReceiptRecord"
                     }
                 },
                 "success": {
@@ -3342,6 +3345,110 @@
                 "CampaignFreshnessSafetyStopped",
                 "CampaignFreshnessSourceOffline"
             ]
+        },
+        "models.ConsensusDecisionEvidence": {
+            "type": "object",
+            "properties": {
+                "approval_probability": {
+                    "type": "number"
+                },
+                "passed": {
+                    "type": "boolean"
+                },
+                "probability": {
+                    "type": "number"
+                },
+                "question": {
+                    "type": "string"
+                },
+                "threshold": {
+                    "type": "number"
+                }
+            }
+        },
+        "models.ConsensusVoteOutcome": {
+            "type": "string",
+            "enum": [
+                "approve",
+                "deny",
+                "no_vote"
+            ],
+            "x-enum-varnames": [
+                "ConsensusVoteOutcomeApprove",
+                "ConsensusVoteOutcomeDeny",
+                "ConsensusVoteOutcomeNoVote"
+            ]
+        },
+        "models.ConsensusVoteRecord": {
+            "type": "object",
+            "properties": {
+                "consensus_set_id": {
+                    "type": "string"
+                },
+                "decision_evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ConsensusDecisionEvidence"
+                    }
+                },
+                "failure": {
+                    "description": "Failure explains a deny read from an invalid answer, or why no vote was cast.",
+                    "type": "string"
+                },
+                "inference_transaction_id": {
+                    "description": "InferenceTransactionID is the member's governed INFERENCE transaction.",
+                    "type": "string"
+                },
+                "member_app_id": {
+                    "type": "string"
+                },
+                "model_tag": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "$ref": "#/definitions/models.ConsensusVoteOutcome"
+                },
+                "provider_attempt_id": {
+                    "type": "string"
+                },
+                "quorum": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "description": "Reason is the member's own stated reason for its decision.",
+                    "type": "string"
+                },
+                "recorded_at": {
+                    "type": "string"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "description": "TransactionID is the envelope ID, the ID its receipts carry.",
+                    "type": "string"
+                },
+                "vote_kind": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ConsensusVotesResponse": {
+            "type": "object",
+            "properties": {
+                "success": {
+                    "type": "boolean"
+                },
+                "transaction_id": {
+                    "type": "string"
+                },
+                "votes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ConsensusVoteRecord"
+                    }
+                }
+            }
         },
         "models.DownloadArtifact": {
             "type": "object",
@@ -3600,6 +3707,74 @@
                 "EvalVerificationVerified"
             ]
         },
+        "models.EventReceiptRecord": {
+            "type": "object",
+            "properties": {
+                "acting_app_id": {
+                    "type": "string"
+                },
+                "action_receipt": {
+                    "$ref": "#/definitions/operatorv1.ActionReceipt"
+                },
+                "action_type": {
+                    "$ref": "#/definitions/constants.ActionType"
+                },
+                "event_type": {
+                    "$ref": "#/definitions/constants.EventType"
+                },
+                "executed_at": {
+                    "type": "string"
+                },
+                "investigation_id": {
+                    "type": "string"
+                },
+                "l2_valid": {
+                    "type": "boolean"
+                },
+                "l3_valid": {
+                    "type": "boolean"
+                },
+                "operator_id": {
+                    "type": "string"
+                },
+                "operator_session_id": {
+                    "type": "string"
+                },
+                "requestor_user_id": {
+                    "type": "string"
+                },
+                "result_summary": {
+                    "type": "string"
+                },
+                "signature": {
+                    "type": "string"
+                },
+                "signer_key_id": {
+                    "type": "string"
+                },
+                "state_root_after": {
+                    "type": "string"
+                },
+                "state_root_before": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/operatorv1.ExecutionStatus"
+                },
+                "target_resource": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "transaction_hash": {
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.EvidenceSafeLink": {
             "type": "object",
             "properties": {
@@ -3617,9 +3792,48 @@
                 }
             }
         },
+        "models.HealthConsensus": {
+            "type": "object",
+            "properties": {
+                "bound": {
+                    "description": "an enabled binding exists",
+                    "type": "boolean"
+                },
+                "members": {
+                    "description": "N",
+                    "type": "integer"
+                },
+                "provider": {
+                    "description": "constants.ConsensusProvider of the binding",
+                    "type": "string"
+                },
+                "quorum": {
+                    "description": "K",
+                    "type": "integer"
+                },
+                "ready": {
+                    "description": "Usable \u003e= Quorum on an enabled binding",
+                    "type": "boolean"
+                },
+                "usable": {
+                    "description": "members that can vote now (enabled signer; tribunal: local key present)",
+                    "type": "integer"
+                },
+                "vote_kind": {
+                    "type": "string"
+                }
+            }
+        },
         "models.HealthResponse": {
             "type": "object",
             "properties": {
+                "a2a_ingress": {
+                    "description": "A2A ingress is mounted (a downstream is configured)",
+                    "type": "boolean"
+                },
+                "consensus": {
+                    "$ref": "#/definitions/models.HealthConsensus"
+                },
                 "governance_ready": {
                     "type": "boolean"
                 },
@@ -3807,6 +4021,88 @@
                 }
             }
         },
+        "models.ObserveProducerRejection": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "$ref": "#/definitions/models.ObserveProducerRejectionCode"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "stale": {
+                    "$ref": "#/definitions/models.ObserveStaleUpdateError"
+                },
+                "transition": {
+                    "$ref": "#/definitions/models.ObserveTransitionError"
+                }
+            }
+        },
+        "models.ObserveProducerRejectionCode": {
+            "type": "string",
+            "enum": [
+                "body_unreadable",
+                "body_too_large",
+                "invalid_json",
+                "unsupported_schema_version",
+                "agent_id_required",
+                "run_id_required",
+                "campaign_id_required",
+                "observed_at_required",
+                "agent_display_name_required",
+                "agent_role_required",
+                "run_display_name_required",
+                "run_kind_invalid",
+                "status_invalid",
+                "negative_task_count",
+                "completed_exceeds_total",
+                "end_before_start",
+                "stop_reason_invalid",
+                "stop_scope_invalid",
+                "route_user_required",
+                "route_session_required",
+                "route_session_ambiguous",
+                "invalid_transition",
+                "stale_update",
+                "forbidden",
+                "internal"
+            ],
+            "x-enum-varnames": [
+                "ObserveProducerRejectionBodyUnreadable",
+                "ObserveProducerRejectionBodyTooLarge",
+                "ObserveProducerRejectionInvalidJSON",
+                "ObserveProducerRejectionUnsupportedSchema",
+                "ObserveProducerRejectionAgentIDRequired",
+                "ObserveProducerRejectionRunIDRequired",
+                "ObserveProducerRejectionCampaignIDRequired",
+                "ObserveProducerRejectionObservedAtRequired",
+                "ObserveProducerRejectionAgentDisplayNameMissing",
+                "ObserveProducerRejectionAgentRoleMissing",
+                "ObserveProducerRejectionRunDisplayNameMissing",
+                "ObserveProducerRejectionRunKindInvalid",
+                "ObserveProducerRejectionStatusInvalid",
+                "ObserveProducerRejectionNegativeTaskCount",
+                "ObserveProducerRejectionCompletedExceedsTotal",
+                "ObserveProducerRejectionEndBeforeStart",
+                "ObserveProducerRejectionStopReasonInvalid",
+                "ObserveProducerRejectionStopScopeInvalid",
+                "ObserveProducerRejectionRouteUserRequired",
+                "ObserveProducerRejectionRouteSessionRequired",
+                "ObserveProducerRejectionRouteSessionAmbiguous",
+                "ObserveProducerRejectionInvalidTransition",
+                "ObserveProducerRejectionStaleUpdate",
+                "ObserveProducerRejectionForbidden",
+                "ObserveProducerRejectionInternal"
+            ]
+        },
+        "models.ObserveProducerResponse": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "boolean"
+                }
+            }
+        },
         "models.ObserveProducerRunStateRequest": {
             "type": "object",
             "properties": {
@@ -3827,6 +4123,14 @@
                 },
                 "observed_at": {
                     "type": "string"
+                },
+                "reopens": {
+                    "description": "Reopens names the terminal status a repair replaces because the\nproducer's authoritative local store contradicts it. The Gateway applies\nit only while the projection holds exactly this status and only toward a\nnon-terminal status; otherwise the normal transition rules decide.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.RunLifecycleStatus"
+                        }
+                    ]
                 },
                 "run_id": {
                     "type": "string"
@@ -3873,6 +4177,51 @@
                     "$ref": "#/definitions/models.StopScope"
                 },
                 "web_session_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ObserveProjectionKind": {
+            "type": "string",
+            "enum": [
+                "agent",
+                "run"
+            ],
+            "x-enum-varnames": [
+                "ObserveProjectionKindAgent",
+                "ObserveProjectionKindRun"
+            ]
+        },
+        "models.ObserveStaleUpdateError": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/models.ObserveProjectionKind"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "projected_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ObserveTransitionError": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/models.ObserveProjectionKind"
+                },
+                "to": {
                     "type": "string"
                 }
             }
@@ -5289,6 +5638,60 @@
                 }
             }
         },
+        "operatorv1.InferenceDecisionAnswer": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "description": "Types that are valid to be assigned to Kind:\n\n\t*InferenceDecisionAnswer_Noul\n\t*InferenceDecisionAnswer_Choice\n\t*InferenceDecisionAnswer_Score"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "operatorv1.InferenceDecisionQuestion": {
+            "type": "object",
+            "properties": {
+                "instructions": {
+                    "type": "string"
+                },
+                "kind": {
+                    "description": "Types that are valid to be assigned to Kind:\n\n\t*InferenceDecisionQuestion_Noul\n\t*InferenceDecisionQuestion_Choice\n\t*InferenceDecisionQuestion_Score"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "operatorv1.InferenceDecisionRequest": {
+            "type": "object",
+            "properties": {
+                "allow_hosted": {
+                    "description": "Explicit consent to hosted egress, committed into the governed envelope.",
+                    "type": "boolean"
+                },
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.InferenceDecisionQuestion"
+                    }
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "operatorv1.InferenceDecisionResult": {
+            "type": "object",
+            "properties": {
+                "answers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.InferenceDecisionAnswer"
+                    }
+                }
+            }
+        },
         "operatorv1.InferenceDispatchFailure": {
             "type": "object",
             "properties": {
@@ -5356,7 +5759,11 @@
                 40,
                 41,
                 42,
-                43
+                43,
+                44,
+                45,
+                46,
+                47
             ],
             "x-enum-varnames": [
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED",
@@ -5402,7 +5809,11 @@
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CANCELED",
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED",
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE",
-                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH"
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED"
             ]
         },
         "operatorv1.InferenceDispatchRequest": {
@@ -5427,6 +5838,14 @@
                 },
                 "context_limit": {
                     "type": "integer"
+                },
+                "decision": {
+                    "description": "Exclusive with messages, tools, streaming and generation controls.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.InferenceDecisionRequest"
+                        }
+                    ]
                 },
                 "evaluation_attempt_id": {
                     "type": "string"
@@ -5576,6 +5995,26 @@
                 }
             }
         },
+        "operatorv1.InferenceHostedEgressAttestation": {
+            "type": "object",
+            "properties": {
+                "explicit_consent": {
+                    "type": "boolean"
+                },
+                "model_version": {
+                    "type": "string"
+                },
+                "normalized_request_hash": {
+                    "type": "string"
+                },
+                "provenance": {
+                    "type": "string"
+                },
+                "provider_origin": {
+                    "type": "string"
+                }
+            }
+        },
         "operatorv1.InferenceLoadState": {
             "type": "integer",
             "format": "int32",
@@ -5678,6 +6117,14 @@
                     "description": "Number of completion tokens generated.",
                     "type": "integer"
                 },
+                "decision": {
+                    "description": "Exclusive with response parts. Covered by result_digest.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.InferenceDecisionResult"
+                        }
+                    ]
+                },
                 "evaluation_attempt_id": {
                     "type": "string"
                 },
@@ -5687,6 +6134,9 @@
                 },
                 "generation_duration_ns": {
                     "type": "integer"
+                },
+                "hosted_egress": {
+                    "$ref": "#/definitions/operatorv1.InferenceHostedEgressAttestation"
                 },
                 "load_duration_ns": {
                     "type": "integer"
@@ -6007,7 +6457,11 @@
                 18,
                 19,
                 20,
-                21
+                21,
+                22,
+                23,
+                24,
+                25
             ],
             "x-enum-varnames": [
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED",
@@ -6031,7 +6485,11 @@
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_CAMPAIGN_BINDING_INVALID",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW",
-                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED"
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED"
             ]
         },
         "operatorv1.ReceiptPersistenceAttestation": {
@@ -6053,6 +6511,26 @@
                     "type": "string"
                 },
                 "transaction_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "operatorv1.RunShellCommandArguments": {
+            "type": "object",
+            "properties": {
+                "args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "command": {
+                    "type": "string"
+                },
+                "timeout": {
+                    "type": "integer"
+                },
+                "working_dir": {
                     "type": "string"
                 }
             }
@@ -6587,18 +7065,18 @@
                     "type": "string"
                 },
                 "execution_id": {
-                    "description": "execution_id and timeout_seconds become the CommandRequested fields of the\ndispatched EXECUTE_BASH.",
+                    "description": "execution_id is carried by the dispatched McpCallRequested. The Gateway\nmerges timeout_seconds into the reviewed RunShellCommandArguments.",
                     "type": "string"
                 },
                 "guidelines": {
-                    "description": "Constraints the command must satisfy.",
+                    "description": "Orchestration constraints that each member must follow.",
                     "type": "string"
                 },
                 "investigation_id": {
                     "type": "string"
                 },
                 "member_inference": {
-                    "description": "member_inference is the template for every member call. The Gateway sets\nmessages and provider_attempt_id per call; the template must leave\nmessages, tools, provider_attempt_id, acting_app_id and stream empty.",
+                    "description": "member_inference is the template for every member call. The Gateway sets\nmessages, provider_attempt_id and the role's response_format schema per\ncall; the template must leave messages, tools, provider_attempt_id,\nacting_app_id, stream and response_format empty.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/operatorv1.InferenceDispatchRequest"
@@ -6613,7 +7091,7 @@
                     "type": "string"
                 },
                 "request": {
-                    "description": "Plain-language description of the single command to run. Required.",
+                    "description": "Canonical JSON proposed run_shell_command arguments. Required.",
                     "type": "string"
                 },
                 "shell": {
@@ -6650,16 +7128,24 @@
         "tribunalv1.TribunalIntentResult": {
             "type": "object",
             "properties": {
+                "arguments": {
+                    "description": "arguments are the approved typed run_shell_command arguments.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/operatorv1.RunShellCommandArguments"
+                        }
+                    ]
+                },
+                "arguments_json": {
+                    "description": "arguments_json are the exact canonical bytes dispatched to the Operator.",
+                    "type": "string"
+                },
                 "audit_failure": {
                     "description": "audit_failure explains an AUDIT_FAILED outcome.",
                     "type": "string"
                 },
-                "command": {
-                    "description": "command is the audited command; set only when outcome is APPROVED.",
-                    "type": "string"
-                },
                 "commandOutcome": {
-                    "description": "The governed EXECUTE_BASH outcome of an approved command.\n\nTypes that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
+                    "description": "The governed MCP_CALL outcome of an approved run_shell_command.\n\nTypes that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
                 },
                 "member_calls": {
                     "description": "member_calls are the governed member inferences, in order.",

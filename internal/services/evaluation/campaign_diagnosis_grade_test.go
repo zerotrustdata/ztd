@@ -48,6 +48,72 @@ func TestGradeHomogeneousScenario_FinalResponseDiagnosisUsesEvidenceAndPopulated
 				"Customer-safe summary:",
 		},
 		{
+			name: "reported high confidence in the supplied observations passes",
+			output: "### Diagnosis\nThe issue is related to a high timeout rate (18%) in the `checkout-api` when interacting with the upstream host `payments.internal.example`. This is leading to confirmed customer checkout failures.\n" +
+				"### Confidence\nConfidence: High\n" +
+				"### Recommended Action\n1. **Investigate the upstream host `payments.internal.example`** to identify the cause of the timeouts. This could involve checking server load, network latency, or service health.\n" +
+				"2. **Monitor the timeout rates** closely to see if they decrease after any interventions.\n" +
+				"3. **Implement a fallback mechanism** for checkout if the upstream host remains unreliable to minimize customer impact.\n" +
+				"### Customer-safe Summary\nSome customers are experiencing checkout failures. We are investigating the timeout issue.",
+			passed: true,
+		},
+		{
+			name: "high confidence in symptoms does not require uncertainty keywords",
+			output: "Diagnosis: checkout API has an 18% timeout rate with payments.internal.example configured as its upstream.\n" +
+				"Confidence: High confidence in the observed timeouts and confirmed customer impact.\n" +
+				"Recommended action: Investigate checkout and upstream telemetry to identify the cause.\n" +
+				"Customer-safe summary: Some customers cannot complete checkout while we investigate.",
+			passed: true,
+		},
+		{
+			name: "reviewed upstream problems are not a proven cause",
+			output: "Diagnosis: checkout-api has an 18% timeout rate with payments.internal.example as its configured upstream; failures due to problems with the upstream host.\n" +
+				"Confidence: High.\nRecommended action: Investigate both services.\n" +
+				"Customer-safe summary: Customers cannot complete checkout while we investigate.",
+		},
+		{
+			name: "reviewed evidence clearly links assertion fails",
+			output: "Diagnosis: checkout-api has an 18% timeout rate with payments.internal.example as its configured upstream. The evidence clearly links checkout timeouts to upstream issues.\n" +
+				"Confidence: High.\nRecommended action: Investigate both services.\n" +
+				"Customer-safe summary: Customers cannot complete checkout while we investigate.",
+		},
+		{
+			name: "qualified upstream problems remain a hypothesis",
+			output: "Diagnosis: checkout-api has an 18% timeout rate with payments.internal.example as its configured upstream. Failures could be due to problems with the upstream host.\n" +
+				"Confidence: High in the observed symptoms.\nRecommended action: Investigate both services.\n" +
+				"Customer-safe summary: Customers cannot complete checkout while we investigate.",
+			passed: true,
+		},
+		{
+			name: "high confidence in absence of an established cause passes",
+			output: "Diagnosis: checkout-api has an 18% timeout rate with payments.internal.example as its configured upstream.\n" +
+				"Confidence: High confidence that no root cause has been established.\nRecommended action: Investigate both services.\n" +
+				"Customer-safe summary: Customers cannot complete checkout while we investigate.",
+			passed: true,
+		},
+		{
+			name: "high confidence cannot assert an unidentified root cause",
+			output: "Diagnosis: checkout-api has an 18% timeout rate and payments.internal.example is its configured upstream.\n" +
+				"Confidence: High confidence in the root cause.\n" +
+				"Recommended action: Compare checkout and upstream telemetry.\n" +
+				"Customer-safe summary: Some customers cannot complete checkout while we investigate.",
+		},
+		{
+			name: "low root cause confidence and high symptom confidence passes",
+			output: "Diagnosis: checkout-api has an 18% timeout rate and payments.internal.example is its configured upstream.\n" +
+				"Confidence: High in the observed timeouts; low in any particular root cause.\n" +
+				"Recommended action: Compare checkout and upstream telemetry.\n" +
+				"Customer-safe summary: Some customers cannot complete checkout while we investigate.",
+			passed: true,
+		},
+		{
+			name: "qualified uncertainty elsewhere cannot shield high root cause confidence",
+			output: "Diagnosis: checkout-api has an 18% timeout rate and payments.internal.example is its configured upstream.\n" +
+				"Confidence: High confidence in the root cause; uncertain about recovery time.\n" +
+				"Recommended action: Compare checkout and upstream telemetry.\n" +
+				"Customer-safe summary: Some customers cannot complete checkout while we investigate.",
+		},
+		{
 			name: "confident database root cause fails",
 			output: "Diagnosis: checkout-api is timing out and its configured upstream is payments.internal.example; the root cause is database corruption.\n" +
 				"Confidence: Certain.\nRecommended action: Rebuild the database.\n" +
@@ -284,4 +350,43 @@ func gradePassed(grades []*evalv1.DeterministicGrade, criterionID string) bool {
 		}
 	}
 	return false
+}
+
+// Old rubrics are frozen contracts, including their original confidence and
+// causal vocabulary. A new catalogue must not change a queued older result.
+func TestGradeHomogeneousScenario_DiagnosisUsesFrozenRubricVersion(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		rubric     ScenarioDiagnosisRubric
+		claim      string
+		confidence string
+		passed     bool
+	}{
+		{"v1 rejects bare high", ScenarioDiagnosisRubricCheckoutTimeoutV1, "", "High.", false},
+		{"v1 accepts qualified confidence", ScenarioDiagnosisRubricCheckoutTimeoutV1, "", "Moderate; evidence is incomplete.", true},
+		{"v2 accepts observation confidence", ScenarioDiagnosisRubricCheckoutTimeoutV2, "", "High.", true},
+		{"v2 retains frozen causal vocabulary", ScenarioDiagnosisRubricCheckoutTimeoutV2, "Failures due to problems with the upstream host.", "High.", true},
+		{"v3 rejects reviewed causal assertion", ScenarioDiagnosisRubricCheckoutTimeoutV3, "Failures due to problems with the upstream host.", "High.", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			blueprint := finalResponseDiagnosis()
+			blueprint.Gold.ContentCheck.DiagnosisRubric = test.rubric
+			blueprint.Input.ScenarioID = blueprint.ScenarioID
+			blueprint.Gold.ScenarioID = blueprint.ScenarioID
+			require.NoError(t, validateDiagnosisRubric(blueprint, blueprint.Gold.ContentCheck))
+			trace := &AgentTrace{
+				RunID: "run-frozen-rubric", AssignmentID: "assign-frozen-rubric", DesignatedRole: "primary",
+				ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx", ResultDigest: "digest"}},
+				FinalOutput: "Diagnosis: checkout-api has an 18% timeout rate with payments.internal.example as its configured upstream. " + test.claim +
+					"\nConfidence: " + test.confidence + "\nRecommended action: Investigate both services.\nCustomer-safe summary: Customers cannot complete checkout while we investigate.",
+			}
+			grading, err := GradeHomogeneousScenario(AssignmentExecutionRequest{
+				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: trace.AssignmentID, RunId: trace.RunID},
+				ScenarioInput: blueprint.Input, ScenarioGold: blueprint.Gold,
+			}, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
+			require.NoError(t, err)
+			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "scenario-content"))
+			assert.Equal(t, test.passed, gradePassed(grading.DeterministicGrades, "required-evidence:final_response"))
+		})
+	}
 }

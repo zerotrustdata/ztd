@@ -42,9 +42,12 @@ func l1Observation(bundleHash string) *evalv1.ConformanceObservation {
 }
 
 // passingRun builds a verified run for posture in which every applicable case passes.
+// fullStack includes every optional ingress.
+var fullStack = cases.Stack{A2AIngress: true, Outbound: true}
+
 func passingRun(t *testing.T, posture evalv1.EvaluationGovernancePosture) VerifiedRun {
 	t.Helper()
-	applicable, err := cases.Applicable(posture)
+	applicable, err := cases.Applicable(posture, fullStack)
 	if err != nil {
 		t.Fatalf("cases.Applicable(%s): %v", posture, err)
 	}
@@ -99,7 +102,7 @@ func runFor(t *testing.T, runs []VerifiedRun, p evalv1.EvaluationGovernancePostu
 // findCase returns the first applicable case of posture p that matches pred.
 func findCase(t *testing.T, p evalv1.EvaluationGovernancePosture, pred func(cases.Case) bool) cases.Case {
 	t.Helper()
-	applicable, err := cases.Applicable(p)
+	applicable, err := cases.Applicable(p, fullStack)
 	if err != nil {
 		t.Fatalf("cases.Applicable(%s): %v", p, err)
 	}
@@ -214,6 +217,49 @@ func TestBuildUnrunAttendedCaseMarksCellPartial(t *testing.T) {
 	cell := cellAt(t, buildOK(t, runs), c.Row, c.Ingress, "ratify")
 	if cell.Status != CellPartial {
 		t.Fatalf("status = %s, want %s", cell.Status, CellPartial)
+	}
+}
+
+func TestBuildMinimalStackRunMarksOnlyA2ACellsNotApplicable(t *testing.T) {
+	doctrine := evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE
+	run := passingRun(t, doctrine)
+	run.Record.A2AIngressAbsent = true
+	run.Record.OutboundAbsent = true
+	applicable, err := cases.Applicable(doctrine, cases.Stack{})
+	if err != nil {
+		t.Fatalf("cases.Applicable: %v", err)
+	}
+	ids := make(map[string]bool, len(applicable))
+	for _, c := range applicable {
+		ids[c.ID] = true
+	}
+	keep := func(id string) bool { return ids[id] }
+	var evidence []*evalv1.ConformanceCaseEvidence
+	for _, ev := range run.Record.GetCases() {
+		if keep(ev.GetCaseId()) {
+			evidence = append(evidence, ev)
+		}
+	}
+	run.Record.Cases = evidence
+	var verdicts []*evalv1.ConformanceVerdict
+	for _, v := range run.Verdicts.GetVerdicts() {
+		if keep(v.GetCaseId()) {
+			verdicts = append(verdicts, v)
+		}
+	}
+	run.Verdicts.Verdicts = verdicts
+
+	rep := buildOK(t, []VerifiedRun{run})
+	a2a := findCase(t, doctrine, func(c cases.Case) bool { return c.Ingress == cases.IngressA2A })
+	if cell := cellAt(t, rep, a2a.Row, cases.IngressA2A, constants.PostureDoctrine); cell.Status != CellNotApplicable {
+		t.Fatalf("A2A cell status = %s, want %s", cell.Status, CellNotApplicable)
+	}
+	// The embedded Data Operator executes the outbound-role ingresses too.
+	for _, ingress := range []cases.Ingress{cases.IngressDirect, cases.IngressDispatchOutbound, cases.IngressCLI} {
+		c := findCase(t, doctrine, func(c cases.Case) bool { return c.Ingress == ingress })
+		if cell := cellAt(t, rep, c.Row, ingress, constants.PostureDoctrine); cell.Status != CellCovered {
+			t.Fatalf("%s cell status = %s, want %s", ingress, cell.Status, CellCovered)
+		}
 	}
 }
 
@@ -431,7 +477,7 @@ func TestBuildRecallCountsMatchCatalogue(t *testing.T) {
 
 func TestBuildRecallHashIsEmptyOnRefusalOnlyIngresses(t *testing.T) {
 	rep := buildOK(t, fourRuns(t))
-	signed := map[cases.Ingress]bool{cases.IngressDirect: true, cases.IngressMCP: true, cases.IngressA2A: true}
+	signed := map[cases.Ingress]bool{cases.IngressDirect: true, cases.IngressMCP: true, cases.IngressMCPStdio: true, cases.IngressA2A: true}
 	var checked int
 	for _, line := range rep.Recall {
 		checked++

@@ -4,9 +4,18 @@ All notable changes to this project are documented in per-release notes under [`
 This file serves as an index — each entry links to the full release notes for details.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and versions follow `vMAJOR.MINOR.PATCH`. While the major version is 1, a release that breaks a CLI, wire or evidence
+contract, or that requires the Gateway and Operators to upgrade together, bumps the minor version. A patch release is
+compatible with the previous release in the same minor series. See `INV-REL-VER-10` in
+[`docs/devs/release_process.md`](docs/devs/release_process.md).
 
 ---
+
+## v1.3.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.3.0 | 2026-10-22 | Tribunal L2 consensus scoped to state changes; single typed `run_shell_command` execution contract with Tribunal authoring, canonical argument evidence, and native MCP dispatch; event receipts on the events chain; `search_file` and `search_directory` replace `log_stream_filter`; CLI L3 deny (`ztd auth approve --deny`), attended `ztd test conformance-loop`, JSON-preserving scrubbing, runtime-owned UEI tokens, and SPIFFE-authenticated consensus application calls. v1.2.1 was never published. | [v1.3.0](docs/release_notes/v1.3.x/v1.3.0.md) |
 
 ## v1.2.x
 

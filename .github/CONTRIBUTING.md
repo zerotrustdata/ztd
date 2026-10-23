@@ -11,7 +11,7 @@ Before contributing, review the core platform architecture:
 - **ztd Protocol**: The canonical protocol definitions (protobuf schemas and constant registries).
 - **Five-Layer Governance Pipeline**:
     - **L1 Doctrine (L1Doctrine)**: Technical hard gates (forbidden patterns, threat detection).
-    - **L2 Consensus (L2Consensus)**: Multi-agent consensus via Ed25519 signatures.
+    - **L2 Consensus (L2Consensus)**: K-of-N Ed25519 quorum over the transaction hash and decision, from the members bound with `ztd consensus enroll`.
     - **L3 Notary (L3Notary)**: Human-in-the-loop authorization through WebAuthn or signed CLI proofs.
     - **L4 Warden (L4Warden)**: Pre-dispatch verification gate (transaction hash, expiry, nonce, state root).
     - **L5 Actuator (L5Actuator)**: Execution boundary issuing signed `ActionReceipts`.
@@ -39,7 +39,7 @@ Look for issues labeled `first-run`, `good-first-task`, and `docs`. Experienced 
 
 Choose the smallest environment that fits your work:
 
-- **Gateway only:** clone the repository, then run `make up`. A native build needs Go 1.27.2 and Make. Fresh clones use the committed frontend embeds; Node.js 22.22.2+, 24.15+, or 26+ and npm are needed only to rebuild the Console or Evaluation Explorer. Ollama and model SDKs are not needed for this configuration.
+- **Gateway only:** clone the repository, then run `make up`. A native build needs Go 1.27.3 and Make. Fresh clones use the committed frontend embeds; Node.js 22.22.2+, 24.15+, or 26+ and npm are needed only to rebuild the Console or Evaluation Explorer. Ollama and model SDKs are not needed for this configuration.
 - **Gateway with every Operator capability:** run `make gw` to start the Gateway with its embedded Operator carrying the capabilities in `GW_CAPABILITIES` (default `data,inference,observer`). Set `MODEL_STORAGE_ROOT` to the local model store to add Provenance, set `ZTD_OLLAMA_ENDPOINT` in `.env` when the Ollama provider is not on this host, and pass extra `./ztd gw start` flags through `GW_ARGS`. Run a separate outbound Operator in the foreground with `make operator OPERATOR_ARGS='...'`, including its own `--working-dir` (`./ztd operator start` refuses a directory that holds a Gateway runtime). Use `make status` and `make down` to inspect and stop the host stack.
 
 Linux and macOS contributors can install the complete development toolchain with their platform's setup script; use `--build-only` to skip the contributor toolchain while still building the binary. A direct `make build` on a fresh clone uses committed frontend embeds and does not require Node.js. See the [setup instructions](../docs/guides/getting_started.md#build-locally-native-host).
@@ -54,6 +54,7 @@ Run the narrowest check that covers your changes, then the broader owning suite 
 |---|---|
 | Go unit tests | `./ztd test unit` |
 | Cross-process evaluation qualification | `./ztd test eval-loop` |
+| Cross-process conformance qualification | `./ztd test conformance-loop --posture ratify` |
 | Isolated governed release smoke | `./ztd test release-smoke` |
 | Operator fleet scale qualification | `./ztd test scale` |
 | Repository tools (`internal/tools/*`) | `./ztd test unit --pkg ./internal/tools/<tool>` |

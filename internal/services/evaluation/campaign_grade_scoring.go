@@ -30,6 +30,8 @@ type gradeTally struct {
 	Passed  int
 	// StructuralFailed reports a failed harness precondition (INVALID_EVIDENCE).
 	StructuralFailed bool
+	// ObservationUnavailable prevents partial successful observations from passing an incomplete task.
+	ObservationUnavailable bool
 	// TriageOK reports that the Triage call grade passed.
 	TriageOK bool
 }
@@ -55,6 +57,9 @@ func tallyDeterministicGrades(grades []*evalv1.DeterministicGrade) (gradeTally, 
 			if grade.GetCriterionId() == triageGradeCriterionID {
 				tally.TriageOK = judged && !failed
 				continue
+			}
+			if grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE {
+				tally.ObservationUnavailable = true
 			}
 			if judged {
 				tally.Counted++
@@ -83,12 +88,15 @@ func tallyDeterministicGrades(grades []*evalv1.DeterministicGrade) (gradeTally, 
 // verdictFromGrades is the verdict of a completed assignment. A failed harness
 // precondition or a malformed grade set is INVALID_EVIDENCE: it appears in the
 // result and is never counted against the model. Otherwise the verdict is PASS
-// when every counted observation passed and FAIL when one did not.
+// when every required observation passed, UNAVAILABLE when an observation
+// is missing, and FAIL when an independent observation failed.
 func verdictFromGrades(grades []*evalv1.DeterministicGrade) evalv1.EvaluationVerdictStatus {
 	tally, err := tallyDeterministicGrades(grades)
 	switch {
 	case err != nil || tally.StructuralFailed:
 		return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE
+	case tally.ObservationsPassed() && tally.ObservationUnavailable:
+		return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
 	case tally.ObservationsPassed():
 		return evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 	default:

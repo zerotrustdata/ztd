@@ -6,6 +6,7 @@ definitions:
     - DOCUMENT_DELETE
     - DOCUMENT_UPDATE
     - EVAL_ANSWER
+    - EVAL_WORKSPACE_SEED
     - EXECUTE_BASH
     - FETCH_FILE_DIFF
     - FETCH_FILE_HISTORY
@@ -24,6 +25,7 @@ definitions:
     - MCP_RESOURCE_READ
     - MODEL_PROVENANCE_OBSERVATION
     - OLLAMA_MODEL_INVENTORY
+    - OLLAMA_MODEL_RELEASE
     - OLLAMA_MODEL_RESIDENCY
     - PLATFORM_ENROLLMENT_BIND_CONSENSUS
     - PLATFORM_ENROLLMENT_CREATE
@@ -43,6 +45,7 @@ definitions:
     - ActionTypeDocumentDelete
     - ActionTypeDocumentUpdate
     - ActionTypeEvalAnswer
+    - ActionTypeEvalWorkspaceSeed
     - ActionTypeExecuteBash
     - ActionTypeFetchFileDiff
     - ActionTypeFetchFileHistory
@@ -61,6 +64,7 @@ definitions:
     - ActionTypeMcpResourceRead
     - ActionTypeModelProvenanceObservation
     - ActionTypeOllamaModelInventory
+    - ActionTypeOllamaModelRelease
     - ActionTypeOllamaModelResidency
     - ActionTypePlatformEnrollmentBindConsensus
     - ActionTypePlatformEnrollmentCreate
@@ -97,6 +101,7 @@ definitions:
     - ztd.v1.app.investigation.updated
     - ztd.v1.app.run.status.updated
     - ztd.v1.app.task.completed
+    - ztd.v1.consensus.vote.recorded
     - ztd.v1.inference.model.provenance.attestation.recorded
     - ztd.v1.operator.a2a.call.requested
     - ztd.v1.operator.audit.ai.record.requested
@@ -140,6 +145,9 @@ definitions:
     - ztd.v1.operator.context.changed
     - ztd.v1.operator.device.registered
     - ztd.v1.operator.eval.answer.requested
+    - ztd.v1.operator.eval.workspace.seed.completed
+    - ztd.v1.operator.eval.workspace.seed.failed
+    - ztd.v1.operator.eval.workspace.seed.requested
     - ztd.v1.operator.field.read.access.denied
     - ztd.v1.operator.field.read.access.granted
     - ztd.v1.operator.field.read.requested
@@ -226,6 +234,9 @@ definitions:
     - ztd.v1.operator.ollama.model.inventory.completed
     - ztd.v1.operator.ollama.model.inventory.failed
     - ztd.v1.operator.ollama.model.inventory.requested
+    - ztd.v1.operator.ollama.model.release.completed
+    - ztd.v1.operator.ollama.model.release.failed
+    - ztd.v1.operator.ollama.model.release.requested
     - ztd.v1.operator.ollama.model.residency.completed
     - ztd.v1.operator.ollama.model.residency.failed
     - ztd.v1.operator.ollama.model.residency.requested
@@ -319,6 +330,7 @@ definitions:
     - EventAppInvestigationUpdated
     - EventAppRunStatusUpdated
     - EventAppTaskCompleted
+    - EventConsensusVoteRecorded
     - EventModelProvenanceAttestationRecorded
     - EventOperatorA2aCallRequested
     - EventOperatorAuditAiRecordRequested
@@ -362,6 +374,9 @@ definitions:
     - EventOperatorContextChanged
     - EventOperatorDeviceRegistered
     - EventOperatorEvalAnswerRequested
+    - EventOperatorEvalWorkspaceSeedCompleted
+    - EventOperatorEvalWorkspaceSeedFailed
+    - EventOperatorEvalWorkspaceSeedRequested
     - EventOperatorFieldReadAccessDenied
     - EventOperatorFieldReadAccessGranted
     - EventOperatorFieldReadRequested
@@ -448,6 +463,9 @@ definitions:
     - EventOperatorOllamaModelInventoryCompleted
     - EventOperatorOllamaModelInventoryFailed
     - EventOperatorOllamaModelInventoryRequested
+    - EventOperatorOllamaModelReleaseCompleted
+    - EventOperatorOllamaModelReleaseFailed
+    - EventOperatorOllamaModelReleaseRequested
     - EventOperatorOllamaModelResidencyCompleted
     - EventOperatorOllamaModelResidencyFailed
     - EventOperatorOllamaModelResidencyRequested
@@ -633,51 +651,6 @@ definitions:
     - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
     - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
     - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
-  models.ActionReceiptRecord:
-    properties:
-      acting_app_id:
-        type: string
-      action_receipt:
-        $ref: '#/definitions/operatorv1.ActionReceipt'
-      action_type:
-        $ref: '#/definitions/constants.ActionType'
-      event_type:
-        $ref: '#/definitions/constants.EventType'
-      executed_at:
-        type: string
-      investigation_id:
-        type: string
-      l2_valid:
-        type: boolean
-      l3_valid:
-        type: boolean
-      operator_id:
-        type: string
-      operator_session_id:
-        type: string
-      requestor_user_id:
-        type: string
-      result_summary:
-        type: string
-      signature:
-        type: string
-      signer_key_id:
-        type: string
-      state_root_after:
-        type: string
-      state_root_before:
-        type: string
-      status:
-        $ref: '#/definitions/operatorv1.ExecutionStatus'
-      target_resource:
-        type: string
-      timestamp:
-        type: string
-      transaction_hash:
-        type: string
-      transaction_id:
-        type: string
-    type: object
   models.AgentLifecycleStatus:
     enum:
     - idle
@@ -732,11 +705,11 @@ definitions:
       reason:
         type: string
     type: object
-  models.AuditReceiptsResponse:
+  models.AuditEventReceiptsResponse:
     properties:
-      receipts:
+      event_receipts:
         items:
-          $ref: '#/definitions/models.ActionReceiptRecord'
+          $ref: '#/definitions/models.EventReceiptRecord'
         type: array
       success:
         type: boolean
@@ -768,6 +741,78 @@ definitions:
     - CampaignFreshnessIntentionallyStopped
     - CampaignFreshnessSafetyStopped
     - CampaignFreshnessSourceOffline
+  models.ConsensusDecisionEvidence:
+    properties:
+      approval_probability:
+        type: number
+      passed:
+        type: boolean
+      probability:
+        type: number
+      question:
+        type: string
+      threshold:
+        type: number
+    type: object
+  models.ConsensusVoteOutcome:
+    enum:
+    - approve
+    - deny
+    - no_vote
+    type: string
+    x-enum-varnames:
+    - ConsensusVoteOutcomeApprove
+    - ConsensusVoteOutcomeDeny
+    - ConsensusVoteOutcomeNoVote
+  models.ConsensusVoteRecord:
+    properties:
+      consensus_set_id:
+        type: string
+      decision_evidence:
+        items:
+          $ref: '#/definitions/models.ConsensusDecisionEvidence'
+        type: array
+      failure:
+        description: Failure explains a deny read from an invalid answer, or why no
+          vote was cast.
+        type: string
+      inference_transaction_id:
+        description: InferenceTransactionID is the member's governed INFERENCE transaction.
+        type: string
+      member_app_id:
+        type: string
+      model_tag:
+        type: string
+      outcome:
+        $ref: '#/definitions/models.ConsensusVoteOutcome'
+      provider_attempt_id:
+        type: string
+      quorum:
+        type: integer
+      reason:
+        description: Reason is the member's own stated reason for its decision.
+        type: string
+      recorded_at:
+        type: string
+      transaction_hash:
+        type: string
+      transaction_id:
+        description: TransactionID is the envelope ID, the ID its receipts carry.
+        type: string
+      vote_kind:
+        type: string
+    type: object
+  models.ConsensusVotesResponse:
+    properties:
+      success:
+        type: boolean
+      transaction_id:
+        type: string
+      votes:
+        items:
+          $ref: '#/definitions/models.ConsensusVoteRecord'
+        type: array
+    type: object
   models.DownloadArtifact:
     properties:
       artifact_id:
@@ -940,6 +985,51 @@ definitions:
     - EvalVerificationProjectionValidated
     - EvalVerificationReceiptVerificationNotApplicable
     - EvalVerificationVerified
+  models.EventReceiptRecord:
+    properties:
+      acting_app_id:
+        type: string
+      action_receipt:
+        $ref: '#/definitions/operatorv1.ActionReceipt'
+      action_type:
+        $ref: '#/definitions/constants.ActionType'
+      event_type:
+        $ref: '#/definitions/constants.EventType'
+      executed_at:
+        type: string
+      investigation_id:
+        type: string
+      l2_valid:
+        type: boolean
+      l3_valid:
+        type: boolean
+      operator_id:
+        type: string
+      operator_session_id:
+        type: string
+      requestor_user_id:
+        type: string
+      result_summary:
+        type: string
+      signature:
+        type: string
+      signer_key_id:
+        type: string
+      state_root_after:
+        type: string
+      state_root_before:
+        type: string
+      status:
+        $ref: '#/definitions/operatorv1.ExecutionStatus'
+      target_resource:
+        type: string
+      timestamp:
+        type: string
+      transaction_hash:
+        type: string
+      transaction_id:
+        type: string
+    type: object
   models.EvidenceSafeLink:
     properties:
       artifact_id:
@@ -951,8 +1041,37 @@ definitions:
       schema_version:
         type: string
     type: object
+  models.HealthConsensus:
+    properties:
+      bound:
+        description: an enabled binding exists
+        type: boolean
+      members:
+        description: "N"
+        type: integer
+      provider:
+        description: constants.ConsensusProvider of the binding
+        type: string
+      quorum:
+        description: K
+        type: integer
+      ready:
+        description: Usable >= Quorum on an enabled binding
+        type: boolean
+      usable:
+        description: 'members that can vote now (enabled signer; tribunal: local key
+          present)'
+        type: integer
+      vote_kind:
+        type: string
+    type: object
   models.HealthResponse:
     properties:
+      a2a_ingress:
+        description: A2A ingress is mounted (a downstream is configured)
+        type: boolean
+      consensus:
+        $ref: '#/definitions/models.HealthConsensus'
       governance_ready:
         type: boolean
       mode:
@@ -1079,6 +1198,76 @@ definitions:
       web_session_id:
         type: string
     type: object
+  models.ObserveProducerRejection:
+    properties:
+      code:
+        $ref: '#/definitions/models.ObserveProducerRejectionCode'
+      error:
+        type: string
+      stale:
+        $ref: '#/definitions/models.ObserveStaleUpdateError'
+      transition:
+        $ref: '#/definitions/models.ObserveTransitionError'
+    type: object
+  models.ObserveProducerRejectionCode:
+    enum:
+    - body_unreadable
+    - body_too_large
+    - invalid_json
+    - unsupported_schema_version
+    - agent_id_required
+    - run_id_required
+    - campaign_id_required
+    - observed_at_required
+    - agent_display_name_required
+    - agent_role_required
+    - run_display_name_required
+    - run_kind_invalid
+    - status_invalid
+    - negative_task_count
+    - completed_exceeds_total
+    - end_before_start
+    - stop_reason_invalid
+    - stop_scope_invalid
+    - route_user_required
+    - route_session_required
+    - route_session_ambiguous
+    - invalid_transition
+    - stale_update
+    - forbidden
+    - internal
+    type: string
+    x-enum-varnames:
+    - ObserveProducerRejectionBodyUnreadable
+    - ObserveProducerRejectionBodyTooLarge
+    - ObserveProducerRejectionInvalidJSON
+    - ObserveProducerRejectionUnsupportedSchema
+    - ObserveProducerRejectionAgentIDRequired
+    - ObserveProducerRejectionRunIDRequired
+    - ObserveProducerRejectionCampaignIDRequired
+    - ObserveProducerRejectionObservedAtRequired
+    - ObserveProducerRejectionAgentDisplayNameMissing
+    - ObserveProducerRejectionAgentRoleMissing
+    - ObserveProducerRejectionRunDisplayNameMissing
+    - ObserveProducerRejectionRunKindInvalid
+    - ObserveProducerRejectionStatusInvalid
+    - ObserveProducerRejectionNegativeTaskCount
+    - ObserveProducerRejectionCompletedExceedsTotal
+    - ObserveProducerRejectionEndBeforeStart
+    - ObserveProducerRejectionStopReasonInvalid
+    - ObserveProducerRejectionStopScopeInvalid
+    - ObserveProducerRejectionRouteUserRequired
+    - ObserveProducerRejectionRouteSessionRequired
+    - ObserveProducerRejectionRouteSessionAmbiguous
+    - ObserveProducerRejectionInvalidTransition
+    - ObserveProducerRejectionStaleUpdate
+    - ObserveProducerRejectionForbidden
+    - ObserveProducerRejectionInternal
+  models.ObserveProducerResponse:
+    properties:
+      accepted:
+        type: boolean
+    type: object
   models.ObserveProducerRunStateRequest:
     properties:
       active_task_id:
@@ -1093,6 +1282,14 @@ definitions:
         type: string
       observed_at:
         type: string
+      reopens:
+        allOf:
+        - $ref: '#/definitions/models.RunLifecycleStatus'
+        description: |-
+          Reopens names the terminal status a repair replaces because the
+          producer's authoritative local store contradicts it. The Gateway applies
+          it only while the projection holds exactly this status and only toward a
+          non-terminal status; otherwise the normal transition rules decide.
       run_id:
         type: string
       run_kind:
@@ -1123,6 +1320,36 @@ definitions:
       stop_scope:
         $ref: '#/definitions/models.StopScope'
       web_session_id:
+        type: string
+    type: object
+  models.ObserveProjectionKind:
+    enum:
+    - agent
+    - run
+    type: string
+    x-enum-varnames:
+    - ObserveProjectionKindAgent
+    - ObserveProjectionKindRun
+  models.ObserveStaleUpdateError:
+    properties:
+      id:
+        type: string
+      kind:
+        $ref: '#/definitions/models.ObserveProjectionKind'
+      observed_at:
+        type: string
+      projected_at:
+        type: string
+    type: object
+  models.ObserveTransitionError:
+    properties:
+      from:
+        type: string
+      id:
+        type: string
+      kind:
+        $ref: '#/definitions/models.ObserveProjectionKind'
+      to:
         type: string
     type: object
   models.ObservedMeasurement:
@@ -2113,6 +2340,42 @@ definitions:
       transaction_id:
         type: string
     type: object
+  operatorv1.InferenceDecisionAnswer:
+    properties:
+      kind:
+        description: "Types that are valid to be assigned to Kind:\n\n\t*InferenceDecisionAnswer_Noul\n\t*InferenceDecisionAnswer_Choice\n\t*InferenceDecisionAnswer_Score"
+      name:
+        type: string
+    type: object
+  operatorv1.InferenceDecisionQuestion:
+    properties:
+      instructions:
+        type: string
+      kind:
+        description: "Types that are valid to be assigned to Kind:\n\n\t*InferenceDecisionQuestion_Noul\n\t*InferenceDecisionQuestion_Choice\n\t*InferenceDecisionQuestion_Score"
+      name:
+        type: string
+    type: object
+  operatorv1.InferenceDecisionRequest:
+    properties:
+      allow_hosted:
+        description: Explicit consent to hosted egress, committed into the governed
+          envelope.
+        type: boolean
+      questions:
+        items:
+          $ref: '#/definitions/operatorv1.InferenceDecisionQuestion'
+        type: array
+      state:
+        type: string
+    type: object
+  operatorv1.InferenceDecisionResult:
+    properties:
+      answers:
+        items:
+          $ref: '#/definitions/operatorv1.InferenceDecisionAnswer'
+        type: array
+    type: object
   operatorv1.InferenceDispatchFailure:
     properties:
       code:
@@ -2172,6 +2435,10 @@ definitions:
     - 41
     - 42
     - 43
+    - 44
+    - 45
+    - 46
+    - 47
     format: int32
     type: integer
     x-enum-varnames:
@@ -2219,6 +2486,10 @@ definitions:
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED
   operatorv1.InferenceDispatchRequest:
     properties:
       acting_app_id:
@@ -2235,6 +2506,10 @@ definitions:
         type: string
       context_limit:
         type: integer
+      decision:
+        allOf:
+        - $ref: '#/definitions/operatorv1.InferenceDecisionRequest'
+        description: Exclusive with messages, tools, streaming and generation controls.
       evaluation_attempt_id:
         type: string
       investigation_id:
@@ -2351,6 +2626,19 @@ definitions:
         description: Transaction ID correlating the dispatch with the audit chain.
         type: string
     type: object
+  operatorv1.InferenceHostedEgressAttestation:
+    properties:
+      explicit_consent:
+        type: boolean
+      model_version:
+        type: string
+      normalized_request_hash:
+        type: string
+      provenance:
+        type: string
+      provider_origin:
+        type: string
+    type: object
   operatorv1.InferenceLoadState:
     enum:
     - 0
@@ -2423,6 +2711,10 @@ definitions:
       completion_tokens:
         description: Number of completion tokens generated.
         type: integer
+      decision:
+        allOf:
+        - $ref: '#/definitions/operatorv1.InferenceDecisionResult'
+        description: Exclusive with response parts. Covered by result_digest.
       evaluation_attempt_id:
         type: string
       finish_reason:
@@ -2430,6 +2722,8 @@ definitions:
         type: string
       generation_duration_ns:
         type: integer
+      hosted_egress:
+        $ref: '#/definitions/operatorv1.InferenceHostedEgressAttestation'
       load_duration_ns:
         type: integer
       load_state:
@@ -2686,6 +2980,10 @@ definitions:
     - 19
     - 20
     - 21
+    - 22
+    - 23
+    - 24
+    - 25
     format: int32
     type: integer
     x-enum-varnames:
@@ -2711,6 +3009,10 @@ definitions:
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_REHYDRATION_FAILED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED
   operatorv1.ReceiptPersistenceAttestation:
     properties:
       audit_record_id:
@@ -2724,6 +3026,19 @@ definitions:
       signer_key_id:
         type: string
       transaction_id:
+        type: string
+    type: object
+  operatorv1.RunShellCommandArguments:
+    properties:
+      args:
+        items:
+          type: string
+        type: array
+      command:
+        type: string
+      timeout:
+        type: integer
+      working_dir:
         type: string
     type: object
   protocol.AttestationFormat:
@@ -3143,11 +3458,11 @@ definitions:
         type: string
       execution_id:
         description: |-
-          execution_id and timeout_seconds become the CommandRequested fields of the
-          dispatched EXECUTE_BASH.
+          execution_id is carried by the dispatched McpCallRequested. The Gateway
+          merges timeout_seconds into the reviewed RunShellCommandArguments.
         type: string
       guidelines:
-        description: Constraints the command must satisfy.
+        description: Orchestration constraints that each member must follow.
         type: string
       investigation_id:
         type: string
@@ -3156,8 +3471,9 @@ definitions:
         - $ref: '#/definitions/operatorv1.InferenceDispatchRequest'
         description: |-
           member_inference is the template for every member call. The Gateway sets
-          messages and provider_attempt_id per call; the template must leave
-          messages, tools, provider_attempt_id, acting_app_id and stream empty.
+          messages, provider_attempt_id and the role's response_format schema per
+          call; the template must leave messages, tools, provider_attempt_id,
+          acting_app_id, stream and response_format empty.
       os:
         type: string
       provider_attempt_prefix:
@@ -3167,7 +3483,7 @@ definitions:
           unique per intent, so the caller can bind each result to its request.
         type: string
       request:
-        description: Plain-language description of the single command to run. Required.
+        description: Canonical JSON proposed run_shell_command arguments. Required.
         type: string
       shell:
         type: string
@@ -3194,14 +3510,19 @@ definitions:
     type: object
   tribunalv1.TribunalIntentResult:
     properties:
+      arguments:
+        allOf:
+        - $ref: '#/definitions/operatorv1.RunShellCommandArguments'
+        description: arguments are the approved typed run_shell_command arguments.
+      arguments_json:
+        description: arguments_json are the exact canonical bytes dispatched to the
+          Operator.
+        type: string
       audit_failure:
         description: audit_failure explains an AUDIT_FAILED outcome.
         type: string
-      command:
-        description: command is the audited command; set only when outcome is APPROVED.
-        type: string
       commandOutcome:
-        description: "The governed EXECUTE_BASH outcome of an approved command.\n\nTypes
+        description: "The governed MCP_CALL outcome of an approved run_shell_command.\n\nTypes
           that are valid to be assigned to CommandOutcome:\n\n\t*TribunalIntentResult_Dispatched\n\t*TribunalIntentResult_Rejection\n\t*TribunalIntentResult_Refusal"
       member_calls:
         description: member_calls are the governed member inferences, in order.
@@ -3516,12 +3837,50 @@ paths:
       summary: Approve or deny a suspended transaction
       tags:
       - approvals
-  /api/v1/audit/receipts:
+  /api/v1/audit/consensus-votes:
+    get:
+      description: Returns every recorded L2 consensus member vote (member, outcome,
+        reason, failure) for one governed transaction, oldest first. Reason and failure
+        text is scrubbed.
+      parameters:
+      - description: Governed transaction ID (the envelope ID receipts carry)
+        in: query
+        name: tx_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ConsensusVotesResponse'
+        "400":
+          description: Bad Request — tx_id missing
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+        "503":
+          description: Service Unavailable — egress scrubber unavailable, content
+            withheld
+          schema:
+            type: string
+      summary: List consensus votes for a transaction
+      tags:
+      - audit
+  /api/v1/audit/event-receipts:
     get:
       description: Returns one canonical protojson ActionReceipt when tx_id is set
-        or when investigation_id and action_type uniquely correlate a receipt. Without
-        those selectors, returns searchable receipt records with the complete receipt
-        nested under action_receipt.
+        or when investigation_id and action_type uniquely correlate an event receipt.
+        Without those selectors, returns searchable event receipt records with the
+        complete ActionReceipt nested under action_receipt.
       parameters:
       - description: Transaction ID for a single canonical ActionReceipt
         in: query
@@ -3557,7 +3916,7 @@ paths:
         "200":
           description: List wrapper; unique selectors instead return a bare operatorv1.ActionReceipt
           schema:
-            $ref: '#/definitions/models.AuditReceiptsResponse'
+            $ref: '#/definitions/models.AuditEventReceiptsResponse'
         "400":
           description: Bad Request — conflicting or incomplete selectors
           schema:
@@ -3583,12 +3942,12 @@ paths:
             withheld
           schema:
             type: string
-      summary: Get or list audit receipts
+      summary: Get or list event receipts
       tags:
       - audit
-  /api/v1/audit/receipts/export:
+  /api/v1/audit/event-receipts/export:
     get:
-      description: Returns an AuditReceiptsResponse list wrapper. Every searchable
+      description: Returns an AuditEventReceiptsResponse list wrapper. Every searchable
         record embeds the complete canonical protojson receipt under action_receipt.
       parameters:
       - description: Inclusive receipt timestamp in RFC3339 format
@@ -3613,7 +3972,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.AuditReceiptsResponse'
+            $ref: '#/definitions/models.AuditEventReceiptsResponse'
         "405":
           description: Method Not Allowed
           schema:
@@ -3627,7 +3986,7 @@ paths:
             withheld
           schema:
             type: string
-      summary: Export audit receipts
+      summary: Export event receipts
       tags:
       - audit
   /api/v1/auth/logout:
@@ -4232,11 +4591,11 @@ paths:
         "200":
           description: accepted
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerResponse'
         "400":
           description: Invalid transition, stale update, or missing fields
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
         "401":
           description: Unauthorized — mTLS user identity required
           schema:
@@ -4248,7 +4607,7 @@ paths:
         "500":
           description: Persistence failure
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
       summary: Push observe agent state
       tags:
       - observe
@@ -4259,7 +4618,9 @@ paths:
       description: Accepts a typed run state update from an mTLS-authenticated app
         workload. The gateway derives user_id from the peer certificate, persists
         the run state projection, and emits an app.run.status.updated SSE event after
-        successful persistence.
+        successful persistence. A request naming reopens replaces exactly that terminal
+        projected status with a non-terminal one; it is a producer repair for a projection
+        its local store contradicts.
       parameters:
       - description: Run state update
         in: body
@@ -4273,11 +4634,11 @@ paths:
         "200":
           description: accepted
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerResponse'
         "400":
           description: Invalid transition, stale update, or missing fields
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
         "401":
           description: Unauthorized — mTLS user identity required
           schema:
@@ -4289,7 +4650,7 @@ paths:
         "500":
           description: Persistence failure
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
       summary: Push observe run state
       tags:
       - observe
@@ -4314,11 +4675,11 @@ paths:
         "200":
           description: accepted
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerResponse'
         "400":
           description: Invalid stop reason or scope, or missing campaign_id or run_id
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
         "401":
           description: Unauthorized — mTLS user identity required
           schema:
@@ -4330,7 +4691,7 @@ paths:
         "500":
           description: Persistence failure
           schema:
-            type: string
+            $ref: '#/definitions/models.ObserveProducerRejection'
       summary: Request observe campaign run stop
       tags:
       - observe
@@ -4459,7 +4820,7 @@ paths:
         Platform-internal endpoint (mTLS, app workload). The Gateway's Tribunal turns a
         plain-language command intent into one audited shell command through governed
         inference, then dispatches it to the target Operator as an ordinary governed
-        EXECUTE_BASH. Under ratify or notary posture the command dispatch is suspended
+        MCP_CALL run_shell_command. Under ratify or notary posture the command dispatch is suspended
         until a human approves or denies it. The Gateway never mints the approval proof.
       parameters:
       - description: Command intent and member inference template

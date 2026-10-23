@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -83,7 +84,7 @@ func routerStep(idx uint32, class evalv1.EvaluationCallClassification, complexit
 func candidateStep(idx uint32, command string) *evalv1.AgentStep {
 	return &evalv1.AgentStep{
 		Index: idx, Role: evalv1.AgentRole_AGENT_ROLE_CANDIDATE_GENERATOR, CallClass: scored,
-		Output: &evalv1.AgentStep_Candidate{Candidate: &evalv1.CandidateOutput{Command: command}},
+		Output: &evalv1.AgentStep_Candidate{Candidate: &evalv1.CandidateOutput{Arguments: (&models.RunShellCommandRequest{Command: strings.Fields(command)[0], Args: strings.Fields(command)[1:]}).Proto()}},
 	}
 }
 

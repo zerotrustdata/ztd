@@ -31,10 +31,11 @@ const inferenceJSONMediaType = "application/json"
 
 // InferenceExecutionHandler implements governance.ExecutionHandler. It decodes and validates the governed typed conversation, recursively scrubs data-bearing values, calls Backend.Generate, and returns the digest the L5 actuator records in the receipt.
 type InferenceExecutionHandler struct {
-	backend   Backend
-	cfg       *config.Config
-	scrubbing *scrubbing.ScrubbingService
-	logger    *slog.Logger
+	decisionBackend DecisionBackend
+	backend         Backend
+	cfg             *config.Config
+	scrubbing       *scrubbing.ScrubbingService
+	logger          *slog.Logger
 }
 
 // NewInferenceExecutionHandler constructs an InferenceExecutionHandler. Every
@@ -136,6 +137,21 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 	}
 
 	infReq := models.FromProtoInferenceRequested(req)
+	if h.cfg.Inference.DecisionOnly && req.GetDecision() == nil {
+		return nil, constants.ErrInferenceDecisionUnsupported
+	}
+	if req.GetDecision() != nil {
+		found := false
+		for _, model := range h.cfg.Inference.DecisionModels {
+			if model == req.GetModel() {
+				found = true
+			}
+		}
+		if !found {
+			return nil, constants.ErrInferenceDecisionUnsupported
+		}
+	}
+
 	if err := validateInferenceRequestBounds(req); err != nil {
 		return nil, fmt.Errorf("inference handler: %w", err)
 	}
@@ -165,7 +181,19 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 		"tool_count", len(genReq.Tools))
 
 	started := time.Now()
-	resp, err := h.backend.Generate(ctx, genReq)
+	var resp *models.GenerateResponse
+	if infReq.Decision != nil {
+		backend := h.decisionBackend
+		if backend == nil {
+			backend, _ = h.backend.(DecisionBackend)
+		}
+		if backend == nil {
+			return nil, constants.ErrInferenceDecisionUnsupported
+		}
+		resp, err = backend.Decide(ctx, models.DecisionRequest{Input: infReq.Decision, Model: genReq.Model, ModelDigest: genReq.ModelDigest, KeepAlive: genReq.KeepAlive, ProviderAttemptID: genReq.ProviderAttemptID, AllowHosted: req.GetDecision().GetAllowHosted()})
+	} else {
+		resp, err = h.backend.Generate(ctx, genReq)
+	}
 	if err != nil {
 		failureClass := ClassifyAttemptFailure(err)
 		level := slog.LevelError
@@ -194,6 +222,17 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 		return nil, fmt.Errorf("inference handler: scrub response: %w", err)
 	}
 	scrubbedOutputHash, err := models.ComputeInferenceOutputHash(scrubbedParts, resp.FinishReason)
+	if infReq.Decision != nil {
+		if len(resp.Parts) != 0 {
+			return nil, constants.ErrInferenceDecisionResponseInvalid
+		}
+		if err := models.ValidateDecisionResult(infReq.Decision, resp.Decision); err != nil {
+			return nil, err
+		}
+		scrubbedOutputHash, err = models.ComputeDecisionOutputHash(resp.Decision)
+	} else if resp.Decision != nil {
+		return nil, constants.ErrInferenceDecisionResponseInvalid
+	}
 	if err != nil {
 		return nil, fmt.Errorf("inference handler: output hash: %w", err)
 	}
@@ -201,6 +240,13 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 	resp.OutputHash = scrubbedOutputHash
 	if genReq.ModelDigest != "" && resp.ServedModelDigest != genReq.ModelDigest {
 		return nil, fmt.Errorf("inference handler: %w", constants.ErrInferenceModelDigestMismatch)
+	}
+	if infReq.Decision != nil {
+		terminal := resp.ToProtoInferenceResult()
+		terminal.RequestedModelDigest = genReq.ModelDigest
+		if err := models.ValidateDecisionCompletion(infReq.Decision, terminal); err != nil {
+			return nil, err
+		}
 	}
 	resp.ProviderAttemptID = genReq.ProviderAttemptID
 	resp.RequestedModel = genReq.Model
@@ -251,6 +297,43 @@ func (h *InferenceExecutionHandler) normalizeInferenceInput(ctx context.Context,
 	}
 	if req.ModelDigest != "" && !models.IsSHA256Hex(req.ModelDigest) {
 		return constants.ErrInferenceEvidenceHashInvalid
+	}
+	if req.Decision != nil {
+		if h.scrubbing == nil || !h.scrubbing.IsEnabled() {
+			return constants.ErrEgressScrubberUnavailable
+		}
+		req.Decision.State = h.scrubbing.ScrubText(ctx, req.Decision.State)
+		for _, q := range req.Decision.Questions {
+			if q == nil {
+				return constants.ErrInferenceDecisionRequestInvalid
+			}
+			if h.scrubbing.ScrubText(ctx, q.Name) != q.Name {
+				return constants.ErrInferenceDecisionRequestInvalid
+			}
+			q.Instructions = h.scrubbing.ScrubText(ctx, q.Instructions)
+			switch q.Kind.(type) {
+			case *operatorv1.InferenceDecisionQuestion_Noul:
+				if n := q.GetNoul(); n != nil {
+					n.TrueLabel = h.scrubbing.ScrubText(ctx, n.TrueLabel)
+					n.FalseLabel = h.scrubbing.ScrubText(ctx, n.FalseLabel)
+				}
+			case *operatorv1.InferenceDecisionQuestion_Choice:
+				for _, c := range q.GetChoice().GetCriteria() {
+					if c != nil {
+						if h.scrubbing.ScrubText(ctx, c.Label) != c.Label {
+							return constants.ErrInferenceDecisionRequestInvalid
+						}
+						c.Description = h.scrubbing.ScrubText(ctx, c.Description)
+					}
+				}
+			case *operatorv1.InferenceDecisionQuestion_Score:
+				for i, c := range q.GetScore().GetCriteria() {
+					q.GetScore().Criteria[i] = h.scrubbing.ScrubText(ctx, c)
+				}
+			}
+		}
+		_, err := decisionBody(models.DecisionRequest{Input: req.Decision, Model: req.Model, KeepAlive: req.KeepAlive})
+		return err
 	}
 	if err := validateInferenceGenerationOptions(req); err != nil {
 		return err

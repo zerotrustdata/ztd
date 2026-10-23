@@ -145,6 +145,7 @@ const evaluatedVariants: Array<{
   variant_id: string;
   display_name: string;
   served_model_tag: string;
+  parameter_count: number;
   role: ModelSummary['role'];
   pass_rate: ModelSummary['pass_rate'];
   coverage: number;
@@ -158,6 +159,7 @@ const evaluatedVariants: Array<{
     variant_id: 'gemma4-e4b',
     display_name: 'Gemma 4 E4B',
     served_model_tag: 'gemma4:e4b',
+    parameter_count: 8_000_000_000,
     role: 'primary',
     pass_rate: { estimate: 0.82, lower: 0.74, upper: 0.88, denominator: 125 },
     coverage: 1.0,
@@ -171,6 +173,7 @@ const evaluatedVariants: Array<{
     variant_id: 'gemma4-e2b',
     display_name: 'Gemma 4 E2B',
     served_model_tag: 'gemma4:e2b',
+    parameter_count: 5_100_000_000,
     role: 'assistant',
     pass_rate: { estimate: 0.76, lower: 0.68, upper: 0.83, denominator: 125 },
     coverage: 1.0,
@@ -184,6 +187,7 @@ const evaluatedVariants: Array<{
     variant_id: 'qwen25-05b',
     display_name: 'Qwen 2.5 0.5B',
     served_model_tag: 'qwen2.5:0.5b',
+    parameter_count: 494_030_000,
     role: 'lite',
     pass_rate: { estimate: 0.41, lower: 0.33, upper: 0.49, denominator: 125 },
     coverage: 1.0,
@@ -197,6 +201,7 @@ const evaluatedVariants: Array<{
     variant_id: 'gemma4-e4b-alt',
     display_name: 'Gemma 4 E4B (alt)',
     served_model_tag: 'gemma4:e4b',
+    parameter_count: 8_000_000_000,
     role: 'primary',
     pass_rate: { estimate: 0.79, lower: 0.71, upper: 0.86, denominator: 125 },
     coverage: 1.0,
@@ -210,6 +215,7 @@ const evaluatedVariants: Array<{
     variant_id: 'gemma4-e2b-alt',
     display_name: 'Gemma 4 E2B (alt)',
     served_model_tag: 'gemma4:e2b',
+    parameter_count: 5_100_000_000,
     role: 'assistant',
     pass_rate: { estimate: 0.72, lower: 0.64, upper: 0.80, denominator: 125 },
     coverage: 1.0,
@@ -223,6 +229,7 @@ const evaluatedVariants: Array<{
     variant_id: 'qwen25-15b',
     display_name: 'Qwen 2.5 1.5B',
     served_model_tag: 'qwen2.5:1.5b',
+    parameter_count: 1_540_000_000,
     role: 'lite',
     pass_rate: { estimate: 0.55, lower: 0.46, upper: 0.63, denominator: 125 },
     coverage: 1.0,
@@ -236,6 +243,7 @@ const evaluatedVariants: Array<{
     variant_id: 'gemma3-12b',
     display_name: 'Gemma 3 12B',
     served_model_tag: 'gemma3:12b',
+    parameter_count: 12_200_000_000,
     role: 'primary',
     pass_rate: { estimate: 0.71, lower: 0.63, upper: 0.79, denominator: 125 },
     coverage: 1.0,
@@ -249,6 +257,7 @@ const evaluatedVariants: Array<{
     variant_id: 'qwen25-7b',
     display_name: 'Qwen 2.5 7B',
     served_model_tag: 'qwen2.5:7b',
+    parameter_count: 7_600_000_000,
     role: 'assistant',
     pass_rate: { estimate: 0.68, lower: 0.60, upper: 0.76, denominator: 125 },
     coverage: 1.0,
@@ -262,6 +271,7 @@ const evaluatedVariants: Array<{
     variant_id: 'llama3-1b',
     display_name: 'Llama 3 1B',
     served_model_tag: 'llama3:1b',
+    parameter_count: 1_200_000_000,
     role: 'lite',
     pass_rate: { estimate: 0.48, lower: 0.39, upper: 0.56, denominator: 125 },
     coverage: 1.0,
@@ -284,6 +294,7 @@ export const fixtureModelSummaries: ModelSummary[] = evaluatedVariants.map((v) =
   variant_id: v.variant_id,
   display_name: v.display_name,
   served_model_tag: v.served_model_tag,
+  parameter_count: v.parameter_count,
   role: v.role,
   backend_provider_class: 'ollama',
   quantization_weight_class: 'q4_k_m',
@@ -420,7 +431,7 @@ export const fixtureEvaluationSummaries: EvaluationSummary[] = suiteDefs.map((s)
   terminal_outcomes: { completed: 125, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
   started_at: '2026-09-14T00:00:00Z',
   ended_at: '2026-09-14T06:00:00Z',
-  elapsed_seconds: 21600,
+  run_seconds: 21600,
   verifier_state: s.verifier,
   verifier_failure_summary:
     s.verifier === 'failed'
@@ -904,7 +915,7 @@ export const fixtureLiveEvaluationSummary: EvaluationSummary = {
   assignment_failed: 0,
   terminal_outcomes: { completed: 1, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
   started_at: '2026-09-14T08:00:05Z',
-  elapsed_seconds: 5,
+  run_seconds: 5,
   verifier_state: 'not_applicable',
   headline_metrics: {},
 };
@@ -1022,7 +1033,7 @@ export const fixtureVerifiedEvaluationSummaries: EvaluationSummary[] = [
     terminal_outcomes: { completed: 5, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
     started_at: '2026-09-13T22:00:00Z',
     ended_at: '2026-09-13T22:30:00Z',
-    elapsed_seconds: 1800,
+    run_seconds: 1800,
     verifier_state: 'not_applicable',
     headline_metrics: {
       pass_rate: { value: 0.8, unit: 'ratio', observed_count: 5, eligible_count: 5, unavailable_count: 0 },
@@ -1057,7 +1068,7 @@ export const fixtureVerifiedEvaluationSummaries: EvaluationSummary[] = [
     terminal_outcomes: { completed: 5, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
     started_at: '2026-09-13T23:00:00Z',
     ended_at: '2026-09-13T23:30:00Z',
-    elapsed_seconds: 1800,
+    run_seconds: 1800,
     verifier_state: 'not_applicable',
     headline_metrics: {
       pass_rate: { value: 0.6, unit: 'ratio', observed_count: 5, eligible_count: 5, unavailable_count: 0 },

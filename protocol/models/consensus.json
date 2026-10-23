@@ -1,12 +1,13 @@
 {
   "_comment": "Canonical Consensus document shape. client is the authority - it stores ConsensusPolicy records that define named consensus bodies for L2 governance. A Consensus consists of N member identities (enrolled agentic apps) and requires K affirmative distinct signatures to reach quorum. A field mismatch breaks L2 governance and multi-sig verification.",
   "_authority": "client (SQLite)",
-  "_consumers": ["client internal services (L4 Warden, governance verification)", "agent (reads for governance replay)"],
+  "_consumers": [
+    "client internal services (L4 Warden, governance verification)",
+    "agent (reads for governance replay)"
+  ],
   "_collection": "consensus",
-
   "consensus": {
     "_description": "Named consensus body for L2 governance. Consists of N member identities (enrolled agentic apps via TrustedSigner.ID) and requires K affirmative distinct signatures to reach quorum.",
-
     "core_identity": {
       "id": {
         "type": "string",
@@ -14,7 +15,6 @@
         "description": "Consensus name/identifier. Used as the document ID."
       }
     },
-
     "membership": {
       "member_app_ids": {
         "type": "array",
@@ -35,7 +35,6 @@
         "description": "Whether duplicate signer keys are rejected. When true, each signature must come from a distinct signer."
       }
     },
-
     "endpoint": {
       "app_id": {
         "type": "string",
@@ -48,7 +47,64 @@
         "description": "HTTPS deliberation endpoint URL for the bound consensus application."
       }
     },
-
+    "provider": {
+      "provider": {
+        "type": "string",
+        "enum": [
+          "application",
+          "tribunal"
+        ],
+        "required": false,
+        "default": "application",
+        "description": "Vote producer of the bound consensus. Empty means application, so bindings written before providers existed keep working."
+      },
+      "model_tag": {
+        "type": "string",
+        "required": false,
+        "required_when": {
+          "provider": "tribunal"
+        },
+        "description": "Pinned vote model tag. Tribunal provider only; must be empty for the application provider."
+      },
+      "model_digest": {
+        "type": "string",
+        "required": false,
+        "required_when": {
+          "provider": "tribunal"
+        },
+        "description": "Pinned vote model digest. Tribunal provider only; must be empty for the application provider."
+      },
+      "vote_kind": {
+        "type": "string",
+        "enum": [
+          "generative",
+          "decision"
+        ],
+        "default": "generative",
+        "required": false
+      },
+      "inference_operator_id": {
+        "type": "string",
+        "required_when": {
+          "vote_kind": "decision"
+        }
+      },
+      "vote_thresholds": {
+        "type": "array",
+        "items": {
+          "member_app_id": "string",
+          "threshold": "double"
+        },
+        "required_when": {
+          "vote_kind": "decision"
+        }
+      },
+      "allow_hosted": {
+        "type": "boolean",
+        "default": false,
+        "description": "Explicit hosted egress opt-in. Requires a versioned Jev tag and no digest; provenance is hosted-unpinned."
+      }
+    },
     "lifecycle": {
       "enabled": {
         "type": "boolean",
@@ -57,7 +113,6 @@
         "description": "Whether this consensus is currently enabled for governance participation."
       }
     },
-
     "timestamps": {
       "created_at": {
         "type": "string",

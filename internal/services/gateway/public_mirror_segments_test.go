@@ -331,38 +331,6 @@ func TestMirror_SegmentIngest_DoesNotReadHistoricalSegmentsUntilStartup(t *testi
 	require.ErrorIs(t, err, constants.ErrPublicFeedMirrorStoreCorrupt)
 }
 
-func TestPublicMirrorStore_UpgradesLegacySQLiteProofEntriesWithoutForgingSegments(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	ctx := context.Background()
-	request := env.makeProofIngestRequest("proof.json", []byte("proof"))
-	require.NoError(t, env.mirror.storeProofPackage(ctx, request))
-	// Recreate the pre-segment schema to exercise an upgrade of a real store.
-	_, err := env.store.db.Exec(`
-        ALTER TABLE proof_manifest_entries RENAME TO proof_manifest_entries_new;
-        CREATE TABLE proof_manifest_entries (
-            source_id TEXT NOT NULL REFERENCES proof_manifests(source_id),
-            ordinal INTEGER NOT NULL,
-            artifact_id TEXT NOT NULL REFERENCES proof_artifacts(artifact_id),
-            entry_json TEXT NOT NULL,
-            PRIMARY KEY (source_id, ordinal)
-        );
-        INSERT INTO proof_manifest_entries SELECT source_id, ordinal, artifact_id, entry_json FROM proof_manifest_entries_new;
-        DROP TABLE proof_manifest_entries_new;
-    `)
-	require.NoError(t, err)
-	mirror := env.reopenMirror()
-	manifest, found, err := env.store.ProofManifest(ctx, env.sourceID)
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, request.Manifest, manifest)
-	segments, err := env.store.ProofSegments(ctx, env.sourceID)
-	require.NoError(t, err)
-	require.Empty(t, segments, "a migration cannot sign links on the source's behalf")
-	first := makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, request.Manifest.Artifacts, nil)
-	require.NoError(t, mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{SourceID: env.sourceID, Segment: &first}))
-	env.reopenMirror()
-}
-
 func TestMirror_SegmentIngest_WithdrawalPersistsAndDeniesDownload(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	ctx := context.Background()
@@ -378,6 +346,9 @@ func TestMirror_SegmentIngest_WithdrawalPersistsAndDeniesDownload(t *testing.T) 
 	require.True(t, found)
 	require.Empty(t, catalog.Entries)
 	_, found, err = env.store.proofArtifact(ctx, entry.ArtifactID)
+	require.NoError(t, err)
+	require.False(t, found)
+	_, found, err = env.store.proofCatalogEntry(ctx, env.sourceID, entry.ArtifactID)
 	require.NoError(t, err)
 	require.False(t, found)
 	// A full manifest cannot replace or downgrade an established chain.

@@ -43,7 +43,7 @@ type K8sInspectTool struct {
 
 // Name returns the tool identifier.
 func (t *K8sInspectTool) Name() string {
-	return "k8s_inspect"
+	return constants.MCPToolK8sInspect
 }
 
 // Description returns a human-readable description.

@@ -3,8 +3,8 @@ doc_id: glossary
 title: ztd Glossary
 audience: developers, maintainers, and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - protocol/
   - internal/services/
@@ -58,7 +58,7 @@ A typed compliance record defined in `ztd.compliance.v1.AssessmentScope` that fi
 
 ## Audit Store
 
-The append-only SQLite record (`internal/services/storage/audit_store.go`, `SQLAuditStore`) of Operator sessions, events, file mutations, complete canonical **Action Receipts**, deterministic stage evidence, and persistence attestations. Every content column (event text and command fields, receipt bodies, file paths and diff stats, session titles) is encrypted at rest using AES-256-GCM through the local vault (`vault.Vault`), with no plaintext branch: a locked or absent vault fails the write with `ErrAuditStoreVaultLocked`. Records are scoped to existing sessions: record paths never create a session row, and an unknown session fails with `ErrAuditSessionUnknown`. The owning runtime starts its session with `StartSession` (atomic and idempotent) and marks it ended with `EndSession`. Retention prunes records older than `RetentionDays` (default 90) and prunes only ended sessions past retention that no event or receipt references, so a live session is never pruned. In Gateway mode, these tables are part of `ztd.db`; each remote Governed Operator retains its own authoritative local audit database.
+The append-only SQLite record (`internal/services/storage/audit_store.go`, `SQLAuditStore`) of Operator sessions, events, file mutations, deterministic stage evidence, and persistence attestations. Each **Action Receipt** is stored as the current event receipt on its `events` row (`event_receipt_*` columns, `internal/services/storage/event_receipt.go`); there is no separate receipts table. Every content column (event text and command fields, event receipt bodies, file paths and diff stats, session titles) is encrypted at rest using AES-256-GCM through the local vault (`vault.Vault`), with no plaintext branch: a locked or absent vault fails the write with `ErrAuditStoreVaultLocked`. Records are scoped to existing sessions: record paths never create a session row, and an unknown session fails with `ErrAuditSessionUnknown`. The owning runtime starts its session with `StartSession` (atomic and idempotent) and marks it ended with `EndSession`. Retention prunes records older than `RetentionDays` (default 90) and prunes only ended sessions past retention that no event row references (receipts live on event rows), so a live session is never pruned. In Gateway mode, these tables are part of `ztd.db`; each remote Governed Operator retains its own authoritative local audit database.
 
 ---
 
@@ -118,7 +118,7 @@ A portable, content-addressed release package (`internal/services/compliance/rep
 
 ## Consensus
 
-A named L2 governance body defined by a `ConsensusPolicy` (`internal/models/auth.go`). Its enrolled members are a bound set of N trusted signer identities (`member_app_ids`), and the policy defines the affirmative quorum threshold (`quorum`, K distinct affirmative members), distinct-signature requirement (`require_distinct`), and enabled state. Members sign Ed25519 votes over `<transaction_hash>|<decision>`. L2 gates execution under `consensus` and `notary` postures and remains audited under `doctrine` and `ratify`.
+A named L2 governance body defined by a `ConsensusPolicy` (`internal/models/auth.go`). Its `provider` (`constants.ConsensusProvider`) is either `application` (an enrolled application's deliberation endpoint returns signed votes) or `tribunal` (the Gateway-hosted **Tribunal** panel). Its enrolled members are a bound set of N trusted signer identities (`member_app_ids`), and the policy defines the affirmative quorum threshold (`quorum`, K distinct affirmative members), distinct-signature requirement (`require_distinct`), and enabled state. Members sign Ed25519 votes over `<transaction_hash>|<decision>`. L2 gates execution under `consensus` and `notary` postures and remains audited under `doctrine` and `ratify`.
 
 ---
 
@@ -149,6 +149,12 @@ The adapter (`internal/services/gateway/encrypted_kv_adapter.go`) connecting the
 ## Enrollment Token
 
 A one-time token (`internal/models/auth.go`, `EnrollmentToken`) used to bridge passkey enrollment from the CLI to the browser without placing raw session identifiers in a URL. The Gateway generates 32 cryptographically random bytes, hex-encodes them, associates the token with the user and CLI session, and applies a five-minute expiration. The browser receives it in the URL fragment, and validation consumes it once. This differs from the credentials used by **Platform Enrollment**.
+
+---
+
+## Event Receipt
+
+The current signed **Action Receipt** projection for a transaction, stored on the `events` table as `event_receipt_*` columns with `event_receipt_status` marking the one current row (`internal/services/storage/event_receipt.go`). It is served by the Gateway at `/api/v1/audit/event-receipts` and `/api/v1/audit/event-receipts/export` (`internal/constants/api_paths.go`, `internal/services/gateway/gateway_http_router.go`). The Gateway-facing chain event is `ztd.v1.operator.receipt.recorded` (`internal/constants/events_gen.go`). The earlier `receipts` table is removed.
 
 ---
 
@@ -215,7 +221,7 @@ The startup-selected policy mode that determines whether L2 Consensus and L3 Not
 | **Ratify** | Enforced | Audited | Enforced |
 | **Notary** | Enforced | Enforced | Enforced |
 
-Read-only actions do not require L3 proof in any posture. The Gateway stamps the active posture into `envelope.posture` at admission time; the L4 Warden evaluates against that envelope field during verification.
+L2 Consensus gates only state-changing, non-bootstrap actions (`L2Enforced`, `internal/services/governance/l2_consensus.go`); read-only and bootstrap actions are not gated by L2 in any posture. Read-only actions do not require L3 proof in any posture. The Gateway stamps the active posture into `envelope.posture` at admission time; the L4 Warden evaluates against that envelope field during verification.
 
 ---
 
@@ -251,7 +257,7 @@ The technical hard-gate governance layer (`internal/services/governance/l1_doctr
 
 ## L2 Consensus (L2Consensus)
 
-The multi-signature governance layer (`internal/services/governance/l2_consensus.go`). Each enrolled member signs an Ed25519 vote over `<transaction_hash>|<decision>`. The L4 Warden verifies signer trust, consensus policy membership, signature validity, signature distinctness, and affirmative quorum. L2 is a required gate under `consensus` and `notary` postures; under `doctrine` and `ratify`, available L2 votes are verified and recorded in the audit trail without gating execution.
+The multi-signature governance layer (`internal/services/governance/l2_consensus.go`). Each enrolled member signs an Ed25519 vote over `<transaction_hash>|<decision>`. The L4 Warden verifies signer trust, consensus policy membership, signature validity, signature distinctness, and affirmative quorum. L2 is a required gate under `consensus` and `notary` postures for state-changing, non-bootstrap actions only; under `doctrine` and `ratify`, available L2 votes are verified and recorded in the audit trail without gating execution. The bound consensus provider is an enrolled application or the Gateway-hosted **Tribunal**.
 
 ---
 
@@ -396,7 +402,7 @@ A client private key stored under the keystore master key instead of as PEM: the
 
 ## Sovereign Execution Boundary
 
-The Operator-local scrubbing and rehydration architecture implemented by `ScrubbingService` (`internal/services/scrubbing/`). Egress traffic leaves the host only after sensitive values are tokenized (`{{UEI_N}}`) or redacted; persistent token mappings are encrypted at rest with the local vault; the token keymap hash can participate in the Bound State Root; and L5 rehydrates reversible tokens strictly on the target execution host immediately before command dispatch.
+The Operator-local scrubbing and rehydration architecture implemented by `ScrubbingService` (`internal/services/scrubbing/`). Egress traffic leaves the host only after sensitive values are tokenized (`{{UEI_<owner>_N}}`, where `<owner>` names the minting runtime) or redacted; persistent token mappings are encrypted at rest with the local vault; the token keymap hash can participate in the Bound State Root; and L5 rehydrates reversible tokens strictly on the target execution host immediately before command dispatch.
 
 ---
 
@@ -455,6 +461,12 @@ The operational pattern in which an AI agent selects an MCP tool or A2A skill, s
 ## Transaction Hash
 
 The deterministic SHA-256 digest computed from normalized **Governance Envelope** fields via `GenerateMessageID(env)`. The envelope `id` and `transaction_hash` must both match this value. The calculation dispatches on protocol version: V1 hashes the canonical field string; V2 hashes `ztd-tx-v2|<action_type>|<event_type>|<V1 canonical string>` and requires a nonempty event type. L2 consensus votes, L3 human approvals, replay checks, capabilities, receipts, and commitment attestations bind cryptographically to this hash. Dynamic policy metadata, including the active governance posture, is excluded from hash canonicalization.
+
+---
+
+## Tribunal
+
+The Gateway-hosted L2 consensus panel, selected as the `tribunal` consensus provider (`ConsensusProviderTribunal`, `internal/constants/consensus.go`). The panel binds the canonical Tribunal member applications, each member votes through one governed inference, and the panel is pinned to one frozen model tag and digest at enrollment (`ztd consensus enroll tribunal`). The default quorum is 3-of-5 (`TribunalConsensusDefaultQuorum`); the lowest accepted quorum is also 3 (`TribunalConsensusMinQuorum`). Tribunal votes apply only to state-changing actions under **L2 Consensus**.
 
 ---
 

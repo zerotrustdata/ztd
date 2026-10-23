@@ -3,8 +3,8 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -71,7 +71,7 @@ pwsh scripts/windows-setup.ps1 --build-only
 make quickstart
 ```
 
-Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe), GNU Make (`winget install ezwinports.make` or `choco install make`), and Go 1.27.2. Run `make` targets from PowerShell; WSL is not required. The setup script stops if a `GOROOT` environment variable points at a different Go install than the active toolchain, because builds would then use the wrong standard library. Paths such as `--working-dir ~/.ztd-op1` and `MODEL_STORAGE_ROOT=$env:USERPROFILE\.ollama\models` work as written. WSL 2 with the Linux commands above also works.
+Windows needs PowerShell 7, Git for Windows (its bash runs every Makefile recipe), GNU Make (`winget install ezwinports.make` or `choco install make`), and Go 1.27.3. Run `make` targets from PowerShell; WSL is not required. The setup script stops if a `GOROOT` environment variable points at a different Go install than the active toolchain, because builds would then use the wrong standard library. Paths such as `--working-dir ~/.ztd-op1` and `MODEL_STORAGE_ROOT=$env:USERPROFILE\.ollama\models` work as written. WSL 2 with the Linux commands above also works.
 
 ### What setup does
 
@@ -195,7 +195,7 @@ ztd runs natively on the host: compile the `ztd` binary and run it directly.
 
 | Requirement | Version | Notes |
 | :--- | :--- | :--- |
-| Go | 1.27.2 | Required to build from source |
+| Go | 1.27.3 | Required to build from source |
 | Make | Any recent | Required to run Makefile targets |
 | Git | Any recent | Required to clone the repository |
 | curl | Any recent | Used by the setup scripts to download Go |
@@ -248,7 +248,7 @@ The bootstrap endpoint serves the binary without a signature bundle on trusted n
 
 ### Verify a release binary
 
-Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.2.0`, then run both checks there.
+Each published release binary ships with two companion files: `<binary>.sha256` (checksum) and `<binary>.sigstore.json` (Sigstore bundle with the signature and signing certificate). Download the binary and its `.sha256` and `.sigstore.json` files into an empty directory from the GitHub release for tag `v1.3.0`, then run both checks there.
 
 Run the checksum check on Linux:
 
@@ -275,7 +275,7 @@ Then verify the signer identity with `cosign` 3.0 or later:
 ```bash
 cosign verify-blob \
   --bundle ztd-linux-amd64.sigstore.json \
-  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.2.0' \
+  --certificate-identity 'https://github.com/zerotrustdata/ztd/.github/workflows/release-binary.yml@refs/tags/v1.3.0' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ztd-linux-amd64
 ```
@@ -326,6 +326,7 @@ Operator flags
   embedded-operator  observer    --provider-boundary-observer-id  (default)
 
 Enrollments  users 1 | pending 0 | apps 0 | dashboards 0
+Consensus  not bound (posture doctrine does not require L2)
 
 Console  https://localhost:8443/console/
 ```
@@ -359,6 +360,8 @@ For example, to require human authorization:
 ```bash
 ./ztd gw start --posture ratify
 ```
+
+Under `consensus` and `notary`, L2 also needs a bound consensus before the Gateway is ready. See [Governance Postures](#governance-postures) for the binding and vote rules.
 
 The default plain-HTTP port is `8080` (bootstrap and PKI discovery). The default HTTPS port is `8443` (authenticated APIs, MCP, and Web Console).
 
@@ -401,7 +404,7 @@ make down
 To import the ztd wire protocol, constants, or protobuf definitions into custom clients or services, add the module from inside your own Go module (`go mod init` first if you have none):
 
 ```bash
-go get github.com/zerotrustdata/ztd@v1.2.0
+go get github.com/zerotrustdata/ztd@v1.3.0
 ```
 
 Import in Go code, then run `go mod tidy` to record the protobuf runtime dependencies:
@@ -470,6 +473,8 @@ List the audit events for one Operator session with `./ztd gw data audit list --
 | Consensus | Enforced | Enforced | Audited | `--posture consensus` |
 | Ratify | Enforced | Audited | Enforced | `--posture ratify` |
 | Notary | Enforced | Enforced | Enforced | `--posture notary` |
+
+Under `consensus` and `notary`, L2 requires a bound consensus. Until one is bound, `gw status` reports `NOT BOUND` and `/health` reports `governance_ready: false`, and eval campaigns refuse to start. Bind it with `./ztd consensus enroll tribunal --model <tag>` as described in [Build a Gateway](build_gateway.md). Under an L2 posture, L2 votes only on state-changing actions; inference, observation, and read-only targets get no vote round.
 
 Universal checks (transaction hash integrity, nonce reservation, expiry, state-root Merkle verification, and payload decoding) fail closed across all postures. Admitted actions continue through L4 Warden verification and L5 Actuator dispatch. See [Gateway Architecture](../architecture/gateway.md) for details.
 

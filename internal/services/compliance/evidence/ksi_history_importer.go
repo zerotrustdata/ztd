@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -49,8 +50,11 @@ func (i *KSIHistoryImporter) SourceID() string {
 }
 
 func (i *KSIHistoryImporter) Import(ctx context.Context) ([]EvidenceNode, error) {
-	if i == nil || i.reader == nil || !validKSIHistoryBinding(i.binding) {
-		return nil, fmt.Errorf("%w: reader, content reference, path, scope, run, class, and producer are required", constants.ErrInvalidEvidenceGraph)
+	if i == nil || i.reader == nil {
+		return nil, fmt.Errorf("%w: reader is required", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := validKSIHistoryBinding(i.binding); err != nil {
+		return nil, fmt.Errorf("%w: KSI history binding: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -98,9 +102,20 @@ func (i *KSIHistoryImporter) buildNodes(snapshots []importedKSIHistorySnapshot) 
 	return nodes
 }
 
-func validKSIHistoryBinding(binding KSIHistoryImportBinding) bool {
-	_, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.KSIHistoryReferencePrefix)
-	return referenceValid && ValidRelativePath(binding.Path) && binding.ScopeID != "" && binding.RunID != "" && validCertificationClass(binding.Class) && binding.ProducerIdentity != "" && binding.AssertionAssessments.Validate() == nil
+func validKSIHistoryBinding(binding KSIHistoryImportBinding) error {
+	if _, _, referenceValid := ParseExpectedContentReference(binding.Reference, constants.KSIHistoryReferencePrefix); !referenceValid {
+		return errors.New("content reference is invalid")
+	}
+	if err := ValidateRelativePath(binding.Path); err != nil {
+		return err
+	}
+	if binding.ScopeID == "" || binding.RunID == "" || !validCertificationClass(binding.Class) || binding.ProducerIdentity == "" {
+		return constants.ErrMissingRequiredField
+	}
+	if err := binding.AssertionAssessments.Validate(); err != nil {
+		return fmt.Errorf("assertion assessments: %w", err)
+	}
+	return nil
 }
 
 func decodeKSIHistory(body []byte, class compliance.CertificationClass) ([]importedKSIHistorySnapshot, error) {

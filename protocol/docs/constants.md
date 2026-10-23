@@ -1,7 +1,7 @@
 # Protocol Constants System
 
-Last Updated: 2026-10-20
-Version: v1.2.0
+Last Updated: 2026-10-22
+Version: v1.3.0
 
 The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the absolute **Single Source of Truth (SSOT)** for all platform contracts, collection definitions, action types, event registries, route paths, and configuration identifiers.
 
@@ -144,7 +144,7 @@ Permitted terminals come from the closed `allowedTerminals` list in `internal/to
 The governance engine determines the action class of any governed request via `constants.Registry.ActionFor(event)`. Hand-coded mapping tables are strictly prohibited.
 
 ### 3.4 Hierarchical Go Accessors
-The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`. Every other event is referenced by its flat `Event<Name>` constant. The nested groups under `Event.Operator` are `A2a`, `Audit`, `Bootstrap`, `Command` (including `Command.StatusUpdated`), `Eval`, `FetchFileDiff`, `FetchFileHistory`, `FetchHistory`, `FetchLogs`, `FileEdit`, `FsGrep`, `FsList`, `FsRead`, `Inference`, `Intent`, `Mcp`, `ModelProvenanceObservation`, `NetworkPing`, `Notary`, `OllamaModelInventory`, `OllamaModelResidency`, `PortCheck`, `ProviderBoundaryObservation`, `Receipt`, `RestoreFile`, and `StatusUpdated`. Ungrouped operator events, such as `Event.Operator.Bound`, are `EventType` fields.
+The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`. Every other event is referenced by its flat `Event<Name>` constant. The nested groups under `Event.Operator` are `A2a`, `Audit`, `Bootstrap`, `Command` (including `Command.StatusUpdated`), `Eval`, `FetchFileDiff`, `FetchFileHistory`, `FetchHistory`, `FetchLogs`, `FileEdit`, `FsGrep`, `FsList`, `FsRead`, `Inference`, `Intent`, `Mcp`, `ModelProvenanceObservation`, `NetworkPing`, `Notary`, `OllamaModelInventory`, `OllamaModelRelease`, `OllamaModelResidency`, `PortCheck`, `ProviderBoundaryObservation`, `Receipt`, `RestoreFile`, and `StatusUpdated`. Ungrouped operator events, such as `Event.Operator.Bound`, are `EventType` fields.
 
 ---
 
@@ -166,6 +166,7 @@ Action types define the coarse-grained operational classes evaluated by L1 Doctr
 | `ActionTypeRestoreFile` | `"RESTORE_FILE"` | **Yes** | No | Git ledger file revision restoration |
 | `ActionTypeShutdown` | `"SHUTDOWN"` | **Yes** | No | Operator shutdown request |
 | `ActionTypeInference` | `"INFERENCE"` | **Yes** | No | Governed model inference |
+| `ActionTypeOllamaModelRelease` | `"OLLAMA_MODEL_RELEASE"` | **Yes** | No | Ollama model unload with in-execution residency verification |
 | `ActionTypePlatformEnrollmentDecide` | `"PLATFORM_ENROLLMENT_DECIDE"` | **Yes** | **Yes** | Owner decision on workload enrollment |
 | `ActionTypePlatformEnrollmentIssue` | `"PLATFORM_ENROLLMENT_ISSUE"` | **Yes** | **Yes** | Platform certificate issuance |
 | `ActionTypePlatformEnrollmentPersistPolicy` | `"PLATFORM_ENROLLMENT_PERSIST_POLICY"` | **Yes** | **Yes** | Persisting app policy for enrolled node |
@@ -194,6 +195,9 @@ Action types define the coarse-grained operational classes evaluated by L1 Doctr
 
 ### 4.2 Mutation Gating
 `IsMutation()` is consumed only by `governance.L3Required`. Under postures that require L3 (`ratify`, `notary`), a mutation action that is not `AuthorizedByDecision()` MUST carry an L3 notary proof. The L4 state-root check (`verifyStateful`), JIT capability minting, and L5 signed receipts do not depend on the mutation flag.
+
+### 4.3 State-Change Gating
+`ChangesState(targetResource)` is consumed by `governance.L2Enforced`, the single L2 gate. Under postures that require L2 (`consensus`, `notary`), only a non-bootstrap action for which it holds is voted on. The `_state_change` flag in `status.json` requires `_mutation` and marks `A2A_CALL`, `CANCEL`, `DOCUMENT_DELETE`, `DOCUMENT_UPDATE`, `EXECUTE_BASH`, `FILE_EDIT`, `MCP_CALL`, `RESTORE_FILE`, `SHUTDOWN`, and the bootstrap enrollment mutations. `_read_only_targets` lists the native MCP tools whose `MCP_CALL` changes no state; any other target, including an empty or unknown one, is a state change. `INFERENCE` and `OLLAMA_MODEL_RELEASE` are mutations but not state changes, so L3 gates them and L2 does not.
 
 ---
 
@@ -225,8 +229,9 @@ HTTP route paths for Gateway REST, mTLS, and control-plane controllers are expos
   - `ObserveProducerRunState`: `/api/v1/observe/producer/run-state`
   - `ObserveProducerStop`: `/api/v1/observe/producer/stop`
 - **Audit & Forensics**:
-  - `AuditReceipts`: `/api/v1/audit/receipts`
-  - `AuditReceiptsExport`: `/api/v1/audit/receipts/export`
+  - `AuditEventReceipts`: `/api/v1/audit/event-receipts`
+  - `AuditEventReceiptsExport`: `/api/v1/audit/event-receipts/export`
+  - `AuditConsensusVotes`: `/api/v1/audit/consensus-votes`
   - `AuditEvents`: `/api/v1/audit/events`
   - `AuditSummary`: `/api/v1/audit/summary`
 - **Streaming & PubSub**:

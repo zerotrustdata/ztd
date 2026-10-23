@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // SysInfoTool provides system information including hostname, OS version, kernel, uptime, and load average.
@@ -20,7 +22,7 @@ type SysInfoTool struct{}
 
 // Name returns the tool identifier.
 func (t *SysInfoTool) Name() string {
-	return "sys_info"
+	return constants.MCPToolSysInfo
 }
 
 // Description returns a human-readable description.

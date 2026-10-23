@@ -95,8 +95,11 @@ func (i *CampaignImporter) RunID() string {
 }
 
 func (i *CampaignImporter) Import(ctx context.Context) ([]complianceevidence.EvidenceNode, error) {
-	if i == nil || i.reader == nil || !complianceevidence.ValidPathElement(i.runID) || i.policy.VerifierReleaseVersion == "" || i.policy.AssessmentTime == nil {
+	if i == nil || i.reader == nil || i.policy.VerifierReleaseVersion == "" || i.policy.AssessmentTime == nil {
 		return nil, fmt.Errorf("%w: campaign importer is incomplete", constants.ErrInvalidEvidenceGraph)
+	}
+	if err := complianceevidence.ValidatePathElement(i.runID); err != nil {
+		return nil, fmt.Errorf("%w: campaign importer run ID: %w", constants.ErrInvalidEvidenceGraph, err)
 	}
 	result, err := verifyCampaignRunReadOnly(ctx, NewStore(i.reader), i.runID, i.policy)
 	if err != nil {

@@ -43,6 +43,15 @@ function ToolCall({ call, index }: { call: RoleTranscriptToolCall; index: number
           <pre className="model-response-text"><code>{prettyJSON(call.arguments_json)}</code></pre>
         </div>
       ) : null}
+      {call.approved_arguments_json && call.approved_arguments_json !== call.arguments_json ? (
+        <div className="transcript-field">
+          <div className="transcript-field-label">
+            Approved arguments
+            <CopyButton text={call.approved_arguments_json} label={`${call.tool_name} approved arguments`} />
+          </div>
+          <pre className="model-response-text"><code>{prettyJSON(call.approved_arguments_json)}</code></pre>
+        </div>
+      ) : null}
       {call.command ? (
         <div className="transcript-field">
           <div className="transcript-field-label">Resolved command<CopyButton text={call.command} label={`${call.tool_name} command`} /></div>

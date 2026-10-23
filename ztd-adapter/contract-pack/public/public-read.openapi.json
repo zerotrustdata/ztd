@@ -126,6 +126,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Narrow the catalog to this active artifact; an unknown or withdrawn digest returns no entries",
+            "in": "query",
+            "name": "artifact",
+            "required": false,
+            "schema": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -138,6 +148,9 @@
               }
             },
             "description": "Public-safe proof catalog"
+          },
+          "400": {
+            "description": "Malformed artifact digest"
           }
         }
       }

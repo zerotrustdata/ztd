@@ -11,6 +11,7 @@ import { evalStore } from '../src/state/store';
 
 vi.mock('../src/state/feed', () => ({
   loadRuntimeConfig: vi.fn().mockResolvedValue({ schema_version: '1.0.0', mirror_origin: 'http://127.0.0.1:8082' }),
+  fetchProofCatalogEntry: vi.fn().mockResolvedValue(null),
 }));
 
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');

@@ -188,6 +188,37 @@ func TestStoreSaveAndLoadCampaignSpec(t *testing.T) {
 	assert.Equal(t, digest, loaded.GetCampaignDigest())
 }
 
+func TestStoreAccess_ReportsTypedPreconditionErrors(t *testing.T) {
+	ctx := context.Background()
+	store := NewStore(newCampaignMemoryFileService())
+	var nilStore *Store
+
+	_, err := store.LoadRun(ctx, "eval-1022-13:30")
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	assert.Contains(t, err.Error(), "run ID")
+
+	_, err = store.LoadAssignment(ctx, "run-1", "../escape")
+	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	assert.Contains(t, err.Error(), "assignment ID")
+
+	_, err = store.LoadCampaignSpec(ctx, "")
+	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+	assert.Contains(t, err.Error(), "campaign ID")
+
+	_, err = nilStore.LoadRun(ctx, "run-1")
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	assert.NotErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+
+	err = store.SaveRun(ctx, nil)
+	require.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+
+	err = store.SaveRun(ctx, &evalv1.EvaluationRun{RunId: "eval-1022-13:30"})
+	require.ErrorIs(t, err, constants.ErrEvaluationReportPersistFailed)
+	require.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid)
+}
+
 func TestStoreSaveAndLoadScenarioCatalog(t *testing.T) {
 	files := newCampaignMemoryFileService()
 	store := NewStore(files)

@@ -24,7 +24,16 @@ import (
 var doctrineRecordGzip []byte
 
 // doctrineRecordSHA256 is the hex sha256 of the decompressed canonical record.
-const doctrineRecordSHA256 = "5eaa3d8a77c465043798a5e0aa4f37d61bdfbf360d5feeb95426cc6297b914e2"
+const doctrineRecordSHA256 = "1091115366eeec850959c8ec2900714d3137f68e352ae5d66a9fcc58927ff23a"
+
+// embeddedDoctrineRecordGzip is the gzip -9 of the canonical record bytes of the
+// embedded-only doctrine run, exactly as the live run sealed them.
+//
+//go:embed testdata/doctrine-embedded-record.json.gz
+var embeddedDoctrineRecordGzip []byte
+
+// embeddedDoctrineRecordSHA256 is the hex sha256 of the decompressed embedded-only record.
+const embeddedDoctrineRecordSHA256 = "8b65b90be2f9dfdf4c0d1b22bcac64a6ea2f71500f1bbbe000d48f7f0879eec0"
 
 // DoctrineRecord returns the pinned canonical record bytes and the hex sha256 that
 // their digest sidecar holds. The decompressed bytes are pinned against
@@ -33,6 +42,15 @@ const doctrineRecordSHA256 = "5eaa3d8a77c465043798a5e0aa4f37d61bdfbf360d5feeb954
 func DoctrineRecord(t testing.TB) ([]byte, string) {
 	t.Helper()
 	return decodePinnedRecord(t, doctrineRecordGzip, doctrineRecordSHA256)
+}
+
+// EmbeddedDoctrineRecord returns the pinned canonical record of a doctrine run
+// whose Data Operator was the embedded Operator, so every case, including the
+// outbound-role ingresses, ran on the embedded executor. It is pinned the same
+// way as DoctrineRecord.
+func EmbeddedDoctrineRecord(t testing.TB) ([]byte, string) {
+	t.Helper()
+	return decodePinnedRecord(t, embeddedDoctrineRecordGzip, embeddedDoctrineRecordSHA256)
 }
 
 // decodePinnedRecord decompresses gz and returns the bytes with their hex sha256.

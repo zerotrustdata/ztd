@@ -55,17 +55,17 @@ func TestCommandLane_WriteWorkspaceFile_DispatchesGovernedWriteAndAdmitsComplete
 	require.NoError(t, err)
 	require.Len(t, fakeClient.dispatchRequests, 1)
 	dispatch := fakeClient.dispatchRequests[0]
+	assert.Equal(t, string(constants.EventOperatorEvalWorkspaceSeedRequested), dispatch.EventType)
 	assert.Equal(t, target.SessionID, dispatch.TargetOperatorSessionID)
 	assert.Equal(t, absPath, dispatch.TargetResource)
 	assert.Empty(t, dispatch.CaseID, "a run ID must not impersonate a case ID")
 	assert.Equal(t, "eval-harness:attempt-1", dispatch.InvestigationID)
 	assert.Equal(t, "fixture-setup:attempt-1", dispatch.TaskID)
-	fileEdit := &operatorv1.FileEditRequested{}
-	require.NoError(t, proto.Unmarshal(dispatch.Payload, fileEdit))
-	assert.Equal(t, absPath, fileEdit.FilePath)
-	assert.Equal(t, content, fileEdit.Content)
-	assert.True(t, fileEdit.CreateIfMissing)
-	assert.Equal(t, string(constants.FileOperationWrite), fileEdit.Operation)
+	seed := &operatorv1.EvaluationWorkspaceSeedRequested{}
+	require.NoError(t, proto.Unmarshal(dispatch.Payload, seed))
+	assert.Equal(t, absPath, seed.FilePath)
+	assert.Equal(t, content, seed.Content)
+	assert.Equal(t, "attempt-1", seed.ExecutionId)
 }
 
 func TestCommandLane_WriteWorkspaceFile_FailsClosedOnEveryAnswerThatIsNotACompletedReceipt(t *testing.T) {

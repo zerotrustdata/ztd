@@ -13,7 +13,7 @@ import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2"
 import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
 import type { AgentStep, ModelCampaignRole } from "../../eval/v1/eval_pb.js";
 import { file_ztd_eval_v1_eval } from "../../eval/v1/eval_pb.js";
-import type { ActionReceipt, GovernanceRejection, GovernedDispatchResult, InferenceDispatchFailure, InferenceDispatchRequest, InferenceResult, IngressRefusal } from "../../operator/v1/operator_pb.js";
+import type { ActionReceipt, GovernanceRejection, GovernedDispatchResult, InferenceDispatchFailure, InferenceDispatchRequest, InferenceResult, IngressRefusal, RunShellCommandArguments } from "../../operator/v1/operator_pb.js";
 import { file_ztd_operator_v1_operator } from "../../operator/v1/operator_pb.js";
 import type { Message } from "@bufbuild/protobuf";
 
@@ -21,28 +21,27 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file ztd/tribunal/v1/tribunal.proto.
  */
 export const file_ztd_tribunal_v1_tribunal: GenFile = /*@__PURE__*/
-  fileDesc("Ch56dGQvdHJpYnVuYWwvdjEvdHJpYnVuYWwucHJvdG8SD3p0ZC50cmlidW5hbC52MSLHAwoVVHJpYnVuYWxJbnRlbnRSZXF1ZXN0Eg8KB3JlcXVlc3QYASABKAkSEgoKZ3VpZGVsaW5lcxgCIAEoCRIZChF3b3JraW5nX2RpcmVjdG9yeRgDIAEoCRIKCgJvcxgEIAEoCRINCgVzaGVsbBgFIAEoCRIiChp0YXJnZXRfb3BlcmF0b3Jfc2Vzc2lvbl9pZBgGIAEoCRIPCgdjYXNlX2lkGAcgASgJEhgKEGludmVzdGlnYXRpb25faWQYCCABKAkSDwoHdGFza19pZBgJIAEoCRIWCg5jbGlfc2Vzc2lvbl9pZBgKIAEoCRIUCgxleGVjdXRpb25faWQYCyABKAkSFwoPdGltZW91dF9zZWNvbmRzGAwgASgFEkMKEG1lbWJlcl9pbmZlcmVuY2UYDSABKAsyKS56dGQub3BlcmF0b3IudjEuSW5mZXJlbmNlRGlzcGF0Y2hSZXF1ZXN0Eh8KF3Byb3ZpZGVyX2F0dGVtcHRfcHJlZml4GA4gASgJEiwKBHRpZXIYDyABKA4yHi56dGQuZXZhbC52MS5Nb2RlbENhbXBhaWduUm9sZRIYChBzdGVwX3N0YXJ0X2luZGV4GBAgASgNIvUCChJUcmlidW5hbE1lbWJlckNhbGwSLQoFc3RhZ2UYASABKA4yHi56dGQudHJpYnVuYWwudjEuVHJpYnVuYWxTdGFnZRIPCgdwZXJzb25hGAIgASgJEg0KBXJvdW5kGAMgASgNEhsKE3Byb3ZpZGVyX2F0dGVtcHRfaWQYBCABKAkSFgoOdHJhbnNhY3Rpb25faWQYBSABKAkSMAoGcmVzdWx0GAYgASgLMiAuenRkLm9wZXJhdG9yLnYxLkluZmVyZW5jZVJlc3VsdBIvCgdyZWNlaXB0GAcgASgLMh4uenRkLm9wZXJhdG9yLnYxLkFjdGlvblJlY2VpcHQSOgoHZmFpbHVyZRgIIAEoCzIpLnp0ZC5vcGVyYXRvci52MS5JbmZlcmVuY2VEaXNwYXRjaEZhaWx1cmUSPAoUb2JzZXJ2YXRpb25fcmVjZWlwdHMYCSADKAsyHi56dGQub3BlcmF0b3IudjEuQWN0aW9uUmVjZWlwdCLDAwoUVHJpYnVuYWxJbnRlbnRSZXN1bHQSMQoHb3V0Y29tZRgBIAEoDjIgLnp0ZC50cmlidW5hbC52MS5UcmlidW5hbE91dGNvbWUSDwoHY29tbWFuZBgCIAEoCRIlCgVzdGVwcxgDIAMoCzIWLnp0ZC5ldmFsLnYxLkFnZW50U3RlcBI5CgxtZW1iZXJfY2FsbHMYBCADKAsyIy56dGQudHJpYnVuYWwudjEuVHJpYnVuYWxNZW1iZXJDYWxsEhYKDnJpc2tfcmF0aW9uYWxlGAggASgJEhUKDXJpc2tfZmVlZGJhY2sYCSABKAkSFQoNYXVkaXRfZmFpbHVyZRgKIAEoCRI9CgpkaXNwYXRjaGVkGAUgASgLMicuenRkLm9wZXJhdG9yLnYxLkdvdmVybmVkRGlzcGF0Y2hSZXN1bHRIABI5CglyZWplY3Rpb24YBiABKAsyJC56dGQub3BlcmF0b3IudjEuR292ZXJuYW5jZVJlamVjdGlvbkgAEjIKB3JlZnVzYWwYByABKAsyHy56dGQub3BlcmF0b3IudjEuSW5ncmVzc1JlZnVzYWxIAEIRCg9jb21tYW5kX291dGNvbWUqggEKDVRyaWJ1bmFsU3RhZ2USHgoaVFJJQlVOQUxfU1RBR0VfVU5TUEVDSUZJRUQQABIbChdUUklCVU5BTF9TVEFHRV9HRU5FUkFURRABEhoKFlRSSUJVTkFMX1NUQUdFX01BUlNIQUwQAhIYChRUUklCVU5BTF9TVEFHRV9BVURJVBADKt0BCg9UcmlidW5hbE91dGNvbWUSIAocVFJJQlVOQUxfT1VUQ09NRV9VTlNQRUNJRklFRBAAEh0KGVRSSUJVTkFMX09VVENPTUVfQVBQUk9WRUQQARIhCh1UUklCVU5BTF9PVVRDT01FX05PX0NPTlNFTlNVUxACEhwKGFRSSUJVTkFMX09VVENPTUVfQkxPQ0tFRBADEiEKHVRSSUJVTkFMX09VVENPTUVfQVVESVRfRkFJTEVEEAQSJQohVFJJQlVOQUxfT1VUQ09NRV9JTkZFUkVOQ0VfRkFJTEVEEAVCSFpGZ2l0aHViLmNvbS96ZXJvdHJ1c3RkYXRhL3p0ZC9wcm90b2NvbC9wcm90by96dGQvdHJpYnVuYWwvdjE7dHJpYnVuYWx2MWIGcHJvdG8z", [file_ztd_eval_v1_eval, file_ztd_operator_v1_operator]);
+  fileDesc("Ch56dGQvdHJpYnVuYWwvdjEvdHJpYnVuYWwucHJvdG8SD3p0ZC50cmlidW5hbC52MSLHAwoVVHJpYnVuYWxJbnRlbnRSZXF1ZXN0Eg8KB3JlcXVlc3QYASABKAkSEgoKZ3VpZGVsaW5lcxgCIAEoCRIZChF3b3JraW5nX2RpcmVjdG9yeRgDIAEoCRIKCgJvcxgEIAEoCRINCgVzaGVsbBgFIAEoCRIiChp0YXJnZXRfb3BlcmF0b3Jfc2Vzc2lvbl9pZBgGIAEoCRIPCgdjYXNlX2lkGAcgASgJEhgKEGludmVzdGlnYXRpb25faWQYCCABKAkSDwoHdGFza19pZBgJIAEoCRIWCg5jbGlfc2Vzc2lvbl9pZBgKIAEoCRIUCgxleGVjdXRpb25faWQYCyABKAkSFwoPdGltZW91dF9zZWNvbmRzGAwgASgFEkMKEG1lbWJlcl9pbmZlcmVuY2UYDSABKAsyKS56dGQub3BlcmF0b3IudjEuSW5mZXJlbmNlRGlzcGF0Y2hSZXF1ZXN0Eh8KF3Byb3ZpZGVyX2F0dGVtcHRfcHJlZml4GA4gASgJEiwKBHRpZXIYDyABKA4yHi56dGQuZXZhbC52MS5Nb2RlbENhbXBhaWduUm9sZRIYChBzdGVwX3N0YXJ0X2luZGV4GBAgASgNIvUCChJUcmlidW5hbE1lbWJlckNhbGwSLQoFc3RhZ2UYASABKA4yHi56dGQudHJpYnVuYWwudjEuVHJpYnVuYWxTdGFnZRIPCgdwZXJzb25hGAIgASgJEg0KBXJvdW5kGAMgASgNEhsKE3Byb3ZpZGVyX2F0dGVtcHRfaWQYBCABKAkSFgoOdHJhbnNhY3Rpb25faWQYBSABKAkSMAoGcmVzdWx0GAYgASgLMiAuenRkLm9wZXJhdG9yLnYxLkluZmVyZW5jZVJlc3VsdBIvCgdyZWNlaXB0GAcgASgLMh4uenRkLm9wZXJhdG9yLnYxLkFjdGlvblJlY2VpcHQSOgoHZmFpbHVyZRgIIAEoCzIpLnp0ZC5vcGVyYXRvci52MS5JbmZlcmVuY2VEaXNwYXRjaEZhaWx1cmUSPAoUb2JzZXJ2YXRpb25fcmVjZWlwdHMYCSADKAsyHi56dGQub3BlcmF0b3IudjEuQWN0aW9uUmVjZWlwdCKOBAoUVHJpYnVuYWxJbnRlbnRSZXN1bHQSMQoHb3V0Y29tZRgBIAEoDjIgLnp0ZC50cmlidW5hbC52MS5UcmlidW5hbE91dGNvbWUSPAoJYXJndW1lbnRzGAsgASgLMikuenRkLm9wZXJhdG9yLnYxLlJ1blNoZWxsQ29tbWFuZEFyZ3VtZW50cxIWCg5hcmd1bWVudHNfanNvbhgMIAEoCRIlCgVzdGVwcxgDIAMoCzIWLnp0ZC5ldmFsLnYxLkFnZW50U3RlcBI5CgxtZW1iZXJfY2FsbHMYBCADKAsyIy56dGQudHJpYnVuYWwudjEuVHJpYnVuYWxNZW1iZXJDYWxsEhYKDnJpc2tfcmF0aW9uYWxlGAggASgJEhUKDXJpc2tfZmVlZGJhY2sYCSABKAkSFQoNYXVkaXRfZmFpbHVyZRgKIAEoCRI9CgpkaXNwYXRjaGVkGAUgASgLMicuenRkLm9wZXJhdG9yLnYxLkdvdmVybmVkRGlzcGF0Y2hSZXN1bHRIABI5CglyZWplY3Rpb24YBiABKAsyJC56dGQub3BlcmF0b3IudjEuR292ZXJuYW5jZVJlamVjdGlvbkgAEjIKB3JlZnVzYWwYByABKAsyHy56dGQub3BlcmF0b3IudjEuSW5ncmVzc1JlZnVzYWxIAEIRCg9jb21tYW5kX291dGNvbWVKBAgCEAMqggEKDVRyaWJ1bmFsU3RhZ2USHgoaVFJJQlVOQUxfU1RBR0VfVU5TUEVDSUZJRUQQABIbChdUUklCVU5BTF9TVEFHRV9HRU5FUkFURRABEhoKFlRSSUJVTkFMX1NUQUdFX01BUlNIQUwQAhIYChRUUklCVU5BTF9TVEFHRV9BVURJVBADKt0BCg9UcmlidW5hbE91dGNvbWUSIAocVFJJQlVOQUxfT1VUQ09NRV9VTlNQRUNJRklFRBAAEh0KGVRSSUJVTkFMX09VVENPTUVfQVBQUk9WRUQQARIhCh1UUklCVU5BTF9PVVRDT01FX05PX0NPTlNFTlNVUxACEhwKGFRSSUJVTkFMX09VVENPTUVfQkxPQ0tFRBADEiEKHVRSSUJVTkFMX09VVENPTUVfQVVESVRfRkFJTEVEEAQSJQohVFJJQlVOQUxfT1VUQ09NRV9JTkZFUkVOQ0VfRkFJTEVEEAVCSFpGZ2l0aHViLmNvbS96ZXJvdHJ1c3RkYXRhL3p0ZC9wcm90b2NvbC9wcm90by96dGQvdHJpYnVuYWwvdjE7dHJpYnVuYWx2MWIGcHJvdG8z", [file_ztd_eval_v1_eval, file_ztd_operator_v1_operator]);
 
 /**
  * TribunalIntentRequest is the body of POST /api/v1/operators/intents. The
- * Gateway's Tribunal turns one plain-language command intent into an audited
- * shell command through governed INFERENCE dispatches, then dispatches that
- * command to the target Operator as an ordinary governed EXECUTE_BASH. The
- * Tribunal acts in front of envelope construction; it never supplies or
- * replaces an L2 quorum proof or an L3 approval.
+ * Gateway's Tribunal reviews typed run_shell_command arguments through governed
+ * INFERENCE dispatches, then dispatches the approved bytes to the target
+ * Operator as an ordinary governed MCP_CALL. It never supplies or replaces
+ * an L2 quorum proof or an L3 approval.
  *
  * @generated from message ztd.tribunal.v1.TribunalIntentRequest
  */
 export type TribunalIntentRequest = Message<"ztd.tribunal.v1.TribunalIntentRequest"> & {
   /**
-   * Plain-language description of the single command to run. Required.
+   * Canonical JSON proposed run_shell_command arguments. Required.
    *
    * @generated from field: string request = 1;
    */
   request: string;
 
   /**
-   * Constraints the command must satisfy.
+   * Orchestration constraints that each member must follow.
    *
    * @generated from field: string guidelines = 2;
    */
@@ -94,8 +93,8 @@ export type TribunalIntentRequest = Message<"ztd.tribunal.v1.TribunalIntentReque
   cliSessionId: string;
 
   /**
-   * execution_id and timeout_seconds become the CommandRequested fields of the
-   * dispatched EXECUTE_BASH.
+   * execution_id is carried by the dispatched McpCallRequested. The Gateway
+   * merges timeout_seconds into the reviewed RunShellCommandArguments.
    *
    * @generated from field: string execution_id = 11;
    */
@@ -108,8 +107,9 @@ export type TribunalIntentRequest = Message<"ztd.tribunal.v1.TribunalIntentReque
 
   /**
    * member_inference is the template for every member call. The Gateway sets
-   * messages and provider_attempt_id per call; the template must leave
-   * messages, tools, provider_attempt_id, acting_app_id and stream empty.
+   * messages, provider_attempt_id and the role's response_format schema per
+   * call; the template must leave messages, tools, provider_attempt_id,
+   * acting_app_id, stream and response_format empty.
    *
    * @generated from field: ztd.operator.v1.InferenceDispatchRequest member_inference = 13;
    */
@@ -227,11 +227,18 @@ export type TribunalIntentResult = Message<"ztd.tribunal.v1.TribunalIntentResult
   outcome: TribunalOutcome;
 
   /**
-   * command is the audited command; set only when outcome is APPROVED.
+   * arguments are the approved typed run_shell_command arguments.
    *
-   * @generated from field: string command = 2;
+   * @generated from field: ztd.operator.v1.RunShellCommandArguments arguments = 11;
    */
-  command: string;
+  arguments?: RunShellCommandArguments | undefined;
+
+  /**
+   * arguments_json are the exact canonical bytes dispatched to the Operator.
+   *
+   * @generated from field: string arguments_json = 12;
+   */
+  argumentsJson: string;
 
   /**
    * steps are the persona steps of the deliberation, in order.
@@ -267,7 +274,7 @@ export type TribunalIntentResult = Message<"ztd.tribunal.v1.TribunalIntentResult
   auditFailure: string;
 
   /**
-   * The governed EXECUTE_BASH outcome of an approved command.
+   * The governed MCP_CALL outcome of an approved run_shell_command.
    *
    * @generated from oneof ztd.tribunal.v1.TribunalIntentResult.command_outcome
    */

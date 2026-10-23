@@ -69,7 +69,7 @@ func TestRegisterMCPRoutes_RegistersMCPAndA2APaths(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	registerMCPRoutes(mux, handler)
+	registerMCPRoutes(mux, handler, true)
 
 	paths := []string{constants.APIPaths.MCPEndpoint, constants.APIPaths.A2ACall}
 	for _, path := range paths {
@@ -85,13 +85,30 @@ func TestRegisterMCPRoutes_RegistersMCPAndA2APaths(t *testing.T) {
 	}
 }
 
+func TestRegisterMCPRoutes_A2ANotMountedWithoutDownstream(t *testing.T) {
+	mux := http.NewServeMux()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	registerMCPRoutes(mux, handler, false)
+
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, constants.APIPaths.MCPEndpoint, nil))
+	assert.Equal(t, http.StatusOK, rr.Code, "MCP ingress stays mounted")
+
+	rr = httptest.NewRecorder()
+	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, constants.APIPaths.A2ACall, nil))
+	assert.Equal(t, http.StatusNotFound, rr.Code, "A2A ingress is not mounted without a downstream")
+}
+
 func TestRegisterMCPRoutes_UnregisteredPathsReturn404(t *testing.T) {
 	mux := http.NewServeMux()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	registerMCPRoutes(mux, handler)
+	registerMCPRoutes(mux, handler, true)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/nonexistent", nil)
 	rr := httptest.NewRecorder()
@@ -107,7 +124,7 @@ func TestRegisterMCPRoutes_BothPathsDeferToSameHandler(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	registerMCPRoutes(mux, handler)
+	registerMCPRoutes(mux, handler, true)
 
 	for _, path := range []string{constants.APIPaths.MCPEndpoint, constants.APIPaths.A2ACall} {
 		t.Run(path, func(t *testing.T) {

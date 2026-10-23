@@ -39,9 +39,6 @@ func BuildHeterogeneousAssignmentMatrix(req HeterogeneousScheduleRequest) ([]*ev
 		return nil, fmt.Errorf("evaluation: build heterogeneous assignment matrix: %w", err)
 	}
 	scenarios := append([]*evalv1.EvaluationScenarioDefinition(nil), req.Catalog.GetScenarios()...)
-	sort.Slice(scenarios, func(i, j int) bool {
-		return scenarios[i].GetScenarioId() < scenarios[j].GetScenarioId()
-	})
 	stacks := append([]*evalv1.HeterogeneousStackDefinition(nil), req.StackSet.Stacks...)
 	sort.Slice(stacks, func(i, j int) bool {
 		return stacks[i].GetStackId() < stacks[j].GetStackId()
@@ -60,9 +57,7 @@ func BuildHeterogeneousAssignmentMatrix(req HeterogeneousScheduleRequest) ([]*ev
 			assignments = append(assignments, assignment)
 		}
 	}
-	sort.Slice(assignments, func(i, j int) bool {
-		return assignments[i].GetDeterministicIdentity() < assignments[j].GetDeterministicIdentity()
-	})
+	sortAssignmentsDeterministic(assignments, req.Catalog)
 	return assignments, nil
 }
 

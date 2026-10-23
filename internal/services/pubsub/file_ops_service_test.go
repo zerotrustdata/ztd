@@ -44,6 +44,11 @@ func (m *fileEditResultsPublisher) PublishFileEditResult(_ context.Context, resu
 	return nil
 }
 
+func (m *fileEditResultsPublisher) PublishEvaluationWorkspaceSeedResult(_ context.Context, result *operatorv1.EvaluationWorkspaceSeedResult, _ *PubSubCommandMessage) error {
+	m.results = append(m.results, result)
+	return nil
+}
+
 func newFileEditTestService(t *testing.T, cfg *config.Config, logger *slog.Logger) *execution.FileEditService {
 	t.Helper()
 	fileSvc, err := fs.NewRuntimeFileService(cfg.WorkDir, logger)
@@ -545,6 +550,107 @@ func TestFileOpsService_HandleFileEditRequest(t *testing.T) {
 
 		svc.HandleFileEditRequest(context.Background(), msg)
 		// Should log error and return without panic
+	})
+}
+
+// EVAL_WORKSPACE_SEED writes only attempt workspace files and sentinels under
+// the Operator working directory, through the same ledgered write path as
+// FILE_EDIT; every other destination is rejected before anything is written.
+func TestFileOpsService_HandleEvaluationWorkspaceSeedRequest(t *testing.T) {
+	workspace := constants.EvaluationWorkspacePrefix + "0123456789abcdef"
+	seedIn := func(t *testing.T, cfg *config.Config, filePath string) (*fileEditResultsPublisher, *storage.SQLAuditStore, error) {
+		t.Helper()
+		logger := testutil.NewTestLogger()
+		results := &fileEditResultsPublisher{}
+		auditStore := storagetest.NewTestAuditStore(t, testOperatorSessionID)
+		svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, newFileEditTestService(t, cfg, logger), pubsubtest.NewMockOperatorPubSubClient(), fileOpsTestDeps{Results: results, AuditStore: auditStore})
+		payload, err := proto.Marshal(&operatorv1.EvaluationWorkspaceSeedRequested{ExecutionId: "attempt-1", FilePath: filePath, Content: "fixture"})
+		require.NoError(t, err)
+		_, err = svc.HandleEvaluationWorkspaceSeedRequest(context.Background(), &PubSubCommandMessage{
+			ID:                "msg-seed",
+			EventType:         constants.Event.Operator.Eval.WorkspaceSeed.Requested,
+			OperatorSessionID: testOperatorSessionID,
+			Payload:           payload,
+		})
+		return results, auditStore, err
+	}
+
+	t.Run("writes a workspace fixture and records it", func(t *testing.T) {
+		cfg := testutil.NewTestConfig(t)
+		filePath := filepath.Join(cfg.WorkDir, constants.EvaluationWorkspaceDirname, workspace, "logs", "auth.log")
+		results, auditStore, err := seedIn(t, cfg, filePath)
+		require.NoError(t, err)
+		require.Len(t, results.results, 1)
+		result, ok := results.results[0].(*operatorv1.EvaluationWorkspaceSeedResult)
+		require.True(t, ok, "published result is %T", results.results[0])
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.GetStatus())
+		assert.Equal(t, "attempt-1", result.GetExecutionId())
+		assert.Equal(t, filePath, result.GetFilePath())
+		content, err := os.ReadFile(filePath)
+		require.NoError(t, err)
+		assert.Equal(t, "fixture", string(content))
+		events, err := auditStore.ListEvents(testOperatorSessionID, 10, 0)
+		require.NoError(t, err)
+		require.Len(t, events, 1)
+		assert.Equal(t, constants.Event.Operator.Eval.WorkspaceSeed.Completed, events[0].Type)
+	})
+
+	t.Run("overwrites the sentinel", func(t *testing.T) {
+		cfg := testutil.NewTestConfig(t)
+		sentinel := filepath.Join(cfg.WorkDir, constants.EvaluationWorkspaceDirname, workspace+constants.EvaluationWorkspaceSentinelSuffix)
+		for range 2 {
+			_, _, err := seedIn(t, cfg, sentinel)
+			require.NoError(t, err)
+		}
+		content, err := os.ReadFile(sentinel)
+		require.NoError(t, err)
+		assert.Equal(t, "fixture", string(content))
+	})
+
+	for _, tc := range []struct {
+		name string
+		path func(workDir string) string
+	}{
+		{name: "working directory file", path: func(workDir string) string { return filepath.Join(workDir, "notes.txt") }},
+		{name: "workspaces directory file", path: func(workDir string) string {
+			return filepath.Join(workDir, constants.EvaluationWorkspaceDirname, "notes.txt")
+		}},
+		{name: "malformed workspace", path: func(workDir string) string {
+			return filepath.Join(workDir, constants.EvaluationWorkspaceDirname, "ws-nothex", "notes.txt")
+		}},
+		{name: "outside working directory", path: func(workDir string) string {
+			return filepath.Join(filepath.Dir(workDir), constants.EvaluationWorkspaceDirname, workspace, "notes.txt")
+		}},
+	} {
+		t.Run("rejects "+tc.name, func(t *testing.T) {
+			cfg := testutil.NewTestConfig(t)
+			filePath := tc.path(cfg.WorkDir)
+			results, _, err := seedIn(t, cfg, filePath)
+			require.ErrorIs(t, err, constants.ErrEvaluationWorkspaceSeedPathRejected)
+			require.Len(t, results.results, 1)
+			result, ok := results.results[0].(*operatorv1.EvaluationWorkspaceSeedResult)
+			require.True(t, ok, "published result is %T", results.results[0])
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.GetStatus())
+			assert.Equal(t, "validation_error", result.GetErrorType())
+			_, statErr := os.Stat(filePath)
+			assert.ErrorIs(t, statErr, os.ErrNotExist)
+		})
+	}
+
+	t.Run("rejects a workspace symlinked outside the workspaces directory", func(t *testing.T) {
+		cfg := testutil.NewTestConfig(t)
+		outside := filepath.Join(cfg.WorkDir, "outside")
+		require.NoError(t, os.MkdirAll(outside, constants.PermDirStandard))
+		workspaces := filepath.Join(cfg.WorkDir, constants.EvaluationWorkspaceDirname)
+		require.NoError(t, os.MkdirAll(workspaces, constants.PermDirStandard))
+		if err := os.Symlink(outside, filepath.Join(workspaces, workspace)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		results, _, err := seedIn(t, cfg, filepath.Join(workspaces, workspace, "notes.txt"))
+		require.ErrorIs(t, err, constants.ErrEvaluationWorkspaceSeedPathRejected)
+		require.Len(t, results.results, 1)
+		_, statErr := os.Stat(filepath.Join(outside, "notes.txt"))
+		assert.ErrorIs(t, statErr, os.ErrNotExist)
 	})
 }
 

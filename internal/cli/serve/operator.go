@@ -56,8 +56,11 @@ type ServeOperatorOptions struct {
 
 	// Inference (ztdllama) settings for an Operator with the inference
 	// capability calling the configured remote Ollama provider.
-	InferenceOllamaEndpoint string
-	InferenceKeepAlive      string
+	InferenceOllamaEndpoint      string
+	InferenceKeepAlive           string
+	InferenceAllowHostedDecision bool
+	InferenceDecisionModels      []string
+	InferenceDecisionOnly        bool
 
 	ProviderBoundaryObserverID string
 
@@ -130,8 +133,10 @@ func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effec
 		Term:                 os.Getenv(string(constants.EnvVar.Term)),
 		TZ:                   os.Getenv(string(constants.EnvVar.TZ)),
 
-		InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint,
-		InferenceKeepAlive:      opts.InferenceKeepAlive,
+		InferenceOllamaEndpoint:      opts.InferenceOllamaEndpoint,
+		InferenceKeepAlive:           opts.InferenceKeepAlive,
+		InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision,
+		InferenceDecisionModels:      opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly,
 
 		ProviderBoundaryObserverID: opts.ProviderBoundaryObserverID,
 

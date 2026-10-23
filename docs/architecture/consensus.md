@@ -3,14 +3,18 @@ doc_id: consensus
 title: Consensus Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/services/governance/l2_consensus.go
   - internal/services/governance/l4_warden.go
   - internal/services/gateway/consensus_store_service.go
   - internal/services/gateway/platform_enrollment_service.go
   - internal/services/gateway/platform_enrollment_controller.go
+  - internal/services/gateway/tribunal_consensus_deliberator.go
+  - internal/constants/consensus.go
+  - internal/models/consensus_binding.go
+  - internal/cli/auth/tribunal_consensus_signer.go
   - protocol/proto/ztd/common/v1/common.proto
   - protocol/models/consensus.json
 related:
@@ -20,7 +24,7 @@ related:
   - auth.md
   - encryption.md
   - network.md
-when_to_read: Understanding L2 machine consensus, enrolling and binding a consensus application, HTTPS protobuf deliberation, L4 Warden signature verification, and deterministic execution evidence.
+when_to_read: Understanding L2 machine consensus, the application and Gateway-hosted Tribunal providers, enrolling and binding consensus members, Tribunal member votes, L4 Warden signature verification, and deterministic execution evidence.
 do_not_use_for:
   - Five-layer governance verification pipeline overview (governance.md)
   - Platform PKI, TLS/mTLS, and SPIFFE identity issuance (network.md)
@@ -33,7 +37,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines ztd's Layer 2 (L2) machine consensus architecture: enrolling third-party applications as ordinary `PLATFORM_COMPONENT_KIND_APPLICATION` identities, binding an actor-owned K-of-N member set through `PLATFORM_ENROLLMENT_BIND_CONSENSUS`, HTTPS protobuf deliberation mechanics, L4 Warden and outbound Operator (`OperatorL2Trust`) signature verification, and L5 Actuator receipt evidence. Every member is an enrolled application with an enabled Ed25519 signer; binding records the member IDs and quorum through the governed L5 handler.
+Defines ztd's Layer 2 (L2) machine consensus architecture: the bound consensus provider that produces K-of-N Ed25519 votes over an envelope's transaction hash, the two providers (`application` and `tribunal`), enrollment and binding of consensus members through `PLATFORM_ENROLLMENT_BIND_CONSENSUS`, the Tribunal vote contract, HTTPS protobuf deliberation for the `application` provider, L4 Warden and outbound Operator (`OperatorL2Trust`) signature verification, and L5 Actuator receipt evidence. Every member is an enrolled application with an enabled Ed25519 signer. The `tribunal` provider's members are the Gateway-hosted Tribunal panel, which votes with its sealed app signing keys. The `application` provider's members are third-party applications reached over HTTPS. Binding records the provider, member IDs, quorum, and (for `tribunal`) the pinned model through the governed L5 handler.
 
 ## Quick index
 
@@ -47,8 +51,12 @@ Defines ztd's Layer 2 (L2) machine consensus architecture: enrolling third-party
 - [Owned surfaces](#owned-surfaces)
 - [Procedures](#procedures)
   - [Place in the Five-Layer Interlock](#place-in-the-five-layer-interlock)
+  - [Consensus Providers and Binding](#consensus-providers-and-binding)
+  - [Tribunal Consensus Enrollment](#tribunal-consensus-enrollment)
   - [Consensus Application Enrollment and Binding](#consensus-application-enrollment-and-binding)
-  - [Vote Production and Deliberation Mechanics](#vote-production-and-deliberation-mechanics)
+  - [Application Provider Deliberation Mechanics](#application-provider-deliberation-mechanics)
+  - [Tribunal Provider Vote Mechanics](#tribunal-provider-vote-mechanics)
+  - [Decision Model Votes (Opt-in)](#decision-model-votes-opt-in)
   - [Gateway Ingress Deliberation Routing](#gateway-ingress-deliberation-routing)
   - [L4 Warden and Outbound Operator Verification](#l4-warden-and-outbound-operator-verification)
   - [Receipt Evidence and Deterministic Stages](#receipt-evidence-and-deterministic-stages)
@@ -63,11 +71,16 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CON-POL-01 | Consensus members are ordinary enrolled applications (`PLATFORM_COMPONENT_KIND_APPLICATION`), not a Gateway-internal service. Every member MUST enroll through the standard platform workflow, receiving its mTLS client certificate and registering its Ed25519 public key in `trusted_signers`. |
-| INV-CON-POL-02 | The Gateway MUST record at most one bound consensus policy (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`), with unique actor-owned enrolled signing applications and a quorum from one through the member count. The bound policy's primary application ID (`app_id` / `PrimaryAppID()`) designates the target application for HTTPS deliberation dispatch. |
+| INV-CON-POL-01 | Consensus members are ordinary enrolled applications (`PLATFORM_COMPONENT_KIND_APPLICATION`). Every member MUST enroll through the standard platform workflow, receiving its mTLS client certificate and registering its Ed25519 public key in `trusted_signers`. The binding's `provider` decides where votes come from. The `application` provider's members are third-party applications reached over HTTPS. A Gateway-hosted `tribunal` provider is allowed as a second provider, selected by the same binding; its members vote with sealed app signing keys held by the Gateway host. |
+| INV-CON-POL-02 | The Gateway MUST record at most one bound consensus policy (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`), with unique actor-owned enrolled signing applications and a quorum from one through the member count (`application`) or as INV-CON-POL-07 states (`tribunal`). The bound policy's primary application ID (`app_id` / `PrimaryAppID()`) designates the target application for HTTPS deliberation dispatch under the `application` provider, and is `tribunal-axiom` under the `tribunal` provider. |
 | INV-CON-POL-03 | Binding a consensus member set MUST traverse the governance pipeline as the bootstrap action `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`POST /api/v1/auth/platform-enrollments/consensus`), validating every member's ownership, existing enrollment policy, and enabled `TrustedSigner` in the Gateway's signer store. |
 | INV-CON-POL-04 | `PLATFORM_ENROLLMENT_BIND_CONSENSUS` is a mutation that is NOT exempt from L3 via `_authorized_by_decision`: it MUST require L3 human authorization under `ratify` and `notary` postures (`posture.RequiresL3() == true`). |
 | INV-CON-POL-05 | Outbound Operators MUST receive each bound consensus member's identity and Ed25519 public key in their signed enrollment bundle and in-band certificate renewal bundle (`OperatorL2Trust`). |
+| INV-CON-POL-06 | The binding's `provider` MUST be `application` or `tribunal` (`constants.ParseConsensusProvider`). The provider is required; an empty stored or requested value is rejected. `models.ResolveConsensusBinding` is the single validator for both providers and MUST run at Gateway admission and in the L5 handler. An `application` binding MUST carry an absolute HTTPS `endpoint_url` (INV-CON-VOTE-04 TLS rules apply) and MUST NOT pin a model. A `tribunal` binding MUST NOT carry an endpoint and MUST pin `model_tag` plus `model_digest`, except an explicitly allowed hosted decision binding MUST use a versioned Jev tag with an empty digest and record `hosted-unpinned` provenance. |
+| INV-CON-POL-07 | A `tribunal` binding MUST bind exactly the five canonical Tribunal member application IDs in canonical order (`constants.TribunalConsensusMemberAppIDs`): `tribunal-axiom` (primary), `tribunal-concord`, `tribunal-variance`, `tribunal-pragma`, `tribunal-nemesis`. Its quorum MUST be from 3 through 5 and defaults to 3 when omitted. Each member MUST pass the per-member owner and enabled `TrustedSigner` checks of INV-CON-POL-03. Each member's private key MUST be sealed on the Gateway host. A `tribunal-*` application enrolled on another host cannot vote here and fails closed. |
+| INV-CON-POL-08 | Rebinding MUST re-run the bind. `PLATFORM_ENROLLMENT_BIND_CONSENSUS` replaces the single bound record at `constants.DocIDConsensusBinding`, and every rebind remains L3-gated under `ratify` and `notary` (INV-CON-POL-04). No governed unbind exists. Disabling a member application through the existing application revoke disables its trusted signer, and consensus MUST then fail closed while enabled members are fewer than the quorum. |
+
+| INV-CON-POL-09 | Decision voting MUST freeze a stable Inference Operator ID and exactly five finite member thresholds between 0.5 and 1 in canonical order. Hosted access MUST require explicit binding and executing Operator opt-in. Rebinding MUST govern any threshold or provider identity change. |
 
 ### Deliberation and Proof Production (`INV-CON-VOTE`)
 
@@ -75,8 +88,15 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-CON-VOTE-01 | Each consensus member application MUST recompute the canonical transaction hash from envelope fields (`governance.GenerateMessageID`) and verify `envelope.Id` and `envelope.TransactionHash` before signing a decision. |
 | INV-CON-VOTE-02 | Every `L2Vote.consensus_signature` in the envelope's `L2Metadata` MUST be an Ed25519 signature by the bound member application named in that vote's `L2Vote.signer_key_id`, over the canonical UTF-8 payload `<transaction_hash>\|<decision>`, where `<decision>` is the vote's `L2Vote.decision` (`true` or `false`), encoded as a hex string; L2 accepts only K distinct affirmative member signatures. |
-| INV-CON-VOTE-03 | During L2 deliberation, the Gateway MUST transmit the full `GovernanceEnvelope` serialized as `application/x-protobuf` to the bound HTTPS deliberation endpoint (`endpoint_url`, hosted by the primary member) and receive back the envelope populated with member votes in its `L2Metadata` block. |
-| INV-CON-VOTE-04 | Deliberation TLS verification MUST validate the server certificate chain against Gateway-owned CA trust and verify the exact bound application SPIFFE URI (`spiffe://ztd.local/app/<app_id>`) in the SAN. Deliberation MUST NOT rely on system Web PKI roots or DNS SANs. |
+| INV-CON-VOTE-03 | When the bound provider is `application`, the Gateway MUST transmit the full `GovernanceEnvelope` serialized as `application/x-protobuf` to the bound HTTPS deliberation endpoint (`endpoint_url`, hosted by the primary member) and receive back the envelope populated with member votes in its `L2Metadata` block. |
+| INV-CON-VOTE-04 | When the bound provider is `application`, deliberation TLS verification MUST validate the server certificate chain against Gateway-owned CA trust and verify the exact bound application SPIFFE URI (`spiffe://ztd.local/app/<app_id>`) in the SAN. Deliberation MUST NOT rely on system Web PKI roots or DNS SANs. |
+| INV-CON-VOTE-05 | The `tribunal` provider MUST produce each member's vote through exactly one governed `INFERENCE` dispatched by `DispatchService.DispatchInference` on the binding's pinned model identity (INV-CON-POL-06), under the member's own app identity (`ActingAppID`) and the owner of the member application's policy (`RequestorUserID`). Members MUST be asked in canonical order, in concurrent batches sized to the affirmative votes still needed, so a batch never exceeds K. Votes MUST be signed and recorded in canonical order within each batch. |
+| INV-CON-VOTE-06 | A generative member's answer MUST decode strictly as `{"decision":"approve"\|"deny","reason":"..."}` (`tribunal.ParseConsensusVote`). Only a strict `approve` produces an affirmative vote. The answer MUST include `reason` as a string; missing or null `reason` is invalid, while an empty string is valid. Invalid JSON, missing or null reason, or any other decision value MUST produce a signed deny vote. Decision members MUST instead meet every fixed atomic gate at the frozen threshold, using the complement of each Nemesis hazard probability. Probability evidence MUST be recorded with the vote. Invalid typed output MUST NOT produce an affirmative vote. |
+| INV-CON-VOTE-07 | A member whose vote inference fails, whose application policy or owner cannot be read, or whose sealed signing key is unavailable (`ErrConsensusMemberKeyUnavailable`) MUST cast no vote. No vote is signed for it, and no plaintext key fallback exists. |
+| INV-CON-VOTE-08 | Each `tribunal` member vote MUST sign `L2VotePayload(<transaction_hash>, decision)` with the member's sealed Ed25519 key over the transaction hash recomputed by `governance.GenerateMessageID`. A hash mismatch or an undecodable envelope MUST return an error and sign nothing. |
+| INV-CON-VOTE-09 | The `tribunal` deliberator MUST stop collecting votes when K affirmative votes are reached, or when K can no longer be reached. It MUST return the envelope with only the `governance.L2` metadata changed, with `consensus_set_id` set to the binding ID. A short quorum is rejected at L4 (`ErrTxL2QuorumNotMet`) and MUST NOT be synthesized. |
+| INV-CON-VOTE-10 | The Tribunal shell-authoring deliberation MUST NOT supply L2 votes or pre-vote. Each L2-gated envelope, including a Tribunal-approved shell command, is voted independently over its own final transaction hash. |
+| INV-CON-VOTE-11 | The `tribunal` deliberator MUST record every member it asks, before that vote counts, as one hash-chained Gateway audit event `ztd.v1.consensus.vote.recorded` keyed by the envelope's transaction ID. The event content is a `models.ConsensusVoteRecord`: member, outcome (`approve`, `deny`, or `no_vote`), the member's own reason, and the failure behind an invalid-answer deny or a missing vote. A vote whose record cannot be written MUST NOT count. `GET /api/v1/audit/consensus-votes?tx_id=` and `ztd audit votes --tx` read the records, with reason and failure text scrubbed. |
 
 ### L4 Verification and Authorization (`INV-CON-WARD`)
 
@@ -84,10 +104,11 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-CON-WARD-01 | The L4 Warden (`L4Warden.verifyL2Posture`) MUST verify each `L2Vote.consensus_signature` in `L2Metadata` against the recomputed transaction hash rather than trusting the envelope's declared identifier. |
 | INV-CON-WARD-02 | Both Gateway in-process L4 verification and outbound Operator L4 verification (`OperatorL2Trust`) MUST verify each `L2Vote.consensus_signature` against the Ed25519 public key of the bound member named by `L2Vote.signer_key_id`, from `trusted_signers` / the Operator enrollment bundle. |
-| INV-CON-WARD-03 | Evaluation MUST accept only affirmative (`decision=true`) signatures verified against enabled member `TrustedSigner` public keys, meeting the stored quorum. A negative decision authenticates dissent and does not count toward quorum. |
+| INV-CON-WARD-03 | Evaluation MUST accept only affirmative (`decision=true`) signatures verified against enabled member `TrustedSigner` public keys, meeting the stored quorum. Verification MUST reject an enabled policy whose quorum is outside one through its member count with `ErrConsensusQuorumInvalid`. A negative decision authenticates dissent and does not count toward quorum. |
 | INV-CON-WARD-04 | Bootstrap action types (`actionType.IsBootstrapAction()`) MUST be exempt from L2 gating across all postures, permitting initial enrollment and `PLATFORM_ENROLLMENT_BIND_CONSENSUS` transactions to succeed before a consensus application is bound. |
-| INV-CON-WARD-05 | Under `consensus` and `notary` postures (`posture.RequiresL2() == true`), a missing `L2Metadata` proof, an unbound consensus policy, insufficient affirmative member signatures, or a negative decision MUST reject the transaction fail closed. Under `doctrine` and `ratify` postures, L2 proofs are evaluated for deterministic audit evidence without gating transaction admission. |
+| INV-CON-WARD-05 | Under `consensus` and `notary` postures (`posture.RequiresL2() == true`), for every envelope that `governance.L2Enforced` selects (a non-bootstrap action that changes state on its target resource), a missing `L2Metadata` proof, an unbound consensus policy, insufficient affirmative member signatures, or a negative decision MUST reject the transaction fail closed. `governance.L2Enforced` is the single owner of this gate. Read-only actions and non-state-change actions (INV-CON-WARD-11) are not voted on. Under `doctrine` and `ratify` postures, L2 proofs are evaluated for deterministic audit evidence without gating transaction admission. |
 | INV-CON-WARD-06 | Under `consensus` and `notary` postures, an `L2Vote.consensus_signature` from a bound member that fails verification MUST reject the transaction with `ErrTxL2SignatureInvalid` (`L2_SIGNATURE_INVALID`). Votes from signers outside the bound member set are ignored and count toward neither quorum nor rejection. |
+| INV-CON-WARD-11 | The L2 vote round MUST cover only envelopes that `governance.L2Enforced` selects: a non-bootstrap action whose `actionType.ChangesState(envelope.TargetResource)` is true (`internal/constants/action_types_gen.go`). Action types outside the state-change set (for example `INFERENCE`, provider-boundary and model-provenance observations, `OLLAMA_MODEL_RELEASE`, which is a mutation gated by L3 instead, and `EVAL_WORKSPACE_SEED`, a fixture mutation confined to attempt workspaces) and registered read-only targets of state-change types (an `MCP_CALL` to a read-only tool) MUST NOT be voted on under `consensus` or `notary`. An unknown or empty target resource of a state-change action MUST fail closed as a state change. |
 
 An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSING`. A proof naming an enabled, known set with fewer than K affirmative member votes yields `L2_QUORUM_NOT_MET`. A proof naming an unknown or disabled set yields `L2_CONSENSUS_SET_UNKNOWN`. All of these reject execution when L2 is enforced.
 
@@ -95,20 +116,26 @@ An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSIN
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 ActionReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, or the action is bootstrap-exempt) and no valid proof is present. L5 never recomputes it from posture. |
+| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 ActionReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, the action is bootstrap-exempt, or the action is not a state change on its target under INV-CON-WARD-11), and when no valid proof is present. L5 never recomputes it from posture. |
 | INV-CON-RCPT-02 | L4 verification MUST produce `DeterministicStageEvidence` for protocol L2 recording stage outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`) and the SHA-256 `L2SignatureDigest` over the sorted, canonically encoded set of `L2Vote.consensus_signature` values. |
 
 ## Owned surfaces
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
-| Consensus binding model | `protocol/models/consensus.json`, `internal/models/auth.go` | Schema validation and `consensus_store_service_test.go` |
+| Consensus binding model | `protocol/models/consensus.json`, `internal/models/auth.go` (`ConsensusPolicy`) | Schema validation and `consensus_store_service_test.go` |
 | Consensus binding document store | `internal/services/gateway/consensus_store_service.go` (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`) | Unit tests in `consensus_store_service_test.go` |
+| Consensus provider and Tribunal member IDs | `internal/constants/consensus.go` (`ConsensusProvider`, `TribunalConsensusMemberAppIDs`) | `internal/constants/consensus_test.go` |
 | Consensus application enrollment & binding | `internal/services/gateway/platform_enrollment_service.go`, `platform_enrollment_controller.go`, `internal/services/pubsub/platform_enrollment_handlers.go` | `POST /api/v1/auth/platform-enrollments/consensus` (`PLATFORM_ENROLLMENT_BIND_CONSENSUS`) |
-| Consensus membership and quorum resolution (Gateway admission and L5 write) | `internal/models/consensus_binding.go` (`ResolveConsensusMembership`) | Unit tests in `consensus_binding_test.go` |
+| Consensus binding resolution (Gateway admission and L5 write) | `internal/models/consensus_binding.go` (`ResolveConsensusBinding`, `ResolveConsensusMembership`) | Unit tests in `consensus_binding_test.go` |
+| Tribunal vote producer and provider router | `internal/services/gateway/tribunal_consensus_deliberator.go` (`TribunalConsensusDeliberator`, `consensusDeliberatorRouter`) | `tribunal_consensus_deliberator_test.go`, `consensus_deliberation_integration_test.go` |
+| Tribunal vote prompt and strict decoder | `internal/services/tribunal/consensus_vote.go` (`ConsensusVotePrompt`, `ParseConsensusVote`), `internal/services/tribunal/types.go` (`ConsensusMemberAppID`) | `consensus_vote_test.go`, `consensus_member_test.go` |
+| Member vote records and reads | `internal/models/consensus_vote.go` (`ConsensusVoteRecord`), `internal/services/gateway/audit_controller.go` (`handleAuditConsensusVotes`), `internal/cli/operator/consensus_votes.go` (`ztd audit votes`, votes on an `operator run` `L2_QUORUM_NOT_MET` rejection) | `TestTribunalConsensusRecordsEveryMemberVote`, `TestAuditController_EventsAndReportNeverReturnRawContent`, `consensus_votes_test.go` |
+| Tribunal member signer | `internal/cli/auth/tribunal_consensus_signer.go` (`TribunalConsensusSigner`) | `tribunal_consensus_signer_integration_test.go` |
+| L2 wire fields | `protocol/proto/ztd/common/v1/common.proto` (payload `consensus_provider`, `consensus_model_tag`, `consensus_model_digest`) | `make proto-generate` |
 | L4 Warden L2 verification & `OperatorL2Trust` | `internal/services/governance/l2_consensus.go`, `internal/services/governance/l4_warden.go` | Integration tests in `l4_warden_consensus_test.go` |
 | L5 Actuator receipt evidence | `internal/services/governance/l5_actuator.go` | Receipt tests in `l4_warden_test.go` |
-| Ingress HTTPS deliberation integration | `internal/services/mcp/gateway.go`, `internal/services/gateway/dispatch_service.go` | End-to-end tests in `test/l2_consensus_integration_test.go` |
+| Ingress deliberation integration | `internal/services/mcp/gateway.go`, `internal/services/gateway/dispatch_service.go` | End-to-end tests in `test/l2_consensus_integration_test.go` |
 
 ## Procedures
 
@@ -126,15 +153,41 @@ L2 Consensus occupies the second layer of the platform governance interlock:
 | Posture | `posture.RequiresL2()` | L2 Gate Status | Receipt `L2Status` Value | Deterministic Stage Outcome |
 | :--- | :--- | :--- | :--- | :--- |
 | **`doctrine`** | `false` | Non-gating (audited only) | `L2_STATUS_REQUIRED_VALID` (if valid) or `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
-| **`consensus`** | `true` | Strictly required for non-bootstrap | `L2_STATUS_REQUIRED_VALID` (`L2_STATUS_REQUIRED_FAILED` on rejection) | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (`FAILED` on rejection) |
+| **`consensus`** | `true` | Strictly required for non-bootstrap state changes (INV-CON-WARD-11) | `L2_STATUS_REQUIRED_VALID` (`L2_STATUS_REQUIRED_FAILED` on rejection) | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (`FAILED` on rejection) |
 | **`ratify`** | `false` | Non-gating (audited only) | `L2_STATUS_REQUIRED_VALID` (if valid) or `L2_STATUS_NOT_REQUIRED` | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (if valid) or `NOT_REQUIRED` |
-| **`notary`** | `true` | Strictly required for non-bootstrap | `L2_STATUS_REQUIRED_VALID` (`L2_STATUS_REQUIRED_FAILED` on rejection) | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (`FAILED` on rejection) |
+| **`notary`** | `true` | Strictly required for non-bootstrap state changes (INV-CON-WARD-11) | `L2_STATUS_REQUIRED_VALID` (`L2_STATUS_REQUIRED_FAILED` on rejection) | `DETERMINISTIC_STAGE_OUTCOME_VERIFIED` (`FAILED` on rejection) |
+
+### Consensus Providers and Binding
+
+The single bound consensus record at `constants.DocIDConsensusBinding` names a `provider`, which selects the vote producer:
+
+| Provider | Vote producer | Members | Binding command |
+| :--- | :--- | :--- | :--- |
+| `application` | Member applications behind an HTTPS deliberation endpoint (`ConsensusAppDeliberator`) | Enrolled applications named by repeatable `--member-app`, with `--quorum K` | `ztd consensus enroll app <primary> <https-endpoint>` |
+| `tribunal` | Gateway-hosted Tribunal panel (`TribunalConsensusDeliberator`) | `tribunal-axiom` through `tribunal-nemesis`, canonical (INV-CON-POL-07) | `ztd consensus enroll tribunal --model <tag> [--quorum 3]` |
+
+Consensus management commands:
+- `ztd consensus status` shows the bound provider, members, quorum, model, posture, and whether L2 is enforced.
+- Rebinding re-runs the enroll command for the chosen provider. The new bind replaces the bound record and is L3-gated under `ratify` and `notary` (INV-CON-POL-08).
+- No revoke command exists. Revoking a member application disables its trusted signer, and consensus fails closed below quorum.
+- `ztd auth enroll consensus` is removed. No alias exists.
+
+### Tribunal Consensus Enrollment
+
+`ztd consensus enroll tribunal --model <tag> [--quorum 3]` runs these steps:
+1. Resolves a local model digest from the frozen model registry and fails if it cannot. An explicitly allowed hosted decision model instead requires an exact Jev version with an empty digest (INV-CON-POL-06).
+2. For each `tribunal-*` member not yet enrolled, runs application enrollment with a generated Ed25519 signing key and waits for the owner decision. Members already enrolled are skipped, so a re-run resumes.
+3. Submits the `PLATFORM_ENROLLMENT_BIND_CONSENSUS` bind with `provider=tribunal`, the pinned model tag and digest, and the quorum, then waits for the decision.
+
+Under `ratify` or `notary`, each approval is an L3 passkey step whose URL the command prints. A full enrollment takes up to six approvals: five members and the bind. Each member's private key is sealed on the Gateway host (INV-CON-POL-07).
+
+Outbound Operators load the binding's `OperatorL2Trust` only from their enrollment and certificate-renewal bundles (INV-CON-POL-05). An Operator already running when the bind completes keeps its earlier trust. Until it restarts or renews its certificate, its L4 Warden rejects Tribunal votes with `ErrTxL2SignatureInvalid`. Restart running outbound Operators after the bind.
 
 ### Consensus Application Enrollment and Binding
 
 Ordinary application enrollment accepts a separate Ed25519 signing public key alongside its P-256 transport CSR. Owner approval and completion bind both keys as described in [Platform Workload Enrollment](auth.md#platform-workload-enrollment). `TestPlatformEnrollment_OrdinaryApplicationEnrollsSigningKeyAndBindsConsensus` exercises enrollment, binding, HTTPS protobuf deliberation, Operator trust export, and revocation without seeding a trusted signer.
 
-For the CLI enrollment, sealed signing identity, binding/query commands, and posture-dependent approval behavior, see [Platform Workload Enrollment](auth.md#platform-workload-enrollment). Consensus enrollment and binding depend on local account authority, independently of the account's sign-in provider.
+For the CLI enrollment, sealed signing identity, and posture-dependent approval behavior, see [Platform Workload Enrollment](auth.md#platform-workload-enrollment). Consensus enrollment and binding depend on local account authority, independently of the account's sign-in provider.
 
 Each third-party application that serves as a consensus member enrolls and binds through two standard governed steps:
 
@@ -142,59 +195,88 @@ Each third-party application that serves as a consensus member enrolls and binds
    - The application generates its P-256 transport key and CSR plus a separate Ed25519 signing key, submits both public identities to `POST /api/v1/auth/platform-enrollments/request`, and awaits posture-dependent owner approval.
    - Upon completion (`POST /api/v1/auth/platform-enrollments/complete`), the application receives its mTLS client certificate (`spiffe://ztd.local/app/<app_id>`) and its Ed25519 public key is registered in `trusted_signers` (`SignerStoreService`).
 2. **Consensus Binding (`PLATFORM_ENROLLMENT_BIND_CONSENSUS`)**:
-   - An authenticated owner binds the enrolled application(s) as the Gateway's consensus provider via `POST /api/v1/auth/platform-enrollments/consensus` (`ztd auth enroll consensus bind`), executing the governed bootstrap action `PLATFORM_ENROLLMENT_BIND_CONSENSUS`.
-   - The CLI supports repeatable `--member-app` flags and `--quorum`. Each member ID is trimmed and an empty member is rejected locally (`ErrMissingRequiredField`). A single application with `--quorum` omitted binds as 1-of-1. A multi-member set must state `--quorum` explicitly; the Gateway rejects an omitted quorum for more than one member with `ErrConsensusQuorumInvalid` before any governed envelope is submitted, so a K-of-N policy is never written by default. The L5 handler validates that the quorum is between 1 and the member count, the primary application is among the members (`ErrConsensusAppNotEnrolled` otherwise), all member IDs are unique and owned by the binding actor with an existing enrollment policy, and each member has an enabled Ed25519 signer in `trusted_signers`.
+   - An authenticated owner binds the enrolled application(s) as the Gateway's consensus provider via `POST /api/v1/auth/platform-enrollments/consensus` (`ztd consensus enroll app`), executing the governed bootstrap action `PLATFORM_ENROLLMENT_BIND_CONSENSUS`.
+   - The command supports repeatable `--member-app` flags and `--quorum`. Each member ID is trimmed and an empty member is rejected locally (`ErrMissingRequiredField`). A single application with `--quorum` omitted binds as 1-of-1. A multi-member set must state `--quorum` explicitly; the Gateway rejects an omitted quorum for more than one member with `ErrConsensusQuorumInvalid` before any governed envelope is submitted, so a K-of-N policy is never written by default. `models.ResolveConsensusBinding` validates the set, the L5 handler validates that the primary application is among the members (`ErrConsensusAppNotEnrolled` otherwise), all member IDs are unique and owned by the binding actor with an existing enrollment policy, and each member has an enabled Ed25519 signer in `trusted_signers`.
    - Because `PLATFORM_ENROLLMENT_BIND_CONSENSUS` is a bootstrap action (`IsBootstrapAction() == true`), it is exempt from L2 gating so it can execute under `consensus` and `notary` postures before a consensus provider exists. It is not marked `_authorized_by_decision`, so it remains L3-gated under `ratify` and `notary`.
-   - The handler persists the single bound consensus record at `constants.DocIDConsensusBinding` in `constants.CollectionConsensus` (`ConsensusStoreService`), recording the primary application ID (`app_id`), member application IDs (`member_app_ids`), quorum, and its HTTPS deliberation endpoint URL. The primary app ID is returned by `policy.PrimaryAppID()` (prioritizing `app_id` over `member_app_ids[0]`).
+   - The handler persists the single bound consensus record at `constants.DocIDConsensusBinding` in `constants.CollectionConsensus` (`ConsensusStoreService`), recording the provider, primary application ID (`app_id`), member application IDs (`member_app_ids`), quorum, and for the `application` provider its HTTPS deliberation endpoint URL. The primary app ID is returned by `policy.PrimaryAppID()` (prioritizing `app_id` over `member_app_ids[0]`).
    - `models.ValidateConsensusEndpoint` requires absolute HTTPS URLs without credentials or fragments at admission, authoritative persistence, and egress.
-   - For HTTPS deliberation dispatch, the Gateway constructs a dedicated TLS client via `PKIAuthority.NewConsensusAppHTTPClient(primaryAppID)` (`internal/services/gateway/gateway_certs.go`). This client disables Go's hostname check and instead verifies the server certificate chain against the Gateway's trust bundle (`GatewayTrustBundle()`) and the certificate's URI SAN against the exact bound primary application SPIFFE ID (`spiffe://ztd.local/app/<app_id>`). Application certificates carry URI SANs and no DNS SANs, so deliberation never relies on system Web PKI roots or DNS matching. `ConsensusAppDeliberator.Deliberate` rejects all redirects (`ErrConsensusEndpointInvalid`) for every client it uses, including the factory-built client, by applying the redirect policy to a copy of whichever client it is handed (`httpclient.WithoutRedirects`). The PKI client itself installs no redirect policy.
+   - For HTTPS deliberation dispatch, the Gateway constructs a dedicated TLS client via `PKIAuthority.NewConsensusAppHTTPClient(primaryAppID)` (`internal/services/gateway/gateway_certs.go`). Its TLS config comes from `httpclient.SPIFFEServerTLSConfig` (`internal/httpclient/httpclient.go`), which disables Go's hostname check and instead verifies the server certificate chain against the Gateway's trust bundle (`GatewayTrustBundle()`) and the certificate's URI SAN against the exact bound primary application SPIFFE ID (`spiffe://ztd.local/app/<app_id>`). The agent harness's `Client.Deliberate` (`internal/tools/agent_harness/client/deliberate.go`) authenticates the application the same way, against its Operator identity's trust anchors, and presents no client certificate. Application certificates carry URI SANs and no DNS SANs, so deliberation never relies on system Web PKI roots or DNS matching. `ConsensusAppDeliberator.Deliberate` rejects all redirects (`ErrConsensusEndpointInvalid`) for every client it uses, including the factory-built client, by applying the redirect policy to a copy of whichever client it is handed (`httpclient.WithoutRedirects`). The PKI client itself installs no redirect policy.
    - `ConsensusAppDeliberator` takes and returns the Gateway's canonical protojson envelope wire, and transcodes to and from binary protobuf for the application (`TestConsensusDeliberation_SpeaksProtobufToApplicationAndReturnsCallerWire`). `TestDispatchNotary_OutboundHumanDecisionWithDeliberatedL2ReturnsOriginalVerifiedResult` exercises this path with a real 2-of-3 Ed25519 consensus set and an Operator that enforces L2 and L3.
 
-### Vote Production and Deliberation Mechanics
+### Application Provider Deliberation Mechanics
 
-During L2 deliberation:
+During L2 deliberation under the `application` provider:
 1. **Protobuf Request**: The Gateway serializes the `GovernanceEnvelope` as `application/x-protobuf` and sends an HTTPS `POST` request to the bound deliberation endpoint (`endpoint_url`).
 2. **Hash Verification**: Each member application recomputes the canonical transaction hash (`governance.GenerateMessageID`) and verifies `envelope.Id` and `envelope.TransactionHash`.
 3. **Policy Evaluation & Signing**: Member applications evaluate the envelope intent and each signs `<transaction_hash>|<decision>` (`true` or `false`) using its Ed25519 private key.
 4. **Proof Attachment**: The deliberation endpoint populates `envelope.Governance.L2` (`L2Metadata`, with `consensus_set_id` and one `L2Vote` per member vote) and returns the protobuf `GovernanceEnvelope` in the HTTPS response body. The Gateway rejects a response with no votes (`ErrTxL2SignatureMissing`); quorum is evaluated at L4, not during deliberation.
+
+### Tribunal Provider Vote Mechanics
+
+For generative votes during L2 deliberation under the `tribunal` provider, `TribunalConsensusDeliberator` (`internal/services/gateway/tribunal_consensus_deliberator.go`) runs these steps:
+1. **Hash Verification**: The deliberator decodes the envelope and recomputes the transaction hash (`governance.GenerateMessageID`). A mismatch returns an error and signs nothing (INV-CON-VOTE-08).
+2. **Member Inference**: The deliberator takes the next members in canonical order, as many as affirmative votes are still needed, and dispatches their votes concurrently. Each member gets one governed `INFERENCE` on the pinned model under the member's app identity and policy owner (INV-CON-VOTE-05). The system prompt is the shared Tribunal vote prompt with the member's stance. The user prompt carries the action type, target resource, event type, signed operator identity and session, and signed case, investigation, and task IDs, followed by the typed action payload decoded by `governance.DecodePayloadForAction` and rendered as protojson. A payload that does not decode for its action type fails deliberation before any member is asked or any vote is signed. `intent_data` is rendered separately and is optional; its absence alone does not make an action unclear, though the Tribunal denies when the action or target remains unclear. The request carries `constants.InferenceRequestSchemaVersion` and a JSON response format constrained by `tribunal.ConsensusVoteJSONSchema`.
+3. **Strict Decode**: The answer decodes as `{"decision":"approve"|"deny","reason":"..."}`. Missing or null `reason` is invalid; an empty string is valid. Invalid JSON, missing or null reason, or any other decision value is a signed deny. A failed inference, an unreadable owner policy, or an unavailable sealed key casts no vote (INV-CON-VOTE-06, INV-CON-VOTE-07).
+4. **Signing**: Each cast vote signs `<transaction_hash>|true` or `<transaction_hash>|false` with the member's sealed Ed25519 key.
+5. **Vote Record**: Each member's outcome, reason, and failure is appended to the Gateway audit chain as `ztd.v1.consensus.vote.recorded` before the vote counts; an unrecorded vote does not count (INV-CON-VOTE-11). Read them with `ztd audit votes --tx <transaction-id>`. `ztd operator run` prints them under an `L2_QUORUM_NOT_MET` rejection.
+6. **Short-Circuit**: Collection stops at K affirmative votes, once K is unreachable, or once the context ends (INV-CON-VOTE-09). The check runs between batches. A deny or failure inside a batch can leave the rest of that batch moot, but those votes are still recorded. The returned envelope has its `consensus_set_id` set to the binding ID. L4 evaluates quorum.
+
+Each envelope that `governance.L2Enforced` selects (a non-bootstrap state change, INV-CON-WARD-11) costs three to five extra model calls against the Tribunal's pinned model (the local model tag, or the hosted Jev version under `--allow-hosted`). When all members approve, those calls run as one concurrent batch of K calls. Each deny or failure adds one more batch.
+
+An `INFERENCE` dispatched through `DispatchService` is not a state change, so it costs no vote round. Its provider-boundary and model-provenance observation commands run unbound and do not deliberate. The inference dispatcher opens each attempt's observation window (BEGIN) from `DispatchRequest.OnAdmitted`, immediately before publish. The window therefore starts when the attempt starts. Similarly, fixture seeding dispatches `EVAL_WORKSPACE_SEED`, which writes only into isolated attempt workspaces and sentinel paths, so it is classified as a mutation without a state change and incurs no L2 deliberation.
+
+### Decision Model Votes (Opt-in)
+
+Tribunal bindings default to generative votes. A binding with `vote_kind: decision` instead sends typed System One questions through the same governed `INFERENCE` action and signed receipt path. This implementation is available for future evaluation; no decision model has been qualified to replace the generative baseline, and no hosted Jev production rollout is planned.
+
+The binding freezes a stable `inference_operator_id`, model identity, and five member thresholds. Local models require a SHA-256 digest; hosted Jev requires an explicit version (`jev-X.Y.Z`), an empty digest, and `allow_hosted`. Thresholds default to 0.9 at enrollment and require a rebind to change. The pinned Operator MUST be active and advertise the bound decision model and backend. An unavailable or ambiguous pinned Operator produces no vote; dispatch MUST NOT fall back to another Operator.
+
+Each member asks fixed atomic yes/no questions over the decoded envelope and its context: Axiom checks intent, Concord checks context, Variance checks target and blast radius, Pragma checks necessity, proportionality and reversibility, and Nemesis checks exfiltration, persistence, privilege escalation and evasion. Every gate must meet the member threshold to approve. Nemesis uses `1 - p(hazard)` as its approval probability. Vote records retain the probabilities, thresholds and outcomes. Transport failures produce no vote. The existing Ed25519 vote bytes, quorum verification and L4 enforcement remain unchanged. The members share one model; independent keys and distinct questions do not establish independent model judgments.
+
+The wire contract supports typed `noul`, `choice` and `score` requests and results. Chat and decision fields are mutually exclusive at Gateway admission and Operator execution. Validation rejects invalid schemas, incomplete or mismatched answers, nonfinite probabilities, mixed generation controls and bodies larger than 64 KiB; input is never truncated. Local `OllamaBackend.Decide` verifies the model digest before posting to `/v1/systemone`. The Operator scrubs decision state and question text before provider dispatch. Completion validation binds typed answers and any hosted egress attestation to the signed inference result.
+
+A dedicated outbound Inference Operator declares its decision models with `operator start --decision-model`; `--decision-only` excludes it from ordinary chat selection. Enrollment uses `consensus enroll tribunal --vote-kind decision --model <tag> --inference-operator <stable-id>`. Configure a distinct campaign provider: evaluation preflight rejects decision consensus on the campaign's runtime or canonical provider host and port. DNS aliases and physical host separation still require operator verification; declarations alone do not prove that a model is loaded or qualified.
+
+Hosted Jev additionally requires `--allow-hosted-decision` on the Operator and `--allow-hosted` on the binding. Both default off. The backend reads the sealed runtime keystore entry `typesafe_jev_api_key` at execution time; it accepts no API key through request fields, environment variables or CLI flags. There is no new credential provisioning command. Without a provisioned vault credential, execution fails closed. Requests use only `https://api.typesafe.ai/v1/systemone` with redirects disabled. Signed result metadata records the origin, version, normalized outbound request hash, explicit consent and `hosted-unpinned` provenance; a version string is not a locally verified weight digest. No key is configured and no live hosted qualification was performed for this change. Future activation requires separate credential provisioning, provider terms review, a labelled security corpus and real-stack qualification.
 
 ### Gateway Ingress Deliberation Routing
 
 ```mermaid
 flowchart TD
     Client([Client Ingress]) --> IngressType{Ingress Path}
-    
+
     IngressType -->|MCP Tool / A2A Call| MCPGateway[MCP Gateway Service]
     IngressType -->|HTTP Dispatch to Operator| DispatchSvc[Dispatch Service]
     IngressType -->|Direct Envelope POST| DirectGov[Governance Controller]
-    
-    MCPGateway --> CheckL2A{L2 enforced for action?}
-    DispatchSvc --> CheckL2B{L2 enforced for action?}
-    
-    CheckL2A -->|Yes| HTTPSDelibA[HTTPS POST application/x-protobuf to Bound Consensus Endpoint]
+
+    MCPGateway --> CheckL2A{L2 enforced?}
+    DispatchSvc --> CheckL2B{L2 enforced?}
+
+    CheckL2A -->|Yes| RouterA[Consensus deliberator router]
     CheckL2A -->|No| SkipDelibA[Proceed without deliberation]
-    
-    CheckL2B -->|Yes| HTTPSDelibB[HTTPS POST application/x-protobuf to Bound Consensus Endpoint]
+
+    CheckL2B -->|Yes| RouterB[Consensus deliberator router]
     CheckL2B -->|No| SkipDelibB[Proceed without deliberation]
-    
-    HTTPSDelibA --> PopulatedEnvelopeA[Envelope with L2Metadata]
-    HTTPSDelibB --> PopulatedEnvelopeB[Envelope with L2Metadata]
-    
+
+    RouterA --> PopulatedEnvelopeA[Envelope with L2Metadata]
+    RouterB --> PopulatedEnvelopeB[Envelope with L2Metadata]
+
     PopulatedEnvelopeA --> InProcessL4[In-Process L4 Warden / L5 Actuator]
     PopulatedEnvelopeB --> OutboundPubSub[WebSocket cmd channel to Operator]
-    
+
     DirectGov --> VerifyIdentity[Verify mTLS Identity Binding]
     VerifyIdentity --> DirectL4[In-Process L4 Warden / L5 Actuator]
 ```
 
-- **MCP Tools and A2A Calls**: For L2-enforced actions under `consensus` and `notary`, `processGatewayTransaction` (`internal/services/mcp/gateway.go`) deliberates the `GovernanceEnvelope` (`application/x-protobuf` to the bound endpoint) prior to dispatch.
+- **Deliberator Router**: `consensusDeliberatorRouter` (`internal/services/gateway/tribunal_consensus_deliberator.go`) reads the bound provider per request. `application` routes to `ConsensusAppDeliberator`, and `tribunal` routes to `TribunalConsensusDeliberator`. A `tribunal` binding with no late-bound Tribunal producer fails with `ErrTxL2ConsensusNotConfigured`.
+- **MCP Tools and A2A Calls**: For L2-enforced actions under `consensus` and `notary`, `processGatewayTransaction` (`internal/services/mcp/gateway.go`) deliberates the `GovernanceEnvelope` through the router prior to dispatch.
 - **Governed HTTP Command Dispatch**: When dispatching commands to an outbound Operator, `DispatchService` deliberates the envelope for L2-enforced actions before publishing it to `cmd:<operator_id>:<operator_session_id>`.
 - **Direct Envelope Ingress**: Direct submissions to `POST /api/v1/governance/envelopes` do not trigger Gateway-initiated deliberation; callers must submit envelopes already carrying a valid `L2Metadata` block (`consensus_set_id` and `L2Vote` entries).
 
 ### L4 Warden and Outbound Operator Verification
 
-1. **Bootstrap Exemption**: If `actionType.IsBootstrapAction()` is true, transactions bypass L2 gating across all postures.
-2. **Presence Checks**: Under `consensus` and `notary` (`posture.RequiresL2()`), a missing `L2Metadata` proof (`ErrTxL2SignatureMissing`), an unconfigured store (`ErrTxL2SignerStoreNotConfigured` or `ErrTxL2ConsensusNotConfigured`), or an unbound, unknown, or disabled consensus set (`ErrTxL2ConsensusSetUnknown`) fails closed immediately.
+1. **Bootstrap Exemption and Scope**: If `actionType.IsBootstrapAction()` is true, transactions bypass L2 gating across all postures. Under `consensus` and `notary`, an envelope that `governance.L2Enforced` does not select (a non-state-change action, or a read-only target of one, per INV-CON-WARD-11) is not subject to the presence and vote checks in steps 2 through 4.
+2. **Presence Checks**: Under `consensus` and `notary` (`posture.RequiresL2()`), for an envelope that `governance.L2Enforced` selects, a missing `L2Metadata` proof (`ErrTxL2SignatureMissing`), an unconfigured store (`ErrTxL2SignerStoreNotConfigured` or `ErrTxL2ConsensusNotConfigured`), or an unbound, unknown, or disabled consensus set (`ErrTxL2ConsensusSetUnknown`) fails closed immediately.
 3. **Signature Verification**: `L4Warden.verifyL2Posture` recomputes the transaction hash and verifies each Ed25519 signature over `<transaction_hash>|<decision>` against a bound member public key in `trusted_signers`. Under `consensus` and `notary`, a member signature that fails verification, or a member with no enabled signer key, fails closed with `ErrTxL2SignatureInvalid` (INV-CON-WARD-06). Signers outside the bound member set are ignored. A repeated member vote fails with `ErrTxL2DuplicateSigner` when `require_distinct` is set.
 4. **Decision Check**: Requires at least K distinct affirmative (`decision=true`) member votes; otherwise rejects with `ErrTxL2QuorumNotMet`.
 5. **Outbound Operator Verification (`OperatorL2Trust`)**: Remote Operators receive each bound consensus member's identity and Ed25519 public key in their signed enrollment bundle (and upon in-band certificate renewal), served in memory via `governance.L2TrustStore` (`OperatorL2Trust`), and independently verify the envelope's `L2Metadata` votes in their local L4 Warden.
@@ -209,9 +291,11 @@ When L4 verification concludes, the Warden emits deterministic stage evidence, a
 
 ## Anti-patterns
 
-- **Treating Consensus as a Gateway-Internal Service or Keystore Construct**: Expecting the Gateway to host an internal consensus deliberator (`internal/services/consensus/`), store member keys in `.ztd/secrets/`, or accept removed flags (`--consensus-id`, `--consensus-url`, `--consensus-bootstrap`) or removed routes (`POST /consensus/v1/deliberate`, `/api/v1/admin/consensus`). Consensus is an external application enrolled via `PLATFORM_COMPONENT_KIND_APPLICATION` and bound via `PLATFORM_ENROLLMENT_BIND_CONSENSUS`.
-- **Equating L2 Consensus with Distributed State Machine Replication**: Treating L2 Consensus as a Raft or Paxos leader-election engine. L2 is strictly a cryptographic signature gate over an immutable transaction hash.
+- **Treating Consensus as a Gateway-Internal Service or Keystore Construct**: Expecting a Gateway-internal consensus deliberator other than the bound `tribunal` provider, storing member signing keys outside the sealed app signing key store, or accepting removed flags (`--consensus-id`, `--consensus-url`, `--consensus-bootstrap`) or removed routes (`POST /consensus/v1/deliberate`, `/api/v1/admin/consensus`). Consensus members are enrolled applications bound via `PLATFORM_ENROLLMENT_BIND_CONSENSUS`.
+- **Pre-Voting from the Shell-Authoring Deliberation**: Using the Tribunal shell-authoring deliberation's approval, or any earlier deliberation, as L2 votes for an envelope. Each L2-gated envelope is voted over its own final hash (INV-CON-VOTE-10).
+- **Treating Consensus as Distributed State Machine Replication**: Equating L2 Consensus with a Raft or Paxos leader-election engine. L2 is strictly a cryptographic signature gate over an immutable transaction hash.
 - **Submitting Unproved Envelopes via Direct Ingress**: Expecting the Gateway to call the bound deliberation endpoint on direct submissions to `POST /api/v1/governance/envelopes`. Direct submissions require pre-populated `L2Metadata` votes carrying `L2Vote.consensus_signature` values.
+- **Treating Negative or Malformed Member Answers as Abstention**: Recording an invalid or non-approve member answer as no vote. It is a signed deny (INV-CON-VOTE-06). Only a member that cannot run or sign casts no vote (INV-CON-VOTE-07).
 - **Treating Negative Votes as Authorization**: Treating a negative decision (`decision=false`) as authorizing execution. Dissent is recorded for audit purposes only (INV-CON-WARD-03).
 - **Trusting Declared Transaction Identifiers**: Signing or verifying envelopes without recomputing the SHA-256 transaction hash via `governance.GenerateMessageID` (INV-CON-VOTE-01, INV-CON-WARD-01).
 
@@ -222,5 +306,6 @@ When L4 verification concludes, the Warden emits deterministic stage evidence, a
 - [Gateway Architecture](gateway.md): Gateway initialization, service wiring, and in-process execution.
 - [Operator Architecture](operator.md): Outbound pub/sub execution, L4 Warden verification, and L5 Actuator receipts.
 - [Authentication Architecture](auth.md): SPIFFE workload identities, trusted signers, and L3 human proofs.
+- [Evaluation Architecture](evals.md): Native evaluation campaigns executed under the frozen governance posture.
 - [Storage Architecture](storage.md): Canonical SQLite document store and encrypted persistence boundaries.
 - [Network Architecture](network.md): TLS 1.3, mTLS enforcement, and WebSocket pub/sub routing.

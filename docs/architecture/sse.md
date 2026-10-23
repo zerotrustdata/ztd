@@ -3,8 +3,8 @@ doc_id: sse
 title: SSE Streaming
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/services/gateway/sse_controller.go
   - internal/services/gateway/sse_event_publisher.go
@@ -73,6 +73,8 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`, `POST /api/v1/observe/producer/stop`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
+| INV-SSE-PROD-04 | Observe producer validation, lifecycle, ownership, and persistence rejections return a typed `models.ObserveProducerRejection` body with a stable `code`. Transition and stale-update rejections include their typed details; ownership misses return `forbidden` without record details, and unclassified failures return `internal` without details. The agent harness client decodes the body and preserves its classified cause for `errors.Is` and `errors.As`. Authentication and method rejection responses retain their shared boundary formats. |
+| INV-SSE-PROD-05 | Terminal run projection statuses (`completed`, `failed`, `cancelled`) accept no ordinary transition. A run-state request naming `reopens` is a producer repair. It is valid only when it names a terminal status and moves toward a non-terminal one (otherwise `ErrObserveStatusInvalid`). It is applied as a compare-and-set: the projection must hold exactly the status `reopens` names, or the normal transition rules decide. The stale-update guard still applies, and each applied reopen is logged as a warning with its from and to statuses. |
 
 ### Consumer authentication (`INV-SSE-CONS`)
 
@@ -102,6 +104,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | SSE event storage | `internal/services/gateway/sse_event_service.go` | Append, list, cleanup (30s interval, >1h purge), count |
 | Live channel naming | `internal/services/pubsub/channels.go`, `internal/constants/channels.go` | `sse:cli:<id>`, `sse:web:<id>` |
 | Observe producers | `internal/services/gateway/observe_producer_controller.go` | `./ztd test integration --pkg ./internal/services/gateway --run ObserveProducer` |
+| Observe producer rejection contract | `internal/models/observe_producer_rejection.go`, `internal/tools/agent_harness/client/observe_producer.go` | Typed code, transition and stale details; client preserves the classified cause |
 | Event registry | `protocol/constants/events.json` | `make constants-check` |
 
 ## Event Routing and Wire Framing
@@ -199,7 +202,7 @@ Browser / CLI Client                          Gateway SSE Controller
 
 The CLI SSE client (`internal/cli/sse`) is used by auth flows that wait for approval or passkey-registration events. For example, `ztd auth approve` opens the browser approval page and waits for its completion event:
 
-`ztd auth approve <transaction_hash>` opens the Gateway approval page and waits for the `approval.completed` event for that transaction. The `--cli` flag signs the transaction hash with the enrolled CLI certificate instead (`./ztd auth approve --help`).
+`ztd auth approve <transaction_hash>` opens the Gateway approval page and waits for the `approval.completed` event for that transaction. The `--cli` flag signs the transaction hash with the enrolled CLI certificate instead, and `--deny` denies it from the enrolled CLI session (`./ztd auth approve --help`). The `--cli` and `--deny` paths read the final receipt from the HTTP response; the browser path reads it from the `approval.completed` event on the stream. A stream line may hold up to `SSEClientMaxLineSize` bytes (`internal/constants/paths.go`), enough for an `approval.completed` event whose receipt carries both escaped execution output streams.
 
 ### Consuming Polled Events
 
@@ -217,6 +220,7 @@ curl -k -H "Cookie: ztd_web_session_cookie=${ZTD_WEB_SESSION_COOKIE}" \
 - **Broadcasting user-wide events without session scoping**: Attempting to publish without specifying `cli_session_id` or `web_session_id` (`INV-SSE-EVT-01`).
 - **Supplying routing IDs in consumer query parameters**: Attempting to select a user or session through query parameters; routing derives only from authenticated context (`INV-SSE-CONS-02`).
 - **Supplying `user_id` in an observe producer request body**: Attempting to name the owning user in the body; `user_id` derives from the mTLS peer certificate and strict decoding rejects unknown fields (`INV-SSE-PROD-03`).
+- **Treating an observe producer rejection as an untyped HTTP error**: Discarding the typed rejection body loses its stable code and transition or stale-update details (`INV-SSE-PROD-04`).
 - **Treating SSE as a permanent audit log**: Relying on `sse_events` for long-term historical records; rows older than 1 hour are automatically pruned (`INV-SSE-DEL-04`).
 - **Emitting `id:` lines on ephemeral events**: Rewinding consumer cursors by sending synthetic or zero IDs for ephemeral notifications (`INV-SSE-EVT-03`).
 

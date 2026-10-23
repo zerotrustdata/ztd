@@ -224,8 +224,8 @@ func (g *EvidenceGraph) AddNode(node EvidenceNode) error {
 		g.recordFailure(err, node.ArtifactID, "media type is not in the allowed set")
 		return err
 	}
-	if node.BundlePath != "" && !validBundlePath(node.BundlePath) {
-		err := fmt.Errorf("%w: %s: %s", constants.ErrPathValidation, node.ArtifactID, node.BundlePath)
+	if pathErr := ValidateRelativePath(node.BundlePath); node.BundlePath != "" && pathErr != nil {
+		err := fmt.Errorf("%w: %s: %w", constants.ErrPathValidation, node.ArtifactID, pathErr)
 		g.recordFailure(err, node.ArtifactID, "bundle path contains traversal or absolute components")
 		return err
 	}
@@ -559,11 +559,4 @@ type transactionBinding struct {
 // acquisition identities, so an exact mirrored artifact remains one graph node.
 func sameScopeBinding(a, b *EvidenceNode) bool {
 	return a.ScopeID == b.ScopeID && a.RunID == b.RunID && a.AttemptID == b.AttemptID && a.ScenarioID == b.ScenarioID && a.TransactionID == b.TransactionID
-}
-
-// validBundlePath rejects absolute paths, path traversal, and symlinks in
-// bundle paths. Bundle paths must be relative and must not escape the bundle
-// root.
-func validBundlePath(path string) bool {
-	return ValidRelativePath(path)
 }

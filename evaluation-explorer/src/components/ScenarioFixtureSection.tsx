@@ -18,7 +18,7 @@ import {
 import type { ProofCatalogEntry, PublicEvidenceBinding } from '../contract/types';
 import { ValidationError } from '../contract/validators';
 import { useMirrorOrigin } from '../state/mirror';
-import { useStoreState } from '../state/store';
+import { useProofArtifact } from '../state/proof';
 import { TextBlock } from './AgentTraceSection';
 import { PanelSection } from './evidence';
 import { CopyButton } from './shared';
@@ -135,8 +135,8 @@ export function ScenarioFixtureSection({ id, bindings, scenarioId }: {
 }) {
   const origin = useMirrorOrigin();
   const { input, gold } = scenarioFixtureBindings(bindings);
-  const inputArtifact = useStoreState((state) => (input ? state.proofArtifacts.get(input.sha256) : undefined));
-  const goldArtifact = useStoreState((state) => (gold ? state.proofArtifacts.get(gold.sha256) : undefined));
+  const inputArtifact = useProofArtifact(input);
+  const goldArtifact = useProofArtifact(gold);
   const inputURL = origin && inputArtifact ? `${origin}${inputArtifact.immutable_url}` : undefined;
   const goldURL = origin && goldArtifact ? `${origin}${goldArtifact.immutable_url}` : undefined;
   const inputState = useVerifiedArtifact(inputURL, input && scenarioId ? { sha256: input.sha256, scenarioId } : undefined, verifyScenarioInputArtifact);

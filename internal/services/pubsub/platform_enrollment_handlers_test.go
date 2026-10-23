@@ -564,7 +564,7 @@ func TestHandleBindConsensus_RejectsUnsafeEndpointsBeforePersistence(t *testing.
 			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
 				constants.EventPlatformEnrollmentBindConsensusRequested,
 				&commonv1.PlatformEnrollmentGovernancePayload{
-					InstanceId: "consensus-app", ConsensusEndpointUrl: endpoint, ActorUserId: enrollTestOwnerID,
+					InstanceId: "consensus-app", ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: endpoint, ActorUserId: enrollTestOwnerID,
 				}))
 			require.ErrorIs(t, err, constants.ErrConsensusEndpointInvalid)
 			doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
@@ -587,7 +587,7 @@ func TestHandleBindConsensus_RequiresAnEnabledEd25519Signer(t *testing.T) {
 		_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t,
 			constants.EventPlatformEnrollmentBindConsensusRequested,
 			&commonv1.PlatformEnrollmentGovernancePayload{
-				InstanceId: appID, ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID,
+				InstanceId: appID, ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID,
 			}))
 		require.ErrorIs(t, err, constants.ErrConsensusAppMissingSignerKey)
 		doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
@@ -610,7 +610,7 @@ func TestHandleBindConsensus_PersistsKOfNMemberSet(t *testing.T) {
 		seedConsensusMember(t, env, appID, enrollTestOwnerID, true)
 	}
 	_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
-		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: []string{"reviewer-b", "reviewer-a", "reviewer-c"}, ConsensusQuorum: 2}))
+		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: []string{"reviewer-b", "reviewer-a", "reviewer-c"}, ConsensusQuorum: 2}))
 	require.NoError(t, err)
 	doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
 	require.NoError(t, err)
@@ -656,13 +656,122 @@ func TestHandleBindConsensus_RejectsInvalidMemberSetsBeforePersistence(t *testin
 				seedConsensusMember(t, env, id, owner, id != tc.missingSigner)
 			}
 			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
-				&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "a", ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: tc.members, ConsensusQuorum: tc.quorum}))
+				&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "a", ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID, ConsensusMemberAppIds: tc.members, ConsensusQuorum: tc.quorum}))
 			require.ErrorIs(t, err, tc.want)
 			doc, getErr := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
 			require.NoError(t, getErr)
 			require.Nil(t, doc)
 		})
 	}
+}
+
+// seedTribunalConsensusMembers enrolls the five canonical Tribunal member
+// applications, each owned by owner with an enabled Ed25519 signer.
+func seedTribunalConsensusMembers(t *testing.T, env *enrollTestEnv, owner string) {
+	t.Helper()
+	for _, appID := range constants.TribunalConsensusMemberAppIDs() {
+		seedConsensusMember(t, env, appID, owner, true)
+	}
+}
+
+// readConsensusBinding decodes the persisted consensus binding, or returns nil
+// when none is stored.
+func readConsensusBinding(t *testing.T, env *enrollTestEnv) *models.ConsensusPolicy {
+	t.Helper()
+	doc, err := env.store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionConsensus), string(constants.DocIDConsensusBinding))
+	require.NoError(t, err)
+	if doc == nil {
+		return nil
+	}
+	data, err := json.Marshal(doc.Data)
+	require.NoError(t, err)
+	var policy models.ConsensusPolicy
+	require.NoError(t, json.Unmarshal(data, &policy))
+	return &policy
+}
+
+func tribunalBindPayload(members []string, quorum uint32, endpointURL, modelTag, modelDigest string) *commonv1.PlatformEnrollmentGovernancePayload {
+	return &commonv1.PlatformEnrollmentGovernancePayload{
+		InstanceId:            "tribunal-axiom",
+		ActorUserId:           enrollTestOwnerID,
+		ConsensusProvider:     string(constants.ConsensusProviderTribunal),
+		ConsensusEndpointUrl:  endpointURL,
+		ConsensusMemberAppIds: members,
+		ConsensusQuorum:       quorum,
+		ConsensusModelTag:     modelTag,
+		ConsensusModelDigest:  modelDigest,
+	}
+}
+
+func TestHandleBindConsensus_TribunalPersistsCanonicalPanel(t *testing.T) {
+	env := newEnrollTestEnv(t)
+	seedTribunalConsensusMembers(t, env, enrollTestOwnerID)
+	summary, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
+		tribunalBindPayload(constants.TribunalConsensusMemberAppIDs(), 3, "", "tribunal-vote-v1", strings.Repeat("cd", 32))))
+	require.NoError(t, err)
+	assert.Contains(t, summary, "provider=tribunal")
+	assert.NotContains(t, summary, "endpoint=")
+
+	policy := readConsensusBinding(t, env)
+	require.NotNil(t, policy)
+	assert.Equal(t, "tribunal", policy.Provider)
+	assert.Equal(t, "tribunal-axiom", policy.AppID)
+	assert.Equal(t, constants.TribunalConsensusMemberAppIDs(), policy.MemberAppIDs)
+	assert.Equal(t, 3, policy.Quorum)
+	assert.Equal(t, "tribunal-vote-v1", policy.ModelTag)
+	assert.Equal(t, strings.Repeat("cd", 32), policy.ModelDigest)
+	assert.Empty(t, policy.EndpointURL)
+	assert.True(t, policy.Enabled)
+}
+
+func TestHandleBindConsensus_TribunalRejectsNonCanonicalBindingsBeforePersistence(t *testing.T) {
+	canonical := constants.TribunalConsensusMemberAppIDs()
+	reversed := []string{canonical[4], canonical[3], canonical[2], canonical[1], canonical[0]}
+	digest := strings.Repeat("cd", 32)
+	tests := []struct {
+		name    string
+		payload *commonv1.PlatformEnrollmentGovernancePayload
+		want    error
+	}{
+		{"endpoint set", tribunalBindPayload(canonical, 3, "https://consensus.example/deliberate", "tribunal-vote-v1", digest), constants.ErrConsensusTribunalEndpointSet},
+		{"wrong member order", tribunalBindPayload(reversed, 3, "", "tribunal-vote-v1", digest), constants.ErrConsensusTribunalMembersInvalid},
+		{"quorum below tribunal minimum", tribunalBindPayload(canonical, 2, "", "tribunal-vote-v1", digest), constants.ErrConsensusQuorumInvalid},
+		{"missing model digest", tribunalBindPayload(canonical, 3, "", "tribunal-vote-v1", ""), constants.ErrConsensusModelRequired},
+		{"missing model tag", tribunalBindPayload(canonical, 3, "", "", digest), constants.ErrConsensusModelRequired},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newEnrollTestEnv(t)
+			seedTribunalConsensusMembers(t, env, enrollTestOwnerID)
+			_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested, tc.payload))
+			require.ErrorIs(t, err, tc.want)
+			assert.Nil(t, readConsensusBinding(t, env))
+		})
+	}
+}
+
+func TestHandleBindConsensus_TribunalRebindReplacesApplicationBinding(t *testing.T) {
+	env := newEnrollTestEnv(t)
+	seedConsensusMember(t, env, "reviewer-a", enrollTestOwnerID, true)
+	_, err := env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
+		&commonv1.PlatformEnrollmentGovernancePayload{InstanceId: "reviewer-a", ConsensusProvider: string(constants.ConsensusProviderApplication), ConsensusEndpointUrl: "https://consensus.example/deliberate", ActorUserId: enrollTestOwnerID}))
+	require.NoError(t, err)
+	applicationPolicy := readConsensusBinding(t, env)
+	require.NotNil(t, applicationPolicy)
+	assert.Equal(t, "application", applicationPolicy.Provider)
+
+	seedTribunalConsensusMembers(t, env, enrollTestOwnerID)
+	_, err = env.handler.HandleBindConsensus(t.Context(), enrollTestMessage(t, constants.EventPlatformEnrollmentBindConsensusRequested,
+		tribunalBindPayload(constants.TribunalConsensusMemberAppIDs(), 3, "", "tribunal-vote-v1", strings.Repeat("cd", 32))))
+	require.NoError(t, err)
+	policy := readConsensusBinding(t, env)
+	require.NotNil(t, policy)
+	assert.Equal(t, "tribunal", policy.Provider)
+	assert.Equal(t, "tribunal-axiom", policy.AppID)
+	assert.Equal(t, constants.TribunalConsensusMemberAppIDs(), policy.MemberAppIDs)
+	assert.Equal(t, 3, policy.Quorum)
+	assert.Equal(t, "tribunal-vote-v1", policy.ModelTag)
+	assert.Empty(t, policy.EndpointURL, "rebinding to tribunal must clear the application endpoint")
 }
 
 func TestProtoDecision_MapsApproveAndDenyAndRejectsOthers(t *testing.T) {

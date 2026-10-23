@@ -6,7 +6,7 @@ The protocol directory contains the shared wire contracts, external constant reg
 
 ### Go
 
-The Go protocol packages are part of the root module `github.com/zerotrustdata/ztd`, which requires Go 1.27.2. Install the module with `go get github.com/zerotrustdata/ztd`. Import `github.com/zerotrustdata/ztd/protocol` for workload identity helpers or a generated package under `github.com/zerotrustdata/ztd/protocol/proto/ztd/.../v1` for protobuf messages and services.
+The Go protocol packages are part of the root module `github.com/zerotrustdata/ztd`, which requires Go 1.27.3. Install the module with `go get github.com/zerotrustdata/ztd`. Import `github.com/zerotrustdata/ztd/protocol` for workload identity helpers or a generated package under `github.com/zerotrustdata/ztd/protocol/proto/ztd/.../v1` for protobuf messages and services.
 
 ### TypeScript
 
@@ -56,7 +56,7 @@ Generated Go code lives beside each schema, generated TypeScript modules live un
 The execution path uses five interlocked layers:
 
 1. **L1 Doctrine** applies hard gates, forbidden-pattern matching, and MITRE threat detection.
-2. **L2 Consensus** verifies K-of-N Ed25519 quorum signatures over `<transaction_hash>|<decision>`.
+2. **L2 Consensus** verifies K-of-N Ed25519 quorum signatures over `<transaction_hash>|<decision>` under `consensus` and `notary` postures, for state-changing actions only.
 3. **L3 Notary** verifies human authorization through WebAuthn or signed CLI proofs.
 4. **L4 Warden** performs pre-dispatch transaction-hash recompute, expiry, nonce reservation for replay protection, state-root, and posture-required L2 and L3 proof checks.
 5. **L5 Actuator** dispatches the registered action handler, mints just-in-time capabilities, and produces signed receipts.

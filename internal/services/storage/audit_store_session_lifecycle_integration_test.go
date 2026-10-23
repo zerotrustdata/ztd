@@ -61,7 +61,7 @@ func TestPrune_LiveIdleSessionSurvivesAndStillRecords(t *testing.T) {
 
 	_, err = ass.RecordEvent(commandEvent("live-idle", "after prune", time.Now().UTC()))
 	require.NoError(t, err)
-	require.NoError(t, ass.RecordActionReceipt(sampleActionReceiptRecord(t, "live-idle")))
+	require.NoError(t, ass.RecordEventReceipt(sampleEventReceiptRecord(t, "live-idle")))
 }
 
 func TestPrune_EndedEmptyExpiredSessionIsPruned(t *testing.T) {

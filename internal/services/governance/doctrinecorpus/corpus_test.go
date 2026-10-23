@@ -21,7 +21,7 @@ func TestLoad_EmbeddedCorpusDecodes(t *testing.T) {
 	t.Parallel()
 	corpus, err := Load()
 	require.NoError(t, err)
-	assert.Len(t, corpus.Entries, 70)
+	assert.Len(t, corpus.Entries, 75)
 }
 
 func TestAttacks_ReturnsOnlyBlockEntries(t *testing.T) {
@@ -29,7 +29,7 @@ func TestAttacks_ReturnsOnlyBlockEntries(t *testing.T) {
 	corpus, err := Load()
 	require.NoError(t, err)
 	attacks := corpus.Attacks()
-	require.Len(t, attacks, 49)
+	require.Len(t, attacks, 52)
 	for _, e := range attacks {
 		assert.Equal(t, ExpectBlock, e.Expect, "attack %s", e.ID)
 	}

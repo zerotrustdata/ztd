@@ -100,6 +100,7 @@ func (e *runEnv) startStoredRun(t *testing.T, campaignID, runID string) string {
 		InferenceOperatorSessionID: "store-only-inference-session",
 		DataOperatorSessionID:      "store-only-data-session",
 		PlatformRelease:            testPlatform.Release,
+		Governance:                 testGovernance,
 		ProviderObservationPolicy:  evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 		ModelProvenancePolicy:      evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,
 	})

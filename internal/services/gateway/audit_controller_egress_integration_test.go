@@ -11,6 +11,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -49,6 +50,22 @@ func seedEgressAudit(t *testing.T, store *storage.SQLAuditStore) {
 		CommandStderr:     "stderr " + egressEmail,
 	})
 	require.NoError(t, err)
+	vote, err := json.Marshal(models.ConsensusVoteRecord{
+		TransactionID: "tx-egress",
+		MemberAppID:   "tribunal-member-1",
+		Outcome:       models.ConsensusVoteOutcomeDeny,
+		Reason:        "reads notes of " + egressEmail,
+		Failure:       "saw " + egressMarker,
+	})
+	require.NoError(t, err)
+	_, err = store.RecordEvent(&storage.Event{
+		TransactionID:     "tx-egress",
+		OperatorSessionID: egressSessionID,
+		Timestamp:         time.Now().UTC(),
+		Type:              constants.EventConsensusVoteRecorded,
+		ContentText:       string(vote),
+	})
+	require.NoError(t, err)
 
 	receipt := &operatorv1.ActionReceipt{
 		TransactionId:   "tx-egress",
@@ -57,7 +74,7 @@ func seedEgressAudit(t *testing.T, store *storage.SQLAuditStore) {
 		SignerKeyId:     "warden-key",
 		Signature:       "signature",
 	}
-	require.NoError(t, store.RecordActionReceipt(&models.ActionReceiptRecord{
+	require.NoError(t, store.RecordEventReceipt(&models.EventReceiptRecord{
 		TransactionID:     receipt.TransactionId,
 		TransactionHash:   receipt.TransactionHash,
 		InvestigationID:   "investigation-egress",
@@ -121,10 +138,27 @@ func TestAuditController_EventsAndReportNeverReturnRawContent(t *testing.T) {
 		assert.Contains(t, rr.Body.String(), "tx-egress")
 	})
 
+	t.Run("consensus votes", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		controller.handleAuditConsensusVotes(rr, httptest.NewRequest(http.MethodGet, "/api/v1/audit/consensus-votes?tx_id=tx-egress", nil))
+		require.Equal(t, http.StatusOK, rr.Code)
+		requireNoPlantedContent(t, rr.Body.String())
+		var resp models.ConsensusVotesResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Len(t, resp.Votes, 1, "only the vote event, not the command event")
+		assert.Equal(t, "tribunal-member-1", resp.Votes[0].MemberAppID)
+		assert.Equal(t, models.ConsensusVoteOutcomeDeny, resp.Votes[0].Outcome)
+		assert.Contains(t, resp.Votes[0].Reason, "reads notes of", "non-sensitive reason text is kept")
+
+		rr = httptest.NewRecorder()
+		controller.handleAuditConsensusVotes(rr, httptest.NewRequest(http.MethodGet, "/api/v1/audit/consensus-votes", nil))
+		assert.Equal(t, http.StatusBadRequest, rr.Code, "tx_id is required")
+	})
+
 	t.Run("receipt list and export", func(t *testing.T) {
 		for path, call := range map[string]func(http.ResponseWriter, *http.Request){
-			"/api/v1/audit/receipts?operator_session_id=" + egressSessionID:        controller.handleAuditReceipts,
-			"/api/v1/audit/receipts/export?operator_session_id=" + egressSessionID: controller.handleAuditReceiptsExport,
+			"/api/v1/audit/event-receipts?operator_session_id=" + egressSessionID:        controller.handleAuditEventReceipts,
+			"/api/v1/audit/event-receipts/export?operator_session_id=" + egressSessionID: controller.handleAuditEventReceiptsExport,
 		} {
 			rr := httptest.NewRecorder()
 			call(rr, httptest.NewRequest(http.MethodGet, path, nil))
@@ -144,10 +178,11 @@ func TestAuditController_DisabledScrubberWithholds(t *testing.T) {
 	controller := newEgressController(t, disabled)
 
 	for name, call := range map[string]func(http.ResponseWriter, *http.Request){
-		"events":         controller.handleAuditEvents,
-		"report":         controller.handleAuditReport,
-		"receipts":       controller.handleAuditReceipts,
-		"receipt export": controller.handleAuditReceiptsExport,
+		"events":          controller.handleAuditEvents,
+		"report":          controller.handleAuditReport,
+		"receipts":        controller.handleAuditEventReceipts,
+		"receipt export":  controller.handleAuditEventReceiptsExport,
+		"consensus votes": controller.handleAuditConsensusVotes,
 	} {
 		t.Run(name, func(t *testing.T) {
 			rr := httptest.NewRecorder()

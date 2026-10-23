@@ -15,13 +15,13 @@ import (
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 // Agent tool names and error constants.
 const (
-	agentToolRunCommands         = "run_commands_with_operator"
 	agentToolErrorExecution      = "execution.error"
 	agentToolErrorSecurity       = "security.violation"
 	agentToolErrorPipeline       = "pipeline.outcome"
@@ -33,9 +33,7 @@ const (
 	investigationDataOperatorActions = "operator_actions"
 	investigationOperatorActor       = "ztdo"
 
-	agentToolArgCommand    = "command"
-	agentToolArgRequest    = "request"
-	agentToolArgGuidelines = "guidelines"
+	agentToolArgCommand = "command"
 )
 
 // agentToolSpec represents the contract of one tool declared to the model.
@@ -68,8 +66,7 @@ type agentToolCatalog struct {
 	declarations []*operatorv1.InferenceToolDeclaration
 }
 
-// newAgentToolCatalog initializes the catalog from production MCP native tools
-// and registers the intent-only deliberation tool.
+// newAgentToolCatalog initializes the catalog from production MCP native tools.
 func newAgentToolCatalog() (*agentToolCatalog, error) {
 	registry := mcp.NewToolRegistry()
 	if err := mcp.RegisterNativeTools(registry); err != nil {
@@ -113,28 +110,6 @@ func newAgentToolCatalog() (*agentToolCatalog, error) {
 		catalog.specs[name] = spec
 		catalog.declarations = append(catalog.declarations, decl)
 	}
-
-	// 2. Register the intent-only run_commands_with_operator; the Gateway's
-	// Tribunal writes the command. Model-written commands use the native
-	// run_shell_command tool.
-	intentProps := map[string]*mcp.PropertySchema{
-		agentToolArgRequest:    {Type: "string", Description: "Plain-language description of the single command to run."},
-		agentToolArgGuidelines: {Type: "string", Description: "Constraints the command must satisfy, for example no writes outside /srv."},
-	}
-	intentRequired := []string{agentToolArgRequest}
-	intentSpec := agentToolSpec{
-		Name:        agentToolRunCommands,
-		Description: "Run one shell command on an operator host under governance. Describe in request the single command you need and in guidelines any constraints it must satisfy; the Tribunal writes the command and it runs like any other governed command.",
-		Operator:    true,
-		Properties:  intentProps,
-		Required:    intentRequired,
-	}
-	intentDecl, err := buildInferenceToolDeclaration(agentToolRunCommands, intentSpec.Description, intentProps, intentRequired)
-	if err != nil {
-		return nil, fmt.Errorf("evaluation: agent tool catalog: build %s declaration: %w", agentToolRunCommands, err)
-	}
-	catalog.specs[agentToolRunCommands] = intentSpec
-	catalog.declarations = append(catalog.declarations, intentDecl)
 
 	// Sort declarations alphabetically by name for deterministic order
 	sort.Slice(catalog.declarations, func(i, j int) bool {
@@ -196,8 +171,10 @@ func (c *agentToolCatalog) ToolNames() []string {
 // Scope creates an agentToolScope matching scenario expectations.
 func (c *agentToolCatalog) Scope(tools ScenarioToolExpectations) (agentToolScope, error) {
 	surface := stringSet(tools.AllowedTools)
-	if _, ok := surface[agentToolRunCommands]; tools.TribunalCommands != ok {
-		return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tribunal commands require exactly allowed tool %s: %w", agentToolRunCommands, constants.ErrEvaluationScenarioContractInvalid)
+	if tools.TribunalCommands {
+		if _, ok := surface[constants.MCPToolRunShellCommand]; !ok {
+			return agentToolScope{}, fmt.Errorf("evaluation: agent tool scope: tribunal commands require allowed tool %s: %w", constants.MCPToolRunShellCommand, constants.ErrEvaluationScenarioContractInvalid)
+		}
 	}
 	for _, name := range tools.ForbiddenTools {
 		surface[name] = struct{}{}
@@ -395,6 +372,69 @@ func parseAgentToolArguments(spec agentToolSpec, raw string) (agentToolArguments
 		return agentToolArguments{}, agentToolValidationFailure(spec.Name, problems)
 	}
 	return agentToolArguments{tool: spec.Name, values: values}, nil
+}
+
+// agentToolRequest is one model tool request decoded against the contract
+// declared to the model. decodeAgentToolRequest is its only constructor: the
+// executor records its ArgumentsJSON and the evidence verifier recomputes it
+// from the signed model response, so the recorded form has one owner.
+type agentToolRequest struct {
+	// ArgumentsJSON is the recorded form: the typed canonical request of a
+	// run_shell_command call that satisfies its contract, otherwise the
+	// canonical JSON the model sent, or "{}" when that is not a JSON object.
+	ArgumentsJSON string
+	Arguments     agentToolArguments
+	// Shell is the typed request of a contract-valid run_shell_command call.
+	Shell *models.RunShellCommandRequest
+	// Failure is the model-visible rejection of a request that does not
+	// satisfy its contract. It is nil for an undeclared tool, which the
+	// caller rejects with the declared tool names.
+	Failure *agentToolFailure
+}
+
+func decodeAgentToolRequest(spec agentToolSpec, declared bool, raw string) agentToolRequest {
+	request := agentToolRequest{ArgumentsJSON: "{}"}
+	if canonical, err := canonicalizeToolJSON(raw); err == nil {
+		request.ArgumentsJSON = canonical
+	}
+	if !declared {
+		return request
+	}
+	request.Arguments, request.Failure = parseAgentToolArguments(spec, raw)
+	if request.Failure != nil || spec.Name != constants.MCPToolRunShellCommand {
+		return request
+	}
+	shell, err := decodeRunShellCommandRequest(request.Arguments)
+	if err != nil {
+		request.Failure = &agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf("invalid %s request: %v", spec.Name, err)}
+		return request
+	}
+	request.Shell = &shell
+	request.ArgumentsJSON = shell.CanonicalJSON()
+	return request
+}
+
+func decodeRunShellCommandRequest(args agentToolArguments) (models.RunShellCommandRequest, error) {
+	var request models.RunShellCommandRequest
+	encoded, err := json.Marshal(args.Values())
+	if err != nil {
+		return request, fmt.Errorf("evaluation: encode %s arguments: %w", constants.MCPToolRunShellCommand, err)
+	}
+	if err := json.Unmarshal(encoded, &request); err != nil {
+		return request, fmt.Errorf("evaluation: decode %s arguments: %w", constants.MCPToolRunShellCommand, err)
+	}
+	return request, nil
+}
+
+// agentToolSpecFromDeclaration rebuilds a tool's argument contract from the
+// declaration the model received, so verification judges each request by the
+// contract the executor applied when the trace was sealed.
+func agentToolSpecFromDeclaration(tool AgentTraceTool) (agentToolSpec, error) {
+	var schema mcp.InputSchema
+	if err := json.Unmarshal([]byte(tool.JSONSchema), &schema); err != nil {
+		return agentToolSpec{}, fmt.Errorf("evaluation: decode %s declaration: %w", tool.Name, err)
+	}
+	return agentToolSpec{Name: tool.Name, Description: tool.Description, Properties: schema.Properties, Required: schema.Required}, nil
 }
 
 func propertyAccepts(prop *mcp.PropertySchema, value any) bool {

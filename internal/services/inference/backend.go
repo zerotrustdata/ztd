@@ -37,3 +37,8 @@ type Backend interface {
 	// in its store. Used by the readiness check at operator startup.
 	Status(ctx context.Context) (*models.BackendStatus, error)
 }
+
+// DecisionBackend serves bounded System One decisions without generating text.
+type DecisionBackend interface {
+	Decide(ctx context.Context, req models.DecisionRequest) (*models.DecisionResponse, error)
+}

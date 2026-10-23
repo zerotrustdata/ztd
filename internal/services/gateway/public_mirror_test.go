@@ -1091,27 +1091,42 @@ func TestMirror_History_BoundedPageSize(t *testing.T) {
 	assert.Equal(t, 500, page.Limit)
 }
 
-func TestMirror_History_CompressesGzipResponse(t *testing.T) {
+func TestMirror_JSONReads_CompressGzipResponse(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	records := []models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "title": strings.Repeat("evaluation ", 100)}))}
 	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
 	_, ingestResp := env.sendIngest(batch)
 	require.True(t, ingestResp.Accepted)
 
-	req, err := http.NewRequest(http.MethodGet, env.publicServer.URL+"/history?source="+env.sourceID, nil)
-	require.NoError(t, err)
-	req.Header.Set("Accept-Encoding", "gzip")
-	resp, err := env.client.Do(req)
-	require.NoError(t, err)
-	t.Cleanup(func() { resp.Body.Close() })
-	assert.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))
+	getGzip := func(path string) *gzip.Reader {
+		req, err := http.NewRequest(http.MethodGet, env.publicServer.URL+path, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp, err := env.client.Do(req)
+		require.NoError(t, err)
+		t.Cleanup(func() { resp.Body.Close() })
+		require.Equal(t, http.StatusOK, resp.StatusCode, path)
+		assert.Equal(t, "gzip", resp.Header.Get("Content-Encoding"), path)
+		reader, err := gzip.NewReader(resp.Body)
+		require.NoError(t, err, path)
+		t.Cleanup(func() { reader.Close() })
+		return reader
+	}
 
-	reader, err := gzip.NewReader(resp.Body)
-	require.NoError(t, err)
-	t.Cleanup(func() { reader.Close() })
 	var page models.PublicFeedCursorPage
-	require.NoError(t, json.NewDecoder(reader).Decode(&page))
+	require.NoError(t, json.NewDecoder(getGzip("/history?source="+env.sourceID)).Decode(&page))
 	require.Len(t, page.Items, 1)
+
+	var bootstrap models.PublicFeedBootstrap
+	require.NoError(t, json.NewDecoder(getGzip("/bootstrap?source="+env.sourceID)).Decode(&bootstrap))
+	require.Len(t, bootstrap.RecentProjections, 1)
+
+	var snapshot models.PublicFeedSnapshot
+	require.NoError(t, json.NewDecoder(getGzip("/snapshot?source="+env.sourceID)).Decode(&snapshot))
+	assert.Equal(t, int64(1), snapshot.HighWaterSequence)
+
+	var catalog models.PublicProofCatalog
+	require.NoError(t, json.NewDecoder(getGzip("/proof-catalog?source="+env.sourceID)).Decode(&catalog))
 }
 
 func TestMirror_History_FiltersByRecordKindBeforePagination(t *testing.T) {
@@ -1144,6 +1159,35 @@ func TestMirror_History_FiltersByRecordKindBeforePagination(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "eval-run-2", datasetID)
 	assert.False(t, second.HasMore)
+}
+
+func TestMirror_History_FiltersByDatasetBeforePagination(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	records := make([]models.PublicFeedRecord, 0, 41)
+	for seq := int64(1); seq <= 40; seq++ {
+		records = append(records, env.makeRecord(seq, models.NewPublicFeedObject(map[string]string{
+			"kind": "catalog_snapshot", "dataset_id": fmt.Sprintf("ds-live-run-%d", seq%4),
+		})))
+	}
+	records = append(records, env.makeRecord(41, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "ds-live-run-last"})))
+	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
+	_, resp := env.sendIngest(batch)
+	require.True(t, resp.Accepted)
+
+	var found models.PublicFeedCursorPage
+	status := env.getJSON("/history?source="+env.sourceID+"&kind=catalog_snapshot&dataset=ds-live-run-last&limit=1", &found)
+	assert.Equal(t, http.StatusOK, status)
+	require.Len(t, found.Items, 1)
+	datasetID, ok := found.Items[0].StringField("dataset_id")
+	require.True(t, ok)
+	assert.Equal(t, "ds-live-run-last", datasetID)
+	assert.False(t, found.HasMore)
+
+	var absent models.PublicFeedCursorPage
+	status = env.getJSON("/history?source="+env.sourceID+"&kind=catalog_snapshot&dataset=ds-live-run-missing&limit=1", &absent)
+	assert.Equal(t, http.StatusOK, status)
+	assert.Empty(t, absent.Items)
+	assert.False(t, absent.HasMore)
 }
 
 // ---------------------------------------------------------------------------
@@ -2067,6 +2111,31 @@ func TestMirror_ProofCatalog_ReturnsEntries(t *testing.T) {
 	assert.Equal(t, http.StatusOK, status)
 	assert.Equal(t, 1, len(catalog.Entries))
 	assert.Equal(t, artifactID, catalog.Entries[0].ArtifactID)
+}
+
+// TestMirror_ProofCatalog_ArtifactFilterReturnsOneEntry verifies that the
+// artifact parameter narrows the catalog to that entry, returns an empty
+// catalog for an unknown digest, and rejects a malformed one.
+func TestMirror_ProofCatalog_ArtifactFilterReturnsOneEntry(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	first := env.makeProofIngestRequest("first.json", []byte(`{"proof":"first"}`))
+	require.NoError(t, env.mirror.storeProofPackage(context.Background(), first))
+	second := env.makeProofIngestRequest("second.json", []byte(`{"proof":"second"}`))
+	require.NoError(t, env.mirror.storeProofPackage(context.Background(), second))
+	artifactID := second.Artifacts[0].ArtifactID
+
+	var catalog models.PublicProofCatalog
+	require.Equal(t, http.StatusOK, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact="+artifactID, &catalog))
+	require.Len(t, catalog.Entries, 1)
+	assert.Equal(t, artifactID, catalog.Entries[0].ArtifactID)
+	assert.Equal(t, "second.json", catalog.Entries[0].Filename)
+
+	var unknown models.PublicProofCatalog
+	require.Equal(t, http.StatusOK, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact="+strings.Repeat("0", 64), &unknown))
+	assert.Empty(t, unknown.Entries)
+
+	assert.Equal(t, http.StatusBadRequest, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact=not-a-digest", nil))
+	assert.Equal(t, http.StatusBadRequest, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact=", nil))
 }
 
 // TestMirror_ProofCatalog_EmptyReturnsEmptyArray verifies that the proof

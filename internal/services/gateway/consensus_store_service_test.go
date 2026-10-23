@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 )
@@ -561,6 +562,125 @@ func TestConsensusStoreService_OperatorL2Trust(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, trust, "id %q", id)
 	}
+}
+
+// readinessSigner is a ConsensusMemberSigner that holds sealed keys for the listed members only.
+type readinessSigner struct{ keys map[string]bool }
+
+func (s readinessSigner) Sign(string, []byte) ([]byte, error) {
+	return nil, constants.ErrConsensusMemberKeyUnavailable
+}
+
+func (s readinessSigner) HasKey(memberAppID string) bool { return s.keys[memberAppID] }
+
+func addReadinessSigner(t *testing.T, infra *TestInfrastructure, id string, enabled bool) {
+	t.Helper()
+	pub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	require.NoError(t, infra.SignerStore.AddTrustedSigner(t.Context(), models.TrustedSigner{
+		ID:        id,
+		PublicKey: hex.EncodeToString(pub),
+		AddedAt:   time.Now().UTC(),
+		Enabled:   enabled,
+	}))
+}
+
+func bindReadinessConsensus(t *testing.T, infra *TestInfrastructure, policy models.ConsensusPolicy) {
+	t.Helper()
+	policy.ID = string(constants.DocIDConsensusBinding)
+	policy.EndpointURL = "https://consensus.example.test/deliberate"
+	policy.RequireDistinct = true
+	policy.Enabled = true
+	require.NoError(t, infra.ConsensusStore.AddConsensus(t.Context(), policy))
+}
+
+func TestConsensusStoreService_ConsensusReadiness(t *testing.T) {
+	t.Run("unbound reports not bound", func(t *testing.T) {
+		infra := setupTestInfrastructure(t, false)
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), nil)
+		require.NoError(t, err)
+		assert.Equal(t, models.ConsensusReadiness{}, got)
+	})
+
+	t.Run("application provider counts enabled signers", func(t *testing.T) {
+		infra := setupTestInfrastructure(t, false)
+		members := []string{"app-1", "app-2", "app-3"}
+		for _, id := range members {
+			addReadinessSigner(t, infra, id, true)
+		}
+		bindReadinessConsensus(t, infra, models.ConsensusPolicy{
+			MemberAppIDs: members,
+			Quorum:       2,
+			Provider:     string(constants.ConsensusProviderApplication),
+		})
+
+		// The application provider never reads local keys, even when the signer holds them.
+		signer := readinessSigner{keys: map[string]bool{"app-1": true, "app-2": true, "app-3": true}}
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer)
+		require.NoError(t, err)
+		assert.True(t, got.Bound)
+		assert.Equal(t, constants.ConsensusProviderApplication, got.Provider)
+		assert.Equal(t, 2, got.Quorum)
+		assert.Equal(t, 3, got.Usable)
+		assert.True(t, got.Ready)
+		require.Len(t, got.Members, 3)
+		for i, member := range got.Members {
+			assert.Equal(t, members[i], member.AppID)
+			assert.True(t, member.SignerEnabled)
+			assert.False(t, member.LocalKey)
+		}
+	})
+
+	t.Run("disabled signer is not usable", func(t *testing.T) {
+		infra := setupTestInfrastructure(t, false)
+		members := []string{"app-1", "app-2", "app-3"}
+		for _, id := range members {
+			addReadinessSigner(t, infra, id, true)
+		}
+		bindReadinessConsensus(t, infra, models.ConsensusPolicy{
+			MemberAppIDs: members,
+			Quorum:       3,
+			Provider:     string(constants.ConsensusProviderApplication),
+		})
+		// AddConsensus only binds enabled members, so disable one after binding.
+		addReadinessSigner(t, infra, "app-3", false)
+
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), nil)
+		require.NoError(t, err)
+		assert.Equal(t, 2, got.Usable)
+		assert.False(t, got.Ready)
+		require.Len(t, got.Members, 3)
+		assert.False(t, got.Members[2].SignerEnabled)
+	})
+
+	t.Run("tribunal provider counts only members with local keys", func(t *testing.T) {
+		infra := setupTestInfrastructure(t, false)
+		members := constants.TribunalConsensusMemberAppIDs()
+		for _, id := range members {
+			addReadinessSigner(t, infra, id, true)
+		}
+		bindReadinessConsensus(t, infra, models.ConsensusPolicy{
+			MemberAppIDs: members,
+			Quorum:       constants.TribunalConsensusDefaultQuorum,
+			Provider:     string(constants.ConsensusProviderTribunal),
+			ModelTag:     "tribunal-test-model",
+			ModelDigest:  "sha256:test",
+		})
+
+		signer := readinessSigner{keys: map[string]bool{members[0]: true, members[1]: true}}
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer)
+		require.NoError(t, err)
+		assert.Equal(t, constants.ConsensusProviderTribunal, got.Provider)
+		assert.Equal(t, "tribunal-test-model", got.ModelTag)
+		assert.Equal(t, "sha256:test", got.ModelDigest)
+		assert.Equal(t, 2, got.Usable)
+		assert.False(t, got.Ready)
+		require.Len(t, got.Members, 5)
+		assert.True(t, got.Members[0].LocalKey)
+		assert.True(t, got.Members[1].LocalKey)
+		assert.False(t, got.Members[2].LocalKey)
+		assert.True(t, got.Members[2].SignerEnabled)
+	})
 }
 
 func TestIsValidConsensusID(t *testing.T) {

@@ -150,6 +150,7 @@ authenticated user and be active.`,
 			effective := min(poolSize, len(targets))
 			started := time.Now()
 			results := dispatchOperatorRun(client, targets, command, creds.CLISessionID, effective)
+			operator.AttachConsensusVotes(client, results)
 			if output.JSONEnabled(cmd) {
 				return output.WriteJSON(cmd.OutOrStdout(), operatorRunJSON{
 					Results: results,
@@ -508,6 +509,12 @@ func writeOperatorRunText(cmd *cobra.Command, results []operator.RunResult) int 
 				cmd.Printf("  error: %s\n", result.Error)
 			} else {
 				cmd.Printf("  error: dispatch failed\n")
+			}
+			if result.ConsensusVotes != nil {
+				operator.WriteConsensusVotes(cmd.OutOrStdout(), "  ", result.TransactionID, result.ConsensusVotes)
+			}
+			if result.ConsensusVotesError != "" {
+				cmd.Printf("  consensus votes unavailable: %s\n", result.ConsensusVotesError)
 			}
 			continue
 		}

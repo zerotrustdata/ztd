@@ -96,6 +96,16 @@ func (rr *PubSubResultsService) PublishFileEditResult(ctx context.Context, resul
 	return nil
 }
 
+// PublishEvaluationWorkspaceSeedResult publishes an evaluation workspace seed result via Operator pub/sub.
+func (rr *PubSubResultsService) PublishEvaluationWorkspaceSeedResult(ctx context.Context, result *operatorv1.EvaluationWorkspaceSeedResult, originalMsg *PubSubCommandMessage) error {
+	eventType := rr.determineEventStatus(result, constants.Event.Operator.Eval.WorkspaceSeed.Completed, constants.Event.Operator.Eval.WorkspaceSeed.Failed)
+
+	if err := rr.publishResultEnvelopeUniversal(ctx, eventType, originalMsg.CaseID, originalMsg.TaskID, originalMsg.InvestigationID, originalMsg, result); err != nil {
+		return fmt.Errorf("pubsub: publish evaluation workspace seed result: %w", err)
+	}
+	return nil
+}
+
 // PublishFsListResult publishes file system list result via Operator pub/sub.
 func (rr *PubSubResultsService) PublishFsListResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error {
 	eventType := rr.determineEventStatus(result, constants.Event.Operator.FsList.Completed, constants.Event.Operator.FsList.Failed)
@@ -370,7 +380,7 @@ func (rr *PubSubResultsService) PublishHeartbeat(ctx context.Context, heartbeat 
 // (operator_id, operator_session_id, requestor_user_id, acting_app_id,
 // action_type, target_resource, case_id, investigation_id, task_id) from the
 // original command envelope env, so the gateway can build a complete
-// ActionReceiptRecord without the ActionReceipt proto carrying those fields.
+// EventReceiptRecord without the ActionReceipt proto carrying those fields.
 // The gateway intercepts the publish, verifies the receipt signature against
 // the operator's actuator public key, records the receipt in its
 // SQLAuditStore, and fans out the envelope to subscribers.

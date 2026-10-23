@@ -36,6 +36,7 @@ const EventAppInvestigationCreated EventType = "ztd.v1.app.investigation.created
 const EventAppInvestigationUpdated EventType = "ztd.v1.app.investigation.updated"
 const EventAppRunStatusUpdated EventType = "ztd.v1.app.run.status.updated"
 const EventAppTaskCompleted EventType = "ztd.v1.app.task.completed"
+const EventConsensusVoteRecorded EventType = "ztd.v1.consensus.vote.recorded"
 const EventModelProvenanceAttestationRecorded EventType = "ztd.v1.inference.model.provenance.attestation.recorded"
 const EventOperatorA2aCallRequested EventType = "ztd.v1.operator.a2a.call.requested"
 const EventOperatorAuditAiRecordRequested EventType = "ztd.v1.operator.audit.ai.record.requested"
@@ -79,6 +80,9 @@ const EventOperatorCommandStatusUpdatedRunning EventType = "ztd.v1.operator.comm
 const EventOperatorContextChanged EventType = "ztd.v1.operator.context.changed"
 const EventOperatorDeviceRegistered EventType = "ztd.v1.operator.device.registered"
 const EventOperatorEvalAnswerRequested EventType = "ztd.v1.operator.eval.answer.requested"
+const EventOperatorEvalWorkspaceSeedCompleted EventType = "ztd.v1.operator.eval.workspace.seed.completed"
+const EventOperatorEvalWorkspaceSeedFailed EventType = "ztd.v1.operator.eval.workspace.seed.failed"
+const EventOperatorEvalWorkspaceSeedRequested EventType = "ztd.v1.operator.eval.workspace.seed.requested"
 const EventOperatorFieldReadAccessDenied EventType = "ztd.v1.operator.field.read.access.denied"
 const EventOperatorFieldReadAccessGranted EventType = "ztd.v1.operator.field.read.access.granted"
 const EventOperatorFieldReadRequested EventType = "ztd.v1.operator.field.read.requested"
@@ -165,6 +169,9 @@ const EventOperatorNotaryTransactionExpired EventType = "ztd.v1.operator.notary.
 const EventOperatorOllamaModelInventoryCompleted EventType = "ztd.v1.operator.ollama.model.inventory.completed"
 const EventOperatorOllamaModelInventoryFailed EventType = "ztd.v1.operator.ollama.model.inventory.failed"
 const EventOperatorOllamaModelInventoryRequested EventType = "ztd.v1.operator.ollama.model.inventory.requested"
+const EventOperatorOllamaModelReleaseCompleted EventType = "ztd.v1.operator.ollama.model.release.completed"
+const EventOperatorOllamaModelReleaseFailed EventType = "ztd.v1.operator.ollama.model.release.failed"
+const EventOperatorOllamaModelReleaseRequested EventType = "ztd.v1.operator.ollama.model.release.requested"
 const EventOperatorOllamaModelResidencyCompleted EventType = "ztd.v1.operator.ollama.model.residency.completed"
 const EventOperatorOllamaModelResidencyFailed EventType = "ztd.v1.operator.ollama.model.residency.failed"
 const EventOperatorOllamaModelResidencyRequested EventType = "ztd.v1.operator.ollama.model.residency.requested"
@@ -440,6 +447,13 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Transport:   nil,
 		Producers:   []string{"cli"},
 		Persistence: "ephemeral",
+	},
+	EventConsensusVoteRecorded: {
+		Key:         "ConsensusVoteRecorded",
+		Kind:        EventKindFact,
+		Transport:   nil,
+		Producers:   []string{"gateway"},
+		Persistence: "gateway.audit_log",
 	},
 	EventModelProvenanceAttestationRecorded: {
 		Key:         "ModelProvenanceAttestationRecorded",
@@ -770,6 +784,30 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Persistence:       "ephemeral",
 		GovernanceAction:  ActionTypeEvalAnswer,
 		GovernancePayload: "ztd.operator.v1.EvalAnswerRequested",
+	},
+	EventOperatorEvalWorkspaceSeedCompleted: {
+		Key:         "OperatorEvalWorkspaceSeedCompleted",
+		Kind:        EventKindOutcome,
+		Transport:   nil,
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+	},
+	EventOperatorEvalWorkspaceSeedFailed: {
+		Key:         "OperatorEvalWorkspaceSeedFailed",
+		Kind:        EventKindOutcome,
+		Transport:   nil,
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+	},
+	EventOperatorEvalWorkspaceSeedRequested: {
+		Key:               "OperatorEvalWorkspaceSeedRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli"},
+		Persistence:       "ephemeral",
+		GovernanceAction:  ActionTypeEvalWorkspaceSeed,
+		GovernancePayload: "ztd.operator.v1.EvaluationWorkspaceSeedRequested",
+		Outcomes:          []string{"OperatorEvalWorkspaceSeedCompleted", "OperatorEvalWorkspaceSeedFailed"},
 	},
 	EventOperatorFieldReadAccessDenied: {
 		Key:         "OperatorFieldReadAccessDenied",
@@ -1460,6 +1498,33 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Outcomes:          []string{"OperatorOllamaModelInventoryCompleted", "OperatorOllamaModelInventoryFailed"},
 		Reserved:          true,
 	},
+	EventOperatorOllamaModelReleaseCompleted: {
+		Key:         "OperatorOllamaModelReleaseCompleted",
+		Kind:        EventKindOutcome,
+		Transport:   nil,
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+		Reserved:    true,
+	},
+	EventOperatorOllamaModelReleaseFailed: {
+		Key:         "OperatorOllamaModelReleaseFailed",
+		Kind:        EventKindOutcome,
+		Transport:   nil,
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+		Reserved:    true,
+	},
+	EventOperatorOllamaModelReleaseRequested: {
+		Key:               "OperatorOllamaModelReleaseRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli", "mcp"},
+		Persistence:       "ephemeral",
+		GovernanceAction:  ActionTypeOllamaModelRelease,
+		GovernancePayload: "ztd.operator.v1.OllamaModelReleaseRequested",
+		Outcomes:          []string{"OperatorOllamaModelReleaseCompleted", "OperatorOllamaModelReleaseFailed"},
+		Reserved:          true,
+	},
 	EventOperatorOllamaModelResidencyCompleted: {
 		Key:         "OperatorOllamaModelResidencyCompleted",
 		Kind:        EventKindOutcome,
@@ -2035,6 +2100,7 @@ type _EventOperator struct {
 	NetworkPing                 _EventOperatorNetworkPing
 	Notary                      _EventOperatorNotary
 	OllamaModelInventory        _EventOperatorOllamaModelInventory
+	OllamaModelRelease          _EventOperatorOllamaModelRelease
 	OllamaModelResidency        _EventOperatorOllamaModelResidency
 	PanelListUpdated            EventType
 	PortCheck                   _EventOperatorPortCheck
@@ -2099,6 +2165,13 @@ type _EventOperatorCommandStatusUpdated struct {
 
 type _EventOperatorEval struct {
 	AnswerRequested EventType
+	WorkspaceSeed   _EventOperatorEvalWorkspaceSeed
+}
+
+type _EventOperatorEvalWorkspaceSeed struct {
+	Completed EventType
+	Failed    EventType
+	Requested EventType
 }
 
 type _EventOperatorFetchFileDiff struct {
@@ -2216,6 +2289,12 @@ type _EventOperatorOllamaModelInventory struct {
 	Requested EventType
 }
 
+type _EventOperatorOllamaModelRelease struct {
+	Completed EventType
+	Failed    EventType
+	Requested EventType
+}
+
 type _EventOperatorOllamaModelResidency struct {
 	Completed EventType
 	Failed    EventType
@@ -2305,6 +2384,11 @@ var Event = struct {
 		DeviceRegistered: EventOperatorDeviceRegistered,
 		Eval: _EventOperatorEval{
 			AnswerRequested: EventOperatorEvalAnswerRequested,
+			WorkspaceSeed: _EventOperatorEvalWorkspaceSeed{
+				Completed: EventOperatorEvalWorkspaceSeedCompleted,
+				Failed:    EventOperatorEvalWorkspaceSeedFailed,
+				Requested: EventOperatorEvalWorkspaceSeedRequested,
+			},
 		},
 		FetchFileDiff: _EventOperatorFetchFileDiff{
 			Completed: EventOperatorFileDiffFetchCompleted,
@@ -2409,6 +2493,11 @@ var Event = struct {
 			Completed: EventOperatorOllamaModelInventoryCompleted,
 			Failed:    EventOperatorOllamaModelInventoryFailed,
 			Requested: EventOperatorOllamaModelInventoryRequested,
+		},
+		OllamaModelRelease: _EventOperatorOllamaModelRelease{
+			Completed: EventOperatorOllamaModelReleaseCompleted,
+			Failed:    EventOperatorOllamaModelReleaseFailed,
+			Requested: EventOperatorOllamaModelReleaseRequested,
 		},
 		OllamaModelResidency: _EventOperatorOllamaModelResidency{
 			Completed: EventOperatorOllamaModelResidencyCompleted,

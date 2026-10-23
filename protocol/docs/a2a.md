@@ -1,7 +1,7 @@
 # Agent-to-Agent (A2A) Protocol Specification
 
-Last Updated: 2026-10-20
-Version: v1.2.0
+Last Updated: 2026-10-22
+Version: v1.3.0
 
 The **Agent-to-Agent (A2A)** protocol defines a cryptographically governed mechanism for autonomous AI agents to discover, invoke, and delegate tasks to peer agent capabilities. The ztd Gateway terminates inbound A2A requests, translates them into the canonical `GovernanceEnvelope` wire format, executes the 5-layer governance sequence (L1 Doctrine, L2 Consensus, L3 Notary, L4 Warden, L5 Actuator), and securely dispatches verified skill payloads to configured downstream agent executors.
 
@@ -49,7 +49,9 @@ Autonomous workflows frequently require agents to collaborate across boundaries 
 
 ## 2. Ingress & Wire Format
 
-A2A skill invocations enter the platform through two interchangeable HTTPS interfaces:
+A2A is opt-in. The Gateway mounts A2A ingress only when `--a2a-downstream-url` is set. Without it, no `/api/v1/a2a/call` route is registered, and the `a2a/call` method on `POST /mcp` returns method not found. `GET /api/v1/health` reports this state as the `a2a_ingress` field.
+
+A2A skill invocations enter the platform through two interchangeable HTTPS interfaces when ingress is mounted:
 1. **Dedicated REST Route**: `POST /api/v1/a2a/call`
 2. **Unified MCP Router**: `POST /mcp` with method `"a2a/call"`
 
@@ -132,8 +134,8 @@ message A2aCallRequested {
 - **Threat Indicator Analysis**: The `payload_json` content is scanned via `AnalyzeMCPArguments` against active MITRE ATT&CK patterns, detecting reverse shells, injection attempts, and credential access vectors before deliberation.
 
 ### 4.2 Layer 2: Consensus
-- Under `consensus` and `notary` postures, the Gateway submits the canonical envelope to the bound enrolled consensus application's HTTPS protobuf endpoint. See [Consensus Architecture](../../docs/architecture/consensus.md).
-- Independent consensus agents evaluate the skill name and task payload.
+- Under `consensus` and `notary` postures, the L2 vote round applies only when the action is a state change. `governance.L2Enforced` decides this for each envelope. A2A skill calls are state-changing, so they are voted on. See [Consensus Architecture](../../docs/architecture/consensus.md).
+- The bound consensus provider produces the votes. Provider `application` submits the canonical envelope to an enrolled application's HTTPS protobuf endpoint. Provider `tribunal` runs the Gateway-hosted Tribunal panel.
 - Members return signed `L2Vote` records containing Ed25519 signatures over `<transaction_hash>|<decision>`.
 - The L4 Warden verifies that $K$-of-$N$ distinct trusted keys satisfy the consensus policy quorum.
 
@@ -302,7 +304,7 @@ A2A errors conform to JSON-RPC 2.0 error objects. Verification codes are defined
 
 A2A integration parameters are configured strictly through Gateway CLI flags:
 
-- **`--a2a-downstream-url <url>`**: Target HTTP endpoint of the downstream A2A executor (default: none; required for A2A dispatch).
+- **`--a2a-downstream-url <url>`**: Target HTTP endpoint of the downstream A2A executor (default: none). Setting it mounts A2A ingress. Leaving it unset mounts no A2A route.
 - **`--public-base-url <url>`**: Canonical public base URL utilized to generate human passkey approval links in `GovernedSuspension` (e.g., `https://ztd.local:8443`).
 - **`--posture <mode>`**: Gateway governance posture (`doctrine`, `consensus`, `ratify`, `notary`).
 - **`--http-port <port>`**: Plain HTTP port for bootstrap and enrollment routes (effective default: `8080`). It does not serve A2A or MCP routes.

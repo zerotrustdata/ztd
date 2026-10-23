@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 // FSFileChecksumRequest represents the input for the file checksum tool.
@@ -34,7 +36,7 @@ type FSFileChecksumTool struct{}
 
 // Name returns the tool identifier.
 func (t *FSFileChecksumTool) Name() string {
-	return "fs_file_checksum"
+	return constants.MCPToolFsFileChecksum
 }
 
 // Description returns a human-readable description.

@@ -23,7 +23,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	harnessconfig "github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
@@ -186,23 +188,105 @@ func evalListOperators(
 	return operators, nil
 }
 
-// evalPreflightGatewayPosture fails closed unless the live Gateway runs the
-// posture the campaign froze and the eval lane can execute it. The posture is
-// immutable at runtime, so one read before scheduling or execution suffices.
-func evalPreflightGatewayPosture(
+// evalPreflightGatewayGovernance reads the live Gateway governance (posture
+// and consensus binding) and fails closed unless it is ready and the eval lane
+// can execute under it. A nil run is a run start: the returned governance is
+// what the new run freezes. Otherwise the live governance must equal what run
+// froze. The posture is immutable at runtime and a rebind is a governed
+// action, so one read before scheduling or execution suffices.
+func evalPreflightGatewayGovernance(
 	cmd *cobra.Command,
 	deps gatewayEvalDeps,
 	cfg *config.Config,
 	authContext *auth.ClientAuthContext,
 	spec *evalv1.EvaluationCampaignSpec,
-) error {
+	run *evalv1.EvaluationRun,
+) (evaluation.RunGovernance, error) {
 	gatewayClient, err := deps.clientFactory(nativeEvalClientConfig(cfg, authContext))
 	if err != nil {
-		return fmt.Errorf("evaluation: initialize gateway client: %w", err)
+		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: initialize gateway client: %w", err)
 	}
-	posture, err := gatewayPosture(cmd.Context(), gatewayClient)
+	health, err := gatewayHealth(cmd.Context(), gatewayClient)
 	if err != nil {
-		return err
+		return evaluation.RunGovernance{}, err
 	}
-	return evaluation.ValidateGatewayPosture(spec, posture)
+	posture, err := cases.WirePosture(health.Posture)
+	if err != nil {
+		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: gateway posture: %w", err)
+	}
+	if err := evalGatewayGovernanceReady(health); err != nil {
+		return evaluation.RunGovernance{}, err
+	}
+	var binding *models.ConsensusPolicy
+	if health.Consensus.Bound {
+		if binding, err = gatewayClient.ConsensusBinding(cmd.Context()); err != nil {
+			return evaluation.RunGovernance{}, err
+		}
+	}
+	governance, err := evaluation.NewRunGovernance(posture, binding)
+	if err != nil {
+		return evaluation.RunGovernance{}, err
+	}
+	if run != nil {
+		if err := evaluation.ValidateRunGovernance(run, governance); err != nil {
+			return evaluation.RunGovernance{}, err
+		}
+	}
+	if (!health.Posture.RequiresL2() && health.Consensus.VoteKind != models.ConsensusVoteKindDecision) || health.Consensus.Provider != string(constants.ConsensusProviderTribunal) {
+		return governance, nil
+	}
+	operators, err := evalListOperators(cmd, deps, cfg, authContext)
+	if err != nil {
+		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: shared-runtime Tribunal preflight: %w", err)
+	}
+	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", spec.GetInvestigation().GetDataOperatorId())
+	if err != nil {
+		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: shared-runtime Tribunal preflight: %w", err)
+	}
+	if health.Consensus.VoteKind == models.ConsensusVoteKindDecision {
+		if err := evaluation.ValidateConsensusProviderIsolation(binding, operators, topology.Inference.OperatorID); err != nil {
+			return evaluation.RunGovernance{}, err
+		}
+	}
+	if err := evalRejectSharedRuntimeTribunalL2(health, topology); err != nil {
+		return evaluation.RunGovernance{}, err
+	}
+	return governance, nil
+}
+
+func evalRejectSharedRuntimeTribunalL2(health *models.HealthResponse, topology evaluation.CampaignOperatorTopology) error {
+	if health == nil || !health.Posture.RequiresL2() || health.Consensus.Provider != string(constants.ConsensusProviderTribunal) {
+		return nil
+	}
+	if topology.Inference.OperatorID == topology.Data.OperatorID && topology.Inference.OperatorSessionID == topology.Data.OperatorSessionID {
+		return fmt.Errorf("evaluation: campaign preflight: shared Inference/Data Operator under enforced Tribunal L2: enroll and select a dedicated inference Operator, then create a new run: %w", constants.ErrEvaluationSharedRuntimeTribunalL2)
+	}
+	return nil
+}
+
+// gatewayHealth reads the Gateway's typed /health once.
+func gatewayHealth(ctx context.Context, client *harnessclient.Client) (*models.HealthResponse, error) {
+	health, _, err := client.Health(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: read gateway health: %w", err)
+	}
+	return health, nil
+}
+
+// evalGatewayGovernanceReady refuses a campaign start when the Gateway's posture
+// requires L2 consensus and /health reports governance not ready. Doctrine and
+// ratify do not gate on L2, so they pass here regardless of consensus state.
+func evalGatewayGovernanceReady(health *models.HealthResponse) error {
+	if health.GovernanceReady || !health.Posture.RequiresL2() {
+		return nil
+	}
+	consensus := health.Consensus
+	switch {
+	case !consensus.Bound:
+		return fmt.Errorf("evaluation: gateway posture %s requires L2 consensus: consensus not bound: ztd consensus enroll tribunal --model <tag>: %w", health.Posture, constants.ErrTxL2ConsensusNotConfigured)
+	case !consensus.Ready:
+		return fmt.Errorf("evaluation: gateway posture %s requires L2 consensus: consensus not ready: %d/%d member signers usable, quorum %d: %w", health.Posture, consensus.Usable, consensus.Members, consensus.Quorum, constants.ErrTxL2QuorumNotMet)
+	default:
+		return fmt.Errorf("evaluation: gateway posture %s: governance not ready: %w", health.Posture, constants.ErrGatewayNotReady)
+	}
 }

@@ -72,6 +72,18 @@ func (t *FileEditTarget) CreateSibling(suffix string, mode os.FileMode) (*os.Fil
 	return file, filepath.Join(t.dir, name), nil
 }
 
+// ResolvesWithin reports whether the target's symlink-resolved destination
+// sits strictly beneath dir after dir's own symlinks are resolved, so a
+// symlinked ancestor cannot carry a lexically admitted path elsewhere.
+func (t *FileEditTarget) ResolvesWithin(dir string) (bool, error) {
+	resolvedDir, err := ResolveExistingPath(dir)
+	if err != nil {
+		return false, fmt.Errorf("file edit: resolve containing directory: %w", err)
+	}
+	resolved := filepath.Join(t.dir, t.name)
+	return resolved != resolvedDir && withinPath(resolvedDir, resolved), nil
+}
+
 // Close releases the directory handle.
 func (t *FileEditTarget) Close() error { return t.root.Close() }
 

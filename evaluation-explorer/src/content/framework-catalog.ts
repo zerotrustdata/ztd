@@ -566,7 +566,7 @@ const RAW_MODEL_INVENTORY: Record<string, RawInventoryEntry> = {
   "qwen3-5-4b": {
     "tag": "qwen3.5:4b",
     "family": "qwen35",
-    "params": 4700000000,
+    "params": 4210000000,
     "quant": "Q4_K_M",
     "ctx": 262144,
     "caps": "PPPPP"
@@ -574,7 +574,7 @@ const RAW_MODEL_INVENTORY: Record<string, RawInventoryEntry> = {
   "qwen3-5-9b": {
     "tag": "qwen3.5:9b",
     "family": "qwen35",
-    "params": 9700000000,
+    "params": 8950000000,
     "quant": "Q4_K_M",
     "ctx": 262144,
     "caps": "PPPPP"
@@ -938,17 +938,6 @@ function capabilityDetailFor(
   }
 }
 
-function isMangledServedTag(tag: string | undefined, variantId: string): boolean {
-  if (!tag) return true;
-  // Detect projector fallback tags like "gemma22binstructq4k:m" where all dashes were stripped
-  const parts = variantId.split("-");
-  if (parts.length >= 3) {
-    const mangled = parts.slice(0, -1).join("") + ":" + parts[parts.length - 1];
-    if (tag.toLowerCase() === mangled.toLowerCase()) return true;
-  }
-  return false;
-}
-
 export interface ResolvedModelProfile {
   variant_id: string;
   served_model_tag?: string;
@@ -957,6 +946,10 @@ export interface ResolvedModelProfile {
   provider: string;
   parameter_count?: number;
   parameter_label?: string;
+  model_digest?: string;
+  model_format?: string;
+  artifact_size_bytes?: number;
+  artifact_label?: string;
   quantization?: string;
   context_limit?: number;
   context_label?: string;
@@ -969,13 +962,23 @@ export interface ResolvedModelProfile {
 export function resolveModelProfile(
   model: Pick<
     ModelSummary,
-    "variant_id" | "display_name" | "served_model_tag" | "backend_provider_class" | "quantization_weight_class"
+    | "variant_id"
+    | "display_name"
+    | "served_model_tag"
+    | "parameter_count"
+    | "model_digest"
+    | "model_family"
+    | "model_format"
+    | "artifact_size_bytes"
+    | "context_limit"
+    | "backend_provider_class"
+    | "quantization_weight_class"
   >,
 ): ResolvedModelProfile {
   const canonicalId = VARIANT_ALIASES[model.variant_id] ?? model.variant_id;
   const raw = RAW_MODEL_INVENTORY[canonicalId] ?? RAW_MODEL_INVENTORY[model.variant_id];
 
-  const familyKey = raw?.family ?? inferFamilyKey(model.variant_id, model.display_name);
+  const familyKey = model.model_family ?? raw?.family ?? inferFamilyKey(model.variant_id, model.display_name);
   const familyInfo = FAMILY_LABELS[familyKey] ?? {
     family: capitalizeWords(familyKey),
     provider: model.backend_provider_class ?? "Ollama",
@@ -986,17 +989,14 @@ export function resolveModelProfile(
   const familyLabel = isDeepSeek ? "DeepSeek R1" : familyInfo.family;
   const providerLabel = isDeepSeek ? "DeepSeek" : familyInfo.provider;
 
-  const servedTag =
-    raw && isMangledServedTag(model.served_model_tag, model.variant_id)
-      ? raw.tag
-      : model.served_model_tag ?? raw?.tag;
+  const servedTag = model.served_model_tag;
 
-  const parameterCount = raw?.params || inferParameterCount(model.variant_id, model.display_name, model.served_model_tag);
+  // Only frozen published specifications describe the evaluated deployment.
+  // Catalog entries and model names cannot supply missing observations.
+  const parameterCount = model.parameter_count || undefined;
   const parameterLabel = formatParameterCount(parameterCount);
-  const quantization =
-    raw?.quant ||
-    (model.quantization_weight_class ? model.quantization_weight_class.toUpperCase() : inferQuantization(model.variant_id, servedTag));
-  const contextLimit = raw?.ctx || undefined;
+  const quantization = model.quantization_weight_class?.toUpperCase() || undefined;
+  const contextLimit = model.context_limit || undefined;
   const contextLabel = formatContextWindow(contextLimit);
 
   const capCodes = raw?.caps ?? "NNNNN";
@@ -1029,6 +1029,10 @@ export function resolveModelProfile(
     provider: providerLabel,
     parameter_count: parameterCount,
     parameter_label: parameterLabel,
+    model_digest: model.model_digest,
+    model_format: model.model_format,
+    artifact_size_bytes: model.artifact_size_bytes,
+    artifact_label: model.artifact_size_bytes ? `${(model.artifact_size_bytes / 1024 ** 3).toFixed(2)} GiB` : undefined,
     quantization,
     context_limit: contextLimit,
     context_label: contextLabel,
@@ -1056,24 +1060,6 @@ function inferFamilyKey(variantId: string, displayName: string): string {
   if (lower.includes("smollm")) return "smollm3";
   if (lower.includes("lfm")) return "lfm2";
   return "general";
-}
-
-function inferParameterCount(variantId: string, displayName: string, servedTag?: string): number | undefined {
-  const source = `${displayName} ${servedTag ?? ""} ${variantId}`;
-  const mMatch = source.match(/\b(\d+(?:\.\d+)?)\s*[mM]\b/);
-  if (mMatch) return Math.round(Number(mMatch[1]) * 1_000_000);
-  const bMatch = source.match(/\b(?:[eE])?(\d+(?:\.\d+)?)\s*[bB]\b/);
-  if (bMatch) return Math.round(Number(bMatch[1]) * 1_000_000_000);
-  return undefined;
-}
-
-function inferQuantization(variantId: string, servedTag?: string): string | undefined {
-  const source = `${servedTag ?? ""} ${variantId}`.toUpperCase();
-  if (source.includes("Q4_K_M") || source.includes("Q4-K-M")) return "Q4_K_M";
-  if (source.includes("Q8_0") || source.includes("Q8-0")) return "Q8_0";
-  if (source.includes("Q4_0") || source.includes("Q4-0")) return "Q4_0";
-  if (source.includes("FP16") || source.includes("F16")) return "FP16";
-  return undefined;
 }
 
 function capitalizeWords(input: string): string {

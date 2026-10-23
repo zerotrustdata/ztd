@@ -3,8 +3,8 @@ doc_id: diagram-operator-lifecycle
 title: "Diagram: Operator Lifecycle State Machine"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.0.0
-last_updated: 2026-10-12
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/services/gateway/registration_service.go
   - internal/services/gateway/operator_controller.go
@@ -58,6 +58,7 @@ Remote Operators enroll with the Gateway over the bootstrap WebSocket (`/ws/oper
 1. **Slot Allocation**: The Gateway creates an Operator slot (`createSlot`) in the `offline` state.
 2. **CSR Submission**: The remote host generates private keys and CSRs locally, submitting them with hardware fingerprints and token proofs over the bootstrap socket.
 3. **Issuance**: The Gateway signs the Operator leaf certificate (ECDSA P-256, 7-day validity) with a SPIFFE URI SAN under `ztd.local`, issues an `operator_session_id`, and transitions the record to `active`.
+4. **L2 Trust**: Enrollment returns the Gateway's current L2 consensus trust. Certificate renewal over the `renewal:` channel returns it again and replaces the trust the Operator holds. An Operator receives L2 trust only at these two points, not on each connection.
 
 ### 2. Outbound Connection
 

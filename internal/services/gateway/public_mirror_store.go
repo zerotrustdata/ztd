@@ -38,9 +38,6 @@ import (
 //go:embed db/public_mirror_schema.sql
 var publicMirrorSchema string
 
-//go:embed db/public_mirror_segments_migration.sql
-var publicMirrorSegmentsMigration string
-
 const (
 	// publicMirrorVerifyPageBatches bounds how many batch headers startup
 	// verification holds at once.
@@ -181,17 +178,6 @@ func openPublicMirrorStoreAt(ctx context.Context, fileSvc fs.RuntimeFileService,
 	if _, err := db.ExecWithRetry(ctx, publicMirrorSchema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("%w: apply schema: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
-	}
-	var segmentColumnCount int
-	if err := db.QueryRowWithRetry(ctx, `SELECT COUNT(*) FROM pragma_table_info('proof_manifest_entries') WHERE name = 'segment_index'`).Scan(&segmentColumnCount); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("%w: inspect proof schema: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
-	}
-	if segmentColumnCount == 0 {
-		if _, err := db.ExecWithRetry(ctx, publicMirrorSegmentsMigration); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("%w: migrate proof schema: %w", constants.ErrPublicFeedMirrorStoreWrite, err)
-		}
 	}
 	if _, err := db.ExecWithRetry(ctx, `INSERT OR IGNORE INTO mirror_state (id, active_source_id) VALUES (1, '')`); err != nil {
 		_ = db.Close()
@@ -886,6 +872,27 @@ func (s *PublicMirrorStore) proofArtifact(ctx context.Context, artifactID string
 		artifact.Entry = &entry
 	}
 	return artifact, true, nil
+}
+
+// proofCatalogEntry returns one source's active catalog entry for an artifact.
+// A withdrawn or unknown artifact is not found.
+func (s *PublicMirrorStore) proofCatalogEntry(ctx context.Context, sourceID, artifactID string) (models.PublicProofCatalogEntry, bool, error) {
+	var entryJSON string
+	err := s.db.QueryRowWithRetry(ctx, `SELECT entry_json FROM proof_manifest_entries e
+		WHERE e.source_id = ? AND e.artifact_id = ?
+		  AND NOT EXISTS (SELECT 1 FROM proof_withdrawn_artifacts w WHERE w.source_id = e.source_id AND w.artifact_id = e.artifact_id)
+		ORDER BY e.segment_index, e.ordinal LIMIT 1`, sourceID, artifactID).Scan(&entryJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.PublicProofCatalogEntry{}, false, nil
+	}
+	if err != nil {
+		return models.PublicProofCatalogEntry{}, false, fmt.Errorf("public mirror store: read proof catalog entry: %w", err)
+	}
+	var entry models.PublicProofCatalogEntry
+	if err := decodePublicMirrorJSON(entryJSON, &entry); err != nil {
+		return models.PublicProofCatalogEntry{}, false, publicMirrorCorrupt("decode proof entry %s: %v", artifactID, err)
+	}
+	return entry, true, nil
 }
 
 // proofArtifactSizes returns the stored size of every listed artifact the

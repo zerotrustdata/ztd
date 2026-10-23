@@ -175,7 +175,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, governance.VerifyActionReceiptSignature(receipt, signingKey.Public().(ed25519.PublicKey)))
 		require.NoError(t, governance.VerifyReceiptPersistenceAttestation(receipt, signingKey.Public().(ed25519.PublicKey)))
-		persisted, err := svc.GetAuditStore().GetActionReceipt(env.Id)
+		persisted, err := svc.GetAuditStore().GetEventReceipt(env.Id)
 		require.NoError(t, err)
 		require.NotNil(t, persisted)
 		// The receipt is filed under the executing runtime's own audit session (the
@@ -219,7 +219,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 					var cmd *cobra.Command
 					switch name {
 					case "receipts":
-						cmd = auditReceiptsCmdWithConfig(loader, factory, fileFactory)
+						cmd = auditEventReceiptsCmdWithConfig(loader, factory, fileFactory)
 					case "events":
 						cmd = auditEventsCmdWithConfig(loader, factory, fileFactory)
 					case "export":
@@ -253,10 +253,10 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 							data, err = os.ReadFile(outputFile)
 							require.NoError(t, err)
 						}
-						var result models.AuditReceiptsResponse
+						var result models.AuditEventReceiptsResponse
 						require.NoError(t, json.Unmarshal(data, &result))
-						require.Len(t, result.Receipts, scope.receipts)
-						for _, r := range result.Receipts {
+						require.Len(t, result.EventReceipts, scope.receipts)
+						for _, r := range result.EventReceipts {
 							require.Contains(t, transactionIDs, r.TransactionID)
 							require.Equal(t, "test-app", r.ActingAppID)
 							require.Equal(t, bootstrap.OperatorSessionID, r.OperatorSessionID)
@@ -273,13 +273,13 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 						require.Contains(t, out.String(), map[bool]string{true: "No audit records found", false: fmt.Sprintf("Total records: %d", scope.events+scope.receipts)}[scope.events == 0])
 					case "report":
 						require.Contains(t, out.String(), fmt.Sprintf("Events:   %d", scope.events))
-						require.Contains(t, out.String(), fmt.Sprintf("Receipts: %d", scope.receipts))
+						require.Contains(t, out.String(), fmt.Sprintf("Event receipts: %d", scope.receipts))
 						reportBytes, err := os.ReadFile(filepath.Join(outputDir, constants.ComplianceReportFilename))
 						require.NoError(t, err)
 						var result models.AuditReportResponse
 						require.NoError(t, json.Unmarshal(reportBytes, &result))
 						require.Len(t, result.Report.Events, scope.events)
-						require.Len(t, result.Report.Receipts, scope.receipts)
+						require.Len(t, result.Report.EventReceipts, scope.receipts)
 						if scope.flag == "app" {
 							require.Equal(t, scope.value, result.Report.ActingAppID)
 						}
@@ -289,7 +289,7 @@ func TestAuditAppQueries_DocumentCreateMergeThroughRealGateway(t *testing.T) {
 		})
 	}
 	t.Run("transaction lookup displays canonical receipt", func(t *testing.T) {
-		cmd := auditReceiptsCmdWithConfig(loader, factory, fileFactory)
+		cmd := auditEventReceiptsCmdWithConfig(loader, factory, fileFactory)
 		require.NoError(t, cmd.Flags().Set("tx-id", transactionIDs[0]))
 		out := &bytes.Buffer{}
 		cmd.SetOut(out)

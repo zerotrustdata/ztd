@@ -15,6 +15,15 @@ import "ztd/common/v1/common.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
+// RunShellCommandArguments is the shared typed argument contract for the
+// run_shell_command MCP tool and Tribunal-authored commands.
+message RunShellCommandArguments {
+  string command = 1;
+  repeated string args = 2;
+  int32 timeout = 3;
+  string working_dir = 4;
+}
+
 // Execution status enum for command and operation results
 enum ExecutionStatus {
   EXECUTION_STATUS_UNSPECIFIED = 0;
@@ -99,6 +108,27 @@ message FileEditRequested {
   bool create_if_missing = 14;
   reserved 15;
   reserved "vault_mode";
+}
+
+// EvaluationWorkspaceSeedRequested writes one frozen evaluation fixture file.
+// The executing Operator admits file_path only inside an attempt-scoped
+// workspace under its own working directory (<work_dir>/workspaces/ws-<digest>/
+// or that workspace's .sentinel sibling), so seeding is harness maintenance,
+// not a state change of the host.
+message EvaluationWorkspaceSeedRequested {
+  string execution_id = 1;
+  string file_path = 2;
+  string content = 3;
+}
+
+message EvaluationWorkspaceSeedResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string file_path = 3;
+  int64 bytes_written = 4;
+  float duration_seconds = 5;
+  string error_message = 6;
+  string error_type = 7;
 }
 
 message FsListRequested {
@@ -402,6 +432,11 @@ message OperatorRuntimeConfig {
   string provenance_operator_id = 18;
   // Stable provider-boundary observer pseudonym (--provider-boundary-observer-id).
   string provider_boundary_observer_id = 19;
+  // Supported decision transport(s); model inventory is reported by provider inventory.
+  string inference_decision_backend = 20;
+  bool inference_allow_hosted_decision = 21;
+  repeated string inference_decision_models = 22;
+  bool inference_decision_only = 23;
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and
@@ -644,6 +679,10 @@ enum ReceiptFailureCode {
   RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW = 20;
   // A UEI placeholder in the payload could not be rehydrated (unresolved token or colliding object keys), so the payload was withheld from dispatch.
   RECEIPT_FAILURE_CODE_REHYDRATION_FAILED = 21;
+  RECEIPT_FAILURE_CODE_DECISION_REQUEST_INVALID = 22;
+  RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID = 23;
+  RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED = 24;
+  RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED = 25;
 }
 
 // GovernanceRejectionCode names the verification check that rejected a
@@ -984,6 +1023,13 @@ message OllamaModelInventoryRequested {
   string execution_id = 1;
 }
 
+// ParameterCountSource distinguishes exact provider metadata from rounded labels.
+enum ParameterCountSource {
+  PARAMETER_COUNT_SOURCE_UNSPECIFIED = 0;
+  PARAMETER_COUNT_SOURCE_MODEL_METADATA = 1;
+  PARAMETER_COUNT_SOURCE_ROUNDED_LABEL = 2;
+}
+
 message ProviderModelInventoryEntry {
   string provider_class = 1;
   string served_model_tag = 2;
@@ -995,6 +1041,9 @@ message ProviderModelInventoryEntry {
   string format = 8;
   uint32 context_limit = 9;
   repeated string advertised_capabilities = 10;
+  // Provider-reported installed model artifact bytes, not runtime memory.
+  uint64 artifact_size_bytes = 11;
+  ParameterCountSource parameter_count_source = 12;
 }
 
 message OllamaModelInventoryResult {
@@ -1021,6 +1070,18 @@ message OllamaModelResidencyResult {
   repeated OllamaModelResidencyModel models = 3;
   string error_message = 4;
   string error_type = 5;
+}
+
+message OllamaModelReleaseRequested {
+  string execution_id = 1;
+  repeated string model_tags = 2;
+}
+
+message OllamaModelReleaseResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string error_message = 3;
+  string error_type = 4;
 }
 
 message FetchLogsResult {
@@ -1496,6 +1557,47 @@ message InferenceModelVariant {
 }
 
 // Payload for ztd.v1.operator.inference.requested. The handler receives an ordered typed conversation, validates and scrubs every data-bearing part, and sends only the normalized request across the provider boundary.
+// Decision inference uses named, typed questions; no generated text or tools.
+message InferenceDecisionRequest {
+  string state = 1;
+  repeated InferenceDecisionQuestion questions = 2;
+  // Explicit consent to hosted egress, committed into the governed envelope.
+  bool allow_hosted = 3;
+}
+message InferenceDecisionQuestion {
+  string name = 1;
+  string instructions = 2;
+  oneof kind {
+    InferenceNoulQuestion noul = 3;
+    InferenceChoiceQuestion choice = 4;
+    InferenceScoreQuestion score = 5;
+  }
+}
+message InferenceNoulQuestion { string true_label = 1; string false_label = 2; }
+message InferenceDecisionCriterion { string label = 1; string description = 2; }
+message InferenceChoiceQuestion { repeated InferenceDecisionCriterion criteria = 1; }
+message InferenceScoreQuestion { repeated string criteria = 1; }
+message InferenceDecisionResult { repeated InferenceDecisionAnswer answers = 1; }
+message InferenceDecisionAnswer {
+  string name = 1;
+  oneof kind {
+    double noul = 2;
+    InferenceChoiceAnswer choice = 3;
+    InferenceScoreAnswer score = 4;
+  }
+}
+message InferenceDecisionProbability { string label = 1; double probability = 2; }
+message InferenceChoiceAnswer {
+  string selection = 1;
+  repeated InferenceDecisionProbability probabilities = 2;
+  double confidence = 3;
+}
+message InferenceScoreAnswer {
+  double score = 1;
+  repeated InferenceDecisionProbability probabilities = 2;
+  double confidence = 3;
+}
+
 message InferenceRequested {
   // Chat-tier role for this request (primary, assistant, lite).
   ModelRole role = 1;
@@ -1554,6 +1656,9 @@ message InferenceRequested {
   // Optional deterministic generation seed forwarded to the provider when
   // supported. Absent means use the provider default.
   optional int32 seed = 29;
+
+  // Exclusive with messages, tools, streaming and generation controls.
+  InferenceDecisionRequest decision = 30;
 }
 
 enum InferenceTimingSource {
@@ -1658,6 +1763,9 @@ message InferenceResult {
   uint32 retry_count = 30;
   InferenceLoadState load_state = 31;
   InferenceRetryClassification retry_classification = 32;
+  // Exclusive with response parts. Covered by result_digest.
+  InferenceDecisionResult decision = 33;
+  InferenceHostedEgressAttestation hosted_egress = 34;
 }
 
 // InferenceProgressEvent carries bounded incremental provider output for
@@ -1773,6 +1881,9 @@ message InferenceDispatchRequest {
   // Optional deterministic generation seed forwarded to the provider when
   // supported. Absent means use the provider default.
   optional int32 seed = 36;
+
+  // Exclusive with messages, tools, streaming and generation controls.
+  InferenceDecisionRequest decision = 37;
 }
 
 // InferenceDispatchFailureCode is the typed classification of a failed
@@ -1825,6 +1936,10 @@ enum InferenceDispatchFailureCode {
   INFERENCE_DISPATCH_FAILURE_CODE_CALLER_DISCONNECTED = 41;
   INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_BACKPRESSURE = 42;
   INFERENCE_DISPATCH_FAILURE_CODE_PROGRESS_HASH_MISMATCH = 43;
+  INFERENCE_DISPATCH_FAILURE_CODE_DECISION_REQUEST_INVALID = 44;
+  INFERENCE_DISPATCH_FAILURE_CODE_DECISION_RESPONSE_INVALID = 45;
+  INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED = 46;
+  INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED = 47;
 }
 
 // InferenceDispatchFailure is the protocol-owned error body for a non-2xx
@@ -1889,4 +2004,13 @@ message InferenceDispatchResponse {
   // dispatch order. Each was signed before the response was returned, so a
   // trace bracket closing after the dispatch can claim its commitment.
   repeated ActionReceipt observation_receipts = 4;
+}
+
+// Included in result_digest and therefore bound by the Operator's signed L5 receipt.
+message InferenceHostedEgressAttestation {
+ string provider_origin = 1;
+ string model_version = 2;
+ string provenance = 3;
+ string normalized_request_hash = 4;
+ bool explicit_consent = 5;
 }

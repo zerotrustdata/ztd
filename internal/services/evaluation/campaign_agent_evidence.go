@@ -10,6 +10,7 @@ package evaluation
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -71,7 +72,7 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		}
 		observationClaims = append(observationClaims, observed...)
 	}
-	if trace.SchemaVersion == agentTraceSchemaVersion {
+	if trace.CarriesModelIdentity() {
 		if err := verifyV7EpisodeOutputs(trace); err != nil {
 			return agentEvidenceError("episode output", err)
 		}
@@ -128,6 +129,19 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 	if trace.FinalOutput != "" && (lastTurn == nil || lastTurn.Text != trace.FinalOutput) {
 		return fmt.Errorf("final output differs from the last signed model turn: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 	}
+	if len(trace.ToolCalls) > 0 && trace.Input == nil {
+		return fmt.Errorf("tool calls have no recorded tool declarations: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	specs := make(map[string]agentToolSpec)
+	if trace.Input != nil {
+		for _, declaration := range trace.Input.Tools {
+			spec, err := agentToolSpecFromDeclaration(declaration)
+			if err != nil {
+				return fmt.Errorf("%w: %w", constants.ErrEvaluationEvidenceTraceMismatch, err)
+			}
+			specs[declaration.Name] = spec
+		}
+	}
 	for _, tool := range trace.ToolCalls {
 		turn := turns[tool.ModelCallID]
 		if turn == nil {
@@ -136,17 +150,31 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 		_, _, calls := agentResponseParts(turn.InferenceResult.InferenceResult)
 		found := false
 		for _, requested := range calls {
-			arguments, err := canonicalizeToolJSON(requested.GetArgumentsJson())
-			if err != nil {
-				arguments = "{}" // The executor records malformed arguments as an empty object.
-			}
-			if requested.GetCallId() == tool.ProviderCallID && requested.GetName() == tool.ToolName && arguments == tool.ArgumentsJSON {
+			spec, declared := specs[requested.GetName()]
+			request := decodeAgentToolRequest(spec, declared, requested.GetArgumentsJson())
+			if requested.GetCallId() == tool.ProviderCallID && requested.GetName() == tool.ToolName && request.ArgumentsJSON == tool.ArgumentsJSON {
 				found = true
 				break
 			}
 		}
 		if !found {
 			return fmt.Errorf("tool call differs from the signed model request: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+		}
+		if tool.ApprovedArgumentsJSON != "" {
+			var approved models.RunShellCommandRequest
+			if err := json.Unmarshal([]byte(tool.ApprovedArgumentsJSON), &approved); err != nil || approved.Command == "" || approved.CanonicalJSON() != tool.ApprovedArgumentsJSON {
+				return fmt.Errorf("approved shell arguments are not canonical typed JSON: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+			}
+			matchedReview := false
+			for _, step := range trace.Steps {
+				if review := step.GetReview(); review != nil && models.RunShellCommandRequestFromProto(review.GetArguments()).CanonicalJSON() == tool.ApprovedArgumentsJSON {
+					matchedReview = true
+					break
+				}
+			}
+			if !matchedReview {
+				return fmt.Errorf("approved shell arguments differ from every typed Tribunal review: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+			}
 		}
 	}
 	return nil
@@ -252,7 +280,7 @@ func verifyModelCallEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, call 
 	if call.TransactionID == "" || receipt.GetTransactionId() != call.TransactionID {
 		return oracle.Outcome{}, fmt.Errorf("receipt transaction %q is not the call transaction %q: %w", receipt.GetTransactionId(), call.TransactionID, constants.ErrEvaluationEvidenceTraceMismatch)
 	}
-	if trace.SchemaVersion == agentTraceSchemaVersion {
+	if trace.CarriesModelIdentity() {
 		if err := verifyV7ModelCallIdentity(trace, call, outcome); err != nil {
 			return oracle.Outcome{}, err
 		}
@@ -408,6 +436,9 @@ func verifyToolCallEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, c
 		return nil, nil
 	}
 	receipt := call.Receipt.ActionReceipt
+	if call.ApprovedArgumentsJSON != "" && (call.ActionType != string(constants.ActionTypeMcpCall) || receipt.GetActionType() != string(constants.ActionTypeMcpCall)) {
+		return nil, fmt.Errorf("approved Tribunal arguments are not bound to an MCP_CALL receipt: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	}
 	outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt)
 	if err != nil {
 		return nil, err

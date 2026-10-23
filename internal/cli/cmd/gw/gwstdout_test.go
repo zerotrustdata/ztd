@@ -9,6 +9,7 @@ package gw
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -79,6 +80,27 @@ func TestPrintNextSteps_PasskeyGuidanceFollowsPosture(t *testing.T) {
 				assert.Contains(t, out, "Sign in headless (CLI and TUI)")
 				assert.NotContains(t, out, "required")
 			}
+		})
+	}
+}
+
+// Under an L2 posture, binding a consensus is the first next step: governed
+// actions fail closed until one is bound. Doctrine and ratify do not gate on L2.
+func TestPrintNextSteps_ConsensusBindLeadsUnderL2Postures(t *testing.T) {
+	for _, p := range []constants.Posture{constants.PostureConsensus, constants.PostureNotary} {
+		t.Run(string(p), func(t *testing.T) {
+			cmd, buf := newOutputCmd()
+			printNextSteps(cmd, p, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "")
+			out := buf.String()
+			assert.Contains(t, out, getBinaryName()+" consensus enroll tribunal --model <tag>")
+			assert.True(t, strings.HasPrefix(out[strings.Index(out, "Next steps:"):], "Next steps:\n  Bind a consensus if none is bound"), out)
+		})
+	}
+	for _, p := range []constants.Posture{constants.PostureDoctrine, constants.PostureRatify} {
+		t.Run(string(p), func(t *testing.T) {
+			cmd, buf := newOutputCmd()
+			printNextSteps(cmd, p, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "")
+			assert.NotContains(t, buf.String(), "Bind a consensus")
 		})
 	}
 }

@@ -3,8 +3,8 @@ doc_id: governance
 title: Governance Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - internal/constants/posture.go
   - internal/services/governance/
@@ -26,7 +26,7 @@ related:
   - storage.md
 when_to_read: Understanding the five-layer verification pipeline (L1-L5), governance postures, transaction envelope canonicalization and hashing, fail-closed pre-dispatch and execution gates, deterministic stage evidence, and receipt attestation.
 do_not_use_for:
-  - Deep-dive into L2 machine consensus enrollment, binding, and HTTPS deliberation (consensus.md)
+  - Deep-dive into L2 machine consensus enrollment, binding, and provider-selected deliberation (consensus.md)
   - Gateway HTTP routes, WebSocket pub/sub tunneling, and network topology (gateway.md and network.md)
   - Operator runtime daemon, process management, and local audit storage (operator.md)
   - WebAuthn passkey enrollment and mTLS session verification (auth.md)
@@ -77,7 +77,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-GOV-POST-01 | `constants.Posture` (`internal/constants/posture.go`) is the single posture owner across the platform, defining the four canonical governance postures (`doctrine`, `consensus`, `ratify`, `notary`) and their methods (`Valid()`, `RequiresL2()`, `RequiresL3()`, `Description()`, `HumanApprovalReason()`). Unknown or empty postures MUST fail closed (requiring both L2 and L3) and MUST be rejected at startup with an error wrapping `ErrInvalidPosture`. Duplicate posture parsers or types (`governance.GatewayPosture`, `GetGovernancePostureRequirements`, `ParseGovernancePosture`, `LoadOptions.Posture`) are prohibited. |
 | INV-GOV-POST-02 | The Gateway is the sole posture authority. It MUST set `GovernanceEnvelope.Posture` to its configured posture (`constants.Posture`) exactly once, at construction time. No other component (client, Operator, relay) writes it, and Operator-built envelopes such as receipt envelopes carry none. Callers never send posture: direct envelope submission MUST refuse an envelope that carries one with `ErrEnvelopePostureCallerSupplied` (HTTP 400) before L4. The L4 Warden MUST read posture per-envelope from `envelope.Posture` and fail closed with `ErrEnvelopePostureMissing` if absent. |
 | INV-GOV-POST-03 | Posture configuration is immutable for the lifetime of the process. In gateway mode, `--posture` defaults to `doctrine`. Outbound Operators learn the Gateway posture exclusively from their signed enrollment bundle and evaluate `envelope.Posture` per transaction. |
-| INV-GOV-POST-04 | L2 consensus is enforced under `consensus` and `notary` postures (`posture.RequiresL2() == true`). L3 notary proof is enforced under `ratify` and `notary` postures (`posture.RequiresL3() == true`) whenever `governance.L3Required(actionType, posture)` is true (`actionType.IsMutation() && !actionType.AuthorizedByDecision() && posture.RequiresL3()`). |
+| INV-GOV-POST-04 | L2 consensus is enforced under `consensus` and `notary` postures (`posture.RequiresL2() == true`) for every envelope that `governance.L2Enforced` selects: a non-bootstrap action that changes state on its target (INV-CON-WARD-11). L3 notary proof is enforced under `ratify` and `notary` postures (`posture.RequiresL3() == true`) whenever `governance.L3Required(actionType, posture)` is true (`actionType.IsMutation() && !actionType.AuthorizedByDecision() && posture.RequiresL3()`). |
 
 ### Canonical Envelope and Hashing (`INV-GOV-ENV`)
 
@@ -179,7 +179,7 @@ flowchart TD
 ```
 
 1. **L1 Doctrine**: Technical bedrock. Hard static regex analysis over string fields (`forbidden_patterns`) and MITRE ATT&CK threat heuristics across commands, MCP arguments, A2A payloads, and file edits. Enforced fail-closed across all postures.
-2. **L2 Consensus**: Machine deliberation via the bound consensus member set (K-of-N enrolled `PLATFORM_COMPONENT_KIND_APPLICATION` members). Evaluates Ed25519 signatures over `<transaction_hash>|<decision>`. Enforced under `consensus` and `notary` (`posture.RequiresL2()`); audited under `doctrine` and `ratify`.
+2. **L2 Consensus**: Machine deliberation via the bound consensus member set (K-of-N enrolled `PLATFORM_COMPONENT_KIND_APPLICATION` members). Evaluates Ed25519 signatures over `<transaction_hash>|<decision>`. Enforced under `consensus` and `notary` (`posture.RequiresL2()`) for state-change envelopes that `governance.L2Enforced` selects; other envelopes are not voted (INV-CON-WARD-11). Audited under `doctrine` and `ratify`.
 3. **L3 Notary**: Human authorization. Verifies cryptographic proof of human intent for mutating actions where `governance.L3Required(actionType, posture)` is true. Enforced under `ratify` and `notary` (`posture.RequiresL3()`); audited under `doctrine` and `consensus`. Read-only actions and follow-on enrollment actions marked `_authorized_by_decision` bypass L3.
 4. **L4 Warden**: Pre-dispatch verification gate. Reserves transaction nonces in durable SQLite storage, checks expiration, decodes typed payload, validates target ownership, recomputes the canonical transaction hash, verifies state Merkle root, and evaluates posture-required L2/L3 proofs.
 5. **L5 Actuator**: Execution boundary. Establishes zero standing privileges. Logs an `EXECUTING` receipt to local SQLite audit storage, appends a signed `CommitmentAttestation` to the commitment ledger, rehydrates scrubbed tokens via local vault keys, mints a single-action JIT capability, invokes the handler, dissolves the capability immediately, captures final state root, signs a `COMPLETED` or `FAILED` receipt, and attaches a signed `ReceiptPersistenceAttestation`.
@@ -249,11 +249,11 @@ Governed `FILE_EDIT` and `RESTORE_FILE` actions cannot write runtime control or 
 ### Layer 2 (L2) Consensus: Bound Member Deliberation
 
 L2 Consensus authenticates machine review through a K-of-N set of ordinary enrolled applications (`PLATFORM_COMPONENT_KIND_APPLICATION`) bound on the Gateway via `PLATFORM_ENROLLMENT_BIND_CONSENSUS` (`constants.DocIDConsensusBinding` in `constants.CollectionConsensus`). The canonical description is [Consensus Architecture](consensus.md).
-1. **HTTPS Protobuf Deliberation**: Under `consensus` and `notary` postures (`posture.RequiresL2()`), the Gateway sends the full `GovernanceEnvelope` (`application/x-protobuf`) to the bound policy's HTTPS deliberation endpoint (hosted by the primary member application) and receives back the envelope with its `L2Metadata` votes (`L2Vote` entries), each signed by a member application's Ed25519 key.
+1. **Provider-Selected Deliberation**: Under `consensus` and `notary` postures (`posture.RequiresL2()`), for each envelope that `governance.L2Enforced` selects, the Gateway obtains votes from the vote producer that the bound provider selects (`consensusDeliberatorRouter`). The `application` provider sends the full `GovernanceEnvelope` (`application/x-protobuf`) to the bound policy's HTTPS deliberation endpoint (hosted by the primary member application) and receives back the envelope with its `L2Metadata` votes (`L2Vote` entries). The `tribunal` provider runs the Gateway-hosted Tribunal panel (`TribunalConsensusDeliberator`) instead of an HTTPS endpoint and attaches the same kind of votes. Each vote is signed by a member application's Ed25519 key in both cases. See [Consensus Architecture](consensus.md) for the provider table and enrollment commands.
 2. **Signature Format**: Ed25519 signature over the UTF-8 payload `<transaction_hash>|<decision>` (`true` or `false`).
 3. **Warden and Operator Verification**: `L4Warden.verifyL2Posture` and outbound Operators (`OperatorL2Trust`) verify each vote against the signing member's Ed25519 public key in `trusted_signers`. Votes from signers outside the bound member set are ignored. An unbound, unknown, or disabled consensus set rejects with `ErrTxL2ConsensusSetUnknown`; `ErrTxL2ConsensusNotConfigured` means only that the consensus store is absent.
 4. **Quorum Evaluation**: Only distinct affirmative (`decision=true`) member votes count toward the quorum K. The L4 Warden rejects with `ErrTxL2QuorumNotMet` when the affirmative count is below K. A negative decision records authenticated dissent and does not count toward quorum.
-5. **Bootstrap Exemption**: Platform bootstrap actions (`actionType.IsBootstrapAction() == true`, including `PLATFORM_ENROLLMENT_BIND_CONSENSUS`) are exempt from L2 enforcement across all postures.
+5. **Bootstrap Exemption and Scope**: Platform bootstrap actions (`actionType.IsBootstrapAction() == true`, including `PLATFORM_ENROLLMENT_BIND_CONSENSUS`) are exempt from L2 enforcement across all postures. Envelopes that `governance.L2Enforced` does not select, which are non-state-change actions and read-only targets of state-change actions, are not voted on under `consensus` or `notary` (INV-CON-WARD-11).
 
 ### Layer 3 (L3) Notary: Human Authorization
 
@@ -338,6 +338,8 @@ Every completed or failed transaction that reaches the Actuator generates a dete
 - **Treating Gateway Mirrors as Sovereign Truth**: Relying on Gateway receipt mirrors rather than the executing Operator's local SQLite database under LFAA (INV-GOV-ACT-06).
 - **Substituting a Gateway Assertion for Human Proof**: Having the Gateway sign an L3 attestation, forward only an "approved" flag, or let an Operator read a locally stored approval row instead of re-verifying the original CLI signature or WebAuthn assertion (INV-GOV-LAY-05).
 - **Blocking Bootstrap Actions on Consensus**: Requiring L2 consensus for platform bootstrap actions. Bootstrap actions must succeed to bind the consensus application (INV-GOV-LAY-03).
+
+Typed System One decision requests use the existing `INFERENCE` envelope and L1–L5 execution path. Their signed result digest covers typed answers and any hosted egress attestation. Existing L2 signature bytes and quorum checks remain unchanged. See [Decision Model Votes](consensus.md#decision-model-votes-opt-in) for the opt-in Tribunal binding and qualification limits.
 
 ## Links out
 

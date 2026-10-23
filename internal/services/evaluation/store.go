@@ -59,12 +59,12 @@ func NewArchivedRunStore(files fs.RuntimeFileService) *Store {
 // run's evidence directory and returns a scope-bound reference. The body is
 // durably written before the reference is returned.
 func (s *Store) SaveProtoArtifact(ctx context.Context, scope EvidenceScope, artifactType complianceevidence.ArtifactType, message proto.Message) (*compliancev1.ComplianceEvidenceReference, error) {
-	if s == nil || s.files == nil || message == nil || !validEvidenceScope(scope) || !complianceevidence.ContainsArtifactType(complianceevidence.SupportedArtifactTypes(), artifactType) {
-		return nil, fmt.Errorf("%w: evidence scope, supported artifact type, and protocol message are required", constants.ErrEvaluationReportPersistFailed)
+	if err := s.validateArtifactWrite(scope, artifactType, message != nil); err != nil {
+		return nil, err
 	}
 	artifact, err := complianceevidence.PersistCanonicalProtoArtifact(ctx, s.files, s.layout.evidenceDir(scope.RunID), artifactType, message)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", constants.ErrEvaluationReportPersistFailed, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
 	return scopedReference(artifact.Reference, scope), nil
 }
@@ -73,8 +73,8 @@ func (s *Store) SaveProtoArtifact(ctx context.Context, scope EvidenceScope, arti
 // a recorded exchange or admission response, beneath the run's evidence
 // directory and returns a scope-bound reference.
 func (s *Store) SaveJSONArtifact(ctx context.Context, scope EvidenceScope, artifactType complianceevidence.ArtifactType, body []byte) (*compliancev1.ComplianceEvidenceReference, error) {
-	if s == nil || s.files == nil || len(body) == 0 || !validEvidenceScope(scope) || !complianceevidence.ContainsArtifactType(complianceevidence.SupportedArtifactTypes(), artifactType) {
-		return nil, fmt.Errorf("%w: evidence scope, supported artifact type, and canonical body are required", constants.ErrEvaluationReportPersistFailed)
+	if err := s.validateArtifactWrite(scope, artifactType, len(body) > 0); err != nil {
+		return nil, err
 	}
 	if err := complianceevidence.ValidateCanonicalJSON(body); err != nil {
 		return nil, fmt.Errorf("%w: canonical evidence body: %w", constants.ErrEvaluationReportPersistFailed, err)
@@ -96,17 +96,64 @@ func (s *Store) SaveJSONArtifact(ctx context.Context, scope EvidenceScope, artif
 	}, scope), nil
 }
 
-func validEvidenceScope(scope EvidenceScope) bool {
-	if !complianceevidence.ValidPathElement(scope.RunID) {
-		return false
+// validateArtifactWrite reports, under constants.ErrEvaluationReportPersistFailed,
+// the first unmet precondition of a run evidence write: the artifact write
+// itself, then each scope identifier that names a path element.
+func (s *Store) validateArtifactWrite(scope EvidenceScope, artifactType complianceevidence.ArtifactType, hasBody bool) error {
+	if s == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "store")
 	}
-	if scope.ScenarioID != "" && !complianceevidence.ValidPathElement(scope.ScenarioID) {
-		return false
+	if err := complianceevidence.ValidateArtifactWrite(s.files, artifactType, hasBody); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrEvaluationReportPersistFailed, err)
 	}
-	if scope.AttemptID != "" && !complianceevidence.ValidPathElement(scope.AttemptID) {
-		return false
+	elements := []pathElement{runIDElement(scope.RunID)}
+	if scope.ScenarioID != "" {
+		elements = append(elements, scenarioIDElement(scope.ScenarioID))
 	}
-	return true
+	if scope.AttemptID != "" {
+		elements = append(elements, attemptIDElement(scope.AttemptID))
+	}
+	return s.validateAccess(constants.ErrEvaluationReportPersistFailed, elements...)
+}
+
+// pathElement is one named identifier a Store call joins into a runtime path.
+type pathElement struct {
+	name  string
+	value string
+}
+
+func campaignIDElement(id string) pathElement   { return pathElement{name: "campaign ID", value: id} }
+func scenarioIDElement(id string) pathElement   { return pathElement{name: "scenario ID", value: id} }
+func runIDElement(id string) pathElement        { return pathElement{name: "run ID", value: id} }
+func assignmentIDElement(id string) pathElement { return pathElement{name: "assignment ID", value: id} }
+func attemptIDElement(id string) pathElement    { return pathElement{name: "attempt ID", value: id} }
+
+// validatePathElements reports the first element that is not a single safe
+// path element, wrapping constants.ErrEvidencePathElementInvalid.
+func validatePathElements(elements ...pathElement) error {
+	for _, element := range elements {
+		if err := complianceevidence.ValidatePathElement(element.value); err != nil {
+			return fmt.Errorf("%s: %w", element.name, err)
+		}
+	}
+	return nil
+}
+
+// validateAccess reports, under outer, the first unmet precondition of a Store
+// call: the file service, then each identifier the call joins into a path.
+func (s *Store) validateAccess(outer error, elements ...pathElement) error {
+	if s == nil || s.files == nil {
+		return missingField(outer, "file service")
+	}
+	if err := validatePathElements(elements...); err != nil {
+		return fmt.Errorf("%w: %w", outer, err)
+	}
+	return nil
+}
+
+// missingField reports, under outer, that the named argument was not supplied.
+func missingField(outer error, name string) error {
+	return fmt.Errorf("%w: %s: %w", outer, name, constants.ErrMissingRequiredField)
 }
 
 func scopedReference(reference *compliancev1.ComplianceEvidenceReference, scope EvidenceScope) *compliancev1.ComplianceEvidenceReference {
@@ -121,8 +168,14 @@ func scopedReference(reference *compliancev1.ComplianceEvidenceReference, scope 
 // evidence directory. The body must hash to the reference's content address and
 // decode as canonical protobuf JSON; a missing body reports constants.ErrNotFound.
 func (s *Store) loadProtoArtifact(ctx context.Context, runID string, reference *compliancev1.ComplianceEvidenceReference, message proto.Message) error {
-	if s == nil || s.files == nil || !complianceevidence.ValidPathElement(runID) || reference == nil || message == nil {
-		return fmt.Errorf("%w: file service, run ID, evidence reference, and protocol message are required", constants.ErrEvidenceArtifactMalformed)
+	if reference == nil {
+		return missingField(constants.ErrEvidenceArtifactMalformed, "evidence reference")
+	}
+	if message == nil {
+		return missingField(constants.ErrEvidenceArtifactMalformed, "protocol message")
+	}
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return err
 	}
 	artifactType, digest, ok := complianceevidence.ParseContentAddress(reference.GetArtifactId())
 	if !ok || string(artifactType) != reference.GetArtifactType() || digest != reference.GetSha256() || reference.GetRunId() != runID || !complianceevidence.ContainsArtifactType(complianceevidence.SupportedArtifactTypes(), artifactType) {

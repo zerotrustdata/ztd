@@ -30,7 +30,7 @@ type ProcMetricTopTool struct{}
 
 // Name returns the tool identifier.
 func (t *ProcMetricTopTool) Name() string {
-	return "proc_metric_top"
+	return constants.MCPToolProcMetricTop
 }
 
 // Description returns a human-readable description.

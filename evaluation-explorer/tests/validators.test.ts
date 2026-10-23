@@ -71,6 +71,18 @@ describe('isCatalogSnapshot', () => {
 });
 
 describe('isModelSummary', () => {
+  it('validates published model specifications without requiring historical records to carry them', () => {
+    const specifications = { model_digest: 'a'.repeat(64), model_family: 'gemma4', model_format: 'gguf', artifact_size_bytes: 4_000_000_000, context_limit: 4096, parameter_count_source: 'model_metadata' };
+    expect(() => isModelSummary({ ...fixtureModelSummaries[0], ...specifications })).not.toThrow();
+    for (const field of ['artifact_size_bytes', 'context_limit', 'parameter_count']) {
+      for (const invalid of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '8B']) {
+        expect(() => isModelSummary({ ...fixtureModelSummaries[0], ...specifications, [field]: invalid })).toThrow(ValidationError);
+      }
+    }
+    expect(() => isModelSummary({ ...fixtureModelSummaries[0], ...specifications, parameter_count_source: 'guessed_from_name' })).toThrow(ValidationError);
+    expect(() => isModelSummary({ ...fixtureModelSummaries[0], ...specifications, model_digest: 'guessed-from-tag' })).toThrow(ValidationError);
+    expect(() => isModelSummary({ ...fixtureModelSummaries[0], ...specifications, parameter_count: undefined })).toThrow(ValidationError);
+  });
   it('accepts a valid model summary', () => {
     expect(() => isModelSummary(fixtureModelSummaries[0])).not.toThrow();
   });
@@ -92,6 +104,14 @@ describe('isModelSummary', () => {
   it('rejects an invalid role', () => {
     const bad = { ...fixtureModelSummaries[0], role: 'super' };
     expect(() => isModelSummary(bad)).toThrow(ValidationError);
+  });
+
+  it('accepts only a positive integer parameter_count', () => {
+    const withSize = (parameter_count: unknown) => ({ ...fixtureModelSummaries[0], parameter_count });
+    expect(() => isModelSummary(withSize(751_632_384))).not.toThrow();
+    expect(() => isModelSummary(withSize(0))).toThrow(ValidationError);
+    expect(() => isModelSummary(withSize(1.5))).toThrow(ValidationError);
+    expect(() => isModelSummary(withSize('4b'))).toThrow(ValidationError);
   });
 
   it('validates security_resistance as a graded or not-applicable metric with counts', () => {
@@ -625,5 +645,16 @@ describe('native evaluation contract', () => {
       native_result: { ...nativeEvaluation.native_result, active_posture: 'bypass' },
     };
     expect(() => decodeViewRecord('evaluation_summary', bad)).toThrow(ValidationError);
+  });
+});
+
+describe('evaluation_summary run_seconds', () => {
+  it('accepts a non-negative run time alongside historical elapsed_seconds', () => {
+    expect(() => decodeViewRecord('evaluation_summary', { ...nativeEvaluation, run_seconds: 1 })).not.toThrow();
+  });
+
+  it('rejects a negative or non-numeric run time', () => {
+    expect(() => decodeViewRecord('evaluation_summary', { ...nativeEvaluation, run_seconds: -1 })).toThrow(ValidationError);
+    expect(() => decodeViewRecord('evaluation_summary', { ...nativeEvaluation, run_seconds: '1' })).toThrow(ValidationError);
   });
 });

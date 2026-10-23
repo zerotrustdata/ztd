@@ -221,6 +221,15 @@
       ],
       "persistence": "ephemeral"
     },
+    "ConsensusVoteRecorded": {
+      "_go_const": "EventConsensusVoteRecorded",
+      "value": "ztd.v1.consensus.vote.recorded",
+      "kind": "fact",
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.audit_log"
+    },
     "OperatorA2aCallRequested": {
       "_go_const": "EventOperatorA2aCallRequested",
       "value": "ztd.v1.operator.a2a.call.requested",
@@ -770,6 +779,44 @@
         "mcp"
       ],
       "persistence": "ephemeral"
+    },
+    "OperatorEvalWorkspaceSeedCompleted": {
+      "_go_const": "EventOperatorEvalWorkspaceSeedCompleted",
+      "value": "ztd.v1.operator.eval.workspace.seed.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorEvalWorkspaceSeedFailed": {
+      "_go_const": "EventOperatorEvalWorkspaceSeedFailed",
+      "value": "ztd.v1.operator.eval.workspace.seed.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorEvalWorkspaceSeedRequested": {
+      "_go_const": "EventOperatorEvalWorkspaceSeedRequested",
+      "value": "ztd.v1.operator.eval.workspace.seed.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "EVAL_WORKSPACE_SEED",
+        "payload": "ztd.operator.v1.EvaluationWorkspaceSeedRequested"
+      },
+      "producers": [
+        "cli"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorEvalWorkspaceSeedCompleted",
+        "OperatorEvalWorkspaceSeedFailed"
+      ]
     },
     "OperatorFieldReadAccessDenied": {
       "_go_const": "EventOperatorFieldReadAccessDenied",
@@ -1816,6 +1863,48 @@
       "outcomes": [
         "OperatorOllamaModelInventoryCompleted",
         "OperatorOllamaModelInventoryFailed"
+      ]
+    },
+    "OperatorOllamaModelReleaseCompleted": {
+      "_go_const": "EventOperatorOllamaModelReleaseCompleted",
+      "value": "ztd.v1.operator.ollama.model.release.completed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelReleaseFailed": {
+      "_go_const": "EventOperatorOllamaModelReleaseFailed",
+      "value": "ztd.v1.operator.ollama.model.release.failed",
+      "kind": "outcome",
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelReleaseRequested": {
+      "_go_const": "EventOperatorOllamaModelReleaseRequested",
+      "value": "ztd.v1.operator.ollama.model.release.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "OLLAMA_MODEL_RELEASE",
+        "payload": "ztd.operator.v1.OllamaModelReleaseRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorOllamaModelReleaseCompleted",
+        "OperatorOllamaModelReleaseFailed"
       ]
     },
     "OperatorOllamaModelResidencyCompleted": {

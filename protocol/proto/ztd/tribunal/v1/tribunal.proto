@@ -15,15 +15,14 @@ import "ztd/eval/v1/eval.proto";
 import "ztd/operator/v1/operator.proto";
 
 // TribunalIntentRequest is the body of POST /api/v1/operators/intents. The
-// Gateway's Tribunal turns one plain-language command intent into an audited
-// shell command through governed INFERENCE dispatches, then dispatches that
-// command to the target Operator as an ordinary governed EXECUTE_BASH. The
-// Tribunal acts in front of envelope construction; it never supplies or
-// replaces an L2 quorum proof or an L3 approval.
+// Gateway's Tribunal reviews typed run_shell_command arguments through governed
+// INFERENCE dispatches, then dispatches the approved bytes to the target
+// Operator as an ordinary governed MCP_CALL. It never supplies or replaces
+// an L2 quorum proof or an L3 approval.
 message TribunalIntentRequest {
-  // Plain-language description of the single command to run. Required.
+  // Canonical JSON proposed run_shell_command arguments. Required.
   string request = 1;
-  // Constraints the command must satisfy.
+  // Orchestration constraints that each member must follow.
   string guidelines = 2;
   // Execution context shown to the panel. Empty os and shell use the
   // Tribunal defaults.
@@ -37,14 +36,15 @@ message TribunalIntentRequest {
   string investigation_id = 8;
   string task_id = 9;
   string cli_session_id = 10;
-  // execution_id and timeout_seconds become the CommandRequested fields of the
-  // dispatched EXECUTE_BASH.
+  // execution_id is carried by the dispatched McpCallRequested. The Gateway
+  // merges timeout_seconds into the reviewed RunShellCommandArguments.
   string execution_id = 11;
   int32 timeout_seconds = 12;
 
   // member_inference is the template for every member call. The Gateway sets
-  // messages and provider_attempt_id per call; the template must leave
-  // messages, tools, provider_attempt_id, acting_app_id and stream empty.
+  // messages, provider_attempt_id and the role's response_format schema per
+  // call; the template must leave messages, tools, provider_attempt_id,
+  // acting_app_id, stream and response_format empty.
   ztd.operator.v1.InferenceDispatchRequest member_inference = 13;
   // provider_attempt_prefix names the member calls: call n (from 1, in
   // deliberation order) uses provider_attempt_id "<prefix>-<n>". Required and
@@ -102,8 +102,11 @@ message TribunalMemberCall {
 // TribunalIntentResult is the HTTP 200 body of POST /api/v1/operators/intents.
 message TribunalIntentResult {
   TribunalOutcome outcome = 1;
-  // command is the audited command; set only when outcome is APPROVED.
-  string command = 2;
+  reserved 2;
+  // arguments are the approved typed run_shell_command arguments.
+  ztd.operator.v1.RunShellCommandArguments arguments = 11;
+  // arguments_json are the exact canonical bytes dispatched to the Operator.
+  string arguments_json = 12;
   // steps are the persona steps of the deliberation, in order.
   repeated ztd.eval.v1.AgentStep steps = 3;
   // member_calls are the governed member inferences, in order.
@@ -113,7 +116,7 @@ message TribunalIntentResult {
   string risk_feedback = 9;
   // audit_failure explains an AUDIT_FAILED outcome.
   string audit_failure = 10;
-  // The governed EXECUTE_BASH outcome of an approved command.
+  // The governed MCP_CALL outcome of an approved run_shell_command.
   oneof command_outcome {
     ztd.operator.v1.GovernedDispatchResult dispatched = 5;
     ztd.operator.v1.GovernanceRejection rejection = 6;

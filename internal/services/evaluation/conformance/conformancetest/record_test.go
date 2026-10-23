@@ -43,13 +43,28 @@ func gzipBytes(t *testing.T, payload []byte) []byte {
 	return buf.Bytes()
 }
 
-func TestDoctrineRecordIsTheCanonicalRecordOfTheM4Run(t *testing.T) {
+func TestDoctrineRecordIsTheCanonicalRecordOfTheOutboundDataOperatorRun(t *testing.T) {
 	raw, digest := DoctrineRecord(t)
 
 	record := &evalv1.ConformanceRunRecord{}
 	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
-	assert.Equal(t, "fb0d6851-a5ff-4466-a19c-c882eb27aaf3", record.GetRunId())
+	assert.Equal(t, "c5dc678c-8567-4e5c-8c11-14a49a959a57", record.GetRunId())
+	assert.False(t, record.GetOutboundAbsent())
 	assert.Equal(t, doctrineRecordSHA256, digest)
+}
+
+func TestEmbeddedDoctrineRecordRanEveryCaseOnTheEmbeddedExecutor(t *testing.T) {
+	raw, digest := EmbeddedDoctrineRecord(t)
+
+	record := &evalv1.ConformanceRunRecord{}
+	require.NoError(t, evalv1.UnmarshalCanonical(raw, record))
+	assert.Equal(t, "4fc08862-3df7-4eb6-93c5-42d0555035b2", record.GetRunId())
+	assert.True(t, record.GetOutboundAbsent())
+	assert.Equal(t, embeddedDoctrineRecordSHA256, digest)
+	require.NotEmpty(t, record.GetCases())
+	for _, evidence := range record.GetCases() {
+		assert.Equal(t, "embedded", evidence.GetExecutor(), "case %s", evidence.GetCaseId())
+	}
 }
 
 func TestDoctrineRecordReturnsFreshBytesOnEachCall(t *testing.T) {

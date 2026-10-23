@@ -316,19 +316,6 @@ type IndexInfo struct {
 	Used    bool     `json:"used"`
 }
 
-// LogStreamFilterRequest is the params for the "log_stream_filter" tool.
-type LogStreamFilterRequest struct {
-	LogPath string `json:"log_path"`
-	Pattern string `json:"pattern"`
-	Limit   int    `json:"limit,omitempty"`
-}
-
-// LogStreamFilterResult is the result for the "log_stream_filter" tool.
-type LogStreamFilterResult struct {
-	Lines []string `json:"lines"`
-	Count int      `json:"count"`
-}
-
 // SysOOMDetectRequest is the params for the "sys_oom_detect" tool.
 type SysOOMDetectRequest struct {
 	LogPath string `json:"log_path,omitempty"`

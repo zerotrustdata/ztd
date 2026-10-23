@@ -367,3 +367,15 @@ func TestValidateInputSchema(t *testing.T) {
 		assert.ErrorIs(t, err, tc.err, "Error should be %v", tc.err)
 	}
 }
+
+// TestInputSchema_OmitsEmptyRequired pins that a schema without required
+// arguments never serializes "required":null, which strict MCP clients reject.
+func TestInputSchema_OmitsEmptyRequired(t *testing.T) {
+	raw, err := json.Marshal(&InputSchema{Type: "object", Properties: map[string]*PropertySchema{}})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"object","properties":{}}`, string(raw))
+
+	raw, err = json.Marshal(&InputSchema{Type: "object", Required: []string{"path"}})
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"required":["path"]`)
+}

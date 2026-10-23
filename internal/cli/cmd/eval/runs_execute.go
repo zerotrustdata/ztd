@@ -233,8 +233,9 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err := evaluation.ValidateCampaignSpecDigest(spec); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign spec: %w", err)
 	}
+	var stackSet *evaluation.HeterogeneousStackSet
 	if summary.Run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM {
-		stackSet, err := store.LoadHeterogeneousStackSet(cmd.Context(), binding.GetCampaignId())
+		stackSet, err = store.LoadHeterogeneousStackSet(cmd.Context(), binding.GetCampaignId())
 		if err != nil {
 			return 0, fmt.Errorf("evaluation: run execute: frozen formations: %w", err)
 		}
@@ -246,8 +247,14 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err := evaluation.ValidateCampaignInvestigation(investigation); err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: campaign investigation: %w", err)
 	}
-	if err := evalPreflightGatewayPosture(cmd, gatewayDeps, cfg, authContext, spec); err != nil {
+	governance, err := evalPreflightGatewayGovernance(cmd, gatewayDeps, cfg, authContext, spec, summary.Run)
+	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	if stackSet != nil {
+		if err := governance.ValidateFormationTribunal(stackSet, spec.GetModelRegistry()); err != nil {
+			return 0, fmt.Errorf("evaluation: run execute: %w", err)
+		}
 	}
 	operators, err := evalListOperators(cmd, gatewayDeps, cfg, authContext)
 	if err != nil {
@@ -311,9 +318,13 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: witness capture: %w", err)
 	}
+	// Publication failures never stop the run: each is reported as it happens
+	// and joined into the returned error once the run has finished normally.
+	var publicationErrs []error
+	finished := false
 	if strictObservation {
 		defer func() {
-			if runErr == nil {
+			if runErr == nil || finished {
 				return
 			}
 			cleanupErr := releaseRunModels(cmd, deps, opts, cfg, authContext, operators, topology.Inference.OperatorSessionID, spec)
@@ -340,7 +351,9 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		ctx, cancel := context.WithTimeout(cmd.Context(), assignmentTimeout)
 		result, ok, err := controller.ExecuteNextAssignment(ctx, opts.RunID, executionBinding, artifacts)
 		cancel()
-		if err != nil {
+		if ok && errors.Is(err, constants.ErrEvaluationPublicationFailed) {
+			publicationErrs = append(publicationErrs, warnPublicationFailure(cmd, opts.RunID, err))
+		} else if err != nil {
 			return executed, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 		if !ok {
@@ -401,14 +414,21 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		if publication != nil {
 			completionCount, publishErr := publication.PublishRunCompletion(cmd.Context(), opts.RunID, deps.now().UTC())
 			if publishErr != nil {
-				return executed, fmt.Errorf("evaluation: run execute: %w", publishErr)
-			}
-			if completionCount > 0 && !opts.JSONOutput {
+				publicationErrs = append(publicationErrs, warnPublicationFailure(cmd, opts.RunID, fmt.Errorf("%w: run completion: %w", constants.ErrEvaluationPublicationFailed, publishErr)))
+			} else if completionCount > 0 && !opts.JSONOutput {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Published %d completion projection record(s) for run %s\n", completionCount, opts.RunID)
 			}
 		}
 	}
-	return executed, nil
+	finished = true
+	return executed, errors.Join(publicationErrs...)
+}
+
+// warnPublicationFailure reports a publication failure on stderr as it happens
+// and returns it wrapped for the run's joined result.
+func warnPublicationFailure(cmd *cobra.Command, runID string, err error) error {
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: run %s: %v\n", runID, err)
+	return fmt.Errorf("evaluation: run execute: %w", err)
 }
 
 // waitForRunEvidence holds a strict run's completion until the Gateway records the
@@ -487,9 +507,6 @@ func releaseProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExec
 		return nil
 	}
 	if err := evaluation.ReleaseOllamaModels(cmd.Context(), dispatcher, inferenceSessionID, opts.RunID, residentTags, maintenance.Environment, maintenance.NewID); err != nil {
-		return err
-	}
-	if err := evaluation.VerifyOllamaModelsAbsent(cmd.Context(), dispatcher, maintenance, residentTags); err != nil {
 		return err
 	}
 	if !opts.JSONOutput {
@@ -600,7 +617,41 @@ func (l *runLifecycle) reportRunning(ctx context.Context) error {
 		return nil
 	}
 	l.running = true
-	return l.post(ctx, models.RunLifecycleStatusRunning, row, nil)
+	err = l.post(ctx, models.RunLifecycleStatusRunning, row, nil)
+	// running is refused only from a terminal projection. A run the store has
+	// not cancelled is resumable, so the projection contradicts the store.
+	var refused *models.ObserveTransitionError
+	if errors.As(err, &refused) && row.Status != "cancelled" {
+		return fmt.Errorf("%w; the local run is resumable, so `ztd eval runs repair %s --projection` reopens the Gateway projection", err, l.runID)
+	}
+	return err
+}
+
+// reconcileProjection repairs a Gateway run projection that the local store
+// contradicts. The caller holds the run lease. A run the store holds resumable,
+// with assignments queued and none cancelled, posts waiting. When the Gateway
+// refuses that because the projection holds a terminal status, the store is
+// authoritative, so the update is resent naming the refused status as the one
+// it reopens; the Gateway applies it only while the projection still holds that
+// status. It returns the reopened status, or "" when nothing was reopened.
+func (l *runLifecycle) reconcileProjection(ctx context.Context) (models.RunLifecycleStatus, error) {
+	row, err := l.snapshot(ctx)
+	if err != nil {
+		return "", err
+	}
+	if row.Queued == 0 || releasedRunStatus(row) != models.RunLifecycleStatusWaiting {
+		return "", nil
+	}
+	err = l.post(ctx, models.RunLifecycleStatusWaiting, row, nil)
+	var refused *models.ObserveTransitionError
+	if err == nil || !errors.As(err, &refused) {
+		return "", err
+	}
+	reopens := models.RunLifecycleStatus(refused.From)
+	if err := l.send(ctx, models.RunLifecycleStatusWaiting, row, nil, reopens); err != nil {
+		return "", err
+	}
+	return reopens, nil
 }
 
 // reportTerminal posts the status a released run ends in. It must run after the
@@ -608,7 +659,7 @@ func (l *runLifecycle) reportRunning(ctx context.Context) error {
 // status and then reads the released run. A release that executed nothing posts
 // nothing, so a finished run resumed again makes no transition, and a
 // verification verdict recorded after the run settled is not projected. A stop
-// request always posts, because cancel waiters return on its cancelled status.
+// request always posts, because cancel waiters return on a settled status.
 func (l *runLifecycle) reportTerminal(ctx context.Context, stopRequested bool) error {
 	if !l.running && !stopRequested {
 		return nil
@@ -618,18 +669,20 @@ func (l *runLifecycle) reportTerminal(ctx context.Context, stopRequested bool) e
 		return err
 	}
 	endedAt := l.deps.now().UTC()
-	return l.post(ctx, releasedRunStatus(stopRequested, row), row, &endedAt)
+	return l.post(ctx, releasedRunStatus(row), row, &endedAt)
 }
 
 // releasedRunStatus is the projected status of a released run, read from the row
-// runs show renders for it. A run asked to stop is cancelled. A run that still
-// has queued or running assignments is waiting for its next resume, whatever the
-// release reported. Otherwise the run's own classification decides: verified or
-// completed runs complete, a run whose verification failed fails, and a run the
-// classification does not settle waits.
-func releasedRunStatus(stopRequested bool, row *runRow) models.RunLifecycleStatus {
+// runs show renders for it, so the projection never claims more than the store.
+// A stop request alone is not a cancel: it leaves assignments queued and the run
+// resumable, so it projects as waiting. Only a run whose assignments runs cancel
+// stopped is cancelled. A run that still has queued or running assignments is
+// waiting for its next resume. Otherwise the run's own classification decides:
+// verified or completed runs complete, a run whose verification failed fails,
+// and a run the classification does not settle waits.
+func releasedRunStatus(row *runRow) models.RunLifecycleStatus {
 	switch {
-	case stopRequested, row.Status == "cancelled":
+	case row.Status == "cancelled":
 		return models.RunLifecycleStatusCancelled
 	case row.Status == "running":
 		return models.RunLifecycleStatusRunning
@@ -658,6 +711,12 @@ func (l *runLifecycle) snapshot(ctx context.Context) (*runRow, error) {
 }
 
 func (l *runLifecycle) post(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time) error {
+	return l.send(ctx, status, row, endedAt, "")
+}
+
+// send posts status, replacing the terminal projected status reopens when it is
+// set. Only reconcileProjection reopens.
+func (l *runLifecycle) send(ctx context.Context, status models.RunLifecycleStatus, row *runRow, endedAt *time.Time, reopens models.RunLifecycleStatus) error {
 	startedAt := l.startedAt
 	err := l.client.UpdateRunState(ctx, models.ObserveProducerRunStateRequest{
 		SchemaVersion:  constants.ObserveEventPayloadSchemaVersion,
@@ -670,6 +729,7 @@ func (l *runLifecycle) post(ctx context.Context, status models.RunLifecycleStatu
 		StartedAt:      &startedAt,
 		EndedAt:        endedAt,
 		ObservedAt:     l.deps.now().UTC(),
+		Reopens:        reopens,
 		CLISessionID:   l.cliSessionID,
 	})
 	if err != nil {

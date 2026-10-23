@@ -241,8 +241,15 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 	rs.ollama = ollama
 
 	rs.audit = NewAuditService(c.Config, c.Logger, c.AuditStore)
-	if c.Config != nil && c.Config.OperatorID != "" && c.AuditStore != nil {
-		rs.localNativeTools, err = mcp.NewOperatorNativeToolHandler(c.Logger, c.Config.OperatorID, c.AuditStore)
+	nativeOperatorID := ""
+	if c.Config != nil {
+		nativeOperatorID = c.Config.OperatorID
+	}
+	if gatewayMode {
+		nativeOperatorID = string(constants.DocIDEmbeddedOperator)
+	}
+	if nativeOperatorID != "" && c.AuditStore != nil {
+		rs.localNativeTools, err = mcp.NewOperatorNativeToolHandler(c.Logger, nativeOperatorID, c.AuditStore, rs.fileOps.fsGrep)
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("pubsub: local native tool handler: %w", err)
@@ -424,12 +431,14 @@ func (rs *OperatorPubSubService) buildHandlers() {
 		constants.ActionTypeExecuteBash:                 rs.commands.HandleExecutionRequest,
 		constants.ActionTypeCancel:                      rs.commands.HandleCancelRequest,
 		constants.ActionTypeFileEdit:                    rs.fileOps.HandleFileEditRequest,
+		constants.ActionTypeEvalWorkspaceSeed:           rs.fileOps.HandleEvaluationWorkspaceSeedRequest,
 		constants.ActionTypeFsList:                      rs.fileOps.HandleFsListRequest,
 		constants.ActionTypeFsRead:                      rs.fileOps.HandleFsReadRequest,
 		constants.ActionTypeFsGrep:                      rs.fileOps.HandleFsGrepRequest,
 		constants.ActionTypePortCheck:                   rs.ports.HandlePortCheckRequest,
 		constants.ActionTypeOllamaModelInventory:        rs.ollama.HandleInventoryRequest,
 		constants.ActionTypeOllamaModelResidency:        rs.ollama.HandleResidencyRequest,
+		constants.ActionTypeOllamaModelRelease:          rs.ollama.HandleReleaseRequest,
 		constants.ActionTypeFetchLogs:                   rs.history.HandleFetchLogsRequest,
 		constants.ActionTypeFetchHistory:                rs.history.HandleFetchHistoryRequest,
 		constants.ActionTypeFetchFileHistory:            rs.history.HandleFetchFileHistoryRequest,
@@ -1516,7 +1525,7 @@ func (rs *OperatorPubSubService) blockedSummary(ctx context.Context, rejectionRe
 	return "blocked: " + rs.scrubbing.ScrubText(ctx, rejectionReason.Error())
 }
 
-// logBlockedTransaction records a blocked/rejected transaction using the ActionReceiptRecord schema.
+// logBlockedTransaction records a blocked/rejected transaction using the EventReceiptRecord schema.
 // This ensures consistency with accepted/failed Actuator receipts - all transaction outcomes use the same canonical schema.
 func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env *govpkg.GovernanceEnvelope, rejectionReason error) {
 	if rs.audit == nil || rs.audit.auditStore == nil {
@@ -1534,8 +1543,8 @@ func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env 
 		return
 	}
 
-	// Create ActionReceiptRecord with BLOCKED status for canonical audit trail
-	record := models.ActionReceiptRecord{
+	// Create EventReceiptRecord with BLOCKED status for canonical audit trail
+	record := models.EventReceiptRecord{
 		TransactionID:     env.Id,
 		TransactionHash:   env.TransactionHash,
 		OperatorID:        identity.OperatorID,
@@ -1552,8 +1561,8 @@ func (rs *OperatorPubSubService) logBlockedTransaction(ctx context.Context, env 
 		Timestamp:         time.Now().UTC(),
 	}
 
-	// Log to audit store using canonical RecordActionReceipt for unified query experience
-	if err := rs.audit.auditStore.RecordActionReceipt(&record); err != nil {
+	// Log to audit store using canonical RecordEventReceipt for unified query experience
+	if err := rs.audit.auditStore.RecordEventReceipt(&record); err != nil {
 		rs.logger.Error("Failed to record blocked transaction in audit store", string(constants.ConnectionStateError), err, "message_id", env.Id)
 	}
 }

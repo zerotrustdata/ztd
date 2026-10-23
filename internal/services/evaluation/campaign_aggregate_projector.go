@@ -17,6 +17,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 type catalogSnapshotRecord struct {
@@ -65,27 +66,35 @@ type modelMetricValueRecord struct {
 
 type modelSummaryRecord struct {
 	CampaignRelease
-	SchemaVersion        string                         `json:"schema_version"`
-	Kind                 string                         `json:"kind"`
-	DatasetID            string                         `json:"dataset_id"`
-	QualityState         string                         `json:"quality_state"`
-	ObservedAt           string                         `json:"observed_at"`
-	SourceRevisionLabel  string                         `json:"source_revision_label"`
-	VariantID            string                         `json:"variant_id"`
-	DisplayName          string                         `json:"display_name"`
-	ServedModelTag       string                         `json:"served_model_tag"`
-	Role                 string                         `json:"role"`
-	BackendProviderClass string                         `json:"backend_provider_class"`
-	InventoryOnly        bool                           `json:"inventory_only"`
-	EvaluationCoverage   float64                        `json:"evaluation_coverage"`
-	PassRate             *modelPassRateRecord           `json:"pass_rate,omitempty"`
-	AgreementPairwise    *modelMetricValueRecord        `json:"agreement_pairwise,omitempty"`
-	LatencyP50MS         *modelMetricValueRecord        `json:"latency_p50_ms,omitempty"`
-	OutputThroughputP50  *modelMetricValueRecord        `json:"output_throughput_p50,omitempty"`
-	OutputTokens         *modelMetricValueRecord        `json:"output_tokens,omitempty"`
-	SecurityResistance   *modelSecurityResistanceRecord `json:"security_resistance,omitempty"`
-	TerminalOutcomes     map[string]uint32              `json:"terminal_outcomes,omitempty"`
-	UnavailableReasons   []string                       `json:"unavailable_reasons,omitempty"`
+	SchemaVersion           string                         `json:"schema_version"`
+	Kind                    string                         `json:"kind"`
+	DatasetID               string                         `json:"dataset_id"`
+	QualityState            string                         `json:"quality_state"`
+	ObservedAt              string                         `json:"observed_at"`
+	SourceRevisionLabel     string                         `json:"source_revision_label"`
+	VariantID               string                         `json:"variant_id"`
+	DisplayName             string                         `json:"display_name"`
+	ServedModelTag          string                         `json:"served_model_tag,omitempty"`
+	ParameterCount          uint64                         `json:"parameter_count,omitempty"`
+	ParameterCountSource    string                         `json:"parameter_count_source,omitempty"`
+	ModelDigest             string                         `json:"model_digest,omitempty"`
+	ModelFamily             string                         `json:"model_family,omitempty"`
+	ModelFormat             string                         `json:"model_format,omitempty"`
+	ArtifactSizeBytes       uint64                         `json:"artifact_size_bytes,omitempty"`
+	QuantizationWeightClass string                         `json:"quantization_weight_class,omitempty"`
+	ContextLimit            uint32                         `json:"context_limit,omitempty"`
+	Role                    string                         `json:"role"`
+	BackendProviderClass    string                         `json:"backend_provider_class,omitempty"`
+	InventoryOnly           bool                           `json:"inventory_only"`
+	EvaluationCoverage      float64                        `json:"evaluation_coverage"`
+	PassRate                *modelPassRateRecord           `json:"pass_rate,omitempty"`
+	AgreementPairwise       *modelMetricValueRecord        `json:"agreement_pairwise,omitempty"`
+	LatencyP50MS            *modelMetricValueRecord        `json:"latency_p50_ms,omitempty"`
+	OutputThroughputP50     *modelMetricValueRecord        `json:"output_throughput_p50,omitempty"`
+	OutputTokens            *modelMetricValueRecord        `json:"output_tokens,omitempty"`
+	SecurityResistance      *modelSecurityResistanceRecord `json:"security_resistance,omitempty"`
+	TerminalOutcomes        map[string]uint32              `json:"terminal_outcomes,omitempty"`
+	UnavailableReasons      []string                       `json:"unavailable_reasons,omitempty"`
 }
 
 type methodologySuiteRecord struct {
@@ -181,6 +190,9 @@ type runAggregateState struct {
 	VariantRoles   map[string]*variantRoleAggregate
 	EvaluatedCount uint32
 	Headline       *runHeadlineMetrics
+	// RunSeconds is the time the run spent executing assignments; nil until
+	// an assignment has a persisted result. See assignmentRunSeconds.
+	RunSeconds *float64
 
 	// ProviderEnvironment is the declared environment the run started on. It is
 	// not derived from assignments: callers attach it after
@@ -215,18 +227,30 @@ type runMetricValue struct {
 }
 
 type variantRoleAggregate struct {
-	VariantID           string
-	Role                string
-	Scheduled           uint32
-	Terminal            uint32
-	Judged              uint32
-	Passed              uint32
-	Failed              uint32
-	Outcomes            map[string]uint32
-	AgreementPairwise   modelMetricValueRecord
-	LatencyP50MS        modelMetricValueRecord
-	OutputThroughputP50 modelMetricValueRecord
-	OutputTokensP50     modelMetricValueRecord
+	VariantID string
+	Role      string
+	// Specifications come from the frozen candidate variant;
+	// empty and zero when only a heterogeneous slot ID is bound.
+	ServedModelTag       string
+	ParameterCount       uint64
+	ParameterCountSource operatorv1.ParameterCountSource
+	ModelDigest          string
+	ModelFamily          string
+	ModelFormat          string
+	ArtifactSizeBytes    uint64
+	Quantization         string
+	ContextLimit         uint32
+	ProviderClass        string
+	Scheduled            uint32
+	Terminal             uint32
+	Judged               uint32
+	Passed               uint32
+	Failed               uint32
+	Outcomes             map[string]uint32
+	AgreementPairwise    modelMetricValueRecord
+	LatencyP50MS         modelMetricValueRecord
+	OutputThroughputP50  modelMetricValueRecord
+	OutputTokensP50      modelMetricValueRecord
 	// SecurityResistance is graded only once the frozen catalog is attached;
 	// nil means the catalog was never bound, not that no scenario applied.
 	SecurityResistance *modelSecurityResistanceRecord
@@ -250,9 +274,11 @@ func ModelSummaryIdempotencyKey(runID, variantID, role string, terminal uint32) 
 }
 
 // MethodologySnapshotIdempotencyKey returns the publication key for one
-// methodology aggregate revision keyed by terminal assignment count.
-func MethodologySnapshotIdempotencyKey(runID string, terminal uint32) string {
-	return fmt.Sprintf("%s:aggregate:methodology:t%d", runID, terminal)
+// methodology aggregate revision keyed by quality state. Methodology content
+// depends only on the frozen suite, release, and quality state, so it is
+// published once per state rather than on every terminal assignment.
+func MethodologySnapshotIdempotencyKey(runID, qualityState string) string {
+	return fmt.Sprintf("%s:aggregate:methodology:%s", runID, qualityState)
 }
 
 // EvaluationSummaryIdempotencyKey returns the publication key for one live
@@ -341,6 +367,18 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 		for _, pair := range variantRoles {
 			scheduledVariants[pair.variantID] = struct{}{}
 			bucket := variantRoleAggregateFor(state, pair.variantID, pair.role)
+			if pair.variant != nil {
+				bucket.ServedModelTag = pair.variant.GetServedModelTag()
+				bucket.ParameterCount = pair.variant.GetParameterCount()
+				bucket.ParameterCountSource = pair.variant.GetParameterCountSource()
+				bucket.ModelDigest = pair.variant.GetModelDigest()
+				bucket.ModelFamily = pair.variant.GetModelFamily()
+				bucket.ModelFormat = pair.variant.GetModelFormat()
+				bucket.ArtifactSizeBytes = pair.variant.GetArtifactSizeBytes()
+				bucket.Quantization = pair.variant.GetQuantization()
+				bucket.ContextLimit = pair.variant.GetContextLimit()
+				bucket.ProviderClass = pair.variant.GetProviderClass()
+			}
 			bucket.Scheduled++
 			buckets = append(buckets, bucket)
 		}
@@ -387,6 +425,7 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 	}
 	state.ModelCount = uint32(len(scheduledVariants))
 	state.EvaluatedCount = uint32(len(evaluatedVariants))
+	state.RunSeconds = assignmentRunSeconds(assignments, results)
 	headline, err := collectRunHeadlineMetrics(assignments, results, state)
 	if err != nil {
 		return nil, err
@@ -783,7 +822,7 @@ func BuildRunAggregateViewRecords(run *evalv1.EvaluationRun, state *runAggregate
 		return nil, err
 	}
 	records = append(records, CampaignViewRecord{
-		IdempotencyKey: MethodologySnapshotIdempotencyKey(runID, state.Terminal),
+		IdempotencyKey: MethodologySnapshotIdempotencyKey(runID, methodologyRecord.QualityState),
 		Body:           methodologyBody,
 	})
 	return records, nil
@@ -881,8 +920,17 @@ func buildModelSummaryRecord(datasetID, observedAt string, bucket *variantRoleAg
 		CampaignRelease: release.publicIdentity(),
 		SchemaVersion:   explorerViewSchemaVersion, Kind: "model_summary", DatasetID: datasetID,
 		QualityState: qualityStateForModelSummary(terminal), ObservedAt: observedAt, SourceRevisionLabel: campaignSourceRevision,
-		VariantID: bucket.VariantID, DisplayName: displayNameForVariant(bucket.VariantID), ServedModelTag: servedTagForVariant(bucket.VariantID),
-		Role: bucket.Role, BackendProviderClass: "ollama", InventoryOnly: terminal == 0, EvaluationCoverage: coverage,
+		VariantID: bucket.VariantID, DisplayName: displayNameForVariant(bucket.VariantID), ServedModelTag: bucket.ServedModelTag,
+		ParameterCount: bucket.ParameterCount,
+		ModelDigest:    bucket.ModelDigest, ModelFamily: bucket.ModelFamily, ModelFormat: bucket.ModelFormat,
+		ArtifactSizeBytes: bucket.ArtifactSizeBytes, QuantizationWeightClass: bucket.Quantization, ContextLimit: bucket.ContextLimit,
+		Role: bucket.Role, BackendProviderClass: bucket.ProviderClass, InventoryOnly: terminal == 0, EvaluationCoverage: coverage,
+	}
+	switch bucket.ParameterCountSource {
+	case operatorv1.ParameterCountSource_PARAMETER_COUNT_SOURCE_MODEL_METADATA:
+		record.ParameterCountSource = "model_metadata"
+	case operatorv1.ParameterCountSource_PARAMETER_COUNT_SOURCE_ROUNDED_LABEL:
+		record.ParameterCountSource = "rounded_label"
 	}
 	if terminal > 0 {
 		if bucket.Judged > 0 {
@@ -1213,7 +1261,7 @@ type evaluationSummaryRecord struct {
 	TerminalOutcomes       map[string]uint32                  `json:"terminal_outcomes"`
 	StartedAt              string                             `json:"started_at,omitempty"`
 	EndedAt                string                             `json:"ended_at,omitempty"`
-	ElapsedSeconds         *float64                           `json:"elapsed_seconds,omitempty"`
+	RunSeconds             *float64                           `json:"run_seconds,omitempty"`
 	VerifierState          string                             `json:"verifier_state"`
 	VerifierFailureSummary string                             `json:"verifier_failure_summary,omitempty"`
 	VerificationMetadata   *summaryVerificationMetadataRecord `json:"verification_metadata,omitempty"`
@@ -1267,22 +1315,13 @@ func buildEvaluationSummaryRecord(input evaluationSummaryInput) (*evaluationSumm
 		TerminalOutcomes:    aggregateTerminalOutcomes(state),
 		VerifierState:       "not_run",
 		HeadlineMetrics:     headlineMetricsForState(state),
+		RunSeconds:          state.RunSeconds,
 	}
 	if settled {
 		record.EndedAt = input.ObservedAt
 	}
 	if run.GetStartedAt() != nil {
-		startedAtTime := run.GetStartedAt().AsTime().UTC()
-		record.StartedAt = startedAtTime.Format(time.RFC3339Nano)
-		observedTime, _ := time.Parse(time.RFC3339Nano, input.ObservedAt)
-		if observedTime.IsZero() {
-			if parsed, err := time.Parse(time.RFC3339, input.ObservedAt); err == nil {
-				observedTime = parsed.UTC()
-			}
-		}
-		if elapsed := elapsedSecondsBetween(startedAtTime, observedTime); elapsed != nil {
-			record.ElapsedSeconds = elapsed
-		}
+		record.StartedAt = run.GetStartedAt().AsTime().UTC().Format(time.RFC3339Nano)
 	}
 	if input.Report == nil {
 		return record, nil
@@ -1355,11 +1394,48 @@ func headlineMetricsForState(state *runAggregateState) evaluationHeadlineMetrics
 	}
 }
 
-func elapsedSecondsBetween(startedAt, observedAt time.Time) *float64 {
-	if startedAt.IsZero() || observedAt.IsZero() || observedAt.Before(startedAt) {
+// assignmentRunSeconds returns the time at least one assignment of the run
+// was executing: the union of each resulted assignment's started_at to result
+// completed_at interval. Time while the run was stopped, interrupted, waiting
+// to resume, or waiting for verification is excluded, and concurrent
+// assignments count once. An assignment without a persisted result has no
+// closed execution interval and contributes nothing.
+func assignmentRunSeconds(assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult) *float64 {
+	type interval struct{ start, end time.Time }
+	intervals := make([]interval, 0, len(results))
+	for _, assignment := range assignments {
+		result := results[assignment.GetAssignmentId()]
+		if result == nil || assignment.GetStartedAt() == nil {
+			continue
+		}
+		completedAt := result.GetCompletedAt()
+		if completedAt == nil {
+			completedAt = assignment.GetCompletedAt()
+		}
+		if completedAt == nil {
+			continue
+		}
+		start, end := assignment.GetStartedAt().AsTime(), completedAt.AsTime()
+		if end.After(start) {
+			intervals = append(intervals, interval{start: start, end: end})
+		}
+	}
+	if len(intervals) == 0 {
 		return nil
 	}
-	seconds := math.Round(observedAt.Sub(startedAt).Seconds())
+	sort.Slice(intervals, func(i, j int) bool { return intervals[i].start.Before(intervals[j].start) })
+	var total time.Duration
+	current := intervals[0]
+	for _, next := range intervals[1:] {
+		if next.start.After(current.end) {
+			total += current.end.Sub(current.start)
+			current = next
+		} else if next.end.After(current.end) {
+			current.end = next.end
+		}
+	}
+	total += current.end.Sub(current.start)
+	seconds := math.Round(total.Seconds())
 	return &seconds
 }
 
@@ -1631,16 +1707,6 @@ func displayNameForVariant(variantID string) string {
 	return strings.Join(words, " ")
 }
 
-func servedTagForVariant(variantID string) string {
-	parts := strings.Split(variantID, "-")
-	if len(parts) >= 2 {
-		family := strings.Join(parts[:len(parts)-1], "")
-		size := parts[len(parts)-1]
-		return family + ":" + size
-	}
-	return variantID
-}
-
 func homogeneousVariantRole(assignment *evalv1.EvaluationAssignment) (string, string, error) {
 	homogeneous, ok := assignment.GetTarget().(*evalv1.EvaluationAssignment_Homogeneous)
 	if !ok || homogeneous.Homogeneous == nil || homogeneous.Homogeneous.GetCandidateVariant() == nil {
@@ -1656,6 +1722,8 @@ func homogeneousVariantRole(assignment *evalv1.EvaluationAssignment) (string, st
 type assignmentVariantRolePair struct {
 	variantID string
 	role      string
+	// variant is the frozen candidate identity; heterogeneous slots bind only an ID.
+	variant *evalv1.ModelVariant
 }
 
 func assignmentVariantRolePairs(assignment *evalv1.EvaluationAssignment) ([]assignmentVariantRolePair, error) {
@@ -1691,7 +1759,7 @@ func assignmentVariantRolePairs(assignment *evalv1.EvaluationAssignment) ([]assi
 	if err != nil {
 		return nil, err
 	}
-	return []assignmentVariantRolePair{{variantID: variantID, role: role}}, nil
+	return []assignmentVariantRolePair{{variantID: variantID, role: role, variant: assignment.GetHomogeneous().GetCandidateVariant()}}, nil
 }
 
 func variantIDForAssignmentModelRole(assignment *evalv1.EvaluationAssignment, role evalv1.ModelCampaignRole) (string, error) {

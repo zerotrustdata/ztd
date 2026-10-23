@@ -8,16 +8,19 @@
 package eval
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 type formationSummaryJSON struct {
@@ -272,6 +275,7 @@ func formationsShowEvalCmd() *cobra.Command {
 // formationRoleFlagSet binds the CLI flags for one formation role (primary,
 // assistant, or lite) to an evaluation.FormationModel.
 type formationRoleFlagSet struct {
+	prefix        string
 	displayName   string
 	provider      string
 	family        string
@@ -286,54 +290,109 @@ type formationRoleFlagSet struct {
 }
 
 func bindFormationRoleFlags(cmd *cobra.Command, prefix, label string) *formationRoleFlagSet {
-	f := &formationRoleFlagSet{}
-	cmd.Flags().StringVar(&f.displayName, prefix+"-display-name", "", label+" display name")
-	cmd.Flags().StringVar(&f.provider, prefix+"-provider", "", label+" provider, for example Alibaba")
+	f := &formationRoleFlagSet{prefix: prefix}
+	cmd.Flags().StringVar(&f.displayName, prefix+"-display-name", "", label+" display name (defaults to the served tag)")
+	cmd.Flags().StringVar(&f.provider, prefix+"-provider", "", label+" provider, for example Alibaba (defaults to the model family)")
 	cmd.Flags().StringVar(&f.family, prefix+"-family", "", label+" model family, for example \"Qwen 3.5\"")
 	cmd.Flags().StringVar(&f.providerClass, prefix+"-provider-class", "ollama", label+" inference provider class")
 	cmd.Flags().StringVar(&f.servedTag, prefix+"-tag", "", label+" served model tag, for example qwen3.5:9b (required)")
 	cmd.Flags().StringVar(&f.trust, prefix+"-trust", "sovereign", label+" trust class: sovereign or delegated")
 	cmd.Flags().StringVar(&f.quant, prefix+"-quant", "", label+" quantization format, required for sovereign roles (e.g. Q4_K_M)")
 	cmd.Flags().StringVar(&f.parameters, prefix+"-parameters", "", label+" parameter count, for example 9b")
-	cmd.Flags().Uint64Var(&f.modelVRAM, prefix+"-model-vram", 0, label+" estimated model VRAM MiB (sovereign only)")
-	cmd.Flags().Uint64Var(&f.kvCacheVRAM, prefix+"-kv-cache-vram", 0, label+" estimated KV-cache VRAM MiB (sovereign only)")
+	cmd.Flags().Uint64Var(&f.modelVRAM, prefix+"-model-vram", 0, label+" model VRAM MiB (sovereign only; estimated from parameters and quantization when omitted)")
+	cmd.Flags().Uint64Var(&f.kvCacheVRAM, prefix+"-kv-cache-vram", 0, label+" KV-cache VRAM MiB (sovereign only; estimated from parameters when omitted)")
 	cmd.Flags().StringVar(&f.modelDigest, prefix+"-digest", "", label+" model digest (resolved against the frozen registry at run time when omitted)")
 	return f
 }
 
-func (f *formationRoleFlagSet) toFormationModel() (evaluation.FormationModel, error) {
+// resolve builds the role binding for the served tag. The model registry (or
+// catalog) entry for the tag supplies family, quantization, parameter count,
+// and digest; any flag the operator set overrides the resolved value, and
+// unset VRAM is estimated from the final parameter count and quantization.
+// The returned bool reports whether the tag was found in a model inventory.
+func (f *formationRoleFlagSet) resolve(flags *pflag.FlagSet, variants []*evalv1.ModelVariant) (evaluation.FormationModel, bool, error) {
 	tag := strings.TrimSpace(f.servedTag)
 	if tag == "" {
-		return evaluation.FormationModel{}, fmt.Errorf("served model tag is required: %w", constants.ErrMissingRequiredField)
+		return evaluation.FormationModel{}, false, fmt.Errorf("--%s-tag is required: %w", f.prefix, constants.ErrMissingRequiredField)
 	}
-	variantID := inference.NormalizeProviderModelVariantID(tag)
-	var parameterCount uint64
+	model := evaluation.FormationModel{
+		VariantID:      inference.NormalizeProviderModelVariantID(tag),
+		DisplayName:    tag,
+		ProviderClass:  f.providerClass,
+		ServedModelTag: tag,
+		Trust:          evaluation.FormationTrustSovereign,
+	}
+	matched, err := selectVariantsByID(variants, []string{tag})
+	resolved := err == nil && len(matched) == 1
+	if resolved {
+		model = evaluation.FormationModelFromVariant(matched[0])
+	}
+	changed := func(name string) bool { return flags.Changed(f.prefix + "-" + name) }
+	if changed("trust") {
+		model.Trust = evaluation.FormationTrust(strings.ToLower(strings.TrimSpace(f.trust)))
+	}
+	if changed("provider-class") {
+		model.ProviderClass = f.providerClass
+	}
+	for _, override := range []struct {
+		value  string
+		target *string
+	}{
+		{f.displayName, &model.DisplayName},
+		{f.family, &model.Family},
+		{f.provider, &model.Provider},
+		{f.quant, &model.Quantization},
+		{f.modelDigest, &model.ModelDigest},
+	} {
+		if value := strings.TrimSpace(override.value); value != "" {
+			*override.target = value
+		}
+	}
+	if model.Provider == "" {
+		model.Provider = model.Family
+	}
 	if strings.TrimSpace(f.parameters) != "" {
 		count, err := evaluation.ParseParameterCount(f.parameters)
 		if err != nil {
-			return evaluation.FormationModel{}, err
+			return evaluation.FormationModel{}, resolved, err
 		}
-		parameterCount = count
+		model.ParameterCount = count
 	}
-	return evaluation.FormationModel{
-		VariantID:             variantID,
-		DisplayName:           f.displayName,
-		Provider:              f.provider,
-		Family:                f.family,
-		ProviderClass:         f.providerClass,
-		ServedModelTag:        tag,
-		Trust:                 evaluation.FormationTrust(strings.ToLower(strings.TrimSpace(f.trust))),
-		Quantization:          f.quant,
-		ParameterCount:        parameterCount,
-		EstimatedModelVRAMMiB: f.modelVRAM,
-		EstimatedKVCacheMiB:   f.kvCacheVRAM,
-		ModelDigest:           f.modelDigest,
-	}, nil
+	switch model.Trust {
+	case evaluation.FormationTrustSovereign:
+		model.EstimatedModelVRAMMiB = evaluation.EstimateFormationModelVRAMMiB(model.ParameterCount, model.Quantization)
+		model.EstimatedKVCacheMiB = evaluation.EstimateFormationKVCacheMiB(model.ParameterCount)
+	default:
+		if !changed("quant") {
+			model.Quantization = ""
+		}
+		model.EstimatedModelVRAMMiB, model.EstimatedKVCacheMiB = 0, 0
+	}
+	if changed("model-vram") {
+		model.EstimatedModelVRAMMiB = f.modelVRAM
+	}
+	if changed("kv-cache-vram") {
+		model.EstimatedKVCacheMiB = f.kvCacheVRAM
+	}
+	return model, resolved, nil
 }
 
-func formationsAddEvalCmd() *cobra.Command {
-	var displayName, description string
-	var maxVRAM uint64
+// formationModelSources returns registry variants ahead of catalog variants,
+// so a served tag resolves to its frozen registry entry when one exists.
+func formationModelSources(ctx context.Context, inventories modelInventories) ([]*evalv1.ModelVariant, error) {
+	var variants []*evalv1.ModelVariant
+	for _, scope := range []modelScope{modelScopeRegistry, modelScopeCatalog} {
+		scoped, err := inventories.variants(ctx, scope)
+		if err != nil {
+			return nil, fmt.Errorf("read model %s: %w", scope, err)
+		}
+		variants = append(variants, scoped...)
+	}
+	return variants, nil
+}
+
+func formationsAddEvalCmd(deps nativeEvalDeps) *cobra.Command {
+	var displayName, description, maxVRAMRaw string
 	var relaxedValidation bool
 	var primaryFlags, assistantFlags, liteFlags *formationRoleFlagSet
 	cmd := &cobra.Command{
@@ -341,37 +400,64 @@ func formationsAddEvalCmd() *cobra.Command {
 		Short: "Add or update one formation in the checked-in catalog overlay",
 		Long: `Add a new formation to the catalog, or replace an existing entry with the same
 ID, writing the change to the project's eval/formation-catalog-overlay.json.
-The formation must define all three roles.
+
+Only the three served tags are required. Each role resolves from the model
+registry (or the model catalog): family, quantization, parameter count, and
+digest, plus a VRAM estimate from parameter count and quantization. Provider
+defaults to the family and display names to the served tag. Any role flag
+overrides the resolved value; a tag in neither inventory needs its family,
+quantization, and parameter count passed explicitly.
 
 Example:
-  ztd eval formations add my-formation \
-    --display-name "My Formation" --description "Qwen primary with light triage." \
-    --primary-tag qwen3.5:9b --primary-provider Alibaba --primary-family "Qwen 3.5" \
-    --primary-quant Q4_K_M --primary-parameters 9b --primary-model-vram 5632 --primary-kv-cache-vram 512 \
-    --assistant-tag ministral-3:3b --assistant-provider Mistral --assistant-family "Mistral 3" \
-    --assistant-quant Q4_K_M --assistant-parameters 3.8b --assistant-model-vram 2560 --assistant-kv-cache-vram 512 \
-    --lite-tag gemma3:1b --lite-provider Google --lite-family "Gemma 3" \
-    --lite-quant Q4_K_M --lite-parameters 1b --lite-model-vram 768 --lite-kv-cache-vram 256`,
+  ztd eval formations add my-formation --max-vram 12gb \
+    --primary-tag qwen3.5:9b --assistant-tag ministral-3:3b --lite-tag gemma3:1b`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := strings.TrimSpace(args[0])
 			if id == "" {
 				return fmt.Errorf("evaluation: formations add: %w", constants.ErrMissingRequiredField)
 			}
-			primary, err := primaryFlags.toFormationModel()
-			if err != nil {
-				return fmt.Errorf("evaluation: formations add: primary role: %w", err)
+			maxVRAM := evaluation.FormationMaxVRAMMiB
+			if strings.TrimSpace(maxVRAMRaw) != "" {
+				parsed, err := evaluation.ParseVRAMBudgetMiB(maxVRAMRaw)
+				if err != nil {
+					return fmt.Errorf("evaluation: formations add: --max-vram: %w", err)
+				}
+				maxVRAM = parsed
 			}
-			assistant, err := assistantFlags.toFormationModel()
+			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
-				return fmt.Errorf("evaluation: formations add: assistant role: %w", err)
+				return err
 			}
-			lite, err := liteFlags.toFormationModel()
+			variants, err := formationModelSources(cmd.Context(), newModelInventories(fileSvc, cfg.ProjectRoot))
 			if err != nil {
-				return fmt.Errorf("evaluation: formations add: lite role: %w", err)
+				return fmt.Errorf("evaluation: formations add: %w", err)
 			}
-			if maxVRAM == 0 {
-				maxVRAM = evaluation.FormationMaxVRAMMiB
+			roles := make(map[evaluation.FormationRole]evaluation.FormationModel, 3)
+			var unresolved []string
+			for _, role := range []struct {
+				role  evaluation.FormationRole
+				flags *formationRoleFlagSet
+			}{
+				{evaluation.FormationRolePrimary, primaryFlags},
+				{evaluation.FormationRoleAssistant, assistantFlags},
+				{evaluation.FormationRoleLite, liteFlags},
+			} {
+				model, resolved, err := role.flags.resolve(cmd.Flags(), variants)
+				if err != nil {
+					return fmt.Errorf("evaluation: formations add: %s role: %w", role.role, err)
+				}
+				if !resolved {
+					unresolved = append(unresolved, model.ServedModelTag)
+				}
+				roles[role.role] = model
+			}
+			primary, assistant, lite := roles[evaluation.FormationRolePrimary], roles[evaluation.FormationRoleAssistant], roles[evaluation.FormationRoleLite]
+			if strings.TrimSpace(displayName) == "" {
+				displayName = id
+			}
+			if strings.TrimSpace(description) == "" {
+				description = fmt.Sprintf("%s primary, %s assistant, %s lite", primary.ServedModelTag, assistant.ServedModelTag, lite.ServedModelTag)
 			}
 			formation := evaluation.Formation{
 				ID:                id,
@@ -382,6 +468,12 @@ Example:
 				Primary:           primary,
 				Assistant:         assistant,
 				Lite:              lite,
+			}
+			if err := formation.Validate(); err != nil {
+				if len(unresolved) > 0 {
+					return fmt.Errorf("evaluation: formations add: %w (not in the model registry or catalog: %s)", err, strings.Join(unresolved, ", "))
+				}
+				return fmt.Errorf("evaluation: formations add: %w", err)
 			}
 
 			projectRoot, err := resolveProjectRoot(cmd)
@@ -415,18 +507,22 @@ Example:
 			}
 			if output.JSONEnabled(cmd) {
 				return output.WriteJSON(cmd.OutOrStdout(), struct {
-					ID             string `json:"id"`
-					Action         string `json:"action"`
-					FormationCount int    `json:"formation_count"`
-				}{id, strings.ToLower(verb), len(updated.Formations())})
+					ID               string `json:"id"`
+					Action           string `json:"action"`
+					FormationCount   int    `json:"formation_count"`
+					EstimatedVRAMMiB uint64 `json:"estimated_vram_mib"`
+					MaxVRAMMiB       uint64 `json:"max_vram_mib"`
+				}{id, strings.ToLower(verb), len(updated.Formations()), formation.EstimatedVRAMMiB(), formation.MaxVRAMMiB})
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s formation %s (catalog now has %d formations)\n", verb, id, len(updated.Formations()))
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s formation %s: %s / %s / %s, estimated %d of %d MiB (catalog now has %d formations)\n",
+				verb, id, primary.ServedModelTag, assistant.ServedModelTag, lite.ServedModelTag,
+				formation.EstimatedVRAMMiB(), formation.MaxVRAMMiB, len(updated.Formations()))
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&displayName, "display-name", "", "Formation display name")
-	cmd.Flags().StringVar(&description, "description", "", "Formation description")
-	cmd.Flags().Uint64Var(&maxVRAM, "max-vram", 0, "Maximum estimated VRAM budget in MiB (defaults to the catalog budget)")
+	cmd.Flags().StringVar(&displayName, "display-name", "", "Formation display name (defaults to the formation ID)")
+	cmd.Flags().StringVar(&description, "description", "", "Formation description (defaults to the three served tags)")
+	cmd.Flags().StringVar(&maxVRAMRaw, "max-vram", "", "VRAM budget, for example 8gb, 12GiB, or 8192mib; a bare number is GiB (defaults to 12gb)")
 	cmd.Flags().BoolVar(&relaxedValidation, "relaxed-validation", false, "Skip the provider/family overlap and VRAM budget gates")
 	primaryFlags = bindFormationRoleFlags(cmd, "primary", "Primary")
 	assistantFlags = bindFormationRoleFlags(cmd, "assistant", "Assistant")

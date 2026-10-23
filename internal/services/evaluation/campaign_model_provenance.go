@@ -55,8 +55,11 @@ func isModelProvenanceEvidenceNotFound(err error) bool {
 // run's evidence directory and records its reference under the provider attempt.
 // The window must pass attestation validation before it is sealed.
 func (s *Store) SaveModelProvenanceWindow(ctx context.Context, runID string, window *evalv1.ModelProvenanceAttestationWindow) error {
-	if window == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(window.GetProviderAttemptId()) {
-		return fmt.Errorf("%w: run ID, provider attempt ID, and attestation window are required", constants.ErrEvaluationReportPersistFailed)
+	if window == nil {
+		return missingField(constants.ErrEvaluationReportPersistFailed, "attestation window")
+	}
+	if err := s.validateAccess(constants.ErrEvaluationReportPersistFailed, runIDElement(runID), attemptIDElement(window.GetProviderAttemptId())); err != nil {
+		return err
 	}
 	if err := model_provenance.ValidateAttestationWindow(window); err != nil {
 		return fmt.Errorf("%w: model provenance attestation window: %w", constants.ErrEvaluationReportPersistFailed, err)
@@ -73,8 +76,8 @@ func (s *Store) SaveModelProvenanceWindow(ctx context.Context, runID string, win
 // recorded for one provider attempt of a run. A missing record reports
 // constants.ErrNotFound.
 func (s *Store) LoadModelProvenanceWindow(ctx context.Context, runID, providerAttemptID string) (*evalv1.ModelProvenanceAttestationWindow, error) {
-	if s == nil || !complianceevidence.ValidPathElement(runID) || !complianceevidence.ValidPathElement(providerAttemptID) {
-		return nil, fmt.Errorf("%w: run ID and provider attempt ID are required", constants.ErrEvidenceArtifactMalformed)
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID), attemptIDElement(providerAttemptID)); err != nil {
+		return nil, err
 	}
 	reference, err := s.readEvidenceRef(ctx, s.layout.modelProvenanceWindowRefPath(runID, providerAttemptID), runID, providerAttemptID)
 	if err != nil {

@@ -21,7 +21,9 @@ import (
 // each tool call verbatim. The complete trace (exact input, thinking, every
 // turn, receipts, anchors) is published separately as the content-addressed
 // assignment_agent_trace proof artifact. The shared disclosure validator
-// checks the closed schema and byte bounds; content is never screened.
+// checks the closed schema and byte bounds; content is never screened. A
+// transcript past those bounds is omitted rather than truncated: the agent
+// trace proof artifact carries it in full.
 func BuildPublicAssignmentTranscripts(ctx context.Context, store CampaignStore, assignment *evalv1.EvaluationAssignment, result *evalv1.EvaluationAssignmentResult) ([]publicdisclosure.RoleTranscript, error) {
 	if ctx == nil || store == nil || assignment == nil || result == nil {
 		return nil, fmt.Errorf("evaluation: build public transcript: %w", constants.ErrMissingRequiredField)
@@ -52,13 +54,14 @@ func BuildPublicAssignmentTranscripts(ctx context.Context, store CampaignStore, 
 	}
 	for _, call := range trace.ToolCalls {
 		transcript.ToolCalls = append(transcript.ToolCalls, publicdisclosure.RoleTranscriptToolCall{
-			ToolName:      call.ToolName,
-			ArgumentsJSON: call.ArgumentsJSON,
-			ArgumentsHash: models.SHA256Hex([]byte(call.ArgumentsJSON)),
-			Command:       call.Command,
-			ResultJSON:    call.ResultJSON,
-			Success:       call.Success,
-			ErrorType:     call.ErrorType,
+			ToolName:              call.ToolName,
+			ArgumentsJSON:         call.ArgumentsJSON,
+			ArgumentsHash:         models.SHA256Hex([]byte(call.ArgumentsJSON)),
+			ApprovedArgumentsJSON: call.ApprovedArgumentsJSON,
+			Command:               call.Command,
+			ResultJSON:            call.ResultJSON,
+			Success:               call.Success,
+			ErrorType:             call.ErrorType,
 		})
 	}
 	transcripts := []publicdisclosure.RoleTranscript{transcript}
@@ -66,7 +69,9 @@ func BuildPublicAssignmentTranscripts(ctx context.Context, store CampaignStore, 
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: encode public transcript: %w", err)
 	}
-	if err := publicdisclosure.ValidateRoleTranscripts(body); err != nil {
+	if err := publicdisclosure.ValidateRoleTranscripts(body); errors.Is(err, constants.ErrEvidenceArtifactTooLarge) {
+		return nil, nil
+	} else if err != nil {
 		return nil, fmt.Errorf("evaluation: validate public transcript: %w", err)
 	}
 	return transcripts, nil

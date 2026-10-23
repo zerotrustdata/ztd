@@ -128,10 +128,10 @@ func TestPlatformEnrollment_CLISigningIdentityAndConsensusAcrossPostures(t *test
 			require.Equal(t, key.Public(), registered)
 			other, err := ls.GetUserService().CreateUserWithSub(t.Context(), "another-federated-account")
 			require.NoError(t, err)
-			_, err = ls.GetPlatformEnrollmentService().BindConsensusApplication(t.Context(), other.ID, models.PlatformEnrollmentBindConsensusRequest{AppID: "cli-reviewer", EndpointURL: "https://reviewer.example/deliberate"})
+			_, err = ls.GetPlatformEnrollmentService().BindConsensusApplication(t.Context(), other.ID, models.PlatformEnrollmentBindConsensusRequest{Provider: string(constants.ConsensusProviderApplication), AppID: "cli-reviewer", EndpointURL: "https://reviewer.example/deliberate"})
 			require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidDecision)
 
-			_, err = ls.GetPlatformEnrollmentService().BindConsensusApplication(t.Context(), owner.ID, models.PlatformEnrollmentBindConsensusRequest{AppID: "cli-reviewer", EndpointURL: "https://reviewer.example/deliberate"})
+			_, err = ls.GetPlatformEnrollmentService().BindConsensusApplication(t.Context(), owner.ID, models.PlatformEnrollmentBindConsensusRequest{Provider: string(constants.ConsensusProviderApplication), AppID: "cli-reviewer", EndpointURL: "https://reviewer.example/deliberate"})
 			if posture.RequiresL3() {
 				var required *models.PlatformEnrollmentL3RequiredError
 				require.True(t, errors.As(err, &required))

@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.2.0
-last_updated: 2026-10-20
+version: v1.3.0
+last_updated: 2026-10-22
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -181,12 +181,13 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `gw` | `gw` | `internal/cli/cmd/gw/` | `gateway` | Gateway lifecycle, data, security, and tunnel commands. `gateway_start_running.go` decides whether `gw start` reuses a running Gateway by comparing explicitly set startup flags with its launch profile. |
 | `login`, `logout` | `authcmd` | `internal/cli/cmd/auth/` | | Top-level sign-in (`login` defaults to headless `login cli`; `login web` uses browser) and sign-out (`logout`, `logout web`, `logout cli`); shares `auth` package and enrollment runner. |
 | `auth` | `authcmd` | `internal/cli/cmd/auth/` | | User and platform enrollment, sessions, and approvals. |
+| `consensus` | `consensuscmd` | `internal/cli/cmd/consensus/` | | Gateway L2 consensus: `status` (bound provider, quorum, signer readiness, posture), `enroll app` (governed application binding), and `enroll tribunal --model <tag>` (Gateway-hosted Tribunal panel pinned to one frozen model tag). |
 | `mcp` | `mcp` | `internal/cli/cmd/mcp/` | | MCP stdio serving and agent integration. |
 | `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `reset-identity`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
 | `autochthon` | `autochthoncmd` | `internal/cli/cmd/autochthon/` | | Gateway-less foreground runtime: host sampling and local prior under `.ztd/autochthon/`, and read-only `status` reporting. Not an Operator mode; refuses Gateway-facing flags. |
 | `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, and reset. |
-| `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, `release-smoke`, and `eval-loop`. |
-| `audit` | `audit` | `internal/cli/cmd/audit/` | `audits` | Receipt, event, summary, export, report, and verify queries against a running Gateway. |
+| `test` | `testcmd` | `internal/cli/cmd/test/` | `tests` | Unit, integration, e2e, coverage, lint, chaos, summary, `public-loop`, `scale`, `release-smoke`, `eval-loop`, and `conformance-loop`. |
+| `audit` | `audit` | `internal/cli/cmd/audit/` | `audits` | Event receipt (`event-receipts`, `export`), raw event (`events`), summary, report, verify, and L2 consensus vote (`votes`) queries against a running Gateway. |
 | `report` | `report` | `internal/cli/cmd/report/` | `reports` | Deterministic CSV evidence generation and offline verification. |
 | `public` | `public` | `internal/cli/cmd/public/` | | Public spectator feed. `restore` is constructed in eval package (`INV-PKG-02`). |
 | `swagger` | `swagger` | `internal/cli/cmd/swagger/` | | OpenAPI generation, serving, and validation. |
@@ -245,7 +246,7 @@ Mutations that traverse a ztd ingress use a typed `GovernanceEnvelope` (`INV-BOU
 | Step | Owner |
 | :--- | :--- |
 | L1 doctrine | `internal/services/governance/l1_doctrine.go` (`NewL1DoctrineFromDir`). Loader rules: `INV-DOCTRINE-*`. |
-| L2 consensus | `internal/services/governance/l2_consensus.go`, `internal/services/gateway/consensus_store_service.go`. Bound application HTTPS deliberation. Required only for postures that enforce it (`INV-DEP-05`). Architecture: [Consensus](../architecture/consensus.md). |
+| L2 consensus | `internal/services/governance/l2_consensus.go`, `internal/services/gateway/consensus_store_service.go`. Requires an explicitly selected `application` or `tribunal` provider; application uses HTTPS deliberation. Required only for postures that enforce it (`INV-DEP-05`). The Gateway-hosted Tribunal provider votes in `internal/services/gateway/tribunal_consensus_deliberator.go` (`TribunalConsensusDeliberator`). Architecture: [Consensus](../architecture/consensus.md). |
 | L3 notary | `internal/services/governance/`. Gateway mode and outbound mode use distinct notaries. See mode table. |
 | L4 verification and L5 actuation | `internal/services/governance/` with command and file dispatch in `internal/services/pubsub/`. |
 | MCP and A2A translation, native tools, suspension | `internal/services/mcp/`. Native registration rules: `INV-MCP-*`. |
@@ -266,7 +267,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | :--- | :--- |
 | Identity and enrollment | PKI, bootstrap, CLI recovery, CLI rotation, CLI refresh, CLI session, enrollment token, user, session, passkey, platform enrollment |
 | Data and audit | Data, signer, audit |
-| Operators and dispatch | Operator, dispatch, inference dispatch, tribunal intent |
+| Operators and dispatch | Operator, dispatch, inference dispatch, Tribunal authoring of typed `run_shell_command` arguments for governed `MCP_CALL` |
 | Streams and ingress | SSE, MCP, pub/sub |
 | Governance and admin | Governance, health, admin |
 | Observation and publication | Observe, observe producer, public feed, eval campaign publication, provider observation, model provenance |
@@ -278,7 +279,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/gateway/docs/` | Generated OpenAPI (`swagger.json` embedded by `docs.go`, plus `swagger.yaml`). Generator: `make swagger-generate`. |
 | `internal/services/gateway/explorer/` | Embedded evaluation-explorer assets. |
 | `internal/services/gateway/db/schema.sql` | Canonical SQLite schema embedded by `CanonicalDBService`. |
-| `internal/services/gateway/db/public_mirror_schema.sql` | Public mirror SQLite schema embedded by `PublicMirrorStore`. `db/public_mirror_segments_migration.sql` is embedded alongside it and applied when `proof_manifest_entries` lacks `segment_index`. |
+| `internal/services/gateway/db/public_mirror_schema.sql` | Public mirror SQLite schema embedded by `PublicMirrorStore`. |
 
 ### Persistence
 
@@ -307,7 +308,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `GetBlobStore` | `BlobStoreService` |
 | `GetAuditStore` | `storage.SQLAuditStore` |
 
-`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. `storage.ReadLocalActionReceipt` (`local_receipt.go`) reads one runtime's signed receipt from its own audit store with that runtime's vault key, never a Gateway mirror. Storage architecture: [Storage Architecture](../architecture/storage.md).
+`internal/services/storage/` additionally owns execution event recording (`events` in `ztd.db`), suspended transactions and replay nonces (tables in `ztd.db`), Git ledger history, commitments, token store, and operational snapshots. `storage.OpenLocalExecutionEvidence` builds Git ledger and history handler for both outbound Operator (`ZtdoService`) and Gateway's embedded Operator, each against its own runtime file service. `storage.ReadLocalEventReceipt` (`local_receipt.go`) reads one runtime's signed event receipt from its own audit store with that runtime's vault key, never a Gateway mirror. Storage architecture: [Storage Architecture](../architecture/storage.md).
 
 ### Internal services
 
@@ -317,7 +318,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/autochthon/` | Gateway-less `ztd autochthon` command (CLI: `internal/cli/cmd/autochthon/`): host sampling, local predictor population, `.ztd/autochthon/` hash-chained tally, and read-only status report. No governance path. |
 | `internal/services/compliance/` | KSI evaluation and history, OSCAL support, catalog validation, evidence import and graph verification, and signed report bundles. |
 | `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. |
-| `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.0.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
+| `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.1.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
 | `internal/services/execution/` | Command execution and governed file edits. |
 | `internal/services/fs/` | Scoped `.ztd/` runtime file operations. |
 | `internal/services/ztdbinaries/` | Deployment-binary catalog, reader, and publisher. CLI wrapper: `internal/tools/ztdbinaries/`. |
@@ -339,6 +340,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/scrubbing/` | Sensitive-value detection, tokenization, and rehydration. |
 | `internal/services/sqliteutil/` | Shared SQLite configuration and connection helpers. |
 | `internal/services/storage/` | Audit, execution, replay, suspension, commitment, and Git ledger persistence. |
+| `internal/services/tribunal/` | Tribunal consensus: member dispatch, vote parsing and schema, decision and generative vote handling, and the Tribunal pipeline and auditor. Gateway-side wiring is in `internal/services/gateway/tribunal_intent.go`. |
 | `internal/services/system/` | Host metrics, OS details, and network interface sampling. |
 | `internal/services/vault/` | Encryption vault lifecycle. |
 
@@ -415,6 +417,7 @@ In-depth test rules reside in [Testing Guide](tests.md).
 | `./ztd test scale` | 3 | Operator fleet scale qualification in `internal/cli/cmd/test/scale.go`: isolated Gateway, `operator deploy` batches, then `TestOperatorFleet_*` in `test/e2e/`. Owns its own Gateway and Operator teardown. |
 | `./ztd test release-smoke` | | Provider-free governed release qualification in `internal/cli/cmd/test/release_smoke.go`: isolated Gateway and data Operator, governed file and document mutations, local evidence exports, and owned-process cleanup. Runs on Unix-like hosts and Windows. |
 | `./ztd test eval-loop` | | Cross-process eval qualification across real Gateway and Operator processes in `internal/cli/cmd/test/eval_loop.go`. |
+| `./ztd test conformance-loop` | | Cross-process governance conformance qualification across real Gateway and Operator processes in `internal/cli/cmd/test/conformance_loop.go`. Suite: `internal/services/evaluation/conformance/`. |
 
 Component test entry points named by root Makefile: `make test`, `make test-unit`, `make test-integration`, `make console-test`, `make website-test`.
 
@@ -495,6 +498,8 @@ make swagger-generate
 - Moving `ztd test public-loop` into `internal/cli/cmd/public/`, or constructing `public restore` anywhere except `eval.PublicRestoreCmdWithConfig` (`INV-PKG-02`).
 - Attributing TypeScript protobuf generation to root `buf.gen.yaml` (`INV-PROTO-01`).
 - Maintaining a duplicate flag dump in place of directing readers to `./ztd <command> --help` (`INV-ENV-03`).
+
+Typed decision backends live in `internal/services/inference/systemone.go` (local Ollama) and `typesafe_backend.go` (explicitly opted-in hosted Jev); member questions belong to `internal/services/tribunal/consensus_decision.go`. See [Decision Model Votes](../architecture/consensus.md#decision-model-votes-opt-in) for binding and isolation rules.
 
 ## Links out
 

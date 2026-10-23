@@ -193,8 +193,13 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 	if runID == "" {
 		runID = evalRunDefaultRun
 	}
+	posture, err := cases.WirePosture(stack.Posture)
+	require.NoError(t, err)
+	governance, err := evaluation.NewRunGovernance(posture, nil)
+	require.NoError(t, err)
 	req := evaluation.CampaignInitRequest{
 		Platform:                   evaluation.PlatformIdentity{Release: "v2.3.0", SourceRevision: "0123abc"},
+		Governance:                 governance,
 		CampaignID:                 evalRunCampaignID,
 		RunID:                      runID,
 		Catalog:                    truncated,

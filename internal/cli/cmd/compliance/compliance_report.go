@@ -536,8 +536,8 @@ func buildEvaluationReportSources(ctx context.Context, fileSvc fs.RuntimeFileSer
 	store := evaluation.NewStore(fileSvc)
 	selected := make(map[string]struct{}, len(runIDs))
 	for _, runID := range runIDs {
-		if !evidence.ValidPathElement(runID) {
-			return nil, nil, fmt.Errorf("%w: invalid eval run ID %q", constants.ErrPathValidation, runID)
+		if err := evidence.ValidatePathElement(runID); err != nil {
+			return nil, nil, fmt.Errorf("%w: invalid eval run ID: %w", constants.ErrPathValidation, err)
 		}
 		if _, exists := selected[runID]; exists {
 			return nil, nil, fmt.Errorf("%w: duplicate eval run %s", constants.ErrValidationFailed, runID)
@@ -1128,8 +1128,8 @@ func buildOperationalReportSources(ctx context.Context, sourceDirs []string, sco
 		bodies := map[string][]byte{inventoryPath: inventoryBody}
 		sourceArtifacts := []compliancereport.SourceArtifact{{BundlePath: inventoryPath, Body: inventoryBody, MediaType: constants.MediaTypeJSON}}
 		for _, artifact := range inventory.Artifacts {
-			if !evidence.ValidRelativePath(artifact.RelativePath) {
-				return nil, nil, fmt.Errorf("%w: invalid operational artifact path %s", constants.ErrPathValidation, artifact.RelativePath)
+			if err := evidence.ValidateRelativePath(artifact.RelativePath); err != nil {
+				return nil, nil, fmt.Errorf("%w: invalid operational artifact path: %w", constants.ErrPathValidation, err)
 			}
 			body, err := readComplianceReportInputFile(filepath.Join(sourceDir, artifact.RelativePath))
 			if err != nil {
@@ -1150,13 +1150,20 @@ func buildOperationalReportSources(ctx context.Context, sourceDirs []string, sco
 	return sources, artifacts, nil
 }
 
-func appendStandaloneReportSourceArtifact(artifacts *[]compliancereport.SourceArtifact, bundlePath string, body []byte) error {
-	for _, artifact := range *artifacts {
+// standaloneReportSources collects the importers and bundle artifacts for the
+// explicit standalone evidence sources a report names.
+type standaloneReportSources struct {
+	importers []evidence.EvidenceImporter
+	artifacts []compliancereport.SourceArtifact
+}
+
+func (s *standaloneReportSources) addArtifact(bundlePath string, body []byte) error {
+	for _, artifact := range s.artifacts {
 		if artifact.BundlePath == bundlePath {
 			return fmt.Errorf("%w: duplicate standalone source path %s", constants.ErrEvidenceDuplicateID, bundlePath)
 		}
 	}
-	*artifacts = append(*artifacts, compliancereport.SourceArtifact{BundlePath: bundlePath, Body: body, MediaType: constants.MediaTypeJSON})
+	s.artifacts = append(s.artifacts, compliancereport.SourceArtifact{BundlePath: bundlePath, Body: body, MediaType: constants.MediaTypeJSON})
 	return nil
 }
 
@@ -1164,145 +1171,186 @@ func buildStandaloneReportSources(ctx context.Context, input standaloneReportSou
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	importers := make([]evidence.EvidenceImporter, 0, 8)
-	artifacts := make([]compliancereport.SourceArtifact, 0, 10)
-	ksiRequested := input.ksiRunID != "" || input.ksiHistory != "" || input.ksiResults != ""
-	if ksiRequested {
-		if !evidence.ValidPathElement(input.ksiRunID) || input.ksiHistory == "" || input.ksiResults == "" {
-			return nil, nil, fmt.Errorf("%w: --ksi-run-id, --ksi-history, and --ksi-results are required together", constants.ErrValidationFailed)
-		}
-		historyBody, err := readComplianceReportInputFile(input.ksiHistory)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: read KSI history: %w", constants.ErrEvidenceImporterFailed, err)
-		}
-		resultsBody, err := readComplianceReportInputFile(input.ksiResults)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: read current KSI results: %w", constants.ErrEvidenceImporterFailed, err)
-		}
-		resultSet, latestBody, err := inspectKSIHistorySource(historyBody)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: inspect KSI history: %w", constants.ErrEvidenceImporterFailed, err)
-		}
-		if !bytes.Equal(resultsBody, latestBody) || resultSet.Binding.ScopeID != input.scopeID || resultSet.Binding.RunID != input.ksiRunID {
-			return nil, nil, fmt.Errorf("%w: KSI source scope, run, or current result binding does not match", constants.ErrEvidenceScopeMismatch)
-		}
-		historyPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.ksiRunID, constants.ComplianceBundleKSIHistoryFilename)
-		resultsPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.ksiRunID, constants.ComplianceBundleKSIResultsFilename)
-		reader := &explicitSourceReader{bodies: map[string][]byte{historyPath: historyBody}}
-		importers = append(importers, evidence.NewKSIHistoryImporter(reader, evidence.KSIHistoryImportBinding{Reference: evidence.ContentReferenceForBody(constants.KSIHistoryReferencePrefix, historyBody), Path: historyPath, ScopeID: input.scopeID, RunID: input.ksiRunID, Class: resultSet.Class, ProducerIdentity: constants.KSIEvaluatorID, AssertionAssessments: resultSet.Binding.AssertionAssessments}))
-		if err := appendStandaloneReportSourceArtifact(&artifacts, historyPath, historyBody); err != nil {
-			return nil, nil, err
-		}
-		if err := appendStandaloneReportSourceArtifact(&artifacts, resultsPath, resultsBody); err != nil {
+	sources := &standaloneReportSources{
+		importers: make([]evidence.EvidenceImporter, 0, 8),
+		artifacts: make([]compliancereport.SourceArtifact, 0, 10),
+	}
+	for _, add := range []func(standaloneReportSourceInput) error{
+		sources.addKSI,
+		sources.addCommitment,
+		sources.addAttestations,
+		sources.addAuditRecords,
+		sources.addLedger,
+		sources.addBuildConfig,
+	} {
+		if err := add(input); err != nil {
 			return nil, nil, err
 		}
 	}
-	commitmentRequested := input.commitmentRunID != "" || input.commitment != ""
-	if commitmentRequested {
-		if !evidence.ValidPathElement(input.commitmentRunID) || input.commitment == "" || input.evidenceTrust == nil || input.verifiedAt.IsZero() {
-			return nil, nil, fmt.Errorf("%w: commitment source, run, verification time, and assessed evidence trust are required", constants.ErrValidationFailed)
-		}
-		body, err := readComplianceReportInputFile(input.commitment)
+	return sources.importers, sources.artifacts, nil
+}
+
+func (s *standaloneReportSources) addKSI(input standaloneReportSourceInput) error {
+	if input.ksiRunID == "" && input.ksiHistory == "" && input.ksiResults == "" {
+		return nil
+	}
+	if input.ksiRunID == "" || input.ksiHistory == "" || input.ksiResults == "" {
+		return fmt.Errorf("%w: --ksi-run-id, --ksi-history, and --ksi-results are required together", constants.ErrValidationFailed)
+	}
+	if err := evidence.ValidatePathElement(input.ksiRunID); err != nil {
+		return fmt.Errorf("%w: --ksi-run-id: %w", constants.ErrValidationFailed, err)
+	}
+	historyBody, err := readComplianceReportInputFile(input.ksiHistory)
+	if err != nil {
+		return fmt.Errorf("%w: read KSI history: %w", constants.ErrEvidenceImporterFailed, err)
+	}
+	resultsBody, err := readComplianceReportInputFile(input.ksiResults)
+	if err != nil {
+		return fmt.Errorf("%w: read current KSI results: %w", constants.ErrEvidenceImporterFailed, err)
+	}
+	resultSet, latestBody, err := inspectKSIHistorySource(historyBody)
+	if err != nil {
+		return fmt.Errorf("%w: inspect KSI history: %w", constants.ErrEvidenceImporterFailed, err)
+	}
+	if !bytes.Equal(resultsBody, latestBody) || resultSet.Binding.ScopeID != input.scopeID || resultSet.Binding.RunID != input.ksiRunID {
+		return fmt.Errorf("%w: KSI source scope, run, or current result binding does not match", constants.ErrEvidenceScopeMismatch)
+	}
+	historyPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.ksiRunID, constants.ComplianceBundleKSIHistoryFilename)
+	resultsPath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.ksiRunID, constants.ComplianceBundleKSIResultsFilename)
+	reader := &explicitSourceReader{bodies: map[string][]byte{historyPath: historyBody}}
+	s.importers = append(s.importers, evidence.NewKSIHistoryImporter(reader, evidence.KSIHistoryImportBinding{Reference: evidence.ContentReferenceForBody(constants.KSIHistoryReferencePrefix, historyBody), Path: historyPath, ScopeID: input.scopeID, RunID: input.ksiRunID, Class: resultSet.Class, ProducerIdentity: constants.KSIEvaluatorID, AssertionAssessments: resultSet.Binding.AssertionAssessments}))
+	if err := s.addArtifact(historyPath, historyBody); err != nil {
+		return err
+	}
+	return s.addArtifact(resultsPath, resultsBody)
+}
+
+func (s *standaloneReportSources) addCommitment(input standaloneReportSourceInput) error {
+	if input.commitmentRunID == "" && input.commitment == "" {
+		return nil
+	}
+	if input.commitmentRunID == "" || input.commitment == "" || input.evidenceTrust == nil || input.verifiedAt.IsZero() {
+		return fmt.Errorf("%w: commitment source, run, verification time, and assessed evidence trust are required", constants.ErrValidationFailed)
+	}
+	if err := evidence.ValidatePathElement(input.commitmentRunID); err != nil {
+		return fmt.Errorf("%w: commitment run: %w", constants.ErrValidationFailed, err)
+	}
+	body, err := readComplianceReportInputFile(input.commitment)
+	if err != nil {
+		return fmt.Errorf("%w: read commitment: %w", constants.ErrEvidenceImporterFailed, err)
+	}
+	attestation := &operatorv1.CommitmentAttestation{}
+	if err := compliancev1.UnmarshalCanonical(body, attestation); err != nil || attestation.GetTransactionId() == "" {
+		return fmt.Errorf("%w: decode commitment", constants.ErrEvidenceArtifactMalformed)
+	}
+	bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.commitmentRunID, constants.ComplianceBundleCommitmentsFilename)
+	reader := &explicitSourceReader{bodies: map[string][]byte{bundlePath: body}}
+	s.importers = append(s.importers, evidence.NewCommitmentImporter(reader, input.evidenceTrust, evidence.CommitmentImportBinding{Reference: evidence.ContentReferenceForBody(constants.CommitmentReferencePrefix, body), Path: bundlePath, ScopeID: input.scopeID, RunID: input.commitmentRunID, AttemptID: input.commitmentAttemptID, ScenarioID: input.commitmentScenarioID, TransactionID: attestation.GetTransactionId()}, input.verifiedAt))
+	return s.addArtifact(bundlePath, body)
+}
+
+func (s *standaloneReportSources) addAttestations(input standaloneReportSourceInput) error {
+	if input.attestationRunID == "" && input.attestations == "" {
+		return nil
+	}
+	if input.attestationRunID == "" || input.attestations == "" || input.evidenceTrust == nil || input.verifiedAt.IsZero() {
+		return fmt.Errorf("%w: attestation source, run, verification time, and assessed evidence trust are required", constants.ErrValidationFailed)
+	}
+	if err := evidence.ValidatePathElement(input.attestationRunID); err != nil {
+		return fmt.Errorf("%w: attestation run: %w", constants.ErrValidationFailed, err)
+	}
+	body, err := readComplianceReportInputFile(input.attestations)
+	if err != nil {
+		return fmt.Errorf("%w: read attestations: %w", constants.ErrEvidenceImporterFailed, err)
+	}
+	bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.attestationRunID, constants.ComplianceBundleAttestationsFilename)
+	reader := &explicitSourceReader{bodies: map[string][]byte{bundlePath: body}}
+	s.importers = append(s.importers, evidence.NewAttestationImporter(reader, input.evidenceTrust, evidence.AttestationImportBinding{Reference: evidence.ContentReferenceForBody(constants.AttestationCollectionReferencePrefix, body), Path: bundlePath, ScopeID: input.scopeID, RunID: input.attestationRunID}, input.verifiedAt))
+	return s.addArtifact(bundlePath, body)
+}
+
+func (s *standaloneReportSources) addAuditRecords(input standaloneReportSourceInput) error {
+	if input.auditRunID == "" && len(input.auditRecords) == 0 {
+		return nil
+	}
+	if input.auditRunID == "" || len(input.auditRecords) == 0 {
+		return fmt.Errorf("%w: --audit-run-id and at least one --audit-record are required together", constants.ErrValidationFailed)
+	}
+	if err := evidence.ValidatePathElement(input.auditRunID); err != nil {
+		return fmt.Errorf("%w: --audit-run-id: %w", constants.ErrValidationFailed, err)
+	}
+	for _, sourcePath := range input.auditRecords {
+		body, err := readComplianceReportInputFile(sourcePath)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%w: read commitment: %w", constants.ErrEvidenceImporterFailed, err)
+			return fmt.Errorf("%w: read audit record: %w", constants.ErrEvidenceImporterFailed, err)
 		}
-		attestation := &operatorv1.CommitmentAttestation{}
-		if err := compliancev1.UnmarshalCanonical(body, attestation); err != nil || attestation.GetTransactionId() == "" {
-			return nil, nil, fmt.Errorf("%w: decode commitment", constants.ErrEvidenceArtifactMalformed)
+		event := &operatorv1.AuditEvent{}
+		if err := compliancev1.UnmarshalCanonical(body, event); err != nil || event.GetOperatorSessionId() == "" {
+			return fmt.Errorf("%w: decode audit record", constants.ErrEvidenceArtifactMalformed)
 		}
-		bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.commitmentRunID, constants.ComplianceBundleCommitmentsFilename)
+		reference := evidence.ContentReferenceForBody(constants.AuditRecordReferencePrefix, body)
+		_, digest, _ := evidence.ParseExpectedContentReference(reference, constants.AuditRecordReferencePrefix)
+		bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.auditRunID, constants.AuditRecordsDirname, digest+constants.FileExtJSON)
 		reader := &explicitSourceReader{bodies: map[string][]byte{bundlePath: body}}
-		importers = append(importers, evidence.NewCommitmentImporter(reader, input.evidenceTrust, evidence.CommitmentImportBinding{Reference: evidence.ContentReferenceForBody(constants.CommitmentReferencePrefix, body), Path: bundlePath, ScopeID: input.scopeID, RunID: input.commitmentRunID, AttemptID: input.commitmentAttemptID, ScenarioID: input.commitmentScenarioID, TransactionID: attestation.GetTransactionId()}, input.verifiedAt))
-		if err := appendStandaloneReportSourceArtifact(&artifacts, bundlePath, body); err != nil {
-			return nil, nil, err
+		s.importers = append(s.importers, evidence.NewAuditRecordImporter(reader, evidence.AuditRecordImportBinding{Reference: reference, Path: bundlePath, ScopeID: input.scopeID, RunID: input.auditRunID, AttemptID: input.auditAttemptID, ScenarioID: input.auditScenarioID, OperatorSessionID: event.GetOperatorSessionId()}))
+		if err := s.addArtifact(bundlePath, body); err != nil {
+			return err
 		}
 	}
-	attestationRequested := input.attestationRunID != "" || input.attestations != ""
-	if attestationRequested {
-		if !evidence.ValidPathElement(input.attestationRunID) || input.attestations == "" || input.evidenceTrust == nil || input.verifiedAt.IsZero() {
-			return nil, nil, fmt.Errorf("%w: attestation source, run, verification time, and assessed evidence trust are required", constants.ErrValidationFailed)
-		}
-		body, err := readComplianceReportInputFile(input.attestations)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: read attestations: %w", constants.ErrEvidenceImporterFailed, err)
-		}
-		bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.attestationRunID, constants.ComplianceBundleAttestationsFilename)
-		reader := &explicitSourceReader{bodies: map[string][]byte{bundlePath: body}}
-		importers = append(importers, evidence.NewAttestationImporter(reader, input.evidenceTrust, evidence.AttestationImportBinding{Reference: evidence.ContentReferenceForBody(constants.AttestationCollectionReferencePrefix, body), Path: bundlePath, ScopeID: input.scopeID, RunID: input.attestationRunID}, input.verifiedAt))
-		if err := appendStandaloneReportSourceArtifact(&artifacts, bundlePath, body); err != nil {
-			return nil, nil, err
-		}
+	return nil
+}
+
+func (s *standaloneReportSources) addLedger(input standaloneReportSourceInput) error {
+	if input.ledgerRunID == "" && input.ledgerCommits == "" && input.ledgerState == "" {
+		return nil
 	}
-	auditRequested := input.auditRunID != "" || len(input.auditRecords) != 0
-	if auditRequested {
-		if !evidence.ValidPathElement(input.auditRunID) || len(input.auditRecords) == 0 {
-			return nil, nil, fmt.Errorf("%w: --audit-run-id and at least one --audit-record are required together", constants.ErrValidationFailed)
-		}
-		for _, sourcePath := range input.auditRecords {
-			body, err := readComplianceReportInputFile(sourcePath)
-			if err != nil {
-				return nil, nil, fmt.Errorf("%w: read audit record: %w", constants.ErrEvidenceImporterFailed, err)
-			}
-			event := &operatorv1.AuditEvent{}
-			if err := compliancev1.UnmarshalCanonical(body, event); err != nil || event.GetOperatorSessionId() == "" {
-				return nil, nil, fmt.Errorf("%w: decode audit record", constants.ErrEvidenceArtifactMalformed)
-			}
-			reference := evidence.ContentReferenceForBody(constants.AuditRecordReferencePrefix, body)
-			_, digest, _ := evidence.ParseExpectedContentReference(reference, constants.AuditRecordReferencePrefix)
-			bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.auditRunID, constants.AuditRecordsDirname, digest+constants.FileExtJSON)
-			reader := &explicitSourceReader{bodies: map[string][]byte{bundlePath: body}}
-			importers = append(importers, evidence.NewAuditRecordImporter(reader, evidence.AuditRecordImportBinding{Reference: reference, Path: bundlePath, ScopeID: input.scopeID, RunID: input.auditRunID, AttemptID: input.auditAttemptID, ScenarioID: input.auditScenarioID, OperatorSessionID: event.GetOperatorSessionId()}))
-			if err := appendStandaloneReportSourceArtifact(&artifacts, bundlePath, body); err != nil {
-				return nil, nil, err
-			}
-		}
+	if input.ledgerRunID == "" || input.ledgerCommits == "" || input.ledgerState == "" {
+		return fmt.Errorf("%w: --ledger-run-id, --ledger-commits, and --ledger-state are required together", constants.ErrValidationFailed)
 	}
-	ledgerRequested := input.ledgerRunID != "" || input.ledgerCommits != "" || input.ledgerState != ""
-	if ledgerRequested {
-		if !evidence.ValidPathElement(input.ledgerRunID) || input.ledgerCommits == "" || input.ledgerState == "" {
-			return nil, nil, fmt.Errorf("%w: --ledger-run-id, --ledger-commits, and --ledger-state are required together", constants.ErrValidationFailed)
-		}
-		commitsBody, err := readComplianceReportInputFile(input.ledgerCommits)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: read ledger commits: %w", constants.ErrEvidenceImporterFailed, err)
-		}
-		stateBody, err := readComplianceReportInputFile(input.ledgerState)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: read ledger state: %w", constants.ErrEvidenceImporterFailed, err)
-		}
-		base := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.ledgerRunID, constants.LedgerEvidenceDirname)
-		commitsPath := path.Join(base, constants.LedgerCommitsFilename)
-		statePath := path.Join(base, constants.LedgerStateFilename)
-		reader := &explicitSourceReader{bodies: map[string][]byte{commitsPath: commitsBody, statePath: stateBody}}
-		importers = append(importers, evidence.NewLedgerImporter(reader, evidence.LedgerImportBinding{CommitsReference: evidence.ContentReferenceForBody(constants.LedgerCommitCollectionReferencePrefix, commitsBody), StateReference: evidence.ContentReferenceForBody(constants.LedgerStateReferencePrefix, stateBody), CommitsPath: commitsPath, StatePath: statePath, ScopeID: input.scopeID, RunID: input.ledgerRunID, AttemptID: input.ledgerAttemptID, ScenarioID: input.ledgerScenarioID}))
-		if err := appendStandaloneReportSourceArtifact(&artifacts, commitsPath, commitsBody); err != nil {
-			return nil, nil, err
-		}
-		if err := appendStandaloneReportSourceArtifact(&artifacts, statePath, stateBody); err != nil {
-			return nil, nil, err
-		}
+	if err := evidence.ValidatePathElement(input.ledgerRunID); err != nil {
+		return fmt.Errorf("%w: --ledger-run-id: %w", constants.ErrValidationFailed, err)
 	}
-	buildRequested := input.buildRunID != "" || input.buildConfig != ""
-	if buildRequested {
-		if !evidence.ValidPathElement(input.buildRunID) || input.buildConfig == "" {
-			return nil, nil, fmt.Errorf("%w: --build-run-id and --build-config-attestations are required together", constants.ErrValidationFailed)
-		}
-		body, err := readComplianceReportInputFile(input.buildConfig)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: read build and configuration attestations: %w", constants.ErrEvidenceImporterFailed, err)
-		}
-		metadata, err := evidence.InspectBuildConfigSource(body)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%w: inspect build and configuration attestations: %w", constants.ErrEvidenceImporterFailed, err)
-		}
-		bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.buildRunID, constants.BuildConfigAttestationsFilename)
-		reader := &explicitSourceReader{bodies: map[string][]byte{bundlePath: body}}
-		importers = append(importers, evidence.NewBuildConfigImporter(reader, evidence.BuildConfigImportBinding{Reference: evidence.ContentReferenceForBody(constants.BuildAttestationReferencePrefix, body), Path: bundlePath, ScopeID: input.scopeID, RunID: input.buildRunID, BuildIdentity: metadata.BuildIdentity, SourceRevision: metadata.SourceRevision, ProducerIdentity: metadata.ProducerIdentity}))
-		if err := appendStandaloneReportSourceArtifact(&artifacts, bundlePath, body); err != nil {
-			return nil, nil, err
-		}
+	commitsBody, err := readComplianceReportInputFile(input.ledgerCommits)
+	if err != nil {
+		return fmt.Errorf("%w: read ledger commits: %w", constants.ErrEvidenceImporterFailed, err)
 	}
-	return importers, artifacts, nil
+	stateBody, err := readComplianceReportInputFile(input.ledgerState)
+	if err != nil {
+		return fmt.Errorf("%w: read ledger state: %w", constants.ErrEvidenceImporterFailed, err)
+	}
+	base := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.ledgerRunID, constants.LedgerEvidenceDirname)
+	commitsPath := path.Join(base, constants.LedgerCommitsFilename)
+	statePath := path.Join(base, constants.LedgerStateFilename)
+	reader := &explicitSourceReader{bodies: map[string][]byte{commitsPath: commitsBody, statePath: stateBody}}
+	s.importers = append(s.importers, evidence.NewLedgerImporter(reader, evidence.LedgerImportBinding{CommitsReference: evidence.ContentReferenceForBody(constants.LedgerCommitCollectionReferencePrefix, commitsBody), StateReference: evidence.ContentReferenceForBody(constants.LedgerStateReferencePrefix, stateBody), CommitsPath: commitsPath, StatePath: statePath, ScopeID: input.scopeID, RunID: input.ledgerRunID, AttemptID: input.ledgerAttemptID, ScenarioID: input.ledgerScenarioID}))
+	if err := s.addArtifact(commitsPath, commitsBody); err != nil {
+		return err
+	}
+	return s.addArtifact(statePath, stateBody)
+}
+
+func (s *standaloneReportSources) addBuildConfig(input standaloneReportSourceInput) error {
+	if input.buildRunID == "" && input.buildConfig == "" {
+		return nil
+	}
+	if input.buildRunID == "" || input.buildConfig == "" {
+		return fmt.Errorf("%w: --build-run-id and --build-config-attestations are required together", constants.ErrValidationFailed)
+	}
+	if err := evidence.ValidatePathElement(input.buildRunID); err != nil {
+		return fmt.Errorf("%w: --build-run-id: %w", constants.ErrValidationFailed, err)
+	}
+	body, err := readComplianceReportInputFile(input.buildConfig)
+	if err != nil {
+		return fmt.Errorf("%w: read build and configuration attestations: %w", constants.ErrEvidenceImporterFailed, err)
+	}
+	metadata, err := evidence.InspectBuildConfigSource(body)
+	if err != nil {
+		return fmt.Errorf("%w: inspect build and configuration attestations: %w", constants.ErrEvidenceImporterFailed, err)
+	}
+	bundlePath := path.Join(constants.ComplianceBundleSourcesDirname, constants.ComplianceBundlePlatformEvidenceDirname, input.scopeID, input.buildRunID, constants.BuildConfigAttestationsFilename)
+	reader := &explicitSourceReader{bodies: map[string][]byte{bundlePath: body}}
+	s.importers = append(s.importers, evidence.NewBuildConfigImporter(reader, evidence.BuildConfigImportBinding{Reference: evidence.ContentReferenceForBody(constants.BuildAttestationReferencePrefix, body), Path: bundlePath, ScopeID: input.scopeID, RunID: input.buildRunID, BuildIdentity: metadata.BuildIdentity, SourceRevision: metadata.SourceRevision, ProducerIdentity: metadata.ProducerIdentity}))
+	return s.addArtifact(bundlePath, body)
 }
 
 func inspectKSIHistorySource(body []byte) (*compliance.KSIResultSet, []byte, error) {

@@ -70,13 +70,13 @@ func TestOperatorRun_ExecutesThroughGovernedPipeline(t *testing.T) {
 // operatorSessionID through the Gateway audit receipts endpoint.
 func countExecutedBashReceipts(t *testing.T, client authcmd.APIClient, operatorSessionID string) int {
 	t.Helper()
-	raw, err := client.Get(constants.APIPaths.AuditReceipts + "?operator_session_id=" + url.QueryEscape(operatorSessionID) + "&limit=500")
+	raw, err := client.Get(constants.APIPaths.AuditEventReceipts + "?operator_session_id=" + url.QueryEscape(operatorSessionID) + "&limit=500")
 	require.NoError(t, err)
-	var resp models.AuditReceiptsResponse
+	var resp models.AuditEventReceiptsResponse
 	require.NoError(t, json.Unmarshal(raw, &resp))
 	require.True(t, resp.Success, "audit receipts response must report success")
 	count := 0
-	for _, receipt := range resp.Receipts {
+	for _, receipt := range resp.EventReceipts {
 		if receipt.ActionType == constants.ActionTypeExecuteBash && receipt.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 			count++
 		}

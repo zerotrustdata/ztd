@@ -169,12 +169,14 @@ func egressResultPayloadTypes() map[string]struct {
 		"CommandResult":                        {&operatorv1.CommandResult{}, egressContent},
 		"ExecutionStatusUpdate":                {&operatorv1.ExecutionStatusUpdate{}, egressContent},
 		"FileEditResult":                       {&operatorv1.FileEditResult{}, egressContent},
+		"EvaluationWorkspaceSeedResult":        {&operatorv1.EvaluationWorkspaceSeedResult{}, egressContent},
 		"FsListResult":                         {&operatorv1.FsListResult{}, egressContent},
 		"FsGrepResult":                         {&operatorv1.FsGrepResult{}, egressContent},
 		"FsReadResult":                         {&operatorv1.FsReadResult{}, egressContent},
 		"PortCheckResult":                      {&operatorv1.PortCheckResult{}, egressContent},
 		"OllamaModelInventoryResult":           {&operatorv1.OllamaModelInventoryResult{}, egressContent},
 		"OllamaModelResidencyResult":           {&operatorv1.OllamaModelResidencyResult{}, egressContent},
+		"OllamaModelReleaseResult":             {&operatorv1.OllamaModelReleaseResult{}, egressContent},
 		"FetchLogsResult":                      {&operatorv1.FetchLogsResult{}, egressContent},
 		"FetchFileDiffResult":                  {&operatorv1.FetchFileDiffResult{}, egressContent},
 		"FetchHistoryResult":                   {&operatorv1.FetchHistoryResult{}, egressContent},
@@ -256,7 +258,7 @@ func TestEgressScrubbed_InferenceProgressIsDigestBoundAndPassesThrough(t *testin
 		ProviderAttemptId: "attempt-1",
 		Sequence:          1,
 		Parts: []*operatorv1.InferenceResponsePart{
-			{Part: &operatorv1.InferenceResponsePart_Text{Text: "{{UEI_1}} "}},
+			{Part: &operatorv1.InferenceResponsePart_Text{Text: "{{UEI_3f9a0c12be47_1}} "}},
 		},
 	}
 	for name, s := range map[string]*scrubbing.ScrubbingService{

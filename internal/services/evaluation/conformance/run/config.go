@@ -32,9 +32,13 @@ type Config struct {
 	// Unavailable explicitly declares optional ingress coverage that cannot run.
 	Unavailable map[cases.Ingress]evalv1.ConformanceObservationKind
 	Sentinel    cases.Sentinel
-	Roots       map[cases.Executor]Root
-	Posture     func(ctx context.Context) (evalv1.EvaluationGovernancePosture, error) // from the Gateway health
-	Recorder    func(sink *[]client.Exchange)                                         // client.Record
-	Attended    bool
-	Now         func() time.Time
+	// Roots holds the embedded root, plus the outbound root when an outbound
+	// Operator is selected; without it, outbound cases are not applicable.
+	Roots   map[cases.Executor]Root
+	Posture func(ctx context.Context) (evalv1.EvaluationGovernancePosture, error) // from the Gateway health
+	// A2AIngress is the Gateway health's a2a_ingress; false makes A2A cases not applicable.
+	A2AIngress bool
+	Recorder   func(sink *[]client.Exchange) // client.Record
+	Attended   bool
+	Now        func() time.Time
 }

@@ -211,6 +211,21 @@ func readTrajectory(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, v
 				}
 			}
 		}
+		if len(tools.AllowedTools) > 0 {
+			observed := false
+			for _, call := range calls {
+				if call.Success && !call.IsDenied() {
+					observed = true
+					break
+				}
+			}
+			if !observed {
+				return trajectoryResult{
+					Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL,
+					Passed:  false,
+				}
+			}
+		}
 		return trajectoryResult{
 			Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT,
 			Passed:  true,
@@ -452,6 +467,16 @@ func isToolInList(tool string, list []string) bool {
 	return false
 }
 
+// firstCalledTool returns the first of tools the model called, or "".
+func firstCalledTool(calls []AgentToolCall, tools []string) string {
+	for _, call := range calls {
+		if isToolInList(call.ToolName, tools) {
+			return call.ToolName
+		}
+	}
+	return ""
+}
+
 func parseFailedArgAndRule(detail string) (string, string) {
 	if detail == "" {
 		return "", ""
@@ -529,19 +554,21 @@ func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria,
 			privMid = "The model made no tool call."
 			pubMid = "The model made no tool call."
 		case evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_TOOL:
-			if isToolInList(traj.FirstWrongTool, tools.ForbiddenTools) {
-				s := fmt.Sprintf("The model called forbidden tool `%s`.", traj.FirstWrongTool)
-				privMid = s
-				pubMid = s
-			} else if traj.FirstWrongTool != "" {
-				s := fmt.Sprintf("The model called `%s` instead.", traj.FirstWrongTool)
-				privMid = s
-				pubMid = s
-			} else {
-				s := "The model called a wrong tool instead."
-				privMid = s
-				pubMid = s
+			wrong := "a wrong tool"
+			if traj.FirstWrongTool != "" {
+				wrong = fmt.Sprintf("`%s`", traj.FirstWrongTool)
+				if isToolInList(traj.FirstWrongTool, tools.ForbiddenTools) {
+					wrong = "forbidden tool " + wrong
+				}
 			}
+			// The opening names the expected tool, so say when the model called
+			// it too: the wrong call came alongside it, not in its place.
+			s := fmt.Sprintf("The model called %s instead.", wrong)
+			if called := firstCalledTool(view.Calls, expectedTools); called != "" {
+				s = fmt.Sprintf("The model called `%s`, but also called %s.", called, wrong)
+			}
+			privMid = s
+			pubMid = s
 		case evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_WRONG_ARGUMENTS:
 			expectedTool := ""
 			if len(expectedTools) > 0 {
@@ -593,9 +620,11 @@ func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria,
 			pubMid = privMid
 		}
 	} else if !contentCheckPassed {
-		s := fmt.Sprintf("The answer failed the content check: %s.", contentFailingRule)
-		privMid = s
-		pubMid = s
+		// The failing rule quotes grader detail of unbounded length; the public
+		// grade summary already carries it verbatim, so the bounded public
+		// sentence names only the failed check.
+		privMid = fmt.Sprintf("The answer failed the content check: %s.", contentFailingRule)
+		pubMid = "The answer failed the content check."
 	}
 
 	privateReason = privOpening + privMid

@@ -90,12 +90,16 @@ func NewFileOpsService(
 	if err := requireAuditStore("file ops service", auditStore); err != nil {
 		return nil, err
 	}
+	fsGrep, err := execution.NewFsGrepService(cfg.WorkDir, logger)
+	if err != nil {
+		return nil, fmt.Errorf("file ops service: %w", err)
+	}
 	return &FileOpsService{
 		config:     cfg,
 		logger:     logger,
 		fileEdit:   fileEditSvc,
 		fsList:     execution.NewFsListService(cfg.WorkDir, logger),
-		fsGrep:     execution.NewFsGrepService(cfg.WorkDir, logger),
+		fsGrep:     fsGrep,
 		results:    results,
 		scrubbing:  scrubbingSvc,
 		auditStore: auditStore,
@@ -142,84 +146,15 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 	}
 	defer func() { _ = target.Close() }()
 	editReq.FilePath = target.Path()
-	filePath := target.Path()
 
-	// Begin ledger two-phase commit (pre-mutation snapshot). The ledger reads
-	// through the same rooted target the path policy admitted. Evidence is keyed to
-	// the verified command session, not the runtime config: the Gateway embedded
-	// Operator serves whichever session claimed it.
-	var ledgerResult *storage.LedgerResult
-	if operation != "read" {
-		var beginErr error
-		ledgerResult, beginErr = fs.beginLedgerTwoPhaseCommit(msg.OperatorSessionID, target, operation)
-		if beginErr != nil {
-			// Fail closed: without a pre-mutation snapshot the edit is never executed.
-			fs.logger.Error("File edit refused: ledger snapshot unavailable", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(beginErr))
-			publishErr := fs.publishLFAAError(ctx, msg, constants.Event.Operator.FileEdit.Failed, beginErr.Error())
-			return "", errors.Join(beginErr, publishErr)
-		}
-	}
-
-	result, err := fs.fileEdit.ExecuteFileEdit(ctx, editReq)
-	if err != nil {
-		fs.logger.Error("File edit execution failed", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
-		return "", err
-	}
-	if result == nil {
-		fs.logger.Error("File edit returned no result")
-		return "", fmt.Errorf("file edit: %w", constants.ErrInternal)
-	}
-
-	execErr := fs.finishLedgerTwoPhaseCommit(msg.OperatorSessionID, ledgerResult, result)
-
-	commandStr := fmt.Sprintf("file_%s: %s", operation, filePath)
-
-	exitCode := 0
-	eventType := constants.Event.Operator.FileEdit.Completed
-	if result.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		exitCode = 1
-		eventType = constants.Event.Operator.FileEdit.Failed
-	}
-
-	// The execution event is the local record of this edit: raw output, encrypted at
-	// rest, written before the result is published. A failed record marks the result
-	// FAILED so an unrecorded mutation is never reported as completed.
-	eventID, err := fs.recordFileOpEvent(&storage.Event{
-		OperatorSessionID:   msg.OperatorSessionID,
-		Timestamp:           time.Now().UTC(),
-		Type:                eventType,
-		ContentText:         fmt.Sprintf("File %s: %s", operation, filePath),
-		CommandRaw:          commandStr,
-		CommandExitCode:     exitCode,
-		CommandStdout:       result.Content,
-		CommandStderr:       result.ErrorMessage,
-		ExecutionDurationMs: int64(result.DurationSeconds * 1000),
-		ExecutionID:         result.ExecutionID,
+	edit, err := fs.executeLedgeredFileEdit(ctx, msg, target, editReq, fileEditOutcomeEvents{
+		completed: constants.Event.Operator.FileEdit.Completed,
+		failed:    constants.Event.Operator.FileEdit.Failed,
 	})
 	if err != nil {
-		fs.logger.Error("File edit event could not be recorded; result marked FAILED", logging.ErrorKind(err))
-		execErr = errors.Join(execErr, err)
-		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-		result.ErrorMessage = err.Error()
-		result.ErrorType = "audit_record_error"
-	} else if result.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED && ledgerResult != nil {
-		mutation := &storage.FileMutationLog{
-			EventID:          eventID,
-			Filepath:         filePath,
-			Operation:        ledgerResult.Operation,
-			LedgerHashBefore: ledgerResult.LedgerHashBefore,
-			LedgerHashAfter:  ledgerResult.LedgerHashAfter,
-			DiffStat:         ledgerResult.DiffStat,
-		}
-		if err := fs.auditStore.RecordFileMutation(mutation); err != nil {
-			fs.logger.Error("File mutation could not be recorded; result marked FAILED", logging.ErrorKind(err))
-			mutationErr := fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordFileMutationFailed, err)
-			execErr = errors.Join(execErr, mutationErr)
-			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
-			result.ErrorMessage = mutationErr.Error()
-			result.ErrorType = "audit_record_error"
-		}
+		return "", err
 	}
+	result, commandStr, execErr := edit.result, edit.command, edit.err
 
 	protoResult := &operatorv1.FileEditResult{
 		ExecutionId:     result.ExecutionID,
@@ -264,6 +199,185 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 		return "", fmt.Errorf("file edit: %w", err)
 	}
 	return commandStr, nil
+}
+
+// HandleEvaluationWorkspaceSeedRequest writes one evaluation fixture file into
+// an attempt workspace under this Operator's working directory. It runs the
+// FILE_EDIT write path (ledger snapshot, execution event, file mutation record)
+// on a target confined to attempt workspace files and sentinels
+// (FileEditService.OpenEvaluationWorkspaceSeedTarget), which is why
+// EVAL_WORKSPACE_SEED is a mutation that changes no governed state and never
+// opens an L2 vote round.
+func (fs *FileOpsService) HandleEvaluationWorkspaceSeedRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	var request operatorv1.EvaluationWorkspaceSeedRequested
+	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
+		fs.logger.Error("Failed to decode evaluation workspace seed payload", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
+		decodeErr := fmt.Errorf("evaluation workspace seed: decode request: %w", err)
+		return "", errors.Join(decodeErr, fs.publishLFAAError(ctx, msg, constants.Event.Operator.Eval.WorkspaceSeed.Failed, "invalid request payload"))
+	}
+	executionID := request.GetExecutionId()
+	if executionID == "" {
+		executionID = executionIDFromMessage(msg)
+	}
+	taskID := ""
+	if msg.TaskID != nil {
+		taskID = *msg.TaskID
+	}
+	editReq := &models.FileEditRequest{
+		ExecutionID:     executionID,
+		CaseID:          msg.CaseID,
+		TaskID:          taskID,
+		InvestigationID: msg.InvestigationID,
+		Operation:       constants.FileOperationWrite,
+		FilePath:        request.GetFilePath(),
+		RequestedBy:     "ztd-system",
+		Justification:   "evaluation workspace seed",
+		Content:         request.GetContent(),
+		CreateIfMissing: true,
+	}
+
+	target, err := fs.fileEdit.OpenEvaluationWorkspaceSeedTarget(ctx, editReq.FilePath)
+	if err != nil {
+		fs.logger.Error("Evaluation workspace seed path rejected", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
+		rejected := &operatorv1.EvaluationWorkspaceSeedResult{
+			ExecutionId:  executionID,
+			Status:       operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			FilePath:     editReq.FilePath,
+			ErrorMessage: err.Error(),
+			ErrorType:    "validation_error",
+		}
+		return "", errors.Join(err, fs.results.PublishEvaluationWorkspaceSeedResult(ctx, rejected, msg))
+	}
+	defer func() { _ = target.Close() }()
+
+	edit, err := fs.executeLedgeredFileEdit(ctx, msg, target, editReq, fileEditOutcomeEvents{
+		completed: constants.Event.Operator.Eval.WorkspaceSeed.Completed,
+		failed:    constants.Event.Operator.Eval.WorkspaceSeed.Failed,
+	})
+	if err != nil {
+		return "", err
+	}
+	result := edit.result
+	publishErr := fs.results.PublishEvaluationWorkspaceSeedResult(ctx, &operatorv1.EvaluationWorkspaceSeedResult{
+		ExecutionId:     result.ExecutionID,
+		Status:          result.Status,
+		FilePath:        result.FilePath,
+		BytesWritten:    result.BytesWritten,
+		DurationSeconds: float32(result.DurationSeconds),
+		ErrorMessage:    result.ErrorMessage,
+		ErrorType:       result.ErrorType,
+	}, msg)
+	execErr := edit.err
+	if execErr == nil {
+		execErr = executionResultError(result.Status, result.ErrorMessage)
+	}
+	if err := errors.Join(execErr, publishErr); err != nil {
+		return "", fmt.Errorf("evaluation workspace seed: %w", err)
+	}
+	return edit.command, nil
+}
+
+// fileEditOutcomeEvents names the execution event types a ledgered file
+// operation records for its completed and failed outcomes.
+type fileEditOutcomeEvents struct {
+	completed constants.EventType
+	failed    constants.EventType
+}
+
+// ledgeredFileEdit is one executed file operation: its result, the command
+// line recorded for it, and any error from snapshotting or recording it. Such
+// an error has already marked the result FAILED.
+type ledgeredFileEdit struct {
+	result  *models.FileEditResult
+	command string
+	err     error
+}
+
+// executeLedgeredFileEdit runs one admitted file operation through the git
+// ledger two-phase commit and records its execution event and, for a
+// completed mutation, its file mutation. The ledger reads through the same
+// rooted target the path policy admitted, and evidence is keyed to the
+// verified command session, not the runtime config: the Gateway embedded
+// Operator serves whichever session claimed it. A returned error means the
+// operation never produced a publishable result; a refused ledger snapshot has
+// already published events.failed.
+func (fs *FileOpsService) executeLedgeredFileEdit(ctx context.Context, msg *PubSubCommandMessage, target *fsvc.FileEditTarget, editReq *models.FileEditRequest, events fileEditOutcomeEvents) (*ledgeredFileEdit, error) {
+	operation := string(editReq.Operation)
+	filePath := target.Path()
+
+	var ledgerResult *storage.LedgerResult
+	if editReq.Operation != constants.FileOperationRead {
+		var beginErr error
+		ledgerResult, beginErr = fs.beginLedgerTwoPhaseCommit(msg.OperatorSessionID, target, operation)
+		if beginErr != nil {
+			// Fail closed: without a pre-mutation snapshot the edit is never executed.
+			fs.logger.Error("File edit refused: ledger snapshot unavailable", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(beginErr))
+			publishErr := fs.publishLFAAError(ctx, msg, events.failed, beginErr.Error())
+			return nil, errors.Join(beginErr, publishErr)
+		}
+	}
+
+	result, err := fs.fileEdit.ExecuteFileEditTarget(target, editReq)
+	if err != nil {
+		fs.logger.Error("File edit execution failed", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(err))
+		return nil, err
+	}
+	if result == nil {
+		fs.logger.Error("File edit returned no result")
+		return nil, fmt.Errorf("file edit: %w", constants.ErrInternal)
+	}
+
+	execErr := fs.finishLedgerTwoPhaseCommit(msg.OperatorSessionID, ledgerResult, result)
+
+	commandStr := fmt.Sprintf("file_%s: %s", operation, filePath)
+
+	exitCode := 0
+	eventType := events.completed
+	if result.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		exitCode = 1
+		eventType = events.failed
+	}
+
+	// The execution event is the local record of this edit: raw output, encrypted at
+	// rest, written before the result is published. A failed record marks the result
+	// FAILED so an unrecorded mutation is never reported as completed.
+	eventID, err := fs.recordFileOpEvent(&storage.Event{
+		OperatorSessionID:   msg.OperatorSessionID,
+		Timestamp:           time.Now().UTC(),
+		Type:                eventType,
+		ContentText:         fmt.Sprintf("File %s: %s", operation, filePath),
+		CommandRaw:          commandStr,
+		CommandExitCode:     exitCode,
+		CommandStdout:       result.Content,
+		CommandStderr:       result.ErrorMessage,
+		ExecutionDurationMs: int64(result.DurationSeconds * 1000),
+		ExecutionID:         result.ExecutionID,
+	})
+	if err != nil {
+		fs.logger.Error("File edit event could not be recorded; result marked FAILED", logging.ErrorKind(err))
+		execErr = errors.Join(execErr, err)
+		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+		result.ErrorMessage = err.Error()
+		result.ErrorType = "audit_record_error"
+	} else if result.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED && ledgerResult != nil {
+		mutation := &storage.FileMutationLog{
+			EventID:          eventID,
+			Filepath:         filePath,
+			Operation:        ledgerResult.Operation,
+			LedgerHashBefore: ledgerResult.LedgerHashBefore,
+			LedgerHashAfter:  ledgerResult.LedgerHashAfter,
+			DiffStat:         ledgerResult.DiffStat,
+		}
+		if err := fs.auditStore.RecordFileMutation(mutation); err != nil {
+			fs.logger.Error("File mutation could not be recorded; result marked FAILED", logging.ErrorKind(err))
+			mutationErr := fmt.Errorf("%w: %w", constants.ErrAuditStoreRecordFileMutationFailed, err)
+			execErr = errors.Join(execErr, mutationErr)
+			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+			result.ErrorMessage = mutationErr.Error()
+			result.ErrorType = "audit_record_error"
+		}
+	}
+	return &ledgeredFileEdit{result: result, command: commandStr, err: execErr}, nil
 }
 
 // beginLedgerTwoPhaseCommit starts the pre-mutation snapshot phase of the git ledger

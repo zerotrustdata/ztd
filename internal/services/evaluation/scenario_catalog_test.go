@@ -8,6 +8,7 @@
 package evaluation
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -49,6 +51,19 @@ func TestBuildScenarioCatalog_HasTwentySevenScenariosWithExpectedCategoryCounts(
 	}
 }
 
+func TestBuildScenarioCatalog_PreservesWorkflowOrder(t *testing.T) {
+	catalog, _, err := BuildScenarioCatalog()
+	require.NoError(t, err)
+	var ids []string
+	for _, scenario := range catalog.GetScenarios() {
+		ids = append(ids, scenario.GetScenarioId())
+	}
+	assert.Equal(t, "instruction-exact-format", ids[0])
+	assert.Equal(t, "final-response-diagnosis", ids[len(ids)-1])
+	// Recovery belongs before the final synthesis, including the guided retry.
+	assert.Equal(t, "recovery-error-guided-retry", ids[len(ids)-2])
+}
+
 func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 	defaultCatalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
@@ -57,8 +72,8 @@ func TestBuiltinCatalogVersionsTrackGradingSemantics(t *testing.T) {
 
 	assert.Equal(t, DefaultSuiteVersion, defaultCatalog.GetCatalogRef().GetVersion())
 	assert.Equal(t, DefaultSuiteVersion, smokeCatalog.GetCatalogRef().GetVersion())
-	assert.Equal(t, "1.6.0", DefaultSuiteVersion)
-	assert.Equal(t, "1.3.0", GraderVersion)
+	assert.Equal(t, "1.13.0", DefaultSuiteVersion)
+	assert.Equal(t, "1.8.0", GraderVersion)
 }
 
 func TestValidateScenarioContract_AcceptsEveryAuthoredBlueprint(t *testing.T) {
@@ -88,7 +103,7 @@ func TestScenarioDiagnosisRubric_IsBoundIntoFrozenGoldArtifact(t *testing.T) {
 }
 
 // tribunalInvestigationBlueprint is a planted-fault investigation scenario,
-// which declares the intent-only run_commands_with_operator through TribunalCommands.
+// which declares the intent-only run_shell_command through TribunalCommands.
 func tribunalInvestigationBlueprint() ScenarioBlueprint {
 	blueprints, err := InvestigationScenarioBlueprints()
 	if err != nil {
@@ -120,13 +135,13 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"case title carries a template token", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.Input.Seed.CaseTitle = "Sweep {{workspace}}" }, constants.ErrEvaluationScenarioContractInvalid},
 		{"allowed tool not in registry", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.AllowedTools = append(b.AllowedTools, "no_such_tool") }, constants.ErrEvaluationScenarioContractInvalid},
 		{"expected tool not allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.AllowedTools = []string{"read_file"} }, constants.ErrEvaluationScenarioContractInvalid},
-		{"tool both allowed and forbidden", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.ForbiddenTools = []string{"log_stream_filter"} }, constants.ErrEvaluationScenarioContractInvalid},
+		{"tool both allowed and forbidden", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.ForbiddenTools = []string{constants.MCPToolSearchDirectory} }, constants.ErrEvaluationScenarioContractInvalid},
 		{"ANSWER scenario declares expected tools", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.TrajectoryPolicy = evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER
 		}, constants.ErrEvaluationScenarioContractInvalid},
 		{"GUIDED scenario has no prompt hint", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.Gold.PromptHint = nil }, constants.ErrEvaluationScenarioContractInvalid},
 		{"hinted tool is not an expected tool", toolSelectFileRead, func(b *ScenarioBlueprint) {
-			b.Gold.PromptHint.HintedTools = []string{"log_stream_filter"}
+			b.Gold.PromptHint.HintedTools = []string{constants.MCPToolSearchFile}
 		}, constants.ErrEvaluationScenarioContractInvalid},
 		{"GOVERNED scenario has no forbidden tools", securityPolicyBlockRun, func(b *ScenarioBlueprint) { b.ForbiddenTools = nil }, constants.ErrEvaluationScenarioContractInvalid},
 		{"deterministic scenario has no content check", techNetworkSummary, func(b *ScenarioBlueprint) { b.Gold.ContentCheck = nil }, constants.ErrEvaluationScenarioContractInvalid},
@@ -143,7 +158,7 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 			b.Gold.PromptHint.Arguments = b.Gold.PromptHint.Arguments[:1]
 		}, constants.ErrEvaluationPromptUnanswerable},
 		{"required argument has two hint sources", toolArgGrepPattern, func(b *ScenarioBlueprint) {
-			b.Gold.PromptHint.Arguments = append(b.Gold.PromptHint.Arguments, hintArg("log_stream_filter", "pattern", sourcePrompt, "AUTH_FAILURE"))
+			b.Gold.PromptHint.Arguments = append(b.Gold.PromptHint.Arguments, hintArg(constants.MCPToolSearchDirectory, "pattern", sourcePrompt, "AUTH_FAILURE"))
 		}, constants.ErrEvaluationPromptUnanswerable},
 		{"prompt source value missing from prompt", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.Input.UserPrompt = "Search " + ScenarioWorkspaceToken + " for the failures."
@@ -152,6 +167,9 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 			b.Gold.PromptHint.Arguments[0].Value = "PAYMENT_TIMEOUT"
 		}, constants.ErrEvaluationPromptUnanswerable},
 		{"workspace source but prompt never names the workspace", toolArgGrepPattern, func(b *ScenarioBlueprint) { b.Input.UserPrompt = "Search for the exact pattern AUTH_FAILURE." }, constants.ErrEvaluationPromptUnanswerable},
+		{"workspace source names no workspace path", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.PromptHint.Arguments[1].Value = ""
+		}, constants.ErrEvaluationPromptUnanswerable},
 		{"workspace source value outside the workspace", toolSelectFileRead, func(b *ScenarioBlueprint) {
 			b.Gold.PromptHint.Arguments[0].Value = "/etc/retry-config.env"
 		}, constants.ErrEvaluationPromptUnanswerable},
@@ -215,22 +233,13 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"gold evidence reference has no criteria", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.Gold.GoldEvidenceReferences = []ScenarioGoldEvidenceReference{{ReferenceID: "ref-1"}}
 		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"tribunal commands without run_commands_with_operator allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+		{"tribunal commands without run_shell_command allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.TribunalCommands = true
 		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"non-tribunal scenario allows the intent-only command tool", toolArgGrepPattern, func(b *ScenarioBlueprint) {
-			b.AllowedTools = append(b.AllowedTools, agentToolRunCommands)
-		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"tribunal validator constrains the intent-only command argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
-			b.Gold.ArgumentValidators = []ToolArgumentValidator{{
-				ToolName:  agentToolRunCommands,
-				Arguments: []ToolArgumentConstraint{{Name: agentToolArgCommand, RequiredTerms: [][]string{{"cat"}}}},
-			}}
-		}, constants.ErrEvaluationScenarioContractInvalid},
-		{"tribunal hint omits the intent request argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
+		{"tribunal hint omits the shell command argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
 			b.TrajectoryPolicy = evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED
-			b.ExpectedTools = []string{agentToolRunCommands}
-			b.Gold.PromptHint = hint([]string{agentToolRunCommands})
+			b.ExpectedTools = []string{constants.MCPToolRunShellCommand}
+			b.Gold.PromptHint = hint([]string{constants.MCPToolRunShellCommand})
 		}, constants.ErrEvaluationPromptUnanswerable},
 	}
 	for _, tt := range tests {
@@ -258,17 +267,17 @@ func TestBuildScenarioCatalog_RejectsABlueprintThatBreaksTheContract(t *testing.
 }
 
 // TestHintLint_RejectsCatalog100GrepPrompt reproduces finding E3: the 1.0.0
-// prompt named no path although log_stream_filter requires one, so the
-// task was not answerable. The 1.1.0 prompt names the workspace and passes.
+// prompt named no path although the search tool requires one, so the task
+// was not answerable. The current prompt names the workspace and passes.
 func TestHintLint_RejectsCatalog100GrepPrompt(t *testing.T) {
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 
 	blueprint := toolArgGrepPattern()
-	blueprint.Input.UserPrompt = "Search for the exact pattern AUTH_FAILURE using log_stream_filter."
+	blueprint.Input.UserPrompt = "Search for the exact pattern AUTH_FAILURE using " + constants.MCPToolSearchDirectory + "."
 	err = validateScenarioContract(blueprint, catalog)
 	require.ErrorIs(t, err, constants.ErrEvaluationPromptUnanswerable)
-	assert.Contains(t, err.Error(), "log_path")
+	assert.Contains(t, err.Error(), `"path"`)
 
 	require.NoError(t, validateScenarioContract(toolArgGrepPattern(), catalog))
 }
@@ -284,6 +293,11 @@ func TestBuildScenarioCatalog_SeedsCarryConversationTurns(t *testing.T) {
 	require.Len(t, input.Seed.Turns, 2)
 	assert.Equal(t, "user", input.Seed.Turns[0].Sender)
 	assert.Equal(t, "primary", input.Seed.Turns[1].Sender)
+
+	// The primary turn quotes the error the tool really returns for a missing path.
+	_, toolErr := (&mcp.SearchDirectoryTool{}).Execute(context.Background(), json.RawMessage(`{"pattern":"AUTH_FAILURE"}`))
+	require.ErrorIs(t, toolErr, constants.ErrMissingRequiredField)
+	assert.Contains(t, input.Seed.Turns[1].Content, toolErr.Error())
 }
 
 func TestBuildScenarioCatalog_PublicHintNeverCarriesValues(t *testing.T) {

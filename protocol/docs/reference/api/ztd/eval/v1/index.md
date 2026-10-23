@@ -14,6 +14,7 @@
     - [CandidateVote](#ztd-eval-v1-CandidateVote)
     - [ConformanceA2ACall](#ztd-eval-v1-ConformanceA2ACall)
     - [ConformanceAnchor](#ztd-eval-v1-ConformanceAnchor)
+    - [ConformanceApprovalRequest](#ztd-eval-v1-ConformanceApprovalRequest)
     - [ConformanceCaseEvidence](#ztd-eval-v1-ConformanceCaseEvidence)
     - [ConformanceExchange](#ztd-eval-v1-ConformanceExchange)
     - [ConformanceObservation](#ztd-eval-v1-ConformanceObservation)
@@ -31,6 +32,7 @@
     - [EvaluationAssignmentResult](#ztd-eval-v1-EvaluationAssignmentResult)
     - [EvaluationAttempt](#ztd-eval-v1-EvaluationAttempt)
     - [EvaluationCampaignSpec](#ztd-eval-v1-EvaluationCampaignSpec)
+    - [EvaluationConsensusIdentity](#ztd-eval-v1-EvaluationConsensusIdentity)
     - [EvaluationDeploymentIdentity](#ztd-eval-v1-EvaluationDeploymentIdentity)
     - [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation)
     - [EvaluationMetric](#ztd-eval-v1-EvaluationMetric)
@@ -109,6 +111,7 @@
     - [AgentReviewVerdict](#ztd-eval-v1-AgentReviewVerdict)
     - [AgentRiskLevel](#ztd-eval-v1-AgentRiskLevel)
     - [AgentRole](#ztd-eval-v1-AgentRole)
+    - [ConformanceApprovalDecision](#ztd-eval-v1-ConformanceApprovalDecision)
     - [ConformanceFailureClass](#ztd-eval-v1-ConformanceFailureClass)
     - [ConformanceObservationKind](#ztd-eval-v1-ConformanceObservationKind)
     - [ConformanceSuiteVerdict](#ztd-eval-v1-ConformanceSuiteVerdict)
@@ -296,7 +299,8 @@ directory is listed with an empty sha256 and size -1.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| command | [string](#string) |  |  |
+| command | [string](#string) |  | command is the shell text an agent-trace.v7 or earlier candidate step recorded. It is decoded only so historical traces stay verifiable; new steps never set it and agent-trace.v8 rejects it. |
+| arguments | [ztd.operator.v1.RunShellCommandArguments](#ztd-operator-v1-RunShellCommandArguments) |  |  |
 
 
 
@@ -349,6 +353,30 @@ from its enrollment binding, cross-checked against that Operator&#39;s export.
 | key_id | [string](#string) |  |  |
 | public_key_hex | [string](#string) |  |  |
 | export_sha256 | [string](#string) |  | sha256 of the raw export file bytes |
+
+
+
+
+
+
+<a name="ztd-eval-v1-ConformanceApprovalRequest"></a>
+
+### ConformanceApprovalRequest
+ConformanceApprovalRequest is what an attended run asks its human approver for
+one case that suspends a transaction. `eval conformance run --attended --json`
+prints each as one canonical JSON line on stderr, in case order. MCP and A2A
+requests name the suspended transaction. A blocking ingress (governed dispatch,
+CLI, MCP stdio) is requested before its call, so its tx_hash is empty: the
+transaction is the next one the run suspends.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| case_id | [string](#string) |  |  |
+| attempt_id | [string](#string) |  |  |
+| ingress | [string](#string) |  |  |
+| decision | [ConformanceApprovalDecision](#ztd-eval-v1-ConformanceApprovalDecision) |  |  |
+| tx_hash | [string](#string) |  |  |
 
 
 
@@ -461,6 +489,8 @@ executor whose commitment links must be adjacent.
 | attended | [bool](#bool) |  |  |
 | started_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | finished_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| a2a_ingress_absent | [bool](#bool) |  | Gateway health reported no A2A ingress (no downstream configured). A2A is opt-in, so its cases are not applicable to this run. |
+| outbound_absent | [bool](#bool) |  | The selected Data Operator was the Gateway&#39;s embedded Operator, which also executed this run&#39;s outbound dispatch and CLI cases. |
 
 
 
@@ -733,7 +763,7 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | model_registry | [ModelVariant](#ztd-eval-v1-ModelVariant) | repeated |  |
 | model_registry_digest | [string](#string) |  |  |
 | campaign_digest | [string](#string) |  |  |
-| governance_posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  |  |
+| governance_posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  | governance_posture is set only on campaigns frozen before the posture moved to the run (EvaluationRun.active_posture). New campaigns leave it unspecified; a campaign runs under whatever posture each run freezes. |
 | scenario_count | [uint32](#uint32) |  |  |
 | repetition_count | [uint32](#uint32) |  |  |
 | platform_release | [string](#string) |  | platform_release is the ztd build version that froze the campaign. It is part of campaign_digest, so a campaign cannot be re-labeled. Empty only on campaigns frozen before v2.3.0; their release is an operator-asserted tag held outside the digest. |
@@ -741,6 +771,31 @@ EvaluationCampaignSpec is the frozen private campaign definition.
 | hold_context | [bool](#bool) |  | hold_context makes every repetition after the first continue the previous repetition&#39;s investigation: the model receives that repetition&#39;s complete conversation and works in the same workspace. Only set when repetition_count &gt; 1; false on campaigns frozen before it existed. |
 | investigation | [EvaluationInvestigation](#ztd-eval-v1-EvaluationInvestigation) |  | Investigation identity and its authoritative Data Operator are frozen into campaign_digest. Absent only on legacy specs frozen before this field. |
 | formation_stack_set_digest | [string](#string) |  | Nonempty only for a system campaign. Binds the complete frozen catalog formation set into campaign_digest, independently of later catalog edits. |
+
+
+
+
+
+
+<a name="ztd-eval-v1-EvaluationConsensusIdentity"></a>
+
+### EvaluationConsensusIdentity
+EvaluationConsensusIdentity is the L2 consensus binding one run executes
+under. A run resumes only against the identical binding, so a rebind never
+mixes two vote producers or vote models in one run.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| bound | [bool](#bool) |  |  |
+| binding_id | [string](#string) |  |  |
+| provider | [string](#string) |  |  |
+| vote_kind | [string](#string) |  |  |
+| model_tag | [string](#string) |  |  |
+| model_digest | [string](#string) |  |  |
+| quorum | [uint32](#uint32) |  |  |
+| member_app_ids | [string](#string) | repeated |  |
+| binding_digest | [string](#string) |  | binding_digest is the SHA-256 of the complete governing binding, including the fields not projected above. Empty when unbound. |
 
 
 
@@ -874,7 +929,7 @@ stable identity (not session ID) of the Data Operator that owns its ledger.
 | run_id | [string](#string) |  |  |
 | suite_ref | [ztd.compliance.v1.VersionedReference](#ztd-compliance-v1-VersionedReference) |  |  |
 | deployment | [EvaluationDeploymentIdentity](#ztd-eval-v1-EvaluationDeploymentIdentity) |  |  |
-| active_posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  |  |
+| active_posture | [EvaluationGovernancePosture](#ztd-eval-v1-EvaluationGovernancePosture) |  | active_posture is the live Gateway posture, frozen at run start. The run executes and resumes only under this posture. |
 | lane | [EvaluationLane](#ztd-eval-v1-EvaluationLane) |  |  |
 | target_operator_id | [string](#string) |  |  |
 | target_operator_session_id | [string](#string) |  |  |
@@ -885,6 +940,7 @@ stable identity (not session ID) of the Data Operator that owns its ledger.
 | campaign_binding | [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding) |  |  |
 | provider_observation_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
 | model_provenance_policy | [EvaluationWitnessPolicy](#ztd-eval-v1-EvaluationWitnessPolicy) |  |  |
+| consensus | [EvaluationConsensusIdentity](#ztd-eval-v1-EvaluationConsensusIdentity) |  | consensus is the live Gateway&#39;s L2 consensus binding, frozen at run start. Absent only on runs started before it existed; those never resume. |
 
 
 
@@ -955,7 +1011,7 @@ EvaluationScenarioDefinition describes one frozen typed scenario.
 | eligible_roles | [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) | repeated | eligible_roles lists the model roles that perform this task in the external client. The homogeneous scheduler assigns the scenario only to these roles; the frozen catalog digest binds the set. |
 | trajectory_policy | [EvaluationTrajectoryPolicy](#ztd-eval-v1-EvaluationTrajectoryPolicy) |  |  |
 | prompt_hint | [PromptHint](#ztd-eval-v1-PromptHint) |  |  |
-| tribunal_commands | [bool](#bool) |  | tribunal_commands declares run_commands_with_operator intent-only: the model states the request and the Tribunal deliberation writes the command, which then runs through L1-L5 like any other. Unset, the model authors the command itself. The frozen catalog digest binds the choice. |
+| tribunal_commands | [bool](#bool) |  | tribunal_commands routes run_shell_command through Tribunal authoring. Unset, the model calls the native tool directly. The frozen catalog digest binds the choice. |
 
 
 
@@ -1408,6 +1464,9 @@ ModelVariant is one frozen provider-backed model identity in a campaign.
 | quantization | [string](#string) |  |  |
 | context_limit | [uint32](#uint32) |  |  |
 | capability_observations | [ModelCapabilityObservation](#ztd-eval-v1-ModelCapabilityObservation) | repeated |  |
+| model_format | [string](#string) |  | Provider-reported artifact format and installed size, frozen with model_digest. |
+| artifact_size_bytes | [uint64](#uint64) |  |  |
+| parameter_count_source | [ztd.operator.v1.ParameterCountSource](#ztd-operator-v1-ParameterCountSource) |  |  |
 
 
 
@@ -2163,7 +2222,8 @@ exactly one of value and unavailable_reason is set.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | verdict | [AgentReviewVerdict](#ztd-eval-v1-AgentReviewVerdict) |  |  |
-| command | [string](#string) |  | the command after review |
+| command | [string](#string) |  | command is the reviewed shell text of an agent-trace.v7 or earlier step, decoded only for historical traces; agent-trace.v8 rejects it. |
+| arguments | [ztd.operator.v1.RunShellCommandArguments](#ztd-operator-v1-RunShellCommandArguments) |  |  |
 
 
 
@@ -2384,6 +2444,20 @@ AgentRole is the generic function a step performs in an agent pipeline.
 
 
 
+<a name="ztd-eval-v1-ConformanceApprovalDecision"></a>
+
+### ConformanceApprovalDecision
+ConformanceApprovalDecision is the human decision a suspending case asks for.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONFORMANCE_APPROVAL_DECISION_UNSPECIFIED | 0 |  |
+| CONFORMANCE_APPROVAL_DECISION_APPROVE | 1 | row 23 |
+| CONFORMANCE_APPROVAL_DECISION_DENY | 2 | row 24 |
+| CONFORMANCE_APPROVAL_DECISION_LEAVE_PENDING | 3 | row 22: the suspension is the expected outcome |
+
+
+
 <a name="ztd-eval-v1-ConformanceFailureClass"></a>
 
 ### ConformanceFailureClass
@@ -2425,7 +2499,6 @@ AgentRole is the generic function a step performs in an agent pipeline.
 | CONFORMANCE_OBSERVATION_KIND_SUSPENDED | 4 | approval pending, tx hash returned |
 | CONFORMANCE_OBSERVATION_KIND_NOT_RUN_ATTENDED | 5 | attended case skipped in an unattended run |
 | CONFORMANCE_OBSERVATION_KIND_UNTYPED | 6 | anything else: always a failure |
-| CONFORMANCE_OBSERVATION_KIND_NOT_RUN_OUTBOUND | 7 | no outbound Data Operator selected |
 | CONFORMANCE_OBSERVATION_KIND_NOT_RUN_A2A | 8 | no harness-owned A2A downstream configured |
 
 

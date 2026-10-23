@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/security"
 )
 
@@ -22,7 +23,7 @@ type ConfigDiffMaskTool struct{}
 
 // Name returns the tool identifier.
 func (t *ConfigDiffMaskTool) Name() string {
-	return "config_diff_mask"
+	return constants.MCPToolConfigDiffMask
 }
 
 // Description returns a human-readable description.
