@@ -60,7 +60,9 @@ func TestHandleFsListRequest_ValidPath(t *testing.T) {
 	results := &recordingResultsPublisher{}
 	svc := newFileOpsServiceWithDepsForTest(t, cfg, logger, fileEditSvc, client, fileOpsTestDeps{Results: results})
 
-	req := &operatorv1.FsListRequested{Path: cfg.WorkDir, MaxDepth: 1, MaxEntries: 10}
+	// Depth 0: recursing into the runtime tree's .ztd/ would fill MaxEntries before
+	// listed.txt whenever Readdir (on-disk hash order) returns .ztd first.
+	req := &operatorv1.FsListRequested{Path: cfg.WorkDir, MaxDepth: 0, MaxEntries: 10}
 	msg := &PubSubCommandMessage{
 		ID:                "msg-1",
 		EventType:         constants.Event.Operator.FsList.Requested,
