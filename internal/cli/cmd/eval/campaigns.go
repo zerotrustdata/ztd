@@ -436,11 +436,12 @@ func campaignCells(catalog *evalv1.EvaluationScenarioCatalog, spec *evalv1.Evalu
 
 // campaignCreateSpec is everything that defines one campaign.
 type campaignCreateSpec struct {
-	CampaignID    string
-	Variants      []*evalv1.ModelVariant
-	FormationIDs  []string
-	Repetitions   uint32
-	Investigation *evalv1.EvaluationInvestigation
+	CampaignID       string
+	Variants         []*evalv1.ModelVariant
+	FormationIDs     []string
+	FormationCatalog *evaluation.ExecutionTopologies
+	Repetitions      uint32
+	Investigation    *evalv1.EvaluationInvestigation
 	// HoldContext carries each cell's investigation into its next repetition.
 	HoldContext bool
 	// SuiteID names the suite the campaign freezes; empty means the default suite.
@@ -490,7 +491,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 	}
 	variants := spec.Variants
 	if len(spec.FormationIDs) > 0 {
-		variants, err = evaluation.MaterializeFormationVariants(variants, spec.FormationIDs)
+		variants, err = evaluation.MaterializeFormationVariants(variants, spec.FormationIDs, spec.FormationCatalog)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: campaigns create: formation variants: %w", err)
 		}
@@ -511,6 +512,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 			CampaignID:   spec.CampaignID,
 			Variants:     freeze.Variants,
 			FormationIDs: spec.FormationIDs,
+			Catalog:      spec.FormationCatalog,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: campaigns create: formations: %w", err)
@@ -527,6 +529,7 @@ func createCampaign(ctx context.Context, deps nativeEvalDeps, fileSvc fs.Runtime
 		Platform:          spec.Platform,
 		Investigation:     spec.Investigation,
 		FormationStackSet: stackSet,
+		FormationCatalog:  spec.FormationCatalog,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: campaigns create: %w", err)
@@ -658,6 +661,10 @@ Examples:
 			}
 			create := campaignCreateSpec{CampaignID: campaignID, Repetitions: reps, HoldContext: holdContext, SuiteID: suite, Platform: platformIdentity(cmd), Investigation: investigation}
 			if formationsSet {
+				create.FormationCatalog, err = newFormationCatalog(cfg.ProjectRoot).topologies()
+				if err != nil {
+					return fmt.Errorf("evaluation: campaigns create: formation catalog: %w", err)
+				}
 				create.FormationIDs = formationIDs
 				create.Variants = registry
 			} else if create.Variants, err = selector.Resolve(registry); err != nil {

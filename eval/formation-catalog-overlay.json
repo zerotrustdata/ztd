@@ -45048,6 +45048,54 @@
         "estimated_kv_cache_mib": 256,
         "model_digest": "637d9ffe5f5ee2bdbfa93a61c8c437d134931219778c7ffc693402507c232254"
       }
+    },
+    {
+      "id": "eval-v130-consensus-formation-1023-0725",
+      "display_name": "eval-v130-consensus-formation-1023-0725",
+      "description": "ministral-3:3b primary, gemma4:e2b assistant, llama3.2:1b lite",
+      "max_vram_mib": 12288,
+      "primary": {
+        "variant_id": "ministral-3-3b",
+        "display_name": "ministral-3:3b",
+        "provider": "mistral3",
+        "family": "mistral3",
+        "provider_class": "ollama",
+        "served_model_tag": "ministral-3:3b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 3800000000,
+        "estimated_model_vram_mib": 2265,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "f04aa1c738f64e13c625b82ae92504fc0260fa6723b509ed1ece0fa188179b1d"
+      },
+      "assistant": {
+        "variant_id": "gemma4-e2b",
+        "display_name": "gemma4:e2b",
+        "provider": "gemma4",
+        "family": "gemma4",
+        "provider_class": "ollama",
+        "served_model_tag": "gemma4:e2b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 5100000000,
+        "estimated_model_vram_mib": 3040,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "2cf98652fdc60fbb161f69c1c5cd5cca671992211d1214edb11dabeb56434a0d"
+      },
+      "lite": {
+        "variant_id": "llama3-2-1b",
+        "display_name": "llama3.2:1b",
+        "provider": "llama",
+        "family": "llama",
+        "provider_class": "ollama",
+        "served_model_tag": "llama3.2:1b",
+        "trust": "sovereign",
+        "quantization": "Q8_0",
+        "parameter_count": 1200000000,
+        "estimated_model_vram_mib": 1216,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878"
+      }
     }
   ]
 }

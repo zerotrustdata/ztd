@@ -30,6 +30,9 @@ type FormationCatalogStackGenerationRequest struct {
 	// FormationIDs names the catalog formations to materialize. Empty means
 	// every catalog formation.
 	FormationIDs []string
+	// Catalog is the resolved formation catalog, including project overrides.
+	// Nil selects the built-in defaults.
+	Catalog *ExecutionTopologies
 }
 
 // GenerateFormationCatalogStackSet materializes one heterogeneous stack per
@@ -39,7 +42,7 @@ func GenerateFormationCatalogStackSet(req FormationCatalogStackGenerationRequest
 	if req.CampaignID == "" {
 		return nil, fmt.Errorf("evaluation: generate formation catalog stack set: %w", constants.ErrMissingRequiredField)
 	}
-	formations, err := selectFormations(req.FormationIDs)
+	formations, err := selectFormations(req.Catalog, req.FormationIDs)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: generate formation catalog stack set: %w", err)
 	}

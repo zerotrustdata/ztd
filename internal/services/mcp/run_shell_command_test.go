@@ -22,10 +22,24 @@ func TestRunShellCommandTool_Name(t *testing.T) {
 	require.Equal(t, "run_shell_command", tool.Name())
 }
 
-func TestRunShellCommandTool_Description(t *testing.T) {
+// The description and schema comments are the usage contract a model reads
+// from tools/list. They must say command is the executable name and args is
+// the argv array, so a caller does not send a shell command line.
+func TestRunShellCommandTool_DescriptionTeachesArgvContract(t *testing.T) {
 	tool := &RunShellCommandTool{}
-	require.NotEmpty(t, tool.Description())
-	require.Contains(t, tool.Description(), "shell")
+	desc := tool.Description()
+	require.Contains(t, desc, "executable")
+	require.Contains(t, desc, "command")
+	require.Contains(t, desc, "args")
+	require.NotContains(t, desc, "shell commands")
+
+	schema := tool.InputSchema()
+	command := schema.Properties["command"].Description
+	require.Contains(t, command, "executable")
+	require.Contains(t, command, "args")
+	args := schema.Properties["args"].Description
+	require.Contains(t, args, "argument")
+	require.Contains(t, args, "command")
 }
 
 func TestRunShellCommandTool_InputSchema(t *testing.T) {

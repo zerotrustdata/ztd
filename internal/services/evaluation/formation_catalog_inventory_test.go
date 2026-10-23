@@ -42,12 +42,12 @@ func TestMaterializeFormationCatalogVariants_SelectsAllSovereignCatalogTags(t *t
 		{VariantId: "freeze-gemma4-e2b", ProviderClass: "ollama", ServedModelTag: "gemma4:e2b", ModelDigest: repeatHex('2'), ModelFamily: "Gemma 4", Quantization: "Q4_K_M"},
 		{VariantId: "freeze-llama32-1b", ProviderClass: "ollama", ServedModelTag: "llama3.2:1b", ModelDigest: repeatHex('6'), ModelFamily: "Llama 3.2", Quantization: "Q8_0"},
 	}
-	_, err := MaterializeFormationVariants(partial, nil)
+	_, err := MaterializeFormationVariants(partial, nil, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
 
 	source := FormationCatalogFixtureVariants(func(string) string { return repeatHex('a') })
-	selected, err := MaterializeFormationVariants(source, nil)
+	selected, err := MaterializeFormationVariants(source, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, selected, 11)
 
@@ -65,7 +65,7 @@ func TestMaterializeFormationCatalogVariants_SelectsAllSovereignCatalogTags(t *t
 func TestMaterializeFormationVariants_SelectsOnlyTheNamedFormationsModels(t *testing.T) {
 	source := FormationCatalogFixtureVariants(func(string) string { return repeatHex('a') })
 
-	selected, err := MaterializeFormationVariants(source, []string{"qwen-powerhouse"})
+	selected, err := MaterializeFormationVariants(source, []string{"qwen-powerhouse"}, nil)
 	require.NoError(t, err)
 	tags := make([]string, 0, len(selected))
 	for _, variant := range selected {
@@ -77,11 +77,11 @@ func TestMaterializeFormationVariants_SelectsOnlyTheNamedFormationsModels(t *tes
 		"qwen3.5:9b",
 	}, tags)
 
-	all, err := MaterializeFormationVariants(source, nil)
+	all, err := MaterializeFormationVariants(source, nil, nil)
 	require.NoError(t, err)
 	assert.Len(t, all, 11)
 
-	_, err = MaterializeFormationVariants(source, []string{"no-such-formation"})
+	_, err = MaterializeFormationVariants(source, []string{"no-such-formation"}, nil)
 	require.ErrorIs(t, err, constants.ErrFormationInvalid)
 }
 

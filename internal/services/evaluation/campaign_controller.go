@@ -124,6 +124,9 @@ type CampaignCreateRequest struct {
 	Platform          PlatformIdentity
 	Investigation     *evalv1.EvaluationInvestigation
 	FormationStackSet *HeterogeneousStackSet
+	// FormationCatalog is the catalog used to materialize and verify new stacks.
+	// Nil selects the built-in defaults; execution uses only the frozen stack set.
+	FormationCatalog *ExecutionTopologies
 }
 
 // RunStartRequest binds one new run to an existing campaign.
@@ -171,6 +174,7 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 		}
 		expected, err := GenerateFormationCatalogStackSet(FormationCatalogStackGenerationRequest{
 			CampaignID: req.CampaignID, Variants: spec.GetModelRegistry(), Seed: req.FormationStackSet.Seed, FormationIDs: formationIDs,
+			Catalog: req.FormationCatalog,
 		})
 		if err != nil {
 			return nil, err
