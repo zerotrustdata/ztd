@@ -8,9 +8,11 @@
 package services
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
@@ -18,18 +20,31 @@ import (
 func TestPrintOperatorStartupBanner_LogsIdentityAndCapabilityBoundary(t *testing.T) {
 	t.Parallel()
 	cfg := testutil.NewTestConfig(t)
-	cfg.Endpoint = "gateway.example"
-	cfg.HTTPSPort = 8443
-	logger, sink := testutil.NewBufferLogger(t)
+	tests := []struct {
+		name    string
+		workDir string
+	}{
+		{name: "native runtime path", workDir: cfg.WorkDir},
+		{name: "Windows path", workDir: `D:\operators\test-op`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg.WorkDir = tt.workDir
+			cfg.Endpoint = "gateway.example"
+			cfg.HTTPSPort = 8443
+			logger, sink := testutil.NewBufferLogger(t)
 
-	printOperatorStartupBanner(cfg, logger)
+			printOperatorStartupBanner(cfg, logger)
 
-	text := sink.String()
-	assert.Contains(t, text, "Initializing Edge Execution Operator")
-	assert.Contains(t, text, "gateway.example:8443")
-	assert.Contains(t, text, cfg.WorkDir)
-	assert.Contains(t, text, "Air-gap mode active")
-	assert.Contains(t, text, "Awaiting cryptographically signed agentic intents")
+			text := sink.String()
+			assert.Contains(t, text, "Initializing Edge Execution Operator")
+			assert.Contains(t, text, "gateway.example:8443")
+			// TextHandler quotes the value, escaping Windows path separators.
+			assert.Contains(t, text, "fs.read="+strconv.Quote("GRANTED: Scoped to "+cfg.WorkDir))
+			assert.Contains(t, text, "Air-gap mode active")
+			assert.Contains(t, text, "Awaiting cryptographically signed agentic intents")
+		})
+	}
 }
 
 func TestNewZtdoService_NilTLSConfig(t *testing.T) {
