@@ -13,9 +13,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 type mockCommandExecutor struct {
@@ -375,11 +377,17 @@ func TestSysContainerStatusTool_Execute_MissingImageAndCreated(t *testing.T) {
 	require.Equal(t, "unknown", res["created"])
 }
 
-func TestSysContainerStatusTool_Execute_NilExecutor(t *testing.T) {
-	// Test that tool works with nil executor (uses real executor)
-	// Since podman is not available in test environment, we skip this test
-	// The nil executor path is tested implicitly by the other tests which use mock executors
-	t.Skip("Skipping nil executor test as podman is not available in test environment")
+func TestSysContainerStatusTool_Execute_NilExecutorReportsInspectFailure(t *testing.T) {
+	tool := &SysContainerStatusTool{}
+	result, err := tool.Execute(testutil.Context(t), json.RawMessage(`{"container_name":"ztd-test-missing-container"}`))
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Content)
+
+	var res containerStatusResult
+	require.NoError(t, json.Unmarshal([]byte(result.Content[0].Text), &res))
+	assert.Equal(t, "ztd-test-missing-container", res.ContainerName)
+	assert.False(t, res.Running)
+	assert.Empty(t, res.Image)
 }
 
 func TestOrUnknown_EmptyString(t *testing.T) {

@@ -122,25 +122,22 @@ func TestNewHeartbeatService(t *testing.T) {
 }
 
 func TestHeartbeatService_SetResultsPublisher(t *testing.T) {
-	t.Run("accepts nil publisher without panic", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		logger := testutil.NewTestLogger()
-		svc := NewHeartbeatService(cfg, logger, nil)
+	t.Parallel()
+	svc := NewHeartbeatService(testutil.NewTestConfig(t), testutil.NewTestLogger(), nil)
+	publisher := &mockResultsPublisher{}
 
-		// Test that the setter exists and doesn't panic
-		svc.SetResultsPublisher(nil)
-	})
+	svc.SetResultsPublisher(publisher)
+	assert.Same(t, publisher, svc.results)
+
+	svc.SetResultsPublisher(nil)
+	assert.Nil(t, svc.results)
 }
 
 func TestHeartbeatService_SetContext(t *testing.T) {
-	t.Run("accepts context without panic", func(t *testing.T) {
-		t.Parallel()
-		cfg := testutil.NewTestConfig(t)
-		logger := testutil.NewTestLogger()
-		svc := NewHeartbeatService(cfg, logger, nil)
+	t.Parallel()
+	svc := NewHeartbeatService(testutil.NewTestConfig(t), testutil.NewTestLogger(), nil)
+	ctx := testutil.Context(t)
 
-		// Test that the setter exists and doesn't panic
-		svc.SetContext(context.TODO())
-	})
+	svc.SetContext(ctx)
+	assert.Equal(t, ctx, svc.ctx)
 }
