@@ -12,8 +12,6 @@ package gateway
 import (
 	"encoding/json"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -21,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
@@ -30,7 +29,7 @@ func TestResolveGatewayCertificateIdentity(t *testing.T) {
 		name         string
 		certMode     string
 		identityFile string
-		setupFile    func(t *testing.T, dir string) string
+		setupFile    func(t *testing.T, fileSvc fs.RuntimeFileService) string
 		wantErr      bool
 		errContains  string
 		checkResult  func(t *testing.T, extraIPs []net.IP, extraDNSNames []string)
@@ -38,17 +37,16 @@ func TestResolveGatewayCertificateIdentity(t *testing.T) {
 		{
 			name:     "loads identity from file",
 			certMode: "full",
-			setupFile: func(t *testing.T, dir string) string {
+			setupFile: func(t *testing.T, fileSvc fs.RuntimeFileService) string {
 				t.Helper()
-				identityFile := filepath.Join(dir, constants.NetworkIdentityFilename)
 				identity := network.NetworkIdentity{
 					IPs:       []string{"192.0.2.10", "2001:db8::10"},
 					Hostnames: []string{"gateway.test.internal"},
 				}
 				identityData, err := json.Marshal(identity)
 				require.NoError(t, err)
-				require.NoError(t, os.WriteFile(identityFile, identityData, 0600))
-				return identityFile
+				require.NoError(t, fileSvc.WriteFile(t.Context(), constants.NetworkIdentityFilename, identityData, constants.PermFilePrivate))
+				return fileSvc.Resolve(constants.NetworkIdentityFilename)
 			},
 			wantErr: false,
 			checkResult: func(t *testing.T, extraIPs []net.IP, extraDNSNames []string) {
@@ -86,11 +84,10 @@ func TestResolveGatewayCertificateIdentity(t *testing.T) {
 		{
 			name:     "malformed identity file",
 			certMode: "full",
-			setupFile: func(t *testing.T, dir string) string {
+			setupFile: func(t *testing.T, fileSvc fs.RuntimeFileService) string {
 				t.Helper()
-				identityFile := filepath.Join(dir, constants.NetworkIdentityFilename)
-				require.NoError(t, os.WriteFile(identityFile, []byte("not-json"), 0600))
-				return identityFile
+				require.NoError(t, fileSvc.WriteFile(t.Context(), constants.NetworkIdentityFilename, []byte("not-json"), constants.PermFilePrivate))
+				return fileSvc.Resolve(constants.NetworkIdentityFilename)
 			},
 			wantErr:     true,
 			errContains: "unmarshal",
@@ -102,14 +99,16 @@ func TestResolveGatewayCertificateIdentity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := testutil.NewTestLogger()
 			dir := testutil.TempDir(t)
+			fileSvc, err := fs.NewRuntimeFileService(dir, logger)
+			require.NoError(t, err)
 			identityFile := tt.identityFile
 
 			if tt.setupFile != nil {
-				identityFile = tt.setupFile(t, dir)
+				identityFile = tt.setupFile(t, fileSvc)
 			}
 
 			detector := network.NewDetector(logger)
-			extraIPs, extraDNSNames, err := resolveGatewayCertificateIdentity(tt.certMode, identityFile, detector, logger)
+			extraIPs, extraDNSNames, err := resolveGatewayCertificateIdentity(tt.certMode, identityFile, fileSvc, detector, logger)
 
 			if tt.wantErr {
 				require.Error(t, err)

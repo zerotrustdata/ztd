@@ -103,6 +103,41 @@ func assertNoPlaintextAnywhere(t *testing.T, root string, needles ...string) int
 	return scanned
 }
 
+func assertNoPlaintextInRuntime(t *testing.T, files rtfs.RuntimeFileService, root string, needles ...string) int {
+	t.Helper()
+	scanned := 0
+	var walk func(string) error
+	walk = func(relPath string) error {
+		entries, err := files.ReadDir(context.Background(), relPath)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			child := filepath.Join(relPath, entry.Name())
+			if entry.IsDir() {
+				if err := walk(child); err != nil {
+					return err
+				}
+				continue
+			}
+			if !entry.Type().IsRegular() {
+				continue
+			}
+			body, err := files.ReadFile(context.Background(), child)
+			if err != nil {
+				return err
+			}
+			scanned++
+			for _, needle := range needles {
+				assert.Falsef(t, bytes.Contains(body, []byte(needle)), "plaintext content %q found at %s", needle, child)
+			}
+		}
+		return nil
+	}
+	require.NoError(t, walk(root))
+	return scanned
+}
+
 func TestEvidenceFiles_EncryptEveryRecordUnderDataEval(t *testing.T) {
 	rt := newSealedRuntime(t)
 	ctx := context.Background()
@@ -143,7 +178,7 @@ func TestEvidenceFiles_SealComplianceReportBundlesUnderTheirOwnDomain(t *testing
 	assert.True(t, SealsPath(rt.files, reportPath))
 	assert.False(t, SealsPath(rt.raw, reportPath), "a file service that does not seal never claims to")
 	require.NoError(t, rt.files.WriteFile(ctx, reportPath, body, constants.PermFilePrivate))
-	assert.Positive(t, assertNoPlaintextAnywhere(t, rt.raw.Resolve(constants.ComplianceBundlesDirname), evidenceMarker))
+	assert.Positive(t, assertNoPlaintextInRuntime(t, rt.raw, constants.ComplianceBundlesDirname, evidenceMarker))
 
 	roundTrip, err := rt.files.ReadFile(ctx, reportPath)
 	require.NoError(t, err)
@@ -172,7 +207,7 @@ func TestEvidenceFiles_FailClosed(t *testing.T) {
 		exists, existsErr := rt.raw.FileExists(ctx, sealedPath)
 		require.NoError(t, existsErr)
 		assert.False(t, exists, "a refused write must not leave a plaintext or partial file")
-		assertNoPlaintextAnywhere(t, rt.raw.Resolve(""), evidenceMarker)
+		assertNoPlaintextInRuntime(t, rt.raw, "", evidenceMarker)
 	})
 
 	t.Run("a locked vault refuses to read", func(t *testing.T) {
@@ -410,7 +445,7 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	assert.Contains(t, string(exportedAssignments), "public synthetic evidence", "allowlisted tool result is available in the public export")
 	assert.Contains(t, string(exportedAssignments), markerGradeDetail, "grader detail is published verbatim")
 
-	scanned := assertNoPlaintextAnywhere(t, rt.raw.Resolve(""), evidenceMarker, prompt)
+	scanned := assertNoPlaintextInRuntime(t, rt.raw, "", evidenceMarker, prompt)
 	assert.Greater(t, scanned, 10, "the walk covered the evaluation records, vault, and export")
 }
 
@@ -446,7 +481,7 @@ func TestEvalBackup_CarriesCiphertextOnly(t *testing.T) {
 	restored, err = reinstalled.files.ReadFile(ctx, recordPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(restored), evidenceMarker)
-	assertNoPlaintextAnywhere(t, reinstalled.raw.Resolve(""), evidenceMarker)
+	assertNoPlaintextInRuntime(t, reinstalled.raw, "", evidenceMarker)
 
 	// A host whose key store never held the master key cannot open the snapshot.
 	other := newSealedRuntime(t)

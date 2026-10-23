@@ -40,12 +40,20 @@ func writeFile(t *testing.T, name, content string) string {
 func TestPrepare_EveryRegisteredAgentWritesAndVerifies(t *testing.T) {
 	for _, integration := range All() {
 		t.Run(string(integration.ID), func(t *testing.T) {
-			prepared, err := integration.Prepare(context.Background(), newScratchFiles(t), testutil.TempDir(t), "/fake/ztd", string(integration.ID), true)
+			files := newScratchFiles(t)
+			prepared, err := integration.Prepare(context.Background(), files, testutil.TempDir(t), "/fake/ztd", string(integration.ID), true)
 			require.NoError(t, err)
 			t.Cleanup(prepared.Cleanup)
 
 			assert.FileExists(t, prepared.ConfigPath)
-			data, err := os.ReadFile(prepared.ConfigPath)
+			var data []byte
+			if integration.ConfigStrategy == ConfigTempJSON {
+				relPath, relErr := files.Rel(prepared.ConfigPath)
+				require.NoError(t, relErr)
+				data, err = files.ReadFile(context.Background(), relPath)
+			} else {
+				data, err = os.ReadFile(prepared.ConfigPath)
+			}
 			require.NoError(t, err)
 			assert.Contains(t, string(data), "/fake/ztd", "config must point at the ztd stdio bridge")
 			assert.Contains(t, string(data), string(integration.ID), "config must select credentials by app name")

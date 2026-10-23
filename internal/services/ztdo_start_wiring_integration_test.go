@@ -299,5 +299,5 @@ func TestOperatorRuntimeRoot_OneDatabaseAndLedger(t *testing.T) {
 	service := newStartableZtdoService(t, nil)
 	require.NoError(t, startWithTimeout(t, service))
 
-	testutil.AssertOneDatabaseAndLedger(t, paths.Infra.DataDir)
+	testutil.AssertOneDatabaseAndLedger(t, service.fileSvc)
 }

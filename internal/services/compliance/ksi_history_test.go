@@ -278,9 +278,8 @@ func TestKSIHistoryStore_ListSnapshots_ReadDirError(t *testing.T) {
 
 	// Create a regular file at the history dir path so ReadDir fails with
 	// ENOTDIR (wrapped as ErrDirectoryRead, not ErrNotFound).
-	absPath := fileSvc.Resolve(historyDir)
-	require.NoError(t, os.MkdirAll(filepath.Dir(absPath), constants.PermDirStandard))
-	require.NoError(t, os.WriteFile(absPath, []byte("not a directory"), constants.PermFilePublic))
+	require.NoError(t, fileSvc.MkdirAll(ctx, filepath.Dir(historyDir), constants.PermDirStandard))
+	require.NoError(t, fileSvc.WriteFile(ctx, historyDir, []byte("not a directory"), constants.PermFilePublic))
 
 	_, err := store.ListSnapshots(ctx)
 	require.Error(t, err)
@@ -298,9 +297,8 @@ func TestKSIHistoryStore_PruneOlderThan_ReadDirError(t *testing.T) {
 
 	// Create a regular file at the history dir path so ReadDir fails with
 	// ENOTDIR (wrapped as ErrDirectoryRead, not ErrNotFound).
-	absPath := fileSvc.Resolve(historyDir)
-	require.NoError(t, os.MkdirAll(filepath.Dir(absPath), constants.PermDirStandard))
-	require.NoError(t, os.WriteFile(absPath, []byte("not a directory"), constants.PermFilePublic))
+	require.NoError(t, fileSvc.MkdirAll(ctx, filepath.Dir(historyDir), constants.PermDirStandard))
+	require.NoError(t, fileSvc.WriteFile(ctx, historyDir, []byte("not a directory"), constants.PermFilePublic))
 
 	_, err := store.PruneOlderThan(ctx, 24*time.Hour)
 	require.Error(t, err)

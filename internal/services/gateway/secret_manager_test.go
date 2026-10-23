@@ -246,15 +246,13 @@ func TestSecretManager_GetActuatorKey_RejectsMismatchedKeyID(t *testing.T) {
 func TestSecretManager_InitAppSettings_FailsWhenFileWriteFails(t *testing.T) {
 	db := newSecretManagerTestDB(t)
 	fileSvc := newTestFileSvc(t)
-	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
 
 	sm := newTestSecretManager(t, db, fileSvc)
 
 	// Replace the secrets directory with a file to cause real write failure
 	// This uses actual filesystem operations without mocking
-	require.NoError(t, os.RemoveAll(secretsDir))
-	require.NoError(t, os.WriteFile(secretsDir, []byte("not a directory"), 0600))
-	t.Cleanup(func() { _ = os.Remove(secretsDir) })
+	require.NoError(t, fileSvc.RemoveAll(context.Background(), constants.SecretsDirname))
+	require.NoError(t, fileSvc.WriteFile(context.Background(), constants.SecretsDirname, []byte("not a directory"), constants.PermFilePrivate))
 
 	err := sm.InitAppSettings()
 	require.Error(t, err)
@@ -264,7 +262,6 @@ func TestSecretManager_InitAppSettings_FailsWhenFileWriteFails(t *testing.T) {
 func TestSecretManager_InitAppSettings_DetectsDBFileDivergence(t *testing.T) {
 	db := newSecretManagerTestDB(t)
 	fileSvc := newTestFileSvc(t)
-	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
 	keyring := keystoretest.NewMemoryKeyring()
 
 	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
@@ -272,7 +269,7 @@ func TestSecretManager_InitAppSettings_DetectsDBFileDivergence(t *testing.T) {
 
 	// Write corrupted encrypted data (simulating manual file tampering)
 	corruptedData := []byte(`{"version":1,"nonce":"AAAA","ciphertext":"corrupted"}`)
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileAuditorHMACKey), corruptedData, 0600))
+	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileAuditorHMACKey), corruptedData, constants.PermFilePrivate))
 
 	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
 	err := sm2.InitAppSettings()
@@ -286,8 +283,7 @@ func TestSecretManager_InitAppSettings_WritesDigestManifest(t *testing.T) {
 	sm := newTestSecretManager(t, db, fileSvc)
 	require.NoError(t, sm.InitAppSettings())
 
-	manifestPath := filepath.Join(fileSvc.Resolve(constants.SecretsDirname), constants.SecretsFileBootstrapDigest)
-	data, err := os.ReadFile(manifestPath)
+	data, err := fileSvc.ReadFile(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest))
 	require.NoError(t, err, "bootstrap digest manifest must be written")
 
 	var manifest bootstrapDigestManifest
@@ -309,7 +305,7 @@ func TestSecretManager_InitAppSettings_ManifestPermissions(t *testing.T) {
 	sm := newTestSecretManager(t, db, fileSvc)
 	require.NoError(t, sm.InitAppSettings())
 
-	info, err := os.Stat(filepath.Join(fileSvc.Resolve(constants.SecretsDirname), constants.SecretsFileBootstrapDigest))
+	info, err := fileSvc.Stat(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest))
 	require.NoError(t, err)
 	// Windows doesn't support Unix permissions exactly, so just check file is not world-writable
 	perm := info.Mode().Perm()
@@ -319,7 +315,6 @@ func TestSecretManager_InitAppSettings_ManifestPermissions(t *testing.T) {
 func TestSecretManager_InitAppSettings_RejectsUncoordinatedSecretRotation(t *testing.T) {
 	db := newSecretManagerTestDB(t)
 	fileSvc := newTestFileSvc(t)
-	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
 	keyring := keystoretest.NewMemoryKeyring()
 
 	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
@@ -327,7 +322,7 @@ func TestSecretManager_InitAppSettings_RejectsUncoordinatedSecretRotation(t *tes
 
 	// Write corrupted encrypted data (simulating manual file tampering)
 	corruptedData := []byte(`{"version":1,"nonce":"AAAA","ciphertext":"corrupted"}`)
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileAuditorHMACKey), corruptedData, 0600))
+	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileAuditorHMACKey), corruptedData, constants.PermFilePrivate))
 
 	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
 	err := sm2.InitAppSettings()
@@ -338,10 +333,9 @@ func TestSecretManager_InitAppSettings_RejectsUncoordinatedSecretRotation(t *tes
 func TestSecretManager_InitAppSettings_RejectsPreexistingSecretWithoutAppSettings(t *testing.T) {
 	db := newSecretManagerTestDB(t)
 	fileSvc := newTestFileSvc(t)
-	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
 
 	preSeeded := strings.Repeat("c", 64)
-	require.NoError(t, os.WriteFile(filepath.Join(secretsDir, constants.SecretsFileAuditorHMACKey), []byte(preSeeded), 0600))
+	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.SecretsDirname, constants.SecretsFileAuditorHMACKey), []byte(preSeeded), constants.PermFilePrivate))
 
 	sm := newTestSecretManager(t, db, fileSvc)
 	err := sm.InitAppSettings()
@@ -393,20 +387,19 @@ func TestSecretManager_InitAppSettings_FailsWhenAuditorKeyMissing(t *testing.T) 
 func TestSecretManager_InitAppSettings_FailsWhenDigestManifestEntryMissing(t *testing.T) {
 	db := newSecretManagerTestDB(t)
 	fileSvc := newTestFileSvc(t)
-	secretsDir := fileSvc.Resolve(constants.SecretsDirname)
 	keyring := keystoretest.NewMemoryKeyring()
 
 	sm := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
 	require.NoError(t, sm.InitAppSettings())
-	manifestPath := filepath.Join(secretsDir, constants.SecretsFileBootstrapDigest)
-	data, err := os.ReadFile(manifestPath)
+	manifestRelPath := filepath.Join(constants.SecretsDirname, constants.SecretsFileBootstrapDigest)
+	data, err := fileSvc.ReadFile(context.Background(), manifestRelPath)
 	require.NoError(t, err)
 	var manifest bootstrapDigestManifest
 	require.NoError(t, json.Unmarshal(data, &manifest))
 	delete(manifest.Secrets, constants.SecretsFileAuditorHMACKey)
 	mutated, err := json.Marshal(manifest)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(manifestPath, mutated, 0600))
+	require.NoError(t, fileSvc.WriteFile(context.Background(), manifestRelPath, mutated, constants.PermFilePrivate))
 
 	sm2 := newTestSecretManagerWithKeyring(t, db, fileSvc, keyring)
 	err = sm2.InitAppSettings()

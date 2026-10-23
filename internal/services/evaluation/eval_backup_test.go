@@ -102,7 +102,7 @@ func newVaultedEvidenceFiles(t *testing.T, raw fs.RuntimeFileService, keyring ke
 // wipeRuntime removes the whole runtime tree, vault included.
 func (f *evalBackupFixture) wipeRuntime(t *testing.T) {
 	t.Helper()
-	require.NoError(t, os.RemoveAll(f.raw.Resolve("")))
+	require.NoError(t, f.raw.RemoveAll(context.Background(), constants.PathCurrentDir))
 }
 
 func (f *evalBackupFixture) write(t *testing.T, rel, body string) {

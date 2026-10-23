@@ -12,6 +12,8 @@
 // the Gateway governs execution.
 package agent
 
+import "github.com/zerotrustdata/ztd/internal/services/fs"
+
 import (
 	"fmt"
 	"strings"
@@ -65,6 +67,7 @@ const (
 // VerifyInput is what a VerifyHook inspects: the config the launcher just
 // wrote and the argv it computed for the agent binary.
 type VerifyInput struct {
+	Files      fs.RuntimeFileService
 	ConfigPath string
 	LaunchArgs []string
 }

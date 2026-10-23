@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
@@ -32,5 +31,5 @@ func TestGatewayRuntimeRoot_OneDatabaseAndLedger(t *testing.T) {
 	client := seedUnprovenAppWorkload(t, f)
 	assertUnprovenEnvelopeRejectedBeforeExecution(t, f, client, constants.ErrTxL2SignatureMissing)
 
-	testutil.AssertOneDatabaseAndLedger(t, paths.Infra.DataDir)
+	testutil.AssertOneDatabaseAndLedger(t, f.FileService)
 }

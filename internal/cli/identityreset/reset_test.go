@@ -8,11 +8,12 @@
 package identityreset
 
 import (
-	"os"
+	"context"
 	"path/filepath"
 	"testing"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 
 	"github.com/stretchr/testify/require"
@@ -21,8 +22,9 @@ import (
 func write(t *testing.T, directory, name string) string {
 	t.Helper()
 	path := filepath.Join(directory, ".ztd", name)
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
-	require.NoError(t, os.WriteFile(path, []byte("retain-or-remove"), 0600))
+	fileSvc, err := fs.NewRuntimeFileService(directory, nil)
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.WriteFile(context.Background(), name, []byte("retain-or-remove"), constants.PermFilePrivate))
 	return path
 }
 
@@ -36,12 +38,14 @@ func TestResetPreservesDataAndOtherIdentities(t *testing.T) {
 		write(t, dir, name)
 	}
 	require.NoError(t, Reset(dir))
+	fileSvc, err := fs.NewRuntimeFileService(dir, nil)
+	require.NoError(t, err)
 	for _, name := range identityFiles {
-		_, err := os.Stat(filepath.Join(dir, ".ztd", name))
-		require.True(t, os.IsNotExist(err), name)
+		_, err := fileSvc.Stat(context.Background(), name)
+		require.ErrorIs(t, err, constants.ErrNotFound, name)
 	}
 	for _, name := range retained {
-		data, err := os.ReadFile(filepath.Join(dir, ".ztd", name))
+		data, err := fileSvc.ReadFile(context.Background(), name)
 		require.NoError(t, err)
 		require.Equal(t, "retain-or-remove", string(data))
 	}
@@ -50,20 +54,24 @@ func TestResetPreservesDataAndOtherIdentities(t *testing.T) {
 
 func TestResetRefusesGateway(t *testing.T) {
 	dir := testutil.TempDir(t)
-	cert := write(t, dir, "cli.crt")
+	write(t, dir, "cli.crt")
 	write(t, dir, constants.GatewayRuntimeMarker)
 	require.ErrorContains(t, Reset(dir), "gateway runtime")
-	_, err := os.Stat(cert)
+	fileSvc, err := fs.NewRuntimeFileService(dir, nil)
+	require.NoError(t, err)
+	_, err = fileSvc.Stat(context.Background(), "cli.crt")
 	require.NoError(t, err)
 }
 
 func TestResetRefusesSymlinkBeforeRemovingCredentials(t *testing.T) {
 	dir := testutil.TempDir(t)
-	cert := write(t, dir, "cli.crt")
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".ztd/pki"), 0700))
+	write(t, dir, "cli.crt")
+	fileSvc, err := fs.NewRuntimeFileService(dir, nil)
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.MkdirAll(context.Background(), "pki", constants.PermDirPrivate))
 	outside := testutil.TempDir(t)
-	testutil.Symlink(t, outside, filepath.Join(dir, ".ztd/pki/trust"))
+	testutil.Symlink(t, outside, fileSvc.Resolve("pki/trust"))
 	require.ErrorContains(t, Reset(dir), "symlink")
-	_, err := os.Stat(cert)
+	_, err = fileSvc.Stat(context.Background(), "cli.crt")
 	require.NoError(t, err)
 }

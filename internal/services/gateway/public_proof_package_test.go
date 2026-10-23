@@ -15,7 +15,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -270,8 +269,7 @@ func TestBuildProofPackage_WritesArtifactsToDisk(t *testing.T) {
 
 	// The artifact file exists on disk.
 	relPath := filepath.Join(constants.PublicProofsDirname, manifest.Artifacts[0].ArtifactID)
-	absPath := publisher.fileSvc.Resolve(relPath)
-	diskContent, err := os.ReadFile(absPath)
+	diskContent, err := publisher.fileSvc.ReadFile(context.Background(), relPath)
 	require.NoError(t, err)
 	assert.Equal(t, content, diskContent)
 }
@@ -283,11 +281,11 @@ func TestBuildProofPackage_RejectsSymlinkArtifact(t *testing.T) {
 	content := []byte(`{"test":true}`)
 	digest := sha256.Sum256(content)
 
-	proofsDir := publisher.fileSvc.Resolve(constants.PublicProofsDirname)
-	require.NoError(t, os.MkdirAll(proofsDir, constants.PermDirPrivate))
-	target := filepath.Join(proofsDir, "target.json")
-	require.NoError(t, os.WriteFile(target, content, constants.PermFilePrivate))
-	testutil.Symlink(t, target, filepath.Join(proofsDir, hex.EncodeToString(digest[:])))
+	proofsDir := constants.PublicProofsDirname
+	require.NoError(t, publisher.fileSvc.MkdirAll(context.Background(), proofsDir, constants.PermDirPrivate))
+	target := filepath.Join(publisher.fileSvc.Resolve(proofsDir), "target.json")
+	require.NoError(t, publisher.fileSvc.WriteFile(context.Background(), filepath.Join(constants.PublicProofsDirname, "target.json"), content, constants.PermFilePrivate))
+	testutil.Symlink(t, target, publisher.fileSvc.Resolve(filepath.Join(proofsDir, hex.EncodeToString(digest[:]))))
 
 	artifacts := []ProofArtifactInput{
 		{
@@ -307,9 +305,9 @@ func TestBuildProofPackage_RejectsSymlinkArtifact(t *testing.T) {
 // proof directory is rejected.
 func TestBuildProofPackage_RejectsSymlinkProofDirectory(t *testing.T) {
 	publisher := newProofBuilderTestEnv(t)
-	elsewhere := publisher.fileSvc.Resolve("elsewhere")
-	require.NoError(t, os.MkdirAll(elsewhere, constants.PermDirPrivate))
-	testutil.Symlink(t, elsewhere, publisher.fileSvc.Resolve(constants.PublicProofsDirname))
+	elsewhere := "elsewhere"
+	require.NoError(t, publisher.fileSvc.MkdirAll(context.Background(), elsewhere, constants.PermDirPrivate))
+	testutil.Symlink(t, publisher.fileSvc.Resolve(elsewhere), publisher.fileSvc.Resolve(constants.PublicProofsDirname))
 
 	_, err := publisher.BuildProofPackage(context.Background(), "c1", "rev-1", "hash", true, []ProofArtifactInput{{
 		Filename:   "test.json",
@@ -427,8 +425,7 @@ func TestStreamProof_VerifiesBytesBeforeServing(t *testing.T) {
 
 	// Tamper with the file on disk.
 	relPath := filepath.Join(constants.PublicProofsDirname, artifactID)
-	absPath := publisher.fileSvc.Resolve(relPath)
-	require.NoError(t, os.WriteFile(absPath, []byte("tampered"), constants.PermFilePrivate))
+	require.NoError(t, publisher.fileSvc.WriteFile(context.Background(), relPath, []byte("tampered"), constants.PermFilePrivate))
 
 	w := httptestResponseWriter()
 	err = publisher.StreamProof(context.Background(), artifactID, w)
@@ -459,9 +456,9 @@ func TestStreamProof_RejectsSymlink(t *testing.T) {
 	// Replace the file with a symlink.
 	relPath := filepath.Join(constants.PublicProofsDirname, artifactID)
 	absPath := publisher.fileSvc.Resolve(relPath)
-	require.NoError(t, os.Remove(absPath))
+	require.NoError(t, publisher.fileSvc.Remove(context.Background(), relPath))
 	target := absPath + ".target"
-	require.NoError(t, os.WriteFile(target, []byte("target"), constants.PermFilePrivate))
+	require.NoError(t, publisher.fileSvc.WriteFile(context.Background(), filepath.Join(constants.PublicProofsDirname, artifactID+".target"), []byte("target"), constants.PermFilePrivate))
 	testutil.Symlink(t, target, absPath)
 
 	w := httptestResponseWriter()
