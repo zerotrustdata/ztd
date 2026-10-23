@@ -124,6 +124,7 @@ const reported = evalv1.ProviderHardwareMetricAvailability_PROVIDER_HARDWARE_MET
 func TestObservedProviderEnvironmentReadsRunWindows(t *testing.T) {
 	ctx := context.Background()
 	newReader := func(t *testing.T) (*CampaignProviderObservationReader, *Store) {
+		t.Helper()
 		store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
 		reader, err := NewCampaignProviderObservationReader(store)
 		require.NoError(t, err)

@@ -36,8 +36,8 @@ func (s *LogSink) String() string {
 
 // NewBufferLogger returns a debug logger and the sink it writes. Assertions
 // read the sink; discarded loggers cannot prove a log line was emitted.
-func NewBufferLogger(t testing.TB) (*slog.Logger, *LogSink) {
-	t.Helper()
+func NewBufferLogger(tb testing.TB) (*slog.Logger, *LogSink) {
+	tb.Helper()
 	sink := &LogSink{}
 	logger := slog.New(slog.NewTextHandler(sink, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	return logger, sink

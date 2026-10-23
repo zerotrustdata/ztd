@@ -40,14 +40,14 @@ type evidenceLedger struct {
 	seq        int
 }
 
-func newEvidenceLedger(t testing.TB, signer oracletest.Signer) *evidenceLedger {
-	t.Helper()
-	return newRuntimeLedger(t, signer, evidenceOperatorID, evidenceSessionID)
+func newEvidenceLedger(tb testing.TB, signer oracletest.Signer) *evidenceLedger {
+	tb.Helper()
+	return newRuntimeLedger(tb, signer, evidenceOperatorID, evidenceSessionID)
 }
 
-func newRuntimeLedger(t testing.TB, signer oracletest.Signer, operatorID, sessionID string) *evidenceLedger {
-	t.Helper()
-	return &evidenceLedger{t: t, signer: signer, operatorID: operatorID, sessionID: sessionID, head: "h-0"}
+func newRuntimeLedger(tb testing.TB, signer oracletest.Signer, operatorID, sessionID string) *evidenceLedger {
+	tb.Helper()
+	return &evidenceLedger{t: tb, signer: signer, operatorID: operatorID, sessionID: sessionID, head: "h-0"}
 }
 
 // runtime is the trace record of this ledger's runtime, anchored to its key.
@@ -467,6 +467,7 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 		{
 			name: "completed call carries a failed execution receipt",
 			corrupt: func(t *testing.T, trace *AgentTrace) {
+				t.Helper()
 				failed := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
 				trace.Inference = failed.runtime()
 				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{ActionReceipt: failed.inferenceFailed("tx-m1")}
@@ -476,6 +477,7 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 		{
 			name: "inference receipt signed by a key the runtime did not enroll",
 			corrupt: func(t *testing.T, trace *AgentTrace) {
+				t.Helper()
 				impostor := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
 				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{ActionReceipt: impostor.inference("tx-m1")}
 			},

@@ -77,6 +77,7 @@ func TestPasskeyRegisterChallenge(t *testing.T) {
 			body:       map[string]string{},
 			wantStatus: http.StatusBadRequest,
 			wantJSON: func(t *testing.T, body passkeyErrorResponse) {
+				t.Helper()
 				assert.Contains(t, body.Error, "user_id")
 			},
 		},

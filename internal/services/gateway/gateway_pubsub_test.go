@@ -128,6 +128,7 @@ func TestPubSubSessionHandler_handleAction(t *testing.T) {
 			},
 			preSetup: func() {},
 			validate: func(t *testing.T) {
+				t.Helper()
 				broker.mu.RLock()
 				_, exists := broker.subscribers["results:test-operator:cli-session-123"]
 				broker.mu.RUnlock()
@@ -144,6 +145,7 @@ func TestPubSubSessionHandler_handleAction(t *testing.T) {
 				broker.subscribe("results:test-operator:cli-session-456", sub)
 			},
 			validate: func(t *testing.T) {
+				t.Helper()
 				broker.mu.RLock()
 				_, exists := broker.subscribers["results:test-operator:cli-session-456"]
 				broker.mu.RUnlock()
@@ -159,7 +161,10 @@ func TestPubSubSessionHandler_handleAction(t *testing.T) {
 			},
 			preSetup: func() {},
 			validate: func(t *testing.T) {
+				t.Helper(
 				// Publish should not panic
+				)
+
 			},
 		},
 	}
