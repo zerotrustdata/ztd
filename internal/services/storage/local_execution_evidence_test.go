@@ -44,6 +44,7 @@ func newLocalEvidenceFixture(t *testing.T) (fs.RuntimeFileService, *vault.Vault,
 }
 
 func localEvidenceConfig(t *testing.T, fileSvc fs.RuntimeFileService, v *vault.Vault, auditStore *SQLAuditStore) LocalExecutionEvidenceConfig {
+	t.Helper()
 	return LocalExecutionEvidenceConfig{
 		FileSvc:    fileSvc,
 		Vault:      v,

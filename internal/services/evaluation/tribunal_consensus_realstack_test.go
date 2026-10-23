@@ -72,6 +72,7 @@ func tribunalConsensusVotes(n int) []fixtures.OllamaReply {
 // identity, and a key in the Gateway's member signer. It runs before Operators
 // enroll, so their enrollment bundles carry the Tribunal L2 trust.
 func bindTribunalConsensus(t *testing.T, gateway *fixtures.GatewayFixture, identity *fixtures.ClientIdentity) {
+	t.Helper()
 	ctx := t.Context()
 	gw := gateway.Service
 	consensusStore := gw.GetConsensusStore()

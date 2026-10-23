@@ -75,6 +75,7 @@ func renewalPeer(t *testing.T, spiffeID string) *x509.Certificate {
 }
 
 func operatorPeer(t *testing.T) *x509.Certificate {
+	t.Helper()
 	return renewalPeer(t, "spiffe://ztd.local/operator/"+renewalOrgID+"/"+renewalOpID+"/"+renewalSessionID)
 }
 
