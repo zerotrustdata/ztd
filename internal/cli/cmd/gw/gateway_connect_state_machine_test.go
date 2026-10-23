@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -688,17 +687,24 @@ func TestGatewayConnectCmd_VerificationFailureReturnsErrCORSPreflightRejected(t 
 
 	discovery := stubDiscoveryResult(t)
 
-	// Verifier with a stub HTTP client factory that returns an all-fail report.
+	// Serve healthy HTTPS without CORS approval on an isolated listener.
+	// A plain client here would contact the developer's live Gateway.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","mode":"gateway","posture":"doctrine"}`))
+	}))
+	t.Cleanup(srv.Close)
+
 	deps := connectDeps{
 		trustInstaller: &stubTrustInstaller{trusted: true},
 		discoveryFetcher: func(context.Context, string, func() time.Time) (auth.TrustDiscoveryResult, error) {
 			return discovery, nil
 		},
-		verifier: frontendverify.NewVerifier(frontendverify.VerifierDeps{
-			HTTPClientFactory: func(rootPool *x509.CertPool, timeout time.Duration) (*http.Client, error) {
-				return &http.Client{Timeout: timeout}, nil
-			},
-		}),
+		verifier:   frontendverify.NewVerifier(stubVerifierDeps(t, srv)),
 		confirm:    func(string) bool { return false },
 		continueFn: func(string) bool { return true },
 		now:        time.Now,
@@ -712,13 +718,7 @@ func TestGatewayConnectCmd_VerificationFailureReturnsErrCORSPreflightRejected(t 
 
 	err = cmd.RunE(cmd, []string{"https://your-app.lovable.app"})
 	require.Error(t, err)
-	// The HTTPS health check will fail because there's no server listening,
-	// so the error is ErrHTTPSCertificateVerification (the first failure is
-	// HTTPS health).
-	assert.True(t,
-		errors.Is(err, constants.ErrHTTPSCertificateVerification) || errors.Is(err, constants.ErrCORSPreflightRejected),
-		"error should be a verification failure, got: %v", err,
-	)
+	assert.ErrorIs(t, err, constants.ErrCORSPreflightRejected)
 	assert.NotContains(t, buf.String(), "Paste this into your frontend builder")
 }
 
